@@ -18,30 +18,25 @@ namespace VelaShell.Infrastructure.Ssh;
 /// 连远程转发都要绕一圈「让库转发到本机一个临时端口,再由自己接力到真正的目标」。
 /// </para>
 /// <para>
-/// 现在计量在库里:<c>ActiveConnections</c> / <c>TotalConnections</c> /
-/// <c>BytesUp</c> / <c>BytesDown</c> 直接读,远程转发也不必再绕那一圈环回。
-/// 本类型剩下的活只有「把两种转发器的同名属性统一成一个接口」。
+/// 现在计量在库里,而且三种转发共用一个基类 <see cref="PortForwarder" />:
+/// 本类型只是把它的计数与事件接到宿主的契约上。
 /// </para>
 /// <para>
-/// 上下行分开计数是库的口径,而宿主的契约要的是**总量**,所以这里相加。
+/// 发送 / 接收分开计数是库的口径,而宿主的契约要的是**总量**,所以这里相加。
 /// 两者都保留会更有信息量,但那要改 <see cref="IPortForwardHandle" /> 以及
 /// 隧道面板的绑定 —— 不在这次迁移的范围里,记在 feature-plan 里。
 /// </para>
 /// </remarks>
 internal sealed class LibraryPortForwardHandle : IPortForwardHandle
 {
-    private readonly PortForwarder? _local;
-    private readonly RemoteForwarder? _remote;
+    private readonly PortForwarder _forwarder;
     private readonly CancellationTokenRegistration _disconnected;
     private bool _stopped;
 
-    private LibraryPortForwardHandle(SshConnection connection, PortForwarder? local, RemoteForwarder? remote)
+    private LibraryPortForwardHandle(SshConnection connection, PortForwarder forwarder)
     {
-        _local = local;
-        _remote = remote;
-
-        local?.Error += OnError;
-        remote?.Error += OnError;
+        _forwarder = forwarder;
+        _forwarder.Error += OnError;
 
         // 连接断了,转发也就没了 —— 但转发器自己不会为此发 Error(它只报单条连接的失败)。
         // 上一版的计量句柄在这里会上报一条通道错误,隧道面板靠它把「运行中」换成带原因的状态;
@@ -57,19 +52,16 @@ internal sealed class LibraryPortForwardHandle : IPortForwardHandle
     }
 
     /// <inheritdoc />
-    public bool IsStarted => !_stopped && (_local?.IsActive ?? _remote?.IsActive ?? false);
+    public bool IsStarted => !_stopped && _forwarder.IsActive;
 
     /// <inheritdoc />
-    public long BytesTransferred =>
-        _local is not null
-            ? _local.BytesUp + _local.BytesDown
-            : (_remote?.BytesUp ?? 0) + (_remote?.BytesDown ?? 0);
+    public long BytesTransferred => _forwarder.BytesSent + _forwarder.BytesReceived;
 
     /// <inheritdoc />
-    public int TotalConnections => (int)(_local?.TotalConnections ?? _remote?.TotalConnections ?? 0);
+    public int TotalConnections => (int)_forwarder.TotalConnections;
 
     /// <inheritdoc />
-    public int ActiveConnections => _local?.ActiveConnections ?? _remote?.ActiveConnections ?? 0;
+    public int ActiveConnections => _forwarder.ActiveConnections;
 
     /// <inheritdoc />
     public event Action<Exception>? ChannelError;
@@ -83,52 +75,36 @@ internal sealed class LibraryPortForwardHandle : IPortForwardHandle
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(request);
 
-        switch (request.Kind)
+        PortForwarder forwarder = request.Kind switch
         {
-            case PortForwardKind.Local:
-                {
-                    PortForwardOptions options = new()
-                    {
-                        BindAddress = ParseBindAddress(request.BoundHost),
-                        BindPort = (int)request.BoundPort,
-                    };
-                    return new(
-                        connection,
-                        PortForwarder.StartLocal(
-                            connection, request.TargetHost!, (int)request.TargetPort!, options),
-                        null);
-                }
+            PortForwardKind.Local => LocalPortForwarder.Start(
+                connection, request.TargetHost!, (int)request.TargetPort!, LocalOptions(request)),
 
-            case PortForwardKind.Dynamic:
-                {
-                    PortForwardOptions options = new()
-                    {
-                        BindAddress = ParseBindAddress(request.BoundHost),
-                        BindPort = (int)request.BoundPort,
-                    };
-                    return new(connection, PortForwarder.StartDynamic(connection, options), null);
-                }
+            PortForwardKind.Dynamic => LocalPortForwarder.StartDynamic(connection, LocalOptions(request)),
 
-            case PortForwardKind.Remote:
-                {
-                    RemoteForwardOptions options = new()
-                    {
-                        BindAddress = request.BoundHost,
-                        BindPort = (int)request.BoundPort,
-                    };
-                    RemoteForwarder forwarder = await RemoteForwarder.StartAsync(
-                        connection, ResolveOutboundHost(request.TargetHost!), (int)request.TargetPort!,
-                        options, cancellationToken).ConfigureAwait(false);
-                    return new(connection, null, forwarder);
-                }
+            PortForwardKind.Remote => await RemotePortForwarder.StartAsync(
+                connection, ResolveOutboundHost(request.TargetHost!), (int)request.TargetPort!,
+                new RemotePortForwardOptions { BindAddress = request.BoundHost, BindPort = (int)request.BoundPort },
+                cancellationToken).ConfigureAwait(false),
 
-            default:
-                throw new ArgumentOutOfRangeException(
-                    nameof(request), request.Kind, @"Unknown port forward kind.");
-        }
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(request), request.Kind, @"Unknown port forward kind."),
+        };
+
+        return new(connection, forwarder);
     }
 
+    private static LocalPortForwardOptions LocalOptions(PortForwardRequest request) => new()
+    {
+        BindAddress = ParseBindAddress(request.BoundHost),
+        BindPort = (int)request.BoundPort,
+    };
+
     /// <summary>把配置里的监听主机翻译成绑定地址(<c>0.0.0.0</c> / <c>*</c> 表示所有接口)。</summary>
+    /// <remarks>
+    /// 只有本地转发要这一步:它绑的是本机套接字。远程转发的地址原样交给服务端 ——
+    /// <c>""</c>、<c>"*"</c>、<c>"localhost"</c> 在服务端是不同的语义。
+    /// </remarks>
     internal static IPAddress ParseBindAddress(string host) =>
         host is "0.0.0.0" or "*" ? IPAddress.Any :
         host == "::" ? IPAddress.IPv6Any :
@@ -144,7 +120,6 @@ internal sealed class LibraryPortForwardHandle : IPortForwardHandle
         host == "::" ? "::1" :
         host;
 
-    /// <inheritdoc />
     /// <remarks>
     /// 单条连接失败(目标拒绝、SOCKS 客户端不守协议)不影响监听端口,
     /// 上报给界面,否则用户只看到「运行中」却连不上。
@@ -170,21 +145,13 @@ internal sealed class LibraryPortForwardHandle : IPortForwardHandle
         _stopped = true;
 
         await _disconnected.DisposeAsync().ConfigureAwait(false);
-        _local?.Error -= OnError;
-        _remote?.Error -= OnError;
+        _forwarder.Error -= OnError;
 
         // 停止路径上的 catch 一律吞掉:要停的东西本来就在停,重复停止与已断连接抛的
         // 都是清理噪声。记它只会在每次关隧道时刷日志。
         try
         {
-            if (_local is not null)
-            {
-                await _local.DisposeAsync().ConfigureAwait(false);
-            }
-            if (_remote is not null)
-            {
-                await _remote.DisposeAsync().ConfigureAwait(false);
-            }
+            await _forwarder.DisposeAsync().ConfigureAwait(false);
         }
         catch (Exception)
         {

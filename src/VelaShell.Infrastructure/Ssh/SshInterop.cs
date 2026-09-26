@@ -1,6 +1,9 @@
 using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
+using VelaShell.Ssh.Auth;
+using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Diagnostics;
+using VelaShell.Ssh.Forwarding;
 using VelaShell.Ssh.Keys;
 using VelaShell.Ssh.Sftp;
 
@@ -47,17 +50,17 @@ internal static class SshInterop
             // 派生类型放在基类型前面,否则后面的分支永远到不了。
             SshAuthenticationException auth => new VelaSshAuthenticationException(Describe(auth), auth),
             SshPrivateKeyException key => TranslatePrivateKey(key),
-            SshCertificateException cert => new VelaSshAuthenticationException(cert.Message, cert),
+            SshCertificateException cert => new VelaSshAuthenticationException(Localize(cert), cert),
             SftpTransferInterruptedException sftp => new VelaSftpOperationException(sftp.Message, sftp),
             SftpException sftp => TranslateSftp(sftp),
             SshNegotiationException negotiation => new VelaSshConnectionException(Describe(negotiation), negotiation),
-            SshChannelException channel => new VelaSshClientException(channel.Message, channel),
-            SshForwardException forward => new VelaSshClientException(forward.Message, forward),
+            SshChannelException channel => new VelaSshClientException(Localize(channel), channel),
+            SshForwardException forward => new VelaSshClientException(Localize(forward), forward),
             SshConnectionClosedException closed => new VelaSshConnectionException(Localize(closed), closed),
             SshConnectException connect => TranslateConnect(connect),
             SshProtocolException protocol => new VelaSshConnectionException(protocol.Message, protocol),
             OperationCanceledException => new VelaSshOperationTimeoutException(ex.Message, ex),
-            SshException => new VelaSshClientException(ex.Message, ex),
+            SshException other => new VelaSshClientException(Localize(other), other),
             _ => null,
         };
     }
@@ -86,10 +89,15 @@ internal static class SshInterop
     /// 英 / 日 / 韩界面的用户在换库之后会突然看到中文报错。
     /// </para>
     /// <para>
-    /// 只翻有把握的那几类。<see cref="SshFailureReason.ProxyRefused" /> 不在其中:它的消息是
-    /// <c>ProxyTransportDialer</c> 拼的,带着「经哪个代理去哪」与换 SOCKS5 的提示,比一句
-    /// 泛泛的「代理拒绝」有用得多。<see cref="SshFailureReason.HostKeyRejected" /> 同理:消息是
+    /// 只翻有把握的那几类。<see cref="SshFailureReason.ProxyRefused" /> 与
+    /// <see cref="SshFailureReason.ProxyAuthRequired" /> 不在其中:它们的消息是 <c>ProxyTransportDialer</c>
+    /// 用界面语言拼的,带着「经哪个代理去哪」、换 SOCKS5 的提示,并且分得清「没配凭据」与「凭据不对」,
+    /// 比一句泛泛的「代理拒绝」有用得多。<see cref="SshFailureReason.HostKeyRejected" /> 同理:消息是
     /// <c>VelaHostKeyPolicy</c> 用本地化文案写的拒绝理由(含新旧指纹)。认不出的原因照旧用原文。
+    /// </para>
+    /// <para>
+    /// 私钥读不出、格式不对、证书与私钥不是一对、配置不成立、端口占用这几类也不翻:
+    /// 库的消息里带着文件路径、指纹、端口号这些具体信息,换成一句通用文案反而帮不上忙。
     /// </para>
     /// <para>
     /// 尾巴上的 <c>[原因 @ 阶段]</c> 不翻译 —— 那是给提 issue 时贴日志用的,跨语言一致才好搜。
@@ -103,14 +111,20 @@ internal static class SshInterop
             SshFailureReason.TcpRefused => "SshErr_TcpRefused",
             SshFailureReason.TcpTimeout => "SshErr_TcpTimeout",
             SshFailureReason.TcpUnreachable => "SshErr_TcpUnreachable",
-            SshFailureReason.ProxyAuthRequired => "SshErr_ProxyAuthRequired",
             SshFailureReason.NotAnSshServer => "SshErr_NotAnSshServer",
             SshFailureReason.VersionMismatch => "SshErr_VersionMismatch",
-            SshFailureReason.HostKeyChanged => "SshErr_HostKeyChanged",
+            // 建连时的「变了」由 VelaHostKeyPolicy 写好了本地化的拒绝理由(含新旧指纹),不能拿泛泛的一句盖掉;
+            // 只有重协商途中换钥这种没有策略参与的情形才用通用文案。
+            SshFailureReason.HostKeyChanged when ex.Phase == SshPhase.Rekeying => "SshErr_HostKeyChanged",
             SshFailureReason.Timeout => "SshErr_Timeout",
             SshFailureReason.KeepAliveTimeout => "SshErr_KeepAliveTimeout",
             SshFailureReason.ClosedByPeer => "SshErr_ClosedByPeer",
             SshFailureReason.Disconnected => "SshErr_Disconnected",
+            SshFailureReason.KeyPassphraseRequired => "SshErr_KeyPassphraseRequired",
+            SshFailureReason.KeyPassphraseIncorrect => "SshErr_KeyPassphraseIncorrect",
+            SshFailureReason.AgentRefused => "SshErr_AgentRefused",
+            SshFailureReason.ChannelRequestRejected => "SshErr_ChannelRequestRejected",
+            SshFailureReason.ForwardRejected => "SshErr_ForwardRejected",
             _ => null,
         };
 
@@ -144,7 +158,7 @@ internal static class SshInterop
     /// 私钥读不出来是**认证**失败的一种,而不是连接失败 —— 上层据此弹的是凭据对话框。
     /// </summary>
     private static VelaSshAuthenticationException TranslatePrivateKey(SshPrivateKeyException ex) =>
-        new(ex.Message, ex);
+        new(Localize(ex), ex);
 
     /// <summary>
     /// 认证失败时把逐条尝试记录摊开。

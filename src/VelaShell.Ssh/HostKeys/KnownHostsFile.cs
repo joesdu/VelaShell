@@ -14,91 +14,6 @@ using VelaShell.Ssh.Protocol;
 
 namespace VelaShell.Ssh.HostKeys;
 
-/// <summary><c>known_hosts</c> 里的一条。</summary>
-/// <param name="Patterns">主机模式（逗号分隔的原文已经拆开）。</param>
-/// <param name="IsHashed">主机名是不是 <c>|1|salt|hash</c> 形式。</param>
-/// <param name="Marker"><c>@cert-authority</c> 或 <c>@revoked</c>；没有则为空。</param>
-/// <param name="KeyType">密钥类型。</param>
-/// <param name="KeyBlob">公钥 blob。</param>
-/// <param name="LineNumber">在文件里的行号（1 起）。</param>
-public sealed record KnownHostEntry(
-    IReadOnlyList<string> Patterns,
-    bool IsHashed,
-    string Marker,
-    string KeyType,
-    byte[] KeyBlob,
-    int LineNumber)
-{
-    /// <summary>这一条是不是「此密钥已吊销」。</summary>
-    public bool IsRevoked => Marker == "@revoked";
-
-    /// <summary>这一条是不是证书颁发者。</summary>
-    public bool IsCertificateAuthority => Marker == "@cert-authority";
-}
-
-/// <summary>查 <c>known_hosts</c> 的结果。</summary>
-public enum KnownHostStatus
-{
-    /// <summary>这台主机 + 这把密钥都对得上。</summary>
-    Known,
-
-    /// <summary>没见过这台主机。</summary>
-    Unknown,
-
-    /// <summary>
-    /// 见过这台主机，但<b>密钥变了</b>。
-    /// </summary>
-    /// <remarks>
-    /// 这是最要紧的一种：它可能是中间人，也可能只是服务器重装了。
-    /// <b>两者在协议层无法区分</b>，所以库不替使用者决定 —— 如实报出来。
-    /// </remarks>
-    Changed,
-
-    /// <summary>这把密钥被 <c>@revoked</c> 标记过。</summary>
-    Revoked,
-
-    /// <summary>
-    /// 见过这台主机，但记着的是<b>别的类型</b>的密钥；这一种类型的一把都没有。
-    /// </summary>
-    /// <remarks>
-    /// <b>不能当成「没见过」</b>：中间人只要出示一种 known_hosts 里没记过的类型，
-    /// 「密钥变了」的检查就被绕过去，接受新主机的策略还会把它悄悄记下来。
-    /// 连接时会把已记录的类型排在主机密钥算法的前面（见 <see cref="IHostKeyTypePreference"/>），
-    /// 正常的服务端因此谈成已知的那一种；还落到这里，就与 <see cref="Changed"/> 同样处理。
-    /// <para>
-    /// 对上这台主机的 <c>@cert-authority</c> 行也算「记着别的」：这台主机由 CA 管，
-    /// 出示一把没有这个 CA 担保的钥（普通钥，或者别的 CA 签的证书）而那把钥又没有单独记着，同样落到这里。
-    /// </para>
-    /// </remarks>
-    OtherKeyTypesKnown,
-
-    /// <summary>
-    /// 出示的是主机证书，签发它的 CA 在 <c>@cert-authority</c> 里对上了这台主机，但证书本身不合格
-    /// （过期、主体不含这台主机、类型不对、签名验不过……）。原因见 <see cref="KnownHostLookup.CertificateProblem"/>。
-    /// </summary>
-    /// <remarks>
-    /// <b>不退回到「没见过」</b>：这台主机配了 CA，证书不合格说明配置出了错或者路上有人
-    /// （velashell-docs/zh/ssh/spec/03 §5.5）。
-    /// </remarks>
-    CertificateInvalid,
-}
-
-/// <summary>查 <c>known_hosts</c> 的结果详情。</summary>
-/// <param name="Status">结论。</param>
-/// <param name="MatchedEntry">对上的那一条（<see cref="KnownHostStatus.Unknown"/> 时为空）。</param>
-/// <param name="ConflictingEntries">
-/// 主机对上但密钥不对的那些条目 —— <b>报「密钥变了」时要把行号指给用户</b>，
-/// 否则他不知道该去删哪一行。
-/// </param>
-public readonly record struct KnownHostLookup(
-    KnownHostStatus Status,
-    KnownHostEntry? MatchedEntry,
-    IReadOnlyList<KnownHostEntry> ConflictingEntries)
-{
-    /// <summary><see cref="KnownHostStatus.CertificateInvalid"/> 时：证书哪里不合格（一句人话）。</summary>
-    public string? CertificateProblem { get; init; }
-}
-
 /// <summary>读写 <c>known_hosts</c>。</summary>
 /// <remarks>
 /// <para>
@@ -256,14 +171,14 @@ public static class KnownHostsFile
                 continue;
             }
 
-            bool sameKey = entry.KeyBlob.AsSpan().SequenceEqual(presented.Blob.Span);
+            bool sameKey = entry.KeyBlob.Span.SequenceEqual(presented.Blob.Span);
 
             if (entry.IsRevoked)
             {
                 // 吊销的可以是那把钥、整张证书，或者签发它的 CA（吊销一个 CA 就作废它签过的全部证书）。
                 if (sameKey
-                    || (certificate is not null && entry.KeyBlob.AsSpan().SequenceEqual(key.Blob.Span))
-                    || (authorityKey is not null && entry.KeyBlob.AsSpan().SequenceEqual(authorityKey.Blob.Span)))
+                    || (certificate is not null && entry.KeyBlob.Span.SequenceEqual(key.Blob.Span))
+                    || (authorityKey is not null && entry.KeyBlob.Span.SequenceEqual(authorityKey.Blob.Span)))
                 {
                     // 吊销赢，立刻返回 —— 后面再有什么都不重要了。
                     return new KnownHostLookup(KnownHostStatus.Revoked, entry, []);
@@ -275,7 +190,7 @@ public static class KnownHostsFile
             {
                 // CA 只为它签的证书担保；不把 CA 公钥当成这台主机的普通密钥来比
                 // （否则会把「出示了一张证书」误报成「密钥变了」）。
-                if (authorityKey is not null && entry.KeyBlob.AsSpan().SequenceEqual(authorityKey.Blob.Span))
+                if (authorityKey is not null && entry.KeyBlob.Span.SequenceEqual(authorityKey.Blob.Span))
                 {
                     authority ??= entry;
                 }
@@ -443,47 +358,7 @@ public static class KnownHostsFile
             return string.Equals(pattern, host, StringComparison.OrdinalIgnoreCase);
         }
 
-        return WildcardMatch(pattern, host);
-    }
-
-    private static bool WildcardMatch(string pattern, string text)
-    {
-        int p = 0;
-        int t = 0;
-        int starPattern = -1;
-        int starText = 0;
-
-        while (t < text.Length)
-        {
-            if (p < pattern.Length
-                && (pattern[p] == '?'
-                    || char.ToLowerInvariant(pattern[p]) == char.ToLowerInvariant(text[t])))
-            {
-                p++;
-                t++;
-            }
-            else if (p < pattern.Length && pattern[p] == '*')
-            {
-                starPattern = p++;
-                starText = t;
-            }
-            else if (starPattern >= 0)
-            {
-                p = starPattern + 1;
-                t = ++starText;
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        while (p < pattern.Length && pattern[p] == '*')
-        {
-            p++;
-        }
-
-        return p == pattern.Length;
+        return HostPatterns.Matches(pattern, host);
     }
 
     /// <summary>拼一条可以直接追加进 <c>known_hosts</c> 的行。</summary>
@@ -496,7 +371,7 @@ public static class KnownHostsFile
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(key);
 
-        string name = port == 22 ? host : $"[{host}]:{port}";
+        string name = FormatHostPattern(host, port);
 
         if (hashHostName)
         {

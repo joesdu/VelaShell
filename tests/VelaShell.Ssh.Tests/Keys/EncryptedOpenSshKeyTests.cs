@@ -56,7 +56,7 @@ public sealed class EncryptedOpenSshKeyTests
     [DataRow("ecdsa-aes256ctr", DisplayName = "ecdsa-p256 · aes256-ctr")]
     public async Task 口令正确时_解出的公钥与ssh_keygen写的逐字节相同(string name)
     {
-        ISshSigner signer = await SshPrivateKeyFile.LoadAsync(FixturePath(name), Passphrase, TestContext.CancellationToken);
+        InMemorySshSigner signer = await SshPrivateKeyFile.LoadAsync(FixturePath(name), Passphrase, TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(
             ReadPublicBlob(name), signer.PublicKey.Blob.ToArray(), $"{name}：解出来的公钥与 ssh-keygen 写的 .pub 不一致。");
@@ -66,7 +66,7 @@ public sealed class EncryptedOpenSshKeyTests
     [TestMethod]
     public async Task 未加密的私钥仍然照常读()
     {
-        ISshSigner signer = await SshPrivateKeyFile.LoadAsync(
+        InMemorySshSigner signer = await SshPrivateKeyFile.LoadAsync(
             FixturePath("ed25519-plain"), passphrase: null, TestContext.CancellationToken);
 
         Assert.AreSequenceEqual(ReadPublicBlob("ed25519-plain"), signer.PublicKey.Blob.ToArray());
@@ -142,7 +142,7 @@ public sealed class EncryptedOpenSshKeyTests
     [DataRow("ecdsa-aes256ctr")]
     public async Task 解出来的私钥签名能被它自己的公钥验过(string name)
     {
-        ISshSigner signer = await SshPrivateKeyFile.LoadAsync(FixturePath(name), Passphrase, TestContext.CancellationToken);
+        InMemorySshSigner signer = await SshPrivateKeyFile.LoadAsync(FixturePath(name), Passphrase, TestContext.CancellationToken);
 
         byte[] data = Encoding.UTF8.GetBytes("velashell-ssh 的签名自检数据");
         string algorithm = signer.SignatureAlgorithms[0];

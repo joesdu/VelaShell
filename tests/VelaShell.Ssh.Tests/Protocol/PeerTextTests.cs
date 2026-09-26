@@ -51,7 +51,7 @@ public sealed class PeerTextTests
     [TestMethod]
     public void SFTP状态消息进异常之前被清_原话留在ServerMessage()
     {
-        SftpException error = new(SftpStatusCode.Failure, Hostile, "/tmp/\u001b[2Jx", "读取");
+        SftpException error = new(SftpStatusCode.Failure, Hostile, "/tmp/\u001b[2Jx", SftpOperation.Read);
 
         AssertClean(error.Message);
         Assert.AreEqual(Hostile, error.ServerMessage, "原话照样交出去（文档写明是不可信输入）");

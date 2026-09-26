@@ -21,7 +21,7 @@ namespace VelaShell.Ssh.Crypto;
 /// 每一项按其 SSH 类型编码，而公开值与共享密钥的类型**随方法而变** ——
 /// 见 <see cref="SshKexValueEncoding"/>。
 /// </remarks>
-public readonly ref struct SshExchangeHashInput
+internal readonly ref struct SshExchangeHashInput
 {
     /// <summary>客户端标识串（去行尾的原文字节）。</summary>
     public required ReadOnlySpan<byte> ClientVersion { get; init; }
@@ -37,16 +37,6 @@ public readonly ref struct SshExchangeHashInput
 
     /// <summary>服务端主机公钥的 blob。</summary>
     public required ReadOnlySpan<byte> HostKeyBlob { get; init; }
-
-    /// <summary>
-    /// 群协商的额外输入（仅 <c>diffie-hellman-group-exchange-*</c>）。
-    /// </summary>
-    /// <remarks>
-    /// RFC 4419 在主机密钥与公开值之间插入
-    /// <c>uint32 min ‖ uint32 n ‖ uint32 max ‖ mpint p ‖ mpint g</c>。
-    /// 其它方法为 <see langword="default"/>。
-    /// </remarks>
-    public ReadOnlySpan<byte> GroupExchangeExtra { get; init; }
 
     /// <summary>客户端公开值。</summary>
     public required ReadOnlySpan<byte> ClientPublicValue { get; init; }
@@ -65,7 +55,7 @@ public readonly ref struct SshExchangeHashInput
 }
 
 /// <summary>交换哈希与密钥派生。</summary>
-public static class SshExchangeHash
+internal static class SshExchangeHash
 {
     /// <summary>
     /// 计算交换哈希 <c>H</c>。
@@ -91,12 +81,6 @@ public static class SshExchangeHash
         writer.WriteString(input.ClientKexInit);
         writer.WriteString(input.ServerKexInit);
         writer.WriteString(input.HostKeyBlob);
-
-        // 群协商的五个字段（若有）在主机密钥与公开值之间。已由调用方编码好，原样写入。
-        if (!input.GroupExchangeExtra.IsEmpty)
-        {
-            writer.WriteRaw(input.GroupExchangeExtra);
-        }
 
         WriteValue(ref writer, input.ClientPublicValue, input.PublicValueEncoding);
         WriteValue(ref writer, input.ServerPublicValue, input.PublicValueEncoding);

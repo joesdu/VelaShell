@@ -6,12 +6,14 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.IO.Pipelines;
 using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Protocol;
 using VelaShell.Ssh.Session;
+using VelaShell.Ssh.Tests.TestKit;
 using VelaShell.Ssh.Transport;
 
 namespace VelaShell.Ssh.Tests.Session;
@@ -47,12 +49,17 @@ public sealed class SessionFailureTests
 
         public CancellationToken Token => _cts.Token;
 
-        public static RawPeer Start(KeepAlivePolicy? keepAlive = null, SshConnectionLimits? limits = null)
+        /// <summary>裸对端不跑握手；连接只要一份形式上完整的密钥交换结果（本组用例不重协商）。</summary>
+        private static readonly SshKeyExchangeResult UnusedKeyExchange = new(
+            default, new byte[32], new byte[32],
+            SshPublicKey.Decode(TestHostKey.Create("ssh-ed25519").PublicKeyBlob), StrictKeyExchange: false);
+
+        public static RawPeer Start(SshKeepAlivePolicy? keepAlive = null, SshConnectionLimits? limits = null)
         {
             (InMemoryDuplexStream client, InMemoryDuplexStream server) = InMemoryTransport.CreatePair();
-            SshConnection connection = new(new SshPacketTransport(client), new byte[32], limits)
+            SshConnection connection = new(new SshPacketTransport(client), UnusedKeyExchange, limits)
             {
-                KeepAlive = keepAlive ?? KeepAlivePolicy.Disabled,
+                KeepAlive = keepAlive ?? SshKeepAlivePolicy.Disabled,
             };
             connection.Start();
             return new RawPeer(new SshPacketTransport(server), server, connection);
@@ -163,7 +170,7 @@ public sealed class SessionFailureTests
     public void 公钥解析失败也是SshException()
     {
         SshException error = Assert.ThrowsExactly<SshPublicKeyException>(
-            () => SshPublicKey.Parse(new byte[] { 0, 0, 0, 7, (byte)'s', (byte)'s', (byte)'h' }));
+            () => SshPublicKey.Decode(new byte[] { 0, 0, 0, 7, (byte)'s', (byte)'s', (byte)'h' }));
         Assert.IsInstanceOfType<SshException>(error);
     }
 
@@ -332,7 +339,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 对端沉默时保活在有限时间内判死()
     {
-        await using var peer = RawPeer.Start(new KeepAlivePolicy(TimeSpan.FromMilliseconds(100), MaxMissed: 2));
+        await using var peer = RawPeer.Start(new SshKeepAlivePolicy(TimeSpan.FromMilliseconds(100), maxMissed: 2));
 
         // 对端只读、一句不回。
         int probes = 0;
@@ -349,6 +356,15 @@ public sealed class SessionFailureTests
 
         await WaitForDisconnectAsync(peer.Connection);
 
+        // 探测是后台任务读出来数的：判死那一刻，最后一个探测可能已经发出、还躺在管道里没被读走
+        // （整套用例并行跑、机器忙的时候就会这样）。给读的一方一点时间读完再数 —— 真的只发了一个的话，
+        // 等多久都还是一个，这条断言照样会失败。
+        Stopwatch drain = Stopwatch.StartNew();
+        while (Volatile.Read(ref probes) < 2 && drain.Elapsed < TimeSpan.FromSeconds(2))
+        {
+            await Task.Delay(10);
+        }
+
         Assert.IsFalse(peer.Connection.IsAlive);
         Assert.IsGreaterThanOrEqualTo(2, Volatile.Read(ref probes), "判死之前至少要探测 MaxMissed 次");
 
@@ -361,7 +377,7 @@ public sealed class SessionFailureTests
     [TestMethod]
     public async Task 迟到的保活应答不会让后续全局请求错位()
     {
-        await using var peer = RawPeer.Start(new KeepAlivePolicy(TimeSpan.FromMilliseconds(150), MaxMissed: 10));
+        await using var peer = RawPeer.Start(new SshKeepAlivePolicy(TimeSpan.FromMilliseconds(150), maxMissed: 10));
 
         // 对端先憋着第一个保活不回。
         byte[] firstProbe = await peer.ReadUntilAsync(SshMessageNumber.GlobalRequest);
@@ -370,7 +386,7 @@ public sealed class SessionFailureTests
 
         // 然后发一个真请求 —— 此时账本里排在前面的是那些没回的保活。
         Task<SshGlobalRequestReply> real = peer.Connection
-            .SendGlobalRequestWithReplyAsync("test@example.com", default, wantReply: true, peer.Token).AsTask();
+            .SendGlobalRequestAsync("test@example.com", default, wantReply: true, peer.Token).AsTask();
 
         // 对端按顺序作答：每个保活回 FAILURE，给真请求回一个带载荷的 SUCCESS。
         int pendingProbes = 1;
@@ -741,7 +757,7 @@ public sealed class SessionFailureTests
         await using TestKit.TestSshServerHost host = await TestKit.TestSshServerHost.StartAsync(
             new TestKit.TestChannelScript { StandardOutput = payload, ExitCode = 0 });
 
-        SshExecutionOptions options = new()
+        SshCommandOptions options = new()
         {
             Channel = SshChannelOptions.Default with { ReceiveMaxPacketBytes = 128 * 1024 },
         };

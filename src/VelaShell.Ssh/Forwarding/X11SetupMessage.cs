@@ -24,7 +24,7 @@ namespace VelaShell.Ssh.Forwarding;
 /// 4 字节边界的变长数据。
 /// </para>
 /// </remarks>
-public static class X11SetupMessage
+internal static class X11SetupMessage
 {
     /// <summary>定长头的长度。</summary>
     public const int HeaderLength = 12;

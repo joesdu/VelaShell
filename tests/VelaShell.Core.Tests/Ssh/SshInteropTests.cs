@@ -1,7 +1,10 @@
+using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Ssh;
 using VelaShell.Ssh.Auth;
+using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Diagnostics;
+using VelaShell.Ssh.Keys;
 using VelaShell.Ssh.Sftp;
 
 namespace VelaShell.Core.Tests.Ssh;
@@ -168,7 +171,7 @@ public sealed class SshInteropTests
     public void Translate_SftpNotFound_MapsToPathNotFound()
     {
         Exception? translated = SshInterop.Translate(
-            new SftpException(SftpStatusCode.NoSuchFile, "No such file", "/tmp/nope", "打开文件"));
+            new SftpException(SftpStatusCode.NoSuchFile, "No such file", "/tmp/nope", SftpOperation.Open));
 
         Assert.IsInstanceOfType<VelaSftpPathNotFoundException>(translated);
     }
@@ -177,7 +180,7 @@ public sealed class SshInteropTests
     public void Translate_SftpPermissionDenied_MapsToPermissionDenied()
     {
         Exception? translated = SshInterop.Translate(
-            new SftpException(SftpStatusCode.PermissionDenied, "Permission denied", "/root/x", "打开文件"));
+            new SftpException(SftpStatusCode.PermissionDenied, "Permission denied", "/root/x", SftpOperation.Open));
 
         Assert.IsInstanceOfType<VelaSftpPermissionDeniedException>(translated);
     }
@@ -193,9 +196,50 @@ public sealed class SshInteropTests
     public void Translate_SftpGenericFailure_KeepsServerMessage()
     {
         Exception? translated = SshInterop.Translate(
-            new SftpException(SftpStatusCode.Failure, "Disk quota exceeded", "/home/joe/big.bin", "写入"));
+            new SftpException(SftpStatusCode.Failure, "Disk quota exceeded", "/home/joe/big.bin", SftpOperation.Write));
 
         Assert.IsInstanceOfType<VelaSftpOperationException>(translated);
         Assert.Contains("Disk quota exceeded", translated!.Message);
+    }
+
+    // ------------------------------------------------------------ 界面语言
+
+    /// <summary>
+    /// 原因码足以说清楚的失败换成界面语言的一句话;库的中文原文留在 <see cref="Exception.InnerException" />。
+    /// </summary>
+    [TestMethod]
+    public void Translate_PassphraseIncorrect_UsesLocalizedText()
+    {
+        SshPrivateKeyException original = new(SshFailureReason.KeyPassphraseIncorrect, "私钥解不开 —— 口令多半不对。");
+
+        Exception? translated = SshInterop.Translate(original);
+
+        Assert.IsInstanceOfType<VelaSshAuthenticationException>(translated);
+        Assert.StartsWith(Strings.Get("SshErr_KeyPassphraseIncorrect"), translated!.Message);
+        Assert.Contains("[KeyPassphraseIncorrect @ None]", translated.Message, "原因码尾巴不翻译,跨语言一致才好搜");
+        Assert.AreSame(original, translated.InnerException);
+    }
+
+    [TestMethod]
+    public void Translate_ChannelRequestRejected_UsesLocalizedText()
+    {
+        Exception? translated = SshInterop.Translate(
+            new SshChannelException(SshFailureReason.ChannelRequestRejected, "服务端拒绝分配伪终端。"));
+
+        Assert.IsInstanceOfType<VelaSshClientException>(translated);
+        Assert.StartsWith(Strings.Get("SshErr_ChannelRequestRejected"), translated!.Message);
+    }
+
+    /// <summary>
+    /// 库的消息带着具体信息(文件路径、指纹、端口)时照用原文 —— 换成一句通用文案反而帮不上忙。
+    /// </summary>
+    [TestMethod]
+    public void Translate_KeyFormatInvalid_KeepsLibraryMessageWithPath()
+    {
+        Exception? translated = SshInterop.Translate(
+            new SshPrivateKeyException(SshFailureReason.KeyFormatInvalid, "私钥格式不对(~/.ssh/id_broken)。"));
+
+        Assert.IsInstanceOfType<VelaSshAuthenticationException>(translated);
+        Assert.Contains("id_broken", translated!.Message);
     }
 }

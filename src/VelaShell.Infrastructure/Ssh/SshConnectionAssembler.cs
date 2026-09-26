@@ -9,7 +9,6 @@ using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Keys;
 using VelaShell.Ssh.Session;
 using VelaShell.Ssh.Transport;
-using LibraryCertificate = VelaShell.Ssh.Keys.OpenSshCertificate;
 using VelaConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
 
 namespace VelaShell.Infrastructure.Ssh;
@@ -33,11 +32,14 @@ namespace VelaShell.Infrastructure.Ssh;
 internal static class SshConnectionAssembler
 {
     /// <summary>
-    /// 装配结果:连接工厂,以及跟着包装器一起释放的拨号器(跳板链持有跳板连接)。
+    /// 装配结果:连接工厂与建链超时。
     /// </summary>
+    /// <remarks>
+    /// 跳板链上的跳板连接不在这里:它们归各自拨出来的流所有,外层连接释放时逐层一起断开
+    /// (见 <see cref="DialerChain.Jump(SshEndPoint, Func{CancellationToken, ValueTask{SshConnection}})" />)。
+    /// </remarks>
     internal readonly record struct Assembled(
         Func<CancellationToken, ValueTask<SshConnection>> Connect,
-        IAsyncDisposable? DialerLifetime,
         TimeSpan ConnectTimeout);
 
     /// <summary>按连接信息装配。</summary>
@@ -58,22 +60,21 @@ internal static class SshConnectionAssembler
 
         TimeSpan connectTimeout = ConnectTimeout(settings);
 
-        // 最内层跳板真正出网,代理装在它身上;外层每一跳用 SshJumpDialer 包住内层。
+        // 最内层跳板真正出网,代理装在它身上;外层每一跳用库的跳板拨号器包住内层。
+        // 每一跳的连接由这里现建(要先连 agent、按跳准备凭据),所以用回调那一种。
         ISshTransportDialer dialer = new ProxyTransportDialer(proxyResolver);
-        SshJumpDialer? outermostJump = null;
 
         foreach (VelaConnectionInfo hop in JumpChainInnerToOuter(info))
         {
             ISshTransportDialer inner = dialer;
-            SshJumpDialer jump = new(ct => ConnectAsync(hop, policy, settings, inner, connectTimeout, ct));
-            dialer = jump;
-            outermostJump = jump;
+            dialer = DialerChain.Jump(
+                new SshEndPoint(hop.Host, hop.Port),
+                ct => ConnectAsync(hop, policy, settings, inner, connectTimeout, ct));
         }
 
         ISshTransportDialer finalDialer = dialer;
         return new Assembled(
             ct => ConnectAsync(info, policy, settings, finalDialer, connectTimeout, ct),
-            outermostJump,
             connectTimeout);
     }
 
@@ -129,7 +130,7 @@ internal static class SshConnectionAssembler
                 Algorithms = Algorithms(info),
             };
 
-            SshConnection connection = await options.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            SshConnection connection = await SshConnection.ConnectAsync(options, cancellationToken).ConfigureAwait(false);
 
             // 「自动加载密钥到 Agent」:认证成功之后才加(配错的钥不该进 agent),而且丢到后台 ——
             // agent 没在跑时要等满三秒才知道,那段等待不该落在连接路径上。
@@ -274,7 +275,7 @@ internal static class SshConnectionAssembler
                     ISshSigner signer = await LoadSignerAsync(
                         info.PrivateKeyPath!, info.PrivateKeyPassphrase, cancellationToken).ConfigureAwait(false);
 
-                    LibraryCertificate certificate = await LibraryCertificate
+                    OpenSshCertificate certificate = await OpenSshCertificate
                         .LoadAsync(info.CertificatePath!, cancellationToken).ConfigureAwait(false);
 
                     // Create 当场核对「证书与私钥是不是一对」—— 不核对的话配错了的表现是
@@ -300,7 +301,7 @@ internal static class SshConnectionAssembler
     /// 认证以一句 "skipped: publickey" 失败。现在库原生认这些格式,那段转换整个不需要了。
     /// </para>
     /// </remarks>
-    private static ValueTask<ISshSigner> LoadSignerAsync(
+    private static ValueTask<InMemorySshSigner> LoadSignerAsync(
         string path, string? passphrase, CancellationToken cancellationToken) =>
         SshPrivateKeyFile.LoadAsync(
             path, string.IsNullOrWhiteSpace(passphrase) ? null : passphrase, cancellationToken);
@@ -338,16 +339,16 @@ internal static class SshConnectionAssembler
     /// 覆盖值随 <see cref="VelaConnectionInfo.KeepAliveSeconds" /> 一路带下来(F-06)。
     /// 跳板链上每一跳各带各的。
     /// </remarks>
-    private static KeepAlivePolicy KeepAlive(ISettingsService? settings, VelaConnectionInfo info)
+    private static SshKeepAlivePolicy KeepAlive(ISettingsService? settings, VelaConnectionInfo info)
     {
         try
         {
             int seconds = info.KeepAliveSeconds ?? settings.GetSnapshotBlocking().General.KeepAliveSeconds;
-            return seconds > 0 ? new KeepAlivePolicy(TimeSpan.FromSeconds(seconds)) : KeepAlivePolicy.Disabled;
+            return seconds > 0 ? new SshKeepAlivePolicy(TimeSpan.FromSeconds(seconds)) : SshKeepAlivePolicy.Disabled;
         }
         catch
         {
-            return KeepAlivePolicy.Disabled;
+            return SshKeepAlivePolicy.Disabled;
         }
     }
 }

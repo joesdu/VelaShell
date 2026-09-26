@@ -7,25 +7,6 @@
 
 namespace VelaShell.Ssh.Sftp;
 
-/// <summary>服务端宣告的读写上限（<c>limits@openssh.com</c>）。</summary>
-/// <param name="MaxPacketLength">单个 SFTP 报文上限。</param>
-/// <param name="MaxReadLength">单次 <c>READ</c> 的 length 上限。</param>
-/// <param name="MaxWriteLength">单次 <c>WRITE</c> 的 data 上限。</param>
-/// <param name="MaxOpenHandles">同时打开的句柄数上限（<c>0</c> = 服务端没说）。</param>
-public readonly record struct SftpLimits(
-    ulong MaxPacketLength,
-    ulong MaxReadLength,
-    ulong MaxWriteLength,
-    ulong MaxOpenHandles)
-{
-    /// <summary>服务端没宣告 <c>limits@openssh.com</c> 时的保守默认。</summary>
-    public static SftpLimits Conservative => new(
-        MaxPacketLength: SftpProtocol.DefaultBlockSize + 1024,
-        MaxReadLength: SftpProtocol.DefaultBlockSize,
-        MaxWriteLength: SftpProtocol.DefaultBlockSize,
-        MaxOpenHandles: 0);
-}
-
 /// <summary>这台服务端支持什么。</summary>
 /// <remarks>
 /// <para>
@@ -43,15 +24,16 @@ public sealed class SftpCapabilities
     internal SftpCapabilities(uint serverVersion, IReadOnlyDictionary<string, byte[]> rawExtensions)
     {
         ServerVersion = serverVersion;
-        RawExtensions = rawExtensions;
+        RawExtensions = rawExtensions.ToDictionary(
+            static pair => pair.Key, static pair => (ReadOnlyMemory<byte>)pair.Value, StringComparer.Ordinal);
         Limits = SftpLimits.Conservative;
     }
 
     /// <summary>服务端宣告的版本号（我们按 3 工作，更高的会降级）。</summary>
     public uint ServerVersion { get; }
 
-    /// <summary>服务端在 <c>SSH_FXP_VERSION</c> 里宣告的全部扩展，原样。</summary>
-    public IReadOnlyDictionary<string, byte[]> RawExtensions { get; }
+    /// <summary>服务端在 <c>SSH_FXP_VERSION</c> 里宣告的全部扩展，原样（只读视图）。</summary>
+    public IReadOnlyDictionary<string, ReadOnlyMemory<byte>> RawExtensions { get; }
 
     /// <summary>读写上限。</summary>
     public SftpLimits Limits { get; internal set; }

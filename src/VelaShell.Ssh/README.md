@@ -10,7 +10,9 @@
 > 改这里的代码之前先读 [`AGENTS.md`](AGENTS.md) —— 本库有一条净室规程，宿主其余部分没有。
 
 ```csharp
-ISshSigner key = await SshPrivateKeyFile.LoadAsync("~/.ssh/id_ed25519");
+// 路径原样交给文件系统，不展开 ~
+string keyPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh", "id_ed25519");
+using InMemorySshSigner key = await SshPrivateKeyFile.LoadAsync(keyPath);  // 持有私钥，释放时清零
 
 var options = new SshConnectionOptions("root@example.com")
 {
@@ -19,9 +21,9 @@ var options = new SshConnectionOptions("root@example.com")
     HostKeyPolicy = new KnownHostsPolicy(),
 };
 
-await using SshConnection conn = await options.ConnectAsync(ct);
+await using SshConnection conn = await SshConnection.ConnectAsync(options, ct);
 
-SshCommandOutput result = await conn.RunAsync("uname -a", cancellationToken: ct);
+SshCommandResult result = await conn.RunAsync("uname -a", cancellationToken: ct);
 Console.WriteLine(result.StandardOutput);
 ```
 
@@ -32,13 +34,13 @@ Console.WriteLine(result.StandardOutput);
 
 | 目录 | 内容 |
 | --- | --- |
-| `Protocol/` | 报文编号、wire 编解码、算法名常量 |
+| `Protocol/` | 报文编号、wire 编解码、算法名与协议字符串常量、主机名模式匹配 |
 | `Transport/` | L1 拨号（TCP / SOCKS5 / HTTP CONNECT / 跳板 / 代理命令）、L2 帧层 |
-| `Crypto/` | L3 密码套件、KEX（含后量子混合）、压缩 |
+| `Crypto/` | L3 KEXINIT 与算法协商、密码套件、KEX（含后量子混合）、压缩 |
 | `Session/` | L4 会话状态机、发送闸门、收发泵、重协商、`SshConnection` |
 | `Channels/` | L5 通道、流控窗口、`SshCommand` / `SshShell` |
 | `Auth/` | 认证方法链、签名器 |
-| `HostKeys/` | 主机密钥策略、known_hosts |
+| `HostKeys/` | 主机密钥策略、known_hosts、`SshPublicKey` |
 | `Keys/` | 私钥格式（OpenSSH 含加密、PuTTY `.ppk`）、证书、ssh-agent 客户端 |
 | `Sftp/` | SFTP wire / 请求管线 / 文件系统 |
 | `Forwarding/` | 本地 / 远程 / 动态转发、agent 转发、X11 |
@@ -73,7 +75,7 @@ Argon2id（`.ppk` v3）。**没有第二种用途。** BCL 有的一律走 BCL�
 
 ```bash
 dotnet test tests/VelaShell.Ssh.Tests/VelaShell.Ssh.Tests.csproj
-# 549 绿；19 条互操作用例无服务端时自报 Inconclusive
+# 763 绿；22 条互操作用例没有服务端时跳过（MSTest 记为「已跳过」）
 ```
 
 **互操作用例**（对着一台真的 OpenSSH 跑，需要 docker）：

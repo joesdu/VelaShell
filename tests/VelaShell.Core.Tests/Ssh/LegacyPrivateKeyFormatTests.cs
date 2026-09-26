@@ -31,7 +31,7 @@ public sealed class LegacyPrivateKeyFormatTests
     {
         using var rsa = RSA.Create(2048);
 
-        ISshSigner signer = SshPrivateKeyFile.Parse(rsa.ExportRSAPrivateKeyPem());
+        using InMemorySshSigner signer = SshPrivateKeyFile.Parse(rsa.ExportRSAPrivateKeyPem());
 
         Assert.AreEqual("ssh-rsa", signer.PublicKey.KeyType);
         Assert.AreEqual(2048, signer.PublicKey.KeyBits);
@@ -42,7 +42,7 @@ public sealed class LegacyPrivateKeyFormatTests
     {
         using var rsa = RSA.Create(2048);
 
-        ISshSigner signer = SshPrivateKeyFile.Parse(rsa.ExportPkcs8PrivateKeyPem());
+        using InMemorySshSigner signer = SshPrivateKeyFile.Parse(rsa.ExportPkcs8PrivateKeyPem());
 
         Assert.AreEqual("ssh-rsa", signer.PublicKey.KeyType);
     }
@@ -55,7 +55,7 @@ public sealed class LegacyPrivateKeyFormatTests
             "s3cret",
             new PbeParameters(PbeEncryptionAlgorithm.Aes256Cbc, HashAlgorithmName.SHA256, 100_000));
 
-        ISshSigner signer = SshPrivateKeyFile.Parse(pem, "s3cret");
+        using InMemorySshSigner signer = SshPrivateKeyFile.Parse(pem, "s3cret");
 
         Assert.AreEqual("ssh-rsa", signer.PublicKey.KeyType);
     }
@@ -74,7 +74,7 @@ public sealed class LegacyPrivateKeyFormatTests
             _ => ECCurve.NamedCurves.nistP521,
         });
 
-        ISshSigner signer = SshPrivateKeyFile.Parse(ecdsa.ExportECPrivateKeyPem());
+        using InMemorySshSigner signer = SshPrivateKeyFile.Parse(ecdsa.ExportECPrivateKeyPem());
 
         Assert.AreEqual(expectedKeyType, signer.PublicKey.KeyType);
     }

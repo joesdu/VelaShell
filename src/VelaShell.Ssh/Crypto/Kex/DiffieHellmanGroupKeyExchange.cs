@@ -35,7 +35,7 @@ namespace VelaShell.Ssh.Crypto.Kex;
 /// 只会让模幂慢一大截（4096 位群上是 4096 位指数 vs 512 位指数的差别）。
 /// </para>
 /// </remarks>
-public sealed class DiffieHellmanGroupKeyExchange : ISshKeyExchange
+internal sealed class DiffieHellmanGroupKeyExchange : ISshKeyExchange
 {
     private readonly DHParameters _parameters;
     private readonly AsymmetricCipherKeyPair _keyPair;

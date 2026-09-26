@@ -28,7 +28,7 @@ namespace VelaShell.Ssh.Crypto;
 /// 这是 GCM 实现最隐蔽的一个坑，本类用 <see cref="_nonce"/> 自己维护计数器。
 /// </para>
 /// </remarks>
-public sealed class AesGcmCipherSuite : ISshCipherSuite
+internal sealed class AesGcmCipherSuite : ISshCipherSuite
 {
     private const int NonceBytes = 12;
     private const int FixedIvBytes = 4;

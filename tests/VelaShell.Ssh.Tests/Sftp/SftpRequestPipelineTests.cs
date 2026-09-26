@@ -13,7 +13,6 @@ using System.Buffers.Binary;
 using VelaShell.Ssh.Auth;
 using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Crypto;
-using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Session;
 using VelaShell.Ssh.Sftp;
@@ -87,7 +86,7 @@ public sealed class SftpRequestPipelineTests
             });
             Task serverChannels = channelServer.RunAsync(cts.Token);
 
-            SshConnection connection = new(clientTransport, kex.SessionId);
+            SshConnection connection = new(clientTransport, kex);
             connection.Start();
 
             return new Harness(server, channelServer, serverChannels, connection, cts);

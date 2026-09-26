@@ -26,7 +26,7 @@ namespace VelaShell.Ssh.Transport;
 /// 连接超时早就用得差不多了。
 /// </para>
 /// </remarks>
-public sealed class TcpTransportDialer : ISshTransportDialer
+internal sealed class TcpTransportDialer : ISshTransportDialer
 {
     /// <summary>一个可以共用的实例。</summary>
     public static TcpTransportDialer Shared { get; } = new();
@@ -72,7 +72,8 @@ public sealed class TcpTransportDialer : ISshTransportDialer
                 throw new SocketException((int)SocketError.HostNotFound);
             }
 
-            bool keepAlive = target.TcpKeepAlive;
+            // 操作系统那一层的 TCP keepalive 一律打开：与 SSH 的保活互不替代，开着没有代价。
+            const bool keepAlive = true;
             Socket socket = await RaceAsync(
                     Interleave(addresses),
                     (address, token) => AttemptAsync(address, target.EndPoint.Port, keepAlive, token),

@@ -14,7 +14,7 @@ namespace VelaShell.Ssh.Crypto;
 /// 二进制报文的通用格式常量与填充计算。
 /// </summary>
 /// <remarks>各密码套件共用这些规则；套件之间的差异只在 <see cref="CipherSuiteShape"/>。</remarks>
-public static class SshPacketFormat
+internal static class SshPacketFormat
 {
     /// <summary><c>packet_length</c> 字段的字节数。</summary>
     public const int LengthFieldBytes = 4;

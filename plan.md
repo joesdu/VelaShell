@@ -6925,3 +6925,66 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
 
 文档:velashell-docs `zh|en/xserver/design/architecture.md` —— §4 分层、§5 线程模型、§6 宿主接口按新 API 重写,§7 光标与 XKB 两处,§10 决策记录新增「宿主 API 整理」;
 本仓库 `src/VelaShell.XServer/README.md`、`AGENTS.md`(公开面、命名、新增扩展的做法)、csproj 注释同步。
+
+## ✅ 117. 2026-09-25 VelaShell.Ssh：API 设计审查，定下规范并整改（用户需求）
+
+用户要求检查 SSH 库的 API 设计 —— 本库此前没有可参照的成文规范 —— 重点看代码组织、命名、简洁与可维护，
+把规范写进 `src/VelaShell.Ssh/AGENTS.md`，再把查出来的问题改掉。规范是 `AGENTS.md` 新增的第四节（4.1–4.8），
+条目里的「曾经」就是这次改掉的真实反例；这里记改了什么、为什么这样定。
+
+### 一、审查结论（改之前）
+
+- 191 个公开类型，约 125 个宿主从未引用；帧层、密码套件、KEX、`SftpWire`、SOCKS 握手、认证器这些**协议管道**全是 public。
+- 同一个功能两三个公开入口（跑命令拿输出有 `RunAsync` / `ExecuteAndReadAsync` / `ReadToEndAsync`；建连有 `SshConnectionFactory.ConnectAsync` 与 `options.ConnectAsync()`）。
+- 5 个类型名与宿主撞名（`SshChannelStream`、`SshJumpDialer`、`SshConfigBlock`、`OpenSshCertificate`、`TerminalModes`），其中三个是宿主把库里已有的东西又写了一份。
+- 后缀与动词各有几种意思（`AgentForwardPolicy` 其实是 options、`SshStderrPolicy` 是枚举、`SshCommandResult` 只装退出码而完整结果叫 `SshCommandOutput`）。
+- 异常把 `Reason` 写死：转发、私钥、证书、agent 一律 `Unsupported`，exec / pty 被拒报成 `ChannelOpenFailed`，跳板成环报成可重试的 `ProxyRefused`。宿主拿不到可靠的原因码，只好透传中文 `Message`。
+- 安全相关的默认值：`SshHostKeyDecision.Accept` 是枚举零值（`default` 就等于接受）；`ISshSigner.IsLocalAndCheap` 默认 `true`；
+  `SshShellOptions.Default.Modes` 是全局共享的可变对象；`SshConnection.SessionId` 交出去的是重协商要用的那个 `byte[]`。
+- 文件组织：一个文件五样东西的 `SshConnectionOpen.cs`，领域异常堆在 `Diagnostics/` 里害它反向依赖三个文件夹，`SshConnection` 三个扩展类。
+
+### 二、改了什么
+
+| 方面 | 改法 |
+| --- | --- |
+| 公开面 | 191 → 130 个公开类型。协议管道、拨号器具体类型（公开入口是 `DialerChain`）、`SshKexInitMessage`、`SshAlgorithmNames` 等降为 `internal`；`SshConnection` 的构造、`Start`、装配用的 `init` 改为 internal；公开类型对 `IIncomingChannelHandler` 一律显式实现 |
+| 入口收敛 | 建连只剩 `SshConnection.ConnectAsync(options, ct)`；跑命令拿全部输出只剩 `RunAsync` → `SshCommandResult`；全局请求合成一个 internal 方法；`SshChannelStream` 只能经 `channel.AsStream()` 拿；扩展方法并成一个 `SshConnectionExtensions` |
+| 命名 | `SshExitStatus` / `SshCommandResult`、`SshCommandOptions`、`SshSessionRequestOptions`、`AgentForwardOptions`、`SshStderrMode`、`SshKeepAlivePolicy`、`SshTerminalModes` / `SshTerminalSize` / `SshTerminalModeOpcode`、`LocalPortForwarder` / `RemotePortForwarder`（共同基类 `PortForwarder`）、`SshConfigConnectOptions`、`SftpOpenModes`、`SftpExtendedField`；wire 字节的解析统一叫 `Decode`；`SshConnectionOptions.Target`（其实不含用户名）→ `EndPoint` |
+| 类型形态 | 安全的枚举零值（`Reject` / `Failure` / `Unknown`）；`SshHostKeyVerdict` 改为只能经工厂造的只读结构；`IsLocalAndCheap` 不再有默认实现；`SshTerminalModes` 不可变（`With`）；`SessionId` 为 `ReadOnlyMemory<byte>`；`SftpFileSystem.OpenAsync` 去掉与 `mode` 重复的两个布尔；`SshPrivateKeyFile.LoadAsync` 返回可释放的 `InMemorySshSigner`；`InMemoryTransport.CreatePair` 返回具名的 `InMemoryStreamPair`；`SshAlgorithmSet.Validate` 改 internal（由 `ConnectAsync` 代调） |
+| 失败原因 | `SshFailureReason` 新增 `KeyFileUnreadable`、`KeyFormatInvalid`、`KeyPassphraseRequired`、`KeyPassphraseIncorrect`、`KeyMismatch`、`AgentUnavailable`、`AgentRefused`、`ChannelRequestRejected`、`ForwardRejected`、`ForwardBindFailed`、`ForwardSetupFailed`、`LimitExceeded`、`CommandFailed`、`InvalidConfiguration`，各处按实情报；`ForwardErrorEventArgs.Reason` 与 SFTP 的操作名从字符串改为枚举（`ForwardErrorReason`、`SftpOperation`）；KEX 工厂表与算法清单对不上这种库自己的编程错误改抛 `InvalidOperationException`；主机密钥裁决带上原因码（`SshHostKeyVerdict.Reason`），`known_hosts` 里记的钥变了（或只记着别的类型）在首次连接时也报 `HostKeyChanged`，不再混在 `HostKeyRejected` 里 |
+| 文件组织 | 一个类型一个文件、文件名 = 类型名（含 internal 类型；拆了 `SshConnectionOpen.cs`、`SshExceptions.cs`、`SshCredential.cs`、`IHostKeyPolicy.cs`、`SshCompressor.cs`、`SshKexTransport.cs` 等）；领域异常回到各自文件夹；`SshKexInitMessage` 挪到 `Crypto/`，`Protocol/` 与 `Diagnostics/` 不再依赖其它文件夹；partial 统一叫 `类型名.方面.cs`；通配符匹配提成 `Protocol/HostPatterns` |
+| 死代码 | 删掉零引用的 `SshConnectionState`、`SetIncomingChannelHandler`、`TryReadEvent`、`SshDialTarget.HopIndex`、`RequiresGroupNegotiation`，以及没实现的 group-exchange 留下的常量与交换哈希输入；删掉 internal 类型上够不着的 `SshKeyExchangeFactory.Register`（表改成 `FrozenDictionary`），`Curve25519KeyExchange` 与另外三种交换一样拒绝不属于自己的算法名 |
+| 行为 | 直接完成 `StandardInput`（`PipeWriter.Complete`）现在等同于 `SendEofAsync`：冲干净后发 `CHANNEL_EOF`。之前只有 `CompleteStandardInputAsync` 会发，远端的 `cat` 会一直等 |
+
+### 三、宿主这一侧
+
+- **删掉库里已有的重复实现**，宿主只留适配层：自己的 `SshChannelStream`（→ 库的 `AsStream()` + `SyncCompatibleStream` 补同步读写，插件协议要同步 `Stream`）、
+  `SshJumpDialer`（→ `DialerChain.Jump` 的回调重载，跳板连接由流持有，`DialerLifetime` 一并去掉）、`SshConfigParser`（→ 库的 `SshConfigFile`）、
+  没人调用的 `Socks5Negotiation`、`ProxyStreamConnector` 的 SOCKS5 / HTTP CONNECT 握手（→ `ProxyTransportDialer` 按代理设置挑 `DialerChain.Tcp` / `HttpConnect` / `Socks5`；
+  只剩「不用代理做 DNS」时的本机解析，挪进 `Net/LocalDnsResolver`，FTP 也用它）、`.pub` 的解析与指纹计算（→ `SshPublicKey`）。
+  宿主的 `OpenSshCertificate` 改名 `OpenSshCertificatePaths`，不再与库撞名。
+- **ssh_config 导入换成库的解析器之后，两处口径跟着库走**：`Match all` / `Match host …` / `Match originalhost …` 这类静态判得了的块现在会生效
+  （原来的宿主解析器整块跳过所有 `Match`）；判不了的（`user`、`localuser`、`exec`、`canonical`、`final`）照旧不生效。`Include` 的深度上限从 8 变成 16。
+- **本地化**：`SshInterop.Localize` 按新的原因码加了私钥口令（缺 / 错）、agent 拒绝、通道请求被拒、转发被拒五条文案（五份 resx）；
+  证书、通道、转发与其余库异常都经 `Localize` 走，不再一律透传 `ex.Message`；转发没开成的终端提示也用它。
+  代理失败的「要认证」与「凭据不对」由 `ProxyTransportDialer` 按有没有配凭据分开说（库对两者给的是同一个原因码）。
+  带着路径、指纹、端口的消息照用原文 —— 换成通用文案反而帮不上忙，理由写在 `Localize` 的注释里。
+
+### 四、有意没做的
+
+- **两个上帝类**（`SshConnection` 约 2,960 行、`SshChannel` 1,388 行）没拆：纯重构，按 `AGENTS.md` 第四节开头的规矩单独开 PR，已记入 `feature-plan.md`。
+- **认证逐条记录、通道开不成的建议等仍是库的中文原文**：要先给它们加结构化的出处才能翻，同样记入 `feature-plan.md`。
+- 代理：SOCKS5 用户名 / 口令为空时，库按 RFC 1929（各 1–255 字节）在本地就拒绝；宿主原来的实现会发一个空口令出去。
+
+### 五、验证
+
+- 解决方案构建 0 警告 0 错误；两个单文件脚本（`scripts/ssh/benchmarks`、`scripts/ssh/compression/verify-strict-validation`）照常编译，后者跑通。
+- `VelaShell.Ssh.Tests` 763 通过、22 条互操作用例无服务端跳过；`VelaShell.Infrastructure.Tests`、`VelaShell.Tests`、`VelaShell.Plugin.Ai.Tests`
+  等其余测试工程全绿。`VelaShell.Core.Tests` 有 1 条失败（`X11_RefusedByServer_KeepsAgentForwardingAndWarnsOnce`），
+  在未改动的 `HEAD` 上同样失败，与这次改动无关。
+- 新增用例：直接完成 `StandardInput` 也会发 EOF；四种 KEX 都拒绝别人的算法名；宿主按原因码本地化（口令错、通道请求被拒）与带路径的消息照用原文；
+  宿主的代理用例改为经 `ProxyTransportDialer` 走真实路径，断言 RFC 字节序列、原因码与「凭据不对」的文案。
+
+文档：velashell-docs 的 `ssh/getting-started.md`、`ssh/design/architecture.md`（§5.9、§5.10、§6、§8、§9，新增 §11.2.24）、
+`ssh/spec/03`、`04`、`05`、`07`、`08`、`09`，以及 `host/architecture.md`、`架构设计.md`、`会话导入.md`、`隧道功能规划.md`（中英两边）
+已在 velashell-docs 的 `fix/ssh-api-cleanup` 分支上改好，待开 PR 与本仓库的 PR 互相引用后一起合，见 `feature-plan.md`「文档待同步」。

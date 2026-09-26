@@ -95,8 +95,8 @@ public sealed class OpenSshInteropTests
     {
         RequireServer();
 
-        await using SshConnection connection = await Options().ConnectAsync();
-        SshCommandOutput result = await connection.RunAsync("echo 你好 && uname -s");
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options());
+        SshCommandResult result = await connection.RunAsync("echo 你好 && uname -s");
 
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
         Assert.Contains("你好", result.StandardOutput);
@@ -121,8 +121,8 @@ public sealed class OpenSshInteropTests
 
             try
             {
-                await using SshConnection connection = await Options(only).ConnectAsync();
-                SshCommandOutput r = await connection.RunAsync("true");
+                await using SshConnection connection = await SshConnection.ConnectAsync(Options(only));
+                SshCommandResult r = await connection.RunAsync("true");
                 Assert.AreEqual(0, r.ExitCode, kex);
             }
             catch (SshException ex)
@@ -160,8 +160,8 @@ public sealed class OpenSshInteropTests
 
             try
             {
-                await using SshConnection connection = await Options(only).ConnectAsync();
-                SshCommandOutput r = await connection.RunAsync("echo ok");
+                await using SshConnection connection = await SshConnection.ConnectAsync(Options(only));
+                SshCommandResult r = await connection.RunAsync("echo ok");
                 Assert.AreEqual("ok\n", r.StandardOutput, cipher);
             }
             catch (SshException ex)
@@ -197,9 +197,9 @@ public sealed class OpenSshInteropTests
 
             try
             {
-                await using SshConnection connection = await Options(only).ConnectAsync();
+                await using SshConnection connection = await SshConnection.ConnectAsync(Options(only));
 
-                Task<SshCommandOutput> bulk = connection.RunAsync(
+                Task<SshCommandResult> bulk = connection.RunAsync(
                     "head -c 8388608 /dev/zero | tr '\\0' 'a'").AsTask();
                 await connection.StartRekeyAsync();
 
@@ -209,7 +209,7 @@ public sealed class OpenSshInteropTests
                     await Task.Delay(20, rekeyTimeout.Token);
                 }
 
-                SshCommandOutput output = await bulk;
+                SshCommandResult output = await bulk;
                 Assert.AreEqual(8 * 1024 * 1024, output.StandardOutput.Length, cipher);
                 Assert.IsTrue(output.StandardOutput.All(c => c == 'a'), cipher);
 
@@ -243,9 +243,9 @@ public sealed class OpenSshInteropTests
         ISshSigner signer = await SshPrivateKeyFile.LoadAsync(KeyPath);
 
         await using SshConnection connection =
-            await Options(credentials: [new PublicKeyCredential(signer, KeyPath)]).ConnectAsync();
+            await SshConnection.ConnectAsync(Options(credentials: [new PublicKeyCredential(signer, KeyPath)]));
 
-        SshCommandOutput result = await connection.RunAsync("id -un");
+        SshCommandResult result = await connection.RunAsync("id -un");
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
         Assert.Contains(User, result.StandardOutput);
     }
@@ -276,9 +276,9 @@ public sealed class OpenSshInteropTests
         ISshSigner signer = await SshPrivateKeyFile.LoadAsync(encrypted, passphrase);
 
         await using SshConnection connection =
-            await Options(credentials: [new PublicKeyCredential(signer, encrypted)]).ConnectAsync();
+            await SshConnection.ConnectAsync(Options(credentials: [new PublicKeyCredential(signer, encrypted)]));
 
-        SshCommandOutput result = await connection.RunAsync("id -un");
+        SshCommandResult result = await connection.RunAsync("id -un");
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
         Assert.Contains(User, result.StandardOutput);
     }
@@ -332,9 +332,9 @@ public sealed class OpenSshInteropTests
             "证书应当还在有效期内 —— 过期了这条用例验的就不是证书认证本身了。");
 
         await using SshConnection connection =
-            await Options(credentials: [new PublicKeyCredential(signer, certPath)]).ConnectAsync();
+            await SshConnection.ConnectAsync(Options(credentials: [new PublicKeyCredential(signer, certPath)]));
 
-        SshCommandOutput result = await connection.RunAsync("id -un");
+        SshCommandResult result = await connection.RunAsync("id -un");
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
         Assert.Contains(User, result.StandardOutput);
     }
@@ -364,7 +364,7 @@ public sealed class OpenSshInteropTests
         {
             await File.WriteAllTextAsync(knownHosts, $"@cert-authority {pattern} {(await File.ReadAllTextAsync(hostCa)).Trim()}\n");
 
-            await using (SshConnection connection = await WithKnownHosts().ConnectAsync())
+            await using (SshConnection connection = await SshConnection.ConnectAsync(WithKnownHosts()))
             {
                 Assert.IsTrue(connection.HostKey?.IsCertificate, $"应当谈成主机证书，实际 {connection.HostKey?.KeyType}");
                 Assert.AreEqual("velashell-interop-host", connection.HostKey?.Certificate?.KeyId);
@@ -388,7 +388,7 @@ public sealed class OpenSshInteropTests
 
             SshException ex = await Assert.ThrowsAsync<SshException>(async () =>
             {
-                await using SshConnection connection = await WithKnownHosts().ConnectAsync();
+                await using SshConnection connection = await SshConnection.ConnectAsync(WithKnownHosts());
             });
             Assert.AreEqual(SshFailureReason.HostKeyRejected, ex.Reason, ex.Message);
         }
@@ -405,10 +405,10 @@ public sealed class OpenSshInteropTests
     {
         RequireServer();
 
-        await using SshConnection connection = await Options().ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options());
 
         // 4 MiB 的可预测内容 —— 窗口回补、分帧、背压全都要走一遍。
-        SshCommandOutput result = await connection.RunAsync(
+        SshCommandResult result = await connection.RunAsync(
             "head -c 4194304 /dev/zero | tr '\\0' 'a'");
 
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
@@ -421,13 +421,13 @@ public sealed class OpenSshInteropTests
     {
         RequireServer();
 
-        await using SshConnection connection = await Options().ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options());
         await using SshCommand command = await connection.ExecuteAsync("cat");
 
         await command.StandardInput.WriteAsync(Encoding.UTF8.GetBytes("喂进去的内容"));
         await command.CompleteStandardInputAsync();
 
-        (SshCommandResult result, string stdout, _) = await command.ReadToEndAsync();
+        (SshExitStatus result, string stdout, _) = await command.ReadToEndAsync();
 
         Assert.AreEqual("喂进去的内容", stdout);
         Assert.AreEqual(0, result.ExitCode);
@@ -438,17 +438,17 @@ public sealed class OpenSshInteropTests
     {
         RequireServer();
 
-        await using SshConnection connection = await Options().ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options());
 
-        SshCommandOutput code = await connection.RunAsync("exit 42");
+        SshCommandResult code = await connection.RunAsync("exit 42");
         Assert.AreEqual(42, code.ExitCode);
-        Assert.IsNull(code.Result.ExitSignalName);
+        Assert.IsNull(code.ExitStatus.ExitSignalName);
 
-        SshCommandOutput killed = await connection.RunAsync("kill -TERM $$");
+        SshCommandResult killed = await connection.RunAsync("kill -TERM $$");
 
         // 被信号杀死时**没有退出码** —— 不能凭空造一个 143 出来。
         Assert.IsNull(killed.ExitCode, "被信号杀死时不该有退出码");
-        Assert.AreEqual("TERM", killed.Result.ExitSignalName);
+        Assert.AreEqual("TERM", killed.ExitStatus.ExitSignalName);
     }
 
     [TestMethod]
@@ -456,24 +456,24 @@ public sealed class OpenSshInteropTests
     {
         RequireServer();
 
-        await using SshConnection connection = await Options().ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options());
         await using SshShell shell = await connection.OpenShellAsync(new SshShellOptions
         {
             TerminalType = "xterm-256color",
-            Size = new TerminalSize(120, 40, 960, 800),
+            Size = new SshTerminalSize(120, 40, 960, 800),
         });
 
-        await shell.Input.WriteAsync(Encoding.UTF8.GetBytes("tty; exit\n"));
-        await shell.Input.FlushAsync();
+        await shell.StandardInput.WriteAsync(Encoding.UTF8.GetBytes("tty; exit\n"));
+        await shell.StandardInput.FlushAsync();
 
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(20));
         StringBuilder output = new();
 
         while (true)
         {
-            System.IO.Pipelines.ReadResult read = await shell.Output.ReadAsync(timeout.Token);
+            System.IO.Pipelines.ReadResult read = await shell.StandardOutput.ReadAsync(timeout.Token);
             output.Append(Encoding.UTF8.GetString(read.Buffer.FirstSpan));
-            shell.Output.AdvanceTo(read.Buffer.End);
+            shell.StandardOutput.AdvanceTo(read.Buffer.End);
 
             if (read.IsCompleted || output.ToString().Contains("/dev/pts", StringComparison.Ordinal))
             {
@@ -490,7 +490,7 @@ public sealed class OpenSshInteropTests
     {
         RequireServer();
 
-        await using SshConnection connection = await Options().ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options());
         await using SftpFileSystem sftp = await SftpFileSystem.ConnectAsync(connection);
 
         Assert.IsGreaterThan(0, sftp.WorkingDirectory.Length);
@@ -532,7 +532,7 @@ public sealed class OpenSshInteropTests
     {
         RequireServer();
 
-        await using SshConnection connection = await Options().ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options());
         await using SftpFileSystem sftp = await SftpFileSystem.ConnectAsync(connection);
 
         int total = 0;
@@ -564,24 +564,23 @@ public sealed class OpenSshInteropTests
 
         SshAlgorithmSet withCompression = SshAlgorithmSet.Default.WithCompression();
 
-        await using SshConnection connection = await Options(withCompression).ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options(withCompression));
 
         // ⚠️ **先断言真的谈成了。**
         //
         // 服务端不支持压缩时会静默落到 none，不会报错 —— 只看「输出对不对」
         // 的话，这条用例在压缩根本没开的情况下照样过，那它就什么都没验。
-        Assert.IsNotNull(connection.Algorithms, "工厂建的连接应当带着协商结果");
         Assert.AreEqual(
             SshAlgorithmNames.ZlibOpenSsh,
-            connection.Algorithms!.Value.CompressionServerToClient,
+            connection.Algorithms.CompressionServerToClient,
             "服务端 → 客户端方向应当谈成 zlib@openssh.com");
         Assert.AreEqual(
             SshAlgorithmNames.ZlibOpenSsh,
-            connection.Algorithms!.Value.CompressionClientToServer,
+            connection.Algorithms.CompressionClientToServer,
             "客户端 → 服务端方向应当谈成 zlib@openssh.com");
 
         // 谈成了之后再验数据确实完好 —— 压缩流一旦错位，症状就是内容对不上。
-        SshCommandOutput result = await connection.RunAsync(
+        SshCommandResult result = await connection.RunAsync(
             "for i in $(seq 1 2000); do echo '同一行反复出现，非常可压缩'; done");
 
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
@@ -603,7 +602,7 @@ public sealed class OpenSshInteropTests
     {
         RequireServer();
 
-        await using SshConnection connection = await Options().ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options());
 
         // 让服务端连它自己的 sshd —— 对端会回一个 SSH 版本标识串，
         // 那是一个不需要在容器里额外装东西就能验证的信号。
@@ -643,8 +642,8 @@ public sealed class OpenSshInteropTests
             ConnectTimeout = TimeSpan.FromSeconds(30),
         };
 
-        await using SshConnection connection = await target.ConnectAsync();
-        SshCommandOutput result = await connection.RunAsync("echo 经跳板");
+        await using SshConnection connection = await SshConnection.ConnectAsync(target);
+        SshCommandResult result = await connection.RunAsync("echo 经跳板");
 
         Assert.AreEqual(0, result.ExitCode, result.StandardError);
         Assert.Contains("经跳板", result.StandardOutput);
@@ -669,10 +668,10 @@ public sealed class OpenSshInteropTests
     {
         RequireServer();
 
-        await using SshConnection connection = await Options().ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options());
 
         string socket = $"/tmp/vela-agent-{Guid.NewGuid():N}.sock";
-        SshCommandOutput started = await connection.RunAsync($"ssh-agent -s -a {socket}");
+        SshCommandResult started = await connection.RunAsync($"ssh-agent -s -a {socket}");
         Assert.AreEqual(0, started.ExitCode, started.StandardError);
 
         // 输出形如「SSH_AGENT_PID=123; export SSH_AGENT_PID;」。
@@ -711,7 +710,7 @@ public sealed class OpenSshInteropTests
                     $"{keys[i].PublicKey.KeyType}：agent 手里的私钥与我们的不是同一把");
             }
 
-            SshCommandOutput listed = await connection.RunAsync($"SSH_AUTH_SOCK={socket} ssh-add -l");
+            SshCommandResult listed = await connection.RunAsync($"SSH_AUTH_SOCK={socket} ssh-add -l");
             Assert.AreEqual(0, listed.ExitCode, listed.StandardError);
             foreach (InMemorySshSigner key in keys)
             {
@@ -730,7 +729,7 @@ public sealed class OpenSshInteropTests
     {
         RequireServer();
 
-        await using SshConnection connection = await Options().ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options());
 
         bool alive = await connection.SendKeepAliveAsync();
 
@@ -768,11 +767,11 @@ public sealed class OpenSshInteropTests
         // 而错误信息只会说「连接被拒绝」—— 指不到这里。
         RequireX11Server();
 
-        await using SshConnection connection = await Options().ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options());
 
-        SshExecutionOptions options = new()
+        SshCommandOptions options = new()
         {
-            X11 = new X11ForwardOptions { Trusted = true, Display = X11Display.Parse(":0") },
+            X11Forwarding = new X11ForwardOptions { Trusted = true, Display = X11Display.Parse(":0") },
         };
 
         await using SshCommand command = await connection.ExecuteAsync(
@@ -781,7 +780,7 @@ public sealed class OpenSshInteropTests
         Assert.IsNotNull(command.X11, "请求了就该拿得到转发器");
         string expected = Convert.ToHexStringLower(command.X11!.FakeCookie);
 
-        (SshCommandResult result, string output, _) = await command.ReadToEndAsync();
+        (SshExitStatus result, string output, _) = await command.ReadToEndAsync();
         Assert.AreEqual(0, result.ExitCode);
 
         Assert.Contains("DISPLAY=localhost:", output, "sshd 应当给这条会话配上转发的显示");
@@ -803,11 +802,11 @@ public sealed class OpenSshInteropTests
 
         try
         {
-            await using SshConnection connection = await Options().ConnectAsync();
+            await using SshConnection connection = await SshConnection.ConnectAsync(Options());
 
-            SshExecutionOptions options = new()
+            SshCommandOptions options = new()
             {
-                X11 = new X11ForwardOptions
+                X11Forwarding = new X11ForwardOptions
                 {
                     Trusted = true,
                     Display = xserver.Display,

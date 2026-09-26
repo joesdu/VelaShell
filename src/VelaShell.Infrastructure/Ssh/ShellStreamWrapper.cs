@@ -72,7 +72,7 @@ public sealed class ShellStreamWrapper : IShellStreamWrapper
             return 0;
         }
 
-        PipeReader reader = _shell.Output;
+        PipeReader reader = _shell.StandardOutput;
 
         try
         {
@@ -149,8 +149,8 @@ public sealed class ShellStreamWrapper : IShellStreamWrapper
 
         try
         {
-            _shell.Input.Write(buffer.AsSpan(offset, count));
-            FlushResult result = await _shell.Input.FlushAsync(cancellationToken).ConfigureAwait(false);
+            _shell.StandardInput.Write(buffer.AsSpan(offset, count));
+            FlushResult result = await _shell.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
 
             if (result.IsCompleted)
             {
@@ -195,7 +195,7 @@ public sealed class ShellStreamWrapper : IShellStreamWrapper
     {
         try
         {
-            await _shell.ResizeAsync(new TerminalSize(columns, rows)).ConfigureAwait(false);
+            await _shell.ResizeAsync(new SshTerminalSize(columns, rows)).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is SshException or ObjectDisposedException or InvalidOperationException)
         {

@@ -20,17 +20,17 @@
 | `Ssh/SshConnectionAssembler.cs` | 由 `ConnectionInfo` 装出 `SshConnectionOptions`：凭据（口令/私钥/证书/agent/键盘交互）、跳板链、心跳与各段超时。 |
 | `Ssh/VelaHostKeyPolicy.cs` | `IHostKeyPolicy` 实现：`known_hosts` 比对 → 首见/变更时弹窗 → 用户裁决写回，附带安全告警。 |
 | `Ssh/HostTrustOnceCache.cs` | 主机指纹「仅本次信任」的进程内缓存（不落盘）。 |
-| `Ssh/SshKeyService.cs` | `~/.ssh` 密钥枚举（类型 + SHA256 指纹）、RSA 密钥对生成、公钥导入。 |
+| `Ssh/SshKeyService.cs` | `~/.ssh` 密钥枚举（类型 + SHA256 指纹，`.pub` 的解析与指纹都用库的 `SshPublicKey`）、RSA 密钥对生成、公钥导入。 |
 | `Ssh/SessionMetricsService.cs` | 采集会话 CPU / 内存 / 网速指标。 |
 | `Ssh/SshInterop.cs` `LibraryPortForwardHandle.cs` | VelaShell.Ssh 异常 → Core 中立异常（`VelaSsh*Exception`）的翻译，以及端口转发句柄。翻译**按异常类型分派，没有一处字符串解析**。 |
-| `Ssh/ProxyTransportDialer.cs` `SshJumpDialer.cs` `SshChannelStream.cs` | 传输层接入：HTTP/SOCKS 代理经 `ISshTransportDialer` 交给库，ProxyJump 走嵌套连接 + `direct-tcpip`，`SshChannelStream` 把通道适配成 `Stream`。 |
+| `Ssh/ProxyTransportDialer.cs` `SyncCompatibleStream.cs` | 传输层接入：按代理设置选 SSH 库的拨号器（`DialerChain.Tcp` / `HttpConnect` / `Socks5`，握手全在库里），跳板走 `DialerChain.Jump`；`SyncCompatibleStream` 给库的通道流（`SshChannel.AsStream()`）补上同步读写，交给只认 `Stream` 的下游。 |
 | `Ssh/OpenSshPrivateKey.cs` | 私钥的 OpenSSH 格式写出（自生成密钥用）。读取侧不再需要转换 —— VelaShell.Ssh 原生认 OpenSSH / PKCS#1 / PKCS#8。 |
 | `Ssh/SshBackend.cs` | 关于页要展示的后端标识：名称、版本（程序集元数据）、许可与项目地址。 |
 | `Ssh/RemoteProcessService.cs` | `IRemoteProcessService` 实现：远端进程快照采集（相邻两次采样算瞬时 CPU）与信号发送。 |
 | `Pty/ConPtyShellStream.cs` | Windows ConPTY 本地终端流（本地 Shell 会话）。 |
 | `Ftp/` | FTP/FTPS 后端：`FtpFileService`（远程文件操作）、`FtpConnectionPool`（控制连接池）、`FluentFtpInterop`（FluentFTP 异常 → Core 中立异常的翻译）。 |
 | `Sftp/RoutingRemoteFileService.cs` | 远程文件操作的**协议路由**：按会话归属把调用分派给 FTP 后端或 SSH 上的 SFTP 实现。之所以能这么干，是因为 `ISftpService` 全部以 `sessionId` 为键、返回协议无关的 `RemoteFileInfo` —— 文件浏览器、传输管理器、限速、拖放对新增协议零改动。 |
-| `Import/` | 从其他工具导入会话：`WinScpImportService`（含 `WinScpCrypto`）、`XshellImportService`（`XshellCrypto` + `XshellIniParser` + `Rc4`）、`SshConfigImportService`（`SshConfigParser` + `SshPathResolver`，按 OpenSSH 语义解析 `~/.ssh/config`）、`SessionImportWriter`（去重后写入仓储，并把 `IdentityFile` / `ProxyJump` 落成私钥认证与跳板引用）。 |
+| `Import/` | 从其他工具导入会话：`WinScpImportService`（含 `WinScpCrypto`）、`XshellImportService`（`XshellCrypto` + `XshellIniParser` + `Rc4`）、`SshConfigImportService`（解析、`Include` 展开与 `Match` 判定都用 SSH 库的 `SshConfigFile`，路径展开用 `SshPathResolver`）、`SessionImportWriter`（去重后写入仓储，并把 `IdentityFile` / `ProxyJump` 落成私钥认证与跳板引用）。 |
 | `Diagnostics/` | `PingTraceRouteService`（逐跳路由追踪）与 `MmdbIpGeolocationService`（MaxMind 库离线解析 IP 归属地）。 |
 | `Tunnels/TunnelService.cs` | 本地(`-L`)/远程(`-R`)/动态 SOCKS5(`-D`)端口转发统一管理。 |
 | `Sync/GistSyncService.cs` `GistApiClient.cs` | GitHub Gist 云同步：设置/连接/片段同步到私密 Gist，支持版本历史与可选 PBKDF2 + AES-256-GCM 端到端加密。 |

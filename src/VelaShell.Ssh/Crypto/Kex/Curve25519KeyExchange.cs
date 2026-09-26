@@ -18,7 +18,7 @@ namespace VelaShell.Ssh.Crypto.Kex;
 /// <remarks>
 /// 两个名字指的是**完全相同**的算法，只是历史原因留下了两个注册名。
 /// </remarks>
-public sealed class Curve25519KeyExchange : ISshKeyExchange
+internal sealed class Curve25519KeyExchange : ISshKeyExchange
 {
     /// <summary>X25519 公钥与共享密钥的字节数。</summary>
     public const int KeyBytes = 32;
@@ -30,6 +30,11 @@ public sealed class Curve25519KeyExchange : ISshKeyExchange
     /// <param name="name">算法名（两个等价注册名之一）。</param>
     public Curve25519KeyExchange(string name = SshAlgorithmNames.Curve25519Sha256)
     {
+        // 与另外三种交换一致：认不出的名字当场拒绝，不让一个挂着别的名字的 curve25519 混进协商结果。
+        if (name is not (SshAlgorithmNames.Curve25519Sha256 or SshAlgorithmNames.Curve25519Sha256LibSsh))
+        {
+            throw new ArgumentException($"不是已知的 curve25519 算法名：{name}", nameof(name));
+        }
         Name = name;
         _privateKey = new X25519PrivateKeyParameters(new SecureRandom());
     }

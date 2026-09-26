@@ -506,7 +506,7 @@ public sealed class SshConfigTests
 
             using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
             IReadOnlyList<SshConfigBlock> blocks =
-                await SshConfigFile.LoadAsync(Path.Combine(root, "a.conf"), timeout.Token);
+                await SshConfigFile.LoadAsync(Path.Combine(root, "a.conf"), cancellationToken: timeout.Token);
 
             // 两边的设置都要在，而且必须**返回**而不是转圈。
             Assert.AreEqual("甲", SshConfigFile.Resolve(blocks, "a").User);

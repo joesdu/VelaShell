@@ -26,7 +26,7 @@ namespace VelaShell.Ssh.Crypto.Kex;
 /// 在最高位为 0 时**恰好正确**、最高位为 1 时失败 —— 也就是大约 1/256 的连接
 /// 报「签名验证不过」，其余全对。这种概率性失败极难排查，所以它由类型系统区分。
 /// </remarks>
-public enum SshKexValueEncoding
+internal enum SshKexValueEncoding
 {
     /// <summary>按 <c>string</c>（4 字节长度前缀 + 原始字节）。</summary>
     ByteString,
@@ -41,12 +41,9 @@ public enum SshKexValueEncoding
 /// <remarks>
 /// 我们支持的所有方法都是同一个两步形状：客户端发一个公钥（编号 30），
 /// 服务端回「主机公钥 ‖ 服务端公钥 ‖ 对交换哈希的签名」（编号 31）。
-/// <para>
-/// <c>diffie-hellman-group-exchange-*</c> 多两个前置报文，由
-/// <see cref="RequiresGroupNegotiation"/> 标出，其细节在实现内部处理。
-/// </para>
+/// <c>diffie-hellman-group-exchange-*</c>（RFC 4419）多两个前置报文，不是这个形状，本库没有实现。
 /// </remarks>
-public interface ISshKeyExchange : IDisposable
+internal interface ISshKeyExchange : IDisposable
 {
     /// <summary>算法的注册名。</summary>
     string Name { get; }
@@ -59,9 +56,6 @@ public interface ISshKeyExchange : IDisposable
 
     /// <summary>共享密钥（<c>K</c>）进交换哈希时的编码方式。</summary>
     SshKexValueEncoding SharedSecretEncoding { get; }
-
-    /// <summary>是否需要先与服务端协商群（仅 <c>diffie-hellman-group-exchange-*</c>）。</summary>
-    bool RequiresGroupNegotiation => false;
 
     /// <summary>
     /// 产出客户端的公开值，作为 <c>SSH_MSG_KEX_*_INIT</c>（30）的内容发出。
@@ -79,24 +73,3 @@ public interface ISshKeyExchange : IDisposable
     byte[] ComputeSharedSecret(ReadOnlySpan<byte> serverPublicValue);
 }
 
-/// <summary>密钥交换失败。</summary>
-/// <remarks>
-/// 是 <see cref="Diagnostics.SshException"/>：曾经直接继承 <see cref="Exception"/>，按 <c>catch (SshException)</c>
-/// 兜库的错误时漏掉它，建连时它原样漏给调用方。原因记成 <see cref="Diagnostics.SshFailureReason.ProtocolError"/>：
-/// 它最常见于对端给的公开值不合法（长度不对、不在曲线上、弱值）；「算法名没实现」那一类在连接前的
-/// <c>SshAlgorithmSet.Validate()</c> 就挡住了。
-/// </remarks>
-public sealed class SshKeyExchangeException : Diagnostics.SshException
-{
-    /// <summary>用给定消息创建异常。</summary>
-    public SshKeyExchangeException(string message)
-        : base(Diagnostics.SshFailureReason.ProtocolError, Diagnostics.SshPhase.KeyExchange, message)
-    {
-    }
-
-    /// <summary>用给定消息与内部异常创建异常。</summary>
-    public SshKeyExchangeException(string message, Exception innerException)
-        : base(Diagnostics.SshFailureReason.ProtocolError, Diagnostics.SshPhase.KeyExchange, message, innerException)
-    {
-    }
-}

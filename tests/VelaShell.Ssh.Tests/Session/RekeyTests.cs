@@ -33,7 +33,7 @@ public sealed class RekeyTests
         });
 
         // 先跑一条命令，确认连接本来是好的。
-        SshCommandOutput before = await host.Connection.RunAsync("一", cancellationToken: host.Token);
+        SshCommandResult before = await host.Connection.RunAsync("一", cancellationToken: host.Token);
         Assert.AreEqual("第一次\n", before.StandardOutput);
         Assert.AreEqual(0, host.Connection.RekeyCount, "还没重协商过");
 
@@ -45,7 +45,7 @@ public sealed class RekeyTests
 
         // ⚠️ 重协商完成之后**连接必须还能用**。这是整组用例的全部意义：
         // 换完密钥还能收发，才说明两边的新密钥真的对上了。
-        SshCommandOutput after = await host.Connection.RunAsync("二", cancellationToken: host.Token);
+        SshCommandResult after = await host.Connection.RunAsync("二", cancellationToken: host.Token);
         Assert.AreEqual("第一次\n", after.StandardOutput, "重协商之后数据还要一字节不差");
         Assert.AreEqual(0, after.ExitCode);
 
@@ -74,7 +74,7 @@ public sealed class RekeyTests
 
         await host.Channels.RequestRekeyAsync().WaitAsync(host.Token);
 
-        SshCommandOutput output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
+        SshCommandResult output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
         Assert.AreEqual("ok\n", output.StandardOutput);
         Assert.AreEqual(1, host.Connection.RekeyCount, "只该有一次重协商 —— 两份 KEXINIT 说明被当成了两次");
     }
@@ -101,14 +101,14 @@ public sealed class RekeyTests
             new TestChannelScript { StandardOutput = Encoding.UTF8.GetBytes("ok\n"), ExitCode = 0 },
             algorithms);
 
-        Assert.IsTrue(host.Connection.Algorithms?.StrictKeyExchange, "首次交换应当谈成严格 KEX");
-        Assert.AreEqual(cipher, host.Connection.Algorithms?.EncryptionServerToClient);
+        Assert.IsTrue(host.Connection.Algorithms.StrictKeyExchange, "首次交换应当谈成严格 KEX");
+        Assert.AreEqual(cipher, host.Connection.Algorithms.EncryptionServerToClient);
 
         await host.Channels.RequestRekeyAsync().WaitAsync(host.Token);
 
-        SshCommandOutput output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
+        SshCommandResult output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
         Assert.AreEqual("ok\n", output.StandardOutput, "重协商之后第一个报文就该解得开");
-        Assert.IsTrue(host.Connection.Algorithms?.StrictKeyExchange, "严格 KEX 不会因为重协商而消失");
+        Assert.IsTrue(host.Connection.Algorithms.StrictKeyExchange, "严格 KEX 不会因为重协商而消失");
     }
 
     /// <summary>
@@ -138,7 +138,7 @@ public sealed class RekeyTests
 
         release.SetResult();
         await serverRekey.WaitAsync(host.Token);
-        SshCommandOutput output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
+        SshCommandResult output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
         Assert.AreEqual("ok\n", output.StandardOutput);
         Assert.AreEqual(1, host.Connection.RekeyCount, "中途那次发起不该变成第二次交换");
     }
@@ -193,7 +193,7 @@ public sealed class RekeyTests
 
         // 交互式策略在这里弹窗的话，接收循环正停着等它 —— 所有通道一起卡住。
         Assert.AreEqual(1, policy.Evaluations, "重协商不该再问：钉住首次的密钥就够了");
-        SshCommandOutput output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
+        SshCommandResult output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
         Assert.AreEqual("ok\n", output.StandardOutput);
     }
 
@@ -243,7 +243,7 @@ public sealed class RekeyTests
             ExitCode = 0,
         });
 
-        byte[] sessionIdBefore = [.. host.Connection.SessionId];
+        byte[] sessionIdBefore = host.Connection.SessionId.ToArray();
 
         await host.Channels.RequestRekeyAsync().WaitAsync(host.Token);
 
@@ -251,9 +251,9 @@ public sealed class RekeyTests
         // 混成一个字段的症状是「重协商之后再开新通道做公钥认证会失败」——
         // 一条极罕见的路径，所以这里钉住它。
         Assert.AreSequenceEqual(
-            sessionIdBefore, [.. host.Connection.SessionId], "session_id 在重协商之后必须保持不变");
+            sessionIdBefore, host.Connection.SessionId.ToArray(), "session_id 在重协商之后必须保持不变");
 
-        SshCommandOutput output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
+        SshCommandResult output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
         Assert.AreEqual(0, output.ExitCode);
     }
 
@@ -274,15 +274,15 @@ public sealed class RekeyTests
 
         Assert.AreEqual(
             SshAlgorithmNames.ZlibOpenSsh,
-            host.Connection.Algorithms!.Value.CompressionServerToClient,
+            host.Connection.Algorithms.CompressionServerToClient,
             "前提：压缩要真的谈成了，不然这条用例什么都没验");
 
-        SshCommandOutput before = await host.Connection.RunAsync("压", cancellationToken: host.Token);
+        SshCommandResult before = await host.Connection.RunAsync("压", cancellationToken: host.Token);
         Assert.AreSequenceEqual(compressible, Encoding.UTF8.GetBytes(before.StandardOutput));
 
         await host.Channels.RequestRekeyAsync().WaitAsync(host.Token);
 
-        SshCommandOutput after = await host.Connection.RunAsync("压", cancellationToken: host.Token);
+        SshCommandResult after = await host.Connection.RunAsync("压", cancellationToken: host.Token);
         Assert.AreSequenceEqual(
             compressible, Encoding.UTF8.GetBytes(after.StandardOutput), "重协商之后压缩流要能继续对上 —— 两边的压缩上下文都重置了才行");
 
@@ -316,7 +316,7 @@ public sealed class RekeyTests
         await rekey.WaitAsync(host.Token);
         await command.CompleteStandardInputAsync(host.Token);
 
-        (SshCommandResult result, string echoed, _) =
+        (SshExitStatus result, string echoed, _) =
             await command.ReadToEndAsync(host.Token);
 
         Assert.AreEqual(
@@ -366,7 +366,7 @@ public sealed class RekeyTests
         await rekey.WaitAsync(host.Token);
         await command.CompleteStandardInputAsync(host.Token);
 
-        (SshCommandResult result, string echoed, _) = await command.ReadToEndAsync(host.Token);
+        (SshExitStatus result, string echoed, _) = await command.ReadToEndAsync(host.Token);
 
         Assert.AreEqual(expected.ToString(), echoed, "暂存的每一块都要是它自己，而不是被后来的块盖掉");
         Assert.AreEqual(0, result.ExitCode);
@@ -387,7 +387,7 @@ public sealed class RekeyTests
         {
             await host.Channels.RequestRekeyAsync().WaitAsync(host.Token);
 
-            SshCommandOutput output = await host.Connection.RunAsync("查", cancellationToken: host.Token);
+            SshCommandResult output = await host.Connection.RunAsync("查", cancellationToken: host.Token);
             Assert.AreEqual("还活着\n", output.StandardOutput, $"第 {round} 次重协商之后就读不到数据了");
             Assert.AreEqual(round, host.Connection.RekeyCount);
         }
@@ -409,7 +409,7 @@ public sealed class RekeyTests
         // 所以这里要等它真的谈完，而不是假设一返回就完事了。
         await WaitForRekeyAsync(host, expected: 1);
 
-        SshCommandOutput output = await host.Connection.RunAsync("查", cancellationToken: host.Token);
+        SshCommandResult output = await host.Connection.RunAsync("查", cancellationToken: host.Token);
         Assert.AreEqual("主动换过了\n", output.StandardOutput, "我们发起的重协商之后连接还要能用");
         Assert.AreEqual(1, host.Channels.Observation.RekeysHandled, "服务端也应当认为谈成了一次");
     }
@@ -436,7 +436,7 @@ public sealed class RekeyTests
         Assert.AreEqual(1, host.Connection.RekeyCount);
         Assert.AreEqual(1, host.Channels.Observation.RekeysHandled);
 
-        SshCommandOutput output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
+        SshCommandResult output = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
         Assert.AreEqual(0, output.ExitCode);
     }
 
@@ -463,12 +463,12 @@ public sealed class RekeyTests
 
         await using TestSshServerHost host = await TestSshServerHost.StartAsync(
             new TestChannelScript { StandardOutput = bulk, ExitCode = 0 },
-            rekey: new SshRekeyPolicy(MaxBytes: 0, MaxPackets: SshRekeyPolicy.MinimumPackets),
+            rekey: new SshRekeyPolicy(maxBytes: 0, maxPackets: SshRekeyPolicy.MinimumPackets),
             rekeyCheckInterval: TimeSpan.FromMilliseconds(30));
 
         Assert.AreEqual(0, host.Connection.RekeyCount);
 
-        SshExecutionOptions options = new()
+        SshCommandOptions options = new()
         {
             Channel = SshChannelOptions.Default with { ReceiveMaxPacketBytes = maxPacket },
         };
@@ -502,7 +502,7 @@ public sealed class RekeyTests
             $"应当是报文数那条触发的，实际：{host.Connection.LastRekeyReason}");
 
         // 换完密钥连接还要能用。
-        SshCommandOutput after = await host.Connection.RunAsync("再来", cancellationToken: host.Token);
+        SshCommandResult after = await host.Connection.RunAsync("再来", cancellationToken: host.Token);
         Assert.AreEqual(0, after.ExitCode, "重协商之后连接还要能用");
     }
 
@@ -512,17 +512,15 @@ public sealed class RekeyTests
         // 太频繁的重协商是一个自己给自己开的拒绝服务面（每次都要做非对称运算），
         // 所以下限不是建议值，是会抛异常的硬限制。
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => new SshRekeyPolicy(MaxBytes: 1024).Validate());
+            () => new SshRekeyPolicy(maxBytes: 1024));
 
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => new SshRekeyPolicy(MaxInterval: TimeSpan.FromSeconds(1)).Validate());
+            () => new SshRekeyPolicy(maxInterval: TimeSpan.FromSeconds(1)));
 
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(
-            () => new SshRekeyPolicy(MaxPackets: 8).Validate());
+            () => new SshRekeyPolicy(maxPackets: 8));
 
-        // 默认值与「关掉」都必须合法。
-        SshRekeyPolicy.Default.Validate();
-        SshRekeyPolicy.Disabled.Validate();
+        // 默认值与「关掉」都必须合法（能构造出来本身就说明过了校验）。
         Assert.IsFalse(SshRekeyPolicy.Disabled.IsEnabled, "关掉之后不该有任何阈值是开的");
         Assert.IsTrue(SshRekeyPolicy.Default.IsEnabled, "默认必须是开着的 —— 它防的是 nonce 回绕");
 

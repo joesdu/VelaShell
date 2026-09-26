@@ -1,9 +1,8 @@
-using System.Buffers.Binary;
 using System.Security.Cryptography;
-using System.Text;
 using Org.BouncyCastle.Crypto.Parameters;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
+using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Keys;
 
 namespace VelaShell.Infrastructure.Ssh;
@@ -213,7 +212,7 @@ public sealed class SshKeyService(
                 throw new IOException(Strings.Format("KeySvc_AlreadyExists", name));
             }
             string comment = $"velashell@{Environment.MachineName}";
-            (string privatePem, byte[] blob, string algorithmName, string type) = algorithm switch
+            (string privatePem, byte[] blob, _, string type) = algorithm switch
             {
                 SshKeyAlgorithm.Ed25519 => CreateEd25519(comment),
                 SshKeyAlgorithm.Ecdsa => CreateEcdsa(bits > 0 ? bits : 256, comment),
@@ -223,9 +222,10 @@ public sealed class SshKeyService(
 
             File.WriteAllText(privatePath, privatePem);
             ApplyPrivateKeyPermissions(privatePath);
-            string publicLine = $"{algorithmName} {Convert.ToBase64String(blob)} {comment}";
+            SshPublicKey publicKey = SshPublicKey.Decode(blob);
+            string publicLine = publicKey.ToOpenSshFormat(comment);
             File.WriteAllText(publicPath, publicLine + Environment.NewLine);
-            return new SshKeyInfo(name, type, Fingerprint(blob), privatePath, publicLine);
+            return new SshKeyInfo(name, type, publicKey.Sha256Fingerprint, privatePath, publicLine);
         }, cancellationToken);
     }
 
@@ -288,7 +288,7 @@ public sealed class SshKeyService(
         using var rsa = RSA.Create(bits);
         RSAParameters parameters = rsa.ExportParameters(true);
         return (OpenSshPrivateKey.SerializeRsa(parameters, comment),
-                BuildRsaPublicBlob(parameters),
+                OpenSshPrivateKey.BuildRsaPublicBlob(parameters),
                 "ssh-rsa",
                 $"RSA {bits}");
     }
@@ -327,14 +327,9 @@ public sealed class SshKeyService(
             List<SshKeyInfo> keys = [];
             foreach (SshAgentIdentity identity in identities)
             {
-                byte[] blob = identity.PublicKey.Blob.ToArray();
-                string algorithm = identity.PublicKey.KeyType;
-                string line = $"{algorithm} {Convert.ToBase64String(blob)}";
-                if (identity.Comment.Length > 0)
-                {
-                    line += " " + identity.Comment;
-                }
-                keys.Add(new SshKeyInfo(identity.Comment, DescribeType(algorithm, blob), Fingerprint(blob), "", line));
+                SshPublicKey key = identity.PublicKey;
+                keys.Add(new SshKeyInfo(
+                    identity.Comment, DescribeType(key), key.Sha256Fingerprint, "", key.ToOpenSshFormat(identity.Comment)));
             }
             return keys;
         }
@@ -346,95 +341,34 @@ public sealed class SshKeyService(
         }
     }
 
+    /// <remarks>
+    /// 解析、指纹、位数都交给 SSH 库的 <see cref="SshPublicKey" /> —— 宿主不另写一份 blob 解析。
+    /// 库认不出的类型(早已弃用的 DSA 之类)不列出:列出来也连不上。
+    /// </remarks>
     private static SshKeyInfo? TryParsePublicKey(string name, string privatePath, string pubFile)
     {
         try
         {
             string line = File.ReadAllText(pubFile).Trim();
-            string[] parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2)
-            {
-                return null;
-            }
-            byte[] blob = Convert.FromBase64String(parts[1]);
-            return new(name, DescribeType(parts[0], blob), Fingerprint(blob), privatePath, line);
+            return SshPublicKey.TryParse(line, out SshPublicKey? key)
+                ? new(name, DescribeType(key), key.Sha256Fingerprint, privatePath, line)
+                : null;
         }
-        catch (Exception ex) when (ex is IOException or FormatException)
+        catch (IOException)
         {
             return null;
         }
     }
 
-    private static string Fingerprint(byte[] blob) => "SHA256:" + Convert.ToBase64String(SHA256.HashData(blob)).TrimEnd('=');
-
-    private static string DescribeType(string algorithm, byte[] blob)
-    {
-        return algorithm switch
-        {
-            "ssh-rsa" => $"RSA {TryGetRsaBits(blob)}",
-            "ssh-ed25519" => "ED25519",
-            "ecdsa-sha2-nistp256" => "ECDSA 256",
-            "ecdsa-sha2-nistp384" => "ECDSA 384",
-            "ecdsa-sha2-nistp521" => "ECDSA 521",
-            "ssh-dss" => "DSA",
-            _ => algorithm
-        };
-    }
-
-    /// <summary>从 ssh-rsa 公钥 blob(string algo, mpint e, mpint n)读取模数位数。</summary>
-    private static int TryGetRsaBits(byte[] blob)
-    {
-        try
-        {
-            int offset = 0;
-            ReadChunk(blob, ref offset); // algorithm name
-            ReadChunk(blob, ref offset); // exponent
-            byte[] modulus = ReadChunk(blob, ref offset);
-            int length = modulus.Length;
-            if (length > 0 && modulus[0] == 0)
+    /// <summary>给人看的类型与位数,如 <c>RSA 4096</c>、<c>ED25519</c>、<c>ECDSA 256</c>。证书照原样显示它的类型串。</summary>
+    private static string DescribeType(SshPublicKey key) =>
+        key.IsCertificate
+            ? key.KeyType
+            : key.PlainKeyType switch
             {
-                length--; // mpint 前导零
-            }
-            return length * 8;
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            return 0;
-        }
-    }
-
-    private static byte[] ReadChunk(byte[] blob, ref int offset)
-    {
-        int length = BinaryPrimitives.ReadInt32BigEndian(blob.AsSpan(offset, 4));
-        offset += 4;
-        byte[] chunk = blob.AsSpan(offset, length).ToArray();
-        offset += length;
-        return chunk;
-    }
-
-    /// <summary>构造 OpenSSH ssh-rsa 公钥 blob:string "ssh-rsa" ‖ mpint e ‖ mpint n。</summary>
-    private static byte[] BuildRsaPublicBlob(RSAParameters parameters)
-    {
-        using var stream = new MemoryStream();
-        WriteChunk(stream, Encoding.ASCII.GetBytes("ssh-rsa"));
-        WriteChunk(stream, ToMpint(parameters.Exponent!));
-        WriteChunk(stream, ToMpint(parameters.Modulus!));
-        return stream.ToArray();
-    }
-
-    private static byte[] ToMpint(byte[] value)
-    {
-        // 最高位为 1 时补前导零,保持无符号语义。
-        return value.Length > 0 && (value[0] & 0x80) != 0
-                   ? [0, .. value]
-                   : value;
-    }
-
-    private static void WriteChunk(MemoryStream stream, byte[] data)
-    {
-        Span<byte> lengthBytes = stackalloc byte[4];
-        BinaryPrimitives.WriteInt32BigEndian(lengthBytes, data.Length);
-        stream.Write(lengthBytes);
-        stream.Write(data);
-    }
+                "ssh-rsa" => $"RSA {key.KeyBits}",
+                "ssh-ed25519" => "ED25519",
+                _ when key.PlainKeyType.StartsWith("ecdsa-", StringComparison.Ordinal) => $"ECDSA {key.KeyBits}",
+                _ => key.PlainKeyType,
+            };
 }

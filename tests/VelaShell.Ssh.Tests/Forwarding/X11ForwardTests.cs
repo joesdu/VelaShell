@@ -13,7 +13,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using VelaShell.Ssh.Channels;
-using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Forwarding;
 using VelaShell.Ssh.Protocol;
 using VelaShell.Ssh.Session;
@@ -70,7 +69,7 @@ public sealed class X11ForwardTests
         // 处理器要摘干净 —— 不然服务端之后开的 x11 通道会被一个
         // 半挂的转发器接走。
         Stream? channel = await fixture.Harness.Channels.OpenChannelToClientAsync(
-            SshAlgorithmNames.ChannelX11, X11Origin(), fixture.Harness.Token);
+            SshProtocolNames.ChannelX11, X11Origin(), fixture.Harness.Token);
 
         Assert.IsNull(channel, "请求失败之后不该还接受 x11 通道");
     }
@@ -335,7 +334,7 @@ public sealed class X11ForwardTests
         await using Fixture fixture = await Fixture.StartAsync();
 
         Stream? channel = await fixture.Harness.Channels.OpenChannelToClientAsync(
-            SshAlgorithmNames.ChannelX11, X11Origin(), fixture.Harness.Token);
+            SshProtocolNames.ChannelX11, X11Origin(), fixture.Harness.Token);
 
         Assert.IsNull(channel, "没请求过就一律拒绝");
     }
@@ -360,7 +359,7 @@ public sealed class X11ForwardTests
         await Task.Delay(30, fixture.Harness.Token);
 
         Stream? channel = await fixture.Harness.Channels.OpenChannelToClientAsync(
-            SshAlgorithmNames.ChannelX11, X11Origin(), fixture.Harness.Token);
+            SshProtocolNames.ChannelX11, X11Origin(), fixture.Harness.Token);
 
         Assert.IsNull(channel, "过期之后的 x11 通道必须被拒");
         Assert.AreEqual(1, forwarder.RejectedChannels);
@@ -503,7 +502,7 @@ public sealed class X11ForwardTests
         await using SshShell shell = await fixture.Harness.Connection.OpenShellAsync(
             new SshShellOptions
             {
-                X11 = fixture.Options,
+                X11Forwarding = fixture.Options,
                 Environment = new Dictionary<string, string>(StringComparer.Ordinal) { ["LANG"] = "C.UTF-8" },
             },
             fixture.Harness.Token);
@@ -522,7 +521,7 @@ public sealed class X11ForwardTests
         await using Fixture fixture = await Fixture.StartAsync(grantX11: false);
 
         await using SshShell shell = await fixture.Harness.Connection.OpenShellAsync(
-            new SshShellOptions { X11 = fixture.Options with { BestEffort = true } },
+            new SshShellOptions { X11Forwarding = fixture.Options with { BestEffort = true } },
             fixture.Harness.Token);
 
         Assert.IsNull(shell.X11, "没开成就不该有转发器");
@@ -535,7 +534,7 @@ public sealed class X11ForwardTests
 
         // 吞掉的失败不能在连接上留下半挂的转发 —— 否则服务端之后开的 x11 通道会被接走。
         Stream? channel = await fixture.Harness.Channels.OpenChannelToClientAsync(
-            SshAlgorithmNames.ChannelX11, X11Origin(), fixture.Harness.Token);
+            SshProtocolNames.ChannelX11, X11Origin(), fixture.Harness.Token);
         Assert.IsNull(channel, "X11 没开成，这条连接不该接受 x11 通道");
     }
 
@@ -549,7 +548,7 @@ public sealed class X11ForwardTests
 
         SshForwardException error = await Assert.ThrowsExactlyAsync<SshForwardException>(
             async () => await fixture.Harness.Connection.OpenShellAsync(
-                new SshShellOptions { X11 = fixture.Options }, fixture.Harness.Token));
+                new SshShellOptions { X11Forwarding = fixture.Options }, fixture.Harness.Token));
 
         Assert.Contains("X11Forwarding", error.Message);
         Assert.DoesNotContain("shell", fixture.Harness.Channels.Observation.Requests);
@@ -563,7 +562,7 @@ public sealed class X11ForwardTests
 
         await using SshCommand command = await fixture.Harness.Connection.ExecuteAsync(
             "xclock",
-            new SshExecutionOptions { X11 = UnrunnableXAuth(fixture.Options) with { BestEffort = true } },
+            new SshCommandOptions { X11Forwarding = UnrunnableXAuth(fixture.Options) with { BestEffort = true } },
             fixture.Harness.Token);
 
         Assert.IsNull(command.X11);
@@ -580,7 +579,7 @@ public sealed class X11ForwardTests
         await Assert.ThrowsExactlyAsync<SshForwardException>(
             async () => await fixture.Harness.Connection.ExecuteAsync(
                 "xclock",
-                new SshExecutionOptions { X11 = UnrunnableXAuth(fixture.Options) },
+                new SshCommandOptions { X11Forwarding = UnrunnableXAuth(fixture.Options) },
                 fixture.Harness.Token));
 
         Assert.IsEmpty(fixture.Harness.Channels.Observation.Commands, "显式要求失败时命令不该被执行");
@@ -622,7 +621,7 @@ public sealed class X11ForwardTests
     private static async Task<Stream> OpenX11Async(Fixture fixture)
     {
         Stream? remote = await fixture.Harness.Channels.OpenChannelToClientAsync(
-            SshAlgorithmNames.ChannelX11, X11Origin(), fixture.Harness.Token);
+            SshProtocolNames.ChannelX11, X11Origin(), fixture.Harness.Token);
 
         Assert.IsNotNull(remote, "请求过 X11 转发之后，x11 通道应当被接受");
         return remote;

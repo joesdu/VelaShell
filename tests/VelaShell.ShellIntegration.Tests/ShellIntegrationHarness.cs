@@ -133,13 +133,13 @@ internal sealed class ShellIntegrationHarness : IAsyncDisposable
     public static async Task<ShellIntegrationHarness> ConnectAsync(string user)
     {
         VelaSshClientWrapper client = new(
-            ct => new SshConnectionOptions(user, Host, Port)
+            ct => SshConnection.ConnectAsync(new SshConnectionOptions(user, Host, Port)
             {
                 Credentials = [new PasswordCredential(Password)],
                 // 测试容器的主机键每次重建都变：无条件信任，不写 known_hosts。
                 HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
                 ConnectTimeout = TimeSpan.FromSeconds(10),
-            }.ConnectAsync(ct),
+            }, ct),
             TimeSpan.FromSeconds(10));
 
         await client.ConnectAsync(CancellationToken.None);

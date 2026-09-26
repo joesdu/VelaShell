@@ -109,8 +109,8 @@ public sealed record SshAlgorithmSet
             [
                 // 后量子混合排最前：「先截获、以后再解」的攻击今天就在发生。
                 SshAlgorithmNames.MlKem768X25519Sha256,
-                SshAlgorithmNames.SNtruP761X25519Sha512,
-                SshAlgorithmNames.SNtruP761X25519Sha512OpenSsh,
+                SshAlgorithmNames.Sntrup761X25519Sha512,
+                SshAlgorithmNames.Sntrup761X25519Sha512OpenSsh,
                 SshAlgorithmNames.Curve25519Sha256,
                 SshAlgorithmNames.Curve25519Sha256LibSsh,
                 SshAlgorithmNames.EcdhSha2Nistp256,
@@ -200,15 +200,17 @@ public sealed record SshAlgorithmSet
         return this with { HostKey = [.. HostKey.Where(IsKnown), .. HostKey.Where(a => !IsKnown(a))] };
     }
 
-    /// <summary>校验清单里的密钥交换、加密、MAC 与压缩算法都是本库实现（或注册）了的。</summary>
+    /// <summary>校验清单里的密钥交换、加密、MAC 与压缩算法都是本库实现了的。</summary>
     /// <exception cref="ArgumentException">某个类别为空，或含有本库不实现的算法名。</exception>
     /// <remarks>
     /// 连接开始前就查：清单里混进一个没实现的名字，只有对端恰好也只剩它时才会被谈成，
     /// 那时失败在密钥派生里，报出来的是一句看不出缘由的「尚未实现」，
     /// 而且只在连某一台设备时出现。提前在这里报，错误指向的是配置本身。
     /// 主机密钥算法不在这里查：它由主机密钥的解析与验签把关，未知类型在那里有明确的错误。
+    /// <c>internal</c>：清单由几条 <c>init</c> 属性与 <c>With*</c> 链拼成，做不到构造时校验；
+    /// 唯一消费它的入口 <c>SshConnection.ConnectAsync</c> 在拨号前代为调用，调用方不必记得。
     /// </remarks>
-    public void Validate()
+    internal void Validate()
     {
         Check(KeyExchange, nameof(KeyExchange),
             static n => SshKeyExchangeFactory.IsSupported(n) || SshAlgorithmNegotiator.IsIndicator(n));

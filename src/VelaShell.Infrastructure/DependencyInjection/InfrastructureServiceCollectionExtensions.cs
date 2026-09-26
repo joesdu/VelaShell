@@ -266,7 +266,7 @@ public static class InfrastructureServiceCollectionExtensions
             SshConnectionAssembler.Create(ci, hostKey, settings, prompt, alerts, proxyResolver);
 
         return new VelaSshClientWrapper(
-            assembled.Connect, assembled.ConnectTimeout, assembled.DialerLifetime, ci.Ssh,
+            assembled.Connect, assembled.ConnectTimeout, ci.Ssh,
             localXServer: xServer, agentPrompt: agentPrompt, target: $"{ci.Username}@{ci.Host}:{ci.Port}");
     }
 }

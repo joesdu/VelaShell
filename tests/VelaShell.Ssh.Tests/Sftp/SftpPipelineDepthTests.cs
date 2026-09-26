@@ -95,7 +95,7 @@ public sealed class SftpPipelineDepthTests
             });
             Task serverChannels = channelServer.RunAsync(cts.Token);
 
-            SshConnection connection = new(clientTransport, kex.SessionId);
+            SshConnection connection = new(clientTransport, kex);
             connection.Start();
 
             SftpFileSystem sftp = await SftpFileSystem.ConnectAsync(connection, clientOptions, cts.Token);

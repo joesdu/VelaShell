@@ -14,7 +14,7 @@ namespace VelaShell.Ssh.Forwarding;
 /// 两者的区别就是「我不再发了」与「这条通道结束了」的区别，
 /// 混淆它们会截断对面还没发完的数据。
 /// </remarks>
-public sealed class ChannelRelayEndpoint(SshChannel channel, bool ownsChannel = false) : IRelayEndpoint
+internal sealed class ChannelRelayEndpoint(SshChannel channel, bool ownsChannel = false) : IRelayEndpoint
 {
     /// <inheritdoc />
     public PipeReader Input => channel.StandardOutput;

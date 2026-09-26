@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using VelaShell.Core.Models;
 using VelaShell.Infrastructure.Ssh;
+using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Session;
 using VelaConnectionInfo = VelaShell.Core.Models.ConnectionInfo;
@@ -65,14 +66,14 @@ public sealed class SshCertificateIntegrationTests
 
     /// <summary>按连接信息连上去 —— 凭据那一段走的正是生产代码。</summary>
     private static async ValueTask<SshConnection> ConnectAsync(VelaConnectionInfo ci, CancellationToken ct) =>
-        await new SshConnectionOptions(ci.Username, ci.Host, ci.Port)
+        await SshConnection.ConnectAsync(new SshConnectionOptions(ci.Username, ci.Host, ci.Port)
         {
             Credentials = await SshConnectionAssembler.BuildCredentialsAsync(ci, ct),
             // 本用例要验的是【用户】认证,主机认证不是被测对象:靶机的主机密钥每次
             // 重建镜像都会变,在这里较真只会把用例变成 known_hosts 的维护负担。
             HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
             ConnectTimeout = TimeSpan.FromSeconds(15),
-        }.ConnectAsync(ct);
+        }, ct);
 
     private static VelaConnectionInfo CertificateConnection() =>
         new()
@@ -95,7 +96,7 @@ public sealed class SshCertificateIntegrationTests
 
         // 连上还不够:跑一条命令才能证明这是一条可用的会话,而不只是握手成功。
         // 顺带确认服务端认下来的身份就是证书 principals 里那个 testuser。
-        SshCommandOutput output = await connection.RunAsync("id -un", cancellationToken: ct);
+        SshCommandResult output = await connection.RunAsync("id -un", cancellationToken: ct);
 
         // stderr 带进失败消息:命令没输出时,原因通常就写在那里。
         Assert.AreEqual(TestUser, output.StandardOutput.Trim(), $"stderr: {output.StandardError}");

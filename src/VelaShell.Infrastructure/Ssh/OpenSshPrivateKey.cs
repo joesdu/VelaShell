@@ -181,7 +181,7 @@ internal static class OpenSshPrivateKey
         WriteUInt32(stream, checkInt); // 两次相同,解密后自校验
     }
 
-    private static byte[] BuildRsaPublicBlob(RSAParameters p)
+    internal static byte[] BuildRsaPublicBlob(RSAParameters p)
     {
         using var stream = new MemoryStream();
         WriteChunk(stream, "ssh-rsa"u8.ToArray());

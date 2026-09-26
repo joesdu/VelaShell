@@ -12,6 +12,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using VelaShell.Ssh.Auth;
+using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Session;
@@ -33,7 +34,7 @@ public sealed class ProxyDialerTests
         await using var proxy = FakeSocks5Proxy.Start();
 
         await using SshConnection connection = await ConnectAsync(DialerChain.Socks5("127.0.0.1", proxy.Port));
-        SshCommandOutput output = await connection.RunAsync("hello");
+        SshCommandResult output = await connection.RunAsync("hello");
 
         Assert.AreEqual("来自目标", output.StandardOutput);
 
@@ -171,7 +172,7 @@ $"Proxy-Authorization: Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("bob
 
         SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
             async () => await ConnectAsync(
-                DialerChain.Socks5("socks.internal", 1080).Via(DialerChain.HttpConnect("127.0.0.1", http.Port))));
+                DialerChain.Socks5("socks.internal", 1080, via: DialerChain.HttpConnect("127.0.0.1", http.Port))));
 
         Assert.AreEqual(SshFailureReason.ProxyRefused, ex.Reason);
         Assert.AreEqual(SshDialKind.Tcp, ex.Hops[0].Kind);
@@ -237,7 +238,7 @@ $"Proxy-Authorization: Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("bob
             ConnectTimeout = TimeSpan.FromSeconds(1),
         };
 
-        await using SshConnection connection = await options.ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(options);
         Assert.AreEqual("来自目标", (await connection.RunAsync("hello")).StandardOutput);
     }
 
@@ -263,7 +264,7 @@ $"Proxy-Authorization: Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("bob
         };
 
         SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(
-            async () => await options.ConnectAsync());
+            async () => await SshConnection.ConnectAsync(options));
 
         Assert.AreEqual(SshFailureReason.Timeout, ex.Reason);
         Assert.Contains("跳板", ex.Message);
@@ -302,7 +303,9 @@ $"Proxy-Authorization: Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("bob
 
         SshConnectException error = Assert.ThrowsExactly<SshConnectException>(
             () => dialer.Expand(new SshEndPoint(host, 22)));
-        Assert.AreEqual(SshFailureReason.ProxyRefused, error.Reason);
+        // 不是「代理拒绝」—— 那一类会被当成可重试的；这里重试一百次也一样，得改输入。
+        Assert.AreEqual(SshFailureReason.InvalidConfiguration, error.Reason);
+        Assert.IsFalse(error.IsRetryable);
     }
 
     [TestMethod]
@@ -340,7 +343,7 @@ $"Proxy-Authorization: Basic {Convert.ToBase64String(Encoding.UTF8.GetBytes("bob
             ConnectTimeout = TimeSpan.FromSeconds(10),
         };
 
-        return await options.ConnectAsync();
+        return await SshConnection.ConnectAsync(options);
     }
 
     /// <summary>在一条流上跑完整的测试 SSH 服务端（握手 → 认证 → 通道）。</summary>

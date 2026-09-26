@@ -58,7 +58,7 @@ internal sealed class X11ChannelRouter : IIncomingChannelHandler
 
         if (first)
         {
-            _connection.AddIncomingChannelHandler(SshAlgorithmNames.ChannelX11, this);
+            _connection.AddIncomingChannelHandler(SshProtocolNames.ChannelX11, this);
         }
     }
 
@@ -73,7 +73,7 @@ internal sealed class X11ChannelRouter : IIncomingChannelHandler
 
         if (last)
         {
-            _connection.RemoveIncomingChannelHandler(SshAlgorithmNames.ChannelX11, this);
+            _connection.RemoveIncomingChannelHandler(SshProtocolNames.ChannelX11, this);
         }
     }
 
@@ -100,7 +100,7 @@ internal sealed class X11ChannelRouter : IIncomingChannelHandler
                 forwarder.NoteRejected();
             }
 
-            throw new SshForwardException("这条连接上的 X11 转发都已过期 —— 拒绝新的 x11 通道。");
+            throw new SshForwardException(SshFailureReason.ForwardRejected, "这条连接上的 X11 转发都已过期 —— 拒绝新的 x11 通道。");
         }
 
         return ValueTask.FromResult(SshChannelOptions.Default);
