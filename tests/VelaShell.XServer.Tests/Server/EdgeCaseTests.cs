@@ -1,5 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -46,19 +45,19 @@ public sealed class EdgeCaseTests
         await using X11Server server = new(host: host);
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         uint top = await MapTopAsync(c, host, 0, 0, 0x40 | 0x80);   // PointerMotion | PointerMotionHint
-        server.PointerMotion(top, 1, 1);
-        server.PointerMotion(top, 2, 2);
-        server.PointerMotion(top, 3, 3);
+        server.InjectPointerMotion(host.Mapped[top], 1, 1);
+        server.InjectPointerMotion(host.Mapped[top], 2, 2);
+        server.InjectPointerMotion(host.Mapped[top], 3, 3);
         List<XMessage> hints = await DrainAsync(c, MotionNotify);
         Assert.HasCount(1, hints, "同一轮里只发一条");
         Assert.AreEqual(1, hints[0].Bytes[1], "detail = Hint");
 
-        server.PointerMotion(top, 4, 4);
+        server.InjectPointerMotion(host.Mapped[top], 4, 4);
         Assert.IsEmpty(await DrainAsync(c, MotionNotify), "客户端还没来问位置:不再发");
 
         await c.RequestAsync(38, 0, b => b.U32(top));   // QueryPointer
-        server.PointerMotion(top, 5, 5);
-        server.PointerMotion(top, 6, 6);
+        server.InjectPointerMotion(host.Mapped[top], 5, 5);
+        server.InjectPointerMotion(host.Mapped[top], 6, 6);
         Assert.HasCount(1, await DrainAsync(c, MotionNotify), "问过位置之后再给一条");
     }
 
@@ -72,10 +71,11 @@ public sealed class EdgeCaseTests
         uint child = c.NewId();
         await c.SendAsync(1, 0, b => b.U32(child).U32(top).I16(20).I16(10).U16(20).U16(20).U16(0).U16(1).U32(0).U32(0));
         await c.SendAsync(8, 0, b => b.U32(child));
-        server.PointerMotion(top, 100, 100);   // 先移到窗口外
+        await c.SyncAsync();
+        server.InjectPointerMotion(host.Mapped[top], 100, 100);   // 先移到窗口外
         await DrainAsync(c, EnterNotify);      // 映射时指针可能已在窗口里:那条 Enter 不算
 
-        server.PointerMotion(top, 25, 15);   // 从窗口外直接落进子窗口
+        server.InjectPointerMotion(host.Mapped[top], 25, 15);   // 从窗口外直接落进子窗口
         XMessage enter = await c.NextAsync(m => !m.IsReply && !m.IsError && m.EventCode == EnterNotify && m.U32(12) == top);
         Assert.AreEqual(child, enter.U32(16), "child = 通往指针所在窗口的那个子窗口");
     }

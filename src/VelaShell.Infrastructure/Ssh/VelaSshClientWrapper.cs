@@ -31,7 +31,6 @@ namespace VelaShell.Infrastructure.Ssh;
 public sealed class VelaSshClientWrapper : ISshClientWrapper
 {
     private readonly Func<CancellationToken, ValueTask<SshConnection>> _connect;
-    private readonly IAsyncDisposable? _dialerLifetime;
     private readonly SshSessionOptions? _features;
     private readonly ILocalXServer? _localXServer;
     private readonly IAgentSignPrompt? _agentPrompt;
@@ -44,10 +43,6 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     /// </summary>
     /// <param name="connect">建立连接(含跳板链、代理、主机密钥裁决与认证)。</param>
     /// <param name="connectTimeout">建链超时,用于 <see cref="ConnectionTimeout" /> 的初值。</param>
-    /// <param name="dialerLifetime">
-    /// 跟着本包装器一起释放的拨号器(跳板链持有的跳板连接在里面);没有跳板时为
-    /// <see langword="null" />。
-    /// </param>
     /// <param name="features">
     /// 交互式 shell 上要请求的转发(X11 / agent);<see langword="null" /> = 都不请求。
     /// 压缩不在这里 —— 它是建链时协商的,已经装进 <paramref name="connect" /> 了。
@@ -61,14 +56,12 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     public VelaSshClientWrapper(
         Func<CancellationToken, ValueTask<SshConnection>> connect,
         TimeSpan connectTimeout,
-        IAsyncDisposable? dialerLifetime = null,
         SshSessionOptions? features = null,
         ILocalXServer? localXServer = null,
         IAgentSignPrompt? agentPrompt = null,
         string target = "")
     {
         _connect = connect ?? throw new ArgumentNullException(nameof(connect));
-        _dialerLifetime = dialerLifetime;
         _features = features;
         _localXServer = localXServer;
         _agentPrompt = agentPrompt;
@@ -157,15 +150,16 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
             SshShellOptions options = new()
             {
                 TerminalType = terminalName,
-                Size = new TerminalSize((int)columns, (int)rows, (int)width, (int)height),
+                Size = new SshTerminalSize((int)columns, (int)rows, (int)width, (int)height),
                 Modes = BuildModes(terminalModeValues),
-                AgentEndpoint = SshConnectionAssembler.AgentEndpoint(),
             };
 
             List<ShellStreamNotice> notices = [];
             XServerDisplayResolution? localServer = await ResolveLocalXServerAsync(notices, cancellationToken).ConfigureAwait(false);
             X11ForwardOptions? x11 = SshForwardingOptions.X11(_features, notices, localServer?.Display, localServer?.Connector);
-            AgentForwardPolicy? agent = SshForwardingOptions.Agent(_features, notices, _agentPrompt, _target);
+            AgentForwardOptions? agent = SshForwardingOptions.Agent(_features, notices, _agentPrompt, _target) is { } agentOptions
+                ? agentOptions with { AgentEndpoint = SshConnectionAssembler.AgentEndpoint() }
+                : null;
 
             SshShell shell = await OpenShellWithFallbackAsync(
                 connection, options, x11, agent, notices, cancellationToken).ConfigureAwait(false);
@@ -217,15 +211,15 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     }
 
     /// <summary>
-    /// 把宿主的终端模式表翻成库的 <see cref="TerminalModes" />。
+    /// 把宿主的终端模式表翻成库的 <see cref="SshTerminalModes" />。
     /// </summary>
     /// <remarks>
     /// 宿主的 <see cref="TerminalMode" /> 枚举值就是 RFC 4254 §8 的 opcode,
     /// 直接转字节即可 —— 两边用的是同一份编号表,那是协议规定的,不是巧合。
     /// </remarks>
-    private static TerminalModes BuildModes(IReadOnlyDictionary<TerminalMode, uint>? values)
+    private static SshTerminalModes BuildModes(IReadOnlyDictionary<TerminalMode, uint>? values)
     {
-        TerminalModes modes = TerminalModes.Empty;
+        SshTerminalModes modes = SshTerminalModes.Empty;
         if (values is null)
         {
             return modes;
@@ -233,7 +227,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
         foreach ((TerminalMode mode, uint argument) in values)
         {
-            modes = modes.Set((byte)mode, argument);
+            modes = modes.With((byte)mode, argument);
         }
         return modes;
     }
@@ -257,12 +251,12 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
         SshConnection connection,
         SshShellOptions options,
         X11ForwardOptions? x11,
-        AgentForwardPolicy? agent,
+        AgentForwardOptions? agent,
         List<ShellStreamNotice> notices,
         CancellationToken cancellationToken)
     {
-        ValueTask<SshShell> Open(AgentForwardPolicy? withAgent) =>
-            connection.OpenShellAsync(options with { X11 = x11, AgentForwarding = withAgent }, cancellationToken);
+        ValueTask<SshShell> Open(AgentForwardOptions? withAgent) =>
+            connection.OpenShellAsync(options with { X11Forwarding = x11, AgentForwarding = withAgent }, cancellationToken);
 
         try
         {
@@ -275,9 +269,9 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
         }
     }
 
-    /// <summary>「某项转发没开成」的提示:本地化的标题 + 库给的原因(服务端配置、本机缺 xauth…)。</summary>
+    /// <summary>「某项转发没开成」的提示:本地化的标题 + 按原因码本地化的原因(见 <see cref="SshInterop.Localize" />)。</summary>
     private static ShellStreamNotice ForwardFailed(string key, SshForwardException ex) =>
-        new(Strings.Format(key, ex.Message), true);
+        new(Strings.Format(key, SshInterop.Localize(ex)), true);
 
     /// <inheritdoc />
     public async Task<string> RunCommandAsync(string commandText, CancellationToken cancellationToken = default)
@@ -286,7 +280,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
         try
         {
-            SshCommandOutput output = await connection
+            SshCommandResult output = await connection
                 .RunAsync(commandText, cancellationToken: cancellationToken).ConfigureAwait(false);
             return output.StandardOutput;
         }
@@ -308,7 +302,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
         try
         {
-            SshCommandOutput output = await connection
+            SshCommandResult output = await connection
                 .RunAsync(commandText, cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // ExitCode 是 int? —— 被信号杀死或连接中断时没有退出码。
@@ -348,11 +342,11 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
         {
             // 不要 stderr 时让库直接丢弃,而不是缓冲着没人读:缓冲的那份只有被读走才回补窗口,
             // 窗口一满对端就停发 —— stdout 也跟着停住,`docker logs -f` 这类长驻命令会就此卡死。
-            SshExecutionOptions? options = includeStandardError
+            SshCommandOptions? options = includeStandardError
                 ? null
-                : new SshExecutionOptions
+                : new SshCommandOptions
                 {
-                    Channel = SshChannelOptions.Default with { StderrPolicy = SshStderrPolicy.Discard },
+                    Channel = SshChannelOptions.Default with { StderrMode = SshStderrMode.Discard },
                 };
 
             command = await connection.ExecuteAsync(commandText, options, cancellationToken)
@@ -366,7 +360,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
             long[] counts = await Task.WhenAll(stdout, stderr).ConfigureAwait(false);
             lines = counts[0] + counts[1];
 
-            SshCommandResult result = await command.WaitAsync(cancellationToken).ConfigureAwait(false);
+            SshExitStatus result = await command.WaitAsync(cancellationToken).ConfigureAwait(false);
             return new(result.ExitCode ?? -1, lines);
         }
         catch (OperationCanceledException)
@@ -500,7 +494,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
         {
             SshChannel channel = await connection
                 .OpenUnixSocketTunnelAsync(socketPath, cancellationToken: cancellationToken).ConfigureAwait(false);
-            return new SshChannelStream(channel);
+            return new SyncCompatibleStream(channel.AsStream());
         }
         catch (Exception ex) when (SshInterop.Translate(ex, cancellationToken) is { } translated)
         {
@@ -521,7 +515,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
         {
             SshChannel channel = await connection
                 .OpenTcpTunnelAsync(host, port, cancellationToken: cancellationToken).ConfigureAwait(false);
-            return new SshChannelStream(channel);
+            return new SyncCompatibleStream(channel.AsStream());
         }
         catch (Exception ex) when (SshInterop.Translate(ex, cancellationToken) is { } translated)
         {
@@ -539,19 +533,6 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
         _disposed = true;
 
         await DisposeConnectionAsync().ConfigureAwait(false);
-
-        // 跳板链的连接挂在拨号器上,跟着一起收 —— 见 SshJumpDialer 的说明。
-        if (_dialerLifetime is not null)
-        {
-            try
-            {
-                await _dialerLifetime.DisposeAsync().ConfigureAwait(false);
-            }
-            catch (Exception)
-            {
-                // 释放路径不抛。
-            }
-        }
 
         GC.SuppressFinalize(this);
     }

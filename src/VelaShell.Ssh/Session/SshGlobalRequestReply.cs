@@ -18,4 +18,4 @@ namespace VelaShell.Ssh.Session;
 /// 只回「成不成」的 API 会让那个端口号永远拿不到，
 /// 而那正是 <c>-R 0:...</c> 这种用法的全部意义。
 /// </remarks>
-public readonly record struct SshGlobalRequestReply(bool Success, ReadOnlyMemory<byte> Payload);
+internal readonly record struct SshGlobalRequestReply(bool Success, ReadOnlyMemory<byte> Payload);

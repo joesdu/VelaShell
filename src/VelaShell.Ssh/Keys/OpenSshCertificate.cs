@@ -15,26 +15,6 @@ using VelaShell.Ssh.Protocol;
 
 namespace VelaShell.Ssh.Keys;
 
-/// <summary>证书是发给用户的还是发给主机的。</summary>
-public enum SshCertificateType
-{
-    /// <summary>用户证书:拿它登录服务器。</summary>
-    User = 1,
-
-    /// <summary>主机证书:服务器拿它向客户端证明身份。</summary>
-    Host = 2,
-}
-
-/// <summary>证书读不出来。</summary>
-public sealed class SshCertificateException : SshException
-{
-    /// <summary>创建一个证书解析异常。</summary>
-    public SshCertificateException(string message, Exception? innerException = null)
-        : base(SshFailureReason.Unsupported, SshPhase.Authenticating, message, innerException)
-    {
-    }
-}
-
 /// <summary>
 /// 一张 OpenSSH 证书(<c>*-cert-v01@openssh.com</c>)。
 /// </summary>
@@ -174,14 +154,14 @@ public sealed class OpenSshCertificate
         }
         catch (IOException ex)
         {
-            throw new SshCertificateException($"读不了证书文件 {path}:{ex.Message}", ex);
+            throw new SshCertificateException(SshFailureReason.KeyFileUnreadable, $"读不了证书文件 {path}:{ex.Message}", ex);
         }
         catch (UnauthorizedAccessException ex)
         {
-            throw new SshCertificateException($"没有权限读证书文件 {path}。", ex);
+            throw new SshCertificateException(SshFailureReason.KeyFileUnreadable, $"没有权限读证书文件 {path}。", ex);
         }
 
-        return ParseText(text, path);
+        return Parse(text, path);
     }
 
     /// <summary>
@@ -189,7 +169,7 @@ public sealed class OpenSshCertificate
     /// </summary>
     /// <param name="text">证书文本(允许有多行,取第一行非空的)。</param>
     /// <param name="origin">出错消息里用来标明来源。</param>
-    public static OpenSshCertificate ParseText(string text, string? origin = null)
+    public static OpenSshCertificate Parse(string text, string? origin = null)
     {
         ArgumentNullException.ThrowIfNull(text);
         string where = origin is null ? "" : $"({origin})";
@@ -205,7 +185,7 @@ public sealed class OpenSshCertificate
             string[] parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 2)
             {
-                throw new SshCertificateException(
+                throw new SshCertificateException(SshFailureReason.KeyFormatInvalid,
                     $"证书文本的格式不对{where}:应当是「算法 base64 [注释]」。");
             }
 
@@ -216,30 +196,30 @@ public sealed class OpenSshCertificate
             }
             catch (FormatException ex)
             {
-                throw new SshCertificateException($"证书的 base64 解不开{where}。", ex);
+                throw new SshCertificateException(SshFailureReason.KeyFormatInvalid, $"证书的 base64 解不开{where}。", ex);
             }
 
-            OpenSshCertificate certificate = Parse(blob);
+            OpenSshCertificate certificate = Decode(blob);
             if (!string.Equals(certificate.Algorithm, parts[0], StringComparison.Ordinal))
             {
                 // 行首写的算法与 blob 里的类型串不符 —— 文件被手工拼接过的典型症状。
-                throw new SshCertificateException(
+                throw new SshCertificateException(SshFailureReason.KeyFormatInvalid,
                     $"证书文件里标的算法是 {parts[0]},而 blob 里是 {certificate.Algorithm}{where}。");
             }
             return certificate;
         }
 
-        throw new SshCertificateException($"证书文件是空的{where}。");
+        throw new SshCertificateException(SshFailureReason.KeyFormatInvalid, $"证书文件是空的{where}。");
     }
 
     /// <summary>解析一个证书 blob。</summary>
     /// <param name="blob">证书 blob。</param>
     /// <exception cref="SshCertificateException">格式非法或类型不支持。</exception>
-    public static OpenSshCertificate Parse(ReadOnlyMemory<byte> blob)
+    public static OpenSshCertificate Decode(ReadOnlyMemory<byte> blob)
     {
         if (blob.Length is 0 or > MaxBlobBytes)
         {
-            throw new SshCertificateException($"证书 blob 长度非法:{blob.Length} 字节。");
+            throw new SshCertificateException(SshFailureReason.KeyFormatInvalid, $"证书 blob 长度非法:{blob.Length} 字节。");
         }
 
         byte[] copy = blob.ToArray();
@@ -250,7 +230,7 @@ public sealed class OpenSshCertificate
             string algorithm = reader.ReadUtf8String(MaxFieldBytes, strict: true);
             if (!algorithm.EndsWith(SshAlgorithmNames.CertificateSuffix, StringComparison.Ordinal))
             {
-                throw new SshCertificateException(
+                throw new SshCertificateException(SshFailureReason.KeyFormatInvalid,
                     $"{algorithm} 不是证书类型 —— 证书的类型串以 {SshAlgorithmNames.CertificateSuffix} 结尾。");
             }
 
@@ -263,7 +243,7 @@ public sealed class OpenSshCertificate
             uint type = reader.ReadUInt32();
             if (type is not (1 or 2))
             {
-                throw new SshCertificateException($"证书类型 {type} 不合法(只有 1=用户、2=主机)。");
+                throw new SshCertificateException(SshFailureReason.KeyFormatInvalid, $"证书类型 {type} 不合法(只有 1=用户、2=主机)。");
             }
 
             string keyId = reader.ReadUtf8String(MaxFieldBytes);
@@ -287,7 +267,7 @@ public sealed class OpenSshCertificate
         }
         catch (SshWireFormatException ex)
         {
-            throw new SshCertificateException("证书 blob 的格式非法。", ex);
+            throw new SshCertificateException(SshFailureReason.KeyFormatInvalid, "证书 blob 的格式非法。", ex);
         }
     }
 
@@ -326,16 +306,16 @@ public sealed class OpenSshCertificate
                 break;
 
             default:
-                throw new SshCertificateException($"不支持的证书密钥类型:{plainType}。");
+                throw new SshCertificateException(SshFailureReason.Unsupported, $"不支持的证书密钥类型:{plainType}。");
         }
 
         try
         {
-            return SshPublicKey.Parse(buffer.WrittenMemory);
+            return SshPublicKey.Decode(buffer.WrittenMemory);
         }
         catch (SshPublicKeyException ex)
         {
-            throw new SshCertificateException($"证书里的 {plainType} 公钥不合法。", ex);
+            throw new SshCertificateException(SshFailureReason.KeyFormatInvalid, $"证书里的 {plainType} 公钥不合法。", ex);
         }
     }
 
@@ -373,7 +353,7 @@ public sealed class OpenSshCertificate
     /// 对主机证书那意味着 CA 签出的一张证书能冒充 <c>@cert-authority</c> 那一行范围里的任何一台主机。
     /// </para>
     /// </remarks>
-    public string? CheckHostCertificate(string host, DateTimeOffset now)
+    internal string? CheckHostCertificate(string host, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(host);
 
@@ -458,7 +438,7 @@ public sealed class OpenSshCertificate
         try
         {
             // CA 公钥本身是证书的不认:那会让证书一层套一层地解析下去,而规范没有这种链。
-            return raw.Length == 0 ? null : SshPublicKey.ParsePlain(raw);
+            return raw.Length == 0 ? null : SshPublicKey.DecodePlain(raw);
         }
         catch (SshPublicKeyException)
         {

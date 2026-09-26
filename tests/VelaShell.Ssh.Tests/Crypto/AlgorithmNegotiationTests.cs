@@ -309,7 +309,7 @@ public sealed class AlgorithmNegotiationTests
             Dialer = new RecordingDialer(() => dialed = true),
         };
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(async () => await options.ConnectAsync());
+        await Assert.ThrowsExactlyAsync<ArgumentException>(async () => await SshConnection.ConnectAsync(options));
         Assert.IsFalse(dialed);
     }
 

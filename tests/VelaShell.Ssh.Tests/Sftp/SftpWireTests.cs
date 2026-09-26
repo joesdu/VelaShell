@@ -149,7 +149,7 @@ public sealed class SftpWireTests
     public void 空属性只写一个标志字段()
     {
         ArrayBufferWriter<byte> buffer = new();
-        SftpWire.WriteOpen(buffer, 1, "/f", SftpOpenMode.Read, SftpFileAttributes.Empty);
+        SftpWire.WriteOpen(buffer, 1, "/f", SftpOpenModes.Read, SftpFileAttributes.Empty);
 
         ReadOnlySequence<byte> input = new(buffer.WrittenSpan.ToArray());
         SftpWire.TryReadFrame(ref input, out SftpFrame frame);

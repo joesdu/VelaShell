@@ -1,4 +1,4 @@
-using VelaShell.XServer.Host;
+using VelaShell.XServer;
 
 namespace VelaShell.Services.XServer;
 
@@ -9,7 +9,10 @@ namespace VelaShell.Services.XServer;
 /// <param name="PerKeycode">每键码的列数:没有第三、四层时 2,有时 6(按 XKB 规范 §17 的核心列序)。</param>
 /// <param name="Main">键码 <see cref="HostKeymap.FirstKeycode" /> 起的主键区键值。</param>
 /// <param name="IntlBackslash">102 键(<see cref="XKeycodes.IntlBackslash" />)的键值。</param>
-internal sealed record HostKeymapResult(int PerKeycode, uint[] Main, uint[] IntlBackslash)
+/// <param name="Layout">
+/// XKB 布局名(发布给 setxkbmap 之类的工具看):手选的布局就是它;跟随系统时取随程序带的表里第一、二层最像的那个(见 <see cref="HostKeymap.ClosestLayout" />)。
+/// </param>
+internal sealed record HostKeymapResult(int PerKeycode, uint[] Main, uint[] IntlBackslash, string Layout)
 {
     /// <summary>有 AltGr 层:右 Alt(Option)要设成 ISO_Level3_Shift 并挪进 Mod5。</summary>
     public bool HasAltGr => PerKeycode > 2;
@@ -18,6 +21,12 @@ internal sealed record HostKeymapResult(int PerKeycode, uint[] Main, uint[] Intl
     public bool SameAs(HostKeymapResult? other) =>
         other is not null && other.PerKeycode == PerKeycode && other.Main.AsSpan().SequenceEqual(Main)
         && other.IntlBackslash.AsSpan().SequenceEqual(IntlBackslash);
+
+    /// <summary>交给服务端的键位表(<see cref="X11Server.SetKeymap" />):主键区一段加 102 键,有 AltGr 层时右 Alt 当 AltGr。</summary>
+    public XKeymap ToXKeymap() =>
+        new XKeymap(Layout, PerKeycode) { AltGr = HasAltGr }
+            .MapRange(HostKeymap.FirstKeycode, Main)
+            .Map(XKeycodes.IntlBackslash, IntlBackslash);
 }
 
 /// <summary>
@@ -56,7 +65,9 @@ internal static class HostKeymap
     /// 按 <see cref="Keycodes" /> 的次序给出每键四层的键值(0 = 没有),排成核心列:没有第三、四层时每键 2 列;
     /// 有时 6 列 —— 组 1 第 1、2 级,组 2 第 1、2 级(照抄组 1),组 1 第 3、4 级。第二、四层缺的照抄第一、三层。
     /// </summary>
-    public static HostKeymapResult Assemble(IReadOnlyList<(uint L1, uint L2, uint L3, uint L4)> levels)
+    /// <param name="levels">各键四层的键值。</param>
+    /// <param name="layout">布局名;null = 按 <see cref="ClosestLayout" /> 推测。</param>
+    public static HostKeymapResult Assemble(IReadOnlyList<(uint L1, uint L2, uint L3, uint L4)> levels, string? layout = null)
     {
         bool altGr = levels.Any(k => k.L3 != 0 || k.L4 != 0);
         uint[] Row((uint L1, uint L2, uint L3, uint L4) k)
@@ -65,7 +76,7 @@ internal static class HostKeymap
             return altGr ? [k.L1, l2, k.L1, l2, k.L3, l4] : [k.L1, l2];
         }
         int keys = LastKeycode - FirstKeycode + 1;
-        return new HostKeymapResult(altGr ? 6 : 2, [.. levels.Take(keys).SelectMany(Row)], Row(levels[keys]));
+        return new HostKeymapResult(altGr ? 6 : 2, [.. levels.Take(keys).SelectMany(Row)], Row(levels[keys]), layout ?? ClosestLayout(levels));
     }
 
     /// <summary>
@@ -86,7 +97,33 @@ internal static class HostKeymap
                 ? (fixedSyms.Item1, fixedSyms.Item2, 0u, 0u)
                 : (table[i * 4], table[(i * 4) + 1], table[(i * 4) + 2], table[(i * 4) + 3]));
         }
-        return Assemble(levels);
+        return Assemble(levels, layout);
+    }
+
+    /// <summary>
+    /// 跟随系统时的布局名:随程序带的表里,主键区第一、二层(无修饰与 Shift)与 <paramref name="levels" /> 一样的键最多的那个。
+    /// 一样的键不到九成时认不出来,按 <c>us</c> 报(服务端起步的布局)。
+    /// </summary>
+    public static string ClosestLayout(IReadOnlyList<(uint L1, uint L2, uint L3, uint L4)> levels)
+    {
+        byte[] keycodes = [.. Keycodes()];
+        (string Name, int Score) best = ("us", 0);
+        foreach ((string name, uint[] table) in BundledKeymaps.Layouts)
+        {
+            int score = 0;
+            for (int i = 0; i < keycodes.Length && i < levels.Count; i++)
+            {
+                if (table[i * 4] == levels[i].L1 && table[(i * 4) + 1] == (levels[i].L2 == 0 ? levels[i].L1 : levels[i].L2))
+                {
+                    score++;
+                }
+            }
+            if (score > best.Score)
+            {
+                best = (name, score);
+            }
+        }
+        return best.Score * 10 >= keycodes.Length * 9 ? best.Name : "us";
     }
 
     /// <summary>字符 → X 键值:Latin-1 可打印字符就是它本身,其余用 Unicode 键值(0x01000000 + 码位);控制字符为 0。</summary>

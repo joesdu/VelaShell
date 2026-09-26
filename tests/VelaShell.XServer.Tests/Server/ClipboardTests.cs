@@ -1,6 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -129,7 +127,7 @@ public sealed class ClipboardTests
     [TestMethod]
     public async Task 服务端当XSETTINGS管理器发布DPI_且管理器选区转换不出剪贴板内容()
     {
-        await using X11Server server = new(new XServerOptions { Dpi = 144 });
+        await using X11Server server = new(new X11ServerOptions { Dpi = 144 });
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         uint selection = await InternAsync(c, "_XSETTINGS_S0");
         uint settings = await InternAsync(c, "_XSETTINGS_SETTINGS");
@@ -158,7 +156,7 @@ public sealed class ClipboardTests
     public async Task 关掉互通后不取也不占()
     {
         using RecordingHost host = new();
-        await using X11Server server = new(new XServerOptions { SyncClipboard = false }, host);
+        await using X11Server server = new(new X11ServerOptions { SyncClipboard = false }, host);
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         uint clipboard = await InternAsync(c, "CLIPBOARD");
         uint window = await CreateWindowAsync(c);

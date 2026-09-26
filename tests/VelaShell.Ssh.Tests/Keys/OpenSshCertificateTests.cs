@@ -146,7 +146,7 @@ public sealed class OpenSshCertificateTests
     {
         OpenSshCertificate cert = await OpenSshCertificate.LoadAsync(
             FixturePath("cert-ed25519-cert.pub"), TestContext.CancellationToken);
-        ISshSigner other = await SshPrivateKeyFile.LoadAsync(
+        InMemorySshSigner other = await SshPrivateKeyFile.LoadAsync(
             FixturePath("cert-rsa"), null, TestContext.CancellationToken);
 
         SshCertificateException ex = Assert.ThrowsExactly<SshCertificateException>(
@@ -177,7 +177,7 @@ public sealed class OpenSshCertificateTests
         byte[] blob = ReadPublicBlob("cert-ed25519.pub");
 
         SshCertificateException ex = Assert.ThrowsExactly<SshCertificateException>(
-            () => OpenSshCertificate.Parse(blob));
+            () => OpenSshCertificate.Decode(blob));
         Assert.Contains("-cert-v01@openssh.com", ex.Message);
     }
 
@@ -194,7 +194,7 @@ public sealed class OpenSshCertificateTests
         OpenSshCertificate cert = await OpenSshCertificate.LoadAsync(
             FixturePath("cert-ed25519-cert.pub"), TestContext.CancellationToken);
 
-        SshPublicKey key = SshPublicKey.Parse(cert.Blob);
+        SshPublicKey key = SshPublicKey.Decode(cert.Blob);
 
         Assert.IsTrue(key.IsCertificate);
         Assert.AreEqual(cert.Algorithm, key.KeyType);
@@ -202,7 +202,7 @@ public sealed class OpenSshCertificateTests
         Assert.AreSequenceEqual(cert.Blob.ToArray(), key.Blob.ToArray(), "出示的仍是整张证书");
         Assert.AreSequenceEqual(ReadPublicBlob("cert-ed25519.pub"), key.PlainKey.Blob.ToArray(), "证书里那把钥");
         Assert.AreEqual(cert.KeyId, key.Certificate?.KeyId);
-        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.ParsePlain(cert.Blob));
+        Assert.ThrowsExactly<SshPublicKeyException>(() => SshPublicKey.DecodePlain(cert.Blob));
     }
 
     private static async Task<SshCertificateSigner> LoadCertificateSignerAsync(string name)

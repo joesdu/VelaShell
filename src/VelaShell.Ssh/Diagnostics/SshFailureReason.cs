@@ -92,6 +92,31 @@ public enum SshFailureReason
     /// <summary>服务端要求先修改密码。</summary>
     PasswordExpired,
 
+    // ---- 本地凭据（私钥、证书、ssh-agent）----
+
+    /// <summary>私钥 / 证书 / 公钥文件读不出来（不存在、没有权限、IO 错误）。</summary>
+    KeyFileUnreadable,
+
+    /// <summary>私钥 / 证书 / 公钥的内容格式不对（损坏、截断、参数不成立）。</summary>
+    KeyFormatInvalid,
+
+    /// <summary>加密的私钥需要口令，而没有给。</summary>
+    KeyPassphraseRequired,
+
+    /// <summary>给了口令，但解不开这把私钥 —— 口令多半不对。</summary>
+    KeyPassphraseIncorrect,
+
+    /// <summary>
+    /// 凭据材料彼此对不上，或者用错了地方：证书里的公钥与私钥不是一对、拿主机证书去登录。
+    /// </summary>
+    KeyMismatch,
+
+    /// <summary>找不到或连不上 ssh-agent，或者它的端点不可信。</summary>
+    AgentUnavailable,
+
+    /// <summary>ssh-agent 拒绝了请求（拒签、拒绝加钥 —— 常见于 <c>ssh-add -c</c> 的确认被拒、agent 被锁）。</summary>
+    AgentRefused,
+
     // ---- 通用 ----
 
     /// <summary>某个阶段超时。具体哪一步看 <see cref="SshPhase"/>。</summary>
@@ -115,9 +140,50 @@ public enum SshFailureReason
     /// <summary>通道打开失败。异常里带 <c>CHANNEL_OPEN_FAILURE</c> 的原因码。</summary>
     ChannelOpenFailed,
 
+    /// <summary>
+    /// 通道开成了，但服务端拒绝了通道上的请求（<c>exec</c>、<c>pty-req</c>、<c>shell</c>、<c>subsystem</c>）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="ChannelOpenFailed"/> 分开：那是连通道都没开成（带 <c>CHANNEL_OPEN_FAILURE</c> 的原因码），
+    /// 这是通道开了、要它做的事被拒 —— 常见原因是 <c>ForceCommand</c>、<c>PermitTTY no</c>、没配子系统。
+    /// </remarks>
+    ChannelRequestRejected,
+
+    // ---- 转发 ----
+
+    /// <summary>
+    /// 转发被拒：服务端不接受转发请求（<c>AllowTcpForwarding no</c> 之类），
+    /// 或者本端拒绝了对端发来的、对不上任何转发的通道。
+    /// </summary>
+    ForwardRejected,
+
+    /// <summary>本机的监听端口开不了（被占用、没有权限）。</summary>
+    ForwardBindFailed,
+
+    /// <summary>本机一侧准备转发失败：拿不到 X 显示、<c>xauth</c> 跑不起来或失败。</summary>
+    ForwardSetupFailed,
+
+    /// <summary>本端的某个并发上限到了（转发连接数、agent / X11 通道数）。</summary>
+    LimitExceeded,
+
+    // ---- 远端命令 ----
+
+    /// <summary>远端命令没有以退出码 0 结束（<c>SshCommandResult.EnsureSuccess</c>）。</summary>
+    CommandFailed,
+
+    // ---- 配置 ----
+
+    /// <summary>
+    /// 配置本身不成立：<c>ProxyJump</c> 成环、跳数超限、<c>ProxyCommand</c> 模板非法之类。
+    /// </summary>
+    /// <remarks>重试没有意义 —— 不改配置，下一次还是一样。</remarks>
+    InvalidConfiguration,
+
+    // ---- 其它 ----
+
     /// <summary>本端主动中止（Dispose 或取消）。</summary>
     Aborted,
 
-    /// <summary>请求的能力对端不支持。</summary>
+    /// <summary>请求的能力（算法、密钥类型、格式版本）对端或本库不支持。</summary>
     Unsupported,
 }

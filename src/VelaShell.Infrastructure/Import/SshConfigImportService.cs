@@ -1,6 +1,7 @@
 using VelaShell.Core.Data;
 using VelaShell.Core.Import;
 using VelaShell.Core.Models;
+using VelaShell.Ssh.Config;
 
 namespace VelaShell.Infrastructure.Import;
 
@@ -52,9 +53,10 @@ public sealed class SshConfigImportService(ISessionRepository repository) : ISes
 
         // Include 的相对路径以 ~/.ssh 为基准(OpenSSH 用户配置的规则),而不是配置文件自身所在目录 ——
         // 用户手动指定了别处的配置文件时,里面的 `Include conf.d/*` 仍指向 ~/.ssh/conf.d。
+        // 解析、Include 展开、Match 判定都用 SSH 库的 SshConfigFile,宿主不另写一份。
         string baseDirectory = SshPathResolver.SshDirectory;
-        IReadOnlyList<SshConfigBlock> blocks = await Task.Run(
-            () => SshConfigParser.ParseFile(path, baseDirectory), cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<SshConfigBlock> blocks = await SshConfigFile
+            .LoadAsync(path, includeDirectory: baseDirectory, cancellationToken).ConfigureAwait(false);
 
         List<SessionProfile> existing = await _repository.GetAllSessionsAsync().ConfigureAwait(false);
         var existingKeys = existing
@@ -62,13 +64,16 @@ public sealed class SshConfigImportService(ISessionRepository repository) : ISes
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var items = new List<ImportedSession>();
-        foreach (string alias in SshConfigParser.CollectHostAliases(blocks))
+        foreach (string alias in HostAliases(blocks))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            IReadOnlyDictionary<string, string> options = SshConfigParser.ResolveOptions(blocks, alias);
+
+            // 静态导入没有「以谁的身份、从哪台机器连」的上下文:Match 里判不了的条件
+            // (user、localuser、exec)按不成立处理,那种块的选项不会渗到会话上。
+            SshHostConfig options = SshConfigFile.Resolve(blocks, alias);
 
             // HostName 缺省即别名本身 —— `Host build01` 不写 HostName 时,ssh 直接连 build01。
-            string host = Value(options, "HostName") is { Length: > 0 } hostName
+            string host = Value(options.First("HostName")) is { } hostName
                 ? ExpandTokens(hostName, alias)
                 : alias;
             if (host.Length == 0)
@@ -76,10 +81,12 @@ public sealed class SshConfigImportService(ISessionRepository repository) : ISes
                 continue;
             }
 
-            int port = int.TryParse(Value(options, "Port"), out int parsed) && parsed is > 0 and <= 65535 ? parsed : 22;
-            string user = Value(options, "User") ?? string.Empty;
-            string? keyPath = ResolveIdentityFile(Value(options, "IdentityFile"), baseDirectory);
-            string? jump = ParseProxyJump(Value(options, "ProxyJump"));
+            int port = options.Port is > 0 and <= 65535 ? options.Port : 22;
+            string user = Value(options.User) ?? string.Empty;
+            string? keyPath = ResolveIdentityFile(Value(options.First("IdentityFile")), baseDirectory);
+            string? jump = SshConfigFile.ParseProxyJump(options.ProxyJump) is [.., SshProxyJumpHop last]
+                ? last.Host
+                : null;
 
             items.Add(new ImportedSession
             {
@@ -111,9 +118,37 @@ public sealed class SshConfigImportService(ISessionRepository repository) : ISes
     public async Task<SessionImportOutcome> ImportAsync(IReadOnlyList<ImportedSession> items, string groupName, CancellationToken cancellationToken = default) =>
         await SessionImportWriter.WriteAsync(_repository, items, groupName, Tag, cancellationToken).ConfigureAwait(false);
 
-    /// <summary>取一个关键字的值;不存在或为空时返回 <c>null</c>。</summary>
-    private static string? Value(IReadOnlyDictionary<string, string> options, string key) =>
-        options.TryGetValue(key, out string? value) && value.Trim() is { Length: > 0 } trimmed ? trimmed : null;
+    /// <summary>去掉首尾空白;空串当作没有。</summary>
+    private static string? Value(string? value) => value?.Trim() is { Length: > 0 } trimmed ? trimmed : null;
+
+    /// <summary>
+    /// 可作为会话导入的主机别名:<c>Host</c> 行上不含通配与取反的模式,按首次出现去重。
+    /// </summary>
+    /// <remarks><c>Match</c> 块没有 <c>Host</c> 模式,自然不产生别名。</remarks>
+    private static List<string> HostAliases(IReadOnlyList<SshConfigBlock> blocks)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var aliases = new List<string>();
+        foreach (SshConfigBlock block in blocks)
+        {
+            if (block.Match is not null)
+            {
+                continue;
+            }
+            foreach (string pattern in block.Patterns)
+            {
+                if (IsLiteralAlias(pattern) && seen.Add(pattern))
+                {
+                    aliases.Add(pattern);
+                }
+            }
+        }
+        return aliases;
+    }
+
+    /// <summary>别名是否是「字面量」:不含 <c>*</c> / <c>?</c> 通配,也不是取反模式。</summary>
+    private static bool IsLiteralAlias(string pattern) =>
+        pattern.Length > 0 && !pattern.StartsWith('!') && pattern.AsSpan().IndexOfAny('*', '?') < 0;
 
     /// <summary>
     /// 展开 <c>HostName</c> 里的 <c>%h</c>(原始别名);其余记号(<c>%r</c>、<c>%p</c> 等)要到连接时
@@ -138,46 +173,6 @@ public sealed class SshConfigImportService(ISessionRepository repository) : ISes
         }
         string expanded = SshPathResolver.Expand(value, baseDirectory);
         return expanded.Length > 0 ? expanded : null;
-    }
-
-    /// <summary>
-    /// 解析 <c>ProxyJump</c>,返回**直接跳板**的别名。
-    /// <para>
-    /// <c>ProxyJump a,b</c> 的语义是「经 a 到 b、再由 b 抵达目标」,因此离目标最近的一跳是**最后一个**;
-    /// VelaShell 的跳板是逐条链式引用(每条配置各指自己的上一跳),取最后一跳才对得上。
-    /// 更前面的跳板由 a、b 各自的配置继续串,前提是它们也在这份 config 里。
-    /// </para>
-    /// </summary>
-    private static string? ParseProxyJump(string? value)
-    {
-        if (value is null || value.Equals("none", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-        string last = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) is { Length: > 0 } hops
-            ? hops[^1]
-            : string.Empty;
-        if (last.Length == 0)
-        {
-            return null;
-        }
-        // 跳板可写成 user@host:port;别名匹配只认 host 这一段。
-        int at = last.LastIndexOf('@');
-        if (at >= 0)
-        {
-            last = last[(at + 1)..];
-        }
-        if (last.StartsWith('['))
-        {
-            // IPv6 字面量:方括号内整段都是地址,后面才可能跟 :port。
-            int close = last.IndexOf(']', StringComparison.Ordinal);
-            last = close > 1 ? last[1..close] : string.Empty;
-        }
-        else if (last.IndexOf(':', StringComparison.Ordinal) is int colon and > 0 && last.LastIndexOf(':') == colon)
-        {
-            last = last[..colon]; // 只有一个冒号才是端口分隔符;多个冒号是没加方括号的 IPv6,整段留着。
-        }
-        return last.Length > 0 ? last : null;
     }
 
     private static string DedupKey(string host, int port, string user) => $"{host.Trim()}|{port}|{user.Trim()}";

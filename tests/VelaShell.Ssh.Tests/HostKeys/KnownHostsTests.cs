@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using VelaShell.Ssh.Crypto;
+using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Tests.TestKit;
 using VelaShell.Ssh.Transport;
@@ -18,7 +19,7 @@ namespace VelaShell.Ssh.Tests.HostKeys;
 public sealed class KnownHostsTests
 {
     private static SshPublicKey MakeKey() =>
-        SshPublicKey.Parse(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
+        SshPublicKey.Decode(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
 
     private static string Line(string host, SshPublicKey key) =>
         $"{host} {key.KeyType} {Convert.ToBase64String(key.Blob.Span)}";
@@ -139,8 +140,8 @@ public sealed class KnownHostsTests
     [TestMethod]
     public void 同一台主机可以有多把不同类型的密钥()
     {
-        var ed25519 = SshPublicKey.Parse(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
-        var rsa = SshPublicKey.Parse(TestHostKey.Create("ssh-rsa").PublicKeyBlob);
+        var ed25519 = SshPublicKey.Decode(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
+        var rsa = SshPublicKey.Decode(TestHostKey.Create("ssh-rsa").PublicKeyBlob);
 
         IReadOnlyList<KnownHostEntry> entries = KnownHostsFile.Parse(
             Line("example.com", ed25519) + "\n" + Line("example.com", rsa) + "\n");
@@ -267,12 +268,13 @@ public sealed class KnownHostsTests
             SshHostKeyVerdict verdict = await policy.EvaluateAsync(Context("example.com", 22, different));
 
             Assert.AreEqual(SshHostKeyDecision.Reject, verdict.Decision);
+            Assert.AreEqual(SshFailureReason.HostKeyChanged, verdict.Reason, "「变了」要与「不信任」分开报，界面上给的提示完全不同。");
 
             // 消息里必须把三件事说清楚：变了、可能是什么、下一步怎么办。
-            Assert.Contains("变了", verdict.Reason!);
-            Assert.Contains("中间人", verdict.Reason!);
-            Assert.Contains("第 1 行", verdict.Reason!);
-            Assert.Contains(different.Sha256Fingerprint, verdict.Reason!);
+            Assert.Contains("变了", verdict.Message!);
+            Assert.Contains("中间人", verdict.Message!);
+            Assert.Contains("第 1 行", verdict.Message!);
+            Assert.Contains(different.Sha256Fingerprint, verdict.Message!);
         }
         finally
         {
@@ -327,7 +329,7 @@ public sealed class KnownHostsTests
         SshHostKeyVerdict verdict = await policy.EvaluateAsync(Context("new.example.com", 22, key));
 
         Assert.AreEqual(SshHostKeyDecision.Reject, verdict.Decision);
-        Assert.Contains(key.Sha256Fingerprint, verdict.Reason!);
+        Assert.Contains(key.Sha256Fingerprint, verdict.Message!);
     }
 
     [TestMethod]
@@ -355,7 +357,7 @@ public sealed class KnownHostsTests
             SshHostKeyVerdict verdict = await policy.EvaluateAsync(Context("example.com", 22, key));
 
             Assert.AreEqual(SshHostKeyDecision.Reject, verdict.Decision);
-            Assert.Contains("@revoked", verdict.Reason!);
+            Assert.Contains("@revoked", verdict.Message!);
         }
         finally
         {
@@ -375,8 +377,8 @@ public sealed class KnownHostsTests
     [TestMethod]
     public void 只记着别的类型时不是没见过()
     {
-        var ed25519 = SshPublicKey.Parse(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
-        var ecdsa = SshPublicKey.Parse(TestHostKey.Create("ecdsa-sha2-nistp256").PublicKeyBlob);
+        var ed25519 = SshPublicKey.Decode(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
+        var ecdsa = SshPublicKey.Decode(TestHostKey.Create("ecdsa-sha2-nistp256").PublicKeyBlob);
         IReadOnlyList<KnownHostEntry> entries = KnownHostsFile.Parse(Line("example.com", ed25519));
 
         KnownHostLookup lookup = KnownHostsFile.Lookup(entries, "example.com", 22, ecdsa);
@@ -391,8 +393,8 @@ public sealed class KnownHostsTests
     [TestMethod]
     public async Task 只记着别的类型时连接受新主机的策略也拒绝且不写入()
     {
-        var ed25519 = SshPublicKey.Parse(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
-        var ecdsa = SshPublicKey.Parse(TestHostKey.Create("ecdsa-sha2-nistp256").PublicKeyBlob);
+        var ed25519 = SshPublicKey.Decode(TestHostKey.Create("ssh-ed25519").PublicKeyBlob);
+        var ecdsa = SshPublicKey.Decode(TestHostKey.Create("ecdsa-sha2-nistp256").PublicKeyBlob);
         string path = await WriteTempAsync(Line("example.com", ed25519));
 
         try
@@ -402,7 +404,7 @@ public sealed class KnownHostsTests
             SshHostKeyVerdict verdict = await policy.EvaluateAsync(Context("example.com", 22, ecdsa));
 
             Assert.AreEqual(SshHostKeyDecision.Reject, verdict.Decision);
-            Assert.Contains("ssh-ed25519", verdict.Reason!);
+            Assert.Contains("ssh-ed25519", verdict.Message!);
             Assert.HasCount(1, KnownHostsFile.Parse(await File.ReadAllTextAsync(path)), "不该写进任何东西");
         }
         finally

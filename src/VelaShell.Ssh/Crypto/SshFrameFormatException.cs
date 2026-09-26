@@ -18,7 +18,7 @@ namespace VelaShell.Ssh.Crypto;
 /// （带 <c>Reason</c> 与 <c>Phase</c>）。
 /// </para>
 /// </remarks>
-public sealed class SshFrameFormatException : Exception
+internal sealed class SshFrameFormatException : Exception
 {
     /// <summary>用给定消息创建异常。</summary>
     public SshFrameFormatException(string message) : base(message)

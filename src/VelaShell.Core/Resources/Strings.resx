@@ -4921,6 +4921,21 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SshErr_Disconnected" xml:space="preserve">
     <value>The server ended the session.</value>
   </data>
+  <data name="SshErr_KeyPassphraseRequired" xml:space="preserve">
+    <value>The private key is encrypted and needs its passphrase.</value>
+  </data>
+  <data name="SshErr_KeyPassphraseIncorrect" xml:space="preserve">
+    <value>The passphrase does not unlock the private key.</value>
+  </data>
+  <data name="SshErr_AgentRefused" xml:space="preserve">
+    <value>The ssh-agent refused the request: the key may no longer be loaded, a confirmation (ssh-add -c) was declined, or the agent is locked.</value>
+  </data>
+  <data name="SshErr_ChannelRequestRejected" xml:space="preserve">
+    <value>The server refused the request on the channel. Common causes in sshd_config: ForceCommand, PermitTTY no, or a missing Subsystem line.</value>
+  </data>
+  <data name="SshErr_ForwardRejected" xml:space="preserve">
+    <value>The server refused the forwarding request. Check AllowAgentForwarding / AllowTcpForwarding / X11Forwarding in sshd_config.</value>
+  </data>
   <data name="Profile_AgentAuth" xml:space="preserve">
     <value>SSH Agent</value>
   </data>

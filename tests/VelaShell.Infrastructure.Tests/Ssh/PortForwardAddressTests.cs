@@ -9,7 +9,7 @@ namespace VelaShell.Infrastructure.Tests.Ssh;
 /// <remarks>
 /// <para>
 /// 搬运、计数、半关闭、错误上报这些**数据面**的行为已经全部在库里了
-/// (<c>PortForwarder</c> / <c>RemoteForwarder</c> 自带计量),对应的用例也在库的仓库里 ——
+/// (<c>PortForwarder</c> / <c>RemotePortForwarder</c> 自带计量),对应的用例也在库的仓库里 ——
 /// 宿主这边原先那 259 行 <c>MeteredPortForwardTests</c> 跟着 <c>MeteredPortForwardHandle</c>
 /// 一起删掉了。
 /// </para>

@@ -84,7 +84,7 @@ public partial class AuthenticationDialogView : Window
     /// 选择 OpenSSH 用户证书文件;私钥还空着时按 <c>&lt;key&gt;-cert.pub</c> 约定顺手补上。
     /// </summary>
     /// <remarks>
-    /// 与连接配置页同一套口径,推断逻辑落在 <see cref="OpenSshCertificate" /> 里 ——
+    /// 与连接配置页同一套口径,推断逻辑落在 <see cref="OpenSshCertificatePaths" /> 里 ——
     /// 两个对话框各写一份的话,改了后缀只会改好其中一处。
     /// </remarks>
     private void BrowseCertificateFile_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
@@ -104,7 +104,7 @@ public partial class AuthenticationDialogView : Window
             return;
         }
         viewModel.CertificatePath = path;
-        if (string.IsNullOrWhiteSpace(viewModel.PrivateKeyPath) && OpenSshCertificate.InferPrivateKeyPath(path) is { } keyPath)
+        if (string.IsNullOrWhiteSpace(viewModel.PrivateKeyPath) && OpenSshCertificatePaths.InferPrivateKeyPath(path) is { } keyPath)
         {
             viewModel.PrivateKeyPath = keyPath;
         }

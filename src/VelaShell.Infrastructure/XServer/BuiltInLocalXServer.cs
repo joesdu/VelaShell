@@ -4,9 +4,8 @@ using VelaShell.Core.Data;
 using VelaShell.Core.Resources;
 using VelaShell.Core.XServer;
 using VelaShell.Ssh.Transport;
-using VelaShell.XServer.Server;
+using VelaShell.XServer;
 using AppXServerOptions = VelaShell.Core.Models.XServerOptions;
-using LibXServerOptions = VelaShell.XServer.Host.XServerOptions;
 
 namespace VelaShell.Infrastructure.XServer;
 
@@ -142,7 +141,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         }
 
         SetState(XServerState.Starting, display);
-        X11Server server = new(new LibXServerOptions
+        X11Server server = new(new X11ServerOptions
         {
             DisplayNumber = display,
             SyncClipboard = options.Clipboard,
@@ -278,6 +277,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         try
         {
             // ServeAsync 不拥有流:连接结束(客户端断开、服务端停下)后在这里释放,SSH 那一端随之读到 EOF。
+            // isLocal:SSH 转发层已经核对过远端给的假 cookie,这条流按本机连接对待。
             await server.ServeAsync(stream, isLocal: true).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is ObjectDisposedException or IOException or OperationCanceledException)

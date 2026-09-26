@@ -5367,6 +5367,21 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SshErr_Disconnected" xml:space="preserve">
     <value>伺服器結束了工作階段。</value>
   </data>
+  <data name="SshErr_KeyPassphraseRequired" xml:space="preserve">
+    <value>私鑰已加密,需要輸入密碼短語。</value>
+  </data>
+  <data name="SshErr_KeyPassphraseIncorrect" xml:space="preserve">
+    <value>密碼短語解不開這把私鑰。</value>
+  </data>
+  <data name="SshErr_AgentRefused" xml:space="preserve">
+    <value>ssh-agent 拒絕了請求:這把金鑰可能已不在 agent 裡、確認(ssh-add -c)被拒絕,或者 agent 已被鎖定。</value>
+  </data>
+  <data name="SshErr_ChannelRequestRejected" xml:space="preserve">
+    <value>伺服器拒絕了通道上的請求。sshd_config 裡常見的原因:ForceCommand、PermitTTY no,或者缺少 Subsystem 那一行。</value>
+  </data>
+  <data name="SshErr_ForwardRejected" xml:space="preserve">
+    <value>伺服器拒絕了轉送請求。檢查 sshd_config 裡的 AllowAgentForwarding / AllowTcpForwarding / X11Forwarding。</value>
+  </data>
   <data name="Profile_AgentAuth" xml:space="preserve">
     <value>SSH Agent</value>
   </data>

@@ -45,7 +45,7 @@ public class SshKeyServiceFormatTests
             //
             // 顺带把上一版这里的反射去掉了:原先要反射进底层库的 internal LoadKeyAsync
             // 才验得了「格式被接受」—— 那种断言随上游改一个方法名就会静默失效。
-            ISshSigner signer = await SshPrivateKeyFile.LoadAsync(info.PrivateKeyPath);
+            using InMemorySshSigner signer = await SshPrivateKeyFile.LoadAsync(info.PrivateKeyPath);
             byte[] data = "velashell key self-check"u8.ToArray();
             string sigAlgorithm = signer.SignatureAlgorithms[0];
             byte[] signature = await signer.SignAsync(data, sigAlgorithm);

@@ -34,16 +34,16 @@
 
 ## 📊 待办分布
 
-**欠账**（⏳ + 🚧 + 💡，共 25 项）与**路线图**（共 29 项）分开计：
+**欠账**（⏳ + 🚧 + 💡，共 27 项）与**路线图**（共 29 项）分开计：
 
 ```mermaid
 pie showData
-    title 欠账 —— 现状与代码对不上的部分（25 项）
+    title 欠账 —— 现状与代码对不上的部分（27 项）
     "P0 存了但不生效" : 5
     "安全与凭据" : 4
     "会话与工作区" : 3
     "数据与可观测" : 3
-    "终端与协议" : 5
+    "终端与协议" : 7
     "文件传输" : 2
     "窗口与外观" : 1
     "插件生态" : 2
@@ -69,7 +69,8 @@ pie showData
 > 「终端与协议」仍为 4：VelaShell.XServer 的 M3（接入宿主）已落地（`plan.md` §105），拆出一条「内置 X 服务端：AltGr 层」（见该节）。
 > 「终端与协议」从 4 加到 5：新增「VelaShell.XServer 全库审查：待修」（plan.md §114，一行里分 A–E 五组，见该节）。
 > 「E 安全与合规」从 5 加到 7：SSH 库补上主机证书之后，新增「主机证书（宿主侧）」与「gssapi-with-mic 认证」两条（`plan.md` §113，见该节）。
-> 新增「窗口与外观」1 项：窗口外框跨平台适配已落地，macOS 独立窗口与 Linux 原生 Wayland 的实机验收还欠着（`plan.md` §116，见该节）。
+> 新增「窗口与外观」1 项：窗口外框跨平台适配已落地，macOS 独立窗口与 Linux 原生 Wayland 的实机验收还欠着（`plan.md` §118，见该节）。
+> 「终端与协议」从 5 加到 7：SSH 库 API 审查（`plan.md` §117）留下两条 —— 拆两个上帝类、剩余中文诊断文本的界面本地化（见该节）。
 
 ---
 
@@ -152,6 +153,8 @@ pie showData
 | ✅ | — | ~~**VelaShell.XServer M4:同步抓取、设备拓扑、XKB 改表、MIT-SHM、GLX**~~ | **已完成**(2026-09-24,`plan.md` §108):pointer / keyboard-mode Synchronous 冻结与 AllowEvents(含 XIAllowEvents)的放行、单步、重放;XIChangeHierarchy(增删主设备、挂上 / 摘下从设备,HierarchyChanged);XKB SetMap 写回核心键位表(`setxkbmap … \| xkbcomp - $DISPLAY` 生效);MIT-SHM 1.1(Linux、只给 Unix 套接字上的本机客户端,SO_PEERCRED 核对段权限);GLX 1.4 —— Mesa 的直接渲染(客户端 llvmpipe、经 PutImage 送像素)与服务端软件 GL 的间接渲染两条路,`glxinfo` / `glxgears` 实测 | 间接渲染只是固定功能 GL 的子集(报 1.1):求值器、累积缓冲、选择 / 反馈、mipmap LOD、点画、3D 纹理不实现;MIT-SHM 1.2 的 fd 传递与共享像素图不做;多指针只到设备拓扑,指针位置与焦点仍是一份 |
 | ✅ | — | ~~**内置 X 服务端:macOS / Linux 的键盘布局跟随**~~ | **已完成**(2026-09-24,`plan.md` §109):设置里的「键盘布局」两种引擎共用 ——「自动」跟随系统(macOS 用 `TISCopyCurrentKeyboardLayoutInputSource` + `UCKeyTranslate`,Option 层对应 AltGr;Linux 经 libxkbcommon-x11 读桌面 `$DISPLAY`),选了具体布局就用随程序带的键位表(由 `scripts/xserver/keymaps/generate.cs` 从 xkeyboard-config 生成,27 个布局) | macOS「自动」只经 CI 编译与平台无关的单测,没有在真 Mac 上跑过(TIS 接口只能在主线程上调,单测线程上不取);Linux 没有桌面 X 显示时「自动」仍按 US(可以手选) |
 | ⏳ | 🔴 P0 | **VelaShell.XServer 全库审查:待修**(2026-09-25,`plan.md` §114) | 五个子系统的审查报了约 70 项,去重后 32 项,都读过完整代码路径。渲染路径那几项已在 §114 改掉,下面的都没动。⚠️ 执行线程卡住时它握着像素锁,宿主 UI 线程下一次读像素就跟着卡死 —— 所以 A 组不只是「X 程序不动了」,而是整个 VelaShell 窗口冻住 | 建议分五批,每项配用例、先撤修复确认失败:<br>**A 组(卡死 / 打垮进程,少量请求即可)**:① 窗口无限嵌套,`DestroyTree` / `ExposeRecursive` 递归栈溢出、整个进程退出(客户端断开时的清理也会触发;`Windows.cs:248`、`Exposure.cs:210`)→ 限深度与每客户端窗口数,两处改显式栈;② XFIXES `DeletePointerBarrier` 对任意 ID 调 `RemoveResource`,一个请求就能删掉根窗口 / 默认颜色表 / 别人的窗口(`XFixes.cs:311`)→ 专用类型 + 属主核对;③ XIChangeHierarchy AddMaster 无上限,`NextDeviceId` 的 `ushort` 回绕后死循环(`XiHierarchy.cs:209`);④ 连满 1000 个客户端后 `RegisterClient` 死循环(`Connection.cs:154`)→ 加 MaxClients、回连接失败;⑤ `Region.Union` 是 O(n²),SHAPE / XFIXES 区域(一个请求可到 200 万块)与棋盘格位图遮罩能让执行线程算上很久(`Region.cs:209`)→ 限块数,长远改按 y 分带;⑥ GLX 间接渲染:CallList(s) 不计入 400 万预算、GenLists / DeleteLists 的 range 到 2³¹(GenLists 回绕死循环)、DrawArrays 无数组时空转 count 次、线宽不封顶、DrawPixels / CopyPixels / Bitmap 不裁剪不校验。<br>**B 组(内存)**:⑦ 未执行请求只数条数,1024 × 16 MB = 16 GB / 客户端,SYNC Await 与 GrabServer 挂住的请求一直占着 → 加字节预算;⑧ CreatePixmap 与顶层缓冲不限尺寸(32767² 一次 4 GB,`Width * Height` 还会 int 溢出);⑨ ChangeProperty Append 无上限、InternAtom 无上限;⑩ XTEST 延迟输入与 Present NotifyMSC 每条一个 `Task.Delay`,无上限、断开不取消,XTEST 的按下 / 松开还会乱序导致按键卡住;⑪ GLX:Begin / End 顶点、显示列表、纹理无上限,PrioritizeTextures 按未校验的 n 分配,ReadPixels 回复可达 1 GB,pbuffer / 像素图表面断开后不释放(复用同一 XID 的客户端还能读到上一个的内容);⑫ XC-MISC GetXIDList、X-Resource QueryClientIds 的代价无界。<br>**C 组(访问控制)**:⑬ 内置服务端没配 cookie,本机任何进程(Linux 上包括别的用户,经抽象命名空间的套接字 —— 没有文件权限可言)都能连进来读窗口、记键盘、经 XTEST 注入输入;`PeerUid` 取了没用 → 启动时生成 MIT-MAGIC-COOKIE-1,SSH 连接器走进程内的受信流;⑭ MIT-SHM 的段按 XID 就能被别的客户端用(uid 只在 Attach 时核对);⑮ SendEvent 放行 GenericEvent(35),能让别的客户端的协议流错位;⑯ 每条协议错误在像素锁里同步写日志文件,不限流,日志文件也不封顶。<br>**D 组(正确性)**:⑰ 抓取窗口变得不可见时不自动解除抓取;⑱ 焦点事件的 detail 总是 Nonlinear、没有虚拟事件与 KeymapNotify;⑲ 宿主按钮只靠一个 bool,失去捕获 / 切走窗口后 X 那边一直按着,服务端还丢掉已销毁顶层上的松开;⑳ `FocusTopLevel` 不看 override-redirect / input=False,WM_TAKE_FOCUS 没实现;㉑ 同步抓取的冻结队列无上限、放行时一项里整批回放、指针与键盘的相对顺序会乱;㉒ 抓取期间 Enter / Leave 仍发给所有客户端,没有 Grab / Ungrab 模式的 crossing;㉓ CirculateNotify 的 place 写在第 20 字节(应为 16);㉔ GLX MakeCurrent 先改状态再抛 BadAlloc,上下文卡在一个幽灵 tag 上;㉕ XKB 锁存的修饰键不被下一个键清掉,SetMap 的修饰映射不校验键码,XI2 ButtonPress 的 buttons 含正在按下的那个;㉖ 零碎:抓取时键盘事件按指针窗口而不是焦点取源、CloseDownMode 的 Retain 不生效、CopyArea 深度不配时池化数组没还、RENDER 同一缓冲上下重叠的 Composite 按行顺序会读到已覆盖的行、GL_EXT_abgr 声明了没实现、RenderLarge 不核对声明的长度、TexSubImage 的边界 int 溢出、RenderMode 的回复条件(待对照规范确认)。<br>**E 组(性能与设计)**:㉗ Region 改成按 y 分带(顺带解决 ⑤);㉘ RENDER 通用路径(渐变、带变换的源)逐像素浮点 → 整数内核;㉙ GLX 单缓冲每个 Render 请求整窗拷一次、LINQ 找表面、每片元重复读状态;㉚ 每条请求为诊断日志分配一个字符串(宿主总设了 `Log`)、回复与事件的闭包和数组、请求缓冲池化(要先让 `XRequestReader` 自带长度);㉛ `XTopLevelWindow` 的字段不加同步地被 UI 线程读,可能读到新 X 旧 Y;㉜ 连接建立没有超时。<br>设计层面的提醒(不是缺陷):所有 SSH 会话共享一个受信的显示,一台被攻破的远端机能看到、也能操作别的会话里的 X 程序 —— 值得写进文档 |
+| ⏳ | 🟡 P2 | **拆 SSH 库的两个上帝类**(2026-09-25,`plan.md` §117 留下的) | `SshConnection` 约 2,960 行(四个 partial,`SshConnection.cs` 自己 1,576 行)、`SshChannel` 1,388 行,都远过 `src/VelaShell.Ssh/AGENTS.md` 4.4 的 800 行 | 拆成 internal 协作者而不是更多 partial:`SshChannel` 的收发窗口与 stdin 泵、`SshConnection` 的收包分发与全局请求账本。**纯重构,单独开 PR**,不混行为改动;`VelaShell.Ssh.Tests` 与互操作用例是它的安全网 |
+| ⏳ | 🟡 P2 | **SSH 库剩余中文诊断文本的界面本地化**(2026-09-25,`plan.md` §117 留下的) | 英 / 日 / 韩界面仍会看到库的中文原文:认证的逐条尝试记录(`SshAuthAttempt.ToString` 与 `Detail`)、通道开不成时的建议(`SshChannelException`)、`KnownHostLookup.CertificateProblem`、带路径 / 指纹 / 端口的私钥、证书、配置消息 | **先在库里补结构化的出处**(尝试结果已有 `SshAuthOutcome`,缺的是 `Detail` 的种类;证书问题要一个枚举),宿主 `SshInterop` 再按枚举出五语言文案 —— 不在宿主里解析句子(`AGENTS.md` 4.5) |
 | 📄 | 🟠 P1 | **设计稿的两处残留** | Logo 有一个 `enabled:false` 残留图标；文件列表「修改时间」列无固定宽度 | 小到可以顺手做掉，记在这里免得忘 |
 
 ### SSH PTY 像素尺寸贯通 —— 实施细节
@@ -514,7 +517,7 @@ var options = new ExecuteOptions
 
 | 状态 | 优先级 | 项 | 现状 | 要做什么 |
 | :---: | :---: | --- | --- | --- |
-| 🚧 | 🟠 P1 | **窗口外框跨平台适配:剩下的实机验收** | 全部弹窗与独立窗口已按平台走原生机制(`plan.md` §116,`Views/WindowChrome.cs`)。macOS 上主窗口、设置窗口与消息框已由朋友实机验收;**非模态窗口的红绿灯是这一轮新加的,还没在 Mac 上看过**;Linux 只在 WSLg 里跑过 —— 那里 Wayland 起不来(Weston 缺 `xdg_wm_base` ≥ 3)、X11 又没有透明,测到的只是 X11 分支 | ①macOS:任务管理器 / 资源监视 / 插件管理等独立窗口的红绿灯可用、自绘的窗口按钮不见了、标题栏左侧让位宽度合适(`Themes/WindowChrome.axaml` 的 `traffic-light-spacer` 宽 60,不合适就调);红绿灯与标题同一条中线(全部标题栏已统一 28,并跟随系统标题栏的实际高度);最大化 / 全屏后卡片铺满。②Linux 原生 Wayland 桌面(GNOME / KDE / Hyprland 任一):弹窗外那一圈消失、阴影圆角描边与 Windows 观感一致、拖动与边缘缩放、背景模糊是否只在卡片范围内(取决于合成器,记下即可),以及 `Width` / `Height` 是否确实不含装饰(源码推断如此,不对的话改 `WindowChrome.SizeReduction` / `OuterFrameSize`)。③Linux X11 桌面:不透明矩形、没有外圈、自绘抓取区能缩放。④隔离插件的窗口(`PluginHostShellWindow`)同上各看一眼 |
+| 🚧 | 🟠 P1 | **窗口外框跨平台适配:剩下的实机验收** | 全部弹窗与独立窗口已按平台走原生机制(`plan.md` §118,`Views/WindowChrome.cs`)。macOS 上主窗口、设置窗口与消息框已由朋友实机验收;**非模态窗口的红绿灯是这一轮新加的,还没在 Mac 上看过**;Linux 只在 WSLg 里跑过 —— 那里 Wayland 起不来(Weston 缺 `xdg_wm_base` ≥ 3)、X11 又没有透明,测到的只是 X11 分支 | ①macOS:任务管理器 / 资源监视 / 插件管理等独立窗口的红绿灯可用、自绘的窗口按钮不见了、标题栏左侧让位宽度合适(`Themes/WindowChrome.axaml` 的 `traffic-light-spacer` 宽 60,不合适就调);红绿灯与标题同一条中线(全部标题栏已统一 28,并跟随系统标题栏的实际高度);最大化 / 全屏后卡片铺满。②Linux 原生 Wayland 桌面(GNOME / KDE / Hyprland 任一):弹窗外那一圈消失、阴影圆角描边与 Windows 观感一致、拖动与边缘缩放、背景模糊是否只在卡片范围内(取决于合成器,记下即可),以及 `Width` / `Height` 是否确实不含装饰(源码推断如此,不对的话改 `WindowChrome.SizeReduction` / `OuterFrameSize`)。③Linux X11 桌面:不透明矩形、没有外圈、自绘抓取区能缩放。④隔离插件的窗口(`PluginHostShellWindow`)同上各看一眼 |
 
 ---
 
@@ -691,10 +694,11 @@ var options = new ExecuteOptions
 | ⏳ | `plan.md` §74 / §75 | **目录比较与同步**：已开 [velashell-docs#35](https://github.com/VelaShellLabs/velashell-docs/pull/35)，**待合入**。`{zh,en}/host/SFTP双栏与WinSCP差距分析.md`（C1 改为已实现、优先级第 10 条划掉、新增第七节：比较目录、同步窗口选项表与执行规则、保持远端最新、比较口径、未做与已知限制）；`{zh,en}/host/交互与界面规格.md` §6 补文档工具条、同步窗口布局与「保持远端最新」。§75 的 SHA-256 优先比较也已写进同两份文档（选项表、7.4 比较口径、7.5 代价与缓存限制）。合入后把这一行改成 ✅ |
 | ⏳ | `plan.md` §82 | #474 的四条改动要同步文档：**已在 velashell-docs 的 `docs/474-explorer-sftp` 分支上改好（中英各 3 个文件），待开 PR 与宿主 PR 互相引用后一起合**。内容：`{zh,en}/host/交互与界面规格.md` 资源管理器一节补**置顶**（右键入口、提到整棵树最前、`GroupId` 不变、与折叠配套的理由、分组计数仍按成员数）与 SFTP 路径栏的**复制当前路径**按钮；`{zh,en}/host/设置项审计.md` 补两条新设置（`General.CollapseGroupsByDefault`、`Transfer.UseRecursiveDeleteCommand`）；`Transfer` 那条要写明**只对有 exec 通道的 SSH 会话生效、失败自动回退、没有逐条进度**三句口径 |
 | ⏳ | `plan.md` §86 / §87 | **密钥生成默认给 Ed25519，并新增算法下拉**：`{zh,en}/host/交互与界面规格.md` 密钥管理页一节改口径 —— 工具栏在「导入」左边多了一个算法下拉（**Ed25519（默认）/ ECDSA 256·384·521 / RSA 4096**，位数刻意不给选），「生成密钥」按下拉选中的那一档产出，不再恒为 RSA 4096；自动命名随算法走（`velashell_ed25519` / `velashell_ecdsa256|384|521` / `velashell_rsa`，重名自动加 `_2`），老用户 `~/.ssh` 下那把 `velashell_rsa` 不受影响。`{zh,en}/host/架构设计.md` 若有「只能生成 RSA」一类的口径也要一并改 |
-| ⏳ | `plan.md` §116 | **窗口外框跨平台适配**:velashell-docs 已在本地改好(中英各 3 个文件),**待开 PR 与宿主 PR 互相引用后一起合**。内容:`{zh,en}/host/architecture.md` §5「窗口壳」的 ⚠️ 限定为 Win32、新增「各平台的外框」(对照表、`WindowChrome` 与 XAML 约定、Avalonia 12.1.3 源码依据、验收状态);`{zh,en}/host/交互与界面规格.md` §2 补 macOS 红绿灯与各平台的弹窗 / 独立窗口外框、「窗口标题栏说明」补 macOS 一句、阴影一条补 Wayland 阴影宽度;`{zh,en}/host/design-specs.md` 实现差异说明补 macOS 红绿灯;全部窗口标题栏统一 28 的口径也已写进这三篇(36px / 48px 的旧说法已改)。实机验收做完后改掉 architecture 里「验收」那一段 |
+| ⏳ | `plan.md` §118 | **窗口外框跨平台适配**:velashell-docs 已在本地改好(中英各 3 个文件),**待开 PR 与宿主 PR 互相引用后一起合**。内容:`{zh,en}/host/architecture.md` §5「窗口壳」的 ⚠️ 限定为 Win32、新增「各平台的外框」(对照表、`WindowChrome` 与 XAML 约定、Avalonia 12.1.3 源码依据、验收状态);`{zh,en}/host/交互与界面规格.md` §2 补 macOS 红绿灯与各平台的弹窗 / 独立窗口外框、「窗口标题栏说明」补 macOS 一句、阴影一条补 Wayland 阴影宽度;`{zh,en}/host/design-specs.md` 实现差异说明补 macOS 红绿灯;全部窗口标题栏统一 28 的口径也已写进这三篇(36px / 48px 的旧说法已改)。实机验收做完后改掉 architecture 里「验收」那一段 |
 | ⏳ | `plan.md` §61 | 回滚行数（`设置 → 终端`）的行为补一句：**调小当场生效**，超出上限的历史立刻裁掉、不可恢复；以及它作用于主屏，全屏程序（vim / htop / less）的备用屏恒无回滚，与这个值无关 |
 | ✅ | `plan.md` §98 | ~~**自动加载密钥到 Agent**~~ —— **2026-09-23 已同步**（[velashell-docs#53](https://github.com/VelaShellLabs/velashell-docs/pull/53) 已与宿主 #493 一起合入）。原登记内容：`{zh,en}/ssh/spec/07-forwarding.md` 新增 §7.3（加钥报文、私钥布局、约束、五条决策）；`{zh,en}/ssh/getting-started.md` 补示例；`{zh,en}/host/settings-audit.md` R-06 改为已实现；交互规格密钥管理一行、架构设计未实现清单同步。|
 | ✅ | `plan.md` §102 | ~~**agent 转发的只转发选中密钥与逐次确认**~~ —— **2026-09-23 已同步**（[velashell-docs#56](https://github.com/VelaShellLabs/velashell-docs/pull/56) 已与宿主 #495 一起合入）。原登记内容：`{zh,en}/host/交互与界面规格.md` SSH 连接选项一节补两项与 agent 签名确认框（三按钮、拒绝为默认键与取消键、60 秒无人应答拒绝、多会话排队）。|
+| ⏳ | `plan.md` §117 | **SSH 库 API 整改**：`{zh,en}/ssh/getting-started.md` 的示例改用新的公开面（`SshConnection.ConnectAsync(options, ct)`、`RunAsync` → `SshCommandResult`、`SshExitStatus`、`LocalPortForwarder.Start` / `RemotePortForwarder.StartAsync`、`SshTerminalModes`、`AgentForwardOptions`、`InMemorySshSigner`）；`ssh/design/architecture.md` §6（公共 API 形态）与 §8（扩展点：KEX 表不再可注册、拨号器只经 `DialerChain`）对上代码；`ssh/spec/08-failures.md` 补新增的 `SshFailureReason` 值与 `SshHostKeyVerdict.Reason`。改动已在 velashell-docs 的 `fix/ssh-api-cleanup` 分支上备好（本地工作树，未提交），待开 PR 与宿主 PR 互相引用后一起合 |
 
 ---
 
@@ -710,7 +714,7 @@ var options = new ExecuteOptions
 | **键盘复制模式（vi-like）** | 产品决策（2026-09-09）：**没见过这种用法**，为它付的代价却不小。技术上不难（选区模型三种形态 `TerminalSelectionMath` 已经全在），但它要新起一个**模式态**，而模式态要同时穿过两层输入路径：`TerminalKeyRouter` 与抢在它前面的 `TerminalTabView.OnPreviewKeyDown`（`Ctrl+F` 搜索栏、`Esc`、补全弹层的 `↑↓/Tab/Esc` 都在那一层被截走）。此外还要处理三件事：进模式必须关 IME（否则中文输入法下 `j` 到手是 `ImeProcessed`，原始键拿不回来，模式看着像死了）、`Ctrl+C` 的三重身份要重新定义、以及一个不可省的模式指示器。而**它的主场景已被别的功能吃掉**：选中整条命令输出走 OSC 133 的命令块，找文本走 `Ctrl+F`，抢鼠标的程序里走 `Shift+拖拽` —— 剩下的净增量只有「选任意一段」。⚠️ 与「自定义键位」那条决策也冲突：键位定死了就改不了，Dvorak / Colemak 上 `hjkl` 的位置是错的 |
 | **SFTP 面板内拖拽移动文件** | 维护者既有决策（#474 回复）：**做过，因为太容易误触发而关掉了** —— 文件列表上一次不经意的拖动就把文件挪走，用户事后往往不知道东西去了哪，「文件乱飞」。现有的 `DragDrop` 装配（`FileBrowserView.axaml.cs`）只认**本地路径落入**与**跨面板传输**，`DragEffects` 只给 `Copy`；远端内部的移动请用右键「重命名」或双栏。再提之前先想清楚怎么防误触发，光把开关打开等于把老问题原样搬回来 |
 | **连字（Ligatures）** | 自绘渲染器按**单元格**排版，无法跨字符连字。这是自绘换来渲染控制权的固有代价 |
-| **自适应标题栏颜色** | 系统原生标题栏由 OS 托管 —— 而主窗与全部对话框的标题栏现在都是自绘的（macOS 上只借用系统红绿灯，标题栏本身仍自绘，见 `plan.md` §116），这条本身已失去对象 |
+| **自适应标题栏颜色** | 系统原生标题栏由 OS 托管 —— 而主窗与全部对话框的标题栏现在都是自绘的（macOS 上只借用系统红绿灯，标题栏本身仍自绘，见 `plan.md` §118），这条本身已失去对象 |
 | **系统通知 Toast** | 需要 AppUserModelID 与通知框架。替代方案已落地：常规页「声音提示」+ 安全审计页告警通道的「提示音」（`Security.AlertSound`），以及消息中心（`plan.md` §20） |
 | **输入脱敏（会话录制）** | 只录**输出流**，密码本就无回显，没有要脱敏的对象 |
 | **自定义键位** | 产品决策：快捷键页定位为「参考表」，唯一事实来源是 `ShortcutCatalog.cs` |

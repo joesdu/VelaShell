@@ -289,7 +289,6 @@ public sealed class InMemoryTransportTests
         Assert.IsNotNull(seen);
         Assert.AreEqual("example.com", seen.EndPoint.Host);
         Assert.AreEqual(22, seen.EndPoint.Port);
-        Assert.AreEqual(seen.EndPoint, seen.FinalDestination, "直连时这一跳就是最终目标");
 
         Assert.IsNotNull(serverSide);
         await using (serverSide)

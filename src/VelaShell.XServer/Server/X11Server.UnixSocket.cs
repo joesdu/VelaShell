@@ -10,7 +10,7 @@
 
 using System.Net.Sockets;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -54,7 +54,7 @@ public sealed partial class X11Server
                 // 没人应答才是上次没收拾干净的残留,删掉重建。
                 if (IsUnixSocketLive(path))
                 {
-                    _options.Log?.Invoke($"Unix socket {path} is in use by another X server; not listening on it");
+                    Log($"Unix socket {path} is in use by another X server; not listening on it");
                     return;
                 }
                 File.Delete(path);
@@ -62,7 +62,7 @@ public sealed partial class X11Server
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _options.Log?.Invoke($"Unix socket {path} unavailable: {ex.Message}");
+            Log($"Unix socket {path} unavailable: {ex.Message}");
             return;
         }
         TryListen(path, path, cancellationToken);
@@ -94,7 +94,7 @@ public sealed partial class X11Server
         catch (SocketException ex)
         {
             socket.Dispose();
-            _options.Log?.Invoke($"Unix socket {endpoint.TrimStart('\0')} unavailable: {ex.SocketErrorCode}");
+            Log($"Unix socket {endpoint.TrimStart('\0')} unavailable: {ex.SocketErrorCode}");
             return;
         }
         _unixListeners.Add((socket, file));

@@ -3,10 +3,7 @@ using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.XServer;
 using VelaShell.Infrastructure.XServer;
-using VelaShell.XServer.Drawing;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
-using XServerOptions = VelaShell.Core.Models.XServerOptions;
+using VelaShell.XServer;
 
 namespace VelaShell.Infrastructure.Tests.XServer;
 
@@ -200,7 +197,7 @@ public class BuiltInLocalXServerTests
         {
         }
 
-        public void TopLevelChanged(XTopLevelWindow window)
+        public void TopLevelChanged(XTopLevelWindow window, XTopLevelChanges changes)
         {
         }
 
@@ -208,11 +205,11 @@ public class BuiltInLocalXServerTests
         {
         }
 
-        public void CursorChanged(XTopLevelWindow? window, int cursorGlyph)
+        public void CursorChanged(XTopLevelWindow? window, XCursor cursor)
         {
         }
 
-        public void Bell(int percent)
+        public void BellRequested(int volume)
         {
         }
 

@@ -8,6 +8,7 @@
 //   行为规格: velashell-docs/zh/ssh/design/architecture.md §8 第 5 项
 
 using VelaShell.Ssh.Auth;
+using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.HostKeys;
 
 namespace VelaShell.Ssh.Keys;
@@ -31,7 +32,7 @@ namespace VelaShell.Ssh.Keys;
 /// PKCS#11、HSM 都行,证书不改变这一点。
 /// </para>
 /// </remarks>
-public sealed class SshCertificateSigner : ISshSigner
+public sealed class SshCertificateSigner : ISshSigner, IDisposable
 {
     private readonly ISshSigner _inner;
 
@@ -60,7 +61,7 @@ public sealed class SshCertificateSigner : ISshSigner
     /// 把一张证书与它对应的私钥配成一个签名器。
     /// </summary>
     /// <param name="certificate">证书。</param>
-    /// <param name="signer">被签发的那把私钥的签名器。</param>
+    /// <param name="signer">被签发的那把私钥的签名器。<b>交进来就归返回的签名器所有</b>：释放它时一并释放。</param>
     /// <returns>可直接交给 <see cref="PublicKeyCredential" /> 的签名器。</returns>
     /// <exception cref="SshCertificateException">
     /// 证书不是用户证书,或者它里面的公钥与 <paramref name="signer" /> 的不是同一把。
@@ -78,14 +79,14 @@ public sealed class SshCertificateSigner : ISshSigner
 
         if (certificate.CertificateType != SshCertificateType.User)
         {
-            throw new SshCertificateException(
-                $"这是一张**主机**证书({certificate.KeyId}),不能拿来登录。" +
+            throw new SshCertificateException(SshFailureReason.KeyMismatch,
+                $"这是一张主机证书({certificate.KeyId}),不能拿来登录。" +
                 "用户证书是 ssh-keygen 签发时不带 -h 的那一种。");
         }
 
         if (!certificate.Key.Blob.Span.SequenceEqual(signer.PublicKey.Blob.Span))
         {
-            throw new SshCertificateException(
+            throw new SshCertificateException(SshFailureReason.KeyMismatch,
                 $"证书({certificate.KeyId})里的公钥与这把私钥不是一对:" + Environment.NewLine +
                 $"  证书里的是 {certificate.Key.KeyType} {certificate.Key.Sha256Fingerprint}" + Environment.NewLine +
                 $"  私钥这边是 {signer.PublicKey.KeyType} {signer.PublicKey.Sha256Fingerprint}" + Environment.NewLine +
@@ -107,4 +108,7 @@ public sealed class SshCertificateSigner : ISshSigner
     public ValueTask<byte[]> SignAsync(
         ReadOnlyMemory<byte> data, string algorithm, CancellationToken cancellationToken = default) =>
         _inner.SignAsync(data, SshPublicKey.StripCertificateSuffix(algorithm), cancellationToken);
+
+    /// <summary>释放内层的签名器（持有私钥材料时清零）。</summary>
+    public void Dispose() => (_inner as IDisposable)?.Dispose();
 }

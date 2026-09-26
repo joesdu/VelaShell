@@ -34,14 +34,14 @@ public sealed class ChannelInterleavingTests
         for (int round = 0; round < 40; round++)
         {
             // 一次性探测：开、跑、关。
-            SshCommandOutput probe = await host.Connection.RunAsync($"probe {round}", cancellationToken: host.Token);
+            SshCommandResult probe = await host.Connection.RunAsync($"probe {round}", cancellationToken: host.Token);
             Assert.AreEqual(0, probe.ExitCode, $"第 {round} 轮探测没有正常结束");
 
             // shell 这边还得有来有回。
             string marker = $"ping-{round}\n";
-            await shell.Input.WriteAsync(Encoding.ASCII.GetBytes(marker), host.Token);
+            await shell.StandardInput.WriteAsync(Encoding.ASCII.GetBytes(marker), host.Token);
 
-            string echoed = await ReadAtLeastAsync(shell.Output, marker.Length, host.Token)
+            string echoed = await ReadAtLeastAsync(shell.StandardOutput, marker.Length, host.Token)
                 .WaitAsync(TimeSpan.FromSeconds(5), host.Token);
             Assert.AreEqual(marker, echoed, $"第 {round} 轮之后 shell 没有回显");
         }
@@ -77,26 +77,26 @@ public sealed class ChannelInterleavingTests
 
         for (int round = 0; round < 20; round++)
         {
-            SshCommandOutput probe = await host.Connection.RunAsync($"probe {round}", cancellationToken: host.Token);
+            SshCommandResult probe = await host.Connection.RunAsync($"probe {round}", cancellationToken: host.Token);
             Assert.AreEqual(0, probe.ExitCode);
 
             // 从这里起是同步代码 —— 不 await，就在 RunAsync 的续体所在的线程上阻塞着等回显。
             string marker = $"sync-{round}\n";
-            _ = shell.Input.WriteAsync(Encoding.ASCII.GetBytes(marker), host.Token).AsTask();
+            _ = shell.StandardInput.WriteAsync(Encoding.ASCII.GetBytes(marker), host.Token).AsTask();
 
             string echoed = "";
             var clock = System.Diagnostics.Stopwatch.StartNew();
             while (clock.Elapsed < TimeSpan.FromSeconds(5))
             {
-                if (shell.Output.TryRead(out ReadResult read))
+                if (shell.StandardOutput.TryRead(out ReadResult read))
                 {
                     if (read.Buffer.Length >= marker.Length)
                     {
                         echoed = Encoding.ASCII.GetString(read.Buffer.Slice(0, marker.Length));
-                        shell.Output.AdvanceTo(read.Buffer.GetPosition(marker.Length));
+                        shell.StandardOutput.AdvanceTo(read.Buffer.GetPosition(marker.Length));
                         break;
                     }
-                    shell.Output.AdvanceTo(read.Buffer.Start, read.Buffer.End);
+                    shell.StandardOutput.AdvanceTo(read.Buffer.Start, read.Buffer.End);
                 }
                 Thread.Sleep(20);
             }

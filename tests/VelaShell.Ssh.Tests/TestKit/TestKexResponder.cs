@@ -22,10 +22,10 @@ namespace VelaShell.Ssh.Tests.TestKit;
 /// <summary>服务端对客户端公开值的应答。</summary>
 /// <param name="ServerPublicValue">要放进编号 31 报文的服务端公开值。</param>
 /// <param name="SharedSecret">共享密钥。</param>
-public readonly record struct TestKexResponse(byte[] ServerPublicValue, byte[] SharedSecret);
+internal readonly record struct TestKexResponse(byte[] ServerPublicValue, byte[] SharedSecret);
 
 /// <summary>密钥交换的服务端一侧。</summary>
-public static class TestKexResponder
+internal static class TestKexResponder
 {
     /// <summary>该算法名测试桩支不支持。</summary>
     public static bool IsSupported(string algorithm) => algorithm switch
@@ -35,7 +35,7 @@ public static class TestKexResponder
         SshAlgorithmNames.DiffieHellmanGroup14Sha256 or SshAlgorithmNames.DiffieHellmanGroup16Sha512
             or SshAlgorithmNames.DiffieHellmanGroup14Sha1 => true,
         SshAlgorithmNames.MlKem768X25519Sha256 => true,
-        SshAlgorithmNames.SNtruP761X25519Sha512 or SshAlgorithmNames.SNtruP761X25519Sha512OpenSsh => true,
+        SshAlgorithmNames.Sntrup761X25519Sha512 or SshAlgorithmNames.Sntrup761X25519Sha512OpenSsh => true,
         _ => false,
     };
 
@@ -56,7 +56,7 @@ public static class TestKexResponder
 
         SshAlgorithmNames.MlKem768X25519Sha256 =>
             RespondHybrid(clientPublicValue, kemPublicBytes: 1184, HashAlgorithmName.SHA256, MlKemEncapsulate),
-        SshAlgorithmNames.SNtruP761X25519Sha512 or SshAlgorithmNames.SNtruP761X25519Sha512OpenSsh =>
+        SshAlgorithmNames.Sntrup761X25519Sha512 or SshAlgorithmNames.Sntrup761X25519Sha512OpenSsh =>
             RespondHybrid(clientPublicValue, kemPublicBytes: 1158, HashAlgorithmName.SHA512, SNtruEncapsulate),
 
         _ => throw new NotSupportedException($"测试桩不支持的 KEX：{algorithm}"),

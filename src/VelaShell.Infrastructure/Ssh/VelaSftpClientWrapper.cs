@@ -264,21 +264,21 @@ public sealed class VelaSftpClientWrapper(Func<CancellationToken, ValueTask<Sftp
                 return await fs.OpenAppendAsync(path, Math.Max(0, end), cancellationToken: ct).ConfigureAwait(false);
             }
 
-            SftpOpenMode open = (canRead ? SftpOpenMode.Read : SftpOpenMode.None)
-                                | (canWrite ? SftpOpenMode.Write : SftpOpenMode.None);
+            SftpOpenModes open = (canRead ? SftpOpenModes.Read : SftpOpenModes.None)
+                                | (canWrite ? SftpOpenModes.Write : SftpOpenModes.None);
 
             open |= mode switch
             {
-                FileMode.CreateNew => SftpOpenMode.Create | SftpOpenMode.Exclusive,
+                FileMode.CreateNew => SftpOpenModes.Create | SftpOpenModes.Exclusive,
                 // Create / Truncate 都要求截断旧内容,否则新内容比旧文件短时会残留旧尾部。
-                FileMode.Create => SftpOpenMode.Create | SftpOpenMode.Truncate,
-                FileMode.Truncate => SftpOpenMode.Truncate,
-                FileMode.OpenOrCreate => SftpOpenMode.Create,
-                _ => SftpOpenMode.None,
+                FileMode.Create => SftpOpenModes.Create | SftpOpenModes.Truncate,
+                FileMode.Truncate => SftpOpenModes.Truncate,
+                FileMode.OpenOrCreate => SftpOpenModes.Create,
+                _ => SftpOpenModes.None,
             };
 
             return await fs.OpenAsync(
-                path, open, SftpFileAttributes.Empty, canRead, canWrite, cancellationToken: ct)
+                path, open, cancellationToken: ct)
                 .ConfigureAwait(false);
         }, ct);
 

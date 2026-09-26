@@ -9,17 +9,18 @@
 //   「GrabPointer」「UngrabPointer」「GrabButton」「UngrabButton」「ChangeActivePointerGrab」「GrabKeyboard」
 //   「UngrabKeyboard」「GrabKey」「UngrabKey」「QueryPointer」「WarpPointer」「SetInputFocus」「GetInputFocus」
 //   「GetKeyboardMapping」「ChangeKeyboardMapping」「GetModifierMapping」「SetModifierMapping」
-//   「GetKeyboardControl」「GetPointerMapping」;ICCCM §4.2.8(WM_DELETE_WINDOW)与 §4.1.5(合成 ConfigureNotify)
+//   「GetKeyboardControl」「GetPointerMapping」;「MappingNotify」;附录 A「KEYSYM Encoding」(ISO_Level3_Shift、Alt_R)
 //
-//   同步抓取(pointer-mode / keyboard-mode = Synchronous)与 AllowEvents 的冻结、放行、重放见 X11Server.SyncGrabs.cs。
+//   同步抓取(pointer-mode / keyboard-mode = Synchronous)与 AllowEvents 的冻结、放行、重放见 X11Server.GrabFreeze.cs;
+//   光标见 X11Server.Cursors.cs。
 
-using VelaShell.XServer.Host;
 using VelaShell.XServer.Input;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -43,177 +44,112 @@ public sealed partial class X11Server
     /// <summary>键盘焦点:null = None;<see cref="Root" /> = PointerRoot;其余为具体窗口。</summary>
     private XWindow? _focus;
     private byte _focusRevertTo;
-    private int _cursorGlyph = int.MinValue;
 
     private ushort State => (ushort)(_modifiers | _buttons);
 
-    // ================================================================== 宿主注入(任意线程)
+    // ================================================================== 宿主注入的输入(见 X11Server.cs 的公开方法)
 
     /// <summary>指针在顶层窗口里移动(内区坐标)。</summary>
-    public void PointerMotion(uint topLevel, int x, int y) => Post(null, () =>
+    private void ApplyPointerMotion(XWindow top, int x, int y)
     {
         NoteUserActivity();
-        if (Lookup<XWindow>(topLevel) is { IsTopLevel: true } top)
-        {
-            // 根坐标在注入的那一刻算好:指针冻着时事件排队,之后窗口可能挪了。
-            int rootX = top.X + top.BorderWidth + x, rootY = top.Y + top.BorderWidth + y;
-            ProcessPointerInput(() => MovePointer(rootX, rootY));
-        }
-    });
+        // 根坐标在注入的那一刻算好:指针冻着时事件排队,之后窗口可能挪了。
+        int rootX = top.X + top.BorderWidth + x, rootY = top.Y + top.BorderWidth + y;
+        ProcessPointerInput(() => MovePointer(rootX, rootY));
+    }
 
-    /// <summary>
-    /// 按钮按下 / 松开。1 左、2 中、3 右;滚轮向上 4、向下 5、向左 6、向右 7(宿主应当为每格滚动注入一次按下 + 松开);
-    /// 8、9 是后退 / 前进侧键。
-    /// </summary>
-    public void PointerButton(uint topLevel, int x, int y, int button, bool pressed) => Post(null, () =>
+    private void ApplyPointerButton(XWindow top, int x, int y, int button, bool pressed)
     {
         NoteUserActivity();
-        if (Lookup<XWindow>(topLevel) is not { IsTopLevel: true } top || button is < 1 or > 255)
-        {
-            return;
-        }
         int rootX = top.X + top.BorderWidth + x, rootY = top.Y + top.BorderWidth + y;
         ProcessPointerInput(() =>
         {
             MovePointer(rootX, rootY);
             ButtonEvent(button, pressed);
         });
-    });
+    }
 
-    /// <summary>指针离开了所有顶层窗口(移到了宿主的其他窗口或桌面上)。</summary>
-    public void PointerLeft() => Post(null, () => ProcessPointerInput(() => MovePointer(-1, -1)));
+    /// <summary>指针离开了所有顶层窗口。</summary>
+    private void ApplyPointerLeave() => ProcessPointerInput(() => MovePointer(-1, -1));
 
-    /// <summary>按键按下 / 松开(X 键码,见 <see cref="XKeycodes" />)。</summary>
-    public void Key(byte keycode, bool pressed) => Post(null, () =>
+    private void ApplyKey(byte keycode, bool pressed)
     {
         NoteUserActivity();
         ProcessKeyboardInput(() => KeyEvent(keycode, pressed));
-    });
+    }
+
+    // ================================================================== 宿主换键位表
+
+    /// <summary>右 Alt 当 AltGr 时的键值(ISO_Level3_Shift)与平时的键值(Alt_R),协议附录 A「KEYSYM Encoding」。</summary>
+    private const uint IsoLevel3ShiftKeysym = 0xfe03, AltRightKeysym = 0xffea;
 
     /// <summary>
-    /// 换键位表(宿主的键盘布局不是 US 时):从 <paramref name="firstKeycode" /> 起,每个键码 <paramref name="keysymsPerKeycode" /> 个键值
-    /// (第 1 列无修饰、第 2 列 Shift,与核心协议 ChangeKeyboardMapping 相同)。XKB 描述随之重新推出,
-    /// 客户端收到 MappingNotify 与 XKB 的 MapNotify。<paramref name="layout" /> 是布局名(如 <c>de</c>),给 setxkbmap 之类看。
+    /// 修饰键表(8 个修饰位 × 每位 2 个键码):Shift、Lock、Control、Mod1(Alt)、Mod2(Num Lock)、Mod3、Mod4(Super)、Mod5。
+    /// 有 AltGr 时右 Alt 从 Mod1 挪到 Mod5 —— 四级键类型按 Mod5 选第三、四级。
     /// </summary>
-    public void SetKeyboardMapping(byte firstKeycode, int keysymsPerKeycode, ReadOnlySpan<uint> keysyms, string? layout = null)
+    private static readonly byte[] DefaultModifierMap = [50, 62, 66, 0, 37, 105, 64, 108, 77, 0, 0, 0, 133, 134, 0, 0];
+
+    private static readonly byte[] AltGrModifierMap = [50, 62, 66, 0, 37, 105, 64, 0, 77, 0, 0, 0, 133, 134, 108, 0];
+
+    /// <summary><see cref="XKeymap" /> 在调用方线程上拷下来的一份(之后宿主再改那个对象不影响这里)。</summary>
+    private sealed record KeymapChange(string Layout, int KeysymsPerKeycode, bool AltGr, (byte Keycode, uint[] Keysyms)[] Keys)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(firstKeycode, Keymap.MinKeycode);
-        ArgumentOutOfRangeException.ThrowIfLessThan(keysymsPerKeycode, 1);
-        if (keysyms.Length % keysymsPerKeycode != 0 || firstKeycode + (keysyms.Length / keysymsPerKeycode) - 1 > Keymap.MaxKeycode)
-        {
-            throw new ArgumentException("键值个数必须是每键码键值数的整数倍,且不超过键码 255。", nameof(keysyms));
-        }
-        uint[] copy = keysyms.ToArray();
-        Post(null, () =>
-        {
-            _keymap.Change(firstKeycode, keysymsPerKeycode, copy);
-            if (layout is not null)
-            {
-                _keyboardLayout = layout;
-                InitXkbRulesNames();
-            }
-            byte count = (byte)(copy.Length / keysymsPerKeycode);
-            foreach (XClient client in _clients.Values)
-            {
-                client.Event(XEventCode.MappingNotify, 0, w => w.U8(1).U8(firstKeycode).U8(count));
-            }
-            NotifyXkbMapChanged();
-        });
+        public static KeymapChange From(XKeymap keymap) =>
+            new(keymap.Layout, keymap.KeysymsPerKeycode, keymap.AltGr, [.. keymap.Keys.Select(kv => (kv.Key, (uint[])kv.Value.Clone()))]);
     }
 
     /// <summary>
-    /// 换修饰键表(与核心协议 SetModifierMapping 相同的布局:8 个修饰位,每位 <c>map.Length / 8</c> 个键码,0 为空位)。
-    /// 宿主的键盘布局有 AltGr 层时用它把右 Alt(<see cref="Host.XKeycodes.AltRight" />,键值 ISO_Level3_Shift)从 Mod1 挪到 Mod5。
-    /// 客户端收到 MappingNotify(Modifier)与 XKB 的 MapNotify。
+    /// 一次换掉键位表:各键码的键值、右 Alt 的键值与修饰位、布局名。客户端各收到一次 MappingNotify(键盘;修饰键表真的变了时再加一次修饰键)
+    /// 与一次 XKB 的 MapNotify,而不是每改一段就通知一轮。
     /// </summary>
-    public void SetModifierMapping(ReadOnlySpan<byte> map)
+    private void ApplyKeymap(KeymapChange change)
     {
-        if (map.Length == 0 || map.Length % 8 != 0 || map.Length > 8 * 255)
+        int per = change.KeysymsPerKeycode;
+        byte first = XKeycodes.AltRight, last = XKeycodes.AltRight;
+        foreach ((byte keycode, uint[] keysyms) in change.Keys)
         {
-            throw new ArgumentException("修饰键表是 8 个修饰位 × 每位若干键码。", nameof(map));
+            _keymap.Change(keycode, per, keysyms);
+            first = Math.Min(first, keycode);
+            last = Math.Max(last, keycode);
         }
-        byte[] copy = map.ToArray();
-        Post(null, () =>
+        uint altRight = change.AltGr ? IsoLevel3ShiftKeysym : AltRightKeysym;
+        _keymap.Change(XKeycodes.AltRight, 2, [altRight, altRight]);
+        byte[] modifiers = change.AltGr ? AltGrModifierMap : DefaultModifierMap;
+        bool modifiersChanged = !_keymap.ModifierMap.AsSpan().SequenceEqual(modifiers);
+        if (modifiersChanged)
         {
-            _keymap.SetModifierMap(copy);
-            NotifyXkbMapChanged();
-            foreach (XClient client in _clients.Values)
-            {
-                client.Event(XEventCode.MappingNotify, 0, w => w.U8(0).U8(0).U8(0));
-            }
-        });
+            _keymap.SetModifierMap([.. modifiers]);
+        }
+        if (change.Layout != KeyboardLayout)
+        {
+            _keyboardLayout = change.Layout;
+            PublishXkbRulesNames();
+        }
+        NotifyKeyboardMappingChanged(first, last - first + 1);
+        if (modifiersChanged)
+        {
+            NotifyModifierMappingChanged();
+        }
+        NotifyXkbMapChanged();
     }
 
-    /// <summary>宿主让某个顶层窗口得到键盘焦点(用户点了它);0 = 所有顶层都失去焦点。</summary>
-    public void FocusTopLevel(uint topLevel) => Post(null, () =>
+    /// <summary>核心 MappingNotify(request = Keyboard):这一段键码的键值变了,客户端该重新取。</summary>
+    private void NotifyKeyboardMappingChanged(byte first, int count)
     {
-        if (topLevel == 0)
+        foreach (XClient client in _clients.Values)
         {
-            SetFocus(null, 0);
-            return;
+            client.Event(XEventCode.MappingNotify, 0, w => w.U8(1).U8(first).U8((byte)count));
         }
-        if (Lookup<XWindow>(topLevel) is { IsTopLevel: true, IsViewable: true } top
-            && (_focus is null || ReferenceEquals(_focus, Root) || !ReferenceEquals(_focus.TopLevel, top)))
-        {
-            // 与窗口管理器的做法一致:把焦点给顶层,revert-to PointerRoot。客户端之后可以自己把焦点挪到子窗口。
-            SetFocus(top, 1);
-        }
-    });
+    }
 
-    /// <summary>用户移动了原生窗口:改位置,并按 ICCCM 发一条合成的 ConfigureNotify(根坐标)。</summary>
-    public void MoveTopLevel(uint topLevel, int x, int y) => Post(null, () =>
+    /// <summary>核心 MappingNotify(request = Modifier)。</summary>
+    private void NotifyModifierMappingChanged()
     {
-        if (Lookup<XWindow>(topLevel) is not { IsTopLevel: true } top || (top.X == x && top.Y == y))
+        foreach (XClient client in _clients.Values)
         {
-            return;
+            client.Event(XEventCode.MappingNotify, 0, w => w.U8(0).U8(0).U8(0));
         }
-        top.X = x;
-        top.Y = y;
-        if (_topLevelHandles.TryGetValue(top, out XTopLevelWindow? handle))
-        {
-            handle.X = x;
-            handle.Y = y;
-        }
-        DeliverToSelectors(top, XEventMask.StructureNotify, c => c.Event(XEventCode.ConfigureNotify, 0, w => w
-            .U32(top.Id).U32(top.Id).U32(0).I16(x).I16(y).U16((ushort)top.Width).U16((ushort)top.Height)
-            .U16((ushort)top.BorderWidth).Bool(top.OverrideRedirect), sent: true));
-    });
-
-    /// <summary>用户缩放了原生窗口:改尺寸(客户端收到 ConfigureNotify 与 Expose,重画)。</summary>
-    public void ResizeTopLevel(uint topLevel, int width, int height) => Post(null, () =>
-    {
-        if (Lookup<XWindow>(topLevel) is { IsTopLevel: true } top && width > 0 && height > 0
-            && (top.Width != width || top.Height != height))
-        {
-            ConfigureWindow(top, top.X, top.Y, width, height, top.BorderWidth, null, -1);
-        }
-    });
-
-    /// <summary>
-    /// 用户点了原生窗口的关闭按钮:客户端声明了 WM_DELETE_WINDOW 就礼貌地请它自己关(ICCCM §4.2.8),
-    /// 否则断开该客户端(与窗口管理器的 XKillClient 一致)。
-    /// </summary>
-    public void CloseTopLevel(uint topLevel) => Post(null, () =>
-    {
-        if (Lookup<XWindow>(topLevel) is not { IsTopLevel: true, Owner: { } owner } top)
-        {
-            return;
-        }
-        uint protocols = Intern("WM_PROTOCOLS");
-        uint delete = Intern("WM_DELETE_WINDOW");
-        if (_topLevelHandles.TryGetValue(top, out XTopLevelWindow? handle))
-        {
-            RefreshHandle(top, handle);
-        }
-        if (handle is { SupportsDeleteWindow: true })
-        {
-            uint time = Now;
-            owner.Event(XEventCode.ClientMessage, 32, w => w.U32(top.Id).U32(protocols).U32(delete).U32(time).Zero(12), sent: true);
-            return;
-        }
-        owner.Abort();
-        DisconnectClient(owner);
-    });
+    }
 
     // ================================================================== 指针
 
@@ -662,21 +598,6 @@ public sealed partial class X11Server
             .U8((byte)(0x02 | (focus ? 0x01 : 0)))));       // same-screen | focus
     }
 
-    /// <summary>光标:抓取的光标优先,否则从指针所在窗口向上找第一个设了光标的窗口。</summary>
-    private void UpdateCursor()
-    {
-        XCursor? cursor = CurrentCursor();
-        int glyph = CursorHiddenAt(_pointerWindow) ? -2 : cursor?.Glyph ?? -1;
-        if (glyph == _cursorGlyph)
-        {
-            return;
-        }
-        _cursorGlyph = glyph;
-        NotifyCursorChange();
-        XTopLevelWindow? handle = _pointerWindow.TopLevel is { } top && _topLevelHandles.TryGetValue(top, out XTopLevelWindow? h) ? h : null;
-        _host.CursorChanged(handle, glyph);
-    }
-
     // ================================================================== 键盘
 
     private void KeyEvent(byte keycode, bool pressed)
@@ -888,7 +809,7 @@ public sealed partial class X11Server
         }
     }
 
-    private void SetInputFocusRequest(XRequestReader r)
+    private void SetInputFocus(XRequestReader r)
     {
         byte revertTo = r.Data;
         uint id = r.U32();
@@ -944,7 +865,7 @@ public sealed partial class X11Server
                 Window = window,
                 OwnerEvents = ownerEvents,
                 EventMask = mask,
-                Cursor = cursorId == 0 ? null : Lookup<XCursor>(cursorId),
+                Cursor = cursorId == 0 ? null : Lookup<XCursorResource>(cursorId),
             };
             _ = confine;
             ApplyGrabModes(PointerGrab, pointerSync, keyboardSync);
@@ -971,7 +892,7 @@ public sealed partial class X11Server
         if (PointerGrab is { } grab && ReferenceEquals(grab.Client, c))
         {
             grab.EventMask = mask;
-            grab.Cursor = cursorId == 0 ? null : Lookup<XCursor>(cursorId);
+            grab.Cursor = cursorId == 0 ? null : Lookup<XCursorResource>(cursorId);
             UpdateCursor();
         }
     }
@@ -996,7 +917,7 @@ public sealed partial class X11Server
         }
         window.ButtonGrabs.RemoveAll(g => ReferenceEquals(g.Client, c) && g.Detail == button && g.Modifiers == modifiers);
         window.ButtonGrabs.Add(new PassiveGrab(c, button, modifiers, ownerEvents, mask,
-            confine == 0 ? null : Lookup<XWindow>(confine), cursorId == 0 ? null : Lookup<XCursor>(cursorId),
+            confine == 0 ? null : Lookup<XWindow>(confine), cursorId == 0 ? null : Lookup<XCursorResource>(cursorId),
             PointerSync: pointerSync, KeyboardSync: keyboardSync));
     }
 
@@ -1169,11 +1090,7 @@ public sealed partial class X11Server
         }
         _keymap.Change(first, per, keysyms);
         NotifyXkbMapChanged();
-        _ = c;
-        foreach (XClient client in _clients.Values)
-        {
-            client.Event(XEventCode.MappingNotify, 0, w => w.U8(1).U8(first).U8(count));
-        }
+        NotifyKeyboardMappingChanged(first, count);
     }
 
     private void GetModifierMapping(XClient c)
@@ -1189,16 +1106,39 @@ public sealed partial class X11Server
         _keymap.SetModifierMap(map);
         NotifyXkbMapChanged();
         c.Reply(0, w => w.Zero(24));
-        foreach (XClient client in _clients.Values)
+        NotifyModifierMappingChanged();
+    }
+
+    /// <summary>响铃的基准音量(GetKeyboardControl 回报的 bell-percent;ChangeKeyboardControl 不生效,始终是它)。</summary>
+    private const byte BellBaseVolume = 50;
+
+    private void Bell(XRequestReader r)
+    {
+        sbyte percent = (sbyte)r.Data;
+        if (percent is < -100 or > 100)
         {
-            client.Event(XEventCode.MappingNotify, 0, w => w.U8(0).U8(0).U8(0));
+            throw new XProtocolError(XErrorCode.Value, unchecked((uint)percent));
         }
+        RingBell(percent);
+    }
+
+    /// <summary>
+    /// 响铃(核心 Bell、XKB Bell、XI DeviceBell 共用):<paramref name="percent" /> 是相对基准音量的 −100…100,
+    /// 按协议「Bell」的公式换算成实际音量 0–100 交给宿主。
+    /// </summary>
+    private void RingBell(int percent)
+    {
+        percent = Math.Clamp(percent, -100, 100);
+        int volume = percent >= 0
+            ? BellBaseVolume - (BellBaseVolume * percent / 100) + percent
+            : BellBaseVolume + (BellBaseVolume * percent / 100);
+        _host.BellRequested(volume);
     }
 
     private static void GetKeyboardControl(XClient c) =>
         c.Reply(1, w =>
         {
-            w.U32(0).U8(0).U8(50).U16(400).U16(100).Zero(2);
+            w.U32(0).U8(0).U8(BellBaseVolume).U16(400).U16(100).Zero(2);
             for (int i = 0; i < 32; i++)
             {
                 w.U8(0xFF);

@@ -1,5 +1,5 @@
-using System.Net.Sockets;
 using VelaShell.Core.Net;
+using VelaShell.Core.Resources;
 using VelaShell.Infrastructure.Net;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Transport;
@@ -69,15 +69,37 @@ internal sealed class ProxyTransportDialer(IProxyResolver? proxyResolver) : ISsh
         }
         _lastRoute = route;
 
+        // 直连与两种代理的握手都用 SSH 库的拨号器(DialerChain),宿主只管「这次走哪条路」。
+        // 直连把主机名交给库去解析(Happy Eyeballs),不在这里先解 —— 内网域名常常只有远端解析得了。
         if (route.Kind == ProxyKind.None)
         {
-            return await ConnectDirectAsync(host, port, cancellationToken).ConfigureAwait(false);
+            return await DialerChain.Tcp.DialAsync(target, cancellationToken).ConfigureAwait(false);
         }
 
         try
         {
-            return await ProxyStreamConnector
-                .ConnectAsync(route, host, port, cancellationToken).ConfigureAwait(false);
+            // 库的代理拨号器把目标名交给代理解析;「不用代理做 DNS」时先在本机解析成 IP 再交出去。
+            // 用 with 改端点而不是新建目标:目标上挂着连接的计时器,跳板里等主机密钥裁决时要靠它停表。
+            SshDialTarget viaProxy = route.ProxyDns
+                ? target
+                : target with
+                {
+                    EndPoint = new SshEndPoint(
+                        await LocalDnsResolver.ResolveAsync(host, cancellationToken).ConfigureAwait(false), port),
+                };
+            return await ProxyDialer(route).DialAsync(viaProxy, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SshConnectException ex)
+        {
+            // 「要认证 / 凭据被拒」单独留着原因,其余一律记成代理拒绝 —— 包括连不上代理本身:
+            // 那时库给的是 TcpRefused 之类,宿主会把它翻成「目标端口没开」,而没开的其实是代理。
+            SshFailureReason reason = ex.Reason == SshFailureReason.ProxyAuthRequired
+                ? SshFailureReason.ProxyAuthRequired
+                : SshFailureReason.ProxyRefused;
+            throw new SshConnectException(reason, SshPhase.Dialing, DescribeProxyFailure(route, host, port, ex), ex)
+            {
+                Hops = ex.Hops,
+            };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -86,55 +108,39 @@ internal sealed class ProxyTransportDialer(IProxyResolver? proxyResolver) : ISsh
         }
     }
 
-    /// <summary>
-    /// 直连。<b>主机名交给 <see cref="Socket" /> 去解析,不在这里先解</b> ——
-    /// 内网域名常常只有远端解析得了。
-    /// </summary>
-    private static async ValueTask<Stream> ConnectDirectAsync(
-        string host, int port, CancellationToken cancellationToken)
+    /// <summary>按路由选库的代理拨号器。</summary>
+    private static ISshTransportDialer ProxyDialer(ProxyRoute route)
     {
-        Socket socket = new(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-        try
-        {
-            await socket.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
-        }
-        catch (SocketException ex)
-        {
-            socket.Dispose();
-            throw new SshConnectException(ReasonFor(ex), SshPhase.Dialing, $"{host}:{port}: {ex.Message}", ex);
-        }
-        catch
-        {
-            socket.Dispose();
-            throw;
-        }
-        return new NetworkStream(socket, ownsSocket: true);
+        SshProxyCredentials? credentials = route.HasCredentials ? new(route.Username, route.Password) : null;
+        return route.Kind == ProxyKind.Http
+            ? DialerChain.HttpConnect(route.Host, route.Port, credentials)
+            : DialerChain.Socks5(route.Host, route.Port, credentials);
     }
 
-    /// <summary>把 socket 错误码翻成库的强类型原因,让上层能分「解析不了」和「拒绝连接」。</summary>
-    private static SshFailureReason ReasonFor(SocketException ex) => ex.SocketErrorCode switch
-    {
-        SocketError.HostNotFound or SocketError.NoData or SocketError.TryAgain => SshFailureReason.DnsFailure,
-        SocketError.ConnectionRefused => SshFailureReason.TcpRefused,
-        SocketError.TimedOut => SshFailureReason.TcpTimeout,
-        SocketError.NetworkUnreachable or SocketError.HostUnreachable => SshFailureReason.TcpUnreachable,
-        _ => SshFailureReason.Unknown,
-    };
-
     /// <summary>
-    /// 代理失败的错误补全(#464):说清走了哪个代理、去往哪个目标。
+    /// 代理失败的错误补全(#464):界面语言的标题 + 库给的细节 + 走了哪个代理、去往哪个目标。
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// 认证失败按有没有配凭据分开说:没配是「代理要认证」,配了是「用户名或口令不对」——
+    /// 库对这两种给的是同一个原因码,宿主这里有路由,分得清。
+    /// </para>
+    /// <para>
     /// SSH 的 22 端口经 HTTP CONNECT 常被代理软件限制(只放行 80/443),
     /// 这时直指「换 SOCKS5」,免得用户对着通用报错干瞪眼。
     /// 后缀是纯技术信息,不新增本地化键。
+    /// </para>
     /// </remarks>
     private static string DescribeProxyFailure(ProxyRoute route, string host, int port, Exception error)
     {
         string via = $" (via {(route.Kind == ProxyKind.Socks5 ? "socks5" : "http")} {route.Host}:{route.Port} → {host}:{port})";
+        if (error is SshConnectException { Reason: SshFailureReason.ProxyAuthRequired })
+        {
+            return Strings.Get(route.HasCredentials ? "Msg_ProxyAuthFailed" : "SshErr_ProxyAuthRequired") + via;
+        }
         string hint = route.Kind == ProxyKind.Http && port == 22
             ? " If the proxy refuses CONNECT to port 22, switch Proxy to socks5 (e.g. 127.0.0.1:10808) or none for TUN."
             : "";
-        return error.Message + via + hint;
+        return Strings.Format("Msg_ProxyConnectFailed", error.Message) + via + hint;
     }
 }

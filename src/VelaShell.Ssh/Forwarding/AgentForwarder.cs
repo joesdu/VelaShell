@@ -17,54 +17,6 @@ using VelaShell.Ssh.Protocol;
 
 namespace VelaShell.Ssh.Forwarding;
 
-/// <summary>远端请求用某把密钥签名时，交给使用者定夺。</summary>
-/// <param name="Key">远端想用哪把钥。</param>
-/// <param name="Comment">这把钥在 agent 里的注释（通常是私钥文件路径）。</param>
-public readonly record struct AgentSignatureRequest(SshPublicKey Key, string Comment);
-
-/// <summary>agent 转发的安全策略。</summary>
-/// <remarks>
-/// <para>
-/// ⚠️ <b>agent 转发是一把上膛的枪。</b>
-/// 转发期间，远端主机上的 root 可以用你的私钥<b>签任何东西</b> ——
-/// 包括拿你的身份去登录别的机器。私钥本身不会离开本机，
-/// 但「用私钥做事的能力」离开了。
-/// </para>
-/// <para>
-/// 所以这里的默认值全部朝着「更少暴露」那一侧。
-/// </para>
-/// </remarks>
-public sealed record AgentForwardPolicy
-{
-    /// <summary>
-    /// 只转发这些公钥；<b>空列表表示把整个 agent 暴露出去</b>。
-    /// </summary>
-    /// <remarks>
-    /// 〔决策 velashell-docs/zh/ssh/spec/07 §7.2〕<b>必须支持「只转发指定的密钥」。</b>
-    /// 一台跳板机没有理由能用到你所有的密钥 —— 它只需要下一跳那一把。
-    /// </remarks>
-    public IReadOnlyList<SshPublicKey> AllowedKeys { get; init; } = [];
-
-    /// <summary>
-    /// 每次远端请求签名时问一次使用者。
-    /// </summary>
-    /// <remarks>
-    /// 返回 <see langword="false"/> 就拒签。对跳板场景这是唯一能让人安心的做法 ——
-    /// 否则你根本不知道那台机器拿你的身份做了什么、做了几次。
-    /// </remarks>
-    public Func<AgentSignatureRequest, CancellationToken, ValueTask<bool>>? ConfirmEachSignature { get; init; }
-
-    /// <summary>同时允许几条 agent 通道。</summary>
-    public int MaxConcurrentChannels { get; init; } = 8;
-
-    /// <summary>默认策略：不限密钥、不逐次确认。</summary>
-    /// <remarks>
-    /// 它**只在使用者已经显式打开 agent 转发之后**才生效 ——
-    /// 转发本身默认是关的。
-    /// </remarks>
-    public static AgentForwardPolicy Default { get; } = new();
-}
-
 /// <summary>把远端的 agent 请求桥到本机 ssh-agent。</summary>
 /// <remarks>
 /// <para>
@@ -89,83 +41,78 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
 
     private readonly Session.SshConnection _connection;
     private readonly Func<CancellationToken, ValueTask<SshAgentClient>> _connectAgent;
-    private readonly AgentForwardPolicy _policy;
+    private readonly AgentForwardOptions _options;
     private readonly SemaphoreSlim _slots;
     private bool _disposed;
+
+    // 计数器会被最多 MaxConnections 条 agent 通道同时改 —— 一律走 Interlocked。
+    private int _signatureRequests;
+    private int _signaturesDenied;
+    private int _identityListings;
+    private int _keysHidden;
 
     /// <summary>转发器自己的生命周期：释放时取消，已经打开的 agent 通道随之断开。</summary>
     private readonly CancellationTokenSource _lifetime = new();
 
-    private AgentForwarder(
-        Session.SshConnection connection,
-        Func<CancellationToken, ValueTask<SshAgentClient>> connectAgent,
-        AgentForwardPolicy policy)
+    private AgentForwarder(Session.SshConnection connection, AgentForwardOptions options)
     {
         _connection = connection;
-        _connectAgent = connectAgent;
-        _policy = policy;
-        _slots = new SemaphoreSlim(policy.MaxConcurrentChannels, policy.MaxConcurrentChannels);
+        _options = options;
+        _connectAgent = options.LocalConnector ?? (ct => SshAgentClient.ConnectAsync(options.AgentEndpoint, ct));
+        _slots = new SemaphoreSlim(options.MaxConnections, options.MaxConnections);
     }
 
     /// <summary>远端请求过几次签名。</summary>
-    public int SignatureRequests { get; private set; }
+    public int SignatureRequests => Volatile.Read(ref _signatureRequests);
 
     /// <summary>有几次因为策略被拒。</summary>
-    public int SignaturesDenied { get; private set; }
+    public int SignaturesDenied => Volatile.Read(ref _signaturesDenied);
 
     /// <summary>远端列过几次身份。</summary>
-    public int IdentityListings { get; private set; }
+    public int IdentityListings => Volatile.Read(ref _identityListings);
 
-    /// <summary>被隐藏掉的密钥数（不在 <c>AllowedKeys</c> 里的）。</summary>
-    public int KeysHidden { get; private set; }
+    /// <summary>被隐藏掉的密钥数（不在 <see cref="AgentForwardOptions.AllowedKeys"/> 里的）。</summary>
+    public int KeysHidden => Volatile.Read(ref _keysHidden);
 
     /// <summary>在一条 session 通道上请求 agent 转发。</summary>
     /// <param name="connection">会话。</param>
     /// <param name="channel">要在哪条 session 通道上请求。</param>
-    /// <param name="policy">安全策略。</param>
-    /// <param name="agentEndpoint">本机 agent 端点；<see langword="null"/> 用默认。</param>
-    /// <param name="connectAgent">
-    /// 自己去连 agent。给了它就忽略 <paramref name="agentEndpoint"/> ——
-    /// agent 可能在一条隧道的另一头，或者由别的软件以自定义方式提供。
-    /// </param>
+    /// <param name="options">参数与安全约束。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <exception cref="SshForwardException">服务端拒绝了转发请求。</exception>
     /// <remarks>
-    /// <b>这个方法必须由使用者显式调用</b> —— agent 转发默认是关的，
-    /// 而且没有「全局打开」的开关：它是逐连接、逐通道的决定。
+    /// <c>internal</c>：对外的入口是 <see cref="SshSessionRequestOptions.AgentForwarding"/> ——
+    /// 请求要夹在 <c>x11-req</c> 与 <c>env</c> 之间发（velashell-docs/zh/ssh/spec/07 §7.5.3），
+    /// 让调用方自己在一条裸通道上调它，那个时序就交给了调用方。
     /// </remarks>
-    public static async ValueTask<AgentForwarder> RequestAsync(
+    internal static async ValueTask<AgentForwarder> RequestAsync(
         Session.SshConnection connection,
         SshChannel channel,
-        AgentForwardPolicy? policy = null,
-        string? agentEndpoint = null,
-        Func<CancellationToken, ValueTask<SshAgentClient>>? connectAgent = null,
+        AgentForwardOptions options,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(channel);
+        ArgumentNullException.ThrowIfNull(options);
 
-        AgentForwarder forwarder = new(
-            connection,
-            connectAgent ?? (ct => SshAgentClient.ConnectAsync(agentEndpoint, ct)),
-            policy ?? AgentForwardPolicy.Default);
+        AgentForwarder forwarder = new(connection, options);
 
         // 先登记处理器再发请求：服务端可能在应答之后立刻就发起通道，
         // 那时处理器必须已经在位，否则第一条会被拒。
         //
-        // 用 Add 而不是 Set：同一条连接上几个会话都开了 agent 转发时，
+        // 用 Add 而不是替换：同一条连接上几个会话都开了 agent 转发时，
         // 各挂各的，释放一个不会把别人的摘掉。
-        connection.AddIncomingChannelHandler(SshAlgorithmNames.ChannelAuthAgent, forwarder);
+        connection.AddIncomingChannelHandler(SshProtocolNames.ChannelAuthAgent, forwarder);
 
         try
         {
             bool accepted = await channel.SendRequestAsync(
-                SshAlgorithmNames.RequestAuthAgent, default, wantReply: true, cancellationToken)
+                SshProtocolNames.RequestAuthAgent, default, wantReply: true, cancellationToken)
                 .ConfigureAwait(false);
 
             if (!accepted)
             {
-                throw new SshForwardException(
+                throw new SshForwardException(SshFailureReason.ForwardRejected,
                     "服务端拒绝了 agent 转发请求。常见原因是 sshd_config 里 AllowAgentForwarding no。");
             }
 
@@ -173,7 +120,7 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
         }
         catch (Exception)
         {
-            connection.RemoveIncomingChannelHandler(SshAlgorithmNames.ChannelAuthAgent, forwarder);
+            connection.RemoveIncomingChannelHandler(SshProtocolNames.ChannelAuthAgent, forwarder);
             throw;
         }
     }
@@ -181,15 +128,15 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
     // ------------------------------------------------------------ 入站通道
 
     /// <inheritdoc />
-    public ValueTask<SshChannelOptions> GetOptionsAsync(
+    ValueTask<SshChannelOptions> IIncomingChannelHandler.GetOptionsAsync(
         string channelType, ReadOnlyMemory<byte> typeSpecificPayload, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         if (!_slots.Wait(0, CancellationToken.None))
         {
-            throw new SshForwardException(
-                $"同时打开的 agent 通道已达上限 {_policy.MaxConcurrentChannels}。");
+            throw new SshForwardException(SshFailureReason.LimitExceeded,
+                $"同时打开的 agent 通道已达上限 {_options.MaxConnections}。");
         }
 
         // ⚠️ 窗口至少要装得下**一整条**最长的 agent 报文（长度前缀 + 256 KiB）。
@@ -200,16 +147,16 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
         return ValueTask.FromResult(SshChannelOptions.Default with
         {
             WindowPolicy = SshWindowPolicy.Fixed(AgentChannelWindowBytes),
-            StderrPolicy = SshStderrPolicy.Discard,
+            StderrMode = SshStderrMode.Discard,
         });
     }
 
     /// <inheritdoc />
-    /// <remarks>还回 <see cref="GetOptionsAsync"/> 占的并发槽位。</remarks>
-    public void OnOpenAborted(string channelType, ReadOnlyMemory<byte> typeSpecificPayload) => _slots.Release();
+    /// <remarks>还回 <c>GetOptionsAsync</c> 占的并发槽位。</remarks>
+    void IIncomingChannelHandler.OnOpenAborted(string channelType, ReadOnlyMemory<byte> typeSpecificPayload) => _slots.Release();
 
     /// <inheritdoc />
-    public async Task HandleAsync(
+    async Task IIncomingChannelHandler.HandleAsync(
         SshChannel channel, ReadOnlyMemory<byte> typeSpecificPayload, CancellationToken cancellationToken)
     {
         try
@@ -286,25 +233,25 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
     {
         if (request.Length == 0)
         {
-            return [SshAgentWire.Failure];
+            return [SshAgentMessage.Failure];
         }
 
         return request[0] switch
         {
-            SshAgentWire.RequestIdentities =>
+            SshAgentMessage.RequestIdentities =>
                 await HandleListAsync(agent, cancellationToken).ConfigureAwait(false),
-            SshAgentWire.SignRequest =>
+            SshAgentMessage.SignRequest =>
                 await HandleSignAsync(request, agent, cancellationToken).ConfigureAwait(false),
 
             // 增删密钥、锁定 agent 之类的请求**一律不转发**。
             // 远端没有任何理由改动我们本机 agent 的状态。
-            _ => [SshAgentWire.Failure],
+            _ => [SshAgentMessage.Failure],
         };
     }
 
     private async ValueTask<byte[]> HandleListAsync(SshAgentClient agent, CancellationToken cancellationToken)
     {
-        IdentityListings++;
+        Interlocked.Increment(ref _identityListings);
 
         IReadOnlyList<SshAgentIdentity> all =
             await agent.ListIdentitiesAsync(cancellationToken).ConfigureAwait(false);
@@ -318,13 +265,13 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
             }
             else
             {
-                KeysHidden++;
+                Interlocked.Increment(ref _keysHidden);
             }
         }
 
         ArrayBufferWriter<byte> buffer = new();
         SshDataWriter writer = new(buffer);
-        writer.WriteByte(SshAgentWire.IdentitiesAnswer);
+        writer.WriteByte(SshAgentMessage.IdentitiesAnswer);
         writer.WriteUInt32((uint)visible.Count);
 
         foreach (SshAgentIdentity identity in visible)
@@ -339,7 +286,7 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
     private async ValueTask<byte[]> HandleSignAsync(
         byte[] request, SshAgentClient agent, CancellationToken cancellationToken)
     {
-        SignatureRequests++;
+        Interlocked.Increment(ref _signatureRequests);
 
         SshDataReader reader = new(new ReadOnlySequence<byte>(request));
         reader.ReadByte();
@@ -356,26 +303,26 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
         }
         catch (SshWireFormatException)
         {
-            return [SshAgentWire.Failure];
+            return [SshAgentMessage.Failure];
         }
 
         SshPublicKey key;
         try
         {
-            key = SshPublicKey.Parse(keyBlob);
+            key = SshPublicKey.Decode(keyBlob);
         }
         catch (Exception)
         {
-            return [SshAgentWire.Failure];
+            return [SshAgentMessage.Failure];
         }
 
         if (!IsAllowed(key))
         {
-            SignaturesDenied++;
-            return [SshAgentWire.Failure];
+            Interlocked.Increment(ref _signaturesDenied);
+            return [SshAgentMessage.Failure];
         }
 
-        if (_policy.ConfirmEachSignature is { } confirm)
+        if (_options.ConfirmEachSignature is { } confirm)
         {
             IReadOnlyList<SshAgentIdentity> identities =
                 await agent.ListIdentitiesAsync(cancellationToken).ConfigureAwait(false);
@@ -397,8 +344,8 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
 
             if (!approved)
             {
-                SignaturesDenied++;
-                return [SshAgentWire.Failure];
+                Interlocked.Increment(ref _signaturesDenied);
+                return [SshAgentMessage.Failure];
             }
         }
 
@@ -412,13 +359,13 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
 
             ArrayBufferWriter<byte> buffer = new();
             SshDataWriter writer = new(buffer);
-            writer.WriteByte(SshAgentWire.SignResponse);
+            writer.WriteByte(SshAgentMessage.SignResponse);
             writer.WriteString(signature);
             return buffer.WrittenSpan.ToArray();
         }
         catch (SshAgentException)
         {
-            return [SshAgentWire.Failure];
+            return [SshAgentMessage.Failure];
         }
     }
 
@@ -434,22 +381,22 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
             return key.PlainKeyType;
         }
 
-        return (flags & SshAgentWire.FlagRsaSha512) != 0
+        return ((SshAgentSignFlags)flags).HasFlag(SshAgentSignFlags.RsaSha2_512)
             ? SshAlgorithmNames.RsaSha512
-            : (flags & SshAgentWire.FlagRsaSha256) != 0
+            : ((SshAgentSignFlags)flags).HasFlag(SshAgentSignFlags.RsaSha2_256)
                 ? SshAlgorithmNames.RsaSha256
                 : SshAlgorithmNames.SshRsa;
     }
 
     private bool IsAllowed(SshPublicKey key)
     {
-        if (_policy.AllowedKeys.Count == 0)
+        if (_options.AllowedKeys is not { } allowedKeys)
         {
-            return true;
+            return true;   // 没给名单：整个 agent 都暴露（使用者显式打开 agent 转发时的默认）
         }
 
         // 按证书里那把钥比：证书用的是同一把私钥，放行了钥就等于放行了它的证书（反过来也一样）。
-        foreach (SshPublicKey allowed in _policy.AllowedKeys)
+        foreach (SshPublicKey allowed in allowedKeys)
         {
             if (allowed.PlainKey.Blob.Span.SequenceEqual(key.PlainKey.Blob.Span))
             {
@@ -510,7 +457,7 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
         }
         _disposed = true;
 
-        _connection.RemoveIncomingChannelHandler(SshAlgorithmNames.ChannelAuthAgent, this);
+        _connection.RemoveIncomingChannelHandler(SshProtocolNames.ChannelAuthAgent, this);
 
         // 已经打开的 agent 通道一起断：它们的转发循环挂在 _lifetime 上，退出后连接会关掉通道。
         // 回调放到线程池上（与会话收尾同一条规矩）。令牌源不释放 —— 还在收尾的循环要读它。
@@ -520,17 +467,4 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
         // 它没有用到等待句柄，不释放也不漏任何非托管资源。
         return ValueTask.CompletedTask;
     }
-}
-
-/// <summary>agent 协议的线上常量。</summary>
-internal static class SshAgentWire
-{
-    public const byte Failure = 5;
-    public const byte RequestIdentities = 11;
-    public const byte IdentitiesAnswer = 12;
-    public const byte SignRequest = 13;
-    public const byte SignResponse = 14;
-
-    public const uint FlagRsaSha256 = 0x02;
-    public const uint FlagRsaSha512 = 0x04;
 }

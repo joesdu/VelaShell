@@ -4,6 +4,7 @@ using System.Text;
 using VelaShell.Core.Models;
 using VelaShell.Infrastructure.Ssh;
 using VelaShell.Ssh.Auth;
+using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Keys;
 using VelaShell.Ssh.Transport;
 
@@ -148,7 +149,7 @@ public sealed class SshAgentKeyLoaderTests
         using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
 
         SshAgentKeyLoader.Outcome notRunning = await SshAgentKeyLoader.AddAsync(
-            key, "k", _ => throw new SshAgentException("连不上"));
+            key, "k", _ => throw new SshAgentException(SshFailureReason.AgentUnavailable, "连不上"));
         SshAgentKeyLoader.Outcome timedOut = await SshAgentKeyLoader.AddAsync(
             key, "k", _ => throw new OperationCanceledException());
 

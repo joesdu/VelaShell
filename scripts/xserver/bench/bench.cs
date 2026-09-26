@@ -15,16 +15,14 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Text;
-using VelaShell.XServer.Drawing;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
+using VelaShell.XServer;
 
 BenchHost host = new();
 await using X11Server server = new(host: host);
 Pipe toServer = new(), toClient = new();
 Stream serverSide = new Duplex(toServer.Reader, toClient.Writer);
 Stream clientSide = new Duplex(toClient.Reader, toServer.Writer);
-_ = server.ServeAsync(serverSide);
+_ = server.ServeAsync(serverSide, isLocal: true);
 
 Client c = new(clientSide);
 await c.HandshakeAsync();
@@ -92,7 +90,8 @@ await RunAsync("Composite ARGB 100×100 Over", 5_000, i =>
         .I16(0).I16(0).I16(0).I16(0).I16((short)(i % 700)).I16((short)(i % 500)).U16(100).U16(100)));
 await RunAsync("PutImage 800×600 整窗(BIG-REQUESTS)", 1_000, _ => c.Raw(frameRequest));
 await RunAsync("RenderFillRectangles ×50", 5_000, _ => c.Request(render, 26, fillRects));
-await RunAsync("指针移动注入(选了 PointerMotion)", 50_000, i => server.PointerMotion(window, i % 800, (i / 800) % 600));
+XTopLevelWindow mapped = host.Mapped ?? throw new InvalidOperationException("窗口没映射");
+await RunAsync("指针移动注入(选了 PointerMotion)", 50_000, i => server.InjectPointerMotion(mapped, i % 800, (i / 800) % 600));
 
 Stopwatch rt = Stopwatch.StartNew();
 const int roundTrips = 5_000;
@@ -104,7 +103,7 @@ rt.Stop();
 Console.WriteLine($"{"往返 GetInputFocus(串行)",-34}{roundTrips,8}{rt.Elapsed.TotalMilliseconds,10:F0}{roundTrips / rt.Elapsed.TotalSeconds,14:F0}");
 
 // 整窗 PutImage 满载时,宿主每 16 毫秒读一次整窗像素:每次要等多久才拿到锁并读完。
-XTopLevelWindow handle = host.Mapped ?? throw new InvalidOperationException("窗口没映射");
+XTopLevelWindow handle = mapped;
 using CancellationTokenSource stop = new();
 List<double> waits = [];
 Thread reader = new(() =>
@@ -349,14 +348,14 @@ sealed class Duplex(PipeReader reader, PipeWriter writer) : Stream
 }
 
 /// <summary>只记下映射出来的那个顶层窗口(宿主读像素的场景要用它)。</summary>
-sealed class BenchHost : IXServerHost
+sealed class BenchHost : IX11ServerHost
 {
     public XTopLevelWindow? Mapped { get; private set; }
     public void TopLevelMapped(XTopLevelWindow window) => Mapped = window;
     public void TopLevelUnmapped(XTopLevelWindow window) { }
-    public void TopLevelChanged(XTopLevelWindow window) { }
+    public void TopLevelChanged(XTopLevelWindow window, XTopLevelChanges changes) { }
     public void TopLevelDamaged(XTopLevelWindow window, IReadOnlyList<XRect> damage) { }
-    public void CursorChanged(XTopLevelWindow? window, int cursorGlyph) { }
-    public void Bell(int percent) { }
+    public void CursorChanged(XTopLevelWindow? window, XCursor cursor) { }
+    public void BellRequested(int volume) { }
     public void ClipboardChanged(string text) { }
 }

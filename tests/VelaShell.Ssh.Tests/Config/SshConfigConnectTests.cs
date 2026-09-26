@@ -60,7 +60,7 @@ public sealed class SshConfigConnectTests
             """);
 
         SshConnectionOptions options = await SshConfigFile.CreateConnectionOptionsAsync(
-            blocks, "target", new SshConfigConnectSettings { DefaultUserName = "me" });
+            blocks, "target", new SshConfigConnectOptions { DefaultUserName = "me" });
 
         // 目标经 inner；inner 经 bastion；bastion 直连。
         var last = (SshJumpDialer)options.Dialer;
@@ -155,7 +155,7 @@ public sealed class SshConfigConnectTests
         // 什么都没配：用调用方给的策略。
         DangerousAcceptAnyHostKeyPolicy given = new();
         SshConnectionOptions plain = await SshConfigFile.CreateConnectionOptionsAsync(
-            blocks, "other", new SshConfigConnectSettings { HostKeyPolicy = given });
+            blocks, "other", new SshConfigConnectOptions { HostKeyPolicy = given });
         Assert.AreSame(given, plain.HostKeyPolicy);
     }
 
@@ -201,7 +201,7 @@ public sealed class SshConfigConnectTests
                 UserKnownHostsFile ~/.ssh/other_known_hosts
             """);
         DangerousAcceptAnyHostKeyPolicy given = new();
-        SshConfigConnectSettings settings = new() { HostKeyPolicy = given };
+        SshConfigConnectOptions settings = new() { HostKeyPolicy = given };
 
         Assert.AreSame(given, (await SshConfigFile.CreateConnectionOptionsAsync(blocks, "a", settings)).HostKeyPolicy);
         Assert.AreSame(given, (await SshConfigFile.CreateConnectionOptionsAsync(blocks, "b", settings)).HostKeyPolicy);
@@ -217,7 +217,7 @@ public sealed class SshConfigConnectTests
             """);
 
         using var agentKey = VelaShell.Ssh.Auth.InMemorySshSigner.GenerateEd25519();
-        SshConfigConnectSettings settings = new()
+        SshConfigConnectOptions settings = new()
         {
             Credentials = [new VelaShell.Ssh.Auth.PasswordCredential("目标的口令"), new VelaShell.Ssh.Auth.PublicKeyCredential(agentKey)],
         };
@@ -247,7 +247,7 @@ public sealed class SshConfigConnectTests
 
             List<string> skipped = [];
             SshConnectionOptions options = await SshConfigFile.CreateConnectionOptionsAsync(
-                blocks, "k", new SshConfigConnectSettings { IdentityFileSkipped = (path, _) => skipped.Add(path) });
+                blocks, "k", new SshConfigConnectOptions { IdentityFileSkipped = (path, _) => skipped.Add(path) });
 
             Assert.HasCount(1, options.Credentials, "坏的那把跳过，好的那把照常用");
             Assert.AreSequenceEqual(new[] { bad }, skipped, "跳过要有个说法");
@@ -271,7 +271,7 @@ public sealed class SshConfigConnectTests
             """);
 
         int asked = 0;
-        SshConfigConnectSettings settings = new()
+        SshConfigConnectOptions settings = new()
         {
             PassphraseProvider = (_, _) =>
             {
@@ -325,7 +325,7 @@ public sealed class SshConfigConnectTests
                 ForwardX11 yes
             """);
 
-        TimeSpan? Timeout(string host) => SshConfigFile.Resolve(blocks, host).ApplyToShell().X11?.Timeout;
+        TimeSpan? Timeout(string host) => SshConfigFile.Resolve(blocks, host).ApplyToShell().X11Forwarding?.Timeout;
 
         Assert.AreEqual(TimeSpan.FromMinutes(90), Timeout("long"));
         Assert.AreEqual(TimeSpan.Zero, Timeout("forever"));
@@ -374,11 +374,11 @@ public sealed class SshConfigConnectTests
         SshShellOptions shell = SshConfigFile.Resolve(blocks, "gui").ApplyToShell();
 
         Assert.IsNotNull(shell.AgentForwarding);
-        Assert.IsNotNull(shell.X11);
-        Assert.IsTrue(shell.X11.Trusted);
+        Assert.IsNotNull(shell.X11Forwarding);
+        Assert.IsTrue(shell.X11Forwarding.Trusted);
 
         // §7.5.8：连接级开关打开的 X11 是尽力而为的 —— 失败不该让 shell 起不来。
-        Assert.IsTrue(shell.X11.BestEffort);
+        Assert.IsTrue(shell.X11Forwarding.BestEffort);
     }
 
     [TestMethod]
@@ -391,18 +391,20 @@ public sealed class SshConfigConnectTests
 
         X11ForwardOptions explicitX11 = new() { Trusted = true };
         SshShellOptions shell = SshConfigFile.Resolve(blocks, "gui")
-            .ApplyToShell(new SshShellOptions { X11 = explicitX11 });
+            .ApplyToShell(new SshShellOptions { X11Forwarding = explicitX11 });
 
-        Assert.AreSame(explicitX11, shell.X11, "模板里显式设了的不会被覆盖");
-        Assert.IsFalse(shell.X11!.BestEffort);
+        Assert.AreSame(explicitX11, shell.X11Forwarding, "模板里显式设了的不会被覆盖");
+        Assert.IsFalse(shell.X11Forwarding!.BestEffort);
     }
 
     [TestMethod]
     public void 跳板规格的各种写法()
     {
-        Assert.AreEqual((null, "host", null), SshConfigFile.ParseJumpSpec("host"));
-        Assert.AreEqual(("u", "host", 2222), SshConfigFile.ParseJumpSpec("u@host:2222"));
-        Assert.AreEqual(("u", "::1", 22), SshConfigFile.ParseJumpSpec("u@[::1]:22"));
-        Assert.AreEqual(("u", "host", 2222), SshConfigFile.ParseJumpSpec("ssh://u@host:2222"));
+        Assert.AreEqual(new SshProxyJumpHop(null, "host", null), SshConfigFile.ParseJumpSpec("host"));
+        Assert.AreEqual(new SshProxyJumpHop("u", "host", 2222), SshConfigFile.ParseJumpSpec("u@host:2222"));
+        Assert.AreEqual(new SshProxyJumpHop("u", "::1", 22), SshConfigFile.ParseJumpSpec("u@[::1]:22"));
+        Assert.AreEqual(new SshProxyJumpHop("u", "host", 2222), SshConfigFile.ParseJumpSpec("ssh://u@host:2222"));
+        Assert.AreEqual(2, SshConfigFile.ParseProxyJump("a, u@b:2200").Count);
+        Assert.IsEmpty(SshConfigFile.ParseProxyJump("none"));
     }
 }

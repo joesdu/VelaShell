@@ -21,7 +21,7 @@ namespace VelaShell.Ssh.Sftp;
 /// <see cref="Payload"/> 借的是调用方的缓冲，**只在这一轮处理期间有效**。
 /// 要留着就自己复制。
 /// </remarks>
-public readonly ref struct SftpFrame
+internal readonly ref struct SftpFrame
 {
     internal SftpFrame(SftpMessageType type, ReadOnlySequence<byte> payload)
     {
@@ -47,7 +47,7 @@ public readonly ref struct SftpFrame
 /// byte[]   type 相关
 /// </code>
 /// </remarks>
-public static class SftpWire
+internal static class SftpWire
 {
     // ------------------------------------------------------------ 分帧
 
@@ -134,7 +134,7 @@ public static class SftpWire
     /// <summary>打开文件。</summary>
     public static void WriteOpen(
         IBufferWriter<byte> output, uint requestId, string path,
-        SftpOpenMode flags, SftpFileAttributes attributes)
+        SftpOpenModes flags, SftpFileAttributes attributes)
     {
         ArrayBufferWriter<byte> payload = new();
         SshDataWriter writer = new(payload);
@@ -527,12 +527,12 @@ public static class SftpWire
 }
 
 /// <summary><c>SSH_FXP_NAME</c> 里的一项。</summary>
-/// <param name="FileName">文件名（<b>只是名字，不含路径</b>）。</param>
+/// <param name="Name">文件名（<b>只是名字，不含路径</b>）。</param>
 /// <param name="LongName">
 /// <c>ls -l</c> 风格的一行文本。<b>格式未标准化，不要解析它。</b>
 /// </param>
 /// <param name="Attributes">属性。</param>
-public readonly record struct SftpNameEntry(
-    string FileName,
+internal readonly record struct SftpNameEntry(
+    string Name,
     string LongName,
     SftpFileAttributes Attributes);

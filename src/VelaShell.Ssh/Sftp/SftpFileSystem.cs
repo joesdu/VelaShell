@@ -15,34 +15,6 @@ using VelaShell.Ssh.Session;
 
 namespace VelaShell.Ssh.Sftp;
 
-/// <summary>目录里的一项。</summary>
-/// <param name="Name">文件名（<b>只是名字，不含路径</b>）。</param>
-/// <param name="FullPath">拼好的完整路径。</param>
-/// <param name="Attributes">
-/// 属性。链接项描述的是<b>链接指向的对象</b>（断链时退回链接自身的属性）。
-/// </param>
-/// <param name="IsSymbolicLink"><b>这一项本身</b>是不是符号链接。</param>
-/// <param name="LinkTarget"><c>READLINK</c> 的原文，可能是相对路径。</param>
-/// <param name="IsBrokenLink">是链接，但跟随之后 stat 不到目标。</param>
-/// <param name="LongName">
-/// 服务端给的 <c>ls -l</c> 风格文本。<b>格式未标准化，不要解析它</b> —— 留着是给要显示原文的人用的。
-/// </param>
-public readonly record struct SftpDirectoryEntry(
-    string Name,
-    string FullPath,
-    SftpFileAttributes Attributes,
-    bool IsSymbolicLink,
-    string? LinkTarget,
-    bool IsBrokenLink,
-    string LongName)
-{
-    /// <summary>这一项（跟随链接之后）是不是目录。</summary>
-    public bool IsDirectory => Attributes.IsDirectory;
-
-    /// <summary>长度（跟随链接之后）。</summary>
-    public long Length => (long)Attributes.Size;
-}
-
 /// <summary>建立 SFTP 时的参数。</summary>
 public sealed record SftpOptions
 {
@@ -51,7 +23,7 @@ public sealed record SftpOptions
     {
         // SFTP 是吞吐型负载，窗口给大一些；stderr 上只会来服务端的诊断噪音。
         WindowPolicy = SshWindowPolicy.Adaptive(2 * 1024 * 1024, 64 * 1024 * 1024),
-        StderrPolicy = SshStderrPolicy.Discard,
+        StderrMode = SshStderrMode.Discard,
     };
 
     /// <summary>在途请求数上限。</summary>
@@ -125,7 +97,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
         try
         {
             channel = await connection
-                .OpenSubsystemAsync("sftp", effective.Channel, cancellationToken).ConfigureAwait(false);
+                .OpenSubsystemAsync(SshProtocolNames.SubsystemSftp, effective.Channel, cancellationToken).ConfigureAwait(false);
         }
         catch (SshChannelException ex)
         {
@@ -254,7 +226,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             (output, id) => SftpWire.WriteExtended(output, id, SftpExtensionNames.Limits, []),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(operation: "查询 limits", treatEndOfFileAsError: true);
+        response.ThrowIfError(path: null, SftpOperation.QueryLimits);
         return SftpWire.ReadLimits(response.Payload);
     }
 
@@ -269,7 +241,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             (output, id) => SftpWire.WritePathRequest(output, SftpMessageType.RealPath, id, path),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(path, "规范化路径", treatEndOfFileAsError: true);
+        response.ThrowIfError(path, SftpOperation.RealPath);
 
         IReadOnlyList<SftpNameEntry> entries = SftpWire.ReadName(response.Payload);
         if (entries.Count != 1)
@@ -278,7 +250,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
                 SshPhase.Open, $"REALPATH 应当返回恰好 1 项，实际返回了 {entries.Count} 项。");
         }
 
-        return entries[0].FileName;
+        return entries[0].Name;
     }
 
     // ------------------------------------------------------------ 属性
@@ -302,7 +274,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             (output, id) => SftpWire.WritePathRequest(output, type, id, path),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(path, "取属性", treatEndOfFileAsError: true);
+        response.ThrowIfError(path, SftpOperation.GetAttributes);
         return SftpWire.ReadAttrs(response.Payload);
     }
 
@@ -330,7 +302,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             (output, id) => SftpWire.WriteSetStat(output, id, path, attributes),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(path, "设置属性", treatEndOfFileAsError: true);
+        response.ThrowIfError(path, SftpOperation.SetAttributes);
     }
 
     /// <summary>改权限。</summary>
@@ -370,7 +342,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             (output, id) => SftpWire.WriteMkDir(output, id, path, SftpFileAttributes.WithPermissions(permissions)),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(path, "建目录", treatEndOfFileAsError: true);
+        response.ThrowIfError(path, SftpOperation.CreateDirectory);
     }
 
     /// <summary>删空目录。</summary>
@@ -382,7 +354,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             (output, id) => SftpWire.WritePathRequest(output, SftpMessageType.RmDir, id, path),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(path, "删目录", treatEndOfFileAsError: true);
+        response.ThrowIfError(path, SftpOperation.RemoveDirectory);
     }
 
     /// <summary>删文件。</summary>
@@ -394,7 +366,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             (output, id) => SftpWire.WritePathRequest(output, SftpMessageType.Remove, id, path),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(path, "删文件", treatEndOfFileAsError: true);
+        response.ThrowIfError(path, SftpOperation.Remove);
     }
 
     /// <summary>列目录。</summary>
@@ -454,7 +426,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             onLateResponse: CloseLateHandle,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(path, "打开目录", treatEndOfFileAsError: true);
+        response.ThrowIfError(path, SftpOperation.OpenDirectory);
         return SftpWire.ReadHandle(response.Payload);
     }
 
@@ -473,7 +445,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             {
                 return null;
             }
-            throw new SftpException(code, message, path, "读目录");
+            throw new SftpException(code, message, path, SftpOperation.ReadDirectory);
         }
 
         return SftpWire.ReadName(response.Payload);
@@ -486,7 +458,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
         foreach (SftpNameEntry entry in batch)
         {
             // `.` 与 `..` **会**出现在服务端的结果里。
-            if (_options.FilterDotEntries && entry.FileName is "." or "..")
+            if (_options.FilterDotEntries && entry.Name is "." or "..")
             {
                 continue;
             }
@@ -506,12 +478,12 @@ public sealed class SftpFileSystem : IAsyncDisposable
     private async ValueTask<SftpDirectoryEntry> ResolveEntryAsync(
         string directory, SftpNameEntry entry, CancellationToken cancellationToken)
     {
-        string fullPath = CombinePath(directory, entry.FileName);
+        string fullPath = CombinePath(directory, entry.Name);
 
         if (!entry.Attributes.IsSymbolicLink)
         {
             return new SftpDirectoryEntry(
-                entry.FileName, fullPath, entry.Attributes,
+                entry.Name, fullPath, entry.Attributes,
                 IsSymbolicLink: false, LinkTarget: null, IsBrokenLink: false, entry.LongName);
         }
 
@@ -527,7 +499,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
         // 断链：**保留链接自身的属性**，IsDirectory 为 false。
         // 返回 null 是不对的 —— 链接本身是存在的，删除它不能先报「找不到」。
         return new SftpDirectoryEntry(
-            entry.FileName,
+            entry.Name,
             fullPath,
             followed ?? entry.Attributes,
             IsSymbolicLink: true,
@@ -576,8 +548,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
 
     /// <summary>打开一个文件用于读。</summary>
     public ValueTask<SftpFileStream> OpenReadAsync(string path, CancellationToken cancellationToken = default) =>
-        OpenAsync(path, SftpOpenMode.Read, SftpFileAttributes.Empty,
-            canRead: true, canWrite: false, SftpWriteMode.Pipelined, cancellationToken);
+        OpenAsync(path, SftpOpenModes.Read, cancellationToken: cancellationToken);
 
     /// <summary>打开一个文件用于写（不存在则创建，存在则截断）。</summary>
     public ValueTask<SftpFileStream> OpenWriteAsync(
@@ -586,9 +557,9 @@ public sealed class SftpFileSystem : IAsyncDisposable
         SftpWriteMode writeMode = SftpWriteMode.Pipelined,
         CancellationToken cancellationToken = default) =>
         OpenAsync(path,
-            SftpOpenMode.Write | SftpOpenMode.Create | SftpOpenMode.Truncate,
+            SftpOpenModes.Write | SftpOpenModes.Create | SftpOpenModes.Truncate,
             SftpFileAttributes.WithPermissions(permissions),
-            canRead: false, canWrite: true, writeMode, cancellationToken);
+            writeMode, cancellationToken);
 
     /// <summary>打开一个文件用于续写（从给定偏移继续）。</summary>
     /// <remarks>
@@ -614,9 +585,9 @@ public sealed class SftpFileSystem : IAsyncDisposable
 
         SftpFileStream stream = await OpenAsync(
             path,
-            SftpOpenMode.Write | SftpOpenMode.Create,
+            SftpOpenModes.Write | SftpOpenModes.Create,
             SftpFileAttributes.WithPermissions(permissions),
-            canRead: false, canWrite: true, SftpWriteMode.Pipelined, cancellationToken).ConfigureAwait(false);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
         stream.Position = offset;
         stream.AssumeDurablePrefix(stream.LengthKnown ? Math.Min(offset, stream.Length) : offset);
@@ -624,31 +595,37 @@ public sealed class SftpFileSystem : IAsyncDisposable
     }
 
     /// <summary>用任意方式打开文件。</summary>
+    /// <param name="path">路径。</param>
+    /// <param name="flags">打开方式。流能不能读、能不能写就由它决定（<see cref="SftpOpenModes.Read"/> / <see cref="SftpOpenModes.Write"/>）。</param>
+    /// <param name="attributes">创建文件时的属性；<c>default</c> 表示不带。</param>
+    /// <param name="writeMode">写入方式。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public async ValueTask<SftpFileStream> OpenAsync(
         string path,
-        SftpOpenMode mode,
-        SftpFileAttributes attributes,
-        bool canRead,
-        bool canWrite,
+        SftpOpenModes flags,
+        SftpFileAttributes attributes = default,
         SftpWriteMode writeMode = SftpWriteMode.Pipelined,
         CancellationToken cancellationToken = default)
     {
         ValidatePath(path);
 
+        bool canRead = (flags & SftpOpenModes.Read) != 0;
+        bool canWrite = (flags & (SftpOpenModes.Write | SftpOpenModes.Append)) != 0;
+
         byte[] handle;
         using (SftpResponse response = await _pipeline.SendAsync(
-            (output, id) => SftpWire.WriteOpen(output, id, path, mode, attributes),
+            (output, id) => SftpWire.WriteOpen(output, id, path, flags, attributes),
             onLateResponse: CloseLateHandle,
             cancellationToken: cancellationToken).ConfigureAwait(false))
         {
-            response.ThrowIfError(path, "打开文件", treatEndOfFileAsError: true);
+            response.ThrowIfError(path, SftpOperation.Open);
             handle = SftpWire.ReadHandle(response.Payload);
         }
 
         // 截断打开的，长度就是 0；别的（读、续写、不截断的写）要问一次 ——
         // 曾经只有读才问，续写打开的流 Length 一直报 0，Seek(0, End) 回到了文件开头。
         long length = 0;
-        bool lengthKnown = (mode & SftpOpenMode.Truncate) != 0;
+        bool lengthKnown = (flags & SftpOpenModes.Truncate) != 0;
         if (!lengthKnown)
         {
             try
@@ -657,7 +634,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
                     (output, id) => SftpWire.WriteHandleRequest(output, SftpMessageType.FStat, id, handle),
                     cancellationToken: cancellationToken).ConfigureAwait(false);
 
-                stat.ThrowIfError(path, "取属性", treatEndOfFileAsError: true);
+                stat.ThrowIfError(path, SftpOperation.GetAttributes);
                 SftpFileAttributes current = SftpWire.ReadAttrs(stat.Payload);
                 if (current.HasSize)
                 {
@@ -764,12 +741,14 @@ public sealed class SftpFileSystem : IAsyncDisposable
 
         if (overwrite && !Capabilities.HasPosixRename)
         {
+            // 服务端没说话 —— 原话留空，本库的说明放进消息（ServerMessage 只装服务端的原话）。
             throw new SftpException(
                 SftpStatusCode.OperationUnsupported,
-                "这台服务端没有 posix-rename@openssh.com，做不到原子覆盖式重命名。" +
-                "可以先删除目标再重命名，但那**不是原子的** —— 中途失败会两个都没有。",
+                serverMessage: "",
                 sourcePath,
-                "重命名");
+                SftpOperation.PosixRename,
+                detail: "这台服务端没有 posix-rename@openssh.com，做不到原子覆盖式重命名。" +
+                        "可以先删除目标再重命名，但那不是原子的 —— 中途失败会两个都没有");
         }
 
         if (overwrite)
@@ -785,7 +764,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
                 },
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            response.ThrowIfError(sourcePath, "原子重命名", treatEndOfFileAsError: true);
+            response.ThrowIfError(sourcePath, SftpOperation.PosixRename);
             return;
         }
 
@@ -793,7 +772,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             (output, id) => SftpWire.WriteRename(output, id, sourcePath, destinationPath),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        plain.ThrowIfError(sourcePath, "重命名", treatEndOfFileAsError: true);
+        plain.ThrowIfError(sourcePath, SftpOperation.Rename);
     }
 
     /// <summary>读符号链接指向哪里。</summary>
@@ -806,7 +785,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             (output, id) => SftpWire.WritePathRequest(output, SftpMessageType.ReadLink, id, path),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(path, "读链接", treatEndOfFileAsError: true);
+        response.ThrowIfError(path, SftpOperation.ReadLink);
 
         IReadOnlyList<SftpNameEntry> entries = SftpWire.ReadName(response.Payload);
         if (entries.Count != 1)
@@ -815,7 +794,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
                 SshPhase.Open, $"READLINK 应当返回恰好 1 项，实际返回了 {entries.Count} 项。");
         }
 
-        return entries[0].FileName;
+        return entries[0].Name;
     }
 
     /// <summary>建符号链接。</summary>
@@ -836,7 +815,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             (output, id) => SftpWire.WriteSymLink(output, id, targetPath, linkPath),
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(linkPath, "建符号链接", treatEndOfFileAsError: true);
+        response.ThrowIfError(linkPath, SftpOperation.CreateSymbolicLink);
     }
 
     /// <summary>建硬链接（需要 <c>hardlink@openssh.com</c>）。</summary>
@@ -850,7 +829,10 @@ public sealed class SftpFileSystem : IAsyncDisposable
         {
             throw new SftpException(
                 SftpStatusCode.OperationUnsupported,
-                "这台服务端没有 hardlink@openssh.com。", linkPath, "建硬链接");
+                serverMessage: "",
+                linkPath,
+                SftpOperation.CreateHardLink,
+                detail: "这台服务端没有 hardlink@openssh.com");
         }
 
         using SftpResponse response = await _pipeline.SendAsync(
@@ -864,7 +846,7 @@ public sealed class SftpFileSystem : IAsyncDisposable
             },
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        response.ThrowIfError(linkPath, "建硬链接", treatEndOfFileAsError: true);
+        response.ThrowIfError(linkPath, SftpOperation.CreateHardLink);
     }
 
     // ------------------------------------------------------------ 内部

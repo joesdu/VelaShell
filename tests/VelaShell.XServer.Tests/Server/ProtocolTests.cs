@@ -1,6 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -32,7 +30,7 @@ public sealed class ProtocolTests
     public async Task 配了cookie时不带正确cookie的连接被拒()
     {
         byte[] cookie = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-        await using X11Server server = new(new XServerOptions { AuthorizationCookie = cookie });
+        await using X11Server server = new(new X11ServerOptions { AuthorizationCookie = cookie });
 
         await using XTestClient wrong = await XTestClient.ConnectAsync(server, authName: "MIT-MAGIC-COOKIE-1", authData: new byte[16]);
         Assert.AreEqual(0, wrong.SetupReply[0], "错的 cookie 应当 Failed");

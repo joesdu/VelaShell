@@ -92,7 +92,7 @@ public sealed class AdaptiveWindowTests
             TestChannelServer channelServer = new(server.Transport, script);
             Task serverChannels = channelServer.RunAsync(cts.Token);
 
-            SshConnection connection = new(clientTransport, kex.SessionId, limits);
+            SshConnection connection = new(clientTransport, kex, limits);
             connection.Start();
 
             return new Harness(server, channelServer, serverChannels, connection, cts);
@@ -144,7 +144,7 @@ public sealed class AdaptiveWindowTests
             },
             limits);
 
-        SshExecutionOptions options = new()
+        SshCommandOptions options = new()
         {
             Channel = SshChannelOptions.Default with { WindowPolicy = policy },
         };

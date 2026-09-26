@@ -1,5 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -63,14 +62,14 @@ public sealed class XkbTests
         await c.SendAsync(xkb, 1, b => b.U16(UseCoreKbd).U16(1 << 2).U16(0).U16(1 << 2).U16(0).U16(0));
         await c.SyncAsync();
 
-        server.Key(50, true);   // Shift_L
+        server.InjectKey(50, true);   // Shift_L
         XMessage state = await c.NextAsync(m => !m.IsReply && !m.IsError && m.EventCode == xkbEvent && m.Bytes[1] == 2);
         Assert.AreEqual(1, state.Bytes[9], "有效修饰 = Shift");
         Assert.AreEqual(1, state.Bytes[10], "base = Shift");
-        server.Key(50, false);
+        server.InjectKey(50, false);
 
-        server.Key(66, true);   // Caps_Lock 按下即锁定
-        server.Key(66, false);
+        server.InjectKey(66, true);   // Caps_Lock 按下即锁定
+        server.InjectKey(66, false);
         await c.SyncAsync();
         XMessage current = await c.RequestAsync(xkb, 4, b => b.U16(UseCoreKbd).U16(0));
         Assert.AreEqual(0x02, current.Bytes[11], "lockedMods = Lock");
@@ -86,9 +85,9 @@ public sealed class XkbTests
         await using X11Server server = new(host: host);
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         (byte xkb, _) = await XkbAsync(c);
-        server.Key(50, true);
-        server.Key(62, true);
-        server.Key(50, false);
+        server.InjectKey(50, true);
+        server.InjectKey(62, true);
+        server.InjectKey(50, false);
         await c.SyncAsync();
         XMessage current = await c.RequestAsync(xkb, 4, b => b.U16(UseCoreKbd).U16(0));
         Assert.AreEqual(0x01, current.Bytes[8]);
@@ -131,9 +130,7 @@ public sealed class XkbTests
         (byte xkb, _) = await XkbAsync(c);
 
         // 德语布局的 Q 键:q Q | 组 2 抄组 1 | AltGr → @。右 Alt 改成 ISO_Level3_Shift,从 Mod1 挪到 Mod5。
-        server.SetKeyboardMapping(24, 6, ['q', 'Q', 'q', 'Q', '@', '@']);
-        server.SetKeyboardMapping(108, 6, [0xfe03, 0xfe03, 0, 0, 0, 0]);
-        server.SetModifierMapping([50, 62, 66, 0, 37, 105, 64, 0, 77, 0, 0, 0, 133, 134, 108, 0]);
+        server.SetKeymap(new XKeymap("de", 6) { AltGr = true }.Map(24, 'q', 'Q', 'q', 'Q', '@', '@'));
         await c.SyncAsync();
 
         XMessage key = await c.RequestAsync(xkb, 8, b => b.U16(UseCoreKbd).U16(0).U16(0x2).U8(0).U8(0).U8(24).U8(1).Bytes(new byte[14]));

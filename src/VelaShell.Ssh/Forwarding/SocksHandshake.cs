@@ -13,7 +13,7 @@ using System.Text;
 namespace VelaShell.Ssh.Forwarding;
 
 /// <summary>SOCKS5 的应答码（RFC 1928 §6）。</summary>
-public enum SocksReply : byte
+internal enum SocksReply : byte
 {
     /// <summary>成功。</summary>
     Succeeded = 0x00,
@@ -49,7 +49,7 @@ public enum SocksReply : byte
 /// </param>
 /// <param name="Port">目标端口。</param>
 /// <param name="AddressType">原始地址类型字节（回应答时要原样带回）。</param>
-public readonly record struct SocksTarget(string Host, int Port, byte AddressType);
+internal readonly record struct SocksTarget(string Host, int Port, byte AddressType);
 
 /// <summary>SOCKS5 握手。</summary>
 /// <remarks>
@@ -64,7 +64,7 @@ public readonly record struct SocksTarget(string Host, int Port, byte AddressTyp
 /// 用操作系统的手段（防火墙、命名空间）。
 /// </para>
 /// </remarks>
-public static class SocksHandshake
+internal static class SocksHandshake
 {
     private const byte Version5 = 0x05;
     private const byte NoAuthentication = 0x00;

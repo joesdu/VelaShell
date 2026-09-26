@@ -29,7 +29,7 @@ namespace VelaShell.Ssh.Transport;
 /// 很多代理程序只在 stderr 上说明失败原因。
 /// </para>
 /// </remarks>
-public sealed record ProxyCommandDialer(string CommandTemplate) : ISshTransportDialer
+internal sealed record ProxyCommandDialer(string CommandTemplate) : ISshTransportDialer
 {
     /// <summary><c>%r</c> 替换成什么（目标的登录用户名）。</summary>
     public string? UserName { get; init; }
@@ -63,7 +63,7 @@ public sealed record ProxyCommandDialer(string CommandTemplate) : ISshTransportD
                 case '%': result.Append('%'); break;
                 default:
                     throw new SshConnectException(
-                        SshFailureReason.ProxyRefused, SshPhase.Dialing,
+                        SshFailureReason.InvalidConfiguration, SshPhase.Dialing,
                         $"ProxyCommand 里有不认识的记号 %{token}（支持 %h %p %r %n %%）。");
             }
         }
@@ -92,7 +92,7 @@ public sealed record ProxyCommandDialer(string CommandTemplate) : ISshTransportD
             if (!safe)
             {
                 throw new SshConnectException(
-                    SshFailureReason.ProxyRefused, SshPhase.Dialing,
+                    SshFailureReason.InvalidConfiguration, SshPhase.Dialing,
                     $"{what}里有不能交给 shell 的字符 U+{(int)c:X4}，不能代入 ProxyCommand。" +
                     "合法的主机名与用户名只由字母、数字与 . - _ 组成（主机名还可以有 IPv6 的冒号）。");
             }

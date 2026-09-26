@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright 2026 VelaShell Labs
 
-namespace VelaShell.XServer.Host;
+namespace VelaShell.XServer;
 
 /// <summary>
 /// 宿主注入按键时用的 X 键码(evdev 扫描码 + 8,与 X.Org 在现代 Linux 上的编号一致)。

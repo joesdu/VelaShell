@@ -38,7 +38,7 @@ public sealed class HostCertificateTests
     private static byte[] ReadBlob(string fileName) =>
         Convert.FromBase64String(File.ReadAllText(FixturePath(fileName)).Split(' ', StringSplitOptions.RemoveEmptyEntries)[1]);
 
-    private static SshPublicKey LoadKey(string fileName) => SshPublicKey.Parse(ReadBlob(fileName));
+    private static SshPublicKey LoadKey(string fileName) => SshPublicKey.Decode(ReadBlob(fileName));
 
     /// <summary>一行 known_hosts：<c>[marker] pattern type base64</c>。</summary>
     private static string Line(string marker, string pattern, string pubFile)
@@ -163,7 +163,7 @@ public sealed class HostCertificateTests
         blob[4 + typeLength + 4] ^= 0x01;
 
         KnownHostLookup lookup = KnownHostsFile.Lookup(
-            KnownHostsFile.Parse(Line("@cert-authority", Host, "hostcert-ca.pub")), Host, 22, SshPublicKey.Parse(blob), InWindow);
+            KnownHostsFile.Parse(Line("@cert-authority", Host, "hostcert-ca.pub")), Host, 22, SshPublicKey.Decode(blob), InWindow);
 
         Assert.AreEqual(KnownHostStatus.CertificateInvalid, lookup.Status);
         Assert.Contains("签名", lookup.CertificateProblem!);
@@ -291,11 +291,11 @@ public sealed class HostCertificateTests
             KnownHostsPolicy policy = new(path) { UnknownHost = UnknownHostBehavior.AcceptAndPersist };
 
             SshHostKeyVerdict verdict = await policy.EvaluateAsync(Context(LoadKey("hostcert-key-cert.pub")), TestContext.CancellationToken);
-            Assert.AreEqual(SshHostKeyDecision.Accept, verdict.Decision, verdict.Reason);
+            Assert.AreEqual(SshHostKeyDecision.Accept, verdict.Decision, verdict.Message);
 
             SshHostKeyVerdict invalid = await policy.EvaluateAsync(Context(LoadKey("hostcert-noprincipals-cert.pub")), TestContext.CancellationToken);
             Assert.AreEqual(SshHostKeyDecision.Reject, invalid.Decision, "CA 管的主机证书不合格，不退回去按新主机接受");
-            Assert.Contains("不合格", invalid.Reason!);
+            Assert.Contains("不合格", invalid.Message!);
         }
         finally
         {

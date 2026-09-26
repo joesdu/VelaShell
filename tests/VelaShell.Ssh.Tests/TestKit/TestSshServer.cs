@@ -17,7 +17,7 @@ using VelaShell.Ssh.Transport;
 namespace VelaShell.Ssh.Tests.TestKit;
 
 /// <summary>测试服务端的行为开关。</summary>
-public sealed record TestSshServerOptions
+internal sealed record TestSshServerOptions
 {
     /// <summary>服务端的版本标识串。</summary>
     public string Identification { get; init; } = "SSH-2.0-VelaShellTestServer_1.0";
@@ -59,13 +59,13 @@ public sealed record TestSshServerOptions
 /// <param name="Negotiated">服务端算出的协商结果。</param>
 /// <param name="ExchangeHash">交换哈希。</param>
 /// <param name="HostKeyBlob">服务端出示的主机公钥 blob。</param>
-public sealed record TestSshServerHandshake(
+internal sealed record TestSshServerHandshake(
     SshNegotiatedAlgorithms Negotiated,
     byte[] ExchangeHash,
     byte[] HostKeyBlob);
 
 /// <summary>会说 SSH 的测试服务端。</summary>
-public sealed class TestSshServer : IAsyncDisposable
+internal sealed class TestSshServer : IAsyncDisposable
 {
     private const int MaxField = 256 * 1024;
 

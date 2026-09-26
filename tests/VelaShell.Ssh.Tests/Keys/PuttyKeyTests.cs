@@ -252,7 +252,7 @@ public sealed class PuttyKeyTests
         using (expected)
         {
             string ppk = BuildPpk(3, SshAlgorithmNames.SshEd25519, pub, priv);
-            ISshSigner signer = SshPrivateKeyFile.Parse(ppk);
+            InMemorySshSigner signer = SshPrivateKeyFile.Parse(ppk);
 
             Assert.AreSequenceEqual(expected.PublicKey.Blob.ToArray(), signer.PublicKey.Blob.ToArray());
 
@@ -269,7 +269,7 @@ public sealed class PuttyKeyTests
         using (expected)
         {
             string ppk = BuildPpk(2, SshAlgorithmNames.SshEd25519, pub, priv);
-            ISshSigner signer = SshPrivateKeyFile.Parse(ppk);
+            InMemorySshSigner signer = SshPrivateKeyFile.Parse(ppk);
 
             byte[] data = Encoding.UTF8.GetBytes("x");
             byte[] signature = await signer.SignAsync(data, SshAlgorithmNames.SshEd25519);
@@ -287,7 +287,7 @@ public sealed class PuttyKeyTests
         using (expected)
         {
             string ppk = BuildPpk(3, SshAlgorithmNames.SshEd25519, pub, priv, passphrase: "正确的口令");
-            ISshSigner signer = SshPrivateKeyFile.Parse(ppk, "正确的口令");
+            InMemorySshSigner signer = SshPrivateKeyFile.Parse(ppk, "正确的口令");
 
             Assert.AreSequenceEqual(expected.PublicKey.Blob.ToArray(), signer.PublicKey.Blob.ToArray());
 
@@ -304,7 +304,7 @@ public sealed class PuttyKeyTests
         using (expected)
         {
             string ppk = BuildPpk(2, SshAlgorithmNames.SshEd25519, pub, priv, passphrase: "口令");
-            ISshSigner signer = SshPrivateKeyFile.Parse(ppk, "口令");
+            InMemorySshSigner signer = SshPrivateKeyFile.Parse(ppk, "口令");
 
             byte[] data = Encoding.UTF8.GetBytes("x");
             byte[] signature = await signer.SignAsync(data, SshAlgorithmNames.SshEd25519);
@@ -334,7 +334,7 @@ public sealed class PuttyKeyTests
         string ppk = BuildPpk(
             3, SshAlgorithmNames.SshRsa, pub.WrittenSpan.ToArray(), priv.WrittenSpan.ToArray());
 
-        ISshSigner signer = SshPrivateKeyFile.Parse(ppk);
+        InMemorySshSigner signer = SshPrivateKeyFile.Parse(ppk);
 
         byte[] data = Encoding.UTF8.GetBytes("x");
         byte[] signature = await signer.SignAsync(data, SshAlgorithmNames.RsaSha256);
@@ -366,7 +366,7 @@ public sealed class PuttyKeyTests
             3, SshAlgorithmNames.EcdsaSha2Nistp256,
             pub.WrittenSpan.ToArray(), priv.WrittenSpan.ToArray());
 
-        ISshSigner signer = SshPrivateKeyFile.Parse(ppk);
+        InMemorySshSigner signer = SshPrivateKeyFile.Parse(ppk);
 
         byte[] data = Encoding.UTF8.GetBytes("x");
         byte[] signature = await signer.SignAsync(data, SshAlgorithmNames.EcdsaSha2Nistp256);
@@ -402,7 +402,7 @@ public sealed class PuttyKeyTests
         using (expected)
         {
             string ppk = BuildPpk(3, SshAlgorithmNames.SshEd25519, pub, priv, passphrase: "口令", argon2Variant: variant);
-            ISshSigner signer = SshPrivateKeyFile.Parse(ppk, "口令");
+            InMemorySshSigner signer = SshPrivateKeyFile.Parse(ppk, "口令");
             Assert.AreSequenceEqual(expected.PublicKey.Blob.ToArray(), signer.PublicKey.Blob.ToArray());
         }
     }
@@ -484,7 +484,7 @@ public sealed class PuttyKeyTests
             {
                 await File.WriteAllTextAsync(path, BuildPpk(3, SshAlgorithmNames.SshEd25519, pub, priv));
 
-                ISshSigner signer = await SshPrivateKeyFile.LoadAsync(path);
+                InMemorySshSigner signer = await SshPrivateKeyFile.LoadAsync(path);
                 Assert.AreSequenceEqual(
                     expected.PublicKey.Blob.ToArray(), signer.PublicKey.Blob.ToArray());
             }

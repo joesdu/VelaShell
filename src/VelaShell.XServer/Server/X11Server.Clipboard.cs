@@ -16,9 +16,10 @@
 using System.Buffers.Binary;
 using System.Text;
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -72,26 +73,19 @@ public sealed partial class X11Server
         }
     }
 
-    /// <summary>
-    /// 宿主的剪贴板有了新文本:服务端占有 CLIPBOARD(<see cref="Host.XServerOptions.SyncPrimary" /> 时连同 PRIMARY),
-    /// 之后 X 客户端粘贴拿到的就是它。与刚交给宿主的文本相同时什么也不做(那是宿主把我们给的写回来了)。
-    /// </summary>
-    public void SetClipboardText(string text)
+    /// <summary>宿主的剪贴板有了新文本(见 <see cref="SetClipboardText" />):服务端替宿主占有 CLIPBOARD(与 PRIMARY)。</summary>
+    private void ApplyClipboardText(string text)
     {
-        ArgumentNullException.ThrowIfNull(text);
-        Post(null, () =>
+        if (!_options.SyncClipboard || text == _lastDeliveredText)
         {
-            if (!_options.SyncClipboard || text == _lastDeliveredText)
-            {
-                return;
-            }
-            _hostClipboard = text;
-            TakeSelectionForHost(Intern("CLIPBOARD"));
-            if (_options.SyncPrimary)
-            {
-                TakeSelectionForHost(XAtom.Primary);
-            }
-        });
+            return;   // 宿主把我们刚给的写回来了
+        }
+        _hostClipboard = text;
+        TakeSelectionForHost(Intern("CLIPBOARD"));
+        if (_options.SyncPrimary)
+        {
+            TakeSelectionForHost(XAtom.Primary);
+        }
     }
 
     private void TakeSelectionForHost(uint selection)

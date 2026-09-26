@@ -1,5 +1,4 @@
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
+using VelaShell.XServer;
 
 namespace VelaShell.Infrastructure.XServer;
 
@@ -8,10 +7,10 @@ namespace VelaShell.Infrastructure.XServer;
 /// 由界面层实现(Avalonia),经 DI 交给 <see cref="BuiltInLocalXServer" />。
 /// </summary>
 /// <remarks>
-/// <see cref="IXServerHost" /> 的回调在服务端的执行线程上来,实现自己切 UI 线程(见该接口的说明)。
+/// <see cref="IX11ServerHost" /> 的回调在服务端的执行线程上来,实现自己切 UI 线程(见该接口的说明)。
 /// 这里多出来的两步是生命周期:服务端启动时 <see cref="AttachAsync" />,停下时 <see cref="Detach" />。
 /// </remarks>
-public interface IEmbeddedXServerHost : IXServerHost
+public interface IEmbeddedXServerHost : IX11ServerHost
 {
     /// <summary>
     /// 服务端刚建好、还没开始监听:宿主记下它(注入输入用),并把当前的显示器布局、DPI 与键盘布局告诉它。

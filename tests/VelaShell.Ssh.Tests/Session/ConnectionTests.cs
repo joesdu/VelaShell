@@ -9,6 +9,7 @@
 
 using System.Text;
 using VelaShell.Ssh.Auth;
+using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Protocol;
@@ -64,7 +65,7 @@ public sealed class ConnectionTests
             _running.Add(Task.Run(async () =>
             {
                 TestSshServerHandshake handshake = await server.HandshakeAsync(_cts.Token);
-                HostKey = SshPublicKey.Parse(handshake.HostKeyBlob);
+                HostKey = SshPublicKey.Decode(handshake.HostKeyBlob);
 
                 TestAuthServer auth = new(server.Transport, handshake.ExchangeHash, _authPolicy);
                 await auth.RunAsync(_cts.Token);
@@ -183,7 +184,7 @@ public sealed class ConnectionTests
             Credentials = [new PasswordCredential("hunter2")],
         };
 
-        await using SshConnection connection = await options.ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(options);
 
         Assert.IsTrue(connection.IsAlive);
         Assert.AreEqual("joe@test.invalid:22", connection.Description,
@@ -192,15 +193,14 @@ public sealed class ConnectionTests
 
         // 协商成功的结果也要交出去 —— 终端产品要在状态栏上显示它，
         // 排障时第一句话也是「这条连接到底谈成了什么」（架构原则 4）。
-        Assert.IsNotNull(connection.Algorithms, "连上之后要能拿到协商结果");
         Assert.IsFalse(
-            string.IsNullOrEmpty(connection.Algorithms!.Value.KeyExchange),
+            string.IsNullOrEmpty(connection.Algorithms.KeyExchange),
             "密钥交换算法名不该是空的");
         Assert.AreEqual(
-            SshAlgorithmNames.None, connection.Algorithms!.Value.CompressionClientToServer,
+            SshAlgorithmNames.None, connection.Algorithms.CompressionClientToServer,
             "默认不开压缩");
 
-        SshCommandOutput output = await connection.RunAsync("uname -a");
+        SshCommandResult output = await connection.RunAsync("uname -a");
 
         Assert.AreEqual("Linux velashell 6.1\n", output.StandardOutput);
         Assert.AreEqual(0, output.ExitCode);
@@ -223,8 +223,8 @@ public sealed class ConnectionTests
             Credentials = [new PasswordCredential("hunter2")],
         };
 
-        await using SshConnection connection = await options.ConnectAsync();
-        SshCommandOutput output = await connection.RunAsync("不存在的命令");
+        await using SshConnection connection = await SshConnection.ConnectAsync(options);
+        SshCommandResult output = await connection.RunAsync("不存在的命令");
 
         Assert.AreEqual(127, output.ExitCode);
         Assert.IsFalse(output.IsSuccess);
@@ -250,7 +250,7 @@ public sealed class ConnectionTests
         };
 
         SshException error = await Assert.ThrowsExactlyAsync<SshConnectException>(
-            async () => await options.ConnectAsync());
+            async () => await SshConnection.ConnectAsync(options));
 
         Assert.Contains("不在允许列表里", error.Message);
     }
@@ -269,7 +269,7 @@ public sealed class ConnectionTests
         };
 
         SshAuthenticationException error = await Assert.ThrowsExactlyAsync<SshAuthenticationException>(
-            async () => await options.ConnectAsync());
+            async () => await SshConnection.ConnectAsync(options));
 
         Assert.IsNotEmpty(error.Attempts);
         Assert.Contains("password", error.DescribeAttempts());
@@ -300,7 +300,7 @@ public sealed class ConnectionTests
             },
         };
 
-        await using SshConnection connection = await options.ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(options);
 
         Assert.AreSequenceEqual(new[] { "未经授权的访问将被记录。" }, banners);
     }
@@ -316,7 +316,7 @@ public sealed class ConnectionTests
         };
 
         SshConnectException error = await Assert.ThrowsExactlyAsync<SshConnectException>(
-            async () => await options.ConnectAsync());
+            async () => await SshConnection.ConnectAsync(options));
 
         // 「连不上」三个字对用户没有任何帮助 —— 要说清是 DNS、拒绝、还是超时。
         //
@@ -340,7 +340,7 @@ public sealed class ConnectionTests
         };
 
         SshConnectException error = await Assert.ThrowsExactlyAsync<SshConnectException>(
-            async () => await options.ConnectAsync());
+            async () => await SshConnection.ConnectAsync(options));
 
         Assert.AreEqual(SshFailureReason.DnsFailure, error.Reason);
         Assert.Contains("DNS", error.Message);
@@ -388,7 +388,7 @@ public sealed class ConnectionTests
             ConnectTimeout = TimeSpan.FromMilliseconds(700),
         };
 
-        await using SshConnection connection = await options.ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(options);
 
         Assert.IsTrue(connection.IsAlive);
         Assert.AreEqual(1, policy.Persisted);
@@ -405,10 +405,10 @@ public sealed class ConnectionTests
             Dialer = server.CreateDialer(),
             HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
             Credentials = [new PasswordCredential("hunter2")],
-            KeepAlive = new KeepAlivePolicy(TimeSpan.FromMilliseconds(100)),
+            KeepAlive = new SshKeepAlivePolicy(TimeSpan.FromMilliseconds(100)),
         };
 
-        await using SshConnection connection = await options.ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(options);
 
         // 闲着 —— 保活该自己发出去。
         await Task.Delay(500);
@@ -430,10 +430,10 @@ public sealed class ConnectionTests
             Dialer = server.CreateDialer(),
             HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
             Credentials = [new PasswordCredential("hunter2")],
-            KeepAlive = new KeepAlivePolicy(TimeSpan.FromMilliseconds(200)),
+            KeepAlive = new SshKeepAlivePolicy(TimeSpan.FromMilliseconds(200)),
         };
 
-        await using SshConnection connection = await options.ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(options);
 
         // 持续有流量 —— 每一条命令都会让「上次收到报文」的时刻刷新。
         for (int i = 0; i < 8; i++)
@@ -467,7 +467,7 @@ public sealed class ConnectionTests
             Credentials = [new PasswordCredential("hunter2")],
         };
 
-        await using SshConnection connection = await options.ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(options);
 
         Assert.IsTrue(connection.IsAlive);
         Assert.IsFalse(connection.Disconnected.IsCancellationRequested);
@@ -494,7 +494,7 @@ public sealed class ConnectionTests
             Credentials = [new PasswordCredential("hunter2")],
         };
 
-        SshConnection connection = await options.ConnectAsync();
+        SshConnection connection = await SshConnection.ConnectAsync(options);
         CancellationToken token = connection.Disconnected;
 
         // 掉线要能**等**到，不是靠轮询问出来的。
@@ -523,7 +523,7 @@ public sealed class ConnectionTests
         };
 
         SshConnectionClosedException ex = await Assert.ThrowsExactlyAsync<SshConnectionClosedException>(
-            async () => await options.ConnectAsync());
+            async () => await SshConnection.ConnectAsync(options));
 
         Assert.AreEqual(SshFailureReason.ClosedByPeer, ex.Reason);
         Assert.IsInstanceOfType<IOException>(ex.InnerException);
@@ -586,7 +586,7 @@ public sealed class ConnectionTests
             Credentials = [new PasswordCredential("hunter2")],
         };
 
-        await using SshConnection connection = await options.ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(options);
         Assert.IsFalse(connection.Disconnected.IsCancellationRequested);
 
         TaskCompletionSource signalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -611,10 +611,10 @@ public sealed class ConnectionTests
             Dialer = server.CreateDialer(),
             HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
             Credentials = [new PasswordCredential("hunter2")],
-            KeepAlive = KeepAlivePolicy.Disabled,
+            KeepAlive = SshKeepAlivePolicy.Disabled,
         };
 
-        await using SshConnection connection = await options.ConnectAsync();
+        await using SshConnection connection = await SshConnection.ConnectAsync(options);
         await Task.Delay(200);
 
         Assert.IsTrue(connection.IsAlive);

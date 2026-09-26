@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -6,9 +8,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using VelaShell.Services.XServer;
-using VelaShell.XServer.Drawing;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
+using VelaShell.XServer;
 
 namespace VelaShell.Views.XServer;
 
@@ -35,7 +35,7 @@ public sealed class XNativeWindow : Window
     private bool _applying;
     private bool _closingByHost;
     private Vector _wheelRemainder;
-    private (int Left, int Right, int Top, int Bottom) _frame;
+    private XFrameExtents _frame;
     private XWindowStates _reportedStates;
     private (int X, int Y)? _placed;
     private WindowState _resizeState = WindowState.Normal;
@@ -51,7 +51,7 @@ public sealed class XNativeWindow : Window
         SizeToContent = SizeToContent.Manual;
         WindowStartupLocation = WindowStartupLocation.Manual;
         Focusable = true;
-        ApplyStyle();
+        ApplyStyle(handle.Snapshot);
 
         PositionChanged += (_, _) => OnMovedByUser();
         Resized += OnResized;
@@ -70,25 +70,40 @@ public sealed class XNativeWindow : Window
 
     // ================================================================== 服务端 → 窗口
 
-    /// <summary>标题、装饰、尺寸约束、图标等属性变了(映射时也调一次)。</summary>
-    public void ApplyProperties()
+    /// <summary>快照里的属性变了(映射时按 <see cref="XTopLevelChanges.All" /> 调一次):只重新应用变了的那几组。</summary>
+    public void ApplyProperties(XTopLevelChanges changes)
     {
-        Title = Handle.Title.Length > 0 ? Handle.Title : Handle.ClassName;
-        ApplyStyle();
-        _surface.PropertiesChanged();
-        Opacity = Math.Clamp(Handle.Opacity, 0.05, 1);
-        double scale = Scale;
-        MinWidth = Handle.MinWidth > 0 ? Handle.MinWidth / scale : 0;
-        MinHeight = Handle.MinHeight > 0 ? Handle.MinHeight / scale : 0;
-        MaxWidth = Handle.MaxWidth > 0 ? Handle.MaxWidth / scale : double.PositiveInfinity;
-        MaxHeight = Handle.MaxHeight > 0 ? Handle.MaxHeight / scale : double.PositiveInfinity;
-        CanResize = !Handle.OverrideRedirect && (Handle.MaxWidth == 0 || Handle.MaxWidth != Handle.MinWidth
-                                                 || Handle.MaxHeight != Handle.MinHeight);
-        if (Handle.Icons.Count > 0 && _host.IconFor(Handle) is { } icon)
+        XTopLevelSnapshot s = Handle.Snapshot;
+        if ((changes & XTopLevelChanges.Title) != 0)
+        {
+            Title = s.Title.Length > 0 ? s.Title : s.ClassName;
+        }
+        if ((changes & (XTopLevelChanges.Hints | XTopLevelChanges.States | XTopLevelChanges.Shape)) != 0)
+        {
+            ApplyStyle(s);
+        }
+        if ((changes & (XTopLevelChanges.Hints | XTopLevelChanges.Shape)) != 0)
+        {
+            _surface.PropertiesChanged();
+        }
+        if ((changes & XTopLevelChanges.Hints) != 0)
+        {
+            Opacity = Math.Clamp(s.Opacity, 0.05, 1);
+            double scale = Scale;
+            MinWidth = s.MinWidth > 0 ? s.MinWidth / scale : 0;
+            MinHeight = s.MinHeight > 0 ? s.MinHeight / scale : 0;
+            MaxWidth = s.MaxWidth > 0 ? s.MaxWidth / scale : double.PositiveInfinity;
+            MaxHeight = s.MaxHeight > 0 ? s.MaxHeight / scale : double.PositiveInfinity;
+            CanResize = !s.OverrideRedirect && (s.MaxWidth == 0 || s.MaxWidth != s.MinWidth || s.MaxHeight != s.MinHeight);
+        }
+        if ((changes & XTopLevelChanges.Icons) != 0 && s.Icons.Count > 0 && _host.IconFor(s.Icons) is { } icon)
         {
             Icon = icon;
         }
-        ApplyGeometry();
+        if ((changes & (XTopLevelChanges.Geometry | XTopLevelChanges.Hints)) != 0)
+        {
+            ApplyGeometry();
+        }
     }
 
     /// <summary>
@@ -108,10 +123,11 @@ public sealed class XNativeWindow : Window
         try
         {
             // 设 Width / Height(内容区的 DIP 尺寸)才会真的改原生窗口;显示之后再设 ClientSize 只改了属性值。
-            Width = Math.Max(1, Handle.Width) / scale;
-            Height = Math.Max(1, Handle.Height) / scale;
+            XTopLevelSnapshot s = Handle.Snapshot;
+            Width = Math.Max(1, s.Width) / scale;
+            Height = Math.Max(1, s.Height) / scale;
             (int ox, int oy) = _host.RootOrigin;
-            (int x, int y) = (Handle.X, Handle.Y);
+            (int x, int y) = (s.X, s.Y);
             if (_placed is { } placed)
             {
                 if (placed == (x, y))
@@ -131,19 +147,42 @@ public sealed class XNativeWindow : Window
     /// <summary>有内容画进来了(顶层内区坐标的矩形):下一帧取这几块像素。</summary>
     public void AddDamage(IReadOnlyList<XRect> damage) => _surface.AddDamage(damage);
 
-    /// <summary>服务端要求的光标。</summary>
-    public void ApplyCursor(int glyph)
+    /// <summary>服务端要求的光标:有图像(位图 / ARGB 光标)就显示图像,否则按形状选系统光标。</summary>
+    public void ApplyCursor(XCursor cursor)
     {
-        StandardCursorType type = XInputMap.Cursor(glyph);
-        if (!Cursors.TryGetValue(type, out Cursor? cursor))
+        if (cursor is { Image: { } image, Shape: not XCursorShape.Hidden })
         {
-            Cursors[type] = cursor = new Cursor(type);   // 指针每跨一个控件就换一次光标:同一种只建一次
+            Cursor = ImageCursors.GetValue(image, CreateImageCursor);
+            return;
         }
-        Cursor = cursor;
+        StandardCursorType type = XInputMap.Cursor(cursor.Shape);
+        if (!StandardCursors.TryGetValue(type, out Cursor? standard))
+        {
+            StandardCursors[type] = standard = new Cursor(type);   // 指针每跨一个控件就换一次光标:同一种只建一次
+        }
+        Cursor = standard;
     }
 
     /// <summary>建过的系统光标(UI 线程上用)。</summary>
-    private static readonly Dictionary<StandardCursorType, Cursor> Cursors = [];
+    private static readonly Dictionary<StandardCursorType, Cursor> StandardCursors = [];
+
+    /// <summary>按图像建过的光标:服务端对同一个光标总给同一份图像;图像没人引用了,光标随之回收。</summary>
+    private static readonly ConditionalWeakTable<XCursorImage, Cursor> ImageCursors = new();
+
+    private static unsafe Cursor CreateImageCursor(XCursorImage image)
+    {
+        // 预乘的 0xAARRGGBB 按小端字节序就是预乘的 BGRA:逐行拷进位图。
+        WriteableBitmap bitmap = new(new PixelSize(image.Width, image.Height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+        using (ILockedFramebuffer frame = bitmap.Lock())
+        {
+            for (int y = 0; y < image.Height; y++)
+            {
+                MemoryMarshal.AsBytes(image.Pixels.AsSpan(y * image.Width, image.Width))
+                    .CopyTo(new Span<byte>((void*)(frame.Address + (y * frame.RowBytes)), image.Width * 4));
+            }
+        }
+        return new Cursor(bitmap, new PixelPoint(image.HotspotX, image.HotspotY));
+    }
 
     /// <summary>宿主要关它(客户端取消映射 / 销毁、服务端停下)。</summary>
     public void CloseByHost()
@@ -190,27 +229,27 @@ public sealed class XNativeWindow : Window
             : (target & XWindowStates.Hidden) != 0 ? WindowState.Minimized
             : (target & XWindowStates.Maximized) == XWindowStates.Maximized ? WindowState.Maximized
             : WindowState.Normal;
-        Topmost = (target & XWindowStates.Above) != 0 || Handle.OverrideRedirect;
+        Topmost = (target & XWindowStates.Above) != 0 || Handle.Snapshot.OverrideRedirect;
         ReportStates();
     }
 
     // ================================================================== 窗口 → 服务端
 
-    private void ApplyStyle()
+    private void ApplyStyle(XTopLevelSnapshot s)
     {
-        bool popup = Handle.OverrideRedirect;
-        bool undecorated = popup || !Handle.Decorated
-                           || Handle.WindowType is XWindowType.Splash or XWindowType.Tooltip or XWindowType.Notification
+        bool popup = s.OverrideRedirect;
+        bool undecorated = popup || !s.Decorated
+                           || s.WindowType is XWindowType.Splash or XWindowType.Tooltip or XWindowType.Notification
                                or XWindowType.Dnd or XWindowType.Dock or XWindowType.Desktop;
         WindowDecorations = undecorated ? WindowDecorations.None : WindowDecorations.Full;
-        ShowInTaskbar = !popup && Handle.TransientFor == 0 && (Handle.States & XWindowStates.SkipTaskbar) == 0
-                        && Handle.WindowType is XWindowType.Normal or XWindowType.Dialog;
-        ShowActivated = !popup && Handle.AcceptsFocus;
-        Topmost = popup || (Handle.States & XWindowStates.Above) != 0;
+        ShowInTaskbar = !popup && s.TransientFor is null && (s.States & XWindowStates.SkipTaskbar) == 0
+                        && s.WindowType is XWindowType.Normal or XWindowType.Dialog;
+        ShowActivated = !popup && s.AcceptsFocus;
+        Topmost = popup || (s.States & XWindowStates.Above) != 0;
         CanMinimize = !popup;
         CanMaximize = !popup;
         // 有 alpha 的视觉(GTK 的客户端阴影、圆角)与非矩形窗口要透明底;其余不透明,省掉系统合成的开销。
-        TransparencyLevelHint = Handle.HasAlpha || Handle.Shape is not null
+        TransparencyLevelHint = s.HasAlpha || s.Shape is not null
             ? [WindowTransparencyLevel.Transparent]
             : [WindowTransparencyLevel.None];
     }
@@ -223,9 +262,9 @@ public sealed class XNativeWindow : Window
         }
         (int ox, int oy) = _host.RootOrigin;
         int x = Position.X + _frame.Left - ox, y = Position.Y + _frame.Top - oy;
-        if (x != Handle.X || y != Handle.Y)
+        if (Handle.Snapshot is var s && (x != s.X || y != s.Y))
         {
-            server.MoveTopLevel(Handle.Id, x, y);
+            server.MoveTopLevel(Handle, x, y);
         }
     }
 
@@ -243,9 +282,9 @@ public sealed class XNativeWindow : Window
             return;
         }
         int width = (int)Math.Round(e.ClientSize.Width * Scale), height = (int)Math.Round(e.ClientSize.Height * Scale);
-        if (width > 0 && height > 0 && (width != Handle.Width || height != Handle.Height))
+        if (width > 0 && height > 0 && Handle.Snapshot is var s && (width != s.Width || height != s.Height))
         {
-            server.ResizeTopLevel(Handle.Id, width, height);
+            server.ResizeTopLevel(Handle, width, height);
         }
         OnMovedByUser();   // 最大化 / 左上角拖动缩放时位置也变了
     }
@@ -257,7 +296,7 @@ public sealed class XNativeWindow : Window
         {
             foreach (byte key in _heldKeys)
             {
-                server.Key(key, pressed: false);
+                server.InjectKey(key, pressed: false);
             }
         }
         _heldKeys.Clear();
@@ -267,18 +306,18 @@ public sealed class XNativeWindow : Window
     /// <summary>系统边框的尺寸(物理像素)告诉服务端(<c>_NET_FRAME_EXTENTS</c>),摆放时也用它把内容区对准 X 的坐标。</summary>
     private void UpdateFrameExtents()
     {
-        (int, int, int, int) frame = (0, 0, 0, 0);
+        XFrameExtents frame = default;
         if (WindowDecorations != WindowDecorations.None && FrameSize is { } outer)
         {
             double scale = Scale;
             int side = Math.Max(0, (int)Math.Round((outer.Width - ClientSize.Width) * scale / 2));
             int top = Math.Max(0, (int)Math.Round((outer.Height - ClientSize.Height) * scale) - side);
-            frame = (side, side, top, side);
+            frame = new XFrameExtents(side, side, top, side);
         }
         if (frame != _frame)
         {
             _frame = frame;
-            Server?.SetFrameExtents(Handle.Id, _frame.Left, _frame.Right, _frame.Top, _frame.Bottom);
+            Server?.SetTopLevelFrameExtents(Handle, _frame);
         }
     }
 
@@ -288,7 +327,7 @@ public sealed class XNativeWindow : Window
         WindowState.FullScreen => XWindowStates.Fullscreen,
         WindowState.Minimized => XWindowStates.Hidden,
         _ => XWindowStates.None,
-    } | (Topmost && !Handle.OverrideRedirect ? XWindowStates.Above : XWindowStates.None);
+    } | (Topmost && !Handle.Snapshot.OverrideRedirect ? XWindowStates.Above : XWindowStates.None);
 
     /// <summary>窗口状态(用户点了最大化、系统最小化……)写回 <c>_NET_WM_STATE</c>。</summary>
     private void ReportStates()
@@ -297,7 +336,7 @@ public sealed class XNativeWindow : Window
         if (states != _reportedStates)
         {
             _reportedStates = states;
-            Server?.SetTopLevelStates(Handle.Id, states);
+            Server?.SetTopLevelStates(Handle, states);
         }
     }
 
@@ -311,7 +350,7 @@ public sealed class XNativeWindow : Window
         }
         // 关闭按钮 / Alt+F4:请客户端自己关(有 WM_DELETE_WINDOW 时),窗口等它取消映射再收。
         e.Cancel = true;
-        Server?.CloseTopLevel(Handle.Id);
+        Server?.CloseTopLevel(Handle);
     }
 
     /// <inheritdoc />
@@ -327,7 +366,7 @@ public sealed class XNativeWindow : Window
     {
         base.OnPointerMoved(e);
         (int x, int y) = ToPixels(e.GetPosition(_surface));
-        Server?.PointerMotion(Handle.Id, x, y);
+        Server?.InjectPointerMotion(Handle, x, y);
     }
 
     /// <inheritdoc />
@@ -351,7 +390,7 @@ public sealed class XNativeWindow : Window
         _lastPress = e;
         _buttonHeld = true;
         (int x, int y) = ToPixels(e.GetPosition(_surface));
-        Server?.PointerButton(Handle.Id, x, y, button, pressed: true);
+        Server?.InjectPointerButton(Handle, x, y, button, pressed: true);
         e.Handled = true;
     }
 
@@ -366,7 +405,7 @@ public sealed class XNativeWindow : Window
         }
         _buttonHeld = false;
         (int x, int y) = ToPixels(e.GetPosition(_surface));
-        Server?.PointerButton(Handle.Id, x, y, button, pressed: false);
+        Server?.InjectPointerButton(Handle, x, y, button, pressed: false);
         e.Handled = true;
     }
 
@@ -384,15 +423,15 @@ public sealed class XNativeWindow : Window
         while (Math.Abs(_wheelRemainder.Y) >= 1)
         {
             int button = _wheelRemainder.Y > 0 ? 4 : 5;
-            server.PointerButton(Handle.Id, x, y, button, pressed: true);
-            server.PointerButton(Handle.Id, x, y, button, pressed: false);
+            server.InjectPointerButton(Handle, x, y, button, pressed: true);
+            server.InjectPointerButton(Handle, x, y, button, pressed: false);
             _wheelRemainder = _wheelRemainder.WithY(_wheelRemainder.Y - Math.Sign(_wheelRemainder.Y));
         }
         while (Math.Abs(_wheelRemainder.X) >= 1)
         {
             int button = _wheelRemainder.X > 0 ? 6 : 7;
-            server.PointerButton(Handle.Id, x, y, button, pressed: true);
-            server.PointerButton(Handle.Id, x, y, button, pressed: false);
+            server.InjectPointerButton(Handle, x, y, button, pressed: true);
+            server.InjectPointerButton(Handle, x, y, button, pressed: false);
             _wheelRemainder = _wheelRemainder.WithX(_wheelRemainder.X - Math.Sign(_wheelRemainder.X));
         }
         e.Handled = true;
@@ -404,7 +443,7 @@ public sealed class XNativeWindow : Window
         base.OnPointerExited(e);
         if (!_buttonHeld)
         {
-            Server?.PointerLeft();
+            Server?.InjectPointerLeave();
         }
     }
 
@@ -427,7 +466,7 @@ public sealed class XNativeWindow : Window
             return;
         }
         _heldKeys.Add(keycode);
-        Server?.Key(keycode, pressed: true);
+        Server?.InjectKey(keycode, pressed: true);
         e.Handled = true;
     }
 
@@ -452,7 +491,7 @@ public sealed class XNativeWindow : Window
             && Environment.TickCount64 - _controlLeftDownAt < 50)
         {
             _heldKeys.Remove(XKeycodes.ControlLeft);
-            Server?.Key(XKeycodes.ControlLeft, pressed: false);
+            Server?.InjectKey(XKeycodes.ControlLeft, pressed: false);
         }
         return false;
     }
@@ -466,7 +505,7 @@ public sealed class XNativeWindow : Window
         {
             return;
         }
-        Server?.Key(keycode, pressed: false);
+        Server?.InjectKey(keycode, pressed: false);
         e.Handled = true;
     }
 
@@ -566,7 +605,7 @@ public sealed class XNativeWindow : Window
         /// <summary>标题、形状、透明度等属性变了:形状或透明度跟上次拷贝时不同就整窗重取。</summary>
         public void PropertiesChanged()
         {
-            if (!ReferenceEquals(_handle.Shape, _copiedShape) || _handle.HasAlpha != _copiedAlpha)
+            if (_handle.Snapshot is var s && (!ReferenceEquals(s.Shape, _copiedShape) || s.HasAlpha != _copiedAlpha))
             {
                 InvalidateAll();
             }
@@ -704,8 +743,9 @@ public sealed class XNativeWindow : Window
                 _resizeTo = (width, height);
                 return;
             }
-            bool opaque = !_handle.HasAlpha;
-            IReadOnlyList<XRect>? shape = _handle.Shape;
+            XTopLevelSnapshot s = _handle.Snapshot;   // 像素锁里:快照此刻不会换,与像素一致
+            bool opaque = !s.HasAlpha;
+            IReadOnlyList<XRect>? shape = s.Shape;
             _copiedAlpha = !opaque;
             _copiedShape = shape;
             foreach (XRect d in _damage)

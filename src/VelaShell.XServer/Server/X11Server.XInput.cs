@@ -21,16 +21,13 @@
 using VelaShell.XServer.Input;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private const byte XInputMajor = 145;
-    private const byte XInputEventBase = 74;   // XI 1.x 的 17 个事件
-    private const byte XInputErrorBase = 144;  // BadDevice +0、BadEvent +1、BadMode +2、DeviceBusy +3、BadClass +4
-
     private const ushort XiMasterPointer = 2, XiMasterKeyboard = 3, XiSlavePointer = 4, XiSlaveKeyboard = 5;
     private const int XiEnter = 7, XiLeave = 8, XiFocusIn = 9, XiFocusOut = 10;
     private const int XiRawKeyPress = 13, XiRawKeyRelease = 14, XiRawButtonPress = 15, XiRawButtonRelease = 16, XiRawMotion = 17;
@@ -44,7 +41,6 @@ public sealed partial class X11Server
 
     /// <summary>设备属性(XIGetProperty / GetDeviceProperty):设备 → 原子 → 值。</summary>
     private readonly Dictionary<ushort, Dictionary<uint, XProperty>> _deviceProperties = [];
-
 
     private static XProtocolError BadDevice(uint id) => new((XErrorCode)XInputErrorBase, id);
 
@@ -162,7 +158,7 @@ public sealed partial class X11Server
                 }
             case 32:  // DeviceBell
                 r.Skip(3);
-                _host.Bell(r.I8() is var p && p < 0 ? 50 : p);
+                RingBell(r.I8());
                 break;
             case 36:  // ListDeviceProperties
                 {
@@ -237,7 +233,7 @@ public sealed partial class X11Server
                 {
                     XWindow window = Window(r.U32());
                     uint cursor = r.U32();
-                    window.Cursor = cursor == 0 ? null : Lookup<XCursor>(cursor) ?? throw new XProtocolError(XErrorCode.Cursor, cursor);
+                    window.Cursor = cursor == 0 ? null : Lookup<XCursorResource>(cursor) ?? throw new XProtocolError(XErrorCode.Cursor, cursor);
                     UpdateCursor();
                     break;
                 }
@@ -636,7 +632,7 @@ public sealed partial class X11Server
                 OwnerEvents = ownerEvents,
                 Xi2 = true,
                 Xi2Mask = mask,
-                Cursor = cursorId == 0 ? null : Lookup<XCursor>(cursorId),
+                Cursor = cursorId == 0 ? null : Lookup<XCursorResource>(cursorId),
             };
             if (pointer)
             {
@@ -688,7 +684,7 @@ public sealed partial class X11Server
                     // 按钮抓取:grab_mode 管指针、paired 管键盘;按键抓取反过来。
                     bool deviceSync = grabMode == 0, pairedSync = pairedMode == 0;
                     list.Add(new PassiveGrab(c, (int)detail, core, ownerEvents, 0, null,
-                        cursorId == 0 ? null : Lookup<XCursor>(cursorId), Xi2: true, Xi2Mask: mask,
+                        cursorId == 0 ? null : Lookup<XCursorResource>(cursorId), Xi2: true, Xi2Mask: mask,
                         PointerSync: grabType == 0 ? deviceSync : pairedSync, KeyboardSync: grabType == 0 ? pairedSync : deviceSync));
                 }
             }
@@ -830,6 +826,7 @@ public sealed partial class X11Server
         }
     }
 
+    /// <summary>客户端断开:摘掉它在各窗口上的 XI2 事件选择。</summary>
     private void CleanupXInput(XClient client)
     {
         foreach (XWindow window in _resources.Values.OfType<XWindow>())

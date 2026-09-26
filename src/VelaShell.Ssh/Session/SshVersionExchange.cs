@@ -17,7 +17,7 @@ namespace VelaShell.Ssh.Session;
 /// <param name="ClientVersion">我们发出的标识串（去行尾）。</param>
 /// <param name="ServerVersion">对端的标识串（去行尾）。</param>
 /// <param name="PreAuthBanner">标识串之前的前导行（法律声明之类），按出现顺序。</param>
-public sealed record SshVersionExchangeResult(
+internal sealed record SshVersionExchangeResult(
     string ClientVersion,
     string ServerVersion,
     IReadOnlyList<string> PreAuthBanner)
@@ -30,7 +30,7 @@ public sealed record SshVersionExchangeResult(
 }
 
 /// <summary>版本标识串交换（RFC 4253 §4.2）。</summary>
-public static class SshVersionExchange
+internal static class SshVersionExchange
 {
     /// <summary>我们的软件版本串。</summary>
     /// <remarks>

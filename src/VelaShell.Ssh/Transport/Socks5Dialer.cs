@@ -24,7 +24,7 @@ namespace VelaShell.Ssh.Transport;
 /// 到达代理本身走 <see cref="Inner"/>，默认直连 TCP；换成另一个代理或跳板就是嵌套。
 /// </para>
 /// </remarks>
-public sealed record Socks5Dialer(SshEndPoint Proxy) : ISshTransportDialer
+internal sealed record Socks5Dialer(SshEndPoint Proxy) : ISshTransportDialer
 {
     private const byte Version = 5;
     private const byte MethodNoAuthentication = 0;
@@ -44,9 +44,6 @@ public sealed record Socks5Dialer(SshEndPoint Proxy) : ISshTransportDialer
 
     /// <inheritdoc />
     public SshDialKind Kind => SshDialKind.Socks5;
-
-    /// <summary>换一个到达代理的方式（嵌套）。</summary>
-    public Socks5Dialer Via(ISshTransportDialer inner) => this with { Inner = inner };
 
     /// <inheritdoc />
     public ValueTask<Stream> DialAsync(SshDialTarget target, CancellationToken cancellationToken = default)

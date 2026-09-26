@@ -16,7 +16,7 @@ using VelaShell.Ssh.Transport;
 namespace VelaShell.Ssh.Tests.TestKit;
 
 /// <summary>服务端收到 <c>exec</c> / <c>shell</c> 之后照着回放的剧本。</summary>
-public sealed record TestChannelScript
+internal sealed record TestChannelScript
 {
     /// <summary>发到 stdout 的内容。</summary>
     public byte[] StandardOutput { get; init; } = [];
@@ -133,11 +133,11 @@ public sealed record TestChannelScript
 /// <param name="AuthProtocol">授权协议名。</param>
 /// <param name="AuthCookieHex">cookie 的十六进制文本 —— <b>应当是假的那个</b>。</param>
 /// <param name="ScreenNumber">屏幕号。</param>
-public sealed record TestX11Request(
+internal sealed record TestX11Request(
     bool SingleConnection, string AuthProtocol, string AuthCookieHex, int ScreenNumber);
 
 /// <summary>服务端在通道上观察到的事实。</summary>
-public sealed class TestChannelObservation
+internal sealed class TestChannelObservation
 {
     /// <summary>收到的 <c>exec</c> 命令行。</summary>
     public List<string> Commands { get; } = [];
@@ -149,10 +149,10 @@ public sealed class TestChannelObservation
     public Dictionary<string, string> Environment { get; } = [];
 
     /// <summary>收到的 <c>pty-req</c>：终端类型与尺寸。</summary>
-    public List<(string Term, TerminalSize Size, byte[] Modes)> PtyRequests { get; } = [];
+    public List<(string Term, SshTerminalSize Size, byte[] Modes)> PtyRequests { get; } = [];
 
     /// <summary>收到的 <c>window-change</c>。</summary>
-    public List<TerminalSize> WindowChanges { get; } = [];
+    public List<SshTerminalSize> WindowChanges { get; } = [];
 
     /// <summary>收到的信号名。</summary>
     public List<string> Signals { get; } = [];
@@ -254,7 +254,7 @@ public sealed class TestChannelObservation
 }
 
 /// <summary>测试服务端的连接协议侧。</summary>
-public sealed class TestChannelServer : IDisposable
+internal sealed class TestChannelServer : IDisposable
 {
     private const int MaxField = 256 * 1024;
 
@@ -568,8 +568,8 @@ public sealed class TestChannelServer : IDisposable
 
         Observation.ClientAnnounced = (clientWindow, clientMaxPacket);
 
-        bool isTunnel = channelType is SshAlgorithmNames.ChannelDirectTcpIp
-            or SshAlgorithmNames.ChannelDirectStreamLocal;
+        bool isTunnel = channelType is SshProtocolNames.ChannelDirectTcpIp
+            or SshProtocolNames.ChannelDirectStreamLocal;
 
         // 目标要在**任何 await 之前**读出来 —— SshDataReader 是 ref struct，
         // 跨不过 await 边界。
@@ -655,7 +655,7 @@ public sealed class TestChannelServer : IDisposable
                 return "";
             }
 
-            if (channelType == SshAlgorithmNames.ChannelDirectStreamLocal)
+            if (channelType == SshProtocolNames.ChannelDirectStreamLocal)
             {
                 return reader.ReadUtf8String(MaxField);
             }
@@ -727,18 +727,18 @@ public sealed class TestChannelServer : IDisposable
 
         switch (requestType)
         {
-            case SshAlgorithmNames.RequestExec:
+            case SshProtocolNames.RequestExec:
                 Observation.Commands.Add(reader.ReadUtf8String(MaxField));
                 success = !_script.RejectCommand;
                 startScript = success;
                 break;
 
-            case SshAlgorithmNames.RequestShell:
+            case SshProtocolNames.RequestShell:
                 success = !_script.RejectCommand;
                 startScript = success;
                 break;
 
-            case SshAlgorithmNames.RequestX11:
+            case SshProtocolNames.RequestX11:
                 Observation.X11Requests.Add(new TestX11Request(
                     SingleConnection: reader.ReadBoolean(),
                     AuthProtocol: reader.ReadUtf8String(MaxField),
@@ -747,31 +747,31 @@ public sealed class TestChannelServer : IDisposable
                 success = _script.GrantX11Forward;
                 break;
 
-            case SshAlgorithmNames.RequestSubsystem:
+            case SshProtocolNames.RequestSubsystem:
                 Observation.Subsystems.Add(reader.ReadUtf8String(MaxField));
                 success = !_script.RejectCommand;
                 startSubsystem = success && _script.SubsystemHandler is not null;
                 startScript = success && !startSubsystem;
                 break;
 
-            case SshAlgorithmNames.RequestPty:
+            case SshProtocolNames.RequestPty:
                 ReadPtyRequest(ref reader);
                 success = !_script.RejectPty;
                 break;
 
-            case SshAlgorithmNames.RequestWindowChange:
+            case SshProtocolNames.RequestWindowChange:
                 Observation.WindowChanges.Add(ReadTerminalSize(ref reader));
                 return;   // want_reply 必为假，不回
 
-            case SshAlgorithmNames.RequestEnvironment:
+            case SshProtocolNames.RequestEnvironment:
                 Observation.Environment[reader.ReadUtf8String(MaxField)] = reader.ReadUtf8String(MaxField);
                 return;   // want_reply 必为假，不回
 
-            case SshAlgorithmNames.RequestSignal:
+            case SshProtocolNames.RequestSignal:
                 Observation.Signals.Add(reader.ReadUtf8String(MaxField));
                 return;   // want_reply 必为假，不回
 
-            case SshAlgorithmNames.RequestAuthAgent:
+            case SshProtocolNames.RequestAuthAgent:
                 Observation.AgentForwardRequests++;
                 success = !_script.RejectAgentForward;
                 break;
@@ -804,12 +804,12 @@ public sealed class TestChannelServer : IDisposable
     private void ReadPtyRequest(scoped ref SshDataReader reader)
     {
         string term = reader.ReadUtf8String(MaxField);
-        TerminalSize size = ReadTerminalSize(ref reader);
+        SshTerminalSize size = ReadTerminalSize(ref reader);
         byte[] modes = reader.ReadStringAsArray(MaxField);
         Observation.PtyRequests.Add((term, size, modes));
     }
 
-    private static TerminalSize ReadTerminalSize(scoped ref SshDataReader reader) =>
+    private static SshTerminalSize ReadTerminalSize(scoped ref SshDataReader reader) =>
         new((int)reader.ReadUInt32(), (int)reader.ReadUInt32(),
             (int)reader.ReadUInt32(), (int)reader.ReadUInt32());
 
@@ -849,10 +849,10 @@ public sealed class TestChannelServer : IDisposable
                 headerWriter.WriteUInt32(40000);
                 Observation.ForwardedOpenAfterGrant = _script.OpenForwardedTcpIpAfterGrant
                     ? await SendChannelOpenToClientAsync(
-                        SshAlgorithmNames.ChannelForwardedTcpIp, header.WrittenMemory, cancellationToken,
+                        SshProtocolNames.ChannelForwardedTcpIp, header.WrittenMemory, cancellationToken,
                         precededBy: success.WrittenMemory)
                     : await SendChannelOpenToClientAsync(
-                        SshAlgorithmNames.ChannelForwardedTcpIp, header.WrittenMemory, cancellationToken,
+                        SshProtocolNames.ChannelForwardedTcpIp, header.WrittenMemory, cancellationToken,
                         followedBy: success.WrittenMemory);
                 return;
             }
@@ -861,7 +861,7 @@ public sealed class TestChannelServer : IDisposable
             return;
         }
 
-        if (requestType == SshAlgorithmNames.RequestStreamLocalForward
+        if (requestType == SshProtocolNames.RequestStreamLocalForward
             && _script.GrantStreamLocalForward)
         {
             string socketPath = reader.ReadUtf8String(MaxField);
@@ -878,7 +878,7 @@ public sealed class TestChannelServer : IDisposable
         }
 
         if (requestType is "cancel-tcpip-forward"
-            or SshAlgorithmNames.RequestCancelStreamLocalForward)
+            or SshProtocolNames.RequestCancelStreamLocalForward)
         {
             if (wantReply)
             {

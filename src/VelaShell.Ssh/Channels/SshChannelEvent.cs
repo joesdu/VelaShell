@@ -81,18 +81,3 @@ public enum SshChannelCloseReason
     SessionClosed,
 }
 
-/// <summary><c>CHANNEL_OPEN_FAILURE</c> 的原因码（RFC 4254 §5.1）。</summary>
-public enum SshChannelOpenFailureReason : uint
-{
-    /// <summary>对端明确拒绝 —— 常见于服务端禁了转发。</summary>
-    AdministrativelyProhibited = 1,
-
-    /// <summary>目标连不上（转发场景）。</summary>
-    ConnectFailed = 2,
-
-    /// <summary>不认识这种通道类型。</summary>
-    UnknownChannelType = 3,
-
-    /// <summary>资源不足 —— 常见于服务端 <c>MaxSessions</c> 撞满。</summary>
-    ResourceShortage = 4,
-}

@@ -12,18 +12,14 @@
 //   只读:每台显示器(见 X11Server.Monitors)一个 CRTC、一个输出、一个模式。布局由宿主经 SetScreenLayout 决定,
 //   客户端改配置的请求一律回 Failed 或 BadAccess;布局变化时按 SelectInput 的掩码发事件。
 
-using VelaShell.XServer.Host;
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private const byte RandRMajor = 132;
-    private const byte RandREventBase = 67;   // ScreenChangeNotify = +0,Notify = +1
-    private const byte RandRErrorBase = 129;  // BadOutput = +0,BadCrtc = +1,BadMode = +2,BadProvider = +3
-
     // 服务端自己的资源 ID,落在任何客户端的 resource-base 之外(同根窗口、默认颜色表)。每类 16 个。
     private const uint RandRCrtcBase = 0x60, RandROutputBase = 0x80, RandRModeBase = 0xA0;
 
@@ -262,27 +258,21 @@ public sealed partial class X11Server
         }
     }
 
-    /// <summary>客户端断开或窗口销毁:摘掉对应的 RRSelectInput 登记(否则销毁的窗口会一直收到、也一直被引用着)。</summary>
-    private void CleanupRandR(XClient? client, XWindow? window)
+    /// <summary>客户端断开:摘掉它的 RRSelectInput 登记。</summary>
+    private void CleanupRandR(XClient client) => RemoveRandRSelections(key => ReferenceEquals(key.Client, client));
+
+    /// <summary>窗口销毁:摘掉选在它上面的 RRSelectInput 登记(否则销毁的窗口会一直收到、也一直被引用着)。</summary>
+    private void CleanupRandR(XWindow window) => RemoveRandRSelections(key => ReferenceEquals(key.Window, window));
+
+    private void RemoveRandRSelections(Func<(XClient Client, XWindow Window), bool> match)
     {
         if (_randrSelections.Count == 0)
         {
             return;
         }
-        List<(XClient, XWindow)>? gone = null;
-        foreach ((XClient c, XWindow w) key in _randrSelections.Keys)
+        foreach ((XClient, XWindow) key in _randrSelections.Keys.Where(match).ToArray())
         {
-            if (ReferenceEquals(key.c, client) || ReferenceEquals(key.w, window))
-            {
-                (gone ??= []).Add(key);
-            }
-        }
-        if (gone is not null)
-        {
-            foreach ((XClient, XWindow) key in gone)
-            {
-                _randrSelections.Remove(key);
-            }
+            _randrSelections.Remove(key);
         }
     }
 

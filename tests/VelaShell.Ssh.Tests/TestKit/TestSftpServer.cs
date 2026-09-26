@@ -15,7 +15,7 @@ using VelaShell.Ssh.Sftp;
 namespace VelaShell.Ssh.Tests.TestKit;
 
 /// <summary>内存里的一个文件系统节点。</summary>
-public sealed class TestSftpNode
+internal sealed class TestSftpNode
 {
     /// <summary>内容（目录与链接为空）。</summary>
     public List<byte> Content { get; } = [];
@@ -43,7 +43,7 @@ public sealed class TestSftpNode
 }
 
 /// <summary>测试 SFTP 服务端的开关。</summary>
-public sealed record TestSftpOptions
+internal sealed record TestSftpOptions
 {
     /// <summary>宣告的版本号。</summary>
     public uint Version { get; init; } = 3;
@@ -107,7 +107,7 @@ public sealed record TestSftpOptions
 }
 
 /// <summary>在内存里说 SFTP v3 的测试服务端。</summary>
-public sealed class TestSftpServer
+internal sealed class TestSftpServer
 {
     private readonly TestSftpOptions _options;
     // string 的默认相等比较器就是序数比较。
@@ -348,19 +348,19 @@ public sealed class TestSftpServer
     {
         SshDataReader reader = new(rest);
         string path = reader.ReadUtf8String(SftpProtocol.MaxPathLength);
-        var mode = (SftpOpenMode)reader.ReadUInt32();
+        var mode = (SftpOpenModes)reader.ReadUInt32();
         SftpFileAttributes attributes = ReadAttributes(ref reader);
 
         bool exists = _nodes.TryGetValue(path, out TestSftpNode? node);
 
-        if (exists && (mode & SftpOpenMode.Exclusive) != 0)
+        if (exists && (mode & SftpOpenModes.Exclusive) != 0)
         {
             return BuildStatus(id, SftpStatusCode.Failure, "文件已存在");
         }
 
         if (!exists)
         {
-            if ((mode & SftpOpenMode.Create) == 0)
+            if ((mode & SftpOpenModes.Create) == 0)
             {
                 return BuildStatus(id, SftpStatusCode.NoSuchFile, $"没有 {path}");
             }
@@ -370,7 +370,7 @@ public sealed class TestSftpServer
             };
             _nodes[path] = node;
         }
-        else if ((mode & SftpOpenMode.Truncate) != 0)
+        else if ((mode & SftpOpenModes.Truncate) != 0)
         {
             node!.Content.Clear();
         }
@@ -937,7 +937,7 @@ public sealed class TestSftpServer
         writer.WriteUInt32((uint)entries.Count);
         foreach (SftpNameEntry entry in entries)
         {
-            writer.WriteUtf8String(entry.FileName);
+            writer.WriteUtf8String(entry.Name);
             writer.WriteUtf8String(entry.LongName);
             WriteAttributes(ref writer, entry.Attributes);
         }

@@ -19,44 +19,6 @@ using VelaShell.Ssh.Protocol;
 
 namespace VelaShell.Ssh.Keys;
 
-/// <summary>私钥文件的格式。</summary>
-public enum SshPrivateKeyFormat
-{
-    /// <summary>认不出来。</summary>
-    Unknown,
-
-    /// <summary><c>-----BEGIN OPENSSH PRIVATE KEY-----</c>（OpenSSH 7.8 起的默认格式）。</summary>
-    OpenSsh,
-
-    /// <summary><c>-----BEGIN RSA PRIVATE KEY-----</c>（PKCS#1，老 OpenSSH 的默认）。</summary>
-    Pkcs1Rsa,
-
-    /// <summary><c>-----BEGIN EC PRIVATE KEY-----</c>（SEC1）。</summary>
-    Sec1Ec,
-
-    /// <summary><c>-----BEGIN PRIVATE KEY-----</c>（PKCS#8，未加密）。</summary>
-    Pkcs8,
-
-    /// <summary><c>-----BEGIN ENCRYPTED PRIVATE KEY-----</c>（PKCS#8，已加密）。</summary>
-    Pkcs8Encrypted,
-
-    /// <summary>PuTTY 的 <c>.ppk</c>（v2 或 v3）。</summary>
-    Putty,
-}
-
-/// <summary>私钥文件读不出来。</summary>
-public sealed class SshPrivateKeyException : SshException
-{
-    /// <summary>创建一个私钥读取异常。</summary>
-    public SshPrivateKeyException(string message, Exception? innerException = null)
-        : base(SshFailureReason.Unsupported, SshPhase.Authenticating, message, innerException)
-    {
-    }
-
-    /// <summary>是不是因为需要口令（或口令不对）。</summary>
-    public bool NeedsPassphrase { get; init; }
-}
-
 /// <summary>从文件或文本里读私钥。</summary>
 public static class SshPrivateKeyFile
 {
@@ -124,7 +86,7 @@ public static class SshPrivateKeyFile
     /// 由调用方决定是否 <c>await Task.Run(() =&gt; SshPrivateKeyFile.LoadAsync(...))</c>。
     /// </para>
     /// </remarks>
-    public static async ValueTask<ISshSigner> LoadAsync(
+    public static async ValueTask<InMemorySshSigner> LoadAsync(
         string path, string? passphrase = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
@@ -136,11 +98,11 @@ public static class SshPrivateKeyFile
         }
         catch (IOException ex)
         {
-            throw new SshPrivateKeyException($"读不了私钥文件 {path}：{ex.Message}", ex);
+            throw new SshPrivateKeyException(SshFailureReason.KeyFileUnreadable, $"读不了私钥文件 {path}：{ex.Message}", ex);
         }
         catch (UnauthorizedAccessException ex)
         {
-            throw new SshPrivateKeyException(
+            throw new SshPrivateKeyException(SshFailureReason.KeyFileUnreadable,
                 $"没有权限读私钥文件 {path}。（Unix 上私钥应当是 0600。）", ex);
         }
 
@@ -151,7 +113,7 @@ public static class SshPrivateKeyFile
     /// <param name="pem">PEM 文本。</param>
     /// <param name="passphrase">口令；不需要就给 <see langword="null"/>。</param>
     /// <param name="origin">出错消息里用来标明来源（通常是文件路径）。</param>
-    public static ISshSigner Parse(string pem, string? passphrase = null, string? origin = null)
+    public static InMemorySshSigner Parse(string pem, string? passphrase = null, string? origin = null)
     {
         ArgumentNullException.ThrowIfNull(pem);
 
@@ -165,7 +127,7 @@ public static class SshPrivateKeyFile
             SshPrivateKeyFormat.Pkcs8 or SshPrivateKeyFormat.Pkcs8Encrypted
                 or SshPrivateKeyFormat.Pkcs1Rsa or SshPrivateKeyFormat.Sec1Ec =>
                 ParseWithBcl(pem, passphrase, format, where),
-            _ => throw new SshPrivateKeyException(
+            _ => throw new SshPrivateKeyException(SshFailureReason.Unsupported,
                 $"认不出这个私钥格式{where}。支持的有：OpenSSH（BEGIN OPENSSH PRIVATE KEY）、" +
                 "PKCS#8、PKCS#1（BEGIN RSA PRIVATE KEY）、SEC1（BEGIN EC PRIVATE KEY）、" +
                 "以及 PuTTY 的 .ppk（v2 / v3）。"),
@@ -193,7 +155,7 @@ public static class SshPrivateKeyFile
         byte[] magic = Encoding.ASCII.GetBytes(OpenSshMagic);
         if (blob.Length < magic.Length || !blob.AsSpan(0, magic.Length).SequenceEqual(magic))
         {
-            throw new SshPrivateKeyException($"OpenSSH 私钥的魔数不对{where}。");
+            throw new SshPrivateKeyException(SshFailureReason.KeyFormatInvalid, $"OpenSSH 私钥的魔数不对{where}。");
         }
 
         SshDataReader reader = new(new ReadOnlySequence<byte>(blob.AsMemory(magic.Length)));
@@ -204,7 +166,7 @@ public static class SshPrivateKeyFile
 
         if (keyCount != 1)
         {
-            throw new SshPrivateKeyException(
+            throw new SshPrivateKeyException(SshFailureReason.Unsupported,
                 $"这个文件里有 {keyCount} 把密钥{where}，本库只处理一把。");
         }
 
@@ -251,13 +213,13 @@ public static class SshPrivateKeyFile
     {
         if (kdfName != "bcrypt")
         {
-            throw new SshPrivateKeyException(
+            throw new SshPrivateKeyException(SshFailureReason.Unsupported,
                 $"不支持的 KDF “{kdfName}”{where}。OpenSSH 的加密私钥用的是 bcrypt。");
         }
 
         if (OpenSshKeyCipher.Describe(cipherName) is not { } shape)
         {
-            throw new SshPrivateKeyException(
+            throw new SshPrivateKeyException(SshFailureReason.Unsupported,
                 $"不支持的加密算法 “{cipherName}”{where}。本库支持：" +
                 string.Join("、", OpenSshKeyCipher.SupportedCipherNames) + "。" + Environment.NewLine +
                 "换一种即可：ssh-keygen -p -Z aes256-ctr -f <私钥文件>");
@@ -265,10 +227,7 @@ public static class SshPrivateKeyFile
 
         if (string.IsNullOrEmpty(passphrase))
         {
-            throw new SshPrivateKeyException($"这是一把加密的 OpenSSH 私钥{where}，需要口令。")
-            {
-                NeedsPassphrase = true,
-            };
+            throw new SshPrivateKeyException(SshFailureReason.KeyPassphraseRequired, $"这是一把加密的 OpenSSH 私钥{where}，需要口令。");
         }
 
         byte[] salt;
@@ -281,27 +240,27 @@ public static class SshPrivateKeyFile
         }
         catch (SshWireFormatException ex)
         {
-            throw new SshPrivateKeyException($"OpenSSH 私钥的 kdfoptions 读不出来{where}。", ex);
+            throw new SshPrivateKeyException(SshFailureReason.KeyFormatInvalid, $"OpenSSH 私钥的 kdfoptions 读不出来{where}。", ex);
         }
 
         if (salt.Length == 0 || rounds is 0 or > MaxKdfRounds)
         {
             // 这两个值来自文件，也就是来自不可信输入。上限不是洁癖：
             // 一个被改过的 rounds 能让「解一把私钥」挂在那里跑上几天。
-            throw new SshPrivateKeyException(
+            throw new SshPrivateKeyException(SshFailureReason.KeyFormatInvalid,
                 $"OpenSSH 私钥的 KDF 参数不合理{where}（盐 {salt.Length} 字节、{rounds} 轮，上限 {MaxKdfRounds} 轮）。" +
                 "文件可能被改过；确实用 ssh-keygen -a 设过这么多轮的话，请用更少的轮数重新加密这把钥。");
         }
 
         if (section.Length == 0 || section.Length % shape.BlockBytes != 0)
         {
-            throw new SshPrivateKeyException(
+            throw new SshPrivateKeyException(SshFailureReason.KeyFormatInvalid,
                 $"OpenSSH 私钥的密文长度 {section.Length} 与算法 {cipherName} 对不上{where}，文件多半损坏了。");
         }
 
         if (tag.Length != shape.TagBytes)
         {
-            throw new SshPrivateKeyException(
+            throw new SshPrivateKeyException(SshFailureReason.KeyFormatInvalid,
                 $"OpenSSH 私钥的认证标签应当是 {shape.TagBytes} 字节，实际 {tag.Length} 字节{where}。");
         }
 
@@ -315,10 +274,8 @@ public static class SshPrivateKeyFile
         {
             // 认证类算法（GCM / ChaCha20-Poly1305）在这一步就能判定口令不对；
             // CTR / CBC 没有标签，要等下面校验字对不上才知道。
-            throw new SshPrivateKeyException($"私钥解不开{where} —— 口令多半不对。", ex)
-            {
-                NeedsPassphrase = true,
-            };
+            throw new SshPrivateKeyException(
+                SshFailureReason.KeyPassphraseIncorrect, $"私钥解不开{where} —— 口令多半不对。", ex);
         }
         finally
         {
@@ -353,12 +310,10 @@ public static class SshPrivateKeyFile
             // 随机字节 —— 这一步就是它们唯一的口令校验点，所以要按「口令不对」去报，
             // 而不是笼统地说文件坏了。
             throw new SshPrivateKeyException(
+                encrypted ? SshFailureReason.KeyPassphraseIncorrect : SshFailureReason.KeyFormatInvalid,
                 encrypted
                     ? $"私钥解不开{where} —— 口令多半不对（校验字 {check1:X8} ≠ {check2:X8}）。"
-                    : $"OpenSSH 私钥的校验字不匹配{where}（{check1:X8} ≠ {check2:X8}），文件多半损坏了。")
-            {
-                NeedsPassphrase = encrypted,
-            };
+                    : $"OpenSSH 私钥的校验字不匹配{where}（{check1:X8} ≠ {check2:X8}），文件多半损坏了。");
         }
 
         string keyType = reader.ReadUtf8String(1024);
@@ -369,7 +324,7 @@ public static class SshPrivateKeyFile
             SshAlgorithmNames.SshRsa => ReadRsa(ref reader, where),
             SshAlgorithmNames.EcdsaSha2Nistp256 or SshAlgorithmNames.EcdsaSha2Nistp384
                 or SshAlgorithmNames.EcdsaSha2Nistp521 => ReadEcdsa(ref reader, keyType, where),
-            _ => throw new SshPrivateKeyException($"不支持的密钥类型 {keyType}{where}。"),
+            _ => throw new SshPrivateKeyException(SshFailureReason.Unsupported, $"不支持的密钥类型 {keyType}{where}。"),
         };
     }
 
@@ -380,7 +335,7 @@ public static class SshPrivateKeyFile
 
         if (secret.Length != 64)
         {
-            throw new SshPrivateKeyException(
+            throw new SshPrivateKeyException(SshFailureReason.KeyFormatInvalid,
                 $"Ed25519 私钥应当是 64 字节（种子 32 + 公钥 32），实际 {secret.Length} 字节{where}。");
         }
 
@@ -426,7 +381,7 @@ public static class SshPrivateKeyFile
         }
         catch (CryptographicException ex)
         {
-            throw new SshPrivateKeyException($"RSA 私钥的参数不成立{where}：{ex.Message}", ex);
+            throw new SshPrivateKeyException(SshFailureReason.KeyFormatInvalid, $"RSA 私钥的参数不成立{where}：{ex.Message}", ex);
         }
     }
 
@@ -443,12 +398,12 @@ public static class SshPrivateKeyFile
 
             // nistp521 的坐标是 **66** 字节（521 位向上取整），不是 64。
             "nistp521" => (ECCurve.NamedCurves.nistP521, 66),
-            _ => throw new SshPrivateKeyException($"不支持的曲线 {curveName}{where}。"),
+            _ => throw new SshPrivateKeyException(SshFailureReason.Unsupported, $"不支持的曲线 {curveName}{where}。"),
         };
 
         if (point.Length != 1 + (coordinateBytes * 2) || point[0] != 0x04)
         {
-            throw new SshPrivateKeyException(
+            throw new SshPrivateKeyException(SshFailureReason.Unsupported,
                 $"{keyType} 的公开点必须是未压缩形式（0x04 ‖ X ‖ Y），" +
                 $"期望 {1 + (coordinateBytes * 2)} 字节，实际 {point.Length} 字节{where}。");
         }
@@ -472,7 +427,7 @@ public static class SshPrivateKeyFile
         }
         catch (CryptographicException ex)
         {
-            throw new SshPrivateKeyException($"ECDSA 私钥的参数不成立{where}：{ex.Message}", ex);
+            throw new SshPrivateKeyException(SshFailureReason.KeyFormatInvalid, $"ECDSA 私钥的参数不成立{where}：{ex.Message}", ex);
         }
     }
 
@@ -487,7 +442,7 @@ public static class SshPrivateKeyFile
         // 用户会一直怀疑自己的口令，问题其实在格式。
         if (pem.Contains("Proc-Type: 4,ENCRYPTED", StringComparison.Ordinal))
         {
-            throw new SshPrivateKeyException(
+            throw new SshPrivateKeyException(SshFailureReason.Unsupported,
                 $"这把私钥是过时的传统加密 PEM 格式（Proc-Type: 4,ENCRYPTED，口令只经一次 MD5 派生）{where}，本库不读。" +
                 "用 `ssh-keygen -p -f <私钥文件>` 改一次口令（新旧口令可以相同），它会转成 OpenSSH 格式。");
         }
@@ -497,10 +452,7 @@ public static class SshPrivateKeyFile
 
         if (needsPassphrase && string.IsNullOrEmpty(passphrase))
         {
-            throw new SshPrivateKeyException($"这把私钥需要口令{where}。")
-            {
-                NeedsPassphrase = true,
-            };
+            throw new SshPrivateKeyException(SshFailureReason.KeyPassphraseRequired, $"这把私钥需要口令{where}。");
         }
 
         // 先按 RSA 试，再按 ECDSA 试 —— PEM 头部不总能区分
@@ -526,13 +478,11 @@ public static class SshPrivateKeyFile
         }
 
         throw new SshPrivateKeyException(
+            needsPassphrase ? SshFailureReason.KeyPassphraseIncorrect : SshFailureReason.KeyFormatInvalid,
             needsPassphrase
                 ? $"私钥解不开{where} —— 口令多半不对。"
                 : $"私钥读不出来{where}。它可能是 Ed25519 的 PKCS#8 " +
-                  "（.NET 尚未支持导入这种），也可能文件已损坏。")
-        {
-            NeedsPassphrase = needsPassphrase,
-        };
+                  "（.NET 尚未支持导入这种），也可能文件已损坏。");
     }
 
     private static InMemorySshSigner LoadRsaFromPem(string pem, string? passphrase, bool encrypted)
@@ -575,7 +525,7 @@ public static class SshPrivateKeyFile
 
         if (start < 0 || stop < 0 || stop <= start)
         {
-            throw new SshPrivateKeyException($"PEM 的起止标记不完整{where}。");
+            throw new SshPrivateKeyException(SshFailureReason.KeyFormatInvalid, $"PEM 的起止标记不完整{where}。");
         }
 
         string body = pem[(start + begin.Length)..stop];
@@ -589,7 +539,7 @@ public static class SshPrivateKeyFile
         }
         catch (FormatException ex)
         {
-            throw new SshPrivateKeyException($"PEM 的 base64 正文解不开{where}。", ex);
+            throw new SshPrivateKeyException(SshFailureReason.KeyFormatInvalid, $"PEM 的 base64 正文解不开{where}。", ex);
         }
     }
 
@@ -615,7 +565,7 @@ public static class SshPrivateKeyFile
             {
                 if (bytes[i] != 0)
                 {
-                    throw new SshPrivateKeyException("RSA/ECDSA 的参数比它该有的长度还长，文件多半损坏了。");
+                    throw new SshPrivateKeyException(SshFailureReason.KeyFormatInvalid, "RSA/ECDSA 的参数比它该有的长度还长，文件多半损坏了。");
                 }
             }
             return bytes.AsSpan(extra).ToArray();

@@ -21,7 +21,7 @@ namespace VelaShell.Ssh.Crypto;
 /// 而且**方向不能弄反** —— 作为客户端，我们用 C/A/E 加密发出去的，用 D/B/F 解收到的。
 /// 弄反的症状是握手完成后第一个报文就解不开。
 /// </remarks>
-public static class SshSessionKeys
+internal static class SshSessionKeys
 {
     /// <summary>为一次交换造出收发两侧的密码套件。</summary>
     /// <param name="algorithms">协商结果。</param>

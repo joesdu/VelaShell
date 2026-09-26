@@ -114,12 +114,12 @@ public sealed class AuthenticationTests
             [new PasswordCredential("hunter2")],
             new TestAuthPolicy { AcceptPassword = "hunter2" });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPassword, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPassword, run.Succeeded.Method);
         Assert.IsTrue(run.ServerSucceeded, "服务端也应当认为认证成功了");
 
         // 第一条永远是 none —— 那是问出「服务端接受哪些方法」的唯一途径。
         Assert.AreSequenceEqual(
-            new[] { SshAlgorithmNames.AuthNone, SshAlgorithmNames.AuthPassword }, run.Observation.RequestedMethods);
+            new[] { SshProtocolNames.AuthNone, SshProtocolNames.AuthPassword }, run.Observation.RequestedMethods);
     }
 
     [TestMethod]
@@ -136,7 +136,7 @@ public sealed class AuthenticationTests
         // 记录里要能分清「试过并失败」与「没试」。这正是它存在的理由：
         // 没有它，界面上只剩一句「用户名或密码不正确」。
         Assert.Contains(
-            a => a.Method == SshAlgorithmNames.AuthPassword
+            a => a.Method == SshProtocolNames.AuthPassword
                                     && a.Outcome == SshAuthOutcome.Failure, error.Attempts,
             $"应当记下 password 失败过：{Environment.NewLine}{error.DescribeAttempts()}");
     }
@@ -149,7 +149,7 @@ public sealed class AuthenticationTests
             new TestAuthPolicy { AcceptPassword = "hunter2", ExpectedUserName = "张三" },
             userName: "张三");
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPassword, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPassword, run.Succeeded.Method);
         Assert.AreSequenceEqual(new[] { "张三" }, run.Observation.UserNames, "用户名是 UTF-8 string，非 ASCII 必须能原样过去");
     }
 
@@ -165,7 +165,7 @@ public sealed class AuthenticationTests
 
         AuthRun run = await RunAsync([credential], new TestAuthPolicy { AcceptPassword = "hunter2" });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPassword, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPassword, run.Succeeded.Method);
         Assert.AreEqual(1, calls, "密码只该在真正发出请求时解出来一次");
     }
 
@@ -195,11 +195,11 @@ public sealed class AuthenticationTests
             [new PublicKeyCredential(signer)],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [signer.PublicKey.Blob.ToArray()],
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPublicKey, run.Succeeded.Method);
 
         // 签名输入拼错了就走不到这里 —— 服务端是**独立**重算被签名数据的。
         Assert.IsTrue(run.Observation.AllSignaturesValid, "服务端必须能验证客户端的签名");
@@ -215,11 +215,11 @@ public sealed class AuthenticationTests
             [new PublicKeyCredential(signer)],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [signer.PublicKey.Blob.ToArray()],
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPublicKey, run.Succeeded.Method);
         Assert.AreEqual(0, run.Observation.PublicKeyProbeCount,
             "本地签名很便宜，不值得为它多花一个往返（velashell-docs/zh/ssh/spec/04 §4.1）");
     }
@@ -234,11 +234,11 @@ public sealed class AuthenticationTests
             [new PublicKeyCredential(signer)],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [inner.PublicKey.Blob.ToArray()],
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPublicKey, run.Succeeded.Method);
         Assert.AreEqual(1, run.Observation.PublicKeyProbeCount,
             "外部签名要先问「你认这把钥吗」——不能为一把服务端不认的钥让用户去按硬件键");
         Assert.AreEqual(1, signer.SignCalls, "探测被接受之后才真的签一次");
@@ -254,7 +254,7 @@ public sealed class AuthenticationTests
             [new PublicKeyCredential(signer)],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [],   // 一把都不认
             });
 
@@ -273,7 +273,7 @@ public sealed class AuthenticationTests
             [new PublicKeyCredential(signer, "~/.ssh/id_ed25519")],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [],
             });
 
@@ -296,12 +296,12 @@ public sealed class AuthenticationTests
             ],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [good.PublicKey.Blob.ToArray()],
             });
 
         // 一条凭据坏了不该打断整条链 —— 后面还有能用的。
-        Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPublicKey, run.Succeeded.Method);
         Assert.Contains(
             a => a.CredentialLabel == "坏掉的私钥文件"
                                             && a.Outcome == SshAuthOutcome.SkippedNoMaterial, run.Succeeded.Attempts,
@@ -320,12 +320,12 @@ public sealed class AuthenticationTests
             ],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [good.PublicKey.Blob.ToArray()],
             });
 
         // SshAgentException 是 SshException —— 曾经它会直接打断整条凭据链。
-        Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPublicKey, run.Succeeded.Method);
         Assert.Contains(
             a => a.CredentialLabel == "agent: id_ed25519" && a.Outcome == SshAuthOutcome.SkippedNoMaterial,
             run.Succeeded.Attempts);
@@ -361,13 +361,13 @@ public sealed class AuthenticationTests
             [new PublicKeyCredential(signer)],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [signer.PublicKey.Blob.ToArray()],
                 // 服务端只肯认 SHA-256 那一种。
                 ServerSignatureAlgorithms = [SshAlgorithmNames.RsaSha256],
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPublicKey, run.Succeeded.Method);
         Assert.AreSequenceEqual(
             new[] { SshAlgorithmNames.RsaSha256 }, run.Observation.PublicKeySignatureAlgorithms, "我们自己更偏好 SHA-512，但服务端说只认 SHA-256 —— 就得听它的（RFC 8308）");
         Assert.Contains(
@@ -384,12 +384,12 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             [new PublicKeyCredential(signer)],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [signer.PublicKey.Blob.ToArray()],
                 ServerSignatureAlgorithms = null,
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPublicKey, run.Succeeded.Method);
         Assert.AreSequenceEqual(
             new[] { SshAlgorithmNames.RsaSha512 }, run.Observation.PublicKeySignatureAlgorithms);
     }
@@ -404,7 +404,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             [new PublicKeyCredential(signer)],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [signer.PublicKey.Blob.ToArray()],
                 // 服务端（谎）称只认 SHA-1。
                 ServerSignatureAlgorithms = [SshAlgorithmNames.SshRsa],
@@ -426,7 +426,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             [new PublicKeyCredential(signer)],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [signer.PublicKey.Blob.ToArray()],
                 ServerSignatureAlgorithms = [SshAlgorithmNames.SshRsa],
             },
@@ -435,7 +435,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
                 AllowSha1RsaSignatures = true,
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPublicKey, run.Succeeded.Method);
         Assert.AreSequenceEqual(
             new[] { SshAlgorithmNames.SshRsa }, run.Observation.PublicKeySignatureAlgorithms, "开关打开之后才肯用它 —— 为的是还能连上停在 OpenSSH 7.x 的老机器");
     }
@@ -457,8 +457,8 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             ],
             new TestAuthPolicy
             {
-                OfferedMethods = [SshAlgorithmNames.AuthKeyboardInteractive],
-                RequiredMethods = [SshAlgorithmNames.AuthKeyboardInteractive],
+                OfferedMethods = [SshProtocolNames.AuthKeyboardInteractive],
+                RequiredMethods = [SshProtocolNames.AuthKeyboardInteractive],
                 KeyboardRounds =
                 [
                     new TestKeyboardRound
@@ -471,7 +471,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
                 ],
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthKeyboardInteractive, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthKeyboardInteractive, run.Succeeded.Method);
         Assert.HasCount(1, seen);
         Assert.AreEqual("请输入手机上的动态码。", seen[0].Instruction);
         Assert.HasCount(1, seen[0].Prompts);
@@ -495,8 +495,8 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             ],
             new TestAuthPolicy
             {
-                OfferedMethods = [SshAlgorithmNames.AuthKeyboardInteractive],
-                RequiredMethods = [SshAlgorithmNames.AuthKeyboardInteractive],
+                OfferedMethods = [SshProtocolNames.AuthKeyboardInteractive],
+                RequiredMethods = [SshProtocolNames.AuthKeyboardInteractive],
                 KeyboardRounds =
                 [
                     new TestKeyboardRound
@@ -512,7 +512,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
                 ],
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthKeyboardInteractive, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthKeyboardInteractive, run.Succeeded.Method);
         Assert.HasCount(2, seen, "服务端可以来回问任意多轮");
     }
 
@@ -532,8 +532,8 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             ],
             new TestAuthPolicy
             {
-                OfferedMethods = [SshAlgorithmNames.AuthKeyboardInteractive],
-                RequiredMethods = [SshAlgorithmNames.AuthKeyboardInteractive],
+                OfferedMethods = [SshProtocolNames.AuthKeyboardInteractive],
+                RequiredMethods = [SshProtocolNames.AuthKeyboardInteractive],
                 KeyboardRounds =
                 [
                     new TestKeyboardRound
@@ -550,7 +550,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
                 ],
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthKeyboardInteractive, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthKeyboardInteractive, run.Succeeded.Method);
         Assert.HasCount(2, seen);
 
         // 这一轮没有提示，但 Instruction 必须送到 —— 否则用户对着没反应的界面干等，
@@ -568,8 +568,8 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             new TestAuthPolicy
             {
                 // 服务端根本不接受 password。
-                OfferedMethods = [SshAlgorithmNames.AuthKeyboardInteractive],
-                RequiredMethods = [SshAlgorithmNames.AuthKeyboardInteractive],
+                OfferedMethods = [SshProtocolNames.AuthKeyboardInteractive],
+                RequiredMethods = [SshProtocolNames.AuthKeyboardInteractive],
                 KeyboardRounds =
                 [
                     new TestKeyboardRound
@@ -582,7 +582,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
 
         // 大量服务器只开 keyboard-interactive，而它唯一的提示就是「Password:」。
         // 不做这一步，用户填了密码却连不上，也说不出为什么。
-        Assert.AreEqual(SshAlgorithmNames.AuthKeyboardInteractive, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthKeyboardInteractive, run.Succeeded.Method);
         Assert.Contains(
             a => a.CredentialLabel.Contains("keyboard-interactive", StringComparison.Ordinal), run.Succeeded.Attempts,
             "记录里要看得出走的是桥接那条路");
@@ -595,8 +595,8 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             [new PasswordCredential("hunter2") { AlsoAnswerKeyboardInteractive = false }],
             new TestAuthPolicy
             {
-                OfferedMethods = [SshAlgorithmNames.AuthKeyboardInteractive],
-                RequiredMethods = [SshAlgorithmNames.AuthKeyboardInteractive],
+                OfferedMethods = [SshProtocolNames.AuthKeyboardInteractive],
+                RequiredMethods = [SshProtocolNames.AuthKeyboardInteractive],
                 KeyboardRounds =
                 [
                     new TestKeyboardRound
@@ -611,7 +611,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
         // 自动填密码只会白白消耗一次尝试。
         SshAuthenticationException error = run.Failed;
         Assert.AreEqual(SshFailureReason.TwoFactorRequired, error.Reason);
-        Assert.DoesNotContain(SshAlgorithmNames.AuthKeyboardInteractive, run.Observation.RequestedMethods,
+        Assert.DoesNotContain(SshProtocolNames.AuthKeyboardInteractive, run.Observation.RequestedMethods,
             "关掉之后连试都不该试");
     }
 
@@ -634,10 +634,10 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             ],
             new TestAuthPolicy
             {
-                OfferedMethods = [SshAlgorithmNames.AuthPublicKey, SshAlgorithmNames.AuthKeyboardInteractive],
+                OfferedMethods = [SshProtocolNames.AuthPublicKey, SshProtocolNames.AuthKeyboardInteractive],
                 // **两个都要过。**第一个过了之后服务端回
                 // FAILURE + partial_success = true —— 这就是 SSH 里 2FA 的全部表达方式。
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey, SshAlgorithmNames.AuthKeyboardInteractive],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey, SshProtocolNames.AuthKeyboardInteractive],
                 AcceptedPublicKeys = [signer.PublicKey.Blob.ToArray()],
                 KeyboardRounds =
                 [
@@ -650,13 +650,13 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
                 ],
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthKeyboardInteractive, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthKeyboardInteractive, run.Succeeded.Method);
         Assert.IsTrue(run.ServerSucceeded);
 
         // 把 partial_success 当失败处理的库会卡在这里：公钥明明过了，
         // 却被记成失败、跳过后续方法，最后报「认证失败」。
         Assert.AreSequenceEqual(
-            new[] { SshAlgorithmNames.AuthPublicKey, SshAlgorithmNames.AuthKeyboardInteractive }, run.Observation.PassedMethods);
+            new[] { SshProtocolNames.AuthPublicKey, SshProtocolNames.AuthKeyboardInteractive }, run.Observation.PassedMethods);
 
         Assert.Contains(
             a => a.Outcome == SshAuthOutcome.PartialSuccess, run.Succeeded.Attempts,
@@ -680,15 +680,15 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             ],
             new TestAuthPolicy
             {
-                OfferedMethods = [SshAlgorithmNames.AuthPublicKey],
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey, SshAlgorithmNames.AuthPassword],
+                OfferedMethods = [SshProtocolNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey, SshProtocolNames.AuthPassword],
                 AcceptedPublicKeys = [signer.PublicKey.Blob.ToArray()],
                 AcceptPassword = "hunter2",
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPassword, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPassword, run.Succeeded.Method);
         Assert.AreSequenceEqual(
-            new[] { SshAlgorithmNames.AuthPublicKey, SshAlgorithmNames.AuthPassword }, run.Observation.PassedMethods);
+            new[] { SshProtocolNames.AuthPublicKey, SshProtocolNames.AuthPassword }, run.Observation.PassedMethods);
     }
 
     [TestMethod]
@@ -703,11 +703,11 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
                 [.. keys.Select(static k => new PublicKeyCredential(k))],
                 new TestAuthPolicy
                 {
-                    RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                    RequiredMethods = [SshProtocolNames.AuthPublicKey],
                     AcceptedPublicKeys = [keys[3].PublicKey.Blob.ToArray()],
                 });
 
-            Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+            Assert.AreEqual(SshProtocolNames.AuthPublicKey, run.Succeeded.Method);
             Assert.AreEqual(4, run.Observation.PublicKeySignedCount, "前三把各试一次，第四把成功，第五把不必试");
         }
         finally
@@ -728,8 +728,8 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             [new PublicKeyCredential(signer)],   // 只配了公钥，没配动态码
             new TestAuthPolicy
             {
-                OfferedMethods = [SshAlgorithmNames.AuthPublicKey, SshAlgorithmNames.AuthKeyboardInteractive],
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey, SshAlgorithmNames.AuthKeyboardInteractive],
+                OfferedMethods = [SshProtocolNames.AuthPublicKey, SshProtocolNames.AuthKeyboardInteractive],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey, SshProtocolNames.AuthKeyboardInteractive],
                 AcceptedPublicKeys = [signer.PublicKey.Blob.ToArray()],
             });
 
@@ -756,15 +756,15 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             ],
             new TestAuthPolicy
             {
-                OfferedMethods = [SshAlgorithmNames.AuthPassword],   // 不接受公钥
-                RequiredMethods = [SshAlgorithmNames.AuthPassword],
+                OfferedMethods = [SshProtocolNames.AuthPassword],   // 不接受公钥
+                RequiredMethods = [SshProtocolNames.AuthPassword],
                 AcceptPassword = "hunter2",
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPassword, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPassword, run.Succeeded.Method);
 
         // 公钥那条连发都不该发 —— 服务端已经说了它不接受。
-        Assert.DoesNotContain(SshAlgorithmNames.AuthPublicKey, run.Observation.RequestedMethods);
+        Assert.DoesNotContain(SshProtocolNames.AuthPublicKey, run.Observation.RequestedMethods);
         Assert.Contains(
             a => a.CredentialLabel == "~/.ssh/id_ed25519"
                                             && a.Outcome == SshAuthOutcome.SkippedNotOffered, run.Succeeded.Attempts);
@@ -783,12 +783,12 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             ],
             new TestAuthPolicy
             {
-                OfferedMethods = [SshAlgorithmNames.AuthPublicKey],
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                OfferedMethods = [SshProtocolNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [second.PublicKey.Blob.ToArray()],   // 只认第二把
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPublicKey, run.Succeeded.Method);
 
         string[] labels = [.. run.Succeeded.Attempts.Select(a => a.CredentialLabel)];
         int firstIndex = Array.IndexOf(labels, "第一把");
@@ -805,11 +805,11 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             new TestAuthPolicy
             {
                 OfferedMethods = [],
-                RequiredMethods = [SshAlgorithmNames.AuthNone],
+                RequiredMethods = [SshProtocolNames.AuthNone],
             });
 
         // none 通常失败，但**不能假设它一定失败**。
-        Assert.AreEqual(SshAlgorithmNames.AuthNone, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthNone, run.Succeeded.Method);
         Assert.IsTrue(run.ServerSucceeded);
     }
 
@@ -820,13 +820,13 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             [],
             new TestAuthPolicy
             {
-                OfferedMethods = [SshAlgorithmNames.AuthPassword, SshAlgorithmNames.AuthPublicKey],
+                OfferedMethods = [SshProtocolNames.AuthPassword, SshProtocolNames.AuthPublicKey],
                 AcceptPassword = "hunter2",
             });
 
         SshAuthenticationException error = run.Failed;
         Assert.AreSequenceEqual(
-            new[] { SshAlgorithmNames.AuthPassword, SshAlgorithmNames.AuthPublicKey }, [.. error.ServerOffered], SequenceOrder.InAnyOrder, "none 探测拿回来的方法列表要留在异常里，这是用户唯一能看到的线索");
+            new[] { SshProtocolNames.AuthPassword, SshProtocolNames.AuthPublicKey }, [.. error.ServerOffered], SequenceOrder.InAnyOrder, "none 探测拿回来的方法列表要留在异常里，这是用户唯一能看到的线索");
     }
 
     // ------------------------------------------------------------ 横幅
@@ -852,7 +852,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
                 },
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPassword, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPassword, run.Succeeded.Method);
         Assert.AreSequenceEqual(new[] { "未经授权的访问将被记录。", "第二条横幅。" }, received);
         Assert.AreSequenceEqual(received, run.Succeeded.Banner.ToArray());
     }
@@ -910,12 +910,12 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             [new PublicKeyCredential(signer)],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 // 服务端认的是**整张证书**的字节，与真服务端出示什么就比什么一致。
                 AcceptedPublicKeys = [signer.Certificate.Blob.ToArray()],
             });
 
-        Assert.AreEqual(SshAlgorithmNames.AuthPublicKey, run.Succeeded.Method);
+        Assert.AreEqual(SshProtocolNames.AuthPublicKey, run.Succeeded.Method);
         Assert.IsTrue(run.Observation.AllSignaturesValid, "服务端必须能验证证书认证的签名");
         Assert.AreEqual(1, run.Observation.PublicKeySignedCount);
 
@@ -934,7 +934,7 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             [new PublicKeyCredential(signer)],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [signer.Certificate.Blob.ToArray()],
                 ServerSignatureAlgorithms = ["ssh-rsa-cert-v01@openssh.com"],
             });
@@ -954,12 +954,12 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
             [new PublicKeyCredential(signer)],
             new TestAuthPolicy
             {
-                RequiredMethods = [SshAlgorithmNames.AuthPublicKey],
+                RequiredMethods = [SshProtocolNames.AuthPublicKey],
                 AcceptedPublicKeys = [signer.Certificate.Blob.ToArray()],
             });
 
         Assert.AreSequenceEqual(
-            new[] { SshAlgorithmNames.AuthNone, SshAlgorithmNames.AuthPublicKey }, run.Observation.RequestedMethods);
+            new[] { SshProtocolNames.AuthNone, SshProtocolNames.AuthPublicKey }, run.Observation.RequestedMethods);
     }
 
     /// <summary>取不到私钥材料的签名器 —— 模拟「私钥文件读不出来」。</summary>
@@ -968,6 +968,8 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
         public SshPublicKey PublicKey => publicKey;
 
         public IReadOnlyList<string> SignatureAlgorithms => [SshAlgorithmNames.SshEd25519];
+
+        public bool IsLocalAndCheap => true;
 
         public ValueTask<byte[]> SignAsync(
             ReadOnlyMemory<byte> data, string algorithm, CancellationToken cancellationToken = default) =>
@@ -985,6 +987,6 @@ SshAlgorithmNames.RsaSha256, [.. run.Succeeded.ServerSignatureAlgorithms]);
 
         public ValueTask<byte[]> SignAsync(
             ReadOnlyMemory<byte> data, string algorithm, CancellationToken cancellationToken = default) =>
-            throw new SshAgentException("agent 拒绝签名。");
+            throw new SshAgentException(SshFailureReason.AgentRefused, "agent 拒绝签名。");
     }
 }

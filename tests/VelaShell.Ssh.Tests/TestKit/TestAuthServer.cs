@@ -16,7 +16,7 @@ using VelaShell.Ssh.Transport;
 namespace VelaShell.Ssh.Tests.TestKit;
 
 /// <summary>一轮 keyboard-interactive 的服务端剧本。</summary>
-public sealed record TestKeyboardRound
+internal sealed record TestKeyboardRound
 {
     /// <summary>对话框标题。</summary>
     public string Name { get; init; } = "";
@@ -32,14 +32,14 @@ public sealed record TestKeyboardRound
 }
 
 /// <summary>测试服务端的认证策略。</summary>
-public sealed record TestAuthPolicy
+internal sealed record TestAuthPolicy
 {
     /// <summary>期望的用户名；<see langword="null"/> 时不校验。</summary>
     public string? ExpectedUserName { get; init; }
 
     /// <summary>初次宣告的可用方法。</summary>
     public IReadOnlyList<string> OfferedMethods { get; init; } =
-        [SshAlgorithmNames.AuthPublicKey, SshAlgorithmNames.AuthPassword];
+        [SshProtocolNames.AuthPublicKey, SshProtocolNames.AuthPassword];
 
     /// <summary>
     /// **必须全部通过**的方法集合。
@@ -49,7 +49,7 @@ public sealed record TestAuthPolicy
     /// <c>USERAUTH_FAILURE</c> 且 <c>partial_success = true</c>，
     /// 并把剩下的方法列出来 —— 这就是 SSH 里 2FA 的全部表达方式。
     /// </remarks>
-    public IReadOnlyList<string> RequiredMethods { get; init; } = [SshAlgorithmNames.AuthPassword];
+    public IReadOnlyList<string> RequiredMethods { get; init; } = [SshProtocolNames.AuthPassword];
 
     /// <summary>接受的密码；<see langword="null"/> 表示任何密码都不接受。</summary>
     public string? AcceptPassword { get; init; }
@@ -82,7 +82,7 @@ public sealed record TestAuthPolicy
 }
 
 /// <summary>认证过程中服务端观察到的事实，供断言使用。</summary>
-public sealed class TestAuthObservation
+internal sealed class TestAuthObservation
 {
     /// <summary>收到的 <c>USERAUTH_REQUEST</c> 方法名，按顺序。</summary>
     public List<string> RequestedMethods { get; } = [];
@@ -110,7 +110,7 @@ public sealed class TestAuthObservation
 }
 
 /// <summary>测试服务端的认证侧。</summary>
-public sealed class TestAuthServer
+internal sealed class TestAuthServer
 {
     private const int MaxField = 256 * 1024;
 
@@ -182,7 +182,7 @@ public sealed class TestAuthServer
         ParsedAuthRequest request = ParseRequest(payload);
         _alreadyAnswered = false;
 
-        if (request.Service != SshAlgorithmNames.ServiceConnection)
+        if (request.Service != SshProtocolNames.ServiceConnection)
         {
             throw new InvalidOperationException(
                 $"认证请求里的服务名应当是 ssh-connection，收到 {request.Service}。");
@@ -205,11 +205,11 @@ public sealed class TestAuthServer
             {
                 // 通常拒绝 —— 但策略把 none 列进必须通过的方法时，就是「配了无认证」。
                 // 客户端不能假设 none 一定失败。
-                SshAlgorithmNames.AuthNone =>
-                    _policy.RequiredMethods.Contains(SshAlgorithmNames.AuthNone, StringComparer.Ordinal),
-                SshAlgorithmNames.AuthPassword => await HandlePasswordAsync(request, cancellationToken),
-                SshAlgorithmNames.AuthPublicKey => await HandlePublicKeyAsync(request, payload, cancellationToken),
-                SshAlgorithmNames.AuthKeyboardInteractive => await HandleKeyboardInteractiveAsync(cancellationToken),
+                SshProtocolNames.AuthNone =>
+                    _policy.RequiredMethods.Contains(SshProtocolNames.AuthNone, StringComparer.Ordinal),
+                SshProtocolNames.AuthPassword => await HandlePasswordAsync(request, cancellationToken),
+                SshProtocolNames.AuthPublicKey => await HandlePublicKeyAsync(request, payload, cancellationToken),
+                SshProtocolNames.AuthKeyboardInteractive => await HandleKeyboardInteractiveAsync(cancellationToken),
                 _ => false,
             };
         }
@@ -273,7 +273,7 @@ public sealed class TestAuthServer
         string service = reader.ReadUtf8String(MaxField);
         string method = reader.ReadUtf8String(MaxField);
 
-        if (method == SshAlgorithmNames.AuthPassword)
+        if (method == SshProtocolNames.AuthPassword)
         {
             bool isChange = reader.ReadBoolean();
             return new ParsedAuthRequest
@@ -286,7 +286,7 @@ public sealed class TestAuthServer
             };
         }
 
-        if (method == SshAlgorithmNames.AuthPublicKey)
+        if (method == SshProtocolNames.AuthPublicKey)
         {
             bool hasSignature = reader.ReadBoolean();
             string algorithm = reader.ReadUtf8String(MaxField);
@@ -377,8 +377,8 @@ public sealed class TestAuthServer
         // 真服务端也是这么拆的，测试桩不这么做就只能测「非证书」那一半。
         SshPublicKey verifier = request.Algorithm.EndsWith(
             SshAlgorithmNames.CertificateSuffix, StringComparison.Ordinal)
-            ? OpenSshCertificate.Parse(request.KeyBlob).Key
-            : SshPublicKey.Parse(request.KeyBlob);
+            ? OpenSshCertificate.Decode(request.KeyBlob).Key
+            : SshPublicKey.Decode(request.KeyBlob);
 
         bool valid = verifier.VerifySignature(request.Signature, signed.WrittenSpan, request.Algorithm);
 
@@ -462,7 +462,7 @@ public sealed class TestAuthServer
         }
 
         string service = ParseServiceRequest(packet.Payload.ToArray());
-        if (service != SshAlgorithmNames.ServiceUserAuth)
+        if (service != SshProtocolNames.ServiceUserAuth)
         {
             throw new InvalidOperationException($"期望 ssh-userauth，收到 {service}。");
         }
@@ -488,7 +488,7 @@ public sealed class TestAuthServer
         SshDataWriter w = new(buffer);
         w.WriteMessageNumber(SshMessageNumber.ExtInfo);
         w.WriteUInt32(1);
-        w.WriteUtf8String(SshAlgorithmNames.ExtServerSigAlgs);
+        w.WriteUtf8String(SshProtocolNames.ExtServerSigAlgs);
         w.WriteUtf8String(string.Join(',', algorithms));
         _transport.WritePacket(buffer.WrittenSpan);
         await _transport.FlushAsync(cancellationToken);

@@ -11,7 +11,6 @@ using System.Text;
 using VelaShell.Ssh.Auth;
 using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Crypto;
-using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Forwarding;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Keys;
@@ -102,7 +101,7 @@ public sealed class AgentForwardTests
                 server.Transport, script ?? new TestChannelScript { CloseAfterScript = false, ExitCode = null });
             Task serverChannels = channelServer.RunAsync(cts.Token);
 
-            SshConnection connection = new(clientTransport, kex.SessionId);
+            SshConnection connection = new(clientTransport, kex);
             connection.Start();
 
             return new Harness(server, channelServer, serverChannels, connection, new TestAgent(), cts);
@@ -142,16 +141,16 @@ public sealed class AgentForwardTests
 
     /// <summary>起一条 session 通道、请求 agent 转发、再让服务端开回一条 agent 通道。</summary>
     private static async Task<(AgentForwarder Forwarder, Stream RemoteSide)> SetUpAsync(
-        Harness harness, AgentForwardPolicy? policy = null)
+        Harness harness, AgentForwardOptions? policy = null)
     {
         SshChannel session = await harness.Connection.OpenSessionChannelAsync(null, harness.Token);
 
         AgentForwarder forwarder = await AgentForwarder.RequestAsync(
-            harness.Connection, session, policy,
-            connectAgent: harness.ConnectAgentAsync, cancellationToken: harness.Token);
+            harness.Connection, session,
+            (policy ?? AgentForwardOptions.Default) with { LocalConnector = harness.ConnectAgentAsync }, harness.Token);
 
         Stream? remote = await harness.ChannelServer.OpenChannelToClientAsync(
-            SshAlgorithmNames.ChannelAuthAgent, default, harness.Token);
+            SshProtocolNames.ChannelAuthAgent, default, harness.Token);
 
         Assert.IsNotNull(remote, "客户端应当接受 auth-agent 通道");
         return (forwarder, remote);
@@ -332,7 +331,7 @@ public sealed class AgentForwardTests
         ISshSigner rsa = await SshPrivateKeyFile.LoadAsync(Path.Combine(fixtures, "hostcert-rsa"), cancellationToken: harness.Token);
         byte[] blob = Convert.FromBase64String(File.ReadAllText(Path.Combine(fixtures, "hostcert-rsa-cert.pub")).Split(' ')[1]);
         harness.Agent.AddCertificate(rsa, blob, "id_rsa-cert.pub");
-        SshPublicKey certificate = SshPublicKey.Parse(blob);
+        SshPublicKey certificate = SshPublicKey.Decode(blob);
 
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
         await using (remote)
@@ -359,7 +358,7 @@ public sealed class AgentForwardTests
         harness.Agent.Add(allowed, "给跳板机用的");
         harness.Agent.Add(secret, "生产环境的钥匙");
 
-        AgentForwardPolicy policy = new() { AllowedKeys = [allowed.PublicKey] };
+        AgentForwardOptions policy = new() { AllowedKeys = [allowed.PublicKey] };
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness, policy);
 
         await using (remote)
@@ -397,7 +396,7 @@ public sealed class AgentForwardTests
         List<AgentSignatureRequest> asked = [];
         bool approve = false;
 
-        AgentForwardPolicy policy = new()
+        AgentForwardOptions policy = new()
         {
             ConfirmEachSignature = (request, _) =>
             {
@@ -478,14 +477,14 @@ public sealed class AgentForwardTests
         SshForwardException error = await Assert.ThrowsExactlyAsync<SshForwardException>(
             async () => await AgentForwarder.RequestAsync(
                 harness.Connection, session,
-                connectAgent: harness.ConnectAgentAsync, cancellationToken: harness.Token));
+                AgentForwardOptions.Default with { LocalConnector = harness.ConnectAgentAsync }, harness.Token));
 
         Assert.Contains("AllowAgentForwarding", error.Message);
 
         // 失败之后不能把处理器留在会话上 —— 否则服务端随后发来的
         // auth-agent 通道会被一个没人管的处理器接住。
         Stream? sneaky = await harness.ChannelServer.OpenChannelToClientAsync(
-            SshAlgorithmNames.ChannelAuthAgent, default, harness.Token);
+            SshProtocolNames.ChannelAuthAgent, default, harness.Token);
 
         Assert.IsNull(sneaky, "转发请求失败之后，agent 通道必须被拒绝");
     }
@@ -497,7 +496,7 @@ public sealed class AgentForwardTests
 
         // 没有任何人请求过 agent 转发 —— 服务端主动开一条也不行。
         Stream? channel = await harness.ChannelServer.OpenChannelToClientAsync(
-            SshAlgorithmNames.ChannelAuthAgent, default, harness.Token);
+            SshProtocolNames.ChannelAuthAgent, default, harness.Token);
 
         Assert.IsNull(channel, "没登记处理器的通道类型必须被明确拒绝");
         Assert.IsTrue(harness.Connection.IsAlive, "拒绝一条通道不该连累会话");
@@ -516,7 +515,7 @@ public sealed class AgentForwardTests
         await forwarder.DisposeAsync();
 
         Stream? after = await harness.ChannelServer.OpenChannelToClientAsync(
-            SshAlgorithmNames.ChannelAuthAgent, default, harness.Token);
+            SshProtocolNames.ChannelAuthAgent, default, harness.Token);
 
         Assert.IsNull(after, "释放之后就不该再接 agent 通道了");
     }

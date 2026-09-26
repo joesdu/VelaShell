@@ -78,13 +78,19 @@ internal sealed class XWindow : XResource
 
     public bool OverrideRedirect { get; set; }
 
+    /// <summary>
+    /// 顶层窗口:解析出宿主快照里图标的那份 _NET_WM_ICON 属性值与解析结果。属性值总是整份替换,
+    /// 同一个引用就不必重新解析(图标动辄几百 KB)。
+    /// </summary>
+    public (XProperty? Source, IReadOnlyList<XWindowIcon> Icons) ParsedIcons { get; set; } = (null, []);
+
     public bool SaveUnder { get; set; }
 
     public ushort DoNotPropagateMask { get; set; }
 
     public uint Colormap { get; set; }
 
-    public XCursor? Cursor { get; set; }
+    public XCursorResource? Cursor { get; set; }
 
     public bool Mapped { get; set; }
 

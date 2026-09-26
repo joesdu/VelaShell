@@ -18,7 +18,7 @@ namespace VelaShell.Ssh.Forwarding;
 /// <param name="DisplayNumber">显示号，ASCII 文本（<c>"0"</c>）。</param>
 /// <param name="Name">授权协议名，通常是 <c>MIT-MAGIC-COOKIE-1</c>。</param>
 /// <param name="Data">授权数据（cookie 本身）。</param>
-public sealed record XAuthorityEntry(
+internal sealed record XAuthorityEntry(
     int Family,
     byte[] Address,
     string DisplayNumber,
@@ -43,7 +43,7 @@ public sealed record XAuthorityEntry(
 /// <c>.Xauthority</c>（写到一半、被别的程序锁着）不该让整条连接失败。
 /// </para>
 /// </remarks>
-public static class XAuthority
+internal static class XAuthority
 {
     /// <summary>本机族：地址字段里是主机名。</summary>
     public const int FamilyLocal = 256;

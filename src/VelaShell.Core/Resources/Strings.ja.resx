@@ -4918,6 +4918,21 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SshErr_Disconnected" xml:space="preserve">
     <value>サーバーがセッションを終了しました。</value>
   </data>
+  <data name="SshErr_KeyPassphraseRequired" xml:space="preserve">
+    <value>秘密鍵は暗号化されています。パスフレーズが必要です。</value>
+  </data>
+  <data name="SshErr_KeyPassphraseIncorrect" xml:space="preserve">
+    <value>パスフレーズで秘密鍵を復号できません。</value>
+  </data>
+  <data name="SshErr_AgentRefused" xml:space="preserve">
+    <value>ssh-agent が要求を拒否しました。鍵が agent から外れている、確認 (ssh-add -c) が拒否された、または agent がロックされている可能性があります。</value>
+  </data>
+  <data name="SshErr_ChannelRequestRejected" xml:space="preserve">
+    <value>サーバーがチャネル上の要求を拒否しました。sshd_config のよくある原因: ForceCommand、PermitTTY no、Subsystem 行の欠落。</value>
+  </data>
+  <data name="SshErr_ForwardRejected" xml:space="preserve">
+    <value>サーバーが転送要求を拒否しました。sshd_config の AllowAgentForwarding / AllowTcpForwarding / X11Forwarding を確認してください。</value>
+  </data>
   <data name="Profile_AgentAuth" xml:space="preserve">
     <value>SSH エージェント</value>
   </data>

@@ -18,69 +18,6 @@ using VelaShell.Ssh.Protocol;
 
 namespace VelaShell.Ssh.Keys;
 
-/// <summary>agent 协议的报文编号。</summary>
-internal static class SshAgentMessage
-{
-    public const byte Failure = 5;
-    public const byte Success = 6;
-    public const byte RequestIdentities = 11;
-    public const byte IdentitiesAnswer = 12;
-    public const byte SignRequest = 13;
-    public const byte SignResponse = 14;
-    public const byte AddIdentity = 17;
-    public const byte AddIdentityConstrained = 25;
-
-    /// <summary>约束：到期自动删除，参数 uint32 秒。</summary>
-    public const byte ConstrainLifetime = 1;
-
-    /// <summary>约束：每次签名都要使用者确认，无参数。</summary>
-    public const byte ConstrainConfirm = 2;
-}
-
-/// <summary>往 agent 里加钥时附带的约束（<c>ssh-add -t</c> / <c>ssh-add -c</c>）。</summary>
-/// <remarks>
-/// 并非每个 agent 都支持约束 —— 不支持的会整条请求拒绝，而不是忽略约束。
-/// </remarks>
-public sealed record SshAgentKeyConstraints
-{
-    /// <summary>多久之后由 agent 自己删掉这把钥；<see langword="null"/> 表示不限。</summary>
-    /// <remarks>按整秒发送，至少 1 秒。</remarks>
-    public TimeSpan? Lifetime { get; init; }
-
-    /// <summary>每次用这把钥签名时，由 agent 向使用者确认。</summary>
-    public bool ConfirmEachUse { get; init; }
-
-    internal bool IsEmpty => Lifetime is null && !ConfirmEachUse;
-}
-
-/// <summary>签名请求的标志位（OpenSSH PROTOCOL.agent）。</summary>
-[Flags]
-internal enum SshAgentSignFlags : uint
-{
-    None = 0,
-
-    /// <summary>用 <c>rsa-sha2-256</c> 而不是 SHA-1 的 <c>ssh-rsa</c>。</summary>
-    RsaSha2_256 = 0x02,
-
-    /// <summary>用 <c>rsa-sha2-512</c>。</summary>
-    RsaSha2_512 = 0x04,
-}
-
-/// <summary>agent 里的一把密钥。</summary>
-/// <param name="PublicKey">公钥。</param>
-/// <param name="Comment">agent 给的注释，通常是私钥文件路径。</param>
-public sealed record SshAgentIdentity(SshPublicKey PublicKey, string Comment);
-
-/// <summary>连不上 agent，或者 agent 拒绝了。</summary>
-public sealed class SshAgentException : SshException
-{
-    /// <summary>创建一个 agent 异常。</summary>
-    public SshAgentException(string message, Exception? innerException = null)
-        : base(SshFailureReason.Unsupported, SshPhase.Authenticating, message, innerException)
-    {
-    }
-}
-
 /// <summary>本机 ssh-agent 的客户端。</summary>
 /// <remarks>
 /// <para>
@@ -144,7 +81,7 @@ public sealed class SshAgentClient : IAsyncDisposable
 
         if (string.IsNullOrEmpty(actual))
         {
-            throw new SshAgentException(
+            throw new SshAgentException(SshFailureReason.AgentUnavailable,
                 OperatingSystem.IsWindows()
                     ? "找不到 ssh-agent。Windows 上它是一个服务，用 " +
                       "`Get-Service ssh-agent` 看状态，`Start-Service ssh-agent` 起它。"
@@ -186,7 +123,7 @@ public sealed class SshAgentClient : IAsyncDisposable
         }
         catch (Exception ex) when (ex is not SshAgentException and not OperationCanceledException)
         {
-            throw new SshAgentException($"连不上 ssh-agent（{actual}）：{ex.Message}", ex);
+            throw new SshAgentException(SshFailureReason.AgentUnavailable, $"连不上 ssh-agent（{actual}）：{ex.Message}", ex);
         }
     }
 
@@ -219,14 +156,14 @@ public sealed class SshAgentClient : IAsyncDisposable
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or InvalidOperationException
                                        or System.Security.Principal.IdentityNotMappedException)
         {
-            throw new SshAgentException(
+            throw new SshAgentException(SshFailureReason.AgentUnavailable,
                 $"读不到 ssh-agent 命名管道（{endpoint}）的属主，不能确认另一头是可信的 agent：{ex.Message}", ex);
         }
 
         using System.Security.Principal.WindowsIdentity current = System.Security.Principal.WindowsIdentity.GetCurrent();
         if (!IsTrustedPipeOwner(owner, current.User))
         {
-            throw new SshAgentException(
+            throw new SshAgentException(SshFailureReason.AgentUnavailable,
                 $"ssh-agent 命名管道（{endpoint}）的属主是 {owner?.Value ?? "（空）"}，" +
                 "既不是当前用户也不是系统 —— 可能是别的用户抢先占了这个管道名。已拒绝连接。");
         }
@@ -255,7 +192,7 @@ public sealed class SshAgentClient : IAsyncDisposable
 
         if (type != SshAgentMessage.IdentitiesAnswer)
         {
-            throw new SshAgentException($"agent 回了 {type} 而不是身份列表。");
+            throw new SshAgentException(SshFailureReason.ProtocolError, $"agent 回了 {type} 而不是身份列表。");
         }
 
         uint count = reader.ReadUInt32();
@@ -268,7 +205,7 @@ public sealed class SshAgentClient : IAsyncDisposable
 
             try
             {
-                identities.Add(new SshAgentIdentity(SshPublicKey.Parse(blob), comment));
+                identities.Add(new SshAgentIdentity(SshPublicKey.Decode(blob), comment));
             }
             catch (SshPublicKeyException)
             {
@@ -324,14 +261,14 @@ public sealed class SshAgentClient : IAsyncDisposable
         if (type == SshAgentMessage.Failure)
         {
             // agent 拒签的原因它不会告诉我们 —— 但最常见的两种值得点出来。
-            throw new SshAgentException(
+            throw new SshAgentException(SshFailureReason.AgentRefused,
                 "ssh-agent 拒绝签名。常见原因：这把密钥已经不在 agent 里了，" +
                 "或者 agent 配了确认（ssh-add -c）而使用者没有批准。");
         }
 
         if (type != SshAgentMessage.SignResponse)
         {
-            throw new SshAgentException($"agent 回了 {type} 而不是签名。");
+            throw new SshAgentException(SshFailureReason.ProtocolError, $"agent 回了 {type} 而不是签名。");
         }
 
         return reader.ReadStringAsArray(MaxMessageLength);
@@ -402,12 +339,12 @@ public sealed class SshAgentClient : IAsyncDisposable
             if (response[0] == SshAgentMessage.Failure)
             {
                 // agent 不说原因 —— 点出最常见的三种。
-                throw new SshAgentException(
+                throw new SshAgentException(SshFailureReason.AgentRefused,
                     "ssh-agent 拒绝加入这把密钥。常见原因：agent 不支持约束（有效期 / 逐次确认）、" +
                     "agent 已被锁定（ssh-add -x），或者 agent 不支持这种密钥类型。");
             }
 
-            throw new SshAgentException($"agent 回了 {response[0]} 而不是成功 / 失败。");
+            throw new SshAgentException(SshFailureReason.ProtocolError, $"agent 回了 {response[0]} 而不是成功 / 失败。");
         }
         finally
         {
@@ -461,7 +398,7 @@ public sealed class SshAgentClient : IAsyncDisposable
 
             if (length is 0 or > MaxMessageLength)
             {
-                throw new SshAgentException($"agent 报文长度不合理：{length}。");
+                throw new SshAgentException(SshFailureReason.ProtocolError, $"agent 报文长度不合理：{length}。");
             }
 
             byte[] response = new byte[length];
@@ -470,11 +407,11 @@ public sealed class SshAgentClient : IAsyncDisposable
         }
         catch (EndOfStreamException ex)
         {
-            throw new SshAgentException("ssh-agent 在应答之前就断开了。", ex);
+            throw new SshAgentException(SshFailureReason.AgentUnavailable, "ssh-agent 在应答之前就断开了。", ex);
         }
         catch (IOException ex)
         {
-            throw new SshAgentException($"与 ssh-agent 通信失败：{ex.Message}", ex);
+            throw new SshAgentException(SshFailureReason.AgentUnavailable, $"与 ssh-agent 通信失败：{ex.Message}", ex);
         }
         finally
         {
@@ -521,7 +458,7 @@ public sealed class SshAgentClient : IAsyncDisposable
         {
             if (buffer.Length - WrittenCount < Math.Max(sizeHint, 1))
             {
-                throw new SshAgentException("要加入 agent 的密钥太大，超出了 agent 报文的长度上限。");
+                throw new SshAgentException(SshFailureReason.LimitExceeded, "要加入 agent 的密钥太大，超出了 agent 报文的长度上限。");
             }
             return WrittenCount;
         }

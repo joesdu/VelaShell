@@ -11,8 +11,7 @@ using VelaShell.Ssh.Session;
 
 namespace VelaShell.Ssh.Transport;
 
-/// <summary>经另一台 SSH 主机（跳板，<c>ProxyJump</c> / <c>ssh -J</c>）拨号。</summary>
-/// <param name="JumpHost">跳板的连接参数：它自己的凭据、主机密钥策略，以及<b>它自己的拨号器</b>。</param>
+/// <summary>经另一台 SSH 主机（跳板，<c>ProxyJump</c> / <c>ssh -J</c>）拨号。由 <see cref="DialerChain.Jump(SshConnectionOptions)"/> 创建。</summary>
 /// <remarks>
 /// <para>
 /// 跳板本身是一条完整的 SSH 连接；到目标的字节流是它上面的一条 <c>direct-tcpip</c> 通道。
@@ -21,14 +20,51 @@ namespace VelaShell.Ssh.Transport;
 /// </para>
 /// <para>
 /// <b>返回的流拥有这条跳板连接</b>：流释放时先关通道、再断开跳板。
-/// 跳板连接不在多次拨号之间共享 —— 共享会让一条连接的生命周期取决于另一条。
+/// 跳板连接不在多次拨号之间共享 —— 共享会让一条连接的生命周期取决于另一条；
+/// 断线重连时每次拨号都重新连一遍跳板。
 /// </para>
 /// <para>
 /// 目标地址<b>从跳板的视角</b>解析：内网名字、<c>localhost</c> 都指跳板那边。
 /// </para>
+/// <para>
+/// 跳板连接有两种来法：给出它的连接参数（库来连，外层的连接计时器会传进去），
+/// 或者给一个回调（调用方要按跳逐个准备凭据时用，比如先连 ssh-agent）。
+/// </para>
 /// </remarks>
-public sealed record SshJumpDialer(SshConnectionOptions JumpHost) : ISshTransportDialer
+internal sealed class SshJumpDialer : ISshTransportDialer
 {
+    private readonly Func<SshDialTarget, CancellationToken, ValueTask<SshConnection>> _connect;
+    private readonly SshEndPoint _jump;
+    private readonly string _jumpName;
+
+    /// <summary>用跳板的连接参数构造：库自己去连它。</summary>
+    /// <param name="jumpHost">跳板的连接参数：它自己的凭据、主机密钥策略，以及<b>它自己的拨号器</b>。</param>
+    internal SshJumpDialer(SshConnectionOptions jumpHost)
+    {
+        ArgumentNullException.ThrowIfNull(jumpHost);
+        JumpHost = jumpHost;
+        _jump = new SshEndPoint(jumpHost.Host, jumpHost.Port);
+        _jumpName = $"{jumpHost.UserName}@{_jump}";
+
+        // 跳板这一跳的整个建连都发生在外层的拨号阶段里 ——
+        // 把外层的计时器交给它，它在等用户裁决主机密钥时外层也停表（velashell-docs/zh/ssh/spec/09 §2.4）。
+        _connect = (target, ct) => SshConnection.ConnectAsync(jumpHost with { OuterDeadline = target.Deadline }, ct);
+    }
+
+    /// <summary>用回调构造：跳板连接由调用方建。</summary>
+    /// <param name="jump">跳板的地址（进诊断信息与逐跳记录）。</param>
+    /// <param name="connect">建立到跳板的连接；每次拨号调一次。</param>
+    internal SshJumpDialer(SshEndPoint jump, Func<CancellationToken, ValueTask<SshConnection>> connect)
+    {
+        ArgumentNullException.ThrowIfNull(connect);
+        _jump = jump;
+        _jumpName = jump.ToString();
+        _connect = (_, ct) => connect(ct);
+    }
+
+    /// <summary>跳板的连接参数；用回调构造时为 <see langword="null"/>。</summary>
+    internal SshConnectionOptions? JumpHost { get; }
+
     /// <inheritdoc />
     public SshDialKind Kind => SshDialKind.SshJump;
 
@@ -37,23 +73,19 @@ public sealed record SshJumpDialer(SshConnectionOptions JumpHost) : ISshTranspor
     {
         ArgumentNullException.ThrowIfNull(target);
 
-        SshEndPoint jump = new(JumpHost.Host, JumpHost.Port);
+        SshEndPoint jump = _jump;
         long startedAt = Environment.TickCount64;
-
-        // 跳板这一跳的整个建连都发生在外层的拨号阶段里 ——
-        // 把外层的计时器交给它，它在等用户裁决主机密钥时外层也停表（velashell-docs/zh/ssh/spec/09 §2.4）。
-        SshConnectionOptions options = JumpHost with { OuterDeadline = target.Deadline };
 
         SshConnection connection;
         try
         {
-            connection = await SshConnectionFactory.ConnectAsync(options, cancellationToken).ConfigureAwait(false);
+            connection = await _connect(target, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException ex) when (target.Deadline is { IsExpired: true })
         {
             // 外层的计时器在跳板这一跳建连时到点了。原样当取消往外传的话，外层只知道自己在「拨号」，
             // 报出来的是「建立 TCP 连接超时」—— 可卡住的是跳板的握手。说清是哪一跳。
-            throw OuterTimeout(jump, $"经跳板 {JumpHost.UserName}@{jump} 建连时超时", startedAt, ex);
+            throw OuterTimeout(jump, $"经跳板 {_jumpName} 建连时超时", startedAt, ex);
         }
         catch (SshException ex)
         {
@@ -61,7 +93,7 @@ public sealed record SshJumpDialer(SshConnectionOptions JumpHost) : ISshTranspor
                 ? [.. connect.Hops, DialHops.Hop(SshDialKind.SshJump, jump, succeeded: false, startedAt, ex.Message)]
                 : [DialHops.Hop(SshDialKind.SshJump, jump, succeeded: false, startedAt, ex.Message)];
 
-            throw DialHops.Rewrap(ex, $"连不上跳板 {JumpHost.UserName}@{jump}：{ex.Message}", hops);
+            throw DialHops.Rewrap(ex, $"连不上跳板 {_jumpName}：{ex.Message}", hops);
         }
 
         SshHopInfo reachedJump = DialHops.Hop(SshDialKind.SshJump, jump, succeeded: true, startedAt);

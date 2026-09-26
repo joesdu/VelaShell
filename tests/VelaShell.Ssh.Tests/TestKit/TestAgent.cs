@@ -16,7 +16,7 @@ using VelaShell.Ssh.Protocol;
 namespace VelaShell.Ssh.Tests.TestKit;
 
 /// <summary>在一条流上说 agent 协议的测试 agent。</summary>
-public sealed class TestAgent
+internal sealed class TestAgent
 {
     private const int MaxMessage = 256 * 1024;
 
@@ -316,7 +316,7 @@ public sealed class TestAgent
 /// 它说的是 agent 协议，但字节从一条 SSH 通道上走 ——
 /// 也就是 <c>auth-agent@openssh.com</c> 那条通道的服务端一侧。
 /// </remarks>
-public static class TestRemoteAgentClient
+internal static class TestRemoteAgentClient
 {
     private const int MaxMessage = 256 * 1024;
 
@@ -360,7 +360,7 @@ public static class TestRemoteAgentClient
         {
             byte[] blob = reader.ReadStringAsArray(MaxMessage);
             string comment = reader.ReadUtf8String(MaxMessage);
-            keys.Add((SshPublicKey.Parse(blob), comment));
+            keys.Add((SshPublicKey.Decode(blob), comment));
         }
 
         return keys;

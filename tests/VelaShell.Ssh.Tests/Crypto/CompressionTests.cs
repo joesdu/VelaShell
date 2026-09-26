@@ -303,9 +303,9 @@ SshAlgorithmNames.None, [.. withCompression.CompressionClientToServer], "none è¦
 
         Assert.AreEqual(
             SshAlgorithmNames.ZlibOpenSsh,
-            host.Connection.Algorithms!.Value.CompressionServerToClient);
+            host.Connection.Algorithms.CompressionServerToClient);
 
-        VelaShell.Ssh.Session.SshCommandOutput output =
+        VelaShell.Ssh.Channels.SshCommandResult output =
             await Ssh.Session.SshConnectionExtensions.RunAsync(host.Connection, "åŽ‹", cancellationToken: host.Token);
 
         Assert.AreSequenceEqual(

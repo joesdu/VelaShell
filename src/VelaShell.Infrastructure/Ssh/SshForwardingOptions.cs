@@ -94,8 +94,8 @@ internal static class SshForwardingOptions
     /// 默认(不限定、不确认)与 <c>ssh -A</c> 一致。
     /// </para>
     /// <para>
-    /// <b>限定了密钥却一把都解析不出来时不转发</b>,而不是交给库一个空的 <see cref="AgentForwardPolicy.AllowedKeys" />
-    /// —— 库把空列表解释为「整个 agent 都可见」,那是把用户的限定悄悄翻成了最宽的那一档。
+    /// <b>限定了密钥却一把都解析不出来时不转发</b>,并提示用户 —— 库把空的 <see cref="AgentForwardOptions.AllowedKeys" />
+    /// 解释为「一把都不给」,转发开了也没用;没限定时交 <see langword="null" />(整个 agent 可见)。
     /// </para>
     /// <para>
     /// <b>逐次确认</b>:同一条会话里用户选了「本次会话内允许」的钥之后不再问;
@@ -103,7 +103,7 @@ internal static class SshForwardingOptions
     /// 比无限期挂着好(用户可能根本不在电脑前,而后台会话里的脚本正在用他的身份)。
     /// </para>
     /// </remarks>
-    public static AgentForwardPolicy? Agent(
+    public static AgentForwardOptions? Agent(
         SshSessionOptions? features,
         List<ShellStreamNotice> notices,
         IAgentSignPrompt? prompt = null,
@@ -115,7 +115,7 @@ internal static class SshForwardingOptions
             return null;
         }
 
-        IReadOnlyList<SshPublicKey> allowed = [];
+        IReadOnlyList<SshPublicKey>? allowed = null;
         if (features.AgentForwardKeys is { } lines)
         {
             allowed = ParseKeys(lines);
@@ -126,7 +126,7 @@ internal static class SshForwardingOptions
             }
         }
 
-        return new AgentForwardPolicy
+        return new AgentForwardOptions
         {
             AllowedKeys = allowed,
             ConfirmEachSignature = features.AgentForwardConfirm
@@ -136,10 +136,10 @@ internal static class SshForwardingOptions
     }
 
     /// <summary>shell 开成之后那行灰字:开着的限定与确认一并写上,用户一眼看得出这条会话借出去的是什么。</summary>
-    public static string DescribeAgent(SshSessionOptions? features, AgentForwardPolicy policy)
+    public static string DescribeAgent(SshSessionOptions? features, AgentForwardOptions policy)
     {
         string text = Strings.Get("Ssh_AgentForwardOn");
-        if (policy.AllowedKeys.Count > 0)
+        if (policy.AllowedKeys is { Count: > 0 })
         {
             text += Strings.Format("Ssh_AgentForwardOnlyKeys", policy.AllowedKeys.Count);
         }
@@ -156,18 +156,10 @@ internal static class SshForwardingOptions
         List<SshPublicKey> keys = [];
         foreach (string line in lines)
         {
-            string[] parts = line.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2)
+            // 坏行或库不认识的类型:跳过,别让一行拖垮整个限定。
+            if (SshPublicKey.TryParse(line, out SshPublicKey? key))
             {
-                continue;
-            }
-            try
-            {
-                keys.Add(SshPublicKey.Parse(Convert.FromBase64String(parts[1])));
-            }
-            catch (Exception ex) when (ex is FormatException or SshPublicKeyException)
-            {
-                // 坏行或库不认识的类型:跳过,别让一行拖垮整个限定。
+                keys.Add(key);
             }
         }
         return keys;

@@ -25,7 +25,7 @@ namespace VelaShell.Ssh.Crypto;
 /// 因此这个结构由套件的**组装函数**产出，而不是两个独立枚举的笛卡尔积。
 /// </para>
 /// </remarks>
-public readonly record struct CipherSuiteShape
+internal readonly record struct CipherSuiteShape
 {
     /// <summary>
     /// 4 字节的 <c>packet_length</c> 是否被加密。
