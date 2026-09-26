@@ -1,3 +1,4 @@
+using ReactiveUI.Primitives.Concurrency;
 using VelaShell.Core.Resources;
 using VelaShell.Presentation.ViewModels;
 
@@ -33,15 +34,24 @@ public sealed class StatusBarViewModelTests
         Assert.IsTrue(vm.IsConnected);
     }
 
+    // 走虚拟时钟而不是真睡:原先 Delay(1500) 等一个 1 秒的线程池计时器,CI 机器忙时第一跳赶不上就红。
     [TestMethod]
-    public async Task StartUptimeTimer_UpdatesUptimeProperty()
+    public void StartUptimeTimer_UpdatesUptimeProperty()
     {
-        var vm = new StatusBarViewModel();
+        var clock = new VirtualClock();
+        var vm = new StatusBarViewModel(clock);
 
         vm.StartUptimeTimer();
-        await Task.Delay(1500);
+        Assert.AreEqual(string.Empty, vm.Uptime);
 
-        Assert.IsFalse(string.IsNullOrEmpty(vm.Uptime));
+        clock.AdvanceBy(TimeSpan.FromSeconds(1));
+        Assert.AreEqual("00:00:01", vm.Uptime);
+
+        clock.AdvanceBy(TimeSpan.FromSeconds(61));
+        Assert.AreEqual("00:01:02", vm.Uptime);
+
         vm.StopUptimeTimer();
+        clock.AdvanceBy(TimeSpan.FromSeconds(5));
+        Assert.AreEqual("00:01:02", vm.Uptime);
     }
 }

@@ -7177,3 +7177,21 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
   （都是按环境记为跳过的用例：文档仓库比对、真实 WinSCP / Xshell 数据、zsh / fish 等）。换成 LF 没有让任何依赖换行的用例在 Windows 上变红。
 
 文档：velashell-docs 没有写行尾约定的地方，不需要改；`CONTRIBUTING*.md` 在本仓库（AGENTS.md 例外清单）。
+
+## ✅ 122. 2026-09-26 CI：修掉 PR #516 上剩下的两条红用例（用户反馈）
+
+§121 推上去之后，windows-latest 的构建过了，但 CI 仍有两条用例失败，都与行尾无关：
+
+- **macOS**：`TunnelPanelUiTests.HelpDialog_UsesOwnedDialogChrome_AndRendersThemesAndLocales` 写死了 `WindowDecorations.None`，
+  那是外框改造（§118）之前的写法。现在对话框的装饰由 `WindowChrome` 按平台决定：macOS 与 Wayland 是 `BorderOnly`，Windows 与 X11 是 `None`
+  （各平台取值由 `WindowChromeTests` 钉住）。用例改成按 `WindowChrome.PlatformOf(dialog)` 取期望值，写法与 `ProcessManagerUiTests` 一致。
+  产品代码没问题，不改。
+- **Windows**：`StatusBarViewModelTests.StartUptimeTimer_UpdatesUptimeProperty` 用真实线程池调度器起一个 1 秒的计时器，再 `Task.Delay(1500)`
+  等第一跳 —— runner 忙时赶不上就红（本地与 §121 的整轮验证里都是绿的）。视图模型本来就能注入 `ISequencer`，用例改用
+  ReactiveUI.Primitives 的 `VirtualClock` 手动推进时间，并断言精确值：推进 1 秒是 `00:00:01`、再推进 61 秒是 `00:01:02`、停表后再推进不变。
+  不再依赖真实时钟，也比原来只断言「非空」更严。
+
+验证：解决方案 `-warnaserror` 构建 0 警告 0 错误；`StatusBar*` 19 条、`TunnelPanelUiTests` 与 `WindowChrome*` 25 条全部通过。
+macOS 分支本地（Windows）跑不到，期望值与 `WindowChrome.Apply` 的对话框分支逐项对应，以 CI 的 macos-latest 为准。
+
+文档：只改了测试，不涉及 velashell-docs。
