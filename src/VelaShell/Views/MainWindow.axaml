@@ -76,7 +76,9 @@
        (Avalonia 12.0.5 的 ExtendClientArea/BorderOnly 托管装饰会拦截标题栏输入,
        按钮点不动、窗口拖不动 —— 多组合实测后弃用)。标题栏拖动/双击在
        TitleBarView(BeginMoveDrag,原生移动循环,Win11 边缘贴靠仍有效);
-       窗口四周为自绘缩放抓取区(BeginResizeDrag)。 -->
+       窗口四周为自绘缩放抓取区(BeginResizeDrag)。
+       macOS 例外:WindowChrome 在代码里换成 Full + 扩展客户区,用系统红绿灯、圆角与阴影,
+       自绘的窗口按钮与缩放抓取区随之关闭(这里的 WindowDecorations="None" 是其余平台的值)。 -->
   <Panel>
     <!-- 背景图层(设置→外观→背景图片):铺在窗口最底层,UniformToFill。默认无图=不可见,行为与旧版一致。 -->
     <Image x:Name="BackgroundImageLayer" Stretch="UniformToFill" IsHitTestVisible="False" IsVisible="False" />
@@ -200,7 +202,7 @@
     </Grid>
     </Grid>
 
-    <!-- 自绘窗口缩放抓取区(仅普通状态,最大化时由 code-behind 关闭):
+    <!-- 自绘窗口缩放抓取区(仅普通状态;最大化时与 macOS 上由 WindowChrome 关闭):
          四边 5px + 四角 10px,透明、置顶,按下即 BeginResizeDrag。 -->
     <Panel x:Name="ResizeGrips" ZIndex="200">
       <Border Tag="North" Height="5" VerticalAlignment="Top" Margin="10,0" Background="Transparent" Cursor="TopSide" PointerPressed="ResizeEdge_PointerPressed" />

@@ -45,14 +45,12 @@ public readonly record struct SftpFileAttributes
     /// <summary>最后修改时间（Unix 秒，有符号）。</summary>
     public int ModifyTime { get; init; }
 
-    private readonly IReadOnlyList<SftpExtendedField>? _extended;
-
     /// <summary>厂商扩展属性。</summary>
     /// <remarks><c>default(SftpFileAttributes)</c> 里它也是空列表而不是 <see langword="null"/>。</remarks>
     public IReadOnlyList<SftpExtendedField> Extended
     {
-        get => _extended ?? [];
-        init => _extended = value;
+        get => field ?? [];
+        init;
     }
 
     /// <summary>什么都没带的空属性（与 <c>default</c> 相同）。</summary>

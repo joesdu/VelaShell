@@ -60,7 +60,7 @@ public sealed class PeerTextTests
     [TestMethod]
     public void 拒绝开通道的理由进异常之前被清_原话留在PeerDescription()
     {
-        SshChannelException error = SshChannelException.FromOpenFailure(
+        var error = SshChannelException.FromOpenFailure(
             "session", (uint)SshChannelOpenFailureReason.ConnectFailed, Hostile);
 
         AssertClean(error.Message);

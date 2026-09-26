@@ -451,22 +451,13 @@ internal static class PuttyPrivateKeyFile
     {
         SshDataReader priv = new(new ReadOnlySequence<byte>(privateBlob));
 
-        switch (algorithm)
+        return algorithm switch
         {
-            case SshAlgorithmNames.SshEd25519:
-                return BuildEd25519(ref priv);
-
-            case SshAlgorithmNames.SshRsa:
-                return BuildRsa(publicBlob, ref priv, where);
-
-            case SshAlgorithmNames.EcdsaSha2Nistp256:
-            case SshAlgorithmNames.EcdsaSha2Nistp384:
-            case SshAlgorithmNames.EcdsaSha2Nistp521:
-                return BuildEcdsa(publicBlob, ref priv, algorithm, where);
-
-            default:
-                throw new SshPrivateKeyException(SshFailureReason.Unsupported, $".ppk 里是不支持的密钥类型 {algorithm}{where}。");
-        }
+            SshAlgorithmNames.SshEd25519 => BuildEd25519(ref priv),
+            SshAlgorithmNames.SshRsa => BuildRsa(publicBlob, ref priv, where),
+            SshAlgorithmNames.EcdsaSha2Nistp256 or SshAlgorithmNames.EcdsaSha2Nistp384 or SshAlgorithmNames.EcdsaSha2Nistp521 => BuildEcdsa(publicBlob, ref priv, algorithm, where),
+            _ => throw new SshPrivateKeyException(SshFailureReason.Unsupported, $".ppk 里是不支持的密钥类型 {algorithm}{where}。"),
+        };
     }
 
     private static InMemorySshSigner BuildEd25519(scoped ref SshDataReader priv)

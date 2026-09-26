@@ -31,6 +31,7 @@ public partial class LocalPathPickerDialog : Window
     internal LocalPathPickerDialog(LocalFilePaneViewModel viewModel, bool loadInitial)
     {
         InitializeComponent();
+        WindowChrome.Apply(this, WindowChromeKind.Dialog);
         ViewModel = viewModel;
         DataContext = ViewModel;
         ViewModel.SelectedEntries.CollectionChanged += (_, _) => UpdateSelectionSummary();

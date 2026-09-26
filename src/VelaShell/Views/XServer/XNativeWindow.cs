@@ -6,7 +6,6 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
-using Avalonia.Threading;
 using VelaShell.Services.XServer;
 using VelaShell.XServer;
 
@@ -167,7 +166,7 @@ public sealed class XNativeWindow : Window
     private static readonly Dictionary<StandardCursorType, Cursor> StandardCursors = [];
 
     /// <summary>按图像建过的光标:服务端对同一个光标总给同一份图像;图像没人引用了,光标随之回收。</summary>
-    private static readonly ConditionalWeakTable<XCursorImage, Cursor> ImageCursors = new();
+    private static readonly ConditionalWeakTable<XCursorImage, Cursor> ImageCursors = [];
 
     private static unsafe Cursor CreateImageCursor(XCursorImage image)
     {

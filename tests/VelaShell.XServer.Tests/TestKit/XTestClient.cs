@@ -71,17 +71,16 @@ internal sealed class XTestClient : IAsyncDisposable
     private readonly Stream _stream;
     private readonly Channel<XMessage> _incoming = Channel.CreateUnbounded<XMessage>();
     private readonly List<XMessage> _backlog = [];
-    private readonly Task _serverTask;
 
     /// <summary>服务端为这个连接跑的 <c>ServeAsync</c>:服务端主动断开时它结束。</summary>
-    public Task ServerTask => _serverTask;
+    public Task ServerTask { get; }
     private readonly Task _readTask;
     private ushort _sequence;
 
     private XTestClient(Stream stream, Task serverTask, bool bigEndian, byte[] setupReply)
     {
         _stream = stream;
-        _serverTask = serverTask;
+        ServerTask = serverTask;
         BigEndian = bigEndian;
         SetupReply = setupReply;
         _readTask = ReadLoopAsync();
@@ -278,7 +277,7 @@ internal sealed class XTestClient : IAsyncDisposable
         await _stream.DisposeAsync();
         try
         {
-            await _serverTask.WaitAsync(TimeSpan.FromSeconds(2));
+            await ServerTask.WaitAsync(TimeSpan.FromSeconds(2));
             await _readTask.WaitAsync(TimeSpan.FromSeconds(2));
         }
         catch (Exception)

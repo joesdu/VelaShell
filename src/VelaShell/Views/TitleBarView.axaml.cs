@@ -15,6 +15,9 @@ namespace VelaShell.Views;
 /// 原生移动循环,Win11 边缘贴靠有效);最大化状态单击不动作、拖动超阈值才还原
 /// 并按水平比例把窗口定位到鼠标下再继续拖;双击切换最大化。
 /// 最大化按钮的 Win11 贴靠面板由 MainWindow 的 WndProc 钩子(HTMAXBUTTON)提供。
+/// macOS 上主窗口改用系统红绿灯(<see cref="WindowChrome" />),自绘的三个窗口按钮按样式类隐去,
+/// 标题栏跟系统标题栏同高(见 <see cref="WindowChrome.TitleBarHeightFor" />);
+/// 标题栏空白处的拖动与双击仍走这里:标题栏有背景,Avalonia 的原生命中测试不会重复处理。
 /// </summary>
 public partial class TitleBarView : UserControl
 {

@@ -31,10 +31,7 @@ public sealed class PasswordCredential : SshCredential
     /// 推荐这个重载：密码可以留在保险库 / 系统密钥链里，只在真正要用时才解出来，
     /// 而不是从配置加载那一刻起就躺在托管堆上。
     /// </remarks>
-    public PasswordCredential(Func<CancellationToken, ValueTask<string>> passwordProvider)
-    {
-        _provider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
-    }
+    public PasswordCredential(Func<CancellationToken, ValueTask<string>> passwordProvider) => _provider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
 
     /// <inheritdoc />
     public override string MethodName => SshProtocolNames.AuthPassword;

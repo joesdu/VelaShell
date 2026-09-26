@@ -1,8 +1,6 @@
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using VelaShell.Core.Resources;
 using VelaShell.Infrastructure.Plugins;
@@ -18,19 +16,11 @@ namespace VelaShell.Views;
 /// </summary>
 public partial class PluginManagerWindow : Window
 {
-    /// <summary>初始化窗口(macOS 退回不透明矩形,与其它自绘窗体同一结论)。</summary>
+    /// <summary>初始化窗口,按平台装外框(最大化时卡片铺满、抓取区让位也由 <see cref="WindowChrome" /> 管)。</summary>
     public PluginManagerWindow()
     {
         InitializeComponent();
-        if (OperatingSystem.IsMacOS())
-        {
-            TransparencyLevelHint = [WindowTransparencyLevel.None];
-            if (this.TryFindResource("VelaBgPage", out object? page) && page is IBrush brush)
-            {
-                Background = brush;
-            }
-            ApplyCardShape(rounded: false);
-        }
+        WindowChrome.Apply(this, WindowChromeKind.Tool, ResizeGrips);
         Closed += (_, _) => (DataContext as PluginManagerViewModel)?.Dispose();
     }
 
@@ -326,50 +316,5 @@ public partial class PluginManagerWindow : Window
             return;
         }
         base.OnKeyDown(e);
-    }
-
-    /// <inheritdoc />
-    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
-    {
-        base.OnPropertyChanged(change);
-        if (change.Property != WindowStateProperty)
-        {
-            return;
-        }
-        bool normal = WindowState == WindowState.Normal;
-        if (this.FindControl<Panel>("ResizeGrips") is { } grips)
-        {
-            grips.IsVisible = normal;
-        }
-        if (!OperatingSystem.IsMacOS())
-        {
-            ApplyCardShape(normal);
-        }
-    }
-
-    private const double InnerRadius = 7;
-
-    private void ApplyCardShape(bool rounded)
-    {
-        if (this.FindControl<Border>("RootCard") is { } card)
-        {
-            card.Margin = rounded ? new Thickness(16) : default;
-            card.BorderThickness = rounded ? new Thickness(1) : default;
-            card.CornerRadius = rounded ? new CornerRadius(8) : default;
-            // 铺满态没有外边距,投影只会被整块裁掉,白付一次模糊;圆角态再从令牌取回。
-            // 不能写成 rounded ? card.BoxShadow : default —— 那样最大化清掉之后,
-            // 还原时读到的已经是清掉后的空值,投影一去不返(自身赋值救不回来)。
-            card.BoxShadow =
-                rounded
-                && this.TryFindResource("VelaShadowWindow", out object? shadow)
-                && shadow is BoxShadows shadows
-                    ? shadows
-                    : default;
-        }
-        ResizeGripLayout.Apply(ResizeGrips, rounded);
-        if (this.FindControl<Border>("TitleBarStrip") is { } strip)
-        {
-            strip.CornerRadius = rounded ? new CornerRadius(InnerRadius, InnerRadius, 0, 0) : default;
-        }
     }
 }

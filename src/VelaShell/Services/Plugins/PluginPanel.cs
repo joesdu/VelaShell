@@ -189,11 +189,12 @@ internal sealed class PluginPanel : IPluginPanel
     {
         _pluginId = pluginId;
         _log = log;
-        _window = new PluginPanelWindow
-        {
-            Width = Math.Max(options.WindowWidth, 280),
-            Height = Math.Max(options.WindowHeight, 200)
-        };
+        _window = new PluginPanelWindow();
+        // 插件声明的尺寸按 Windows 口径(含卡片外 16px 的投影留白);其它平台没有那圈留白,
+        // 减掉才让卡片的可见尺寸在各平台一致(见 WindowChrome)。
+        double inset = WindowChrome.SizeReductionOf(_window);
+        _window.Width = Math.Max(options.WindowWidth, 280) - inset;
+        _window.Height = Math.Max(options.WindowHeight, 200) - inset;
         _window.SetTitle(options.Title, pluginId);
         // 标题栏图标与标签页那条走同一个解析:几个插件的设置窗口并排开着,
         // 标题栏全是同一个插头的话,分不出哪扇窗是谁的。

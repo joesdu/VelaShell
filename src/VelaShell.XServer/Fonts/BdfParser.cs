@@ -31,7 +31,7 @@ internal static class BdfParser
     public static BdfFont Parse(TextReader reader)
     {
         string fontName = "";
-        Dictionary<string, string> props = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> props = [with(StringComparer.OrdinalIgnoreCase)];
         Dictionary<int, XGlyph> glyphs = [];
         bool inProps = false;
 

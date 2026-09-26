@@ -14,13 +14,10 @@
         SizeToContent="Height"
         CanResize="False"
         ShowInTaskbar="False"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         WindowStartupLocation="CenterOwner">
 
   <!-- 主机密钥验证(TOFU)。外壳遵循标准弹窗规格:bg-surface 卡片、圆角 8、
-       1px border-secondary、阴影取 VelaShadowWindow 令牌(随主题深浅)、48px 可拖动标题栏 + 52px 按钮栏。 -->
+       1px border-secondary、阴影取 VelaShadowWindow 令牌(随主题深浅)、28px 可拖动标题栏(与全部窗口一致) + 52px 按钮栏。 -->
 
   <Window.Styles>
     <Style Selector="TextBlock.mono">
@@ -71,17 +68,14 @@
     </Style>
   </Window.Styles>
 
-  <Border CornerRadius="8"
+  <Border Classes="window-card"
           Background="{DynamicResource VelaBgSurface}"
           BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}"
-          Margin="16"
           ClipToBounds="True">
-    <Grid RowDefinitions="48,Auto,52">
+    <Grid RowDefinitions="Auto,Auto,52">
 
       <!-- 标题栏(可拖动) -->
-      <Border Grid.Row="0" Padding="20,0"
+      <Border Grid.Row="0" Classes="window-titlebar" Padding="20,0"
               Background="Transparent"
               PointerPressed="Header_PointerPressed"
               BorderBrush="{DynamicResource VelaBorderPrimary}"

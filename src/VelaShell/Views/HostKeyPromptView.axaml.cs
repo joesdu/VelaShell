@@ -15,6 +15,7 @@ public partial class HostKeyPromptView : Window
     public HostKeyPromptView()
     {
         InitializeComponent();
+        WindowChrome.Apply(this, WindowChromeKind.Dialog);
 
         // VM 的信任/拒绝命令只落 Result;窗口无系统标题栏,由这里负责随 Result 关闭。
         DataContextChanged += (_, _) =>

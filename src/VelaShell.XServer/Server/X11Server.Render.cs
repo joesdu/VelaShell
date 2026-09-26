@@ -326,7 +326,7 @@ public sealed partial class X11Server
         {
             stops[i] = r.I32() / 65536.0;
         }
-        Argb[] colors = new Argb[count];
+        var colors = new Argb[count];
         for (int i = 0; i < count; i++)
         {
             colors[i] = ReadColor(r);
@@ -915,7 +915,7 @@ public sealed partial class X11Server
             NoteRendered(dst, target.TopLevel, dirty);
             return;
         }
-        Argb[] accum = new Argb[bounds.Width * bounds.Height];
+        var accum = new Argb[bounds.Width * bounds.Height];
         foreach ((int x, int y, XRenderGlyph glyph, _) in placed)
         {
             for (int gy = 0; gy < glyph.Height; gy++)

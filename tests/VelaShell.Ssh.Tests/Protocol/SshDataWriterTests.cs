@@ -55,10 +55,7 @@ public sealed class SshDataWriterTests
     }
 
     [TestMethod]
-    public void 空String_只有四字节零长度()
-    {
-        Assert.AreSequenceEqual(new byte[] { 0, 0, 0, 0 }, Write(w => w.WriteString([])));
-    }
+    public void 空String_只有四字节零长度() => Assert.AreSequenceEqual(new byte[] { 0, 0, 0, 0 }, Write(w => w.WriteString([])));
 
     [TestMethod]
     public void String_是字节串_可以含零字节()
@@ -158,18 +155,13 @@ public sealed class SshDataWriterTests
     }
 
     [TestMethod]
-    public void 空NameList_是长度零的串()
-    {
-        Assert.AreSequenceEqual(new byte[] { 0, 0, 0, 0 }, Write(w => w.WriteNameList([])));
-    }
+    public void 空NameList_是长度零的串() => Assert.AreSequenceEqual(new byte[] { 0, 0, 0, 0 }, Write(w => w.WriteNameList([])));
 
     [TestMethod]
-    public void NameList_拒绝含逗号的名字()
-    {
+    public void NameList_拒绝含逗号的名字() =>
         // 放过它会**静默地**把一项变成两项，而那两项都不存在 ——
         // 表现为协商失败却看不出原因。宁可在编码时就炸掉。
         Assert.ThrowsExactly<ArgumentException>(() => Write(w => w.WriteNameList(["a,b"])));
-    }
 
     [TestMethod]
     public void NameList_拒绝空名字与非ASCII()

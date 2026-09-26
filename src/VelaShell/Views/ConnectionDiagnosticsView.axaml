@@ -11,9 +11,6 @@
         Title="{loc:Localize Diag_Title}"
         Width="768" Height="488"
         CanResize="False"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         WindowStartupLocation="CenterOwner">
 
   <!-- 连接诊断中心,布局对齐设计帧 RGXg1:头部(标题 + 导出/重新检测),
@@ -49,35 +46,49 @@
     </Style>
   </Window.Styles>
 
-  <Border CornerRadius="8"
+  <Border Classes="window-card"
           Background="{DynamicResource VelaBgSurface}"
-          BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}"
-          Margin="16">
+          BorderBrush="{DynamicResource VelaBorderSecondary}">
     <DockPanel>
 
-      <!-- Header (design diagHeader):可拖动 + 标题/副标题 | 导出/重新检测/关闭 -->
-      <Border DockPanel.Dock="Top" Height="60" Padding="20,0"
+      <!-- Header (design diagHeader):标题栏(28,与全部窗口一致;可拖动)= 图标 + 标题 + 关闭;
+           下面一行是诊断目标 + 导出/重新检测。 -->
+      <Border DockPanel.Dock="Top" Padding="20,0"
+              Classes="window-titlebar"
+              Background="Transparent"
+              PointerPressed="Header_PointerPressed">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <pc:LucideIcon Width="15" Height="15"
+                           Data="{StaticResource Icon.stethoscope}"
+                           Foreground="{DynamicResource VelaAccent}" VerticalAlignment="Center" />
+            <TextBlock Text="{loc:Localize Diag_Header}"
+                       Foreground="{DynamicResource VelaTextPrimary}"
+                       FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold" VerticalAlignment="Center" />
+          </StackPanel>
+          <Button Grid.Column="1" Width="24" Height="24" Padding="0" CornerRadius="3"
+                  Background="Transparent" Cursor="Hand" Click="Close_Click"
+                  VerticalAlignment="Center"
+                  ToolTip.Tip="{loc:Localize Diag_CloseTip}">
+            <pc:LucideIcon Width="13" Height="13"
+                           Data="{StaticResource Icon.x}"
+                           Foreground="{DynamicResource VelaTextTertiary}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <!-- 目标行:诊断目标 + 导出/重新检测。同样可拖动。 -->
+      <Border DockPanel.Dock="Top" Padding="20,6"
               BorderThickness="0,0,0,1"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               Background="Transparent"
               PointerPressed="Header_PointerPressed">
         <Grid ColumnDefinitions="*,Auto">
-          <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <pc:LucideIcon Width="15" Height="15"
-                             Data="{StaticResource Icon.stethoscope}"
-                             Foreground="{DynamicResource VelaAccent}" VerticalAlignment="Center" />
-              <TextBlock Text="{loc:Localize Diag_Header}"
-                         Foreground="{DynamicResource VelaTextPrimary}"
-                         FontSize="{DynamicResource VelaFontSize15}" FontWeight="SemiBold" VerticalAlignment="Center" />
-            </StackPanel>
-            <TextBlock Text="{Binding TargetSummary}"
-                       Foreground="{DynamicResource VelaTextMuted}"
-                       FontFamily="{DynamicResource VelaUiMonoFont}"
-                       FontSize="{DynamicResource VelaFontSize10}" TextTrimming="CharacterEllipsis" />
-          </StackPanel>
+          <TextBlock Text="{Binding TargetSummary}"
+                     VerticalAlignment="Center"
+                     Foreground="{DynamicResource VelaTextMuted}"
+                     FontFamily="{DynamicResource VelaUiMonoFont}"
+                     FontSize="{DynamicResource VelaFontSize10}" TextTrimming="CharacterEllipsis" />
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
             <Button Classes="dlg-outline" Click="ExportReport_Click"
                     IsEnabled="{Binding CanExport}">
@@ -95,13 +106,6 @@
                                Foreground="{DynamicResource VelaAccentForeground}" VerticalAlignment="Center" />
                 <TextBlock Text="{loc:Localize Diag_Rerun}" VerticalAlignment="Center" />
               </StackPanel>
-            </Button>
-            <Button Width="28" Height="28" Padding="0" CornerRadius="4"
-                    Background="Transparent" Cursor="Hand" Click="Close_Click"
-                    ToolTip.Tip="{loc:Localize Diag_CloseTip}">
-              <pc:LucideIcon Width="13" Height="13"
-                             Data="{StaticResource Icon.x}"
-                             Foreground="{DynamicResource VelaTextTertiary}" />
             </Button>
           </StackPanel>
         </Grid>

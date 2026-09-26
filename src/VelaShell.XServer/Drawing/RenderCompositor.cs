@@ -378,5 +378,4 @@ internal sealed class CoverageMask
         }
         return new ByteMaskSource(bytes, Bounds.X, Bounds.Y, Bounds.Width, Bounds.Height);
     }
-
 }

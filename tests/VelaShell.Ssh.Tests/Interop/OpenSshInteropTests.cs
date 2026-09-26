@@ -381,7 +381,7 @@ public sealed class OpenSshInteropTests
             }
 
             // 换成一把不相干的 CA：这台主机由 CA 管，出示的证书却没人担保 —— 拒绝，不去问、不去记。
-            using InMemorySshSigner stranger = InMemorySshSigner.GenerateEd25519();
+            using var stranger = InMemorySshSigner.GenerateEd25519();
             await File.WriteAllTextAsync(
                 knownHosts,
                 $"@cert-authority {pattern} {stranger.PublicKey.KeyType} {Convert.ToBase64String(stranger.PublicKey.Blob.Span)}\n");
@@ -680,12 +680,12 @@ public sealed class OpenSshInteropTests
         try
         {
             SshChannel tunnel = await connection.OpenUnixSocketTunnelAsync(socket);
-            await using SshAgentClient agent = SshAgentClient.FromStream(tunnel.AsStream(), socket);
+            await using var agent = SshAgentClient.FromStream(tunnel.AsStream(), socket);
 
-            using RSA rsa = RSA.Create(3072);
-            using ECDsa p256 = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-            using ECDsa p384 = ECDsa.Create(ECCurve.NamedCurves.nistP384);
-            using ECDsa p521 = ECDsa.Create(ECCurve.NamedCurves.nistP521);
+            using var rsa = RSA.Create(3072);
+            using var p256 = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            using var p384 = ECDsa.Create(ECCurve.NamedCurves.nistP384);
+            using var p521 = ECDsa.Create(ECCurve.NamedCurves.nistP521);
             InMemorySshSigner[] keys =
             [
                 InMemorySshSigner.GenerateEd25519(),

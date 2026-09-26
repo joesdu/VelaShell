@@ -13,12 +13,9 @@
         SizeToContent="Height"
         CanResize="False"
         ShowInTaskbar="False"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         WindowStartupLocation="CenterOwner">
 
-  <!-- agent 转发的逐次确认。外壳与主机密钥弹窗同一规格(bg-surface 卡片、圆角 8、48px 标题栏 + 52px 按钮栏);
+  <!-- agent 转发的逐次确认。外壳与主机密钥弹窗同一规格(bg-surface 卡片、圆角 8、28px 标题栏 + 52px 按钮栏);
        动作按钮按 DESIGN.md §5.1 走两套共享主题。
        ⚠️ 这个窗口会在用户正往终端里打字时弹出来:「拒绝」同时是默认键与取消键,
        一个顺手的回车只会落在拒绝上,绝不会替用户批准一次签名。 -->
@@ -41,17 +38,14 @@
     </Style>
   </Window.Styles>
 
-  <Border CornerRadius="8"
+  <Border Classes="window-card"
           Background="{DynamicResource VelaBgSurface}"
           BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}"
-          Margin="16"
           ClipToBounds="True">
-    <Grid RowDefinitions="48,Auto,52">
+    <Grid RowDefinitions="Auto,Auto,52">
 
       <!-- 标题栏(可拖动) -->
-      <Border Grid.Row="0" Padding="20,0"
+      <Border Grid.Row="0" Classes="window-titlebar" Padding="20,0"
               Background="Transparent"
               PointerPressed="Header_PointerPressed"
               BorderBrush="{DynamicResource VelaBorderPrimary}"

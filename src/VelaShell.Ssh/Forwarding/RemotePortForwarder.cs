@@ -367,7 +367,7 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
 
         // 连上转发器自己的生命周期，不只是连接的：只看连接的令牌的话，
         // 释放转发器之后它的连接照样一直搬下去，直到整条 SSH 连接断开。
-        using CancellationTokenSource linked =
+        using var linked =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         cancellationToken = linked.Token;
 

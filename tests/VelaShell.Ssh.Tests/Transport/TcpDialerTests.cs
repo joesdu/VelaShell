@@ -28,11 +28,9 @@ public sealed class TcpDialerTests
     }
 
     [TestMethod]
-    public void 默认不另设上限_跟连接的超时走()
-    {
+    public void 默认不另设上限_跟连接的超时走() =>
         // 曾经默认 30 秒：使用者给连接设了更长的超时，TCP 这一步照样在 30 秒被掐断。
         Assert.AreEqual(Timeout.InfiniteTimeSpan, TcpTransportDialer.Shared.ConnectTimeout);
-    }
 
     [TestMethod]
     public void 地址按族交替排从第一个族开始()
@@ -55,7 +53,7 @@ public sealed class TcpDialerTests
         listener.Start();
 
         bool firstCancelled = false;
-        Stopwatch watch = Stopwatch.StartNew();
+        var watch = Stopwatch.StartNew();
 
         using Socket socket = await TcpTransportDialer.RaceAsync(
             [V6, V4],
@@ -94,7 +92,7 @@ public sealed class TcpDialerTests
     {
         using TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start();
-        Stopwatch watch = Stopwatch.StartNew();
+        var watch = Stopwatch.StartNew();
 
         using Socket socket = await TcpTransportDialer.RaceAsync(
             [V6, V4],

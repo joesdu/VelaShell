@@ -106,7 +106,7 @@ public sealed class SshAgentKeyLoaderTests
     public async Task AddsTheKeyWhenTheAgentDoesNotHoldIt()
     {
         FakeAgent agent = new();
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
 
         SshAgentKeyLoader.Outcome outcome = await SshAgentKeyLoader.AddAsync(key, "~/.ssh/id_ed25519", agent.ConnectAsync);
 
@@ -119,8 +119,8 @@ public sealed class SshAgentKeyLoaderTests
     public async Task SkipsAKeyTheAgentAlreadyHolds()
     {
         FakeAgent agent = new();
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
-        using InMemorySshSigner other = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
+        using var other = InMemorySshSigner.GenerateEd25519();
         agent.Hold(other);
         agent.Hold(key);
 
@@ -134,7 +134,7 @@ public sealed class SshAgentKeyLoaderTests
     public async Task AnAgentThatRefusesIsReportedNotThrown()
     {
         FakeAgent agent = new() { RejectAdditions = true };
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
 
         SshAgentKeyLoader.Outcome outcome = await SshAgentKeyLoader.AddAsync(key, "k", agent.ConnectAsync);
 
@@ -146,7 +146,7 @@ public sealed class SshAgentKeyLoaderTests
     [TestMethod]
     public async Task AnUnreachableAgentIsReportedNotThrown()
     {
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
 
         SshAgentKeyLoader.Outcome notRunning = await SshAgentKeyLoader.AddAsync(
             key, "k", _ => throw new SshAgentException(SshFailureReason.AgentUnavailable, "连不上"));
@@ -160,10 +160,13 @@ public sealed class SshAgentKeyLoaderTests
     [TestMethod]
     public void OnlyPrivateKeyAuthenticationOffersAKey()
     {
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
         ConnectionInfo privateKey = new()
         {
-            Host = "h", Username = "u", AuthMethod = AuthMethod.PrivateKey, PrivateKeyPath = "C:/keys/id_ed25519",
+            Host = "h",
+            Username = "u",
+            AuthMethod = AuthMethod.PrivateKey,
+            PrivateKeyPath = "C:/keys/id_ed25519",
         };
 
         Assert.IsTrue(SshAgentKeyLoader.TryGetKeyToAdd(

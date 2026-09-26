@@ -12,9 +12,6 @@
         Width="836" Height="716"
         MinWidth="560" MinHeight="400"
         CanResize="True"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner">
 
@@ -78,18 +75,14 @@
     </Style>
   </Window.Styles>
 
-  <Border x:Name="RootBorder"
-          CornerRadius="8"
+  <Border x:Name="RootBorder" Classes="window-card"
           Background="{DynamicResource VelaBgSurface}"
           BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}"
-          Margin="16"
           ClipToBounds="True">
-    <Grid RowDefinitions="48,Auto,*,52">
+    <Grid RowDefinitions="Auto,Auto,*,52">
 
       <!-- 标题栏(可拖动) -->
-      <Border Grid.Row="0" Padding="20,0"
+      <Border Grid.Row="0" Classes="window-titlebar" Padding="20,0"
               Background="Transparent"
               PointerPressed="Header_PointerPressed"
               BorderBrush="{DynamicResource VelaBorderPrimary}"

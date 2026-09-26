@@ -6,7 +6,7 @@
              xmlns:pc="using:VelaShell.Controls.Controls"
              xmlns:loc="using:VelaShell.Localization"
              xmlns:res="clr-namespace:VelaShell.Core.Resources;assembly=VelaShell.Core"
-             mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="36"
+             mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="28"
              x:Class="VelaShell.Views.TitleBarView"
              x:DataType="vm:MainWindowViewModel">
 
@@ -43,11 +43,11 @@
       </Style>
     </ControlTheme>
 
-    <!-- 窗口控制按钮:46×35 命中区、无圆角,贴住窗口右上角。 -->
+    <!-- 窗口控制按钮:27×27 的方形命中区(边长 = 标题栏 28 − 1px 底边)、无圆角,贴住窗口右上角。 -->
     <ControlTheme x:Key="VelaCaptionButton" TargetType="Button">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="Width" Value="46" />
-      <Setter Property="Height" Value="35" />
+      <Setter Property="Width" Value="27" />
+      <Setter Property="Height" Value="27" />
       <Setter Property="CornerRadius" Value="0" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -91,16 +91,20 @@
   <!-- 标题栏为纯客户区(不设 chrome 角色:Avalonia 12.0.5 的角色输入重定向在
        Win32 上未落地,角色区内的按钮点不动——实测)。拖动走 BeginMoveDrag
        (原生移动循环,Win11 边缘贴靠/拖顶最大化照常生效),双击切最大化。 -->
-  <Border Height="36"
+  <!-- 高度由 window-titlebar 类给出(全部窗口统一 28,Themes/WindowChrome.axaml);
+       macOS 上跟系统标题栏同高(WindowChrome),红绿灯才与标题同一条中线。 -->
+  <Border Classes="window-titlebar"
           Background="{DynamicResource VelaBgSidebar}"
           BorderBrush="{DynamicResource VelaBorderPrimary}"
           BorderThickness="0,0,0,1"
           PointerPressed="Bar_PointerPressed">
     <Grid ColumnDefinitions="Auto,*,Auto,Auto">
 
-      <!-- 左:logo + 产品名(不参与命中,拖动透传到底层 Border)。 -->
+      <!-- 左:logo + 产品名(不参与命中,拖动透传到底层 Border)。
+           最前面的让位块只在 macOS 上显出来,给系统红绿灯让位(Themes/WindowChrome.axaml)。 -->
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8"
                   Margin="12,0" VerticalAlignment="Center" IsHitTestVisible="False">
+        <Panel Classes="traffic-light-spacer" />
         <Image Source="avares://VelaShell/Assets/velashell.png" Width="18" Height="18" />
         <TextBlock Text="{x:Static res:Strings.AppName}"
                    FontFamily="{DynamicResource VelaUiFont}"
@@ -148,8 +152,21 @@
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.activity}"
                          Foreground="{DynamicResource VelaTextMuted}" />
         </Button>
-        <!-- 本机 X Server(VcXsrv):点一下开、再点一下关;运行中转强调色(与资源管理器同一套写法)。
-             只在支持的平台(Windows)上出现。启动中命令不可用,按钮随之变灰,免得连点拉起两个。
+        <Button Theme="{StaticResource VelaTitleActionButton}"
+                ToolTip.Tip="{loc:Localize Menu_TunnelTip}"
+                Command="{Binding RunCommand}" CommandParameter="tools.tunnel">
+          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.route}"
+                         Foreground="{DynamicResource VelaTextMuted}" />
+        </Button>
+        <Button Theme="{StaticResource VelaTitleActionButton}"
+                ToolTip.Tip="{loc:Localize Menu_CommandPaletteTip}"
+                Command="{Binding OpenCommandPaletteCommand}">
+          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.zap}"
+                         Foreground="{DynamicResource VelaTextMuted}" />
+        </Button>
+        <!-- 本机 X Server:点一下开、再点一下关;运行中转强调色(与资源管理器同一套写法)。排在这组最后(用户决定,2026-09-26)。
+             默认是内置引擎,各平台都能用,所以按钮在各平台都出现(没有 X 服务可用时 IsSupported 为假,按钮隐藏)。
+             启动中命令不可用,按钮随之变灰,免得连点拉起两个。
              Icon.xorg 是实心字形,着色走 Fill 而不是 Foreground(后者会只描出轮廓)。 -->
         <Button x:Name="XServerButton"
                 Theme="{StaticResource VelaTitleActionButton}"
@@ -165,31 +182,20 @@
                            IsVisible="{Binding XServer.IsRunning}" />
           </Panel>
         </Button>
-        <Button Theme="{StaticResource VelaTitleActionButton}"
-                ToolTip.Tip="{loc:Localize Menu_TunnelTip}"
-                Command="{Binding RunCommand}" CommandParameter="tools.tunnel">
-          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.route}"
-                         Foreground="{DynamicResource VelaTextMuted}" />
-        </Button>
-        <Button Theme="{StaticResource VelaTitleActionButton}"
-                ToolTip.Tip="{loc:Localize Menu_CommandPaletteTip}"
-                Command="{Binding OpenCommandPaletteCommand}">
-          <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.zap}"
-                         Foreground="{DynamicResource VelaTextMuted}" />
-        </Button>
       </StackPanel>
 
-      <!-- 窗口控制:最小化 / 最大化(还原) / 关闭(常规 Click,纯客户区必然可点)。 -->
+      <!-- 窗口控制:最小化 / 最大化(还原) / 关闭(常规 Click,纯客户区必然可点)。
+           macOS 上用系统红绿灯,这三个按 window-caption 类隐去。 -->
       <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top">
-        <Button Theme="{StaticResource VelaCaptionButton}" Click="Minimize_Click">
+        <Button Theme="{StaticResource VelaCaptionButton}" Classes="window-caption" Click="Minimize_Click">
           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.minus}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </Button>
-        <Button x:Name="MaximizeButton" Theme="{StaticResource VelaCaptionButton}" Click="Maximize_Click">
+        <Button x:Name="MaximizeButton" Theme="{StaticResource VelaCaptionButton}" Classes="window-caption" Click="Maximize_Click">
           <pc:LucideIcon x:Name="MaximizeIcon" Width="11" Height="11" Data="{StaticResource Icon.square}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </Button>
-        <Button Theme="{StaticResource VelaCaptionCloseButton}" Classes="caption-close" Click="Close_Click">
+        <Button Theme="{StaticResource VelaCaptionCloseButton}" Classes="caption-close window-caption" Click="Close_Click">
           <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.x}"
                          Foreground="{DynamicResource VelaTextTertiary}" />
         </Button>

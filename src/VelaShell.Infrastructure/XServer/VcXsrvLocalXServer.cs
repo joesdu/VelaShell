@@ -35,7 +35,6 @@ public sealed class VcXsrvLocalXServer : ILocalXServer, IDisposable
     private readonly Lock _stateLock = new();
 
     private Process? _process;
-    private int? _displayNumber;
     private XServerState _state = XServerState.Stopped;
     private bool _disposed;
 
@@ -74,9 +73,11 @@ public sealed class VcXsrvLocalXServer : ILocalXServer, IDisposable
         {
             lock (_stateLock)
             {
-                return _state == XServerState.Running ? _displayNumber : null;
+                return _state == XServerState.Running ? field : null;
             }
         }
+
+        private set;
     }
 
     /// <inheritdoc />
@@ -187,7 +188,7 @@ public sealed class VcXsrvLocalXServer : ILocalXServer, IDisposable
     private async Task<XServerStartResult> WaitUntilListeningAsync(
         Process process, int display, string logFile, CancellationToken cancellationToken)
     {
-        Stopwatch elapsed = Stopwatch.StartNew();
+        var elapsed = Stopwatch.StartNew();
         while (elapsed.Elapsed < ReadyTimeout)
         {
             if (process.HasExited)
@@ -289,7 +290,6 @@ public sealed class VcXsrvLocalXServer : ILocalXServer, IDisposable
         return null;
     }
 
-
     private void OnProcessExited(object? sender, EventArgs e)
     {
         if (sender is Process process)
@@ -305,7 +305,7 @@ public sealed class VcXsrvLocalXServer : ILocalXServer, IDisposable
         {
             _state = state;
             _process = process;
-            _displayNumber = display;
+            DisplayNumber = display;
         }
         RaiseStateChanged();
     }
@@ -319,7 +319,7 @@ public sealed class VcXsrvLocalXServer : ILocalXServer, IDisposable
                 return;
             }
             _process = null;
-            _displayNumber = null;
+            DisplayNumber = null;
             _state = XServerState.Stopped;
         }
         // 这里不 Dispose:进程自己退出时,启动等待(WaitUntilListeningAsync)可能还在读它的 HasExited。
@@ -381,7 +381,7 @@ public sealed class VcXsrvLocalXServer : ILocalXServer, IDisposable
         {
             process = _process;
             _process = null;
-            _displayNumber = null;
+            DisplayNumber = null;
             _state = XServerState.Stopped;
         }
         if (process is not null)

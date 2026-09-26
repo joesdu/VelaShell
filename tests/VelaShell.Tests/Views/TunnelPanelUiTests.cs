@@ -239,7 +239,13 @@ public sealed class TunnelPanelUiTests
         Dispatcher.UIThread.RunJobs();
         dialog.UpdateLayout();
 
-        Assert.AreEqual(WindowDecorations.None, dialog.WindowDecorations);
+        // 外框按平台装(WindowChrome;各平台取值由 WindowChromeTests 钉住):macOS 与 Wayland 的对话框
+        // 用系统 / 装饰层的 BorderOnly,Windows 与 X11 是自绘卡片、无系统装饰。
+        ChromePlatform platform = WindowChrome.PlatformOf(dialog)!.Value;
+        WindowDecorations expected = platform is ChromePlatform.MacOS or ChromePlatform.LinuxWayland
+            ? WindowDecorations.BorderOnly
+            : WindowDecorations.None;
+        Assert.AreEqual(expected, dialog.WindowDecorations, platform.ToString());
         Assert.IsFalse(dialog.ShowInTaskbar);
         Assert.IsFalse(dialog.CanResize);
         Assert.AreEqual(WindowStartupLocation.CenterOwner, dialog.WindowStartupLocation);

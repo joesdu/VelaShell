@@ -10,6 +10,7 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Security.Cryptography;
 
 namespace VelaShell.Ssh.Crypto;
@@ -396,7 +397,7 @@ internal sealed class AesCtrHmacCipherSuite : ISshCipherSuite
             int width = System.Numerics.Vector<byte>.Count;
             for (; i <= data.Length - width; i += width)
             {
-                var mixed = new System.Numerics.Vector<byte>(data[i..]) ^ new System.Numerics.Vector<byte>(keyStream[i..]);
+                Vector<byte> mixed = new System.Numerics.Vector<byte>(data[i..]) ^ new System.Numerics.Vector<byte>(keyStream[i..]);
                 mixed.CopyTo(data[i..]);
             }
         }

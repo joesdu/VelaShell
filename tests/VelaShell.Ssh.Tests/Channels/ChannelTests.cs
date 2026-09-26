@@ -1192,7 +1192,7 @@ public sealed class ChannelTests
 
         gate!.Block();
 
-        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(harness.Token);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(harness.Token);
         deadline.CancelAfter(TimeSpan.FromSeconds(10));
         await WaitUntilAsync(() => !harness.Connection.IsAlive, deadline.Token);
 

@@ -92,7 +92,7 @@ internal sealed class Region
         {
             return this;
         }
-        List<XRect> result = new(_rects.Count + 4);
+        List<XRect> result = [with(_rects.Count + 4)];
         foreach (XRect r in _rects)
         {
             XRect i = r.Intersect(cut);

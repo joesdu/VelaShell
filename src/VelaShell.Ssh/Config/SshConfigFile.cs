@@ -538,41 +538,24 @@ public static partial class SshConfigFile
     private static bool? EvaluateCondition(
         SshConfigMatchCondition condition, SshConfigMatchContext context)
     {
-        switch (condition.Keyword)
+        return condition.Keyword switch
         {
-            case "all":
-                return true;
-
+            "all" => true,
             // 我们不做主机名规范化（CanonicalizeHostname），也没有「最后再解析一遍」这一轮，
             // 所以这两个判不了。静默当成真或假，都会让一份为规范化写的配置在我们这里产生不同的结果。
-            case "canonical":
-            case "final":
-                return null;
-
-            case "host":
-                return HostPatterns.MatchesList(condition.Patterns, context.Host);
-
-            case "originalhost":
-                return HostPatterns.MatchesList(condition.Patterns, context.OriginalHost ?? context.Host);
-
-            case "user":
-                return context.User is { } user ? HostPatterns.MatchesList(condition.Patterns, user) : null;
-
-            case "localuser":
-                return context.LocalUser is { } local ? HostPatterns.MatchesList(condition.Patterns, local) : null;
-
-            case "exec":
-                // ⚠️ 默认不执行。没有求值器就判不了 —— 见 SshConfigMatchContext.ExecEvaluator 上的说明。
-                return context.ExecEvaluator is { } evaluator
-                    ? evaluator(string.Join(',', condition.Patterns))
-                    : null;
-
-            default:
-                // 不认识的条件判不了。认识错了比不认识更糟：那会让一个本不该生效的块生效。
-                return null;
-        }
+            "canonical" or "final" => null,
+            "host" => HostPatterns.MatchesList(condition.Patterns, context.Host),
+            "originalhost" => HostPatterns.MatchesList(condition.Patterns, context.OriginalHost ?? context.Host),
+            "user" => context.User is { } user ? HostPatterns.MatchesList(condition.Patterns, user) : null,
+            "localuser" => context.LocalUser is { } local ? HostPatterns.MatchesList(condition.Patterns, local) : null,
+            // ⚠️ 默认不执行。没有求值器就判不了 —— 见 SshConfigMatchContext.ExecEvaluator 上的说明。
+            "exec" => context.ExecEvaluator is { } evaluator
+                                ? evaluator(string.Join(',', condition.Patterns))
+                                : null,
+            // 不认识的条件判不了。认识错了比不认识更糟：那会让一个本不该生效的块生效。
+            _ => null,
+        };
     }
-
 
     private static string StripComment(string line)
     {

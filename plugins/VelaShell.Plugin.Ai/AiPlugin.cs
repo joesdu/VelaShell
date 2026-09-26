@@ -124,7 +124,7 @@ public sealed class AiPlugin : IVelaPlugin
         {
             return; // 不是插件装载路径(或单文件装载,没有目录):跳过,面板照常能开。
         }
-        var warmed = 0;
+        int warmed = 0;
         foreach (string path in Directory.EnumerateFiles(directory, "*.dll"))
         {
             if (cancellationToken.IsCancellationRequested)

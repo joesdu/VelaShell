@@ -1,35 +1,27 @@
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Media;
 using VelaShell.Core.Resources;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Views;
 
 /// <summary>
-/// 资源监视窗口。窗体规格与任务管理器、链路追踪一致(透明窗口 + 自绘圆角卡片 + 自绘缩放抓取区),
-/// 打开即采样一次,关闭时停表。
+/// 资源监视窗口。窗体规格与任务管理器、链路追踪一致(按平台的卡片外框 + 自绘缩放抓取区,
+/// 见 <see cref="WindowChrome" />),打开即采样一次,关闭时停表。
 /// </summary>
+/// <remarks>
+/// 贴着卡片四角、又有不透明背景的子元素是标题条(上两角)与侧栏(左下角),各挂对应的圆角类;
+/// 右下角是无背景的 Panel,露的是卡片自己。
+/// </remarks>
 public partial class ResourceMonitorWindow : Window
 {
     /// <summary>初始化窗口并接线关闭时的清理。</summary>
     public ResourceMonitorWindow()
     {
         InitializeComponent();
-
-        // macOS 上透明窗口会拖垮滚动性能(与设置/追踪窗口同一处结论),那里改用不透明矩形窗口。
-        if (OperatingSystem.IsMacOS())
-        {
-            TransparencyLevelHint = [WindowTransparencyLevel.None];
-            if (this.TryFindResource("VelaBgPage", out object? page) && page is IBrush brush)
-            {
-                Background = brush;
-            }
-            RootCard.BoxShadow = default;
-            ApplyCardShape(rounded: false);
-        }
+        // 按平台装外框;最大化时卡片铺满、抓取区让位也由它管。
+        WindowChrome.Apply(this, WindowChromeKind.Tool, ResizeGrips);
         Opened += OnOpened;
         Closed += (_, _) => ViewModel?.Dispose();
         DataContextChanged += (_, _) =>
@@ -95,40 +87,5 @@ public partial class ResourceMonitorWindow : Window
             return;
         }
         base.OnKeyDown(e);
-    }
-
-    /// <inheritdoc />
-    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
-    {
-        base.OnPropertyChanged(change);
-        if (change.Property != WindowStateProperty)
-        {
-            return;
-        }
-        bool normal = WindowState == WindowState.Normal;
-        ResizeGrips.IsVisible = normal;
-        if (!OperatingSystem.IsMacOS())
-        {
-            ApplyCardShape(normal);
-        }
-    }
-
-    /// <summary>卡片外圆角 8 与 1px 边框;子元素在边框内侧,内圆弧半径是 8−1=7。</summary>
-    private const double InnerRadius = 7;
-
-    /// <summary>
-    /// 切换卡片形态。贴着卡片四角、又有不透明背景的子元素都必须跟着改:它们的方角背景会遮掉
-    /// 外框圆角处的描边,表现为角上"断线";反过来铺满态若留着圆角,又会在直角卡片上啃出缺口。
-    /// 这里是标题条(上两角)与侧栏(左下角),右下角是无背景的 Panel,露的是卡片自己。
-    /// </summary>
-    /// <param name="rounded">true = 普通态圆角浮层,false = 铺满矩形。</param>
-    private void ApplyCardShape(bool rounded)
-    {
-        RootCard.Margin = rounded ? new Thickness(16) : default;
-        RootCard.BorderThickness = rounded ? new Thickness(1) : default;
-        RootCard.CornerRadius = rounded ? new CornerRadius(8) : default;
-        ResizeGripLayout.Apply(ResizeGrips, rounded);
-        TitleBarStrip.CornerRadius = rounded ? new CornerRadius(InnerRadius, InnerRadius, 0, 0) : default;
-        SidebarStrip.CornerRadius = rounded ? new CornerRadius(0, 0, 0, InnerRadius) : default;
     }
 }

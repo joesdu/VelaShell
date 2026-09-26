@@ -165,7 +165,7 @@ public sealed class AgentForwarder : IIncomingChannelHandler, IAsyncDisposable
             //    只看它的话，释放转发器（比如关掉开了 agent 转发的那个 shell）之后，
             //    已经打开的 agent 通道照样逐条转发签名，远端主机上的 root 可以一直拿着它用，
             //    直到整条连接断开（而连接上可能还开着 SFTP 或别的会话）。
-            using CancellationTokenSource linked =
+            using var linked =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
 
             await using SshAgentClient agent =

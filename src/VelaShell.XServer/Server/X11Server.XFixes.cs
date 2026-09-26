@@ -385,15 +385,15 @@ public sealed partial class X11Server
 
     private void RemoveXFixesEntries(Func<XClient, XWindow, bool> match)
     {
-        foreach (var key in _selectionInputs.Keys.Where(k => match(k.Client, k.Window)).ToArray())
+        foreach ((XClient Client, XWindow Window, uint Selection) key in _selectionInputs.Keys.Where(k => match(k.Client, k.Window)).ToArray())
         {
             _selectionInputs.Remove(key);
         }
-        foreach (var key in _cursorInputs.Keys.Where(k => match(k.Client, k.Window)).ToArray())
+        foreach ((XClient Client, XWindow Window) key in _cursorInputs.Keys.Where(k => match(k.Client, k.Window)).ToArray())
         {
             _cursorInputs.Remove(key);
         }
-        foreach (var key in _hiddenCursors.Keys.Where(k => match(k.Client, k.Window)).ToArray())
+        foreach ((XClient Client, XWindow Window) key in _hiddenCursors.Keys.Where(k => match(k.Client, k.Window)).ToArray())
         {
             _hiddenCursors.Remove(key);
         }

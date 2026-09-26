@@ -1,4 +1,3 @@
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -8,24 +7,15 @@ namespace VelaShell.Views;
 
 /// <summary>
 /// 插件面板的独立窗口。窗体规格与资源监视/任务管理器一致
-/// (透明窗口 + 自绘圆角卡片 + 自绘缩放抓取区),内容为插件自己创建的 Avalonia 控件。
+/// (按平台的卡片外框 + 自绘缩放抓取区,见 <see cref="WindowChrome" />),内容为插件自己创建的 Avalonia 控件。
 /// </summary>
 public partial class PluginPanelWindow : Window
 {
-    /// <summary>初始化窗口(macOS 退回不透明矩形,与其它自绘窗体同一结论)。</summary>
+    /// <summary>初始化窗口,按平台装外框(最大化时卡片铺满、抓取区让位也由 <see cref="WindowChrome" /> 管)。</summary>
     public PluginPanelWindow()
     {
         InitializeComponent();
-        if (OperatingSystem.IsMacOS())
-        {
-            TransparencyLevelHint = [WindowTransparencyLevel.None];
-            if (this.TryFindResource("VelaBgPage", out object? page) && page is IBrush brush)
-            {
-                Background = brush;
-            }
-            RootCard.BoxShadow = default;
-            ApplyCardShape(rounded: false);
-        }
+        WindowChrome.Apply(this, WindowChromeKind.Tool, ResizeGrips);
     }
 
     /// <summary>设置面板内容(插件自己创建的控件)。</summary>
@@ -111,32 +101,4 @@ public partial class PluginPanelWindow : Window
 
     private void ToggleMaximize() =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-
-    /// <inheritdoc />
-    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
-    {
-        base.OnPropertyChanged(change);
-        if (change.Property != WindowStateProperty)
-        {
-            return;
-        }
-        bool normal = WindowState == WindowState.Normal;
-        ResizeGrips.IsVisible = normal;
-        if (!OperatingSystem.IsMacOS())
-        {
-            ApplyCardShape(normal);
-        }
-    }
-
-    /// <summary>卡片外圆角 8 与 1px 边框;子元素在边框内侧,内圆弧半径是 8−1=7。</summary>
-    private const double InnerRadius = 7;
-
-    private void ApplyCardShape(bool rounded)
-    {
-        RootCard.Margin = rounded ? new Thickness(16) : default;
-        RootCard.BorderThickness = rounded ? new Thickness(1) : default;
-        RootCard.CornerRadius = rounded ? new CornerRadius(8) : default;
-        ResizeGripLayout.Apply(ResizeGrips, rounded);
-        TitleBarStrip.CornerRadius = rounded ? new CornerRadius(InnerRadius, InnerRadius, 0, 0) : default;
-    }
 }

@@ -65,8 +65,8 @@ public sealed partial class X11Server
         _ = Colormap(r.U32());
         ushort red = r.U16(), green = r.U16(), blue = r.U16();
         uint pixel = PixelOf(red, green, blue);
-        (ushort R, ushort G, ushort B) actual = RgbOf(pixel);
-        c.Reply(0, w => w.U16(actual.R).U16(actual.G).U16(actual.B).Zero(2).U32(pixel).Zero(12));
+        (ushort actualRed, ushort actualGreen, ushort actualBlue) = RgbOf(pixel);
+        c.Reply(0, w => w.U16(actualRed).U16(actualGreen).U16(actualBlue).Zero(2).U32(pixel).Zero(12));
     }
 
     private void AllocNamedColor(XClient c, XRequestReader r)
@@ -75,10 +75,10 @@ public sealed partial class X11Server
         int length = r.U16();
         r.Skip(2);
         string name = r.String8(length);
-        (ushort R, ushort G, ushort B) exact = ColorNames.Lookup(name) ?? throw new XProtocolError(XErrorCode.Name);
-        uint pixel = PixelOf(exact.R, exact.G, exact.B);
-        (ushort R, ushort G, ushort B) visual = RgbOf(pixel);
-        c.Reply(0, w => w.U32(pixel).U16(exact.R).U16(exact.G).U16(exact.B).U16(visual.R).U16(visual.G).U16(visual.B).Zero(8));
+        (ushort exactRed, ushort exactGreen, ushort exactBlue) = ColorNames.Lookup(name) ?? throw new XProtocolError(XErrorCode.Name);
+        uint pixel = PixelOf(exactRed, exactGreen, exactBlue);
+        (ushort visualRed, ushort visualGreen, ushort visualBlue) = RgbOf(pixel);
+        c.Reply(0, w => w.U32(pixel).U16(exactRed).U16(exactGreen).U16(exactBlue).U16(visualRed).U16(visualGreen).U16(visualBlue).Zero(8));
     }
 
     private void QueryColors(XClient c, XRequestReader r)
@@ -106,8 +106,8 @@ public sealed partial class X11Server
         int length = r.U16();
         r.Skip(2);
         string name = r.String8(length);
-        (ushort R, ushort G, ushort B) exact = ColorNames.Lookup(name) ?? throw new XProtocolError(XErrorCode.Name);
-        (ushort R, ushort G, ushort B) visual = RgbOf(PixelOf(exact.R, exact.G, exact.B));
-        c.Reply(0, w => w.U16(exact.R).U16(exact.G).U16(exact.B).U16(visual.R).U16(visual.G).U16(visual.B).Zero(12));
+        (ushort exactRed, ushort exactGreen, ushort exactBlue) = ColorNames.Lookup(name) ?? throw new XProtocolError(XErrorCode.Name);
+        (ushort visualRed, ushort visualGreen, ushort visualBlue) = RgbOf(PixelOf(exactRed, exactGreen, exactBlue));
+        c.Reply(0, w => w.U16(exactRed).U16(exactGreen).U16(exactBlue).U16(visualRed).U16(visualGreen).U16(visualBlue).Zero(12));
     }
 }

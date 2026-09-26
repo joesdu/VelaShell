@@ -331,7 +331,7 @@ public sealed class AgentForwardTests
         ISshSigner rsa = await SshPrivateKeyFile.LoadAsync(Path.Combine(fixtures, "hostcert-rsa"), cancellationToken: harness.Token);
         byte[] blob = Convert.FromBase64String(File.ReadAllText(Path.Combine(fixtures, "hostcert-rsa-cert.pub")).Split(' ')[1]);
         harness.Agent.AddCertificate(rsa, blob, "id_rsa-cert.pub");
-        SshPublicKey certificate = SshPublicKey.Decode(blob);
+        var certificate = SshPublicKey.Decode(blob);
 
         (AgentForwarder forwarder, Stream remote) = await SetUpAsync(harness);
         await using (remote)

@@ -182,7 +182,7 @@ public sealed class X11ForwardTests
 
         await remote.DisposeAsync();   // 远端客户端退出:CHANNEL_EOF + CHANNEL_CLOSE
 
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(fixture.Harness.Token);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(fixture.Harness.Token);
         timeout.CancelAfter(TimeSpan.FromSeconds(5));
         Assert.AreEqual(0, await far.ReadAsync(new byte[16], timeout.Token), "X server 那一端应当读到 EOF");
     }

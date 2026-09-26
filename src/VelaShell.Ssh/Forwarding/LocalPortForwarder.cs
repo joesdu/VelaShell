@@ -244,7 +244,7 @@ public sealed class LocalPortForwarder : PortForwarder
             }
 
             long connectionId = NextConnectionId();
-            Task handling = Task.Run(
+            var handling = Task.Run(
                 () => HandleConnectionAsync(connectionId, inbound, cancellationToken), CancellationToken.None);
             _connections[connectionId] = handling;
 
@@ -277,7 +277,7 @@ public sealed class LocalPortForwarder : PortForwarder
                 // 握手有时限：连上来一句不说的客户端，每个都白占一个并发名额，
                 // 占满 MaxConnections 之后正经的连接一条也进不来。
                 SocksTarget? socks;
-                using (CancellationTokenSource handshake =
+                using (var handshake =
                     CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
                     handshake.CancelAfter(_options.SocksHandshakeTimeout);

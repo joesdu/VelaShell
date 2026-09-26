@@ -39,6 +39,7 @@ public class VelaHeadlessApp : Application
         Resources.ThemeDictionaries[ThemeVariant.Light] = Wrap("avares://VelaShell/Themes/LightTheme.axaml");
         Styles.Add(LoadStyles("avares://VelaShell/Themes/DockStyles.axaml"));
         Styles.Add(LoadStyles("avares://VelaShell/Themes/InputStyles.axaml"));
+        Styles.Add(LoadStyles("avares://VelaShell/Themes/WindowChrome.axaml"));
         // 与 App.axaml 末尾那条同源:设置 → 外观 → 界面字体/字号靠它下发到每个窗口,
         // 没有它,测试里的窗口用的是 Fluent 默认字体/字号,与生产不是一回事。
         Styles.Add(new Style(x => x.Is<Window>())

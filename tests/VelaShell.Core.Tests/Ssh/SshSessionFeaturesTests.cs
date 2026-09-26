@@ -119,7 +119,7 @@ public class SshSessionFeaturesTests
     public void X11_LocalServerConnector_OnlyForItsOwnDisplayInTrustedMode()
     {
         List<ShellStreamNotice> notices = [];
-        Func<CancellationToken, ValueTask<Stream>> connector = _ => ValueTask.FromResult<Stream>(new MemoryStream());
+        static ValueTask<Stream> connector(CancellationToken _) => ValueTask.FromResult<Stream>(new MemoryStream());
 
         X11ForwardOptions? trusted = SshForwardingOptions.X11(
             new SshSessionOptions { X11Forwarding = true, X11Trusted = true }, notices, "localhost:10.0", connector);
@@ -255,7 +255,7 @@ public class SshSessionFeaturesTests
         using var a = InMemorySshSigner.GenerateEd25519();
         using var b = InMemorySshSigner.GenerateEd25519();
         FakeSignPrompt prompt = new(AgentSignDecision.AllowForSession);
-        var confirm = ConfirmOf(prompt);
+        Func<AgentSignatureRequest, CancellationToken, ValueTask<bool>> confirm = ConfirmOf(prompt);
 
         Assert.IsTrue(await confirm(Request(a), CancellationToken.None));
         Assert.IsTrue(await confirm(Request(a), CancellationToken.None));
@@ -301,7 +301,7 @@ public class SshSessionFeaturesTests
     {
         using var key = InMemorySshSigner.GenerateEd25519();
         FakeSignPrompt late = new(AgentSignDecision.AllowForSession) { IgnoreCancellationDelay = TimeSpan.FromMilliseconds(300) };
-        var confirm = ConfirmOf(late, TimeSpan.FromMilliseconds(50));
+        Func<AgentSignatureRequest, CancellationToken, ValueTask<bool>> confirm = ConfirmOf(late, TimeSpan.FromMilliseconds(50));
 
         Assert.IsFalse(await confirm(Request(key), CancellationToken.None));
         // 迟到的「本次会话内允许」也不能记下来

@@ -93,7 +93,7 @@ public sealed class AgentAddIdentityTests
     public async Task 不带约束时发17而不是空约束的25()
     {
         await using Rig rig = new();
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
 
         await rig.Client.AddIdentityAsync(key, "k", new SshAgentKeyConstraints(), rig.Token);
 
@@ -105,7 +105,7 @@ public sealed class AgentAddIdentityTests
     public async Task 约束按报文写进25()
     {
         await using Rig rig = new();
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
 
         await rig.Client.AddIdentityAsync(
             key,
@@ -123,7 +123,7 @@ public sealed class AgentAddIdentityTests
     {
         await using Rig rig = new();
         rig.Agent.RejectAdditions = true;
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
 
         SshAgentException error = await Assert.ThrowsExactlyAsync<SshAgentException>(
             async () => await rig.Client.AddIdentityAsync(key, "k", cancellationToken: rig.Token));
@@ -137,7 +137,7 @@ public sealed class AgentAddIdentityTests
     public async Task 同一把钥加两次由agent处理不重复登记()
     {
         await using Rig rig = new();
-        using InMemorySshSigner key = InMemorySshSigner.GenerateEd25519();
+        using var key = InMemorySshSigner.GenerateEd25519();
 
         await rig.Client.AddIdentityAsync(key, "旧注释", cancellationToken: rig.Token);
         await rig.Client.AddIdentityAsync(key, "新注释", cancellationToken: rig.Token);

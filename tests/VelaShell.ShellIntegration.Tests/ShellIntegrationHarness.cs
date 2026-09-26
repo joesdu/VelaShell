@@ -1,11 +1,11 @@
 using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text;
+using VelaShell.Core.Ssh;
+using VelaShell.Infrastructure.Ssh;
 using VelaShell.Ssh.Auth;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Session;
-using VelaShell.Core.Ssh;
-using VelaShell.Infrastructure.Ssh;
 using VelaShell.Terminal;
 using VelaShell.Terminal.Emulation;
 

@@ -259,7 +259,7 @@ internal sealed class TestAgent
             BigInteger qValue = new(q, isUnsigned: true, isBigEndian: true);
             int half = (n.Length + 1) / 2;
 
-            RSA rsa = RSA.Create();
+            var rsa = RSA.Create();
             rsa.ImportParameters(new RSAParameters
             {
                 Modulus = n,
@@ -289,7 +289,7 @@ internal sealed class TestAgent
             throw new InvalidDataException($"密钥类型 {type} 与曲线 {curveName} 对不上。");
         }
 
-        ECDsa ecdsa = ECDsa.Create();
+        var ecdsa = ECDsa.Create();
         ecdsa.ImportParameters(new ECParameters
         {
             Curve = curve,

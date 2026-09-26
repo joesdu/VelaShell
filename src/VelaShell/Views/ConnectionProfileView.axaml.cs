@@ -39,6 +39,7 @@ public partial class ConnectionProfileView : Window
     public ConnectionProfileView()
     {
         InitializeComponent();
+        WindowChrome.Apply(this, WindowChromeKind.Dialog);
         // 必须在 Show 之前钳一次:等到 Opened 再钳,窗口已经按未钳制的高度量好并定过位了,
         // 用户会先看到一个高过屏幕的窗口闪一下,而且它的 Y 可能已经是负数。
         ApplyScreenBounds(preferCurrentScreen: false);
@@ -65,10 +66,13 @@ public partial class ConnectionProfileView : Window
         {
             return;
         }
-        double screenLimit = Math.Max(240, (screen.WorkingArea.Height / screen.Scaling) - ScreenEdgeMargin);
+        // 上限按 Windows 口径写(含卡片外 16px 的投影余量):其它平台没有那圈余量,减掉才与卡片可见高度一致;
+        // Wayland 的阴影与描边画在窗口尺寸之外,工作区里要一并让出来。
+        double frame = WindowChrome.OuterFrameSize(this);
+        double screenLimit = Math.Max(240, (screen.WorkingArea.Height / screen.Scaling) - ScreenEdgeMargin - frame);
         // 小屏按屏幕钳,大屏按设计上限钳:两者取小。
-        MaxHeight = Math.Min(PreferredMaxHeight, screenLimit);
-        MaxWidth = Math.Max(320, (screen.WorkingArea.Width / screen.Scaling) - ScreenEdgeMargin);
+        MaxHeight = Math.Min(PreferredMaxHeight - WindowChrome.SizeReductionOf(this), screenLimit);
+        MaxWidth = Math.Max(320, (screen.WorkingArea.Width / screen.Scaling) - ScreenEdgeMargin - frame);
     }
 
     /// <summary>把窗口位置夹回屏幕工作区(尺寸变化后仍留在原处会露到屏幕外)。</summary>

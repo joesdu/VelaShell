@@ -13,35 +13,33 @@ namespace VelaShell.XServer.Gl;
 internal ref struct GlReader
 {
     private readonly ReadOnlySpan<byte> _data;
-    private readonly bool _bigEndian;
-    private int _pos;
 
     public GlReader(ReadOnlySpan<byte> data, bool bigEndian)
     {
         _data = data;
-        _bigEndian = bigEndian;
-        _pos = 0;
+        BigEndian = bigEndian;
+        Position = 0;
     }
 
-    public readonly int Remaining => _data.Length - _pos;
+    public readonly int Remaining => _data.Length - Position;
 
-    public readonly int Position => _pos;
+    public int Position { get; private set; }
 
-    public readonly bool BigEndian => _bigEndian;
+    public readonly bool BigEndian { get; }
 
     private ReadOnlySpan<byte> Take(int count)
     {
-        if (_pos + count > _data.Length)
+        if (Position + count > _data.Length)
         {
-            _pos = _data.Length;
+            Position = _data.Length;
             return default;
         }
-        ReadOnlySpan<byte> span = _data.Slice(_pos, count);
-        _pos += count;
+        ReadOnlySpan<byte> span = _data.Slice(Position, count);
+        Position += count;
         return span;
     }
 
-    public void Skip(int count) => _pos = Math.Min(_data.Length, _pos + count);
+    public void Skip(int count) => Position = Math.Min(_data.Length, Position + count);
 
     public byte U8()
     {
@@ -54,7 +52,7 @@ internal ref struct GlReader
     public ushort U16()
     {
         ReadOnlySpan<byte> s = Take(2);
-        return s.IsEmpty ? (ushort)0 : _bigEndian ? BinaryPrimitives.ReadUInt16BigEndian(s) : BinaryPrimitives.ReadUInt16LittleEndian(s);
+        return s.IsEmpty ? (ushort)0 : BigEndian ? BinaryPrimitives.ReadUInt16BigEndian(s) : BinaryPrimitives.ReadUInt16LittleEndian(s);
     }
 
     public short I16() => (short)U16();
@@ -62,7 +60,7 @@ internal ref struct GlReader
     public uint U32()
     {
         ReadOnlySpan<byte> s = Take(4);
-        return s.IsEmpty ? 0 : _bigEndian ? BinaryPrimitives.ReadUInt32BigEndian(s) : BinaryPrimitives.ReadUInt32LittleEndian(s);
+        return s.IsEmpty ? 0 : BigEndian ? BinaryPrimitives.ReadUInt32BigEndian(s) : BinaryPrimitives.ReadUInt32LittleEndian(s);
     }
 
     public int I32() => (int)U32();
@@ -73,7 +71,7 @@ internal ref struct GlReader
     {
         ReadOnlySpan<byte> s = Take(8);
         return s.IsEmpty ? 0 : BitConverter.UInt64BitsToDouble(
-            _bigEndian ? BinaryPrimitives.ReadUInt64BigEndian(s) : BinaryPrimitives.ReadUInt64LittleEndian(s));
+            BigEndian ? BinaryPrimitives.ReadUInt64BigEndian(s) : BinaryPrimitives.ReadUInt64LittleEndian(s));
     }
 
     /// <summary>剩下的字节(不复制)。</summary>

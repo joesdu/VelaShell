@@ -17,6 +17,7 @@ public partial class SessionImportView : Window
     public SessionImportView()
     {
         InitializeComponent();
+        WindowChrome.Apply(this, WindowChromeKind.Dialog);
         Opened += OnOpened;
     }
 

@@ -18,7 +18,7 @@ namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private readonly Dictionary<string, uint> _atomsByName = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, uint> _atomsByName = [with(StringComparer.Ordinal)];
     private readonly List<string> _atomNames = [];
     private readonly Dictionary<uint, (XWindow Window, XClient? Client, uint Time)> _selections = [];
 
@@ -251,7 +251,7 @@ public sealed partial class X11Server
         {
             return;
         }
-        XProperty[] values = new XProperty[count];
+        var values = new XProperty[count];
         for (int i = 0; i < count; i++)
         {
             values[i] = window.Properties[atoms[i]];
@@ -292,7 +292,7 @@ public sealed partial class X11Server
         {
             time = now;
         }
-        if (_selections.TryGetValue(selection, out var current))
+        if (_selections.TryGetValue(selection, out (XWindow Window, XClient? Client, uint Time) current))
         {
             // 时间早于当前属主的获取时间,或晚于服务端当前时间:忽略(协议规定)。
             if (unchecked((int)(time - current.Time)) < 0 || unchecked((int)(time - now)) > 0)
@@ -324,7 +324,7 @@ public sealed partial class X11Server
     {
         uint selection = r.U32();
         CheckAtom(selection);
-        uint owner = _selections.TryGetValue(selection, out var s) ? s.Window.Id : 0;
+        uint owner = _selections.TryGetValue(selection, out (XWindow Window, XClient? Client, uint Time) s) ? s.Window.Id : 0;
         c.Reply(0, w => w.U32(owner).Zero(20));
     }
 
@@ -337,7 +337,7 @@ public sealed partial class X11Server
         uint time = r.U32();
         CheckAtom(selection);
         CheckAtom(target);
-        if (_selections.TryGetValue(selection, out var owner))
+        if (_selections.TryGetValue(selection, out (XWindow Window, XClient? Client, uint Time) owner))
         {
             if (owner.Client is null)
             {

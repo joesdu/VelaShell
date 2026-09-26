@@ -17,7 +17,6 @@ namespace VelaShell.XServer;
 public sealed class XTopLevelWindow
 {
     private readonly PixelGate _pixelGate;
-    private XTopLevelSnapshot _snapshot = new();
 
     internal XTopLevelWindow(XWindow window, PixelGate pixelGate)
     {
@@ -35,9 +34,9 @@ public sealed class XTopLevelWindow
     /// </summary>
     public XTopLevelSnapshot Snapshot
     {
-        get => Volatile.Read(ref _snapshot);
-        internal set => Volatile.Write(ref _snapshot, value);
-    }
+        get => Volatile.Read(ref field);
+        internal set => Volatile.Write(ref field, value);
+    } = new();
 
     /// <summary>服务端这边的窗口(只在执行线程上碰)。</summary>
     internal XWindow Window { get; }

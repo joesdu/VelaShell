@@ -26,8 +26,10 @@ root = true
 
 [*]
 charset = utf-8
-# 仓库以 LF 入库(.gitattributes text=auto)。Windows 上 core.autocrlf=true 的工作区会是 CRLF,
-# 这是 git 在签出时转换的结果,不是风格问题;不要为此改成 crlf。
+# 仓库以 LF 入库,.gitattributes 的 `* text=auto eol=lf` 让各平台工作区也签出成 LF。
+# 别退回只写 text=auto:Git for Windows 默认 core.autocrlf=true,工作区会变 CRLF,而格式化器在
+# 需要重建空白的位置(如 `=>` 与表达式之间夹一行注释)按这里的 lf 写换行,那些 CRLF 就被报成
+# IDE0055,CI 的 windows-latest 在 -warnaserror 下编不过。也不要为此改成 crlf。
 end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true

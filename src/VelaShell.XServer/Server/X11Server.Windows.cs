@@ -259,7 +259,7 @@ public sealed partial class X11Server
             extension.WindowDestroyed?.Invoke(window);
         }
         CleanupEwmh(window);
-        foreach (var (atom, owner) in _selections.ToArray())
+        foreach ((uint atom, (XWindow Window, XClient? Client, uint Time) owner) in _selections.ToArray())
         {
             if (ReferenceEquals(owner.Window, window))
             {

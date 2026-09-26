@@ -120,7 +120,7 @@ public sealed partial class X11Server
     {
         ArgumentNullException.ThrowIfNull(stream);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         CancellationToken ct = linked.Token;
         CancellationTokenSource? connection = null;
 
@@ -298,11 +298,9 @@ public sealed partial class X11Server
         }
         return bytes;
 
-        static void WriteVisual(XWriter w, uint id)
-        {
+        static void WriteVisual(XWriter w, uint id) =>
             // visual-id、class(4 = TrueColor)、bits-per-rgb、colormap-entries、红绿蓝掩码、4 字节空
             w.U32(id).U8(4).U8(8).U16(256).U32(0xFF0000).U32(0x00FF00).U32(0x0000FF).Zero(4);
-        }
     }
 
     private async Task ReadRequestsAsync(XClient client, Stream stream, CancellationToken ct)
@@ -420,7 +418,7 @@ public sealed partial class X11Server
     /// <summary>断开的客户端:释放它的资源、选区、抓取与事件选择,再让各扩展清掉自己的那份状态(<see cref="Extension.ClientClosed" />)。</summary>
     private void CleanupClient(XClient client)
     {
-        foreach ((uint atom, var owner) in _selections.ToArray())
+        foreach ((uint atom, (XWindow Window, XClient? Client, uint Time) owner) in _selections.ToArray())
         {
             if (ReferenceEquals(owner.Client, client))
             {

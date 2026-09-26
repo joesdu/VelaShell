@@ -86,7 +86,7 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(kex);
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         _sessionId = kex.SessionId;
-        _negotiated = kex.Algorithms;
+        Algorithms = kex.Algorithms;
         HostKey = kex.HostKey;
         _limits = limits ?? SshConnectionLimits.Default;
         Disconnected = _disconnected.Token;
@@ -127,9 +127,11 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
         {
             lock (_stateLock)
             {
-                return _negotiated;
+                return field;
             }
         }
+
+        private set;
     }
 
     /// <summary>服务端出示的主机公钥。</summary>
@@ -157,7 +159,6 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
     private long _packetsReceivedAtLastKex;
     private long _lastKexTicks = Environment.TickCount64;
     private string? _lastRekeyReason;
-    private Crypto.SshNegotiatedAlgorithms _negotiated;
 
     /// <summary>当前占着通道号的通道数。</summary>
     /// <remarks>
@@ -224,7 +225,6 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
             _rekeyMonitorLoop ??= Task.Run(() => RekeyMonitorLoopAsync(_lifetime.Token));
         }
     }
-
 
     /// <summary>保活循环。</summary>
     /// <remarks>
@@ -469,9 +469,6 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
         }
     }
 
-
-    private Forwarding.X11ChannelRouter? _x11Router;
-
     /// <summary>这条连接上所有 X11 转发共用的入口（按假 cookie 分通道）。</summary>
     internal Forwarding.X11ChannelRouter X11Router
     {
@@ -479,7 +476,7 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
         {
             lock (_stateLock)
             {
-                return _x11Router ??= new Forwarding.X11ChannelRouter(this);
+                return field ??= new Forwarding.X11ChannelRouter(this);
             }
         }
     }

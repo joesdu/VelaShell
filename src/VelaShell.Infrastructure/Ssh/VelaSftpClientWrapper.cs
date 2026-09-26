@@ -1,7 +1,6 @@
 using System.Buffers;
 using System.Globalization;
 using VelaShell.Core.Ssh;
-using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Sftp;
 
 namespace VelaShell.Infrastructure.Ssh;
@@ -318,7 +317,7 @@ public sealed class VelaSftpClientWrapper(Func<CancellationToken, ValueTask<Sftp
             }
             catch (SftpException ex) when (ex.IsNotFound)
             {
-                return (SftpEntry?)null;
+                return null;
             }
 
             if (!link.IsSymbolicLink)

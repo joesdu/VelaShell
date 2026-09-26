@@ -273,15 +273,9 @@ internal sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
         CryptographicOperations.ZeroMemory(block);
     }
 
-    private void EncryptLengthField(Span<byte> lengthField, uint sequenceNumber)
-    {
-        Rewind(_lengthEngine, sequenceNumber).ProcessBytes(lengthField, lengthField);
-    }
+    private void EncryptLengthField(Span<byte> lengthField, uint sequenceNumber) => Rewind(_lengthEngine, sequenceNumber).ProcessBytes(lengthField, lengthField);
 
-    private void DecryptLengthField(ReadOnlySpan<byte> encrypted, uint sequenceNumber, Span<byte> plain)
-    {
-        Rewind(_lengthEngine, sequenceNumber).ProcessBytes(encrypted, plain);
-    }
+    private void DecryptLengthField(ReadOnlySpan<byte> encrypted, uint sequenceNumber, Span<byte> plain) => Rewind(_lengthEngine, sequenceNumber).ProcessBytes(encrypted, plain);
 
     private void ComputeTag(ReadOnlySpan<byte> polyKey, ReadOnlySpan<byte> data, Span<byte> tag)
     {

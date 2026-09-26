@@ -102,7 +102,7 @@ public sealed class AvaloniaXServerHostUiTests
         Assert.IsNull(HostKeymap.FromBundled("xx"));
 
         Assert.AreEqual("de", de.Layout, "手选的布局名跟着键位表走");
-        XKeymap keymap = de.ToXKeymap();
+        var keymap = de.ToXKeymap();
         Assert.AreEqual("de", keymap.Layout);
         Assert.IsTrue(keymap.AltGr, "有 AltGr 层:右 Alt 当 AltGr");
         Assert.AreEqual(6, keymap.KeysymsPerKeycode);
@@ -313,7 +313,7 @@ public sealed class AvaloniaXServerHostUiTests
         using (frame)
         {
             uint[] pixel = new uint[1];
-            GCHandle pin = GCHandle.Alloc(pixel, GCHandleType.Pinned);
+            var pin = GCHandle.Alloc(pixel, GCHandleType.Pinned);
             try
             {
                 frame.CopyPixels(new PixelRect(x, y, 1, 1), pin.AddrOfPinnedObject(), 4, 4);

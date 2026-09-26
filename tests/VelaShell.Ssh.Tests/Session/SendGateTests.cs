@@ -205,10 +205,7 @@ public sealed class SendGateTests
     }
 
     [TestMethod]
-    public void 中止时暂存区为空则返回空列表()
-    {
-        Assert.IsEmpty(NewGate().DrainForAbort());
-    }
+    public void 中止时暂存区为空则返回空列表() => Assert.IsEmpty(NewGate().DrainForAbort());
 
     // ------------------------------------------------------------ 参数校验
 

@@ -44,6 +44,7 @@ public partial class XServerHelpDialog : Window
     public XServerHelpDialog()
     {
         InitializeComponent();
+        WindowChrome.Apply(this, WindowChromeKind.Dialog);
         _all =
         [
             .. XServerHelpCatalog.Groups.Select(group => (

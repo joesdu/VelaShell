@@ -194,9 +194,9 @@ public class SshSessionFeaturesIntegrationTests
     {
         RequireContainer();
         RequireWindowsPipes();
-        using ECDsa held = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var held = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using InMemorySshSigner signer = SshPrivateKeyFile.Parse(held.ExportPkcs8PrivateKeyPem());
-        using InMemorySshSigner other = InMemorySshSigner.GenerateEd25519();
+        using var other = InMemorySshSigner.GenerateEd25519();
         await using var agent = FakeAgent.Start(signer);
         using EnvironmentScope scope = new("SSH_AUTH_SOCK", agent.Endpoint);
 

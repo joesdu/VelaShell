@@ -126,18 +126,14 @@ internal sealed class Rasterizer
     private uint? FillSource(int dx, int dy, bool useBackground = false)
     {
         uint fg = useBackground ? _gc.Background : _gc.Foreground;
-        switch (_gc.FillStyle)
+        return _gc.FillStyle switch
         {
-            case 1 when _gc.Tile is { } tile:
-                return tile.Buffer.Get(
-                    Mod(dx - _gc.TileStipXOrigin, tile.Width), Mod(dy - _gc.TileStipYOrigin, tile.Height));
-            case 2 when _gc.Stipple is { } stipple:
-                return StippleBit(stipple, dx, dy) ? fg : null;
-            case 3 when _gc.Stipple is { } stipple:
-                return StippleBit(stipple, dx, dy) ? fg : _gc.Background;
-            default:
-                return fg;
-        }
+            1 when _gc.Tile is { } tile => tile.Buffer.Get(
+                                Mod(dx - _gc.TileStipXOrigin, tile.Width), Mod(dy - _gc.TileStipYOrigin, tile.Height)),
+            2 when _gc.Stipple is { } stipple => StippleBit(stipple, dx, dy) ? fg : null,
+            3 when _gc.Stipple is { } stipple => StippleBit(stipple, dx, dy) ? fg : _gc.Background,
+            _ => fg,
+        };
     }
 
     private bool StippleBit(XPixmap stipple, int dx, int dy) =>
@@ -506,12 +502,12 @@ internal sealed class Rasterizer
         }
         // 活动边表:每个多边形的边按上端排序,逐行只看跨过这一行的边 —— O(边数 × log + 行数 × 活动边数),
         // 而不是每行把所有边扫一遍;行只扫可画区域之内的(一个 65535 大小的弧不会扫六万多行)。
-        List<Edge>[] edgeLists = new List<Edge>[polygons.Count];
+        var edgeLists = new List<Edge>[polygons.Count];
         double minY = double.MaxValue, maxY = double.MinValue;
         for (int pi = 0; pi < polygons.Count; pi++)
         {
             IReadOnlyList<(double X, double Y)> poly = polygons[pi];
-            List<Edge> edges = new(poly.Count);
+            List<Edge> edges = [with(poly.Count)];
             for (int i = 0; i < poly.Count; i++)
             {
                 (double ax, double ay) = poly[i];
@@ -544,7 +540,7 @@ internal sealed class Rasterizer
         List<(double X, int Dir)> crossings = [];
         List<(int Start, int End)> spans = [];
         int[] next = new int[polygons.Count];            // 每个多边形下一条还没进活动表的边
-        List<Edge>[] active = new List<Edge>[polygons.Count];
+        var active = new List<Edge>[polygons.Count];
         for (int pi = 0; pi < active.Length; pi++)
         {
             active[pi] = [];
@@ -706,7 +702,7 @@ internal sealed class Rasterizer
     private static List<(double, double)> Circle(double cx, double cy, double r)
     {
         int n = Math.Max(8, (int)(r * 4));
-        List<(double, double)> points = new(n);
+        List<(double, double)> points = [with(n)];
         for (int i = 0; i < n; i++)
         {
             double t = 2 * Math.PI * i / n;
@@ -725,7 +721,7 @@ internal sealed class Rasterizer
         double extent = Math.Clamp(angle2, -360 * 64, 360 * 64) / 64.0 * Math.PI / 180.0;
         // 约一像素一段;上限 4096 段 —— 半径三万多的整圆,4096 段的弦高也只有百分之一像素,再多只是白算。
         int n = Math.Clamp((int)(Math.Abs(extent) * Math.Max(rx, ry)), 4, 4096);
-        List<(double, double)> points = new(n + 1);
+        List<(double, double)> points = [with(n + 1)];
         for (int i = 0; i <= n; i++)
         {
             double t = start + (extent * i / n);

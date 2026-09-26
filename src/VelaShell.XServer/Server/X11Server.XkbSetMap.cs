@@ -171,7 +171,7 @@ public sealed partial class X11Server
     {
         int per = _keymap.KeycodesPerModifier;
         byte[] current = _keymap.ModifierMap;
-        List<byte>[] rows = new List<byte>[8];
+        var rows = new List<byte>[8];
         for (int m = 0; m < 8; m++)
         {
             rows[m] = [];

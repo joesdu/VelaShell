@@ -116,11 +116,9 @@ public sealed class SshDataReaderTests
     }
 
     [TestMethod]
-    public void String_超过上限时抛出()
-    {
+    public void String_超过上限时抛出() =>
         // 上限是**必须**给的参数：规格里没有「这个字段不会太大」这种理由。
         AssertWireError([0, 0, 0, 100], (ref SshDataReader r) => r.ReadString(maxLength: 10));
-    }
 
     [TestMethod]
     public void String_长度字段撒谎时抛出而不是预分配()
@@ -131,10 +129,7 @@ public sealed class SshDataReaderTests
     }
 
     [TestMethod]
-    public void String_截断时抛出()
-    {
-        AssertWireError([0, 0, 0, 10, (byte)'a'], (ref SshDataReader r) => r.ReadString(64));
-    }
+    public void String_截断时抛出() => AssertWireError([0, 0, 0, 10, (byte)'a'], (ref SshDataReader r) => r.ReadString(64));
 
     // -------------------------------------------------------------- utf8 解码
 
@@ -188,12 +183,10 @@ public sealed class SshDataReaderTests
     }
 
     [TestMethod]
-    public void Mpint_负数被拒绝()
-    {
+    public void Mpint_负数被拒绝() =>
         // 负数在 SSH 里没有正当用途。接受它只会让一个被篡改的字段
         // 悄悄变成一个巨大的正数。
         AssertWireError([0, 0, 0, 1, 0x80], (ref SshDataReader r) => r.ReadMpint(64));
-    }
 
     [TestMethod]
     public void Mpint_写了再读能还原()

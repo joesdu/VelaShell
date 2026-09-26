@@ -214,8 +214,8 @@ public sealed class ConnectionProfileViewModelTests
             Username = "ops",
             Password = SecureStringConvert.FromPlaintext("secret"),
             SshAgentForwarding = true,
+            SshAgentForwardRestrict = true
         };
-        vm.SshAgentForwardRestrict = true;
         await vm.LoadAgentForwardKeysAsync();
 
         SessionProfile? refused = await vm.SaveCommand.Execute().FirstAsync();

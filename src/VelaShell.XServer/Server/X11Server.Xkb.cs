@@ -402,30 +402,30 @@ public sealed partial class X11Server
         {
             throw new XProtocolError(XErrorCode.Value, firstType);
         }
-        var syms = Range(2, firstKeySym, nKeySyms);
-        var acts = Range(16, firstKeyAction, nKeyActions);
-        var behav = Range(32, firstKeyBehavior, nKeyBehaviors);
-        var expl = Range(8, firstKeyExplicit, nKeyExplicit);
-        var modmap = Range(4, firstModMapKey, nModMapKeys);
-        var vmodmap = Range(128, firstVModMapKey, nVModMapKeys);
+        (byte symsFirst, int symsCount) = Range(2, firstKeySym, nKeySyms);
+        (byte actsFirst, int actsCount) = Range(16, firstKeyAction, nKeyActions);
+        (byte behavFirst, int behavCount) = Range(32, firstKeyBehavior, nKeyBehaviors);
+        (byte explFirst, int explCount) = Range(8, firstKeyExplicit, nKeyExplicit);
+        (byte modmapFirst, int modmapCount) = Range(4, firstModMapKey, nModMapKeys);
+        (byte vmodmapFirst, int vmodmapCount) = Range(128, firstVModMapKey, nVModMapKeys);
         ushort vmods = (full & 64) != 0 ? (ushort)((1 << XkbVirtualMods.Length) - 1)
             : (partial & 64) != 0 ? (ushort)(vmodsWanted & ((1 << XkbVirtualMods.Length) - 1)) : (ushort)0;
 
         // 先把各段算出来,头部的计数要用。
         List<(byte Type, byte Width, uint[] Syms)> keys = [];
         int totalSyms = 0;
-        for (int k = 0; k < syms.Count; k++)
+        for (int k = 0; k < symsCount; k++)
         {
-            var key = XkbKey((byte)(syms.First + k));
+            (byte Type, byte Width, uint[] Syms) key = XkbKey((byte)(symsFirst + k));
             keys.Add(key);
             totalSyms += key.Syms.Length;
         }
         List<byte> actionCounts = [];
         List<(byte Type, int Count)> actionLists = [];
         int totalActions = 0;
-        for (int k = 0; k < acts.Count; k++)
+        for (int k = 0; k < actsCount; k++)
         {
-            byte code = (byte)(acts.First + k);
+            byte code = (byte)(actsFirst + k);
             byte width = XkbKey(code).Width;
             if (width > 0 && XkbActionOf(code, out byte type))
             {
@@ -439,9 +439,9 @@ public sealed partial class X11Server
             }
         }
         List<(byte Code, byte Mods)> modEntries = [];
-        for (int k = 0; k < modmap.Count; k++)
+        for (int k = 0; k < modmapCount; k++)
         {
-            byte code = (byte)(modmap.First + k);
+            byte code = (byte)(modmapFirst + k);
             byte mods = (byte)_keymap.ModifierBitOf(code);
             if (mods != 0)
             {
@@ -449,9 +449,9 @@ public sealed partial class X11Server
             }
         }
         List<(byte Code, ushort VMods)> vmodEntries = [];
-        for (int k = 0; k < vmodmap.Count; k++)
+        for (int k = 0; k < vmodmapCount; k++)
         {
-            byte code = (byte)(vmodmap.First + k);
+            byte code = (byte)(vmodmapFirst + k);
             ushort v = XkbVirtualModsOf(code);
             if (v != 0)
             {
@@ -463,12 +463,12 @@ public sealed partial class X11Server
         {
             w.Zero(2).U8(min).U8(Keymap.MaxKeycode).U16(present)
                 .U8(tFirst).U8((byte)tCount).U8((byte)XkbTypes.Length)
-                .U8(syms.First).U16((ushort)totalSyms).U8((byte)syms.Count)
-                .U8(acts.First).U16((ushort)totalActions).U8((byte)acts.Count)
-                .U8(behav.First).U8((byte)behav.Count).U8(0)
-                .U8(expl.First).U8((byte)expl.Count).U8(0)
-                .U8(modmap.First).U8((byte)modmap.Count).U8((byte)modEntries.Count)
-                .U8(vmodmap.First).U8((byte)vmodmap.Count).U8((byte)vmodEntries.Count)
+                .U8(symsFirst).U16((ushort)totalSyms).U8((byte)symsCount)
+                .U8(actsFirst).U16((ushort)totalActions).U8((byte)actsCount)
+                .U8(behavFirst).U8((byte)behavCount).U8(0)
+                .U8(explFirst).U8((byte)explCount).U8(0)
+                .U8(modmapFirst).U8((byte)modmapCount).U8((byte)modEntries.Count)
+                .U8(vmodmapFirst).U8((byte)vmodmapCount).U8((byte)vmodEntries.Count)
                 .Zero(1).U16(vmods);
 
             // KeyTypes
@@ -491,7 +491,7 @@ public sealed partial class X11Server
                 }
             }
             // KeyActions:先是每个键的动作数(补齐到 4),再是动作本身
-            if (acts.Count > 0)
+            if (actsCount > 0)
             {
                 foreach (byte count in actionCounts)
                 {
@@ -572,7 +572,7 @@ public sealed partial class X11Server
             }
             if ((which & (1 << 7)) != 0)
             {
-                foreach (var type in XkbTypes)
+                foreach ((string Name, byte Mask, byte Levels, (byte Mods, byte Level)[] Map, string[] LevelNames) type in XkbTypes)
                 {
                     w.U8(type.Levels);
                 }

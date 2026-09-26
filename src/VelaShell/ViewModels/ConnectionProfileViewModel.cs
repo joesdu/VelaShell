@@ -85,7 +85,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
     private bool _sshAgentForwarding;
     private bool _sshAgentForwardRestrict;
     private bool _sshAgentForwardConfirm;
-    private List<string> _savedAgentForwardKeys = [];
+    private readonly List<string> _savedAgentForwardKeys = [];
     private bool _agentForwardKeysLoaded;
     private readonly ISshKeyService? _keyService;
     private bool _sshX11Forwarding;
@@ -983,7 +983,7 @@ public class ConnectionProfileViewModel : ReactiveObject, IDisposable
         }
         _agentForwardKeysLoaded = true;
 
-        HashSet<string> saved = new(StringComparer.Ordinal);
+        HashSet<string> saved = [with(StringComparer.Ordinal)];
         List<AgentForwardKeyChoice> choices = [];
         foreach (string line in _savedAgentForwardKeys)
         {

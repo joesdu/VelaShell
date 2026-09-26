@@ -493,7 +493,6 @@ internal sealed class SshKeyExchangeRunner
         }
     }
 
-
     /// <summary>读下一个报文并断言它的消息编号。</summary>
     private async ValueTask<SshInboundPacket> ReadKexPacketAsync(
         SshMessageNumber expected, bool strictKex, CancellationToken cancellationToken)

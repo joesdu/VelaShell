@@ -13,9 +13,6 @@
         Width="508"
         SizeToContent="Height"
         CanResize="False"
-        WindowDecorations="None"
-        TransparencyLevelHint="Transparent"
-        Background="Transparent"
         WindowStartupLocation="CenterOwner">
   <Window.Styles>
     <Style Selector="AdornerLayer">
@@ -165,12 +162,9 @@
   </Window.Styles>
 
   <!-- 自绘对话框卡片(设计:圆角 8、外描边、投影) -->
-  <Border CornerRadius="8"
+  <Border Classes="window-card"
           Background="{DynamicResource VelaBgSurface}"
-          BorderBrush="{DynamicResource VelaBorderSecondary}"
-          BorderThickness="1"
-          BoxShadow="{DynamicResource VelaShadowWindow}"
-          Margin="16">
+          BorderBrush="{DynamicResource VelaBorderSecondary}">
     <!-- 头部/页签/页脚定高,中间的表单是唯一会伸缩的一行:窗口 SizeToContent="Height"
          仍按内容收缩,但被代码后置钉在屏幕工作区内(见 ApplyScreenBounds),
          超出的部分由表单区自己滚动 —— 插件协议(S3 有十来个字段)不会再把
@@ -179,7 +173,7 @@
     <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
 
       <!-- Header: plug 图标 + 标题 + 关闭 -->
-      <Border Grid.Row="0" Height="48" Padding="20,0"
+      <Border Grid.Row="0" Classes="window-titlebar" Padding="20,0"
               PointerPressed="Header_PointerPressed"
               Background="Transparent"
               BorderThickness="0,0,0,1"

@@ -32,8 +32,12 @@ public enum MessageDialogKind
 /// </summary>
 public partial class MessageDialog : Window
 {
-    /// <summary>供 XAML 加载器调用的无参构造:初始化可视化组件。</summary>
-    public MessageDialog() => InitializeComponent();
+    /// <summary>供 XAML 加载器调用的无参构造:初始化可视化组件,按平台装上对话框外框。</summary>
+    public MessageDialog()
+    {
+        InitializeComponent();
+        WindowChrome.Apply(this, WindowChromeKind.Dialog);
+    }
 
     /// <summary>纯消息:仅一个"确定"按钮。</summary>
     public static Task ShowMessageAsync(Window owner,
@@ -81,7 +85,7 @@ public partial class MessageDialog : Window
 
     /// <summary>
     /// 多选按钮弹窗:按 <paramref name="choices" /> 顺序在按钮栏生成按钮,返回被点按钮的下标;
-    /// 用户按 Esc 或点右上角关闭时返回 <paramref name="cancelResult" />。<paramref name="primaryIndex" />
+    /// 用户按 Esc 时返回 <paramref name="cancelResult" />。<paramref name="primaryIndex" />
     /// 指定的按钮以强调色渲染并作为默认(Enter)动作。用于“文件已存在:覆盖 / 全部覆盖 /
     /// 跳过 / 全部跳过”等超过两个选项的场景。
     /// </summary>
@@ -171,15 +175,13 @@ public partial class MessageDialog : Window
         }
     }
 
-    // 多选(ChooseAsync)模式:关闭结果为 int 下标而非 bool;Esc / 右上角关闭返回取消下标。
+    // 多选(ChooseAsync)模式:关闭结果为 int 下标而非 bool;Esc 返回取消下标。
     private bool _choiceMode;
     private int _choiceCancelResult;
 
     private void Confirm_Click(object? sender, RoutedEventArgs e) => CloseDeferred(true);
 
     private void Cancel_Click(object? sender, RoutedEventArgs e) => CloseDeferred(false);
-
-    private void Close_Click(object? sender, RoutedEventArgs e) => CloseDeferred(CancelResult());
 
     /// <summary>取消/关闭时的返回值:多选模式为取消下标(int),否则为 false(bool)。</summary>
     private object? CancelResult() => _choiceMode ? _choiceCancelResult : false;

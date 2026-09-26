@@ -136,15 +136,9 @@ public sealed partial class X11Server
 
     // ------------------------------------------------------------------ 冻结与解冻
 
-    private void FreezePointer(ActiveGrab grab)
-    {
-        _pointerFrozenBy = grab;
-    }
+    private void FreezePointer(ActiveGrab grab) => _pointerFrozenBy = grab;
 
-    private void FreezeKeyboard(ActiveGrab grab)
-    {
-        _keyboardFrozenBy = grab;
-    }
+    private void FreezeKeyboard(ActiveGrab grab) => _keyboardFrozenBy = grab;
 
     private void ThawPointer()
     {

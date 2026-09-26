@@ -36,10 +36,7 @@ public sealed class RelayTests
         public int SendCompletedCount { get; private set; }
 
         /// <summary>往这一端喂数据（模拟外部写入）。</summary>
-        public async ValueTask FeedAsync(byte[] data)
-        {
-            await _inbound.Writer.WriteAsync(data);
-        }
+        public async ValueTask FeedAsync(byte[] data) => await _inbound.Writer.WriteAsync(data);
 
         /// <summary>这一端不再有数据了。</summary>
         public void FeedComplete() => _inbound.Writer.Complete();

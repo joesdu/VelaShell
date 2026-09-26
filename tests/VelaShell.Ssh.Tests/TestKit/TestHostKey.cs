@@ -30,10 +30,7 @@ internal abstract class TestHostKey : IDisposable
     public abstract byte[] Sign(ReadOnlySpan<byte> data, string algorithm);
 
     /// <inheritdoc />
-    public virtual void Dispose()
-    {
-        GC.SuppressFinalize(this);
-    }
+    public virtual void Dispose() => GC.SuppressFinalize(this);
 
     /// <summary>按算法名造一把主机密钥。</summary>
     public static TestHostKey Create(string keyTypeOrAlgorithm) => keyTypeOrAlgorithm switch

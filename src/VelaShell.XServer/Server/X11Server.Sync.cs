@@ -591,7 +591,7 @@ public sealed partial class X11Server
             return;   // 现有的计时器不晚于需要的时刻:它到点求值时会再排下一个,不必每次取消重建
         }
         CancelSyncTimer();
-        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         _syncTimer = cts;
         _syncDeadline = deadline;
         _ = FireSyncTimerAsync(TimeSpan.FromMilliseconds(Math.Min(soonest, int.MaxValue)), cts);

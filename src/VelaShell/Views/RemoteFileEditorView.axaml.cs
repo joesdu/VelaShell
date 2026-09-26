@@ -72,9 +72,14 @@ public partial class RemoteFileEditorView : Window
     }
 
     /// <summary>
-    /// 供设计器/XAML 使用的无参构造函数。
+    /// 供设计器/XAML 使用的无参构造函数;带参构造也经由它初始化组件并按平台装外框
+    /// (最大化时卡片铺满、右下角手柄让位也由 <see cref="WindowChrome" /> 管)。
     /// </summary>
-    public RemoteFileEditorView() => InitializeComponent();
+    public RemoteFileEditorView()
+    {
+        InitializeComponent();
+        WindowChrome.Apply(this, WindowChromeKind.Tool, ResizeGrip);
+    }
 
     /// <summary>
     /// 创建编辑器窗口并加载本地临时副本内容。
