@@ -1,6 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -42,8 +40,8 @@ public sealed class WindowAndDrawingTests
         await using XTestClient c = await XTestClient.ConnectAsync(server, bigEndian);
 
         (uint id, XTopLevelWindow handle) = await MapWindowAsync(c, host, 0x336699, ExposureMask | StructureNotifyMask);
-        Assert.AreEqual(64, handle.Width);
-        Assert.AreEqual(20, handle.X);
+        Assert.AreEqual(64, handle.Snapshot.Width);
+        Assert.AreEqual(20, handle.Snapshot.X);
 
         XMessage map = await c.NextEventAsync(19);   // MapNotify
         Assert.AreEqual(id, map.U32(8));
@@ -186,17 +184,17 @@ public sealed class WindowAndDrawingTests
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         (uint win, _) = await MapWindowAsync(c, host, 0, ButtonPressMask | KeyPressMask);
 
-        server.PointerButton(win, 7, 9, 1, pressed: true);
+        server.InjectPointerButton(host.Mapped[win], 7, 9, 1, pressed: true);
         XMessage press = await c.NextEventAsync(4);
         Assert.AreEqual(1, press.Detail, "button 1");
         Assert.AreEqual(win, press.U32(12), "event window");
         Assert.AreEqual(27, press.I16(20), "root-x = 20 + 7");
         Assert.AreEqual(7, press.I16(24), "event-x");
         Assert.AreEqual(9, press.I16(26), "event-y");
-        server.PointerButton(win, 7, 9, 1, pressed: false);
+        server.InjectPointerButton(host.Mapped[win], 7, 9, 1, pressed: false);
 
-        server.FocusTopLevel(win);
-        server.Key(XKeycodes.A, pressed: true);
+        server.FocusTopLevel(host.Mapped[win]);
+        server.InjectKey(XKeycodes.A, pressed: true);
         XMessage key = await c.NextEventAsync(2);
         Assert.AreEqual(XKeycodes.A, key.Detail);
 
@@ -214,7 +212,7 @@ public sealed class WindowAndDrawingTests
         (uint win, XTopLevelWindow handle) = await MapWindowAsync(c, host, 0xABCDEF, ExposureMask | StructureNotifyMask);
         await c.NextEventAsync(12);
 
-        server.ResizeTopLevel(win, 120, 90);
+        server.ResizeTopLevel(host.Mapped[win], 120, 90);
         XMessage configure = await c.NextEventAsync(22);
         Assert.AreEqual(120, configure.U16(20));
         Assert.AreEqual(90, configure.U16(22));
@@ -237,7 +235,7 @@ public sealed class WindowAndDrawingTests
         await c.SendAsync(18, 0, b => b.U32(win).U32(protocols).U32(4).U8(32).U8(0).U8(0).U8(0).U32(1).U32(delete));
         await c.SyncAsync();
 
-        server.CloseTopLevel(win);
+        server.CloseTopLevel(host.Mapped[win]);
         XMessage message = await c.NextEventAsync(33);
         Assert.IsTrue((message.Kind & 0x80) != 0, "SendEvent 合成的事件带 sent 位");
         Assert.AreEqual(protocols, message.U32(8));
@@ -253,6 +251,6 @@ public sealed class WindowAndDrawingTests
         (uint win, XTopLevelWindow handle) = await MapWindowAsync(c, host, 0, 0);
         byte[] title = Encoding.Latin1.GetBytes("xterm");
         await c.SendAsync(18, 0, b => b.U32(win).U32(39).U32(31).U8(8).U8(0).U8(0).U8(0).U32((uint)title.Length).Bytes(title));
-        await host.WaitForAsync(() => handle.Title == "xterm");
+        await host.WaitForAsync(() => handle.Snapshot.Title == "xterm");
     }
 }

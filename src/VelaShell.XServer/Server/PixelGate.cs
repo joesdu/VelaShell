@@ -6,7 +6,7 @@ using System.Diagnostics;
 namespace VelaShell.XServer.Server;
 
 /// <summary>
-/// 顶层像素的锁(<see cref="X11Server.PixelLock" />),外加「宿主正在等它」的计数。
+/// 顶层像素的锁(执行线程执行一批工作项期间持有它),外加「宿主正在等它」的计数。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -15,7 +15,7 @@ namespace VelaShell.XServer.Server;
 /// 有了计数,执行线程每执行完一项就看一眼:有人在等就提前放锁,并且等它读完再拿。
 /// </para>
 /// <para>
-/// 宿主读像素经 <see cref="Host.XTopLevelWindow" /> 走这里;直接 <c>lock (server.PixelLock)</c> 的宿主照样可用,只是得不到让行。
+/// 宿主读像素只经 <see cref="XTopLevelWindow" /> 走这里,锁本身不对外公开。
 /// </para>
 /// </remarks>
 internal sealed class PixelGate

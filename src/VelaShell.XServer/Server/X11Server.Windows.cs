@@ -11,9 +11,10 @@
 
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -164,7 +165,7 @@ public sealed partial class X11Server
                     window.Colormap = v == 0 ? window.Parent?.Colormap ?? DefaultColormapId : v;
                     break;
                 case XWindowAttrMask.Cursor:
-                    window.Cursor = v == 0 ? null : Lookup<XCursor>(v) ?? throw new XProtocolError(XErrorCode.Cursor, v);
+                    window.Cursor = v == 0 ? null : Lookup<XCursorResource>(v) ?? throw new XProtocolError(XErrorCode.Cursor, v);
                     break;
             }
         }
@@ -214,7 +215,7 @@ public sealed partial class X11Server
 
     // ------------------------------------------------------------------ 销毁
 
-    private void DestroyWindowRequest(XClient c, XRequestReader r) => DestroyWindow(Window(r.U32()));
+    private void DestroyWindow(XClient c, XRequestReader r) => Destroy(Window(r.U32()));
 
     private void DestroySubwindows(XRequestReader r)
     {
@@ -223,12 +224,12 @@ public sealed partial class X11Server
         {
             if (i < window.Children.Count)
             {
-                DestroyWindow(window.Children[i]);
+                Destroy(window.Children[i]);
             }
         }
     }
 
-    internal void DestroyWindow(XWindow window)
+    internal void Destroy(XWindow window)
     {
         if (window.IsRoot || window.Id == SelectionWindowId || !_resources.ContainsKey(window.Id))
         {
@@ -236,7 +237,7 @@ public sealed partial class X11Server
         }
         if (window.Mapped)
         {
-            UnmapWindow(window);
+            Unmap(window);
         }
         DestroyTree(window);
         window.Parent?.Children.Remove(window);
@@ -253,12 +254,10 @@ public sealed partial class X11Server
         }
         DeliverStructure(window, XEventCode.DestroyNotify, 0, w => w.U32(window.Id));
         _resources.Remove(window.Id);
-        CleanupXFixes(null, window);
-        CleanupDamage(null, window);
-        CleanupCompositeDbe(null, window);
-        CleanupPresent(null, window);
-        CleanupRandR(null, window);
-        CleanupGlxWindow(window);
+        foreach (Extension extension in _extensionList)
+        {
+            extension.WindowDestroyed?.Invoke(window);
+        }
         CleanupEwmh(window);
         foreach (var (atom, owner) in _selections.ToArray())
         {
@@ -280,9 +279,9 @@ public sealed partial class X11Server
         {
             KeyboardGrab = null;
         }
-        if (_topLevelHandles.Remove(window, out Host.XTopLevelWindow? handle))
+        if (_topLevelHandles.Remove(window, out XTopLevelWindow? handle))
         {
-            handle.IsMapped = false;
+            SetMapped(handle, false);
         }
         _damage.Remove(window);
         window.Buffer = null;
@@ -312,9 +311,9 @@ public sealed partial class X11Server
 
     // ------------------------------------------------------------------ 映射
 
-    private void MapWindowRequest(XClient c, XRequestReader r) => MapWindow(c, Window(r.U32()));
+    private void MapWindow(XClient c, XRequestReader r) => Map(c, Window(r.U32()));
 
-    internal void MapWindow(XClient? requester, XWindow window)
+    internal void Map(XClient? requester, XWindow window)
     {
         if (window.Mapped || window.IsRoot)
         {
@@ -339,9 +338,9 @@ public sealed partial class X11Server
         {
             window.Buffer ??= new Drawing.PixelBuffer(window.Width, window.Height, window.Depth == 32 ? (byte)32 : (byte)24);
             window.Buffer.Resize(window.Width, window.Height);
-            Host.XTopLevelWindow handle = HandleFor(window);
-            RefreshHandle(window, handle);
-            handle.IsMapped = true;
+            XTopLevelWindow handle = HandleFor(window);
+            RefreshSnapshot(window, handle);
+            SetMapped(handle, true);
             ExposeWindowTree(window, new Drawing.Region(window.Buffer.Bounds));
             _host.TopLevelMapped(handle);
             OnTopLevelMappedEwmh(window);
@@ -358,13 +357,13 @@ public sealed partial class X11Server
         XWindow window = Window(r.U32());
         for (int i = window.Children.Count - 1; i >= 0; i--)
         {
-            MapWindow(c, window.Children[i]);
+            Map(c, window.Children[i]);
         }
     }
 
-    private void UnmapWindowRequest(XRequestReader r) => UnmapWindow(Window(r.U32()));
+    private void UnmapWindow(XRequestReader r) => Unmap(Window(r.U32()));
 
-    internal void UnmapWindow(XWindow window, bool fromConfigure = false)
+    internal void Unmap(XWindow window, bool fromConfigure = false)
     {
         if (!window.Mapped || window.IsRoot)
         {
@@ -378,9 +377,9 @@ public sealed partial class X11Server
 
         if (window.IsTopLevel)
         {
-            if (_topLevelHandles.TryGetValue(window, out Host.XTopLevelWindow? handle))
+            if (_topLevelHandles.TryGetValue(window, out XTopLevelWindow? handle))
             {
-                handle.IsMapped = false;
+                SetMapped(handle, false);
                 _host.TopLevelUnmapped(handle);
                 OnTopLevelUnmappedEwmh(window);
             }
@@ -401,13 +400,13 @@ public sealed partial class X11Server
         XWindow window = Window(r.U32());
         foreach (XWindow child in window.Children.ToArray())
         {
-            UnmapWindow(child);
+            Unmap(child);
         }
     }
 
     // ------------------------------------------------------------------ 配置
 
-    private void ConfigureWindowRequest(XClient c, XRequestReader r)
+    private void ConfigureWindow(XClient c, XRequestReader r)
     {
         XWindow window = Window(r.U32());
         ushort mask = r.U16();
@@ -455,11 +454,11 @@ public sealed partial class X11Server
             return;
         }
 
-        ConfigureWindow(window, x, y, width, height, border, sibling, stackMode);
+        Configure(window, x, y, width, height, border, sibling, stackMode);
     }
 
     /// <summary>真正改几何与堆叠,发 ConfigureNotify、重画露出的部分、通知宿主。</summary>
-    internal void ConfigureWindow(XWindow window, int x, int y, int width, int height, int border, XWindow? sibling, int stackMode)
+    internal void Configure(XWindow window, int x, int y, int width, int height, int border, XWindow? sibling, int stackMode)
     {
         if (window.IsRoot)
         {
@@ -511,10 +510,9 @@ public sealed partial class X11Server
                 Drawing.Region exposed = new(buffer.Bounds);
                 ExposeWindowTree(window, exposed);
             }
-            if ((resized || moved) && _topLevelHandles.TryGetValue(window, out Host.XTopLevelWindow? handle))
+            if (resized || moved)
             {
-                RefreshHandle(window, handle);
-                _host.TopLevelChanged(handle);
+                RefreshTopLevel(window);
             }
         }
         else if (window.TopLevel is { } top)
@@ -589,7 +587,7 @@ public sealed partial class X11Server
         bool wasMapped = window.Mapped;
         if (wasMapped)
         {
-            UnmapWindow(window);
+            Unmap(window);
         }
         XWindow oldParent = window.Parent!;
         bool wasTopLevel = window.IsTopLevel;
@@ -601,9 +599,9 @@ public sealed partial class X11Server
         InvalidateVisibility();
         if (wasTopLevel && !window.IsTopLevel)
         {
-            if (_topLevelHandles.Remove(window, out Host.XTopLevelWindow? handle))
+            if (_topLevelHandles.Remove(window, out XTopLevelWindow? handle))
             {
-                handle.IsMapped = false;
+                SetMapped(handle, false);
             }
             window.Buffer = null;
         }
@@ -615,7 +613,7 @@ public sealed partial class X11Server
 
         if (wasMapped)
         {
-            MapWindow(null, window);
+            Map(null, window);
         }
     }
 

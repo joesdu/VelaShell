@@ -5,10 +5,10 @@
 //   X Window System Protocol, X Version 11 —— 第 4 节「Errors」(出错时请求不产生任何效果、错误带序号与操作码)、
 //   附录 B「Requests」(操作码表)
 
-using System.Diagnostics;
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Server;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -40,14 +40,13 @@ public sealed partial class X11Server
         }
         catch (XProtocolError error)
         {
-            _options.Log?.Invoke($"{client} #{client.Sequence} opcode {r.Opcode}.{minor}: Bad{error.Code} 0x{error.BadValue:x}"
+            Log($"{client} #{client.Sequence} opcode {r.Opcode}.{minor}: Bad{error.Code} 0x{error.BadValue:x}"
                 + $"(之前:{string.Join(' ', client.RecentRequests)})");
             client.Error(error.Code, error.BadValue, minor, r.Opcode);
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"[X11Server] {client} opcode {r.Opcode}: {ex}");
-            _options.Log?.Invoke($"{client} #{client.Sequence} opcode {r.Opcode}.{minor}: BadImplementation {ex.GetType().Name}: {ex.Message}");
+            Log($"{client} #{client.Sequence} opcode {r.Opcode}.{minor}: BadImplementation {ex}");
             client.Error(XErrorCode.Implementation, 0, minor, r.Opcode);
         }
     }
@@ -59,15 +58,15 @@ public sealed partial class X11Server
             case XOpcode.CreateWindow: CreateWindow(c, r); break;
             case XOpcode.ChangeWindowAttributes: ChangeWindowAttributes(c, r); break;
             case XOpcode.GetWindowAttributes: GetWindowAttributes(c, r); break;
-            case XOpcode.DestroyWindow: DestroyWindowRequest(c, r); break;
+            case XOpcode.DestroyWindow: DestroyWindow(c, r); break;
             case XOpcode.DestroySubwindows: DestroySubwindows(r); break;
             case XOpcode.ChangeSaveSet: ChangeSaveSet(c, r); break;
             case XOpcode.ReparentWindow: ReparentWindow(r); break;
-            case XOpcode.MapWindow: MapWindowRequest(c, r); break;
+            case XOpcode.MapWindow: MapWindow(c, r); break;
             case XOpcode.MapSubwindows: MapSubwindows(c, r); break;
-            case XOpcode.UnmapWindow: UnmapWindowRequest(r); break;
+            case XOpcode.UnmapWindow: UnmapWindow(r); break;
             case XOpcode.UnmapSubwindows: UnmapSubwindows(r); break;
-            case XOpcode.ConfigureWindow: ConfigureWindowRequest(c, r); break;
+            case XOpcode.ConfigureWindow: ConfigureWindow(c, r); break;
             case XOpcode.CirculateWindow: CirculateWindow(r); break;
             case XOpcode.GetGeometry: GetGeometry(c, r); break;
             case XOpcode.QueryTree: QueryTree(c, r); break;
@@ -80,7 +79,7 @@ public sealed partial class X11Server
             case XOpcode.SetSelectionOwner: SetSelectionOwner(c, r); break;
             case XOpcode.GetSelectionOwner: GetSelectionOwner(c, r); break;
             case XOpcode.ConvertSelection: ConvertSelection(c, r); break;
-            case XOpcode.SendEvent: SendEventRequest(c, r); break;
+            case XOpcode.SendEvent: SendEvent(c, r); break;
             case XOpcode.GrabPointer: GrabPointer(c, r); break;
             case XOpcode.UngrabPointer: UngrabPointer(c); break;
             case XOpcode.GrabButton: GrabButton(c, r); break;
@@ -97,7 +96,7 @@ public sealed partial class X11Server
             case XOpcode.GetMotionEvents: c.MotionHint = default; c.Reply(0, w => w.U32(0).Zero(20)); break;
             case XOpcode.TranslateCoordinates: TranslateCoordinates(c, r); break;
             case XOpcode.WarpPointer: WarpPointer(r); break;
-            case XOpcode.SetInputFocus: SetInputFocusRequest(r); break;
+            case XOpcode.SetInputFocus: SetInputFocus(r); break;
             case XOpcode.GetInputFocus: GetInputFocus(c); break;
             case XOpcode.QueryKeymap: c.Reply(0, w => w.Bytes(_keysDown)); break;
             case XOpcode.OpenFont: OpenFont(c, r); break;
@@ -120,7 +119,7 @@ public sealed partial class X11Server
             case XOpcode.CopyArea: CopyArea(c, r); break;
             case XOpcode.CopyPlane: CopyPlane(c, r); break;
             case XOpcode.PolyPoint: PolyPoint(r); break;
-            case XOpcode.PolyLine: PolyLineRequest(r); break;
+            case XOpcode.PolyLine: PolyLine(r); break;
             case XOpcode.PolySegment: PolySegment(r); break;
             case XOpcode.PolyRectangle: PolyRectangle(r); break;
             case XOpcode.PolyArc: PolyArc(r); break;
@@ -131,8 +130,8 @@ public sealed partial class X11Server
             case XOpcode.GetImage: GetImage(c, r); break;
             case XOpcode.PolyText8: PolyText(r, wide: false); break;
             case XOpcode.PolyText16: PolyText(r, wide: true); break;
-            case XOpcode.ImageText8: ImageTextRequest(r, wide: false); break;
-            case XOpcode.ImageText16: ImageTextRequest(r, wide: true); break;
+            case XOpcode.ImageText8: ImageText(r, wide: false); break;
+            case XOpcode.ImageText16: ImageText(r, wide: true); break;
             case XOpcode.CreateColormap: CreateColormap(c, r); break;
             case XOpcode.FreeColormap: FreeColormap(r); break;
             case XOpcode.CopyColormapAndFree: CopyColormapAndFree(c, r); break;
@@ -159,7 +158,7 @@ public sealed partial class X11Server
             case XOpcode.GetKeyboardMapping: GetKeyboardMapping(c, r); break;
             case XOpcode.ChangeKeyboardControl: break;
             case XOpcode.GetKeyboardControl: GetKeyboardControl(c); break;
-            case XOpcode.Bell: _host.Bell((sbyte)r.Data); break;
+            case XOpcode.Bell: Bell(r); break;
             case XOpcode.ChangePointerControl: break;
             case XOpcode.GetPointerControl: c.Reply(0, w => w.U16(2).U16(1).U16(4).Zero(18)); break;
             case XOpcode.SetScreenSaver: SetScreenSaver(r); break;

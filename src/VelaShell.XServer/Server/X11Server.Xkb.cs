@@ -24,15 +24,13 @@
 
 using VelaShell.XServer.Input;
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private const byte XkbMajor = 146;
-    private const byte XkbEventBase = 73;
-    private const byte XkbErrorBase = 143;   // BadKeyboard
     private const byte XkbDeviceId = 3;       // 与 XInput 的主键盘同号
     private const ushort XkbUseCoreKbd = 0x100;
 
@@ -96,7 +94,7 @@ public sealed partial class X11Server
                     bool eventOnly = r.Bool();
                     if (!eventOnly)
                     {
-                        _host.Bell(percent < 0 ? 50 : percent);
+                        RingBell(percent);
                     }
                     break;
                 }
@@ -743,7 +741,7 @@ public sealed partial class X11Server
 
     private string KeyboardLayout => _keyboardLayout ?? _options.KeyboardLayout;
 
-    private void InitXkbRulesNames()
+    private void PublishXkbRulesNames()
     {
         uint property = Intern("_XKB_RULES_NAMES");
         byte[] value = XWire.Latin1.GetBytes($"evdev\0pc105\0{KeyboardLayout}\0\0\0");

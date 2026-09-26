@@ -24,7 +24,7 @@ namespace VelaShell.XServer.Input;
 /// <param name="PointerSync">pointer-mode 是 Synchronous:激活之后指针冻结,等 AllowEvents。</param>
 /// <param name="KeyboardSync">keyboard-mode 是 Synchronous:激活之后键盘冻结。</param>
 internal sealed record PassiveGrab(
-    XClient Client, int Detail, ushort Modifiers, bool OwnerEvents, uint EventMask, XWindow? ConfineTo, XCursor? Cursor,
+    XClient Client, int Detail, ushort Modifiers, bool OwnerEvents, uint EventMask, XWindow? ConfineTo, XCursorResource? Cursor,
     bool Xi2 = false, ulong Xi2Mask = 0, bool PointerSync = false, bool KeyboardSync = false)
 {
     public bool Matches(int detail, ushort modifiers) =>
@@ -42,7 +42,7 @@ internal sealed class ActiveGrab
 
     public uint EventMask { get; set; }
 
-    public XCursor? Cursor { get; set; }
+    public XCursorResource? Cursor { get; set; }
 
     /// <summary>XInput2 的抓取:事件以 XI2 格式、按 <see cref="Xi2Mask" /> 投递。</summary>
     public bool Xi2 { get; init; }

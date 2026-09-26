@@ -7,15 +7,12 @@
 //   「Expose」事件(矩形列表、count 递减到 0)、「CreateGC」的 subwindow-mode
 //   架构:velashell-docs/zh/xserver/design/architecture.md §6(每个顶层一块缓冲)
 
-using System.Runtime.InteropServices;
-using System.Text;
 using VelaShell.XServer.Drawing;
-using VelaShell.XServer.Host;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -383,90 +380,6 @@ public sealed partial class X11Server
             }
             rects.Clear();
             rects.Add(new XRect(x1, y1, x2 - x1, y2 - y1));
-        }
-    }
-
-    /// <summary>把这一批攒下的损伤一次性交给宿主(每个顶层合并成一组矩形)。</summary>
-    private void FlushDamage()
-    {
-        if (_damage.Count == 0)
-        {
-            return;
-        }
-        KeyValuePair<XWindow, List<XRect>>[] batch = [.. _damage];
-        _damage.Clear();
-        foreach ((XWindow top, List<XRect> rects) in batch)
-        {
-            if (top.Mapped && _topLevelHandles.TryGetValue(top, out XTopLevelWindow? handle))
-            {
-                _host.TopLevelDamaged(handle, rects);
-            }
-        }
-    }
-
-    private XTopLevelWindow HandleFor(XWindow top)
-    {
-        if (!_topLevelHandles.TryGetValue(top, out XTopLevelWindow? handle))
-        {
-            handle = new XTopLevelWindow(top.Id, _pixelGate,
-                () => top.Buffer is { } b ? (b.Pixels, b.Width, b.Height) : null);
-            _topLevelHandles[top] = handle;
-        }
-        return handle;
-    }
-
-    /// <summary>从窗口与它的 ICCCM / EWMH 属性刷新宿主看到的那份快照。</summary>
-    private void RefreshHandle(XWindow top, XTopLevelWindow handle)
-    {
-        handle.X = top.X;
-        handle.Y = top.Y;
-        handle.Width = top.Width;
-        handle.Height = top.Height;
-        handle.OverrideRedirect = top.OverrideRedirect;
-        handle.Shape = top.BoundingShape is { } shape
-            ? [.. shape.Clone().Intersect(new XRect(0, 0, top.Width, top.Height)).Rects]
-            : null;
-
-        if (top.Properties.TryGetValue(_netWmNameAtom, out XProperty? utf8) && utf8.Format == 8)
-        {
-            handle.Title = Encoding.UTF8.GetString(utf8.Data);
-        }
-        else if (top.Properties.TryGetValue(XAtom.WmName, out XProperty? name) && name.Format == 8)
-        {
-            handle.Title = XWire.Latin1.GetString(name.Data);
-        }
-
-        if (top.Properties.TryGetValue(XAtom.WmClass, out XProperty? cls) && cls.Format == 8)
-        {
-            // WM_CLASS = "instance\0class\0"
-            string[] parts = XWire.Latin1.GetString(cls.Data).Split('\0');
-            handle.ClassName = parts.Length > 1 ? parts[1] : parts[0];
-        }
-
-        handle.TransientFor = top.Properties.TryGetValue(XAtom.WmTransientFor, out XProperty? transient)
-                              && transient is { Format: 32, Data.Length: >= 4 }
-            ? BitConverter.ToUInt32(transient.Data, 0)
-            : 0;
-
-        handle.SupportsDeleteWindow = top.Properties.TryGetValue(_wmProtocolsAtom, out XProperty? p) && p.Format == 32
-                                      && MemoryMarshal.Cast<byte, uint>(p.Data.AsSpan(0, p.Data.Length & ~3)).Contains(_wmDeleteWindowAtom);
-        RefreshWindowManagerHints(top, handle);
-    }
-
-    /// <summary>顶层窗口的属性变了:标题、类名、协议、瞬态父窗口可能跟着变,告诉宿主。</summary>
-    private void OnTopLevelPropertyChanged(XWindow window, uint property)
-    {
-        if (!AffectsHandle(property))
-        {
-            return;   // _NET_WM_USER_TIME 之类:客户端每次输入都改,与宿主无关
-        }
-        if (window.IsTopLevel && _topLevelHandles.TryGetValue(window, out XTopLevelWindow? handle))
-        {
-            RefreshHandle(window, handle);
-            if (window.Mapped)
-            {
-                _host.TopLevelChanged(handle);
-            }
         }
     }
 }

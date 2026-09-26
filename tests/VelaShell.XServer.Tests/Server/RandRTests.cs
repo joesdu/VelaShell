@@ -1,6 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -10,7 +8,7 @@ namespace VelaShell.XServer.Tests.Server;
 [TestCategory("X11Server")]
 public sealed class RandRTests
 {
-    private static readonly XServerOptions Options = new() { ScreenWidth = 1920, ScreenHeight = 1080, Dpi = 96 };
+    private static readonly X11ServerOptions Options = new() { ScreenWidth = 1920, ScreenHeight = 1080, Dpi = 96 };
 
     private static async Task<byte> RandRMajorAsync(XTestClient c)
     {

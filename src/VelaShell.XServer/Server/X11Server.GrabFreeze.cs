@@ -15,9 +15,10 @@
 
 using VelaShell.XServer.Input;
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {

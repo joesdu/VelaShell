@@ -1,6 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -48,7 +46,7 @@ public sealed class EwmhTests
     [TestMethod]
     public async Task 根窗口有检查窗口与EWMH支持列表()
     {
-        await using X11Server server = new(new XServerOptions { ScreenWidth = 1280, ScreenHeight = 720 });
+        await using X11Server server = new(new X11ServerOptions { ScreenWidth = 1280, ScreenHeight = 720 });
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         uint check = await InternAsync(c, "_NET_SUPPORTING_WM_CHECK");
         XMessage p = await c.RequestAsync(20, 0, b => b.U32(c.RootWindow).U32(check).U32(0).U32(0).U32(1));
@@ -83,10 +81,10 @@ public sealed class EwmhTests
         await c.SendAsync(8, 0, b => b.U32(top));
         await host.WaitForAsync(() => host.Mapped.ContainsKey(top));
         XTopLevelWindow handle = host.Mapped[top];
-        Assert.IsFalse(handle.Decorated);
-        Assert.AreEqual(XWindowType.Dialog, handle.WindowType);
-        Assert.AreEqual(200, handle.MinWidth);
-        Assert.AreEqual(600, handle.MaxHeight);
+        Assert.IsFalse(handle.Snapshot.Decorated);
+        Assert.AreEqual(XWindowType.Dialog, handle.Snapshot.WindowType);
+        Assert.AreEqual(200, handle.Snapshot.MinWidth);
+        Assert.AreEqual(600, handle.Snapshot.MaxHeight);
 
         uint wmState = await InternAsync(c, "WM_STATE");
         XMessage state = await c.RequestAsync(20, 0, b => b.U32(top).U32(wmState).U32(0).U32(0).U32(2));
@@ -113,12 +111,12 @@ public sealed class EwmhTests
         XStateChangeRequest request = host.Requests.OfType<XStateChangeRequest>().First();
         Assert.AreEqual(XWindowStates.Fullscreen, request.Add);
 
-        server.SetTopLevelStates(top, XWindowStates.Fullscreen);
+        server.SetTopLevelStates(host.Mapped[top], XWindowStates.Fullscreen);
         await c.SyncAsync();
         XMessage p = await c.RequestAsync(20, 0, b => b.U32(top).U32(netWmState).U32(0).U32(0).U32(10));
         uint[] atoms = [.. Enumerable.Range(0, (int)p.U32(16)).Select(i => p.U32(32 + (i * 4)))];
         CollectionAssert.Contains(atoms, fullscreen);
-        await host.WaitForAsync(() => (host.Mapped[top].States & XWindowStates.Fullscreen) != 0);
+        await host.WaitForAsync(() => (host.Mapped[top].Snapshot.States & XWindowStates.Fullscreen) != 0);
     }
 
     [TestMethod]
@@ -131,7 +129,7 @@ public sealed class EwmhTests
         await c.SendAsync(2, 0, b => b.U32(top).U32(0x800).U32(0x4 | 0x8 | 0x40));   // ButtonPress | ButtonRelease | PointerMotion
         await c.SendAsync(8, 0, b => b.U32(top));
         await host.WaitForAsync(() => host.Mapped.ContainsKey(top));
-        server.PointerButton(top, 10, 10, 1, pressed: true);
+        server.InjectPointerButton(host.Mapped[top], 10, 10, 1, pressed: true);
         await c.NextEventAsync(4);
 
         uint moveresize = await InternAsync(c, "_NET_WM_MOVERESIZE");
@@ -155,11 +153,11 @@ public sealed class EwmhTests
         uint top = await CreateTopAsync(c);
         await c.SendAsync(8, 0, b => b.U32(top));
         await host.WaitForAsync(() => host.Mapped.ContainsKey(top));
-        server.FocusTopLevel(top);
+        server.FocusTopLevel(host.Mapped[top]);
         await c.SyncAsync();
         uint active = await InternAsync(c, "_NET_ACTIVE_WINDOW");
         XMessage p = await c.RequestAsync(20, 0, b => b.U32(c.RootWindow).U32(active).U32(0).U32(0).U32(1));
         Assert.AreEqual(top, p.U32(32));
-        await host.WaitForAsync(() => (host.Mapped[top].States & XWindowStates.Focused) != 0);
+        await host.WaitForAsync(() => (host.Mapped[top].Snapshot.States & XWindowStates.Focused) != 0);
     }
 }

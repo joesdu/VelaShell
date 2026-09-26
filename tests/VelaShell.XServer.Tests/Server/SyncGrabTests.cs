@@ -1,4 +1,3 @@
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -45,14 +44,14 @@ public sealed class SyncGrabTests
         await using X11Server server = new(host: host);
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         uint top = await MapTopAsync(c, host);
-        server.PointerMotion(top, 1, 1);
+        server.InjectPointerMotion(host.Mapped[top], 1, 1);
         await DrainAsync(c, MotionNotify);
 
         // GrabPointer:owner-events False,事件掩码 PointerMotion,指针同步、键盘异步。
         XMessage grab = await c.RequestAsync(26, 0, b => b.U32(top).U16(0x40).U8(Synchronous).U8(Asynchronous).U32(0).U32(0).U32(0));
         Assert.AreEqual(0, grab.Bytes[1], "GrabSuccess");
-        server.PointerMotion(top, 10, 10);
-        server.PointerMotion(top, 20, 20);
+        server.InjectPointerMotion(host.Mapped[top], 10, 10);
+        server.InjectPointerMotion(host.Mapped[top], 20, 20);
         Assert.IsEmpty(await DrainAsync(c, MotionNotify), "冻着:移动排队,一条都不发");
 
         await c.SendAsync(35, 0, b => b.U32(0));   // AllowEvents AsyncPointer
@@ -81,8 +80,8 @@ public sealed class SyncGrabTests
         await a.SendAsync(28, 0, w => w.U32(top).U16(0x4 | 0x8).U8(Synchronous).U8(Asynchronous).U32(0).U32(0).U8(1).U8(0).U16(0x8000));
         await a.SyncAsync();
 
-        server.PointerButton(top, 20, 20, 1, pressed: true);
-        server.PointerButton(top, 20, 20, 1, pressed: false);
+        server.InjectPointerButton(host.Mapped[top], 20, 20, 1, pressed: true);
+        server.InjectPointerButton(host.Mapped[top], 20, 20, 1, pressed: false);
         List<XMessage> grabbed = await DrainAsync(a, ButtonPress, ButtonRelease);
         Assert.HasCount(1, grabbed, "A 只拿到按下;松开在冻结的队列里");
         Assert.AreEqual(ButtonPress, grabbed[0].EventCode);
@@ -107,9 +106,9 @@ public sealed class SyncGrabTests
 
         XMessage grab = await c.RequestAsync(31, 0, b => b.U32(top).U32(0).U8(Asynchronous).U8(Synchronous).U16(0));
         Assert.AreEqual(0, grab.Bytes[1], "GrabSuccess");
-        server.Key(38, pressed: true);
-        server.Key(38, pressed: false);
-        server.Key(39, pressed: true);
+        server.InjectKey(38, pressed: true);
+        server.InjectKey(38, pressed: false);
+        server.InjectKey(39, pressed: true);
         Assert.IsEmpty(await DrainAsync(c, KeyPress, KeyRelease), "键盘冻着");
 
         await c.SendAsync(35, 4, b => b.U32(0));   // SyncKeyboard
@@ -131,11 +130,11 @@ public sealed class SyncGrabTests
         await using X11Server server = new(host: host);
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         uint top = await MapTopAsync(c, host, eventMask: 0x40);
-        server.PointerMotion(top, 1, 1);
+        server.InjectPointerMotion(host.Mapped[top], 1, 1);
         await DrainAsync(c, MotionNotify);
 
         await c.RequestAsync(26, 0, b => b.U32(top).U16(0x40).U8(Synchronous).U8(Asynchronous).U32(0).U32(0).U32(0));
-        server.PointerMotion(top, 30, 30);
+        server.InjectPointerMotion(host.Mapped[top], 30, 30);
         Assert.IsEmpty(await DrainAsync(c, MotionNotify));
         await c.SendAsync(27, 0, b => b.U32(0));   // UngrabPointer
         Assert.HasCount(1, await DrainAsync(c, MotionNotify), "抓取解除,冻结随之解除,事件按普通选择送达");

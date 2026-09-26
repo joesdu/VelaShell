@@ -6,22 +6,17 @@
 //   (timeout / interval 以秒计,−1 恢复默认;Reset 重置空闲计时)
 //   MIT-SCREEN-SAVER Extension, Version 1.1 —— QueryVersion 0、QueryInfo 1(state、til-or-since、idle、kind)、
 //   SelectInput 2、SetAttributes 3、UnsetAttributes 4、Suspend 5;ScreenSaverNotify 事件
-//   Display Power Management Signaling (DPMS) Extension, Version 1.1 —— GetVersion 0、Capable 1、GetTimeouts 2、
-//   SetTimeouts 3、Enable 4、Disable 5、ForceLevel 6、Info 7
 //
-//   服务端从不真的启动屏保、也不关显示器 —— 那是宿主桌面的事。这里如实记下客户端设的参数、
+//   服务端从不真的启动屏保、也不关显示器(DPMS 见 X11Server.Dpms.cs)—— 那是宿主桌面的事。这里如实记下客户端设的参数、
 //   报出真实的空闲时间(xprintidle、xss-lock、视频播放器靠它判断用户是否离开)。
 
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Server;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private const byte ScreenSaverMajor = 137;
-    private const byte ScreenSaverEventBase = 69;
-    private const byte DpmsMajor = 138;
-
     private short _saverTimeout;           // 秒;0 = 关
     private short _saverInterval;
     private byte _saverPreferBlanking = 1;
@@ -29,10 +24,6 @@ public sealed partial class X11Server
     private uint _lastActivity;
 
     private readonly Dictionary<XClient, uint> _saverSelections = [];
-
-    private ushort _dpmsStandby, _dpmsSuspend, _dpmsOff;
-    private bool _dpmsEnabled;
-    private ushort _dpmsLevel;
 
     /// <summary>用户有了输入(宿主注入或 XTEST):空闲计时归零。</summary>
     private void NoteUserActivity()
@@ -130,57 +121,6 @@ public sealed partial class X11Server
         }
     }
 
-    // ------------------------------------------------------------------ DPMS
-
-    private void Dpms(XClient c, XRequestReader r)
-    {
-        switch (r.Data)
-        {
-            case 0:   // GetVersion
-                c.Reply(0, w => w.U16(1).U16(1).Zero(20));
-                break;
-            case 1:   // Capable
-                c.Reply(0, w => w.Bool(true).Zero(23));
-                break;
-            case 2:   // GetTimeouts
-                c.Reply(0, w => w.U16(_dpmsStandby).U16(_dpmsSuspend).U16(_dpmsOff).Zero(18));
-                break;
-            case 3:   // SetTimeouts:非零值必须 standby ≤ suspend ≤ off
-                {
-                    ushort standby = r.U16(), suspend = r.U16(), off = r.U16();
-                    if ((standby != 0 && suspend != 0 && standby > suspend) || (suspend != 0 && off != 0 && suspend > off)
-                        || (standby != 0 && off != 0 && standby > off))
-                    {
-                        throw new XProtocolError(XErrorCode.Value);
-                    }
-                    (_dpmsStandby, _dpmsSuspend, _dpmsOff) = (standby, suspend, off);
-                    break;
-                }
-            case 4:   // Enable
-                _dpmsEnabled = true;
-                break;
-            case 5:   // Disable
-                _dpmsEnabled = false;
-                break;
-            case 6:   // ForceLevel:0 On、1 Standby、2 Suspend、3 Off;DPMS 关着时是 BadMatch
-                {
-                    ushort level = r.U16();
-                    if (level > 3)
-                    {
-                        throw new XProtocolError(XErrorCode.Value, level);
-                    }
-                    if (!_dpmsEnabled)
-                    {
-                        throw new XProtocolError(XErrorCode.Match);
-                    }
-                    _dpmsLevel = level;
-                    break;
-                }
-            case 7:   // Info
-                c.Reply(0, w => w.U16(_dpmsLevel).Bool(_dpmsEnabled).Zero(21));
-                break;
-            default:
-                throw new XProtocolError(XErrorCode.Request);
-        }
-    }
+    /// <summary>客户端断开:它的屏保事件选择作废。</summary>
+    private void CleanupScreenSaver(XClient client) => _saverSelections.Remove(client);
 }

@@ -1,7 +1,5 @@
 using System.Runtime.InteropServices;
 using System.Text;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -27,7 +25,7 @@ public sealed partial class ShmTests
             return;
         }
         string path = Path.Combine(Path.GetTempPath(), $"vx-shm-{Guid.NewGuid():N}.sock");
-        await using X11Server server = new(new XServerOptions { ListenTcp = false, UnixSocketPath = path });
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = path });
         await server.StartAsync();
 
         await using (XTestClient remote = await XTestClient.ConnectAsync(server))

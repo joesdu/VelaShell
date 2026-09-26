@@ -10,7 +10,7 @@
 //   §11「CreateSolidFill / CreateLinearGradient / CreateRadialGradient / CreateConicalGradient」、
 //   §12「CreateGlyphSet / ReferenceGlyphSet / FreeGlyphSet / AddGlyphs / FreeGlyphs /
 //   CompositeGlyphs8/16/32」(GLYPHITEM、len = 255 时切换字形集;源与第一个元素的 delta 对齐)、
-//   §13「CreateCursor / CreateAnimCursor」
+//   §13「CreateCursor / CreateAnimCursor」(光标的处理与交给宿主见 X11Server.Cursors.cs)
 //
 //   不做的:alpha-map(接受但忽略)、源 picture 的裁剪(只裁目标)、索引色格式(没有)、
 //   poly-edge / poly-mode / dither(接受但忽略,多边形一律平滑边)。
@@ -19,15 +19,13 @@ using System.Buffers;
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private const byte RenderMajor = 133;
-    private const byte RenderErrorBase = 133;   // PictFormat +0、Picture +1、PictOp +2、GlyphSet +3、Glyph +4
-
     private static readonly string[] RenderFilters = ["nearest", "bilinear", "convolution", "fast", "good", "best"];
 
     private static XProtocolError RenderError(int offset, uint value = 0) => new((XErrorCode)(RenderErrorBase + offset), value);
@@ -57,7 +55,7 @@ public sealed partial class X11Server
             case 5: ApplyPictureValues(Picture(r.U32()), r.U32(), r); break;
             case 6: SetPictureClipRectangles(r); break;
             case 7: FreePicture(r); break;
-            case 8: CompositeRequest(r); break;
+            case 8: RenderComposite(r); break;
             case 10: Trapezoids(r); break;
             case 11: case 12: case 13: Triangles(r); break;
             case 17: CreateGlyphSet(c, r); break;
@@ -422,7 +420,7 @@ public sealed partial class X11Server
 
     // ------------------------------------------------------------------ Composite / FillRectangles
 
-    private void CompositeRequest(XRequestReader r)
+    private void RenderComposite(XRequestReader r)
     {
         byte op = r.U8();
         r.Skip(3);
@@ -993,32 +991,7 @@ public sealed partial class X11Server
         }
     }
 
-    // ------------------------------------------------------------------ 光标
-
-    /// <summary>CreateCursor:ARGB 光标宿主暂时显示成默认箭头(与位图光标一样,字形号 −1)。</summary>
-    private void RenderCreateCursor(XClient c, XRequestReader r)
-    {
-        uint id = r.U32();
-        XPicture src = Picture(r.U32());
-        if (src.Drawable is null)
-        {
-            throw new XProtocolError(XErrorCode.Match);
-        }
-        AddResource(c, new XCursor(id, c) { HotX = r.U16(), HotY = r.U16() });
-    }
-
-    private void CreateAnimCursor(XClient c, XRequestReader r)
-    {
-        uint id = r.U32();
-        XCursor? first = null;
-        while (r.Remaining >= 8)
-        {
-            uint cursor = r.U32();
-            _ = r.U32();   // 帧间隔
-            first ??= Lookup<XCursor>(cursor) ?? throw new XProtocolError(XErrorCode.Cursor, cursor);
-        }
-        AddResource(c, new XCursor(id, c) { Glyph = first?.Glyph ?? -1, HotX = first?.HotX ?? 0, HotY = first?.HotY ?? 0 });
-    }
+    // ------------------------------------------------------------------ 供 XFIXES 用
 
     /// <summary>XFIXES CreateRegionFromPicture:picture 的裁剪区域(没设裁剪时为空)。</summary>
     private Region PictureClipRegion(uint id)

@@ -21,27 +21,35 @@ GTK3 的 `zenity` / `gedit`、Qt5 的 `qt5ct`、`xdotool`、`xinput`、`xkbcomp`
 画得对、输入走得通、零协议错误。
 
 ```csharp
-await using X11Server server = new(new XServerOptions { DisplayNumber = 1 }, host);   // host: IXServerHost
-await server.StartAsync();                     // 监听 127.0.0.1:6001(Windows 以外还有 /tmp/.X11-unix/X1);或者 ServeAsync(stream)
-server.PointerButton(windowId, x, y, 1, true);  // 宿主注入输入
-server.SetClipboardText(text);                  // 宿主剪贴板 → X;反方向是 IXServerHost.ClipboardChanged
-server.SetDisplayScale(dpi: 192, scale: 2);     // 运行中换 DPI / 缩放;另有 SetScreenLayout、SetKeyboardMapping
+using VelaShell.XServer;   // 公开类型全在这一个命名空间
+
+await using X11Server server = new(new X11ServerOptions { DisplayNumber = 1 }, host);   // host: IX11ServerHost
+await server.StartAsync();       // 监听 127.0.0.1:6001(Windows 以外还有 /tmp/.X11-unix/X1);server.Display 给出 DISPLAY
+// 或者不监听,直接喂一条双工流:await server.ServeAsync(stream, isLocal: true);
+
+// 宿主回调里拿到的 XTopLevelWindow 就是之后指名窗口的句柄;属性读快照(整份替换,先取到局部变量)。
+XTopLevelSnapshot s = window.Snapshot;
+server.InjectPointerButton(window, x, y, button: 1, pressed: true);   // Inject*:合成的用户输入
+server.MoveTopLevel(window, s.X + 10, s.Y);                           // *TopLevel:宿主作为窗口管理器的动作
+server.SetKeymap(new XKeymap("de", 6) { AltGr = true }.Map(XKeycodes.Q, 'q', 'Q', 'q', 'Q', '@', '@'));   // Set*:运行中换配置
+server.SetClipboardText(text);   // 宿主剪贴板 → X;反方向是 IX11ServerHost.ClipboardChanged
 ```
 
-线程模型:全部协议状态只在一条执行线程上改,宿主调用只排工作项、不阻塞;宿主回调在放掉像素锁之后调用。
+线程模型:全部协议状态只在一条执行线程上改;宿主调用的方法当场校验参数、只排工作项、不阻塞;宿主回调在放掉像素锁之后按顺序调用。
+窗口的属性是不可变快照(`XTopLevelSnapshot`),`TopLevelChanged` 说明变了哪几组(`XTopLevelChanges`)。
 每个客户端有输出积压与未执行请求两道上限,慢客户端或恶意客户端拖不垮服务端。
 
 | 目录 | 职责 |
 | --- | --- |
+| `Host/` | 全部公开类型(根命名空间 `VelaShell.XServer`):`IX11ServerHost`、`X11ServerOptions`、`XTopLevelWindow` 与 `XTopLevelSnapshot`、`XCursor`、`XKeymap`、`XMonitor`、窗口管理器请求与枚举、`XKeycodes`、`XRect` |
+| `Server/` | `X11Server`:公开成员全在 `X11Server.cs`;执行循环、连接建立与授权、请求分派、扩展注册表(编号与清理钩子),请求处理按领域 / 扩展拆成 partial 文件;自成一体的 GLX 是单独的 `GlxExtension` 类 |
 | `Protocol/` | 常量、字节序感知的请求读取与回复 / 事件 / 错误写出 |
-| `Server/` | `X11Server`:执行循环、连接建立与授权、请求分派(按领域拆成 partial 文件) |
 | `Windowing/` | 窗口模型 |
 | `Drawing/` | 像素缓冲、区域、软件光栅化、RENDER 的合成 / 取样 / 覆盖率 |
 | `Gl/` | GLX 间接渲染的软件 GL:渲染命令解码、显示列表、变换 / 光照 / 裁剪、三角形 / 线 / 点光栅化、纹理、逐片元操作 |
-| `Resources/` | GC、像素图、颜色表、光标、颜色名、RENDER 的 picture 与字形集 |
+| `Resources/` | GC、像素图、颜色表、光标、字体、颜色名,以及各扩展的资源(RENDER、SYNC、DAMAGE、XFIXES、Present、MIT-SHM、GLX) |
 | `Fonts/` | BDF 解析、内置 misc-fixed 字体、XLFD 匹配 |
-| `Input/` | 键码表、抓取 |
-| `Host/` | 面向宿主的接口(`IXServerHost`、`XTopLevelWindow`、`XServerOptions`、`XMonitor`、窗口管理器请求与枚举、`XKeycodes`) |
+| `Input/` | 键码表、抓取的数据结构 |
 
 开发约定(净室规程)见 [`AGENTS.md`](AGENTS.md);架构见
 velashell-docs [`zh/xserver/design/architecture.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/xserver/design/architecture.md)。

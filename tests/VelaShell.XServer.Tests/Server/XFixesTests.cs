@@ -1,6 +1,4 @@
 using System.Text;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -110,13 +108,13 @@ public sealed class XFixesTests
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         byte major = await XFixesMajorAsync(c);
         uint top = await MapTopAsync(c, host);
-        server.PointerMotion(top, 5, 5);
+        server.InjectPointerMotion(host.Mapped[top], 5, 5);
 
         await c.SendAsync(major, 29, b => b.U32(top));
-        await host.WaitForAsync(() => host.Log.Contains("cursor -2"));
+        await host.WaitForAsync(() => host.Log.Contains("cursor Hidden"));
 
         await c.SendAsync(major, 30, b => b.U32(top));
-        await host.WaitForAsync(() => host.Log.LastOrDefault(e => e.StartsWith("cursor", StringComparison.Ordinal)) == "cursor -1");
+        await host.WaitForAsync(() => host.Log.LastOrDefault(e => e.StartsWith("cursor", StringComparison.Ordinal)) == "cursor Arrow");
 
         XMessage error = await c.RequestAsync(major, 30, b => b.U32(top));
         Assert.IsTrue(error.IsError, "没隐藏过就 ShowCursor 是 BadMatch");
@@ -136,11 +134,11 @@ public sealed class XFixesTests
         uint region = c.NewId();
         await c.SendAsync(major, 5, b => b.U32(region).I16(0).I16(0).U16(20).U16(10));
         await c.SendAsync(major, 21, b => b.U32(top).U8(0).U8(0).U8(0).U8(0).I16(5).I16(5).U32(region));
-        await host.WaitForAsync(() => handle.Shape is not null);
-        Assert.AreEqual(200, handle.Shape!.Sum(r => r.Width * r.Height));
-        Assert.AreEqual(5, handle.Shape!.Min(r => r.X), "偏移生效");
+        await host.WaitForAsync(() => handle.Snapshot.Shape is not null);
+        Assert.AreEqual(200, handle.Snapshot.Shape!.Sum(r => r.Width * r.Height));
+        Assert.AreEqual(5, handle.Snapshot.Shape!.Min(r => r.X), "偏移生效");
 
         await c.SendAsync(major, 21, b => b.U32(top).U8(0).U8(0).U8(0).U8(0).I16(0).I16(0).U32(0));
-        await host.WaitForAsync(() => handle.Shape is null);
+        await host.WaitForAsync(() => handle.Snapshot.Shape is null);
     }
 }

@@ -11,9 +11,10 @@
 using System.Buffers.Binary;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
-namespace VelaShell.XServer.Server;
+namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
@@ -354,7 +355,7 @@ public sealed partial class X11Server
 
     // ------------------------------------------------------------------ SendEvent
 
-    private void SendEventRequest(XClient c, XRequestReader r)
+    private void SendEvent(XClient c, XRequestReader r)
     {
         bool propagate = r.Data != 0;
         uint destination = r.U32();

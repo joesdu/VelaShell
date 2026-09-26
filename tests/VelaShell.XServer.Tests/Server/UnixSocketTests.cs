@@ -1,6 +1,4 @@
 using System.Net.Sockets;
-using VelaShell.XServer.Host;
-using VelaShell.XServer.Server;
 
 namespace VelaShell.XServer.Tests.Server;
 
@@ -17,7 +15,7 @@ public sealed class UnixSocketTests
             Assert.Inconclusive("这个系统不支持 Unix 套接字");
         }
         string path = Path.Combine(Path.GetTempPath(), $"vx-{Guid.NewGuid():N}.sock");
-        await using X11Server server = new(new XServerOptions { ListenTcp = false, UnixSocketPath = path });
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = path });
         await server.StartAsync();
         Assert.AreEqual(0, server.Port, "没开 TCP");
 
@@ -48,7 +46,7 @@ public sealed class UnixSocketTests
         other.Listen(8);   // 服务端探测时连进来的那一条不会被 accept;backlog 给小了,macOS 上后面的连接会被拒
         try
         {
-            await using (X11Server server = new(new XServerOptions { ListenTcp = false, UnixSocketPath = path }))
+            await using (X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = path }))
             {
                 await server.StartAsync();
             }

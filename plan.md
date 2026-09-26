@@ -6872,6 +6872,60 @@ SSH 的 X11 转发直接接进它。VcXsrv 退成 Windows 上的可选引擎。
 文档：velashell-docs 的 `ssh/spec/07-forwarding.md` §7.5.5、§7.5.7、§7.5.8，`ssh/spec/09-dialing.md` §7，
 `ssh/design/architecture.md` 新增 §11.2.23，`zh` 与 `en` 两边都已同步。
 
+## ✅ 116. 2026-09-25 VelaShell.XServer:宿主 API 与代码组织整理(用户需求)
+
+用户先要一次 API 设计评审(没有现成规范可对照,重点看组织、命名、简洁与可维护),评审出九条,随后要求全部修掉。
+协议行为不变的地方只改形状;有两处顺带修了真实缺陷(键盘布局名从来没传到服务端、位图 / ARGB 光标一律显示成箭头)。
+
+### 一、公开 API
+
+| 问题 | 改法 |
+| --- | --- |
+| 公开类型散在 `.Host`、`.Server`、`.Drawing` 三个命名空间,`X11Server` 的公开方法散在 7 个 partial 文件里;`PixelLock`(没人用,直接锁它还拿不到让行)与 `XErrorCode` 白白公开 | 公开类型全部进根命名空间 `VelaShell.XServer`(文件都在 `Host/`,`XRect` 从 `Region.cs` 拆出);`X11Server` 的公开成员全部集中到 `X11Server.cs`,只校验参数、排工作项,实现在各领域文件的 `Apply*`;`PixelLock` 删掉、`XErrorCode` 收回 internal |
+| 命名三种语法混用(`PointerMotion` / `FocusTopLevel` / `SetFrameExtents`),回调里 `Bell`、`WindowManagerRequest` 是名词;公开的 `SetModifierMapping(span)` 与私有的协议处理器同名;窗口用 `uint` 指名 | 宿主方法三类:`Inject*`(合成输入)、`*TopLevel`(窗口管理器动作,`SetFrameExtents` → `SetTopLevelFrameExtents`)、`Set*`(换配置);回调一律「主语 + 过去分词」(`BellRequested`、`WindowManagerRequested`);窗口一律用 `XTopLevelWindow` 句柄(别的服务端的句柄当场抛异常,已销毁的静默忽略);`TransientFor` 也改成句柄 |
+| `XTopLevelWindow` 的二十几个属性由执行线程逐个写、UI 线程直接读,可能读到新宽度配旧高度,16 字节的 `ClientFrameExtents` 元组会被撕裂;`TopLevelChanged` 不说变了什么;公共类型上挂着 `internal IconSource` | 属性移进不可变的 `XTopLevelSnapshot`,执行线程每次造新的整份替换(`Volatile`);`TopLevelChanged(window, XTopLevelChanges)` 报变了哪几组(几何 / 标题 / 状态 / 图标 / 形状 / 其余提示,「其余」靠抹平已比过的字段后整份比较,以后加字段不会漏报);值没变不报,形状没变沿用同一个列表实例;图标解析缓存挪到内部的 `XWindow`;`ClientFrameExtents` 改成 `XFrameExtents` |
+| `CursorChanged(window, int cursorGlyph)`:−1 同时表示默认箭头与位图光标,−2 隐藏;宿主自己维护字形号对照表;RENDER CreateCursor 把图像丢掉,装了光标主题时(libXcursor 走 RENDER)一律显示箭头 | `CursorChanged(window, XCursor)`:语义形状 `XCursorShape` 在库里从字形号或 XFIXES SetCursorName 起的名字推出(字形名按 Xlib 附录 B,名字另认 CSS 的 cursor 关键字);位图(核心 CreateCursor,顺带补上 mask 尺寸与热点的 BadMatch 校验)与 ARGB 光标创建时烙成 `XCursorImage`;GetCursorName 回名字;光标或指针所在的顶层变了才报。Avalonia 宿主有图像就显示图像 |
+| 换一次键盘布局要调三次 `SetKeyboardMapping` 加一次 `SetModifierMapping`,每次给所有客户端发一轮 MappingNotify 与 XKB 通知;宿主手写修饰键表字节与 `0xfe03` / `0xffea`;**布局名是最后一个可选参数,宿主从没传过 —— 选了 `de`,`_XKB_RULES_NAMES` 仍是 `us`** | `SetKeymap(XKeymap)`:键值、布局名、「右 Alt 是不是 AltGr」一次提交,只发一轮通知(修饰键表真变了才加一次 Modifier);AltGr 的键值与修饰键表归库里;宿主的 `HostKeymapResult` 带布局名(手选的就是它,跟随系统时取随程序带的表里第一、二层最像的,不到九成像按 `us`) |
+| `XServerOptions` 是 record 却装着 `byte[]` 与委托;与宿主应用的 `Core.Models.XServerOptions` 重名、要写别名;初始选项静默夹住(`ScaleFactor`)或不查(`Dpi = 0` 拿去做除数),运行中的 setter 却抛异常;`ResizeTopLevel` 遇到 ≤ 0 静默忽略 | 改名 `X11ServerOptions`(与 `IX11ServerHost`、`X11Server` 同一前缀),sealed class,构造时统一 `Validate`(参数名 `options`);宿主方法的尺寸 / 坐标 / 按钮 / 键码 / 外框当场校验 |
+| `Display` 固定是 `localhost:N.0`,关了 TCP 也一样;宿主只能把它解析回显示号;`ServeAsync(stream, bool isLocal = true)` 默认「信任」,流归谁没写;诊断一半走 `Log` 一半走 `Trace` | `Display` 按实际监听的传输给(`:N` / `localhost:N.0` / 没监听为 null),另加 `DisplayNumber`;重复 `StartAsync` 抛异常;`isLocal` 去掉默认值,文档写明不释放流;诊断只走 `Log` |
+
+### 二、内部组织
+
+- **扩展注册表**:主操作码与事件 / 错误编号收进 `X11Server.Extensions.cs` 的一张表(原来散在 15 个文件,BIG-REQUESTS / XC-MISC 还是字面量),
+  `Register` 按各扩展登记的事件数、错误数检查越界与重叠;扩展登记 `ClientClosed` / `WindowDestroyed` 清理钩子,
+  连接收尾(`CleanupClient`)与窗口销毁(`DestroyTree`)里原先两份手写的清单变成循环,各扩展的清理签名统一成 `(XClient)` / `(XWindow)` 两个重载。
+- **GLX 拆成独立的类** `GlxExtension`(原来是 1200 行的 partial,与服务端共享全部私有状态),只经 `Lookup` / `AddResource` / `RemoveResource` /
+  `AllResources` / `DrawTarget` / `MarkDamage` / `NotePixmapDrawn` 这几个 internal 成员碰服务端。
+- **文件名与内容对上**:`X11Server.cs` 只剩公开面,执行循环拆到 `WorkLoop`、资源表与 XC-MISC 到 `Resources`、TCP 监听与 BIG-REQUESTS、`CleanupClient` 到 `Connection`;
+  顶层窗口桥(句柄、快照、损伤交付、宿主的窗口管理器动作)从 `Exposure` / `Input` / `Ewmh` 收到 `TopLevels`;光标从 `Colors` / `Input` / `Render` / `XTest` 收到 `Cursors`;
+  `Queries` 拆成 `Xinerama` / `XRes`(Generic Event 进注册表),`CompositeDbe` 拆成 `Composite` / `Dbe`,DPMS 从 `ScreenSaver` 拆出,`SyncGrabs` 改名 `GrabFreeze`(与 SYNC 扩展区分);
+  各扩展的资源类型(`XDamage`、`XSync*`、`XShmSegment`、`XPresentEventContext`、`XRegionResource`、`XGlx*`)从 `Server/` 移到 `Resources/X{扩展}Resources.cs`,
+  内部的光标资源改名 `XCursorResource`,`Extension` 进 `Server/` 命名空间;三处共用的矩形拷贝收进 `PixelBuffer.CopyRect`。
+- **处理器命名一条规矩**:请求处理器与协议请求同名,同名的内部操作换动词(`MapWindow` 处理器 / `Map` 操作,`Configure`、`Destroy`、`Unmap` 同理),
+  扩展里与核心请求重名的加扩展前缀(`CompositeRequest` → `RenderComposite`)。原来只有撞名时才加 `…Request` 后缀。
+- csproj 的分层注释原来列着不存在的 `Transport/`、`Extensions/`,已按实际重写。
+
+### 三、小项
+
+`_host` / `_deferredHost` 两个字段指同一个对象,合成一个;`NullHost` 挪到 `DeferredHost.cs`;响铃按协议「Bell」的公式从基准音量 50 换算成 0–100 交给宿主
+(核心 Bell、XKB Bell、XI DeviceBell 共用,核心 Bell 超出 −100…100 回 BadValue);构造时执行线程就开始跑、从没启动的实例也要释放 —— 写进了类的说明。
+
+### 四、验证
+
+- 整个解决方案构建 0 警告 0 错误。
+- `VelaShell.XServer.Tests` 157 通过、1 条(MIT-SHM,只在 Linux 上跑)跳过;新增 7 条:`SetKeymap` 一次换键值与布局名且只有一轮 MappingNotify、
+  AltGr 把右 Alt 挪进 Mod5、选项不合法时构造就抛异常、`Display` 按实际监听给出、宿主方法当场校验 / 别的服务端的句柄不收、
+  快照整份替换且变化按组报告(同样的标题再设一遍不报)、位图光标连图像交给宿主且 XFIXES 起的名字推出形状、响铃换算。
+- 宿主侧:`VelaShell.Tests` 的 `XServerHostUi` 11 条通过(新增跟随系统时的布局名推测),`VelaShell.Infrastructure.Tests` 的 XServer 27 条通过(1 条按平台跳过);
+  `scripts/xserver` 的 bench / run-server / host-demo 三个脚本编译通过。
+- 全解决方案测试只有 `VelaShell.Core.Tests` 的 `X11_RefusedByServer_KeepsAgentForwardingAndWarnsOnce` 失败:这是对 Docker 靶机的 SSH 用例,
+  靶机没拒绝 `vela-dash` 的 X11 —— 本机的 `velashell-test-shells` 容器建于 09-23 04:25,早于 Dockerfile 里给 `vela-dash` 关掉 X11 的提交(`ccc72015`),重建靶机镜像即可;这一轮没有改 `VelaShell.Core` / `VelaShell.Ssh` 的任何代码。
+- 真实客户端(`VELASHELL_XSERVER_INTEROP=1`):11 条全部真跑(没有 `[SKIP]`),零协议错误。
+- **没有验证的**:Avalonia 宿主显示图像光标、跟随系统时推出的布局名,都没在真的原生窗口里实际看过(只有无头测试)。
+
+文档:velashell-docs `zh|en/xserver/design/architecture.md` —— §4 分层、§5 线程模型、§6 宿主接口按新 API 重写,§7 光标与 XKB 两处,§10 决策记录新增「宿主 API 整理」;
+本仓库 `src/VelaShell.XServer/README.md`、`AGENTS.md`(公开面、命名、新增扩展的做法)、csproj 注释同步。
+
 ## ✅ 117. 2026-09-25 VelaShell.Ssh：API 设计审查，定下规范并整改（用户需求）
 
 用户要求检查 SSH 库的 API 设计 —— 本库此前没有可参照的成文规范 —— 重点看代码组织、命名、简洁与可维护，
