@@ -1,8 +1,10 @@
 <!doctype html>
 <!--
-  VelaShell 官网 —— GitHub Pages(gh-pages 分支根目录)。
-  视觉沿用 build/social-preview/social-preview.html 的品牌语言:#05100E 底、青绿辉光、
-  40px 淡网格、Cascadia Mono 终端块。改配色请两边一起改,否则社交预览图与官网会漂。
+  VelaShell 官网 —— GitHub Pages(gh-pages 分支根目录),单文件,内联 CSS / JS,无构建步骤。
+
+  视觉:深青到藏青的双色辉光底(与宣传片封面、build/social-preview 同一套品牌语言),
+  看板娘一律用 main 分支 mascot/ 的原画:白底立绘抠成透明底并加白描边(贴纸感),素材在 assets/mascot/。
+  截图取自宣传片的原始录屏(实机界面),在 assets/shots/。素材怎么来的见 README.md。
 
   下载区不写死资产链接:资产名带版本号,写死每发一版就断。改为运行时读
   api.github.com/repos/joesdu/VelaShell/releases/latest,填版本号与各平台直链;
@@ -14,42 +16,46 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VelaShell —— 现代化跨平台 SSH / SFTP / FTP 终端客户端</title>
-<meta name="description" content="VelaShell 是一款为运维与开发者打造的现代化跨平台 SSH 终端客户端。自研 VT 引擎、跳板机、端口转发隧道、可拖拽分屏、双模插件系统,支持 Windows / Linux / macOS。">
+<meta name="description" content="VelaShell 是一款为运维与开发者打造的现代化跨平台 SSH 终端客户端。VT 终端引擎、跳板机、端口转发隧道、内置 X 服务端、可拖拽分屏、双模插件系统与 AI 助手，支持 Windows / Linux / macOS，个人与企业永久免费。">
+<meta name="theme-color" content="#060E12">
 <link rel="icon" href="assets/velashell.png">
 <link rel="canonical" href="https://joesdu.github.io/VelaShell/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="VelaShell —— 现代化跨平台 SSH / SFTP / FTP 终端客户端">
-<meta property="og:description" content="以终端为帆,驶向远方主机。.NET 11 + Avalonia,Windows / Linux / macOS,x64 & arm64。">
+<meta property="og:description" content="以终端为帆，驶向远方主机。.NET 11 + Avalonia，Windows / Linux / macOS，x64 & arm64，个人与企业永久免费。">
 <meta property="og:image" content="https://joesdu.github.io/VelaShell/assets/social-preview.png">
 <meta property="og:url" content="https://joesdu.github.io/VelaShell/">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="preload" as="image" href="assets/shots/truecolor.webp">
 <style>
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   :root {
-    --bg:          #05100E;
-    --surface:     rgba(255, 255, 255, .03);
-    --surface-2:   rgba(255, 255, 255, .045);
-    --line:        rgba(70, 214, 175, .16);
-    --line-strong: rgba(70, 214, 175, .26);
-    --text:        #E9FBF4;
-    --text-bright: #F2FFFA;
-    --text-2:      #DCF7EE;
-    --text-3:      #A8EBD8;
-    --muted:       #7FB6A8;
+    --bg:          #060E12;
+    --bg-2:        #0A1320;
+    --surface:     rgba(255, 255, 255, .035);
+    --surface-2:   rgba(255, 255, 255, .06);
+    --line:        rgba(120, 230, 200, .12);
+    --line-strong: rgba(120, 230, 200, .26);
+    --text:        #E6F5F0;
+    --text-bright: #F6FFFC;
+    --text-2:      #CDE8E0;
+    --text-3:      #9DC3B8;
+    --muted:       #6E958B;
     --brand:       #2FD8AB;
-    --brand-deep:  #00AE8E;
-    --brand-lite:  #22D5B1;
-    --danger:      #FF5F57;
-    --warn:        #FEBC2E;
-    --ok:          #28C840;
-    --font-ui:   "Inter", "Microsoft YaHei UI", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --brand-deep:  #10A887;
+    --brand-lite:  #7DEBCB;
+    --violet:      #8C94FF;
+    --pink:        #FF9DB0;
+    --gold:        #F2C14E;
+    --font-ui:   "Inter", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei UI", "PingFang SC", "Segoe UI", system-ui, -apple-system, sans-serif;
     --font-mono: "Cascadia Mono", "JetBrains Mono", ui-monospace, Consolas, "SF Mono", Menlo, monospace;
-    --maxw: 1160px;
-    --radius: 14px;
+    --maxw: 1200px;
+    --radius: 20px;
+    --ease: cubic-bezier(.2, .7, .2, 1);
   }
 
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
 
   body {
     background: var(--bg);
@@ -60,173 +66,334 @@
     overflow-x: hidden;
   }
 
-  /* 背景层:品牌辉光 + 冷色补光 + 淡网格,与社交预览图同一套参数。 */
-  .bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+  /* 背景:左上青绿辉光 + 右侧藏青紫辉光 + 点阵,与宣传片封面同一观感。 */
+  .bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(120deg, #06120F 0%, var(--bg) 45%, var(--bg-2) 100%); }
   .bg::before, .bg::after { content: ""; position: absolute; }
-  .bg::before {
-    left: -14%; top: -22%; width: 78vw; height: 82vh;
-    background: radial-gradient(circle at 35% 40%, rgba(16, 214, 164, .30), transparent 62%);
-  }
-  .bg::after {
-    right: -16%; top: 34%; width: 72vw; height: 78vh;
-    background: radial-gradient(circle at 60% 60%, rgba(20, 128, 160, .22), transparent 60%);
-  }
-  .grid {
+  .bg::before { left: -18vw; top: -26vh; width: 80vw; height: 80vh; background: radial-gradient(closest-side, rgba(16, 214, 164, .22), transparent); }
+  .bg::after { right: -20vw; top: 20vh; width: 76vw; height: 90vh; background: radial-gradient(closest-side, rgba(92, 96, 220, .16), transparent); }
+  .dots {
     position: fixed; inset: 0; z-index: -1; pointer-events: none;
-    background-image:
-      linear-gradient(rgba(120, 235, 205, .045) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(120, 235, 205, .045) 1px, transparent 1px);
-    background-size: 40px 40px;
-    mask-image: radial-gradient(circle at 28% 22%, #000 0%, transparent 72%);
-    -webkit-mask-image: radial-gradient(circle at 28% 22%, #000 0%, transparent 72%);
+    background-image: radial-gradient(rgba(150, 240, 215, .07) 1px, transparent 1.2px);
+    background-size: 26px 26px;
+    mask-image: linear-gradient(180deg, #000, transparent 70%);
+    -webkit-mask-image: linear-gradient(180deg, #000, transparent 70%);
   }
 
   .wrap { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
-
   a { color: inherit; }
+  img { max-width: 100%; height: auto; display: block; }
+  .grad { background: linear-gradient(100deg, var(--brand) 0%, var(--brand-lite) 45%, var(--violet) 110%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
   /* ---- 顶栏 --------------------------------------------------------- */
   header {
     position: sticky; top: 0; z-index: 50;
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-    background: rgba(5, 16, 14, .72);
+    backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%);
+    background: rgba(6, 14, 18, .66);
     border-bottom: 1px solid var(--line);
   }
-  .nav { display: flex; align-items: center; gap: 28px; height: 62px; }
+  .nav { display: flex; align-items: center; gap: 28px; height: 64px; }
   .lockup { display: flex; align-items: center; gap: 11px; text-decoration: none; flex: none; }
-  .lockup img { width: 30px; height: 30px; border-radius: 7px; filter: drop-shadow(0 4px 12px rgba(0, 196, 148, .4)); }
-  .lockup b { font-size: 18px; font-weight: 700; letter-spacing: -.2px; color: var(--text-bright); }
-  .nav-links { display: flex; gap: 24px; margin-left: auto; align-items: center; }
+  .lockup img { width: 30px; height: 30px; border-radius: 8px; filter: drop-shadow(0 4px 12px rgba(0, 196, 148, .4)); }
+  .lockup b { font-size: 18px; font-weight: 750; letter-spacing: -.3px; color: var(--text-bright); }
+  .nav-links { display: flex; gap: 22px; margin-left: auto; align-items: center; }
   .nav-links a { color: var(--text-3); text-decoration: none; font-size: 14.5px; transition: color .16s; }
   .nav-links a:hover { color: var(--brand); }
+  .nav-gh { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface); }
+  .nav-gh svg { width: 15px; height: 15px; }
   .lang {
     font: inherit; font-size: 13px; cursor: pointer;
-    color: var(--text-3); background: var(--surface); border: 1px solid var(--line);
-    border-radius: 999px; padding: 4px 13px; transition: border-color .16s, color .16s;
+    color: var(--text-3); background: transparent; border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 12px; transition: border-color .16s, color .16s;
   }
   .lang:hover { border-color: var(--line-strong); color: var(--brand); }
 
   /* ---- Hero --------------------------------------------------------- */
-  .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 60px; align-items: center; padding: 84px 0 78px; }
-  .mark { display: flex; align-items: center; gap: 22px; margin-bottom: 20px; }
-  .mark img { width: 82px; height: 82px; border-radius: 19px; filter: drop-shadow(0 14px 34px rgba(0, 196, 148, .42)); }
-  .mark h1 { font-size: 60px; line-height: 1.04; font-weight: 800; letter-spacing: -1.6px; color: var(--text-bright); }
-  .pron { font-size: 14.5px; color: var(--muted); font-family: var(--font-mono); margin-bottom: 26px; }
-  .tagline { font-size: 30px; line-height: 1.32; font-weight: 700; color: var(--text-bright); letter-spacing: -.5px; }
-  .tagline em { font-style: normal; color: var(--brand); }
-  .lede { margin-top: 18px; font-size: 16.5px; color: var(--text-3); max-width: 46ch; }
-  .stack { margin-top: 14px; font-size: 14px; color: var(--muted); font-family: var(--font-mono); }
+  .hero { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 48px; align-items: center; padding: 76px 24px 64px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 9px; padding: 6px 14px 6px 10px; border-radius: 999px;
+    font-size: 13.5px; color: var(--text-2); text-decoration: none;
+    background: linear-gradient(var(--bg), var(--bg)) padding-box, linear-gradient(100deg, rgba(47, 216, 171, .7), rgba(140, 148, 255, .5)) border-box;
+    border: 1px solid transparent; transition: transform .2s var(--ease);
+  }
+  .pill:hover { transform: translateY(-1px); }
+  .pill svg { width: 14px; height: 14px; color: var(--brand); }
+  .live { width: 8px; height: 8px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 0 rgba(47, 216, 171, .6); animation: ping 2.2s infinite; }
+  @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(47, 216, 171, .55); } 70%, 100% { box-shadow: 0 0 0 9px rgba(47, 216, 171, 0); } }
 
-  .cta { display: flex; flex-wrap: wrap; gap: 13px; margin-top: 32px; align-items: center; }
+  .wordmark { display: flex; align-items: center; gap: 20px; margin: 22px 0 18px; font-size: 76px; line-height: 1; font-weight: 800; letter-spacing: -2.4px; color: var(--text-bright); }
+  .wordmark img { width: 84px; height: 84px; border-radius: 20px; filter: drop-shadow(0 14px 34px rgba(0, 196, 148, .45)); }
+  .tagline { font-size: 30px; line-height: 1.32; font-weight: 750; color: var(--text-bright); letter-spacing: -.5px; }
+  .tagline em { font-style: normal; color: var(--brand); }
+  .pron { margin-top: 14px; font-size: 14.5px; color: var(--brand-lite); font-family: var(--font-mono); opacity: .85; }
+  .lede { margin-top: 16px; font-size: 16.5px; color: var(--text-3); max-width: 50ch; }
+
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; align-items: center; }
   .btn {
     display: inline-flex; align-items: center; gap: 9px;
-    padding: 12px 22px; border-radius: 999px; font-size: 15px; font-weight: 600;
-    text-decoration: none; border: 1px solid transparent; transition: transform .16s, box-shadow .16s, border-color .16s, background .16s;
-    white-space: nowrap;
+    padding: 13px 22px; border-radius: 14px; font-size: 15px; font-weight: 650;
+    text-decoration: none; border: 1px solid transparent; white-space: nowrap;
+    transition: transform .18s var(--ease), box-shadow .18s, border-color .18s, background .18s, color .18s;
   }
-  .btn-primary {
-    background: linear-gradient(135deg, var(--brand-lite), var(--brand-deep));
-    color: #04231C; box-shadow: 0 10px 30px rgba(0, 196, 148, .28);
-  }
-  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 38px rgba(0, 196, 148, .4); }
+  .btn-primary { background: linear-gradient(135deg, #3BE6BC, var(--brand-deep)); color: #03231B; box-shadow: 0 10px 30px rgba(0, 196, 148, .3), inset 0 1px 0 rgba(255, 255, 255, .35); }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(0, 196, 148, .42), inset 0 1px 0 rgba(255, 255, 255, .35); }
   .btn-ghost { border-color: var(--line-strong); color: var(--text-2); background: var(--surface); }
   .btn-ghost:hover { border-color: var(--brand); color: var(--brand); }
   .btn svg { width: 17px; height: 17px; flex: none; }
-  .alt-dl { margin-top: 15px; font-size: 13.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+  .alt-dl { margin-top: 14px; font-size: 13.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
   .alt-dl a { color: var(--text-3); text-decoration: none; border-bottom: 1px dashed var(--line-strong); padding-bottom: 1px; }
   .alt-dl a:hover { color: var(--brand); border-bottom-color: var(--brand); }
 
-  /* ---- 终端卡片(与社交预览图同构) ---------------------------------- */
-  .term {
-    background: rgba(0, 0, 0, .55); border: 1px solid var(--line-strong);
-    border-radius: 16px; overflow: hidden; box-shadow: 0 26px 70px rgba(0, 0, 0, .5);
+  .chips { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+  .chips li { font-size: 13px; color: var(--text-2); padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+  .chips li.free { color: var(--brand); border-color: rgba(47, 216, 171, .4); background: rgba(47, 216, 171, .08); }
+
+  /* 右侧:实机截图 + 坐在角上的看板娘 */
+  .hero-art { position: relative; perspective: 1600px; padding: 0 0 120px 0; margin-right: -40px; }
+  .shot {
+    position: relative; border-radius: 14px; overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .1);
+    box-shadow: 0 40px 90px rgba(0, 0, 0, .55), 0 0 0 1px rgba(47, 216, 171, .08), 0 0 80px rgba(16, 214, 164, .12);
+    transform: rotateY(-9deg) rotateX(3deg); transform-origin: 70% 50%;
+    transition: transform .8s var(--ease);
   }
-  .term-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .03); }
-  .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
-  .term-title { margin-left: 12px; font-family: var(--font-mono); font-size: 13px; color: var(--text-3); }
-  .term-body { padding: 20px 22px 24px; font-family: var(--font-mono); font-size: 14px; line-height: 2; color: var(--text-2); }
-  .term-body .p { color: var(--brand); }
-  .term-body .c { color: var(--text-bright); }
-  .term-body .d { color: var(--muted); }
-  .term-body .hl { background: rgba(56, 219, 175, .26); border-radius: 2px; padding: 0 5px; color: var(--text-bright); }
-  .term-body .ok { color: var(--brand); }
-  .live { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--brand); margin-right: 8px; vertical-align: middle; }
-  .caret { display: inline-block; width: 8px; height: 17px; background: var(--brand); vertical-align: -3px; animation: blink 1.15s step-end infinite; }
-  @keyframes blink { 50% { opacity: 0; } }
+  .hero-art:hover .shot { transform: rotateY(-3deg) rotateX(1deg); }
+  .shot::after { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255, 255, 255, .08), transparent 36%); pointer-events: none; }
+
+  .mascot {
+    position: absolute; left: -54px; bottom: -6px; width: 34%; max-width: 220px;
+    background: none; border: 0; cursor: pointer; padding: 0;
+    animation: bob 4.6s ease-in-out infinite; filter: drop-shadow(0 18px 30px rgba(0, 0, 0, .45));
+  }
+  .mascot img { width: 100%; transition: transform .3s var(--ease); }
+  .mascot:hover img { transform: rotate(-3deg) scale(1.03); }
+  .mascot.wiggle img { animation: wiggle .5s var(--ease); }
+  @keyframes bob { 50% { transform: translateY(-9px); } }
+  @keyframes wiggle { 25% { transform: rotate(-6deg) scale(1.04); } 60% { transform: rotate(4deg) scale(1.04); } }
+  .bubble {
+    position: absolute; left: 62%; top: -2%; white-space: nowrap;
+    font-size: 14px; font-weight: 650; color: #0B2A24; background: #FFFFFF;
+    padding: 7px 13px; border-radius: 14px 14px 14px 4px; box-shadow: 0 8px 20px rgba(0, 0, 0, .3);
+    transition: opacity .25s, transform .25s var(--ease);
+  }
+  .bubble.swap { opacity: 0; transform: translateY(4px) scale(.96); }
+
+  /* ---- 关键词滚动条 + 数字 ----------------------------------------- */
+  .ticker { border-block: 1px solid var(--line); background: rgba(255, 255, 255, .015); overflow: hidden; }
+  .ticker-track { display: flex; gap: 36px; width: max-content; padding: 14px 0; animation: marquee 48s linear infinite; }
+  .ticker:hover .ticker-track { animation-play-state: paused; }
+  .ticker span { font-family: var(--font-mono); font-size: 13.5px; color: var(--text-3); white-space: nowrap; display: inline-flex; align-items: center; gap: 36px; }
+  .ticker span::after { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--brand); opacity: .55; }
+  @keyframes marquee { to { transform: translateX(-50%); } }
+
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; padding: 46px 24px 10px; }
+  .stat { text-align: center; }
+  .stat b { display: block; font-size: 42px; font-weight: 800; letter-spacing: -1px; line-height: 1.1; }
+  .stat span { font-size: 14px; color: var(--text-3); }
 
   /* ---- 通用分区 ------------------------------------------------------ */
-  section { padding: 74px 0; }
-  .sec-head { max-width: 62ch; margin-bottom: 42px; }
-  .eyebrow { font-family: var(--font-mono); font-size: 12.5px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--brand); margin-bottom: 12px; }
-  h2 { font-size: 34px; line-height: 1.25; font-weight: 750; letter-spacing: -.7px; color: var(--text-bright); }
-  .sec-head p { margin-top: 13px; font-size: 16px; color: var(--text-3); }
+  section { padding: 92px 0; position: relative; }
+  .sec-head { max-width: 64ch; margin-bottom: 44px; }
+  .sec-head.center { margin-left: auto; margin-right: auto; text-align: center; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12.5px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--brand); margin-bottom: 14px; }
+  .eyebrow::before { content: ">_"; padding: 1px 6px; border-radius: 6px; background: rgba(47, 216, 171, .12); letter-spacing: 0; }
+  h2 { font-size: 40px; line-height: 1.2; font-weight: 800; letter-spacing: -1px; color: var(--text-bright); }
+  .sec-head p { margin-top: 14px; font-size: 16.5px; color: var(--text-3); }
 
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); gap: 16px; }
+  /* ---- 特性:Bento ---------------------------------------------------- */
+  .bento { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-flow: dense; gap: 16px; }
   .card {
-    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 24px 22px; transition: border-color .18s, background .18s, transform .18s;
+    position: relative; overflow: hidden; border-radius: var(--radius);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .02));
+    border: 1px solid var(--line); padding: 24px 22px;
+    transition: border-color .25s, transform .25s var(--ease);
   }
-  .card:hover { border-color: var(--line-strong); background: var(--surface-2); transform: translateY(-3px); }
-  .card h3 { font-size: 16.5px; font-weight: 680; color: var(--text-bright); margin-bottom: 9px; display: flex; align-items: center; gap: 9px; }
-  .card h3 svg { width: 18px; height: 18px; flex: none; color: var(--brand); }
+  /* 跟随鼠标的辉光,坐标由脚本写进 --mx / --my */
+  .card::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s;
+    background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(47, 216, 171, .12), transparent 45%);
+  }
+  .card:hover { border-color: var(--line-strong); transform: translateY(-3px); }
+  .card:hover::before { opacity: 1; }
+  .card.big { grid-column: span 2; grid-row: span 2; display: flex; flex-direction: column; }
+  .card.wide { grid-column: span 2; }
+  .ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 16px; color: var(--brand); background: rgba(47, 216, 171, .1); border: 1px solid rgba(47, 216, 171, .2); }
+  .ico svg { width: 20px; height: 20px; }
+  .card h3 { font-size: 17px; font-weight: 700; color: var(--text-bright); margin-bottom: 8px; letter-spacing: -.2px; }
+  .card.big h3 { font-size: 22px; }
   .card p { font-size: 14.5px; color: var(--text-3); line-height: 1.7; }
+  .card.big p { font-size: 15.5px; max-width: 46ch; }
 
-  /* ---- 插件生态 ------------------------------------------------------ */
-  .repos { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 30px; }
-  .repo {
-    display: block; text-decoration: none; padding: 18px 20px; border-radius: 12px;
-    background: var(--surface); border: 1px solid var(--line); transition: border-color .18s, background .18s;
+  .demo { margin-top: auto; padding-top: 22px; }
+  .vt { border-radius: 14px; background: rgba(0, 0, 0, .45); border: 1px solid var(--line); padding: 16px 18px; font-family: var(--font-mono); font-size: 13px; line-height: 1.9; color: var(--text-2); }
+  .vt .p { color: var(--brand); }
+  .vt .bar { height: 10px; border-radius: 4px; margin: 6px 0 10px; background: linear-gradient(90deg, #FF4D4D, #FFB020, #FFF15A, #3DDC84, #2FD8AB, #33A1FF, #8C5CFF, #FF4FD8); }
+  .vt .cjk { color: var(--text-bright); }
+  .vt .blk { display: flex; align-items: center; gap: 8px; }
+  .vt .blk i { width: 3px; height: 16px; border-radius: 2px; background: var(--brand); }
+  .vt .blk.fail i { background: #FF6B6B; }
+  .vt .blk.fail { color: #FF8C8C; }
+  .vt .caret { display: inline-block; width: 8px; height: 15px; background: var(--brand); vertical-align: -2px; animation: blink 1.15s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .dock { display: grid; grid-template-columns: 1.3fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px; height: 190px; }
+  .pane { border-radius: 12px; background: rgba(0, 0, 0, .42); border: 1px solid var(--line); padding: 10px 12px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); position: relative; overflow: hidden; }
+  .pane:first-child { grid-row: span 2; }
+  .pane b { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
+  .pane b::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--brand); }
+  .pane.sync { border-color: rgba(255, 157, 176, .45); }
+  .pane.sync b::after { content: "SYNC"; margin-left: auto; font-size: 10px; color: var(--pink); border: 1px solid rgba(255, 157, 176, .5); border-radius: 5px; padding: 0 5px; }
+  .kbd { display: inline-flex; gap: 4px; margin-top: 12px; }
+  .kbd kbd { font-family: var(--font-mono); font-size: 12px; color: var(--text-2); padding: 2px 8px; border-radius: 7px; border: 1px solid var(--line-strong); border-bottom-width: 2px; background: var(--surface); }
+
+  .swatches { display: flex; gap: 6px; margin-top: 16px; }
+  .swatches i { width: 22px; height: 22px; border-radius: 7px; border: 1px solid rgba(255, 255, 255, .12); }
+
+  /* ---- 实机截图 ------------------------------------------------------ */
+  .tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 26px; }
+  .tab {
+    font: inherit; font-size: 14.5px; cursor: pointer; color: var(--text-3);
+    padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
+    transition: color .18s, border-color .18s, background .18s;
   }
-  .repo:hover { border-color: var(--brand); background: var(--surface-2); }
-  .repo code { font-family: var(--font-mono); font-size: 13.5px; color: var(--brand); }
-  .repo span { display: block; margin-top: 7px; font-size: 13.5px; color: var(--text-3); }
+  .tab:hover { color: var(--text-bright); border-color: var(--line-strong); }
+  .tab[aria-selected="true"] { color: #03231B; background: var(--brand); border-color: var(--brand); font-weight: 650; }
+  .stage { position: relative; max-width: 1040px; margin: 0 auto; }
+  .stage-frame {
+    border-radius: 16px; overflow: hidden; border: 1px solid rgba(255, 255, 255, .1); background: #12161D; aspect-ratio: 16 / 9;
+    box-shadow: 0 40px 100px rgba(0, 0, 0, .5), 0 0 120px rgba(16, 214, 164, .08);
+  }
+  .stage-frame img { width: 100%; height: 100%; object-fit: cover; }
+  .stage-frame img[hidden] { display: none; }
+  .stage-cap { text-align: center; margin-top: 18px; font-size: 15px; color: var(--text-3); min-height: 1.6em; }
+  .stage-peek { position: absolute; right: -54px; top: -96px; width: 150px; transform: rotate(8deg); filter: drop-shadow(0 14px 22px rgba(0, 0, 0, .45)); pointer-events: none; }
 
+  /* ---- 看板娘 -------------------------------------------------------- */
+  .mascot-grid { display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); gap: 56px; align-items: center; }
+  .kv { position: relative; }
+  .kv img { border-radius: 26px; border: 1px solid rgba(255, 255, 255, .12); box-shadow: 0 40px 90px rgba(0, 0, 0, .5); }
+  .kv::before { content: ""; position: absolute; inset: -18px; border-radius: 40px; z-index: -1; background: conic-gradient(from 200deg, rgba(47, 216, 171, .35), rgba(140, 148, 255, .25), rgba(255, 157, 176, .25), rgba(47, 216, 171, .35)); filter: blur(34px); opacity: .7; }
+  .kv-sheet { position: absolute; right: -26px; bottom: -30px; width: 46%; border-radius: 14px; overflow: hidden; border: 3px solid #FFFFFF; transform: rotate(4deg); box-shadow: 0 18px 40px rgba(0, 0, 0, .45); transition: transform .3s var(--ease); }
+  .kv-sheet:hover { transform: rotate(1deg) scale(1.04); }
+  .kv-sheet img { border-radius: 0; border: 0; box-shadow: none; }
+  .kv-sheet span { position: absolute; left: 8px; bottom: 8px; font-size: 12px; font-weight: 650; color: #0B2A24; background: rgba(255, 255, 255, .92); padding: 2px 8px; border-radius: 8px; }
+
+  .traits { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+  .traits li { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--text-2); padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+  .traits li i { width: 9px; height: 9px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px rgba(255, 255, 255, .28); }
+
+  .sub { margin-top: 30px; font-size: 13px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); font-family: var(--font-mono); }
+  .faces { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  .face { text-align: center; font-size: 13px; color: var(--text-3); }
+  .face img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 18px; border: 2px solid rgba(255, 255, 255, .85); margin-bottom: 6px; transition: transform .25s var(--ease), box-shadow .25s; }
+  .face:hover img { transform: translateY(-5px) rotate(-3deg); box-shadow: 0 12px 26px rgba(0, 0, 0, .4); }
+
+  .palette { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  .palette div { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-3); padding: 4px 12px 4px 4px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+  .palette i { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .2); }
+  .mascot-links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+
+  /* ---- 插件 ---------------------------------------------------------- */
+  .plug-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
   .snip {
-    margin-top: 28px; background: rgba(0, 0, 0, .5); border: 1px solid var(--line);
-    border-radius: 12px; padding: 20px 22px; font-family: var(--font-mono);
-    font-size: 13.5px; line-height: 2; color: var(--text-2); overflow-x: auto;
+    position: relative; border-radius: var(--radius); overflow: hidden; background: rgba(0, 0, 0, .5); border: 1px solid var(--line);
+    font-family: var(--font-mono); font-size: 13.5px; line-height: 2; color: var(--text-2);
   }
+  .snip-bar { display: flex; align-items: center; gap: 7px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .03); }
+  .snip-bar i { width: 11px; height: 11px; border-radius: 50%; }
+  .snip-bar span { margin-left: 10px; font-size: 12.5px; color: var(--text-3); }
+  .snip-body { padding: 18px 22px 22px; overflow-x: auto; }
   .snip .p { color: var(--brand); }
   .snip .d { color: var(--muted); }
+  .repos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .repo {
+    display: block; text-decoration: none; padding: 16px 18px; border-radius: 16px;
+    background: var(--surface); border: 1px solid var(--line); transition: border-color .18s, background .18s, transform .18s var(--ease);
+  }
+  .repo:hover { border-color: var(--brand); background: var(--surface-2); transform: translateY(-2px); }
+  .repo code { font-family: var(--font-mono); font-size: 13px; color: var(--brand); }
+  .repo span { display: block; margin-top: 6px; font-size: 13.5px; color: var(--text-3); line-height: 1.6; }
 
-  /* ---- 事实表 -------------------------------------------------------- */
-  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-  .fact { background: #06120F; padding: 22px 20px; }
+  /* ---- 规格 ---------------------------------------------------------- */
+  .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .fact { background: #08131A; padding: 22px 22px; }
   .fact dt { font-size: 12.5px; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); font-family: var(--font-mono); margin-bottom: 8px; }
   .fact dd { font-size: 15px; color: var(--text-2); }
+  .fact dd a { color: var(--brand); text-decoration: none; }
+  .note { margin-top: 22px; padding: 16px 20px; border-left: 2px solid var(--brand); background: rgba(18, 195, 150, .08); border-radius: 0 12px 12px 0; font-size: 14.5px; color: var(--text-3); }
+  .note a { color: var(--brand); }
 
-  .note { margin-top: 26px; padding: 16px 20px; border-left: 2px solid var(--brand); background: rgba(18, 195, 150, .10); border-radius: 0 10px 10px 0; font-size: 14.5px; color: var(--text-3); }
+  /* ---- 收尾号召 ------------------------------------------------------ */
+  .final {
+    position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 30px;
+    padding: 46px 48px; border-radius: 28px; overflow: hidden;
+    background: radial-gradient(circle at 15% 20%, rgba(47, 216, 171, .22), transparent 55%), radial-gradient(circle at 90% 80%, rgba(140, 148, 255, .2), transparent 55%), rgba(255, 255, 255, .03);
+    border: 1px solid var(--line-strong);
+  }
+  .final h2 { font-size: 36px; }
+  .final .quote { margin-top: 12px; font-size: 17px; color: var(--brand-lite); }
+  .final .cta { margin-top: 24px; }
+  .final img { width: 230px; margin: -30px -10px -56px 0; filter: drop-shadow(0 18px 30px rgba(0, 0, 0, .45)); }
 
   /* ---- 页脚 ---------------------------------------------------------- */
-  footer { border-top: 1px solid var(--line); padding: 46px 0 60px; margin-top: 30px; }
+  footer { border-top: 1px solid var(--line); padding: 50px 0 60px; margin-top: 40px; }
   .foot { display: flex; flex-wrap: wrap; gap: 34px; justify-content: space-between; }
+  .foot-brand { max-width: 300px; }
+  .foot-brand p { margin-top: 12px; font-size: 14px; color: var(--muted); }
   .foot-col h4 { font-size: 12.5px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); font-family: var(--font-mono); margin-bottom: 13px; }
   .foot-col a { display: block; color: var(--text-3); text-decoration: none; font-size: 14.5px; line-height: 2.05; }
   .foot-col a:hover { color: var(--brand); }
-  .copy { margin-top: 38px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 10px 20px; justify-content: space-between; }
+  .copy { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 10px 20px; justify-content: space-between; align-items: center; }
+  .copy img { width: 26px; height: 26px; display: inline-block; vertical-align: middle; margin-right: 8px; }
 
-  [data-en] { display: none; }
-  html[lang="en"] [data-zh] { display: none; }
-  html[lang="en"] [data-en] { display: revert; }
+  /* ---- 滚动入场 ------------------------------------------------------ */
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+  .reveal.in { opacity: 1; transform: none; }
 
+  html:not([lang="en"]) [data-en] { display: none !important; }
+  html[lang="en"] [data-zh] { display: none !important; }
+  /* 语言切换用 !important:.repo span 这类块级规则优先级更高,不加会两种语言同时露出来 */
+
+  @media (max-width: 1080px) {
+    .stage-peek { display: none; }
+    .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
   @media (max-width: 900px) {
-    .hero { grid-template-columns: 1fr; gap: 44px; padding: 56px 0; }
-    .mark h1 { font-size: 46px; }
+    .hero { grid-template-columns: 1fr; gap: 48px; padding-top: 52px; }
+    .hero-art { padding: 0 0 90px 0; margin-right: 0; }
+    .wordmark { font-size: 56px; gap: 16px; }
+    .wordmark img { width: 64px; height: 64px; border-radius: 16px; }
     .tagline { font-size: 25px; }
-    h2 { font-size: 28px; }
+    h2 { font-size: 30px; }
+    section { padding: 68px 0; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 26px; }
+    .mascot-grid, .plug-grid { grid-template-columns: 1fr; }
+    .kv { margin-right: 20px; }
+    .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .final { grid-template-columns: 1fr; padding: 34px 26px; }
+    .final img { width: 180px; margin: 0 auto -40px; }
     .nav-links a:not(.nav-gh) { display: none; }
+  }
+  @media (max-width: 560px) {
+    .wrap, .hero, .stats { padding-left: 16px; padding-right: 16px; }
+    .bento, .repos, .facts { grid-template-columns: 1fr; }
+    .card.big, .card.wide { grid-column: auto; grid-row: auto; }
+    .faces { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .wordmark { font-size: 46px; }
+    .mascot { width: 52%; left: -14px; }
+    .bubble { font-size: 12.5px; }
   }
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
-    .caret { animation: none; }
-    .card:hover, .btn-primary:hover { transform: none; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .reveal { opacity: 1; transform: none; }
+    .shot { transform: none; }
   }
 </style>
 </head>
 
 <body>
 <div class="bg"></div>
-<div class="grid"></div>
+<div class="dots"></div>
 
 <header>
   <div class="wrap nav">
@@ -236,10 +403,15 @@
     </a>
     <nav class="nav-links">
       <a href="#features"><span data-zh>特性</span><span data-en>Features</span></a>
+      <a href="#screens"><span data-zh>截图</span><span data-en>Screens</span></a>
+      <a href="#mascot"><span data-zh>看板娘</span><span data-en>Mascot</span></a>
       <a href="#plugins"><span data-zh>插件</span><span data-en>Plugins</span></a>
       <a href="#facts"><span data-zh>规格</span><span data-en>Specs</span></a>
       <a href="https://github.com/VelaShellLabs/velashell-docs"><span data-zh>文档</span><span data-en>Docs</span></a>
-      <a class="nav-gh" href="https://github.com/joesdu/VelaShell">GitHub</a>
+      <a class="nav-gh" href="https://github.com/joesdu/VelaShell">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.06-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.04 1.78 2.73 1.27 3.4.97.1-.75.41-1.27.74-1.56-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.8 1.18 1.83 1.18 3.09 0 4.41-2.69 5.39-5.25 5.67.42.36.79 1.08.79 2.18v3.23c0 .31.21.67.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+        GitHub
+      </a>
       <button class="lang" id="lang" type="button">English</button>
     </nav>
   </div>
@@ -250,117 +422,285 @@
   <!-- ================= Hero ================= -->
   <div class="wrap hero">
     <div>
-      <div class="mark">
-        <img src="assets/velashell.png" alt="VelaShell">
-        <h1>VelaShell</h1>
-      </div>
-      <p class="pron">
-        /ˈveɪlə ʃɛl/
-        <span data-zh>· 以终端为帆,驶向远方主机</span>
-        <span data-en>· a terminal for a sail, bound for distant hosts</span>
-      </p>
+      <a class="pill" id="rel-pill" href="https://github.com/joesdu/VelaShell/releases/latest">
+        <i class="live"></i>
+        <span id="rel-text"><span data-zh>查看最新版本</span><span data-en>See the latest release</span></span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+
+      <h1 class="wordmark"><img src="assets/velashell.png" alt=""><span>Vela<span class="grad">Shell</span></span></h1>
 
       <p class="tagline">
         <span data-zh>为运维与开发者打造的<br><em>现代化跨平台 SSH 终端</em></span>
         <span data-en>A modern cross-platform SSH terminal<br><em>for ops and developers</em></span>
       </p>
-
-      <p class="lede">
-        <span data-zh>自研 VT 引擎与 VelaDock 可拖拽分屏,SSH / SFTP / FTP 与本地终端标签,跳板机、端口转发隧道、双模插件系统。会话数据经嵌入式 SonnetDB 加密持久化。</span>
-        <span data-en>An in-house VT engine and the VelaDock split-pane workspace; SSH / SFTP / FTP plus local terminal tabs, jump hosts, port-forwarding tunnels and a dual-mode plugin system. Session data is persisted encrypted in the embedded SonnetDB.</span>
+      <p class="pron">
+        /ˈveɪlə ʃɛl/
+        <span data-zh>· 以终端为帆，乘信号之风驶向远方主机</span>
+        <span data-en>· a terminal for a sail, riding the signal to distant hosts</span>
       </p>
 
-      <p class="stack">.NET 11 · Avalonia 12.1 · Windows / Linux / macOS · x64 &amp; arm64</p>
+      <p class="lede">
+        <span data-zh>远程运维一天里要用到的东西，装进同一个窗口：VT 终端引擎、SSH / SFTP / FTP、跳板机与代理、端口转发、SFTP 双栏与目录同步、内置 X 服务端、资源监视，再加上双模插件系统与 AI 助手。</span>
+        <span data-en>Everything a day of remote ops needs, in one window: a VT terminal engine, SSH / SFTP / FTP, jump hosts and proxies, port forwarding, dual-pane SFTP with directory sync, a built-in X server and resource monitoring — plus a dual-mode plugin system and an AI assistant.</span>
+      </p>
 
       <div class="cta">
         <a class="btn btn-primary" id="dl-main" href="https://github.com/joesdu/VelaShell/releases/latest">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span id="dl-label"><span data-zh>下载</span><span data-en>Download</span></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span id="dl-label"><span data-zh>免费下载</span><span data-en>Free download</span></span>
         </a>
         <a class="btn btn-ghost" href="https://github.com/joesdu/VelaShell">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.06-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.04 1.78 2.73 1.27 3.4.97.1-.75.41-1.27.74-1.56-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.8 1.18 1.83 1.18 3.09 0 4.41-2.69 5.39-5.25 5.67.42.36.79 1.08.79 2.18v3.23c0 .31.21.67.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.06-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.04 1.78 2.73 1.27 3.4.97.1-.75.41-1.27.74-1.56-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.8 1.18 1.83 1.18 3.09 0 4.41-2.69 5.39-5.25 5.67.42.36.79 1.08.79 2.18v3.23c0 .31.21.67.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg>
           <span data-zh>在 GitHub 上查看</span><span data-en>View on GitHub</span>
         </a>
       </div>
-
       <p class="alt-dl" id="alt-dl">
-        <span data-zh>其他平台:</span><span data-en>Other platforms:</span>
+        <span data-zh>其他平台：</span><span data-en>Other platforms:</span>
         <a href="https://github.com/joesdu/VelaShell/releases/latest"><span data-zh>全部下载</span><span data-en>All downloads</span></a>
       </p>
+
+      <ul class="chips">
+        <li>Windows · Linux · macOS</li>
+        <li>x64 &amp; arm64</li>
+        <li>.NET 11 + Avalonia 12.1</li>
+        <li class="free"><span data-zh>个人与企业永久免费</span><span data-en>Free forever, personal &amp; business</span></li>
+      </ul>
     </div>
 
-    <!-- 示意用的终端块,不是产品截图。 -->
-    <div class="term" aria-hidden="true">
-      <div class="term-bar">
-        <i class="dot" style="background:#FF5F57"></i>
-        <i class="dot" style="background:#FEBC2E"></i>
-        <i class="dot" style="background:#28C840"></i>
-        <span class="term-title">vela@web-prod-01: ~</span>
+    <div class="hero-art">
+      <div class="shot">
+        <img src="assets/shots/truecolor.webp" width="1600" height="900"
+          alt="VelaShell 实机截图：终端里运行真彩、256 色与 CJK 宽字符测试">
       </div>
-      <div class="term-body">
-        <div><span class="p">$</span> <span class="c">ssh web-prod-01</span></div>
-        <div><span class="live"></span><span class="ok">已连接</span> <span class="d">·</span> ProxyJump bastion <span class="d">·</span> 12 ms</div>
-        <div><span class="p">$</span> <span class="c">systemctl status nginx</span></div>
-        <div>Active: <span class="ok">active (running)</span> 42d</div>
-        <div>Memory: <span class="hl">128.4M</span> / 8G</div>
-        <div>Tasks: <span class="hl">9</span> <span class="d">(limit 4915)</span></div>
-        <div><span class="p">$</span> <span class="caret"></span></div>
-      </div>
+      <button class="mascot" id="mascot" type="button" aria-label="看板娘 / mascot">
+        <span class="bubble" id="bubble">连上啦~</span>
+        <img src="assets/mascot/chibi-laptop.webp" width="520" height="640" alt="">
+      </button>
     </div>
+  </div>
+
+  <!-- ================= 关键词 + 数字 ================= -->
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track" id="ticker">
+      <span>SSH</span><span>SFTP</span><span>FTP / FTPS</span><span>ProxyJump</span><span>SOCKS5</span><span>-L / -R / -D</span>
+      <span>X11 · GLX 1.4</span><span>24-bit TrueColor</span><span>CJK</span><span>OSC 8</span><span>OSC 133</span><span>SSH Certificates</span>
+      <span>SSH Agent</span><span>2FA</span><span>asciicast v2</span><span>AES-256-GCM</span><span>Gist Sync</span><span>Ctrl+P</span><span>MCP</span><span>.vpx</span>
+    </div>
+  </div>
+
+  <div class="wrap stats">
+    <div class="stat reveal"><b class="grad">12</b><span data-zh>套具名主题</span><span data-en>named themes</span></div>
+    <div class="stat reveal"><b class="grad">16</b><span data-zh>套终端配色</span><span data-en>terminal palettes</span></div>
+    <div class="stat reveal"><b class="grad">5</b><span data-zh>种界面语言</span><span data-en>UI languages</span></div>
+    <div class="stat reveal"><b class="grad">3 × 2</b><span data-zh>平台 × 架构</span><span data-en>platforms × architectures</span></div>
   </div>
 
   <!-- ================= 特性 ================= -->
   <section id="features">
     <div class="wrap">
-      <div class="sec-head">
+      <div class="sec-head reveal">
         <p class="eyebrow">Features</p>
-        <h2><span data-zh>键盘优先,信息密度高</span><span data-en>Keyboard-first, information-dense</span></h2>
+        <h2><span data-zh>键盘优先，信息密度高，响应迅速</span><span data-en>Keyboard-first, dense, and fast</span></h2>
         <p>
-          <span data-zh>为高频远程操作设计:少一次抬手去摸鼠标,少一屏无用留白。</span>
+          <span data-zh>为高频远程操作设计：少一次抬手去摸鼠标，少一屏无用留白。</span>
           <span data-en>Built for high-frequency remote work: one less reach for the mouse, one less screen of empty space.</span>
         </p>
       </div>
 
-      <div class="cards">
-        <div class="card">
-          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span data-zh>自研 VT 终端引擎</span><span data-en>In-house VT engine</span></h3>
-          <p><span data-zh>自绘渲染、按单元格排版的终端引擎,配合 ZMODEM 传输与断线重连。</span><span data-en>A self-drawn, cell-based terminal engine, with ZMODEM transfer and reconnect.</span></p>
+      <div class="bento">
+        <article class="card big reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+          <h3><span data-zh>VT 终端引擎</span><span data-en>VT terminal engine</span></h3>
+          <p>
+            <span data-zh>自绘渲染的终端控件，DEC ANSI / VT / Xterm 状态机与十种终端 profile。256 色与 24 位真彩、CJK 双宽、线绘字符、鼠标协议，OSC 8 超链接与 OSC 133 命令块一个不落。</span>
+            <span data-en>A self-drawn terminal control with a DEC ANSI / VT / Xterm state machine and ten terminal profiles. 256 colours and 24-bit truecolor, CJK double width, line drawing, mouse protocols, OSC 8 hyperlinks and OSC 133 command blocks.</span>
+          </p>
+          <div class="demo">
+            <div class="vt" aria-hidden="true">
+              <div><span class="p">$</span> python3 truecolor.py</div>
+              <div class="bar"></div>
+              <div class="cjk">简体中文 · 日本語 · 한국어 · ╭─╮ ▁▃▅▇</div>
+              <div class="blk"><i></i>make test <span style="color:var(--brand)">✓ 1024 passed</span></div>
+              <div class="blk fail"><i></i>make deploy ✗ exit 2</div>
+              <div><span class="p">$</span> <span class="caret"></span></div>
+            </div>
+          </div>
+        </article>
+
+        <article class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg></div>
+          <h3><span data-zh>SSH / SFTP / FTP 与本地终端</span><span data-en>SSH / SFTP / FTP and local shells</span></h3>
+          <p><span data-zh>与本机终端（Windows ConPTY）同屏并列；断线自动重连，睡眠唤醒与网络恢复也照顾到。</span><span data-en>Side by side with local shells (Windows ConPTY); automatic reconnect, even after sleep or a network drop.</span></p>
+        </article>
+
+        <article class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4M18 5l2 2M15 8l2 2"/></svg></div>
+          <h3><span data-zh>认证与密钥</span><span data-en>Auth and keys</span></h3>
+          <p><span data-zh>密码、私钥、SSH 证书与 Agent；两步验证、主机指纹 TOFU，共享凭据改一处全生效。</span><span data-en>Passwords, keys, SSH certificates and Agent; two-step auth, host-key TOFU, and shared credentials updated in one place.</span></p>
+        </article>
+
+        <article class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="6" r="2"/><circle cx="19" cy="12" r="2"/><path d="M6.5 10.5 10.5 7.5M13.5 7.5l4 3"/></svg></div>
+          <h3><span data-zh>跳板机与代理</span><span data-en>Jump hosts and proxies</span></h3>
+          <p><span data-zh>原生 ProxyJump 链式跳转（≤5 跳、环检测），HTTP / SOCKS5 / 跟随系统代理。</span><span data-en>Native chained ProxyJump (up to 5 hops, loop detection), plus HTTP / SOCKS5 / system proxies.</span></p>
+        </article>
+
+        <article class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M8 8l3 3-3 3M13 14h3"/></svg></div>
+          <h3><span data-zh>内置 X 服务端</span><span data-en>Built-in X server</span></h3>
+          <p><span data-zh>VelaShell.XServer：每个 X 窗口一个原生窗口，剪贴板双向、多显示器与 DPI、GLX 1.4。</span><span data-en>VelaShell.XServer: a native window per X window, two-way clipboard, multi-monitor and DPI aware, GLX 1.4.</span></p>
+        </article>
+
+        <article class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 13h6M13 11l2 2-2 2"/></svg></div>
+          <h3><span data-zh>SFTP 双栏与目录同步</span><span data-en>Dual-pane SFTP and sync</span></h3>
+          <p><span data-zh>拖拽互传、断点续传与传输队列；目录比较按 SHA-256，远程文件内置编辑器改完即回传。</span><span data-en>Drag-and-drop, resumable transfers and a queue; SHA-256 directory sync; edit remote files and save straight back.</span></p>
+        </article>
+
+        <article class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19"/></svg></div>
+          <h3><span data-zh>端口转发隧道</span><span data-en>Port-forwarding tunnels</span></h3>
+          <p><span data-zh>本地 -L / 远程 -R / 动态 SOCKS5 -D，实时连接数与字节数，端口冲突预检。</span><span data-en>Local -L, remote -R and dynamic SOCKS5 -D, with live counters and port-conflict checks.</span></p>
+        </article>
+
+        <article class="card big reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/><line x1="12" y1="12" x2="21" y2="12"/></svg></div>
+          <h3><span data-zh>VelaDock 工作区</span><span data-en>The VelaDock workspace</span></h3>
+          <p>
+            <span data-zh>零第三方停靠依赖的拖拽分屏，多终端同步输入，命令面板直达全部动作；快捷键可改键、可解绑，还能从 Xshell / WinSCP / ~/.ssh/config 导入会话。</span>
+            <span data-en>Drag-to-split docking with no third-party dock dependency, synchronized input across terminals and a command palette for every action; rebindable shortcuts, and session import from Xshell / WinSCP / ~/.ssh/config.</span>
+          </p>
+          <div class="demo">
+            <div class="dock" aria-hidden="true">
+              <div class="pane sync"><b>web-01</b>$ tail -f access.log<br>200 GET /api/health<br>200 GET /api/v1/hosts<br>304 GET /static/app.js</div>
+              <div class="pane sync"><b>web-02</b>$ tail -f access.log<br>200 GET /api/health</div>
+              <div class="pane"><b>sftp · /var/www</b>releases/<br>shared/<br>current → releases/42</div>
+            </div>
+            <div class="kbd"><kbd>Ctrl</kbd><kbd>P</kbd></div>
+          </div>
+        </article>
+
+        <article class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></div>
+          <h3><span data-zh>运维工具箱</span><span data-en>Ops toolbox</span></h3>
+          <p><span data-zh>资源监视、进程管理、带地理信息的路由追踪；会话录制可导出 asciicast v2。</span><span data-en>Resource monitor, process manager, geo-aware traceroute; session recording exportable as asciicast v2.</span></p>
+        </article>
+
+        <article class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <h3><span data-zh>数据与安全</span><span data-en>Data and security</span></h3>
+          <p><span data-zh>凭据 AES-256-GCM 加密；GitHub Gist 云同步可端到端加密、版本可回溯；安全审计日志。</span><span data-en>Credentials encrypted with AES-256-GCM; optional end-to-end encrypted Gist sync with history; a security audit log.</span></p>
+        </article>
+
+        <article class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2a10 10 0 0 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.3A5.7 5.7 0 0 0 22 9.7C22 5.4 17.5 2 12 2z"/></svg></div>
+          <h3><span data-zh>12 套主题</span><span data-en>12 themes</span></h3>
+          <p><span data-zh>7 暗 5 亮，与 16 套终端配色成对联动，全令牌化、零硬编码颜色。</span><span data-en>7 dark and 5 light, paired with 16 terminal palettes — fully tokenized, no hard-coded colours.</span></p>
+          <div class="swatches" aria-hidden="true"><i style="background:#19C39A"></i><i style="background:#7C6CF0"></i><i style="background:#F06A8C"></i><i style="background:#F2B43C"></i><i style="background:#3D9BFF"></i><i style="background:#E9EEF2"></i></div>
+        </article>
+
+        <article class="card wide reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4z"/><path d="M14 4h6v6h-6z"/><path d="M4 14h6v6H4z"/><path d="M17 14v6M14 17h6"/></svg></div>
+          <h3><span data-zh>双模插件系统 + AI 助手</span><span data-en>Dual-mode plugins + AI assistant</span></h3>
+          <p><span data-zh>插件进程内或独立进程装载，危险能力逐项授权，.vpx 打包与发布者指纹钉住。第一方 AI 助手随程序发布：读懂会话上下文，Agent 模式下执行只读命令并总结，支持 MCP。</span><span data-en>Plugins load in-process or isolated, with per-capability consent, .vpx packages and pinned publisher fingerprints. The first-party AI assistant ships with the app: it reads the session context, runs read-only commands in Agent mode and supports MCP.</span></p>
+        </article>
+
+        <article class="card reveal">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 4.5v9L12 21 3 16.5v-9z"/><path d="M3 7.5L12 12l9-4.5M12 12v9"/></svg></div>
+          <h3><span data-zh>堡垒机 / SSO 拉起</span><span data-en>Launched by bastions / SSO</span></h3>
+          <p><span data-zh>按 Xshell 的调用约定被外部拉起，换客户端不必改门户。</span><span data-en>Uses Xshell's calling convention — swap the client without touching the portal.</span></p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 实机截图 ================= -->
+  <section id="screens">
+    <div class="wrap">
+      <div class="sec-head center reveal">
+        <p class="eyebrow">Screens</p>
+        <h2><span data-zh>一个窗口，装下远程运维的一天</span><span data-en>One window for a whole day of remote ops</span></h2>
+        <p><span data-zh>以下全部是实机界面。</span><span data-en>Every image below is the real app.</span></p>
+      </div>
+
+      <div class="tabs" role="tablist" id="tabs">
+        <button class="tab" role="tab" aria-selected="true" data-shot="htop"><span data-zh>终端</span><span data-en>Terminal</span></button>
+        <button class="tab" role="tab" aria-selected="false" data-shot="sftp">SFTP</button>
+        <button class="tab" role="tab" aria-selected="false" data-shot="monitor"><span data-zh>资源监视</span><span data-en>Monitor</span></button>
+        <button class="tab" role="tab" aria-selected="false" data-shot="ai"><span data-zh>AI 助手</span><span data-en>AI assistant</span></button>
+        <button class="tab" role="tab" aria-selected="false" data-shot="themes"><span data-zh>主题</span><span data-en>Themes</span></button>
+      </div>
+
+      <div class="stage reveal">
+        <img class="stage-peek" src="assets/mascot/chibi-wave.webp" width="520" height="603" alt="" loading="lazy">
+        <div class="stage-frame">
+          <img data-shot="htop" src="assets/shots/htop.webp" width="1600" height="900" loading="lazy" alt="终端里运行 htop">
+          <img data-shot="sftp" src="assets/shots/sftp.webp" width="1600" height="900" loading="lazy" alt="SFTP 双栏" hidden>
+          <img data-shot="monitor" src="assets/shots/monitor.webp" width="1600" height="900" loading="lazy" alt="系统资源监视" hidden>
+          <img data-shot="ai" src="assets/shots/ai.webp" width="1600" height="900" loading="lazy" alt="AI 助手面板" hidden>
+          <img data-shot="themes" src="assets/shots/themes.webp" width="1600" height="900" loading="lazy" alt="外观设置与亮色主题" hidden>
         </div>
-        <div class="card">
-          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg><span data-zh>SSH / SFTP / FTP 与本地终端</span><span data-en>SSH / SFTP / FTP and local shells</span></h3>
-          <p><span data-zh>独立 SFTP 标签、本地/远程双栏互拖与断点续传;本地终端标签同屏并列。</span><span data-en>A dedicated SFTP tab with dual local/remote panes, drag-and-drop and resumable transfers; local terminal tabs alongside.</span></p>
+        <p class="stage-cap" id="stage-cap"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 看板娘 ================= -->
+  <section id="mascot">
+    <div class="wrap mascot-grid">
+      <div class="kv reveal">
+        <img src="assets/mascot/key-visual.webp" width="960" height="960" loading="lazy" alt="VelaShell 看板娘主视觉：抱着黑猫玩偶伸出手的猫耳少女">
+        <a class="kv-sheet" href="assets/mascot/character-sheet.webp" target="_blank" rel="noopener">
+          <img src="assets/mascot/character-sheet.webp" width="1536" height="1024" loading="lazy" alt="看板娘设定图">
+          <span data-zh>设定图 ↗</span><span data-en>Character sheet ↗</span>
+        </a>
+      </div>
+
+      <div class="reveal">
+        <p class="eyebrow">Mascot</p>
+        <h2><span data-zh>认识 VelaShell 的看板娘</span><span data-en>Meet the VelaShell mascot</span></h2>
+        <p class="lede" style="max-width:none">
+          <span data-zh>银白长卷发的猫耳少女：左边别着青绿色的 <code>&gt;_</code> 终端发卡，右边是黑猫发卡和金铃铛，披着青绿帽里的黑色连帽外套，怀里总抱着那只黑猫玩偶。她已经出现在 README、宣传视频和社交预览图里 —— 现在也在这里陪你。</span>
+          <span data-en>A silver-haired cat-eared girl: a teal <code>&gt;_</code> terminal clip on one side, a black-cat clip and a gold bell on the other, an oversized black hoodie lined in teal, and the black cat plush she never puts down. She's in the README, the promo video and the social preview cards — and now she's here too.</span>
+        </p>
+
+        <ul class="traits">
+          <li><i style="background:#EEF0F6"></i><span data-zh>银白长卷发 · 呆毛</span><span data-en>Silver wavy hair · ahoge</span></li>
+          <li><i style="background:#F8B4C2"></i><span data-zh>灰外耳 · 粉内耳</span><span data-en>Grey cat ears, pink inside</span></li>
+          <li><i style="background:#19C39A"></i><span data-zh>青绿眼 · 小虎牙</span><span data-en>Teal eyes · tiny fang</span></li>
+          <li><i style="background:#2FE0B4"></i><span data-zh>&gt;_ 终端发卡</span><span data-en>&gt;_ terminal hair clip</span></li>
+          <li><i style="background:#F2C14E"></i><span data-zh>黑猫发卡 · 金铃铛</span><span data-en>Black-cat clip · gold bell</span></li>
+          <li><i style="background:#1E2128"></i><span data-zh>黑色宽松连帽外套</span><span data-en>Oversized black hoodie</span></li>
+          <li><i style="background:#FFFFFF"></i><span data-zh>白色蓬松猫尾</span><span data-en>Fluffy white tail</span></li>
+          <li><i style="background:#23D8AB"></i><span data-zh>黑猫玩偶</span><span data-en>Black cat plush</span></li>
+        </ul>
+
+        <p class="sub"><span data-zh>表情</span><span data-en>Expressions</span></p>
+        <div class="faces">
+          <div class="face"><img src="assets/mascot/faces/happy.webp" width="126" height="126" loading="lazy" alt=""><span data-zh>开心</span><span data-en>Happy</span></div>
+          <div class="face"><img src="assets/mascot/faces/excited.webp" width="126" height="126" loading="lazy" alt=""><span data-zh>兴奋</span><span data-en>Excited</span></div>
+          <div class="face"><img src="assets/mascot/faces/default.webp" width="126" height="126" loading="lazy" alt=""><span data-zh>默认</span><span data-en>Default</span></div>
+          <div class="face"><img src="assets/mascot/faces/curious.webp" width="126" height="126" loading="lazy" alt=""><span data-zh>好奇</span><span data-en>Curious</span></div>
+          <div class="face"><img src="assets/mascot/faces/angry.webp" width="126" height="126" loading="lazy" alt=""><span data-zh>生气</span><span data-en>Angry</span></div>
+          <div class="face"><img src="assets/mascot/faces/shy.webp" width="126" height="126" loading="lazy" alt=""><span data-zh>害羞</span><span data-en>Shy</span></div>
         </div>
-        <div class="card">
-          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/><path d="M4 6h1a3 3 0 0 1 3 3v6a3 3 0 0 0 3 3h1"/><circle cx="19" cy="12" r="2"/></svg><span data-zh>跳板机与网络代理</span><span data-en>Jump hosts and proxies</span></h3>
-          <p><span data-zh>原生 ProxyJump 链式跳转,HTTP / SOCKS5 / 跟随系统代理。</span><span data-en>Native chained ProxyJump, plus HTTP / SOCKS5 / follow-system proxying.</span></p>
+
+        <p class="sub"><span data-zh>配色</span><span data-en>Palette</span></p>
+        <div class="palette">
+          <div><i style="background:#19C39A"></i><span data-zh>青绿</span><span data-en>Teal</span> #19C39A</div>
+          <div><i style="background:#1E2128"></i><span data-zh>墨黑</span><span data-en>Ink</span></div>
+          <div><i style="background:#FFFFFF"></i><span data-zh>纯白</span><span data-en>White</span></div>
+          <div><i style="background:#BFF3E2"></i><span data-zh>薄荷</span><span data-en>Mint</span></div>
+          <div><i style="background:#F8B4C2"></i><span data-zh>淡粉</span><span data-en>Pink</span></div>
+          <div><i style="background:#F2C14E"></i><span data-zh>铃铛金</span><span data-en>Bell gold</span></div>
         </div>
-        <div class="card">
-          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19"/></svg><span data-zh>端口转发隧道</span><span data-en>Port-forwarding tunnels</span></h3>
-          <p><span data-zh>本地 / 远程转发隧道,与会话配置一同分组管理。</span><span data-en>Local and remote forwarding tunnels, grouped alongside session profiles.</span></p>
-        </div>
-        <div class="card">
-          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/><line x1="12" y1="12" x2="21" y2="12"/></svg><span data-zh>VelaDock 可拖拽分屏</span><span data-en>VelaDock split panes</span></h3>
-          <p><span data-zh>自研停靠框架,零第三方依赖;任意标签组可水平/垂直拆分。</span><span data-en>An in-house docking framework with no third-party dependency; any tab group splits horizontally or vertically.</span></p>
-        </div>
-        <div class="card">
-          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span data-zh>两步验证与指纹校验</span><span data-en>2FA and host fingerprints</span></h3>
-          <p><span data-zh>两步身份验证、主机指纹校验与已信任主机管理,会话录制与安全审计。</span><span data-en>Two-step authentication, host fingerprint checks and trusted-host management, with session recording and a security audit trail.</span></p>
-        </div>
-        <div class="card">
-          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg><span data-zh>资源监视与路由追踪</span><span data-en>Resource monitor and traceroute</span></h3>
-          <p><span data-zh>远端资源监视;mtr 式跃点表配世界地图落点,离线 IP 归属地。</span><span data-en>Remote resource monitoring; an mtr-style hop table with a world map and offline IP geolocation.</span></p>
-        </div>
-        <div class="card">
-          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span data-zh>命令面板与快捷键</span><span data-en>Command palette and shortcuts</span></h3>
-          <p><span data-zh>命令面板直达全部动作;快捷键有唯一事实来源,与文档同源生成。</span><span data-en>A command palette for every action; shortcuts have a single source of truth that the docs are generated from.</span></p>
-        </div>
-        <div class="card">
-          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4z"/><path d="M14 4h6v6h-6z"/><path d="M4 14h6v6H4z"/><path d="M17 14v6M14 17h6"/></svg><span data-zh>双模插件系统 + AI 助手</span><span data-en>Dual-mode plugins + AI assistant</span></h3>
-          <p><span data-zh>进程内或独立进程装载,权限闸门与能力 API;第一方 AI 助手插件随程序发布。</span><span data-en>In-process or isolated-process loading, with a permission gate and capability APIs; the first-party AI assistant ships with the app.</span></p>
-        </div>
-        <div class="card">
-          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 4.5v9L12 21 3 16.5v-9z"/><path d="M3 7.5L12 12l9-4.5M12 12v9"/></svg><span data-zh>堡垒机 / SSO 外部拉起</span><span data-en>Launched by jump servers / SSO</span></h3>
-          <p><span data-zh>按 Xshell 的调用约定被堡垒机或 SSO 门户外部拉起,替换现有客户端不必改门户。</span><span data-en>Launches from a bastion or SSO portal using Xshell's calling convention — swap the client without touching the portal.</span></p>
+
+        <div class="mascot-links">
+          <a class="btn btn-ghost" href="https://github.com/joesdu/VelaShell/tree/main/mascot">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>
+            <span data-zh>素材与形象设定</span><span data-en>Assets &amp; character notes</span>
+          </a>
         </div>
       </div>
     </div>
@@ -369,57 +709,62 @@
   <!-- ================= 插件 ================= -->
   <section id="plugins">
     <div class="wrap">
-      <div class="sec-head">
+      <div class="sec-head reveal">
         <p class="eyebrow">Plugins</p>
-        <h2><span data-zh>一条命令建工程,一条命令发出去</span><span data-en>One command to scaffold, one to ship</span></h2>
+        <h2><span data-zh>一条命令建工程，一条命令发出去</span><span data-en>One command to scaffold, one to ship</span></h2>
         <p>
-          <span data-zh>插件工程只引用一个 NuGet 包,契约程序集、与宿主一致的 Avalonia、清单校验与打包器都随它到位。</span>
+          <span data-zh>插件工程只引用一个 NuGet 包，契约程序集、与宿主一致的 Avalonia、清单校验与打包器都随它到位。</span>
           <span data-en>A plugin project references a single NuGet package — the contract assembly, a host-matched Avalonia, manifest validation and the packer all come with it.</span>
         </p>
       </div>
 
-      <div class="snip">
-        <div><span class="d"># <span data-zh>装模板,建工程,打出 .vpx</span><span data-en>install the templates, scaffold, produce a .vpx</span></span></div>
-        <div><span class="p">$</span> dotnet new install VelaShell.Plugin.Templates</div>
-        <div><span class="p">$</span> dotnet new velaplugin-ui -n MyPlugin --publisher acme</div>
-        <div><span class="p">$</span> dotnet build -t:PackVpx</div>
-        <div>&nbsp;</div>
-        <div><span class="d"># <span data-zh>从插件商店装别人的插件</span><span data-en>install someone else's plugin from the marketplace</span></span></div>
-        <div><span class="p">$</span> dotnet tool install -g VelaShell.Plugin.Cli</div>
-        <div><span class="p">$</span> vela-plugin install velashell.redis</div>
-      </div>
+      <div class="plug-grid">
+        <div class="snip reveal">
+          <div class="snip-bar"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i><span>~/plugins</span></div>
+          <div class="snip-body">
+            <div><span class="d"># <span data-zh>装模板，建工程，打出 .vpx</span><span data-en>install the templates, scaffold, produce a .vpx</span></span></div>
+            <div><span class="p">$</span> dotnet new install VelaShell.Plugin.Templates</div>
+            <div><span class="p">$</span> dotnet new velaplugin-ui -n MyPlugin --publisher acme</div>
+            <div><span class="p">$</span> dotnet build -t:PackVpx</div>
+            <div>&nbsp;</div>
+            <div><span class="d"># <span data-zh>从插件商店装别人的插件</span><span data-en>install someone else's plugin from the marketplace</span></span></div>
+            <div><span class="p">$</span> dotnet tool install -g VelaShell.Plugin.Cli</div>
+            <div><span class="p">$</span> vela-plugin install velashell.redis</div>
+          </div>
+        </div>
 
-      <div class="repos">
-        <a class="repo" href="https://github.com/VelaShellLabs/velashell-docs">
-          <code>velashell-docs</code>
-          <span data-zh>全部文档:宿主设计、插件蓝图、SDK / CLI / 模板手册</span>
-          <span data-en>All documentation: host design, plugin blueprint, SDK / CLI / template manuals</span>
-        </a>
-        <a class="repo" href="https://github.com/VelaShellLabs/velashell-plugin-sdk">
-          <code>velashell-plugin-sdk</code>
-          <span data-zh>插件契约 SDK 与测试替身</span>
-          <span data-en>The plugin contract SDK and its test doubles</span>
-        </a>
-        <a class="repo" href="https://github.com/VelaShellLabs/velashell-plugin-cli">
-          <code>velashell-plugin-cli</code>
-          <span data-zh><code>vela-plugin</code> 命令行与构建支持包</span>
-          <span data-en>The <code>vela-plugin</code> CLI and MSBuild support package</span>
-        </a>
-        <a class="repo" href="https://github.com/VelaShellLabs/velashell-plugin-templates">
-          <code>velashell-plugin-templates</code>
-          <span data-zh><code>dotnet new</code> 模板与插件开发指南</span>
-          <span data-en>The <code>dotnet new</code> templates and the plugin dev guide</span>
-        </a>
-        <a class="repo" href="https://github.com/VelaShellLabs/velashell-plugins">
-          <code>velashell-plugins</code>
-          <span data-zh>第一方插件:Redis / S3 / Telnet / 串口</span>
-          <span data-en>First-party plugins: Redis / S3 / Telnet / serial</span>
-        </a>
-        <a class="repo" href="https://market.easilynet.top">
-          <code>market.easilynet.top</code>
-          <span data-zh>插件商店:上传、审核、检索与分发</span>
-          <span data-en>The marketplace: upload, review, search and distribution</span>
-        </a>
+        <div class="repos">
+          <a class="repo reveal" href="https://github.com/VelaShellLabs/velashell-docs">
+            <code>velashell-docs</code>
+            <span data-zh>全部文档：宿主设计、插件蓝图、SDK / CLI / 模板手册</span>
+            <span data-en>All docs: host design, plugin blueprint, SDK / CLI / template manuals</span>
+          </a>
+          <a class="repo reveal" href="https://github.com/VelaShellLabs/velashell-plugin-sdk">
+            <code>velashell-plugin-sdk</code>
+            <span data-zh>插件契约 SDK 与测试替身</span>
+            <span data-en>The plugin contract SDK and its test doubles</span>
+          </a>
+          <a class="repo reveal" href="https://github.com/VelaShellLabs/velashell-plugin-cli">
+            <code>velashell-plugin-cli</code>
+            <span data-zh>vela-plugin 命令行与构建支持包</span>
+            <span data-en>The vela-plugin CLI and MSBuild support package</span>
+          </a>
+          <a class="repo reveal" href="https://github.com/VelaShellLabs/velashell-plugin-templates">
+            <code>velashell-plugin-templates</code>
+            <span data-zh>dotnet new 模板与插件开发指南</span>
+            <span data-en>The dotnet new templates and the plugin dev guide</span>
+          </a>
+          <a class="repo reveal" href="https://github.com/VelaShellLabs/velashell-plugins">
+            <code>velashell-plugins</code>
+            <span data-zh>第一方插件：Redis / S3 / Telnet / 串口</span>
+            <span data-en>First-party plugins: Redis / S3 / Telnet / serial</span>
+          </a>
+          <a class="repo reveal" href="https://market.easilynet.top">
+            <code>market.easilynet.top</code>
+            <span data-zh>插件商店：上传、审核、检索与分发</span>
+            <span data-en>The marketplace: upload, review, search and distribution</span>
+          </a>
+        </div>
       </div>
     </div>
   </section>
@@ -427,12 +772,12 @@
   <!-- ================= 规格 ================= -->
   <section id="facts">
     <div class="wrap">
-      <div class="sec-head">
+      <div class="sec-head reveal">
         <p class="eyebrow">Specs</p>
         <h2><span data-zh>规格速览</span><span data-en>At a glance</span></h2>
       </div>
 
-      <dl class="facts">
+      <dl class="facts reveal">
         <div class="fact">
           <dt data-zh>读音</dt><dt data-en>Pronunciation</dt>
           <dd>/ˈveɪlə ʃɛl/ <span data-zh>·「薇拉·谢尔」</span><span data-en>· VAY-la shell</span></dd>
@@ -443,7 +788,7 @@
         </div>
         <div class="fact">
           <dt data-zh>运行时</dt><dt data-en>Runtime</dt>
-          <dd><span data-zh>.NET 11 + Avalonia 12.1,Self-contained 发布,免装 Runtime</span><span data-en>.NET 11 + Avalonia 12.1, self-contained — no runtime install</span></dd>
+          <dd><span data-zh>.NET 11 + Avalonia 12.1，自包含发布，免装 Runtime</span><span data-en>.NET 11 + Avalonia 12.1, self-contained — no runtime install</span></dd>
         </div>
         <div class="fact">
           <dt data-zh>界面语言</dt><dt data-en>UI languages</dt>
@@ -451,7 +796,7 @@
         </div>
         <div class="fact">
           <dt data-zh>许可证</dt><dt data-en>Licence</dt>
-          <dd><a href="https://github.com/joesdu/VelaShell/blob/main/LICENSE">AGPL-3.0</a> <span data-zh>或</span><span data-en>or</span> <a href="https://github.com/joesdu/VelaShell/blob/main/LICENSE-COMMERCIAL.md"><span data-zh>商业授权</span><span data-en>commercial</span></a></dd>
+          <dd><a href="https://github.com/joesdu/VelaShell/blob/main/LICENSE">AGPL-3.0</a> <span data-zh>或</span><span data-en>or</span> <a href="https://github.com/joesdu/VelaShell/blob/main/LICENSE-COMMERCIAL.md"><span data-zh>商业授权</span><span data-en>commercial</span></a><br><span data-zh>个人与企业使用永久免费</span><span data-en>Free forever for personal and business use</span></dd>
         </div>
         <div class="fact">
           <dt data-zh>最新版本</dt><dt data-en>Latest release</dt>
@@ -460,16 +805,38 @@
       </dl>
 
       <p class="note">
-        <span data-zh><strong>项目仍在活跃开发中。</strong>功能与界面可能在版本之间变动;证书认证、容器管理插件、系统密钥链与 sudo 凭据自动填充尚未开放。进度与待办以仓库的 <a href="https://github.com/joesdu/VelaShell/blob/main/plan.md">plan.md</a> 为准。</span>
-        <span data-en><strong>Under active development.</strong> Features and UI may change between releases; certificate authentication, the container-management plugin, and system-keychain / sudo credential autofill are not available yet. The repository's <a href="https://github.com/joesdu/VelaShell/blob/main/plan.md">plan.md</a> is the source of truth for progress and backlog.</span>
+        <span data-zh><strong>项目仍在活跃开发中。</strong>功能与界面可能在版本之间变动；已经做完的见仓库的 <a href="https://github.com/joesdu/VelaShell/blob/main/plan.md">plan.md</a>，待办与候选特性见 <a href="https://github.com/joesdu/VelaShell/blob/main/feature-plan.md">feature-plan.md</a>。</span>
+        <span data-en><strong>Under active development.</strong> Features and UI may change between releases; see the repository's <a href="https://github.com/joesdu/VelaShell/blob/main/plan.md">plan.md</a> for what's done and <a href="https://github.com/joesdu/VelaShell/blob/main/feature-plan.md">feature-plan.md</a> for the backlog.</span>
       </p>
     </div>
   </section>
+
+  <!-- ================= 收尾号召 ================= -->
+  <div class="wrap">
+    <div class="final reveal">
+      <div>
+        <h2><span data-zh>准备好起航了吗？</span><span data-en>Ready to set sail?</span></h2>
+        <p class="quote"><span data-zh>「和我一起，连接更广阔的世界吧！」</span><span data-en>"Come with me — let's connect to a wider world!"</span></p>
+        <div class="cta">
+          <a class="btn btn-primary" id="dl-final" href="https://github.com/joesdu/VelaShell/releases/latest">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span data-zh>下载 VelaShell</span><span data-en>Download VelaShell</span>
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/VelaShellLabs/velashell-docs"><span data-zh>阅读文档</span><span data-en>Read the docs</span></a>
+        </div>
+      </div>
+      <img src="assets/mascot/chibi-hug.webp" width="520" height="612" alt="" loading="lazy">
+    </div>
+  </div>
 </main>
 
 <footer>
   <div class="wrap">
     <div class="foot">
+      <div class="foot-brand">
+        <a class="lockup" href="#top"><img src="assets/velashell.png" alt=""><b>VelaShell</b></a>
+        <p><span data-zh>以终端为帆，乘信号之风驶向远方主机。</span><span data-en>A terminal for a sail, riding the signal to distant hosts.</span></p>
+      </div>
       <div class="foot-col">
         <h4 data-zh>项目</h4><h4 data-en>Project</h4>
         <a href="https://github.com/joesdu/VelaShell">VelaShell</a>
@@ -480,7 +847,7 @@
       <div class="foot-col">
         <h4 data-zh>文档</h4><h4 data-en>Documentation</h4>
         <a href="https://github.com/VelaShellLabs/velashell-docs/tree/main/zh"><span data-zh>中文文档</span><span data-en>Chinese docs</span></a>
-        <a href="https://github.com/VelaShellLabs/velashell-docs/tree/main/en"><span data-zh>English docs</span><span data-en>English docs</span></a>
+        <a href="https://github.com/VelaShellLabs/velashell-docs/tree/main/en">English docs</a>
         <a href="https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/templates/dev-guide.md"><span data-zh>插件开发指南</span><span data-en>Plugin dev guide</span></a>
         <a href="https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/plugins"><span data-zh>插件系统蓝图</span><span data-en>Plugin blueprint</span></a>
       </div>
@@ -500,28 +867,97 @@
       </div>
     </div>
     <div class="copy">
-      <span>© 2026 VelaShell <span data-zh>作者及贡献者</span><span data-en>authors and contributors</span></span>
+      <span><img src="assets/mascot/cat-emblem.svg" alt="">© 2026 VelaShell <span data-zh>作者及贡献者</span><span data-en>authors and contributors</span></span>
       <span data-zh>AGPL-3.0 / 商业双许可 · 本站托管于 GitHub Pages</span>
-      <span data-en>Dual-licensed AGPL-3.0 / commercial · This site is hosted on GitHub Pages</span>
+      <span data-en>Dual-licensed AGPL-3.0 / commercial · Hosted on GitHub Pages</span>
     </div>
   </div>
 </footer>
 
 <script>
+  var html = document.documentElement;
+  var isEn = function () { return html.lang === 'en'; };
+
   // ---- 语言 ----------------------------------------------------------
   // 组织页与各仓库 README 都是中文为主、英文镜像,这里沿用同一默认。
-  var html = document.documentElement, btn = document.getElementById('lang');
+  var langBtn = document.getElementById('lang');
+  var onLang = [];
   function setLang(l) {
     html.lang = l;
-    btn.textContent = l === 'en' ? '中文' : 'English';
+    langBtn.textContent = l === 'en' ? '中文' : 'English';
     try { localStorage.setItem('vela-lang', l); } catch (e) { /* 隐私模式下不可写,忽略 */ }
+    onLang.forEach(function (f) { f(); });
   }
   var saved = null;
   try { saved = localStorage.getItem('vela-lang'); } catch (e) { /* 同上 */ }
   // 记住过就用记住的;否则中文浏览器给中文,其余给英文。
-  var isZh = (navigator.language || '').slice(0, 2) === 'zh';
-  setLang(saved || (isZh ? 'zh-CN' : 'en'));
-  btn.addEventListener('click', function () { setLang(html.lang === 'en' ? 'zh-CN' : 'en'); });
+  var isZhUa = (navigator.language || '').slice(0, 2) === 'zh';
+  langBtn.addEventListener('click', function () { setLang(isEn() ? 'zh-CN' : 'en'); });
+
+  // ---- 关键词滚动条:复制一份,translateX(-50%) 正好无缝衔接 -----------
+  var ticker = document.getElementById('ticker');
+  ticker.innerHTML += ticker.innerHTML;
+
+  // ---- 看板娘气泡:点一下换一句 -------------------------------------
+  var LINES = [
+    ['连上啦~', 'Connected~'],
+    ['今天也要好好运维哦！', 'Happy ops today!'],
+    ['Ctrl+P 什么都找得到~', 'Ctrl+P finds everything~'],
+    ['要来杯咖啡吗？', 'Coffee break?'],
+    ['rm -rf 之前三思喵！', 'Think twice before rm -rf!'],
+    ['喵~', 'Meow~']
+  ];
+  var line = 0, mascot = document.getElementById('mascot'), bubble = document.getElementById('bubble');
+  function sayLine() { bubble.textContent = LINES[line][isEn() ? 1 : 0]; }
+  mascot.addEventListener('click', function () {
+    line = (line + 1) % LINES.length;
+    bubble.classList.add('swap');
+    mascot.classList.remove('wiggle'); void mascot.offsetWidth; mascot.classList.add('wiggle');
+    setTimeout(function () { sayLine(); bubble.classList.remove('swap'); }, 180);
+  });
+  onLang.push(sayLine);
+
+  // ---- 截图切换 ------------------------------------------------------
+  var CAPS = {
+    htop: ['htop 跑在 VT 引擎里：真彩、线绘字符与鼠标协议都按 xterm 的规矩来。', 'htop on the VT engine: truecolor, line drawing and mouse protocols, done the xterm way.'],
+    sftp: ['SFTP 双栏：本地与远程互拖，传输队列与断点续传。', 'Dual-pane SFTP: drag between local and remote, with a transfer queue and resume.'],
+    monitor: ['资源监视：CPU / 内存 / 磁盘 / 网络实时曲线。', 'Resource monitor: live CPU, memory, disk and network charts.'],
+    ai: ['AI 助手：读懂会话上下文，Agent 模式下执行只读命令并总结。', 'AI assistant: reads the session context and runs read-only commands in Agent mode.'],
+    themes: ['12 套主题 · 16 套终端配色，实时预览（图为亮色主题 Sakura）。', '12 themes and 16 terminal palettes with live preview (shown: the light Sakura theme).']
+  };
+  var current = 'htop', cap = document.getElementById('stage-cap');
+  function showShot(key) {
+    current = key;
+    document.querySelectorAll('#tabs .tab').forEach(function (t) { t.setAttribute('aria-selected', t.dataset.shot === key ? 'true' : 'false'); });
+    document.querySelectorAll('.stage-frame img').forEach(function (img) { img.hidden = img.dataset.shot !== key; });
+    cap.textContent = CAPS[key][isEn() ? 1 : 0];
+  }
+  document.getElementById('tabs').addEventListener('click', function (e) {
+    var t = e.target.closest('.tab');
+    if (t) showShot(t.dataset.shot);
+  });
+  onLang.push(function () { showShot(current); });
+
+  setLang(saved || (isZhUa ? 'zh-CN' : 'en'));
+
+  // ---- 卡片辉光跟随鼠标 ---------------------------------------------
+  document.querySelectorAll('.card').forEach(function (c) {
+    c.addEventListener('pointermove', function (e) {
+      var r = c.getBoundingClientRect();
+      c.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+      c.style.setProperty('--my', (e.clientY - r.top) + 'px');
+    });
+  });
+
+  // ---- 滚动入场 ------------------------------------------------------
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
+    }, { rootMargin: '0px 0px -8% 0px' });
+    document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+  } else {
+    document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in'); });
+  }
 
   // ---- 下载 ----------------------------------------------------------
   // 资产名带版本号(VelaShell-1.4.2-win-x64.zip),写死每发一版就断;改为读 latest release。
@@ -544,39 +980,38 @@
         })[0];
       };
 
-      // 版本号写进规格表。
-      var fv = document.getElementById('fact-version');
-      if (fv && tag) {
-        fv.innerHTML = '<a href="' + rel.html_url + '">' + tag + '</a>';
+      // 版本号写进顶部小标签与规格表。
+      if (tag) {
+        document.getElementById('rel-text').innerHTML =
+          '<span data-zh>' + tag + ' 已发布 · 查看更新</span><span data-en>' + tag + ' is out · what\'s new</span>';
+        document.getElementById('rel-pill').href = rel.html_url;
+        document.getElementById('fact-version').innerHTML = '<a href="' + rel.html_url + '">' + tag + '</a>';
       }
 
       // 主按钮:按识别出的平台给直链。macOS 优先 .dmg,其余用压缩包。
       var mine = plat === 'osx' ? (find('osx', arch, '.dmg') || find('osx', arch, '.tar.gz'))
                : plat === 'linux' ? find('linux', arch, '.tar.gz')
                : find('win', arch, '.zip');
-      var main = document.getElementById('dl-main'), label = document.getElementById('dl-label');
-      if (mine && main && label) {
-        main.href = mine.browser_download_url;
-        label.innerHTML =
+      if (mine) {
+        document.getElementById('dl-main').href = mine.browser_download_url;
+        document.getElementById('dl-final').href = mine.browser_download_url;
+        document.getElementById('dl-label').innerHTML =
           '<span data-zh>下载 ' + tag + ' · ' + names[plat] + ' ' + arch + '</span>' +
           '<span data-en>Download ' + tag + ' · ' + names[plat] + ' ' + arch + '</span>';
       }
 
       // 其他平台列一行直链。
-      var alt = document.getElementById('alt-dl');
-      if (alt) {
-        var rows = [
-          ['win', 'x64', '.zip', 'Windows x64'], ['win', 'arm64', '.zip', 'Windows arm64'],
-          ['osx', 'arm64', '.dmg', 'macOS Apple Silicon'], ['osx', 'x64', '.dmg', 'macOS Intel'],
-          ['linux', 'x64', '.tar.gz', 'Linux x64'], ['linux', 'arm64', '.tar.gz', 'Linux arm64']
-        ].map(function (r) {
-          var a = find(r[0], r[1], r[2]);
-          return a ? '<a href="' + a.browser_download_url + '">' + r[3] + '</a>' : '';
-        }).filter(Boolean).join('');
-        if (rows) {
-          alt.innerHTML = '<span data-zh>其他平台:</span><span data-en>Other platforms:</span>' + rows +
-            '<a href="' + rel.html_url + '"><span data-zh>校验和与全部资产</span><span data-en>Checksums &amp; all assets</span></a>';
-        }
+      var rows = [
+        ['win', 'x64', '.zip', 'Windows x64'], ['win', 'arm64', '.zip', 'Windows arm64'],
+        ['osx', 'arm64', '.dmg', 'macOS Apple Silicon'], ['osx', 'x64', '.dmg', 'macOS Intel'],
+        ['linux', 'x64', '.tar.gz', 'Linux x64'], ['linux', 'arm64', '.tar.gz', 'Linux arm64']
+      ].map(function (r) {
+        var a = find(r[0], r[1], r[2]);
+        return a ? '<a href="' + a.browser_download_url + '">' + r[3] + '</a>' : '';
+      }).filter(Boolean).join('');
+      if (rows) {
+        document.getElementById('alt-dl').innerHTML = '<span data-zh>其他平台：</span><span data-en>Other platforms:</span>' + rows +
+          '<a href="' + rel.html_url + '"><span data-zh>校验和与全部资产</span><span data-en>Checksums &amp; all assets</span></a>';
       }
     }).catch(function () { /* 离线或被限流:按钮维持指向 releases/latest */ });
   })();
