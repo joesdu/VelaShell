@@ -9,12 +9,12 @@
 //   (一条 glXRender 里是紧排的一串渲染命令:2 字节长度含头、2 字节操作码,补齐到 4 字节)。
 //   OpenGL Graphics with the X Window System, Version 1.4 —— §2.3「Sharing」(共享显示列表与纹理对象的上下文共用名字空间)。
 //
-//   这是 GLX 间接渲染用的软件 GL:固定功能管线的一个子集(版本报 1.1,见 GetString)。选择模式见 GlContext.Select.cs。没有实现的:
-//   求值器(Map / MapGrid / EvalCoord / EvalMesh 吃掉,GetMap 记 INVALID_ENUM)、累积缓冲(配置里 0 位)、
+//   这是 GLX 间接渲染用的软件 GL:固定功能管线的一个子集(版本报 1.1,见 GetString)。选择模式见 GlContext.Select.cs,求值器见 GlContext.Eval.cs。没有实现的:
+//   累积缓冲(配置里 0 位)、
 //   反馈模式(RenderMode 切过去不画,切回时返回 0 条)、多级纹理的 LOD(总取第 0 级)、3D 纹理、
 //   像素传输的缩放 / 偏置与 PixelMap(静默忽略)、深度 / 模板 / 颜色索引格式的 DrawPixels 与 CopyPixels(不画)、
 //   点 / 线 / 多边形的平滑(按不平滑画)、Hint(收下不查)。认识但没实现的渲染命令照规范当作合法命令吃掉,不报错;
-//   程序第一次用到反馈模式或求值器时 GLX 记一行日志(见 TakeUnreportedFeatures),结果落空不再无迹可查。
+//   程序第一次用到反馈模式时 GLX 记一行日志(见 TakeUnreportedFeatures),结果落空不再无迹可查。
 
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -263,9 +263,6 @@ internal enum GlUnimplementedFeatures
 
     /// <summary>反馈模式(RenderMode(FEEDBACK))。</summary>
     Feedback = 2,
-
-    /// <summary>求值器(Map / MapGrid / EvalCoord / EvalMesh / EvalPoint / GetMap):曲线、曲面(GLU 的 NURBS、GLUT 的茶壶)不画。</summary>
-    Evaluators = 4,
 }
 
 /// <summary>一个间接渲染上下文:GL 状态机、固定功能管线与软件光栅化。只在服务端执行线程上用。</summary>

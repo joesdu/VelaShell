@@ -1412,7 +1412,7 @@ public sealed class GlxTests
     }
 
     [TestMethod]
-    public async Task 第一次用到反馈模式或求值器时记一行日志_每个上下文每样一次()
+    public async Task 第一次用到反馈模式时记一行日志_每个上下文一次_求值器不再算没实现()
     {
         using RecordingHost host = new();
         List<string> log = [];
@@ -1433,8 +1433,61 @@ public sealed class GlxTests
         lock (log)
         {
             Assert.AreEqual(1, log.Count(line => line.Contains("Feedback", StringComparison.Ordinal)), "结果落空不再无迹可查,同一样只记一次");
-            Assert.AreEqual(1, log.Count(line => line.Contains("Evaluators", StringComparison.Ordinal)));
+            Assert.AreEqual(0, log.Count(line => line.Contains("Evaluators", StringComparison.Ordinal)), "求值器已经实现(EvalMesh1 的模式 FILL 只记 GL 错误)");
         }
+    }
+
+    /// <summary>
+    /// 求值器(xs_plan F23,§5.1):Map1f 定义一条二次 Bézier 曲线,EvalCoord1 在 u 处求值当作顶点发出(t = (u − u1)/(u2 − u1));
+    /// Map2f + AUTO_NORMAL 的平面片法线由偏导数叉乘得出;GetMap 交回 ORDER / DOMAIN / COEFF;参数错误照规范记 INVALID_VALUE / INVALID_ENUM。
+    /// 原先求值器的命令一律吃掉,GLUT 的茶壶、GLU 的 NURBS 曲面画不出来。
+    /// </summary>
+    [TestMethod]
+    public void 求值器的曲线与曲面_自动法线_GetMap()
+    {
+        (Gl.GlContext gl, Gl.GlSurface surface) = DirectContext(16, 16);
+        const uint map1Vertex3 = 0x0D97, map2Vertex3 = 0x0DB7, autoNormal = 0x0D80;
+        // 二次曲线:控制点 (−1,−1,0)、(0,1,0)、(1,−1,0),定义域 [2, 4]:u = 3 时 t = 0.5,点在 (0, 0, 0)。
+        Run(gl, 144, b => F(b.U32(map1Vertex3), 2, 4).I32(3).Bytes(F(new XTestClient.Body(bigEndian: false), -1, -1, 0, 0, 1, 0, 1, -1, 0).ToArray()));
+        Run(gl, 139, b => b.U32(map1Vertex3));                // Enable(MAP1_VERTEX_3)
+        Run(gl, 8, p => F(p, 1, 0, 0));
+        Run(gl, 4, b => b.U32(0));                             // Begin(POINTS)
+        Run(gl, 152, b => F(b, 3));                            // EvalCoord1f(3)
+        Run(gl, 23);
+        Assert.AreEqual(0u, gl.GetError());
+        Assert.AreEqual(0xFF0000u, SurfacePixel(surface, 8, 8), "曲线中点在原点:视口中央");
+
+        Gl.GlContext.GlValue order = gl.GetMap(map1Vertex3, 0x0A01)!.Value;
+        CollectionAssert.AreEqual(new double[] { 3 }, order.Values);
+        CollectionAssert.AreEqual(new double[] { 2, 4 }, gl.GetMap(map1Vertex3, 0x0A02)!.Value.Values);
+        CollectionAssert.AreEqual(new double[] { -1, -1, 0, 0, 1, 0, 1, -1, 0 }, gl.GetMap(map1Vertex3, 0x0A00)!.Value.Values);
+        CollectionAssert.AreEqual(new double[] { 1 }, gl.GetMap(map2Vertex3, 0x0A01)!.Value.Values.Take(1).ToArray(), "没定义过的图:order 1 的常量图");
+
+        Run(gl, 144, b => F(b.U32(map1Vertex3), 0, 0).I32(1).Bytes(new byte[12]));    // u1 = u2
+        Assert.AreEqual(0x0501u, gl.GetError());
+        Run(gl, 144, b => F(b.U32(map1Vertex3), 0, 1).I32(9).Bytes(new byte[9 * 12])); // order > MAX_EVAL_ORDER
+        Assert.AreEqual(0x0501u, gl.GetError());
+        Run(gl, 144, b => F(b.U32(0x1234), 0, 1).I32(1).Bytes(new byte[12]));          // 目标不认识
+        Assert.AreEqual(0x0500u, gl.GetError());
+        Run(gl, 148, b => F(b.I32(0), 0, 1));                                           // MapGrid1f(n = 0)
+        Assert.AreEqual(0x0501u, gl.GetError());
+
+        // 平面片 z = 0(双线性,控制点按 R_ij = (i·vorder + j)·k 排):u 沿 x、v 沿 y,自动法线 = ∂q/∂u × ∂q/∂v = +z。
+        Run(gl, 146, b => F(b.U32(map2Vertex3), 0, 1).I32(2).Bytes(F(new XTestClient.Body(bigEndian: false), 0, 1).ToArray()).I32(2)
+            .Bytes(F(new XTestClient.Body(bigEndian: false), -1, -1, 0, -1, 1, 0, 1, -1, 0, 1, 1, 0).ToArray()));
+        Assert.AreEqual(0u, gl.GetError());
+        Run(gl, 139, b => b.U32(map2Vertex3));
+        Run(gl, 139, b => b.U32(autoNormal));
+        Run(gl, 139, b => b.U32(0x0B50));                     // LIGHTING
+        Run(gl, 139, b => b.U32(0x4000));                     // LIGHT0:默认在 +z 方向
+        Run(gl, 127, b => b.U32(ColorBit));
+        Run(gl, 150, b => b.I32(4).Bytes(F(new XTestClient.Body(bigEndian: false), 0, 1).ToArray()).I32(4)
+            .Bytes(F(new XTestClient.Body(bigEndian: false), 0, 1).ToArray()));      // MapGrid2f 4×4
+        Run(gl, 157, b => b.U32(0x1B02).I32(0).I32(4).I32(0).I32(4));                  // EvalMesh2(FILL)
+        Assert.AreEqual(0u, gl.GetError());
+        uint lit = SurfacePixel(surface, 8, 8);
+        Assert.IsGreaterThan(0x80u, lit >> 16, $"整片铺满视口,被正面光照亮(漫反射 0.8):法线朝 +z(实得 {lit:X6};法线反了只剩环境光 0x0A)");
+        CollectionAssert.AreEqual(new double[] { 4, 4 }, gl.Query(0x0DD3)!.Value.Values, "MAP2_GRID_SEGMENTS");
     }
 
     [TestMethod]

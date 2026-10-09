@@ -230,6 +230,10 @@ internal sealed class GlState
     public uint ReadBuffer;
     public float ZoomX = 1, ZoomY = 1;
 
+    // EVAL_BIT:求值器的网格(§5.1;开关在 Enabled 里)
+    public int Grid1Segments = 1, Grid2USegments = 1, Grid2VSegments = 1;
+    public float Grid1U1, Grid1U2 = 1, Grid2U1, Grid2U2 = 1, Grid2V1, Grid2V2 = 1;
+
     // LIST_BIT
     public uint ListBase;
 
@@ -376,6 +380,12 @@ internal sealed class GlState
         if ((mask & ListBit) != 0)
         {
             ListBase = saved.ListBase;
+        }
+        if ((mask & EvalBit) != 0)
+        {
+            (Grid1Segments, Grid1U1, Grid1U2) = (saved.Grid1Segments, saved.Grid1U1, saved.Grid1U2);
+            (Grid2USegments, Grid2VSegments, Grid2U1, Grid2U2, Grid2V1, Grid2V2) =
+                (saved.Grid2USegments, saved.Grid2VSegments, saved.Grid2U1, saved.Grid2U2, saved.Grid2V1, saved.Grid2V2);
         }
         if ((mask & TextureBit) != 0)
         {

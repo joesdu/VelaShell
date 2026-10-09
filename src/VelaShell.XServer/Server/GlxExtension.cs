@@ -1410,13 +1410,8 @@ internal sealed class GlxExtension(X11Server server)
                 break;
             case 120:   // GetMapdv
             case 121:   // GetMapfv
-            case 122:   // GetMapiv:求值器不实现
-                r.U32();
-                r.U32();
-                gl.SetError(GlEnum.INVALID_ENUM);
-                gl.NoteUnimplemented(GlUnimplementedFeatures.Evaluators);
-                ReportUnimplemented(c, gl);
-                ReplyGlValues(c, minor == 120 ? (byte)114 : minor == 121 ? (byte)116 : (byte)117, null);
+            case 122:   // GetMapiv
+                ReplyGlValues(c, minor == 120 ? (byte)114 : minor == 121 ? (byte)116 : (byte)117, gl.GetMap(r.U32(), r.U32()));
                 break;
             case 123:   // GetMaterialfv
             case 124:   // GetMaterialiv

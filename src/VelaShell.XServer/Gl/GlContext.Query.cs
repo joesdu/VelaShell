@@ -178,6 +178,10 @@ internal sealed partial class GlContext
             0x0C33 => Bool(false),                            // STEREO
             0x0C40 => One(RenderModeValue),                   // RENDER_MODE
             0x0D70 => One(NameStackDepth),                    // NAME_STACK_DEPTH
+            0x0DD0 => new GlValue([State.Grid1U1, State.Grid1U2]),                                                // MAP1_GRID_DOMAIN
+            0x0DD1 => One(State.Grid1Segments),                                                                   // MAP1_GRID_SEGMENTS
+            0x0DD2 => new GlValue([State.Grid2U1, State.Grid2U2, State.Grid2V1, State.Grid2V2]),                  // MAP2_GRID_DOMAIN
+            0x0DD3 => new GlValue([State.Grid2USegments, State.Grid2VSegments]),                                  // MAP2_GRID_SEGMENTS
             0x0DF4 => One(SelectBufferSize),                  // SELECTION_BUFFER_SIZE
             0x0C00 => One(0),                                 // AUX_BUFFERS
 
@@ -197,7 +201,7 @@ internal sealed partial class GlContext
             0x0D15 or 0x0D19 or 0x0D1B or 0x0D1D or 0x0D1F => One(0),
 
             // 实现相关的上限
-            0x0D30 => One(8),                                 // MAX_EVAL_ORDER
+            0x0D30 => One(MaxEvalOrder),                      // MAX_EVAL_ORDER
             0x0D31 => One(MaxLights),                         // MAX_LIGHTS
             0x0D32 => One(MaxClipPlanes),                     // MAX_CLIP_PLANES
             0x0D33 => One(MaxTextureSize),                    // MAX_TEXTURE_SIZE
