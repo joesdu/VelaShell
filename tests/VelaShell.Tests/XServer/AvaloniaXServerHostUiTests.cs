@@ -319,6 +319,120 @@ public sealed class AvaloniaXServerHostUiTests
     });
 
     /// <summary>
+    /// 记住窗口位置(xs_plan F17):一个程序的窗口关掉时记下位置与尺寸,下次没给位置的同类窗口摆回去、尺寸也恢复;
+    /// 同类窗口还开着时不摆过去(免得叠在一起),别的程序照常居中,客户端指定了尺寸(USSize)时不盖掉它。
+    /// </summary>
+    [TestMethod]
+    public async Task ReopenedProgram_ComesBackWhereItWasClosed() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        _ = server.ServeAsync(serverSide, isLocal: true);
+        (uint idBase, uint root) = await HandshakeAsync(client);
+        uint next = 0;
+        async Task<XNativeWindow> MapAsync(string wmClass, bool userSize = false)
+        {
+            uint window = idBase | ++next;
+            await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+            byte[] cls = Encoding.ASCII.GetBytes(wmClass);
+            await SendAsync(client, 18, 0, w => w.U32(window).U32(67).U32(31).U8(8).Zero(3).U32((uint)cls.Length).Bytes(cls).Pad());   // WM_CLASS
+            if (userSize)
+            {
+                await SendAsync(client, 18, 0, w => w.U32(window).U32(40).U32(41).U8(32).Zero(3).U32(18).U32(2).Zero(17 * 4));   // USSize
+            }
+            await SendAsync(client, 8, 0, w => w.U32(window));
+            return await WaitForAsync(() => host.Windows.FirstOrDefault(n => n.Handle.Id == window && n.HasOpened && !n.Handle.Snapshot.NeedsPlacement),
+                $"{wmClass} 显示出来并摆好");
+        }
+        (int ox, int oy) = host.RootOrigin;
+
+        XNativeWindow first = await MapAsync("xterm\0XTerm\0");
+        PixelPoint centered = first.Position;
+        first.Position = new PixelPoint(ox + 37, oy + 29);   // 用户把它拖到一边、拉大
+        server.ResizeTopLevel(first.Handle, 90, 70);
+        await WaitForAsync(() => first.Handle.Snapshot.Width == 90 ? first : null, "拉大");
+        await SendAsync(client, 10, 0, w => w.U32(first.Handle.Id));   // UnmapWindow:程序关掉了这个窗口
+        await WaitForAsync(() => host.Windows.Count == 0 ? first : null, "收掉");
+
+        XNativeWindow again = await MapAsync("xterm\0XTerm\0");
+        Assert.AreEqual(new PixelPoint(ox + 37, oy + 29), again.Position, "回到上次关掉的位置");
+        await WaitForAsync(() => again.Handle.Snapshot.Width == 90 ? again : null, $"尺寸恢复({again.Handle.Snapshot.Width})");
+        Assert.AreEqual(70, again.Handle.Snapshot.Height, "尺寸也恢复");
+
+        XNativeWindow second = await MapAsync("xterm\0XTerm\0");
+        Assert.AreEqual(centered, second.Position, "同一个程序已经开着一个窗口:不叠过去");
+        XNativeWindow other = await MapAsync("xclock\0XClock\0");
+        Assert.AreEqual(centered, other.Position, "别的程序照常居中");
+
+        await SendAsync(client, 10, 0, w => w.U32(second.Handle.Id));   // 后关的那个说了算:先关居中的,再关挪过的
+        await SendAsync(client, 10, 0, w => w.U32(again.Handle.Id));
+        await WaitForAsync(() => host.Windows.Count == 1 ? other : null);
+        XNativeWindow sized = await MapAsync("xterm\0XTerm\0", userSize: true);
+        Assert.AreEqual(new PixelPoint(ox + 37, oy + 29), sized.Position);
+        await Task.Delay(100);
+        Assert.AreEqual((60, 40), (sized.Handle.Snapshot.Width, sized.Handle.Snapshot.Height), "客户端指定了尺寸:不盖掉");
+        host.Detach();
+    });
+
+    /// <summary>任务栏组名(xs_plan F17):按 WM_CLASS 的类名,只留 AppUserModelID 认的字符、不超过 128 个字符;没有类名的不归组。</summary>
+    [TestMethod]
+    [DataRow("XTerm", "VelaShell.X11.XTerm")]
+    [DataRow("Gimp-2.10", "VelaShell.X11.Gimp-2.10")]
+    [DataRow("My App/中文", "VelaShell.X11.My_App___")]
+    [DataRow("", null)]
+    public void TaskbarGroupId_FollowsTheClassName(string className, string? expected)
+    {
+        Assert.AreEqual(expected, TaskbarGroup.IdFor(new XTopLevelSnapshot { ClassName = className }));
+        Assert.IsLessThanOrEqualTo(128, TaskbarGroup.IdFor(new XTopLevelSnapshot { ClassName = new string('a', 500) })!.Length);
+    }
+
+    /// <summary>
+    /// 任务栏按 X 程序归组(xs_plan F17):进任务栏的窗口显示之前按类名归组,窗口收掉之前清掉;没有类名的、对话框(不进任务栏)不归组。
+    /// </summary>
+    [TestMethod]
+    public async Task TaskbarButtons_AreGroupedByProgram() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        List<(Avalonia.Controls.Window Window, string? Group)> calls = [];
+        host.GroupWindow = (window, group) =>
+        {
+            calls.Add((window, group));
+            return true;
+        };
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        _ = server.ServeAsync(serverSide, isLocal: true);
+        (uint idBase, uint root) = await HandshakeAsync(client);
+        uint xterm = idBase | 1, anonymous = idBase | 2, dialog = idBase | 3;
+        foreach (uint window in new[] { xterm, anonymous, dialog })
+        {
+            await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(10).I16(10).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+        }
+        byte[] cls = Encoding.ASCII.GetBytes("xterm\0XTerm\0");
+        await SendAsync(client, 18, 0, w => w.U32(xterm).U32(67).U32(31).U8(8).Zero(3).U32((uint)cls.Length).Bytes(cls).Pad());
+        await SendAsync(client, 18, 0, w => w.U32(dialog).U32(67).U32(31).U8(8).Zero(3).U32((uint)cls.Length).Bytes(cls).Pad());
+        await SendAsync(client, 18, 0, w => w.U32(dialog).U32(68).U32(33).U8(32).Zero(3).U32(1).U32(xterm));   // WM_TRANSIENT_FOR
+        foreach (uint window in new[] { xterm, anonymous, dialog })
+        {
+            await SendAsync(client, 8, 0, w => w.U32(window));
+        }
+        await WaitForAsync(() => host.Windows.Count == 3 ? host : null, "三个窗口");
+        XNativeWindow main = host.Windows.Single(w => w.Handle.Id == xterm);
+        Assert.HasCount(1, calls, "只有进任务栏、有类名的那个归组");
+        Assert.AreSame(main, calls[0].Window);
+        Assert.AreEqual("VelaShell.X11.XTerm", calls[0].Group);
+
+        await SendAsync(client, 10, 0, w => w.U32(xterm));
+        await WaitForAsync(() => calls.Count == 2 ? calls : null, "收掉时清掉");
+        Assert.AreSame(main, calls[1].Window);
+        Assert.IsNull(calls[1].Group);
+        host.Detach();
+    });
+
+    /// <summary>
     /// 来源标识(xs_plan F18):转发来的连接(有标签)的窗口标题前标出来源,远端把标题设成什么都盖不住;本机连接(没标签)不标;设置关掉也不标。
     /// </summary>
     [TestMethod]
@@ -1308,7 +1422,7 @@ public sealed class AvaloniaXServerHostUiTests
         }
     }
 
-    private static async Task<T> WaitForAsync<T>(Func<T?> probe) where T : class
+    private static async Task<T> WaitForAsync<T>(Func<T?> probe, string? what = null) where T : class
     {
         for (int i = 0; i < 250; i++)
         {
@@ -1319,7 +1433,7 @@ public sealed class AvaloniaXServerHostUiTests
             }
             await Task.Delay(20);
         }
-        throw new TimeoutException("等不到预期的状态");
+        throw new TimeoutException(what is null ? "等不到预期的状态" : $"等不到预期的状态:{what}");
     }
 
     // ------------------------------------------------------------------ 最小的 X 客户端(小端)

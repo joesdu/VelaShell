@@ -465,6 +465,9 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     /// <summary>X 窗口里用本机的输入法(见 <see cref="XNativeWindow" /> 的输入法客户端)。</summary>
     public bool UsesHostInputMethod { get; private set; } = true;
 
+    /// <summary>把原生窗口归进任务栏的一组(null = 清掉);测试换成记录用的。见 <see cref="Services.XServer.TaskbarGroup" />。</summary>
+    internal Func<Window, string?, bool> GroupWindow { get; set; } = Services.XServer.TaskbarGroup.Apply;
+
     /// <inheritdoc />
     public void ShowWindowSource(bool enabled) => ShowsWindowSource = enabled;
 
@@ -545,6 +548,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         _desktops.Remove(window);
         if (_windows.Remove(window, out XNativeWindow? native))
         {
+            RememberPlacement(native);
             CloseWithOwnedWindows(native);
         }
     });
@@ -988,6 +992,10 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         }
         window.ApplyProperties(XTopLevelChanges.All);
         window.ApplyInitialStates();   // 映射前就设好的最大化 / 全屏 / initial_state = Iconic
+        if (window.ShowInTaskbar && TaskbarGroup.IdFor(handle.Snapshot) is { } group && GroupWindow(window, group))
+        {
+            window.TaskbarGroup = group;   // 显示之前就归好组:任务栏按钮不先出现在 VelaShell 的按钮里再跳走
+        }
 
         // 对话框、瞬态窗口(连同声明了 WM_TRANSIENT_FOR 的弹出菜单)压在父窗口之上。没声明的弹层不借用「当前活动的 X 窗口」当 owner:
         // 那个窗口可能属于别的程序甚至别的会话,owner 关闭时会把它连带关掉(弹层本身照样置顶,不需要 owner)。
@@ -1017,6 +1025,10 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         {
             return;
         }
+        if (RestorePlacement(handle, window))
+        {
+            return;
+        }
         (int ox, int oy) = RootOrigin;
         PixelRect area;
         if (snapshot.TransientFor is { } transientFor && _windows.TryGetValue(transientFor, out XNativeWindow? parent))
@@ -1036,6 +1048,86 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         XFrameExtents frame = window.FrameExtents;
         int outerWidth = snapshot.Width + frame.Left + frame.Right, outerHeight = snapshot.Height + frame.Top + frame.Bottom;
         window.PlaceFrameAt(area.X + Math.Max(0, (area.Width - outerWidth) / 2) - ox, area.Y + Math.Max(0, (area.Height - outerHeight) / 2) - oy);
+    }
+
+    // ------------------------------------------------------------------ 记住窗口位置(xs_plan F17)
+
+    /// <summary>一个程序的窗口上次关掉时的外框左上角(根窗口坐标)与内容尺寸。</summary>
+    private sealed record RememberedPlacement(int FrameX, int FrameY, int Width, int Height);
+
+    /// <summary>
+    /// 按 WM_CLASS(类名 + 实例名)与 WM_WINDOW_ROLE 记住的位置(ICCCM §5.1:没有 role 时按类名区分窗口)。只记在这次运行里:
+    /// 远端程序的类名不落盘;宿主是单例,停了再开 X Server 照样记得。
+    /// </summary>
+    private readonly Dictionary<(string Class, string Instance, string Role), RememberedPlacement> _placements = [];
+
+    /// <summary>最多记这么多个程序(多了丢最早记的)。</summary>
+    private const int MaxRememberedPlacements = 256;
+
+    /// <summary>值得记位置的窗口:有类名的普通顶层窗口(对话框、弹层、瞬态窗口跟着父窗口走)。</summary>
+    private static (string Class, string Instance, string Role)? PlacementKey(XTopLevelSnapshot s) =>
+        s.ClassName.Length > 0 && !s.OverrideRedirect && s.TransientFor is null && s.WindowType == XWindowType.Normal
+            ? (s.ClassName, s.InstanceName, s.Role)
+            : null;
+
+    /// <summary>窗口要收掉了:记下它此刻的位置与尺寸(最大化、最小化、全屏时不记,留着上次正常时的)。</summary>
+    private void RememberPlacement(XNativeWindow native)
+    {
+        XTopLevelSnapshot s = native.Handle.Snapshot;
+        if (PlacementKey(s) is not { } key || !native.HasOpened || native.WindowState != WindowState.Normal)
+        {
+            return;
+        }
+        if (!_placements.ContainsKey(key) && _placements.Count >= MaxRememberedPlacements)
+        {
+            _placements.Remove(_placements.Keys.First());
+        }
+        (int ox, int oy) = RootOrigin;
+        _placements[key] = new RememberedPlacement(native.Position.X - ox, native.Position.Y - oy, s.Width, s.Height);
+    }
+
+    /// <summary>
+    /// 没给位置的窗口摆回这个程序上次关掉时的位置 —— 原先每次打开 xterm 都跳到屏幕正中。同一个程序已经开着一个窗口时不摆
+    /// (摆过去就叠在一起),记住的位置已经不在任何一块屏幕上(拔了显示器)时也不摆;客户端没指定尺寸(USSize)、窗口能改尺寸时
+    /// 连尺寸一起恢复(按尺寸提示夹好、对齐步长)。
+    /// </summary>
+    private bool RestorePlacement(XTopLevelWindow handle, XNativeWindow window)
+    {
+        XTopLevelSnapshot s = handle.Snapshot;
+        if (PlacementKey(s) is not { } key || !_placements.TryGetValue(key, out RememberedPlacement? remembered)
+            || _windows.Values.Any(w => !ReferenceEquals(w, window) && PlacementKey(w.Handle.Snapshot) == key))
+        {
+            return false;
+        }
+        (int ox, int oy) = RootOrigin;
+        PixelRect frame = new(remembered.FrameX + ox, remembered.FrameY + oy, Math.Max(1, remembered.Width), Math.Max(1, remembered.Height));
+        if (!window.Screens.All.Any(screen => screen.WorkingArea.Intersects(frame)))
+        {
+            return false;
+        }
+        window.PlaceFrameAt(remembered.FrameX, remembered.FrameY);
+        bool resizable = (s.Functions & XWindowFunctions.Resize) != 0 && !(s.MaxWidth > 0 && s.MinWidth == s.MaxWidth && s.MinHeight == s.MaxHeight);
+        if (!s.UserSize && resizable)
+        {
+            (int width, int height) = (FitSize(remembered.Width, s.MinWidth, s.MaxWidth, s.BaseWidth, s.WidthIncrement),
+                FitSize(remembered.Height, s.MinHeight, s.MaxHeight, s.BaseHeight, s.HeightIncrement));
+            if ((width, height) != (s.Width, s.Height))
+            {
+                window.RequestSizeOnOpen(width, height);
+            }
+        }
+        return true;
+    }
+
+    /// <summary>按 WM_NORMAL_HINTS 的最小 / 最大尺寸与步长(从基准尺寸起,ICCCM §4.1.2.3)把一个边长夹好。</summary>
+    private static int FitSize(int size, int min, int max, int baseSize, int increment)
+    {
+        if (increment > 1 && size > baseSize)
+        {
+            size = baseSize + ((size - baseSize) / increment * increment);
+        }
+        size = Math.Max(size, Math.Max(1, min));
+        return max > 0 ? Math.Min(size, max) : size;
     }
 
     /// <summary>某个 X 窗口成了活动窗口:键盘焦点给它;顺带把系统剪贴板里别的程序复制的新文本交给 X。</summary>

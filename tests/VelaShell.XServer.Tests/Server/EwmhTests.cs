@@ -132,7 +132,7 @@ public sealed class EwmhTests
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         uint top = await CreateTopAsync(c);
         // flags:USPosition | PMinSize | PMaxSize | PResizeInc | PAspect | PBaseSize | PWinGravity
-        const uint flags = 1 | 16 | 32 | 64 | 128 | 256 | 512;
+        const uint flags = 1 | 2 | 16 | 32 | 64 | 128 | 256 | 512;
         await SetCard32Async(c, top, 40, 41, flags, 0, 0, 0, 0,
             unchecked((uint)-5), 0x80000000, 800, 100000, 6, 13,   // 最小尺寸是负数、最大高度超出 X 的范围、步长 6×13
             4, 3, 16, 9,                                                // 宽高比 4:3 – 16:9
@@ -150,6 +150,7 @@ public sealed class EwmhTests
         Assert.AreEqual(XGravity.SouthEast, s.WinGravity);
         Assert.IsTrue(s.UserPosition, "xterm -geometry +0+0:宿主要照 (0, 0) 摆,不能当成没给位置");
         Assert.IsFalse(s.ProgramPosition);
+        Assert.IsTrue(s.UserSize, "xterm -geometry 80x24:宿主不拿记住的尺寸盖掉它");
 
         // 只给基准尺寸、没给最小尺寸:最小尺寸按基准尺寸(ICCCM §4.1.2.3);老程序的 15 个值的 WM_SIZE_HINTS 没有重力也照样认。
         await SetCard32Async(c, top, 40, 41, 4 | 256, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 30, 20, 0);
@@ -157,6 +158,7 @@ public sealed class EwmhTests
         s = host.Mapped[top].Snapshot;
         Assert.AreEqual((30, 20), (s.BaseWidth, s.MinHeight));
         Assert.IsTrue(s.ProgramPosition);
+        Assert.IsFalse(s.UserSize);
         Assert.AreEqual(XGravity.NorthWest, s.WinGravity, "没给重力:NorthWest");
         await SetCard32Async(c, top, 40, 41, 16 | 64, 0, 0, 0, 0, 50, 40, 0, 0, 7, 7, 0, 0, 0, 0);   // 15 个值
         await host.WaitForAsync(() => host.Mapped[top].Snapshot.MinWidth == 50);

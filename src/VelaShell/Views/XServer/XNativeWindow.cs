@@ -51,6 +51,30 @@ public sealed class XNativeWindow : Window
     /// <summary>原生窗口已经显示出来(<c>Opened</c>):外框尺寸量得到了,摆好的位置才报回服务端。</summary>
     private bool _opened;
 
+    /// <summary>已经显示出来过(位置是真的摆好的,宿主据此记住它)。</summary>
+    internal bool HasOpened => _opened;
+
+    /// <summary>窗口在任务栏上归进的组(按 X 程序的类名,见 <see cref="Services.XServer.TaskbarGroup" />);没归组为 null。</summary>
+    internal string? TaskbarGroup { get; set; }
+
+    /// <summary>显示出来之后要改成的尺寸(宿主记住的上次的尺寸,见 <see cref="RequestSizeOnOpen" />)。</summary>
+    private (int Width, int Height)? _sizeOnOpen;
+
+    /// <summary>
+    /// 显示出来之后把 X 窗口改成这个尺寸。不在映射时马上改:原生窗口按原尺寸显示时迟到的 Resized 会被当成用户改的,把尺寸改回去;
+    /// 显示出来之后再改,那些 Resized 与按服务端几何设的尺寸相同,认得出是自己的。
+    /// </summary>
+    internal void RequestSizeOnOpen(int width, int height) => _sizeOnOpen = (width, height);
+
+    private void ApplySizeOnOpen()
+    {
+        if (_sizeOnOpen is { } size && Server is { } server)
+        {
+            server.ResizeTopLevel(Handle, size.Width, size.Height);
+        }
+        _sizeOnOpen = null;
+    }
+
     /// <summary>宿主替没给位置的窗口选的外框左上角(根窗口坐标);服务端那边摆好之后清掉。</summary>
     private (int X, int Y)? _frameAt;
 
@@ -95,7 +119,7 @@ public sealed class XNativeWindow : Window
         Activated += (_, _) => _host.OnWindowActivated(this);
         Deactivated += (_, _) => OnDeactivated();
         ScalingChanged += (_, _) => ApplyGeometry();
-        Opened += (_, _) => { _opened = true; UpdateFrameExtents(); ApplyGeometry(); UpdateRegion(Handle.Snapshot); _surface.Start(); };
+        Opened += (_, _) => { _opened = true; UpdateFrameExtents(); ApplyGeometry(); UpdateRegion(Handle.Snapshot); _surface.Start(); ApplySizeOnOpen(); };
         // 本机的文本、文件拖进 X 程序(F16):服务端替宿主扮演 XDND 的源,见 XDropTarget。
         XDropTarget.Attach(this, _surface, handle, () => Server, ToPixels, host.DropUploader, AvaloniaXServerHost.NotifyUser);
     }
@@ -644,6 +668,11 @@ public sealed class XNativeWindow : Window
         base.OnClosing(e);
         if (ClosingByHost)
         {
+            if (TaskbarGroup is not null)
+            {
+                _host.GroupWindow(this, null);   // 窗口销毁之前清掉任务栏分组的属性(Windows 的要求)
+                TaskbarGroup = null;
+            }
             return;
         }
         switch (e.CloseReason)

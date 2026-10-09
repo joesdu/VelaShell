@@ -671,6 +671,7 @@ public sealed partial class X11Server
             WinGravity = gravity is >= 1 and <= 10 ? (XGravity)gravity : XGravity.NorthWest,
             UserPosition = (flags & 1) != 0,
             ProgramPosition = (flags & 4) != 0,
+            UserSize = (flags & 2) != 0,
         };
     }
 
