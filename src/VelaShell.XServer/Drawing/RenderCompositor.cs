@@ -37,9 +37,9 @@ internal static class RenderCompositor
 
         // 源 / 遮罩与目标是同一块缓冲(同一张像素图、同一个顶层里的窗口):先把要读的那一块拷出来。逐行从上往下合成时,
         // 目标在源下面(或同一行靠右)的话,后面要读的源行已经被前面写过了 —— 结果得像「先读完源再写」。
-        // 要读的只是目标上真正写得到的那几行几列对应的部分(可写区域之外的不合成)。
-        bool srcShared = src is ImageSource { } s0 && ReferenceEquals(s0.Buffer, dst.Buffer);
-        bool maskShared = mask is ImageSource { } m0 && ReferenceEquals(m0.Buffer, dst.Buffer);
+        // 要读的只是目标上真正写得到的那几行几列对应的部分(可写区域之外的不合成)。挂了 alpha-map 的源,drawable 与 alpha-map 哪个是目标都算。
+        bool srcShared = src.Reads(dst.Buffer);
+        bool maskShared = mask?.Reads(dst.Buffer) ?? false;
         if (srcShared || maskShared)
         {
             int wx1 = int.MaxValue, wy1 = int.MaxValue, wx2 = int.MinValue, wy2 = int.MinValue;
@@ -54,11 +54,11 @@ internal static class RenderCompositor
             XRect local = wx2 <= wx1 ? default : new XRect(wx1 - dst.OriginX - dstX, wy1 - dst.OriginY - dstY, wx2 - wx1, wy2 - wy1);
             if (srcShared)
             {
-                src = ((ImageSource)src).Detach(local.Offset(srcX, srcY));
+                src = src.DetachFrom(dst.Buffer, local.Offset(srcX, srcY));
             }
             if (maskShared)
             {
-                mask = ((ImageSource)mask!).Detach(local.Offset(maskX, maskY));
+                mask = mask!.DetachFrom(dst.Buffer, local.Offset(maskX, maskY));
             }
         }
         if (TryFastPath(op, src, mask, componentAlpha, dst, srcX, srcY, maskX, maskY, dstX, dstY, width, height, out XRect fastDirty))
