@@ -247,7 +247,7 @@ public sealed partial class X11Server
                         throw BadDevice(id);   // 只能挪主指针或浮动的从指针
                     }
                     // 与核心 WarpPointer 同一条路(源矩形、夹在根窗口与 confine-to 里、冻结时排队)。
-                    WarpPointerTo(src == 0 ? null : Window(src), srcX, srcY, srcW, srcH, dst == 0 ? null : Window(dst), dstX, dstY);
+                    WarpPointerTo(c, src == 0 ? null : Window(src), srcX, srcY, srcW, srcH, dst == 0 ? null : Window(dst), dstX, dstY);
                     break;
                 }
             case 42:  // XIChangeCursor:同核心的窗口光标

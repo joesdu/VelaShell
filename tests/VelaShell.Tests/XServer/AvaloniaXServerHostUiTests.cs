@@ -862,6 +862,53 @@ public sealed class AvaloniaXServerHostUiTests
     });
 
     /// <summary>
+    /// 指针交给宿主(xs_plan F8):X 窗口活动时,抓着指针的程序的 Warp 挪系统光标(根坐标加 RootOrigin)、confine-to 关住光标;
+    /// 抓取解除时光标放开、之后的 Warp 不挪。
+    /// </summary>
+    [TestMethod]
+    public async Task 抓着指针的程序Warp挪系统光标_confine_to关住光标_解除就放开() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        List<(int X, int Y)> warps = [];
+        List<PixelRect?> confines = [];
+        host.WarpCursor = (x, y) => { warps.Add((x, y)); return true; };
+        host.ConfineCursor = area => { confines.Add(area); return true; };
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        (uint idBase, uint root) = await HandshakeAsync(client, new System.Collections.Concurrent.ConcurrentQueue<byte>());
+        uint window = idBase | 1;
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+        await SendAsync(client, 8, 0, w => w.U32(window));
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+        native.Activate();
+        await Task.Delay(100);
+        Dispatcher.UIThread.RunJobs();
+        (int ox, int oy) = host.RootOrigin;
+
+        await SendAsync(client, 26, 0, w => w.U32(window).U16(0x40).U8(1).U8(1).U32(window).U32(0).U32(0));   // GrabPointer,confine-to = 自己
+        await SendAsync(client, 41, 0, w => w.U32(0).U32(window).I16(0).I16(0).U16(0).U16(0).I16(10).I16(12));   // WarpPointer 到窗口里的 (10, 12)
+        await WaitForAsync(() => warps.Count > 0 ? native : null);
+        XTopLevelSnapshot s = native.Handle.Snapshot;
+        Assert.AreEqual((s.X + s.BorderWidth + 10 + ox, s.Y + s.BorderWidth + 12 + oy), warps[0], "根坐标加 RootOrigin");
+        Assert.IsTrue(confines.Count > 0 && confines[^1] is { } area && area.Width > 0, "关在 confine-to 窗口里");
+
+        // 抓取解除:光标放开;之后不抓着指针的 Warp 不挪光标。(用户切到本机窗口时同样放开 —— 无头平台不会让 X 窗口失活,这条路靠 OnWindowDeactivated。)
+        await SendAsync(client, 27, 0, w => w.U32(0));   // UngrabPointer
+        await WaitForAsync(() => confines.Count > 0 && confines[^1] is null ? native : null);
+        await SendAsync(client, 41, 0, w => w.U32(0).U32(root).I16(0).I16(0).U16(0).U16(0).I16(30).I16(30));
+        await Task.Delay(150);
+        Dispatcher.UIThread.RunJobs();
+        Assert.HasCount(1, warps, "不再抓着指针:不挪光标");
+
+        native.CloseByHost();
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>
     /// 平滑滚动(xs_plan F6):宿主把滚动增量原样交给服务端 —— 触控板的半格增量两次攒成一格,只认按钮的核心客户端收到一次按钮 4(向上)。
     /// </summary>
     [TestMethod]

@@ -119,7 +119,7 @@ public sealed partial class X11Server
             case XOpcode.QueryPointer: QueryPointer(c, r); break;
             case XOpcode.GetMotionEvents: c.MotionHint = default; c.Reply(0, w => w.U32(0).Zero(20)); break;
             case XOpcode.TranslateCoordinates: TranslateCoordinates(c, r); break;
-            case XOpcode.WarpPointer: WarpPointer(r); break;
+            case XOpcode.WarpPointer: WarpPointer(c, r); break;
             case XOpcode.SetInputFocus: SetInputFocus(r); break;
             case XOpcode.GetInputFocus: GetInputFocus(c); break;
             case XOpcode.QueryKeymap: c.Reply(0, w => w.Bytes(MaySeeKeyboard(c) ? _keysDown : new byte[32])); break;   // SECURITY「Keyboard Security」

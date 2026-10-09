@@ -119,6 +119,27 @@ public sealed partial class X11Server
             {
                 GenerateCrossing(_pointerWindow, value.Window, CrossingModeGrab);
             }
+            ReportConfinement(value?.ConfineTo);
+        }
+    }
+
+    /// <summary>上次告诉宿主的 confine-to 范围(根坐标);null = 没有。</summary>
+    private XRect? _reportedConfinement;
+
+    /// <summary>指针抓取的 confine-to 变了:把那个窗口的内区(根坐标,夹在根窗口里)告诉宿主,解除时报 null(<see cref="IX11ServerHost.PointerConfinementChanged" />)。</summary>
+    private void ReportConfinement(XWindow? confineTo)
+    {
+        XRect? area = null;
+        if (confineTo is not null && IsLiveWindow(confineTo))
+        {
+            (int x, int y) = confineTo.AbsoluteInner();
+            XRect inner = new XRect(x, y, Math.Max(1, confineTo.Width), Math.Max(1, confineTo.Height)).Intersect(new XRect(0, 0, Root.Width, Root.Height));
+            area = inner.IsEmpty ? null : inner;
+        }
+        if (area != _reportedConfinement)
+        {
+            _reportedConfinement = area;
+            _host.PointerConfinementChanged(area);
         }
     }
 

@@ -85,6 +85,16 @@ public interface IX11ServerHost
     }
 
     /// <summary>
+    /// 抓着指针的 X 客户端挪了指针(WarpPointer / XIWarpPointer):连续拖拽的 3D 视图把指针拉回中间、CAD 旋转、远端游戏的视角、
+    /// virt-manager 控制台的相对鼠标。(<paramref name="rootX" />, <paramref name="rootY" />) 是根坐标(与 <see cref="X11Server.SetScreenLayout" /> 的布局同一套)。
+    /// 宿主在用户此刻正用 X 窗口时把系统光标挪到对应的位置,否则服务端认为的指针与真实光标就分了叉,下一次移动跳回去。
+    /// 没抓着指针的客户端挪指针不报(远端程序不能随意挪用户的鼠标)。默认实现什么也不做。
+    /// </summary>
+    void PointerWarped(int rootX, int rootY)
+    {
+    }
+
+    /// <summary>
     /// 一个 X 程序的托盘图标停靠进来了(开着 <see cref="X11ServerOptions.SystemTray" /> 时):<paramref name="icon" /> 是服务端的嵌入窗口,
     /// 不当普通顶层窗口显示 —— 宿主把它的像素(<see cref="XTopLevelWindow.ReadPixels" />,随 <see cref="TopLevelDamaged" /> 更新)
     /// 画成自己的托盘图标,点击时往它里面注入指针(<see cref="X11Server.InjectPointerButton" />,坐标是图标的内区)。
@@ -96,6 +106,14 @@ public interface IX11ServerHost
 
     /// <summary>托盘图标没了(程序退出、图标窗口销毁或被挪走):宿主收掉对应的托盘图标。默认实现什么也不做。</summary>
     void SystemTrayIconRemoved(XTopLevelWindow icon)
+    {
+    }
+
+    /// <summary>
+    /// 带 confine-to 的指针抓取开始或结束了:<paramref name="area" /> 是那个窗口的内区(根坐标,夹在根窗口里),null 表示解除。
+    /// 能限制系统光标的宿主把光标关在这块里,直到解除或用户离开 X 窗口。默认实现什么也不做。
+    /// </summary>
+    void PointerConfinementChanged(XRect? area)
     {
     }
 }

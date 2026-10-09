@@ -151,6 +151,22 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
 
     public void SystemTrayIconRemoved(XTopLevelWindow icon) => _pending.Add(() => inner.SystemTrayIconRemoved(icon));
 
+    private int _warpAt = -1;
+    private (int X, int Y) _warp;
+
+    /// <summary>挪指针:同一批里只交最后一次(拖拽中的程序每次移动都可能 Warp 回中心)。</summary>
+    public void PointerWarped(int rootX, int rootY)
+    {
+        _warp = (rootX, rootY);
+        if (_warpAt < 0)
+        {
+            _warpAt = _pending.Count;
+            _pending.Add(() => inner.PointerWarped(_warp.X, _warp.Y));
+        }
+    }
+
+    public void PointerConfinementChanged(XRect? area) => _pending.Add(() => inner.PointerConfinementChanged(area));
+
     /// <summary>调完攒下的回调。回调里再引起的回调(宿主同步调了注入方法 —— 那只是排工作项,不会同步回来)留到下一轮。</summary>
     public void Flush()
     {
@@ -181,6 +197,7 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
         _running.Clear();
         _cursorAt = -1;
         _clipboardAt = -1;
+        _warpAt = -1;
     }
 }
 

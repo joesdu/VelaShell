@@ -112,6 +112,24 @@ internal sealed class RecordingHost : IX11ServerHost, IDisposable
         Note($"clipboard {text.Length}");
     }
 
+    /// <summary><see cref="PointerWarped" /> 收到的根坐标,按先后。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<(int X, int Y)> Warps { get; } = new();
+
+    /// <summary><see cref="PointerConfinementChanged" /> 收到的范围,按先后(null = 解除)。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<XRect?> Confinements { get; } = new();
+
+    public void PointerWarped(int rootX, int rootY)
+    {
+        Warps.Enqueue((rootX, rootY));
+        Note($"warp {rootX},{rootY}");
+    }
+
+    public void PointerConfinementChanged(XRect? area)
+    {
+        Confinements.Enqueue(area);
+        Note($"confine {area}");
+    }
+
     /// <summary>最近一次 <see cref="ClipboardContentChanged" /> 收到的整份内容(各种格式)。</summary>
     public XClipboardContent? ClipboardContent { get; private set; }
 

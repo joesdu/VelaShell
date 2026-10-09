@@ -223,6 +223,8 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
             // 按会话分出来的显示收掉时这个宿主就不再用了:别让显示器的事件一直拽着它。
             _watchedScreens?.Changed -= OnScreensChanged;
             _watchedScreens = null;
+            _confinement = null;
+            ApplyConfinement();
             XNativeWindow[] windows = [.. _windows.Values];
             _windows.Clear();
             _desktops.Clear();
@@ -730,6 +732,67 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         }
     }));
 
+    /// <summary>
+    /// 抓着指针的 X 程序挪了指针(xs_plan F8):用户此刻正用 X 窗口时把系统光标挪到对应的屏幕位置(根坐标加 <see cref="RootOrigin" />),
+    /// 服务端的指针与真实光标不再分叉 —— Blender 连续拖拽、CAD 旋转、远端游戏的视角。用户在用本机窗口时不挪。
+    /// </summary>
+    public void PointerWarped(int rootX, int rootY) => Dispatcher.UIThread.Post(() =>
+    {
+        if (XActive)
+        {
+            (int x, int y) = RootToScreen(rootX, rootY);
+            WarpCursor(x, y);
+        }
+    });
+
+    /// <summary>
+    /// 根坐标换成本机屏幕坐标(物理像素):rootless 下加根原点;单窗口模式(F13)下根窗口就是屏幕窗口的内容区,加它的左上角。
+    /// </summary>
+    private (int X, int Y) RootToScreen(int x, int y)
+    {
+        if (_server?.Screen is { } screen && _windows.TryGetValue(screen, out XNativeWindow? window))
+        {
+            PixelPoint origin = window.PointToScreen(default);
+            return (origin.X + x, origin.Y + y);
+        }
+        (int ox, int oy) = RootOrigin;
+        return (x + ox, y + oy);
+    }
+
+    /// <summary>带 confine-to 的指针抓取开始 / 结束(根坐标):X 窗口活动时把系统光标关在那块里,见 <see cref="ApplyConfinement" />。</summary>
+    public void PointerConfinementChanged(XRect? area) => Dispatcher.UIThread.Post(() =>
+    {
+        _confinement = area;
+        ApplyConfinement();
+    });
+
+    /// <summary>X 程序要求的光标范围(根坐标);null = 没有。</summary>
+    private XRect? _confinement;
+
+    /// <summary>系统光标此刻被我们关着。</summary>
+    private bool _confined;
+
+    /// <summary>有范围且用户正用 X 窗口时关住光标,否则放开 —— 用户切到本机窗口时光标不能还被关在 X 窗口里。</summary>
+    private void ApplyConfinement()
+    {
+        if (_confinement is { } area && XActive)
+        {
+            (int x, int y) = RootToScreen(area.X, area.Y);
+            _confined = ConfineCursor(new PixelRect(x, y, area.Width, area.Height));
+        }
+        else if (_confined)
+        {
+            ConfineCursor(null);
+            _confined = false;
+        }
+    }
+
+    /// <summary>挪系统光标(物理像素的屏幕坐标);测试可以换掉,不去碰真鼠标。</summary>
+    internal Func<int, int, bool> WarpCursor { get; set; } = SystemPointer.Warp;
+
+    /// <summary>关住 / 放开系统光标;测试可以换掉。</summary>
+    internal Func<PixelRect?, bool> ConfineCursor { get; set; } = SystemPointer.Confine;
+
     /// <summary>上一次与 X 交换过的图片(系统剪贴板读出来的样子)的指纹;没有图片为 null。</summary>
     private string? _lastImageFingerprint;
 
@@ -904,6 +967,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
             return;
         }
         UpdateTopmost(xActive: true);
+        ApplyConfinement();
         server.FocusTopLevel(window.Handle);
         if (HostLockState.Read() is var (capsLock, numLock))
         {
@@ -971,6 +1035,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         if (!XActive)
         {
             UpdateTopmost(xActive: false);   // 用户回到了本机窗口:X 的弹出层与「总在最前」的窗口退到后面
+            ApplyConfinement();              // 光标不再关在 X 窗口里
         }
     });
 

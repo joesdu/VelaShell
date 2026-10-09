@@ -1703,14 +1703,14 @@ public sealed partial class X11Server
         c.Reply(1, w => w.U32(Root.Id).U32(child).I16(px).I16(py).I16(px - wx).I16(py - wy).U16(state).Zero(6));
     }
 
-    private void WarpPointer(XRequestReader r)
+    private void WarpPointer(XClient c, XRequestReader r)
     {
         uint src = r.U32(), dst = r.U32();
         short srcX = r.I16(), srcY = r.I16();
         ushort srcWidth = r.U16(), srcHeight = r.U16();
         short dx = r.I16(), dy = r.I16();
         XWindow? srcWindow = src == 0 ? null : Window(src), dstWindow = dst == 0 ? null : Window(dst);
-        WarpPointerTo(srcWindow, srcX, srcY, srcWidth, srcHeight, dstWindow, dx, dy);
+        WarpPointerTo(c, srcWindow, srcX, srcY, srcWidth, srcHeight, dstWindow, dx, dy);
     }
 
     /// <summary>
@@ -1718,9 +1718,10 @@ public sealed partial class X11Server
     /// (宽 / 高为 0 换成窗口的宽 / 高减去 src-x / src-y);dst-window 为 None 时按偏移挪,否则挪到它原点加偏移。
     /// 不出根窗口,有带 confine-to 的指针抓取时不出那个窗口(只挪到最近的边上)。指针冻着时与设备事件一样排队(原先越过排着的事件先到)。
     /// 原先两条路不一致:核心的 src-window 与源矩形读了就丢、不校验;结果不夹,负坐标撞上「指针离开」的 −1。
-    /// 宿主的系统指针挪不动(那是用户的鼠标),这里只改服务端认为的指针位置(F8)。
+    /// 挪的是服务端认为的指针位置;发出请求的客户端此刻抓着指针(<paramref name="requester" /> 是抓取方)时,还告诉宿主
+    /// (<see cref="IX11ServerHost.PointerWarped" />),由它把系统光标挪过去 —— 别的客户端挪不动用户的鼠标。
     /// </summary>
-    private void WarpPointerTo(XWindow? src, int srcX, int srcY, int srcWidth, int srcHeight, XWindow? dst, int dx, int dy) =>
+    private void WarpPointerTo(XClient requester, XWindow? src, int srcX, int srcY, int srcWidth, int srcHeight, XWindow? dst, int dx, int dy) =>
         ProcessPointerMotion(() =>
         {
             int px = _pointerX, py = _pointerY;
@@ -1758,6 +1759,10 @@ public sealed partial class X11Server
                 y = Math.Clamp(y, cy, cy + Math.Max(0, confine.Height - 1));
             }
             MovePointer(Math.Clamp(x, 0, Root.Width - 1), Math.Clamp(y, 0, Root.Height - 1), warp: true);
+            if (!requester.Closed && PointerGrab is { } grab && ReferenceEquals(grab.Client, requester) && !IsRestricted(requester))
+            {
+                _host.PointerWarped(_pointerX, _pointerY);
+            }
         });
 
     /// <summary>窗口还在(没被销毁);根总是在的。</summary>
