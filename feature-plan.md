@@ -243,7 +243,7 @@
 
 | 出处 | 要改什么 | 进度 |
 | --- | --- | --- |
-| `plan.md` §185 第二次审查清单的最后一轮收尾 | `{zh,en}/xserver/design/architecture.md`:§6 扁弧按线段画满线宽;§7 字体按屏幕分辨率挑 75 / 100 dpi、RENDER 的 alpha-map(只换 alpha 通道、跟着变换、目标上生效,删掉「必须是只有 alpha 的格式」);§2 字体脚本核对摘要;里程碑记下这一轮 | velashell-docs 分支 `fix/xserver-plan-leftovers` 已提交,待开 PR,与宿主 PR 一起合 |
+| `plan.md` §185 第二次审查清单的最后一轮收尾 | `{zh,en}/xserver/design/architecture.md`:§6 扁弧按线段画满线宽;§7 字体按屏幕分辨率挑 75 / 100 dpi、RENDER 的 alpha-map(只换 alpha 通道、跟着变换、目标上生效,删掉「必须是只有 alpha 的格式」);§2 字体脚本核对摘要;里程碑记下这一轮 | [velashell-docs#105](https://github.com/VelaShellLabs/velashell-docs/pull/105) 已开,与宿主 PR 一起合 |
 | `plan.md` §180 连接导入导出、多选与分组排序（#571） | `{zh,en}/host/会话导入.md` 新增第七节（JSON / CSV 两种格式、导出口令加密、CSV 列与读法、重复与写入规则）、第六节补一条、标题注明；`{zh,en}/host/交互与界面规格.md` §3（「更多」菜单、Ctrl 双选改为 Ctrl / Shift 多选、分组拖动排序）、§6.2 的入口说法、§12（多选菜单、分组菜单、新增 §12.1 批量修改对话框）；`{zh,en}/host/快捷键参考.md` 新增「资源管理器」一节（Ctrl / Shift 单击多选、拖动连接换分组、拖动分组行排序）；`SFTP双栏与WinSCP差距分析.md` 的交叉引用；`host/README.md` 与根 README 的索引 | [velashell-docs#103](https://github.com/VelaShellLabs/velashell-docs/pull/103) 已开，与宿主 PR 一起合 |
 | `plan.md` §118 窗口外框 | `{zh,en}/host/architecture.md` §5「窗口壳」的 ⚠️ 限定为 Win32、新增「各平台的外框」；`交互与界面规格.md` §2 补 macOS 红绿灯与各平台外框；`design-specs.md` 补 macOS 红绿灯；标题栏统一 28 的口径（设置窗口与消息框保持 48 的例外） | [velashell-docs#70](https://github.com/VelaShellLabs/velashell-docs/pull/70) 已开，与宿主 PR 一起合；实机验收后改掉 architecture 里「验收」那一段 |
 | `plan.md` §74 / §75 目录比较与同步 | `SFTP双栏与WinSCP差距分析.md`（C1 改已实现、新增第七节）与 `交互与界面规格.md` §6（文档工具条、同步窗口、保持远端最新、SHA-256 优先比较） | [velashell-docs#35](https://github.com/VelaShellLabs/velashell-docs/pull/35) **待合入** |

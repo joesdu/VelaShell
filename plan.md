@@ -2176,7 +2176,7 @@ API-M6 在 IN-S4 里落地),24 个是 CP 一节的指向(指向别处的条目�
 WN-M7 要全局指针钩子(新功能);CN-S8 的 `getpeereid` 已经写好,只缺 macOS / FreeBSD 实机;API-H13、IN-E19 同样要实机。
 能在代码里修的是下面四项,外加测试缺口 T15。分支 `fix/xserver-plan-leftovers`,一项一个本地提交;全程守净室规程,依据只有 X 核心协议
 (「PolyArc」的宽弧边界)、RENDER 规范(「CreatePicture」的 alpha-map、§9)与 XLFD,没有打开任何其它 X 服务端、pixman 或 cairo 的源码。
-文档在 velashell-docs 的同名分支(`zh/` 与 `en/` 一起改)。
+文档在 velashell-docs 的同名分支([velashell-docs#105](https://github.com/VelaShellLabs/velashell-docs/pull/105),`zh/` 与 `en/` 一起改)。
 
 **二、做了什么**:
 - **外接框宽或高为 0 的宽弧画满整个线宽**(ed457425):协议只在宽高都不为 0 且不相等时把宽弧的边界交给实现,有一个为 0 时就是与路径相距
