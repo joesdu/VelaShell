@@ -403,12 +403,19 @@ public sealed class OAuthClient(HttpClient http)
         // 两种都能解(见 Parse),这里只是取更省事的那条路
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using HttpResponseMessage response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        bool pollingThrottle = devicePolling && response.StatusCode == System.Net.HttpStatusCode.TooManyRequests;
-        if (!pollingThrottle) EnsureOAuthResponseStatus(response);
+        // 设备轮询的两种协议态有服务端不用 400:限速回 429 + slow_down,
+        // Google 的"还没批"回 428 Precondition Required + authorization_pending。
+        string? pollingState = !devicePolling ? null : response.StatusCode switch
+        {
+            System.Net.HttpStatusCode.TooManyRequests => "slow_down",
+            System.Net.HttpStatusCode.PreconditionRequired => "authorization_pending",
+            _ => null
+        };
+        if (pollingState is null) EnsureOAuthResponseStatus(response);
         string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         Dictionary<string, string> payload = Parse(body, response.Content.Headers.ContentType?.MediaType);
-        // 仅设备轮询的429 slow_down是协议减速；其他429及所有非轮询请求保留HTTP故障。
-        if (pollingThrottle && payload.GetValueOrDefault("error") != "slow_down")
+        // 仅设备轮询中与状态码配对的协议态放行；其他429/428及所有非轮询请求保留HTTP故障。
+        if (pollingState is not null && payload.GetValueOrDefault("error") != pollingState)
             response.EnsureSuccessStatusCode();
         ThrowIfError(payload, response, body);
         return payload;

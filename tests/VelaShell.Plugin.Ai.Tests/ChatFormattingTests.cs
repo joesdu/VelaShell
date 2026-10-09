@@ -174,6 +174,25 @@ public sealed class TransientFailureTests
     }
 
     /// <summary>
+    /// Anthropic 流式中途的 <c>event: error</c>(HTTP 200 之后):SDK 抛不带状态码的
+    /// <c>AnthropicSseException</c>,只能按错误类型判。过载 / 服务端错 / 限流 / 超时值得重来与换站,
+    /// 参数错与鉴权错不值得。
+    /// </summary>
+    [TestMethod]
+    [DataRow(Anthropic.Models.ErrorType.OverloadedError, true)]
+    [DataRow(Anthropic.Models.ErrorType.ApiError, true)]
+    [DataRow(Anthropic.Models.ErrorType.RateLimitError, true)]
+    [DataRow(Anthropic.Models.ErrorType.TimeoutError, true)]
+    [DataRow(Anthropic.Models.ErrorType.InvalidRequestError, false)]
+    [DataRow(Anthropic.Models.ErrorType.AuthenticationError, false)]
+    public void AnthropicInStreamErrorsAreJudgedByType(Anthropic.Models.ErrorType type, bool transient)
+    {
+        var error = new Anthropic.Exceptions.AnthropicSseException("stream error", null!) { ErrorType = type };
+        Assert.AreEqual(transient, TransientFailure.IsTransient(error));
+        Assert.AreEqual(transient, TransientFailure.IsWorthSwitching(error));
+    }
+
+    /// <summary>
     /// Anthropic SDK 自己的 <c>AnthropicApiException</c> 也得按状态码判(review⑥#1):
     /// 只认 <c>HttpRequestException</c> 时,这家 401 鉴权失败既不瞬时、也不值得换一家,
     /// 整条链原地不动;5xx 则被判成永久失败,白白不重试。

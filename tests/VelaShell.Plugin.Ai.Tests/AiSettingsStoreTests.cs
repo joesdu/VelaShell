@@ -12,6 +12,40 @@ public sealed class AiSettingsStoreTests
     private const string GuardReplySse = "data: {\"id\":\"r\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"OK\"}}]}\n\ndata: [DONE]\n\n";
 
     [TestMethod]
+    [DataRow(ChatProtocol.OpenAiChatCompletions)]
+    [DataRow(ChatProtocol.AnthropicMessages)]
+    public async Task KeyPool_OnlyCallersThatCountRetriesLoseSdkRetries(ChatProtocol protocol)
+    {
+        using var context = new TestPluginContext();
+        using var failing = new ErrorStub(System.Net.HttpStatusCode.ServiceUnavailable);
+        var provider = new AiProvider
+        {
+            BaseUrl = failing.BaseUrl, DefaultProtocol = protocol, Models = [new AiModelConfig { Model = "m" }]
+        };
+        var settings = new AiSettings { Providers = [provider] };
+        var store = new AiSettingsStore(context);
+        await store.AddProviderApiKeyAsync(settings, provider, "key-a");
+        await store.AddProviderApiKeyAsync(settings, provider, "key-b");
+        var model = new ResolvedModel(provider, provider.Models[0]);
+
+        // 桥接、后续提问这类一次性请求没有换槽逻辑:加了第二把 Key 也得保留 SDK 默认重试,
+        // 否则多一把 Key 反而让它们碰到一次 503 就直接失败
+        using (IChatClient oneShot = await store.CreateClientAsync(model))
+        {
+            await Assert.ThrowsAsync<Exception>(() => oneShot.GetResponseAsync("hi"));
+        }
+        int oneShotRequests = failing.Requests;
+        Assert.IsTrue(oneShotRequests > 1, $"一次性请求应由 SDK 重试;实际 {oneShotRequests} 次");
+
+        // 聊天回路与逐槽探活自己按槽计数:同一个池子上关掉 SDK 隐式重试,一次失败只打一次 HTTP
+        using (IChatClient counted = store.CreateClient(model, ProviderCredential.Key("key-a"), callerCountsRetries: true))
+        {
+            await Assert.ThrowsAsync<Exception>(() => counted.GetResponseAsync("hi"));
+        }
+        Assert.AreEqual(oneShotRequests + 1, failing.Requests);
+    }
+
+    [TestMethod]
     [DataRow("success")]
     [DataRow("storage")]
     [DataRow("cancel")]

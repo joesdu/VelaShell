@@ -181,7 +181,6 @@ public sealed class Loc(string locale)
         ["SecProvider"] = ["Provider", "供应商", "供應商", "プロバイダー", "프로바이더"],
         ["DefaultProtocol"] = ["Default protocol", "默认协议", "預設協議", "既定のプロトコル", "기본 프로토콜"],
         ["DefaultProtocolHint"] = ["Models under this provider use it unless they pick their own.", "该供应商下的模型默认走它;单个模型可以另选。", "該供應商下的模型預設走它;單個模型可以另選。", "このプロバイダー配下のモデルは既定でこれを使います(モデルごとに変更可)。", "이 프로바이더의 모델은 기본으로 이를 사용합니다(모델별로 변경 가능)."],
-        ["ProviderKeyHint"] = ["Stored encrypted via the host secret store. Shared by every model under this provider unless a model brings its own key.", "经宿主机密存储加密保存。该供应商下所有模型共用,除非某个模型自带 Key。", "經宿主機密儲存加密保存。該供應商下所有模型共用,除非某個模型自帶 Key。", "ホストのシークレットストアで暗号化保存。配下の全モデルで共用します(モデル独自のキーがある場合を除く)。", "호스트 시크릿 저장소에 암호화 저장. 이 프로바이더의 모든 모델이 공용합니다(모델 자체 키가 있으면 제외)."],
         ["InheritProtocol"] = ["Inherit from provider ({0})", "继承供应商({0})", "繼承供應商({0})", "プロバイダーに従う({0})", "프로바이더 상속({0})"],
         ["OwnApiKey"] = ["Use a separate API Key for this model", "此模型使用独立的 API Key", "此模型使用獨立的 API Key", "このモデルに個別の API キーを使う", "이 모델에 별도 API 키 사용"],
         ["OwnApiKeyHint"] = ["Off = the provider's key is used.", "关闭则沿用供应商的 Key。", "關閉則沿用供應商的 Key。", "オフならプロバイダーのキーを使います。", "끄면 프로바이더의 키를 사용합니다."],
