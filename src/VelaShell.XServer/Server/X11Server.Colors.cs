@@ -13,7 +13,7 @@ namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private XColormap Colormap(uint id) => Lookup<XColormap>(id) ?? throw new XProtocolError(XErrorCode.Colormap, id);
+    private XColormap Colormap(uint id) => Use<XColormap>(id) ?? throw new XProtocolError(XErrorCode.Colormap, id);
 
     /// <summary>16 位分量 → 8 位 TrueColor 像素值(取高 8 位)。</summary>
     private static uint PixelOf(ushort r, ushort g, ushort b) => ((uint)(r >> 8) << 16) | ((uint)(g >> 8) << 8) | (uint)(b >> 8);

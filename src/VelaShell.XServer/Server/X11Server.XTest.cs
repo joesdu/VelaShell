@@ -42,7 +42,7 @@ public sealed partial class X11Server
                     {
                         0 => null,
                         1 => CurrentCursor(),
-                        _ => Lookup<XCursorResource>(cursorId) ?? throw new XProtocolError(XErrorCode.Cursor, cursorId),
+                        _ => Use<XCursorResource>(cursorId) ?? throw new XProtocolError(XErrorCode.Cursor, cursorId),
                     };
                     c.Reply(ReferenceEquals(window.Cursor, cursor) ? (byte)1 : (byte)0, w => w.Zero(24));
                     break;

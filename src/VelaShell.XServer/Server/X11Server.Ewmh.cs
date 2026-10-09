@@ -412,7 +412,7 @@ public sealed partial class X11Server
             OnPong(data[1], data[2]);   // ping 的回应:窗口字段是根窗口,data[2] 才是它自己的窗口
             return;
         }
-        if (Lookup<XWindow>(windowId) is not { IsTopLevel: true } top)
+        if (Use<XWindow>(windowId) is not { IsTopLevel: true } top)
         {
             return;
         }

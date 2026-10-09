@@ -221,10 +221,30 @@ public sealed partial class X11Server : IAsyncDisposable
     /// <param name="cancellationToken">取消令牌。</param>
     /// <exception cref="ArgumentNullException"><paramref name="stream" /> 为 null(当场抛)。</exception>
     /// <exception cref="ObjectDisposedException">服务端已经释放(当场抛)。</exception>
-    public Task ServeAuthenticatedAsync(Stream stream, string? label, CancellationToken cancellationToken = default)
+    public Task ServeAuthenticatedAsync(Stream stream, string? label, CancellationToken cancellationToken = default) =>
+        ServeAuthenticatedAsync(stream, label, XClientTrust.Trusted, cancellationToken);
+
+    /// <summary>
+    /// 同 <see cref="ServeAuthenticatedAsync(Stream, string?, CancellationToken)" />,并指明这条连接的信任级别:
+    /// <see cref="XClientTrust.Untrusted" /> 的客户端按 SECURITY 扩展的非受信语义受限(<c>ssh -X</c> 那一档)——
+    /// 进程内的连接器用不着 <c>xauth generate</c> 去签受限 cookie,直接在这里说明。
+    /// </summary>
+    /// <param name="stream">见 <see cref="ServeAuthenticatedAsync(Stream, CancellationToken)" />。</param>
+    /// <param name="label">见 <see cref="ServeAuthenticatedAsync(Stream, string?, CancellationToken)" />。</param>
+    /// <param name="trust">信任级别。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <exception cref="ArgumentNullException"><paramref name="stream" /> 为 null(当场抛)。</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="trust" /> 不是定义了的值(当场抛)。</exception>
+    /// <exception cref="ObjectDisposedException">服务端已经释放(当场抛)。</exception>
+    public Task ServeAuthenticatedAsync(Stream stream, string? label, XClientTrust trust, CancellationToken cancellationToken = default)
     {
         CheckServable(stream);
-        return ServeCoreAsync(stream, new Peer(IsLocal: true, SameHost: false, Uid: null, LocalUser: false, Authenticated: true, label), cancellationToken);
+        if (trust is not (XClientTrust.Trusted or XClientTrust.Untrusted))
+        {
+            throw new ArgumentOutOfRangeException(nameof(trust), trust, "未定义的信任级别。");
+        }
+        return ServeCoreAsync(stream, new Peer(IsLocal: true, SameHost: false, Uid: null, LocalUser: false, Authenticated: true, label,
+            Untrusted: trust == XClientTrust.Untrusted), cancellationToken);
     }
 
     /// <summary>

@@ -21,7 +21,7 @@ namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
-    private XGc Gc(uint id) => Lookup<XGc>(id) ?? throw new XProtocolError(XErrorCode.GContext, id);
+    private XGc Gc(uint id) => Use<XGc>(id) ?? throw new XProtocolError(XErrorCode.GContext, id);
 
     /// <summary>可建像素图的深度:与连接建立回复里的 FORMAT / DEPTH 列表一致(X.Org 的惯例:1、4、8、15、16、24、32)。</summary>
     private static bool IsSupportedDepth(byte depth) => depth is 1 or 4 or 8 or 15 or 16 or 24 or 32;
@@ -43,7 +43,7 @@ public sealed partial class X11Server
         uint id = r.U32();
         uint drawable = r.U32();
         ushort width = r.U16(), height = r.U16();
-        if (Lookup<XResource>(drawable) is not (XWindow or XPixmap))
+        if (Use<XResource>(drawable) is not (XWindow or XPixmap))
         {
             throw new XProtocolError(XErrorCode.Drawable, drawable);
         }
@@ -66,7 +66,7 @@ public sealed partial class X11Server
     private void FreePixmap(XRequestReader r)
     {
         uint id = r.U32();
-        _ = Lookup<XPixmap>(id) ?? throw new XProtocolError(XErrorCode.Pixmap, id);
+        _ = Use<XPixmap>(id) ?? throw new XProtocolError(XErrorCode.Pixmap, id);
         // 像素图被窗口背景或 GC 引用时仍然可用(协议:释放 ID,数据活到最后一个引用消失)—— 引用持有对象本身,这里只删 ID。
         // 建在它上面的 Damage 对象也不跟着销毁:客户端释放像素图之后照样会 DamageDestroy(xeyes 用 Present 换帧时就是这个顺序),
         // 提前销毁会让那一条回 BadDamage、客户端直接退出。Damage 随 DamageDestroy 或客户端断开而释放。
@@ -79,7 +79,7 @@ public sealed partial class X11Server
     {
         uint id = r.U32();
         uint drawable = r.U32();
-        byte depth = Lookup<XResource>(drawable) switch
+        byte depth = Use<XResource>(drawable) switch
         {
             XWindow w => w.IsRoot ? (byte)24 : w.Depth,
             XPixmap p => p.Depth,
@@ -180,7 +180,7 @@ public sealed partial class X11Server
         XPixmap? tile = Has(XGcMask.Tile) ? PixmapOfDepth(Value(XGcMask.Tile), gc.Depth) : null;
         XPixmap? stipple = Has(XGcMask.Stipple) ? PixmapOfDepth(Value(XGcMask.Stipple), 1) : null;
         XFontResource? font = Has(XGcMask.Font)
-            ? Lookup<XFontResource>(Value(XGcMask.Font)) ?? throw new XProtocolError(XErrorCode.Font, Value(XGcMask.Font))
+            ? Use<XFontResource>(Value(XGcMask.Font)) ?? throw new XProtocolError(XErrorCode.Font, Value(XGcMask.Font))
             : null;
         XPixmap? clip = Has(XGcMask.ClipMask) && Value(XGcMask.ClipMask) != 0 ? PixmapOfDepth(Value(XGcMask.ClipMask), 1) : null;
 
@@ -226,7 +226,7 @@ public sealed partial class X11Server
     /// <summary>GC 引用的像素图:不存在回 BadPixmap,深度不对回 BadMatch。</summary>
     private XPixmap PixmapOfDepth(uint id, byte depth)
     {
-        XPixmap pixmap = Lookup<XPixmap>(id) ?? throw new XProtocolError(XErrorCode.Pixmap, id);
+        XPixmap pixmap = Use<XPixmap>(id) ?? throw new XProtocolError(XErrorCode.Pixmap, id);
         return pixmap.Depth == depth ? pixmap : throw new XProtocolError(XErrorCode.Match);
     }
 
@@ -492,7 +492,7 @@ public sealed partial class X11Server
         PixelBuffer? buffer;
         int ox = 0, oy = 0;
         XRect bounds;
-        switch (Lookup<XResource>(drawable))
+        switch (Use<XResource>(drawable))
         {
             case XPixmap p:
                 buffer = p.Buffer;
@@ -615,7 +615,7 @@ public sealed partial class X11Server
             return (null, default, new Region());
         }
         Region copyable = new(source.Available);
-        if (Lookup<XResource>(drawable) is XWindow { IsRoot: false } window && window.TopLevel is { Buffer: not null })
+        if (Use<XResource>(drawable) is XWindow { IsRoot: false } window && window.TopLevel is { Buffer: not null })
         {
             (int ox, int oy) = window.OffsetInTopLevel();
             copyable.Intersect(CachedClip(window, includeInferiors: gc.SubwindowMode == 1).Clone().Translate(-ox, -oy));
@@ -641,7 +641,7 @@ public sealed partial class X11Server
     private void FinishCopy(XClient c, XGc gc, uint dst, XRect destination, Region copied, byte major)
     {
         Region missing = new Region(destination).Subtract(copied).Intersect(DrawableRect(dst));
-        if (!missing.IsEmpty && Lookup<XResource>(dst) is XWindow { IsRoot: false } window && DrawTarget(dst, null) is { TopLevel: { } top } target)
+        if (!missing.IsEmpty && Use<XResource>(dst) is XWindow { IsRoot: false } window && DrawTarget(dst, null) is { TopLevel: { } top } target)
         {
             Region area = missing.Clone().Translate(target.OriginX, target.OriginY).Intersect(target.Clip);
             if (!area.IsEmpty)
@@ -679,14 +679,14 @@ public sealed partial class X11Server
     }
 
     /// <summary>可绘对象自己的矩形(原点、宽、高)。</summary>
-    private XRect DrawableRect(uint drawable) => Lookup<XResource>(drawable) switch
+    private XRect DrawableRect(uint drawable) => Use<XResource>(drawable) switch
     {
         XPixmap p => new XRect(0, 0, p.Width, p.Height),
         XWindow w => new XRect(0, 0, w.Width, w.Height),
         _ => default,
     };
 
-    private byte DrawableDepth(uint drawable) => Lookup<XResource>(drawable) switch
+    private byte DrawableDepth(uint drawable) => Use<XResource>(drawable) switch
     {
         XPixmap p => p.Depth,
         XWindow w => w.IsRoot ? (byte)24 : w.Depth,
@@ -994,7 +994,7 @@ public sealed partial class X11Server
             throw new XProtocolError(XErrorCode.Value, format);
         }
 
-        XResource? resource = Lookup<XResource>(drawable);
+        XResource? resource = Use<XResource>(drawable);
         int boundsW, boundsH;
         uint visual = 0;
         switch (resource)
@@ -1037,6 +1037,10 @@ public sealed partial class X11Server
             ArrayPool<uint>.Shared.Return(s.Pixels);
         }
         uint[] pixels = pooled ?? new uint[Math.Max(1, width * height)];
+        if (RequesterUntrusted && resource is XWindow { TopLevel.Buffer: not null } shown)
+        {
+            HideObscured(pixels, shown, x, y, width, height);
+        }
         uint depthMask = PixelBuffer.DepthMaskOf(depth);
         if ((planeMask & depthMask) == depthMask)
         {

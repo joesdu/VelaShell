@@ -134,12 +134,12 @@ public sealed partial class X11Server
     private void CloseFont(XRequestReader r)
     {
         uint id = r.U32();
-        _ = Lookup<XFontResource>(id) ?? throw new XProtocolError(XErrorCode.Font, id);
+        _ = Use<XFontResource>(id) ?? throw new XProtocolError(XErrorCode.Font, id);
         RemoveResource(id);
     }
 
     /// <summary>FONTABLE:字体 ID,或 GC ID(取 GC 当前的字体)。</summary>
-    private XFont Fontable(uint id) => Lookup<XResource>(id) switch
+    private XFont Fontable(uint id) => Use<XResource>(id) switch
     {
         XFontResource f => f.Font,
         XGc gc => gc.Font?.Font ?? DefaultFont,
@@ -279,7 +279,7 @@ public sealed partial class X11Server
                     break;
                 }
                 uint fid = ((uint)r.U8() << 24) | ((uint)r.U8() << 16) | ((uint)r.U8() << 8) | r.U8();
-                XFontResource font = Lookup<XFontResource>(fid) ?? throw new XProtocolError(XErrorCode.Font, fid);
+                XFontResource font = Use<XFontResource>(fid) ?? throw new XProtocolError(XErrorCode.Font, fid);
                 gc.Font = font;
                 items.Add((0, font.Font, []));
                 continue;

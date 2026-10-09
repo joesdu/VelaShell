@@ -12,8 +12,9 @@ namespace VelaShell.XServer;
 /// <param name="ResourceCount">名下的资源数(窗口、像素图、GC、字体……)。</param>
 /// <param name="MemoryBytes">记在它账上的内存,字节(见 <see cref="X11ServerOptions.MaxClientMemory" />)。</param>
 /// <param name="TopLevels">它的顶层窗口(宿主见过的,映射着的)。</param>
+/// <param name="Trust">信任级别(见 <see cref="XClientTrust" />)。</param>
 /// <param name="HoldsServerGrab">
 /// 它正抓着整个服务端(GrabServer):别的客户端的请求都在等它放开。抓得太久时另有 <see cref="IX11ServerHost.ServerGrabStalled" />。
 /// </param>
 public sealed record XClientInfo(int Id, string? Label, bool Retained, int ResourceCount, long MemoryBytes, IReadOnlyList<XTopLevelWindow> TopLevels,
-    bool HoldsServerGrab = false);
+    XClientTrust Trust = XClientTrust.Trusted, bool HoldsServerGrab = false);

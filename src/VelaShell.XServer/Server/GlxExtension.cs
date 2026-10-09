@@ -224,7 +224,7 @@ internal sealed class GlxExtension(X11Server server)
             case 4:   // DestroyContext(跨客户端:别人的也能销毁,见类注释)
                 {
                     uint id = r.U32();
-                    _ = server.Lookup<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
+                    _ = server.Use<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
                     server.RemoveResource(id);   // 还是当前的上下文要等不再是当前时才真正释放:绑定里留着引用
                     break;
                 }
@@ -237,7 +237,7 @@ internal sealed class GlxExtension(X11Server server)
             case 6:   // IsDirect
                 {
                     uint id = r.U32();
-                    XGlxContext ctx = server.Lookup<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
+                    XGlxContext ctx = server.Use<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
                     c.Reply(0, w => w.Bool(ctx.Direct).Zero(23));
                     break;
                 }
@@ -259,8 +259,8 @@ internal sealed class GlxExtension(X11Server server)
             case 10:   // CopyContext
                 {
                     uint source = r.U32(), dest = r.U32(), mask = r.U32(), tag = r.U32();
-                    XGlxContext src = server.Lookup<XGlxContext>(source) ?? throw GlxError(GlxBadContext, source);
-                    XGlxContext dst = server.Lookup<XGlxContext>(dest) ?? throw GlxError(GlxBadContext, dest);   // 跨客户端:见类注释
+                    XGlxContext src = server.Use<XGlxContext>(source) ?? throw GlxError(GlxBadContext, source);
+                    XGlxContext dst = server.Use<XGlxContext>(dest) ?? throw GlxError(GlxBadContext, dest);   // 跨客户端:见类注释
                     if (tag != 0)
                     {
                         GlxBinding current = GlxBindingOf(c, tag);
@@ -318,7 +318,7 @@ internal sealed class GlxExtension(X11Server server)
             case 23:   // DestroyPixmap
                 {
                     uint id = r.U32();
-                    if (server.Lookup<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Pixmap })
+                    if (server.Use<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Pixmap })
                     {
                         throw GlxError(GlxBadPixmap, id);
                     }
@@ -391,7 +391,7 @@ internal sealed class GlxExtension(X11Server server)
             case 25:   // QueryContext
                 {
                     uint id = r.U32();
-                    XGlxContext ctx = server.Lookup<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
+                    XGlxContext ctx = server.Use<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
                     ReplyAttributes(c, [(GLX_FBCONFIG_ID, ctx.Config.Id), (GLX_RENDER_TYPE, GLX_RGBA_TYPE), (GLX_SCREEN, 0)]);
                     break;
                 }
@@ -407,7 +407,7 @@ internal sealed class GlxExtension(X11Server server)
             case 28:   // DestroyPbuffer
                 {
                     uint id = r.U32();
-                    if (server.Lookup<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Pbuffer })
+                    if (server.Use<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Pbuffer })
                     {
                         throw GlxError(GlxBadPbuffer, id);
                     }
@@ -421,7 +421,7 @@ internal sealed class GlxExtension(X11Server server)
                 {
                     uint id = r.U32();
                     uint count = r.U32();
-                    XGlxDrawable drawable = server.Lookup<XGlxDrawable>(id) ?? throw GlxError(GlxBadDrawable, id);
+                    XGlxDrawable drawable = server.Use<XGlxDrawable>(id) ?? throw GlxError(GlxBadDrawable, id);
                     for (uint i = 0; i < count; i++)
                     {
                         uint attribute = r.U32(), value = r.U32();
@@ -438,7 +438,7 @@ internal sealed class GlxExtension(X11Server server)
                     uint screen = r.U32(), fbconfig = r.U32(), window = r.U32(), glxWindow = r.U32();
                     CheckGlxScreen(screen);
                     GlxConfig config = FbConfig(fbconfig);
-                    XWindow target = server.Lookup<XWindow>(window) ?? throw GlxError(GlxBadWindow, window);
+                    XWindow target = server.Use<XWindow>(window) ?? throw GlxError(GlxBadWindow, window);
                     if (target.Depth != config.Depth || target.IsInputOnly)
                     {
                         throw new XProtocolError(XErrorCode.Match);
@@ -456,7 +456,7 @@ internal sealed class GlxExtension(X11Server server)
             case 32:   // DestroyWindow
                 {
                     uint id = r.U32();
-                    if (server.Lookup<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Window })
+                    if (server.Use<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Window })
                     {
                         throw GlxError(GlxBadWindow, id);
                     }
@@ -492,7 +492,7 @@ internal sealed class GlxExtension(X11Server server)
         XGlxContext? share = null;
         if (shareId != 0)
         {
-            share = server.Lookup<XGlxContext>(shareId) ?? throw GlxError(GlxBadContext, shareId);   // 跨客户端:见类注释
+            share = server.Use<XGlxContext>(shareId) ?? throw GlxError(GlxBadContext, shareId);   // 跨客户端:见类注释
             if (share.Direct != direct)
             {
                 throw new XProtocolError(XErrorCode.Match);   // 直接与间接上下文不在同一个地址空间
@@ -620,7 +620,7 @@ internal sealed class GlxExtension(X11Server server)
 
     private void CreateGlxPixmap(XClient c, uint glxPixmap, uint pixmap, GlxConfig config)
     {
-        XPixmap target = server.Lookup<XPixmap>(pixmap) ?? throw new XProtocolError(XErrorCode.Pixmap, pixmap);
+        XPixmap target = server.Use<XPixmap>(pixmap) ?? throw new XProtocolError(XErrorCode.Pixmap, pixmap);
         if (target.Depth != config.Depth)
         {
             throw new XProtocolError(XErrorCode.Match);
@@ -680,7 +680,7 @@ internal sealed class GlxExtension(X11Server server)
     /// </summary>
     private (uint Key, (int Width, int Height) Size, GlxConfig? Config) ResolveGlxDrawable(uint id, GlxConfig? contextConfig)
     {
-        switch (server.Lookup<XResource>(id))
+        switch (server.Use<XResource>(id))
         {
             case XGlxDrawable { Kind: GlxDrawableKind.Pbuffer } pbuffer:
                 return (id, (pbuffer.PbufferWidth, pbuffer.PbufferHeight), pbuffer.Config);
@@ -1019,7 +1019,7 @@ internal sealed class GlxExtension(X11Server server)
             c.Reply(0, w => w.U32(0).Zero(20));
             return;
         }
-        XGlxContext context = server.Lookup<XGlxContext>(contextId) ?? throw GlxError(GlxBadContext, contextId);   // 跨客户端:见类注释
+        XGlxContext context = server.Use<XGlxContext>(contextId) ?? throw GlxError(GlxBadContext, contextId);   // 跨客户端:见类注释
         if (drawable == 0 || read == 0)
         {
             throw new XProtocolError(XErrorCode.Match);
@@ -1681,7 +1681,7 @@ internal sealed class GlxExtension(X11Server server)
     private void ReplyDrawableAttributes(XClient c, uint id)
     {
         List<(uint, uint)> attributes;
-        switch (server.Lookup<XResource>(id))
+        switch (server.Use<XResource>(id))
         {
             case XGlxDrawable { Kind: GlxDrawableKind.Pbuffer } p:
                 attributes =
@@ -1725,7 +1725,7 @@ internal sealed class GlxExtension(X11Server server)
         {
             throw GlxError(GlxBadContextState, tag);
         }
-        Fonts.XFont font = server.Lookup<XFontResource>(fontId)?.Font ?? throw new XProtocolError(XErrorCode.Font, fontId);
+        Fonts.XFont font = server.Use<XFontResource>(fontId)?.Font ?? throw new XProtocolError(XErrorCode.Font, fontId);
         if (count > 65536)
         {
             throw new XProtocolError(XErrorCode.Value, count);

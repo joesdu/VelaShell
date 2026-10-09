@@ -40,6 +40,7 @@ public sealed partial class X11Server
     private const byte XkbMajor = 146, XkbEventBase = 73, XkbErrorBase = 144;                  // 一个事件码(子类型在 xkbType);BadKeyboard
     private const byte ShmMajor = 147, ShmEventBase = 91, ShmErrorBase = 150;                  // Completion;BadShmSeg
     internal const byte GlxMajor = 148, GlxEventBase = 92, GlxErrorBase = 151;                  // PbufferClobber;BadContext +0 … GLXBadProfileARB +13;internal:GlxExtension 在类外
+    private const byte SecurityMajor = 149, SecurityEventBase = 93, SecurityErrorBase = 165;   // AuthorizationRevoked;BadAuthorization +0、BadAuthorizationProtocol +1
 
     /// <summary>按名字查(QueryExtension)。</summary>
     private readonly Dictionary<string, Extension> _extensions = [with(StringComparer.Ordinal)];
@@ -81,7 +82,7 @@ public sealed partial class X11Server
         Register(new Extension("XTEST", XTestMajor, XTest)
         {
             ClientClosed = CleanupXTest,
-            VisibleTo = client => !IsRestricted(client),   // 伪造的输入与真实键盘无从区分(见 RestrictForwardedClients)
+            VisibleTo = client => !IsRestricted(client),   // 伪造的输入与真实键盘无从区分(见 RestrictForwardedClients;非受信客户端一律不给)
         });
         Register(new Extension("XINERAMA", XineramaMajor, Xinerama));
         Register(new Extension("MIT-SCREEN-SAVER", ScreenSaverMajor, ScreenSaverExtension)
@@ -89,9 +90,10 @@ public sealed partial class X11Server
             FirstEvent = ScreenSaverEventBase,
             EventCount = 1,
             ClientClosed = CleanupScreenSaver,
+            VisibleTo = TrustedOnly,   // 报得出用户多久没动键盘鼠标(SECURITY:不安全的扩展)
         });
-        Register(new Extension("DPMS", DpmsMajor, Dpms));
-        Register(new Extension("X-Resource", XResMajor, XRes));
+        Register(new Extension("DPMS", DpmsMajor, Dpms) { VisibleTo = TrustedOnly });
+        Register(new Extension("X-Resource", XResMajor, XRes) { VisibleTo = TrustedOnly });   // 别的客户端的资源与内存
         Register(new Extension("SYNC", SyncMajor, Sync)
         {
             FirstEvent = SyncEventBase,
@@ -112,6 +114,7 @@ public sealed partial class X11Server
         });
         Register(new Extension("Composite", CompositeMajor, CompositeExtension)
         {
+            VisibleTo = TrustedOnly,   // 重定向根窗口的子窗口就能读到所有窗口的内容
             ClientClosed = CleanupComposite,
             WindowDestroyed = CleanupComposite,
             PixmapFreed = CompositePixmapFreed,
@@ -165,10 +168,19 @@ public sealed partial class X11Server
                 EventCount = 1,
                 FirstError = ShmErrorBase,
                 ErrorCount = 1,
-                VisibleTo = static client => client.SameHost,
+                VisibleTo = static client => client.SameHost && !client.Untrusted,
                 ClientClosed = CleanupShm,
             });
         }
+        Register(new Extension("SECURITY", SecurityMajor, Security)
+        {
+            FirstEvent = SecurityEventBase,
+            EventCount = 1,
+            FirstError = SecurityErrorBase,
+            ErrorCount = 2,
+            VisibleTo = TrustedOnly,   // 规范:不该对非受信客户端暴露
+            ClientClosed = CleanupSecurity,
+        });
     }
 
     /// <summary>登记一个扩展。主操作码重复、事件或错误编号与已登记的重叠、或越出协议给扩展的范围时抛异常(编号表写错了)。</summary>

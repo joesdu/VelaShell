@@ -49,6 +49,11 @@ public sealed partial class X11Server
     private void XInput(XClient c, XRequestReader r)
     {
         byte minor = r.Data;
+        if (c.Untrusted && minor is 25 or 27 or 29 or 35 or 37 or 38 or 57 or 58)
+        {
+            // SECURITY:非受信客户端改设备的键位表、修饰键、按钮映射、设备属性,与核心的 ChangeKeyboardMapping 等一样回 Access。
+            throw new XProtocolError(XErrorCode.Access);
+        }
         switch (minor)
         {
             // ============================================================== XI 1.x
@@ -225,7 +230,7 @@ public sealed partial class X11Server
                 {
                     XWindow window = Window(r.U32());
                     uint cursor = r.U32();
-                    window.Cursor = cursor == 0 ? null : Lookup<XCursorResource>(cursor) ?? throw new XProtocolError(XErrorCode.Cursor, cursor);
+                    window.Cursor = cursor == 0 ? null : Use<XCursorResource>(cursor) ?? throw new XProtocolError(XErrorCode.Cursor, cursor);
                     UpdateCursor();
                     break;
                 }
@@ -586,8 +591,11 @@ public sealed partial class X11Server
         SendXiPropertyEvent(id, property, what: replaced is null ? (byte)1 : (byte)2);
     }
 
-    /// <summary>这个客户端受 <see cref="X11ServerOptions.RestrictForwardedClients" /> 限制(经 SSH 转发进来、且开了限制)。</summary>
-    private bool IsRestricted(XClient client) => _options.RestrictForwardedClients && client.Forwarded;
+    /// <summary>
+    /// 这个客户端看不到 XTEST、收不到原始按键、不能改设备层级:非受信客户端(SECURITY),或者受
+    /// <see cref="X11ServerOptions.RestrictForwardedClients" /> 限制的(经 SSH 转发进来、且开了限制)。
+    /// </summary>
+    private bool IsRestricted(XClient client) => client.Untrusted || (_options.RestrictForwardedClients && client.Forwarded);
 
     /// <summary>XI_PropertyEvent(evtype 12):给在根窗口上选了它的客户端。what:0 删除、1 新建、2 修改。</summary>
     private void SendXiPropertyEvent(ushort id, uint property, byte what)
@@ -691,6 +699,11 @@ public sealed partial class X11Server
             {
                 throw BadDevice(device);
             }
+            if (c.Untrusted && window.Owner is null)
+            {
+                // SECURITY:非受信客户端在根窗口上只能听设备 / 层级 / 设备属性的变化 —— 选键盘、指针与原始事件就能记下所有窗口里的输入。
+                mask &= XiAnyDeviceEvents;
+            }
             masks.Add((device, mask));
         }
         XiSelection selection = window.Xi2Selections.GetValueOrDefault(c) ?? new XiSelection();
@@ -791,7 +804,9 @@ public sealed partial class X11Server
         bool pointer = IsPointerDevice(id);
         ActiveGrab? existing = pointer ? PointerGrab : KeyboardGrab;
         // 失败的次序照 XI 2.2「XIGrabDevice」列的:AlreadyGrabbed、NotViewable、InvalidTime、Frozen。
-        byte status = existing is not null && !ReferenceEquals(existing.Client, c) ? GrabAlreadyGrabbed
+        // 非受信客户端在键盘本来不归它时抓不了键盘(SECURITY「Keyboard Security」,同 GrabKeyboard)。
+        byte status = (existing is not null && !ReferenceEquals(existing.Client, c)) || (!pointer && c.Untrusted && !KeyboardReachesUntrusted())
+            ? GrabAlreadyGrabbed
             : !window.IsViewable ? GrabNotViewable
             : !TimeAcceptable(ref time, pointer ? _lastPointerGrabTime : _lastKeyboardGrabTime) ? GrabInvalidTime
             : FrozenByOther(pointer, c) ? GrabFrozen
@@ -805,7 +820,7 @@ public sealed partial class X11Server
                 OwnerEvents = ownerEvents,
                 Xi2 = true,
                 Xi2Mask = mask,
-                Cursor = cursorId == 0 ? null : Lookup<XCursorResource>(cursorId),
+                Cursor = cursorId == 0 ? null : Use<XCursorResource>(cursorId),
                 Time = time,
             };
             if (pointer)
@@ -870,7 +885,7 @@ public sealed partial class X11Server
                 List<PassiveGrab> others = [.. list.Overlapping((int)detail).Where(g => !ReferenceEquals(g.Client, c) && !g.Client.Closed)];
                 int mine = list.Count(g => ReferenceEquals(g.Client, c));
                 bool deviceSync = grabMode == 0, pairedSync = pairedMode == 0;
-                XCursorResource? cursor = cursorId == 0 ? null : Lookup<XCursorResource>(cursorId);
+                XCursorResource? cursor = cursorId == 0 ? null : Use<XCursorResource>(cursorId);
                 foreach ((uint raw, ushort core) in modifiers)
                 {
                     if (others.Any(g => g.Overlaps((int)detail, core)))

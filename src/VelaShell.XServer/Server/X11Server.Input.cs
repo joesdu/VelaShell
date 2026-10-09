@@ -937,7 +937,8 @@ public sealed partial class X11Server
             return;
         }
         PassiveGrab? activated = null;
-        if (KeyboardGrab is null && FindPassiveGrab(source, isButton: false, keycode, ignoreGrabsThrough) is { } passive)
+        if (KeyboardGrab is null
+            && FindPassiveGrab(source, isButton: false, keycode, ignoreGrabsThrough, skipUntrusted: !KeyboardReachesUntrusted()) is { } passive)
         {
             activated = passive.Grab;
             KeyboardGrab = new ActiveGrab
@@ -1027,7 +1028,12 @@ public sealed partial class X11Server
     }
 
     /// <summary>被动抓取:从根往下到源窗口,第一个匹配的生效(协议「GrabButton」「GrabKey」)。</summary>
-    private (XWindow Window, PassiveGrab Grab)? FindPassiveGrab(XWindow source, bool isButton, int detail, XWindow? ignoreThrough = null)
+    /// <remarks>
+    /// <paramref name="skipUntrusted" />:非受信客户端的被动抓取不看(SECURITY「Keyboard Security」:键盘事件本来不会送到非受信客户端时,
+    /// 它的 GrabKey 不激活)。
+    /// </remarks>
+    private (XWindow Window, PassiveGrab Grab)? FindPassiveGrab(XWindow source, bool isButton, int detail, XWindow? ignoreThrough = null,
+        bool skipUntrusted = false)
     {
         // 从根往下找(协议:离根最近的那个被动抓取生效);递归回溯父链,不为每次按键分配链表。
         // ignoreThrough:它及其祖先上的被动抓取不看(Replay 重放时「不看抓取窗口及其以上」)。
@@ -1044,7 +1050,9 @@ public sealed partial class X11Server
             {
                 return null;
             }
-            return (isButton ? w.ButtonGrabs : w.KeyGrabs).Find(detail, mods) is { } grab ? (w, grab) : null;
+            return (isButton ? w.ButtonGrabs : w.KeyGrabs).Find(detail, mods) is { } grab && !(skipUntrusted && grab.Client.Untrusted)
+                ? (w, grab)
+                : null;
         }
     }
 
@@ -1217,7 +1225,10 @@ public sealed partial class X11Server
         }
         byte[] e = new byte[32];
         e[0] = XEventCode.KeymapNotify;
-        Array.Copy(_keysDown, 1, e, 1, 31);
+        if (MaySeeKeyboard(client))   // SECURITY「Keyboard Security」:键盘不归非受信客户端时全是 0
+        {
+            Array.Copy(_keysDown, 1, e, 1, 31);
+        }
         client.Send(e);
     }
 
@@ -1275,6 +1286,10 @@ public sealed partial class X11Server
     /// </summary>
     private void SetFocusFromClient(XWindow? focus, byte revertTo, uint time)
     {
+        if (RequesterUntrusted && !KeyboardReachesUntrusted())
+        {
+            return;   // SECURITY「Keyboard Security」:键盘不归非受信客户端时,它改焦点什么也不做(抢不走受信程序的键盘)
+        }
         uint now = Math.Max(1u, Now);
         if (time == 0)
         {
@@ -1344,7 +1359,7 @@ public sealed partial class X11Server
                 Window = window,
                 OwnerEvents = ownerEvents,
                 EventMask = mask,
-                Cursor = cursorId == 0 ? null : Lookup<XCursorResource>(cursorId),
+                Cursor = cursorId == 0 ? null : Use<XCursorResource>(cursorId),
                 ConfineTo = confineTo,
                 Time = time,
             };
@@ -1394,7 +1409,7 @@ public sealed partial class X11Server
         if (PointerGrab is { } grab && ReferenceEquals(grab.Client, c) && TimeAcceptable(ref time, _lastPointerGrabTime))
         {
             grab.EventMask = mask;
-            grab.Cursor = cursorId == 0 ? null : Lookup<XCursorResource>(cursorId);
+            grab.Cursor = cursorId == 0 ? null : Use<XCursorResource>(cursorId);
             UpdateCursor();
         }
     }
@@ -1413,7 +1428,7 @@ public sealed partial class X11Server
         CheckPointerEventMask(mask);
         CheckGrabModifiers(modifiers);
         XWindow? confineTo = confine == 0 ? null : Window(confine);
-        XCursorResource? cursor = cursorId == 0 ? null : Lookup<XCursorResource>(cursorId) ?? throw new XProtocolError(XErrorCode.Cursor, cursorId);
+        XCursorResource? cursor = cursorId == 0 ? null : Use<XCursorResource>(cursorId) ?? throw new XProtocolError(XErrorCode.Cursor, cursorId);
         AddCorePassiveGrab(window.ButtonGrabs, new PassiveGrab(c, button, modifiers, ownerEvents, mask, confineTo, cursor,
             PointerSync: pointerSync, KeyboardSync: keyboardSync));
     }
@@ -1496,9 +1511,9 @@ public sealed partial class X11Server
         uint time = r.U32();
         (bool pointerSync, bool keyboardSync) = ReadGrabModes(r);
         byte status;
-        if (KeyboardGrab is { } existing && !ReferenceEquals(existing.Client, c))
+        if ((KeyboardGrab is { } existing && !ReferenceEquals(existing.Client, c)) || (c.Untrusted && !KeyboardReachesUntrusted()))
         {
-            status = GrabAlreadyGrabbed;
+            status = GrabAlreadyGrabbed;   // 后一种:SECURITY「Keyboard Security」,键盘不归非受信客户端时它抓不了
         }
         else if (FrozenByOther(pointer: false, c))
         {

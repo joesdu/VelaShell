@@ -162,6 +162,81 @@ public sealed class RealClientTests
         }
     }
 
+    /// <summary>
+    /// 非受信(<c>ssh -X</c> 的做法):真的 xauth 先用受信 cookie 连上、经 SECURITY 签一个非受信 cookie 写回 .Xauthority,
+    /// 之后的程序带着它连进来 —— 照常画窗口,看不到 XTEST,截不了根窗口。
+    /// </summary>
+    [TestMethod]
+    [Timeout(180_000, CooperativeCancellation = true)]
+    public async Task 非受信_xauth签出的受限cookie连进来_程序照常画_看不到XTEST_截不了根窗口()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        using RecordingHost host = new();
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartServer(host);
+        await using (server)
+        {
+            await server.StartAsync();
+            Task<(int ExitCode, string Output)> client = RunClientAsync(cookie,
+                "xauth generate $DISPLAY . untrusted timeout 120 && echo GENERATED; "
+                + "xdpyinfo -queryExtensions | sed -n 's/^ *\\(XTEST\\|RENDER\\|SECURITY\\|XInputExtension\\)\\b.*/EXT \\1/p'; "
+                + "xwd -root -silent >/dev/null 2>&1 && echo ROOT-CAPTURED || echo ROOT-DENIED; "
+                + "timeout 6 xeyes; true", 120);
+            await host.WaitForAsync(() => !host.Mapped.IsEmpty, 90_000);
+            await Task.Delay(1500);
+            XTopLevelWindow window = host.Mapped.Values.First();
+            (uint[] pixels, _, _) = RecordingHost.Snapshot(window);
+            IReadOnlyList<XClientInfo> clients = await server.GetClientsAsync();
+            (_, string output) = await client;
+            TestContext.WriteLine(output);
+            TestContext.WriteLine(string.Join('\n', errors));
+            Assert.Contains("GENERATED", output, "xauth 经 SECURITY 签出了 cookie");
+            Assert.Contains("EXT RENDER", output);
+            Assert.Contains("EXT XInputExtension", output);
+            Assert.DoesNotContain("EXT XTEST", output, "非受信客户端看不到 XTEST");
+            Assert.DoesNotContain("EXT SECURITY", output);
+            Assert.Contains("ROOT-DENIED", output, "xwd -root 截不了屏");
+            Assert.IsGreaterThan(1, pixels.Distinct().Count(), "xeyes 照常画出来");
+            Assert.IsTrue(clients.Any(c => c.Trust == XClientTrust.Untrusted && c.TopLevels.Count > 0), "画窗口的是非受信客户端");
+        }
+    }
+
+    /// <summary>非受信 cookie 下常见的程序照常画出来,也没有协议错误(SECURITY 的限制没有误伤正常的用法)。</summary>
+    [TestMethod]
+    [DataRow("xterm -geometry 40x6 -e sh -c 'echo hello; sleep 3'")]
+    [DataRow("xterm -fa Monospace -fs 11 -geometry 40x6 -e sh -c 'echo hello; sleep 3'")]
+    [DataRow("xclock -render -update 1")]
+    [DataRow("xlogo")]
+    [DataRow("env LIBGL_ALWAYS_INDIRECT=1 glxgears")]
+    [Timeout(180_000, CooperativeCancellation = true)]
+    public async Task 非受信cookie下常见程序照常画出来且没有协议错误(string program)
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        using RecordingHost host = new();
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartServer(host);
+        await using (server)
+        {
+            await server.StartAsync();
+            Task<(int ExitCode, string Output)> client = RunClientAsync(cookie,
+                $"xauth generate $DISPLAY . untrusted timeout 120 || exit 1; timeout 5 {program}; true", 120);
+            await host.WaitForAsync(() => !host.Mapped.IsEmpty, 90_000);
+            await Task.Delay(1500);
+            XTopLevelWindow window = host.Mapped.Values.First();
+            (uint[] pixels, _, _) = RecordingHost.Snapshot(window);
+            bool untrusted = (await server.GetClientsAsync()).Any(c => c.Trust == XClientTrust.Untrusted && c.TopLevels.Count > 0);
+            (_, string output) = await client;
+            TestContext.WriteLine(output);
+            Assert.IsTrue(untrusted, "画窗口的是非受信客户端");
+            Assert.IsGreaterThan(1, pixels.Distinct().Count(), "窗口里画出了东西");
+            Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
     /// <summary>一个 Swing 程序:报能否最大化、边距,请求最大化之后报尺寸。源文件直接 <c>java P.java</c> 跑。</summary>
     private const string SwingProbe = """
         import javax.swing.*;

@@ -79,6 +79,11 @@ public sealed partial class X11Server
         {
             CheckXkbDevice(r);   // 除 UseExtension 与 SetDebuggingFlags 外,第一个字段都是 deviceSpec
         }
+        if (c.Untrusted && r.Data is 5 or 7 or 9 or 11 or 14 or 16 or 18 or 20 or 25)
+        {
+            // SECURITY「Keyboard Security」:非受信客户端改键位表、键盘设置、锁定状态与 SetModifierMapping 等一样回 Access。
+            throw new XProtocolError(XErrorCode.Access);
+        }
         switch (r.Data)
         {
             case 0:   // UseExtension
@@ -680,9 +685,12 @@ public sealed partial class X11Server
         byte mods = (byte)_modifiers, baseMods = _baseMods, latched = _latchedMods, locked = _lockedMods;
         ushort buttons = _buttons;
         uint indicators = IndicatorState();
+        // SECURITY「Keyboard Security」:按键引起的状态变化(带键码)不发给非受信客户端,除非键盘事件本来就送到非受信客户端 ——
+        // 否则它从 Shift / Ctrl 的起落与键码能拼出别的程序里敲的键。宿主同步锁定键(键码 0)照发。
+        bool? untrustedMaySee = keycode == 0 ? true : null;
         foreach ((XClient client, uint[] details) in _xkbSelections)
         {
-            if (client.Closed)
+            if (client.Closed || (client.Untrusted && !(untrustedMaySee ??= KeyboardReachesUntrusted())))
             {
                 continue;
             }

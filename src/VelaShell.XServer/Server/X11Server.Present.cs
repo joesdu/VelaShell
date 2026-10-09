@@ -179,7 +179,7 @@ public sealed partial class X11Server
             case 4:   // QueryCapabilities:可以不等垂直同步就呈现(Async)
                 {
                     uint target = r.U32();
-                    if (Lookup<XResource>(target) is not XWindow && MonitorIndexOf(target, RandRCrtcBase) < 0)
+                    if (Use<XResource>(target) is not XWindow && MonitorIndexOf(target, RandRCrtcBase) < 0)
                     {
                         throw new XProtocolError(XErrorCode.Window, target);
                     }
@@ -229,7 +229,7 @@ public sealed partial class X11Server
         // 先把参数全部核对完,任何一项出错都不留下效果。
         XWindow window = Window(r.U32());
         uint pixmapId = r.U32();
-        XPixmap pixmap = Lookup<XPixmap>(pixmapId) ?? throw new XProtocolError(XErrorCode.Pixmap, pixmapId);
+        XPixmap pixmap = Use<XPixmap>(pixmapId) ?? throw new XProtocolError(XErrorCode.Pixmap, pixmapId);
         uint serial = r.U32();
         uint validId = r.U32(), updateId = r.U32();
         short xOff = r.I16(), yOff = r.I16();

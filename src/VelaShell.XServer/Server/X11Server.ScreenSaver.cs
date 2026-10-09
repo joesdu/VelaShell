@@ -115,7 +115,7 @@ public sealed partial class X11Server
 
     private void CheckDrawable(uint id)
     {
-        if (Lookup<Resources.XResource>(id) is not (Windowing.XWindow or Resources.XPixmap))
+        if (Use<Resources.XResource>(id) is not (Windowing.XWindow or Resources.XPixmap))
         {
             throw new XProtocolError(XErrorCode.Drawable, id);
         }

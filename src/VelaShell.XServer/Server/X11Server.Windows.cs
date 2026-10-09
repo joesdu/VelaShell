@@ -111,6 +111,14 @@ public sealed partial class X11Server
     {
         XWindow window = Window(r.U32());
         uint mask = r.U32();
+        if (RequesterUntrusted && window.Owner is null)
+        {
+            // SECURITY 规范例外 3.g:非受信客户端在根窗口(与服务端别的窗口)上只能选 StructureNotify / PropertyChange。
+            uint events = mask == (uint)XWindowAttrMask.EventMask ? r.U32() : 0;
+            CheckUntrustedWindowAttributes(window, mask, events);
+            SelectEvents(c, window, events);
+            return;
+        }
         if (IsServerWindow(window) && (mask & ~(uint)XWindowAttrMask.EventMask) != 0)
         {
             throw new XProtocolError(XErrorCode.Access);   // 只许选事件(GTK 在 WM 检查窗口上选 StructureNotify)
@@ -140,10 +148,16 @@ public sealed partial class X11Server
             uint v = r.U32();
             switch ((XWindowAttrMask)(1u << bit))
             {
+                case XWindowAttrMask.BackgroundPixmap when v == XWindow.BackgroundPixmapNone && RequesterUntrusted:
+                    // SECURITY「Image Security」:非受信客户端把背景设成 None 时,改用服务端定的背景(黑色)。
+                    window.BackgroundPixmap = XWindow.BackgroundPixmapNone;
+                    window.BackgroundTile = null;
+                    window.BackgroundPixel = 0;
+                    break;
                 case XWindowAttrMask.BackgroundPixmap:
                     window.BackgroundPixmap = v;
                     window.BackgroundPixel = null;
-                    window.BackgroundTile = v > 1 ? Lookup<XPixmap>(v) ?? throw new XProtocolError(XErrorCode.Pixmap, v) : null;
+                    window.BackgroundTile = v > 1 ? Use<XPixmap>(v) ?? throw new XProtocolError(XErrorCode.Pixmap, v) : null;
                     break;
                 case XWindowAttrMask.BackgroundPixel:
                     window.BackgroundPixmap = XWindow.BackgroundPixmapNone;
@@ -151,7 +165,7 @@ public sealed partial class X11Server
                     window.BackgroundPixel = v;
                     break;
                 case XWindowAttrMask.BorderPixmap:
-                    window.BorderTile = v == 0 ? window.Parent?.BorderTile : Lookup<XPixmap>(v) ?? throw new XProtocolError(XErrorCode.Pixmap, v);
+                    window.BorderTile = v == 0 ? window.Parent?.BorderTile : Use<XPixmap>(v) ?? throw new XProtocolError(XErrorCode.Pixmap, v);
                     break;
                 case XWindowAttrMask.BorderPixel:
                     window.BorderTile = null;
@@ -188,7 +202,7 @@ public sealed partial class X11Server
                     window.Colormap = v == 0 ? window.Parent?.Colormap ?? DefaultColormapId : v;
                     break;
                 case XWindowAttrMask.Cursor:
-                    window.Cursor = v == 0 ? null : Lookup<XCursorResource>(v) ?? throw new XProtocolError(XErrorCode.Cursor, v);
+                    window.Cursor = v == 0 ? null : Use<XCursorResource>(v) ?? throw new XProtocolError(XErrorCode.Cursor, v);
                     break;
             }
         }
@@ -517,6 +531,10 @@ public sealed partial class X11Server
         if (window.Mapped || window.IsRoot)
         {
             return;
+        }
+        if (window.IsInputOnly && window.Owner is { Untrusted: true } && window.Parent?.Owner is { Untrusted: false })
+        {
+            return;   // SECURITY「Keyboard Security」:非受信客户端挂在受信客户端窗口下的 InputOnly 窗口一律不映射(父是根窗口的照常)
         }
         if (!window.OverrideRedirect && window.Parent is { } parent
             && RedirectClient(parent, XEventMask.SubstructureRedirect) is { } wm && !ReferenceEquals(wm, requester))

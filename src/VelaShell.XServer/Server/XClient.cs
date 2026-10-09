@@ -9,6 +9,7 @@
 using System.Text;
 using System.Threading.Channels;
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Resources;
 
 namespace VelaShell.XServer.Server;
 
@@ -287,6 +288,16 @@ internal sealed class XClient : IDisposable
 
     /// <summary>连接对端的 uid(Linux 上经 SO_PEERCRED、macOS / FreeBSD 上经 getpeereid 取得);取不到时为 null。MIT-SHM 按它核对段的访问权限。</summary>
     public uint? PeerUid { get; init; }
+
+    /// <summary>
+    /// 非受信客户端(SECURITY 扩展「SecurityClientUntrusted」):用 SecurityGenerateAuthorization 签出的非受信 cookie 连进来的,
+    /// 或者宿主经 <see cref="X11Server.ServeAuthenticatedAsync(System.IO.Stream, string?, XClientTrust, System.Threading.CancellationToken)" />
+    /// 指明非受信的(<c>ssh -X</c> 那一档)。它的请求按 SECURITY 规范第三章受限,见 <c>X11Server.Security.cs</c>。
+    /// </summary>
+    public bool Untrusted { get; init; }
+
+    /// <summary>连进来时用的 SECURITY 授权(SecurityGenerateAuthorization 签的);用别的方式连进来的为 null。</summary>
+    public SecurityAuthorization? Authorization { get; init; }
 
     /// <summary>
     /// 选了 PointerMotionHint 时已经发过提示的那个事件窗口,和发的时候的提示轮次(<c>X11Server</c> 在

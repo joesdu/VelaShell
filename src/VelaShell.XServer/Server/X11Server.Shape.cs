@@ -55,7 +55,7 @@ public sealed partial class X11Server
                         SetShape(window, kind, null);
                         break;
                     }
-                    XPixmap pixmap = Lookup<XPixmap>(pixmapId) ?? throw new XProtocolError(XErrorCode.Pixmap, pixmapId);
+                    XPixmap pixmap = Use<XPixmap>(pixmapId) ?? throw new XProtocolError(XErrorCode.Pixmap, pixmapId);
                     if (pixmap.Depth != 1)
                     {
                         throw new XProtocolError(XErrorCode.Match);
