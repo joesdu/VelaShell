@@ -58,15 +58,15 @@ internal sealed class XColormap(uint id, XClient? owner, uint visual) : XResourc
 
 /// <summary>光标。</summary>
 /// <remarks>
-/// 来自 cursor 字体的光标记下字形号(<see cref="Glyph" />);位图光标(核心 CreateCursor)与 ARGB 光标(RENDER CreateCursor)
-/// 在创建时把图像烙成 <see cref="Image" />。宿主看到的 <see cref="XCursor" /> 由这些推出,见 X11Server.Cursors.cs。
+/// 位图光标(核心 CreateCursor)、字形光标(CreateGlyphCursor)与 ARGB 光标(RENDER CreateCursor)在创建时把图像烙成
+/// <see cref="Image" />;来自 cursor 字体的光标另记下字形号(<see cref="Glyph" />)。宿主看到的 <see cref="XCursor" /> 由这些推出,见 X11Server.Cursors.cs。
 /// </remarks>
 internal sealed class XCursorResource(uint id, XClient? owner) : XResource(id, owner)
 {
-    /// <summary>cursor 字体的字形号(如 68 = left_ptr、152 = xterm);位图 / ARGB 光标为 -1。</summary>
+    /// <summary>cursor 字体的字形号(如 68 = left_ptr、152 = xterm);别的光标为 -1。</summary>
     public int Glyph { get; set; } = -1;
 
-    /// <summary>位图 / ARGB 光标的图像(预乘的 ARGB 与热点);cursor 字体的光标为 null。</summary>
+    /// <summary>光标的图像(预乘的 ARGB 与热点);隐形的、太大的为 null。</summary>
     public XCursorImage? Image { get; set; }
 
     /// <summary>一个像素也不显示的光标(xterm 拿 nil2 字体的空白字形做的隐形指针):交给宿主时是 Hidden。</summary>
