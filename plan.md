@@ -2139,3 +2139,20 @@ VelaShell 的连接存在 SonnetDB 里,既没有导入导出,资源管理器也�
 
 **五、验证**:`VelaShell.Plugin.Ai.Tests` 1437 条全过(5 分 51 秒);新用例在去掉修复后红在第二次保存(`ApiKeySlotChangedException`)。
 另用一个文件式小程序直接走宿主的 `SonnetDbPluginDataStore` 做了一次写入/读回,确认读回文本里的 `+` 被转义、与写入原文不等。
+
+## ✅ 183. 2026-10-09 AI 插件:启动预热每次都报 `Preloading 'CSharpMath.Editor' failed`
+
+- **现象**:每次启动,调试输出里一条 `System.IO.FileNotFoundException`(CSharpMath.Editor, Version=1.0.0.0)紧跟一条插件警告
+  `Preloading 'CSharpMath.Editor' failed`。功能上没有影响,公式照常渲染。
+- **原因**:`AiPlugin.PrewarmPanelAssemblies` 从入口程序集沿**元数据引用图**逐个 `LoadFromAssemblyName`。`Sylinko.CSharpMath.Avalonia` 12.0.0
+  这个 fork 包只带了 `CSharpMath` / `CSharpMath.Rendering` / `CSharpMath.Avalonia` 三个 dll,也没声明别的包依赖,
+  而 `CSharpMath.Rendering.dll` 的元数据里引着 `CSharpMath.Editor`(只有公式编辑键盘 `CSharpMath.Rendering.FrontEnd.MathKeyboard`
+  用到 `Editor.MathKeyboard<,>` / `MathListIndex`)。插件只渲染、不编辑,运行期从不碰这个类型,所以从来不缺;
+  预热却照着引用硬装 —— 插件 deps.json 里没有、宿主的可信平台程序集里也没有,只能抛。headless 用例 `MarkdownProjectionNotificationTests`
+  在没有这个 dll 的测试输出目录里渲染 `$E = mc^2$` 一直是绿的,同样说明渲染路径用不到它。
+- **改法**:预热前先按 `PluginAssemblyLoadContext.Load` 的同一套规则判断装不装得到(新的 `AiPlugin.CanResolve`):
+  插件 deps.json 解析得到(另起一个 `AssemblyDependencyResolver`),或者在默认 ALC 的 `TRUSTED_PLATFORM_ASSEMBLIES` 里;
+  两边都没有的只是元数据里的悬空引用,记一条 Debug 跳过,不再去装。拿不到 TPA 清单时不过滤,与原来一样。
+  `catch` 与那条警告保留,真装不动的(损坏、无权限)照旧报。
+- **验证**:新用例 `PanelPreloadTests`(5 条);拿真实插件输出目录模拟走一遍引用图,跳过的只有 `CSharpMath.Editor`,
+  外加 `VelaShell.PluginSdk` / `Avalonia.*` / `AvaloniaEdit` 几个 —— 后者都在宿主 `VelaShell.deps.json` 里,宿主进程的 TPA 有它们,真跑时照常预热。
