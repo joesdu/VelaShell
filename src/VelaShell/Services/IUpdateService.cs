@@ -11,7 +11,7 @@ public interface IUpdateService
 
     /// <summary>
     /// 能否原地自更新:应用目录可写、平台受支持且非商店版时为 true。装在 Program Files 等
-    /// 只读位置时为 false,发现新版本后只能提示用户手动下载。
+    /// 只读位置时为 false;Linux 始终为 false,发现新版本后打开发布页面供用户手动下载。
     /// </summary>
     bool CanSelfUpdate { get; }
 

@@ -78,6 +78,7 @@ public sealed class SettingsLazyPagesUiTests
 
             Assert.AreEqual(2, window.CreatedPageCountForTest);
             Assert.HasCount(1, window.GetVisualDescendants().OfType<AboutPage>());
+            Assert.IsNotNull(vm.UpdatePageOpener, "设置窗口应接上系统浏览器,让 Linux 更新可以打开发布页面。");
             // 切走的页面从视觉树上撤下来,不再参与布局与渲染。
             Assert.IsEmpty(window.GetVisualDescendants().OfType<GeneralSettingsPage>());
         });
@@ -100,6 +101,9 @@ public sealed class SettingsLazyPagesUiTests
             GeneralSettingsPage again = window.GetVisualDescendants().OfType<GeneralSettingsPage>().Single();
             Assert.IsTrue(ReferenceEquals(first, again), "切回来应当复用同一个页面实例,而不是重建。");
             Assert.AreEqual(2, window.CreatedPageCountForTest, "复用就不该再多建一个。");
+            Assert.IsNotNull(vm.UpdatePageOpener);
+            Assert.AreSame(window, vm.UpdatePageOpener.Target,
+                "检查更新期间切走关于页后,浏览器入口仍应绑定到设置窗口。");
         });
     }
 

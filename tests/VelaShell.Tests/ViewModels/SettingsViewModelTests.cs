@@ -4,9 +4,11 @@ using ReactiveUI.Primitives;
 using VelaShell.Core.Data;
 using VelaShell.Core.Localization;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Core.Services;
 using VelaShell.Core.Ssh;
 using VelaShell.ViewModels;
+using VelaShell.Services;
 
 namespace VelaShell.Tests.ViewModels;
 
@@ -24,6 +26,86 @@ public class SettingsViewModelTests
 
     private SettingsViewModel CreateVm(ISettingsPreviewService? previewService = null) =>
         new(_settingsService, _themeService, previewService: previewService);
+
+    [TestMethod]
+    [TestCategory("Update")]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task LinuxUpdate_OpensReleasePageWithoutDownloading(bool writable)
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            Assert.Inconclusive("Linux update behavior requires Linux.");
+        }
+        IUpdateService updates = Substitute.For<IUpdateService>();
+        updates.CheckForUpdateAsync().Returns(true);
+        updates.AvailableVersion.Returns("2.0.0-beta.1");
+        updates.CanSelfUpdate.Returns(writable);
+        Uri? opened = null;
+        SettingsViewModel vm = new(_settingsService, _themeService, updateService: updates)
+        {
+            UpdatePageOpener = uri =>
+            {
+                opened = uri;
+                return Task.FromResult(true);
+            }
+        };
+
+        await vm.CheckUpdatesCommand.Execute().FirstAsync();
+
+        Assert.AreEqual("https://github.com/joesdu/VelaShell/releases", opened?.AbsoluteUri);
+        Assert.Contains("2.0.0-beta.1", vm.UpdateStatus);
+        Assert.IsFalse(vm.UpdateReady);
+        _ = updates.DidNotReceive().CanSelfUpdate;
+        await updates.DidNotReceive().DownloadUpdateAsync(Arg.Any<IProgress<int>>());
+        updates.DidNotReceive().ApplyUpdateAndRestart();
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public async Task LinuxUpdate_BrowserFailureLeavesManualDownloadAddress()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            Assert.Inconclusive("Linux update behavior requires Linux.");
+        }
+        IUpdateService updates = Substitute.For<IUpdateService>();
+        updates.CheckForUpdateAsync().Returns(true);
+        updates.AvailableVersion.Returns("2.0.0");
+        SettingsViewModel vm = new(_settingsService, _themeService, updateService: updates)
+        {
+            UpdatePageOpener = _ => Task.FromException<bool>(new InvalidOperationException("No browser"))
+        };
+
+        await vm.CheckUpdatesCommand.Execute().FirstAsync();
+
+        Assert.Contains("https://github.com/joesdu/VelaShell/releases", vm.UpdateStatus);
+        Assert.IsFalse(vm.UpdateReady);
+        await updates.DidNotReceive().DownloadUpdateAsync(Arg.Any<IProgress<int>>());
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public async Task CheckUpdates_WithoutNewVersionDoesNotOpenBrowser()
+    {
+        IUpdateService updates = Substitute.For<IUpdateService>();
+        updates.CheckForUpdateAsync().Returns(false);
+        bool opened = false;
+        SettingsViewModel vm = new(_settingsService, _themeService, updateService: updates)
+        {
+            UpdatePageOpener = _ =>
+            {
+                opened = true;
+                return Task.FromResult(true);
+            }
+        };
+
+        await vm.CheckUpdatesCommand.Execute().FirstAsync();
+
+        Assert.IsFalse(opened);
+        Assert.AreEqual(Strings.Get("SetAbout_UpToDate"), vm.UpdateStatus);
+        Assert.IsFalse(vm.UpdateReady);
+    }
 
     [TestMethod]
     [TestCategory("Settings")]

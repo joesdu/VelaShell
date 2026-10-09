@@ -1565,6 +1565,9 @@
   <data name="SetAbout_UpToDate" xml:space="preserve">
     <value>最新バージョンです。</value>
   </data>
+  <data name="SetAbout_UpdateAvailableLinux" xml:space="preserve">
+    <value>新しいバージョン {0} があります。リリースページから Linux パッケージをダウンロードし、手動でインストールしてください：{1}</value>
+  </data>
   <data name="SetAbout_UpdateAvailableManual" xml:space="preserve">
     <value>新しいバージョン {0} が見つかりましたが、現在のインストール先では自動更新できません(フォルダーが書き込み不可)。プロジェクトのリリースページから最新版を入手してください。</value>
   </data>

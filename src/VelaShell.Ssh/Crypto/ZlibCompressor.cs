@@ -21,13 +21,9 @@ namespace VelaShell.Ssh.Crypto;
 /// 而重置字典（<c>Z_FULL_FLUSH</c>）会把压缩率一起扔掉。
 /// </para>
 /// <para>
-/// <b>用的是 BCL 的 <see cref="ZLibStream"/>，也就是运行时自带的原生 zlib。</b>
-/// 这里有一个容易劝退的细节：BCL 不暴露 zlib 的 flush 模式，
-/// 而 OpenSSH 用的是 <c>Z_PARTIAL_FLUSH</c>。看上去只能自己接一份 zlib ——
-/// 但 <see cref="Stream.Flush"/> 做的 <c>Z_SYNC_FLUSH</c>
-/// <b>同样不重置字典</b>，两者的差别只是每个报文多 4 个字节
-/// （<c>00 00 FF FF</c> 那个空存储块），而<b>两边都能解</b>。
-/// 于是可以直接用原生 zlib：不引第三方的 zlib 实现，也快得多。
+/// .NET 11 的 <see cref="ZLibEncoder"/> 和 <see cref="ZLibDecoder"/> 是运行时自带的原生
+/// zlib 的 span API。它们保留跨调用的字典，同时不需要 <see cref="Stream"/> 适配器，
+/// 所以压缩结果直接写入 SSH 的 <see cref="IBufferWriter{T}"/>。
 /// </para>
 /// <para>
 /// ⚠️ <b>压缩器的生命周期绑在密钥上，中途不能 Dispose。</b>
@@ -37,35 +33,14 @@ namespace VelaShell.Ssh.Crypto;
 /// </remarks>
 internal sealed class ZlibCompressor : ISshCompressor
 {
-    /// <summary>一次解压的中间缓冲大小。</summary>
-    private const int ChunkSize = 16 * 1024;
+    /// <summary>单次向调用方 writer 请求的输出大小。</summary>
+    private const int OutputChunkSize = 16 * 1024;
+    private const int LargeOutputChunkSize = 64 * 1024;
 
-    /// <summary>
-    /// 应用有没有打开 <c>System.IO.Compression.UseStrictValidation</c>。默认是关的。
-    /// </summary>
-    /// <remarks>
-    /// 打开之后，「读到没有更多数据」会被当成流被截断而抛 <see cref="InvalidDataException"/>。
-    /// 而 SSH 的 zlib 流是<b>一直 flush、永不结束</b>的，所以每个报文解完都会撞上它。
-    /// 见 <see cref="Decompress"/> 里的处理。
-    /// </remarks>
-    private static readonly bool StrictValidation =
-        AppContext.TryGetSwitch("System.IO.Compression.UseStrictValidation", out bool strict) && strict;
-
-    private readonly BufferWriterStream _deflateSink = new();
-    private readonly SequenceStream _inflateSource = new();
     private readonly int _level;
+    private ZLibEncoder? _encoder;
+    private ZLibDecoder? _decoder;
     private bool _disposed;
-
-    /// <summary>压缩用的 zlib 流 —— 第一次压缩时才建。</summary>
-    /// <remarks>
-    /// 一个压缩器只用在一个方向上：发送方向只压、接收方向只解。曾经两个 zlib 流在构造时都建：
-    /// 开压缩的连接每个方向都白占一份用不上的原生 zlib 状态（deflate 那份最大，约两三百 KiB），
-    /// 每次重协商再建一对，多标签页时累加。
-    /// </remarks>
-    private ZLibStream? _deflater;
-
-    /// <summary>解压用的 zlib 流 —— 第一次解压时才建（见 <see cref="_deflater"/>）。</summary>
-    private ZLibStream? _inflater;
 
     /// <summary>建一个 zlib 压缩器。</summary>
     /// <param name="level">压缩级别，1–9。OpenSSH 用 6。</param>
@@ -85,22 +60,65 @@ internal sealed class ZlibCompressor : ISshCompressor
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(output);
 
-        _deflater ??= new ZLibStream(
-            _deflateSink,
-            new ZLibCompressionOptions { CompressionLevel = _level },
-            leaveOpen: true);
+        _encoder ??= new ZLibEncoder(_level);
 
-        _deflateSink.Output = output;
-        try
+        // isFinalBlock:false 保留跨报文的 zlib 字典。DestinationTooSmall 时，
+        // 编码器报告已经消耗的前缀，下一轮继续喂剩余输入即可。
+        int consumedTotal = 0;
+        bool called = false;
+        while (!called || consumedTotal < payload.Length)
         {
-            _deflater.Write(payload);
+            called = true;
+            Span<byte> destination = output.GetSpan(OutputChunkSize);
+            OperationStatus status = _encoder.Compress(payload[consumedTotal..], destination, out int consumed, out int written, isFinalBlock: false);
 
-            // 这一句是全部的关键：sync flush —— 吐干净，但不动字典。
-            _deflater.Flush();
+            if ((uint)written > (uint)destination.Length || (uint)consumed > (uint)(payload.Length - consumedTotal))
+            {
+                throw new SshProtocolException(SshPhase.Open, "zlib 编码器返回了无效的字节计数。");
+            }
+
+            output.Advance(written);
+            consumedTotal += consumed;
+
+            if (status == OperationStatus.InvalidData || (status == OperationStatus.DestinationTooSmall && consumed == 0 && written == 0))
+            {
+                throw new SshProtocolException(SshPhase.Open, "zlib 压缩失败。");
+            }
+
+            if (status != OperationStatus.DestinationTooSmall)
+            {
+                if (status != OperationStatus.Done || consumedTotal != payload.Length)
+                {
+                    throw new SshProtocolException(SshPhase.Open, "zlib 压缩未能处理完整载荷。");
+                }
+
+                break;
+            }
         }
-        finally
+
+        // ZLibEncoder.Flush 等价于同步 flush：输出当前报文的尾部，
+        // 但不结束流，也不清掉后续报文要复用的字典。
+        while (true)
         {
-            _deflateSink.Output = null;
+            Span<byte> destination = output.GetSpan(OutputChunkSize);
+            OperationStatus status = _encoder.Flush(destination, out int written);
+            if ((uint)written > (uint)destination.Length)
+            {
+                throw new SshProtocolException(SshPhase.Open, "zlib flush 返回了无效的字节计数。");
+            }
+
+            output.Advance(written);
+            if (status == OperationStatus.DestinationTooSmall)
+            {
+                continue;
+            }
+
+            if (status != OperationStatus.Done)
+            {
+                throw new SshProtocolException(SshPhase.Open, "zlib flush 失败。");
+            }
+
+            break;
         }
     }
 
@@ -109,60 +127,82 @@ internal sealed class ZlibCompressor : ISshCompressor
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(output);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxOutputLength);
 
-        _inflater ??= new ZLibStream(_inflateSource, CompressionMode.Decompress, leaveOpen: true);
-        _inflateSource.Data = payload;
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(ChunkSize);
+        _decoder ??= new ZLibDecoder();
         long total = 0;
 
-        try
+        foreach (ReadOnlyMemory<byte> segment in payload)
         {
-            while (true)
+            ReadOnlySpan<byte> source = segment.Span;
+            int consumedInSegment = 0;
+
+            while (consumedInSegment < source.Length)
             {
-                int read;
+                long remaining = maxOutputLength - total;
+                bool directOutput = remaining > 0;
+
+                OperationStatus status;
+                int consumed;
+                int written;
                 try
                 {
-                    read = _inflater.Read(buffer, 0, buffer.Length);
+                    if (directOutput)
+                    {
+                        int chunkSize = source.Length >= OutputChunkSize ? LargeOutputChunkSize : OutputChunkSize;
+                        int sizeHint = (int)Math.Min(chunkSize, remaining);
+                        Span<byte> destination = output.GetSpan(sizeHint)[..sizeHint];
+                        status = _decoder.Decompress(source[consumedInSegment..], destination, out consumed, out written);
+                    }
+                    else
+                    {
+                        // 允许解码器把没有输出的 flush 尾部消费掉；如果它产生了
+                        // 一个字节，则在写入调用方 writer 之前立刻拦截压缩炸弹。
+                        status = DecompressWithLimitProbe(source[consumedInSegment..], out consumed, out written);
+                    }
+
+                    if ((uint)consumed > (uint)(source.Length - consumedInSegment) || (uint)written > (uint)(directOutput ? Math.Min(LargeOutputChunkSize, remaining) : 1))
+                    {
+                        throw new SshProtocolException(SshPhase.Open, "zlib 解码器返回了无效的字节计数。");
+                    }
+
+                    if (written != 0)
+                    {
+                        if (!directOutput || total + written > maxOutputLength)
+                        {
+                            throw BombLimit(maxOutputLength);
+                        }
+
+                        output.Advance(written);
+                        total += written;
+                    }
+
+                    consumedInSegment += consumed;
                 }
-                catch (InvalidDataException) when (StrictValidation && total > 0)
+                catch (SshProtocolException)
                 {
-                    // 对端是 flush 了流，不是结束了流 —— 所以「读到没有更多数据」
-                    // 在严格校验下被当成截断。这一次读本身没有产出任何数据
-                    // （载荷已经由前面几次读取回来了），所以这就是载荷的结尾。
-                    //
-                    // total == 0 时**不豁免**：解出来什么都没有的载荷不是我们 flush 过的东西，
-                    // 那仍然是错误 —— 否则非法的 zlib 数据会被静静放过去。
-                    break;
+                    throw;
                 }
-                catch (InvalidDataException ex)
+                catch (Exception ex) when (ex is InvalidDataException or IOException)
                 {
-                    throw new SshProtocolException(SshPhase.Open, $"解压失败：{ex.Message}", ex);
+                    throw DecompressionFailure(ex);
                 }
 
-                if (read == 0)
+                if (status == OperationStatus.InvalidData)
                 {
-                    break;
+                    throw DecompressionFailure();
                 }
 
-                total += read;
-
-                // ⚠️ **压缩炸弹**：几百字节能解出几百 MiB。
-                //    上限必须在**写出之前**检查，不能等写完再看。
-                if (total > maxOutputLength)
+                if (status == OperationStatus.DestinationTooSmall && consumed == 0 && written == 0)
                 {
-                    throw new SshProtocolException(
-                        SshPhase.Open,
-                        $"解压后的载荷超过上限 {maxOutputLength} 字节 —— " +
-                        "对端可能在用压缩炸弹撑爆我们的内存。");
+                    throw BombLimit(maxOutputLength);
                 }
 
-                output.Write(buffer.AsSpan(0, read));
+                if (consumed == 0 && written == 0 && status != OperationStatus.NeedMoreData)
+                {
+                    throw DecompressionFailure();
+                }
             }
-        }
-        finally
-        {
-            _inflateSource.Data = default;
-            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 
@@ -173,135 +213,21 @@ internal sealed class ZlibCompressor : ISshCompressor
         {
             return;
         }
+
         _disposed = true;
-
-        _deflater?.Dispose();
-        _inflater?.Dispose();
-        _deflateSink.Dispose();
-        _inflateSource.Dispose();
+        _encoder?.Dispose();
+        _decoder?.Dispose();
     }
 
-    /// <summary>
-    /// 两个把 <see cref="Stream"/> 接到我们自己缓冲类型上的适配器共用的拒绝理由。
-    /// </summary>
-    /// <remarks>
-    /// 这些成员是 <see cref="Stream"/> 的形状逼出来的，对一个「只往一个方向搬字节」
-    /// 的适配器全都没有意义。<b>带上一句话比裸抛有用得多</b> ——
-    /// 真有人踩到时，异常里直接写着为什么这里不该被调用（架构原则 3）。
-    /// </remarks>
-    private static NotSupportedException NotAStream(string member) =>
-        new($"{member} 对压缩适配器没有意义 —— 它只是把字节从 zlib 搬进/搬出我们自己的缓冲。");
+    private static SshProtocolException DecompressionFailure(Exception? inner = null) =>
+        new(SshPhase.Open, inner is null ? "解压失败。" : $"解压失败：{inner.Message}", inner);
 
-    /// <summary>把写进来的字节交给一个 <see cref="IBufferWriter{T}"/>。</summary>
-    /// <remarks>
-    /// <see cref="ZLibStream"/> 只认 <see cref="Stream"/>，而我们整条链路用的是
-    /// <see cref="IBufferWriter{T}"/>。这个适配器是两者之间唯一的胶水 ——
-    /// <b>没有中间缓冲，压缩器吐多少就直接写进调用方的 writer</b>。
-    /// </remarks>
-    private sealed class BufferWriterStream : Stream
+    private static SshProtocolException BombLimit(int maxOutputLength) =>
+        new(SshPhase.Open, $"解压后的载荷超过上限 {maxOutputLength} 字节 —— 对端可能在用压缩炸弹撑爆我们的内存。");
+
+    private OperationStatus DecompressWithLimitProbe(ReadOnlySpan<byte> source, out int consumed, out int written)
     {
-        /// <summary>这一轮写到哪里去。<see langword="null"/> 表示丢弃。</summary>
-        public IBufferWriter<byte>? Output { get; set; }
-
-        /// <summary>唯一真正做事的成员。</summary>
-        public override void Write(ReadOnlySpan<byte> buffer) => Output?.Write(buffer);
-
-        /// <inheritdoc />
-        public override void Write(byte[] buffer, int offset, int count) =>
-            Write(buffer.AsSpan(offset, count));
-
-        /// <summary>zlib 的 flush 由 <see cref="Compress"/> 驱动，这里没事可做。</summary>
-        public override void Flush()
-        {
-        }
-
-        /// <inheritdoc />
-        public override bool CanWrite => true;
-
-        /// <inheritdoc />
-        public override bool CanRead => false;
-
-        /// <inheritdoc />
-        public override bool CanSeek => false;
-
-        /// <inheritdoc />
-        public override int Read(byte[] buffer, int offset, int count) => throw NotAStream("读");
-
-        /// <inheritdoc />
-        public override long Length => throw NotAStream("长度");
-
-        /// <inheritdoc />
-        public override long Position
-        {
-            get => throw NotAStream("位置");
-            set => throw NotAStream("位置");
-        }
-
-        /// <inheritdoc />
-        public override long Seek(long offset, SeekOrigin origin) => throw NotAStream("定位");
-
-        /// <inheritdoc />
-        public override void SetLength(long value) => throw NotAStream("设长度");
-    }
-
-    /// <summary>把一段 <see cref="ReadOnlySequence{T}"/> 喂给解压器。</summary>
-    /// <remarks>
-    /// 直接按段读，<b>不把载荷先拷成一个数组</b> —— 载荷本来就是分段到达的。
-    /// </remarks>
-    private sealed class SequenceStream : Stream
-    {
-        /// <summary>这一轮要解的数据。读完之后 <see cref="Read(Span{byte})"/> 返回 0。</summary>
-        public ReadOnlySequence<byte> Data { get; set; }
-
-        /// <summary>唯一真正做事的成员：切一段出去，把游标往前挪。</summary>
-        public override int Read(Span<byte> buffer)
-        {
-            int take = (int)Math.Min(buffer.Length, Data.Length);
-            if (take == 0)
-            {
-                return 0;
-            }
-
-            Data.Slice(0, take).CopyTo(buffer);
-            Data = Data.Slice(take);
-            return take;
-        }
-
-        /// <inheritdoc />
-        public override int Read(byte[] buffer, int offset, int count) =>
-            Read(buffer.AsSpan(offset, count));
-
-        /// <summary>读这一侧没有缓冲，无事可做。</summary>
-        public override void Flush()
-        {
-        }
-
-        /// <inheritdoc />
-        public override bool CanRead => true;
-
-        /// <inheritdoc />
-        public override bool CanWrite => false;
-
-        /// <inheritdoc />
-        public override bool CanSeek => false;
-
-        /// <inheritdoc />
-        public override void Write(byte[] buffer, int offset, int count) => throw NotAStream("写");
-
-        /// <inheritdoc />
-        public override long Length => throw NotAStream("长度");
-
-        /// <inheritdoc />
-        public override long Position
-        {
-            get => throw NotAStream("位置");
-            set => throw NotAStream("位置");
-        }
-
-        /// <inheritdoc />
-        public override long Seek(long offset, SeekOrigin origin) => throw NotAStream("定位");
-
-        /// <inheritdoc />
-        public override void SetLength(long value) => throw NotAStream("设长度");
+        Span<byte> destination = stackalloc byte[1];
+        return _decoder!.Decompress(source, destination, out consumed, out written);
     }
 }

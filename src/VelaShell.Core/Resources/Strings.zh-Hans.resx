@@ -1921,6 +1921,9 @@
   <data name="SetAbout_UpToDate" xml:space="preserve">
     <value>已是最新版本。</value>
   </data>
+  <data name="SetAbout_UpdateAvailableLinux" xml:space="preserve">
+    <value>发现新版本 {0}。请从发布页面下载 Linux 安装包并手动安装：{1}</value>
+  </data>
   <data name="SetAbout_UpdateAvailableManual" xml:space="preserve">
     <value>发现新版本 {0},但当前安装位置无法自动更新(目录不可写),请前往项目发布页手动下载最新版本。</value>
   </data>

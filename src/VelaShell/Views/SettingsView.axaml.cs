@@ -30,10 +30,17 @@ public partial class SettingsView : Window
             _viewModel = DataContext as SettingsViewModel;
             _viewModel?.CloseRequested += OnCloseRequested;
             _viewModel?.PropertyChanged += OnViewModelPropertyChanged;
+            if (_viewModel is { } vm)
+            {
+                // 检查更新可能跨越切页:浏览器入口跟随窗口,不依赖关于页是否仍在视觉树上。
+                vm.UpdatePageOpener = OpenUpdatePageAsync;
+            }
             // 装上视图模型的那一刻就把当前页建出来;窗口打开时看到的就是它。
             _pages.Show(_viewModel?.SelectedSectionKey ?? SettingsSectionKey.General);
         };
     }
+
+    private Task<bool> OpenUpdatePageAsync(Uri uri) => Launcher.LaunchUriAsync(uri);
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {

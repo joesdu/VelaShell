@@ -1812,6 +1812,9 @@ Paste anyway?</value>
   <data name="SetAbout_UpToDate" xml:space="preserve">
     <value>You're on the latest version.</value>
   </data>
+  <data name="SetAbout_UpdateAvailableLinux" xml:space="preserve">
+    <value>Update {0} is available. Download and install the Linux package from the release page: {1}</value>
+  </data>
   <data name="SetAbout_UpdateAvailableManual" xml:space="preserve">
     <value>Update {0} is available, but this install location can't be updated automatically (folder isn't writable). Please download the latest release from the project page.</value>
   </data>

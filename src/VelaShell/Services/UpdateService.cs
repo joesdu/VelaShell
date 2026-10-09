@@ -13,6 +13,7 @@ namespace VelaShell.Services;
 /// 平台匹配的压缩包到应用目录下的暂存目录,SHA-256 校验后由 <see cref="UpdateApplier" />
 /// 解包,再交由本进程退出后才动手的外置换版进程完成换版与重启(见 <see cref="UpdateRunner" />)。
 /// 应用装在哪里就更新哪里,不强制安装位置,也绝不触碰 ~/.velashell 数据目录。
+/// Linux 仅检查版本,由关于页打开发布页面供用户手动下载安装。
 /// </summary>
 public class UpdateService : IUpdateService
 {
@@ -76,7 +77,8 @@ public class UpdateService : IUpdateService
 
     /// <inheritdoc />
     public bool CanSelfUpdate =>
-        !IsStoreManaged && UpdateManifest.CurrentRid() != null && _applier.IsApplicationDirectoryWritable();
+        !IsStoreManaged && !OperatingSystem.IsLinux()
+        && UpdateManifest.CurrentRid() != null && _applier.IsApplicationDirectoryWritable();
 
     /// <summary>检查是否存在可用更新;商店版、平台不受支持或检查失败时返回 false。</summary>
     public async Task<bool> CheckForUpdateAsync()

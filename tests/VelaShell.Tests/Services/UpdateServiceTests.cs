@@ -81,7 +81,8 @@ public class UpdateServiceTests : IDisposable
 
     [TestMethod]
     [TestCategory("Update")]
-    public void CanSelfUpdate_WritableTempDir_IsTrue() => Assert.IsTrue(CreateService().CanSelfUpdate);
+    public void CanSelfUpdate_WritableTempDir_IsFalseOnLinux() =>
+        Assert.AreEqual(!OperatingSystem.IsLinux(), CreateService().CanSelfUpdate);
 
     [TestMethod]
     [TestCategory("Update")]
@@ -337,7 +338,7 @@ public class UpdateServiceTests : IDisposable
 
         Assert.IsFalse(service.IsStoreManaged);
         Assert.IsTrue(await service.CheckForUpdateAsync());
-        Assert.IsTrue(service.CanSelfUpdate);
+        Assert.AreEqual(!OperatingSystem.IsLinux(), service.CanSelfUpdate);
     }
 
     [TestMethod]

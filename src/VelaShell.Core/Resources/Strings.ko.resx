@@ -1565,6 +1565,9 @@
   <data name="SetAbout_UpToDate" xml:space="preserve">
     <value>최신 버전입니다.</value>
   </data>
+  <data name="SetAbout_UpdateAvailableLinux" xml:space="preserve">
+    <value>새 버전 {0}을 사용할 수 있습니다. 릴리스 페이지에서 Linux 패키지를 다운로드하여 직접 설치하세요: {1}</value>
+  </data>
   <data name="SetAbout_UpdateAvailableManual" xml:space="preserve">
     <value>새 버전 {0}이(가) 있지만 현재 설치 위치에서는 자동 업데이트할 수 없습니다(폴더 쓰기 불가). 프로젝트 릴리스 페이지에서 최신 버전을 받으세요.</value>
   </data>

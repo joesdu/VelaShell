@@ -797,8 +797,11 @@ public partial class SettingsViewModel : ReactiveObject
     /// <summary>清除历史记录命令:清空连接历史。</summary>
     public ReactiveCommand<RxVoid, RxVoid> ClearHistoryCommand { get; }
 
-    /// <summary>检查更新命令:检查 → 下载(带进度)→ 就绪后提示重启。</summary>
+    /// <summary>检查更新命令:Linux 打开发布页面,其它平台下载后提示重启。</summary>
     public ReactiveCommand<RxVoid, RxVoid> CheckUpdatesCommand { get; }
+
+    /// <summary>由设置窗口注入的系统浏览器入口;返回是否成功启动。</summary>
+    public Func<Uri, Task<bool>>? UpdatePageOpener { get; set; }
 
     /// <summary>重启并应用已下载更新命令(仅在 <see cref="UpdateReady" /> 为真时有意义)。</summary>
     public ReactiveCommand<RxVoid, RxVoid> RestartToUpdateCommand { get; }
@@ -824,7 +827,7 @@ public partial class SettingsViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// 检查更新完整流程:未接服务 / 非安装版 / 已最新 / 发现更新 四态。发现更新则带进度下载,
+    /// 检查更新完整流程:Linux 发现更新时打开发布页面供用户下载;其它平台带进度下载,
     /// 完成后置 <see cref="UpdateReady" />,由关于页“重启并更新”按钮触发 <see cref="RestartToUpdateCommand" />。
     /// </summary>
     private async Task CheckForUpdatesAsync()
@@ -856,6 +859,30 @@ public partial class SettingsViewModel : ReactiveObject
         if (!hasUpdate)
         {
             UpdateStatus = Strings.Get("SetAbout_UpToDate");
+            return;
+        }
+        if (OperatingSystem.IsLinux())
+        {
+            // Linux 的 deb/rpm 与便携包由用户选择安装,不探测安装目录或自动换版。
+            // 用发布列表而非 /latest,预览通道和只有预发布版时也能找到下载包。
+            Uri releasePage = new("https://github.com/joesdu/VelaShell/releases");
+            UpdateStatus = Strings.Format(
+                "SetAbout_UpdateAvailableLinux",
+                _updateService.AvailableVersion ?? string.Empty,
+                releasePage.AbsoluteUri
+            );
+            try
+            {
+                if (UpdatePageOpener is { } open)
+                {
+                    await open(releasePage);
+                }
+            }
+            catch (Exception ex)
+            {
+                // 桌面没有浏览器或启动失败时,状态中的地址仍可供用户手动访问。
+                Trace.WriteLine($"[VelaShell] Could not open update release page: {ex.Message}");
+            }
             return;
         }
         if (!_updateService.CanSelfUpdate)
