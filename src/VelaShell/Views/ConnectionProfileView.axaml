@@ -36,9 +36,12 @@
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="FocusAdorner" Value="{x:Null}" />
       <!--
-        不在 Button 本体上做画刷过渡。协议图标绑定了 Button.Foreground；在 Windows
-        不同缩放比例下，悬停时同时动画按钮和图标会让 Avalonia 反复重采样同一块命中区域，
-        指针停住时也会看到 tab 闪烁。悬停态直接落值，避免把输入状态和动画状态绑在一起。
+        不挂画刷过渡,悬停 / 选中 / 焦点直接落值(#577)。常态的 Background 与 BorderBrush 是
+        Transparent,也就是 #00FFFFFF(全透明的白);Avalonia 的 ColorAnimator 按 A、R、G、B
+        逐通道插值,不做预乘,从它过渡到 VelaBgHover 的途中是半透明的白,叠在暗色卡片上比两头都亮
+        得多 —— 指针每进出一次就闪一下亮灰,停稳后又是几乎看不出的悬停色,看上去就是闪烁。
+        跟缩放比例、命中测试都无关,100% 缩放下一样复现。真要淡入,常态得换成悬停色的全透明版
+        (同一 RGB、alpha 为 0),不能从 Transparent 起步;Design/BrushTransitionFromTransparentTests 拦着。
       -->
       <Setter Property="Template">
         <ControlTemplate>
