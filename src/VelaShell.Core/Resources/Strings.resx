@@ -5720,6 +5720,12 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SetXServer_HostInputMethodDesc" xml:space="preserve">
     <value>Text you compose with the local input method (Chinese, Japanese, Korean…) is typed into X programs directly, so the server doesn&apos;t need fcitx or ibus. Turn it off to send keys as they are and use the server&apos;s own input method instead. Takes effect after restarting the X Server.</value>
   </data>
+  <data name="SetXServer_CompositingManager" xml:space="preserve">
+    <value>Transparent X windows</value>
+  </data>
+  <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
+    <value>Tells X programs that a compositing manager is running, so GTK rounded corners and translucent Qt or Electron windows become truly transparent. Off by default because translucent windows need extra compositing by the system. Takes effect after restarting the X Server.</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>auto - Follow the system layout</value>
   </data>

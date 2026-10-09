@@ -5715,6 +5715,12 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetXServer_HostInputMethodDesc" xml:space="preserve">
     <value>ローカルの IME(中国語・日本語・韓国語など)で確定した文字を X プログラムにそのまま入力します。サーバーに fcitx や ibus は不要です。オフにするとキーをそのまま送り、サーバー側の入力メソッドを使います。X Server の再起動後に反映されます。</value>
   </data>
+  <data name="SetXServer_CompositingManager" xml:space="preserve">
+    <value>X ウィンドウの透過と角丸</value>
+  </data>
+  <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
+    <value>X プログラムにコンポジットマネージャーがあると伝え、GTK の角丸や Qt・Electron の半透明ウィンドウを実際に透過させます。半透明ウィンドウはシステムの合成処理が増えるため、既定ではオフです。X Server の再起動後に反映されます。</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自動 - システムの現在のレイアウト</value>
   </data>

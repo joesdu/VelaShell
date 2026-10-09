@@ -5715,6 +5715,12 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SetXServer_HostInputMethodDesc" xml:space="preserve">
     <value>로컬 입력기(중국어·일본어·한국어 등)로 조합한 글자를 X 프로그램에 바로 입력합니다. 서버에 fcitx나 ibus가 필요 없습니다. 끄면 키를 그대로 보내고 서버의 입력기를 사용합니다. X Server를 다시 시작하면 적용됩니다.</value>
   </data>
+  <data name="SetXServer_CompositingManager" xml:space="preserve">
+    <value>X 창 투명 효과와 둥근 모서리</value>
+  </data>
+  <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
+    <value>X 프로그램에 컴포지팅 관리자가 있다고 알려 GTK의 둥근 모서리와 Qt·Electron의 반투명 창이 실제로 투명해집니다. 반투명 창은 시스템 합성 부담이 늘어나므로 기본값은 꺼짐입니다. X Server를 다시 시작하면 적용됩니다.</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>자동 - 시스템의 현재 레이아웃</value>
   </data>

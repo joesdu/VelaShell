@@ -126,13 +126,20 @@ public sealed class X11ServerOptions
     /// <summary>
     /// 单窗口(rootful)模式:整个根窗口作为一个顶层交给宿主(<see cref="X11Server.Screen" />),宿主开一个原生窗口显示整块桌面,
     /// 远端的窗口管理器照常管理顶层 —— 跑完整的远端桌面(xfce、MATE)或图形安装器时用。服务端不再当窗口管理器(不占 <c>WM_S0</c>、
-    /// 不写 <c>_NET_SUPPORTED</c> 这些,根窗口的 SubstructureRedirect 让给客户端),也不当 XSETTINGS 管理器与托盘(<see cref="SystemTray" /> 不起作用),
+    /// 不写 <c>_NET_SUPPORTED</c> 这些,根窗口的 SubstructureRedirect 让给客户端),也不当 XSETTINGS 管理器、托盘与合成管理器(<see cref="SystemTray" /> 与 <see cref="CompositingManager" /> 不起作用),
     /// 那些归远端桌面自己的守护进程。默认关(rootless:每个顶层一个原生窗口)。
     /// </summary>
     public bool Rootful { get; init; }
 
     /// <summary>托盘图标嵌入窗口的边长(像素,16–128,默认 24)。图标程序照这个尺寸画。</summary>
     public int SystemTrayIconSize { get; init; } = 24;
+
+    /// <summary>
+    /// 服务端占住 <c>_NET_WM_CM_S0</c>(EWMH「Compositing Managers」):告诉客户端有合成管理器 —— GTK 用 ARGB 视觉画圆角与阴影、
+    /// Qt 的半透明窗口、Electron 的 <c>transparent</c> 窗口才拿得到 alpha。宿主必须能显示带 alpha 的窗口(<see cref="XTopLevelSnapshot.HasAlpha" />)。
+    /// 默认关:带 alpha 的原生窗口在 Windows 上要多走一层合成,开不开由宿主决定。
+    /// </summary>
+    public bool CompositingManager { get; init; }
 
     /// <summary>
     /// 窗口管理器的名字(<c>_NET_SUPPORTING_WM_CHECK</c> 窗口上的 <c>_NET_WM_NAME</c>)。默认 <c>LG3D</c>:服务端占着 <c>WM_S0</c> 与根窗口的

@@ -6174,6 +6174,12 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SetXServer_HostInputMethodDesc" xml:space="preserve">
     <value>用本機輸入法(中文、日文、韓文……)組好的字直接輸入給 X 程式,伺服器上不用安裝 fcitx / ibus。關閉後按鍵原樣交給 X 程式,使用伺服器自己的輸入法。重新啟動 X Server 後生效。</value>
   </data>
+  <data name="SetXServer_CompositingManager" xml:space="preserve">
+    <value>X 視窗透明與圓角</value>
+  </data>
+  <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
+    <value>告訴 X 程式有合成管理器:GTK 的圓角、Qt / Electron 的半透明視窗真正透明。預設關閉,因為半透明視窗要系統多合成一層。重新啟動 X Server 後生效。</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自動 - 跟隨系統目前配置</value>
   </data>

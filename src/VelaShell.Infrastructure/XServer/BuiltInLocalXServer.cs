@@ -346,6 +346,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
             SyncClipboard = options.Clipboard,
             SyncPrimary = options.Clipboard && options.CopyOnSelection,
             RestrictForwardedClients = options.RestrictForwardedClients,
+            CompositingManager = options.CompositingManager,
             // 宿主把 X 程序的托盘图标显示成自己的托盘图标(F12),关闭到托盘的程序找得回来;单窗口模式下托盘归远端桌面的面板。
             SystemTray = !rootful,
             Rootful = rootful,

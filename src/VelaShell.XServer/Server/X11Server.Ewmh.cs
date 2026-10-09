@@ -7,7 +7,8 @@
 //   _NET_WORKAREA、_NET_SUPPORTING_WM_CHECK)、§4「Other Root Window Messages」(_NET_CLOSE_WINDOW、
 //   _NET_MOVERESIZE_WINDOW、_NET_WM_MOVERESIZE、_NET_REQUEST_FRAME_EXTENTS)、§5「Application Window Properties」
 //   (_NET_WM_NAME、_NET_WM_DESKTOP、_NET_WM_WINDOW_TYPE、_NET_WM_STATE 及其 ClientMessage、_NET_WM_ICON、_NET_WM_PID、
-//   _NET_WM_WINDOW_OPACITY)、§6「Window Manager Protocols」(_NET_FRAME_EXTENTS)
+//   _NET_WM_WINDOW_OPACITY)、§6「Window Manager Protocols」(_NET_FRAME_EXTENTS)、
+//   「Compositing Managers」(_NET_WM_CM_Sn 管理器选区;X11ServerOptions.CompositingManager 时占住)
 //   ICCCM 2.0 —— §4.1.2.3 WM_NORMAL_HINTS(含基准尺寸、宽高比、win_gravity、USPosition / PPosition)、§4.1.2.4 WM_HINTS(含 initial_state、
 //   icon_pixmap / icon_mask、window_group)、§4.1.3.1 WM_STATE、§4.1.4 WM_CHANGE_STATE(IconicState)
 //   Motif Window Manager hints(_MOTIF_WM_HINTS 的 flags / functions / decorations 三个字段,EWMH 附录所引)
@@ -81,6 +82,12 @@ public sealed partial class X11Server
 
     private void InitEwmh()
     {
+        if (_options.CompositingManager && !Rootful)
+        {
+            // 合成管理器的管理器选区:工具包据此用 ARGB 视觉画半透明窗口与阴影(宿主显示带 alpha 的窗口)。
+            // 单窗口模式下归远端的窗口管理器(xfwm4、compiz 自带合成器);服务端拼屏幕时照样按 alpha 叠。
+            _selections[new SelectionSlot(Intern("_NET_WM_CM_S0"), null)] = (SelectionWindow, null, 0);
+        }
         uint window = XAtom.Window, cardinal = XAtom.Cardinal, atom = XAtom.Atom;
         _stateAtoms = [.. NetWmStates.Select(s => Intern(s.Atom))];
         _typeAtoms = [.. NetWmTypes.Select(t => Intern(t.Atom))];

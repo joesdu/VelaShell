@@ -1548,6 +1548,16 @@ public class XServerOptions : ObservableOptions
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>
+    /// 内置 X Server:告诉 X 程序有合成管理器(占住 <c>_NET_WM_CM_S0</c>)—— GTK 的圆角、Qt / Electron 的半透明窗口拿得到 alpha,
+    /// 宿主按逐像素透明显示。默认关:带 alpha 的窗口要系统多合成一层,开销还没在真机上量过。重启 X Server 后生效。
+    /// </summary>
+    public bool CompositingManager
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
     /// <summary>XKB 键盘布局(<c>-xkblayout</c>);留空 = 跟随 Windows 当前布局。</summary>
     public string KeyboardLayout
     {

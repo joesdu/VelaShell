@@ -389,6 +389,29 @@ public sealed class EwmhTests
         Assert.AreEqual("LG3D", Encoding.UTF8.GetString(wmName.Bytes, 32, (int)wmName.U32(16)), "Java 认得的「不套外框」的名字");
     }
 
+    /// <summary>
+    /// 合成管理器(xs_plan F11):打开 CompositingManager 时服务端占着 _NET_WM_CM_S0(工具包据此用 ARGB 视觉画透明窗口与圆角),
+    /// 属主就是 _NET_SUPPORTING_WM_CHECK 窗口;默认没人占(与原先一样)。
+    /// </summary>
+    [TestMethod]
+    public async Task 打开合成管理器时服务端占着_NET_WM_CM_S0_默认没人占()
+    {
+        await using (X11Server plain = new())
+        {
+            await using XTestClient c = await XTestClient.ConnectAsync(plain);
+            uint cm = await InternAsync(c, "_NET_WM_CM_S0");
+            Assert.AreEqual(0u, (await c.RequestAsync(23, 0, b => b.U32(cm))).U32(8), "默认没有合成管理器");
+        }
+
+        await using X11Server server = new(new X11ServerOptions { CompositingManager = true });
+        await using XTestClient client = await XTestClient.ConnectAsync(server);
+        uint selection = await InternAsync(client, "_NET_WM_CM_S0");
+        uint owner = (await client.RequestAsync(23, 0, b => b.U32(selection))).U32(8);
+        uint check = await InternAsync(client, "_NET_SUPPORTING_WM_CHECK");
+        uint checkWindow = (await client.RequestAsync(20, 0, b => b.U32(client.RootWindow).U32(check).U32(0).U32(0).U32(1))).U32(32);
+        Assert.AreEqual(checkWindow, owner, "属主是服务端自己的隐藏窗口");
+    }
+
     [TestMethod]
     public async Task 嵌入方断开时save_set里的窗口还回根窗口并补映射_不跟着被销毁()
     {
