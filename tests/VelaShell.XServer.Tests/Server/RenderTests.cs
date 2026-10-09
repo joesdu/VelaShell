@@ -105,6 +105,35 @@ public sealed class RenderTests
     }
 
     [TestMethod]
+    public async Task 源picture的AlphaMap替换源alpha并参与Composite()
+    {
+        await using Setup s = await SetupAsync();
+        XTestClient c = s.Client;
+        uint sourcePixmap = c.NewId(), alphaPixmap = c.NewId();
+        await c.SendAsync(53, 32, b => b.U32(sourcePixmap).U32(s.Window).U16(4).U16(4));
+        await c.SendAsync(53, 8, b => b.U32(alphaPixmap).U32(s.Window).U16(4).U16(4));
+
+        uint source = c.NewId(), alpha = c.NewId();
+        await c.SendAsync(s.Major, 4, b => b.U32(source).U32(sourcePixmap).U32(s.Formats.Argb32).U32(0));
+        await c.SendAsync(s.Major, 4, b => b.U32(alpha).U32(alphaPixmap).U32(s.Formats.A8).U32(0));
+
+        // 源是完全不透明的蓝色，alpha-map 是 50% alpha。
+        await c.SendAsync(s.Major, 26, b => b.U8(1).U8(0).U8(0).U8(0).U32(source)
+            .U16(0).U16(0).U16(0xFFFF).U16(0xFFFF).I16(0).I16(0).U16(4).U16(4));
+        await c.SendAsync(s.Major, 26, b => b.U8(1).U8(0).U8(0).U8(0).U32(alpha)
+            .U16(0).U16(0).U16(0).U16(0x8000).I16(0).I16(0).U16(4).U16(4));
+
+        // ChangePicture 的 bit 1 是 alpha-map。
+        await c.SendAsync(s.Major, 5, b => b.U32(source).U32(1u << 1).U32(alpha));
+        await c.SendAsync(s.Major, 8, b => b.U8(3).U8(0).U8(0).U8(0).U32(source).U32(0).U32(s.Picture)
+            .I16(0).I16(0).I16(0).I16(0).I16(10).I16(5).U16(4).U16(4));
+        await c.SyncAsync();
+
+        Assert.AreEqual(0x7F7FFFu, s.Pixel(11, 6));
+        Assert.AreEqual(0xFFFFFFu, s.Pixel(9, 6));
+    }
+
+    [TestMethod]
     public async Task AddGlyphs的尺寸与个数按不会回绕的算法核长度_回BadLength而不是分配几个GB()
     {
         await using Setup s = await SetupAsync();

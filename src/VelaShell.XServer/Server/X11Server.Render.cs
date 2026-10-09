@@ -15,7 +15,7 @@
 //   源 / 遮罩 picture 的裁剪(§7 clip-mask「restricts reads and writes … including sources」):Composite 里源与遮罩
 //   没有变换、不重复时,裁剪之外的部分不合成;有变换或重复时、以及梯形 / 字形的源,仍只裁目标。
 //   源窗口的 subwindow-mode 按规范忽略(被挡住的像素内容未定义)。
-//   不做的:alpha-map(接受但忽略)、索引色格式(没有)、poly-edge / poly-mode / dither(接受但忽略,多边形一律平滑边)。
+//   不做的:索引色格式(没有)、poly-edge / poly-mode / dither(接受但忽略,多边形一律平滑边)。
 
 using System.Buffers;
 using VelaShell.XServer.Drawing;
@@ -168,12 +168,21 @@ public sealed partial class X11Server
                     }
                     p.Repeat = (byte)v;
                     break;
-                case 1:   // alpha-map:接受但不用
-                    if (v != 0)
+                case 1:   // alpha-map
+                    if (v == 0)
                     {
-                        _ = Picture(v);
+                        p.AlphaMap = null;
+                        break;
                     }
+                    XPicture alphaMap = Picture(v);
+                    if (ReferenceEquals(alphaMap, p) || alphaMap.Drawable is not XPixmap || alphaMap.AlphaMap is not null)
+                    {
+                        throw new XProtocolError(XErrorCode.Match);
+                    }
+                    p.AlphaMap = alphaMap;
                     break;
+                case 2: p.AlphaX = (short)v; break;
+                case 3: p.AlphaY = (short)v; break;
                 case 4: p.ClipX = (int)v; break;
                 case 5: p.ClipY = (int)v; break;
                 case 6:
@@ -355,7 +364,9 @@ public sealed partial class X11Server
         source.Repeat = p.Repeat;
         source.Transform = p.Transform;
         source.Bilinear = p.Bilinear;
-        return source;
+        return p.AlphaMap is { } alphaMap
+            ? new AlphaMapSource(source, SourceOf(alphaMap), p.AlphaX, p.AlphaY)
+            : source;
     }
 
     private static ImageSource WindowSource(XWindow w, PixelBuffer buffer, PictFormat format)
@@ -406,10 +417,22 @@ public sealed partial class X11Server
     /// 限制对这个 picture 的读写,裁剪之外的源像素读不到,对应的目标像素就不合成。只在源没有变换、不重复时这样做 ——
     /// 有变换或重复时读到的源像素与目标不是一一平移的关系,仍只裁目标。没有裁剪时为 null。
     /// </summary>
-    private static Region? ReadableIn(XPicture? p, int dx, int dy) =>
-        p is { Clip: { } clip, Transform: null, Repeat: 0, Drawable: not null }
+    private static Region? ReadableIn(XPicture? p, int dx, int dy)
+    {
+        if (p is null)
+        {
+            return null;
+        }
+
+        Region? readable = p is { Clip: { } clip, Transform: null, Repeat: 0, Drawable: not null }
             ? clip.Clone().Translate(p.ClipX + dx, p.ClipY + dy)
             : null;
+        if (p.AlphaMap is { } alphaMap && ReadableIn(alphaMap, dx + p.AlphaX, dy + p.AlphaY) is { } alphaReadable)
+        {
+            readable = readable?.Intersect(alphaReadable) ?? alphaReadable;
+        }
+        return readable;
+    }
 
     private void CompositeTo(XPicture dst, byte op, RenderSource src, RenderSource? mask, bool componentAlpha,
         int srcX, int srcY, int maskX, int maskY, int dstX, int dstY, int width, int height, Region? readable = null)

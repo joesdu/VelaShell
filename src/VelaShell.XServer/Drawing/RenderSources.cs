@@ -7,6 +7,8 @@
 //   及其别名 fast / good / best);§11「Gradients」(CreateSolidFill、CreateLinearGradient、
 //   CreateRadialGradient —— 两个圆之间的锥形插值、CreateConicalGradient;色标颜色非预乘,插值后再预乘)
 
+using System.Buffers;
+
 namespace VelaShell.XServer.Drawing;
 
 /// <summary>合成时的一个取样源(源图或遮罩)。坐标是这个 picture 自己的坐标。</summary>
@@ -400,6 +402,95 @@ internal sealed class ByteMaskSource(byte[] alpha, int x0, int y0, int width, in
     protected override Argb Sample(double x, double y) => Argb.Gray(ToFloat[At((int)Math.Floor(x), (int)Math.Floor(y))]);
 
     protected override uint Sample8888(double x, double y) => At((int)Math.Floor(x), (int)Math.Floor(y)) * 0x01010101u;
+}
+
+/// <summary>把 alpha-map 应用到源 picture。alpha-map 的原点相对源 drawable 原点。</summary>
+internal sealed class AlphaMapSource(RenderSource source, RenderSource alphaMap, int alphaX, int alphaY) : RenderSource
+{
+    protected override void FetchIntegerRow(int x, int y, Span<Argb> row)
+    {
+        Argb[] sourceRow = ArrayPool<Argb>.Shared.Rent(row.Length);
+        Argb[] alphaRow = ArrayPool<Argb>.Shared.Rent(row.Length);
+        try
+        {
+            source.FetchRow(x, y, sourceRow.AsSpan(0, row.Length));
+            alphaMap.FetchRow(x - alphaX, y - alphaY, alphaRow.AsSpan(0, row.Length));
+            for (int i = 0; i < row.Length; i++)
+            {
+                row[i] = ReplaceAlpha(sourceRow[i], alphaRow[i].A);
+            }
+        }
+        finally
+        {
+            ArrayPool<Argb>.Shared.Return(sourceRow);
+            ArrayPool<Argb>.Shared.Return(alphaRow);
+        }
+    }
+
+    protected override void FetchIntegerRow8888(int x, int y, Span<uint> row)
+    {
+        uint[] sourceRow = ArrayPool<uint>.Shared.Rent(row.Length);
+        uint[] alphaRow = ArrayPool<uint>.Shared.Rent(row.Length);
+        try
+        {
+            source.FetchRow8888(x, y, sourceRow.AsSpan(0, row.Length));
+            alphaMap.FetchRow8888(x - alphaX, y - alphaY, alphaRow.AsSpan(0, row.Length));
+            for (int i = 0; i < row.Length; i++)
+            {
+                row[i] = ReplaceAlpha(sourceRow[i], alphaRow[i] >> 24);
+            }
+        }
+        finally
+        {
+            ArrayPool<uint>.Shared.Return(sourceRow);
+            ArrayPool<uint>.Shared.Return(alphaRow);
+        }
+    }
+
+    protected override Argb Sample(double x, double y)
+    {
+        Span<Argb> sourcePixel = stackalloc Argb[1];
+        Span<Argb> alphaPixel = stackalloc Argb[1];
+        int ix = (int)Math.Floor(x), iy = (int)Math.Floor(y);
+        source.FetchRow(ix, iy, sourcePixel);
+        alphaMap.FetchRow(ix - alphaX, iy - alphaY, alphaPixel);
+        return ReplaceAlpha(sourcePixel[0], alphaPixel[0].A);
+    }
+
+    protected override uint Sample8888(double x, double y)
+    {
+        Span<uint> sourcePixel = stackalloc uint[1];
+        Span<uint> alphaPixel = stackalloc uint[1];
+        int ix = (int)Math.Floor(x), iy = (int)Math.Floor(y);
+        source.FetchRow8888(ix, iy, sourcePixel);
+        alphaMap.FetchRow8888(ix - alphaX, iy - alphaY, alphaPixel);
+        return ReplaceAlpha(sourcePixel[0], alphaPixel[0] >> 24);
+    }
+
+    private static Argb ReplaceAlpha(Argb source, float alpha)
+    {
+        if (source.A <= 0 || alpha <= 0)
+        {
+            return default;
+        }
+        float scale = alpha / source.A;
+        return new(alpha, source.R * scale, source.G * scale, source.B * scale);
+    }
+
+    private static uint ReplaceAlpha(uint source, uint alpha)
+    {
+        uint sourceAlpha = source >> 24;
+        if (sourceAlpha == 0 || alpha == 0)
+        {
+            return 0;
+        }
+        static uint Rescale(uint channel, uint oldAlpha, uint newAlpha) =>
+            Math.Min((channel * newAlpha) + (oldAlpha / 2), oldAlpha * 255u) / oldAlpha;
+        return (alpha << 24)
+            | (Rescale((source >> 16) & 0xFF, sourceAlpha, alpha) << 16)
+            | (Rescale((source >> 8) & 0xFF, sourceAlpha, alpha) << 8)
+            | Rescale(source & 0xFF, sourceAlpha, alpha);
+    }
 }
 
 /// <summary>带颜色的遮罩(次像素字形,分量 alpha):每像素一个预乘的 0xAARRGGBB。</summary>

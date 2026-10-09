@@ -25,6 +25,14 @@ internal sealed class XPicture(uint id, XClient? owner) : XResource(id, owner)
 
     public byte Repeat { get; set; }
 
+    /// <summary>源 picture 的 alpha-map；其 alpha 会作用到源像素。</summary>
+    public XPicture? AlphaMap { get; set; }
+
+    /// <summary>alpha-map 原点（相对 drawable 原点）。</summary>
+    public int AlphaX { get; set; }
+
+    public int AlphaY { get; set; }
+
     public bool ComponentAlpha { get; set; }
 
     /// <summary>0 ClipByChildren,1 IncludeInferiors。</summary>

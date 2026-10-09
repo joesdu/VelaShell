@@ -113,8 +113,12 @@ internal sealed class GlxExtension(X11Server server)
         new(0x104, X11Server.ArgbVisualId, 32, DoubleBuffer: false, Alpha: true),
     ];
 
-    /// <summary>GLX 1.2 的视觉配置:每个视觉一条,取它的双缓冲配置。</summary>
-    private static readonly GlxConfig[] GlxVisualConfigs = [GlxConfigs[0], GlxConfigs[2]];
+    /// <summary>
+    /// GLX 1.2 的视觉配置。一个 X 视觉可以对应多个 GLX 配置，
+    /// 因此双缓冲与单缓冲配置都必须发布；客户端会用 DOUBLEBUFFER 和 FB_CONFIG_ID
+    /// 选择它需要的那一项。
+    /// </summary>
+    private static readonly GlxConfig[] GlxVisualConfigs = GlxConfigs;
 
     /// <summary>
     /// 可绘对象的帧缓冲,按 X 窗口 / 像素图 / Pbuffer 的 ID 存(同一个窗口的各种用法共用一份),连同建表面时那个 ID 上的资源:
