@@ -115,32 +115,56 @@ public sealed class AiPlugin : IVelaPlugin
         Assembly self = typeof(AiPlugin).Assembly;
         // 两个条件缺一不可。
         // 其一,装载上下文必须是 PluginAssemblyLoadContext —— 这既是"我确实是作为插件被装载的"
-        // 的判据,也意味着目录里躺着的正好是我自己那份私有依赖,可以整目录横扫。
-        // 换个环境(headless 测试、宿主直接引用)这里是默认 ALC,目录里是别人的东西,不能碰。
+        // 的判据,也意味着可以从入口程序集的引用图预热插件自己的依赖。
+        // 换个环境(headless 测试、宿主直接引用)这里是默认 ALC,不能碰测试输出目录。
         // 其二,要走这个上下文去装而不是 Assembly.Load:Avalonia* 与 SDK 得回落到宿主那一份,
         // 规矩写在 PluginAssemblyLoadContext 里,绕过它就会装出第二套类型。
         if (AssemblyLoadContext.GetLoadContext(self) is not PluginAssemblyLoadContext loadContext
-            || Path.GetDirectoryName(self.Location) is not { Length: > 0 } directory)
+            || Path.GetDirectoryName(self.Location) is not { Length: > 0 })
         {
             return; // 不是插件装载路径(或单文件装载,没有目录):跳过,面板照常能开。
         }
+        // 不要扫描目录中的所有 DLL。开发构建会把宿主和测试项目的产物镜像到同一个
+        // 插件目录；这些文件虽然物理存在，却不在插件的 deps.json 中，交给插件 ALC
+        // 解析时必然得到 FileNotFoundException（例如 Avalonia.Headless、testhost）。
+        // 从入口程序集的元数据沿引用图预热，既覆盖真正的传递依赖，也不会触碰目录
+        // 中与插件无关的程序集。
+        var pending = new Queue<AssemblyName>(self.GetReferencedAssemblies());
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         int warmed = 0;
-        foreach (string path in Directory.EnumerateFiles(directory, "*.dll"))
+        while (pending.Count > 0)
         {
             if (cancellationToken.IsCancellationRequested)
             {
                 return;
             }
+
+            AssemblyName name = pending.Dequeue();
+            string identity = name.FullName ?? name.Name ?? string.Empty;
+            if (!visited.Add(identity))
+            {
+                continue;
+            }
             try
             {
-                loadContext.LoadFromAssemblyName(AssemblyName.GetAssemblyName(path));
+                Assembly assembly = loadContext.LoadFromAssemblyName(name);
                 warmed++;
+                // 共享程序集（Avalonia、SDK 以及框架程序集）实际来自默认 ALC。
+                // 不沿它们的引用继续遍历，否则会把整个 .NET 框架的引用图也排进预热队列。
+                if (AssemblyLoadContext.GetLoadContext(assembly) == loadContext)
+                {
+                    foreach (AssemblyName referenced in assembly.GetReferencedAssemblies())
+                    {
+                        pending.Enqueue(referenced);
+                    }
+                }
             }
             catch (Exception ex) when (ex is BadImageFormatException or FileLoadException
                                           or FileNotFoundException or IOException or UnauthorizedAccessException)
             {
-                // 原生 dll、或者这一个就是装不动:预热失败只是没热到,不该影响任何事。
-                context.Log.Warn($"Preloading '{Path.GetFileName(path)}' failed: {ex.Message}");
+                // 某个可选依赖或平台程序集装不动时只跳过它；真正需要它的代码
+                // 仍会在首次使用时得到正常的加载异常。
+                context.Log.Warn($"Preloading '{name.Name}' failed: {ex.Message}");
             }
         }
         context.Log.Info($"Preloaded {warmed} plugin assemblies; the first chat panel no longer pays for them on the UI thread.");
