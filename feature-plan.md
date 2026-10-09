@@ -41,7 +41,7 @@
 | --- | :---: | :---: | :---: | :---: | :---: |
 | 一、欠账 | 4 | 2 | 9 | 9 | **24** |
 | 二、路线图 | — | 6 | 18 | 16 | **40** |
-| 三、文档待同步 | — | — | — | — | **29** |
+| 三、文档待同步 | — | — | — | — | **36** |
 
 
 ---
@@ -168,7 +168,7 @@
 | :---: | :---: | --- | --- | --- |
 | ⏳ | 🟠 P1 | **布局持久化与命名布局模板** | Royal TS / mRemoteNG / Tabby | 「打开这一组机器并按这个分屏排好」。单独恢复上次布局意义不大（文档即活动会话），**同一套序列化做成命名模板价值大得多**：VelaDock 的模型层是纯 INPC、本来就可单测可序列化，缺的是 `布局节点 ↔ profileId` 映射、自定义 document 还原器与一个模板列表；「恢复会话」顺带就有了。标签的固定状态（`DockDocument.IsPinned`，`plan.md` §127）眼下只活在本次运行里，做这项时一起存 |
 | 🚧 | 🟡 P2 | **按会话自定义标签页图标** | Xshell / Termius | 按协议的默认图标已完成（`plan.md` §68，`Services/ConnectionIcon`）。还差「像挑颜色一样挑图标」：`TerminalOverrides` 加一个图标 id。⚠️ `SessionProfile` 是**逐字段手写拷贝**，新增字段要把几处拷贝都补上（`plan.md` §37 列了名单，漏抄不报错、重开软件字段就没了） |
-| ⏳ | 🟡 P2 | **整组批量操作** | MobaXterm | 对一个分组批量连接 / 批量下发命令。同步输入的频道模型（`SyncInputCoordinator`）已经是对等广播，按分组建频道是自然延伸 |
+| ⏳ | 🟡 P2 | **整组批量下发命令** | MobaXterm | 整组 / 多选批量**连接**已在 `plan.md` §176 落地（资源管理器分组菜单「打开全部连接」、多选菜单「打开 N 个连接」）。剩下的是对一组机器批量下发命令：同步输入的频道模型（`SyncInputCoordinator`）已经是对等广播，「打开这一组并把它们拉进同一个频道」是自然延伸 |
 | ⏳ | 🟢 P3 | **标签条上的「+」新建按钮** | Windows Terminal / Chrome | 分屏后「在这一格里新开会话」目前只能靠 `Ctrl+T`（`plan.md` §64 后它已落到活动窗格）。⚠️ 卡点在**分层**：`Docking/` 不认识「会话」，要么 `DockWorkspaceControl` 抛 `NewTabRequested(group)` 由宿主接，要么注入回调 —— **别让停靠层直接 new 一个终端** |
 | ⏳ | 🟢 P3 | **纵排标签条的溢出控件** | — | 标签条停到左 / 右侧时，溢出三连钮由 `WidthOverflowConverter` 按宽度判定，因而永不出现；`ScrollLeft/Right_Click` 也只动 `Offset.X`。做的时候连转换器一起改成按轴取值 |
 | 💡 | 🟢 P3 | **会话健康巡检面板** | — | 对已保存配置定期探活（复用 `ConnectionDiagnosticsService` 的四步诊断），出一张「哪几台连不上」的表。**别做成定时外呼** —— 由用户显式开启，理由见 `PRIVACY.md` |
@@ -242,6 +242,7 @@
 
 | 出处 | 要改什么 | 进度 |
 | --- | --- | --- |
+| `plan.md` §180 连接导入导出、多选与分组排序（#571） | `{zh,en}/host/会话导入.md` 新增第七节（JSON / CSV 两种格式、导出口令加密、CSV 列与读法、重复与写入规则）、第六节补一条、标题注明；`{zh,en}/host/交互与界面规格.md` §3（「更多」菜单、Ctrl 双选改为 Ctrl / Shift 多选、分组拖动排序）、§6.2 的入口说法、§12（多选菜单、分组菜单、新增 §12.1 批量修改对话框）；`{zh,en}/host/快捷键参考.md` 新增「资源管理器」一节（Ctrl / Shift 单击多选、拖动连接换分组、拖动分组行排序）；`SFTP双栏与WinSCP差距分析.md` 的交叉引用；`host/README.md` 与根 README 的索引 | [velashell-docs#103](https://github.com/VelaShellLabs/velashell-docs/pull/103) 已开，与宿主 PR 一起合 |
 | `plan.md` §118 窗口外框 | `{zh,en}/host/architecture.md` §5「窗口壳」的 ⚠️ 限定为 Win32、新增「各平台的外框」；`交互与界面规格.md` §2 补 macOS 红绿灯与各平台外框；`design-specs.md` 补 macOS 红绿灯；标题栏统一 28 的口径（设置窗口与消息框保持 48 的例外） | [velashell-docs#70](https://github.com/VelaShellLabs/velashell-docs/pull/70) 已开，与宿主 PR 一起合；实机验收后改掉 architecture 里「验收」那一段 |
 | `plan.md` §74 / §75 目录比较与同步 | `SFTP双栏与WinSCP差距分析.md`（C1 改已实现、新增第七节）与 `交互与界面规格.md` §6（文档工具条、同步窗口、保持远端最新、SHA-256 优先比较） | [velashell-docs#35](https://github.com/VelaShellLabs/velashell-docs/pull/35) **待合入** |
 | `plan.md` §82 #474 | `交互与界面规格.md` 资源管理器补**置顶**与 SFTP 路径栏的**复制当前路径**；`设置项审计.md` 补 `General.CollapseGroupsByDefault`、`Transfer.UseRecursiveDeleteCommand`（写明只对有 exec 通道的 SSH 会话生效、失败自动回退、没有逐条进度） | 已在 `docs/474-explorer-sftp` 分支改好（中英各 3 个文件），**待开 PR** |

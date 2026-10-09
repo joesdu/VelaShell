@@ -6359,4 +6359,415 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SetSnippets_MultilineHint" xml:space="preserve">
     <value>// 줄을 바꿔 여러 줄 명령을 쓸 수 있습니다. 보낼 때 전체가 명령줄에 들어가며 한 줄씩 실행되지 않습니다. 원격이 브래킷 붙여넣기를 지원하지 않으면 먼저 확인합니다</value>
   </data>
+  <data name="Sidebar_More" xml:space="preserve">
+    <value>더 보기</value>
+  </data>
+  <data name="Tree_ImportFile" xml:space="preserve">
+    <value>파일에서 연결 가져오기…</value>
+  </data>
+  <data name="Tree_ExportAll" xml:space="preserve">
+    <value>모든 연결 내보내기…</value>
+  </data>
+  <data name="Tree_SaveCsvTemplate" xml:space="preserve">
+    <value>CSV 가져오기 템플릿 저장…</value>
+  </data>
+  <data name="Tree_SortGroupsByName" xml:space="preserve">
+    <value>그룹을 이름순으로 정렬</value>
+  </data>
+  <data name="Tree_CollapseAll" xml:space="preserve">
+    <value>모두 접기</value>
+  </data>
+  <data name="Tree_ExpandAll" xml:space="preserve">
+    <value>모두 펼치기</value>
+  </data>
+  <data name="Tree_OpenGroup" xml:space="preserve">
+    <value>모든 연결 열기</value>
+  </data>
+  <data name="Tree_MoveGroupUp" xml:space="preserve">
+    <value>위로 이동</value>
+  </data>
+  <data name="Tree_MoveGroupDown" xml:space="preserve">
+    <value>아래로 이동</value>
+  </data>
+  <data name="Tree_ExportGroup" xml:space="preserve">
+    <value>이 그룹 내보내기…</value>
+  </data>
+  <data name="Tree_ImportIntoGroup" xml:space="preserve">
+    <value>이 그룹으로 가져오기…</value>
+  </data>
+  <data name="Tree_OpenSelected" xml:space="preserve">
+    <value>연결 {0}개 열기</value>
+  </data>
+  <data name="Tree_DeleteSelected" xml:space="preserve">
+    <value>연결 {0}개 삭제</value>
+  </data>
+  <data name="Tree_DeleteSelectedTitle" xml:space="preserve">
+    <value>연결 삭제</value>
+  </data>
+  <data name="Tree_DeleteSelectedConfirm" xml:space="preserve">
+    <value>선택한 연결 {0}개를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</value>
+  </data>
+  <data name="Tree_BatchEdit" xml:space="preserve">
+    <value>일괄 편집…</value>
+  </data>
+  <data name="Tree_ExportSelected" xml:space="preserve">
+    <value>선택한 연결 내보내기…</value>
+  </data>
+  <data name="Tree_OpenManyTitle" xml:space="preserve">
+    <value>연결 열기</value>
+  </data>
+  <data name="Tree_OpenManyConfirm" xml:space="preserve">
+    <value>연결 {0}개를 한 번에 엽니다. 계속하시겠습니까?</value>
+  </data>
+  <data name="Tree_OpenManyAction" xml:space="preserve">
+    <value>열기</value>
+  </data>
+  <data name="SessFile_AnyType" xml:space="preserve">
+    <value>연결 파일 (JSON / CSV)</value>
+  </data>
+  <data name="SessFile_JsonType" xml:space="preserve">
+    <value>VelaShell 연결 파일</value>
+  </data>
+  <data name="SessFile_CsvType" xml:space="preserve">
+    <value>CSV 파일</value>
+  </data>
+  <data name="SessFile_CsvEmpty" xml:space="preserve">
+    <value>파일이 비어 있습니다. 머리글 행을 찾을 수 없습니다.</value>
+  </data>
+  <data name="SessFile_CsvNoHostColumn" xml:space="preserve">
+    <value>CSV에 host(호스트) 열이 없습니다. 첫 행은 머리글 행이어야 하며 최소한 host 열이 있어야 합니다(모든 열 이름은 템플릿 참고).</value>
+  </data>
+  <data name="SessFile_CsvUnknownColumns" xml:space="preserve">
+    <value>인식할 수 없는 열은 무시했습니다: {0}</value>
+  </data>
+  <data name="SessFile_JsonInvalid" xml:space="preserve">
+    <value>올바른 JSON이 아닙니다: {0}</value>
+  </data>
+  <data name="SessFile_NotVelaShell" xml:space="preserve">
+    <value>VelaShell 연결 파일이 아닙니다.</value>
+  </data>
+  <data name="SessFile_SectionInvalid" xml:space="preserve">
+    <value>파일의 "{0}" 부분 형식이 올바르지 않습니다: {1}</value>
+  </data>
+  <data name="SessFile_UnknownSecretAlgorithm" xml:space="preserve">
+    <value>파일의 민감한 정보가 이 버전에서 지원하지 않는 암호화 방식을 사용합니다. 연결은 비밀번호 없이 가져옵니다.</value>
+  </data>
+  <data name="SessFile_VersionTooNew" xml:space="preserve">
+    <value>이 파일은 더 최신 버전의 VelaShell에서 내보냈습니다(형식 버전 {0}). 업데이트한 뒤 가져오세요.</value>
+  </data>
+  <data name="SessImport_ErrNotAnObject" xml:space="preserve">
+    <value>연결 항목이 아닙니다</value>
+  </data>
+  <data name="SessImport_ErrBadEntry" xml:space="preserve">
+    <value>형식이 올바르지 않습니다: {0}</value>
+  </data>
+  <data name="SessImport_ErrNoHost" xml:space="preserve">
+    <value>호스트가 비어 있습니다</value>
+  </data>
+  <data name="SessImport_ErrBadPort" xml:space="preserve">
+    <value>잘못된 포트: {0}</value>
+  </data>
+  <data name="SessImport_ErrHostSpaces" xml:space="preserve">
+    <value>호스트에 공백이 있습니다: {0}</value>
+  </data>
+  <data name="SessImport_ErrPortRequired" xml:space="preserve">
+    <value>플러그인 프로토콜은 포트를 입력해야 합니다</value>
+  </data>
+  <data name="SessImport_ErrBadProtocol" xml:space="preserve">
+    <value>알 수 없는 프로토콜: {0}</value>
+  </data>
+  <data name="SessImport_ErrBadAuth" xml:space="preserve">
+    <value>알 수 없는 인증 방식: {0}</value>
+  </data>
+  <data name="SessImport_ErrAuthNotSupported" xml:space="preserve">
+    <value>FTP와 플러그인 프로토콜은 비밀번호 인증만 지원합니다</value>
+  </data>
+  <data name="SessImport_WarnBadId" xml:space="preserve">
+    <value>잘못된 id "{0}"는 무시하고 새 연결로 가져옵니다</value>
+  </data>
+  <data name="SessImport_WarnCredentialMissing" xml:space="preserve">
+    <value>참조하는 공유 자격 증명이 파일에 없어 개별 인증으로 바꿉니다</value>
+  </data>
+  <data name="SessImport_WarnCredentialNotFound" xml:space="preserve">
+    <value>공유 자격 증명 "{0}"을(를) 찾을 수 없어 개별 인증으로 바꿉니다</value>
+  </data>
+  <data name="SessImport_WarnCredentialAmbiguous" xml:space="preserve">
+    <value>"{0}" 이름의 공유 자격 증명이 여러 개여서 개별 인증으로 바꿉니다</value>
+  </data>
+  <data name="SessImport_WarnJumpNotInFile" xml:space="preserve">
+    <value>점프 호스트를 함께 가져오지 않았고 이 컴퓨터에도 없어 직접 연결합니다</value>
+  </data>
+  <data name="SessImport_WarnJumpNotFound" xml:space="preserve">
+    <value>점프 호스트 "{0}"을(를) 찾을 수 없어 직접 연결합니다</value>
+  </data>
+  <data name="SessImport_WarnJumpAmbiguous" xml:space="preserve">
+    <value>"{0}" 이름의 연결이 여러 개여서 점프 호스트를 비워 둡니다</value>
+  </data>
+  <data name="SessImport_WarnJumpSelf" xml:space="preserve">
+    <value>자기 자신을 점프 호스트로 쓸 수 없어 직접 연결합니다</value>
+  </data>
+  <data name="SessImport_WarnJumpCycle" xml:space="preserve">
+    <value>점프 호스트가 순환되어 이 연결 고리를 끊고 직접 연결합니다</value>
+  </data>
+  <data name="SessImport_ItemNoteFmt" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="SessImport_LineFmt" xml:space="preserve">
+    <value>{0}행: {1}</value>
+  </data>
+  <data name="SessImport_Title" xml:space="preserve">
+    <value>연결 가져오기</value>
+  </data>
+  <data name="SessImport_PickTitle" xml:space="preserve">
+    <value>가져올 연결 파일 선택</value>
+  </data>
+  <data name="SessImport_Loading" xml:space="preserve">
+    <value>기존 연결과 비교하는 중…</value>
+  </data>
+  <data name="SessImport_NothingSelected" xml:space="preserve">
+    <value>가져올 연결이 없습니다</value>
+  </data>
+  <data name="SessImport_HeadlineFmt" xml:space="preserve">
+    <value>연결 {0}개를 가져옵니다</value>
+  </data>
+  <data name="SessImport_DetailFmt" xml:space="preserve">
+    <value>새 연결 {0}개 · 기존 연결과 중복 {1}개 · 문제 있음 {2}개</value>
+  </data>
+  <data name="SessImport_ImportButton" xml:space="preserve">
+    <value>가져오기</value>
+  </data>
+  <data name="SessImport_ImportCountFmt" xml:space="preserve">
+    <value>{0}개 가져오기</value>
+  </data>
+  <data name="SessImport_JsonExportedFmt" xml:space="preserve">
+    <value>VelaShell JSON · {0}에 내보냄</value>
+  </data>
+  <data name="SessImport_SecretsLocked" xml:space="preserve">
+    <value>이 파일에는 암호화된 비밀번호 등 민감한 정보가 있습니다. 내보낼 때 설정한 암호를 입력하면 함께 가져오고, 입력하지 않아도 가져올 수 있지만 비밀번호는 포함되지 않습니다.</value>
+  </data>
+  <data name="SessImport_PassphrasePlaceholder" xml:space="preserve">
+    <value>내보내기 암호</value>
+  </data>
+  <data name="SessImport_Unlock" xml:space="preserve">
+    <value>잠금 해제</value>
+  </data>
+  <data name="SessImport_WrongPassphrase" xml:space="preserve">
+    <value>암호가 올바르지 않거나 파일이 손상되었습니다.</value>
+  </data>
+  <data name="SessImport_SecretsUnlockedFmt" xml:space="preserve">
+    <value>잠금을 해제했습니다. 연결 {0}개를 비밀번호와 함께 가져옵니다.</value>
+  </data>
+  <data name="SessImport_ConflictLabel" xml:space="preserve">
+    <value>이미 있는 연결과 중복될 때</value>
+  </data>
+  <data name="SessImport_ConflictSkip" xml:space="preserve">
+    <value>건너뛰기(기존 유지)</value>
+  </data>
+  <data name="SessImport_ConflictOverwrite" xml:space="preserve">
+    <value>기존 연결 덮어쓰기</value>
+  </data>
+  <data name="SessImport_ConflictKeepBoth" xml:space="preserve">
+    <value>둘 다 유지</value>
+  </data>
+  <data name="SessImport_TargetLabel" xml:space="preserve">
+    <value>넣을 위치</value>
+  </data>
+  <data name="SessImport_TargetFromFile" xml:space="preserve">
+    <value>파일의 그룹대로</value>
+  </data>
+  <data name="SessImport_StatusNew" xml:space="preserve">
+    <value>새 연결</value>
+  </data>
+  <data name="SessImport_StatusSkip" xml:space="preserve">
+    <value>기존 "{0}"과(와) 중복되어 건너뜀</value>
+  </data>
+  <data name="SessImport_StatusOverwrite" xml:space="preserve">
+    <value>기존 "{0}"을(를) 덮어씀</value>
+  </data>
+  <data name="SessImport_StatusKeepBoth" xml:space="preserve">
+    <value>기존 "{0}"과(와) 중복, 새 연결로 저장</value>
+  </data>
+  <data name="SessImport_NewGroupFmt" xml:space="preserve">
+    <value>{0}(새 그룹)</value>
+  </data>
+  <data name="SessImport_HasPassword" xml:space="preserve">
+    <value>비밀번호 포함</value>
+  </data>
+  <data name="SessImport_Failed" xml:space="preserve">
+    <value>가져오지 못했습니다: {0}</value>
+  </data>
+  <data name="SessImport_TooLarge" xml:space="preserve">
+    <value>이 파일은 {0}MB로 연결 파일 상한 {1}MB를 넘습니다.</value>
+  </data>
+  <data name="SessImport_ReadFailed" xml:space="preserve">
+    <value>파일을 읽지 못했습니다: {0}</value>
+  </data>
+  <data name="SessImport_Empty" xml:space="preserve">
+    <value>이 파일에는 연결이 없습니다.</value>
+  </data>
+  <data name="SessImport_DoneTitle" xml:space="preserve">
+    <value>가져오기 완료</value>
+  </data>
+  <data name="SessImport_DoneFmt" xml:space="preserve">
+    <value>가져오기 완료: 새로 {0}개, 덮어씀 {1}개, 건너뜀 {2}개.</value>
+  </data>
+  <data name="SessImport_MoreWarnings" xml:space="preserve">
+    <value>…외 {0}건</value>
+  </data>
+  <data name="SessExport_Title" xml:space="preserve">
+    <value>연결 내보내기</value>
+  </data>
+  <data name="SessExport_Loading" xml:space="preserve">
+    <value>집계하는 중…</value>
+  </data>
+  <data name="SessExport_SummaryFmt" xml:space="preserve">
+    <value>연결 {0}개를 내보냅니다(그룹 {1}개)</value>
+  </data>
+  <data name="SessExport_DependencyFmt" xml:space="preserve">
+    <value>이 중 {0}개는 이 연결들이 거치는 점프 호스트로, 자동으로 포함했습니다.</value>
+  </data>
+  <data name="SessExport_Format" xml:space="preserve">
+    <value>형식</value>
+  </data>
+  <data name="SessExport_FormatJson" xml:space="preserve">
+    <value>VelaShell JSON</value>
+  </data>
+  <data name="SessExport_FormatCsv" xml:space="preserve">
+    <value>CSV 표</value>
+  </data>
+  <data name="SessExport_JsonHint" xml:space="preserve">
+    <value>그룹, 점프 호스트, 공유 자격 증명, 포트 포워딩, 터미널 설정 등을 모두 저장합니다. 백업이나 다른 컴퓨터로 옮길 때 쓰세요.</value>
+  </data>
+  <data name="SessExport_CsvHint" xml:space="preserve">
+    <value>Excel에서 편집한 뒤 다시 가져올 수 있는 표입니다. 자주 쓰는 항목(이름, 호스트, 포트, 사용자 이름, 그룹, 인증, 점프 호스트 등)만 담고 비밀번호는 포함하지 않습니다.</value>
+  </data>
+  <data name="SessExport_IncludeSecrets" xml:space="preserve">
+    <value>비밀번호 등 민감한 정보 포함</value>
+  </data>
+  <data name="SessExport_SecretsHintFmt" xml:space="preserve">
+    <value>연결 또는 공유 자격 증명 {0}개에 비밀번호나 개인 키 암호 문구가 저장되어 있습니다. 아래에서 정한 암호로 암호화되며 평문으로는 기록되지 않습니다.</value>
+  </data>
+  <data name="SessExport_NoSecrets" xml:space="preserve">
+    <value>이 연결들에는 저장된 비밀번호가 없습니다.</value>
+  </data>
+  <data name="SessExport_Passphrase" xml:space="preserve">
+    <value>내보내기 암호</value>
+  </data>
+  <data name="SessExport_PassphraseConfirm" xml:space="preserve">
+    <value>암호 확인</value>
+  </data>
+  <data name="SessExport_PassphraseHint" xml:space="preserve">
+    <value>비밀번호를 가져오려면 이 암호가 필요합니다. 잃어버리면 복구할 수 없습니다.</value>
+  </data>
+  <data name="SessExport_PassphraseTooShort" xml:space="preserve">
+    <value>암호는 {0}자 이상이어야 합니다.</value>
+  </data>
+  <data name="SessExport_PassphraseMismatch" xml:space="preserve">
+    <value>두 암호가 일치하지 않습니다.</value>
+  </data>
+  <data name="SessExport_ExportButton" xml:space="preserve">
+    <value>내보내기…</value>
+  </data>
+  <data name="SessExport_Failed" xml:space="preserve">
+    <value>내보내지 못했습니다: {0}</value>
+  </data>
+  <data name="SessExport_Done" xml:space="preserve">
+    <value>연결 {0}개를 {1}(으)로 내보냈습니다(비밀번호 제외).</value>
+  </data>
+  <data name="SessExport_DoneWithSecrets" xml:space="preserve">
+    <value>연결 {0}개를 {1}(으)로 내보냈습니다. 비밀번호는 암호로 암호화했습니다.</value>
+  </data>
+  <data name="SessExport_DoneCsv" xml:space="preserve">
+    <value>연결 {0}개를 {1}(으)로 내보냈습니다.</value>
+  </data>
+  <data name="SessExport_TemplateSaved" xml:space="preserve">
+    <value>템플릿을 {0}에 저장했습니다. 내용을 채운 뒤 "파일에서 연결 가져오기"로 가져오세요.</value>
+  </data>
+  <data name="BatchEdit_Title" xml:space="preserve">
+    <value>연결 일괄 편집</value>
+  </data>
+  <data name="BatchEdit_SummaryFmt" xml:space="preserve">
+    <value>연결 {0}개 편집</value>
+  </data>
+  <data name="BatchEdit_Hint" xml:space="preserve">
+    <value>체크한 항목만 바꾸고 나머지는 각 연결의 설정을 그대로 둡니다.</value>
+  </data>
+  <data name="BatchEdit_Port" xml:space="preserve">
+    <value>포트</value>
+  </data>
+  <data name="BatchEdit_AuthShared" xml:space="preserve">
+    <value>공유 자격 증명</value>
+  </data>
+  <data name="BatchEdit_PickCredential" xml:space="preserve">
+    <value>공유 자격 증명을 선택하세요</value>
+  </data>
+  <data name="BatchEdit_NoCredentials" xml:space="preserve">
+    <value>아직 공유 자격 증명이 없습니다. 설정 → 공유 자격 증명에서 만들 수 있습니다.</value>
+  </data>
+  <data name="BatchEdit_PasswordHint" xml:space="preserve">
+    <value>비워 두면 연결할 때 묻습니다.</value>
+  </data>
+  <data name="BatchEdit_PickKey" xml:space="preserve">
+    <value>개인 키 파일을 선택하세요</value>
+  </data>
+  <data name="BatchEdit_BadPort" xml:space="preserve">
+    <value>포트는 1~65535 사이여야 합니다</value>
+  </data>
+  <data name="BatchEdit_JumpHint" xml:space="preserve">
+    <value>SSH 및 SFTP 연결에만 적용됩니다.</value>
+  </data>
+  <data name="BatchEdit_PreviewChangedFmt" xml:space="preserve">
+    <value>연결 {0}개를 변경합니다</value>
+  </data>
+  <data name="BatchEdit_PreviewAuthSkippedFmt" xml:space="preserve">
+    <value>연결 {0}개는 프로토콜이 선택한 인증 방식을 지원하지 않아 인증을 바꾸지 않음</value>
+  </data>
+  <data name="BatchEdit_PreviewJumpSkippedFmt" xml:space="preserve">
+    <value>연결 {0}개는 점프 호스트를 바꾸지 않음(SSH가 아니거나 순환이 생김)</value>
+  </data>
+  <data name="BatchEdit_PreviewSeparator" xml:space="preserve">
+    <value> ·</value>
+  </data>
+  <data name="BatchEdit_Apply" xml:space="preserve">
+    <value>적용</value>
+  </data>
+  <data name="BatchEdit_DoneFmt" xml:space="preserve">
+    <value>연결 {0}개를 변경했습니다</value>
+  </data>
+  <data name="Tree_DragGroupBefore" xml:space="preserve">
+    <value>"{0}" 앞으로 이동</value>
+  </data>
+  <data name="Tree_DragGroupToEnd" xml:space="preserve">
+    <value>맨 끝으로 이동</value>
+  </data>
+  <data name="BatchEdit_JumpHost" xml:space="preserve">
+    <value>점프 호스트</value>
+  </data>
+  <data name="Sc_GroupExplorer" xml:space="preserve">
+    <value>탐색기</value>
+  </data>
+  <data name="Sc_ExplorerToggleSelect" xml:space="preserve">
+    <value>연결을 선택에 추가 / 선택에서 제외</value>
+  </data>
+  <data name="Sc_ExplorerRangeSelect" xml:space="preserve">
+    <value>연결 범위 선택</value>
+  </data>
+  <data name="Sc_ExplorerMoveToGroup" xml:space="preserve">
+    <value>연결을 다른 그룹으로 이동</value>
+  </data>
+  <data name="Sc_ExplorerReorderGroup" xml:space="preserve">
+    <value>그룹 순서 변경</value>
+  </data>
+  <data name="Sc_KeyExplorerConnection" xml:space="preserve">
+    <value>연결 행</value>
+  </data>
+  <data name="Sc_KeyExplorerGroupRow" xml:space="preserve">
+    <value>그룹 행</value>
+  </data>
+  <data name="SessImport_WarnHostChangesKeepSecret" xml:space="preserve">
+    <value>덮어쓰면 호스트가 {0}에서 {1}(으)로 바뀌고 여기에 저장된 비밀번호가 새 호스트에 사용됩니다</value>
+  </data>
+  <data name="BatchEdit_Failed" xml:space="preserve">
+    <value>저장하지 못했습니다: {0}</value>
+  </data>
 </root>

@@ -35,13 +35,7 @@ public sealed class SharedCredentialService(ISharedCredentialRepository credenti
     /// <param name="profile">连接配置。</param>
     /// <returns>能用时为 true。</returns>
     public static bool IsCompatible(SharedCredential credential, SessionProfile profile) =>
-        profile.ConnectionType switch
-        {
-            ConnectionType.SSH or ConnectionType.SFTP => true,
-            ConnectionType.FTP => credential.AuthMethod == AuthMethod.Password && profile.Ftp?.Anonymous != true,
-            ConnectionType.Plugin => credential.AuthMethod == AuthMethod.Password,
-            _ => false
-        };
+        CredentialCompatibility.Supports(profile, credential.AuthMethod);
 
     /// <summary>每条共享凭据被多少条连接引用(没人引用的不在字典里)。</summary>
     /// <returns>凭据 Id → 引用数。</returns>

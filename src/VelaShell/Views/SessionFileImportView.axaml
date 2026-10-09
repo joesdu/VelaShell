@@ -1,0 +1,319 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:VelaShell.ViewModels"
+        xmlns:behaviors="using:VelaShell.Behaviors"
+        xmlns:pc="using:VelaShell.Controls.Controls"
+        xmlns:loc="using:VelaShell.Localization"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="640"
+        x:Class="VelaShell.Views.SessionFileImportView"
+        x:DataType="vm:SessionFileImportViewModel"
+        Title="{Binding Title}"
+        Width="640" MaxHeight="720"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+  <!-- 导入连接文件(#571):VelaShell JSON 或 CSV。外壳同导入会话对话框(28px 标题栏、摘要卡片、52px 按钮栏);
+       动作按钮按 DESIGN.md §5.1 走共享主题。列表用 ListBox 是为了虚拟化 —— 一份两百多台设备的表格,
+       ItemsControl 会一次把全部行都建出来;它自带的选中 / 悬停底色在这里压成透明,勾选只看行首的复选框。 -->
+
+  <Window.Styles>
+    <Style Selector="Button.caption">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Width" Value="27" />
+      <Setter Property="Height" Value="27" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.caption:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="Button.caption-close:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaDangerHover}" />
+    </Style>
+    <Style Selector="Button.link">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+      <Setter Property="Padding" Value="6,2" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+    </Style>
+    <Style Selector="TextBlock.field-label">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Margin" Value="0,0,0,5" />
+    </Style>
+    <Style Selector="TextBlock.field-hint">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.field-error">
+      <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <!-- 预览行:容器只负责占一行,选中 / 悬停的底色压掉(同资源管理器的做法)。 -->
+    <Style Selector="ListBox#PreviewList ListBoxItem">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="ListBox#PreviewList ListBoxItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ListBox#PreviewList ListBoxItem:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <!-- 状态一行:新建 tertiary / 重复 warning / 有问题 error。 -->
+    <Style Selector="TextBlock.status">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize10}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.status.duplicate">
+      <Setter Property="Foreground" Value="{DynamicResource VelaWarning}" />
+    </Style>
+    <Style Selector="TextBlock.status.error">
+      <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
+    </Style>
+  </Window.Styles>
+
+  <Border Classes="window-card"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}"
+          ClipToBounds="True">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,52">
+
+      <!-- 标题栏(28,可拖动) -->
+      <Border Grid.Row="0" Classes="window-titlebar" Padding="20,0,0,0"
+              PointerPressed="Header_PointerPressed"
+              Background="Transparent"
+              BorderThickness="0,0,0,1"
+              BorderBrush="{DynamicResource VelaBorderPrimary}">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <pc:LucideIcon Grid.Column="0" Width="15" Height="15"
+                         Data="{StaticResource Icon.file-up}"
+                         Foreground="{DynamicResource VelaAccent}"
+                         VerticalAlignment="Center" Margin="0,0,10,0" />
+          <TextBlock Grid.Column="1" Text="{Binding Title}"
+                     Foreground="{DynamicResource VelaTextPrimary}"
+                     FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+          <Button Grid.Column="2" Classes="caption caption-close" VerticalAlignment="Top"
+                  AutomationProperties.Name="{loc:Localize Cancel}"
+                  Click="Cancel_Click">
+            <pc:LucideIcon Width="12" Height="12"
+                           Data="{StaticResource Icon.x}"
+                           Foreground="{DynamicResource VelaTextSecondary}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <!-- 摘要:点导入会发生什么 + 文件是什么 -->
+      <Border Grid.Row="1" Margin="20,16,20,10" Padding="14,12" CornerRadius="6"
+              Background="{DynamicResource VelaBgInput}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="1">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding Headline}"
+                     Foreground="{DynamicResource VelaTextPrimary}"
+                     FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
+                     TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Detail}"
+                     Foreground="{DynamicResource VelaTextSecondary}"
+                     FontSize="{DynamicResource VelaFontSize11}" TextWrapping="Wrap" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="{Binding FileName}"
+                       Foreground="{DynamicResource VelaTextMuted}"
+                       FontFamily="{DynamicResource VelaUiMonoFont}"
+                       FontSize="{DynamicResource VelaFontSize10}"
+                       TextTrimming="CharacterEllipsis" MaxWidth="360" />
+            <TextBlock Text="{Binding FormatLabel}"
+                       Foreground="{DynamicResource VelaTextMuted}"
+                       FontSize="{DynamicResource VelaFontSize10}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- 整份文件层面的提示(忽略了的列之类) -->
+      <Border Grid.Row="2" Margin="20,0,20,10" Padding="12,8" CornerRadius="4"
+              Background="{DynamicResource VelaBgInput}"
+              BorderBrush="{DynamicResource VelaWarning}" BorderThickness="1"
+              IsVisible="{Binding HasDocumentWarnings}">
+        <TextBlock Text="{Binding DocumentWarnings}"
+                   Foreground="{DynamicResource VelaTextSecondary}"
+                   FontSize="{DynamicResource VelaFontSize11}" TextWrapping="Wrap" />
+      </Border>
+
+      <!-- 加密的敏感信息:输口令解开;不解也能导,只是不带密码。 -->
+      <Border Grid.Row="3" Margin="20,0,20,10" Padding="12,10" CornerRadius="4"
+              Background="{DynamicResource VelaBgInput}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="1"
+              IsVisible="{Binding HasEncryptedSecrets}">
+        <StackPanel Spacing="8">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.key-round}"
+                           Foreground="{DynamicResource VelaAccent}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding SecretsStatus}"
+                       Foreground="{DynamicResource VelaTextSecondary}"
+                       FontSize="{DynamicResource VelaFontSize11}" TextWrapping="Wrap"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+          <Grid ColumnDefinitions="*,8,Auto" IsVisible="{Binding ShowUnlockFields}">
+            <TextBox Grid.Column="0"
+                     x:Name="PassphraseBox"
+                     behaviors:SecurePasswordBox.Enabled="True"
+                     behaviors:EnglishInputLocale.Enabled="True"
+                     behaviors:SecurePasswordBox.Password="{Binding Passphrase}"
+                     PlaceholderText="{loc:Localize SessImport_PassphrasePlaceholder}"
+                     AutomationProperties.Name="{loc:Localize SessImport_PassphrasePlaceholder}"
+                     Padding="10,0,0,0" />
+            <Button Grid.Column="2"
+                    Theme="{DynamicResource VelaOutlineButtonTheme}" Height="32"
+                    Content="{loc:Localize SessImport_Unlock}"
+                    Command="{Binding UnlockCommand}" />
+          </Grid>
+          <TextBlock Classes="field-error" Text="{Binding UnlockError}"
+                     IsVisible="{Binding UnlockError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+      </Border>
+
+      <!-- 选项:重复时怎么办 / 放到哪里 -->
+      <Grid Grid.Row="4" Margin="20,0,20,10" ColumnDefinitions="*,12,*">
+        <StackPanel Grid.Column="0">
+          <TextBlock Classes="field-label" Text="{loc:Localize SessImport_ConflictLabel}" />
+          <ComboBox x:Name="ConflictBox"
+                    HorizontalAlignment="Stretch"
+                    ItemsSource="{Binding ConflictOptions}"
+                    SelectedItem="{Binding SelectedConflict}"
+                    AutomationProperties.Name="{loc:Localize SessImport_ConflictLabel}" />
+        </StackPanel>
+        <StackPanel Grid.Column="2">
+          <TextBlock Classes="field-label" Text="{loc:Localize SessImport_TargetLabel}" />
+          <ComboBox x:Name="TargetBox"
+                    HorizontalAlignment="Stretch"
+                    ItemsSource="{Binding GroupTargets}"
+                    SelectedItem="{Binding SelectedGroupTarget}"
+                    AutomationProperties.Name="{loc:Localize SessImport_TargetLabel}" />
+        </StackPanel>
+      </Grid>
+
+      <!-- 全选 / 全不选 -->
+      <StackPanel Grid.Row="5" Margin="20,0,14,4" Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button Classes="link" Content="{loc:Localize XImport_SelectAll}" Command="{Binding SelectAllCommand}" />
+        <Button Classes="link" Content="{loc:Localize XImport_SelectNone}" Command="{Binding SelectNoneCommand}" />
+      </StackPanel>
+
+      <!-- 预览列表 -->
+      <Border Grid.Row="6" Margin="20,0,20,0" CornerRadius="5"
+              Background="{DynamicResource VelaBgInput}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="1">
+        <ListBox x:Name="PreviewList"
+                 ItemsSource="{Binding Items}"
+                 Background="Transparent" BorderThickness="0" Padding="4"
+                 MaxHeight="340">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:SessionFileImportItemViewModel">
+              <!-- 右内边距 20 > 滚动条展开宽 16(VelaScrollBarSize):滚动条是覆盖式的。 -->
+              <Border Padding="6,6,20,6" Margin="0,1" CornerRadius="3"
+                      Background="{DynamicResource VelaBgSurface}">
+                <Grid ColumnDefinitions="Auto,10,*,Auto">
+                  <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}"
+                            IsEnabled="{Binding CanSelect}"
+                            MinHeight="0" Padding="0" VerticalAlignment="Top" Margin="0,1,0,0" />
+                  <StackPanel Grid.Column="2" Spacing="2">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding Name}"
+                                 Foreground="{DynamicResource VelaTextPrimary}"
+                                 FontSize="{DynamicResource VelaFontSize12}" FontWeight="Medium"
+                                 TextTrimming="CharacterEllipsis" MaxWidth="260" />
+                      <Border Background="{DynamicResource VelaBgHover}"
+                              CornerRadius="3" Padding="5,1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Protocol}"
+                                   Foreground="{DynamicResource VelaTextTertiary}"
+                                   FontSize="{DynamicResource VelaFontSize9}"
+                                   FontFamily="{DynamicResource VelaUiMonoFont}" />
+                      </Border>
+                      <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.key-round}"
+                                     IsVisible="{Binding HasSecret}"
+                                     ToolTip.Tip="{loc:Localize SessImport_HasPassword}"
+                                     Foreground="{DynamicResource VelaAccent}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Endpoint}"
+                               Foreground="{DynamicResource VelaTextTertiary}"
+                               FontSize="{DynamicResource VelaFontSize10}"
+                               FontFamily="{DynamicResource VelaUiMonoFont}" />
+                    <TextBlock Classes="status"
+                               Classes.duplicate="{Binding IsDuplicate}"
+                               Classes.error="{Binding HasError}"
+                               Text="{Binding StatusText}" />
+                    <TextBlock Text="{Binding WarningText}"
+                               IsVisible="{Binding HasWarning}"
+                               Foreground="{DynamicResource VelaWarning}"
+                               FontSize="{DynamicResource VelaFontSize10}" TextWrapping="Wrap" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" VerticalAlignment="Top">
+                    <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.folder}"
+                                   Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding GroupLabel}"
+                               Foreground="{DynamicResource VelaTextMuted}"
+                               FontSize="{DynamicResource VelaFontSize10}"
+                               TextTrimming="CharacterEllipsis" MaxWidth="160"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Border>
+
+      <TextBlock Grid.Row="7" Margin="20,8,20,0" Classes="field-error" Text="{Binding ErrorMessage}"
+                 IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+      <!-- 按钮栏:取消 / 导入 N 个连接 -->
+      <Border Grid.Row="8" Margin="0,12,0,0" Padding="20,0"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
+              BorderThickness="0,1,0,0">
+        <StackPanel Orientation="Horizontal" Spacing="8"
+                    HorizontalAlignment="Right" VerticalAlignment="Center">
+          <Button x:Name="CancelButton"
+                  Theme="{DynamicResource VelaOutlineButtonTheme}"
+                  IsCancel="True"
+                  Content="{loc:Localize Cancel}"
+                  Click="Cancel_Click" />
+          <Button x:Name="ImportButton"
+                  Theme="{DynamicResource VelaAccentPillButtonTheme}"
+                  Height="28"
+                  Command="{Binding ImportCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <pc:LucideIcon Width="13" Height="13"
+                             Data="{StaticResource Icon.file-up}"
+                             Foreground="{Binding $parent[Button].Foreground}" />
+              <TextBlock Text="{Binding ImportButtonText}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

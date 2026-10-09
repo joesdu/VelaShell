@@ -430,7 +430,9 @@ The existing SFTP file browser is the primary reusable component for the dual-pa
 - Group row (30px): chevron + folder icon (color rotates: `VelaWarning`/`VelaInfo`/`VelaAccent`) + name (`VelaTextPrimary` 12px Medium) + count (`VelaTextTertiary` 10px)
 - Session row (28px): status dot + name + optional status tag
 - Selected: `VelaBgActive` background, name switches to `VelaAccent` Medium
+- Multi-selected rows (Ctrl / Shift, #571): exactly the same treatment as the selected row (`.multimarked`) — they are all "selected"; the list control itself stays single-select
 - Hover: `VelaBgHover`
+- Dragging a group row (#571): a 2px `VelaAccent` insertion line (`CornerRadius:1`) on the gap between groups, plus the shared drag ghost (`VelaBgActive` fill, `VelaAccent` 1px border, `VelaShadowWindow`). Sessions dragged into a group keep the old feedback (group row `droptarget` highlight, no insertion line — their position is by name)
 
 ### 5.5 Context Menus (global style in `DockStyles.axaml`)
 

@@ -16,6 +16,7 @@
 | `Tunnels/` | `TunnelService` 端口转发。 |
 | `Services/` | `SessionMetrics` 指标计算、`SettingsPreviewService`。 |
 | `Sync/` | `SyncCrypto` 云同步加密（PBKDF2 + AES-256-GCM）。 |
+| `Import/` | 连接文件的导入导出（#571）：导出字段的归类守门（`SessionArchiveFieldTests`，`SessionProfile` 新加的属性没归类就红）、JSON 读写与口令加密（`SessionArchiveJsonTests`）、CSV 读写与编码（`SessionCsvTests`）、导出范围（`SessionArchiveBuilderTests`）、判重复与写入规则（`SessionImportPlannerTests`）。批量修改的规则在 `Models/SessionBatchEditTests`。 |
 | `Resources/` | 本地化回退链（`zh-Hans`/`zh-Hant`/`ja`/`ko`）。 |
 
 ## 运行

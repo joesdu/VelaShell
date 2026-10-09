@@ -8,7 +8,7 @@
 
 | 目录 | 被测对象 |
 |------|----------|
-| `ViewModels/` | `MainWindowViewModel`（含 `MainWindowSshFeatureTests`）、`SettingsViewModel`、`TerminalTabViewModel`、`CommandPaletteViewModel`、`ConnectionProfileViewModel`、`FileBrowser/FileTransfer/LocalFilePaneViewModel`、`FileConflictResolutionTests`（同名文件冲突策略）、`StandaloneSftpDocumentBehaviorTests`（独立 SFTP 标签）、`QuickCommandsViewModel`、`TunnelPanelViewModel`、`SessionTreeViewModel`（含拖动分组与空分组自动删除）、`ProcessManagerViewModel`（任务管理器）、`TraceRouteViewModel`（路由追踪）等。 |
+| `ViewModels/` | `MainWindowViewModel`（含 `MainWindowSshFeatureTests`）、`SettingsViewModel`、`TerminalTabViewModel`、`CommandPaletteViewModel`、`ConnectionProfileViewModel`、`FileBrowser/FileTransfer/LocalFilePaneViewModel`、`FileConflictResolutionTests`（同名文件冲突策略）、`StandaloneSftpDocumentBehaviorTests`（独立 SFTP 标签）、`QuickCommandsViewModel`、`TunnelPanelViewModel`、`SessionTreeViewModel`（含拖动分组与空分组自动删除、多选与分组排序 `SessionTreeMultiSelectionTests` / `SessionTreeGroupOperationsTests`）、连接文件导出 / 导入与批量修改的对话框（`SessionExportViewModelTests` / `SessionFileImportViewModelTests` / `SessionBatchEditViewModelTests`）、`ProcessManagerViewModel`（任务管理器）、`TraceRouteViewModel`（路由追踪）等。 |
 | `ViewModels/`（认证） | `AuthenticationDialogViewModelTests`、`InteractiveAuthFlowTests`、`InteractivePromptDetectionTests`、`SecretPromptDetectionTests`、`PromptCommandExtractionTests` —— 两步身份验证与交互式提示识别。 |
 | `Services/` | `KeyboardShortcutService`、`CommandSuggestionProvider`、`ThemeService`、`InputLocaleSwitcher`、`ExternalEditSessionManager`、`SyntaxHighlighting`、`SyncDebounceLifecycle`、`PackageVersions`，以及自更新全链路（`UpdateService`/`UpdateApplier`/`UpdateManifest`/`UpdateVersion`/`GitHubReleaseSource`）。 |
 | `Docking/` | `DockWorkspace` 分屏模型。 |

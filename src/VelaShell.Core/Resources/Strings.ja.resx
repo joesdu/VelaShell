@@ -6359,4 +6359,415 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetSnippets_MultilineHint" xml:space="preserve">
     <value>// 改行して複数行のコマンドを書けます。送信時はまとめてコマンドラインに入り、1 行ずつ実行されることはありません。リモートがブラケットペーストに対応していない場合は先に確認します</value>
   </data>
+  <data name="Sidebar_More" xml:space="preserve">
+    <value>その他</value>
+  </data>
+  <data name="Tree_ImportFile" xml:space="preserve">
+    <value>ファイルから接続をインポート…</value>
+  </data>
+  <data name="Tree_ExportAll" xml:space="preserve">
+    <value>すべての接続をエクスポート…</value>
+  </data>
+  <data name="Tree_SaveCsvTemplate" xml:space="preserve">
+    <value>CSV インポート用テンプレートを保存…</value>
+  </data>
+  <data name="Tree_SortGroupsByName" xml:space="preserve">
+    <value>グループを名前順に並べ替え</value>
+  </data>
+  <data name="Tree_CollapseAll" xml:space="preserve">
+    <value>すべて折りたたむ</value>
+  </data>
+  <data name="Tree_ExpandAll" xml:space="preserve">
+    <value>すべて展開</value>
+  </data>
+  <data name="Tree_OpenGroup" xml:space="preserve">
+    <value>すべての接続を開く</value>
+  </data>
+  <data name="Tree_MoveGroupUp" xml:space="preserve">
+    <value>上へ移動</value>
+  </data>
+  <data name="Tree_MoveGroupDown" xml:space="preserve">
+    <value>下へ移動</value>
+  </data>
+  <data name="Tree_ExportGroup" xml:space="preserve">
+    <value>このグループをエクスポート…</value>
+  </data>
+  <data name="Tree_ImportIntoGroup" xml:space="preserve">
+    <value>このグループにインポート…</value>
+  </data>
+  <data name="Tree_OpenSelected" xml:space="preserve">
+    <value>{0} 件の接続を開く</value>
+  </data>
+  <data name="Tree_DeleteSelected" xml:space="preserve">
+    <value>{0} 件の接続を削除</value>
+  </data>
+  <data name="Tree_DeleteSelectedTitle" xml:space="preserve">
+    <value>接続を削除</value>
+  </data>
+  <data name="Tree_DeleteSelectedConfirm" xml:space="preserve">
+    <value>選択した {0} 件の接続を削除しますか？この操作は元に戻せません。</value>
+  </data>
+  <data name="Tree_BatchEdit" xml:space="preserve">
+    <value>一括編集…</value>
+  </data>
+  <data name="Tree_ExportSelected" xml:space="preserve">
+    <value>選択した接続をエクスポート…</value>
+  </data>
+  <data name="Tree_OpenManyTitle" xml:space="preserve">
+    <value>接続を開く</value>
+  </data>
+  <data name="Tree_OpenManyConfirm" xml:space="preserve">
+    <value>{0} 件の接続を一度に開きます。続行しますか？</value>
+  </data>
+  <data name="Tree_OpenManyAction" xml:space="preserve">
+    <value>開く</value>
+  </data>
+  <data name="SessFile_AnyType" xml:space="preserve">
+    <value>接続ファイル (JSON / CSV)</value>
+  </data>
+  <data name="SessFile_JsonType" xml:space="preserve">
+    <value>VelaShell 接続ファイル</value>
+  </data>
+  <data name="SessFile_CsvType" xml:space="preserve">
+    <value>CSV ファイル</value>
+  </data>
+  <data name="SessFile_CsvEmpty" xml:space="preserve">
+    <value>ファイルが空です。見出し行が見つかりません。</value>
+  </data>
+  <data name="SessFile_CsvNoHostColumn" xml:space="preserve">
+    <value>CSV に host（ホスト）列がありません。1 行目は見出し行で、少なくとも host 列が必要です（すべての列名はテンプレートを参照）。</value>
+  </data>
+  <data name="SessFile_CsvUnknownColumns" xml:space="preserve">
+    <value>認識できない列を無視しました：{0}</value>
+  </data>
+  <data name="SessFile_JsonInvalid" xml:space="preserve">
+    <value>有効な JSON ではありません：{0}</value>
+  </data>
+  <data name="SessFile_NotVelaShell" xml:space="preserve">
+    <value>VelaShell の接続ファイルではありません。</value>
+  </data>
+  <data name="SessFile_SectionInvalid" xml:space="preserve">
+    <value>ファイルの「{0}」の形式が正しくありません：{1}</value>
+  </data>
+  <data name="SessFile_UnknownSecretAlgorithm" xml:space="preserve">
+    <value>ファイル内の機密情報はこのバージョンが対応していない暗号化方式です。接続はパスワードなしでインポートされます。</value>
+  </data>
+  <data name="SessFile_VersionTooNew" xml:space="preserve">
+    <value>このファイルは新しいバージョンの VelaShell で書き出されています（形式バージョン {0}）。アップデートしてからインポートしてください。</value>
+  </data>
+  <data name="SessImport_ErrNotAnObject" xml:space="preserve">
+    <value>接続の項目ではありません</value>
+  </data>
+  <data name="SessImport_ErrBadEntry" xml:space="preserve">
+    <value>形式が正しくありません：{0}</value>
+  </data>
+  <data name="SessImport_ErrNoHost" xml:space="preserve">
+    <value>ホストが空です</value>
+  </data>
+  <data name="SessImport_ErrBadPort" xml:space="preserve">
+    <value>ポートが無効です：{0}</value>
+  </data>
+  <data name="SessImport_ErrHostSpaces" xml:space="preserve">
+    <value>ホストに空白が含まれています：{0}</value>
+  </data>
+  <data name="SessImport_ErrPortRequired" xml:space="preserve">
+    <value>プラグインのプロトコルではポートが必須です</value>
+  </data>
+  <data name="SessImport_ErrBadProtocol" xml:space="preserve">
+    <value>不明なプロトコル：{0}</value>
+  </data>
+  <data name="SessImport_ErrBadAuth" xml:space="preserve">
+    <value>不明な認証方式：{0}</value>
+  </data>
+  <data name="SessImport_ErrAuthNotSupported" xml:space="preserve">
+    <value>FTP とプラグインのプロトコルはパスワード認証にのみ対応しています</value>
+  </data>
+  <data name="SessImport_WarnBadId" xml:space="preserve">
+    <value>id「{0}」は無効なため無視し、新しい接続としてインポートします</value>
+  </data>
+  <data name="SessImport_WarnCredentialMissing" xml:space="preserve">
+    <value>参照している共有資格情報がファイルにないため、個別の認証に切り替えます</value>
+  </data>
+  <data name="SessImport_WarnCredentialNotFound" xml:space="preserve">
+    <value>共有資格情報「{0}」が見つからないため、個別の認証に切り替えます</value>
+  </data>
+  <data name="SessImport_WarnCredentialAmbiguous" xml:space="preserve">
+    <value>「{0}」という名前の共有資格情報が複数あるため、個別の認証に切り替えます</value>
+  </data>
+  <data name="SessImport_WarnJumpNotInFile" xml:space="preserve">
+    <value>踏み台ホストが一緒にインポートされておらず、この PC にもないため、直接接続にします</value>
+  </data>
+  <data name="SessImport_WarnJumpNotFound" xml:space="preserve">
+    <value>踏み台ホスト「{0}」が見つからないため、直接接続にします</value>
+  </data>
+  <data name="SessImport_WarnJumpAmbiguous" xml:space="preserve">
+    <value>「{0}」という名前の接続が複数あるため、踏み台ホストは空のままにします</value>
+  </data>
+  <data name="SessImport_WarnJumpSelf" xml:space="preserve">
+    <value>自分自身を踏み台ホストにはできないため、直接接続にします</value>
+  </data>
+  <data name="SessImport_WarnJumpCycle" xml:space="preserve">
+    <value>踏み台ホストが循環しているため、このつながりを外して直接接続にします</value>
+  </data>
+  <data name="SessImport_ItemNoteFmt" xml:space="preserve">
+    <value>{0}：{1}</value>
+  </data>
+  <data name="SessImport_LineFmt" xml:space="preserve">
+    <value>{0} 行目：{1}</value>
+  </data>
+  <data name="SessImport_Title" xml:space="preserve">
+    <value>接続のインポート</value>
+  </data>
+  <data name="SessImport_PickTitle" xml:space="preserve">
+    <value>インポートする接続ファイルを選択</value>
+  </data>
+  <data name="SessImport_Loading" xml:space="preserve">
+    <value>既存の接続と照合しています…</value>
+  </data>
+  <data name="SessImport_NothingSelected" xml:space="preserve">
+    <value>インポートする接続がありません</value>
+  </data>
+  <data name="SessImport_HeadlineFmt" xml:space="preserve">
+    <value>{0} 件の接続をインポートします</value>
+  </data>
+  <data name="SessImport_DetailFmt" xml:space="preserve">
+    <value>新規 {0} 件 · 既存と重複 {1} 件 · 問題あり {2} 件</value>
+  </data>
+  <data name="SessImport_ImportButton" xml:space="preserve">
+    <value>インポート</value>
+  </data>
+  <data name="SessImport_ImportCountFmt" xml:space="preserve">
+    <value>{0} 件をインポート</value>
+  </data>
+  <data name="SessImport_JsonExportedFmt" xml:space="preserve">
+    <value>VelaShell JSON · {0} にエクスポート</value>
+  </data>
+  <data name="SessImport_SecretsLocked" xml:space="preserve">
+    <value>このファイルには暗号化されたパスワードなどの機密情報が含まれています。エクスポート時のパスフレーズを入力すると一緒にインポートできます。入力しなくてもインポートできますが、パスワードは含まれません。</value>
+  </data>
+  <data name="SessImport_PassphrasePlaceholder" xml:space="preserve">
+    <value>エクスポート時のパスフレーズ</value>
+  </data>
+  <data name="SessImport_Unlock" xml:space="preserve">
+    <value>ロック解除</value>
+  </data>
+  <data name="SessImport_WrongPassphrase" xml:space="preserve">
+    <value>パスフレーズが正しくないか、ファイルが壊れています。</value>
+  </data>
+  <data name="SessImport_SecretsUnlockedFmt" xml:space="preserve">
+    <value>ロックを解除しました。{0} 件の接続をパスワードごとインポートします。</value>
+  </data>
+  <data name="SessImport_ConflictLabel" xml:space="preserve">
+    <value>既存の接続と重複する場合</value>
+  </data>
+  <data name="SessImport_ConflictSkip" xml:space="preserve">
+    <value>スキップ（既存を残す）</value>
+  </data>
+  <data name="SessImport_ConflictOverwrite" xml:space="preserve">
+    <value>既存を上書き</value>
+  </data>
+  <data name="SessImport_ConflictKeepBoth" xml:space="preserve">
+    <value>両方残す</value>
+  </data>
+  <data name="SessImport_TargetLabel" xml:space="preserve">
+    <value>追加先</value>
+  </data>
+  <data name="SessImport_TargetFromFile" xml:space="preserve">
+    <value>ファイル内のグループ</value>
+  </data>
+  <data name="SessImport_StatusNew" xml:space="preserve">
+    <value>新規</value>
+  </data>
+  <data name="SessImport_StatusSkip" xml:space="preserve">
+    <value>既存の「{0}」と重複するためスキップ</value>
+  </data>
+  <data name="SessImport_StatusOverwrite" xml:space="preserve">
+    <value>既存の「{0}」を上書き</value>
+  </data>
+  <data name="SessImport_StatusKeepBoth" xml:space="preserve">
+    <value>既存の「{0}」と重複、新しい接続として保存</value>
+  </data>
+  <data name="SessImport_NewGroupFmt" xml:space="preserve">
+    <value>{0}（新規）</value>
+  </data>
+  <data name="SessImport_HasPassword" xml:space="preserve">
+    <value>パスワードあり</value>
+  </data>
+  <data name="SessImport_Failed" xml:space="preserve">
+    <value>インポートに失敗しました：{0}</value>
+  </data>
+  <data name="SessImport_TooLarge" xml:space="preserve">
+    <value>このファイルは {0} MB で、接続ファイルの上限 {1} MB を超えています。</value>
+  </data>
+  <data name="SessImport_ReadFailed" xml:space="preserve">
+    <value>ファイルを読み込めませんでした：{0}</value>
+  </data>
+  <data name="SessImport_Empty" xml:space="preserve">
+    <value>このファイルには接続がありません。</value>
+  </data>
+  <data name="SessImport_DoneTitle" xml:space="preserve">
+    <value>インポート完了</value>
+  </data>
+  <data name="SessImport_DoneFmt" xml:space="preserve">
+    <value>インポート完了：新規 {0} 件、上書き {1} 件、スキップ {2} 件。</value>
+  </data>
+  <data name="SessImport_MoreWarnings" xml:space="preserve">
+    <value>…ほか {0} 件</value>
+  </data>
+  <data name="SessExport_Title" xml:space="preserve">
+    <value>接続のエクスポート</value>
+  </data>
+  <data name="SessExport_Loading" xml:space="preserve">
+    <value>集計しています…</value>
+  </data>
+  <data name="SessExport_SummaryFmt" xml:space="preserve">
+    <value>{0} 件の接続をエクスポートします（グループ {1} 件）</value>
+  </data>
+  <data name="SessExport_DependencyFmt" xml:space="preserve">
+    <value>うち {0} 件はこれらの接続が経由する踏み台ホストで、自動的に含めました。</value>
+  </data>
+  <data name="SessExport_Format" xml:space="preserve">
+    <value>形式</value>
+  </data>
+  <data name="SessExport_FormatJson" xml:space="preserve">
+    <value>VelaShell JSON</value>
+  </data>
+  <data name="SessExport_FormatCsv" xml:space="preserve">
+    <value>CSV</value>
+  </data>
+  <data name="SessExport_JsonHint" xml:space="preserve">
+    <value>グループ、踏み台ホスト、共有資格情報、ポート転送、ターミナル設定などをすべて保存します。バックアップや別の PC への移行向けです。</value>
+  </data>
+  <data name="SessExport_CsvHint" xml:space="preserve">
+    <value>Excel で編集してインポートし直せる表です。よく使う項目（名前、ホスト、ポート、ユーザー名、グループ、認証、踏み台ホストなど）のみで、パスワードは含みません。</value>
+  </data>
+  <data name="SessExport_IncludeSecrets" xml:space="preserve">
+    <value>パスワードなどの機密情報を含める</value>
+  </data>
+  <data name="SessExport_SecretsHintFmt" xml:space="preserve">
+    <value>{0} 件の接続または共有資格情報にパスワードや秘密鍵のパスフレーズが保存されています。下で設定するパスフレーズで暗号化され、平文では書き出されません。</value>
+  </data>
+  <data name="SessExport_NoSecrets" xml:space="preserve">
+    <value>これらの接続にはパスワードが保存されていません。</value>
+  </data>
+  <data name="SessExport_Passphrase" xml:space="preserve">
+    <value>エクスポート用パスフレーズ</value>
+  </data>
+  <data name="SessExport_PassphraseConfirm" xml:space="preserve">
+    <value>パスフレーズ（確認）</value>
+  </data>
+  <data name="SessExport_PassphraseHint" xml:space="preserve">
+    <value>パスワードをインポートするにはこのパスフレーズが必要です。忘れると復元できません。</value>
+  </data>
+  <data name="SessExport_PassphraseTooShort" xml:space="preserve">
+    <value>パスフレーズは {0} 文字以上にしてください。</value>
+  </data>
+  <data name="SessExport_PassphraseMismatch" xml:space="preserve">
+    <value>2 回入力したパスフレーズが一致しません。</value>
+  </data>
+  <data name="SessExport_ExportButton" xml:space="preserve">
+    <value>エクスポート…</value>
+  </data>
+  <data name="SessExport_Failed" xml:space="preserve">
+    <value>エクスポートに失敗しました：{0}</value>
+  </data>
+  <data name="SessExport_Done" xml:space="preserve">
+    <value>{0} 件の接続を {1} にエクスポートしました（パスワードなし）。</value>
+  </data>
+  <data name="SessExport_DoneWithSecrets" xml:space="preserve">
+    <value>{0} 件の接続を {1} にエクスポートしました。パスワードはパスフレーズで暗号化されています。</value>
+  </data>
+  <data name="SessExport_DoneCsv" xml:space="preserve">
+    <value>{0} 件の接続を {1} にエクスポートしました。</value>
+  </data>
+  <data name="SessExport_TemplateSaved" xml:space="preserve">
+    <value>テンプレートを {0} に保存しました。記入したら「ファイルから接続をインポート」で読み込んでください。</value>
+  </data>
+  <data name="BatchEdit_Title" xml:space="preserve">
+    <value>接続の一括編集</value>
+  </data>
+  <data name="BatchEdit_SummaryFmt" xml:space="preserve">
+    <value>{0} 件の接続を編集</value>
+  </data>
+  <data name="BatchEdit_Hint" xml:space="preserve">
+    <value>チェックした項目だけを変更し、それ以外は各接続の設定のままにします。</value>
+  </data>
+  <data name="BatchEdit_Port" xml:space="preserve">
+    <value>ポート</value>
+  </data>
+  <data name="BatchEdit_AuthShared" xml:space="preserve">
+    <value>共有資格情報</value>
+  </data>
+  <data name="BatchEdit_PickCredential" xml:space="preserve">
+    <value>共有資格情報を選択してください</value>
+  </data>
+  <data name="BatchEdit_NoCredentials" xml:space="preserve">
+    <value>共有資格情報がまだありません。設定 → 共有資格情報 で作成できます。</value>
+  </data>
+  <data name="BatchEdit_PasswordHint" xml:space="preserve">
+    <value>空欄にすると接続時に入力を求めます。</value>
+  </data>
+  <data name="BatchEdit_PickKey" xml:space="preserve">
+    <value>秘密鍵ファイルを選択してください</value>
+  </data>
+  <data name="BatchEdit_BadPort" xml:space="preserve">
+    <value>ポートは 1〜65535 の範囲で指定してください</value>
+  </data>
+  <data name="BatchEdit_JumpHint" xml:space="preserve">
+    <value>SSH と SFTP の接続にのみ適用されます。</value>
+  </data>
+  <data name="BatchEdit_PreviewChangedFmt" xml:space="preserve">
+    <value>{0} 件の接続を変更します</value>
+  </data>
+  <data name="BatchEdit_PreviewAuthSkippedFmt" xml:space="preserve">
+    <value>{0} 件はプロトコルが選択した認証方式に対応していないため、認証は変更しません</value>
+  </data>
+  <data name="BatchEdit_PreviewJumpSkippedFmt" xml:space="preserve">
+    <value>{0} 件は踏み台ホストを変更しません（SSH ではない、または循環になる）</value>
+  </data>
+  <data name="BatchEdit_PreviewSeparator" xml:space="preserve">
+    <value> · </value>
+  </data>
+  <data name="BatchEdit_Apply" xml:space="preserve">
+    <value>適用</value>
+  </data>
+  <data name="BatchEdit_DoneFmt" xml:space="preserve">
+    <value>{0} 件の接続を変更しました</value>
+  </data>
+  <data name="Tree_DragGroupBefore" xml:space="preserve">
+    <value>「{0}」の前へ移動</value>
+  </data>
+  <data name="Tree_DragGroupToEnd" xml:space="preserve">
+    <value>末尾へ移動</value>
+  </data>
+  <data name="BatchEdit_JumpHost" xml:space="preserve">
+    <value>踏み台ホスト</value>
+  </data>
+  <data name="Sc_GroupExplorer" xml:space="preserve">
+    <value>エクスプローラー</value>
+  </data>
+  <data name="Sc_ExplorerToggleSelect" xml:space="preserve">
+    <value>接続を選択に追加 / 選択から外す</value>
+  </data>
+  <data name="Sc_ExplorerRangeSelect" xml:space="preserve">
+    <value>接続を範囲選択</value>
+  </data>
+  <data name="Sc_ExplorerMoveToGroup" xml:space="preserve">
+    <value>接続を別のグループへ移動</value>
+  </data>
+  <data name="Sc_ExplorerReorderGroup" xml:space="preserve">
+    <value>グループの順序を変更</value>
+  </data>
+  <data name="Sc_KeyExplorerConnection" xml:space="preserve">
+    <value>接続の行</value>
+  </data>
+  <data name="Sc_KeyExplorerGroupRow" xml:space="preserve">
+    <value>グループの行</value>
+  </data>
+  <data name="SessImport_WarnHostChangesKeepSecret" xml:space="preserve">
+    <value>上書きするとホストが {0} から {1} に変わり、ここに保存されたパスワードが新しいホストに使われます</value>
+  </data>
+  <data name="BatchEdit_Failed" xml:space="preserve">
+    <value>保存に失敗しました：{0}</value>
+  </data>
 </root>

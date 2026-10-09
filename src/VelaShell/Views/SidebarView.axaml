@@ -38,15 +38,68 @@
             <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.plus}"
                            Foreground="{DynamicResource VelaTextTertiary}" />
           </Button>
-          <Button Background="Transparent" Padding="0" Width="24" Height="24"
+          <!-- 「更多」(#571):导入 / 导出连接文件、CSV 模板、从其他工具迁移,以及整棵树的排序与折叠。
+               菜单项直接绑会话树的命令(`SessionTree.` 前缀)。会话树由宿主在窗口打开前建好;万一还没建好,
+               这些项的 Command 是 null,看上去可点、点了不起作用,而不是变灰。 -->
+          <Button x:Name="ExplorerMoreButton"
+                  Background="Transparent" Padding="0" Width="24" Height="24"
                   CornerRadius="3" Cursor="Hand"
-                  ToolTip.Tip="{loc:Localize XImport_MenuItemAll}">
+                  ToolTip.Tip="{loc:Localize Sidebar_More}"
+                  AutomationProperties.Name="{loc:Localize Sidebar_More}">
             <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.ellipsis}"
                            Foreground="{DynamicResource VelaTextTertiary}" />
             <Button.Flyout>
               <MenuFlyout Placement="BottomEdgeAlignedRight">
+                <MenuItem Header="{loc:Localize Tree_ImportFile}"
+                          Command="{Binding SessionTree.ImportFileCommand}">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-up}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="{loc:Localize Tree_ExportAll}"
+                          Command="{Binding SessionTree.ExportAllCommand}">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-down}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="{loc:Localize Tree_SaveCsvTemplate}"
+                          Command="{Binding SessionTree.SaveCsvTemplateCommand}">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-spreadsheet}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
                 <MenuItem Header="{loc:Localize XImport_MenuItemAll}"
-                          Click="ImportSessions_Click" />
+                          Click="ImportSessions_Click">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-input}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="{loc:Localize Tree_SortGroupsByName}"
+                          Command="{Binding SessionTree.SortGroupsByNameCommand}">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.arrow-down-a-z}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="{loc:Localize Tree_CollapseAll}"
+                          Command="{Binding SessionTree.CollapseAllCommand}">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.chevrons-down-up}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="{loc:Localize Tree_ExpandAll}"
+                          Command="{Binding SessionTree.ExpandAllCommand}">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.chevrons-up-down}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
               </MenuFlyout>
             </Button.Flyout>
           </Button>

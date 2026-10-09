@@ -309,6 +309,16 @@ public static class ShortcutCatalog
                     Item("Sc_SelectCommandOutput", [K("Sc_KeyCommandMark"), K("Sc_KeyLeftClick")], "Sc_NoteShellIntegration"),
                 ]
             ),
+            // 资源管理器的多选与拖动(#571):列表本身是单选的,Ctrl / Shift 选多条、拖分组排序都是自己接的手势,
+            // 不写进来就没人知道能这么用。
+            Group("Sc_GroupExplorer",
+                [
+                    Item("Sc_ExplorerToggleSelect", [Ctrl, K("Sc_KeyLeftClick")]),
+                    Item("Sc_ExplorerRangeSelect", [Shift, K("Sc_KeyLeftClick")]),
+                    Item("Sc_ExplorerMoveToGroup", [K("Sc_KeyExplorerConnection"), K("Sc_KeyDrag")]),
+                    Item("Sc_ExplorerReorderGroup", [K("Sc_KeyExplorerGroupRow"), K("Sc_KeyDrag")]),
+                ]
+            ),
             Group("Cmd_CommandPalette",
                 [
                     Item("Sc_PaletteNext", ["Down"]),

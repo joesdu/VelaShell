@@ -6818,4 +6818,415 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SetSnippets_MultilineHint" xml:space="preserve">
     <value>// 可以换行写多行命令:发送时整段放进命令行,不会逐行执行;远端不支持括号粘贴时先询问</value>
   </data>
+  <data name="Sidebar_More" xml:space="preserve">
+    <value>更多</value>
+  </data>
+  <data name="Tree_ImportFile" xml:space="preserve">
+    <value>导入连接文件…</value>
+  </data>
+  <data name="Tree_ExportAll" xml:space="preserve">
+    <value>导出全部连接…</value>
+  </data>
+  <data name="Tree_SaveCsvTemplate" xml:space="preserve">
+    <value>保存 CSV 导入模板…</value>
+  </data>
+  <data name="Tree_SortGroupsByName" xml:space="preserve">
+    <value>分组按名称排序</value>
+  </data>
+  <data name="Tree_CollapseAll" xml:space="preserve">
+    <value>全部折叠</value>
+  </data>
+  <data name="Tree_ExpandAll" xml:space="preserve">
+    <value>全部展开</value>
+  </data>
+  <data name="Tree_OpenGroup" xml:space="preserve">
+    <value>打开全部连接</value>
+  </data>
+  <data name="Tree_MoveGroupUp" xml:space="preserve">
+    <value>上移</value>
+  </data>
+  <data name="Tree_MoveGroupDown" xml:space="preserve">
+    <value>下移</value>
+  </data>
+  <data name="Tree_ExportGroup" xml:space="preserve">
+    <value>导出此分组…</value>
+  </data>
+  <data name="Tree_ImportIntoGroup" xml:space="preserve">
+    <value>导入到此分组…</value>
+  </data>
+  <data name="Tree_OpenSelected" xml:space="preserve">
+    <value>打开 {0} 个连接</value>
+  </data>
+  <data name="Tree_DeleteSelected" xml:space="preserve">
+    <value>删除 {0} 个连接</value>
+  </data>
+  <data name="Tree_DeleteSelectedTitle" xml:space="preserve">
+    <value>删除连接</value>
+  </data>
+  <data name="Tree_DeleteSelectedConfirm" xml:space="preserve">
+    <value>确定要删除选中的 {0} 个连接吗？此操作不可撤销。</value>
+  </data>
+  <data name="Tree_BatchEdit" xml:space="preserve">
+    <value>批量修改…</value>
+  </data>
+  <data name="Tree_ExportSelected" xml:space="preserve">
+    <value>导出所选…</value>
+  </data>
+  <data name="Tree_OpenManyTitle" xml:space="preserve">
+    <value>打开连接</value>
+  </data>
+  <data name="Tree_OpenManyConfirm" xml:space="preserve">
+    <value>将一次打开 {0} 个连接，继续吗？</value>
+  </data>
+  <data name="Tree_OpenManyAction" xml:space="preserve">
+    <value>打开</value>
+  </data>
+  <data name="SessFile_AnyType" xml:space="preserve">
+    <value>连接文件 (JSON / CSV)</value>
+  </data>
+  <data name="SessFile_JsonType" xml:space="preserve">
+    <value>VelaShell 连接文件</value>
+  </data>
+  <data name="SessFile_CsvType" xml:space="preserve">
+    <value>CSV 表格</value>
+  </data>
+  <data name="SessFile_CsvEmpty" xml:space="preserve">
+    <value>文件是空的：没有找到表头行。</value>
+  </data>
+  <data name="SessFile_CsvNoHostColumn" xml:space="preserve">
+    <value>CSV 里没有 host（主机）列。第一行必须是表头，至少要有 host 列（全部列名见 CSV 模板）。</value>
+  </data>
+  <data name="SessFile_CsvUnknownColumns" xml:space="preserve">
+    <value>以下列无法识别，已忽略：{0}</value>
+  </data>
+  <data name="SessFile_JsonInvalid" xml:space="preserve">
+    <value>文件不是有效的 JSON：{0}</value>
+  </data>
+  <data name="SessFile_NotVelaShell" xml:space="preserve">
+    <value>这不是 VelaShell 导出的连接文件。</value>
+  </data>
+  <data name="SessFile_SectionInvalid" xml:space="preserve">
+    <value>文件中的「{0}」部分格式不正确：{1}</value>
+  </data>
+  <data name="SessFile_UnknownSecretAlgorithm" xml:space="preserve">
+    <value>文件里的敏感信息用了本版本不认识的加密方式，连接将不含密码导入。</value>
+  </data>
+  <data name="SessFile_VersionTooNew" xml:space="preserve">
+    <value>该文件由更新版本的 VelaShell 导出（格式版本 {0}），请升级后再导入。</value>
+  </data>
+  <data name="SessImport_ErrNotAnObject" xml:space="preserve">
+    <value>不是一条连接</value>
+  </data>
+  <data name="SessImport_ErrBadEntry" xml:space="preserve">
+    <value>格式不正确：{0}</value>
+  </data>
+  <data name="SessImport_ErrNoHost" xml:space="preserve">
+    <value>主机为空</value>
+  </data>
+  <data name="SessImport_ErrBadPort" xml:space="preserve">
+    <value>端口无效：{0}</value>
+  </data>
+  <data name="SessImport_ErrHostSpaces" xml:space="preserve">
+    <value>主机里有空格：{0}</value>
+  </data>
+  <data name="SessImport_ErrPortRequired" xml:space="preserve">
+    <value>插件协议必须填写端口</value>
+  </data>
+  <data name="SessImport_ErrBadProtocol" xml:space="preserve">
+    <value>无法识别的协议：{0}</value>
+  </data>
+  <data name="SessImport_ErrBadAuth" xml:space="preserve">
+    <value>无法识别的认证方式：{0}</value>
+  </data>
+  <data name="SessImport_ErrAuthNotSupported" xml:space="preserve">
+    <value>FTP 与插件协议只支持密码认证</value>
+  </data>
+  <data name="SessImport_WarnBadId" xml:space="preserve">
+    <value>id「{0}」无效，已忽略，按新连接导入</value>
+  </data>
+  <data name="SessImport_WarnCredentialMissing" xml:space="preserve">
+    <value>引用的共享凭据不在文件里，改为单独认证</value>
+  </data>
+  <data name="SessImport_WarnCredentialNotFound" xml:space="preserve">
+    <value>找不到共享凭据「{0}」，改为单独认证</value>
+  </data>
+  <data name="SessImport_WarnCredentialAmbiguous" xml:space="preserve">
+    <value>有多个名为「{0}」的共享凭据，改为单独认证</value>
+  </data>
+  <data name="SessImport_WarnJumpNotInFile" xml:space="preserve">
+    <value>跳板主机没有一起导入，本机也没有，改为直连</value>
+  </data>
+  <data name="SessImport_WarnJumpNotFound" xml:space="preserve">
+    <value>找不到跳板主机「{0}」，改为直连</value>
+  </data>
+  <data name="SessImport_WarnJumpAmbiguous" xml:space="preserve">
+    <value>有多个名为「{0}」的连接，跳板主机留空</value>
+  </data>
+  <data name="SessImport_WarnJumpSelf" xml:space="preserve">
+    <value>不能拿自己当跳板主机，改为直连</value>
+  </data>
+  <data name="SessImport_WarnJumpCycle" xml:space="preserve">
+    <value>跳板主机首尾相连成环，已断开这一环，改为直连</value>
+  </data>
+  <data name="SessImport_ItemNoteFmt" xml:space="preserve">
+    <value>{0}：{1}</value>
+  </data>
+  <data name="SessImport_LineFmt" xml:space="preserve">
+    <value>第 {0} 行：{1}</value>
+  </data>
+  <data name="SessImport_Title" xml:space="preserve">
+    <value>导入连接</value>
+  </data>
+  <data name="SessImport_PickTitle" xml:space="preserve">
+    <value>选择要导入的连接文件</value>
+  </data>
+  <data name="SessImport_Loading" xml:space="preserve">
+    <value>正在与已有连接比对…</value>
+  </data>
+  <data name="SessImport_NothingSelected" xml:space="preserve">
+    <value>没有要导入的连接</value>
+  </data>
+  <data name="SessImport_HeadlineFmt" xml:space="preserve">
+    <value>将导入 {0} 个连接</value>
+  </data>
+  <data name="SessImport_DetailFmt" xml:space="preserve">
+    <value>{0} 个新连接 · {1} 个与已有连接重复 · {2} 个有问题</value>
+  </data>
+  <data name="SessImport_ImportButton" xml:space="preserve">
+    <value>导入</value>
+  </data>
+  <data name="SessImport_ImportCountFmt" xml:space="preserve">
+    <value>导入 {0} 个</value>
+  </data>
+  <data name="SessImport_JsonExportedFmt" xml:space="preserve">
+    <value>VelaShell JSON · 导出于 {0}</value>
+  </data>
+  <data name="SessImport_SecretsLocked" xml:space="preserve">
+    <value>此文件含加密的密码等敏感信息。输入导出时设的口令即可一起导入；不输入也能导入，只是不带密码。</value>
+  </data>
+  <data name="SessImport_PassphrasePlaceholder" xml:space="preserve">
+    <value>导出口令</value>
+  </data>
+  <data name="SessImport_Unlock" xml:space="preserve">
+    <value>解锁</value>
+  </data>
+  <data name="SessImport_WrongPassphrase" xml:space="preserve">
+    <value>口令不正确，或者文件已损坏。</value>
+  </data>
+  <data name="SessImport_SecretsUnlockedFmt" xml:space="preserve">
+    <value>已解锁：{0} 个连接会带着密码一起导入。</value>
+  </data>
+  <data name="SessImport_ConflictLabel" xml:space="preserve">
+    <value>重复时</value>
+  </data>
+  <data name="SessImport_ConflictSkip" xml:space="preserve">
+    <value>跳过（保留已有的）</value>
+  </data>
+  <data name="SessImport_ConflictOverwrite" xml:space="preserve">
+    <value>覆盖已有的</value>
+  </data>
+  <data name="SessImport_ConflictKeepBoth" xml:space="preserve">
+    <value>两条都留</value>
+  </data>
+  <data name="SessImport_TargetLabel" xml:space="preserve">
+    <value>放到</value>
+  </data>
+  <data name="SessImport_TargetFromFile" xml:space="preserve">
+    <value>按文件中的分组</value>
+  </data>
+  <data name="SessImport_StatusNew" xml:space="preserve">
+    <value>新建</value>
+  </data>
+  <data name="SessImport_StatusSkip" xml:space="preserve">
+    <value>与已有的「{0}」重复，跳过</value>
+  </data>
+  <data name="SessImport_StatusOverwrite" xml:space="preserve">
+    <value>将覆盖已有的「{0}」</value>
+  </data>
+  <data name="SessImport_StatusKeepBoth" xml:space="preserve">
+    <value>与已有的「{0}」重复，另存一条</value>
+  </data>
+  <data name="SessImport_NewGroupFmt" xml:space="preserve">
+    <value>{0}（新建）</value>
+  </data>
+  <data name="SessImport_HasPassword" xml:space="preserve">
+    <value>带有密码</value>
+  </data>
+  <data name="SessImport_Failed" xml:space="preserve">
+    <value>导入失败：{0}</value>
+  </data>
+  <data name="SessImport_TooLarge" xml:space="preserve">
+    <value>该文件 {0} MB，超过连接文件 {1} MB 的上限。</value>
+  </data>
+  <data name="SessImport_ReadFailed" xml:space="preserve">
+    <value>读取文件失败：{0}</value>
+  </data>
+  <data name="SessImport_Empty" xml:space="preserve">
+    <value>文件里没有连接。</value>
+  </data>
+  <data name="SessImport_DoneTitle" xml:space="preserve">
+    <value>导入完成</value>
+  </data>
+  <data name="SessImport_DoneFmt" xml:space="preserve">
+    <value>导入完成：新建 {0} 个，覆盖 {1} 个，跳过 {2} 个。</value>
+  </data>
+  <data name="SessImport_MoreWarnings" xml:space="preserve">
+    <value>……另有 {0} 条</value>
+  </data>
+  <data name="SessExport_Title" xml:space="preserve">
+    <value>导出连接</value>
+  </data>
+  <data name="SessExport_Loading" xml:space="preserve">
+    <value>正在统计…</value>
+  </data>
+  <data name="SessExport_SummaryFmt" xml:space="preserve">
+    <value>将导出 {0} 个连接（{1} 个分组）</value>
+  </data>
+  <data name="SessExport_DependencyFmt" xml:space="preserve">
+    <value>其中 {0} 个是这些连接经过的跳板主机，已自动带上。</value>
+  </data>
+  <data name="SessExport_Format" xml:space="preserve">
+    <value>格式</value>
+  </data>
+  <data name="SessExport_FormatJson" xml:space="preserve">
+    <value>VelaShell JSON</value>
+  </data>
+  <data name="SessExport_FormatCsv" xml:space="preserve">
+    <value>CSV 表格</value>
+  </data>
+  <data name="SessExport_JsonHint" xml:space="preserve">
+    <value>完整保存分组、跳板主机、共享凭据、端口转发与终端设置等全部配置，适合备份与迁移到另一台电脑。</value>
+  </data>
+  <data name="SessExport_CsvHint" xml:space="preserve">
+    <value>可以用 Excel 编辑后再导入的表格。只含常用字段（名称、主机、端口、用户名、分组、认证、跳板主机……），不含密码。</value>
+  </data>
+  <data name="SessExport_IncludeSecrets" xml:space="preserve">
+    <value>包含密码等敏感信息</value>
+  </data>
+  <data name="SessExport_SecretsHintFmt" xml:space="preserve">
+    <value>{0} 个连接或共享凭据保存了密码或私钥口令。它们会用下面设的口令加密，不会以明文写进文件。</value>
+  </data>
+  <data name="SessExport_NoSecrets" xml:space="preserve">
+    <value>这些连接都没有保存密码。</value>
+  </data>
+  <data name="SessExport_Passphrase" xml:space="preserve">
+    <value>导出口令</value>
+  </data>
+  <data name="SessExport_PassphraseConfirm" xml:space="preserve">
+    <value>再次输入口令</value>
+  </data>
+  <data name="SessExport_PassphraseHint" xml:space="preserve">
+    <value>导入时要输入这个口令才能带上密码；口令遗失无法找回。</value>
+  </data>
+  <data name="SessExport_PassphraseTooShort" xml:space="preserve">
+    <value>口令至少 {0} 个字符。</value>
+  </data>
+  <data name="SessExport_PassphraseMismatch" xml:space="preserve">
+    <value>两次输入的口令不一致。</value>
+  </data>
+  <data name="SessExport_ExportButton" xml:space="preserve">
+    <value>导出…</value>
+  </data>
+  <data name="SessExport_Failed" xml:space="preserve">
+    <value>导出失败：{0}</value>
+  </data>
+  <data name="SessExport_Done" xml:space="preserve">
+    <value>已导出 {0} 个连接到 {1}（不含密码）。</value>
+  </data>
+  <data name="SessExport_DoneWithSecrets" xml:space="preserve">
+    <value>已导出 {0} 个连接到 {1}，密码已用口令加密。</value>
+  </data>
+  <data name="SessExport_DoneCsv" xml:space="preserve">
+    <value>已导出 {0} 个连接到 {1}。</value>
+  </data>
+  <data name="SessExport_TemplateSaved" xml:space="preserve">
+    <value>模板已保存到 {0}，填好后用「导入连接文件」导入。</value>
+  </data>
+  <data name="BatchEdit_Title" xml:space="preserve">
+    <value>批量修改连接</value>
+  </data>
+  <data name="BatchEdit_SummaryFmt" xml:space="preserve">
+    <value>修改 {0} 个连接</value>
+  </data>
+  <data name="BatchEdit_Hint" xml:space="preserve">
+    <value>只修改勾选的项，其余各项保持每个连接原样。</value>
+  </data>
+  <data name="BatchEdit_Port" xml:space="preserve">
+    <value>端口</value>
+  </data>
+  <data name="BatchEdit_AuthShared" xml:space="preserve">
+    <value>共享凭据</value>
+  </data>
+  <data name="BatchEdit_PickCredential" xml:space="preserve">
+    <value>请选择一条共享凭据</value>
+  </data>
+  <data name="BatchEdit_NoCredentials" xml:space="preserve">
+    <value>还没有共享凭据，可以在 设置 → 共享凭据 里新建。</value>
+  </data>
+  <data name="BatchEdit_PasswordHint" xml:space="preserve">
+    <value>留空则连接时再询问。</value>
+  </data>
+  <data name="BatchEdit_PickKey" xml:space="preserve">
+    <value>请选择私钥文件</value>
+  </data>
+  <data name="BatchEdit_BadPort" xml:space="preserve">
+    <value>端口必须在 1 到 65535 之间</value>
+  </data>
+  <data name="BatchEdit_JumpHint" xml:space="preserve">
+    <value>只对 SSH 与 SFTP 连接生效。</value>
+  </data>
+  <data name="BatchEdit_PreviewChangedFmt" xml:space="preserve">
+    <value>将修改 {0} 个连接</value>
+  </data>
+  <data name="BatchEdit_PreviewAuthSkippedFmt" xml:space="preserve">
+    <value>{0} 个连接的协议不支持所选认证方式，认证不变</value>
+  </data>
+  <data name="BatchEdit_PreviewJumpSkippedFmt" xml:space="preserve">
+    <value>{0} 个连接的跳板主机不变（不是 SSH，或会首尾成环）</value>
+  </data>
+  <data name="BatchEdit_PreviewSeparator" xml:space="preserve">
+    <value>；</value>
+  </data>
+  <data name="BatchEdit_Apply" xml:space="preserve">
+    <value>应用</value>
+  </data>
+  <data name="BatchEdit_DoneFmt" xml:space="preserve">
+    <value>已修改 {0} 个连接</value>
+  </data>
+  <data name="Tree_DragGroupBefore" xml:space="preserve">
+    <value>移到「{0}」之前</value>
+  </data>
+  <data name="Tree_DragGroupToEnd" xml:space="preserve">
+    <value>移到最后</value>
+  </data>
+  <data name="BatchEdit_JumpHost" xml:space="preserve">
+    <value>跳板主机</value>
+  </data>
+  <data name="Sc_GroupExplorer" xml:space="preserve">
+    <value>资源管理器</value>
+  </data>
+  <data name="Sc_ExplorerToggleSelect" xml:space="preserve">
+    <value>加选 / 减选连接</value>
+  </data>
+  <data name="Sc_ExplorerRangeSelect" xml:space="preserve">
+    <value>连续选择连接</value>
+  </data>
+  <data name="Sc_ExplorerMoveToGroup" xml:space="preserve">
+    <value>把连接移到别的分组</value>
+  </data>
+  <data name="Sc_ExplorerReorderGroup" xml:space="preserve">
+    <value>调整分组顺序</value>
+  </data>
+  <data name="Sc_KeyExplorerConnection" xml:space="preserve">
+    <value>连接行</value>
+  </data>
+  <data name="Sc_KeyExplorerGroupRow" xml:space="preserve">
+    <value>分组行</value>
+  </data>
+  <data name="SessImport_WarnHostChangesKeepSecret" xml:space="preserve">
+    <value>覆盖时主机会从 {0} 改为 {1},本机保存的密码将用于新主机</value>
+  </data>
+  <data name="BatchEdit_Failed" xml:space="preserve">
+    <value>保存失败：{0}</value>
+  </data>
 </root>

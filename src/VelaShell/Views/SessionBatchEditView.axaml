@@ -1,0 +1,277 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:VelaShell.ViewModels"
+        xmlns:models="using:VelaShell.Core.Models"
+        xmlns:behaviors="using:VelaShell.Behaviors"
+        xmlns:pc="using:VelaShell.Controls.Controls"
+        xmlns:loc="using:VelaShell.Localization"
+        mc:Ignorable="d" d:DesignWidth="540"
+        x:Class="VelaShell.Views.SessionBatchEditView"
+        x:DataType="vm:SessionBatchEditViewModel"
+        Title="{Binding Title}"
+        Width="540"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+  <!-- 批量修改(#571):每一项前面一个勾,勾了才改,不勾的保持各自原样。外壳与共享凭据编辑框同一规格;
+       认证方式的分段与那边同一套(共享凭据 / 密码 / 私钥 / Agent)。点「应用」之前,底下那行已经算好
+       会改几条、哪些因协议不支持被跳过。 -->
+
+  <Window.Styles>
+    <Style Selector="Button.caption">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Width" Value="27" />
+      <Setter Property="Height" Value="27" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.caption:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="Button.caption-close:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaDangerHover}" />
+    </Style>
+    <Style Selector="TextBlock.field-hint">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.field-error">
+      <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.row-label">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="CheckBox.row-toggle">
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="6,0,0,0" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="0,7,0,0" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.seg-tab">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.seg-tab.active">
+      <Setter Property="Background" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccentForeground}" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+  </Window.Styles>
+
+  <Border Classes="window-card"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}"
+          ClipToBounds="True">
+    <Grid RowDefinitions="Auto,Auto,52">
+
+      <!-- 标题栏(28,可拖动) -->
+      <Border Grid.Row="0" Classes="window-titlebar" Padding="20,0,0,0"
+              PointerPressed="Header_PointerPressed"
+              Background="Transparent"
+              BorderThickness="0,0,0,1"
+              BorderBrush="{DynamicResource VelaBorderPrimary}">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <pc:LucideIcon Grid.Column="0" Width="15" Height="15"
+                         Data="{StaticResource Icon.sliders-horizontal}"
+                         Foreground="{DynamicResource VelaAccent}"
+                         VerticalAlignment="Center" Margin="0,0,10,0" />
+          <TextBlock Grid.Column="1" Text="{Binding Title}"
+                     Foreground="{DynamicResource VelaTextPrimary}"
+                     FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+          <Button Grid.Column="2" Classes="caption caption-close" VerticalAlignment="Top"
+                  AutomationProperties.Name="{loc:Localize Cancel}"
+                  Command="{Binding CancelCommand}">
+            <pc:LucideIcon Width="12" Height="12"
+                           Data="{StaticResource Icon.x}"
+                           Foreground="{DynamicResource VelaTextSecondary}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <StackPanel Grid.Row="1" Margin="20,16" Spacing="14">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding Summary}"
+                     Foreground="{DynamicResource VelaTextPrimary}"
+                     FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold" />
+          <TextBlock Classes="field-hint" Text="{loc:Localize BatchEdit_Hint}" />
+        </StackPanel>
+
+        <!-- 用户名 -->
+        <Grid ColumnDefinitions="130,*">
+          <CheckBox x:Name="ChangeUsernameBox" Classes="row-toggle" IsChecked="{Binding ChangeUsername}">
+            <TextBlock Classes="row-label" Text="{loc:Localize Username}" />
+          </CheckBox>
+          <TextBox Grid.Column="1" Text="{Binding Username}" IsEnabled="{Binding ChangeUsername}"
+                   AutomationProperties.Name="{loc:Localize Username}" />
+        </Grid>
+
+        <!-- 端口 -->
+        <Grid ColumnDefinitions="130,*">
+          <CheckBox Classes="row-toggle" IsChecked="{Binding ChangePort}">
+            <TextBlock Classes="row-label" Text="{loc:Localize BatchEdit_Port}" />
+          </CheckBox>
+          <NumericUpDown Grid.Column="1" Width="120" HorizontalAlignment="Left"
+                         Value="{Binding Port}" Minimum="1" Maximum="65535" Increment="1" FormatString="0"
+                         IsEnabled="{Binding ChangePort}"
+                         AutomationProperties.Name="{loc:Localize BatchEdit_Port}" />
+        </Grid>
+
+        <!-- 身份验证 -->
+        <Grid ColumnDefinitions="130,*">
+          <CheckBox Classes="row-toggle" IsChecked="{Binding ChangeAuth}">
+            <TextBlock Classes="row-label" Text="{loc:Localize AuthMethodLabel}" />
+          </CheckBox>
+          <StackPanel Grid.Column="1" Spacing="10" IsEnabled="{Binding ChangeAuth}">
+            <Border Background="{DynamicResource VelaBgInput}" CornerRadius="4" Padding="2" Height="30">
+              <UniformGrid Rows="1">
+                <Button Classes="seg-tab" Classes.active="{Binding IsSharedCredentialAuth}"
+                        Command="{Binding SelectAuthKindCommand}"
+                        CommandParameter="{x:Static models:SessionBatchAuthKind.SharedCredential}"
+                        Content="{loc:Localize BatchEdit_AuthShared}" />
+                <Button Classes="seg-tab" Classes.active="{Binding IsPasswordAuth}"
+                        Command="{Binding SelectAuthKindCommand}"
+                        CommandParameter="{x:Static models:SessionBatchAuthKind.Password}"
+                        Content="{loc:Localize Profile_PasswordAuth}" />
+                <Button Classes="seg-tab" Classes.active="{Binding IsKeyAuth}"
+                        Command="{Binding SelectAuthKindCommand}"
+                        CommandParameter="{x:Static models:SessionBatchAuthKind.PrivateKey}"
+                        Content="{loc:Localize Profile_KeyAuth}" />
+                <Button Classes="seg-tab" Classes.active="{Binding IsAgentAuth}"
+                        Command="{Binding SelectAuthKindCommand}"
+                        CommandParameter="{x:Static models:SessionBatchAuthKind.Agent}"
+                        Content="{loc:Localize Profile_AgentAuth}" />
+              </UniformGrid>
+            </Border>
+
+            <!-- 共享凭据:改一处、引用它的连接都跟着变(#550)。 -->
+            <StackPanel IsVisible="{Binding IsSharedCredentialAuth}" Spacing="6">
+              <ComboBox HorizontalAlignment="Stretch"
+                        ItemsSource="{Binding CredentialOptions}"
+                        SelectedItem="{Binding SelectedCredential}"
+                        IsEnabled="{Binding HasCredentials}"
+                        PlaceholderText="{loc:Localize BatchEdit_PickCredential}"
+                        AutomationProperties.Name="{loc:Localize BatchEdit_AuthShared}" />
+              <TextBlock Classes="field-hint" Text="{loc:Localize BatchEdit_NoCredentials}"
+                         IsVisible="{Binding !HasCredentials}" />
+            </StackPanel>
+
+            <!-- 密码:留空 = 连接时再问 -->
+            <StackPanel IsVisible="{Binding IsPasswordAuth}" Spacing="6">
+              <Border Classes="input-affix">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBox Grid.Column="0"
+                           behaviors:SecurePasswordBox.Enabled="True"
+                           behaviors:EnglishInputLocale.Enabled="True"
+                           behaviors:SecurePasswordBox.Password="{Binding Password}"
+                           behaviors:SecurePasswordBox.Reveal="{Binding ShowPassword}"
+                           AutomationProperties.Name="{loc:Localize Password}"
+                           Padding="10,0,0,0"
+                           VerticalAlignment="Center" />
+                  <Button Grid.Column="1" Width="28" Height="28"
+                          Margin="0,0,2,0" Padding="0"
+                          Background="Transparent" CornerRadius="3" Cursor="Hand"
+                          Click="TogglePassword_Click"
+                          ToolTip.Tip="{loc:Localize Profile_ShowHidePassword}"
+                          AutomationProperties.Name="{loc:Localize Profile_ShowHidePassword}"
+                          VerticalAlignment="Center">
+                    <pc:LucideIcon Width="13" Height="13"
+                                   Data="{StaticResource Icon.eye}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </Button>
+                </Grid>
+              </Border>
+              <TextBlock Classes="field-hint" Text="{loc:Localize BatchEdit_PasswordHint}" />
+            </StackPanel>
+
+            <!-- 私钥 -->
+            <Grid IsVisible="{Binding IsKeyAuth}" ColumnDefinitions="*,8,Auto" RowDefinitions="Auto,8,Auto">
+              <TextBox Grid.Column="0" Text="{Binding PrivateKeyPath}"
+                       PlaceholderText="~/.ssh/id_ed25519"
+                       AutomationProperties.Name="{loc:Localize Profile_PrivateKeyFile}" />
+              <Button Grid.Column="2" Theme="{DynamicResource VelaOutlineButtonTheme}" Height="32"
+                      Content="{loc:Localize BrowseKeyFile}" Click="BrowseKeyFile_Click" />
+              <TextBox Grid.Row="2" Grid.Column="0" Text="{Binding PrivateKeyPassphrase}"
+                       behaviors:EnglishInputLocale.Enabled="True"
+                       PasswordChar="&#x2022;" RevealPassword="False"
+                       PlaceholderText="{loc:Localize Profile_PassphraseOptional}"
+                       AutomationProperties.Name="{loc:Localize Profile_PassphraseOptional}" />
+            </Grid>
+
+            <TextBlock Classes="field-hint" IsVisible="{Binding IsAgentAuth}"
+                       Text="{loc:Localize Profile_AgentAuthHint}" />
+          </StackPanel>
+        </Grid>
+
+        <!-- 跳板机 -->
+        <Grid ColumnDefinitions="130,*">
+          <CheckBox Classes="row-toggle" IsChecked="{Binding ChangeJumpHost}">
+            <TextBlock Classes="row-label" Text="{loc:Localize BatchEdit_JumpHost}" />
+          </CheckBox>
+          <StackPanel Grid.Column="1" Spacing="6">
+            <ComboBox HorizontalAlignment="Stretch"
+                      ItemsSource="{Binding JumpHostOptions}"
+                      SelectedItem="{Binding SelectedJumpHost}"
+                      IsEnabled="{Binding ChangeJumpHost}"
+                      AutomationProperties.Name="{loc:Localize Profile_JumpHost}" />
+            <TextBlock Classes="field-hint" Text="{loc:Localize BatchEdit_JumpHint}" />
+          </StackPanel>
+        </Grid>
+
+        <TextBlock Classes="field-hint" Text="{Binding PreviewText}"
+                   IsVisible="{Binding PreviewText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   Foreground="{DynamicResource VelaTextSecondary}" />
+        <TextBlock Classes="field-error" Text="{Binding ValidationError}"
+                   IsVisible="{Binding ValidationError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <TextBlock Classes="field-error" Text="{Binding ErrorMessage}"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </StackPanel>
+
+      <!-- 按钮栏:取消 / 应用 -->
+      <Border Grid.Row="2" Padding="20,0"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
+              BorderThickness="0,1,0,0">
+        <StackPanel Orientation="Horizontal" Spacing="8"
+                    HorizontalAlignment="Right" VerticalAlignment="Center">
+          <Button x:Name="CancelButton"
+                  Theme="{DynamicResource VelaOutlineButtonTheme}"
+                  IsCancel="True"
+                  Content="{loc:Localize Cancel}"
+                  Command="{Binding CancelCommand}" />
+          <Button x:Name="ApplyButton"
+                  Theme="{DynamicResource VelaAccentPillButtonTheme}"
+                  Height="28"
+                  Content="{loc:Localize BatchEdit_Apply}"
+                  Command="{Binding ApplyCommand}" />
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Border>
+</Window>
