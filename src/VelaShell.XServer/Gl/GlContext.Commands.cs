@@ -180,7 +180,9 @@ internal sealed partial class GlContext
                     SetLightModel(pname, pname == GlEnum.LIGHT_MODEL_AMBIENT ? ReadIntColor(ref r, 4) : [r.I32()]);
                     break;
                 }
-            case 94:   // LineStipple:不实现点画
+            case 94:   // LineStipple:factor 夹到 [1, 256],图样取低 16 位(§3.4.2)
+                State.LineStippleFactor = Math.Clamp(r.I32(), 1, 256);
+                State.LineStipplePattern = r.U16();
                 break;
             case 95:   // LineWidth
                 {
@@ -240,7 +242,8 @@ internal sealed partial class GlContext
                     }
                     break;
                 }
-            case 102:   // PolygonStipple:不实现点画
+            case 102:   // PolygonStipple
+                SetPolygonStipple(ref r);
                 break;
             case 103:   // Scissor
                 {
@@ -331,7 +334,15 @@ internal sealed partial class GlContext
                     SetTexGen(coord, pname, opcode == 118 ? ReadFloats(ref r, n) : ReadInts(ref r, n));
                     break;
                 }
-            case >= 121 and <= 125:   // InitNames / LoadName / PassThrough / PopName / PushName:选择与反馈模式不实现
+            case 121:   // InitNames
+            case 124:   // PopName
+                NameStack(opcode, 0);
+                break;
+            case 122:   // LoadName
+            case 125:   // PushName
+                NameStack(opcode, r.U32());
+                break;
+            case 123:   // PassThrough:反馈模式不实现
                 break;
             case 126:   // DrawBuffer
                 SetColorBuffer(ref State.DrawBuffer, r.U32(), forRead: false);

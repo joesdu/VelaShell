@@ -831,6 +831,66 @@ internal sealed partial class GlContext
     }
 
     /// <summary>
+    /// PolygonStipple(§3.5.2;GLX 编码:像素存储头 lsbfirst / rowlength / skiprows / skippixels / alignment,再是位图):
+    /// 32×32 的图样按 DrawPixels 的规则解包(BITMAP、COLOR_INDEX),与 <see cref="Bitmap" /> 同一套寻址;数据装不下整张时 INVALID_VALUE。
+    /// 总是换一个新数组(PushAttrib 存的那份与当前的共用旧数组,不能改它)。
+    /// </summary>
+    private void SetPolygonStipple(ref GlReader r)
+    {
+        r.Skip(1);
+        bool lsbFirst = r.U8() != 0;
+        r.Skip(2);
+        int rowLength = r.I32(), skipRows = r.I32(), skipPixels = r.I32(), alignment = r.I32();
+        if (rowLength < 0 || skipRows < 0 || skipPixels < 0)
+        {
+            SetError(GlEnum.INVALID_VALUE);
+            return;
+        }
+        ReadOnlySpan<byte> bits = r.Rest();
+        alignment = alignment is 1 or 2 or 4 or 8 ? alignment : 4;
+        long groups = rowLength > 0 ? rowLength : 32;
+        long k = alignment * ((groups + (8L * alignment) - 1) / (8L * alignment));
+        long needed = ((skipRows + 31L) * k) + ((skipPixels + 31L) / 8) + 1;
+        if (needed > bits.Length)
+        {
+            SetError(GlEnum.INVALID_VALUE);
+            return;
+        }
+        uint[] pattern = new uint[32];
+        for (int j = 0; j < 32; j++)
+        {
+            for (int i = 0; i < 32; i++)
+            {
+                int bit = i + skipPixels;
+                long index = ((j + (long)skipRows) * k) + (bit / 8);
+                int h = lsbFirst ? bit % 8 : 7 - (bit % 8);
+                if (((bits[(int)index] >> h) & 1) != 0)
+                {
+                    pattern[j] |= 1u << i;
+                }
+            }
+        }
+        State.PolygonStipple = pattern;
+    }
+
+    /// <summary>GetPolygonStipple 的回复数据:32 行、每行 4 字节,按请求的 lsbfirst 排位(GLX 编码附录 A 的固定布局)。</summary>
+    public byte[] PolygonStippleBytes(bool lsbFirst)
+    {
+        byte[] bytes = new byte[128];
+        for (int j = 0; j < 32; j++)
+        {
+            for (int i = 0; i < 32; i++)
+            {
+                if (((State.PolygonStipple[j] >> i) & 1) != 0)
+                {
+                    bytes[(j * 4) + (i / 8)] |= (byte)(1 << (lsbFirst ? i % 8 : 7 - (i % 8)));
+                }
+            }
+        }
+        return bytes;
+    }
+
+    /// <summary>
     /// Bitmap(§3.7):置位的像素以光栅颜色生成片元,之后光栅位置按 (xmove, ymove) 前移。
     /// 数据得装得下整张位图(否则 INVALID_VALUE、命令作废);只走落在裁剪范围里的那部分。
     /// </summary>

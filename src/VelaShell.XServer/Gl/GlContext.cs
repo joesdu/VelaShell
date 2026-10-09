@@ -9,12 +9,12 @@
 //   (一条 glXRender 里是紧排的一串渲染命令:2 字节长度含头、2 字节操作码,补齐到 4 字节)。
 //   OpenGL Graphics with the X Window System, Version 1.4 —— §2.3「Sharing」(共享显示列表与纹理对象的上下文共用名字空间)。
 //
-//   这是 GLX 间接渲染用的软件 GL:固定功能管线的一个子集(版本报 1.1,见 GetString)。没有实现的:
+//   这是 GLX 间接渲染用的软件 GL:固定功能管线的一个子集(版本报 1.1,见 GetString)。选择模式见 GlContext.Select.cs。没有实现的:
 //   求值器(Map / MapGrid / EvalCoord / EvalMesh 吃掉,GetMap 记 INVALID_ENUM)、累积缓冲(配置里 0 位)、
-//   选择 / 反馈模式(RenderMode 切过去不画,切回时返回 0 条)、多级纹理的 LOD(总取第 0 级)、多边形 / 线的点画、3D 纹理、
+//   反馈模式(RenderMode 切过去不画,切回时返回 0 条)、多级纹理的 LOD(总取第 0 级)、3D 纹理、
 //   像素传输的缩放 / 偏置与 PixelMap(静默忽略)、深度 / 模板 / 颜色索引格式的 DrawPixels 与 CopyPixels(不画)、
 //   点 / 线 / 多边形的平滑(按不平滑画)、Hint(收下不查)。认识但没实现的渲染命令照规范当作合法命令吃掉,不报错;
-//   程序第一次用到选择 / 反馈模式或求值器时 GLX 记一行日志(见 TakeUnreportedFeatures),拾取落空不再无迹可查。
+//   程序第一次用到反馈模式或求值器时 GLX 记一行日志(见 TakeUnreportedFeatures),结果落空不再无迹可查。
 
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -260,9 +260,6 @@ internal sealed class GlShared(IGlMemoryAccount? account = null)
 internal enum GlUnimplementedFeatures
 {
     None = 0,
-
-    /// <summary>选择模式(RenderMode(SELECT)):gluPickMatrix 的拾取没有命中。</summary>
-    Selection = 1,
 
     /// <summary>反馈模式(RenderMode(FEEDBACK))。</summary>
     Feedback = 2,
@@ -734,24 +731,6 @@ internal sealed partial class GlContext
 
     /// <summary>IsTexture:只有绑定过(有了目标)的名字才算纹理对象。</summary>
     public bool IsTexture(uint name) => name != 0 && Shared.Textures.TryGetValue(name, out GlTexture? t) && t.Target != 0;
-
-    // ------------------------------------------------------------------ 渲染模式
-
-    /// <summary>RenderMode:返回上一模式下记录的条数。选择 / 反馈不实现,切过去后不画、记 0 条。</summary>
-    public int RenderMode(uint mode)
-    {
-        if (mode is not (GlEnum.RENDER or GlEnum.FEEDBACK or GlEnum.SELECT))
-        {
-            SetError(GlEnum.INVALID_ENUM);
-            return 0;
-        }
-        RenderModeValue = mode;
-        if (mode != GlEnum.RENDER)
-        {
-            NoteUnimplemented(mode == GlEnum.SELECT ? GlUnimplementedFeatures.Selection : GlUnimplementedFeatures.Feedback);
-        }
-        return 0;
-    }
 
     // ------------------------------------------------------------------ 没实现的功能
 

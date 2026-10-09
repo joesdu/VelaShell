@@ -207,6 +207,13 @@ internal sealed class GlState
     public float PointSize = 1;
     public float LineWidth = 1;
 
+    // LINE_BIT:线的点画(§3.4.2;关着时等于全 1 的图样)
+    public int LineStippleFactor = 1;
+    public ushort LineStipplePattern = 0xFFFF;
+
+    // POLYGON_STIPPLE_BIT:多边形的点画(§3.5.2),32 行、每行 32 位,第 0 行是窗口 y mod 32 = 0 那一行,第 x 位(从最低位数)是 x mod 32
+    public uint[] PolygonStipple = [.. Enumerable.Repeat(uint.MaxValue, 32)];
+
     // TRANSFORM_BIT
     public uint MatrixMode = GlEnum.MODELVIEW;
     public Vector4[] ClipPlanes = new Vector4[GlContext.MaxClipPlanes];
@@ -227,7 +234,7 @@ internal sealed class GlState
     public uint ListBase;
 
     // PushAttrib / PopAttrib 的属性组位(§6.1.14)。
-    private const uint CurrentBit = 0x1, PointBit = 0x2, LineBit = 0x4, PolygonBit = 0x8, PixelModeBit = 0x20, LightingBit = 0x40,
+    private const uint CurrentBit = 0x1, PointBit = 0x2, LineBit = 0x4, PolygonBit = 0x8, PolygonStippleBit = 0x10, PixelModeBit = 0x20, LightingBit = 0x40,
         FogBit = 0x80, DepthBit = 0x100, StencilBit = 0x400, ViewportBit = 0x800, TransformBit = 0x1000, EnableBit = 0x2000,
         ColorBufferBit = 0x4000, EvalBit = 0x10000, ListBit = 0x20000, TextureBit = 0x40000, ScissorBit = 0x80000;
 
@@ -310,12 +317,16 @@ internal sealed class GlState
         }
         if ((mask & LineBit) != 0)
         {
-            LineWidth = saved.LineWidth;
+            (LineWidth, LineStippleFactor, LineStipplePattern) = (saved.LineWidth, saved.LineStippleFactor, saved.LineStipplePattern);
         }
         if ((mask & PolygonBit) != 0)
         {
             (CullFaceMode, FrontFace, PolygonModeFront, PolygonModeBack, PolygonOffsetFactor, PolygonOffsetUnits) =
                 (saved.CullFaceMode, saved.FrontFace, saved.PolygonModeFront, saved.PolygonModeBack, saved.PolygonOffsetFactor, saved.PolygonOffsetUnits);
+        }
+        if ((mask & PolygonStippleBit) != 0)
+        {
+            PolygonStipple = saved.PolygonStipple;   // PolygonStipple 命令总是换一个新数组,不改旧的:共用不会串
         }
         if ((mask & PixelModeBit) != 0)
         {

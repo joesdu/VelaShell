@@ -1084,6 +1084,59 @@ public sealed class GlxTests
         Run(gl, 23);
     }
 
+    /// <summary>
+    /// 多边形的点画(xs_plan F23,§3.5.2):按窗口坐标 mod 32 取 32×32 图样的位,图样按 Bitmap 的规则解包(这里 lsbfirst);
+    /// GetPolygonStipple 按原样交回。原先 PolygonStipple 吃掉不画,CAD 里表示剖面的点画填充画成实心。
+    /// </summary>
+    [TestMethod]
+    public void 多边形的点画按窗口坐标取图样的位()
+    {
+        (Gl.GlContext gl, Gl.GlSurface surface) = DirectContext();
+        byte[] pattern = new byte[128];
+        for (int row = 0; row < 32; row += 2)
+        {
+            pattern[(row * 4) + 0] = pattern[(row * 4) + 1] = pattern[(row * 4) + 2] = pattern[(row * 4) + 3] = 0x55;   // 偶数行的偶数列
+        }
+        Run(gl, 102, b => b.U8(0).U8(1).U16(0).U32(0).U32(0).U32(0).U32(4).Bytes(pattern));   // PolygonStipple(lsbfirst)
+        Run(gl, 139, b => b.U32(0x0B42));                                                       // Enable(POLYGON_STIPPLE)
+        Run(gl, 127, b => b.U32(ColorBit));
+        FullQuad(gl, 1, 0, 0);
+        Assert.AreEqual(0u, gl.GetError());
+        Assert.AreEqual(0xFF0000u, SurfacePixel(surface, 0, 0));
+        Assert.AreEqual(0u, SurfacePixel(surface, 1, 0), "奇数列不画");
+        Assert.AreEqual(0u, SurfacePixel(surface, 0, 1), "奇数行不画");
+        Assert.AreEqual(0xFF0000u, SurfacePixel(surface, 6, 6));
+        CollectionAssert.AreEqual(pattern, gl.PolygonStippleBytes(lsbFirst: true));
+    }
+
+    /// <summary>
+    /// 线的点画(xs_plan F23,§3.4.2):第 s 个片元看图样的第 (s / factor) mod 16 位,从起点往终点数(反着画的线从右边数起);
+    /// LINES 的每条线段之前计数器清零。LINE_STIPPLE_PATTERN / REPEAT 报设的值。
+    /// </summary>
+    [TestMethod]
+    public void 线的点画从起点数起_独立线段各自从头数()
+    {
+        (Gl.GlContext gl, Gl.GlSurface surface) = DirectContext(16, 4);
+        Run(gl, 94, b => b.I32(1).U16(0x00FF).U16(0));   // LineStipple(1, 0x00FF):前 8 个画,后 8 个不画
+        Run(gl, 139, b => b.U32(0x0B24));                 // Enable(LINE_STIPPLE)
+        Run(gl, 127, b => b.U32(ColorBit));
+        Run(gl, 8, p => F(p, 0, 1, 0));
+        Run(gl, 4, b => b.U32(1));                        // Begin(LINES)
+        Run(gl, 66, p => F(p, -1, -0.25f));   // 窗口 y = 1.5,从左往右
+        Run(gl, 66, p => F(p, 1, -0.25f));
+        Run(gl, 66, p => F(p, 1, 0.25f));     // 窗口 y = 2.5,从右往左
+        Run(gl, 66, p => F(p, -1, 0.25f));
+        Run(gl, 23);
+        Assert.AreEqual(0u, gl.GetError());
+        Assert.AreEqual(0x00FF00u, SurfacePixel(surface, 0, 1));
+        Assert.AreEqual(0x00FF00u, SurfacePixel(surface, 7, 1));
+        Assert.AreEqual(0u, SurfacePixel(surface, 8, 1), "第 9 个片元起不画");
+        Assert.AreEqual(0x00FF00u, SurfacePixel(surface, 15, 2), "反着画的那条从右边数起;计数器每段清零");
+        Assert.AreEqual(0u, SurfacePixel(surface, 0, 2));
+        Assert.AreEqual(0xFF, gl.Query(0x0B25)!.Value.Values[0]);
+        Assert.AreEqual(1, gl.Query(0x0B26)!.Value.Values[0]);
+    }
+
     [TestMethod]
     public void PolygonOffsetEXT的bias以深度范围为单位_同一深度的后画的面靠偏移挡住先画的()
     {
@@ -1359,7 +1412,7 @@ public sealed class GlxTests
     }
 
     [TestMethod]
-    public async Task 第一次用到选择模式或求值器时记一行日志_每个上下文每样一次()
+    public async Task 第一次用到反馈模式或求值器时记一行日志_每个上下文每样一次()
     {
         using RecordingHost host = new();
         List<string> log = [];
@@ -1368,18 +1421,18 @@ public sealed class GlxTests
         byte glx = await GlxAsync(c);
         uint window = await MapWindowAsync(c, host);
         (_, uint tag) = await CurrentAsync(c, glx, window);
-        const uint select = 0x1C02, render = 0x1C00;
+        const uint feedback = 0x1C01, render = 0x1C00;
 
         for (int i = 0; i < 3; i++)
         {
-            await c.SendAsync(glx, 107, b => b.U32(tag).U32(select));                                 // RenderMode(SELECT)
+            await c.SendAsync(glx, 107, b => b.U32(tag).U32(feedback));                               // RenderMode(FEEDBACK)
             await c.RequestAsync(glx, 107, b => b.U32(tag).U32(render));
         }
         await RenderAsync(c, glx, tag, new Commands().Add(155, b => b.U32(0x1B02).I32(0).I32(10)));  // EvalMesh1
         await c.SyncAsync();
         lock (log)
         {
-            Assert.AreEqual(1, log.Count(line => line.Contains("Selection", StringComparison.Ordinal)), "拾取落空不再无迹可查,同一样只记一次");
+            Assert.AreEqual(1, log.Count(line => line.Contains("Feedback", StringComparison.Ordinal)), "结果落空不再无迹可查,同一样只记一次");
             Assert.AreEqual(1, log.Count(line => line.Contains("Evaluators", StringComparison.Ordinal)));
         }
     }
@@ -1654,5 +1707,85 @@ public sealed class GlxTests
         Assert.IsTrue(back.IsReply);
         Assert.AreEqual(0u, back.U32(12), "n = 0:反馈不实现");
         Assert.AreEqual(render, back.U32(16), "new mode");
+    }
+
+    /// <summary>
+    /// 选择模式(xs_plan F23,GL 1.5 §5.2):gluPickMatrix 式的拾取 —— 与裁剪体相交的图元命中,名字栈变动时写命中记录
+    /// (名字个数、最小 / 最大深度乘 2³²−1、名字自底向上),不相交的不命中、被剔除的不命中;RenderMode(RENDER) 返回记录条数,
+    /// 回复带选择数据;选择模式不画进帧缓冲。原先 RenderMode 一律回 0 条,CAD 程序的拾取全部落空。
+    /// </summary>
+    [TestMethod]
+    public async Task 选择模式记下命中的名字与深度_不相交和被剔除的不命中()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        byte glx = await GlxAsync(c);
+        uint window = await MapWindowAsync(c, host);
+        (_, uint tag) = await CurrentAsync(c, glx, window);
+        const uint render = 0x1C00, select = 0x1C02, cullFace = 0x0B44;
+
+        await c.SendAsync(glx, 107, b => b.U32(tag).U32(select));                           // 没给 SelectBuffer:INVALID_OPERATION、留在渲染模式
+        Assert.AreEqual(0x0502u, await GlErrorAsync(c, glx, tag));
+
+        await c.SendAsync(glx, 106, b => b.U32(tag).I32(16));                                // SelectBuffer(16)
+        await c.SendAsync(glx, 107, b => b.U32(tag).U32(select));                           // RenderMode(SELECT)
+        await RenderAsync(c, glx, tag, new Commands()
+            .Add(121)                                                                        // InitNames
+            .Add(125, b => b.U32(7))                                                         // PushName 7
+            .Add(4, b => b.U32(Triangles))
+            .Add(70, b => F(b, -0.5f, -0.5f, 0)).Add(70, b => F(b, 0.5f, -0.5f, 0.5f)).Add(70, b => F(b, 0, 0.5f, -0.5f))
+            .Add(23)
+            .Add(122, b => b.U32(8))                                                         // LoadName 8:写 7 的记录
+            .Add(4, b => b.U32(Triangles))                                                   // 整个在裁剪体外:不命中
+            .Add(70, b => F(b, 2, 2, 0)).Add(70, b => F(b, 3, 2, 0)).Add(70, b => F(b, 2, 3, 0))
+            .Add(23)
+            .Add(122, b => b.U32(9))                                                         // LoadName 9:8 没命中,不写
+            .Add(139, b => b.U32(cullFace))                                                  // Enable CULL_FACE(默认剔除背面)
+            .Add(4, b => b.U32(Triangles))                                                   // 顺时针 = 背面:被剔除,不命中
+            .Add(70, b => F(b, -0.5f, -0.5f, 0)).Add(70, b => F(b, 0, 0.5f, 0)).Add(70, b => F(b, 0.5f, -0.5f, 0))
+            .Add(23)
+            .Add(125, b => b.U32(10))                                                        // PushName 10:栈是 9、10
+            .Add(4, b => b.U32(0))                                                           // Begin(POINTS)
+            .Add(70, b => F(b, 0, 0, 1))
+            .Add(23));
+        XMessage done = await c.RequestAsync(glx, 107, b => b.U32(tag).U32(render));        // RenderMode(RENDER):写最后一条
+        Assert.AreEqual(2, (int)done.U32(8), "两条命中记录");
+        uint n = done.U32(12);
+        uint[] data = [.. Enumerable.Range(0, (int)n).Select(i => done.U32(32 + (4 * i)))];
+        CollectionAssert.AreEqual(new uint[]
+        {
+            1, Gl.GlContext.DepthValue(0.25f), Gl.GlContext.DepthValue(0.75f), 7,   // 窗口 z = (z + 1) / 2
+            2, uint.MaxValue, uint.MaxValue, 9, 10,
+        }, data);
+        Assert.AreEqual(render, done.U32(16));
+        Assert.AreEqual(0u, await GlErrorAsync(c, glx, tag));
+        await c.SendAsync(glx, 11, b => b.U32(tag).U32(window));
+        Assert.AreEqual(0u, await PixelAsync(c, window, Width / 2, Height / 2), "选择模式不画进帧缓冲");
+    }
+
+    /// <summary>选择数组写不下:能写多少写多少,RenderMode 返回 −1;名字栈的错误(空栈 LoadName / PopName、满了再 Push)。</summary>
+    [TestMethod]
+    public void 选择数组溢出时返回负一_名字栈的错误()
+    {
+        (Gl.GlContext gl, _) = DirectContext(16, 16);
+        gl.SelectBuffer(5);
+        Assert.AreEqual(0, gl.RenderMode(0x1C02, out _));
+        Run(gl, 122, b => b.U32(1));                     // LoadName 空栈
+        Assert.AreEqual(0x0502u, gl.GetError());
+        Run(gl, 124);                                    // PopName 空栈
+        Assert.AreEqual(0x0504u, gl.GetError());
+        for (int i = 0; i < Gl.GlContext.MaxNameStackDepth; i++)
+        {
+            Run(gl, 125, b => b.U32((uint)i));
+        }
+        Run(gl, 125, b => b.U32(99));
+        Assert.AreEqual(0x0503u, gl.GetError(), "满了再 Push:STACK_OVERFLOW");
+        Run(gl, 4, b => b.U32(0));
+        Run(gl, 70, b => F(b, 0, 0, 0));
+        Run(gl, 23);
+        Assert.AreEqual(-1, gl.RenderMode(0x1C00, out uint[] data), "记录写不下:−1");
+        CollectionAssert.AreEqual(new uint[] { 64, Gl.GlContext.DepthValue(0.5f), Gl.GlContext.DepthValue(0.5f), 0, 1 }, data, "能写多少写多少");
+        Assert.AreEqual(0, gl.NameStackDepth, "RenderMode 清空名字栈");
     }
 }

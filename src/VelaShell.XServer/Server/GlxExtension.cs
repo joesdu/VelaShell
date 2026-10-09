@@ -1330,21 +1330,30 @@ internal sealed class GlxExtension(X11Server server)
                     c.Reply(0, w => w.U32(first).Zero(20));
                     break;
                 }
-            case 105:   // FeedbackBuffer
-            case 106:   // SelectBuffer:选择与反馈不实现(RenderMode 回 0 条)
+            case 105:   // FeedbackBuffer:反馈模式不实现(RenderMode 回 0 条)
+                break;
+            case 106:   // SelectBuffer:选择数组在服务端,数据在下一次 RenderMode 的回复里
+                gl.SelectBuffer(r.I32());
                 break;
             case 107:   // RenderMode
                 {
                     uint previous = gl.RenderModeValue;
                     uint mode = r.U32();
-                    int result = gl.RenderMode(mode);
+                    int result = gl.RenderMode(mode, out uint[] data);
                     ReportUnimplemented(c, gl);
-                    // GLX 协议规范 1.3 §2.2.1「RenderMode」:之前在反馈 / 选择模式才有回复(返回值、n、新模式、数据);
-                    // 「之前在渲染模式时没有回复」。选择 / 反馈不实现,n 恒为 0。
+                    // GLX 协议规范 1.3 §2.2.1「RenderMode」:之前在反馈 / 选择模式才有回复(返回值、n、新模式,再跟 n 个 CARD32 的选择数据 /
+                    // FLOAT32 的反馈数据);「之前在渲染模式时没有回复」。反馈不实现,n 为 0。
                     if (previous != GlEnum.RENDER)
                     {
                         uint current = gl.RenderModeValue;
-                        c.Reply(0, w => w.I32(result).U32(0).U32(current).Zero(12));
+                        c.Reply(0, w =>
+                        {
+                            w.I32(result).U32((uint)data.Length).U32(current).Zero(12);
+                            foreach (uint value in data)
+                            {
+                                w.U32(value);
+                            }
+                        });
                     }
                     break;
                 }
@@ -1422,10 +1431,12 @@ internal sealed class GlxExtension(X11Server server)
                 r.U32();
                 c.Reply(0, w => w.U32(0).U32(1).U16(0).Zero(14));
                 break;
-            case 128:   // GetPolygonStipple:点画不实现,回全 1 的初值(32 行 × 4 字节)
-                r.Bool();
-                c.Reply(0, w => w.Zero(24).Bytes(Enumerable.Repeat((byte)0xFF, 128).ToArray()));
-                break;
+            case 128:   // GetPolygonStipple:32 行 × 4 字节,按请求的 lsbfirst 排位
+                {
+                    byte[] stipple = gl.PolygonStippleBytes(r.Bool());
+                    c.Reply(0, w => w.Zero(24).Bytes(stipple));
+                    break;
+                }
             case 129:   // GetString
                 {
                     string? value = GlContext.GetString(r.U32());
