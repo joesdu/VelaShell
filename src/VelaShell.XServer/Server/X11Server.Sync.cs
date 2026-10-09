@@ -138,6 +138,7 @@ public sealed partial class X11Server
                     }
                     counter.Value = value;
                     EvaluateSync();
+                    CheckRedrawSync(counter);   // _NET_WM_SYNC_REQUEST:客户端重画完了
                     break;
                 }
             case 5:   // QueryCounter

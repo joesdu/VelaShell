@@ -419,6 +419,7 @@ public sealed partial class X11Server
         if (_topLevelHandles.Remove(window, out XTopLevelWindow? handle))
         {
             RetireHandle(handle);
+            ForgetRedrawSync(window);
         }
         _damage.Remove(window);
         window.Buffer = null;
@@ -1056,6 +1057,7 @@ public sealed partial class X11Server
             if (_topLevelHandles.Remove(window, out XTopLevelWindow? handle))
             {
                 RetireHandle(handle);
+                ForgetRedrawSync(window);
             }
             ReleaseNamedWindowPixmaps(window);
             window.Buffer = null;

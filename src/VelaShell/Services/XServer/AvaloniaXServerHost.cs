@@ -233,6 +233,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
             XNativeWindow[] windows = [.. _windows.Values];
             _windows.Clear();
             _desktops.Clear();
+            _heldDamage.Clear();
             // 先全部打上标记再关:关 owner 时 Avalonia 先问它的子窗口,子窗口不拦,owner 才关得掉(原先留下关不掉的空壳)。
             foreach (XNativeWindow window in windows)
             {
@@ -640,8 +641,17 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         }
         foreach ((XTopLevelWindow handle, List<XRect> rects) in batch)
         {
+            if (handle.AwaitingRedraw)
+            {
+                HoldDamage(handle, rects);   // 改了尺寸、客户端还没重画完:画到一半的先不显示
+                continue;
+            }
             if (_windows.TryGetValue(handle, out XNativeWindow? native))
             {
+                if (_heldDamage.Remove(handle, out List<XRect>? held))
+                {
+                    native.AddDamage(held);
+                }
                 native.AddDamage(rects);
             }
             else
@@ -651,6 +661,43 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         }
         batch.Clear();
     }
+
+    /// <summary>等客户端重画完(_NET_WM_SYNC_REQUEST,xs_plan F10)期间攒着没显示的损伤;UI 线程上用。</summary>
+    private readonly Dictionary<XTopLevelWindow, List<XRect>> _heldDamage = [];
+
+    /// <summary>测试看攒着的损伤用。</summary>
+    internal bool IsHoldingDamage(XTopLevelWindow window) => _heldDamage.ContainsKey(window);
+
+    private void HoldDamage(XTopLevelWindow handle, List<XRect> rects)
+    {
+        if (!_heldDamage.TryGetValue(handle, out List<XRect>? held))
+        {
+            _heldDamage[handle] = held = [];
+        }
+        held.AddRange(rects);
+        if (held.Count > MaxQueuedDamageRects)
+        {
+            int x1 = int.MaxValue, y1 = int.MaxValue, x2 = int.MinValue, y2 = int.MinValue;
+            foreach (XRect r in held)
+            {
+                (x1, y1) = (Math.Min(x1, r.X), Math.Min(y1, r.Y));
+                (x2, y2) = (Math.Max(x2, r.X + r.Width), Math.Max(y2, r.Y + r.Height));
+            }
+            held.Clear();
+            held.Add(new XRect(x1, y1, x2 - x1, y2 - y1));
+        }
+    }
+
+    /// <summary>
+    /// 客户端改尺寸之后重画完了(或服务端不再等):把攒着的损伤一次显示出来 —— 拖动缩放 GTK / Qt 窗口时看到的是画完的帧,不再闪出没画完的空白。
+    /// </summary>
+    public void TopLevelRedrawn(XTopLevelWindow window) => Dispatcher.UIThread.Post(() =>
+    {
+        if (_heldDamage.Remove(window, out List<XRect>? held) && _windows.TryGetValue(window, out XNativeWindow? native))
+        {
+            native.AddDamage(held);
+        }
+    });
 
     /// <inheritdoc />
     public void CursorChanged(XTopLevelWindow? window, XCursor cursor) => Dispatcher.UIThread.Post(() =>

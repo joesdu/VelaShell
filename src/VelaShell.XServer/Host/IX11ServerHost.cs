@@ -39,6 +39,14 @@ public interface IX11ServerHost
     void TopLevelDamaged(XTopLevelWindow window, IReadOnlyList<XRect> damage);
 
     /// <summary>
+    /// 宿主改尺寸之后客户端重画完了(<see cref="XTopLevelWindow.AwaitingRedraw" /> 刚变回假;客户端迟迟不画完时服务端到点也报):
+    /// 宿主把这期间攒着没显示的像素一次显示出来。默认实现什么也不做。
+    /// </summary>
+    void TopLevelRedrawn(XTopLevelWindow window)
+    {
+    }
+
+    /// <summary>
     /// 指针所在位置该显示的光标变了(换了窗口,或者同一窗口换了光标)。<paramref name="window" /> 是指针所在的顶层;
     /// 指针不在任何顶层里时为 null。
     /// </summary>

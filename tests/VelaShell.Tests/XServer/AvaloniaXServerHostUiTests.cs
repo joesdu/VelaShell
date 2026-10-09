@@ -908,6 +908,60 @@ public sealed class AvaloniaXServerHostUiTests
         await serve.WaitAsync(TimeSpan.FromSeconds(5));
     });
 
+    /// <summary>
+    /// _NET_WM_SYNC_REQUEST(xs_plan F10):宿主改尺寸之后、客户端重画完之前画进来的像素先攒着不显示,客户端把计数器推上去才显示。
+    /// </summary>
+    [TestMethod]
+    public async Task 改尺寸后客户端重画完之前的损伤先攒着_重画完才显示() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        System.Collections.Concurrent.ConcurrentQueue<byte[]> replies = new();
+        (uint idBase, uint root) = await HandshakeAsync(client, replies: replies);
+        byte[] syncName = Encoding.ASCII.GetBytes("SYNC");
+        await SendAsync(client, 98, 0, w => w.U16((ushort)syncName.Length).U16(0).Bytes(syncName).Pad());
+        byte sync = (await WaitForAsync(() => replies.TryDequeue(out byte[]? r) ? r : null))[9];   // 取走,后面的 InternAsync 按先后取回复
+        uint protocols = await InternAsync(client, replies, "WM_PROTOCOLS");
+        uint request = await InternAsync(client, replies, "_NET_WM_SYNC_REQUEST");
+        uint counterProperty = await InternAsync(client, replies, "_NET_WM_SYNC_REQUEST_COUNTER");
+        uint window = idBase | 1, counter = idBase | 2, gc = idBase | 3;
+        await SendAsync(client, sync, 2, w => w.U32(counter).U32(0).U32(0));                                          // CreateCounter
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+        await SendAsync(client, 18, 0, w => w.U32(window).U32(protocols).U32(4).U8(32).U8(0).U8(0).U8(0).U32(1).U32(request));
+        await SendAsync(client, 18, 0, w => w.U32(window).U32(counterProperty).U32(6).U8(32).U8(0).U8(0).U8(0).U32(1).U32(counter));
+        await SendAsync(client, 55, 0, w => w.U32(gc).U32(window).U32(0x4).U32(0xFF0000));                          // CreateGC,前景红
+        await SendAsync(client, 8, 0, w => w.U32(window));
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+
+        server.ResizeTopLevel(native.Handle, 80, 50);
+        bool awaiting = false;
+        for (int i = 0; i < 100 && !awaiting; i++)
+        {
+            awaiting = native.Handle.AwaitingRedraw;
+            await Task.Delay(5);
+        }
+        Assert.IsTrue(awaiting, $"改尺寸之后在等客户端重画(快照 {native.Handle.Snapshot.Width}×{native.Handle.Snapshot.Height})");
+        await SendAsync(client, 70, 0, w => w.U32(window).U32(gc).I16(0).I16(0).U16(80).U16(50));                    // 画了一半(PolyFillRectangle)
+        bool held = false;
+        for (int i = 0; i < 40 && !held; i++)
+        {
+            await Task.Delay(5);
+            Dispatcher.UIThread.RunJobs();
+            held = host.IsHoldingDamage(native.Handle);
+        }
+        Assert.IsTrue(held, $"损伤攒着(还在等:{native.Handle.AwaitingRedraw})");
+        await SendAsync(client, sync, 3, w => w.U32(counter).U32(0).U32(1));                                           // 重画完:计数器推到 1
+        await WaitForAsync(() => !host.IsHoldingDamage(native.Handle) && !native.Handle.AwaitingRedraw ? native : null);
+
+        native.CloseByHost();
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
     /// <summary>屏保(xs_plan F9):X 程序挂起屏保时宿主抑制本机屏保,恢复时恢复;停 X Server 时一并恢复;Reset 重置本机空闲计时。</summary>
     [TestMethod]
     public async Task X程序挂起屏保时抑制本机屏保_停服时恢复_Reset重置空闲计时() => await _session.RunOnUiAsync(async () =>

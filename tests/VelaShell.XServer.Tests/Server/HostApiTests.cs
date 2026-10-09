@@ -669,4 +669,46 @@ public sealed class HostApiTests
         Assert.IsTrue(error.IsError, "−100…100 以外是 BadValue");
         Assert.AreEqual(2, error.Bytes[1]);
     }
+
+    /// <summary>
+    /// _NET_WM_SYNC_REQUEST(xs_plan F10):宿主改尺寸前先发同步请求(序号从 1 起,第一次把计数器设成 0),句柄的 AwaitingRedraw 为真;
+    /// 客户端把计数器推到这个序号就报 TopLevelRedrawn;不推的过了时限也报。没声明的窗口照旧,不等。
+    /// </summary>
+    [TestMethod]
+    public async Task 改尺寸前发同步请求_客户端推了计数器才算重画完_不推的到点也报()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        server.RedrawSyncTimeout = TimeSpan.FromMilliseconds(150);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        byte sync = await MajorAsync(c, "SYNC");
+        uint counter = c.NewId();
+        await c.SendAsync(sync, 2, b => b.U32(counter).I32(0).U32(42));   // CreateCounter,初值 42
+        uint top = await MapTopAsync(c, host);
+        uint protocols = await InternAsync(c, "WM_PROTOCOLS"), request = await InternAsync(c, "_NET_WM_SYNC_REQUEST");
+        uint counterProperty = await InternAsync(c, "_NET_WM_SYNC_REQUEST_COUNTER");
+        await c.SendAsync(18, 0, b => b.U32(top).U32(protocols).U32(4).U8(32).U8(0).U8(0).U8(0).U32(1).U32(request));
+        await c.SendAsync(18, 0, b => b.U32(top).U32(counterProperty).U32(6).U8(32).U8(0).U8(0).U8(0).U32(1).U32(counter));   // CARDINAL
+        await c.SendAsync(2, 0, b => b.U32(top).U32(0x800).U32(0x20000));   // StructureNotify
+        await c.SyncAsync();
+        XTopLevelWindow handle = host.Mapped[top];
+
+        server.ResizeTopLevel(handle, 80, 50);
+        XMessage message = await c.NextAsync(m => !m.IsReply && !m.IsError && (m.EventCode & 0x7F) is 33 or 22);
+        Assert.AreEqual(33, message.EventCode & 0x7F, "同步请求先于 ConfigureNotify");
+        Assert.AreEqual(request, message.U32(12));
+        Assert.AreEqual(1u, message.U32(20), "序号的低 32 位");
+        Assert.AreEqual(0u, message.U32(24), "高 32 位");
+        Assert.IsTrue(handle.AwaitingRedraw);
+        XMessage value = await c.RequestAsync(sync, 5, b => b.U32(counter));   // QueryCounter
+        Assert.AreEqual(0u, value.U32(12), "第一次用时窗口管理器把计数器设成 0");
+
+        await c.SendAsync(sync, 3, b => b.U32(counter).I32(0).U32(1));   // SetCounter 1:重画完了
+        await host.WaitForAsync(() => !host.Redrawn.IsEmpty);
+        Assert.IsFalse(handle.AwaitingRedraw);
+
+        server.ResizeTopLevel(handle, 90, 60);   // 这次不推
+        await host.WaitForAsync(() => host.Redrawn.Count >= 2, timeoutMs: 3000);
+        Assert.IsFalse(handle.AwaitingRedraw, "到点不再等");
+    }
 }

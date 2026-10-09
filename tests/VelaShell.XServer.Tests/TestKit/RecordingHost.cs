@@ -130,6 +130,15 @@ internal sealed class RecordingHost : IX11ServerHost, IDisposable
         Note($"confine {area}");
     }
 
+    /// <summary><see cref="TopLevelRedrawn" /> 报过的窗口,按先后。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<XTopLevelWindow> Redrawn { get; } = new();
+
+    public void TopLevelRedrawn(XTopLevelWindow window)
+    {
+        Redrawn.Enqueue(window);
+        Note($"redrawn {window.Id:x}");
+    }
+
     /// <summary><see cref="ScreenSaverSuspensionChanged" /> 收到的值,按先后。</summary>
     public System.Collections.Concurrent.ConcurrentQueue<bool> SaverSuspensions { get; } = new();
 

@@ -121,6 +121,7 @@ public sealed partial class X11Server
             "_NET_ACTIVE_WINDOW", "_NET_WORKAREA", "_NET_CLOSE_WINDOW", "_NET_MOVERESIZE_WINDOW", "_NET_WM_MOVERESIZE",
             "_NET_REQUEST_FRAME_EXTENTS", "_NET_FRAME_EXTENTS", "_NET_WM_NAME", "_NET_WM_DESKTOP", "_NET_WM_WINDOW_TYPE",
             "_NET_WM_STATE", "_NET_WM_ICON", "_NET_WM_PID", "_NET_WM_WINDOW_OPACITY", "_NET_WM_PING",
+            "_NET_WM_SYNC_REQUEST", "_NET_WM_SYNC_REQUEST_COUNTER",
         ];
         supported.AddRange(NetWmStates.Select(s => s.Atom));
         supported.AddRange(NetWmTypes.Select(t => t.Atom));
