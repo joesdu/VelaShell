@@ -64,6 +64,19 @@ public sealed class RenderPixelTests
     }
 
     [TestMethod]
+    public void HSL混合模式的灰色源不出NaN_透明目标上原样留下源颜色()
+    {
+        // 灰色的源经 SetLum 平移到亮度 0 之后,浮点误差让三个通道同时略小于 0:ClipColor 原先照除 l − n = 0,得 NaN、编码成 0。
+        Argb gray = new(7 / 255f, 3 / 255f, 3 / 255f, 3 / 255f);
+        foreach (byte op in (byte[])[0x3B, 0x3C, 0x3D, 0x3E])
+        {
+            Argb r = Combine(op, gray, default);
+            Assert.AreEqual(3 / 255f, r.R, 1e-6, $"op 0x{op:X2}:αd = 0 时结果就是源颜色");
+            Assert.AreEqual(3u, PictFormat.A8R8G8B8.Encode(r) & 0xFF, $"op 0x{op:X2}");
+        }
+    }
+
+    [TestMethod]
     public void 线性渐变的中点与Pad和None()
     {
         LinearGradientSource g = new(0, 0, 100, 0, [0, 1], [new Argb(1, 0, 0, 0), new Argb(1, 1, 1, 1)]) { Repeat = RenderSource.RepeatPad };
@@ -456,6 +469,104 @@ public sealed class RenderPixelTests
             }
         }
         Console.WriteLine($"8888 目标 Porter-Duff / Disjoint / Conjoint 最大通道差 {worst}");
+    }
+
+    /// <summary>
+    /// 8888 目标上的 PDF 混合模式全部走整数(可分离的 11 种与 HSL 的 4 种)。源与目标带边界值:alpha 0 / 255、颜色 0 / 等于 alpha
+    /// (颜色减淡、加深在 cs = 1、cd = 0、cd = 1 上的除零分支)、三通道相等(HSL 的 SetSat 里最大最小相等)。
+    /// 8 位像素(或 k / 255 的纯色)的源最多差 1:αs·αd·B 整个写成整数式、只取整一次,剩下的差是浮点版自己的舍入。
+    /// 双线性与渐变的源在浮点版里是没量化的插值,整数路径先量化成 8 位(cs 挪半级)。混合函数对 cs 的斜率有界的模式放宽到 2;
+    /// 斜率无界的四种 —— 颜色减淡 / 加深(cs → 1、cd → 0 处)、HSLHue(SetSat 按源颜色的最大减最小归一,接近灰色时方向说变就变)、
+    /// HSLLuminosity(ClipColor 的 l / (l − n) 在 n 接近 0 时)—— 直接比会差到 30 / 13 / 22 / 3,那是输入的量化被放大,
+    /// 不是整数算法的误差:这四种把同一批取样先量化成 8 位再交给浮点版(<see cref="Quantized" />),要求只差 1。
+    /// </summary>
+    [TestMethod]
+    public void a8r8g8b8与x8r8g8b8目标的PDF混合模式走整数_与浮点只差取整()
+    {
+        const int size = 24;
+        Random random = new(53);
+        PixelBuffer a8Image = EdgeBuffer(random, 17, 13, 8);
+        PixelBuffer argbImage = EdgeBuffer(random, 17, 13, 32);
+        PixelBuffer rgbImage = EdgeBuffer(random, 17, 13, 24);
+        PixelBuffer a8Mask = EdgeBuffer(random, size, size, 8);
+        byte[] maskBytes = new byte[size * size];
+        random.NextBytes(maskBytes);
+        maskBytes[0] = 0;
+        maskBytes[1] = 255;
+        double c = Math.Cos(0.4), sn = Math.Sin(0.4);
+        double[] rotate = [c, -sn, 2.5, sn, c, -1.5, 0, 0, 1];
+        Argb[] colors = [new(1, 1, 0, 0), new(0.5f, 0, 0.5f, 0), new(0, 0, 0, 0), new(0.2f, 1, 1, 1)];
+        List<(string Name, Func<RenderSource> Make, bool Exact)> sources =
+        [
+            ("纯色半透明", () => new SolidSource(new Argb(128 / 255f, 64 / 255f, 0, 128 / 255f)), true),
+            ("纯色灰", () => new SolidSource(new Argb(200 / 255f, 90 / 255f, 90 / 255f, 90 / 255f)), true),
+            ("纯色不透明", () => new SolidSource(new Argb(1, 10 / 255f, 128 / 255f, 1)), true),
+            ("x8r8g8b8 图像", () => new ImageSource(rgbImage, 0, 0, 17, 13, PictFormat.X8R8G8B8) { Repeat = RenderSource.RepeatNormal }, true),
+            ("argb 图像", () => new ImageSource(argbImage, 0, 0, 17, 13, PictFormat.A8R8G8B8) { Repeat = RenderSource.RepeatNormal }, true),
+            ("a8 图像", () => new ImageSource(a8Image, 0, 0, 17, 13, PictFormat.A8) { Repeat = RenderSource.RepeatReflect }, true),
+            ("argb 旋转双线性", () => new ImageSource(argbImage, 0, 0, 17, 13, PictFormat.A8R8G8B8) { Repeat = RenderSource.RepeatReflect, Bilinear = true, Transform = rotate }, false),
+            ("线性渐变", () => new LinearGradientSource(3, 2, 21, 13, [0, 0.4, 0.4, 1], colors) { Repeat = RenderSource.RepeatReflect }, false),
+        ];
+        List<(string Name, Func<RenderSource?> Make)> masks =
+        [
+            ("无遮罩", () => null),
+            ("单字节遮罩", () => new ByteMaskSource(maskBytes, 0, 0, size, size)),
+            ("a8 像素图遮罩", () => new ImageSource(a8Mask, 0, 0, size, size, PictFormat.A8)),
+        ];
+        int worstExact = 0, worstSampled = 0;
+        foreach ((PictFormat format, byte depth) in ((PictFormat, byte)[])[(PictFormat.A8R8G8B8, 32), (PictFormat.X8R8G8B8, 24)])
+        {
+            foreach (byte op in AllOps.Where(o => o >= 0x30))
+            {
+                foreach ((string sourceName, Func<RenderSource> makeSource, bool exact) in sources)
+                {
+                    // 斜率无界的四种:采样的源先量化成 8 位再交给浮点版(见上),这样就该只差 1。
+                    bool steep = !exact && op is 0x35 or 0x36 or 0x3B or 0x3E;
+                    int limit = exact || steep ? 1 : 2;
+                    foreach ((string maskName, Func<RenderSource?> makeMask) in masks)
+                    {
+                        PixelBuffer dst = EdgeBuffer(random, size, size, depth);
+                        uint[] expected = FloatComposite(op, steep ? Quantized(makeSource(), size) : makeSource(), makeMask(), dst, format);
+                        RenderTarget target = new(dst, 0, 0, format, [new XRect(0, 0, size, size)]);
+                        RenderCompositor.Composite(op, makeSource(), makeMask(), false, target, 0, 0, 0, 0, 0, 0, size, size);
+                        for (int i = 0; i < expected.Length; i++)
+                        {
+                            int diff = MaxChannelDiff(expected[i], dst.Pixels[i]);
+                            if (exact)
+                            {
+                                worstExact = Math.Max(worstExact, diff);
+                            }
+                            else
+                            {
+                                worstSampled = Math.Max(worstSampled, diff);
+                            }
+                            Assert.IsLessThanOrEqualTo(limit, diff,
+                                $"{format.Depth} 位目标、op 0x{op:X2}、{sourceName}、{maskName}:像素 {i} 期望 0x{expected[i]:X8},实际 0x{dst.Pixels[i]:X8}");
+                        }
+                    }
+                }
+            }
+        }
+        Console.WriteLine($"8888 目标混合模式最大通道差:8 位像素的源 {worstExact},双线性 / 渐变的源 {worstSampled}");
+    }
+
+    /// <summary>
+    /// 把源在 (0, 0)–(size, size) 里的取样先量化成 8 位预乘(同整数路径的取样),再包成一个浮点源:
+    /// 拿它当浮点版的输入,两边的差就只剩合成本身的算法误差。
+    /// </summary>
+    private static ArraySource Quantized(RenderSource source, int size)
+    {
+        Argb[] pixels = new Argb[size * size];
+        uint[] row = new uint[size];
+        for (int y = 0; y < size; y++)
+        {
+            source.FetchRow8888(0, y, row);
+            for (int x = 0; x < size; x++)
+            {
+                pixels[(y * size) + x] = PictFormat.A8R8G8B8.Decode(row[x]);
+            }
+        }
+        return new ArraySource(pixels, 0, 0, size, size);
     }
 
     /// <summary>两个 0xAARRGGBB 四个通道里最大的差。</summary>
