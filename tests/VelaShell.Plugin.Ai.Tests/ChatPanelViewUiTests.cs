@@ -54,14 +54,7 @@ public sealed partial class ChatPanelViewUiTests
     /// 面板的初始化是 fire-and-forget 的异步链,跑几拍调度器让它落定。
     /// 默认拍数要盖过 <c>@</c> 补全的防抖(180ms),否则弹层还没来得及开就断言了。
     /// </summary>
-    private static async Task PumpAsync(int rounds = 60)
-    {
-        for (int i = 0; i < rounds; i++)
-        {
-            await Task.Delay(5);
-            Dispatcher.UIThread.RunJobs();
-        }
-    }
+    private static Task PumpAsync(int rounds = 60) => HeadlessPump.RunAsync(rounds);
 
     private static T Find<T>(ChatPanelView panel, string name) where T : Control
         // 消息流现在按对话各持一条 StackPanel,当前那条挂在 ChatScroll.Content 上(不再有静态 x:Name)——

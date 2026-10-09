@@ -43,14 +43,7 @@ public sealed class CollaborationViewUiTests
             return true;
         }, CancellationToken.None).GetAwaiter().GetResult();
 
-    private static async Task PumpAsync(int rounds = 25)
-    {
-        for (int i = 0; i < rounds; i++)
-        {
-            await Task.Delay(5);
-            Dispatcher.UIThread.RunJobs();
-        }
-    }
+    private static Task PumpAsync(int rounds = 25) => HeadlessPump.RunAsync(rounds);
 
     /// <summary>
     /// 开窗、跑用例、<b>无论断言过不过都把窗关掉</b>。

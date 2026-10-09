@@ -263,14 +263,7 @@ public sealed class ProviderSetupViewUiTests
             return true;
         }, CancellationToken.None).GetAwaiter().GetResult();
 
-    private static async Task PumpAsync(int rounds = 20)
-    {
-        for (int i = 0; i < rounds; i++)
-        {
-            await Task.Delay(5);
-            Dispatcher.UIThread.RunJobs();
-        }
-    }
+    private static Task PumpAsync(int rounds = 20) => HeadlessPump.RunAsync(rounds);
 
     private static T Find<T>(Control root, string name) where T : Control
         => root.GetLogicalDescendants().OfType<T>().First(c => c.Name == name);

@@ -34,14 +34,7 @@ public sealed class PanelWidthMemoryTests
             return true;
         }, CancellationToken.None).GetAwaiter().GetResult();
 
-    private static async Task PumpAsync(int rounds = 40)
-    {
-        for (int i = 0; i < rounds; i++)
-        {
-            await Task.Delay(5);
-            Dispatcher.UIThread.RunJobs();
-        }
-    }
+    private static Task PumpAsync(int rounds = 40) => HeadlessPump.RunAsync(rounds);
 
     /// <summary>激活插件、跑"打开聊天(标签页)"命令,并把面板真的挂进窗口。</summary>
     private static async Task<(FakePanel Panel, ChatPanelView View, Window Window)> OpenChatAsync(TestPluginContext context)
