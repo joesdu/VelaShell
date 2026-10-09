@@ -3844,6 +3844,21 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Tunnel_StopTip" xml:space="preserve">
     <value>停止隧道</value>
   </data>
+  <data name="Tunnel_Starting" xml:space="preserve">
+    <value>正在啟動隧道…</value>
+  </data>
+  <data name="Tunnel_Stopping" xml:space="preserve">
+    <value>正在停止隧道…</value>
+  </data>
+  <data name="Tunnel_AutoStart" xml:space="preserve">
+    <value>程式啟動時自動建立</value>
+  </data>
+  <data name="Tunnel_AutoStartTip" xml:space="preserve">
+    <value>每次啟動 VelaShell 時在背景連上這台伺服器並建立這條隧道；不勾選則需要手動啟動。</value>
+  </data>
+  <data name="Tunnel_AutoStartBadge" xml:space="preserve">
+    <value>自啟</value>
+  </data>
   <data name="Tunnel_TargetHostLabel" xml:space="preserve">
     <value>目標主機(伺服器視角)</value>
   </data>
@@ -4032,6 +4047,12 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="Msg_TunnelAutoReconnectFailed" xml:space="preserve">
     <value>自動重新連線失敗：{0}</value>
+  </data>
+  <data name="Msg_TunnelAutoStartConnectFailed" xml:space="preserve">
+    <value>啟動時自動建立隧道失敗，連不上伺服器 {0}：{1}</value>
+  </data>
+  <data name="Msg_TunnelAutoStartFailed" xml:space="preserve">
+    <value>啟動時自動建立隧道「{0}」（{1}）失敗：{2}</value>
   </data>
   <data name="Notify_Title" xml:space="preserve">
     <value>訊息</value>

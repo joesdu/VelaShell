@@ -1,4 +1,5 @@
 using NSubstitute;
+using ReactiveUI;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
@@ -136,6 +137,121 @@ public class TunnelPanelViewModelTests
         Assert.IsFalse(vm.Tunnels[0].IsActive);
         await _workflowService.DidNotReceive().CreateTunnelAsync(Arg.Any<Guid>(), Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>());
     }
+
+    // ———— 启停途中的忙碌态 ————
+
+    /// <summary>
+    /// 启动要先连服务器再建转发,得等一会儿:途中启停键换成转圈、编辑键点不动、状态行写「正在启动」;
+    /// 走完换回对应的键。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task StartTunnel_InFlight_ShowsBusyUntilTheTunnelIsUp()
+    {
+        TunnelPanelViewModel vm = CreateVm(() => true, _ => Task.FromResult(_sessionId));
+        await SeedTunnelAsync(vm, autoReconnect: false, status: TunnelStatus.Stopped);
+        TunnelItemViewModel stopped = vm.Tunnels[0];
+        TaskCompletionSource<TunnelInfo> creating = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _workflowService.CreateTunnelAsync(Arg.Any<Guid>(), Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>())
+                        .Returns(creating.Task);
+
+        Task start = ExecuteAsync(vm.StartTunnelCommand, stopped.Id);
+        await WaitForAsync(() => stopped.IsStarting);
+
+        Assert.IsTrue(stopped.IsBusy);
+        Assert.IsFalse(stopped.ShowStartButton, "启动途中不该再露出「启动」键。");
+        Assert.IsFalse(stopped.ShowStopButton);
+        Assert.IsFalse(stopped.CanEdit, "启动途中不该能改配置。");
+        Assert.AreEqual(Strings.Get("Tunnel_Starting"), stopped.StatusText);
+
+        creating.SetResult(CreateTunnelInfo(status: TunnelStatus.Active));
+        await start;
+
+        TunnelItemViewModel started = vm.Tunnels[0];
+        Assert.IsTrue(started.IsActive);
+        Assert.IsFalse(started.IsBusy);
+        Assert.IsTrue(started.ShowStopButton, "起来之后换成「停止」键。");
+    }
+
+    /// <summary>停止同理:途中转圈、写「正在停止」,服务返回后换回「启动」键。</summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task StopTunnel_InFlight_ShowsBusyUntilTheServiceReturns()
+    {
+        TunnelPanelViewModel vm = CreateVm(() => true, _ => Task.FromResult(_sessionId));
+        await SeedTunnelAsync(vm, autoReconnect: false);
+        TunnelItemViewModel tunnel = vm.Tunnels[0];
+        TaskCompletionSource stopping = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _workflowService.StopTunnelAsync(tunnel.Id, Arg.Any<CancellationToken>()).Returns(stopping.Task);
+
+        Task stop = ExecuteAsync(vm.StopTunnelCommand, tunnel.Id);
+        await WaitForAsync(() => tunnel.IsStopping);
+
+        Assert.IsFalse(tunnel.ShowStopButton, "停止途中不该再露出「停止」键。");
+        Assert.IsFalse(tunnel.ShowStartButton);
+        Assert.AreEqual(Strings.Get("Tunnel_Stopping"), tunnel.StatusText);
+
+        stopping.SetResult();
+        await stop;
+
+        Assert.IsFalse(tunnel.IsBusy);
+        Assert.IsFalse(tunnel.IsActive);
+        Assert.IsTrue(tunnel.ShowStartButton, "停下之后换成「启动」键。");
+    }
+
+    /// <summary>启动失败:条目留在列表里,转圈撤掉、「启动」键回来,失败原因写在表单下。</summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task StartTunnel_Failure_RestoresTheStartButton()
+    {
+        TunnelPanelViewModel vm = CreateVm(() => true, _ => Task.FromResult(_sessionId));
+        await SeedTunnelAsync(vm, autoReconnect: false, status: TunnelStatus.Stopped);
+        TunnelItemViewModel stopped = vm.Tunnels[0];
+        _workflowService.CreateTunnelAsync(Arg.Any<Guid>(), Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>())
+                        .Returns(Task.FromException<TunnelInfo>(new InvalidOperationException("boom")));
+
+        await vm.StartTunnelCommand.Execute(stopped.Id).FirstAsync();
+
+        Assert.AreSame(stopped, vm.Tunnels[0]);
+        Assert.IsFalse(stopped.IsBusy);
+        Assert.IsTrue(stopped.ShowStartButton);
+        Assert.IsNotNull(vm.ErrorMessage);
+    }
+
+    /// <summary>
+    /// 自动恢复正在重拨、重建这条隧道时,它同样显示转圈;这时用户再点「启动」不能再建一条 ——
+    /// 原先两条路各建各的,同一个本地端口被绑两次,后到的那条报端口占用。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task StartTunnel_WhileAutoReconnectRebuildsIt_DoesNotCreateTwice()
+    {
+        bool alive = true;
+        TaskCompletionSource<Guid> redial = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool seeded = false;
+        TunnelPanelViewModel vm = CreateVm(() => alive, _ => seeded ? redial.Task : Task.FromResult(_sessionId));
+        await SeedTunnelAsync(vm, autoReconnect: true);
+        seeded = true;
+        TunnelItemViewModel tunnel = vm.Tunnels[0];
+
+        alive = false;
+        vm.RefreshLiveState();
+        await WaitForAsync(() => tunnel.IsStarting);
+        _workflowService.ClearReceivedCalls();
+
+        await vm.StartTunnelCommand.Execute(tunnel.Id).FirstAsync();
+        await _workflowService.DidNotReceive().RemoveTunnelAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+
+        alive = true;
+        redial.SetResult(Guid.NewGuid());
+        await WaitForAsync(() => vm.Tunnels[0].IsActive && !tunnel.IsBusy);
+
+        await _workflowService.Received(1).CreateTunnelAsync(Arg.Any<Guid>(), Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>不等命令走完就返回:用来观察启停途中的状态。</summary>
+    private static async Task ExecuteAsync(ReactiveCommand<Guid, RxVoid> command, Guid id) =>
+        await command.Execute(id).FirstAsync();
 
     /// <summary>自动重连开关随隧道配置往返:编辑既有隧道时表单要把它填回来。</summary>
     [TestMethod]
@@ -670,15 +786,238 @@ public class TunnelPanelViewModelTests
     [DataRow(1073741824, "1.0 GB")]
     public void TunnelItemViewModel_BytesTransferred_FormatsCorrectly(long bytes, string expected) => Assert.AreEqual(expected, TunnelItemViewModel.FormatBytes(bytes));
 
+    // ———— 程序启动时自动建立 ————
+
+    /// <summary>
+    /// 启动时只建勾了「程序启动时自动建立」的那几条;其余的一律是已停止、等用户手动启动 ——
+    /// 启停状态本身从不落盘。之后打开面板,看到的就是这里建好的条目,不会再恢复出一份重复的。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task AutoStartTunnelsAsync_StartsOnlyTheTunnelsMarkedForStartup()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        TunnelConfig onStartup = SavedConfig("on-startup", 5432, autoStart: true);
+        TunnelConfig manual = SavedConfig("manual", 6379, autoStart: false);
+        store.GetAsync<List<TunnelConfig>>("tunnels", _server.Id.ToString("D"), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult<List<TunnelConfig>?>([onStartup, manual]));
+        _workflowService.CreateTunnelAsync(_sessionId, Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>())
+                        .Returns(callInfo => Task.FromResult(new TunnelInfo
+                        {
+                            Id = Guid.NewGuid(),
+                            Config = callInfo.Arg<TunnelConfig>(),
+                            Status = TunnelStatus.Active,
+                            SessionId = _sessionId,
+                            CreatedAt = DateTime.UtcNow
+                        }));
+        List<string> errors = [];
+        TunnelPanelViewModel vm = CreateVmWithStore(store, errors.Add);
+
+        await vm.AutoStartTunnelsAsync();
+
+        await _workflowService.Received(1).CreateTunnelAsync(_sessionId, onStartup, Arg.Any<CancellationToken>());
+        await _workflowService.DidNotReceive().CreateTunnelAsync(Arg.Any<Guid>(), manual, Arg.Any<CancellationToken>());
+        Assert.IsEmpty(errors);
+
+        await vm.OpenAsync(_server.Id);
+        Assert.HasCount(2, vm.Tunnels, "打开面板看到的应当是启动时建好的那份,不能再恢复出一份重复的。");
+        Assert.IsTrue(vm.Tunnels.Single(t => t.Name == "on-startup").IsActive);
+        Assert.IsFalse(vm.Tunnels.Single(t => t.Name == "manual").IsActive);
+        Assert.IsTrue(vm.Tunnels.All(t => !t.IsBusy));
+    }
+
+    /// <summary>一条都没勾「程序启动时自动建立」时,启动时连服务器都不拨。</summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task AutoStartTunnelsAsync_NothingMarked_DoesNotConnect()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        store.GetAsync<List<TunnelConfig>>("tunnels", _server.Id.ToString("D"), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult<List<TunnelConfig>?>([SavedConfig("manual", 6379, autoStart: false)]));
+        int dials = 0;
+        TunnelPanelViewModel vm = new(_workflowService,
+            () => Task.FromResult<IReadOnlyList<SessionProfile>>([_server]),
+            (_, _) =>
+            {
+                dials++;
+                return Task.FromResult(_sessionId);
+            },
+            _ => true,
+            _ => Task.CompletedTask,
+            store);
+
+        await vm.AutoStartTunnelsAsync();
+
+        Assert.AreEqual(0, dials);
+        await _workflowService.DidNotReceive().CreateTunnelAsync(Arg.Any<Guid>(), Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// 连不上服务器:报到右下角(面板这时多半没开),报文里点名是哪台;条目留着、不转圈,等用户手动启动。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task AutoStartTunnelsAsync_ConnectFailure_IsReportedAndLeavesTunnelStopped()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        store.GetAsync<List<TunnelConfig>>("tunnels", _server.Id.ToString("D"), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult<List<TunnelConfig>?>([SavedConfig("on-startup", 5432, autoStart: true)]));
+        List<string> errors = [];
+        TunnelPanelViewModel vm = new(_workflowService,
+            () => Task.FromResult<IReadOnlyList<SessionProfile>>([_server]),
+            (_, _) => Task.FromException<Guid>(new InvalidOperationException("host down")),
+            _ => true,
+            _ => Task.CompletedTask,
+            store,
+            errors.Add);
+
+        await vm.AutoStartTunnelsAsync();
+
+        Assert.HasCount(1, errors);
+        Assert.AreEqual(Strings.Format("Msg_TunnelAutoStartConnectFailed", _server.Name, "host down"), errors[0]);
+        await vm.OpenAsync(_server.Id);
+        Assert.IsFalse(vm.Tunnels[0].IsActive);
+        Assert.IsFalse(vm.Tunnels[0].IsBusy);
+        Assert.IsTrue(vm.Tunnels[0].ShowStartButton);
+    }
+
+    /// <summary>
+    /// 连上了但这条建不起来(端口被占):报到右下角,点名是哪条隧道、哪个端口;
+    /// 一条都没建成时专为它拨的后台连接随即断开。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task AutoStartTunnelsAsync_TunnelFailure_IsReportedWithItsOwnPort()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        store.GetAsync<List<TunnelConfig>>("tunnels", _server.Id.ToString("D"), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult<List<TunnelConfig>?>([SavedConfig("pg", 5432, autoStart: true)]));
+        _workflowService.CreateTunnelAsync(Arg.Any<Guid>(), Arg.Any<TunnelConfig>(), Arg.Any<CancellationToken>())
+                        .Returns(Task.FromException<TunnelInfo>(new InvalidOperationException("bind",
+                            new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.AddressAlreadyInUse))));
+        List<string> errors = [];
+        List<Guid> disconnected = [];
+        TunnelPanelViewModel vm = new(_workflowService,
+            () => Task.FromResult<IReadOnlyList<SessionProfile>>([_server]),
+            (_, _) => Task.FromResult(_sessionId),
+            _ => true,
+            id =>
+            {
+                disconnected.Add(id);
+                return Task.CompletedTask;
+            },
+            store,
+            errors.Add);
+
+        await vm.AutoStartTunnelsAsync();
+
+        Assert.HasCount(1, errors);
+        // 端口取的是这条隧道自己的 5432,不是表单里默认的 27017。
+        Assert.AreEqual(Strings.Format("Msg_TunnelAutoStartFailed", "pg", _server.Name,
+            Strings.Format("Msg_LocalPortInUse", 5432u)), errors[0]);
+        CollectionAssert.AreEqual(new[] { _sessionId }, disconnected);
+    }
+
+    /// <summary>「程序启动时自动建立」随隧道配置往返:新建时写进配置、编辑时填回表单、取消后回到默认的不勾。</summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task AutoStartOption_RoundTripsThroughTheForm()
+    {
+        Assert.IsFalse(_vm.NewAutoStart, "默认不勾。");
+        TunnelConfig? captured = null;
+        _workflowService.CreateTunnelAsync(_sessionId, Arg.Do<TunnelConfig>(c => captured = c), Arg.Any<CancellationToken>())
+                        .Returns(callInfo => Task.FromResult(new TunnelInfo
+                        {
+                            Id = Guid.NewGuid(),
+                            Config = callInfo.Arg<TunnelConfig>(),
+                            Status = TunnelStatus.Stopped,
+                            SessionId = _sessionId,
+                            CreatedAt = DateTime.UtcNow
+                        }));
+        FillValidLocalForm();
+        _vm.NewAutoStart = true;
+
+        await _vm.CreateTunnelCommand.Execute().FirstAsync();
+        Assert.IsTrue(captured?.AutoStart);
+        Assert.IsFalse(_vm.NewAutoStart, "建完表单复位,回到不勾。");
+
+        await _vm.EditTunnelCommand.Execute(_vm.Tunnels[0].Id).FirstAsync();
+        Assert.IsTrue(_vm.NewAutoStart, "编辑时把它填回表单。");
+        await _vm.ResetFormCommand.Execute().FirstAsync();
+        Assert.IsFalse(_vm.NewAutoStart);
+    }
+
+    private static TunnelConfig SavedConfig(string name, uint port, bool autoStart) => new()
+    {
+        Type = TunnelType.LocalForward,
+        Name = name,
+        LocalHost = "127.0.0.1",
+        LocalPort = port,
+        RemoteHost = "127.0.0.1",
+        RemotePort = port,
+        AutoStart = autoStart
+    };
+
+    // ———— 面板拖拽位置 ————
+
+    /// <summary>
+    /// 拖动后的位置落在 <c>ui-layout/tunnel-panel</c> —— 与文件传输提示、消息中心同集合、各占一个文档 Id。
+    /// 写进别人的 Id 会互相踩,这条钉住 Id 不被写错。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public void PersistPanelPosition_WritesCurrentOffsetToStore()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        TunnelPanelViewModel vm = CreateVmWithStore(store);
+        vm.PanelOffsetX = -420;
+        vm.PanelOffsetY = 96;
+
+        vm.PersistPanelPosition();
+
+        _ = store.Received(1).UpsertAsync(
+            "ui-layout",
+            "tunnel-panel",
+            Arg.Is<PanelPosition>(p => p.OffsetX == -420 && p.OffsetY == 96),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>构造时从存储恢复上次的位置 —— 这就是「再次打开回到原来的地方」。</summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task Construction_RestoresPersistedPanelPosition()
+    {
+        IAppDataStore store = Substitute.For<IAppDataStore>();
+        store.GetAsync<PanelPosition>("ui-layout", "tunnel-panel", Arg.Any<CancellationToken>())
+             .Returns(new PanelPosition { OffsetX = -300, OffsetY = 140 });
+
+        TunnelPanelViewModel vm = CreateVmWithStore(store);
+
+        await WaitForAsync(() => vm.PanelOffsetX != 0);
+        Assert.AreEqual(-300, vm.PanelOffsetX);
+        Assert.AreEqual(140, vm.PanelOffsetY);
+    }
+
+    /// <summary>没有存储(单元测试 / 精简宿主)时不该炸,位置退回默认锚点。</summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public void WithoutStore_PanelPositionDefaultsToAnchorAndPersistIsHarmless()
+    {
+        Assert.AreEqual(0, _vm.PanelOffsetX);
+        Assert.AreEqual(0, _vm.PanelOffsetY);
+        _vm.PersistPanelPosition();
+    }
+
     /// <summary>带持久化存储的面板(隧道配置持久化,重启后手动启动)。</summary>
-    private TunnelPanelViewModel CreateVmWithStore(IAppDataStore store)
+    private TunnelPanelViewModel CreateVmWithStore(IAppDataStore store, Action<string>? errorReporter = null)
     {
         var vm = new TunnelPanelViewModel(_workflowService,
             () => Task.FromResult<IReadOnlyList<SessionProfile>>([_server]),
             (_, _) => Task.FromResult(_sessionId),
             _ => true,
             _ => Task.CompletedTask,
-            store);
+            store,
+            errorReporter);
         vm.Servers.Add(_server);
         return vm;
     }

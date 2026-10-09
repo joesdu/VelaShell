@@ -3660,6 +3660,21 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Tunnel_StopTip" xml:space="preserve">
     <value>터널 중지</value>
   </data>
+  <data name="Tunnel_Starting" xml:space="preserve">
+    <value>터널을 시작하는 중…</value>
+  </data>
+  <data name="Tunnel_Stopping" xml:space="preserve">
+    <value>터널을 중지하는 중…</value>
+  </data>
+  <data name="Tunnel_AutoStart" xml:space="preserve">
+    <value>프로그램 시작 시 자동으로 연결</value>
+  </data>
+  <data name="Tunnel_AutoStartTip" xml:space="preserve">
+    <value>VelaShell을 시작할 때마다 백그라운드에서 이 서버에 연결하고 이 터널을 만듭니다. 선택하지 않으면 직접 시작해야 합니다.</value>
+  </data>
+  <data name="Tunnel_AutoStartBadge" xml:space="preserve">
+    <value>시작 시</value>
+  </data>
   <data name="Tunnel_TargetHostLabel" xml:space="preserve">
     <value>대상 호스트 (서버 기준)</value>
   </data>
@@ -3858,6 +3873,12 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="Msg_TunnelAutoReconnectFailed" xml:space="preserve">
     <value>자동 재연결 실패: {0}</value>
+  </data>
+  <data name="Msg_TunnelAutoStartConnectFailed" xml:space="preserve">
+    <value>시작 시 터널을 만들지 못했습니다. 서버 {0}에 연결할 수 없습니다: {1}</value>
+  </data>
+  <data name="Msg_TunnelAutoStartFailed" xml:space="preserve">
+    <value>시작 시 터널 「{0}」({1})을(를) 만들지 못했습니다: {2}</value>
   </data>
   <data name="Notify_Title" xml:space="preserve">
     <value>메시지</value>

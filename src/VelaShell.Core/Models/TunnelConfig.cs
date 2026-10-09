@@ -27,4 +27,11 @@ public sealed class TunnelConfig
     /// 该由用户按隧道自己决定。旧的持久化配置缺这个字段时按 false 反序列化。
     /// </summary>
     public bool AutoReconnect { get; init; }
+
+    /// <summary>
+    /// 程序启动时是否自动连上服务器并建立这条隧道。默认关闭:隧道的启停状态从不落盘,
+    /// 重启后一律是已停止、等用户手动启动;只有勾了这一项的才在启动时替用户建好。
+    /// 旧的持久化配置缺这个字段时按 false 反序列化。
+    /// </summary>
+    public bool AutoStart { get; init; }
 }

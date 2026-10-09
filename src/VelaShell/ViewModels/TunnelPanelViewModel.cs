@@ -16,10 +16,15 @@ namespace VelaShell.ViewModels;
 /// 创建/启动隧道时后台自动建立专用 SSH 连接(不打开终端标签)。
 /// 隧道生命周期独立于终端会话;该服务器最后一条隧道删除后,后台连接自动断开。
 /// </summary>
-public class TunnelPanelViewModel : ReactiveObject, IDisposable
+public class TunnelPanelViewModel : ReactiveObject, IDisposable, IDraggablePanel
 {
     /// <summary>隧道配置持久化集合:每台服务器一份文档(id = profileId),内容为配置列表。</summary>
     private const string TunnelCollection = "tunnels";
+
+    /// <summary>浮层位置的存放处;与文件传输提示、消息中心同一个集合,各占一个文档 Id。</summary>
+    private const string LayoutCollection = "ui-layout";
+
+    private const string PanelPositionId = "tunnel-panel";
 
     private readonly Func<SessionProfile, CancellationToken, Task<Guid>>? _backgroundConnector;
 
@@ -50,23 +55,37 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     private readonly Lock _deletingTunnelIdsGate = new();
 
     private readonly DispatcherTimer? _liveTimer;
+
+    /// <summary>
+    /// 把面板外发生的错误报给用户(宿主接的是右下角的错误提示)。启动时自动建立隧道那会儿面板多半没开,
+    /// 写进表单下的 <see cref="ErrorMessage" /> 没人看得见。
+    /// </summary>
+    private readonly Action<string>? _errorReporter;
+
     private readonly Func<Task<IReadOnlyList<SessionProfile>>>? _savedProfilesProvider;
     private readonly Func<Guid, Task>? _sessionDisconnector;
     private readonly ITunnelWorkflowService _workflowService;
     private Guid? _editingTunnelId;
     private bool _isConnectingHost;
 
+    /// <summary>正在重建 <see cref="Servers" />:期间下拉框回写的 null 选中项不是用户换了服务器。</summary>
+    private bool _isReloadingServers;
+
     private SessionProfile? _selectedServer;
     private ObservableCollection<TunnelItemViewModel> _tunnels;
 
-    /// <summary>构造隧道面板视图模型;可注入已保存会话来源、后台连接/断开与存活探测委托及配置持久化存储(均可为空,便于测试)。</summary>
+    /// <summary>
+    /// 构造隧道面板视图模型;可注入已保存会话来源、后台连接/断开与存活探测委托、配置持久化存储
+    /// 及面板外的错误提示出口(均可为空,便于测试)。
+    /// </summary>
     public TunnelPanelViewModel(
         ITunnelWorkflowService workflowService,
         Func<Task<IReadOnlyList<SessionProfile>>>? savedProfilesProvider = null,
         Func<SessionProfile, CancellationToken, Task<Guid>>? backgroundConnector = null,
         Func<Guid, bool>? isSessionAlive = null,
         Func<Guid, Task>? sessionDisconnector = null,
-        IAppDataStore? dataStore = null)
+        IAppDataStore? dataStore = null,
+        Action<string>? errorReporter = null)
     {
         _workflowService = workflowService ?? throw new ArgumentNullException(nameof(workflowService));
         _savedProfilesProvider = savedProfilesProvider;
@@ -74,6 +93,8 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         _isSessionAlive = isSessionAlive;
         _sessionDisconnector = sessionDisconnector;
         _dataStore = dataStore;
+        _errorReporter = errorReporter;
+        RestorePanelPosition();
         Servers = [];
         _tunnels = [];
         IObservable<bool> canCreate = this.WhenAnyValue(vm => vm.SelectedServer,
@@ -130,6 +151,12 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         set
         {
             if (ReferenceEquals(_selectedServer, value))
+            {
+                return;
+            }
+            // 重建列表时 Servers.Clear() 会让下拉框把选中项回写成 null。照单全收的话条目被换成空集合,
+            // 重建完选回同一台时又因「没变」不再加载 —— 面板重开就看不到这台服务器上已开的隧道。
+            if (_isReloadingServers)
             {
                 return;
             }
@@ -263,6 +290,16 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
+    /// <summary>
+    /// 表单中的「程序启动时自动建立」开关。默认关闭:启停状态不落盘,重启后隧道一律是已停止、
+    /// 等用户手动启动;勾上的才在启动时替用户连上服务器、建好隧道。
+    /// </summary>
+    public bool NewAutoStart
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
     /// <summary>表单中的隧道别名(可选,留空时用路由描述兜底)。</summary>
     public string NewTunnelName
     {
@@ -332,6 +369,75 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
     /// <summary>面板右上角关闭按钮(设计 B3Rth tunCloseBtn),由宿主收起面板。</summary>
     public event EventHandler? CloseRequested;
 
+    // ---- 面板拖拽位置(与文件传输提示、消息中心同一套:见 IDraggablePanel) ----
+
+    /// <summary>面板相对默认锚点(菜单栏下方右侧)的水平偏移(像素,向左为负)。</summary>
+    public double PanelOffsetX
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>面板相对默认锚点的垂直偏移(像素,向下为正)。</summary>
+    public double PanelOffsetY
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>拖拽结束时由视图调用:把当前位置落盘,供下次打开恢复。失败不影响使用。</summary>
+    public void PersistPanelPosition()
+    {
+        if (_dataStore is null)
+        {
+            return;
+        }
+        var position = new PanelPosition { OffsetX = PanelOffsetX, OffsetY = PanelOffsetY };
+        _ = SaveAsync();
+
+        async Task SaveAsync()
+        {
+            try
+            {
+                await _dataStore.UpsertAsync(LayoutCollection, PanelPositionId, position).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 位置记不住不该影响隧道本身;下次拖动会再试一次。
+            }
+        }
+    }
+
+    /// <summary>构造时异步取回上次的位置。取不到就保持默认锚点。</summary>
+    private void RestorePanelPosition()
+    {
+        if (_dataStore is null)
+        {
+            return;
+        }
+        _ = LoadAsync();
+
+        async Task LoadAsync()
+        {
+            try
+            {
+                PanelPosition? saved = await _dataStore
+                                            .GetAsync<PanelPosition>(LayoutCollection, PanelPositionId)
+                                            .ConfigureAwait(true);
+                if (saved is null)
+                {
+                    return;
+                }
+                PanelOffsetX = saved.OffsetX;
+                PanelOffsetY = saved.OffsetY;
+            }
+            catch
+            {
+                // 读不出来就用默认位置,不打扰用户。
+            }
+        }
+    }
+
     /// <summary>打开面板时调用:刷新服务器列表并(可选)预选某台服务器。</summary>
     public async Task OpenAsync(Guid? preferredProfileId = null)
     {
@@ -351,6 +457,109 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         RefreshServerStatus();
     }
 
+    /// <summary>
+    /// 程序启动时调用一次:把勾了「程序启动时自动建立」的隧道按服务器逐台在后台连上、建好。
+    /// <para>
+    /// 其余隧道一条也不动 —— 启停状态从不落盘(持久化的只有 <see cref="TunnelConfig" />),
+    /// 重启后一律是已停止,等用户手动启动。
+    /// </para>
+    /// <para>
+    /// 连不上服务器、端口被占、凭据提示被取消……一律经 <c>errorReporter</c> 报到右下角的错误提示:
+    /// 这时面板多半没开,写进表单下面没人看得见。一台服务器失败不耽误其它服务器;
+    /// 同一台上一条建不起来也不耽误其余几条。从不抛出(调用方不等它)。
+    /// </para>
+    /// </summary>
+    public async Task AutoStartTunnelsAsync()
+    {
+        if (_dataStore is null || _backgroundConnector is null)
+        {
+            return;
+        }
+        // 自动恢复(掉线重建)按 Servers 找服务器;面板还没开过时它是空的,这里先填上。
+        await LoadServersAsync().ConfigureAwait(true);
+        foreach (SessionProfile profile in Servers.ToList())
+        {
+            try
+            {
+                await AutoStartProfileAsync(profile).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                _errorReporter?.Invoke(Strings.Format("Msg_TunnelAutoStartConnectFailed", profile.Name, FriendlyError(ex)));
+            }
+        }
+    }
+
+    /// <summary>建好一台服务器上勾了「程序启动时自动建立」的隧道。</summary>
+    private async Task AutoStartProfileAsync(SessionProfile profile)
+    {
+        if (!_itemsByProfile.TryGetValue(profile.Id, out ObservableCollection<TunnelItemViewModel>? items))
+        {
+            items = [];
+            _itemsByProfile[profile.Id] = items;
+        }
+        // 与切到这台服务器时同一份恢复(每台只恢复一次):之后打开面板,看到的就是这里建好的条目。
+        await RestorePersistedTunnelsAsync(profile.Id, items).ConfigureAwait(true);
+        List<TunnelItemViewModel> pending = [.. items.Where(t => t is { AutoStart: true, IsActive: false, IsBusy: false })];
+        if (pending.Count == 0)
+        {
+            return;
+        }
+        foreach (TunnelItemViewModel tunnel in pending)
+        {
+            tunnel.IsStarting = true;
+        }
+        try
+        {
+            Guid sessionId;
+            try
+            {
+                sessionId = await EnsureSessionAsync(profile, CancellationToken.None).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                _errorReporter?.Invoke(Strings.Format("Msg_TunnelAutoStartConnectFailed", profile.Name, FriendlyError(ex)));
+                return;
+            }
+            bool anyStarted = false;
+            foreach (TunnelItemViewModel tunnel in pending.Where(items.Contains))
+            {
+                try
+                {
+                    TunnelInfo result = await _workflowService.CreateTunnelAsync(sessionId, tunnel.Config, CancellationToken.None).ConfigureAwait(true);
+                    int index = items.IndexOf(tunnel);
+                    if (index >= 0)
+                    {
+                        items[index] = new(result);
+                    }
+                    anyStarted = true;
+                }
+                catch (Exception ex)
+                {
+                    _errorReporter?.Invoke(Strings.Format("Msg_TunnelAutoStartFailed", tunnel.Name, profile.Name,
+                        FriendlyError(ex, tunnel.Config.LocalPort)));
+                }
+            }
+            if (!anyStarted)
+            {
+                // 一条都没建起来:专为它们拨的后台连接没有存在的必要。
+                await ReleaseHostIfUnusedAsync(profile.Id).ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            // 建成的已被新条目替换;没建成的留在列表里,键回到「启动」。
+            foreach (TunnelItemViewModel tunnel in pending)
+            {
+                tunnel.IsStarting = false;
+            }
+            if (SelectedServer?.Id == profile.Id)
+            {
+                RefreshServerStatus();
+            }
+        }
+    }
+
     private async Task LoadServersAsync()
     {
         if (_savedProfilesProvider is null)
@@ -361,18 +570,33 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         {
             IReadOnlyList<SessionProfile> profiles = await _savedProfilesProvider();
             Guid? selectedId = SelectedServer?.Id;
-            Servers.Clear();
-            // 隧道是 SSH 的能力(端口转发跑在 SSH 通道上),而保存的会话里还有 SFTP / FTP /
-            // 插件协议 —— 它们进了下拉框只会让人选中一条永远连不起来的服务器。
-            foreach (SessionProfile profile in profiles.Where(p => p.ConnectionType == ConnectionType.SSH))
+            _isReloadingServers = true;
+            try
             {
-                Servers.Add(profile);
+                Servers.Clear();
+                // 隧道是 SSH 的能力(端口转发跑在 SSH 通道上),而保存的会话里还有 SFTP / FTP /
+                // 插件协议 —— 它们进了下拉框只会让人选中一条永远连不起来的服务器。
+                foreach (SessionProfile profile in profiles.Where(p => p.ConnectionType == ConnectionType.SSH))
+                {
+                    Servers.Add(profile);
+                }
             }
-            if (selectedId is { } sid)
+            finally
             {
-                _selectedServer = Servers.FirstOrDefault(p => p.Id == sid);
+                _isReloadingServers = false;
             }
-            this.RaisePropertyChanged(nameof(SelectedServer));
+            if (selectedId is { } sid && Servers.FirstOrDefault(p => p.Id == sid) is { } reselected)
+            {
+                // 还是同一台服务器,只是仓库给了新实例:条目按 Id 缓存,换上新实例即可,不必重新加载;
+                // 通知一声让下拉框重新选中它(Clear 时它已经把选中项丢了)。
+                _selectedServer = reselected;
+                this.RaisePropertyChanged(nameof(SelectedServer));
+            }
+            else
+            {
+                // 选中的服务器已被删掉:走正常的切换,把它的条目一并撤下。
+                SelectedServer = null;
+            }
         }
         catch
         {
@@ -583,7 +807,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
             {
                 continue;
             }
-            if (!items.Any(t => t is { AutoReconnect: true, IsActive: false, StoppedByUser: false }))
+            if (!items.Any(IsAutoReconnectCandidate))
             {
                 continue;
             }
@@ -601,10 +825,23 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// 该由自动恢复重建的隧道:勾了自动重连、已停、不是用户按停的,且没有正在启停
+    /// (用户手动点了启动、还没走完的那条不该再被重建一次)。
+    /// </summary>
+    private static bool IsAutoReconnectCandidate(TunnelItemViewModel tunnel) =>
+        tunnel is { AutoReconnect: true, IsActive: false, StoppedByUser: false, IsBusy: false };
+
     /// <summary>重连服务器并按原配置重建其勾了自动重连的隧道。</summary>
     private async Task AutoReconnectAsync(SessionProfile profile, ObservableCollection<TunnelItemViewModel> items)
     {
         bool isSelected = SelectedServer?.Id == profile.Id;
+        // 重拨加重建要等一会儿:这几条的启停键同样换成转圈,免得用户在途中再点一次启动。
+        List<TunnelItemViewModel> pending = [.. items.Where(IsAutoReconnectCandidate)];
+        foreach (TunnelItemViewModel tunnel in pending)
+        {
+            tunnel.IsStarting = true;
+        }
         try
         {
             if (isSelected)
@@ -612,7 +849,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
                 RefreshServerStatus();
             }
             Guid sessionId = await EnsureSessionAsync(profile, CancellationToken.None).ConfigureAwait(true);
-            foreach (TunnelItemViewModel tunnel in items.Where(t => t is { AutoReconnect: true, IsActive: false, StoppedByUser: false }).ToList())
+            foreach (TunnelItemViewModel tunnel in pending.Where(items.Contains))
             {
                 // 服务侧还留着停止状态的旧记录,先清掉再重建,避免列表里越积越多。
                 await _workflowService.RemoveTunnelAsync(tunnel.Id, CancellationToken.None).ConfigureAwait(true);
@@ -642,6 +879,11 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         }
         finally
         {
+            // 重建成功的已被新条目替换;没轮到或失败的留在列表里,键回到「启动」。
+            foreach (TunnelItemViewModel tunnel in pending)
+            {
+                tunnel.IsStarting = false;
+            }
             _autoReconnectingProfiles.Remove(profile.Id);
             if (isSelected)
             {
@@ -740,7 +982,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         {
             return;
         }
-        if (item.IsActive)
+        if (item.IsActive || item.IsBusy)
         {
             return;
         }
@@ -761,6 +1003,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         }
         NewRemotePort = (int)item.Config.RemotePort;
         NewAutoReconnect = item.Config.AutoReconnect;
+        NewAutoStart = item.Config.AutoStart;
         ErrorMessage = null;
         RaiseEditingChanged();
     }
@@ -847,17 +1090,27 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
                                  ? "127.0.0.1"
                                  : NewRemoteHost.Trim(),
             RemotePort = isDynamic ? 0u : (uint)NewRemotePort,
-            AutoReconnect = NewAutoReconnect
+            AutoReconnect = NewAutoReconnect,
+            AutoStart = NewAutoStart
         };
     }
 
     private async Task StopTunnelAsync(Guid tunnelId, CancellationToken ct)
     {
+        TunnelItemViewModel? tunnel = Tunnels.FirstOrDefault(t => t.Id == tunnelId);
+        // 启停途中再点一次(键已换成转圈,这里兜住键盘 / 命令的路径)不再重复下发。
+        if (tunnel is { IsBusy: true })
+        {
+            return;
+        }
+        if (tunnel is not null)
+        {
+            tunnel.IsStopping = true;
+        }
         try
         {
             ErrorMessage = null;
             await _workflowService.StopTunnelAsync(tunnelId, ct).ConfigureAwait(true);
-            TunnelItemViewModel? tunnel = Tunnels.FirstOrDefault(t => t.Id == tunnelId);
             if (tunnel is not null)
             {
                 tunnel.Status = TunnelStatus.Stopped;
@@ -869,6 +1122,13 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         {
             ErrorMessage = FriendlyError(ex);
         }
+        finally
+        {
+            if (tunnel is not null)
+            {
+                tunnel.IsStopping = false;
+            }
+        }
     }
 
     /// <summary>启动一条已停止的隧道:必要时先后台连上服务器,再按原配置重建转发。</summary>
@@ -878,15 +1138,16 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         {
             return;
         }
+        TunnelItemViewModel? existing = Tunnels.FirstOrDefault(t => t.Id == tunnelId);
+        // 自动恢复正在重建它,或者上一次点的还没走完:不再重复建一条。
+        if (existing is null || existing.IsBusy)
+        {
+            return;
+        }
+        existing.IsStarting = true;
         try
         {
             ErrorMessage = null;
-            TunnelItemViewModel? existing = Tunnels.FirstOrDefault(t => t.Id == tunnelId);
-            if (existing == null)
-            {
-                return;
-            }
-
             // 服务侧还留着停止状态的旧记录,先清掉再重建,避免列表里越积越多。
             await _workflowService.RemoveTunnelAsync(tunnelId, ct).ConfigureAwait(true);
             Guid sessionId = await EnsureSessionAsync(server, ct).ConfigureAwait(true);
@@ -896,14 +1157,20 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         }
         catch (Exception ex)
         {
-            ErrorMessage = FriendlyError(ex);
+            ErrorMessage = FriendlyError(ex, existing.Config.LocalPort);
+        }
+        finally
+        {
+            // 成功时这一条已被重建出来的新条目替换,复位的是旧对象,无害;失败时它留在列表里,键回到「启动」。
+            existing.IsStarting = false;
         }
     }
 
     private async Task DeleteTunnelAsync(Guid tunnelId, CancellationToken ct)
     {
         TunnelItemViewModel? tunnel = Tunnels.FirstOrDefault(t => t.Id == tunnelId);
-        if (tunnel is null || ConfirmDelete is null)
+        // 启停途中不让删:删掉的条目会被随后完成的启动又加回来,或者停到一半的连接没人收拾。
+        if (tunnel is null || tunnel.IsBusy || ConfirmDelete is null)
         {
             return;
         }
@@ -953,14 +1220,18 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         }
     }
 
-    /// <summary>把服务层异常翻译成用户能看懂的提示。</summary>
-    private string FriendlyError(Exception ex) =>
+    /// <summary>
+    /// 把服务层异常翻译成用户能看懂的提示。<paramref name="localPort" /> 是出错那条隧道的本地端口;
+    /// 不给时取表单里的(创建 / 保存走的就是表单)—— 启动一条已有的隧道时表单里可能是另一个端口,
+    /// 拿它报「端口被占用」会指错地方。
+    /// </summary>
+    private string FriendlyError(Exception ex, uint? localPort = null) =>
         ex switch
         {
             OperationCanceledException => Strings.Get("Msg_OperationCancelled"),
             InvalidOperationException when ex.Message.Contains("not connected", StringComparison.OrdinalIgnoreCase) || ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
                 => Strings.Get("Msg_ServerConnectionUnavailable"),
-            _ when IsAddressInUse(ex) => Strings.Format("Msg_LocalPortInUse", NewLocalPort),
+            _ when IsAddressInUse(ex) => Strings.Format("Msg_LocalPortInUse", localPort ?? (uint)NewLocalPort),
             _ => ex.Message
         };
 
@@ -988,6 +1259,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable
         NewLocalPort = 27017;
         NewRemotePort = 27017;
         NewAutoReconnect = false;
+        NewAutoStart = false;
         NewTunnelTypeIndex = 0;
         ForwardToServerLoopback = true; // 同时把目标主机复位为 127.0.0.1
         RaiseEditingChanged();

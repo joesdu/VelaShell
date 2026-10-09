@@ -49,12 +49,14 @@
                        FontFamily="{DynamicResource VelaUiMonoFont}"
                        FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium"
                        VerticalAlignment="Center" />
-            <Border Background="{DynamicResource VelaAccent}"
+            <!-- 数量徽标与「创建」药丸同一套配色:VelaAccentDim 浅底 + 强调色字。原先是 VelaAccent 实底
+                 配 VelaAccentText,而后者运行时就是强调色本身,字和底一个颜色(Design/AccentOnAccentTests)。 -->
+            <Border Background="{DynamicResource VelaAccentDim}"
                     CornerRadius="8" Padding="6,1"
                     VerticalAlignment="Center"
                     IsVisible="{Binding PendingCount}">
               <TextBlock Text="{Binding PendingCount}"
-                         Foreground="{DynamicResource VelaAccentText}"
+                         Foreground="{DynamicResource VelaAccent}"
                          FontFamily="{DynamicResource VelaUiMonoFont}"
                          FontSize="{DynamicResource VelaFontSize9}" FontWeight="Medium" />
             </Border>

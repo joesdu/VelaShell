@@ -2209,3 +2209,56 @@ API-H13 / IN-E19 / CN-S8;互操作靶场扩到 GTK3 / GTK4、浏览器、Motif /
 字体 1 条)。开互操作(`VELASHELL_XSERVER_INTEROP=1`)12 例全过、没有 `[SKIP]`;`Infrastructure.Tests` 的两条 xauth 互操作用例真跑通过。
 字体脚本按固定的摘要重跑到 `Fonts/Data` 的拷贝,生成的数据与仓库里的逐字节相同;固定值不对时报出那一项、输出目录不动。
 `VelaShell.slnx`(Debug)零警告零错误;宿主 `VelaShell.Tests` 与 `Infrastructure.Tests` 里 X Server 相关的用例 41 / 42 通过(1 例按环境跳过)。
+
+## ✅ 186. 2026-10-09 隧道面板:重开后列表是空的;数量徽标看不见字;放大提亮;启停转圈;可拖动;程序启动时自动建立
+
+**一、重开面板看不到已开的隧道**:开着隧道关掉面板,再打开且仍落在同一台服务器时,列表是空的,要切到别的服务器再切回来才出现。
+宿主关面板只是把它藏起来(`IsTunnelPanelOpen`),下拉框的绑定一直活着;`OpenAsync` 刷新服务器列表时 `Servers.Clear()` 让下拉框把选中项
+回写成 null,`SelectedServer` 照单全收 —— 条目换成了空集合;随后 `LoadServersAsync` 直接改字段选回同一台、`OpenAsync` 再赋值时又因
+「同一个实例」被跳过,条目就一直是空的。改法:重建列表期间(`_isReloadingServers`)不理下拉框回写的选中项;重建完还是同一台
+(仓库给的是新实例)就换上新实例、通知下拉框重新选中,条目按 Id 缓存不必重载;选中的服务器已被删掉则走正常切换,把条目撤下
+(原先这条路径也是只改字段,会留下上一台的条目)。新用例 `TunnelPanelUiTests.Panel_Reopen_KeepsTheSelectedServersTunnels`
+用真实视图走一遍「开 → 加隧道 → 藏 → 再开」,改之前红在 `expected count: 1, actual count: 0`。
+
+**二、数量徽标的字看不见**:隧道面板标题旁的数量、文件传输浮层的剩余数、消息中心的未读数,都是 `VelaAccent` 实底配 `VelaAccentText` 字,
+而 `ThemeTokenApplier` 把 `VelaAccentText` 直接赋成强调色本身 —— 字和底一个颜色,在所有主题下都只剩一块色斑。三处改成与「创建」药丸
+同一套:`VelaAccentDim` 浅底 + `VelaAccent` 字。新守门用例 `Design/AccentOnAccentTests`:`Views` 下凡是 `Background` 为 `VelaAccent` 的
+元素,子孙的 `Foreground` 不许是 `VelaAccent` / `VelaAccentText`;改之前正好报出这三处。
+
+**三、隧道面板放大、说明文字提亮**(用户反馈字小、看不清):宽 340→380,标题栏 36→40;标题、隧道名、输入框、下拉框、按钮 11→12 号,
+表单标签与隧道行下的说明(路由、端点、状态、流量、错误)10→11 号,类型 / 自动徽标 9→10 号;说明文字从 `VelaTextMuted`
+(暗色默认主题里压在 surface 上只有 2.5:1 上下)提到 `VelaTextTertiary`,路由那行提到 `VelaTextSecondary`;输入控件 26→30 高,
+行内操作键 20→24、图标 10→12,区块内边距 12→14,表单行距 8→10,列表最大高度 240→320。运行中隧道的编辑键是禁用的,
+Fluent 给它铺的灰底在放大后像「被选中」,改成透明底 + 0.4 不透明度。表单标签窄栏放不下时出省略号(英文「Target host (from the server)」
+原先被栏宽硬裁)。首行原是横排 StackPanel(量的是无限宽):名字长、徽标多时被裁掉的是最右那枚徽标;改成左贴的 DockPanel,
+徽标整组靠右停靠、名字填剩下的地方,放不下时截断的是名字(`Panel_LongNameWithAllBadges_TrimsTheNameNotTheBadges`,英文)。
+
+**四、启停途中转圈、不可再点**(用户需求:启停都要等一会儿,怕误触连点):`TunnelItemViewModel` 加 `IsStarting` / `IsStopping`
+(合成 `IsBusy`),以及 `ShowStartButton` / `ShowStopButton` / `CanEdit` / `BusyText`。途中那一格换成 `CircularProgressRing`(状态栏、
+连接中标签用的同一个控件;不是按钮,点不动),编辑、删除同时禁用,状态行写「正在启动隧道…」/「正在停止隧道…」(新键
+`Tunnel_Starting` / `Tunnel_Stopping`);走完换回对应的键,失败时键回到「启动」、原因照旧写在表单下。`StartTunnelAsync` /
+`StopTunnelAsync` / 编辑 / 删除都先看 `IsBusy`:命令本身虽然不并发,但自动恢复(掉线重建)与手动启动是两条路 —— 原先重建途中
+再点「启动」会各建一条,同一个本地端口绑两次。自动恢复现在也把要重建的几条标成启动中,并跳过正在启停的条目。顺带:手动启动失败报
+「端口被占用」时取的是表单里的端口,不是这条隧道自己的(`FriendlyError` 加了端口参数)。
+
+**五、面板可拖动、记住位置**(用户需求:总在右上角,有时挡着要操作的东西):接入文件传输提示与消息中心那套 `PanelDragHandler` +
+`IDraggablePanel` —— 标题栏是手柄(按在帮助 / 关闭键上不起拖),存的是相对默认锚点的偏移(`ui-layout/tunnel-panel`),松手落盘、
+构造时取回,窗口缩小后夹回可视区。`MainWindow.axaml` 里外层 Panel 改为铺满整行、对齐与边距落在视图上(父容器只贴着面板时
+能拖的范围是零,与消息中心同理)。交互规格「位置记忆」一条早写了隧道面板,此前其实没实现。
+
+**六、程序启动时自动建立**(用户需求):启停状态本来就不落盘 —— 持久化的只有 `TunnelConfig`,重启后一律是已停止,这一点不变。
+`TunnelConfig` 加 `AutoStart`(旧数据缺字段按 false),表单在「掉线后自动重连」下面加第三个勾选框「程序启动时自动建立」(默认不勾,
+编辑时填回、取消后复位),勾了的隧道行多一枚描边的「自启」徽标。`MainWindowViewModel.InitializeAsync` 末尾调
+`TunnelPanelViewModel.AutoStartTunnelsAsync`(不等它):逐台读持久化配置,只有含勾选项的服务器才在后台拨号,建好的条目就是之后打开面板
+看到的那份(与切换服务器时的恢复共用「每台只恢复一次」)。失败经新的 `errorReporter` 走右下角错误提示(`Toasts.Error`)——
+连不上服务器(`Msg_TunnelAutoStartConnectFailed`,点名服务器)、某条建不起来(`Msg_TunnelAutoStartFailed`,点名隧道与服务器,
+端口取这条自己的);一台失败不耽误其它,一条失败不耽误同台其余;一条都没建成时专为它们拨的后台连接随即断开。
+面板视图模型从 `OpenTunnelPanel` 里抽出 `EnsureTunnelPanel`,打开面板与启动建隧道用同一份。
+
+**七、验证**:在只含本节改动的 `origin/main` 副本上:`VelaShell.slnx` 构建零警告零错误;`VelaShell.Tests` 1911 例,1900 通过 / 11 例按环境跳过
+(含本节新增的 17 例:重开、徽标守门、启停忙碌态 4 例与 UI 1 例、拖拽 VM 3 例与真实拖拽 UI 1 例、自动建立 5 例、长名字布局 1 例等),
+`Panel_Reopen_…` 与 `AccentOnAccentTests` 在改之前确认过红;`Core.Tests` 769 例与 `Infrastructure.Tests` 639 例(4 例按环境跳过)全过
+(这两项排除了 `DockerIntegration`:开着 Docker 时 `SshSessionFeaturesIntegrationTests.X11_RefusedByServer_KeepsAgentForwardingAndWarnsOnce`
+会红,是已知问题、与本节无关 —— SSH 靶机镜像建于 Dockerfile 那次改动之前,见 §159、§161、§167,重建测试镜像即可)。
+暗色 / 亮色 / 忙碌态 / 英文长名字截图人工看过。交互规格 §10 同步(velashell-docs,中英两份):尺寸字号、徽标配色、拖拽、启停转圈、
+第三个勾选框、启停状态不落盘与启动时自动建立的失败提示。

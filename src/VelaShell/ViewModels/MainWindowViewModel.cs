@@ -1717,9 +1717,23 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return;
         }
-        if (_tunnelWorkflowService is null)
+        if (EnsureTunnelPanel() is not { } panel)
         {
             return;
+        }
+        _ = panel.OpenAsync(preselect?.Id ?? ActiveTerminalTab?.Profile?.Id);
+        IsTunnelPanelOpen = true;
+    }
+
+    /// <summary>
+    /// 取得(第一次时建出)隧道面板的视图模型;没有隧道服务的宿主返回 null。
+    /// 面板只建一份:打开面板与启动时自动建立隧道用的是同一份,后台连接与条目缓存都在它身上。
+    /// </summary>
+    private TunnelPanelViewModel? EnsureTunnelPanel()
+    {
+        if (_tunnelWorkflowService is null)
+        {
+            return null;
         }
         if (TunnelPanel is null)
         {
@@ -1732,13 +1746,27 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 ConnectTunnelHostAsync,
                 id => _sshConnectionService?.GetClient(id)?.IsConnected == true,
                 id => _connectionWorkflowService?.DisconnectAsync(id) ?? Task.CompletedTask,
-                _appDataStore
+                _appDataStore,
+                // 面板外的失败(启动时自动建立隧道)走右下角的错误提示。
+                message => Toasts.Error(message)
             );
             panel.CloseRequested += (_, _) => IsTunnelPanelOpen = false;
             TunnelPanel = panel;
         }
-        _ = TunnelPanel.OpenAsync(preselect?.Id ?? ActiveTerminalTab?.Profile?.Id);
-        IsTunnelPanelOpen = true;
+        return TunnelPanel;
+    }
+
+    /// <summary>
+    /// 启动时把勾了「程序启动时自动建立」的隧道建好(见 <see cref="TunnelPanelViewModel.AutoStartTunnelsAsync" />)。
+    /// 没有存储就没有持久化的隧道配置,也就无事可做 —— 不为它白建一份面板。
+    /// </summary>
+    private void StartAutoStartTunnels()
+    {
+        if (_appDataStore is null || EnsureTunnelPanel() is not { } panel)
+        {
+            return;
+        }
+        _ = panel.AutoStartTunnelsAsync();
     }
 
     // ---- 消息中心(侧边栏铃铛) ----
@@ -1895,6 +1923,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         await Sidebar.RecentConnections.RefreshAsync();
         await RefreshSessionTreeAsync();
         RevealActiveSessionInSidebar();
+        // 隧道的启停状态不落盘:重启后一律是已停止,只有勾了「程序启动时自动建立」的在这里替用户建好。
+        // 不等它 —— 拨号可能要好几秒、还可能弹凭据提示,不该拖住启动。
+        StartAutoStartTunnels();
     }
 
     /// <summary>

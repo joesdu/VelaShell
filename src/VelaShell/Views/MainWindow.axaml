@@ -49,12 +49,14 @@
                             Margin="0,12,16,0"
                             ZIndex="50" />
     <!-- 隧道管理面板(设计帧 fuXS7):非模态,由 tools.tunnel 切换
-         (菜单路由按钮 / Ctrl+Shift+T),锚定于菜单栏下方右侧。 -->
+         (菜单路由按钮 / Ctrl+Shift+T),默认锚定于菜单栏下方右侧,拖标题栏可挪开、位置跨会话保留。
+         与消息中心同理:外层 Panel 铺满整行,对齐与边距落在视图上 —— 拖拽的参考坐标系就是父容器,
+         父容器只贴着面板本身的话能拖的范围是零。Panel 不设 Background,不挡底下的操作。 -->
     <Panel Grid.Row="1" ZIndex="60"
-           HorizontalAlignment="Right" VerticalAlignment="Top"
-           Margin="0,8,48,0"
            IsVisible="{Binding IsTunnelPanelOpen}">
-      <views:TunnelPanelView DataContext="{Binding TunnelPanel}" />
+      <views:TunnelPanelView DataContext="{Binding TunnelPanel}"
+                             HorizontalAlignment="Right" VerticalAlignment="Top"
+                             Margin="0,8,48,0" />
     </Panel>
     <!-- 消息中心:非模态,由侧边栏底部铃铛切换。锚在左下贴着铃铛 —— 浮层从哪个按钮
          开出来就该长在哪个按钮旁边,开在右上会让人一时找不到它和什么有关。

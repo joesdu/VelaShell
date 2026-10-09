@@ -3737,6 +3737,21 @@ Overwrite it?</value>
   <data name="Tunnel_StopTip" xml:space="preserve">
     <value>Stop tunnel</value>
   </data>
+  <data name="Tunnel_Starting" xml:space="preserve">
+    <value>Starting tunnel…</value>
+  </data>
+  <data name="Tunnel_Stopping" xml:space="preserve">
+    <value>Stopping tunnel…</value>
+  </data>
+  <data name="Tunnel_AutoStart" xml:space="preserve">
+    <value>Set up automatically when VelaShell starts</value>
+  </data>
+  <data name="Tunnel_AutoStartTip" xml:space="preserve">
+    <value>Each time VelaShell starts, connect to this server in the background and set up this tunnel. Leave it unchecked to start the tunnel by hand.</value>
+  </data>
+  <data name="Tunnel_AutoStartBadge" xml:space="preserve">
+    <value>STARTUP</value>
+  </data>
   <data name="Tunnel_TargetHostLabel" xml:space="preserve">
     <value>Target host (from the server's view)</value>
   </data>
@@ -3899,6 +3914,12 @@ Overwrite it?</value>
   </data>
   <data name="Msg_TunnelAutoReconnectFailed" xml:space="preserve">
     <value>Automatic reconnect failed: {0}</value>
+  </data>
+  <data name="Msg_TunnelAutoStartConnectFailed" xml:space="preserve">
+    <value>Couldn't set up tunnels on {0} at startup: {1}</value>
+  </data>
+  <data name="Msg_TunnelAutoStartFailed" xml:space="preserve">
+    <value>Couldn't set up tunnel “{0}” on {1} at startup: {2}</value>
   </data>
   <data name="Notify_Title" xml:space="preserve">
     <value>Messages</value>
