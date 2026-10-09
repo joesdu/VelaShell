@@ -2166,3 +2166,46 @@ VelaShell 的连接存在 SonnetDB 里,既没有导入导出,资源管理器也�
   超长时收成省略号而不是从字中间切断(选中框沿用 `ItemTemplate`,用例里核过)。
 - **没动的**:全局设置里故障转移链的下拉(多于一家时 `供应商 · 模型`)与协作接入页的桥接模型下拉(`供应商 / 模型`)保持原样。
 - **验证**:新用例 `ModelCombo_LabelsEveryModelWithItsProvider`:单供应商带前缀、两家同名模型各自带前缀、选中框文字可省略。`VelaShell.Plugin.Ai.Tests` 1443 条全过(5 分 56 秒)。
+
+## ✅ 185. 2026-10-10 内置 X 服务端:对着 `xs_plan.md` 逐条核对,补完最后几项(用户需求)
+
+**一、来由**:用户要核对第二次全库审查的清单(`xs_plan.md`)是不是全部修完,把剩下能修的修掉。核对的办法:清单里定义的每个条目编号
+(X / CN / WN / DR / IN / GL / API / CP,共 222 个)与 `git log` 里带 `xs_plan:` 行的提交逐个对 —— 191 个有对应的提交;没有的 31 个里,
+7 个是「同 XX」的重复编号(API-H6 = WN-S4、CN-S5 = WN-S7、WN-E15 与 CN-E2 在 Retain 关窗那条提交里一并修了、DR-D1 = X-1、DR-S6 = X-2、
+API-M6 在 IN-S4 里落地),24 个是 CP 一节的指向(指向别处的条目、F1–F30 的新功能或非目标)。§178、§181 记下的剩余项逐项回到代码复核:
+WN-M7 要全局指针钩子(新功能);CN-S8 的 `getpeereid` 已经写好,只缺 macOS / FreeBSD 实机;API-H13、IN-E19 同样要实机。
+能在代码里修的是下面四项,外加测试缺口 T15。分支 `fix/xserver-plan-leftovers`,一项一个本地提交;全程守净室规程,依据只有 X 核心协议
+(「PolyArc」的宽弧边界)、RENDER 规范(「CreatePicture」的 alpha-map、§9)与 XLFD,没有打开任何其它 X 服务端、pixman 或 cairo 的源码。
+文档在 velashell-docs 的同名分支(`zh/` 与 `en/` 一起改)。
+
+**二、做了什么**:
+- **外接框宽或高为 0 的宽弧画满整个线宽**(ed457425):协议只在宽高都不为 0 且不相等时把宽弧的边界交给实现,有一个为 0 时就是与路径相距
+  lw/2 的两条线;原先内边界取「半轴减半个线宽、不小于 0」,缩成中线自己,只画出一侧的半个线宽。现在按线段画:每段单调的走位一个线宽的矩形,
+  在两端之间折返处绕着线段的一头转半圈(补一个直径为线宽的圆)。宽高都不为 0 的弧边界的算法原样,像素不变。
+- **RENDER 的 alpha-map 照规范补全**(de984828):① 源带变换时 drawable 按变换取样、alpha-map 按变换前的坐标取样 —— 现在变换与过滤作用在
+  两者拼好的那张上,alpha-map 本身不变换、不重复;② 原先颜色先按 drawable 的 alpha 除、再乘 alpha-map 的,规范说的只是 alpha 通道被取代,
+  像素一律预乘,写进去再读回来应当是同一个像素 —— 现在只换 alpha 通道,drawable 之外又不重复的像素整个透明;③ 目标的 alpha-map 原先接受但不生效 ——
+  现在写目标的各条路径(Composite、FillRectangles、梯形 / 三角形、字形)经 `CompositeOnto`:请求的这一块拼成临时的 a8r8g8b8 合成,
+  颜色写回 drawable、alpha 写回 alpha-map 并记 DAMAGE,合成器的快路径不用知道 alpha-map;④ 挂了 alpha-map 的源与目标同缓冲时没看出来,
+  逐行合成读到已写过的行 —— 「读不读这块缓冲」「拷出要读的部分」改成 `RenderSource` 的虚方法。另:alpha-map 的范围也限制读写;
+  文档原说「alpha-map 必须是只有 alpha 的格式」与规范不符(规范只要求是像素图),改的是文档。
+- **按磅数要核心字体时按屏幕分辨率挑 75 / 100 dpi**(3030db33):`variable`(`-*-helvetica-bold-r-normal-*-*-120-*-*-*-*-iso8859-1`)这类
+  按磅数要、分辨率留空的名字,原先按名字的先后总取 75 dpi 的那份(12 磅 12 像素),退到最接近的字号时磅数也按 75 dpi 换算 —— 96 dpi 的宿主上
+  Motif / Xaw / Tk 的字偏小。现在 OpenFont / ListFontsWithInfo 带上 `X11ServerOptions.Dpi`:匹配上的里面先挑 RESOLUTION_Y 离它最近的
+  (96 dpi 上是 100 dpi 的 17 像素),换算也按它。给了分辨率或像素高度的名字与原来完全一样。
+- **字体脚本核对 X.Org 字体的内容**(b8ca6d91):`build-fonts.cs` 原先只核对 Unifont 与 OFL。GitLab 现做的归档不保证逐字节稳定,改为对挑出来的
+  文件算摘要(按文件名排序,每个文件一行「文件名 SHA-256」再整体算),五个仓库各固定一个;流程改成全部下载、核对完才动数据目录(原先 Unifont
+  后核对,对不上就留下一个删了一半的 `Fonts/Data`)。
+- **`.Xauthority` 与真实的 xauth 对过**(1ac42bd7,审查的测试缺口 T15):新的 Interop 用例用互操作镜像里的 xauth —— 列得出我们登记的那条、
+  两边改写都留着对方的记录、我们的锁文件名 xauth 认得(看见就重试约 20 秒后放弃)。文件按 base64 经命令行进出容器:这台机器上 Docker Desktop
+  挂本机目录会一直卡住。
+- 顺带:`RenderTests` 的一处 CA1859(558a60e7)。
+
+**三、没做的**(都在 `feature-plan.md` H 节):点本机窗口或桌面就收起 X 的弹出菜单(WN-M7,要全局指针钩子);F1–F30 的新功能;要实机核对的
+API-H13 / IN-E19 / CN-S8;互操作靶场扩到 GTK3 / GTK4、浏览器、Motif / Tk / Emacs、桌面会话、托盘与 fcitx5(测试缺口 T16,清单抄进了 H 节)。
+核对时另看到一处、没改:半径小于半个线宽的圆上的一段宽弧,内边界停在圆心,没有穿到对侧(整圆不受影响)。`xs_plan.md` 末节记了这一轮。
+
+**四、验证**:`VelaShell.XServer.Tests` 471 例,462 通过 / 9 例按平台跳过(起点 455 通过);每条新用例在旧代码上确认过红(扁弧 2 条、alpha-map 4 条、
+字体 1 条)。开互操作(`VELASHELL_XSERVER_INTEROP=1`)12 例全过、没有 `[SKIP]`;`Infrastructure.Tests` 的两条 xauth 互操作用例真跑通过。
+字体脚本按固定的摘要重跑到 `Fonts/Data` 的拷贝,生成的数据与仓库里的逐字节相同;固定值不对时报出那一项、输出目录不动。
+`VelaShell.slnx`(Debug)零警告零错误;宿主 `VelaShell.Tests` 与 `Infrastructure.Tests` 里 X Server 相关的用例 41 / 42 通过(1 例按环境跳过)。

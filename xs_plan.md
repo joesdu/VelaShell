@@ -1479,3 +1479,34 @@ GLX 1.4 协议层（4 个 FBConfig、上下文标签按客户端分表、Render 
 
 - `VelaShell.XServer.Tests`：459 例，450 通过、9 个平台条件跳过；开互操作（`VELASHELL_XSERVER_INTEROP=1`）12 例全过，没有 `[SKIP]`。
 - `VelaShell.slnx` Debug 构建与 `VelaShell.XServer` Release 构建：0 警告、0 错误。
+
+## 2026-10-10 第三次更新:逐条核对,补完最后几项(`fix/xserver-plan-leftovers`,`plan.md §185`)
+
+### 核对方法与结论
+
+本文件里定义的每个条目编号(X / CN / WN / DR / IN / GL / API / CP,共 222 个)与 `git log` 里带 `xs_plan:` 行的提交逐个对照:191 个有对应的提交。
+没有的 31 个:7 个是「同 XX」的重复编号(API-H6 = WN-S4、CN-S5 = WN-S7、WN-E15 / CN-E2 随 Retain 关窗那条提交一并修了、DR-D1 = X-1、DR-S6 = X-2、
+API-M6 在 IN-S4 里落地),24 个是第九节 CP 的指向(指向别处的条目、F1–F30 的新功能或非目标)。**审查登记的 184 条问题都已修完**;
+上面「仍未完成」与 §181 记下的几项逐项回到代码复核,能在代码里修的这一轮修掉。
+
+### 这一轮完成的
+
+- 外接框宽或高为 0 的宽弧画满整个线宽(ed457425)。
+- RENDER 的 alpha-map 照规范补全(de984828):跟着变换取样、只换 alpha 通道、目标上生效、与目标同缓冲时先读完再写;
+  「alpha-map 必须是只有 alpha 的格式」是文档写错了(规范只要求是像素图),改文档。
+- 按磅数要核心字体时按屏幕分辨率挑 75 / 100 dpi、磅数按屏幕分辨率换算(3030db33)。
+- `build-fonts.cs` 对 X.Org 的字体按挑出来的文件核对摘要,全部核对完才动数据目录(b8ca6d91)。
+- 测试缺口 T15:`.Xauthority` 与真实的 xauth 互通(1ac42bd7)。
+
+### 仍未完成的(都已记进 `feature-plan.md`「H. 内置 X 服务端」,不再依赖本文件)
+
+- **WN-M7**:点本机窗口或桌面就收起 X 的弹出菜单 —— 要全局指针钩子,是新功能。
+- **F1–F30** 的新功能(F21 已做)。
+- **要实机核对的**:API-H13(分数缩放最后一列像素)、IN-E19(macOS Command 组合键的 KeyUp)、CN-S8(`getpeereid` 已写好,缺 macOS / FreeBSD 实机)。
+- **测试缺口 T16**:互操作靶场扩到附录 B 的程序(清单已抄进 feature-plan.md)。
+- 核对时另看到一处:半径小于半个线宽的圆上的一段宽弧,内边界停在圆心、没有穿到对侧(整圆不受影响)。
+
+### 验证结果
+
+- `VelaShell.XServer.Tests`:471 例,462 通过、9 个平台条件跳过;开互操作 12 例全过,没有 `[SKIP]`。
+- `Infrastructure.Tests` 的两条 xauth 互操作用例真跑通过;`VelaShell.slnx` Debug 构建零警告零错误。
