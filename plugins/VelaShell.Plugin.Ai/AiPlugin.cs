@@ -230,14 +230,15 @@ public sealed class AiPlugin : IVelaPlugin
             return;
         }
         var loc = new Loc(context.Host.Locale);
+        (double width, double height) = WindowFit.Fit(1000, 880);
         _collaborationPanel = await context.Ui.ShowPanelAsync(
             new PanelOptions
             {
                 Title = loc["Collaboration"],
                 Icon = AiIcon.Panel,
                 DisplayMode = PanelDisplayMode.Window,
-                WindowWidth = 860,
-                WindowHeight = 780
+                WindowWidth = width,
+                WindowHeight = height
             },
             () => new CollaborationView(context, loc, RestartServicesAsync, Bridge));
         _collaborationPanel.Closed += () => _collaborationPanel = null;
@@ -264,6 +265,7 @@ public sealed class AiPlugin : IVelaPlugin
             return _view; // 已开着(面板是活控件)
         }
         ChatPanelView? view = null;
+        (double width, double height) = WindowFit.Fit(820, 660);
         _panel = await context.Ui.ShowPanelAsync(
             new PanelOptions
             {
@@ -276,8 +278,8 @@ public sealed class AiPlugin : IVelaPlugin
                 // 终端与它并排看得见,而不是把当前终端顶掉
                 Placement = PanelPlacement.Right,
                 PlacementRatio = await PanelWidthRatioAsync(),
-                WindowWidth = 720,
-                WindowHeight = 560
+                WindowWidth = width,
+                WindowHeight = height
             },
             () => view = new ChatPanelView(context, _store!));
         _view = view;

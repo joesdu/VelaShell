@@ -59,7 +59,7 @@ public partial class ChatPanelView
         // 全局设置(系统提示词/压缩/后续提问)不占这页版面:标题栏上、最小化键左侧一枚 ⚙,
         // 与主窗体标题栏那排工具按钮同一套版式,点开是另一个小窗口。
         _ = OpenAsync(
-            _loc["ModelSettings"], 900, 740,
+            _loc["ModelSettings"], 1080, 860,
             [new PanelTitleAction(SettingsIconPath, _loc["GlobalSettings"], OpenGlobalSettingsDialog)],
             () =>
             {
@@ -99,7 +99,7 @@ public partial class ChatPanelView
             return;
         }
         _ = OpenAsync(
-            _loc["SetupProviders"], 720, 720, [],
+            _loc["SetupProviders"], 860, 820, [],
             () =>
             {
                 var view = new ProviderSetupView(_context, _store, _settings, _loc,
@@ -139,7 +139,7 @@ public partial class ChatPanelView
             return;
         }
         _ = OpenAsync(
-            _loc["GlobalSettings"], 640, 680, [],
+            _loc["GlobalSettings"], 780, 800, [],
             () => _globalSettingsView = new GlobalSettingsView(_context, _store, _settings, _loc,
                 draft => PersistGlobalSettingsAsync(draft), OnSharedSettingsReloaded, _health),
             panel => _globalSettingsPanel = panel,
@@ -181,7 +181,7 @@ public partial class ChatPanelView
         // 塞不进 270 宽的左栏;点概览行或「新增服务器」把它开出来。
         // (picker 在工厂里才造出来,回调只在用户点的时候跑,那时它早就有了。)
         _ = OpenAsync(
-            _loc["ConfigureTools"], 940, 680, [],
+            _loc["ConfigureTools"], 1100, 800, [],
             () => picker = new ToolPickerView(_context, _settings, _loc, PersistSettingsAsync,
                 serverId => OpenMcpDialog(picker!, serverId)),
             panel => _toolsPanel = panel,
@@ -207,7 +207,7 @@ public partial class ChatPanelView
             return;
         }
         _ = OpenAsync(
-            _loc["McpServers"], 900, 660, [],
+            _loc["McpServers"], 1060, 780, [],
             () =>
             {
                 var servers = new McpServersView(_context, _settings, _loc, PersistSettingsAsync);
@@ -268,6 +268,7 @@ public partial class ChatPanelView
         // 视图当场就造,工厂只是把它递给宿主 —— 造在工厂里就拿不到实例,没法给它挂 Esc。
         // 这里本来就在 UI 线程上(按钮点出来的),满足 ShowPanelAsync 对工厂的线程要求。
         Control view = factory();
+        (width, height) = WindowFit.Fit(width, height, this);
         try
         {
             IPluginPanel panel = await _context.Ui.ShowPanelAsync(new PanelOptions

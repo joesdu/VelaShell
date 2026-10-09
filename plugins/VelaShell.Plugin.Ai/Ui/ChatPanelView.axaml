@@ -36,18 +36,18 @@
          面板底色上对比度太低,这些是"要读的信息"(思考区标题、时刻、模型、用量),
          不是纯装饰,不该淡到看不清。 -->
     <Style Selector="TextBlock.dim">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize10}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
     </Style>
     <Style Selector="TextBlock.roleHeader">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
       <Setter Property="Margin" Value="0,0,0,4" />
     </Style>
-    <!-- 输入框的占位提示:字号贴近正文(13),免得比要输入的内容小一大截 -->
+    <!-- 输入框的占位提示:字号贴近正文(14),免得比要输入的内容小一大截 -->
     <Style Selector="TextBlock.placeholder">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize13}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
     </Style>
 
@@ -120,21 +120,21 @@
       <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
     </Style>
     <Style Selector="Border.suggestChip TextBlock">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
     </Style>
     <Style Selector="Border.suggestChip:pointerover TextBlock">
       <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
     </Style>
     <Style Selector="SelectableTextBlock.body">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize13}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize14}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="TextWrapping" Value="Wrap" />
       <Setter Property="LineSpacing" Value="4" />
     </Style>
     <Style Selector="SelectableTextBlock.mono">
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
@@ -178,7 +178,7 @@
       <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
     </Style>
     <Style Selector="TextBlock.historyTitle">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize13}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="TextWrapping" Value="NoWrap" />
@@ -199,7 +199,7 @@
     </Style>
     <Style Selector="TextBlock.fileName">
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="TextWrapping" Value="NoWrap" />
@@ -231,7 +231,7 @@
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="Padding" Value="10,7" />
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize13}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize14}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
     </Style>
     <Style Selector="Border.inputWrap ae|TextEditor /template/ Border">
@@ -249,7 +249,7 @@
     </Style>
     <Style Selector="TextBlock.refChipText">
       <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
     </Style>
 
     <!-- 选区随主题令牌(编辑器默认是硬编码的黑白)。 -->
@@ -267,7 +267,7 @@
          那几个键改由 code-behind 的 SyncMarkdownSkin() 写进本控件资源。 -->
     <Style Selector="md|MarkdownRenderer md|MarkdownTextBlock">
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize13}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize14}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="LineSpacing" Value="4" />
       <Setter Property="SelectionBrush" Value="{DynamicResource VelaAccentDim}" />
@@ -275,24 +275,24 @@
     </Style>
 
     <Style Selector="md|MarkdownRenderer Border.Heading1Block md|MarkdownTextBlock">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize16}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize18}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Margin" Value="0,4,0,0" />
     </Style>
     <Style Selector="md|MarkdownRenderer Border.Heading2Block md|MarkdownTextBlock">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize15}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize16}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Margin" Value="0,4,0,0" />
     </Style>
     <Style Selector="md|MarkdownRenderer Border.Heading3Block md|MarkdownTextBlock">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize14}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize15}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Margin" Value="0,2,0,0" />
     </Style>
     <Style Selector="md|MarkdownRenderer Border.Heading4Block md|MarkdownTextBlock,
                      md|MarkdownRenderer Border.Heading5Block md|MarkdownTextBlock,
                      md|MarkdownRenderer Border.Heading6Block md|MarkdownTextBlock">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize13}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize14}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Margin" Value="0" />
     </Style>
@@ -312,7 +312,7 @@
          FontSize 走文本继承);模板内的按钮尺寸压到 18,免得 20px 方块把标题行撑高。 -->
     <Style Selector="md|CodeBlock">
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
     </Style>
     <!-- 标题栏底色:模板里两个 Border 都没 x:Name(第一个标题栏、第二个正文),只能按位置取。
          不走 BorderColor 键是因为那个键被 Mermaid 拿去画线条了(见 SyncMarkdownSkin)。
@@ -322,7 +322,7 @@
     </Style>
     <Style Selector="md|CodeBlock /template/ TextBlock#PART_LanguageTextBlock">
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize10}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
     </Style>
     <Style Selector="md|CodeBlock /template/ Button#PART_CopyButton,
@@ -369,13 +369,13 @@
          图容器默认 MaxHeight 600,在侧栏里太占版面;FitToViewport 会自动缩放。 -->
     <Style Selector="mdm|MermaidPresenter">
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
-      <Setter Property="NodeLabelFontSize" Value="{DynamicResource VelaFontSize12}" />
-      <Setter Property="EdgeLabelFontSize" Value="{DynamicResource VelaFontSize10}" />
-      <Setter Property="GroupHeaderFontSize" Value="{DynamicResource VelaFontSize11}" />
-      <Setter Property="MemberFontSize" Value="{DynamicResource VelaFontSize11}" />
-      <Setter Property="AnnotationFontSize" Value="{DynamicResource VelaFontSize10}" />
-      <Setter Property="KeyBadgeFontSize" Value="{DynamicResource VelaFontSize10}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="NodeLabelFontSize" Value="{DynamicResource VelaFontSize13}" />
+      <Setter Property="EdgeLabelFontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="GroupHeaderFontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="MemberFontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="AnnotationFontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="KeyBadgeFontSize" Value="{DynamicResource VelaFontSize11}" />
     </Style>
     <Style Selector="mdm|PanAndZoom.MermaidBlock">
       <Setter Property="MaxHeight" Value="420" />
@@ -387,7 +387,7 @@
     <Style Selector="md|MarkdownRenderer md|MarkdownTextBlock.MermaidBlock,
                      md|MarkdownRenderer md|MarkdownTextBlock.MathBlock">
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
     </Style>
     <Style Selector="md|MarkdownRenderer md|MarkdownTextBlock.MermaidBlock.Error,
@@ -398,20 +398,20 @@
     <Style Selector="md|MarkdownRenderer TextBlock.ListBlockNumber,
                      md|MarkdownRenderer TextBlock.ListBlockBullet">
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize13}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
     </Style>
 
     <!-- 紧凑工具卡(主流 Agent 风格:单行头 + 点击展开详情) -->
     <Style Selector="TextBlock.toolName">
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBlock.toolArgs">
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize10}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="TextWrapping" Value="NoWrap" />
@@ -426,9 +426,9 @@
       <Setter Property="Margin" Value="0,6,0,0" />
       <Setter Property="Padding" Value="0,4,0,0" />
     </Style>
-    <!-- 时刻 · 模型 / token 用量:是要看的数,给次级文字色 + 11 号,别糊在背景里 -->
+    <!-- 时刻 · 模型 / token 用量:是要看的数,给次级文字色 + 12 号,别糊在背景里 -->
     <Style Selector="TextBlock.meta">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -443,7 +443,7 @@
       <Setter Property="Padding" Value="8,0,0,0" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
     </Style>
     <!-- 这一行的高度必须与内容无关:审批选择器只在带工具的模式下出现,行一变高整个输入区就会跳。
          行高写死,里头的下拉也跟着写死同一高度(MinHeight 得压过主题里的 26)。 -->
@@ -451,7 +451,7 @@
       <Setter Property="Height" Value="20" />
     </Style>
     <Style Selector="Grid#InputStatusBar ComboBox">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize10}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
       <Setter Property="MinHeight" Value="0" />
       <Setter Property="Height" Value="20" />
       <Setter Property="Padding" Value="6,0,0,0" />
@@ -470,11 +470,11 @@
       <Setter Property="Height" Value="26" />
       <Setter Property="Padding" Value="8,0,0,0" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Grid#TopBar CheckBox">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
       <Setter Property="MinHeight" Value="26" />
       <Setter Property="Height" Value="26" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -602,7 +602,7 @@
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Border.phaseChip TextBlock">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize10}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
     </Style>
     <Style Selector="Border.phaseChip.waiting">
@@ -622,7 +622,7 @@
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Border.riskBadge TextBlock">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize10}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaWarning}" />
     </Style>
 
@@ -655,7 +655,7 @@
 
     <!-- 历史列表的日期分组标题(今天 / 昨天 / 更早) -->
     <Style Selector="TextBlock.histGroup">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize10}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
       <Setter Property="Margin" Value="2,6,0,0" />
@@ -663,13 +663,13 @@
 
     <!-- 空状态(一个模型都没配):标题 + 说明 + 三条可点的示例问句 -->
     <Style Selector="TextBlock.emptyTitle">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize15}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize16}" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
       <Setter Property="HorizontalAlignment" Value="Center" />
     </Style>
     <Style Selector="TextBlock.emptyBody">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize13}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
       <Setter Property="TextAlignment" Value="Center" />
       <Setter Property="TextWrapping" Value="Wrap" />
@@ -688,7 +688,7 @@
       <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
     </Style>
     <Style Selector="Border.exampleRow TextBlock">
-      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
     </Style>
 
@@ -871,7 +871,7 @@
                         StrokeLineCap="Round" StrokeJoin="Round" />
                 </Viewbox>
                 <TextBlock x:Name="SendText" VerticalAlignment="Center"
-                           FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
+                           FontSize="{DynamicResource VelaFontSize12}" FontWeight="Medium" />
               </StackPanel>
             </Button>
             <Button x:Name="StopButton" Theme="{DynamicResource VelaOutlineButtonTheme}"
@@ -884,7 +884,7 @@
                         StrokeLineCap="Round" StrokeJoin="Round" />
                 </Viewbox>
                 <TextBlock x:Name="StopText" VerticalAlignment="Center"
-                           FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
+                           FontSize="{DynamicResource VelaFontSize12}" FontWeight="Medium" />
               </StackPanel>
             </Button>
           </StackPanel>
@@ -923,7 +923,7 @@
                       StrokeLineCap="Round" StrokeJoin="Round" />
               </Viewbox>
               <TextBlock x:Name="ClearHistoryText" VerticalAlignment="Center"
-                         FontSize="{DynamicResource VelaFontSize10}" />
+                         FontSize="{DynamicResource VelaFontSize11}" />
             </StackPanel>
           </Button>
         </Grid>
@@ -938,7 +938,7 @@
                     StrokeLineCap="Round" StrokeJoin="Round" />
             </Viewbox>
             <TextBox x:Name="HistorySearchBox" Grid.Column="1"
-                     FontSize="{DynamicResource VelaFontSize12}" />
+                     FontSize="{DynamicResource VelaFontSize13}" />
           </Grid>
         </Border>
         <ScrollViewer HorizontalScrollBarVisibility="Disabled">

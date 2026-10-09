@@ -114,7 +114,7 @@ public sealed class ToolPickerView : UserControl
         {
             Classes = { "section-title" },
             Text = _loc["McpServers"],
-            FontSize = 12
+            [!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize13")
         });
         var paneHint = new TextBlock
         {
@@ -167,7 +167,7 @@ public sealed class ToolPickerView : UserControl
             HorizontalAlignment = HorizontalAlignment.Center
         };
         content.Children.Add(new Viewbox { Width = 11, Height = 11, Child = Glyph(icon), VerticalAlignment = VerticalAlignment.Center });
-        content.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center, FontSize = 11 });
+        content.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center, [!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize12") });
         var button = new Button { Content = content, Height = 26, Padding = new Avalonia.Thickness(10, 0) };
         button[!ThemeProperty] = new DynamicResourceExtension("VelaOutlineButtonTheme");
         button.Click += (_, _) => onClick();
@@ -193,7 +193,7 @@ public sealed class ToolPickerView : UserControl
             {
                 Text = string.IsNullOrWhiteSpace(server.Name) ? _loc["Unnamed"] : server.Name,
                 FontWeight = FontWeight.Medium,
-                FontSize = 12,
+                [!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize13"),
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
             name[!ForegroundProperty] = new DynamicResourceExtension("VelaTextPrimary");
@@ -202,7 +202,7 @@ public sealed class ToolPickerView : UserControl
             {
                 Classes = { "dim" },
                 Text = ServerDetail(server),
-                FontSize = 10,
+                [!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize11"),
                 TextTrimming = TextTrimming.CharacterEllipsis
             });
             Grid.SetColumn(text, 1);
@@ -322,7 +322,7 @@ public sealed class ToolPickerView : UserControl
             Content = _loc["RefreshTools"],
             Height = 26,
             Padding = new Avalonia.Thickness(12, 0),
-            FontSize = 11,
+            [!TemplatedControl.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize12"),
             VerticalAlignment = VerticalAlignment.Center
         };
         refresh[!ThemeProperty] = new DynamicResourceExtension("VelaOutlineButtonTheme");
