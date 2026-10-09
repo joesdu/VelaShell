@@ -539,6 +539,39 @@ public sealed class ModelsDevCatalogTests
     }
 
     [TestMethod]
+    [DataRow("gpt-5")]
+    [DataRow("relay/gpt-5")]
+    public void Describe_MinorityDisagreementAcrossProvidersStillMatches(string id)
+    {
+        // 真实 models.dev 里 gpt-5 挂在十几家名下,只有一家漏标 reasoning、个别家输出上限写法不同;
+        // 要求全体一致会把这些热门型号全判成歧义,退回 128000 的默认窗口并藏掉思考档位
+        using var context = new TestPluginContext();
+        File.WriteAllText(Path.Combine(context.DataDirectory, "models-dev.json"), """
+            {"a":{"gpt-5":{"ctx":400000,"max":128000,"think":true}},
+             "b":{"gpt-5":{"ctx":400000,"max":128000,"think":true}},
+             "c":{"gpt-5":{"ctx":400000,"max":16000,"think":false}},
+             "d":{"gpt-5":{"ctx":131072,"max":128000,"think":true}}}
+            """);
+        ModelSpec spec = new ModelsDevCatalog(context).Describe(null, [(id, 0)]).Single();
+        Assert.AreEqual(400000, spec.ContextTokens, "窗口按多数取,少数家的写法不该让整个型号退回默认值");
+        Assert.IsFalse(spec.DefaultContextWindow);
+        Assert.AreEqual(128000, spec.OutputTokens, "同窗口内的输出上限按多数取");
+        Assert.IsTrue(spec.Reasoning, "漏标思考的少数家不该把思考档位藏掉");
+    }
+
+    [TestMethod]
+    public void Describe_TiedOutputLimitsPickTheSmallerOne()
+    {
+        using var context = new TestPluginContext();
+        File.WriteAllText(Path.Combine(context.DataDirectory, "models-dev.json"), """
+            {"a":{"gpt-4o":{"ctx":128000,"max":16384}},"b":{"gpt-4o":{"ctx":128000,"max":16000}}}
+            """);
+        ModelSpec spec = new ModelsDevCatalog(context).Describe(null, [("gpt-4o", 0)]).Single();
+        Assert.AreEqual(128000, spec.ContextTokens);
+        Assert.AreEqual(16000, spec.OutputTokens, "并列时取小的:超过端点上限的 max_tokens 会整轮 400");
+    }
+
+    [TestMethod]
     public async Task Materialise_ManualLimitsPricesAndCapabilitiesSurvivePullsAndReload()
     {
         using var context = new TestPluginContext();

@@ -1706,7 +1706,9 @@ public partial class SettingsView : UserControl
         RefreshKeyRowStatus(row);
         try
         {
-            var (credential, _) = await _store.ResolveCredentialWithKeyIdAsync(live, token, keyId: row.Id);
+            // 主槽测跨源模型时解析器不认它是槽请求(KeyId 为 null):那边的成败说明的是覆盖地址,
+            // 不是这把 Key 在供应商自己源上的状态,不能拿去冷却或解冻 Key 槽(与 TestAsync 同一裁决)
+            var (credential, slotId) = await _store.ResolveCredentialWithKeyIdAsync(live, token, keyId: row.Id);
             if (credential.Value != row.Key) throw new AiSettingsStore.ApiKeySlotChangedException();
             if (string.IsNullOrWhiteSpace(credential.Value)
                 || !await StillSavedKeyProbeAsync(row, modelId, snapshot, credential, editorRun, run, version, token)) return;
@@ -1717,11 +1719,14 @@ public partial class SettingsView : UserControl
             row.Result = new KeyProbeResult(modelId, snapshot, error is null, DateTime.Now, error, version);
             if (error is null)
             {
-                _health?.RecordKey(row.Id, true, version, observation);
+                if (slotId is not null) _health?.RecordKey(slotId, true, version, observation);
                 _health?.Record(modelId, true, version, observation);
             }
             else if (TransientFailure.IsApiKeyFailure(error))
-                _health?.RecordKey(row.Id, false, version, observation);
+            {
+                if (slotId is not null) _health?.RecordKey(slotId, false, version, observation);
+                else _health?.Record(modelId, false, version, observation);
+            }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (AiSettingsStore.ApiKeySlotChangedException) { await RecoverSettingsConflictAsync(row.Provider, null, editorRun); }
@@ -2224,10 +2229,26 @@ public partial class SettingsView : UserControl
                 AdditionalApiKeyIds = [.. provider.AdditionalApiKeyIds], ActiveApiKeyId = provider.ActiveApiKeyId
             };
             AiModelConfig first = provider.Models[0];
-            candidate = new ResolvedModel(draft, first);
             apiKeyOverride = first.HasOwnApiKey || provider.Auth == AuthMethod.Subscription
                 ? null
                 : PendingProviderKey;
+            if (apiKeyOverride is not null && _keyDraft is { } pendingSlot && pendingSlot.Id != provider.Id
+                && !AiSettingsStore.SameOrigin(EffectiveBaseUrl(first), draft.BaseUrl))
+            {
+                // 补充槽的 Key 只发往供应商自己的源(与 ResolveCredentialCoreAsync、KeyModelEligible 同一条线):
+                // 首模型把地址改到了别家时,换一个同源的继承模型来测,而不是把这把 Key 送出境
+                if (provider.Models.Find(config => !config.HasOwnApiKey
+                        && AiSettingsStore.SameOrigin(EffectiveBaseUrl(config), draft.BaseUrl)) is not { } sameOrigin)
+                {
+                    StatusText.Text = _loc["SetupKeyNoModel"];
+                    return;
+                }
+                first = sameOrigin;
+            }
+            candidate = new ResolvedModel(draft, first);
+
+            string EffectiveBaseUrl(AiModelConfig config)
+                => string.IsNullOrWhiteSpace(config.BaseUrlOverride) ? draft.BaseUrl : config.BaseUrlOverride;
             if (!first.HasOwnApiKey && provider.Auth == AuthMethod.ApiKey)
             {
                 overrideKeyId = apiKeyOverride is not null ? _keyDraft?.Id : null;
@@ -2341,7 +2362,13 @@ public partial class SettingsView : UserControl
             {
                 if (sentKeyId is not null && TransientFailure.IsApiKeyFailure(error))
                     _health?.RecordKey(sentKeyId, false, healthEvidence, observationId);
-                else _health?.Record(candidate.Id, ok, healthEvidence, observationId);
+                else
+                {
+                    // 测通了就把这把 Key 的冷却一起解掉(逐 Key 检测与聊天回路都这么做),
+                    // 否则刚通过的槽仍显示冷却,故障转移也照旧绕开它最多 60 秒
+                    if (ok && sentKeyId is not null) _health?.RecordKey(sentKeyId, true, healthEvidence, observationId);
+                    _health?.Record(candidate.Id, ok, healthEvidence, observationId);
+                }
             }
         }
         finally
@@ -2438,9 +2465,41 @@ public partial class SettingsView : UserControl
         }
     }
 
+    /// <remarks>
+    /// 调用方都是丢弃任务的(<c>_ = PersistAsync(…)</c>),异常必须在这里收住。
+    /// 别的窗口先存过时 <see cref="AiSettingsStore.SaveAsync" /> 会因基线过期拒绝落盘:
+    /// 这次改动只活在内存里,下一次重载就会悄悄消失 —— 走与其它提交相同的冲突恢复,重载并告诉用户。
+    /// 选中项按收尾时的取:调用方在发起保存之后才重建列表。
+    /// </remarks>
     private async Task PersistAsync(bool notify)
     {
-        await _store.SaveAsync(_settings);
+        try
+        {
+            await _store.SaveAsync(_settings);
+        }
+        catch (AiSettingsStore.ApiKeySlotChangedException)
+        {
+            if (SelectedProvider is { } provider)
+            {
+                await RecoverSettingsConflictAsync(provider, SelectedModel, _editorRun);
+                return;
+            }
+            try
+            {
+                await _store.ReloadIntoAsync(_settings);
+                _onProvidersChanged();
+                RefreshCatalogModels();
+            }
+            catch (Exception ex)
+            {
+                _context.Log.Error("Reload AI settings failed.", ex);
+            }
+            return;
+        }
+        catch (Exception ex)
+        {
+            _context.Log.Error("Persist AI settings failed.", ex);
+        }
         if (notify)
         {
             _onProvidersChanged();

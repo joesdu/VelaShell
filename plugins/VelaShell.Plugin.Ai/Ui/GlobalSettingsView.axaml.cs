@@ -209,9 +209,20 @@ public partial class GlobalSettingsView : UserControl
 
     private void InvalidateProbeResults(string? modelId = null)
     {
-        if (modelId is null) _probeResults.Clear();
-        else _probeResults.Remove(modelId);
-        InvalidateProbeProgress();
+        if (modelId is null)
+        {
+            _probeResults.Clear();
+            InvalidateProbeProgress();
+            return;
+        }
+        // 单行证据过期(聊天里那家粘到了另一把 Key、复验时撞上别的窗口正在保存)只作废这一行:
+        // 在途批次的其它行照测,不能因此整批掐掉;批次已收尾时汇总不再代表全部行,一并清掉。
+        _probeResults.Remove(modelId);
+        if (_probeCts is null)
+        {
+            _probeTotals = null;
+            RefreshProbeStatusText();
+        }
     }
 
     /// <summary>关掉总闸就把整块细节收起来:那些字段一条都用不上,留着只是噪音。</summary>
@@ -586,7 +597,9 @@ public partial class GlobalSettingsView : UserControl
                     selected = await _store.ResolveCredentialWithKeyIdAsync(model, token);
                     (error, _) = await HealthProbe.ProbeAsync(_store, model, selected.Value.Credential, token);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException) { error = ex; }
+                // 只有本批次的令牌才算"取消";令牌刷新撞上 HttpClient 超时抛的 TaskCanceledException
+                // 是这一行不通,不能冒到外层把整批悄悄收掉、让状态行停在「正在检测」
+                catch (Exception ex) when (!token.IsCancellationRequested) { error = ex; }
                 // 取消可能正好落在"探活返回"与"记账"之间(配置刚变过,见 RefreshFromProviders):
                 // 这条旧结果描述的是改之前的配置,一个字都不能写 —— 标红和冷却都算
                 token.ThrowIfCancellationRequested();
@@ -611,7 +624,7 @@ public partial class GlobalSettingsView : UserControl
                             || verified.Provider.ActiveApiKeyId != activeKeyId || (_health?.Version ?? 0) != healthEvidence)
                             continue; // active 槽或 Key 已变:旧行灯和旧模型健康都丢弃。
                     }
-                    catch (Exception ex) when (ex is not OperationCanceledException) { continue; }
+                    catch (Exception) when (!token.IsCancellationRequested) { continue; }
                 }
                 bool ok = error is null;
                 _probeResults[model.Id] = new ProbeResult(ok, DateTime.Now, selected?.KeyId,
