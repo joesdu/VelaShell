@@ -2130,10 +2130,13 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
             SelectedGroup = Groups[0];
             return;
         }
+        // 排在已有分组之后:取现有最大序号 + 1。不能按「当前个数」取号 —— 分组可以删、也可以拖动重排(#571),
+        // 序号早就不连续了,按个数取出来的号会和某个已有分组撞上,新分组就不一定落在最后。
+        List<ServerGroup> stored = await _sessionRepository.GetAllGroupsAsync();
         var group = new ServerGroup
         {
             Name = text,
-            SortOrder = Groups.Count - 1 // 排在已有分组之后(下拉含“未分组”占位,故 -1)。
+            SortOrder = stored.Count == 0 ? 0 : stored.Max(static g => g.SortOrder) + 1
         };
         await _sessionRepository.SaveGroupAsync(group);
         var option = new GroupOption(group.Id, group.Name);

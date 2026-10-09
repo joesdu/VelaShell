@@ -1,0 +1,238 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:VelaShell.ViewModels"
+        xmlns:import="using:VelaShell.Core.Import"
+        xmlns:behaviors="using:VelaShell.Behaviors"
+        xmlns:pc="using:VelaShell.Controls.Controls"
+        xmlns:loc="using:VelaShell.Localization"
+        mc:Ignorable="d" d:DesignWidth="480"
+        x:Class="VelaShell.Views.SessionExportView"
+        x:DataType="vm:SessionExportViewModel"
+        Title="{Binding Title}"
+        Width="480"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+  <!-- 导出连接(#571)。外壳与导入会话、共享凭据编辑框同一规格:bg-surface 卡片、28px 标题栏、52px 按钮栏;
+       动作按钮按 DESIGN.md §5.1 走两套共享主题。格式是 JSON / CSV 二选一的分段按钮;
+       「包含敏感信息」只对 JSON 出现,勾上必须设口令 —— 没有明文导出密码这个选项。 -->
+
+  <Window.Styles>
+    <Style Selector="Button.caption">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Width" Value="27" />
+      <Setter Property="Height" Value="27" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.caption:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="Button.caption-close:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaDangerHover}" />
+    </Style>
+    <Style Selector="TextBlock.field-label">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Margin" Value="0,0,0,5" />
+    </Style>
+    <Style Selector="TextBlock.field-hint">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.field-error">
+      <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <!-- 格式分段选择(同共享凭据编辑框的认证方式分段)。 -->
+    <Style Selector="Button.seg-tab">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.seg-tab.active">
+      <Setter Property="Background" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccentForeground}" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+  </Window.Styles>
+
+  <Border Classes="window-card"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}"
+          ClipToBounds="True">
+    <Grid RowDefinitions="Auto,Auto,52">
+
+      <!-- 标题栏(28,可拖动):图标 + 标题 | 关闭 -->
+      <Border Grid.Row="0" Classes="window-titlebar" Padding="20,0,0,0"
+              PointerPressed="Header_PointerPressed"
+              Background="Transparent"
+              BorderThickness="0,0,0,1"
+              BorderBrush="{DynamicResource VelaBorderPrimary}">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <pc:LucideIcon Grid.Column="0" Width="15" Height="15"
+                         Data="{StaticResource Icon.file-down}"
+                         Foreground="{DynamicResource VelaAccent}"
+                         VerticalAlignment="Center" Margin="0,0,10,0" />
+          <TextBlock Grid.Column="1" Text="{Binding Title}"
+                     Foreground="{DynamicResource VelaTextPrimary}"
+                     FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+          <Button Grid.Column="2" Classes="caption caption-close" VerticalAlignment="Top"
+                  AutomationProperties.Name="{loc:Localize Cancel}"
+                  Click="Cancel_Click">
+            <pc:LucideIcon Width="12" Height="12"
+                           Data="{StaticResource Icon.x}"
+                           Foreground="{DynamicResource VelaTextSecondary}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <StackPanel Grid.Row="1" Margin="20,16" Spacing="14">
+
+        <!-- 概要:导出几个连接、几个分组;自动带上的跳板机单独一行说明。 -->
+        <Border Padding="14,12" CornerRadius="6"
+                Background="{DynamicResource VelaBgInput}"
+                BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="1">
+          <StackPanel Spacing="4">
+            <TextBlock Text="{Binding Summary}"
+                       Foreground="{DynamicResource VelaTextPrimary}"
+                       FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="{Binding DependencyNote}"
+                       IsVisible="{Binding HasDependencyNote}"
+                       Foreground="{DynamicResource VelaTextSecondary}"
+                       FontSize="{DynamicResource VelaFontSize11}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <!-- 格式 -->
+        <StackPanel>
+          <TextBlock Classes="field-label" Text="{loc:Localize SessExport_Format}" />
+          <Border Background="{DynamicResource VelaBgInput}" CornerRadius="4" Padding="2" Height="30">
+            <UniformGrid Rows="1">
+              <Button x:Name="JsonFormatButton"
+                      Classes="seg-tab" Classes.active="{Binding IsJson}"
+                      Command="{Binding SelectFormatCommand}"
+                      CommandParameter="{x:Static import:SessionFileFormat.Json}"
+                      Content="{loc:Localize SessExport_FormatJson}" />
+              <Button x:Name="CsvFormatButton"
+                      Classes="seg-tab" Classes.active="{Binding IsCsv}"
+                      Command="{Binding SelectFormatCommand}"
+                      CommandParameter="{x:Static import:SessionFileFormat.Csv}"
+                      Content="{loc:Localize SessExport_FormatCsv}" />
+            </UniformGrid>
+          </Border>
+          <TextBlock Classes="field-hint" Margin="0,6,0,0" Text="{Binding FormatHint}" />
+        </StackPanel>
+
+        <!-- 敏感信息(只对 JSON) -->
+        <StackPanel IsVisible="{Binding IsJson}" Spacing="6">
+          <CheckBox x:Name="IncludeSecretsCheckBox"
+                    IsChecked="{Binding IncludeSecrets}"
+                    IsEnabled="{Binding CanIncludeSecrets}"
+                    MinHeight="0" Padding="6,0,0,0">
+            <TextBlock Text="{loc:Localize SessExport_IncludeSecrets}"
+                       Foreground="{DynamicResource VelaTextPrimary}"
+                       FontSize="{DynamicResource VelaFontSize12}" VerticalAlignment="Center" />
+          </CheckBox>
+          <TextBlock Classes="field-hint" Text="{Binding SecretsHint}" />
+
+          <StackPanel IsVisible="{Binding ShowPassphraseFields}" Spacing="10" Margin="0,4,0,0">
+            <StackPanel>
+              <TextBlock Classes="field-label" Text="{loc:Localize SessExport_Passphrase}" />
+              <Border Classes="input-affix">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBox Grid.Column="0"
+                           behaviors:SecurePasswordBox.Enabled="True"
+                           behaviors:EnglishInputLocale.Enabled="True"
+                           behaviors:SecurePasswordBox.Password="{Binding Passphrase}"
+                           behaviors:SecurePasswordBox.Reveal="{Binding ShowPassphrase}"
+                           AutomationProperties.Name="{loc:Localize SessExport_Passphrase}"
+                           Padding="10,0,0,0"
+                           VerticalAlignment="Center" />
+                  <Button Grid.Column="1" Width="28" Height="28"
+                          Margin="0,0,2,0" Padding="0"
+                          Background="Transparent" CornerRadius="3" Cursor="Hand"
+                          Click="TogglePassphrase_Click"
+                          ToolTip.Tip="{loc:Localize Profile_ShowHidePassword}"
+                          AutomationProperties.Name="{loc:Localize Profile_ShowHidePassword}"
+                          VerticalAlignment="Center">
+                    <pc:LucideIcon Width="13" Height="13"
+                                   Data="{StaticResource Icon.eye}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </Button>
+                </Grid>
+              </Border>
+            </StackPanel>
+            <StackPanel>
+              <TextBlock Classes="field-label" Text="{loc:Localize SessExport_PassphraseConfirm}" />
+              <TextBox behaviors:SecurePasswordBox.Enabled="True"
+                       behaviors:EnglishInputLocale.Enabled="True"
+                       behaviors:SecurePasswordBox.Password="{Binding PassphraseConfirm}"
+                       behaviors:SecurePasswordBox.Reveal="{Binding ShowPassphrase}"
+                       AutomationProperties.Name="{loc:Localize SessExport_PassphraseConfirm}"
+                       Padding="10,0,0,0" />
+            </StackPanel>
+            <TextBlock Classes="field-hint" Text="{loc:Localize SessExport_PassphraseHint}" />
+            <TextBlock Classes="field-error" Text="{Binding PassphraseError}"
+                       IsVisible="{Binding PassphraseError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+        </StackPanel>
+
+        <TextBlock Classes="field-error" Text="{Binding ErrorMessage}"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </StackPanel>
+
+      <!-- 按钮栏:取消 / 导出 -->
+      <Border Grid.Row="2" Padding="20,0"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
+              BorderThickness="0,1,0,0">
+        <StackPanel Orientation="Horizontal" Spacing="8"
+                    HorizontalAlignment="Right" VerticalAlignment="Center">
+          <Button x:Name="CancelButton"
+                  Theme="{DynamicResource VelaOutlineButtonTheme}"
+                  IsCancel="True"
+                  Content="{loc:Localize Cancel}"
+                  Click="Cancel_Click" />
+          <Button x:Name="ExportButton"
+                  Theme="{DynamicResource VelaAccentPillButtonTheme}"
+                  Height="28"
+                  IsEnabled="{Binding CanExport}"
+                  Click="Export_Click">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <pc:LucideIcon Width="13" Height="13"
+                             Data="{StaticResource Icon.file-down}"
+                             Foreground="{Binding $parent[Button].Foreground}" />
+              <TextBlock Text="{loc:Localize SessExport_ExportButton}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

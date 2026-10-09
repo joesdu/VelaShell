@@ -43,6 +43,15 @@
        且得等在装的旧版插件更新过一轮 —— 已发布的 .vpx 是运行期按键名取的。 -->
   <StreamGeometry x:Key="Icon.arrow-up-half">M3 8l4-4 4 4 M7 4v16</StreamGeometry>
   <StreamGeometry x:Key="Icon.arrow-down-half">M21 16l-4 4-4-4 M17 20V4</StreamGeometry>
+  <!-- 资源管理器的分组上移 / 下移、按名称排序、全部折叠 / 展开,与连接文件的导入 / 导出 / CSV 模板(#571)。 -->
+  <StreamGeometry x:Key="Icon.arrow-up">M5 12l7-7 7 7 M12 19V5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.arrow-down">M12 5v14 M19 12l-7 7-7-7</StreamGeometry>
+  <StreamGeometry x:Key="Icon.arrow-down-a-z">M3 16l4 4 4-4 M7 20V4 M20 8h-5 M15 10V6.5a2.5 2.5 0 0 1 5 0V10 M15 14h5l-5 6h5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.chevrons-down-up">M7 20l5-5 5 5 M7 4l5 5 5-5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.chevrons-up-down">M7 15l5 5 5-5 M7 9l5-5 5 5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.file-down">M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z M14 2v4a2 2 0 0 0 2 2h4 M12 18v-6 M9 15l3 3 3-3</StreamGeometry>
+  <StreamGeometry x:Key="Icon.file-up">M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z M14 2v4a2 2 0 0 0 2 2h4 M12 12v6 M15 15l-3-3-3 3</StreamGeometry>
+  <StreamGeometry x:Key="Icon.file-spreadsheet">M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z M14 2v4a2 2 0 0 0 2 2h4 M8 13h2 M14 13h2 M8 17h2 M14 17h2</StreamGeometry>
   <StreamGeometry x:Key="Icon.folder">M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.folder-open">M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2</StreamGeometry>
   <StreamGeometry x:Key="Icon.corner-left-up">M14 9 9 4 4 9 M20 20h-7a4 4 0 0 1-4-4V4</StreamGeometry>

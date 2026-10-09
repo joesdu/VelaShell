@@ -2020,3 +2020,68 @@ Google 的设备码端点「还没批」回的是 **428 + `authorization_pending
   - 试过给作业加 `timeout-minutes` 兜底,撤了:真卡住时照样烧满时限,省不了额度。
 - **顺带逮到的真 bug**(080da3ba):跑得更挤之后,ubuntu 上 `sftp_server起不来时报出退出码与它的stderr` 撞上 30 秒的用例时限(§171 记过它在 macOS 上也红过一次)。根因是 `SftpRequestPipeline` 的竞态:收包循环一开跑就看到通道关了、调 `Fault`,而 `Fault` 只结算「已经有人在等」的 VERSION;握手晚一步调 `WaitForVersionAsync` 就新建一个再也不会完成的任务,等满 30 秒的握手时限 —— 用户看到「sftp-server 没有回应」,退出码与 stderr 都丢了。现在建任务时流水线已经收工就当场以原因结算;新用例先等收工、再等 VERSION,在旧代码上红。
 - **验证**:本机 `VelaShell.Plugin.Ai.Tests` 1436 条全过、5 分 47 秒(三组单独 163 / 105 / 54 秒),整个测试脚本 170 秒;SFTP 179 条全过。CI run 37931845240(f48954df,竞态修复之前):Windows 8 分 3 秒、macOS **8 分 18 秒**(原来 25 分钟以上)、ubuntu 6 分 32 秒 —— ubuntu 红的就是上面那条竞态,三组 UI 用例三个平台全过。
+
+## ✅ 180. 2026-10-09 连接的导入导出、多选批量操作与分组排序(#571)
+
+**一、问题**:#571 列了六件事 —— 整组打开、多选(批量删除 / 打开)、批量改通用配置(分组、认证、跳板)、批量新建、
+连接的导入导出(导出时让用户决定带不带敏感信息)、分组排序。提 issue 的用户手上两百多台设备,以前在 WindTerm 里是直接改配置文件加的;
+VelaShell 的连接存在 SonnetDB 里,既没有导入导出,资源管理器也只能单选(外加 #524 的 Ctrl 双选,恰好两条)。
+
+**二、做法**:
+
+* **连接文件**(规则全在 `Core/Import/` 的纯函数里,`Infrastructure/Import/SessionArchiveService` 只管从仓储取数据、把算好的结果写回去,
+  注册为 `ISessionArchiveService`):
+  * 两种格式。**VelaShell JSON**(`SessionArchive`)完整保真:直接序列化 `SessionProfile`,带上所在分组、被引用的共享凭据与隧道;
+    枚举写名字、中文不转义、缩进 —— 给人看、给人改。**CSV**(`SessionCsv`)给 Excel 批量编辑:固定 15 列,导出即模板,
+    带 `id` 列,导回时据此精确对上原来那条。
+  * 导出范围是选中的连接**加上它们的跳板主机**(逐级往上,`SessionArchiveBuilder.Select`):只导出堡垒机后面那批、不带堡垒机,到另一台电脑上全是直连。
+  * **敏感信息**默认不导;勾上必须设至少 8 个字符、两次一致的导出口令,机密整段用 `SyncCrypto`(PBKDF2-SHA256 20 万次 + AES-256-GCM)
+    加密进 `secrets`,其余照常明文。没有「明文导出密码」这个选项;CSV 永远不带。导入时不解锁也能导,只是不带密码。
+    新字段会自动进文件,所以 `SessionArchiveFieldTests` 用反射逐个属性检查归类(配置 / 机密 / 本机状态),新加一个没归类的直接红。
+  * CSV 读得宽容:分隔符(逗号 / 分号 / 制表符)按表头自动认;表头认别名与中日韩写法(`SessionCsvHeaderAliases`,单放一个文件,
+    `Code_HasNoHardcodedChineseText` 只放行这一个文件);编码依次试 BOM → 严格 UTF-8 → 本地 ANSI 代码页
+    (中文 Windows 上 Excel 默认存的是 GBK);`user@host:port` 也拆;以 `= + - @` 开头的单元格导出时补单引号防公式注入、导入时去掉。
+  * **导入规则**(`SessionImportPlanner`):先按 Id、再按「协议 + 主机 + 端口 + 用户名」判重复;重复时跳过(默认)/ 覆盖 / 两条都留。
+    覆盖时 JSON 没带机密就保留本机密码,CSV 只改文件里有的列(`password` 空着 = 不改)—— 「导出 CSV → Excel 改用户名 → 导回去」靠这一条。
+    文件 Id 不冲突就沿用(两台开着云同步的电脑之间导来导去仍是同一条);被跳过的跳板,文件里经它跳的改指本机那一台;
+    分组按 Id → 名称对上,都没有就新建并接在已有分组之后;共享凭据同 Id / 同名沿用本机的、不覆盖;跳板找不到改直连、成环断一环,妥协逐条报出来。
+    落盘顺序凭据 → 分组 → 连接 → 隧道。
+  * 三个入口对话框:`SessionExportView`(格式、敏感信息与口令)、`SessionFileImportView`(预览每一行是新建 / 重复 / 有问题,
+    「重复时」「放到」两个下拉,加密文件的口令框;ListBox 虚拟化,几百行不卡)。资源管理器「更多」菜单:导入连接文件、导出全部连接、
+    保存 CSV 导入模板、从其他工具导入(原有);分组菜单:导出此分组、导入到此分组(「放到」预选这一组);多选菜单:导出所选。
+    这些流程在 `Views/SessionTreeActions`,不再往 `MainWindow` 的代码后台里堆。
+* **多选**:#524 的 Ctrl 双选扩成通用多选 —— Ctrl 单击加减、不设上限(原先第三条会把最早那条顶掉),Shift 单击选区间、Ctrl+Shift 并入;
+  区间按看得见的行算。多选菜单:打开 N 个连接 / 在双栏 SFTP 中打开(恰好两条时才有,先选的在左)/ 移动到分组 / 批量修改 / 导出所选 / 删除 N 个连接(先确认)。
+  `DualSelection*` 改名 `MultiSelection*`,节点的 `DualSelectionOrder` 换成 `IsMultiMarked`;折叠分组时只摘掉被收进去的几条。
+* **整组 / 多选打开**:`MainWindowViewModel.OpenProfilesAsync`,按树上顺序发起、最多 6 条同时握手(恢复会话那处仍一次全发,那里通常只有几条);
+  超过 10 条先确认。
+* **批量修改**(`SessionBatchEdit` + `SessionBatchEditView`):用户名 / 端口 / 认证(共享凭据、密码、私钥、Agent)/ 跳板主机,勾了才改。
+  协议不支持的跳过并计数(FTP 与插件只认密码,规则抽成 `CredentialCompatibility`,`SharedCredentialService.IsCompatible` 改为委托它);
+  跳板只给 SSH / SFTP、会成环的整批跳过;点之前就显示会改几条、跳过几条。分组不放进来:多选的「移动到分组」就是改分组,还带着「分组空了就删」那条规矩。
+* **分组排序**:分组行可拖动(载荷前缀 `VGRP|`,上半截插前、下半截插后,组内会话行算这一组后面,其余排最后;2px accent 插入线 + 幽灵标签),
+  分组菜单加「上移 / 下移」,「更多」菜单加「分组按名称排序」(当前区域规则 + `CompareOptions.NumericOrdering`,「机房 2」在「机房 10」前面)。
+  落库时全部分组的 `SortOrder` 重编成 0、1、2…;顺手修了连接对话框新建分组按「当前个数」取号的问题(序号断开后会和已有分组撞上),改为最大值 + 1。
+  另加「全部折叠 / 全部展开」。
+* 图标新增 `arrow-up` / `arrow-down` / `arrow-down-a-z` / `chevrons-down-up` / `chevrons-up-down` / `file-down` / `file-up` / `file-spreadsheet`(lucide);
+  快捷键总表(`ShortcutCatalog`)新增「资源管理器」一组:Ctrl / Shift 单击多选、拖动连接换分组、拖动分组行排序 —— 列表本身是单选的,这些手势不写进来就没人知道。
+  文案 137 条,五份 resx 齐。
+* **独立评审后补的几处**(都有回归用例):
+  - 覆盖的目标上,同 Id 的行优先于按「主机 + 端口 + 用户名」撞上的行 —— 原先排在前面的冒牌行会抢走本机那条,真正那一行反被另存;
+  - CSV 往返:`auth` 列总是写出(引用共享凭据的也写);凭据 / 跳板名本机重名时,先看重复的那条本机连接现在引用的是哪一条,对得上就认它,不再一律断开;
+    主机一栏拆出来的 `user@` / `:port` 按行算作给了这两列,覆盖时也生效;
+  - 沿用本机共享凭据时,本机缺的密码 / 口令(无端到端口令的云同步拉下来的就是这样)用解锁后的文件补上,已有的不动;
+  - 覆盖会改掉主机、而本机那条存着密码时,预览里那一行提示「本机保存的密码将用于新主机」(被改过的文件也能借此把密码引到别处);
+  - 手写 JSON 里的 `null`(`"host": null`、`"groups": null`、`"version": "1"`)变成行错误或缺省值,不再抛出;
+  - 导入 / 批量修改的写库异常一律留在对话框里显示,不再只接 `IOException`(别的异常会逃出 `ReactiveCommand` 带走整个应用);
+    写库途中对话框关不掉,中途失败后无论重试还是取消,关掉时资源管理器都重读 —— 否则树里缓存的旧对象会在下一次置顶 / 移动分组时把旧值整条写回;
+  - 普通单击已经选中的那一行时也把 Shift 起点挪过去(列表不会再赋一次值,原先起点停在更早的地方)。
+
+**三、验证**:Core 新增 `SessionArchiveFieldTests` / `SessionArchiveJsonTests` / `SessionCsvTests` / `SessionImportPlannerTests` /
+`SessionArchiveBuilderTests` / `SessionBatchEditTests`(73 例);Infrastructure 新增 `SessionArchiveServiceTests`(真 SonnetDB,两台「电脑」各自的库与机器密钥:
+加密导出 → 另一台导入,分组、跳板、共享凭据、隧道、密码都到位,同一份文件再导一次一条不重复;CSV 改用户名后覆盖导回,密码与终端设置保留;模板直接导入);
+宿主新增 `SessionTreeMultiSelectionTests`(由双选测试改写)、`SessionTreeGroupOperationsTests`、`SessionExportViewModelTests`、
+`SessionFileImportViewModelTests`、`SessionBatchEditViewModelTests`,UI 测试 `SessionTreeMultiSelectionUiTests`(真按 Ctrl / Shift 点)、
+`SessionTreeGroupDragUiTests`、`SessionTreeMenusUiTests`(分组菜单与「更多」菜单的每一项都绑到命令上)、`SessionTransferDialogsUiTests`(动作按钮走共享主题、预览行渲染)。headless 截图核过三个对话框与多选菜单;
+第一次截图就拍出导入对话框每行出现两遍(窗口 `Opened` 与调用方各初始化一次),`InitializeAsync` 改为只比对一次并补了用例。
+全解决方案零警告零错误;rebase 到 main 后 Core 769 通过 / 23 跳过,Infrastructure 637 / 4,Presentation 84,宿主 1875 / 19。
+文档同步见 [velashell-docs#103](https://github.com/VelaShellLabs/velashell-docs/pull/103)(`会话导入.md` 第七节、`交互与界面规格.md` §3 / §12 / §6.2、`快捷键参考.md` 新增「资源管理器」一节,中英两边)。

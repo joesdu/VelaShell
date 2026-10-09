@@ -525,6 +525,12 @@ public partial class MainWindow : Window
 
                 // 删除分组会连带删掉组内全部连接,必须先确认(红色危险按钮)。
                 tree.ConfirmDeleteGroup = ConfirmDeleteGroupAsync;
+
+                // 整组 / 多选打开、批量修改、批量删除的确认、连接文件的导入导出(#571)。
+                if (Application.Current is App { Services: { } treeServices })
+                {
+                    new SessionTreeActions(this, vm, treeServices).Attach(tree);
+                }
             }
             await vm.InitializeAsync();
         }

@@ -19,6 +19,7 @@
 | `FtpSupportTests` | FTP/FTPS：导入器协议映射、远程文件服务的会话路由、FluentFTP 异常翻译、连接参数回落。 |
 | `Ftp/FtpFileServiceIntegrationTests` `Ftp/LoopbackFtpServer` | 对着进程内环回 FTP 服务器跑真实协议：登录（含匿名）、PASV/EPSV 数据连接、Unix LIST 解析、上传/下载往返、目录增删改、连接池并发。 |
 | `WinScpImportTests` `XshellImportTests` | 会话导入:密码解码、INI/注册表解析、协议映射。 |
+| `SessionArchiveServiceTests` | 连接文件导入导出(#571)走真实 SonnetDB:两台「电脑」各自的库与机器密钥之间加密导出再导入(分组、跳板、共享凭据、隧道、密码都到位)、同一份文件再导一次不重复、CSV 改列后覆盖导回只改那几列、模板直接导入、按扩展名 / 内容认格式。 |
 | `SshConfigImportTests` | `~/.ssh/config` 导入:OpenSSH 取值规则(先出现者胜 + 通配兜底 + 取反 + `Match` 跳过)、`Include` 就地展开与环终止、`IdentityFile` → 私钥认证、`ProxyJump` → 跳板引用(取最后一跳、反向声明、成环即断)。末条读本机真实 `~/.ssh/config`,没有该文件时 `Inconclusive`。 |
 
 ## 运行

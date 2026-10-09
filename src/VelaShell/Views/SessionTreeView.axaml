@@ -11,23 +11,71 @@
              x:DataType="vm:SessionTreeViewModel">
 
   <UserControl.Resources>
-    <!-- Ctrl 双选两条会话后,右键其中任一条弹的是这份菜单,而不是行上原本那份
-         (原菜单一字未动,见 SessionTreeView.axaml.cs 的 UseMenuFor)。
+    <!-- Ctrl / Shift 多选之后(#571,由 #524 的双选扩展而来),右键其中任一条弹的是这份菜单,
+         而不是行上原本那份(原菜单一字未动,见 SessionTreeView.axaml.cs 的 UseMenuFor)。
          DataContext 由代码后台设成树的视图模型:这份菜单是整棵树共用的一个实例。 -->
-    <ContextMenu x:Key="DualSelectionMenu" x:DataType="vm:SessionTreeViewModel">
-      <MenuItem Header="{loc:Localize Tree_OpenDualSftp}"
-                Command="{Binding OpenDualSftpCommand}"
+    <ContextMenu x:Key="MultiSelectionMenu" x:DataType="vm:SessionTreeViewModel">
+      <MenuItem Header="{Binding OpenSelectedText}"
+                Command="{Binding OpenSelectedCommand}"
                 Foreground="{DynamicResource VelaTextPrimary}"
                 FontWeight="Medium">
         <MenuItem.Icon>
-          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.arrow-right-left}"
+          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.plug}"
                          Foreground="{DynamicResource VelaAccent}" />
         </MenuItem.Icon>
       </MenuItem>
-      <!-- 双选里混进了插件协议(S3 …)时,上面那项是灰的;这一行说清楚为什么。 -->
+      <!-- 恰好两条时才有「在双栏 SFTP 中打开」(先选的在左栏,#524)。 -->
+      <MenuItem Header="{loc:Localize Tree_OpenDualSftp}"
+                Command="{Binding OpenDualSftpCommand}"
+                IsVisible="{Binding IsPairSelected}">
+        <MenuItem.Icon>
+          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.arrow-right-left}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </MenuItem.Icon>
+      </MenuItem>
+      <!-- 两条里混进了工作台类插件(Redis …)时,上面那项是灰的;这一行说清楚为什么。 -->
       <MenuItem Header="{loc:Localize Tree_OpenDualSftpUnsupported}"
                 IsEnabled="False"
-                IsVisible="{Binding !CanOpenDualSelection}" />
+                IsVisible="{Binding ShowDualSftpUnsupportedHint}" />
+      <Separator />
+      <MenuItem Header="{loc:Localize MoveToGroup}"
+                ItemsSource="{Binding GroupNodes}">
+        <MenuItem.Icon>
+          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-input}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </MenuItem.Icon>
+        <MenuItem.Styles>
+          <Style Selector="MenuItem > MenuItem" x:DataType="vm:SessionTreeNodeViewModel">
+            <Setter Property="Header" Value="{Binding Name}" />
+            <Setter Property="Command"
+                    Value="{Binding $parent[ContextMenu].((vm:SessionTreeViewModel)DataContext).MoveSelectionToGroupCommand}" />
+            <Setter Property="CommandParameter" Value="{Binding}" />
+          </Style>
+        </MenuItem.Styles>
+      </MenuItem>
+      <MenuItem Header="{loc:Localize Tree_BatchEdit}"
+                Command="{Binding BatchEditCommand}">
+        <MenuItem.Icon>
+          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.sliders-horizontal}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </MenuItem.Icon>
+      </MenuItem>
+      <MenuItem Header="{loc:Localize Tree_ExportSelected}"
+                Command="{Binding ExportSelectedCommand}">
+        <MenuItem.Icon>
+          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-down}"
+                         Foreground="{DynamicResource VelaTextTertiary}" />
+        </MenuItem.Icon>
+      </MenuItem>
+      <Separator />
+      <MenuItem Header="{Binding DeleteSelectedText}"
+                Command="{Binding DeleteSelectedCommand}"
+                Foreground="{DynamicResource VelaError}">
+        <MenuItem.Icon>
+          <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.trash-2}"
+                         Foreground="{DynamicResource VelaError}" />
+        </MenuItem.Icon>
+      </MenuItem>
     </ContextMenu>
   </UserControl.Resources>
 
@@ -114,8 +162,8 @@
       <Style Selector="Border.session.selected">
         <Setter Property="Background" Value="{DynamicResource VelaBgActive}" />
       </Style>
-      <!-- Ctrl 双选的两行与选中行同一种高亮:两行都是"被选中的",只是列表控件本身是单选。 -->
-      <Style Selector="Border.session.dualmarked">
+      <!-- 多选的几行与选中行同一种高亮:它们都是"被选中的",只是列表控件本身是单选。 -->
+      <Style Selector="Border.session.multimarked">
         <Setter Property="Background" Value="{DynamicResource VelaBgActive}" />
       </Style>
 
@@ -138,7 +186,7 @@
         <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
         <Setter Property="FontWeight" Value="Medium" />
       </Style>
-      <Style Selector="Border.session.dualmarked TextBlock.sessionName">
+      <Style Selector="Border.session.multimarked TextBlock.sessionName">
         <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
         <Setter Property="FontWeight" Value="Medium" />
       </Style>
@@ -181,8 +229,49 @@
                   PointerPressed="Group_PointerPressed">
             <Border.ContextMenu>
               <!-- 分组行的菜单:命令作用于 SelectedNode,右键先选中所指分组
-                   (Group_PointerPressed)。删除是破坏性操作,渲染为 error 色并二次确认。 -->
+                   (Group_PointerPressed)。打开全部是主操作(accent 图标);上移 / 下移与拖动分组行是同一件事,
+                   给不方便拖的人用;删除是破坏性操作,渲染为 error 色并二次确认。 -->
               <ContextMenu x:DataType="vm:SessionTreeNodeViewModel">
+                <MenuItem Header="{loc:Localize Tree_OpenGroup}"
+                          Command="{Binding $parent[ListBox].((vm:SessionTreeViewModel)DataContext).OpenGroupCommand}"
+                          Foreground="{DynamicResource VelaTextPrimary}"
+                          FontWeight="Medium">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.plug}"
+                                   Foreground="{DynamicResource VelaAccent}" />
+                  </MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="{loc:Localize Tree_MoveGroupUp}"
+                          Command="{Binding $parent[ListBox].((vm:SessionTreeViewModel)DataContext).MoveGroupUpCommand}">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.arrow-up}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="{loc:Localize Tree_MoveGroupDown}"
+                          Command="{Binding $parent[ListBox].((vm:SessionTreeViewModel)DataContext).MoveGroupDownCommand}">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.arrow-down}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="{loc:Localize Tree_ExportGroup}"
+                          Command="{Binding $parent[ListBox].((vm:SessionTreeViewModel)DataContext).ExportGroupCommand}">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-down}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="{loc:Localize Tree_ImportIntoGroup}"
+                          Command="{Binding $parent[ListBox].((vm:SessionTreeViewModel)DataContext).ImportIntoGroupCommand}">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.file-up}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
+                <Separator />
                 <MenuItem Header="{loc:Localize Tree_DeleteGroup}"
                           Command="{Binding $parent[ListBox].((vm:SessionTreeViewModel)DataContext).DeleteGroupCommand}"
                           IsVisible="{Binding IsGroup}"
@@ -240,7 +329,7 @@
           <Border IsVisible="{Binding !IsGroup}"
                   Classes="session"
                   Classes.selected="{Binding IsSelected}"
-                  Classes.dualmarked="{Binding IsDualMarked}"
+                  Classes.multimarked="{Binding IsMultiMarked}"
                   Classes.rootlevel="{Binding ShowsAtRootIndent}"
                   ToolTip.Tip="{Binding NotesTip}"
                   Height="28"
@@ -437,6 +526,12 @@
             BorderBrush="{DynamicResource VelaAccent}" />
 
     <Canvas x:Name="DragOverlay" IsHitTestVisible="False" ClipToBounds="True">
+      <!-- 拖动分组行(#571)时的插入线:分组之间的位置是确定的(不像会话按名称排),画一条线不骗人。 -->
+      <Border x:Name="GroupInsertLine"
+              IsVisible="False"
+              Height="2"
+              CornerRadius="1"
+              Background="{DynamicResource VelaAccent}" />
       <Border x:Name="DragGhost"
               IsVisible="False"
               Padding="8,3"

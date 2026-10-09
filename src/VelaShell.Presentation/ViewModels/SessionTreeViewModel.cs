@@ -101,6 +101,42 @@ public sealed class SessionTreeViewModel : ReactiveObject
             RaiseOpenDualSftp,
             this.WhenAnyValue(x => x.CanOpenDualSelection)
         );
+
+        // 多选(#571):Ctrl / Shift 选中多条后右键弹的那份菜单。
+        IObservable<bool> hasMultiSelection = this.WhenAnyValue(x => x.HasMultiSelection);
+        OpenSelectedCommand = ReactiveCommand.Create(RaiseOpenSelected, hasMultiSelection);
+        DeleteSelectedCommand = ReactiveCommand.CreateFromTask(DeleteMultiSelectionAsync, hasMultiSelection);
+        MoveSelectionToGroupCommand = ReactiveCommand.CreateFromTask<SessionTreeNodeViewModel>(MoveMultiSelectionToGroupAsync);
+        BatchEditCommand = ReactiveCommand.Create(RaiseBatchEdit, hasMultiSelection);
+        ExportSelectedCommand = ReactiveCommand.Create(RaiseExportSelected, hasMultiSelection);
+
+        // 分组行的菜单(#571):整组打开、上移下移、导出 / 导入到这一组。
+        IObservable<bool> hasSelectedGroup = this.WhenAnyValue(x => x.SelectedNode).Select(node => node is { IsGroup: true });
+        OpenGroupCommand = ReactiveCommand.Create(RaiseOpenGroup, hasSelectedGroup);
+        MoveGroupUpCommand = ReactiveCommand.CreateFromTask(
+            () => MoveSelectedGroupByAsync(-1),
+            this.WhenAnyValue(x => x.CanMoveSelectedGroupUp)
+        );
+        MoveGroupDownCommand = ReactiveCommand.CreateFromTask(
+            () => MoveSelectedGroupByAsync(1),
+            this.WhenAnyValue(x => x.CanMoveSelectedGroupDown)
+        );
+        ExportGroupCommand = ReactiveCommand.Create(RaiseExportGroup, hasSelectedGroup);
+        ImportIntoGroupCommand = ReactiveCommand.Create(
+            () => ImportFileRequested?.Invoke(SelectedNode is { IsGroup: true } group ? group.Id : null),
+            hasSelectedGroup
+        );
+
+        // 资源管理器「更多」菜单(#571)。
+        ExportAllCommand = ReactiveCommand.Create(
+            () => ExportRequested?.Invoke(new SessionExportRequest([.. OrderedSessionIds()], null)),
+            this.WhenAnyValue(x => x.HasNoSessions).Select(static none => !none)
+        );
+        ImportFileCommand = ReactiveCommand.Create(() => ImportFileRequested?.Invoke(null));
+        SaveCsvTemplateCommand = ReactiveCommand.Create(() => CsvTemplateRequested?.Invoke());
+        SortGroupsByNameCommand = ReactiveCommand.CreateFromTask(SortGroupsByNameAsync);
+        CollapseAllCommand = ReactiveCommand.Create(() => SetAllGroupsExpanded(false));
+        ExpandAllCommand = ReactiveCommand.Create(() => SetAllGroupsExpanded(true));
     }
 
     /// <summary>树的根级节点集合,包含各分组节点及直接挂在根级的未分组会话。</summary>
@@ -150,6 +186,8 @@ public sealed class SessionTreeViewModel : ReactiveObject
             Watch(node);
         }
         SyncRows();
+        // 分组多了、少了、挪了位置,选中分组能不能再上移 / 下移都可能变。
+        RaiseGroupMoveState();
     }
 
     /// <summary>盯住一个根级节点:它的展开状态、以及(分组的)子项增删都会改变行序。</summary>
@@ -229,10 +267,12 @@ public sealed class SessionTreeViewModel : ReactiveObject
             }
         }
         var keep = new HashSet<SessionTreeNodeViewModel>(desired);
-        // 双选里有一条被折叠收进去(或整棵树重建)了:看不见的那条不该还算"选中",双选就此结束。
-        if (_dualSelection.Any(node => !keep.Contains(node)))
+        // 多选里有几条被折叠收进去(或整棵树重建)了:看不见的不该还算"选中",从多选里摘掉;
+        // 剩不到两条就退回普通单选。选中项本身被收进去时,下面会把选中挪到它那一组,多选随之结束。
+        if (_multiSelection.Any(node => !keep.Contains(node)))
         {
-            ClearDualSelection();
+            List<SessionTreeNodeViewModel> visible = [.. _multiSelection.Where(keep.Contains)];
+            ApplyMultiSelection(visible.Count >= 2 ? visible : []);
         }
         SessionTreeNodeViewModel? selected = SelectedNode;
 
@@ -282,8 +322,8 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     /// <summary>当前选中的树节点;命令的可用性依据其是否为非分组会话节点判定。</summary>
     /// <remarks>
-    /// 选中挪到 Ctrl 双选之外的节点(普通单击、键盘上下、折叠分组把选中项收进去)就结束双选 ——
-    /// 否则那两行还亮着,右键却对着另一行弹菜单。
+    /// 选中挪到多选之外的节点(普通单击、键盘上下、折叠分组把选中项收进去)就结束多选 ——
+    /// 否则那几行还亮着,右键却对着另一行弹菜单。没有多选时,选中的会话同时是下一次 Shift 区间选择的起点。
     /// </remarks>
     public SessionTreeNodeViewModel? SelectedNode
     {
@@ -291,35 +331,55 @@ public sealed class SessionTreeViewModel : ReactiveObject
         set
         {
             this.RaiseAndSetIfChanged(ref field, value);
-            if (_dualSelection.Count > 0 && (value is null || !_dualSelection.Contains(value)))
+            if (_multiSelection.Count > 0 && (value is null || !_multiSelection.Contains(value)))
             {
-                ClearDualSelection();
+                ClearMultiSelection();
             }
+            if (_multiSelection.Count == 0 && value is { IsGroup: false })
+            {
+                _selectionAnchor = value;
+            }
+            RaiseGroupMoveState();
         }
     }
 
     /// <summary>
-    /// Ctrl 双选:恰好两条会话,按选中先后排列(先选的 = 左栏);没有双选时为空。
+    /// 多选(#571,由 #524 的 Ctrl 双选扩展而来):按选中先后排列(先选的在前,双栏 SFTP 里它在左栏);没有多选时为空。
     /// </summary>
     /// <remarks>
-    /// <b>不变式:要么 0 条,要么 2 条。</b>一条就是普通的单选,由 <see cref="SelectedNode" /> 表示,
+    /// <b>不变式:要么 0 条,要么至少 2 条。</b>一条就是普通的单选,由 <see cref="SelectedNode" /> 表示,
     /// 不在这里重复记一份 —— 两处各记一条迟早对不上。
     /// </remarks>
-    private readonly List<SessionTreeNodeViewModel> _dualSelection = [];
+    private readonly List<SessionTreeNodeViewModel> _multiSelection = [];
 
-    /// <summary>Ctrl 双选的两条会话(先选的在前);没有双选时为空。</summary>
-    public IReadOnlyList<SessionTreeNodeViewModel> DualSelection => _dualSelection;
+    /// <summary>Shift 区间选择的起点:最近一次普通单击 / Ctrl 加选的那一行。</summary>
+    private SessionTreeNodeViewModel? _selectionAnchor;
 
-    /// <summary>当前是否有一组 Ctrl 双选(右键弹的是双选专用菜单)。</summary>
-    public bool HasDualSelection => _dualSelection.Count == 2;
+    /// <summary>多选的会话(先选的在前);没有多选时为空。</summary>
+    public IReadOnlyList<SessionTreeNodeViewModel> MultiSelection => _multiSelection;
 
-    /// <summary>双选的两条是否都能在双栏 SFTP 中打开(SSH / SFTP / FTP / 插件的文件协议)。</summary>
+    /// <summary>当前是否有多选(右键弹的是多选专用菜单)。</summary>
+    public bool HasMultiSelection => _multiSelection.Count >= 2;
+
+    /// <summary>多选是不是恰好两条(只有这时才能「在双栏 SFTP 中打开」)。</summary>
+    public bool IsPairSelected => _multiSelection.Count == 2;
+
+    /// <summary>多选的两条是否都能在双栏 SFTP 中打开(SSH / SFTP / FTP / 插件的文件协议)。</summary>
     public bool CanOpenDualSelection =>
-        HasDualSelection
-        && _dualSelection.All(node =>
+        IsPairSelected
+        && _multiSelection.All(node =>
             node.CanOpenInDualSftp
             && (DualSftpFilter is not { } filter
                 || (_sessionCache.TryGetValue(node.Id, out SessionProfile? profile) && filter(profile))));
+
+    /// <summary>选了两条却进不了双栏(混进了工作台类插件之类)时,菜单里那一行灰色说明是否显示。</summary>
+    public bool ShowDualSftpUnsupportedHint => IsPairSelected && !CanOpenDualSelection;
+
+    /// <summary>多选菜单「打开 N 个连接」的文案。</summary>
+    public string OpenSelectedText => Strings.Format("Tree_OpenSelected", _multiSelection.Count);
+
+    /// <summary>多选菜单「删除 N 个连接」的文案。</summary>
+    public string DeleteSelectedText => Strings.Format("Tree_DeleteSelected", _multiSelection.Count);
 
     /// <summary>
     /// 宿主给的补充判断:这条配置能不能进双栏。树只认得连接类型,插件协议是文件协议还是工作台要问插件注册表
@@ -328,81 +388,235 @@ public sealed class SessionTreeViewModel : ReactiveObject
     public Func<SessionProfile, bool>? DualSftpFilter { get; set; }
 
     /// <summary>
-    /// Ctrl + 单击一条会话:把它加入或移出双选。
+    /// Ctrl + 单击一条会话:把它加入或移出多选。
     /// </summary>
     /// <remarks>
     /// <list type="bullet">
-    ///   <item>已有一条普通选中的会话时,Ctrl 点另一条 → 两条组成双选,先选的那条在左。</item>
-    ///   <item>已经选满两条再 Ctrl 点第三条 → 最早选的那条出局,其余依次顺延(新点的这条排在右)。</item>
+    ///   <item>已有一条普通选中的会话时,Ctrl 点另一条 → 两条组成多选,先选的那条在前。</item>
+    ///   <item>再 Ctrl 点别的 → 接着往里加,不设上限(#524 时只能两条、第三条会把最早那条顶掉;多选之后不再顶)。</item>
     ///   <item>Ctrl 点已在选择里的那条 → 把它移出;只剩一条就退回普通单选。</item>
     ///   <item>分组行不参与。</item>
     /// </list>
     /// 同一条配置不会出现两次:选择按节点记,而一条配置在树上只有一个节点。
     /// </remarks>
     /// <param name="node">被 Ctrl 单击的会话行。</param>
-    public void ToggleDualSelection(SessionTreeNodeViewModel node)
+    public void ToggleMultiSelection(SessionTreeNodeViewModel node)
     {
         ArgumentNullException.ThrowIfNull(node);
         if (node.IsGroup)
         {
             return;
         }
-        List<SessionTreeNodeViewModel> picked = _dualSelection.Count > 0
-            ? [.. _dualSelection]
-            : SelectedNode is { IsGroup: false } current ? [current] : [];
-        if (!picked.Remove(node))
+        List<SessionTreeNodeViewModel> picked = CurrentPicks();
+        bool added = !picked.Remove(node);
+        if (added)
         {
-            if (picked.Count == 2)
-            {
-                picked.RemoveAt(0);
-            }
             picked.Add(node);
         }
-        ApplyDualSelection(picked.Count == 2 ? picked : []);
-        // 选中项落在最后点的那条上(移出时落在剩下那条上),两边一起亮;全移空了就什么都不选。
+        ApplyMultiSelection(picked.Count >= 2 ? picked : []);
+        if (added)
+        {
+            _selectionAnchor = node;
+        }
+        // 选中项落在最后点的那条上(移出时落在剩下最后那条上),几行一起亮;全移空了就什么都不选。
         SelectedNode = picked.Contains(node) ? node : picked.LastOrDefault();
     }
 
-    /// <summary>结束 Ctrl 双选(普通单击、重建树时)。</summary>
-    public void ClearDualSelection()
+    /// <summary>
+    /// Shift + 单击一条会话:从起点(上一次普通单击或 Ctrl 加选的那一行)到这一行,把中间看得见的会话全部选上。
+    /// </summary>
+    /// <remarks>
+    /// 区间按<b>眼睛看到的行</b>算(<see cref="Rows" />):折叠着的分组里的会话不进来,分组行本身跳过。
+    /// 起点已经看不见了(被折起来、被删掉)就从这一行自己开始。
+    /// </remarks>
+    /// <param name="node">被 Shift 单击的会话行。</param>
+    /// <param name="additive">同时按着 Ctrl:把区间并进已有的多选,而不是替换它。</param>
+    public void ExtendSelectionTo(SessionTreeNodeViewModel node, bool additive)
     {
-        if (_dualSelection.Count > 0)
+        ArgumentNullException.ThrowIfNull(node);
+        int to = Rows.IndexOf(node);
+        if (node.IsGroup || to < 0)
         {
-            ApplyDualSelection([]);
+            return;
+        }
+        SessionTreeNodeViewModel anchor =
+            _selectionAnchor is { } remembered && Rows.Contains(remembered) ? remembered
+            : SelectedNode is { IsGroup: false } selected && Rows.Contains(selected) ? selected
+            : node;
+        int from = Rows.IndexOf(anchor);
+        int step = to >= from ? 1 : -1;
+        List<SessionTreeNodeViewModel> picked = additive ? CurrentPicks() : [];
+        for (int i = from; ; i += step)
+        {
+            if (!Rows[i].IsGroup && !picked.Contains(Rows[i]))
+            {
+                picked.Add(Rows[i]);
+            }
+            if (i == to)
+            {
+                break;
+            }
+        }
+        ApplyMultiSelection(picked.Count >= 2 ? picked : []);
+        SelectedNode = node;
+        _selectionAnchor = anchor;
+    }
+
+    /// <summary>
+    /// 普通单击一条会话:多选结束,这一行成为下一次 Shift 区间选择的起点。
+    /// </summary>
+    /// <remarks>
+    /// 起点不能只靠 <see cref="SelectedNode" /> 的 setter 去挪:点的正好是已经选中的那一行时,列表根本不会再赋一次值,
+    /// 起点就停在更早的地方 —— 先 Shift 选了 1–5、再单击 5、再 Shift 点 8,选出来的是 1–8 而不是 5–8。
+    /// </remarks>
+    /// <param name="node">被单击的行。</param>
+    public void StartSelectionAt(SessionTreeNodeViewModel node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ClearMultiSelection();
+        if (!node.IsGroup)
+        {
+            _selectionAnchor = node;
         }
     }
 
-    private void ApplyDualSelection(IReadOnlyList<SessionTreeNodeViewModel> picked)
+    /// <summary>结束多选(普通单击、重建树时)。</summary>
+    public void ClearMultiSelection()
     {
-        foreach (SessionTreeNodeViewModel old in _dualSelection)
+        if (_multiSelection.Count > 0)
         {
-            old.DualSelectionOrder = 0;
+            ApplyMultiSelection([]);
         }
-        _dualSelection.Clear();
-        _dualSelection.AddRange(picked);
-        for (int i = 0; i < _dualSelection.Count; i++)
+    }
+
+    /// <summary>当前选中的会话:有多选取多选,否则取选中的那一条(分组行不算)。</summary>
+    private List<SessionTreeNodeViewModel> CurrentPicks() =>
+        _multiSelection.Count > 0 ? [.. _multiSelection]
+        : SelectedNode is { IsGroup: false } current ? [current]
+        : [];
+
+    private void ApplyMultiSelection(IReadOnlyList<SessionTreeNodeViewModel> picked)
+    {
+        foreach (SessionTreeNodeViewModel old in _multiSelection)
         {
-            _dualSelection[i].DualSelectionOrder = i + 1;
+            old.IsMultiMarked = false;
         }
-        this.RaisePropertyChanged(nameof(DualSelection));
-        this.RaisePropertyChanged(nameof(HasDualSelection));
+        _multiSelection.Clear();
+        _multiSelection.AddRange(picked);
+        foreach (SessionTreeNodeViewModel node in _multiSelection)
+        {
+            node.IsMultiMarked = true;
+        }
+        this.RaisePropertyChanged(nameof(MultiSelection));
+        this.RaisePropertyChanged(nameof(HasMultiSelection));
+        this.RaisePropertyChanged(nameof(IsPairSelected));
         this.RaisePropertyChanged(nameof(CanOpenDualSelection));
+        this.RaisePropertyChanged(nameof(ShowDualSftpUnsupportedHint));
+        this.RaisePropertyChanged(nameof(OpenSelectedText));
+        this.RaisePropertyChanged(nameof(DeleteSelectedText));
     }
 
-    /// <summary>把双选的两条交给宿主打开成一个双栏远程文档(先选的在左)。</summary>
+    /// <summary>多选里的连接,按树上从上到下的顺序(打开时标签就按这个顺序排出来)。</summary>
+    private List<SessionProfile> MultiSelectionProfiles() =>
+    [
+        .. _multiSelection
+            .OrderBy(node => Rows.IndexOf(node))
+            .Select(node => _sessionCache.GetValueOrDefault(node.Id))
+            .OfType<SessionProfile>()
+    ];
+
+    /// <summary>把多选的前两条交给宿主打开成一个双栏远程文档(先选的在左)。</summary>
     private void RaiseOpenDualSftp()
     {
         if (!CanOpenDualSelection
-            || !_sessionCache.TryGetValue(_dualSelection[0].Id, out SessionProfile? left)
-            || !_sessionCache.TryGetValue(_dualSelection[1].Id, out SessionProfile? right))
+            || !_sessionCache.TryGetValue(_multiSelection[0].Id, out SessionProfile? left)
+            || !_sessionCache.TryGetValue(_multiSelection[1].Id, out SessionProfile? right))
         {
             return;
         }
         OpenDualSftpRequested?.Invoke(left, right);
     }
 
-    /// <summary>「在双栏 SFTP 中打开」:Ctrl 双选两条会话后的专用右键菜单项。</summary>
+    /// <summary>「在双栏 SFTP 中打开」:多选恰好两条时多选菜单里的一项。</summary>
     public ReactiveCommand<RxVoid, RxVoid> OpenDualSftpCommand { get; }
+
+    /// <summary>多选菜单「打开 N 个连接」,触发 <see cref="OpenManyRequested" />。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> OpenSelectedCommand { get; }
+
+    /// <summary>多选菜单「删除 N 个连接」(先经 <see cref="ConfirmDeleteSessions" /> 确认)。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> DeleteSelectedCommand { get; }
+
+    /// <summary>多选菜单「移动到分组」:参数为子菜单里的分组节点(<see cref="Guid.Empty" /> 为未分组)。</summary>
+    public ReactiveCommand<SessionTreeNodeViewModel, RxVoid> MoveSelectionToGroupCommand { get; }
+
+    /// <summary>多选菜单「批量修改」,触发 <see cref="BatchEditRequested" />。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> BatchEditCommand { get; }
+
+    /// <summary>多选菜单「导出所选」,触发 <see cref="ExportRequested" />。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> ExportSelectedCommand { get; }
+
+    /// <summary>分组菜单「打开全部连接」,触发 <see cref="OpenManyRequested" />。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> OpenGroupCommand { get; }
+
+    /// <summary>分组菜单「上移」。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> MoveGroupUpCommand { get; }
+
+    /// <summary>分组菜单「下移」。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> MoveGroupDownCommand { get; }
+
+    /// <summary>分组菜单「导出此分组」,触发 <see cref="ExportRequested" />。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> ExportGroupCommand { get; }
+
+    /// <summary>分组菜单「导入到此分组」,触发 <see cref="ImportFileRequested" />(参数为该分组)。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> ImportIntoGroupCommand { get; }
+
+    /// <summary>「更多」菜单「导出全部连接」,触发 <see cref="ExportRequested" />。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> ExportAllCommand { get; }
+
+    /// <summary>「更多」菜单「导入连接文件」,触发 <see cref="ImportFileRequested" />(不指定分组)。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> ImportFileCommand { get; }
+
+    /// <summary>「更多」菜单「保存 CSV 模板」,触发 <see cref="CsvTemplateRequested" />。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> SaveCsvTemplateCommand { get; }
+
+    /// <summary>「更多」菜单「分组按名称排序」。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> SortGroupsByNameCommand { get; }
+
+    /// <summary>「更多」菜单「全部折叠」。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> CollapseAllCommand { get; }
+
+    /// <summary>「更多」菜单「全部展开」。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> ExpandAllCommand { get; }
+
+    /// <summary>选中的分组能不能再往上移。</summary>
+    public bool CanMoveSelectedGroupUp => SelectedNode is { IsGroup: true } group && GroupIndexOf(group) > 0;
+
+    /// <summary>选中的分组能不能再往下移。</summary>
+    public bool CanMoveSelectedGroupDown =>
+        SelectedNode is { IsGroup: true } group && GroupIndexOf(group) is var index && index >= 0 && index < GroupCount() - 1;
+
+    /// <summary>
+    /// 一次打开多条连接(整组打开、多选打开)。由宿主决定要不要先确认、按什么并发度连。
+    /// </summary>
+    public event Action<IReadOnlyList<SessionProfile>>? OpenManyRequested;
+
+    /// <summary>多选菜单「批量修改」:由宿主打开批量修改对话框。</summary>
+    public event Action<IReadOnlyList<SessionProfile>>? BatchEditRequested;
+
+    /// <summary>导出(全部 / 一个分组 / 多选):由宿主打开导出对话框。</summary>
+    public event Action<SessionExportRequest>? ExportRequested;
+
+    /// <summary>导入连接文件:参数为目标分组(分组菜单「导入到此分组」),null = 按文件里的分组。</summary>
+    public event Action<Guid?>? ImportFileRequested;
+
+    /// <summary>「保存 CSV 模板」:由宿主弹出保存对话框。</summary>
+    public event Action? CsvTemplateRequested;
+
+    /// <summary>
+    /// 批量删除前的确认回调,由视图提供弹窗;参数是已本地化好的提示语,返回 true 才继续删。
+    /// 与 <see cref="ConfirmDeleteGroup" /> 同形:未挂回调(无头宿主/单测)时直接删。
+    /// </summary>
+    public Func<string, Task<bool>>? ConfirmDeleteSessions { get; set; }
 
     /// <summary>右键「在双栏 SFTP 中打开」:由宿主连接两条会话并建出双栏远程文档(参数依次为左栏、右栏)。</summary>
     public event Action<SessionProfile, SessionProfile>? OpenDualSftpRequested;
@@ -760,6 +974,8 @@ public sealed class SessionTreeViewModel : ReactiveObject
         {
             ungrouped.Name = Strings.Get("Svc_Ungrouped");
         }
+        this.RaisePropertyChanged(nameof(OpenSelectedText));
+        this.RaisePropertyChanged(nameof(DeleteSelectedText));
     }
 
     /// <summary>在树根与各分组下查找会话节点;<paramref name="parentGroup" /> 为 null 表示根级。</summary>
@@ -966,6 +1182,325 @@ public sealed class SessionTreeViewModel : ReactiveObject
         GroupNodes.Remove(group);
         SelectedNode = null;
         RefreshHasNoSessions();
+    }
+
+    // ———— 多选的批量操作(#571) ————
+
+    private void RaiseOpenSelected()
+    {
+        List<SessionProfile> profiles = MultiSelectionProfiles();
+        if (profiles.Count > 0)
+        {
+            OpenManyRequested?.Invoke(profiles);
+        }
+    }
+
+    private void RaiseBatchEdit()
+    {
+        List<SessionProfile> profiles = MultiSelectionProfiles();
+        if (profiles.Count > 0)
+        {
+            BatchEditRequested?.Invoke(profiles);
+        }
+    }
+
+    private void RaiseExportSelected()
+    {
+        List<SessionProfile> profiles = MultiSelectionProfiles();
+        if (profiles.Count > 0)
+        {
+            ExportRequested?.Invoke(new SessionExportRequest([.. profiles.Select(static p => p.Id)], null));
+        }
+    }
+
+    /// <summary>
+    /// 删除多选的全部连接(确认过之后)。与单条删除同一口径:分组空了也留着,跳板引用不跟着改。
+    /// </summary>
+    private async Task DeleteMultiSelectionAsync()
+    {
+        List<SessionTreeNodeViewModel> nodes = [.. _multiSelection];
+        if (nodes.Count == 0)
+        {
+            return;
+        }
+        if (ConfirmDeleteSessions is not null
+            && !await ConfirmDeleteSessions(Strings.Format("Tree_DeleteSelectedConfirm", nodes.Count)))
+        {
+            return;
+        }
+        ClearMultiSelection();
+        foreach (SessionTreeNodeViewModel node in nodes)
+        {
+            await _repository.DeleteSessionAsync(node.Id);
+            _sessionCache.Remove(node.Id);
+            _statusCache.Remove(node.Id);
+            _syncChannelCache.Remove(node.Id);
+            if (FindSessionNode(node.Id, out SessionTreeNodeViewModel? parentGroup) is { } found)
+            {
+                if (parentGroup is not null)
+                {
+                    parentGroup.Children.Remove(found);
+                }
+                else
+                {
+                    Nodes.Remove(found);
+                }
+            }
+        }
+        SelectedNode = null;
+        RefreshHasNoSessions();
+    }
+
+    /// <summary>
+    /// 把多选的连接一条条移进目标分组。逐条走 <see cref="MoveSessionToGroupAsync" />:
+    /// 「源分组空了连同分组一起删」那条规矩与拖放、单条移动完全一致。
+    /// </summary>
+    private async Task MoveMultiSelectionToGroupAsync(SessionTreeNodeViewModel? targetGroup)
+    {
+        if (targetGroup is not { IsGroup: true })
+        {
+            return;
+        }
+        foreach (Guid id in _multiSelection.Select(static node => node.Id).ToList())
+        {
+            await MoveSessionToGroupAsync(id, targetGroup.Id);
+        }
+    }
+
+    // ———— 分组的操作(#571) ————
+
+    private void RaiseOpenGroup()
+    {
+        if (SelectedNode is not { IsGroup: true } group)
+        {
+            return;
+        }
+        List<SessionProfile> profiles =
+        [
+            .. group.Children.Select(child => _sessionCache.GetValueOrDefault(child.Id)).OfType<SessionProfile>()
+        ];
+        if (profiles.Count > 0)
+        {
+            OpenManyRequested?.Invoke(profiles);
+        }
+    }
+
+    private void RaiseExportGroup()
+    {
+        if (SelectedNode is { IsGroup: true } group)
+        {
+            ExportRequested?.Invoke(new SessionExportRequest([.. group.Children.Select(static child => child.Id)], group.Name));
+        }
+    }
+
+    /// <summary>树上全部连接的 Id,按树上从上到下的顺序。</summary>
+    private IEnumerable<Guid> OrderedSessionIds() =>
+        Nodes.SelectMany(node => node.IsGroup ? node.Children : [node]).Select(static node => node.Id);
+
+    private int GroupIndexOf(SessionTreeNodeViewModel group)
+    {
+        int index = 0;
+        foreach (SessionTreeNodeViewModel node in Nodes)
+        {
+            if (!node.IsGroup)
+            {
+                continue;
+            }
+            if (ReferenceEquals(node, group))
+            {
+                return index;
+            }
+            index++;
+        }
+        return -1;
+    }
+
+    private int GroupCount() => Nodes.Count(static node => node.IsGroup);
+
+    private void RaiseGroupMoveState()
+    {
+        this.RaisePropertyChanged(nameof(CanMoveSelectedGroupUp));
+        this.RaisePropertyChanged(nameof(CanMoveSelectedGroupDown));
+    }
+
+    private Task MoveSelectedGroupByAsync(int delta) =>
+        SelectedNode is { IsGroup: true } group
+            ? MoveGroupAsync(group.Id, GroupIndexOf(group) + delta)
+            : Task.CompletedTask;
+
+    /// <summary>
+    /// 把一个分组挪到第 <paramref name="newIndex" /> 位(只在分组之间数,从 0 起;越界按两端算),并把新的顺序落库。
+    /// </summary>
+    /// <remarks>
+    /// 树上的改动排在第一个 await 之前,界面立刻跟着变;落库把<b>全部</b>分组的排序序号重新编成 0、1、2…
+    /// —— 原先的序号可能是断开甚至重复的(删过分组、新建分组按「当时的个数」取号),只挪一个不重编,
+    /// 下次加载时的先后就说不准了。
+    /// </remarks>
+    /// <param name="groupId">要挪的分组。</param>
+    /// <param name="newIndex">挪到第几位。</param>
+    public async Task MoveGroupAsync(Guid groupId, int newIndex)
+    {
+        List<SessionTreeNodeViewModel> groups = [.. Nodes.Where(static node => node.IsGroup)];
+        int from = groups.FindIndex(node => node.Id == groupId);
+        if (from < 0)
+        {
+            return;
+        }
+        newIndex = Math.Clamp(newIndex, 0, groups.Count - 1);
+        if (newIndex == from)
+        {
+            return;
+        }
+        SessionTreeNodeViewModel moving = groups[from];
+        groups.RemoveAt(from);
+        groups.Insert(newIndex, moving);
+        await ApplyGroupOrderAsync(groups);
+    }
+
+    /// <summary>
+    /// 拖动分组时的落点:松手后这个分组排在第几个「空位」上(0 = 最前,分组数 = 最后)。规则只看鼠标下面是哪一行:
+    /// 分组行的上半截 = 插在它前面,下半截 = 插在它后面;组内的会话行 = 插在这一组后面;
+    /// 根级会话、置顶的会话与空白处 = 排到最后。
+    /// </summary>
+    /// <remarks>
+    /// 放在视图模型里而不是视图里,是为了让落点规则可单测 —— 视图只负责找出鼠标下的那一行、算出在不在上半截。
+    /// </remarks>
+    /// <param name="hovered">鼠标下的那一行;空白处传 null。</param>
+    /// <param name="upperHalf">鼠标在那一行的上半截。</param>
+    /// <returns>空位序号。</returns>
+    public int ResolveGroupDropSlot(SessionTreeNodeViewModel? hovered, bool upperHalf)
+    {
+        List<SessionTreeNodeViewModel> groups = [.. Nodes.Where(static node => node.IsGroup)];
+        if (hovered is { IsGroup: true })
+        {
+            int index = groups.IndexOf(hovered);
+            return index < 0 ? groups.Count : upperHalf ? index : index + 1;
+        }
+        if (hovered is { IsPinned: false } session
+            && groups.FindIndex(group => group.Children.Contains(session)) is >= 0 and var owner)
+        {
+            return owner + 1;
+        }
+        return groups.Count;
+    }
+
+    /// <summary>空位换算成 <see cref="MoveGroupAsync" /> 要的目标位置;落回原处时为 null(松手等于什么都没做)。</summary>
+    /// <param name="groupId">被拖的分组。</param>
+    /// <param name="slot">由 <see cref="ResolveGroupDropSlot" /> 得到的空位。</param>
+    /// <returns>目标位置,或 null。</returns>
+    public int? GroupDropIndex(Guid groupId, int slot)
+    {
+        int from = Nodes.Where(static node => node.IsGroup).ToList().FindIndex(node => node.Id == groupId);
+        if (from < 0)
+        {
+            return null;
+        }
+        // 自己原来占的那个位置拿掉之后,后面的空位都往前挪一格。
+        int index = slot > from ? slot - 1 : slot;
+        return index == from ? null : index;
+    }
+
+    /// <summary>拖动分组时幽灵标签的落点说明:「移到「X」之前」/「移到最后」。</summary>
+    /// <param name="slot">空位。</param>
+    /// <returns>说明文案。</returns>
+    public string DescribeGroupDropSlot(int slot)
+    {
+        List<SessionTreeNodeViewModel> groups = [.. Nodes.Where(static node => node.IsGroup)];
+        return slot < groups.Count
+            ? Strings.Format("Tree_DragGroupBefore", groups[slot].Name)
+            : Strings.Get("Tree_DragGroupToEnd");
+    }
+
+    /// <summary>分组按名称排序(自然序:「机房 2」排在「机房 10」前面;按当前区域的排序规则,中文按拼音)。</summary>
+    public Task SortGroupsByNameAsync()
+    {
+        IComparer<string> comparer = NaturalNameComparer();
+        List<SessionTreeNodeViewModel> groups = [.. Nodes.Where(static node => node.IsGroup).OrderBy(static node => node.Name, comparer)];
+        return ApplyGroupOrderAsync(groups);
+    }
+
+    /// <summary>
+    /// 「按名称排序」用的比较器:当前区域的排序规则 + 数字按数值比。
+    /// </summary>
+    /// <remarks>
+    /// 资源管理器里连接本身仍按序数排(老规矩,不在这次改动里动);分组排序是用户主动点的一下,
+    /// 要的就是「看着顺」—— 序数比较会把「机房 10」排在「机房 2」前面,中文则按码位排,看着毫无章法。
+    /// 个别平台(不变全球化模式)不支持数值排序,退回只按区域规则比。
+    /// </remarks>
+    private static StringComparer NaturalNameComparer()
+    {
+        try
+        {
+            StringComparer natural = StringComparer.Create(System.Globalization.CultureInfo.CurrentCulture,
+                System.Globalization.CompareOptions.IgnoreCase | System.Globalization.CompareOptions.NumericOrdering);
+            // 有的平台创建时不报、比较时才报:先比一次,别让排序做到一半抛出来。
+            _ = natural.Compare("2", "10");
+            return natural;
+        }
+        catch (Exception ex) when (ex is ArgumentException or PlatformNotSupportedException)
+        {
+            return StringComparer.Create(System.Globalization.CultureInfo.CurrentCulture, ignoreCase: true);
+        }
+    }
+
+    private async Task ApplyGroupOrderAsync(List<SessionTreeNodeViewModel> ordered)
+    {
+        // 分组恒排在 Nodes 的最前面(未分组的会话跟在后面),逐个挪到位即可。
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            int at = Nodes.IndexOf(ordered[i]);
+            if (at >= 0 && at != i)
+            {
+                Nodes.Move(at, i);
+            }
+            int menuAt = GroupNodes.IndexOf(ordered[i]);
+            if (menuAt >= 0 && menuAt != i)
+            {
+                GroupNodes.Move(menuAt, i);
+            }
+            // 文件夹图标的轮换配色跟着位置走,与重新加载后的样子一致。
+            ordered[i].GroupColorIndex = i % 3;
+        }
+        RaiseGroupMoveState();
+
+        List<ServerGroup> stored = await _repository.GetAllGroupsAsync();
+        var byId = new Dictionary<Guid, ServerGroup>();
+        foreach (ServerGroup group in stored)
+        {
+            _ = byId.TryAdd(group.Id, group);
+        }
+        int next = 0;
+        foreach (SessionTreeNodeViewModel node in ordered)
+        {
+            if (byId.Remove(node.Id, out ServerGroup? group))
+            {
+                await SaveSortOrderAsync(group, next);
+            }
+            next++;
+        }
+        // 库里有、树上却没有的分组(理论上不该有)排到最后,免得序号和树上的撞车。
+        foreach (ServerGroup group in byId.Values.OrderBy(static g => g.SortOrder))
+        {
+            await SaveSortOrderAsync(group, next++);
+        }
+    }
+
+    private async Task SaveSortOrderAsync(ServerGroup group, int sortOrder)
+    {
+        if (group.SortOrder == sortOrder)
+        {
+            return;
+        }
+        group.SortOrder = sortOrder;
+        await _repository.SaveGroupAsync(group);
+    }
+
+    private void SetAllGroupsExpanded(bool expanded)
+    {
+        foreach (SessionTreeNodeViewModel node in Nodes.Where(static node => node.IsGroup).ToList())
+        {
+            node.IsExpanded = expanded;
+        }
     }
 
     private async Task DeleteSelectedSessionAsync()

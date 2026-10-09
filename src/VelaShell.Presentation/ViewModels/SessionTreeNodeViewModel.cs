@@ -42,25 +42,14 @@ public sealed class SessionTreeNodeViewModel(
         !IsGroup && ConnectionType is ConnectionType.SSH or ConnectionType.SFTP or ConnectionType.FTP or ConnectionType.Plugin;
 
     /// <summary>
-    /// 在资源管理器 Ctrl 双选里的次序:0 = 不在双选里,1 = 先选的(左栏),2 = 后选的(右栏)。
-    /// 由 <see cref="SessionTreeViewModel" /> 维护。
+    /// 是否处在资源管理器的多选里(Ctrl / Shift 选中的那几行,行按选中态高亮)。
+    /// 由 <see cref="SessionTreeViewModel" /> 维护;先后次序记在它的 <see cref="SessionTreeViewModel.MultiSelection" /> 里。
     /// </summary>
-    public int DualSelectionOrder
+    public bool IsMultiMarked
     {
         get;
-        set
-        {
-            if (field == value)
-            {
-                return;
-            }
-            this.RaiseAndSetIfChanged(ref field, value);
-            this.RaisePropertyChanged(nameof(IsDualMarked));
-        }
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
-
-    /// <summary>是否处在 Ctrl 双选里(行按选中态高亮)。</summary>
-    public bool IsDualMarked => DualSelectionOrder > 0;
 
     /// <summary>节点显示名称,可在重命名时更新并触发通知。</summary>
     public string Name

@@ -1020,6 +1020,31 @@ public sealed class ConnectionProfileViewModelTests
     }
 
     [TestMethod]
+    public async Task SaveCommand_NewGroup_GoesAfterTheHighestSortOrder_NotTheGroupCount()
+    {
+        // 分组删过、拖动重排过(#571)之后序号不连续:按「当前个数」取号会和已有分组撞上。
+        ISessionRepository? repository = Substitute.For<ISessionRepository>();
+        repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>
+        {
+            new() { Name = "A", SortOrder = 0 },
+            new() { Name = "B", SortOrder = 7 }
+        }));
+        repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
+        var vm = new ConnectionProfileViewModel(sessionRepository: repository)
+        {
+            Host = "h",
+            Port = 22,
+            Username = "root"
+        };
+        await vm.LoadGroupsAsync();
+        vm.GroupText = "C";
+
+        await vm.SaveCommand.Execute().FirstAsync();
+
+        await repository.Received(1).SaveGroupAsync(Arg.Is<ServerGroup>(g => g.Name == "C" && g.SortOrder == 8));
+    }
+
+    [TestMethod]
     public async Task SaveCommand_ReusesExistingGroup_WhenGroupTextMatches()
     {
         var existing = new ServerGroup { Name = "生产环境" };

@@ -93,6 +93,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<ISessionImportService>(sp => sp.GetRequiredService<XshellImportService>());
         services.AddSingleton<ISessionImportService>(sp => sp.GetRequiredService<WinScpImportService>());
         services.AddSingleton<ISessionImportService>(sp => sp.GetRequiredService<SshConfigImportService>());
+        // 连接文件的导入导出(#571):VelaShell JSON 与 CSV。隧道随连接一起走,所以要通用文档存储。
+        services.AddSingleton<ISessionArchiveService>(sp =>
+            new SessionArchiveService(sp.GetRequiredService<ISessionRepository>(),
+                sp.GetService<ISharedCredentialRepository>(), sp.GetService<IAppDataStore>()));
         services.AddSingleton<IHostKeyService>(sp =>
         {
             VelaShellStoragePaths paths = sp.GetRequiredService<VelaShellStoragePaths>();

@@ -3538,6 +3538,46 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 || string.IsNullOrWhiteSpace(profile.PrivateKeyPath))
         );
 
+    /// <summary>一次打开多条连接时,同时在握手的最多几条(#571)。</summary>
+    /// <remarks>
+    /// 恢复会话那一处是一次全发(#118),那里通常只有几条;整组打开面对的可能是几十上百台设备,
+    /// 全发就是几十个密钥交换同时抢 CPU、几十个终端同时建,界面会卡上好一阵。限个并发,
+    /// 标签照样按顺序一个个冒出来,慢的那台也不会拖住其余的。
+    /// </remarks>
+    public const int OpenManyConcurrency = 6;
+
+    /// <summary>
+    /// 一次打开多条连接(资源管理器的整组打开 / 多选打开,#571):按列表顺序发起,最多
+    /// <see cref="OpenManyConcurrency" /> 条同时握手。单条失败只在它自己的标签页里提示,不影响其余。
+    /// </summary>
+    /// <param name="profiles">要打开的连接。</param>
+    public async Task OpenProfilesAsync(IReadOnlyList<SessionProfile> profiles)
+    {
+        ArgumentNullException.ThrowIfNull(profiles);
+        using var gate = new SemaphoreSlim(OpenManyConcurrency);
+        await Task.WhenAll(
+            profiles
+                .Select(async profile =>
+                {
+                    await gate.WaitAsync().ConfigureAwait(true);
+                    try
+                    {
+                        await TryConnectProfileAsync(profile).ConfigureAwait(true);
+                    }
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
+                    {
+                        // 连接失败已在标签页内以覆盖层提示(设计 yxjmg);这里只保证一条的失败不掀掉其余。
+                        System.Diagnostics.Trace.WriteLine($"[VelaShell] Open {profile.Name} failed: {ex.Message}");
+                    }
+                    finally
+                    {
+                        gate.Release();
+                    }
+                })
+                .ToList()
+        ).ConfigureAwait(true);
+    }
+
     /// <summary>
     /// 执行连接且绝不让异常逃逸到调用方。认证失败、主机不可达等被捕获进
     /// <see cref="LastConnectionError" /> 并反映在状态栏中,而非让应用崩溃。

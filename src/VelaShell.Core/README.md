@@ -21,7 +21,7 @@
 | `Ftp/` | FTP/FTPS 会话契约：`IFtpSessionService`、`FtpConnectionInfo`、`VelaFtpException`。与 SSH 并列为一等协议，共用上面那套远程文件抽象。 |
 | `Processes/` | 远端进程管理（任务管理器）契约：`IRemoteProcessService`、`RemoteProcessInfo`、`RemoteProcessProbe`（实现方持有相邻两次采样，快照给出**瞬时** CPU 占用而非生命周期平均值）。 |
 | `Diagnostics/` | 路由追踪：`TraceRoute`（逐跳模型与 `HopVerdict` 判定 —— 着色与告警以判定为准，而不是直接看丢包率）、`IIpGeolocationService`（IP 归属地推断契约）。 |
-| `Import/` | 从其他工具导入会话的契约与结果模型：`ISessionImportService`、`ImportedSession`、`SessionImportScan`、`SessionImportOutcome`（WinSCP / Xshell 的具体解密与解析在 Infrastructure）。 |
+| `Import/` | 从其他工具导入会话的契约与结果模型：`ISessionImportService`、`ImportedSession`、`SessionImportScan`、`SessionImportOutcome`（WinSCP / Xshell 的具体解密与解析在 Infrastructure）。连接文件导入导出（#571）的规则也在这里，全是纯函数：`SessionArchive`（JSON 文件模型）、`SessionArchiveBuilder`（导出范围：选中的连接 + 它们的跳板）、`SessionArchiveJson`（JSON 读写、机密剥离与口令加解密）、`SessionCsv` / `SessionCsvHeaderAliases`（CSV 读写与表头别名）、`SessionFileText`（编码）、`SessionImportPlanner`（判重复、算写入集），服务契约 `ISessionArchiveService`。 |
 | `Tunnels/` | 端口转发隧道契约 `ITunnelService`。 |
 | `Sync/` | 云同步契约与载荷：`IGistSyncService`、`SyncModels`、`SyncCrypto`（PBKDF2 + AES-256-GCM 端到端加密）。 |
 | `Services/` | 跨层服务契约与逻辑：`IThemeService`/`ThemeService`、`ISessionMetricsService` 与 `SessionMetrics`(`.Extras`/`Records`)（CPU/内存/磁盘/网络指标的解析与换算）、`SettingsPreviewService`。 |

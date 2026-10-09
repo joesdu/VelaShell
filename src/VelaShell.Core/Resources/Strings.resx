@@ -6364,4 +6364,415 @@ Send anyway?</value>
   <data name="SetSnippets_MultilineHint" xml:space="preserve">
     <value>// Line breaks are allowed: a multiline command lands on the command line as a whole instead of running line by line; if the remote side does not support bracketed paste, you will be asked first</value>
   </data>
+  <data name="Sidebar_More" xml:space="preserve">
+    <value>More</value>
+  </data>
+  <data name="Tree_ImportFile" xml:space="preserve">
+    <value>Import connections from file…</value>
+  </data>
+  <data name="Tree_ExportAll" xml:space="preserve">
+    <value>Export all connections…</value>
+  </data>
+  <data name="Tree_SaveCsvTemplate" xml:space="preserve">
+    <value>Save CSV import template…</value>
+  </data>
+  <data name="Tree_SortGroupsByName" xml:space="preserve">
+    <value>Sort groups by name</value>
+  </data>
+  <data name="Tree_CollapseAll" xml:space="preserve">
+    <value>Collapse all groups</value>
+  </data>
+  <data name="Tree_ExpandAll" xml:space="preserve">
+    <value>Expand all groups</value>
+  </data>
+  <data name="Tree_OpenGroup" xml:space="preserve">
+    <value>Open all connections</value>
+  </data>
+  <data name="Tree_MoveGroupUp" xml:space="preserve">
+    <value>Move up</value>
+  </data>
+  <data name="Tree_MoveGroupDown" xml:space="preserve">
+    <value>Move down</value>
+  </data>
+  <data name="Tree_ExportGroup" xml:space="preserve">
+    <value>Export group…</value>
+  </data>
+  <data name="Tree_ImportIntoGroup" xml:space="preserve">
+    <value>Import into this group…</value>
+  </data>
+  <data name="Tree_OpenSelected" xml:space="preserve">
+    <value>Open {0} connections</value>
+  </data>
+  <data name="Tree_DeleteSelected" xml:space="preserve">
+    <value>Delete {0} connections</value>
+  </data>
+  <data name="Tree_DeleteSelectedTitle" xml:space="preserve">
+    <value>Delete connections</value>
+  </data>
+  <data name="Tree_DeleteSelectedConfirm" xml:space="preserve">
+    <value>Delete the {0} selected connections? This cannot be undone.</value>
+  </data>
+  <data name="Tree_BatchEdit" xml:space="preserve">
+    <value>Batch edit…</value>
+  </data>
+  <data name="Tree_ExportSelected" xml:space="preserve">
+    <value>Export selected…</value>
+  </data>
+  <data name="Tree_OpenManyTitle" xml:space="preserve">
+    <value>Open connections</value>
+  </data>
+  <data name="Tree_OpenManyConfirm" xml:space="preserve">
+    <value>This will open {0} connections at once. Continue?</value>
+  </data>
+  <data name="Tree_OpenManyAction" xml:space="preserve">
+    <value>Open</value>
+  </data>
+  <data name="SessFile_AnyType" xml:space="preserve">
+    <value>Connection file (JSON / CSV)</value>
+  </data>
+  <data name="SessFile_JsonType" xml:space="preserve">
+    <value>VelaShell connection file</value>
+  </data>
+  <data name="SessFile_CsvType" xml:space="preserve">
+    <value>CSV spreadsheet</value>
+  </data>
+  <data name="SessFile_CsvEmpty" xml:space="preserve">
+    <value>The file is empty: no header row was found.</value>
+  </data>
+  <data name="SessFile_CsvNoHostColumn" xml:space="preserve">
+    <value>The CSV has no host column. The first row must be the header, with at least a host column (the template lists every column).</value>
+  </data>
+  <data name="SessFile_CsvUnknownColumns" xml:space="preserve">
+    <value>These columns were not recognized and are ignored: {0}</value>
+  </data>
+  <data name="SessFile_JsonInvalid" xml:space="preserve">
+    <value>The file is not valid JSON: {0}</value>
+  </data>
+  <data name="SessFile_NotVelaShell" xml:space="preserve">
+    <value>This is not a VelaShell connection file.</value>
+  </data>
+  <data name="SessFile_SectionInvalid" xml:space="preserve">
+    <value>The "{0}" section of the file is malformed: {1}</value>
+  </data>
+  <data name="SessFile_UnknownSecretAlgorithm" xml:space="preserve">
+    <value>The file's sensitive data uses an encryption method this version does not recognize; connections will be imported without passwords.</value>
+  </data>
+  <data name="SessFile_VersionTooNew" xml:space="preserve">
+    <value>This file was written by a newer VelaShell (format version {0}). Update VelaShell to import it.</value>
+  </data>
+  <data name="SessImport_ErrNotAnObject" xml:space="preserve">
+    <value>Not a connection entry</value>
+  </data>
+  <data name="SessImport_ErrBadEntry" xml:space="preserve">
+    <value>Malformed entry: {0}</value>
+  </data>
+  <data name="SessImport_ErrNoHost" xml:space="preserve">
+    <value>Host is empty</value>
+  </data>
+  <data name="SessImport_ErrBadPort" xml:space="preserve">
+    <value>Invalid port: {0}</value>
+  </data>
+  <data name="SessImport_ErrHostSpaces" xml:space="preserve">
+    <value>Host contains spaces: {0}</value>
+  </data>
+  <data name="SessImport_ErrPortRequired" xml:space="preserve">
+    <value>A port is required for plugin protocols</value>
+  </data>
+  <data name="SessImport_ErrBadProtocol" xml:space="preserve">
+    <value>Unknown protocol: {0}</value>
+  </data>
+  <data name="SessImport_ErrBadAuth" xml:space="preserve">
+    <value>Unknown authentication method: {0}</value>
+  </data>
+  <data name="SessImport_ErrAuthNotSupported" xml:space="preserve">
+    <value>FTP and plugin protocols only support password authentication</value>
+  </data>
+  <data name="SessImport_WarnBadId" xml:space="preserve">
+    <value>Invalid id "{0}" ignored; imported as a new connection</value>
+  </data>
+  <data name="SessImport_WarnCredentialMissing" xml:space="preserve">
+    <value>The shared credential it uses is not in the file; it will use its own authentication instead</value>
+  </data>
+  <data name="SessImport_WarnCredentialNotFound" xml:space="preserve">
+    <value>Shared credential "{0}" not found; it will use its own authentication instead</value>
+  </data>
+  <data name="SessImport_WarnCredentialAmbiguous" xml:space="preserve">
+    <value>More than one shared credential is named "{0}"; it will use its own authentication instead</value>
+  </data>
+  <data name="SessImport_WarnJumpNotInFile" xml:space="preserve">
+    <value>Its jump host was not imported along with it and does not exist here; it will connect directly</value>
+  </data>
+  <data name="SessImport_WarnJumpNotFound" xml:space="preserve">
+    <value>Jump host "{0}" not found; it will connect directly</value>
+  </data>
+  <data name="SessImport_WarnJumpAmbiguous" xml:space="preserve">
+    <value>More than one connection is named "{0}"; the jump host is left empty</value>
+  </data>
+  <data name="SessImport_WarnJumpSelf" xml:space="preserve">
+    <value>A connection cannot be its own jump host; it will connect directly</value>
+  </data>
+  <data name="SessImport_WarnJumpCycle" xml:space="preserve">
+    <value>Its jump hosts form a loop; this link was removed and it will connect directly</value>
+  </data>
+  <data name="SessImport_ItemNoteFmt" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="SessImport_LineFmt" xml:space="preserve">
+    <value>Line {0}: {1}</value>
+  </data>
+  <data name="SessImport_Title" xml:space="preserve">
+    <value>Import Connections</value>
+  </data>
+  <data name="SessImport_PickTitle" xml:space="preserve">
+    <value>Choose a connection file to import</value>
+  </data>
+  <data name="SessImport_Loading" xml:space="preserve">
+    <value>Comparing with existing connections…</value>
+  </data>
+  <data name="SessImport_NothingSelected" xml:space="preserve">
+    <value>Nothing selected to import</value>
+  </data>
+  <data name="SessImport_HeadlineFmt" xml:space="preserve">
+    <value>{0} connections will be imported</value>
+  </data>
+  <data name="SessImport_DetailFmt" xml:space="preserve">
+    <value>{0} new · {1} already exist · {2} with problems</value>
+  </data>
+  <data name="SessImport_ImportButton" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="SessImport_ImportCountFmt" xml:space="preserve">
+    <value>Import {0}</value>
+  </data>
+  <data name="SessImport_JsonExportedFmt" xml:space="preserve">
+    <value>VelaShell JSON · exported {0}</value>
+  </data>
+  <data name="SessImport_SecretsLocked" xml:space="preserve">
+    <value>This file contains encrypted passwords. Enter the export passphrase to bring them along; without it, connections are imported without passwords.</value>
+  </data>
+  <data name="SessImport_PassphrasePlaceholder" xml:space="preserve">
+    <value>Export passphrase</value>
+  </data>
+  <data name="SessImport_Unlock" xml:space="preserve">
+    <value>Unlock</value>
+  </data>
+  <data name="SessImport_WrongPassphrase" xml:space="preserve">
+    <value>Wrong passphrase, or the file is damaged.</value>
+  </data>
+  <data name="SessImport_SecretsUnlockedFmt" xml:space="preserve">
+    <value>Unlocked: {0} connections will be imported with their passwords.</value>
+  </data>
+  <data name="SessImport_ConflictLabel" xml:space="preserve">
+    <value>If a connection already exists</value>
+  </data>
+  <data name="SessImport_ConflictSkip" xml:space="preserve">
+    <value>Skip it (keep mine)</value>
+  </data>
+  <data name="SessImport_ConflictOverwrite" xml:space="preserve">
+    <value>Overwrite mine</value>
+  </data>
+  <data name="SessImport_ConflictKeepBoth" xml:space="preserve">
+    <value>Keep both</value>
+  </data>
+  <data name="SessImport_TargetLabel" xml:space="preserve">
+    <value>Put into</value>
+  </data>
+  <data name="SessImport_TargetFromFile" xml:space="preserve">
+    <value>Groups in the file</value>
+  </data>
+  <data name="SessImport_StatusNew" xml:space="preserve">
+    <value>New</value>
+  </data>
+  <data name="SessImport_StatusSkip" xml:space="preserve">
+    <value>Already exists as "{0}"; will be skipped</value>
+  </data>
+  <data name="SessImport_StatusOverwrite" xml:space="preserve">
+    <value>Will overwrite "{0}"</value>
+  </data>
+  <data name="SessImport_StatusKeepBoth" xml:space="preserve">
+    <value>Duplicates "{0}"; will be saved as a new connection</value>
+  </data>
+  <data name="SessImport_NewGroupFmt" xml:space="preserve">
+    <value>{0} (new)</value>
+  </data>
+  <data name="SessImport_HasPassword" xml:space="preserve">
+    <value>Includes a password</value>
+  </data>
+  <data name="SessImport_Failed" xml:space="preserve">
+    <value>Import failed: {0}</value>
+  </data>
+  <data name="SessImport_TooLarge" xml:space="preserve">
+    <value>That file is {0} MB, past the {1} MB limit for a connection file.</value>
+  </data>
+  <data name="SessImport_ReadFailed" xml:space="preserve">
+    <value>Could not read the file: {0}</value>
+  </data>
+  <data name="SessImport_Empty" xml:space="preserve">
+    <value>There are no connections in this file.</value>
+  </data>
+  <data name="SessImport_DoneTitle" xml:space="preserve">
+    <value>Import finished</value>
+  </data>
+  <data name="SessImport_DoneFmt" xml:space="preserve">
+    <value>Imported: {0} new, {1} overwritten, {2} skipped.</value>
+  </data>
+  <data name="SessImport_MoreWarnings" xml:space="preserve">
+    <value>…and {0} more</value>
+  </data>
+  <data name="SessExport_Title" xml:space="preserve">
+    <value>Export Connections</value>
+  </data>
+  <data name="SessExport_Loading" xml:space="preserve">
+    <value>Counting connections…</value>
+  </data>
+  <data name="SessExport_SummaryFmt" xml:space="preserve">
+    <value>{0} connections will be exported ({1} groups)</value>
+  </data>
+  <data name="SessExport_DependencyFmt" xml:space="preserve">
+    <value>Includes {0} jump hosts these connections go through, added automatically.</value>
+  </data>
+  <data name="SessExport_Format" xml:space="preserve">
+    <value>Format</value>
+  </data>
+  <data name="SessExport_FormatJson" xml:space="preserve">
+    <value>VelaShell JSON</value>
+  </data>
+  <data name="SessExport_FormatCsv" xml:space="preserve">
+    <value>CSV spreadsheet</value>
+  </data>
+  <data name="SessExport_JsonHint" xml:space="preserve">
+    <value>Complete: groups, jump hosts, shared credentials, port forwarding and terminal settings all come along. Use it for backups and for moving to another computer.</value>
+  </data>
+  <data name="SessExport_CsvHint" xml:space="preserve">
+    <value>A spreadsheet you can edit in Excel and import back. Common fields only (name, host, port, username, group, authentication, jump host…); never includes passwords.</value>
+  </data>
+  <data name="SessExport_IncludeSecrets" xml:space="preserve">
+    <value>Include passwords and other sensitive data</value>
+  </data>
+  <data name="SessExport_SecretsHintFmt" xml:space="preserve">
+    <value>{0} connections or shared credentials have saved passwords or key passphrases. They are encrypted with the passphrase below; nothing is written in plain text.</value>
+  </data>
+  <data name="SessExport_NoSecrets" xml:space="preserve">
+    <value>None of these connections has a saved password.</value>
+  </data>
+  <data name="SessExport_Passphrase" xml:space="preserve">
+    <value>Export passphrase</value>
+  </data>
+  <data name="SessExport_PassphraseConfirm" xml:space="preserve">
+    <value>Repeat passphrase</value>
+  </data>
+  <data name="SessExport_PassphraseHint" xml:space="preserve">
+    <value>You will need this passphrase to import the passwords. It cannot be recovered if lost.</value>
+  </data>
+  <data name="SessExport_PassphraseTooShort" xml:space="preserve">
+    <value>The passphrase must be at least {0} characters.</value>
+  </data>
+  <data name="SessExport_PassphraseMismatch" xml:space="preserve">
+    <value>The two passphrases do not match.</value>
+  </data>
+  <data name="SessExport_ExportButton" xml:space="preserve">
+    <value>Export…</value>
+  </data>
+  <data name="SessExport_Failed" xml:space="preserve">
+    <value>Export failed: {0}</value>
+  </data>
+  <data name="SessExport_Done" xml:space="preserve">
+    <value>Exported {0} connections to {1} (without passwords).</value>
+  </data>
+  <data name="SessExport_DoneWithSecrets" xml:space="preserve">
+    <value>Exported {0} connections to {1}; passwords are encrypted with your passphrase.</value>
+  </data>
+  <data name="SessExport_DoneCsv" xml:space="preserve">
+    <value>Exported {0} connections to {1}.</value>
+  </data>
+  <data name="SessExport_TemplateSaved" xml:space="preserve">
+    <value>Template saved to {0}. Fill it in, then use "Import connections from file".</value>
+  </data>
+  <data name="BatchEdit_Title" xml:space="preserve">
+    <value>Batch Edit Connections</value>
+  </data>
+  <data name="BatchEdit_SummaryFmt" xml:space="preserve">
+    <value>Edit {0} connections</value>
+  </data>
+  <data name="BatchEdit_Hint" xml:space="preserve">
+    <value>Only checked items change; everything else stays as it is on each connection.</value>
+  </data>
+  <data name="BatchEdit_Port" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="BatchEdit_AuthShared" xml:space="preserve">
+    <value>Shared credential</value>
+  </data>
+  <data name="BatchEdit_PickCredential" xml:space="preserve">
+    <value>Choose a shared credential</value>
+  </data>
+  <data name="BatchEdit_NoCredentials" xml:space="preserve">
+    <value>No shared credentials yet. Create one under Settings → Shared Credentials.</value>
+  </data>
+  <data name="BatchEdit_PasswordHint" xml:space="preserve">
+    <value>Leave empty to be asked when connecting.</value>
+  </data>
+  <data name="BatchEdit_PickKey" xml:space="preserve">
+    <value>Choose a private key file</value>
+  </data>
+  <data name="BatchEdit_BadPort" xml:space="preserve">
+    <value>Port must be between 1 and 65535</value>
+  </data>
+  <data name="BatchEdit_JumpHint" xml:space="preserve">
+    <value>Only applies to SSH and SFTP connections.</value>
+  </data>
+  <data name="BatchEdit_PreviewChangedFmt" xml:space="preserve">
+    <value>{0} connections will change</value>
+  </data>
+  <data name="BatchEdit_PreviewAuthSkippedFmt" xml:space="preserve">
+    <value>{0} keep their authentication (FTP and plugin protocols only support passwords)</value>
+  </data>
+  <data name="BatchEdit_PreviewJumpSkippedFmt" xml:space="preserve">
+    <value>{0} keep their jump host (not SSH, or it would form a loop)</value>
+  </data>
+  <data name="BatchEdit_PreviewSeparator" xml:space="preserve">
+    <value>; </value>
+  </data>
+  <data name="BatchEdit_Apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="BatchEdit_DoneFmt" xml:space="preserve">
+    <value>Updated {0} connections</value>
+  </data>
+  <data name="Tree_DragGroupBefore" xml:space="preserve">
+    <value>move before "{0}"</value>
+  </data>
+  <data name="Tree_DragGroupToEnd" xml:space="preserve">
+    <value>move to the end</value>
+  </data>
+  <data name="BatchEdit_JumpHost" xml:space="preserve">
+    <value>Jump host</value>
+  </data>
+  <data name="Sc_GroupExplorer" xml:space="preserve">
+    <value>Explorer</value>
+  </data>
+  <data name="Sc_ExplorerToggleSelect" xml:space="preserve">
+    <value>Add or remove a connection from the selection</value>
+  </data>
+  <data name="Sc_ExplorerRangeSelect" xml:space="preserve">
+    <value>Select a range of connections</value>
+  </data>
+  <data name="Sc_ExplorerMoveToGroup" xml:space="preserve">
+    <value>Move a connection to another group</value>
+  </data>
+  <data name="Sc_ExplorerReorderGroup" xml:space="preserve">
+    <value>Reorder groups</value>
+  </data>
+  <data name="Sc_KeyExplorerConnection" xml:space="preserve">
+    <value>Connection row</value>
+  </data>
+  <data name="Sc_KeyExplorerGroupRow" xml:space="preserve">
+    <value>Group row</value>
+  </data>
+  <data name="SessImport_WarnHostChangesKeepSecret" xml:space="preserve">
+    <value>If overwritten, the host changes from {0} to {1}, and the password saved here will be used for the new host</value>
+  </data>
+  <data name="BatchEdit_Failed" xml:space="preserve">
+    <value>Saving failed: {0}</value>
+  </data>
 </root>

@@ -110,6 +110,7 @@ public partial class LocalizedKeyUsageTests
         ["SyncCrypto.cs"] = "调用方捕获后换成本地化的「口令错误」",
         ["ConPtyShellStream.cs"] = "仅 Windows 的平台守卫,别的平台走不到这个类",
         ["VelaTerminalControl.cs"] = "控件库自带的默认值,宿主下发设置时换成本地化文案",
+        ["SessionCsvHeaderAliases.cs"] = "CSV 表头的中日韩别名:匹配用户自己做的表格里的列名,不是界面文案(#571)",
     };
 
     /// <summary>
