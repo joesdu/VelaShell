@@ -123,8 +123,8 @@ internal sealed class AesCtrHmacCipherSuite : ISshCipherSuite
         {
             CryptographicOperations.ZeroMemory(keyCopy);
         }
-        _aes.Mode = CipherMode.ECB;
-        _aes.Padding = PaddingMode.None;
+        //_aes.Mode = CipherMode.ECB;
+        //_aes.Padding = PaddingMode.None;
 
         iv.CopyTo(_counter);
 
