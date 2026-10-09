@@ -1442,3 +1442,35 @@ GLX 1.4 协议层（4 个 FBConfig、上下文标签按客户端分表、Render 
 | 中日韩输入 | `fcitx5 fcitx5-chinese-addons dbus-x11 fonts-noto-cjk` | CP-28 |
 | 窗口管理与工具 | `wmctrl`、`xsel`、`scrot`、`imagemagick` | WN-E1：两个 xterm 重叠，激活后面那个、在重叠区点击，用 `xdotool getmouselocation` 与 xev 看事件落到哪；`wmctrl -m`、`wmctrl -l` |
 | 办公（heavy） | `libreoffice-calc libreoffice-gtk3` | 剪贴板富格式；启动时恢复最大化（CP-8） |
+
+---
+
+## 2026-10-09 复核：上一轮之后的剩余项
+
+这次复核以当前 `dev` 代码、XServer 单元测试和 `plan.md §167` 为准。原文中的若干“未实现”描述是审查时的快照，不能直接当成当前状态。
+
+### 已完成或已由上一轮提交覆盖
+
+- `DrawArrays` 已按 `ARRAY_INFO` 的出现顺序读取逐顶点数据，并有回归测试。
+- WN-S11 的选区按会话隔离已完成：其它会话看不到属主变化，也收不到对应的 `SelectionClear` / XFIXES 通知。
+- GL-M1 的 `GLX_ARB_create_context` / `_profile` 已完成；GLX 表面释放、纹理悬空、RenderLarge 等审查项已有代码和测试覆盖。
+- 本次继续完成 DR-M4：源 picture 的 alpha-map、alpha 原点、alpha-map 约束与裁剪已实现，并有 Composite 回归测试。
+- 本次继续完成间接 GLX 单缓冲视觉：`GetVisualConfigs` 为两个视觉同时发布单缓冲与双缓冲配置，并有配置 ID / DOUBLEBUFFER 回归测试。
+
+### 仍未完成的审查项
+
+- **DR-M1**：PolyArc 连续弧之间的 JoinMiter / JoinRound / JoinBevel 接头。
+- **DR-P3**：a1 目标、Disjoint / Conjoint Porter-Duff 以及 PDF 混合模式的整数快速路径。
+- **WN-M5**：cursor 字体的真实字形位图；当前仍主要按字形号映射宿主系统光标形状。
+- **CP-16 / F21**：完整核心字体数据仍未随库提供，当前只有少数 misc-fixed 字号、别名和近似字号回退。
+- 宿主侧新功能仍未完成：F1/F2 会话隔离档、F3 X 程序清单与强制结束界面、F8 WarpPointer、F9 屏保协作、F10 同步缩放、F11 合成管理器、F12 托盘、F13 rootful 单窗口模式、F14–F20 桌面集成、F22–F30 扩展功能。
+
+### 仍缺环境验证的项目
+
+- Docker 真实客户端互操作本轮未运行，因为当前环境没有 Docker；需要重建 `velashell-xclients` 后验证 GTK、Swing、GLX 与 gnome-calculator。
+- API-H13（分数缩放最后一列像素）、IN-E19（macOS Command 组合键 KeyUp）、CN-S8（macOS / FreeBSD `getpeereid`）仍需对应平台实机。
+
+### 当前验证结果
+
+- `VelaShell.XServer.Tests`：430 通过、9 个平台条件跳过。
+- `VelaShell.XServer` Release 构建：0 警告、0 错误。
