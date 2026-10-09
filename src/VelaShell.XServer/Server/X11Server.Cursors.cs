@@ -10,8 +10,9 @@
 //   X Fixes Extension —— §7「Cursor Names」(SetCursorName / GetCursorName)
 //   CSS Basic User Interface Module Level 4 —— §5.1「cursor」的关键字(光标主题按它们给光标起名)
 //
-//   光标怎么交给宿主:cursor 字体的光标按字形号推出语义形状;位图、别的字体的字形与 ARGB 光标在创建时烙好图像,
-//   形状按客户端经 XFIXES 起的名字推出(libXcursor 从主题加载光标后会这样命名)。宿主优先显示图像,没有就按形状选系统光标。
+//   光标怎么交给宿主:位图、字形(含 cursor 字体)与 ARGB 光标在创建时烙好图像;cursor 字体里有对应系统光标的字形按字形号推出
+//   语义形状、不给宿主图像,其余形状按客户端经 XFIXES 起的名字推出(libXcursor 从主题加载光标后会这样命名)。
+//   宿主优先显示图像,没有就按形状选系统光标。XFIXES GetCursorImage 一律给烙好的图像。
 
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Fonts;
@@ -57,9 +58,10 @@ public sealed partial class X11Server
     }
 
     /// <summary>
-    /// 协议「CreateGlyphCursor」:cursor 字体的字形按字形号交给宿主映射成系统光标(系统光标自带配色,掩码用不上);
-    /// 别的字体的字形烙成图像 —— 两个字形的原点重合、就是热点,有掩码字形时只显示掩码为 1 的像素,源为 1 用前景色、0 用背景色,
-    /// 没有掩码时整个源字形的方框都显示。什么也不显示的(xterm 拿 nil2 字体做的隐形指针)给 Hidden;原先非 cursor 字体一律按默认箭头。
+    /// 协议「CreateGlyphCursor」:字形烙成图像 —— 两个字形的原点重合、就是热点,有掩码字形时只显示掩码为 1 的像素,
+    /// 源为 1 用前景色、0 用背景色,没有掩码时整个源字形的方框都显示。什么也不显示的(xterm 拿 nil2 字体做的隐形指针)给 Hidden;
+    /// 原先非 cursor 字体一律按默认箭头。cursor 字体(X.Org 的 cursor.bdf)的字形另记下字形号:有对应系统光标的按形状交给宿主
+    /// (系统光标跟着桌面的主题与缩放),图像留给 XFIXES GetCursorImage;原先那份字体只有度量,截屏 / 录屏拿到的是 1×1 透明像素。
     /// 字形在字体里没定义回 BadValue。
     /// </summary>
     private void CreateGlyphCursor(XClient c, XRequestReader r)
@@ -81,13 +83,13 @@ public sealed partial class X11Server
         {
             throw new XProtocolError(XErrorCode.Value, maskChar);
         }
-        if (font.Font.Name == "cursor")
-        {
-            AddResource(c, new XCursorResource(id, c) { Glyph = sourceChar });
-            return;
-        }
         (XCursorImage? image, bool blank) = GlyphCursorImage(source, mask, PixelOf(fr, fg, fb), PixelOf(br, bg, bb));
-        AddResource(c, new XCursorResource(id, c) { Image = image, Blank = blank });
+        AddResource(c, new XCursorResource(id, c)
+        {
+            Glyph = font.Font.Name == "cursor" ? sourceChar : -1,
+            Image = image,
+            Blank = blank,
+        });
     }
 
     private void FreeCursor(XRequestReader r)
@@ -266,14 +268,26 @@ public sealed partial class X11Server
         _host.CursorChanged(handle, cursor);
     }
 
-    private static XCursor AppearanceOf(XCursorResource cursor) =>
-        cursor.Appearance ??= new XCursor(
-            (cursor.Name is { } name ? ShapeOfName(name) : null) ?? (cursor.Blank ? XCursorShape.Hidden : ShapeOfGlyph(cursor.Glyph)),
-            cursor.Image);
-
-    /// <summary>cursor 字体的字形号 → 形状(Xlib 附录 B;没有对应的给箭头)。</summary>
-    private static XCursorShape ShapeOfGlyph(int glyph) => glyph switch
+    /// <summary>
+    /// 交给宿主的样子:形状按 XFIXES 起的名字、隐形与否、cursor 字体的字形号推出。cursor 字体里有对应系统光标的字形不带图像
+    /// (宿主显示系统光标);没有对应的(pencil、gumby、dotbox……)带上字形烙成的图像,原先一律显示成箭头。
+    /// </summary>
+    private static XCursor AppearanceOf(XCursorResource cursor)
     {
+        if (cursor.Appearance is { } known)
+        {
+            return known;
+        }
+        XCursorShape? glyphShape = cursor.Glyph >= 0 ? ShapeOfGlyph(cursor.Glyph) : null;
+        XCursorShape shape = (cursor.Name is { } name ? ShapeOfName(name) : null)
+            ?? (cursor.Blank ? XCursorShape.Hidden : glyphShape ?? XCursorShape.Arrow);
+        return cursor.Appearance = new XCursor(shape, glyphShape is null ? cursor.Image : null);
+    }
+
+    /// <summary>cursor 字体的字形号 → 形状(Xlib 附录 B);没有对应系统光标的为 null(宿主显示字形的图像)。</summary>
+    private static XCursorShape? ShapeOfGlyph(int glyph) => glyph switch
+    {
+        2 or 68 or 132 => XCursorShape.Arrow,                   // arrow、left_ptr、top_left_arrow
         0 or 24 or 88 => XCursorShape.NotAllowed,              // X_cursor、circle、pirate
         12 => XCursorShape.ResizeSouthWest,                     // bottom_left_corner
         14 => XCursorShape.ResizeSouthEast,                     // bottom_right_corner
@@ -291,7 +305,7 @@ public sealed partial class X11Server
         138 => XCursorShape.ResizeNorth,                        // top_side
         150 => XCursorShape.Wait,                               // watch
         152 => XCursorShape.Text,                               // xterm
-        _ => XCursorShape.Arrow,
+        _ => null,
     };
 
     /// <summary>光标名 → 形状:cursor 字体的字形名(Xlib 附录 B)与 CSS 的 cursor 关键字;不认识的为 null。</summary>

@@ -223,14 +223,14 @@
 
 ### H. 内置 X 服务端
 
-> 第二次全库审查(`plan.md` §167,草案 `xs_plan.md`)修完 184 条问题之后剩下的。新功能的编号沿用草案第五节(F1–F30)。
+> 第二次全库审查(`plan.md` §167,草案 `xs_plan.md`)修完 184 条问题、2026-10-09 补齐只做了一部分的几项(§178)之后剩下的。新功能的编号沿用草案第五节(F1–F30)。
 
 | 状态 | 优先级 | 项 | 架构落点 |
 | :---: | :---: | --- | --- |
 | ⏳ | 🟠 P1 | **X 程序清单与强制结束的界面**(F3) | 库已经就绪(`plan.md` §167):`GetClientsAsync` / `XClientInfo`、`DisconnectClient`、`KillTopLevelClient`、`BreakGrabs`、连接标签(SSH 会话的 `user@host:port`)。差标题栏 X Server 按钮的浮层:列出「谁连着、来自哪个会话、占多少内存」,能断开单个程序、能解除卡住的抓取与冻结;GrabServer 被占太久时提示(库已记日志点名持有者)。五份 resx |
 | 💡 | 🟡 P2 | **按连接给信任级别 / 每个会话一个显示**(F2 / F1,决策 Q5) | 现在所有转发来的会话共用一个受信的显示,`RestrictForwardedClients` 是全局开关。F2:按连接给信任级别,在分派层做访问检查(隐藏 XTEST、原始事件、跨客户端 GetImage);F1:每个 SSH 会话一个显示号,彼此看不见。默认值要拍板 |
-| 💡 | 🟡 P2 | **草案第五节的其余功能**(F4–F30) | 本机输入法组好字上屏(F5,决策 Q1 的第一步)、宿主光标跟着 Warp(F8)、屏保 Suspend 转告宿主(F9)、更宽的边缘缩放区(F11)、可选的「一个大窗口」模式(F13,Q2)、更多字族(F21)、GL 的选择 / 反馈 / 求值器(F23)等,逐项评估 |
-| ⏳ | 🟢 P3 | **审查留下的部分完成项** | PolyArc 连续弧之间的接头(DR-M1)、RENDER 的 alpha-map(DR-M4)、a1 目标与 Disjoint / Conjoint / 混合模式的整数路径(DR-P3)、cursor 字体的字形光标位图(WN-M5)、别的会话仍看得到 SelectionClear 与属主跳变(WN-S11)、间接 GLX 选不到单缓冲视觉(要加单缓冲的 X 视觉)、点本机窗口或桌面就收起 X 的弹出菜单(WN-M7,要全局指针钩子) |
+| 💡 | 🟡 P2 | **草案第五节的其余功能**(F4–F30) | 本机输入法组好字上屏(F5,决策 Q1 的第一步)、宿主光标跟着 Warp(F8)、屏保 Suspend 转告宿主(F9)、更宽的边缘缩放区(F11)、可选的「一个大窗口」模式(F13,Q2)、GL 的选择 / 反馈 / 求值器(F23)等,逐项评估 |
+| ⏳ | 🟢 P3 | **审查留下的部分完成项** | 点本机窗口或桌面就收起 X 的弹出菜单(WN-M7):要全局指针钩子,各平台各写一份。另有审查之前就有的一处:外接框宽或高为 0 的宽弧只画出一半线宽 |
 | 💡 | 🟢 P3 | **需要实机核对的** | 分数缩放下最后一列像素可能被裁(API-H13);macOS 上 Command 组合键收不到 KeyUp 时的处理(IN-E19);macOS / FreeBSD 经 `getpeereid` 取对端 uid(CN-S8) |
 
 ---
@@ -242,7 +242,6 @@
 
 | 出处 | 要改什么 | 进度 |
 | --- | --- | --- |
-| `plan.md` §167 X 服务端第二次审查的修复 | `{zh,en}/xserver/design/architecture.md` §5–§10(工作量预算与内存账、宿主接口的新 API、安全取舍、各扩展的行为与上限、未实现清单)、`xserver/troubleshooting.md`、`host/settings-audit.md`(CopyOnSelection 默认关、RestrictForwardedClients)、`交互与界面规格.md`(强制结束、停服确认、焦点窃取防护、摆放与重力)、ssh 文档里 `XAuthority` 的公开面 | [velashell-docs#93](https://github.com/VelaShellLabs/velashell-docs/pull/93) 已开,与宿主 PR 一起合 |
 | `plan.md` §118 窗口外框 | `{zh,en}/host/architecture.md` §5「窗口壳」的 ⚠️ 限定为 Win32、新增「各平台的外框」；`交互与界面规格.md` §2 补 macOS 红绿灯与各平台外框；`design-specs.md` 补 macOS 红绿灯；标题栏统一 28 的口径（设置窗口与消息框保持 48 的例外） | [velashell-docs#70](https://github.com/VelaShellLabs/velashell-docs/pull/70) 已开，与宿主 PR 一起合；实机验收后改掉 architecture 里「验收」那一段 |
 | `plan.md` §74 / §75 目录比较与同步 | `SFTP双栏与WinSCP差距分析.md`（C1 改已实现、新增第七节）与 `交互与界面规格.md` §6（文档工具条、同步窗口、保持远端最新、SHA-256 优先比较） | [velashell-docs#35](https://github.com/VelaShellLabs/velashell-docs/pull/35) **待合入** |
 | `plan.md` §82 #474 | `交互与界面规格.md` 资源管理器补**置顶**与 SFTP 路径栏的**复制当前路径**；`设置项审计.md` 补 `General.CollapseGroupsByDefault`、`Transfer.UseRecursiveDeleteCommand`（写明只对有 exec 通道的 SSH 会话生效、失败自动回退、没有逐条进度） | 已在 `docs/474-explorer-sftp` 分支改好（中英各 3 个文件），**待开 PR** |

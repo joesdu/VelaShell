@@ -19,7 +19,99 @@ public sealed partial class X11Server
     private XFont? _defaultFont;
 
     /// <summary>GC 没设字体时用的服务端默认字体(协议没指定是哪个;X.Org 惯例是 fixed)。</summary>
-    private XFont DefaultFont => _defaultFont ??= _fonts.Open("fixed") ?? throw new InvalidOperationException("内置字体 fixed 缺失。");
+    private XFont DefaultFont => _defaultFont ??= FontCatalog.Open("fixed") ?? throw new InvalidOperationException("内置字体 fixed 缺失。");
+
+    /// <summary>在等字体在后台建好的客户端:触发的那条请求与它之后的请求都暂存在这里,建好之后按原顺序放回。</summary>
+    private readonly Dictionary<XClient, List<WorkItem>> _fontLoads = [];
+
+    /// <summary>已经等过一次字体、放回来的请求(按缓冲认):再跑到时直接执行,不再查 —— 建不出来的字体不会让它一直暂存。</summary>
+    private readonly HashSet<byte[]> _fontsPrepared = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>这些名字要用到、还没建好的字体(<see cref="FontCatalog.Unprepared" />);测试可以换掉。</summary>
+    internal Func<IEnumerable<string>, List<string>> UnpreparedFonts { get; set; } = FontCatalog.Unprepared;
+
+    /// <summary>在后台把字体建好(<see cref="FontCatalog.PrepareAsync" />);测试可以换成自己控制完成时机的。</summary>
+    internal Func<IReadOnlyList<string>, CancellationToken, Task> PrepareFonts { get; set; } = FontCatalog.PrepareAsync;
+
+    /// <summary>
+    /// 执行循环在跑一项工作之前问一句:这个客户端在等字体吗?在等就把请求暂存。OpenFont 与 ListFontsWithInfo 要用到还没建好的字体时,
+    /// 字体在线程池上解压、解析(<see cref="PrepareFonts" />),这个客户端的这条与之后的请求暂存,建好了按原顺序放回、照常执行 ——
+    /// 原先就在执行线程上持着像素锁解析:第一次打开 GNU Unifont 180 毫秒,<c>xlsfonts -l</c> 把所有字体解析一遍 1.5 秒,
+    /// 这期间别的客户端与宿主界面(UI 线程在 ReadPixels 里等这把锁)陪着冻住。字体解析出错也照样放回,执行时按常规回错误。
+    /// </summary>
+    private bool DeferIfFontsLoading(WorkItem item)
+    {
+        if (item.Client is not { } client || client.Closed)
+        {
+            return false;
+        }
+        if (_fontLoads.Count != 0 && _fontLoads.TryGetValue(client, out List<WorkItem>? waiting))
+        {
+            waiting.Add(item);
+            return true;
+        }
+        if (item.Request is not { } request || request[0] is not (XOpcode.OpenFont or XOpcode.ListFontsWithInfo)
+            || (_fontsPrepared.Count != 0 && _fontsPrepared.Remove(request)))
+        {
+            return false;
+        }
+        XRequestReader r = new(request, item.RequestLength, client.BigEndian);
+        List<string> fonts;
+        try
+        {
+            if (request[0] == XOpcode.OpenFont)
+            {
+                r.Skip(4);
+                int length = r.U16();
+                r.Skip(2);
+                fonts = UnpreparedFonts([r.String8(length)]);
+            }
+            else
+            {
+                int max = r.U16();
+                int length = r.U16();
+                fonts = UnpreparedFonts(FontCatalog.Match(r.String8(length), max));
+            }
+        }
+        catch (XProtocolError)
+        {
+            return false;   // 请求本身不完整:执行时照常回 BadLength
+        }
+        if (fonts.Count == 0)
+        {
+            return false;   // 都建好了,或者名字不对(执行时照常回 BadName / BadLength)
+        }
+        _fontLoads[client] = [item];
+        _ = PrepareFontsThenResumeAsync(client, fonts);
+        return true;
+    }
+
+    private async Task PrepareFontsThenResumeAsync(XClient client, List<string> fonts)
+    {
+        try
+        {
+            await PrepareFonts(fonts, _lifetime.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+            return;   // 服务端收工
+        }
+        catch (Exception)
+        {
+            // 建不出来:放回去照常执行,执行时在执行线程上再试一次,失败按常规回错误、记日志。
+        }
+        Post(null, () =>
+        {
+            if (_fontLoads.Remove(client, out List<WorkItem>? items))
+            {
+                if (!client.Closed)
+                {
+                    _fontsPrepared.Add(items[0].Request!);   // 触发的那一条:放回来直接执行
+                }
+                Requeue(items);
+            }
+        });
+    }
 
     private void OpenFont(XClient c, XRequestReader r)
     {
@@ -27,7 +119,7 @@ public sealed partial class X11Server
         int length = r.U16();
         r.Skip(2);
         string name = r.String8(length);
-        XFont? font = _fonts.Open(name);
+        XFont? font = FontCatalog.Open(name);
         if (font is null)
         {
             if (ShouldLogFrequent())
@@ -112,12 +204,12 @@ public sealed partial class X11Server
             .I32(width).I32(left).I32(right).Zero(4));
     }
 
-    private void ListFonts(XClient c, XRequestReader r)
+    private static void ListFonts(XClient c, XRequestReader r)
     {
         int max = r.U16();
         int length = r.U16();
         string pattern = r.String8(length);
-        List<string> names = _fonts.Match(pattern, max);
+        List<string> names = FontCatalog.Match(pattern, max);
         c.Reply(0, w =>
         {
             w.U16((ushort)names.Count).Zero(22);
@@ -135,10 +227,10 @@ public sealed partial class X11Server
         int max = r.U16();
         int length = r.U16();
         string pattern = r.String8(length);
-        List<string> names = _fonts.Match(pattern, max);
+        List<string> names = FontCatalog.Match(pattern, max);
         for (int i = 0; i < names.Count; i++)
         {
-            if (_fonts.Open(names[i]) is not { } font)
+            if (FontCatalog.Open(names[i]) is not { } font)
             {
                 continue;
             }

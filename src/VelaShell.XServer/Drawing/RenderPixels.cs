@@ -301,13 +301,16 @@ internal static class RenderOps
         float l = Lum(c);
         float n = Math.Min(c.r, Math.Min(c.g, c.b));
         float x = Math.Max(c.r, Math.Max(c.g, c.b));
+        // 分母为 0 只在三个通道相等(灰色)时出现。照公式取极限:最小的通道拉到 0、最大的拉到 1,灰色三个通道都是,
+        // 所以整个变成 0 或 1。原先照除得 0 / 0 = NaN、编码成 0:浮点误差让灰色略小于 0 时(αd 为 0 时本该原样留下源颜色),
+        // 以及没按规矩预乘、分量 alpha 让 cs 超过 1 时灰色的亮度大于 1。
         if (n < 0)
         {
-            c = (l + ((c.r - l) * l / (l - n)), l + ((c.g - l) * l / (l - n)), l + ((c.b - l) * l / (l - n)));
+            c = l > n ? (l + ((c.r - l) * l / (l - n)), l + ((c.g - l) * l / (l - n)), l + ((c.b - l) * l / (l - n))) : (0, 0, 0);
         }
         if (x > 1)
         {
-            c = (l + ((c.r - l) * (1 - l) / (x - l)), l + ((c.g - l) * (1 - l) / (x - l)), l + ((c.b - l) * (1 - l) / (x - l)));
+            c = x > l ? (l + ((c.r - l) * (1 - l) / (x - l)), l + ((c.g - l) * (1 - l) / (x - l)), l + ((c.b - l) * (1 - l) / (x - l))) : (1, 1, 1);
         }
         return c;
     }

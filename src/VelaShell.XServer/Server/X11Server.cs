@@ -12,7 +12,6 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
-using VelaShell.XServer.Fonts;
 using VelaShell.XServer.Input;
 using VelaShell.XServer.Resources;
 using VelaShell.XServer.Server;
@@ -69,7 +68,6 @@ public sealed partial class X11Server : IAsyncDisposable
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly Dictionary<uint, XResource> _resources = [];
     private readonly Dictionary<int, XClient> _clients = [];
-    private readonly FontCatalog _fonts = new();
     private readonly Keymap _keymap = new();
     private readonly Dictionary<XWindow, List<XRect>> _damage = [];
     private readonly Dictionary<XWindow, XTopLevelWindow> _topLevelHandles = [];

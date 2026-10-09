@@ -1,0 +1,65 @@
+Licenses of the X.Org fonts bundled with VelaShell.XServer (src/VelaShell.XServer/Fonts/Data).
+Each section is the verbatim COPYING file of the upstream repository at the pinned commit.
+
+==== xorg/font/misc-misc @ c4e2af05583764fae3d0b2aa20d5c93b031cbcbf (misc) ====
+
+"Public domain font.  Share and enjoy."
+
+==== xorg/font/cursor-misc @ 73b2095391d5bcf326c903946de48d0710daa169 (misc) ====
+
+"These ""glyphs"" are unencumbered"
+
+==== xorg/font/adobe-75dpi @ 6189f2a653b7daa9566f9331bfed41813cbd8cb1 (75dpi) ====
+
+Copyright 1984-1989, 1994 Adobe Systems Incorporated.
+Copyright 1988, 1994 Digital Equipment Corporation.
+
+Adobe is a trademark of Adobe Systems Incorporated which may be
+registered in certain jurisdictions.
+Permission to use these trademarks is hereby granted only in
+association with the images described in this file.
+
+Permission to use, copy, modify, distribute and sell this software
+and its documentation for any purpose and without fee is hereby
+granted, provided that the above copyright notices appear in all
+copies and that both those copyright notices and this permission
+notice appear in supporting documentation, and that the names of
+Adobe Systems and Digital Equipment Corporation not be used in
+advertising or publicity pertaining to distribution of the software
+without specific, written prior permission.  Adobe Systems and
+Digital Equipment Corporation make no representations about the
+suitability of this software for any purpose.  It is provided "as
+is" without express or implied warranty.
+
+==== xorg/font/adobe-100dpi @ 13f867e9f5be0fcc4776f323f5d5f8f354d2a2c0 (100dpi) ====
+
+Copyright 1984-1989, 1994 Adobe Systems Incorporated.
+Copyright 1988, 1994 Digital Equipment Corporation.
+
+Adobe is a trademark of Adobe Systems Incorporated which may be
+registered in certain jurisdictions.
+Permission to use these trademarks is hereby granted only in
+association with the images described in this file.
+
+Permission to use, copy, modify, distribute and sell this software
+and its documentation for any purpose and without fee is hereby
+granted, provided that the above copyright notices appear in all
+copies and that both those copyright notices and this permission
+notice appear in supporting documentation, and that the names of
+Adobe Systems and Digital Equipment Corporation not be used in
+advertising or publicity pertaining to distribution of the software
+without specific, written prior permission.  Adobe Systems and
+Digital Equipment Corporation make no representations about the
+suitability of this software for any purpose.  It is provided "as
+is" without express or implied warranty.
+
+==== xorg/font/alias @ ebeee85f070dc12197ad98d1c849786f8e3be124 (misc/fonts.alias) ====
+
+Copyright (C) 1994-95 Cronyx Ltd.
+Author: Serge Vakulenko, <vak@cronyx.ru>
+
+This software may be used, modified, copied, distributed, and sold,
+in both source and binary form provided that the above copyright
+and these terms are retained. Under no circumstances is the author
+responsible for the proper functioning of this software, nor does
+the author assume any responsibility for damages incurred with its use.

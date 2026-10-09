@@ -5,9 +5,11 @@
 //   The X Rendering Extension, Version 0.11 —— §9「Composite」(dst = (src IN mask) OP dst;遮罩有颜色通道且
 //   component-alpha 为 True 时逐通道相乘;src / mask 的坐标按 (x − dst-x) 与目标对齐)、
 //   §10「Trapezoids / Triangles / TriStrip / TriFan / AddTraps」(几何按像素覆盖率光栅化成 alpha 遮罩,
-//   多个图元以 Add 累加进遮罩)
+//   多个图元以 Add 累加进遮罩);整数路径里的 §4「Operators」(Porter-Duff、Disjoint、Conjoint 的 Fa / Fb 表)与
+//   「Blend modes」(Multiply … HSLLuminosity,公式引自 PDF Reference 1.7 §7.2.4「Blend Mode」),与 RenderPixels.cs 的浮点版同一出处
 
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using VelaShell.XServer.Protocol;
 
 namespace VelaShell.XServer.Drawing;
@@ -68,11 +70,13 @@ internal static class RenderCompositor
         uint depthMask = buffer.DepthMask;
         int x1 = int.MaxValue, y1 = int.MaxValue, x2 = int.MinValue, y2 = int.MinValue;
 
-        // 8888 目标上最常用的三种运算走整数:源与遮罩各取成 8 位预乘的一行(渐变、变换、重复、各种源格式都在取样里处理掉),
-        // 逐像素整数合成。其余运算、分量 alpha 与别的目标格式走浮点。
-        // 只有 alpha 的 a8 目标(cairo 拼遮罩、Qt 的 alpha 图)上的 Porter-Duff 运算同样走整数,只算 alpha 一个通道。
-        bool alphaOnly = ReferenceEquals(dst.Format, PictFormat.A8) && !componentAlpha && op <= RenderOps.Saturate;
-        bool integer = alphaOnly || (Is8888(dst.Format) && !componentAlpha && op is RenderOps.Src or RenderOps.Over or RenderOps.Add);
+        // 8888 目标上的全部运算走整数:源与遮罩各取成 8 位预乘的一行(渐变、变换、重复、各种源格式都在取样里处理掉),
+        // 逐像素整数合成 —— 最常用的 Src / Over / Add 有专门的写法,其余 Porter-Duff 与 Disjoint / Conjoint 按两个因子算,
+        // PDF 混合模式见 BlendRow;分量 alpha(次像素字形)见 CombineComponentRow。别的目标格式(r5g6b5、x1r5g5b5、a4)走浮点。
+        // 只有 alpha 的 a8 / a1 目标(cairo 拼遮罩、Qt 的 alpha 图、位图裁剪)上的全部运算同样走整数,只算 alpha 一个通道 ——
+        // 分量 alpha 不影响 alpha 通道(它只用遮罩的 alpha,规范 §9),所以不必区分。
+        bool alphaOnly = ReferenceEquals(dst.Format, PictFormat.A8) || ReferenceEquals(dst.Format, PictFormat.A1);
+        bool integer = alphaOnly || Is8888(dst.Format);
         Argb[] srcRow = integer ? [] : ArrayPool<Argb>.Shared.Rent(Math.Max(1, width));
         Argb[] maskRow = integer ? [] : ArrayPool<Argb>.Shared.Rent(Math.Max(1, width));
         uint[] srcRow8 = integer ? ArrayPool<uint>.Shared.Rent(Math.Max(1, width)) : [];
@@ -116,11 +120,23 @@ internal static class RenderCompositor
                         Span<uint> row = buffer.Pixels.AsSpan((by * buffer.Width) + r.X, r.Width);
                         if (alphaOnly)
                         {
-                            CombineAlphaRow(op, s8, m8, row);
+                            CombineAlphaRow(op, s8, m8, row, dst.Format.Depth == 1);
+                        }
+                        else if (componentAlpha && op < 0x30)
+                        {
+                            CombineComponentRow(op, s8, m8, row, dst.Format.HasAlpha, depthMask);
+                        }
+                        else if (!componentAlpha && op is RenderOps.Src or RenderOps.Over or RenderOps.Add)
+                        {
+                            CombineRow(op, s8, m8, row, dst.Format.HasAlpha, depthMask);
+                        }
+                        else if (op < 0x30)
+                        {
+                            CombineFactorRow(op, s8, m8, row, dst.Format.HasAlpha, depthMask);
                         }
                         else
                         {
-                            CombineRow(op, s8, m8, row, dst.Format.HasAlpha, depthMask);
+                            BlendRow(op, s8, m8, componentAlpha, row, dst.Format.HasAlpha, depthMask);
                         }
                     }
                     continue;
@@ -191,6 +207,12 @@ internal static class RenderCompositor
 
     // ================================================================== 整数路径
 
+    /// <summary>255²:单位 1/65025 的 1(8 位的源 alpha × 8 位的遮罩,乘积不取整)。</summary>
+    private const uint Square = 255 * 255;
+
+    /// <summary>255³:单位 1/255³ 的 1(1/65025 的量再乘一个 8 位的量);单位 1/65025² 的量换成 8 位时也是除以它。</summary>
+    private const uint Cube = Square * 255;
+
     /// <summary>
     /// 一行的整数合成:<paramref name="src" /> 是 8 位预乘的源,<paramref name="mask" /> 为空表示没有遮罩(否则只用它的 alpha),
     /// 目标是 8888(<paramref name="dstAlpha" /> 为 false 时是 x8r8g8b8:读的时候 alpha 当 1,写的时候 alpha 字节写 0)。
@@ -248,38 +270,485 @@ internal static class RenderCompositor
     }
 
     /// <summary>
-    /// a8 目标的一行:只有 alpha。结果 = 源 alpha × Fa + 目标 alpha × Fb(Porter-Duff 的两个因子,0–255 定点,同 <see cref="RenderOps" />
-    /// 的浮点公式),夹到 255。原先逐像素浮点 Decode、四通道合成、再 Encode。
+    /// 8888 目标上 Src / Over / Add 以外的 Porter-Duff 与 Disjoint / Conjoint 的一行:四个通道各是 源 × Fa + 目标 × Fb(规范 §4)。
+    /// 不带除法的运算(Clear … Xor)源颜色乘遮罩取整到 8 位、因子 0–255(<see cref="PorterDuffFactors" />);带除法的
+    /// (Saturate、Disjoint、Conjoint)源乘遮罩不取整、因子按 1/65025 算(<see cref="DividingFactors" />)。两项相加后只取整一次、夹到 255。
+    /// <paramref name="dstAlpha" /> 为 false 时是 x8r8g8b8:目标 alpha 当 1,alpha 字节写 0。原先逐像素浮点 Decode、合成、再 Encode。
     /// </summary>
-    private static void CombineAlphaRow(byte op, ReadOnlySpan<uint> src, ReadOnlySpan<uint> mask, Span<uint> dst)
+    private static void CombineFactorRow(byte op, ReadOnlySpan<uint> src, ReadOnlySpan<uint> mask, Span<uint> dst, bool dstAlpha, uint depthMask)
     {
+        uint keep = dstAlpha ? 0xFFFFFFFFu : 0x00FFFFFFu;
+        if (op <= RenderOps.Add)
+        {
+            // 因子内联进来,循环里没有调用。
+            for (int i = 0; i < dst.Length; i++)
+            {
+                uint s = src[i], d = dst[i];
+                if (!mask.IsEmpty)
+                {
+                    uint m = mask[i] >> 24;
+                    s = m == 255 ? s : m == 0 ? 0 : Argb8.Scale(s, m);
+                }
+                (uint fa, uint fb) = PorterDuffFactors(op, s >> 24, dstAlpha ? d >> 24 : 255);
+                dst[i] = ((Mix((s >> 24) * fa, (d >> 24) * fb) << 24) | (Mix(((s >> 16) & 0xFF) * fa, ((d >> 16) & 0xFF) * fb) << 16)
+                    | (Mix(((s >> 8) & 0xFF) * fa, ((d >> 8) & 0xFF) * fb) << 8) | Mix((s & 0xFF) * fa, (d & 0xFF) * fb)) & keep & depthMask;
+            }
+            return;
+        }
         for (int i = 0; i < dst.Length; i++)
         {
-            uint sa = src[i] >> 24;
-            if (!mask.IsEmpty)
-            {
-                sa = Argb8.Div255(sa * (mask[i] >> 24));
-            }
-            uint da = dst[i] & 0xFF;
-            (uint fa, uint fb) = op switch
-            {
-                RenderOps.Clear => (0u, 0u),
-                RenderOps.Src => (255u, 0u),
-                RenderOps.Dst => (0u, 255u),
-                RenderOps.Over => (255u, 255 - sa),
-                4 => (255 - da, 255u),           // OverReverse
-                5 => (da, 0u),                   // In
-                6 => (0u, sa),                   // InReverse
-                7 => (255 - da, 0u),             // Out
-                8 => (0u, 255 - sa),             // OutReverse
-                9 => (da, 255 - sa),             // Atop
-                10 => (255 - da, sa),            // AtopReverse
-                11 => (255 - da, 255 - sa),      // Xor
-                RenderOps.Add => (255u, 255u),
-                _ => (255 - da >= sa ? 255u : (255 - da) * 255 / sa, 255u),   // Saturate:min(1, (1 − da) / sa)
-            };
-            dst[i] = Math.Min(Argb8.Div255(sa * fa) + Argb8.Div255(da * fb), 255);
+            uint s = src[i], d = dst[i];
+            uint m = mask.IsEmpty ? 255 : mask[i] >> 24;
+            (uint fa, uint fb) = DividingFactors(op, (s >> 24) * m, dstAlpha ? d >> 24 : 255);
+            dst[i] = ((MixFine((s >> 24) * m, d >> 24, fa, fb) << 24) | (MixFine(((s >> 16) & 0xFF) * m, (d >> 16) & 0xFF, fa, fb) << 16)
+                | (MixFine(((s >> 8) & 0xFF) * m, (d >> 8) & 0xFF, fa, fb) << 8) | MixFine((s & 0xFF) * m, d & 0xFF, fa, fb)) & keep & depthMask;
         }
+
+        // 两项(单位 1/65025)相加、夹到 1、取整到 8 位;夹取不用分支(结果常常正好是 255)。
+        static uint Mix(uint source, uint destination) => Argb8.Div255(Math.Min(source + destination, Square));
+    }
+
+    /// <summary>
+    /// 8888 目标上带分量 alpha 遮罩的 Porter-Duff / Disjoint / Conjoint 一行(规范 §9:遮罩的颜色通道各乘源的对应通道与源 alpha,
+    /// alpha 通道乘遮罩的 alpha;因子逐通道、按那个通道自己的源 alpha 算)。次像素字形(LCD 字形)就是纯色源 + 分量 alpha 遮罩 + Over。
+    /// 不带除法的运算源 × 遮罩取整到 8 位、因子 0–255;带除法的源 × 遮罩不取整、因子按 1/65025 算(同 <see cref="CombineFactorRow" />)。
+    /// 原先逐像素浮点 Decode、合成、再 Encode。
+    /// </summary>
+    private static void CombineComponentRow(byte op, ReadOnlySpan<uint> src, ReadOnlySpan<uint> mask, Span<uint> dst, bool dstAlpha, uint depthMask)
+    {
+        uint keep = dstAlpha ? 0xFFFFFFFFu : 0x00FFFFFFu;
+        bool dividing = op > RenderOps.Add;
+        for (int i = 0; i < dst.Length; i++)
+        {
+            uint s = src[i], d = dst[i], m = mask.IsEmpty ? 0xFFFFFFFFu : mask[i];
+            uint sa = s >> 24;
+            if (op == RenderOps.Over && sa == 0)
+            {
+                continue;   // 同浮点路径:完全透明的源 Over 不改变目标(没按规矩预乘、alpha 为 0 颜色不为 0 的源也一样)
+            }
+            uint da = dstAlpha ? d >> 24 : 255;
+            dst[i] = ((Channel(op, sa, sa, d >> 24, da, m >> 24, dividing) << 24)
+                | (Channel(op, (s >> 16) & 0xFF, sa, (d >> 16) & 0xFF, da, (m >> 16) & 0xFF, dividing) << 16)
+                | (Channel(op, (s >> 8) & 0xFF, sa, (d >> 8) & 0xFF, da, (m >> 8) & 0xFF, dividing) << 8)
+                | Channel(op, s & 0xFF, sa, d & 0xFF, da, m & 0xFF, dividing)) & keep & depthMask;
+        }
+
+        // 一个通道:源 Cs·m、源 alpha αs·m(m 是这个通道的遮罩;alpha 通道里 Cs 就是 αs)。
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static uint Channel(byte op, uint sc, uint sa, uint dc, uint da, uint m, bool dividing)
+        {
+            if (!dividing)
+            {
+                (uint fa, uint fb) = PorterDuffFactors(op, Argb8.Div255(sa * m), da);
+                return Argb8.Div255(Math.Min((Argb8.Div255(sc * m) * fa) + (dc * fb), Square));
+            }
+            (uint fineA, uint fineB) = DividingFactors(op, sa * m, da);
+            return MixFine(sc * m, dc, fineA, fineB);
+        }
+    }
+
+    /// <summary>
+    /// 带除法的运算的一个通道:<paramref name="source" /> 是源 × 遮罩(单位 1/65025),<paramref name="destination" /> 是 8 位的目标,
+    /// 两个因子单位 1/65025。结果 = (源 × Fa + 目标 × Fb) 四舍五入到 8 位、夹到 255。
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint MixFine(uint source, uint destination, uint fa, uint fb)
+    {
+        ulong n = ((ulong)source * fa) + ((ulong)(destination * 255) * fb);   // 单位 1/65025²
+        return (uint)((Math.Min(n, (ulong)Square * Square) + (Cube / 2)) / Cube);
+    }
+
+    /// <summary>
+    /// 8888 目标上 PDF 混合模式(0x30–0x3E)的一行(规范 §4,公式引自 PDF Reference 1.7 §7.2.4「Blend Mode」):
+    /// 颜色 = (1 − αs)·Cd + (1 − αd)·Cs + αs·αd·B(cs, cd),alpha = αs + αd − αs·αd。Cs、Cd 是预乘的颜色,cs、cd 是除掉 alpha 的颜色。
+    /// <para>
+    /// 不先把 cs、cd 除出来:αs·αd·B 整个用 8 位的 Cs、αs、Cd、αd 写成整数式(见 <see cref="SeparableTerm" /> 与 <see cref="HslBlend" />)。
+    /// 可分离的模式里遮罩只乘在权重上 —— cs = Cs / αs 与遮罩无关(浮点版里两者同乘遮罩、相除时约掉),所以 B 拿没乘遮罩的源算,
+    /// 颜色减淡 / 加深这类在分母上的量不会被遮罩的取整放大。三项按 1/255³ 的单位攒齐,最后只取整一次、夹到 0–255。
+    /// </para>
+    /// <para>
+    /// <paramref name="componentAlpha" /> 时遮罩的颜色通道各管一个通道(规范 §9):可分离的模式里通道 c 的源是 Cs_c·m_c、源 alpha 是
+    /// αs·m_c;HSL 的四种照浮点版,颜色用 Cs_c·m_c、alpha 用 αs·m_a(m_a 是遮罩的 alpha)。
+    /// </para>
+    /// <paramref name="dstAlpha" /> 为 false 时是 x8r8g8b8:目标 alpha 当 1,alpha 字节写 0。原先逐像素浮点 Decode、合成、再 Encode。
+    /// </summary>
+    private static void BlendRow(byte op, ReadOnlySpan<uint> src, ReadOnlySpan<uint> mask, bool componentAlpha, Span<uint> dst, bool dstAlpha, uint depthMask)
+    {
+        uint keep = dstAlpha ? 0xFFFFFFFFu : 0x00FFFFFFu;
+        if (op <= 0x3A && !componentAlpha)
+        {
+            for (int i = 0; i < dst.Length; i++)
+            {
+                uint s = src[i], d = dst[i];
+                uint m = mask.IsEmpty ? 255 : mask[i] >> 24;
+                uint sa = s >> 24, da = dstAlpha ? d >> 24 : 255;
+                uint sam = sa * m;   // 乘过遮罩的源 alpha,单位 1/65025
+                uint r = 0, g = 0, b = 0;   // αs·αd·B,单位 1/65025(没乘遮罩);αs 或 αd 为 0 时这一项是 0
+                if (sa != 0 && da != 0)
+                {
+                    // 浮点版的 cs = min(1, Cs / αs)、cd = min(1, Cd / αd):颜色超过 alpha(没按规矩预乘)时按 1 算。
+                    r = SeparableTerm(op, Math.Min((s >> 16) & 0xFF, sa), sa, Math.Min((d >> 16) & 0xFF, da), da);
+                    g = SeparableTerm(op, Math.Min((s >> 8) & 0xFF, sa), sa, Math.Min((d >> 8) & 0xFF, da), da);
+                    b = SeparableTerm(op, Math.Min(s & 0xFF, sa), sa, Math.Min(d & 0xFF, da), da);
+                }
+                // 各项都不为负:(1 − αs)·Cd + (1 − αd)·Cs + 遮罩 × αs·αd·B,单位 1/255³,至多 3 × 255³。
+                uint wd = Square - sam, ws = (255 - da) * m;
+                r = (wd * ((d >> 16) & 0xFF)) + (ws * ((s >> 16) & 0xFF)) + (m * r);
+                g = (wd * ((d >> 8) & 0xFF)) + (ws * ((s >> 8) & 0xFF)) + (m * g);
+                b = (wd * (d & 0xFF)) + (ws * (s & 0xFF)) + (m * b);
+                uint alpha = (sam * 255) + (da * Square) - (sam * da);
+                dst[i] = ((ToByte(alpha) << 24) | (ToByte(r) << 16) | (ToByte(g) << 8) | ToByte(b)) & keep & depthMask;
+            }
+            return;
+        }
+        if (op <= 0x3A)
+        {
+            // 分量 alpha 的可分离模式:每个通道各用自己那一份遮罩。
+            for (int i = 0; i < dst.Length; i++)
+            {
+                uint s = src[i], d = dst[i], m = mask.IsEmpty ? 0xFFFFFFFFu : mask[i];
+                uint sa = s >> 24, da = dstAlpha ? d >> 24 : 255;
+                uint sam = sa * (m >> 24);
+                uint alpha = (sam * 255) + (da * Square) - (sam * da);
+                dst[i] = ((ToByte(alpha) << 24) | (Separable(op, (s >> 16) & 0xFF, sa, (d >> 16) & 0xFF, da, (m >> 16) & 0xFF) << 16)
+                    | (Separable(op, (s >> 8) & 0xFF, sa, (d >> 8) & 0xFF, da, (m >> 8) & 0xFF) << 8)
+                    | Separable(op, s & 0xFF, sa, d & 0xFF, da, m & 0xFF)) & keep & depthMask;
+            }
+            return;
+        }
+        for (int i = 0; i < dst.Length; i++)
+        {
+            uint s = src[i], d = dst[i];
+            uint m = mask.IsEmpty ? 0xFFFFFFFFu : componentAlpha ? mask[i] : (mask[i] >> 24) * 0x01010101u;
+            uint sa = s >> 24, da = dstAlpha ? d >> 24 : 255;
+            uint sr = (s >> 16) & 0xFF, sg = (s >> 8) & 0xFF, sb = s & 0xFF;
+            uint dr = (d >> 16) & 0xFF, dg = (d >> 8) & 0xFF, db = d & 0xFF;
+            uint mr = (m >> 16) & 0xFF, mg = (m >> 8) & 0xFF, mb = m & 0xFF;
+            uint sam = sa * (m >> 24);   // a = αs·m_a,单位 1/65025
+            // 两边同乘 k = a·αd(单位 1/255³):cs·k = Cs·m·αd、cd·k = Cd·a 都是整数,HslBlend 给回 k·B,也就是 a·αd·B。
+            long k = (long)sam * da;
+            (long tr, long tg, long tb) = k == 0 ? (0, 0, 0)
+                : HslBlend(op, ((long)sr * mr * da, (long)sg * mg * da, (long)sb * mb * da), ((long)dr * sam, (long)dg * sam, (long)db * sam), k);
+            uint alpha = (sam * 255) + (da * Square) - (sam * da);
+            dst[i] = ((ToByte(alpha) << 24) | (Hsl(sam, dr, da, sr * mr, tr) << 16) | (Hsl(sam, dg, da, sg * mg, tg) << 8)
+                | Hsl(sam, db, da, sb * mb, tb)) & keep & depthMask;
+        }
+
+        // 分量 alpha 的一个可分离通道:源是 Cs·m、源 alpha 是 αs·m(m 是这个通道的遮罩),B 仍拿没乘遮罩的 Cs、αs 算。
+        static uint Separable(byte op, uint sc, uint sa, uint dc, uint da, uint m)
+        {
+            uint term = sa != 0 && da != 0 ? SeparableTerm(op, Math.Min(sc, sa), sa, Math.Min(dc, da), da) : 0;
+            return ToByte(((Square - (sa * m)) * dc) + ((255 - da) * m * sc) + (m * term));
+        }
+
+        // HSL 的 B 照浮点版不夹到 0–1,a·αd·B 这一项可能略小于 0 或大于 a·αd:按 long 攒齐、夹到 0–1 再取整。
+        static uint Hsl(uint sam, uint dc, uint da, uint scm, long term)
+        {
+            long n = ((long)(Square - sam) * dc) + ((long)(255 - da) * scm) + term;
+            return ToByte((uint)Math.Clamp(n, 0, Cube));
+        }
+
+        // 单位 1/255³ 的量夹到 1、四舍五入到 8 位(夹取不用分支)。
+        static uint ToByte(uint n) => (Math.Min(n, Cube) + (Square / 2)) / Square;
+    }
+
+
+    /// <summary>
+    /// 可分离的混合函数乘上 αs·αd:αs·αd·B(cs, cd),单位 1/65025。参数是 8 位的 Cs ≤ αs、Cd ≤ αd(αs、αd 都不为 0),
+    /// cs = Cs / αs、cd = Cd / αd 代进 B 之后整理成整数式;带除法的(颜色减淡 / 加深、柔光)四舍五入,
+    /// 柔光的 √(Cd·αd) 查 <see cref="Sqrt12" /> 表。
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint SeparableTerm(byte op, uint s, uint a, uint d, uint e)
+    {
+        switch (op)
+        {
+            case 0x30:   // Multiply:cs·cd
+                return s * d;
+            case 0x31:   // Screen:cs + cd − cs·cd
+                return (s * e) + (d * a) - (s * d);
+            case 0x32:   // Overlay = HardLight(cd, cs)
+                return HardLight(2 * d <= e, s, a, d, e);
+            case 0x33:   // Darken:min(cs, cd)
+                return Math.Min(s * e, d * a);
+            case 0x34:   // Lighten:max(cs, cd)
+                return Math.Max(s * e, d * a);
+            case 0x35:   // ColorDodge:cd = 0 → 0;cs = 1 → 1;否则 min(1, cd / (1 − cs))
+                return d == 0 ? 0 : s >= a ? a * e : Math.Min(a * e, ((a * a * d) + ((a - s) / 2)) / (a - s));
+            case 0x36:   // ColorBurn:cd = 1 → 1;cs = 0 → 0;否则 1 − min(1, (1 − cd) / cs)
+                return d >= e ? a * e : s == 0 ? 0 : (a * e) - Math.Min(a * e, ((a * a * (e - d)) + (s / 2)) / s);
+            case 0x37:   // HardLight:cs ≤ 0.5 → 2·cs·cd;否则 Screen(cd, 2·cs − 1)
+                return HardLight(2 * s <= a, s, a, d, e);
+            case 0x38:   // SoftLight
+                return SoftLight(s, a, d, e);
+            case 0x39:   // Difference:|cs − cd|
+                return (uint)Math.Abs((int)(s * e) - (int)(d * a));
+            default:     // Exclusion:cs + cd − 2·cs·cd
+                return (s * e) + (d * a) - (2 * s * d);
+        }
+
+        // HardLight:low 时 2·cs·cd,否则 cd + (2·cs − 1) − cd·(2·cs − 1)(Overlay 把 cs、cd 对调,两段的式子都对称)。
+        // 两段都算出来再挑,不用分支(哪一段取决于每个像素的颜色,分支猜不准)。
+        static uint HardLight(bool low, uint s, uint a, uint d, uint e)
+        {
+            uint lower = 2 * s * d;
+            uint upper = unchecked((2 * s * e) + (2 * d * a) - (a * e) - lower);   // 只在 low 为 false 时才用到,那时不为负
+            return low ? lower : upper;
+        }
+
+        static uint SoftLight(uint s, uint a, uint d, uint e)
+        {
+            if (2 * s <= a)
+            {
+                // cd − (1 − 2·cs)·cd·(1 − cd)
+                return (a * d) - ((((a - (2 * s)) * d * (e - d)) + (e / 2)) / e);
+            }
+            if (4 * d <= e)
+            {
+                // cd + (2·cs − 1)·(D(cd) − cd),D(cd) = ((16·cd − 12)·cd + 4)·cd,即 D(cd) − cd = (16·cd² − 12·cd + 3)·cd
+                return (a * d) + (((((2 * s) - a) * ((16 * d * d) + (3 * e * e) - (12 * d * e)) * d) + (e * e / 2)) / (e * e));
+            }
+            // cd + (2·cs − 1)·(√cd − cd):αd·(√cd − cd) = √(Cd·αd) − Cd。√(Cd·αd) = √Cd·√αd 按 1/256 查表(Cd ≤ αd,差不会是负数;
+            // 表的取整让 Cd = αd 时差出 −1 / 256 左右,夹到 0)。
+            int root = (int)((Sqrt12[d] * Sqrt12[e]) >> 16) - (int)(d << 8);
+            return (a * d) + (((((2 * s) - a) * (uint)Math.Max(root, 0)) + 128) >> 8);
+        }
+    }
+
+    /// <summary>⌊4096·√i⌋,i = 0–255(柔光用;√(x·y) = √x·√y,两项相乘再右移 16 位就是 256·√(x·y),差不到 2 / 256)。</summary>
+    private static readonly uint[] Sqrt12 = BuildSqrt12();
+
+    private static uint[] BuildSqrt12()
+    {
+        uint[] table = new uint[256];
+        for (uint i = 0; i < table.Length; i++)
+        {
+            // ⌊√(i·2²⁴)⌋,逐位求整数平方根(i·2²⁴ < 2³²)。
+            uint x = i << 24, root = 0;
+            for (uint bit = 1u << 30; bit != 0; bit >>= 2)
+            {
+                if (x >= root + bit)
+                {
+                    x -= root + bit;
+                    root = (root >> 1) + bit;
+                }
+                else
+                {
+                    root >>= 1;
+                }
+            }
+            table[i] = root;
+        }
+        return table;
+    }
+
+    /// <summary>
+    /// HSL 混合(PDF Reference 1.7 §7.2.4 的 Lum / Sat / SetLum / SetSat / ClipColor),输入输出都乘了同一个正数 <paramref name="k" />
+    /// (颜色 1 对应 k;<see cref="BlendRow" /> 里 k = αs·αd,乘上之后 cs、cd 都是整数),照浮点版 cs、cd 不夹到 1。
+    /// 亮度的权重 0.3 / 0.59 / 0.11 写成 30 / 59 / 11:亮度与 SetLum 之后的颜色按 k / 100 的单位算,不丢精度;除法四舍五入。
+    /// </summary>
+    private static (long R, long G, long B) HslBlend(byte op, (long R, long G, long B) cs, (long R, long G, long B) cd, long k)
+    {
+        // 数量级:k 与各颜色至多 255³,乘 100 之后约 1.7 × 10⁹;ClipColor 里两两相乘至多约 5.5 × 10¹⁸,不超过 long。
+        (long R, long G, long B) c = op switch
+        {
+            0x3B => SetLum(SetSat(cs, Sat(cd)), Lum(cd), k),   // HSLHue
+            0x3C => SetLum(SetSat(cd, Sat(cs)), Lum(cd), k),   // HSLSaturation
+            0x3D => SetLum(cs, Lum(cd), k),                    // HSLColor
+            _ => SetLum(cd, Lum(cs), k),                       // HSLLuminosity
+        };
+        return (RoundDiv(c.R, 100), RoundDiv(c.G, 100), RoundDiv(c.B, 100));
+
+        // 亮度 × 100。
+        static long Lum((long R, long G, long B) c) => (30 * c.R) + (59 * c.G) + (11 * c.B);
+
+        static long Sat((long R, long G, long B) c) => Math.Max(c.R, Math.Max(c.G, c.B)) - Math.Min(c.R, Math.Min(c.G, c.B));
+
+        // 最大的通道变成 s、最小的变成 0、中间的按比例;三个通道相等时全是 0。
+        static (long R, long G, long B) SetSat((long R, long G, long B) c, long s)
+        {
+            long max = Math.Max(c.R, Math.Max(c.G, c.B)), min = Math.Min(c.R, Math.Min(c.G, c.B));
+            if (max <= min)
+            {
+                return (0, 0, 0);
+            }
+            return (Scale(c.R), Scale(c.G), Scale(c.B));
+
+            long Scale(long v) => v == max ? s : v == min ? 0 : RoundDiv((v - min) * s, max - min);
+        }
+
+        // 平移到亮度 l(l 是亮度 × 100),再按 ClipColor 拉回 [0, 1];返回值按 k / 100 的单位。
+        static (long R, long G, long B) SetLum((long R, long G, long B) c, long l, long k)
+        {
+            long delta = l - Lum(c);
+            (long R, long G, long B) v = ((100 * c.R) + delta, (100 * c.G) + delta, (100 * c.B) + delta);
+            // ClipColor:平移之后的亮度正好是 l(三个权重之和是 100),不必再算。浮点版第二步用的是第一步之前的最大值,照办。
+            long one = 100 * k;
+            long n = Math.Min(v.R, Math.Min(v.G, v.B)), x = Math.Max(v.R, Math.Max(v.G, v.B));
+            // 三个通道相等(灰色)时分母为 0:同浮点版取极限,整个拉到 0 或 1。
+            if (n < 0)
+            {
+                v = l > n ? (l + RoundDiv((v.R - l) * l, l - n), l + RoundDiv((v.G - l) * l, l - n), l + RoundDiv((v.B - l) * l, l - n)) : (0, 0, 0);
+            }
+            if (x > one)
+            {
+                v = x > l ? (l + RoundDiv((v.R - l) * (one - l), x - l), l + RoundDiv((v.G - l) * (one - l), x - l), l + RoundDiv((v.B - l) * (one - l), x - l))
+                    : (one, one, one);
+            }
+            return v;
+        }
+    }
+
+    /// <summary>n / d 四舍五入(d > 0,n 可以是负数;一半时远离 0)。</summary>
+    private static long RoundDiv(long n, long d) => n >= 0 ? (n + (d / 2)) / d : -((-n + (d / 2)) / d);
+
+    /// <summary>
+    /// 只有 alpha 的目标(a8,<paramref name="oneBit" /> 时 a1)的一行。Porter-Duff / Disjoint / Conjoint 是 源 alpha × Fa + 目标 alpha × Fb,
+    /// 混合模式是 αs + αd − αs·αd(规范 §4)。不带除法的运算(Clear … Add)源 alpha × 遮罩取整到 8 位、因子 0–255;
+    /// 带除法的(Saturate、Disjoint、Conjoint)源 alpha × 遮罩不取整、因子按 1/65025 算。两项攒齐后只取整一次 ——
+    /// a8 四舍五入到 8 位、夹到 255,a1 与浮点版的编码一样按 ≥ 0.5 取 1。原先逐像素浮点 Decode、四通道合成、再 Encode。
+    /// </summary>
+    /// <remarks>
+    /// a1 目标的 alpha 只有 0 / 1:这时带除法的因子全都退化成 n ≥ d 的判断或 αs、1 − αs 本身(都是精确的),
+    /// 不带除法的因子只剩 0、255、s8、255 − s8(s8 是源 alpha × 遮罩四舍五入到 8 位),而 a1 的阈值 0.5 = 127.5 / 255
+    /// 正好落在 8 位取整的分界上,所以与浮点版在阈值两边的判定逐位相同。两边只会在源本身是浮点取样(渐变、双线性)、
+    /// 量化成 8 位前后恰好跨过 0.5 的点上不同。
+    /// </remarks>
+    private static void CombineAlphaRow(byte op, ReadOnlySpan<uint> src, ReadOnlySpan<uint> mask, Span<uint> dst, bool oneBit)
+    {
+        // a1 / a8 各展开一份(oneBit 是常量,循环里不再判断)。
+        if (oneBit)
+        {
+            AlphaRow(op, src, mask, dst, oneBit: true);
+        }
+        else
+        {
+            AlphaRow(op, src, mask, dst, oneBit: false);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void AlphaRow(byte op, ReadOnlySpan<uint> src, ReadOnlySpan<uint> mask, Span<uint> dst, bool oneBit)
+    {
+        // 三类运算各一个循环:不带除法的因子内联进来、循环里没有调用(否则循环变量全被挤到栈上)。
+        if (op <= RenderOps.Add)
+        {
+            for (int i = 0; i < dst.Length; i++)
+            {
+                uint s8 = src[i] >> 24;
+                if (!mask.IsEmpty)
+                {
+                    s8 = Argb8.Div255(s8 * (mask[i] >> 24));
+                }
+                uint da = oneBit ? (dst[i] & 1) * 255 : dst[i] & 0xFF;
+                (uint fa, uint fb) = PorterDuffFactors(op, s8, da);
+                dst[i] = Encode((s8 * fa) + (da * fb), oneBit);   // 单位 1/65025
+            }
+        }
+        else if (op < 0x30)
+        {
+            for (int i = 0; i < dst.Length; i++)
+            {
+                uint sa = (src[i] >> 24) * (mask.IsEmpty ? 255 : mask[i] >> 24);
+                uint da = oneBit ? (dst[i] & 1) * 255 : dst[i] & 0xFF;
+                (uint fa, uint fb) = DividingFactors(op, sa, da);
+                ulong n = ((ulong)sa * fa) + ((ulong)(da * 255) * fb);   // 单位 1/65025²
+                // a1:n / 65025² ≥ 0.5(65025² 是奇数,恰好等于 0.5 的值不存在);a8 同 MixFine。
+                dst[i] = oneBit ? (n > (ulong)Square * Square / 2 ? 1u : 0u)
+                    : (uint)((Math.Min(n, (ulong)Square * Square) + (Cube / 2)) / Cube);
+            }
+        }
+        else
+        {
+            for (int i = 0; i < dst.Length; i++)
+            {
+                uint sa = (src[i] >> 24) * (mask.IsEmpty ? 255 : mask[i] >> 24);
+                uint da = oneBit ? (dst[i] & 1) * 255 : dst[i] & 0xFF;
+                dst[i] = Encode(sa + (da * 255) - (((sa * da) + 127) / 255), oneBit);   // 单位 1/65025
+            }
+        }
+
+        // n 是结果 alpha,单位 1/65025。a1:n / 65025 ≥ 0.5,即 n > 32512(65025 是奇数,恰好等于 0.5 的值不存在);
+        // a8 夹取不用分支(结果常常正好是 255)。
+        static uint Encode(uint n, bool oneBit) =>
+            oneBit ? (n > Square / 2 ? 1u : 0u) : Argb8.Div255(Math.Min(n, Square));
+    }
+
+    /// <summary>
+    /// 不带除法的 Porter-Duff 运算(Clear … Add)的两个因子,0–255 定点,表同 <see cref="RenderOps" /> 的浮点版(规范 §4):
+    /// <paramref name="s8" /> 是源 alpha × 遮罩取整到 8 位,<paramref name="da" /> 是目标 alpha。
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static (uint Fa, uint Fb) PorterDuffFactors(byte op, uint s8, uint da) => op switch
+    {
+        0 => (0u, 0u),                    // Clear
+        1 => (255u, 0u),                  // Src
+        2 => (0u, 255u),                  // Dst
+        3 => (255u, 255 - s8),            // Over
+        4 => (255 - da, 255u),            // OverReverse
+        5 => (da, 0u),                    // In
+        6 => (0u, s8),                    // InReverse
+        7 => (255 - da, 0u),              // Out
+        8 => (0u, 255 - s8),              // OutReverse
+        9 => (da, 255 - s8),              // Atop
+        10 => (255 - da, s8),             // AtopReverse
+        11 => (255 - da, 255 - s8),       // Xor
+        _ => (255u, 255u),                // Add
+    };
+
+    /// <summary>
+    /// Saturate 与 Disjoint(0x10–0x1B)/ Conjoint(0x20–0x2B)的两个因子,表与 <see cref="RenderOps" /> 的浮点版一一对应(规范 §4)。
+    /// <paramref name="sa" /> 是源 alpha × 遮罩(单位 1/65025,不取整),<paramref name="da" /> 是目标 alpha(0–255);因子的单位也是 1/65025。
+    /// min(1, n / d) 与 max(1 − n / d, 0) 照浮点版:n ≥ d(含 0 / 0)时分别是 1 与 0,否则四舍五入。
+    /// </summary>
+    private static (uint Fa, uint Fb) DividingFactors(byte op, uint sa, uint da)
+    {
+        uint da2 = da * 255;   // 目标 alpha,单位 1/65025
+        uint notSa = Square - sa, notDa = Square - da2;
+        if (op < 0x10)
+        {
+            return (MinOne(notDa, sa), Square);   // Saturate:min(1, (1 − αd) / αs)
+        }
+        if (op < 0x20)
+        {
+            // Disjoint:源与目标的覆盖区域尽量不重叠,min(1, (1 − αd) / αs) 一类。
+            return (op - 0x10) switch
+            {
+                0 => (0u, 0u),
+                1 => (Square, 0u),
+                2 => (0u, Square),
+                3 => (Square, MinOne(notSa, da2)),
+                4 => (MinOne(notDa, sa), Square),
+                5 => (OneMinus(notDa, sa), 0u),
+                6 => (0u, OneMinus(notSa, da2)),
+                7 => (MinOne(notDa, sa), 0u),
+                8 => (0u, MinOne(notSa, da2)),
+                9 => (OneMinus(notDa, sa), MinOne(notSa, da2)),
+                10 => (MinOne(notDa, sa), OneMinus(notSa, da2)),
+                _ => (MinOne(notDa, sa), MinOne(notSa, da2)),
+            };
+        }
+        // Conjoint:源与目标的覆盖区域尽量重叠,min(1, αd / αs) 一类。
+        return (op - 0x20) switch
+        {
+            0 => (0u, 0u),
+            1 => (Square, 0u),
+            2 => (0u, Square),
+            3 => (Square, OneMinus(sa, da2)),
+            4 => (OneMinus(da2, sa), Square),
+            5 => (MinOne(da2, sa), 0u),
+            6 => (0u, MinOne(sa, da2)),
+            7 => (OneMinus(da2, sa), 0u),
+            8 => (0u, OneMinus(sa, da2)),
+            9 => (MinOne(da2, sa), OneMinus(sa, da2)),
+            10 => (OneMinus(da2, sa), MinOne(sa, da2)),
+            _ => (OneMinus(da2, sa), OneMinus(sa, da2)),
+        };
+
+        // n、d 的单位都是 1/65025;n < d ≤ 65025 时 n × 65025 + d / 2 不到 2³²,不溢出。
+        static uint MinOne(uint n, uint d) => n >= d ? Square : ((n * Square) + (d / 2)) / d;
+
+        static uint OneMinus(uint n, uint d) => n >= d ? 0u : Square - MinOne(n, d);
     }
 
     private static bool Is8888(PictFormat f) => ReferenceEquals(f, PictFormat.A8R8G8B8) || ReferenceEquals(f, PictFormat.X8R8G8B8);

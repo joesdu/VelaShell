@@ -6,11 +6,13 @@
 //   fill-style、tile/stipple 原点、clip-mask 与 clip 原点、line-style 与 dashes、cap-style、join-style、fill-rule、arc-mode;
 //   端点重合的线)、「SetDashes」(虚线沿线量、连接的各段接着走)、
 //   「PolyPoint」「PolyLine」「PolySegment」「PolyRectangle」「PolyArc」「FillPoly」「PolyFillRectangle」
-//   「PolyFillArc」(像素的取舍:细线含两端点、CapNotLast 不画末点;填充按像素中心是否落在形状内;宽弧的边界与端帽)
+//   「PolyFillArc」(像素的取舍:细线含两端点、CapNotLast 不画末点;填充按像素中心是否落在形状内;宽弧的边界与端帽;
+//   PolyArc 里首尾相接的弧按 join-style 接、虚线接着走、相交处的像素只画一次)
 
 using VelaShell.XServer.Fonts;
 using VelaShell.XServer.Protocol;
 using VelaShell.XServer.Resources;
+using ArcSpec = (int X, int Y, int W, int H, int A1, int A2);
 using Polygon = System.Collections.Generic.List<(double X, double Y)>;
 
 namespace VelaShell.XServer.Drawing;
@@ -1386,152 +1388,294 @@ internal sealed class Rasterizer
         return points;
     }
 
-    public void Arc(int x, int y, int w, int h, int angle1, int angle2)
+    /// <summary>弧的起点(实数坐标)。</summary>
+    private static (double X, double Y) ArcStart(ArcSpec arc)
     {
-        if (_gc.LineWidth == 0)
+        (double cx, double cy, double rx, double ry) = Ellipse(arc.X, arc.Y, arc.W, arc.H);
+        (double start, _) = ArcAngles(arc.A1, arc.A2);
+        return EllipsePoint(cx, cy, rx, ry, start);
+    }
+
+    /// <summary>弧的终点(实数坐标)。</summary>
+    private static (double X, double Y) ArcEnd(ArcSpec arc)
+    {
+        (double cx, double cy, double rx, double ry) = Ellipse(arc.X, arc.Y, arc.W, arc.H);
+        (double start, double extent) = ArcAngles(arc.A1, arc.A2);
+        return EllipsePoint(cx, cy, rx, ry, start + extent);
+    }
+
+    /// <summary>两个端点只要各轴相差都不到这么多就算「重合」(见 <see cref="Coincide" />)。</summary>
+    private const double CoincideTolerance = 0.5 - (1.0 / 256);
+
+    /// <summary>
+    /// PolyArc 里一条弧的终点与另一条的起点算不算重合:各轴相差都不到半个像素(留 1/256 像素的余量)。
+    /// </summary>
+    /// <remarks>
+    /// 端点是实数(圆心与半轴是半像素的倍数,再乘上 cos / sin),逐位相等太苛刻:同一个椭圆的四段 90° 弧,前一段的终点角是起角加跨度、
+    /// 后一段的起角是另一个数换算来的,末位常常差一点,cos(π/2) 也不是 0。按「取整到同一个像素」判又不稳:宽或高是奇数时圆心在半像素上,
+    /// 0° / 180° 处的端点正好落在 .5 上,取整到哪一边全看浮点误差的正负。「各轴差不到半个像素」—— 在像素上看就是同一点 ——
+    /// 不受浮点误差左右,也与平移无关。90° 倍数处的端点都在半像素的格点上,对它们这个判据就是「恰好相等」:正好差半个像素的
+    /// (宽或高奇偶不同的两个框)不算,那 1/256 像素的余量保证这种情形不会因为浮点误差时而相接、时而不相接。
+    /// </remarks>
+    private static bool Coincide((double X, double Y) a, (double X, double Y) b) =>
+        Math.Abs(a.X - b.X) < CoincideTolerance && Math.Abs(a.Y - b.Y) < CoincideTolerance;
+
+    /// <summary>
+    /// 一串首尾相接的弧:<see cref="Arcs" /> 里从 <see cref="Start" /> 起的 <see cref="Count" /> 条。下标绕回开头 ——
+    /// 最后一条接回第一条时,最后一串接在第一串前面当一串画。
+    /// </summary>
+    private readonly record struct ArcChain(IReadOnlyList<ArcSpec> Arcs, int Start, int Count)
+    {
+        public ArcSpec this[int j] => Arcs[(Start + j) % Arcs.Count];
+    }
+
+    /// <summary>
+    /// PolyArc:按列出的次序画一组弧。一条弧的终点与下一条的起点重合(<see cref="Coincide" />)时两条相接,最后一条的终点与第一条的起点重合时
+    /// 也相接;相接的一串当一条路径画 —— 宽弧之间按 join-style 加接头、只在整串的两头加端帽(首尾也相接时哪里都不加),整串放进同一张
+    /// 活动边表一次填,相交处的像素只画一次;虚线沿整串接着走,每一串从 dash-offset 重新开始;细弧在接点上只画一次
+    /// (协议「PolyArc」「SetDashes」)。不相接的弧之间相交的像素照样画多次(协议如此)。
+    /// </summary>
+    public void PolyArc(IReadOnlyList<ArcSpec> arcs)
+    {
+        int count = arcs.Count;
+        if (count == 0)
         {
-            ThinArc(x, y, w, h, angle1, angle2);
+            return;
         }
-        else
+        WorkBudget.Charge(count);
+        // 每一串的第一条:第 0 条,以及每条与前一条不相接的弧。
+        List<int> starts = [0];
+        for (int i = 1; i < count; i++)
         {
-            WideArc(x, y, w, h, angle1, angle2);
+            if (!Coincide(ArcEnd(arcs[i - 1]), ArcStart(arcs[i])))
+            {
+                starts.Add(i);
+            }
+        }
+        bool wrap = count > 1 && Coincide(ArcEnd(arcs[count - 1]), ArcStart(arcs[0]));
+        if (starts.Count == 1)
+        {
+            DrawArcs(new ArcChain(arcs, 0, count), closed: wrap);
+            return;
+        }
+        int from = 0, to = starts.Count;
+        if (wrap)
+        {
+            // 最后一条接回第一条:最后一串接在第一串前面,当一串画(它含第一条弧,先画)。
+            DrawArcs(new ArcChain(arcs, starts[^1], count - starts[^1] + starts[1]), closed: false);
+            (from, to) = (1, starts.Count - 1);
+        }
+        for (int k = from; k < to; k++)
+        {
+            int next = k + 1 < starts.Count ? starts[k + 1] : count;
+            DrawArcs(new ArcChain(arcs, starts[k], next - starts[k]), closed: false);
         }
     }
 
-    /// <summary>细弧:相邻采样点之间用细线连起来(采样点先取整去重,免得同一像素被画两次);虚线沿弧接着走。</summary>
-    private void ThinArc(int x, int y, int w, int h, int angle1, int angle2)
+    /// <summary>单独画一条弧(自成一串)。</summary>
+    public void Arc(int x, int y, int w, int h, int angle1, int angle2) =>
+        DrawArcs(new ArcChain([(x, y, w, h, angle1, angle2)], 0, 1), closed: false);
+
+    /// <summary>跨度截到 ±360°(协议:超过 360° 的按 360° 算)。</summary>
+    private static int ClampExtent(int angle2) => Math.Clamp(angle2, -360 * 64, 360 * 64);
+
+    /// <summary>画一串相接的弧;<paramref name="closed" /> 是首尾也相接(两条以上的串才有;一条弧自己首尾相接就是整圆)。</summary>
+    private void DrawArcs(ArcChain chain, bool closed)
     {
-        List<(int X, int Y)> pixels = [];
-        foreach ((double px, double py) in ArcPoints(x, y, w, h, angle1, angle2))
+        // 同一个椭圆上一段接着一段(起角正好是上一段的终角、方向相同、加起来不超过一整圈)的弧并成一条:与跨度是两者之和的一条弧画法完全相同,
+        // 接点上没有接缝 —— 分开算的两段在接点上的端面差几个末位,cos(π/2) 也不是 0,正好压在端面上的一排像素中心会两边都不算。
+        List<ArcSpec> arcs = [chain[0]];
+        for (int j = 1; j < chain.Count; j++)
         {
-            (int X, int Y) p = ((int)Math.Round(px), (int)Math.Round(py));
-            if (pixels.Count == 0 || pixels[^1] != p)
+            ArcSpec prev = arcs[^1], next = chain[j];
+            int a = ClampExtent(prev.A2), b = ClampExtent(next.A2);
+            if ((next.X, next.Y, next.W, next.H) == (prev.X, prev.Y, prev.W, prev.H) && a != 0 && Math.Sign(a) == Math.Sign(b)
+                && Math.Abs(a + b) <= 360 * 64 && (prev.A1 + a - next.A1) % (360 * 64) == 0)
             {
-                pixels.Add(p);
+                arcs[^1] = prev with { A2 = a + b };
+            }
+            else
+            {
+                arcs.Add(next);
             }
         }
-        DashState dash = NewDashState();
-        bool full = Math.Abs(angle2) >= 360 * 64;
-        for (int i = 0; i < pixels.Count - 1; i++)
+        // 只剩一条整圆时,接缝是它自己的(与单独画一条整圆相同);否则首尾相接的串在接缝处要连起来。
+        bool full = arcs.Count == 1 && Math.Abs(arcs[0].A2) >= 360 * 64;
+        bool loop = full || closed;
+        if (_gc.LineWidth == 0)
         {
-            bool drawLast = i == pixels.Count - 2 && !full;
-            ThinLine(pixels[i].X, pixels[i].Y, pixels[i + 1].X, pixels[i + 1].Y, drawLast, dash);
+            ThinArcs(arcs, loop, connect: loop && !full);
         }
-        if (pixels.Count == 1)
+        else
         {
-            PlotDashed(pixels[0].X, pixels[0].Y, dash);
+            WideArcs(arcs, loop, seamJoin: loop && !full);
         }
     }
 
     /// <summary>
-    /// 宽弧:沿弧的内外两条边界围成的环带。外边界是半轴各加半个线宽的椭圆,内边界是各减半个线宽(不小于 0)的椭圆 ——
-    /// 对圆来说正好是与弧相距线宽一半的两条曲线;椭圆的边界协议留给实现,只要求形状(相对圆心)只取决于宽、高与线宽,
-    /// 所以圆心与半轴都不取整。不是整圆时两端按 cap-style 加端帽(端面是同一参数角上内外两点的连线);虚线沿中线量。
+    /// 一串细弧:各条弧的采样点依次取整、去掉相邻的重复点,连成一条细折线(相邻两点之间画 Bresenham 细线,终点留给下一段)——
+    /// 接点上的像素只画一次,虚线沿整串接着走。<paramref name="loop" /> 时路径回到起点,终点不再画一遍;<paramref name="connect" /> 时
+    /// (几条弧首尾相接)终点与起点取整后不一定是同一个像素,最后再连回起点。一条整圆照旧:终点不画、不连。
     /// </summary>
-    private void WideArc(int x, int y, int w, int h, int angle1, int angle2)
+    private void ThinArcs(List<ArcSpec> arcs, bool loop, bool connect)
     {
-        double half = _gc.LineWidth / 2.0;
-        (double cx, double cy, double rx, double ry) = Ellipse(x, y, w, h);
-        if (!BoxReaches(cx - rx - half, cy - ry - half, cx + rx + half, cy + ry + half))
+        DashState dash = NewDashState();
+        (int X, int Y) first = default, last = default;
+        bool any = false, moved = false;
+        foreach ((int x, int y, int w, int h, int a1, int a2) in arcs)
         {
-            return;
-        }
-        (double start, double extent) = ArcAngles(angle1, angle2);
-        bool full = Math.Abs(angle2) >= 360 * 64;
-        int n = ArcSteps(extent, Math.Max(rx, ry) + half);
-        WorkBudget.Charge(n);
-        var center = new (double X, double Y)[n + 1];
-        var outer = new (double X, double Y)[n + 1];
-        var inner = new (double X, double Y)[n + 1];
-        double[] length = new double[n + 1];
-        for (int i = 0; i <= n; i++)
-        {
-            double t = start + (extent * i / n);
-            center[i] = EllipsePoint(cx, cy, rx, ry, t);
-            outer[i] = EllipsePoint(cx, cy, rx + half, ry + half, t);
-            inner[i] = EllipsePoint(cx, cy, Math.Max(0, rx - half), Math.Max(0, ry - half), t);
-            if (i > 0)
+            foreach ((double px, double py) in ArcPoints(x, y, w, h, a1, a2))
             {
-                double dx = center[i].X - center[i - 1].X, dy = center[i].Y - center[i - 1].Y;
-                length[i] = length[i - 1] + Math.Sqrt((dx * dx) + (dy * dy));
-            }
-        }
-        double total = length[n];
-
-        List<Polygon> solid = [];
-        AddArcPiece(solid, 0, total, full ? (byte)1 : _gc.CapStyle, full ? (byte)1 : _gc.CapStyle);
-        if (!Dashed)
-        {
-            FillStroke(solid, null);
-            return;
-        }
-
-        // 虚线:沿中线量出各个偶数段。整圆的起点是接缝:首尾两个偶数段都碰到它时连起来,那两头不加端帽。
-        List<(double S0, double S1, bool Fresh)> runs = [];
-        WideDash dash = StartWideDash();
-        double s = 0;
-        bool open = false;
-        while (total - s > 1e-9)
-        {
-            WorkBudget.Charge(1);
-            double take = Math.Min(dash.Remaining, total - s);
-            if ((dash.Index & 1) == 0)
-            {
-                if (open)
+                (int X, int Y) p = ((int)Math.Round(px), (int)Math.Round(py));
+                if (!any)
                 {
-                    runs[^1] = (runs[^1].S0, s + take, runs[^1].Fresh);
+                    (first, last, any) = (p, p, true);
                 }
-                else
+                else if (p != last)
                 {
-                    runs.Add((s, s + take, dash.Fresh || s == 0));
-                    open = true;
+                    ThinLine(last.X, last.Y, p.X, p.Y, drawLast: false, dash);
+                    (last, moved) = (p, true);
                 }
             }
-            else
-            {
-                open = false;
-            }
-            s += take;
-            dash.Remaining -= take;
-            dash.Fresh = false;
-            if (dash.Remaining <= 1e-9)
-            {
-                dash.Index = (dash.Index + 1) % _gc.Dashes.Length;
-                dash.Remaining = _gc.Dashes[dash.Index];
-                dash.Fresh = true;
-            }
         }
-        bool seam = full && runs.Count > 1 && runs[0].S0 == 0 && runs[^1].S1 >= total;
-        List<Polygon> even = [];
-        for (int i = 0; i < runs.Count; i++)
+        if (connect && last != first)
         {
-            (double s0, double s1, bool fresh) = runs[i];
-            byte startCap = s0 == 0 ? (full ? (seam ? (byte)1 : InternalCap) : _gc.CapStyle) : (fresh ? InternalCap : (byte)1);
-            byte endCap = s1 >= total ? (full ? (seam ? (byte)1 : InternalCap) : _gc.CapStyle) : InternalCap;
-            if (full && runs.Count == 1 && s0 == 0 && s1 >= total)
-            {
-                (startCap, endCap) = (1, 1);   // 整圈都是偶数段
-            }
-            AddArcPiece(even, s0, s1, startCap, endCap);
+            ThinLine(last.X, last.Y, first.X, first.Y, drawLast: false, dash);
         }
-        FillStroke(solid, even);
+        else if (!loop || !moved)
+        {
+            PlotDashed(last.X, last.Y, dash);
+        }
+    }
 
-        // 中线上弧长 s 处所在的采样段下标与段内比例。
-        (int Index, double Fraction) Locate(double at)
+    /// <summary>宽弧路径上一条弧一端的端面:中线上的点、沿路径前进的单位切向,以及环带在这一端的外角与内角(同一参数角上外 / 内边界的点)。</summary>
+    private readonly record struct ArcFace(double X, double Y, double Ux, double Uy, (double X, double Y) Outer, (double X, double Y) Inner);
+
+    /// <summary>
+    /// 宽弧路径上的一条弧:中线、外边界、内边界在同一组参数角上采样,外加沿中线累计的弧长(边界的取法见 <see cref="WideArcs" />)。
+    /// 采样只在用得着时做(碰得到可画区域,或者虚线要量它的长度);两端的端面直接按端点的参数角算,与采样数组的首尾逐位相同。
+    /// </summary>
+    private sealed class ArcStroke
+    {
+        private readonly double _half;
+        private readonly int _a1, _a2;
+        private ArcFace? _begin, _end;
+
+        public ArcStroke(ArcSpec arc, double half)
+        {
+            _half = half;
+            (_a1, _a2) = (arc.A1, ClampExtent(arc.A2));
+            (Cx, Cy, Rx, Ry) = Ellipse(arc.X, arc.Y, arc.W, arc.H);
+            (Start, Extent) = ArcAngles(arc.A1, arc.A2);
+            Full = Math.Abs(arc.A2) >= 360 * 64;
+            N = ArcSteps(Extent, Math.Max(Rx, Ry) + half);
+        }
+
+        /// <summary>
+        /// 两端在 90° 的倍数上时按精确的 cos / sin(0、±1)取点(在 <see cref="Sample" /> 之前设)。与别的弧相接的弧这样做:
+        /// 端面正好与坐标轴平行、接点正好落在端面上,两条环带与接头在端面上严丝合缝 —— 按浮点算的 cos(π/2) 不是 0,
+        /// 两边的端面会差几个末位,正好压在端面上的一排像素中心两边都不算。单独的一条弧不这样做(像素与原来逐个相同)。
+        /// </summary>
+        public bool ExactEnds { get; set; }
+
+        public double Cx { get; }
+        public double Cy { get; }
+        public double Rx { get; }
+        public double Ry { get; }
+        public double Start { get; }
+        public double Extent { get; }
+
+        /// <summary>采样段数。</summary>
+        public int N { get; }
+
+        /// <summary>整圆(跨度 ≥ 360°)。</summary>
+        public bool Full { get; }
+
+        /// <summary>长度为 0(跨度为 0,或外接框缩成一点)。</summary>
+        public bool IsPoint => Extent == 0 || (Rx == 0 && Ry == 0);
+
+        public (double X, double Y)[] Center { get; private set; } = [];
+        public (double X, double Y)[] Outer { get; private set; } = [];
+        public (double X, double Y)[] Inner { get; private set; } = [];
+
+        /// <summary>中线的累计弧长;<see cref="Sample" /> 之后才有。</summary>
+        public double Total { get; private set; }
+
+        private double[] _length = [];
+
+        /// <summary>起点的端面。</summary>
+        public ArcFace Begin => _begin ??= Face(0);
+
+        /// <summary>终点的端面。</summary>
+        public ArcFace End => _end ??= Face(N);
+
+        /// <summary>第 i 个采样点的参数角。</summary>
+        private double T(int i) => Start + (Extent * i / N);
+
+        /// <summary>第 i 个采样点上参数角的 cos 与 sin(<see cref="ExactEnds" /> 时两端在 90° 的倍数上取精确值)。</summary>
+        private (double Cos, double Sin) Angle(int i)
+        {
+            int degrees64 = i == 0 ? _a1 : _a1 + _a2;
+            if (ExactEnds && (i == 0 || i == N) && degrees64 % (90 * 64) == 0)
+            {
+                return ((((degrees64 / (90 * 64)) % 4) + 4) % 4) switch
+                {
+                    0 => (1, 0),
+                    1 => (0, 1),
+                    2 => (-1, 0),
+                    _ => (0, -1),
+                };
+            }
+            double t = T(i);
+            return (Math.Cos(t), Math.Sin(t));
+        }
+
+        /// <summary>半轴 (<paramref name="rx" />, <paramref name="ry" />) 的椭圆上参数角为 <paramref name="angle" /> 的点(同 <see cref="EllipsePoint" />)。</summary>
+        private (double X, double Y) Point(double rx, double ry, (double Cos, double Sin) angle) =>
+            (Cx + (rx * angle.Cos), Cy - (ry * angle.Sin));
+
+        public void Sample()
+        {
+            if (_length.Length != 0)
+            {
+                return;
+            }
+            WorkBudget.Charge(N);
+            Center = new (double X, double Y)[N + 1];
+            Outer = new (double X, double Y)[N + 1];
+            Inner = new (double X, double Y)[N + 1];
+            _length = new double[N + 1];
+            for (int i = 0; i <= N; i++)
+            {
+                (double Cos, double Sin) t = Angle(i);
+                Center[i] = Point(Rx, Ry, t);
+                Outer[i] = Point(Rx + _half, Ry + _half, t);
+                Inner[i] = Point(Math.Max(0, Rx - _half), Math.Max(0, Ry - _half), t);
+                if (i > 0)
+                {
+                    double dx = Center[i].X - Center[i - 1].X, dy = Center[i].Y - Center[i - 1].Y;
+                    _length[i] = _length[i - 1] + Math.Sqrt((dx * dx) + (dy * dy));
+                }
+            }
+            Total = _length[N];
+        }
+
+        /// <summary>中线上弧长 <paramref name="at" /> 处所在的采样段下标与段内比例。</summary>
+        public (int Index, double Fraction) Locate(double at)
         {
             if (at <= 0)
             {
                 return (0, 0);
             }
-            if (at >= total)
+            if (at >= Total)
             {
-                return (n - 1, 1);
+                return (N - 1, 1);
             }
-            int lo = 0, hi = n;
+            int lo = 0, hi = N;
             while (hi - lo > 1)
             {
                 int mid = (lo + hi) >>> 1;
-                if (length[mid] <= at)
+                if (_length[mid] <= at)
                 {
                     lo = mid;
                 }
@@ -1540,60 +1684,397 @@ internal sealed class Rasterizer
                     hi = mid;
                 }
             }
-            double span = length[lo + 1] - length[lo];
-            return (lo, span <= 0 ? 0 : Math.Clamp((at - length[lo]) / span, 0, 1));
+            double span = _length[lo + 1] - _length[lo];
+            return (lo, span <= 0 ? 0 : Math.Clamp((at - _length[lo]) / span, 0, 1));
         }
 
-        static (double X, double Y) Lerp((double X, double Y)[] curve, int i, double f) =>
+        public static (double X, double Y) Lerp((double X, double Y)[] curve, int i, double f) =>
             (curve[i].X + ((curve[i + 1].X - curve[i].X) * f), curve[i].Y + ((curve[i + 1].Y - curve[i].Y) * f));
 
-        // 弧长 [s0, s1] 这一截环带,外加两头的端帽。
-        void AddArcPiece(List<Polygon> polys, double s0, double s1, byte startCap, byte endCap)
-        {
-            (int i0, double f0) = Locate(s0);
-            (int i1, double f1) = Locate(s1);
-            Polygon band = [with(((i1 - i0 + 2) * 2) + 2)];
-            band.Add(Lerp(outer, i0, f0));
-            for (int i = i0 + 1; i <= i1; i++)
-            {
-                band.Add(outer[i]);
-            }
-            band.Add(Lerp(outer, i1, f1));
-            band.Add(Lerp(inner, i1, f1));
-            for (int i = i1; i > i0; i--)
-            {
-                band.Add(inner[i]);
-            }
-            band.Add(Lerp(inner, i0, f0));
-            AddIfReaches(polys, band);
-            ArcCap(polys, i0, f0, forward: false, startCap);
-            ArcCap(polys, i1, f1, forward: true, endCap);
-        }
+        /// <summary>
+        /// 曲线上弧长 <paramref name="at" /> 处的点(<paramref name="i" />, <paramref name="f" /> 是 <see cref="Locate" /> 的结果)。
+        /// <see cref="ExactEnds" /> 时终点直接取最后一个采样点 —— 插值 a + (b − a) × 1 不一定逐位等于 b,端面要与接头用同一个点。
+        /// </summary>
+        public (double X, double Y) At((double X, double Y)[] curve, double at, int i, double f) =>
+            ExactEnds && at >= Total ? curve[N] : Lerp(curve, i, f);
 
-        // 弧上一端的端帽:方向取所在那一小段弦的方向(朝外);Projecting 沿它把端面推出半个线宽。
-        void ArcCap(List<Polygon> polys, int i, double f, bool forward, byte cap)
+        /// <summary>
+        /// 第 <paramref name="i" /> 个采样点(0 或 N)处的端面。前进方向取参数角上的切向 (−rx·sin t, −ry·cos t)(逆时针的弧),顺时针的反过来;
+        /// 一根轴长为 0 的椭圆(一条线段)在折返的那一头切向为 0,改用相邻采样点的弦。
+        /// </summary>
+        private ArcFace Face(int i)
         {
-            if (cap is not (2 or 3))
+            (double Cos, double Sin) t = Angle(i);
+            (double X, double Y) p = Point(Rx, Ry, t);
+            double ux = -Rx * t.Sin, uy = -Ry * t.Cos;
+            if (Extent < 0)
+            {
+                (ux, uy) = (-ux, -uy);
+            }
+            double d = Math.Sqrt((ux * ux) + (uy * uy));
+            if (d <= 1e-9 * (Rx + Ry))
+            {
+                (double X, double Y) q = Point(Rx, Ry, Angle(i == 0 ? 1 : N - 1));
+                (ux, uy) = i == 0 ? (q.X - p.X, q.Y - p.Y) : (p.X - q.X, p.Y - q.Y);
+                d = Math.Sqrt((ux * ux) + (uy * uy));
+            }
+            d = d > 0 ? d : 1;
+            return new ArcFace(p.X, p.Y, ux / d, uy / d, Point(Rx + _half, Ry + _half, t), Point(Math.Max(0, Rx - _half), Math.Max(0, Ry - _half), t));
+        }
+    }
+
+    /// <summary>一串宽弧在一张活动边表里攒到这么多个顶点就先填掉(见 <see cref="WideArcs" />)。</summary>
+    private const int MaxStrokeVertices = 1 << 20;
+
+    /// <summary>
+    /// 一串宽弧:每条弧是沿弧的内外两条边界围成的环带。外边界是半轴各加半个线宽的椭圆,内边界是各减半个线宽(不小于 0)的椭圆 ——
+    /// 对圆来说正好是与弧相距线宽一半的两条曲线;椭圆的边界协议留给实现,只要求形状(相对圆心)只取决于宽、高与线宽,
+    /// 所以圆心与半轴都不取整。相邻两条弧之间按 join-style 加接头(<see cref="AddArcJoin" />);整串的两头按 cap-style 加端帽
+    /// (端面是同一参数角上内外两点的连线),<paramref name="loop" />(首尾相接,或一条整圆)时哪里都不加,<paramref name="seamJoin" />
+    /// 时接缝上也按 join-style 接。虚线沿中线量,跨过接点接着走。整串的各块放进同一张活动边表一次填,每个像素只画一次。
+    /// </summary>
+    /// <remarks>
+    /// 一串弧的块要攒到一起才能填,而一条大弧的环带有上万个顶点:一个请求里成千上万条相接的大弧(比如同一个位置的整圆一条接一条)
+    /// 攒在一起就是几个 GB。攒到 <see cref="MaxStrokeVertices" /> 个顶点就在两条弧之间先填掉一批 —— 只有这么长的串,批与批之间
+    /// 重叠的像素才会画两次。
+    /// </remarks>
+    private void WideArcs(List<ArcSpec> chain, bool loop, bool seamJoin)
+    {
+        double half = _gc.LineWidth / 2.0;
+        List<ArcStroke> arcs = [];
+        if (chain.Count == 1)
+        {
+            ArcStroke only = new(chain[0], half);
+            if (!Reaches(only))
             {
                 return;
             }
-            (double x, double y) = Lerp(center, i, f);
-            double dx = center[i + 1].X - center[i].X, dy = center[i + 1].Y - center[i].Y, d = Math.Sqrt((dx * dx) + (dy * dy));
-            if (cap == 2)
+            arcs.Add(only);
+        }
+        else
+        {
+            // 长度为 0 的弧从路径里拿掉(与 PolyLine 拿掉端点重合的线段一样);全是这种弧时路径缩成一点,按第一条弧单独画(两端的端帽)。
+            foreach (ArcSpec spec in chain)
             {
-                AddCircle(polys, x, y, half);
+                ArcStroke arc = new(spec, half);
+                if (!arc.IsPoint)
+                {
+                    arcs.Add(arc);
+                }
             }
-            else if (d < 1e-12)
+            if (arcs.Count == 0)
             {
-                AddIfReaches(polys, [(x - half, y - half), (x + half, y - half), (x + half, y + half), (x - half, y + half)]);
-            }
-            else
-            {
-                double ux = (forward ? dx : -dx) / d * half, uy = (forward ? dy : -dy) / d * half;
-                (double X, double Y) a = Lerp(inner, i, f), b = Lerp(outer, i, f);
-                AddIfReaches(polys, [a, b, (b.X + ux, b.Y + uy), (a.X + ux, a.Y + uy)]);
+                bool full = Math.Abs(chain[0].A2) >= 360 * 64;
+                WideArcs([chain[0]], loop: full, seamJoin: false);
+                return;
             }
         }
+        foreach (ArcStroke arc in arcs)
+        {
+            arc.ExactEnds = arcs.Count > 1 || seamJoin;
+        }
+        bool dashed = Dashed;
+        List<Polygon> solid = [];
+        List<Polygon>? even = dashed ? [] : null;
+        WideDash dash = dashed ? StartWideDash() : default;
+        // 虚线的走位:inRun = 正在一个偶数段里(可能是从上一条弧接过来的);路径起点上的偶数段要不要端帽,得看最后一个偶数段是否也碰到终点(接缝)。
+        bool inRun = false, firstRunAtStart = false, lastRunAtEnd = false;
+        double runStart = 0;
+        List<Polygon>? startCap = null;
+        int solidSeen = 0, evenSeen = 0;
+        long vertices = 0;
+        int last = arcs.Count - 1;
+        for (int k = 0; k < arcs.Count; k++)
+        {
+            ArcStroke arc = arcs[k];
+            bool reaches = Reaches(arc);
+            if (reaches || dashed)
+            {
+                arc.Sample();
+            }
+            if (k > 0)
+            {
+                ArcFace into = arcs[k - 1].End, outOf = arc.Begin;
+                AddArcJoin(solid, into, outOf, half);
+                if (inRun)
+                {
+                    AddArcJoin(even!, into, outOf, half);
+                }
+            }
+            if (reaches)
+            {
+                AddArcBand(solid, arc, 0, arc.Total);
+                if (!loop && k == 0)
+                {
+                    AddArcCap(solid, arc, 0, forward: false, _gc.CapStyle);
+                }
+                if (!loop && k == last)
+                {
+                    AddArcCap(solid, arc, arc.Total, forward: true, _gc.CapStyle);
+                }
+            }
+            if (dashed)
+            {
+                List<Polygon> on = even!;
+                double total = arc.Total, s = 0;
+                runStart = 0;   // 从上一条弧接过来的偶数段,在这条弧上从起点量
+                while (total - s > 1e-9)
+                {
+                    WorkBudget.Charge(1);
+                    double take = Math.Min(dash.Remaining, total - s);
+                    if ((dash.Index & 1) == 0)
+                    {
+                        if (!inRun)
+                        {
+                            (inRun, runStart) = (true, s);
+                            if (k == 0 && s == 0)
+                            {
+                                firstRunAtStart = true;
+                                if (loop)
+                                {
+                                    startCap = [];
+                                    if (reaches)
+                                    {
+                                        AddArcCap(startCap, arc, 0, forward: false, InternalCap);
+                                    }
+                                }
+                                else if (reaches)
+                                {
+                                    AddArcCap(on, arc, 0, forward: false, _gc.CapStyle);
+                                }
+                            }
+                            else if (dash.Fresh && reaches)
+                            {
+                                AddArcCap(on, arc, s, forward: false, InternalCap);
+                            }
+                        }
+                    }
+                    else if (inRun)
+                    {
+                        if (reaches)
+                        {
+                            AddArcBand(on, arc, runStart, s);
+                            AddArcCap(on, arc, s, forward: true, InternalCap);
+                        }
+                        inRun = false;
+                    }
+                    s += take;
+                    dash.Remaining -= take;
+                    dash.Fresh = false;
+                    if (dash.Remaining <= 1e-9)
+                    {
+                        dash.Index = (dash.Index + 1) % _gc.Dashes.Length;
+                        dash.Remaining = _gc.Dashes[dash.Index];
+                        dash.Fresh = true;
+                    }
+                }
+                if (inRun)
+                {
+                    // 偶数段一直走到这条弧的终点。单独一条弧照原来的取法,量到一段段加出来的 s(浮点加法可能差终点一点点);
+                    // 与别的弧相接的弧量到正好的终点,与接头、下一条弧在端面上严丝合缝。
+                    double end = arc.ExactEnds ? total : s;
+                    if (reaches)
+                    {
+                        AddArcBand(on, arc, runStart, end);
+                    }
+                    if (k == last)
+                    {
+                        // 路径的终点:闭合时与起点上的偶数段在接缝处连起来就不加端帽。
+                        lastRunAtEnd = end >= total;
+                        byte cap = !lastRunAtEnd ? InternalCap : loop ? (firstRunAtStart ? (byte)1 : InternalCap) : _gc.CapStyle;
+                        if (reaches)
+                        {
+                            AddArcCap(on, arc, end, forward: true, cap);
+                        }
+                    }
+                    else if ((dash.Index & 1) != 0)
+                    {
+                        // 偶数段正好在这条弧的终点结束:就在这里收尾,不与下一条弧接。
+                        if (reaches)
+                        {
+                            AddArcCap(on, arc, end, forward: true, InternalCap);
+                        }
+                        inRun = false;
+                    }
+                }
+            }
+            vertices += CountVertices(solid, ref solidSeen) + (even is null ? 0 : CountVertices(even, ref evenSeen));
+            if (vertices > MaxStrokeVertices && k < last)
+            {
+                FillStroke(solid, even);
+                solid.Clear();
+                even?.Clear();
+                (solidSeen, evenSeen, vertices) = (0, 0, 0);
+            }
+        }
+        bool seam = loop && firstRunAtStart && lastRunAtEnd;
+        if (seamJoin)
+        {
+            AddArcJoin(solid, arcs[last].End, arcs[0].Begin, half);
+            if (seam)
+            {
+                AddArcJoin(even!, arcs[last].End, arcs[0].Begin, half);
+            }
+        }
+        if (!seam && startCap is not null)
+        {
+            even!.AddRange(startCap);
+        }
+        FillStroke(solid, even);
+
+        bool Reaches(ArcStroke a) => BoxReaches(a.Cx - a.Rx - half, a.Cy - a.Ry - half, a.Cx + a.Rx + half, a.Cy + a.Ry + half);
+    }
+
+    /// <summary>从第 <paramref name="seen" /> 块起新加的多边形一共多少个顶点(数过的不再数)。</summary>
+    private static long CountVertices(List<Polygon> polys, ref int seen)
+    {
+        long sum = 0;
+        for (; seen < polys.Count; seen++)
+        {
+            sum += polys[seen].Count;
+        }
+        return sum;
+    }
+
+    /// <summary>一条弧上弧长 [<paramref name="s0" />, <paramref name="s1" />] 这一截环带。</summary>
+    private void AddArcBand(List<Polygon> polys, ArcStroke arc, double s0, double s1)
+    {
+        (int i0, double f0) = arc.Locate(s0);
+        (int i1, double f1) = arc.Locate(s1);
+        Polygon band = [with(((i1 - i0 + 2) * 2) + 2)];
+        band.Add(ArcStroke.Lerp(arc.Outer, i0, f0));
+        for (int i = i0 + 1; i <= i1; i++)
+        {
+            band.Add(arc.Outer[i]);
+        }
+        band.Add(arc.At(arc.Outer, s1, i1, f1));
+        band.Add(arc.At(arc.Inner, s1, i1, f1));
+        for (int i = i1; i > i0; i--)
+        {
+            band.Add(arc.Inner[i]);
+        }
+        band.Add(ArcStroke.Lerp(arc.Inner, i0, f0));
+        AddIfReaches(polys, band);
+    }
+
+    /// <summary>
+    /// 弧上弧长 <paramref name="at" /> 处的端帽:方向取所在那一小段弦的方向(<paramref name="forward" /> 时朝前,否则朝后);
+    /// Projecting 沿它把端面推出半个线宽。
+    /// </summary>
+    private void AddArcCap(List<Polygon> polys, ArcStroke arc, double at, bool forward, byte cap)
+    {
+        if (cap is not (2 or 3))
+        {
+            return;
+        }
+        double half = _gc.LineWidth / 2.0;
+        (int i, double f) = arc.Locate(at);
+        (double x, double y) = arc.At(arc.Center, at, i, f);
+        double dx = arc.Center[i + 1].X - arc.Center[i].X, dy = arc.Center[i + 1].Y - arc.Center[i].Y, d = Math.Sqrt((dx * dx) + (dy * dy));
+        if (cap == 2)
+        {
+            AddCircle(polys, x, y, half);
+        }
+        else if (d < 1e-12)
+        {
+            AddIfReaches(polys, [(x - half, y - half), (x + half, y - half), (x + half, y + half), (x - half, y + half)]);
+        }
+        else
+        {
+            double ux = (forward ? dx : -dx) / d * half, uy = (forward ? dy : -dy) / d * half;
+            (double X, double Y) a = arc.At(arc.Inner, at, i, f), b = arc.At(arc.Outer, at, i, f);
+            AddIfReaches(polys, [a, b, (b.X + ux, b.Y + uy), (a.X + ux, a.Y + uy)]);
+        }
+    }
+
+    /// <summary>
+    /// 两条相接的宽弧之间的接头:<paramref name="into" /> 是前一条终点的端面,<paramref name="outOf" /> 是后一条起点的端面。
+    /// </summary>
+    /// <remarks>
+    /// 协议:join-style 的用法与「在接点上沿两条弧切线的两条线」相同;椭圆上不在 90° 倍数处的端面,接头的形状由实现决定。
+    /// 环带的端面是同一参数角上内外两点的连线,对圆就是法线,对椭圆不一定 —— 所以接头搭在两条环带真实的端面角上,不留缝:
+    /// Round 补一个直径为线宽、以接点为心的圆;Bevel 补外侧两角与接点围成的三角;Miter 再把外侧两角沿各自的切线延长到相交,
+    /// 夹角小于 11° 时退成 Bevel(与 <see cref="AddJoin" /> 相同)。端面歪着时内侧也可能张开一道缝,补上那个三角。
+    /// 切线连续(同一个椭圆上相邻的两段)时只补缝:两条共线的线不管按什么 join-style 接,都不比两条线本身多出像素。
+    /// 两个端点只是在判据之内、并不逐位重合时,后一条的端面平移到前一条的端点上再算,平移扫过的平行四边形也补上。
+    /// </remarks>
+    private void AddArcJoin(List<Polygon> polys, ArcFace into, ArcFace outOf, double half)
+    {
+        double px = into.X, py = into.Y, sx = px - outOf.X, sy = py - outOf.Y;
+        (double X, double Y) outer = (outOf.Outer.X + sx, outOf.Outer.Y + sy), inner = (outOf.Inner.X + sx, outOf.Inner.Y + sy);
+        if (Math.Abs(sx) > 1e-9 || Math.Abs(sy) > 1e-9)
+        {
+            AddIfReaches(polys, [outOf.Inner, outOf.Outer, outer, inner]);
+        }
+        double cross = (into.Ux * outOf.Uy) - (into.Uy * outOf.Ux);
+        double dot = (into.Ux * outOf.Ux) + (into.Uy * outOf.Uy);
+        bool smooth = Math.Abs(cross) < 1e-9 && dot > 0;
+        if (_gc.JoinStyle == 1 && !smooth)
+        {
+            AddCircle(polys, px, py, half);
+            return;
+        }
+        // 左法线 (−uy, ux) 那一侧记 +1;往哪边转,外侧就在另一边(与 AddJoin 相同)。
+        int outside = cross < 0 ? 1 : -1;
+        for (int side = 1; side >= -1; side -= 2)
+        {
+            (double X, double Y) a = FaceCorner(px, py, into.Ux, into.Uy, into.Outer, into.Inner, side, half);
+            (double X, double Y) b = FaceCorner(px, py, outOf.Ux, outOf.Uy, outer, inner, side, half);
+            if (!smooth && side == outside)
+            {
+                if (_gc.JoinStyle == 0 && -dot <= MiterLimitCos && MiterTip(a, into, b, outOf, cross) is { } tip)
+                {
+                    AddIfReaches(polys, [(px, py), a, tip, b]);
+                }
+                else
+                {
+                    AddIfReaches(polys, [(px, py), a, b]);
+                }
+            }
+            else if (Ahead(px, py, a, into, b) && !Ahead(px, py, b, outOf, a))
+            {
+                // 后一条的角伸到了前一条端面的前方、前一条的角又在后一条端面的后方:两个端面之间张开了,补上。
+                AddIfReaches(polys, [(px, py), a, b]);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 端面在 <paramref name="side" /> 一侧(左法线方向为 +1)的角:环带的外角与内角里落在这一侧的那个;端面不横跨路径时
+    /// (轴长为 0 的椭圆在折返的那一头,外角内角都在中线上)按线的法线取半个线宽处。
+    /// </summary>
+    private static (double X, double Y) FaceCorner(double px, double py, double ux, double uy,
+        (double X, double Y) outer, (double X, double Y) inner, int side, double half)
+    {
+        double nx = -uy * side, ny = ux * side;
+        double po = ((outer.X - px) * nx) + ((outer.Y - py) * ny), pi = ((inner.X - px) * nx) + ((inner.Y - py) * ny);
+        if (po * pi < 0)
+        {
+            return po > 0 ? outer : inner;
+        }
+        return (px + (nx * half), py + (ny * half));
+    }
+
+    /// <summary><paramref name="point" /> 是否严格落在端面(接点 → <paramref name="corner" /> 的那条线)朝前进方向的一侧。</summary>
+    private static bool Ahead(double px, double py, (double X, double Y) corner, ArcFace face, (double X, double Y) point)
+    {
+        double fx = corner.X - px, fy = corner.Y - py;
+        double toward = (fx * face.Uy) - (fy * face.Ux);
+        double at = (fx * (point.Y - py)) - (fy * (point.X - px));
+        return Math.Sign(toward) * at > 1e-9 * ((fx * fx) + (fy * fy));
+    }
+
+    /// <summary>
+    /// Miter 的尖:从 <paramref name="a" /> 沿前一条的切向往前、从 <paramref name="b" /> 沿后一条的切向往回,两条线的交点;
+    /// 交点落在任何一条的反方向上(端面歪得厉害)时没有尖,退成 Bevel。
+    /// </summary>
+    private static (double X, double Y)? MiterTip((double X, double Y) a, ArcFace into, (double X, double Y) b, ArcFace outOf, double cross)
+    {
+        // a + s·u₁ = b − r·u₂
+        double dx = b.X - a.X, dy = b.Y - a.Y;
+        double s = ((dx * outOf.Uy) - (dy * outOf.Ux)) / cross;
+        double r = ((into.Ux * dy) - (into.Uy * dx)) / cross;
+        return s >= -1e-9 && r >= -1e-9 ? (a.X + (into.Ux * s), a.Y + (into.Uy * s)) : null;
     }
 
     public void FillArc(int x, int y, int w, int h, int angle1, int angle2)

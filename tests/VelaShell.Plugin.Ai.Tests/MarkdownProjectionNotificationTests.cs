@@ -64,14 +64,7 @@ public sealed class MarkdownProjectionNotificationTests
     }
 
     /// <summary>渲染是后台解析 + UI 线程提交,跑几拍调度器让它落定。</summary>
-    private static async Task PumpAsync(int rounds = 60)
-    {
-        for (int i = 0; i < rounds; i++)
-        {
-            await Task.Delay(5);
-            Dispatcher.UIThread.RunJobs();
-        }
-    }
+    private static Task PumpAsync(int rounds = 60) => HeadlessPump.RunAsync(rounds);
 
     /// <summary>在 headless UI 线程上跑一段异步测试体(重载选择的坑见 ChatPanelViewUiTests.OnUi)。</summary>
     private static void OnUi(Func<Task> body) =>

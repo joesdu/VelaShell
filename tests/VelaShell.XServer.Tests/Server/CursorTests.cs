@@ -1,4 +1,5 @@
 using System.Text;
+using VelaShell.XServer.Fonts;
 using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
@@ -108,5 +109,53 @@ public sealed class CursorTests
             .U16(0).U16(0).U16(0).U16(0).U16(0).U16(0));
         Assert.IsTrue(error.IsError);
         Assert.AreEqual(2, error.Detail, "字体里没定义的字形:BadValue");
+    }
+
+    [TestMethod]
+    public async Task cursor字体的字形光标有真实的位图_GetCursorImage给出_没有对应系统光标的字形交给宿主图像()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        XMessage query = await c.RequestAsync(98, 0, b => b.U16(6).U16(0).Bytes(Encoding.Latin1.GetBytes("XFIXES")).Pad());
+        byte xfixes = query.Bytes[9];
+        await c.RequestAsync(xfixes, 0, b => b.U32(5).U32(0));
+        uint cursorFont = await OpenFontAsync(c, "cursor");
+
+        // xterm(152,掩码 153):宿主照旧显示系统的 I 形光标,GetCursorImage 给 cursor.bdf 里的字形 —— 原先只有 1×1 透明像素。
+        uint text = c.NewId();
+        await CreateGlyphCursorAsync(c, text, cursorFont, cursorFont, 152, 153);
+        await PointAtCursorAsync(c, host, server, text);
+        await host.WaitForAsync(() => host.Cursor?.Shape == XCursorShape.Text);
+        Assert.IsNull(host.Cursor!.Image, "有对应系统光标的字形:宿主按形状显示系统光标");
+        XMessage image = await c.RequestAsync(xfixes, 4);   // GetCursorImage
+        Assert.AreEqual((9, 16), (image.U16(12), image.U16(14)), "源字形 7×14 与掩码字形 9×16 的方框并集");
+        Assert.AreEqual((4, 8), (image.U16(16), image.U16(18)), "热点是两个字形的原点");
+        uint[] pixels = [.. Enumerable.Range(0, 9 * 16).Select(i => image.U32(32 + (i * 4)))];
+        Assert.AreEqual(0xFF000000u, pixels[0], "左上角:掩码为 1、在源字形的方框外,背景黑");
+        Assert.AreEqual(0u, pixels[4], "第一行掩码的缺口:透明");
+        Assert.AreEqual(0xFFFFFFFFu, pixels[(8 * 9) + 4], "竖线中间:源为 1,前景白");
+        Assert.AreEqual(0xFF000000u, pixels[(8 * 9) + 3], "竖线旁边:只有掩码,背景黑");
+        Assert.AreEqual(0u, pixels[(8 * 9) + 1], "掩码之外");
+
+        // pencil(86,掩码 87):没有对应的系统光标,宿主拿到字形的图像(原先显示成箭头)。
+        uint pencil = c.NewId();
+        await CreateGlyphCursorAsync(c, pencil, cursorFont, cursorFont, 86, 87);
+        await c.SendAsync(2, 0, b => b.U32(host.Mapped.Keys.Single()).U32(0x4000).U32(pencil));
+        await host.WaitForAsync(() => host.Cursor?.Image is { Width: 13 });
+        Assert.AreEqual((13, 16, 11, 15), (host.Cursor!.Image!.Width, host.Cursor.Image.Height, host.Cursor.Image.HotspotX, host.Cursor.Image.HotspotY));
+        Assert.AreEqual(XCursorShape.Arrow, host.Cursor.Shape, "形状推不出来:箭头(宿主不能显示图像时用)");
+    }
+
+    [TestMethod]
+    public void cursor字体是XOrg的cursor位图字体_字形与掩码成对()
+    {
+        XFont font = FontCatalog.Open("cursor")!;
+        Assert.AreEqual(154, font.Glyphs.Count, "cursorfont 的 0–153:偶数是形状、奇数是它的掩码");
+        XGlyph xterm = font.Glyphs[152];
+        Assert.AreEqual((7, 14), (xterm.BitmapWidth, xterm.BitmapHeight));
+        Assert.IsTrue(xterm.IsSet(3, 5), "I 形的竖线");
+        Assert.IsFalse(xterm.IsSet(0, 5));
+        Assert.AreEqual(0x80, font.Glyphs[153].Bits[1], "xterm_mask 第一行是 f782,宽 9:宽度以外多出的位清零");
     }
 }

@@ -93,3 +93,9 @@ AppRun    text eol=lf
 *.psd1 !eol
 *.cmd  text eol=crlf
 *.bat  text eol=crlf
+
+###############################################################################
+# Brotli-compressed data (the X server's bundled fonts, see
+# src/VelaShell.XServer/Fonts/Data/README.md): never touch line endings.
+###############################################################################
+*.br      binary

@@ -148,17 +148,15 @@ jobs:
       # 环境缺失的用例现在一律 Assert.Inconclusive(如实记为「跳过」),不再是
       # 「写一行 [SKIP] 日志然后 return」那种在报告里显示为通过的伪装。
       # 所以这里的过滤只是省时间,不再兼着"掩盖伪通过"的作用。
+      # AI 插件的三组 headless UI 用例各起一个进程、与其余测试同时跑,理由见脚本开头。
+      # shell 写死 bash:Windows 上是 Git Bash(默认的 pwsh 里敲 bash 可能落到 WSL)。
       - name: 测试
         working-directory: VelaShell
+        shell: bash
         env:
           # 检出成功才指过去;失败时不设,文档比对用例照旧记为跳过(见上面那步的说明)。
           VELASHELL_DOCS_DIR: ${{ steps.docs.outcome == 'success' && format('{0}/velashell-docs', github.workspace) || '' }}
-        run: >
-          ${{ matrix.launcher }}
-          dotnet test VelaShell.slnx -c Debug --no-build --nologo
-          --filter "TestCategory!=DockerIntegration&TestCategory!=CrossPlatform&TestCategory!=Interop"
-          --logger "trx;LogFilePrefix=ci"
-          --results-directory artifacts/trx
+        run: ${{ matrix.launcher }} bash scripts/ci/run-tests.sh
 
       # 失败也要传:-v 默认不打印失败用例名,trx 是唯一能定位到具体是哪一条的东西。
       # 偶发失败(见 plan-claude.md Q-06)就靠攒这些 trx 才有得查。

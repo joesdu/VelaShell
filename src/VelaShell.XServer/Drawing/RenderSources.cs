@@ -496,11 +496,14 @@ internal sealed class AlphaMapSource(RenderSource source, RenderSource alphaMap,
 /// <summary>带颜色的遮罩(次像素字形,分量 alpha):每像素一个预乘的 0xAARRGGBB。</summary>
 internal sealed class ColorMaskSource(uint[] pixels, int x0, int y0, int width, int height) : RenderSource
 {
-    private Argb Texel(int x, int y)
+    private Argb Texel(int x, int y) => PictFormat.A8R8G8B8.Decode(Texel8888(x, y));
+
+    /// <summary>存的就是 0xAARRGGBB:整数路径直接取(原先经浮点解码再量化回来,结果相同)。</summary>
+    private uint Texel8888(int x, int y)
     {
         x -= x0;
         y -= y0;
-        return (uint)x < (uint)width && (uint)y < (uint)height ? PictFormat.A8R8G8B8.Decode(pixels[(y * width) + x]) : default;
+        return (uint)x < (uint)width && (uint)y < (uint)height ? pixels[(y * width) + x] : 0;
     }
 
     protected override void FetchIntegerRow(int x, int y, Span<Argb> row)
@@ -511,7 +514,17 @@ internal sealed class ColorMaskSource(uint[] pixels, int x0, int y0, int width, 
         }
     }
 
+    protected override void FetchIntegerRow8888(int x, int y, Span<uint> row)
+    {
+        for (int i = 0; i < row.Length; i++)
+        {
+            row[i] = Texel8888(x + i, y);
+        }
+    }
+
     protected override Argb Sample(double x, double y) => Texel((int)Math.Floor(x), (int)Math.Floor(y));
+
+    protected override uint Sample8888(double x, double y) => Texel8888((int)Math.Floor(x), (int)Math.Floor(y));
 }
 
 /// <summary>渐变:色标位置 0–1,颜色非预乘;取样时算出参数 t,按 repeat 折回后插值。</summary>

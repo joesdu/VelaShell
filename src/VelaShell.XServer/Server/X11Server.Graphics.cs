@@ -403,13 +403,8 @@ public sealed partial class X11Server
     {
         uint drawable = r.U32(), gc = r.U32();
         List<(int X, int Y, int W, int H, int A1, int A2)> arcs = ReadArcs(r);
-        Draw(drawable, gc, raster =>
-        {
-            foreach ((int x, int y, int w, int h, int a1, int a2) in arcs)
-            {
-                raster.Arc(x, y, w, h, a1, a2);
-            }
-        });
+        // 首尾相接的弧要一起画(接头、虚线接着走、整串只画一次),整个列表交给光栅化器分串。
+        Draw(drawable, gc, raster => raster.PolyArc(arcs));
     }
 
     private void PolyFillArc(XRequestReader r)

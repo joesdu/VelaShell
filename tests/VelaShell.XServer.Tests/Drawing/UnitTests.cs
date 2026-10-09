@@ -1,3 +1,4 @@
+using System.Text;
 using VelaShell.XServer.Drawing;
 using VelaShell.XServer.Fonts;
 using VelaShell.XServer.Protocol;
@@ -125,19 +126,62 @@ public sealed class UnitTests
     [TestMethod]
     public void 字体目录认别名XLFD与通配()
     {
-        FontCatalog catalog = new();
-        XFont fixedFont = catalog.Open("fixed")!;
+        XFont fixedFont = FontCatalog.Open("fixed")!;
         Assert.IsFalse(fixedFont.IsTwoByte);
         Assert.AreEqual(11, fixedFont.Ascent);
         Assert.IsNotNull(fixedFont.Lookup('A'));
 
-        XFont unicode = catalog.Open("-misc-fixed-medium-r-semicondensed--13-120-75-75-c-60-iso10646-1")!;
+        XFont unicode = FontCatalog.Open("-misc-fixed-medium-r-semicondensed--13-120-75-75-c-60-iso10646-1")!;
         Assert.IsTrue(unicode.IsTwoByte);
         Assert.IsNotNull(unicode.Lookup(0x2500), "制表符 ─");
-        Assert.IsNull(catalog.Open("-adobe-helvetica-*"));
+        Assert.IsNotNull(FontCatalog.Open("-adobe-helvetica-*"));
+        Assert.IsNull(FontCatalog.Open("-b&h-lucida-*"), "Lucida 没有随库带");
         Assert.IsTrue(FontCatalog.WildcardMatch("*-FIXED-*-?3-*", "-misc-fixed-medium-r-normal--13-x"));
-        Assert.IsNotEmpty(catalog.Match("*", 1000));
-        Assert.AreEqual("cursor", catalog.Open("cursor")!.Name);
+        Assert.IsNotEmpty(FontCatalog.Match("*", 1000));
+        Assert.AreEqual("cursor", FontCatalog.Open("cursor")!.Name);
+        Assert.AreSame(FontCatalog.Open("fixed"), FontCatalog.Open("6x13"), "同一份字体只建一次,整个进程共享");
+        Assert.DoesNotContain("kanji16", FontCatalog.Match("*", 10000), "别名的目标没有随库带:不列出来");
+    }
+
+    [TestMethod]
+    public void BDF解析_字形号编码_带引号的属性_位图按行打包()
+    {
+        byte[] bdf = Encoding.Latin1.GetBytes("""
+            STARTFONT 2.1
+            FONT test
+            STARTPROPERTIES 2
+            COPYRIGHT "These ""glyphs"" are unencumbered"
+            FONT_ASCENT 4
+            ENDPROPERTIES
+            CHARS 2
+            STARTCHAR a
+            ENCODING 65
+            DWIDTH 10 0
+            BBX 10 2 -1 -1
+            BITMAP
+            FFC0
+            8040
+            ENDCHAR
+            STARTCHAR shape
+            ENCODING -1 7
+            DWIDTH 3 0
+            BBX 3 1 0 0
+            BITMAP
+            FF
+            ENDCHAR
+            ENDFONT
+            """.Replace("\r\n", "\n", StringComparison.Ordinal));
+        BdfFont font = BdfParser.Parse(bdf);
+        Assert.AreEqual(new BdfProperty("These \"glyphs\" are unencumbered", true), font.Properties["COPYRIGHT"]);
+        Assert.AreEqual(new BdfProperty("4", false), font.Properties["FONT_ASCENT"], "不带引号的是整数");
+        Assert.AreEqual(4, font.FontAscent);
+        XGlyph a = font.Glyphs[65];
+        Assert.AreEqual(new XCharInfo(-1, 9, 10, 1, 1), a.Info);
+        Assert.AreEqual(2, a.Stride);
+        Assert.IsTrue(a.IsSet(9, 0));
+        Assert.IsTrue(a.IsSet(0, 1) && a.IsSet(9, 1) && !a.IsSet(5, 1));
+        XGlyph shape = font.Glyphs[7];   // ENCODING -1 7:第二个数是字形号(cursor 字体这样编号)
+        CollectionAssert.AreEqual(new byte[] { 0xE0 }, shape.Bits, "宽 3:宽度以外多出的位清零");
     }
 
     [TestMethod]

@@ -1385,14 +1385,7 @@ public sealed class SettingsViewUiTests
         }
     }
 
-    private static async Task PumpAsync(int rounds = 20)
-    {
-        for (int i = 0; i < rounds; i++)
-        {
-            await Task.Delay(5);
-            Dispatcher.UIThread.RunJobs();
-        }
-    }
+    private static Task PumpAsync(int rounds = 20) => HeadlessPump.RunAsync(rounds);
 
     private static async Task<(Window Window, SettingsView View, AiSettings Settings, AiSettingsStore Store)> ShowAsync(
         TestPluginContext context, AiSettings settings, Action? onProvidersChanged = null)

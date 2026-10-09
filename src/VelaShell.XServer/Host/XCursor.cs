@@ -8,10 +8,13 @@ namespace VelaShell.XServer;
 /// 否则(或 <see cref="Image" /> 为 null 时)按 <see cref="Shape" /> 选一个系统光标。
 /// </summary>
 /// <param name="Shape">
-/// 语义上的形状:cursor 字体的光标按字形推出;位图 / ARGB 光标按客户端经 XFIXES SetCursorName 起的名字推出,
+/// 语义上的形状:cursor 字体的光标按字形推出;别的光标按客户端经 XFIXES SetCursorName 起的名字推出,
 /// 推不出来是 <see cref="XCursorShape.Arrow" />。
 /// </param>
-/// <param name="Image">光标图像;cursor 字体的光标、隐藏与默认光标为 null。</param>
+/// <param name="Image">
+/// 光标图像;cursor 字体里有对应系统光标的字形(left_ptr、xterm、watch……)、隐藏与默认光标为 null ——
+/// 这些交给宿主按 <paramref name="Shape" /> 选系统光标。cursor 字体里没有对应系统光标的字形(pencil、dotbox……)带图像。
+/// </param>
 public sealed record XCursor(XCursorShape Shape, XCursorImage? Image = null)
 {
     /// <summary>默认箭头(窗口没设光标)。</summary>

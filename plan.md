@@ -57,6 +57,8 @@
 | 10-09 | §175 | 新建连接对话框悬停闪烁的真因(#577) |
 | 10-09 | §176 | 终端侧栏分隔线与折叠拆成两个开关、折叠方框加大(#586) |
 | 10-09 | §177 | AI 插件:#582 复审修复(规格多数匹配、设备码 428、批量检测、跨源草稿 Key、一次性请求重试) |
+| 10-09 | §178 | XServer 第二次审查遗留项的收尾(随库带核心字体、cursor 字形光标、PolyArc 接头、RENDER 整数路径) |
+| 10-09 | §179 | CI:AI 插件 UI 用例把每次 CI 拖到 25 分钟以上;SFTP 握手在 sftp-server 一起来就退出时偶尔白等 30 秒 |
 
 ## 📈 阶段脉络
 
@@ -1992,3 +1994,29 @@ Google 的设备码端点「还没批」回的是 **428 + `authorization_pending
 **验证**:插件构建 0 警告 0 错误;`VelaShell.Plugin.Ai.Tests` 全量 1436 通过、0 失败、0 跳过(复审前 1415,新增 21 条用例);
 `HeadlessDispatchUsageTests` 10 通过。把源码改动撤回、只留新用例时,复现缺陷的 13 条全红
 (其余新用例是边界守卫,两边都绿;SDK 重试那 2 条依赖新参数,未参与撤回对照)。
+
+## ✅ 178. 2026-10-09 内置 X 服务端:第二次审查只做了一部分的几项补齐(`xs_plan.md`)
+
+**一、来由**:§167 修完第二次全库审查的 184 条之后,有几项只做了一部分。其中选区按会话隔离(WN-S11,311aa29b)、源 picture 的 alpha-map(DR-M4)与间接 GLX 的单缓冲视觉(0da7943d)已在 `dev` 上补齐,`xs_plan.md` 末节记了复核;这一批补其余四项 —— 核心字体(CP-16 / F21,用户选方案 A:随库带位图数据)、cursor 字体的字形光标(WN-M5)、PolyArc 相接弧的接头(DR-M1)、RENDER 剩下的浮点合成(DR-P3),外加真实客户端实测时冒出来的一处持锁过久。分支 `fix/xserver-review-leftovers`,一项一个(或几个)本地提交;DR-M1 与 DR-P3 各交给一个并行的会话,在自己的 git worktree 里做完再 cherry-pick 回来。全程守净室规程:依据只有 X.Org 的协议与 RENDER 规范、BDF 规范、PDF Reference 的混合公式,没有打开任何其它 X 服务端、pixman 或 cairo 的源码。文档在 velashell-docs 的同名分支(`zh/` 与 `en/` 一起改),顺带把 alpha-map 与单缓冲视觉那两处的文档也对上了。
+
+**二、做了什么**:
+- **核心字体随库带 X.Org 的整套位图字体与 GNU Unifont**(8167b38c):原先只有 5 个裁剪过的 misc-fixed(只留拉丁字母与制表符),Motif / Xaw / 不带 Xft 的 Tk 请求 `-adobe-helvetica-*` 一律 BadName,默认字体的 xterm 显示不了中文。现在带 misc-fixed 全套(含 `12x13ja` / `18x18ja` / `18x18ko` / `k14`)、`cursor`、`nil2`,Adobe 75 / 100 dpi 的 Courier / Helvetica / New Century Schoolbook / Symbol / Times,GNU Unifont 18(取 OFL)。方案 A 原文是把 Liberation 栅格化,改用 X.Org 自己的 Adobe 位图:字体名与度量与真实 X 服务端一致,也不用写栅格化器。数据由 `scripts/xserver/fonts/build-fonts.cs` 从固定的上游提交(Unifont 固定 SHA-256)生成,BDF 逐字节不动、Brotli 压缩,照 X.Org 的目录分 misc / 75dpi / 100dpi,各一份 `fonts.dir`,`fonts.alias` 是原文;ISO10646-1 的字体还以它完整覆盖的单字节字符集出现(ISO8859-2…15、KOI8-R / U,映射表由 .NET 的代码页导出)。233 份字体、1877 个名字,压缩后约 5 MB,Release 的 DLL 多约 4.5 MB。名字表与解析结果整个进程共享;字形位图按行打包(每像素 1 位)。顺带修了 BDF 带引号的数字属性被当成整数(`CHARSET_ENCODING "1"` 在 QueryFont 里回成整数 1,不是原子)。B&H 的 Lucida 因为许可要求附特定声明而没带。`NOTICE.md` 与 XServer 的 `AGENTS.md` 跟着改。
+- **cursor 字体的字形光标有真实的位图**(d7ede105):照协议 CreateGlyphCursor 烙成图像,GetCursorImage 给出它(x11vnc、ffmpeg x11grab 原先录到的指针是空的);有对应系统光标的字形照旧交给系统光标,没有对应的(pencil、gumby、dotbox……)把图像交给宿主,不再一律显示成箭头。
+- **字体在线程池上建,请求暂存**(595869b3):真实客户端实测 `xlsfonts -l "*"` 第一次在执行线程上持着像素锁解析了 1.5 秒(「slow work item: opcode 50 held the pixel lock for 1566 ms」)。现在 OpenFont / ListFontsWithInfo 要用到还没建好的字体时,在线程池上解压、解析,这个客户端的请求按 SYNC Await 那一套暂存、建好后按序放回;别的客户端与宿主照常。
+- **PolyArc 相接的弧按 join-style 接**(678444b5):端点各轴差不到半个像素算相接;相接的一串宽弧当一条路径,接头搭在真实的端面角上,只在两头加端帽,整串一次填(GXxor 下接缝不画两次);同一个椭圆上接着走的几段并成一条(四段 90° 与一条 360° 逐像素相同);虚线跨接点接着走;细弧连成一条折线。单独一条弧与不相接的弧与原来逐像素相同(20 万组随机对拍)。
+- **RENDER 的 a1 / a8 / 8888 目标上全部 53 种运算走整数**(DR-P3,a9249a6c、e22b7952、eefdcf6c、1230c023):a1 / a8 只算 alpha、a1 与浮点版逐位相同;8888 上 Porter-Duff 与 Disjoint / Conjoint(带除法的因子按 1/65025)、PDF 混合模式(不先除出 cs,整理成 8 位整数式;柔光的平方根查表,HSL 两边同乘 αs·αd)、分量 alpha 遮罩(次像素字形)。穷举核对与浮点版最多差 1;原先走浮点的组合快约 2–12 倍(数字在各提交里)。顺带修了浮点版 ClipColor 的 NaN(灰色源在 αd = 0 的目标上做 HSL 模式,颜色成了 0)。r5g6b5、x1r5g5b5、a4 目标仍走浮点。
+
+**三、没做的**(仍在 `feature-plan.md` H 节):点本机窗口或桌面就收起 X 的弹出菜单(WN-M7,要全局指针钩子);F21 以外的新功能(F1–F30);需要实机的 API-H13 / IN-E19 / CN-S8。DR-M1 那个会话另报了一处审查之前就有的问题、没有改:外接框宽或高为 0 的宽弧只画出一半线宽。
+
+**四、验证**:`VelaShell.XServer.Tests` 459 例,450 通过 / 9 例按平台跳过(只在 Linux 上才有的那几条);分支起点是 430 通过。开互操作(重建了带 `default-jdk` 的 `velashell-xclients`)12 例全过、没有 `[SKIP]`。真实客户端另手动核对:`xlsfonts` 列出 1923 个名字;`variable` 解析成 Helvetica Bold 12 磅、属性正确;`xfd -fn cursor` 画出全部光标字形;默认 `fixed` 字体的 UTF-8 xterm 显示中日韩、希腊文、西里尔文、Latin-2 与 €;没有协议错误;`xlsfonts -l "*"` 不再有持锁过久的日志。宿主 `VelaShell.Tests` 与 `Infrastructure.Tests` 里 X Server 相关的用例 41 / 40 通过(1 例按环境跳过)。整个 `VelaShell.slnx`(Debug)与 `VelaShell.XServer`(Release)零警告零错误。`VelaShell.slnx` 的 Release 构建报 NETSDK1150(自包含的 `VelaShell` 引用非自包含的 `VelaShell.PluginHost`),与这一批无关 —— 这一批的工程文件只改了 `VelaShell.XServer.csproj` 的嵌入资源。DR-M1:20 万组随机的单条弧与不相接的弧,与改动前逐像素相同;新用例在旧代码上红。DR-P3:穷举核对(源 alpha × 遮罩 0–255 × 48 种目标像素,有无分量 alpha 各一遍),a1 与浮点版逐位相同、其余最多差 1;每条新用例做过变异检查。
+
+## ✅ 179. 2026-10-09 CI:AI 插件的 UI 用例把每次 CI 拖到 25 分钟以上;顺带逮到 SFTP 握手的一个竞态
+
+- **现象**:#582(10-09 04:32 合入)之后,每次 CI 从 6–7 分钟变成 25 分钟以上;macOS 那一项看上去像是永远跑不完,#590、#591 上都被取消过。
+- **原因**:`VelaShell.Plugin.Ai.Tests` 从 587 条加到 1415 条,多是 headless UI 用例。一个进程只有一个 Avalonia UI 线程,这些用例只能串行;macOS 上这一个工程要 22 分 36 秒(Windows 9 分 50 秒、Linux 5 分 27 秒),别的工程都在 2 分钟内跑完。macOS 格外慢,是因为 UI 用例的 `PumpAsync` 按拍数等(`rounds` 次 `Task.Delay(5)` + `RunJobs`),实际等多久看计时器的粒度:同样 60 拍,Linux 0.36 秒、Windows 0.77 秒、macOS 1.55 秒(每拍约 26 ms)。
+- **改了两处**(f48954df):
+  - 6 处 `PumpAsync` 交给 `HeadlessPump.RunAsync`:保证 `rounds × 5 ms` 的真实时间过去、中间照常跑调度器,拍数随计时器粒度自适应;小的拍数至少推 min(rounds, 3) 拍(有的用例拿它在防抖到点之前断言)。Linux 上与原来基本一样,用例本身与各处的拍数没有动。
+  - CI 的测试步骤改成 `scripts/ci/run-tests.sh`:聊天面板、接入向导、设置页三组 UI 用例各起一个 `dotnet test` 进程,与解决方案的其余测试同时跑。每个进程仍只有一个 UI 线程、组内照旧串行;插件没有跨实例的静态状态,`TestPluginContext` 的数据目录每个实例一个,拆开跑不改变用例看到的东西。
+  - 试过给作业加 `timeout-minutes` 兜底,撤了:真卡住时照样烧满时限,省不了额度。
+- **顺带逮到的真 bug**(080da3ba):跑得更挤之后,ubuntu 上 `sftp_server起不来时报出退出码与它的stderr` 撞上 30 秒的用例时限(§171 记过它在 macOS 上也红过一次)。根因是 `SftpRequestPipeline` 的竞态:收包循环一开跑就看到通道关了、调 `Fault`,而 `Fault` 只结算「已经有人在等」的 VERSION;握手晚一步调 `WaitForVersionAsync` 就新建一个再也不会完成的任务,等满 30 秒的握手时限 —— 用户看到「sftp-server 没有回应」,退出码与 stderr 都丢了。现在建任务时流水线已经收工就当场以原因结算;新用例先等收工、再等 VERSION,在旧代码上红。
+- **验证**:本机 `VelaShell.Plugin.Ai.Tests` 1436 条全过、5 分 47 秒(三组单独 163 / 105 / 54 秒),整个测试脚本 170 秒;SFTP 179 条全过。CI run 37931845240(f48954df,竞态修复之前):Windows 8 分 3 秒、macOS **8 分 18 秒**(原来 25 分钟以上)、ubuntu 6 分 32 秒 —— ubuntu 红的就是上面那条竞态,三组 UI 用例三个平台全过。

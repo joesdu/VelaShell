@@ -1457,20 +1457,25 @@ GLX 1.4 协议层（4 个 FBConfig、上下文标签按客户端分表、Render 
 - 本次继续完成 DR-M4：源 picture 的 alpha-map、alpha 原点、alpha-map 约束与裁剪已实现，并有 Composite 回归测试。
 - 本次继续完成间接 GLX 单缓冲视觉：`GetVisualConfigs` 为两个视觉同时发布单缓冲与双缓冲配置，并有配置 ID / DOUBLEBUFFER 回归测试。
 
+### 2026-10-09 第二次更新：其余四项也已完成（`fix/xserver-review-leftovers`，`plan.md §178`）
+
+- **CP-16 / F21**（8167b38c）：随库带 X.Org 的整套位图字体（misc-fixed 全套含中日韩、cursor、nil2，Adobe 75 / 100 dpi 的 Courier / Helvetica / New Century Schoolbook / Symbol / Times）与 GNU Unifont 18，别名照 X.Org 的 `fonts.alias`，ISO10646-1 字体按覆盖面派生单字节字符集；数据由 `scripts/xserver/fonts/build-fonts.cs` 从固定的上游提交生成。字体第一次打开时在线程池上建、这个客户端的请求暂存（595869b3，真实客户端实测 `xlsfonts -l` 原先持锁 1.5 秒）。B&H 的 Lucida 因许可要求附特定声明，没有带。
+- **WN-M5**（d7ede105）：cursor 字体的字形光标烙成真实位图，GetCursorImage 给出它；有对应系统光标的字形仍显示系统光标，没有对应的把图像交给宿主。
+- **DR-M1**（678444b5）：PolyArc 相接的弧（端点各轴差不到半个像素）按 join-style 接，整串只在两头加端帽、一次填，虚线跨接点接着走。
+- **DR-P3**（a9249a6c、e22b7952、eefdcf6c、1230c023）：a8r8g8b8 / x8r8g8b8 / a8 / a1 目标上全部 53 种运算（含 Disjoint / Conjoint、PDF 混合模式、分量 alpha）走整数，与浮点版最多差 1、a1 逐位相同；顺带修了浮点版 ClipColor 对灰色的 NaN。r5g6b5、x1r5g5b5、a4 目标仍走浮点。
+
 ### 仍未完成的审查项
 
-- **DR-M1**：PolyArc 连续弧之间的 JoinMiter / JoinRound / JoinBevel 接头。
-- **DR-P3**：a1 目标、Disjoint / Conjoint Porter-Duff 以及 PDF 混合模式的整数快速路径。
-- **WN-M5**：cursor 字体的真实字形位图；当前仍主要按字形号映射宿主系统光标形状。
-- **CP-16 / F21**：完整核心字体数据仍未随库提供，当前只有少数 misc-fixed 字号、别名和近似字号回退。
+- **WN-M7**：点本机窗口或桌面就收起 X 的弹出菜单，要全局指针钩子。
+- 审查之前就有、这一轮发现但没改的：外接框宽或高为 0 的宽弧只画出一半线宽。
 - 宿主侧新功能仍未完成：F1/F2 会话隔离档、F3 X 程序清单与强制结束界面、F8 WarpPointer、F9 屏保协作、F10 同步缩放、F11 合成管理器、F12 托盘、F13 rootful 单窗口模式、F14–F20 桌面集成、F22–F30 扩展功能。
 
 ### 仍缺环境验证的项目
 
-- Docker 真实客户端互操作本轮未运行，因为当前环境没有 Docker；需要重建 `velashell-xclients` 后验证 GTK、Swing、GLX 与 gnome-calculator。
+- Docker 真实客户端互操作已在这一轮运行（重建了带 `default-jdk` 的 `velashell-xclients`）：xterm、xeyes、xclock、xlogo、RENDER、直接与间接 glxgears、Swing 全过，没有 `[SKIP]`；另手动核对了 `xlsfonts`、`xfd -fn cursor` 与默认字体的 UTF-8 xterm（中日韩、希腊文、西里尔文、Latin-2、€）。GTK 程序与 gnome-calculator 没有自动用例，这一轮没有单独核对。
 - API-H13（分数缩放最后一列像素）、IN-E19（macOS Command 组合键 KeyUp）、CN-S8（macOS / FreeBSD `getpeereid`）仍需对应平台实机。
 
 ### 当前验证结果
 
-- `VelaShell.XServer.Tests`：430 通过、9 个平台条件跳过。
-- `VelaShell.XServer` Release 构建：0 警告、0 错误。
+- `VelaShell.XServer.Tests`：459 例，450 通过、9 个平台条件跳过；开互操作（`VELASHELL_XSERVER_INTEROP=1`）12 例全过，没有 `[SKIP]`。
+- `VelaShell.slnx` Debug 构建与 `VelaShell.XServer` Release 构建：0 警告、0 错误。
