@@ -237,7 +237,7 @@ public sealed class WindowAndDrawingTests
     }
 
     [TestMethod]
-    public async Task 字体的短名字与没有的字号退到最接近的内置字体_别的字族照旧BadName()
+    public async Task 字体的短名字_XLFD_没有的字号退到最接近的_没有的字族照旧BadName()
     {
         await using X11Server server = new();
         await using XTestClient c = await XTestClient.ConnectAsync(server);
@@ -250,13 +250,74 @@ public sealed class WindowAndDrawingTests
             return reply.IsReply ? reply.I16(28) : null;                       // max-bounds 的 character-width
         }
 
-        Assert.AreEqual(6, await OpenWidthAsync("8x13"), "原先 BadName");
-        Assert.AreEqual(6, await OpenWidthAsync("5x7"));
+        // fonts.alias 的短名字现在都有自己的数据(原先退到 6x13 之类);目标没有随库带的 8x16(Sony)退到最接近的。
+        Assert.AreEqual(8, await OpenWidthAsync("8x13"), "原先 BadName,后来退到 6x13");
+        Assert.AreEqual(5, await OpenWidthAsync("5x7"));
         Assert.AreEqual(9, await OpenWidthAsync("9x18bold"));
-        Assert.AreEqual(6, await OpenWidthAsync("-misc-fixed-medium-r-normal--14-*-*-*-*-*-iso8859-1"), "14 像素:13 与 15 一样近,取小的");
-        Assert.AreEqual(9, await OpenWidthAsync("-misc-fixed-bold-r-normal--18-*-*-*-*-*-iso10646-1"), "粗体里最接近的是 9x15B");
-        Assert.AreEqual(10, await OpenWidthAsync("-*-fixed-medium-r-*-*-*-200-75-75-*-*-iso8859-1"), "按 20 磅 75 dpi 换成 21 像素");
-        Assert.IsNull(await OpenWidthAsync("-adobe-helvetica-medium-r-normal--12-*-*-*-*-*-iso8859-1"), "没有的字族照旧 BadName(数据见 F21)");
+        Assert.AreEqual(9, await OpenWidthAsync("8x16"));
+        Assert.AreEqual(7, await OpenWidthAsync("-misc-fixed-medium-r-normal--14-*-*-*-*-*-iso8859-1"), "7x14");
+        Assert.AreEqual(10, await OpenWidthAsync("-*-fixed-medium-r-*-*-*-200-75-75-*-*-iso8859-1"), "按 POINT_SIZE 20 磅、75 dpi 匹配上 10x20");
+        Assert.AreEqual(9, await OpenWidthAsync("-misc-fixed-bold-r-normal--16-*-*-*-*-*-iso10646-1"), "粗体没有 16 像素:退到最接近的 9x15B");
+
+        // Adobe 75 / 100 dpi 的 Helvetica、Times、Courier 随库带:Motif / Xaw / Tk 的默认字体不再 BadName。
+        Assert.IsNotNull(await OpenWidthAsync("-adobe-helvetica-medium-r-normal--12-*-*-*-*-*-iso8859-1"), "原先 BadName(xs_plan CP-16)");
+        Assert.IsNotNull(await OpenWidthAsync("-adobe-times-bold-i-normal--17-120-100-100-p-*-iso8859-1"));
+        Assert.AreEqual(7, await OpenWidthAsync("-adobe-courier-medium-r-normal--*-120-75-75-*-*-iso8859-1"), "Courier 12 磅 75 dpi 的字宽");
+        Assert.IsNotNull(await OpenWidthAsync("-adobe-helvetica-medium-r-normal--13-*-*-*-*-*-iso8859-1"), "没有 13 像素:退到 12 或 14");
+        Assert.IsNotNull(await OpenWidthAsync("variable"), "fonts.alias:Helvetica Bold 12 磅");
+        Assert.IsNull(await OpenWidthAsync("-b&h-lucida-medium-r-normal-sans-12-*-*-*-*-*-iso8859-1"), "没有随库带的字族照旧 BadName");
+        Assert.IsNull(await OpenWidthAsync("kanji16"), "别名的目标(JIS 的 16 点阵)没有随库带:BadName");
+    }
+
+    [TestMethod]
+    public async Task 字体的单字节字符集按映射表从ISO10646字体派生_中日韩有字形()
+    {
+        await using X11Server server = new();
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        async Task<uint> OpenAsync(string name)
+        {
+            uint font = c.NewId();
+            byte[] bytes = Encoding.Latin1.GetBytes(name);
+            await c.SendAsync(45, 0, b => b.U32(font).U16((ushort)bytes.Length).U16(0).Bytes(bytes).Pad());
+            return font;
+        }
+        // 一个字符的宽度(QueryTextExtents 的 overall-width);缺字时退到 default-char,没有就是 0。
+        async Task<int> WidthAsync(uint font, int code) =>
+            (int)(await c.RequestAsync(48, 1, b => b.U32(font).U8((byte)(code >> 8)).U8((byte)code).Pad())).U32(16);   // odd-length:最后两字节是填充
+        async Task<string> PropertyAsync(uint font, string name)
+        {
+            XMessage reply = await c.RequestAsync(47, 0, b => b.U32(font));
+            uint atom = (await c.RequestAsync(16, 0, b => b.U16((ushort)name.Length).U16(0).Bytes(Encoding.Latin1.GetBytes(name)).Pad())).U32(8);
+            for (int i = 0; i < reply.U16(46); i++)
+            {
+                if (reply.U32(60 + (8 * i)) == atom)
+                {
+                    XMessage value = await c.RequestAsync(17, 0, b => b.U32(reply.U32(64 + (8 * i))));   // GetAtomName
+                    return Encoding.Latin1.GetString(value.Bytes, 32, value.U16(8));
+                }
+            }
+            return "";
+        }
+
+        uint latin2 = await OpenAsync("-misc-fixed-medium-r-normal--13-120-75-75-c-80-iso8859-2");
+        Assert.AreEqual(8, await WidthAsync(latin2, 0xA1), "ISO8859-2 的 0xA1 是 Ą(U+0104)");
+        Assert.AreEqual("ISO8859", await PropertyAsync(latin2, "CHARSET_REGISTRY"));
+        Assert.AreEqual("2", await PropertyAsync(latin2, "CHARSET_ENCODING"));
+        uint koi8 = await OpenAsync("-misc-fixed-medium-r-normal--13-120-75-75-c-80-koi8-r");
+        Assert.AreEqual(8, await WidthAsync(koi8, 0xC1), "KOI8-R 的 0xC1 是 а(U+0430)");
+        Assert.AreEqual("KOI8", await PropertyAsync(koi8, "CHARSET_REGISTRY"));
+
+        uint unicode = await OpenAsync("-misc-fixed-medium-r-semicondensed--13-120-75-75-c-60-iso10646-1");
+        Assert.AreEqual(6, await WidthAsync(unicode, 0x03B1), "希腊文 α:原先裁掉了");
+        Assert.AreEqual(6, await WidthAsync(unicode, 0x0436), "西里尔文 ж");
+        uint ja = await OpenAsync("-misc-fixed-medium-r-normal-ja-13-*-*-*-*-*-iso10646-1");
+        Assert.AreEqual(12, await WidthAsync(ja, 0x65E5), "12x13ja 的 日");
+        uint unifont = await OpenAsync("-gnu-unifont-*-iso10646-1");
+        Assert.AreEqual(16, await WidthAsync(unifont, 0x4E2D), "Unifont 的 中");
+        Assert.AreEqual(16, await WidthAsync(unifont, 0xAC00), "Unifont 的 가");
+        Assert.AreEqual(8, await WidthAsync(unifont, 'A'));
+        uint k14 = await OpenAsync("k14");
+        Assert.AreEqual(14, await WidthAsync(k14, 0x3021), "JIS X 0208 的双字节字体:0x3021 是 亜");
     }
 
     [TestMethod]
@@ -266,9 +327,22 @@ public sealed class WindowAndDrawingTests
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         string pattern = "-misc-fixed-medium-r-*-*-13-*-*-*-*-*-iso10646-1";
         XMessage reply = await c.RequestAsync(49, 0, b => b.U16(10).U16((ushort)pattern.Length).Bytes(Encoding.Latin1.GetBytes(pattern)));
-        Assert.AreEqual(1, reply.U16(8));
-        string text = Encoding.Latin1.GetString(reply.Bytes, 33, reply.Bytes[32]);
-        Assert.AreEqual("-misc-fixed-medium-r-semicondensed--13-120-75-75-c-60-iso10646-1", text);
+        List<string> names = [];
+        for (int i = 0, offset = 32; i < reply.U16(8); i++, offset += 1 + reply.Bytes[offset])
+        {
+            names.Add(Encoding.Latin1.GetString(reply.Bytes, offset + 1, reply.Bytes[offset]));
+        }
+        CollectionAssert.AreEqual(new[]
+        {
+            "-misc-fixed-medium-r-normal--13-120-75-75-c-70-iso10646-1",      // 7x13
+            "-misc-fixed-medium-r-normal--13-120-75-75-c-80-iso10646-1",      // 8x13
+            "-misc-fixed-medium-r-normal-ja-13-120-75-75-c-120-iso10646-1",   // 12x13ja
+            "-misc-fixed-medium-r-semicondensed--13-120-75-75-c-60-iso10646-1",   // 6x13(fixed)
+        }, names);
+
+        // 只给一个的时候也是按序第一个;max 截断。
+        XMessage one = await c.RequestAsync(49, 0, b => b.U16(1).U16((ushort)pattern.Length).Bytes(Encoding.Latin1.GetBytes(pattern)));
+        Assert.AreEqual(1, one.U16(8));
     }
 
     [TestMethod]

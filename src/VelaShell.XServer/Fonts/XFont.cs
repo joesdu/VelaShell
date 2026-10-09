@@ -15,7 +15,10 @@ internal readonly record struct XCharInfo(
     public bool IsEmpty => LeftBearing == 0 && RightBearing == 0 && Width == 0 && Ascent == 0 && Descent == 0;
 }
 
-/// <summary>一个字形:度量 + 1 位位图(行优先,每像素一个字节,1 = 着色)。</summary>
+/// <summary>
+/// 一个字形:度量 + 1 位位图。位图与 BDF 的 BITMAP 同一种排法:行优先,每行 <see cref="Stride" /> 个字节,
+/// 每个字节高位在左,1 = 着色。原先每像素占一个字节,整套字体(GNU Unifont 五万多个字形)放进内存要大八倍。
+/// </summary>
 internal sealed class XGlyph(XCharInfo info, byte[] bits)
 {
     public XCharInfo Info { get; } = info;
@@ -26,9 +29,12 @@ internal sealed class XGlyph(XCharInfo info, byte[] bits)
     /// <summary>位图高 = ascent + descent。</summary>
     public int BitmapHeight => Info.Ascent + Info.Descent;
 
+    /// <summary>每行的字节数。</summary>
+    public int Stride => (BitmapWidth + 7) >> 3;
+
     public byte[] Bits { get; } = bits;
 
-    public bool IsSet(int x, int y) => Bits[(y * BitmapWidth) + x] != 0;
+    public bool IsSet(int x, int y) => (Bits[(y * Stride) + (x >> 3)] & (0x80 >> (x & 7))) != 0;
 }
 
 /// <summary>字体属性(QueryFont 回复里的 FONTPROP):值要么是整数,要么是字符串(回复时换成原子)。</summary>

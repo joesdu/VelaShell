@@ -15,7 +15,7 @@
       Windowing/    窗口模型
       Drawing/      像素缓冲、区域、软件光栅化、RENDER 的合成 / 取样 / 覆盖率
       Gl/           GLX 间接渲染用的软件 GL(固定功能管线的一个子集)
-      Fonts/        BDF、内置 misc-fixed 字体、XLFD 匹配
+      Fonts/        BDF、内置的 X.Org 位图字体与 GNU Unifont、XLFD 匹配与字符集派生
       Input/        键码表、抓取的数据结构
 
     架构、净室规程与里程碑见 velashell-docs/zh/xserver/design/architecture.md;
@@ -35,8 +35,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 内置位图字体(X.Org font-misc-misc,公有领域),见 Fonts/Data/README.md。 -->
-    <EmbeddedResource Include="Fonts/Data/*.bdf" LogicalName="VelaShell.XServer.Fonts.%(Filename).bdf" />
+    <!--
+      内置位图字体:X.Org 的 misc-fixed、cursor、Adobe 75 / 100 dpi 与 GNU Unifont(Brotli 压缩的原样 BDF),
+      每个目录的 fonts.dir、misc 的 fonts.alias 与单字节字符集映射表。来源与许可见 Fonts/Data/README.md、NOTICE.md;
+      由 scripts/xserver/fonts/build-fonts.cs 生成。资源名带目录(两个 dpi 目录的文件同名)。
+    -->
+    <EmbeddedResource Include="Fonts/Data/misc/*" LogicalName="VelaShell.XServer.Fonts.misc.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Fonts/Data/75dpi/*" LogicalName="VelaShell.XServer.Fonts.75dpi.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Fonts/Data/100dpi/*" LogicalName="VelaShell.XServer.Fonts.100dpi.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Fonts/Data/charsets.txt" LogicalName="VelaShell.XServer.Fonts.charsets.txt" />
+    <!-- 上游的许可原文跟着字体走(SIL OFL 要求字体的每一份拷贝都带着它)。 -->
+    <EmbeddedResource Include="Fonts/Data/LICENSE-*.txt" LogicalName="VelaShell.XServer.Fonts.%(Filename)%(Extension)" />
     <!-- 颜色名表(X.Org rgb.txt,MIT / X11 许可),见 Resources/Data/README.md。 -->
     <EmbeddedResource Include="Resources/Data/rgb.txt" LogicalName="VelaShell.XServer.Resources.rgb.txt" />
   </ItemGroup>

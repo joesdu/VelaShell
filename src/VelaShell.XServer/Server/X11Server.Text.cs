@@ -19,7 +19,7 @@ public sealed partial class X11Server
     private XFont? _defaultFont;
 
     /// <summary>GC 没设字体时用的服务端默认字体(协议没指定是哪个;X.Org 惯例是 fixed)。</summary>
-    private XFont DefaultFont => _defaultFont ??= _fonts.Open("fixed") ?? throw new InvalidOperationException("内置字体 fixed 缺失。");
+    private XFont DefaultFont => _defaultFont ??= FontCatalog.Open("fixed") ?? throw new InvalidOperationException("内置字体 fixed 缺失。");
 
     private void OpenFont(XClient c, XRequestReader r)
     {
@@ -27,7 +27,7 @@ public sealed partial class X11Server
         int length = r.U16();
         r.Skip(2);
         string name = r.String8(length);
-        XFont? font = _fonts.Open(name);
+        XFont? font = FontCatalog.Open(name);
         if (font is null)
         {
             if (ShouldLogFrequent())
@@ -112,12 +112,12 @@ public sealed partial class X11Server
             .I32(width).I32(left).I32(right).Zero(4));
     }
 
-    private void ListFonts(XClient c, XRequestReader r)
+    private static void ListFonts(XClient c, XRequestReader r)
     {
         int max = r.U16();
         int length = r.U16();
         string pattern = r.String8(length);
-        List<string> names = _fonts.Match(pattern, max);
+        List<string> names = FontCatalog.Match(pattern, max);
         c.Reply(0, w =>
         {
             w.U16((ushort)names.Count).Zero(22);
@@ -135,10 +135,10 @@ public sealed partial class X11Server
         int max = r.U16();
         int length = r.U16();
         string pattern = r.String8(length);
-        List<string> names = _fonts.Match(pattern, max);
+        List<string> names = FontCatalog.Match(pattern, max);
         for (int i = 0; i < names.Count; i++)
         {
-            if (_fonts.Open(names[i]) is not { } font)
+            if (FontCatalog.Open(names[i]) is not { } font)
             {
                 continue;
             }
