@@ -2,7 +2,8 @@
 
 X 服务端的核心字体(OpenFont / ListFonts / 字形光标)用的数据。全部是上游的**原样字节** —— 以**数据文件**随库分发,
 不是代码,不涉及净室规程(见 `../../AGENTS.md` §2 纪律 4)。由 [`scripts/xserver/fonts/build-fonts.cs`](../../../../scripts/xserver/fonts/build-fonts.cs)
-从固定的上游提交 / 版本生成,**不要手改**;要换版本或加字体,改脚本里的固定值再重跑:
+从固定的上游提交 / 版本生成,**不要手改**。下载的内容按脚本里固定的 SHA-256 核对(Unifont 核对发布的 `.bdf.gz`;X.Org 的仓库核对从归档里
+挑出来的文件 —— GitLab 现做的归档不保证逐字节稳定),全部对上才动这个目录。要换版本或加字体,改脚本里的固定值再重跑(对不上时会打印实际的摘要):
 
 ```bash
 dotnet run scripts/xserver/fonts/build-fonts.cs      # 在仓库根目录跑
