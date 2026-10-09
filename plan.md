@@ -58,6 +58,7 @@
 | 10-09 | §176 | 终端侧栏分隔线与折叠拆成两个开关、折叠方框加大(#586) |
 | 10-09 | §177 | AI 插件:#582 复审修复(规格多数匹配、设备码 428、批量检测、跨源草稿 Key、一次性请求重试) |
 | 10-09 | §178 | XServer 第二次审查遗留项的收尾(随库带核心字体、cursor 字形光标、PolyArc 接头、RENDER 整数路径) |
+| 10-09 | §179 | CI:AI 插件 UI 用例把每次 CI 拖到 25 分钟以上;SFTP 握手在 sftp-server 一起来就退出时偶尔白等 30 秒 |
 
 ## 📈 阶段脉络
 
@@ -2008,3 +2009,14 @@ Google 的设备码端点「还没批」回的是 **428 + `authorization_pending
 **三、没做的**(仍在 `feature-plan.md` H 节):点本机窗口或桌面就收起 X 的弹出菜单(WN-M7,要全局指针钩子);F21 以外的新功能(F1–F30);需要实机的 API-H13 / IN-E19 / CN-S8。DR-M1 那个会话另报了一处审查之前就有的问题、没有改:外接框宽或高为 0 的宽弧只画出一半线宽。
 
 **四、验证**:`VelaShell.XServer.Tests` 459 例,450 通过 / 9 例按平台跳过(只在 Linux 上才有的那几条);分支起点是 430 通过。开互操作(重建了带 `default-jdk` 的 `velashell-xclients`)12 例全过、没有 `[SKIP]`。真实客户端另手动核对:`xlsfonts` 列出 1923 个名字;`variable` 解析成 Helvetica Bold 12 磅、属性正确;`xfd -fn cursor` 画出全部光标字形;默认 `fixed` 字体的 UTF-8 xterm 显示中日韩、希腊文、西里尔文、Latin-2 与 €;没有协议错误;`xlsfonts -l "*"` 不再有持锁过久的日志。宿主 `VelaShell.Tests` 与 `Infrastructure.Tests` 里 X Server 相关的用例 41 / 40 通过(1 例按环境跳过)。整个 `VelaShell.slnx`(Debug)与 `VelaShell.XServer`(Release)零警告零错误。`VelaShell.slnx` 的 Release 构建报 NETSDK1150(自包含的 `VelaShell` 引用非自包含的 `VelaShell.PluginHost`),与这一批无关 —— 这一批的工程文件只改了 `VelaShell.XServer.csproj` 的嵌入资源。DR-M1:20 万组随机的单条弧与不相接的弧,与改动前逐像素相同;新用例在旧代码上红。DR-P3:穷举核对(源 alpha × 遮罩 0–255 × 48 种目标像素,有无分量 alpha 各一遍),a1 与浮点版逐位相同、其余最多差 1;每条新用例做过变异检查。
+
+## ✅ 179. 2026-10-09 CI:AI 插件的 UI 用例把每次 CI 拖到 25 分钟以上;顺带逮到 SFTP 握手的一个竞态
+
+- **现象**:#582(10-09 04:32 合入)之后,每次 CI 从 6–7 分钟变成 25 分钟以上;macOS 那一项看上去像是永远跑不完,#590、#591 上都被取消过。
+- **原因**:`VelaShell.Plugin.Ai.Tests` 从 587 条加到 1415 条,多是 headless UI 用例。一个进程只有一个 Avalonia UI 线程,这些用例只能串行;macOS 上这一个工程要 22 分 36 秒(Windows 9 分 50 秒、Linux 5 分 27 秒),别的工程都在 2 分钟内跑完。macOS 格外慢,是因为 UI 用例的 `PumpAsync` 按拍数等(`rounds` 次 `Task.Delay(5)` + `RunJobs`),实际等多久看计时器的粒度:同样 60 拍,Linux 0.36 秒、Windows 0.77 秒、macOS 1.55 秒(每拍约 26 ms)。
+- **改了两处**(f48954df):
+  - 6 处 `PumpAsync` 交给 `HeadlessPump.RunAsync`:保证 `rounds × 5 ms` 的真实时间过去、中间照常跑调度器,拍数随计时器粒度自适应;小的拍数至少推 min(rounds, 3) 拍(有的用例拿它在防抖到点之前断言)。Linux 上与原来基本一样,用例本身与各处的拍数没有动。
+  - CI 的测试步骤改成 `scripts/ci/run-tests.sh`:聊天面板、接入向导、设置页三组 UI 用例各起一个 `dotnet test` 进程,与解决方案的其余测试同时跑。每个进程仍只有一个 UI 线程、组内照旧串行;插件没有跨实例的静态状态,`TestPluginContext` 的数据目录每个实例一个,拆开跑不改变用例看到的东西。
+  - 试过给作业加 `timeout-minutes` 兜底,撤了:真卡住时照样烧满时限,省不了额度。
+- **顺带逮到的真 bug**(080da3ba):跑得更挤之后,ubuntu 上 `sftp_server起不来时报出退出码与它的stderr` 撞上 30 秒的用例时限(§171 记过它在 macOS 上也红过一次)。根因是 `SftpRequestPipeline` 的竞态:收包循环一开跑就看到通道关了、调 `Fault`,而 `Fault` 只结算「已经有人在等」的 VERSION;握手晚一步调 `WaitForVersionAsync` 就新建一个再也不会完成的任务,等满 30 秒的握手时限 —— 用户看到「sftp-server 没有回应」,退出码与 stderr 都丢了。现在建任务时流水线已经收工就当场以原因结算;新用例先等收工、再等 VERSION,在旧代码上红。
+- **验证**:本机 `VelaShell.Plugin.Ai.Tests` 1436 条全过、5 分 47 秒(三组单独 163 / 105 / 54 秒),整个测试脚本 170 秒;SFTP 179 条全过。CI run 37931845240(f48954df,竞态修复之前):Windows 8 分 3 秒、macOS **8 分 18 秒**(原来 25 分钟以上)、ubuntu 6 分 32 秒 —— ubuntu 红的就是上面那条竞态,三组 UI 用例三个平台全过。
