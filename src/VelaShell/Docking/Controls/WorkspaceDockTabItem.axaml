@@ -34,6 +34,11 @@
     <Style Selector="local|WorkspaceDockTabItem">
       <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
     </Style>
     <Style Selector="local|WorkspaceDockTabItem Border#TabRoot">
       <Setter Property="Background" Value="{DynamicResource VelaTabInactiveBg}" />

@@ -1908,3 +1908,6 @@ Avalonia 12.1.3 的 `ColorAnimator.InterpolateCore` 按 A、R、G、B 逐通道�
   且「同一属性被设成 `Transparent` / `#00FFFFFF`」就报,附扫描器正反样例。把修复前的 `ConnectionProfileView.axaml`
   放回去,它报出 3 处(协议栏的 `Background`、`BorderBrush`,分区页签的 `Background`)。
   真要淡入,常态得换成目标色的全透明版(同一 RGB、alpha 为 0),只动 alpha。
+* 停靠标签(五种 `*DockTabItem`)的标签文字恢复 120ms 前景淡变,删掉 `DockTabShells_DoNotAnimateForegroundOnHover`。
+  #581 按「高 DPI 下重绘闪烁」把它一并去掉了,但这里两头都是不透明的文字令牌(`VelaTextTertiary` →
+  `VelaTextSecondary` / `VelaTextPrimary`),插值是单调的、不会过冲,跟 #577 无关;五个文件回到 #581 之前的样子。
