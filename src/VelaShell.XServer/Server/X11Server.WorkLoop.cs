@@ -328,6 +328,11 @@ public sealed partial class X11Server
             _deferred.Add(item);
             return;
         }
+        // 要用的字体还没建好:在后台建,这个客户端的这条与之后的请求暂存(见 DeferIfFontsLoading)。
+        if (DeferIfFontsLoading(item))
+        {
+            return;
+        }
         long started = Stopwatch.GetTimestamp();
         // 每项工作一份预算(X-1):扣光时请求回 Alloc,而不是持着像素锁跑上几分钟、让宿主界面陪着冻住。
         WorkBudget.Begin(RequestWorkBudget);

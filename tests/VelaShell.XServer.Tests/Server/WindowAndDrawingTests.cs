@@ -321,6 +321,42 @@ public sealed class WindowAndDrawingTests
     }
 
     [TestMethod]
+    public async Task 字体还没建好时在后台建_这个客户端的请求按序暂存_别的客户端照常()
+    {
+        await using X11Server server = new();
+        TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        List<string> prepared = [];
+        server.UnpreparedFonts = names => [.. names];   // 一律当成还没建好
+        server.PrepareFonts = async (fonts, _) =>
+        {
+            await gate.Task;
+            prepared.AddRange(fonts);
+        };
+        await using XTestClient a = await XTestClient.ConnectAsync(server);
+        await using XTestClient b = await XTestClient.ConnectAsync(server);
+        uint font = a.NewId();
+        byte[] name = Encoding.Latin1.GetBytes("fixed");
+        await a.SendAsync(45, 0, w => w.U32(font).U16((ushort)name.Length).U16(0).Bytes(name).Pad());   // OpenFont
+        Task<XMessage> query = a.RequestAsync(47, 0, w => w.U32(font));                                  // QueryFont,排在后面
+
+        Assert.IsTrue((await b.RequestAsync(43, 0)).IsReply, "别的客户端照常:原先整个执行线程持着像素锁解析字体");
+        await a.SendAsync(43, 0);
+        await Task.Delay(100);
+        Assert.IsFalse(query.IsCompleted, "字体建好之前,这个客户端之后的请求暂存");
+
+        gate.SetResult();
+        XMessage reply = await query;
+        Assert.IsTrue(reply.IsReply, "建好之后按原顺序执行:OpenFont 在先,QueryFont 拿得到字体");
+        CollectionAssert.AreEqual(new[] { "fixed" }, prepared);
+
+        // 建不出来(后台抛异常)也放回去照常执行,不会一直等。
+        server.PrepareFonts = (_, _) => Task.FromException(new InvalidDataException("坏数据"));
+        uint other = a.NewId();
+        await a.SendAsync(45, 0, w => w.U32(other).U16((ushort)name.Length).U16(0).Bytes(name).Pad());
+        Assert.IsTrue((await a.RequestAsync(47, 0, w => w.U32(other))).IsReply);
+    }
+
+    [TestMethod]
     public async Task ListFonts按通配符匹配()
     {
         await using X11Server server = new();

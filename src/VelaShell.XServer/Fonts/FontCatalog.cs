@@ -71,7 +71,37 @@ internal static class FontCatalog
     }
 
     /// <summary>按名字打开(OpenFont):名字可以带通配符,取第一个匹配的;找不到返回 null(BadName)。</summary>
-    public static XFont? Open(string name) => Index.Value.Open(name);
+    public static XFont? Open(string name) => Index.Value.Find(name) is { } font ? Index.Value.Build(font) : null;
+
+    /// <summary>
+    /// 打开这些名字(可以是别名、带通配符)要用到、还没建好的字体(按字体名去重)。第一次打开要解压、解析整份 BDF ——
+    /// GNU Unifont 要 180 毫秒,把所有字体列一遍信息(<c>xlsfonts -l</c>)要一秒多 —— 执行线程不该持着像素锁做这件事
+    /// (宿主的 UI 线程在 ReadPixels 里等这把锁),先用 <see cref="PrepareAsync" /> 在后台建好。
+    /// </summary>
+    public static List<string> Unprepared(IEnumerable<string> names)
+    {
+        FontIndex index = Index.Value;
+        HashSet<string> pending = [];
+        foreach (string name in names)
+        {
+            if (index.Find(name) is { } font && !index.IsBuilt(font))
+            {
+                pending.Add(font);
+            }
+        }
+        return [.. pending];
+    }
+
+    /// <summary>在线程池上把这些字体(<see cref="Unprepared" /> 给的字体名)解压、解析、建好;之后 <see cref="Open" /> 直接取缓存。</summary>
+    public static Task PrepareAsync(IReadOnlyList<string> fonts, CancellationToken cancellationToken) =>
+        Task.Run(() =>
+        {
+            foreach (string font in fonts)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Index.Value.Build(font);
+            }
+        }, cancellationToken);
 
     /// <summary>X 的字体名通配:'*' 任意串,'?' 单个字符,不区分大小写。</summary>
     internal static bool WildcardMatch(string pattern, string name)
@@ -170,7 +200,8 @@ internal static class FontCatalog
             return index;
         }
 
-        public XFont? Open(string name)
+        /// <summary>名字(字体名、别名,可以带通配符)→ 打开时用的字体名;找不到为 null。只查名字表,不解析字体。</summary>
+        public string? Find(string name)
         {
             for (int depth = 0; depth < 4; depth++)   // 别名指向别名:最多跟几层,防成环
             {
@@ -181,7 +212,7 @@ internal static class FontCatalog
                 }
                 if (Resolve(name) is { } resolved)
                 {
-                    return Build(resolved);
+                    return resolved;
                 }
                 // 通配符匹配上的是个别名:接着解它。
                 if (SortedNames.FirstOrDefault(n => WildcardMatch(name, n)) is { } alias && _aliases.ContainsKey(alias))
@@ -189,7 +220,7 @@ internal static class FontCatalog
                     name = alias;
                     continue;
                 }
-                return NearestSize(name) is { } nearest ? Build(nearest) : null;
+                return NearestSize(name);
             }
             return null;
         }
@@ -264,7 +295,11 @@ internal static class FontCatalog
             return best;
         }
 
-        private XFont Build(string name)
+        /// <summary>这个字体(<see cref="Find" /> 给的字体名)已经建好了吗。</summary>
+        public bool IsBuilt(string font) => _built.TryGetValue(font, out Lazy<XFont>? built) && built.IsValueCreated;
+
+        /// <summary>建一个字体(<see cref="Find" /> 给的字体名):BDF 第一次用到时解压、解析,结果与建好的字体都缓存。线程安全。</summary>
+        public XFont Build(string name)
         {
             FontSource source = _fonts[name];
             return _built.GetOrAdd(name, key => new Lazy<XFont>(() =>
