@@ -752,7 +752,7 @@ public sealed class SyncCompositeTests
         });
         XMessage complete = await PresentCompleteAsync(c, 2, timeoutMs: 1000);
         Assert.IsGreaterThanOrEqualTo(msc + 1000, CompleteMsc(complete));
-        await host.WaitForAsync(() => host.FrameClockRequests.LastOrDefault() == false);
+        await host.WaitForAsync(() => !host.FrameClockRequests.LastOrDefault());
     }
 
     [TestMethod]
