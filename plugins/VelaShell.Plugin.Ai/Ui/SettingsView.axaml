@@ -10,6 +10,7 @@
       <ResourceDictionary.MergedDictionaries>
         <ResourceInclude Source="avares://VelaShell.Plugin.Ai/Ui/AiTheme.axaml" />
       </ResourceDictionary.MergedDictionaries>
+      <StreamGeometry x:Key="AiIcon.key-untested">M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z</StreamGeometry>
     </ResourceDictionary>
   </UserControl.Resources>
 
@@ -25,7 +26,7 @@
   <!-- 版式对齐宿主设置页:左边一条 bg-sidebar 导航(贴着窗口边,跟着卡片左下圆角),
        右边留足内边距的可滚动内容区,内容按"节"分块。
        左栏是"供应商 › 模型"两层:供应商一行、其下模型缩进一档;右侧表单随选中的是哪一层切换。 -->
-  <Grid ColumnDefinitions="230,*">
+  <Grid x:Name="SettingsLayout" ColumnDefinitions="230,*">
     <!-- 左:供应商/模型树 + 新增 -->
     <Border Grid.Column="0"
             Background="{DynamicResource VelaBgSidebar}"
@@ -196,18 +197,24 @@
                       </StackPanel>
                     </Border>
                   </StackPanel>
-                  <Grid ColumnDefinitions="*,6,Auto">
-                    <TextBox x:Name="ProviderApiKeyBox" PasswordChar="●" FontFamily="{DynamicResource VelaUiMonoFont}" />
-                    <ToggleButton x:Name="ProviderRevealKeyToggle" Grid.Column="2" Theme="{StaticResource AiChipToggleTheme}"
-                                  Width="30" Height="28" Padding="0" CornerRadius="4" VerticalAlignment="Center">
-                      <Viewbox Width="12" Height="12">
-                        <Path Width="24" Height="24" Data="{DynamicResource Icon.eye}"
-                              Stroke="{Binding $parent[ToggleButton].Foreground}" StrokeThickness="2"
-                              StrokeLineCap="Round" StrokeJoin="Round" />
-                      </Viewbox>
-                    </ToggleButton>
+                  <Button x:Name="ProviderProbeAllKeysButton"
+                          Theme="{DynamicResource VelaOutlineButtonTheme}" Padding="10,0" MinHeight="28" />
+                  <TextBlock x:Name="ProviderAllKeysHintText" Classes="hint" TextWrapping="Wrap" IsVisible="False" />
+                  <ComboBox x:Name="ProviderAllKeysModelPicker" IsVisible="False" SelectedIndex="-1"
+                            HorizontalAlignment="Stretch" />
+                  <StackPanel x:Name="ProviderApiKeyRows" Spacing="8" />
+                  <Grid ColumnDefinitions="*,6,Auto" Margin="0,8,0,0">
+                    <TextBox x:Name="ProviderNewApiKeyBox" PasswordChar="●"
+                             FontFamily="{DynamicResource VelaUiMonoFont}" />
+                    <Button x:Name="ProviderAddApiKeyButton" Grid.Column="2"
+                            Theme="{DynamicResource VelaOutlineButtonTheme}" Padding="10,0" MinHeight="28" />
                   </Grid>
-                  <TextBlock x:Name="ProviderApiKeyHintText" Classes="hint" />
+                  <TextBlock x:Name="ProviderApiKeyHintText" Classes="hint" TextWrapping="Wrap" />
+                  <CheckBox x:Name="BalanceApiKeysCheck" IsChecked="False" Margin="0,8,0,0"
+                            Theme="{StaticResource AiCheckBoxTheme}"
+                            FontSize="{DynamicResource VelaFontSize12}"
+                            Foreground="{DynamicResource VelaTextPrimary}" />
+                  <TextBlock x:Name="BalanceApiKeysHintText" Classes="hint" TextWrapping="Wrap" />
                 </StackPanel>
 
                 <StackPanel x:Name="ProviderAuthPanel" Classes="field" IsVisible="False">
@@ -329,8 +336,8 @@
               <TextBlock x:Name="SectionCapacityTitle" Classes="section-title" />
               <Border Classes="section">
                 <StackPanel Spacing="10">
-                  <!-- 三列(设计图 E):输出上限随请求下发;输入上限(上下文窗口)只喂给
-                       输入框下方的用量占比;思考档位跟它们是同一类"这个模型能到哪儿"的设置。 -->
+                  <!-- 输出上限随请求下发;上下文窗口用于占比、压缩与历史裁剪。
+                       思考档位跟它们是同一类"这个模型能到哪儿"的设置。 -->
                   <StackPanel>
                     <Grid ColumnDefinitions="*,12,*,12,*">
                       <StackPanel Classes="field">

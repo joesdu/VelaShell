@@ -21,9 +21,10 @@ public partial class ChatPanelView
 
     /// <summary>
     /// 发送前调用:接近窗口就先把早期对话折成摘要。
-    /// 压缩失败(网络问题、模型不配合)不抛也不拦 —— 装配那一步还有"直接丢最早几条"兜底。
+    /// 网络失败仍回落裁剪;固定槽或身份失效、取消则抛给整轮收尾,禁止继续发送历史。
     /// </summary>
-    private async Task CompactIfNeededAsync(ResolvedModel provider, CancellationToken cancellationToken)
+    private async Task CompactIfNeededAsync(ResolvedModel provider, CancellationToken cancellationToken,
+        Func<CancellationToken, Task<IChatClient>> getVerifiedClient)
     {
         if (!_settings.CompactContext
             || !ContextCompactor.ShouldCompact(History, SummarizedThrough, ContextSummary,
@@ -38,13 +39,15 @@ public partial class ChatPanelView
         }
         try
         {
-            StatusText.Text = _loc["Compacting"];
-            // 裸客户端:压缩这一问不该带工具,也不该进对话历史
-            IChatClient client = await _store.CreateClientAsync(provider, cancellationToken: cancellationToken);
-            CompactionResult? result = await Task.Run(
-                () => ContextCompactor.CompactAsync(client, History, SummarizedThrough, ContextSummary, cut,
+            SetStatus(_loc["Compacting"]);
+            // 真正摘要请求前复验固定槽与身份,取得最新裸客户端;生命周期由工具/插话通道拥有。
+            CompactionResult? result = await Task.Run(async () =>
+            {
+                IChatClient client = await getVerifiedClient(cancellationToken);
+                return await ContextCompactor.CompactAsync(client, History, SummarizedThrough, ContextSummary, cut,
                     _context.Host.Locale, cancellationToken,
-                    tuneOptions: o => AiSettingsStore.ApplyEndpointQuirks(o, provider)), cancellationToken);
+                    tuneOptions: o => AiSettingsStore.ApplyEndpointQuirks(o, provider));
+            }, cancellationToken);
             if (result is not { } compaction)
             {
                 return;
@@ -66,14 +69,14 @@ public partial class ChatPanelView
         {
             throw; // 用户按了停止,交给外层统一收尾
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not ProviderConfigurationChangedException and not AiSettingsStore.ApiKeySlotChangedException)
         {
             // 压不动就照常发:装配那一步会按窗口丢掉最早几条,不至于卡住对话
             _context.Log.Warn($"Context compaction failed, falling back to trimming: {ex.Message}");
         }
         finally
         {
-            StatusText.Text = "";
+            SetStatus("");
         }
     }
 

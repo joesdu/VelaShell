@@ -25,13 +25,33 @@ namespace VelaShell.Plugin.Ai.Chat;
 /// 有插话真的被送进请求时回调(<b>在发请求的那个线程上</b>,通常不是 UI 线程)。
 /// 面板据此把它补进对话历史、在回复里挂一张卡、并把输入框上方那枚排队芯片撤掉。
 /// </param>
+/// <param name="beforeRequest">每次真实请求(含工具结果续流)前复验本轮固定凭据;失败不出境。</param>
 internal sealed class SteeringChatClient(
     IChatClient innerClient,
     SteeringQueue queue,
-    Action? onDelivered = null) : DelegatingChatClient(innerClient)
+    Action? onDelivered = null,
+    Func<CancellationToken, Task>? beforeRequest = null) : IChatClient
 {
     private readonly Lock _gate = new();
     private readonly List<SteeringMessage> _delivered = [];
+    private IChatClient _requestClient = innerClient;
+    internal IChatClient RequestClient => _requestClient;
+
+    /// <summary>同账号续期只替换真实请求客户端,保留工具循环与已送达插话,不重放副作用。</summary>
+    internal void ReplaceInnerClient(IChatClient client)
+    {
+        IChatClient previous = _requestClient;
+        _requestClient = client;
+        previous.Dispose();
+    }
+
+    public object? GetService(Type serviceType, object? serviceKey = null)
+    {
+        ArgumentNullException.ThrowIfNull(serviceType);
+        return serviceKey is null && serviceType.IsInstanceOfType(this) ? this : _requestClient.GetService(serviceType, serviceKey);
+    }
+
+    public void Dispose() => _requestClient.Dispose();
 
     /// <summary>本轮已经送进请求的插话(按送达先后)。</summary>
     public IReadOnlyList<SteeringMessage> Delivered
@@ -46,14 +66,22 @@ internal sealed class SteeringChatClient(
     }
 
     /// <inheritdoc />
-    public override Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
+    public async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
         ChatOptions? options = null, CancellationToken cancellationToken = default)
-        => base.GetResponseAsync(Compose(messages), options, cancellationToken);
+    {
+        if (beforeRequest is not null) await beforeRequest(cancellationToken).ConfigureAwait(false);
+        return await _requestClient.GetResponseAsync(Compose(messages), options, cancellationToken).ConfigureAwait(false);
+    }
 
     /// <inheritdoc />
-    public override IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages,
-        ChatOptions? options = null, CancellationToken cancellationToken = default)
-        => base.GetStreamingResponseAsync(Compose(messages), options, cancellationToken);
+    public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages,
+        ChatOptions? options = null,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (beforeRequest is not null) await beforeRequest(cancellationToken).ConfigureAwait(false);
+        await foreach (ChatResponseUpdate update in _requestClient.GetStreamingResponseAsync(Compose(messages), options, cancellationToken)
+            .ConfigureAwait(false)) yield return update;
+    }
 
     /// <summary>把队列里的插话并进这一次要发的消息序列。</summary>
     private List<ChatMessage> Compose(IEnumerable<ChatMessage> messages)

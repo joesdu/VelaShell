@@ -14,6 +14,63 @@ namespace VelaShell.Plugin.Ai.Tests;
 [TestCategory("Plugins")]
 public sealed class SubscriptionProviderTests
 {
+    [TestMethod]
+    public async Task Review_RefreshAuthorizationFailureDoesNotReturnAReplacedLogin()
+    {
+        using var endpoint = new HeldAuthorizationFailure();
+        using var http = new HttpClient(endpoint);
+        using var context = new TestPluginContext();
+        var store = new AiSettingsStore(context) { TokenClient = new OAuthClient(http) };
+        var provider = new AiProvider { BaseUrl = "https://api.example", Auth = AuthMethod.Subscription,
+            OAuth = new OAuthConfig { TokenUrl = "https://auth.example/token", Credential = OAuthCredential.AccessToken },
+            Models = [new AiModelConfig { Model = "m" }] };
+        await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "old", RefreshToken = "refresh", ExpiresAt = DateTimeOffset.UtcNow });
+        Task<ProviderCredential> pending = store.ResolveCredentialAsync(new ResolvedModel(provider, provider.Models[0]));
+        await endpoint.Started.Task;
+        await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "new-login" });
+        endpoint.Release.TrySetResult();
+        await Assert.ThrowsAsync<AiSettingsStore.ApiKeySlotChangedException>(() => pending);
+        Assert.AreEqual("new-login", (await store.GetTokensAsync(provider.Id))!.AccessToken);
+    }
+
+    private sealed class HeldAuthorizationFailure : HttpMessageHandler
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Started.TrySetResult();
+            await Release.Task.WaitAsync(token);
+            return new HttpResponseMessage(System.Net.HttpStatusCode.BadRequest)
+                { Content = new StringContent("{\"error\":\"invalid_grant\"}") };
+        }
+    }
+
+    [TestMethod]
+    public async Task Review_RefreshGateDoesNotTreatAnotherLoginAsItsRefreshResult()
+    {
+        using var context = new TestPluginContext();
+        var store = new AiSettingsStore(context);
+        var provider = new AiProvider { BaseUrl = "https://api.example", Auth = AuthMethod.Subscription,
+            OAuth = new OAuthConfig { Credential = OAuthCredential.AccessToken }, Models = [new AiModelConfig { Model = "m" }] };
+        await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "old", RefreshToken = "refresh",
+            Account = "same display", ExpiresAt = DateTimeOffset.UtcNow });
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var gate = (SemaphoreSlim)(typeof(AiSettingsStore).GetField("_refreshGate", flags)?.GetValue(store)
+            ?? typeof(AiSettingsStore).GetProperty("_refreshGate", flags)!.GetValue(store))!;
+        await gate.WaitAsync();
+        Task<ProviderCredential> pending;
+        try
+        {
+            pending = store.ResolveCredentialAsync(new ResolvedModel(provider, provider.Models[0]));
+            Assert.IsFalse(pending.IsCompleted, "缓存命中后的唯一未完成等待是已持有的刷新闸");
+            await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "different-login", Account = "same display" });
+        }
+        finally { gate.Release(); }
+        await Assert.ThrowsAsync<AiSettingsStore.ApiKeySlotChangedException>(() => pending);
+        Assert.AreEqual("different-login", (await store.GetTokensAsync(provider.Id))!.AccessToken);
+    }
+
     // ---- 目录 ----
 
     [TestMethod]

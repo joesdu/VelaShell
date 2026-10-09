@@ -28,8 +28,10 @@ public sealed partial class ChatPanelViewUiTests
     private static async Task<(Window Window, ChatPanelView Panel, ComboBox Combo)> WithReasoningPickerAsync(
         TestPluginContext context, AiProvider provider)
     {
-        await new AiSettingsStore(context).SaveAsync(
-            new AiSettings { Providers = [provider], ActiveModelId = provider.Models[0].Id });
+        await new AiSettingsStore(context).SaveAsync(new AiSettings
+        {
+            Providers = [provider], ActiveModelId = provider.Models[0].Id, SuggestFollowUps = false
+        });
         (Window window, ChatPanelView panel) = await ShowAsync(context);
         return (window, panel, Find<ComboBox>(panel, "ReasoningCombo"));
     }
@@ -272,6 +274,250 @@ public sealed partial class ChatPanelViewUiTests
             }
         });
     }
+
+    /// <summary>
+    /// 在设置里删掉当前模型、自动落到另一份时,旧模型那份临时档位必须一起作废 ——
+    /// 这次重载被 <c>_syncingProviders</c> 拦在选择处理器之外,没人替它清;
+    /// 留着下一轮会把 A 的 High 发给别的模型,哪怕 B 根本不支持思考。
+    /// </summary>
+    [TestMethod]
+    public void DeletingTheCurrentModel_DropsItsTemporaryLevel()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            AiProvider provider = TwoModels(ReasoningLevel.Default, ReasoningLevel.Off);
+            await new AiSettingsStore(context).SaveAsync(
+                new AiSettings { Providers = [provider], ActiveModelId = provider.Models[0].Id });
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            ComboBox combo = Find<ComboBox>(panel, "ReasoningCombo");
+            Window? host = null;
+            try
+            {
+                combo.SelectedIndex = (int)ReasoningLevel.High;
+                await PumpAsync(10);
+                Assert.AreEqual((int)ReasoningLevel.High, combo.SelectedIndex, "前提:挂着临时档位");
+
+                Click(panel, "SettingsButton");
+                await PumpAsync(5);
+                var settings = (SettingsView)context.FakeUi.LastPanel.CreateContent();
+                host = Host(settings);
+                await PumpAsync(10);
+
+                ListBox list = FindIn<ListBox>(settings, "ProvidersList");
+                list.SelectedIndex = 1; // 导航表:第 0 行是供应商,1 起是它的模型 —— 当前选中的那份
+                await PumpAsync(10);
+                RaiseClick(FindIn<Button>(settings, "DeleteButton"));
+                await PumpAsync(20);
+
+                AiSettings reloaded = await new AiSettingsStore(context).LoadAsync();
+                Assert.HasCount(1, reloaded.Providers[0].Models, "前提:当前模型真的被删了");
+                Assert.AreEqual((int)ReasoningLevel.Off, combo.SelectedIndex,
+                    "旧模型的临时档位不许留着 —— 显示的该是剩下那份自己配的档,下一轮也按它发");
+                Assert.AreEqual(provider.Models[1].Id, reloaded.ActiveModelId,
+                    "自动落到第二份上,并写回设置");
+            }
+            finally
+            {
+                host?.Close();
+                panel.Detach();
+                window.Close();
+            }
+        });
+    }
+
+    [TestMethod]
+    public void AddingTheFirstModel_DropsTheTemporaryLevelPickedWhileNoModelExisted()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            AiProvider provider = TwoModels(ReasoningLevel.Default, ReasoningLevel.Default);
+            provider.Models.Clear();
+            await new AiSettingsStore(context).SaveAsync(new AiSettings { Providers = [provider] });
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            ComboBox tier = Find<ComboBox>(panel, "ReasoningCombo");
+            Window? host = null;
+            try
+            {
+                tier.SelectedIndex = (int)ReasoningLevel.High;
+                Assert.Contains("overridden", tier.Classes, "无模型时可以临时选中高档");
+
+                Click(panel, "SettingsButton");
+                await PumpAsync(5);
+                var editor = (SettingsView)context.FakeUi.LastPanel.CreateContent();
+                host = Host(editor);
+                await PumpAsync(10);
+                FindIn<ListBox>(editor, "ProvidersList").SelectedIndex = 0;
+                RaiseClick(FindIn<Button>(editor, "AddModelButton"));
+                Assert.IsTrue(await WaitForAsync(() => Find<ComboBox>(panel, "ProviderCombo").SelectedIndex == 0));
+                Assert.AreEqual((int)ReasoningLevel.Default, tier.SelectedIndex,
+                    "首个模型有自己的默认档，之前空选择的 High 不可继承");
+                Assert.DoesNotContain("overridden", tier.Classes);
+            }
+            finally
+            {
+                host?.Close();
+                panel.Detach();
+                window.Close();
+            }
+        });
+    }
+
+    [TestMethod]
+    public void UpdatingSameModelToUnsupported_DropsTemporaryTierButKeepsRunningTurnSnapshot()
+    {
+        OnUi(async () =>
+        {
+            using var stub = new SseStub("""
+                data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"好的"},"finish_reason":"stop"}]}
+
+                data: [DONE]
+
+
+                """, hold: true);
+            using var context = new TestPluginContext();
+            AiProvider provider = TwoModels(ReasoningLevel.Default, ReasoningLevel.Default);
+            provider.BaseUrl = stub.BaseUrl;
+            (Window window, ChatPanelView panel, ComboBox combo) = await WithReasoningPickerAsync(context, provider);
+            Window? host = null;
+            try
+            {
+                combo.SelectedIndex = (int)ReasoningLevel.High;
+                panel.SendExternal("第一轮");
+                Assert.IsTrue(await WaitForAsync(() => stub.Requests.Count == 1), "第一轮真发出去了");
+                Assert.Contains("reasoning_effort", stub.Requests[0], "开跑时的临时档位已经随请求送出");
+
+                Click(panel, "SettingsButton");
+                await PumpAsync(5);
+                var settings = (SettingsView)context.FakeUi.LastPanel.CreateContent();
+                host = Host(settings);
+                await PumpAsync(10);
+                ListBox list = FindIn<ListBox>(settings, "ProvidersList");
+                list.SelectedIndex = 1;
+                await PumpAsync(10);
+                ((ProviderNavItem)list.SelectedItem!).Model!.SupportsReasoning = false;
+                RaiseClick(FindIn<Button>(settings, "SaveButton"));
+                Assert.IsTrue(await WaitForAsync(() => !combo.IsEnabled), "同一模型新规格明确不支持思考,下拉必须变灰");
+                Assert.DoesNotContain("overridden", combo.Classes, "旧临时档位也必须作废,不能留一个隐藏的 High");
+                Assert.AreEqual((int)ReasoningLevel.Default, combo.SelectedIndex);
+
+                stub.Release();
+                StackPanel messages = Find<StackPanel>(panel, "MessagesPanel");
+                Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count == 1), "正在执行的轮次照原快照答完");
+                panel.SendExternal("第二轮");
+                Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count == 2 && stub.Requests.Count >= 2));
+                Assert.DoesNotContain("reasoning_effort", stub.Requests[1],
+                    "下一轮按同模型的新规格发,不许夹带旧临时档位");
+            }
+            finally
+            {
+                stub.Release();
+                host?.Close();
+                panel.Detach();
+                window.Close();
+            }
+        });
+    }
+    [TestMethod]
+    public void SavingTemporaryHighAsModelDefault_ClearsOverrideAndLaterSettingsStayVisible()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            AiProvider provider = TwoModels(ReasoningLevel.Default, ReasoningLevel.Default);
+            (Window window, ChatPanelView panel, ComboBox tier) = await WithReasoningPickerAsync(context, provider);
+            Window? host = null;
+            try
+            {
+                tier.SelectedIndex = (int)ReasoningLevel.High;
+                Assert.Contains("overridden", tier.Classes);
+                Click(panel, "SettingsButton");
+                await PumpAsync(5);
+                var editor = (SettingsView)context.FakeUi.LastPanel.CreateContent();
+                host = Host(editor);
+                await PumpAsync(10);
+                FindIn<ListBox>(editor, "ProvidersList").SelectedIndex = 1;
+                await PumpAsync(10);
+                ComboBox savedTier = FindIn<ComboBox>(editor, "ReasoningCombo");
+                savedTier.SelectedIndex = (int)ReasoningLevel.High;
+                RaiseClick(FindIn<Button>(editor, "SaveButton"));
+                Assert.IsTrue(await WaitForAsync(() => FindIn<TextBlock>(editor, "StatusText").Text == "Saved."
+                    && !tier.Classes.Contains("overridden")), "保存成与临时档相同的 High 后清掉无意义覆盖");
+                savedTier.SelectedIndex = (int)ReasoningLevel.Low;
+                RaiseClick(FindIn<Button>(editor, "SaveButton"));
+                Assert.IsTrue(await WaitForAsync(() => tier.SelectedIndex == (int)ReasoningLevel.Low
+                    && !tier.Classes.Contains("overridden")), "后续持久档位变化不能被旧 High 遮盖");
+                Assert.AreEqual(ReasoningLevel.Low,
+                    (await new AiSettingsStore(context).LoadAsync()).Providers[0].Models[0].Reasoning);
+            }
+            finally
+            {
+                host?.Close();
+                panel.Detach();
+                window.Close();
+            }
+        });
+    }
+
+    [TestMethod]
+    public void FirstStation_CapabilityDropsDuringMcpHandshake_RejectsOldTurnUntilNewUserRequest()
+    {
+        OnUi(async () =>
+        {
+            using var mcp = new SseStub("", hold: true);
+            using var target = new SseStub("""
+                data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m1","choices":[{"index":0,"delta":{"content":"已回答"},"finish_reason":"stop"}]}
+
+                data: [DONE]
+
+                """);
+            using var context = new TestPluginContext();
+            AiProvider provider = TwoModels(ReasoningLevel.Default, ReasoningLevel.Default);
+            provider.BaseUrl = target.BaseUrl;
+            await new AiSettingsStore(context).SaveAsync(new AiSettings
+            {
+                Providers = [provider], ActiveModelId = provider.Models[0].Id,
+                McpServers = [new McpServerConfig { Name = "held", Transport = McpTransportType.Http,
+                    Url = mcp.BaseUrl + "/mcp" }], SuggestFollowUps = false
+            });
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            Window? host = null;
+            try
+            {
+                Find<ComboBox>(panel, "ReasoningCombo").SelectedIndex = (int)ReasoningLevel.High;
+                Find<ComboBox>(panel, "ModeCombo").SelectedIndex = (int)ChatMode.Agent;
+                panel.SendExternal("首站必须放弃旧 High");
+                Assert.IsTrue(await WaitForAsync(() => mcp.RequestBodyAsync.IsCompleted), "MCP 网络握手仍在途,首站尚未发流");
+                Click(panel, "SettingsButton");
+                await PumpAsync(5);
+                var editor = (SettingsView)context.FakeUi.LastPanel.CreateContent();
+                host = Host(editor);
+                await PumpAsync(10);
+                ListBox list = FindIn<ListBox>(editor, "ProvidersList");
+                list.SelectedIndex = 1;
+                await PumpAsync(10);
+                ((ProviderNavItem)list.SelectedItem!).Model!.SupportsReasoning = false;
+                RaiseClick(FindIn<Button>(editor, "SaveButton"));
+                Assert.IsTrue(await WaitForAsync(() => FindIn<TextBlock>(editor, "StatusText").Text == "Saved."));
+                mcp.Release();
+                Assert.IsTrue(await WaitForAsync(() => Footers(Find<StackPanel>(panel, "MessagesPanel")).Count == 1));
+                Assert.IsEmpty(target.Requests, "请求配置已保存变化,旧轮不能重新授权后发送");
+                panel.SendExternal("按新能力重新发起");
+                Assert.IsTrue(await WaitForAsync(() => !Find<Button>(panel, "StopButton").IsVisible && target.Requests.Count == 1));
+                Assert.Contains("\"stream\":true", target.Requests[0]);
+                Assert.DoesNotContain("reasoning_effort", target.Requests[0], "显式新轮按当前能力装配");
+            }
+            finally
+            {
+                mcp.Release();
+                host?.Close();
+                panel.Detach();
+                window.Close();
+            }
+        });
+    }
+
 }
 
 /// <summary>临时档位在模型层的语义(与界面无关,单独测)。</summary>
@@ -339,7 +585,7 @@ public sealed class ReasoningOverrideTests
     {
         var model = new AiModelConfig { Model = "m" };
 
-        ModelsDevCatalog.Apply(model, new ModelSpec("m", "M", 128000, 8192, 1, 2, 0, true));
+        ModelsDevCatalog.Apply(model, new ModelSpec("m", "M", 128000, 8192, 1, 2, 0, true), newModel: true);
         Assert.IsTrue(model.SupportsReasoning);
 
         ModelsDevCatalog.Apply(model, new ModelSpec("m", "M", 128000, 8192, 1, 2, 0, false));

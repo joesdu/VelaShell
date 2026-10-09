@@ -68,7 +68,7 @@ public enum ReasoningLevel
 }
 
 /// <summary>
-/// 供应商:一个 endpoint + 一把默认 API Key,下面挂若干模型。
+/// 供应商:一个 endpoint + 多把加密 API Key,下面挂若干模型。
 /// API Key 不在此结构里 —— 单独经 <c>ISecretsApi</c> 加密存储(键 <c>apikey:&lt;Id&gt;</c>)。
 /// </summary>
 /// <remarks>
@@ -100,6 +100,29 @@ public sealed class AiProvider
     /// 也就是升级上来的用户什么都不会变,这正是想要的。
     /// </remarks>
     public AuthMethod Auth { get; set; } = AuthMethod.ApiKey;
+
+    /// <summary>补充 API Key 的加密机密槽,不含 Key 明文。</summary>
+    public List<string> AdditionalApiKeyIds { get; set; } = [];
+
+    /// <summary>成功故障转移后粘住的槽;null 表示主槽。</summary>
+    public string? ActiveApiKeyId
+    {
+        get => _activeApiKeyId;
+        set
+        {
+            if (_activeApiKeyId == value) return;
+            _activeApiKeyId = value;
+            ActiveApiKeySelectionEpoch++;
+        }
+    }
+    private string? _activeApiKeyId;
+
+    /// <summary>当前实例的槽选择代次;切走再切回也使旧回合失去写回所有权。</summary>
+    [JsonIgnore]
+    internal long ActiveApiKeySelectionEpoch { get; private set; }
+
+    /// <summary>聊天每轮首发轮流使用可用 Key;默认关闭。</summary>
+    public bool BalanceApiKeys { get; set; }
 
     /// <summary>
     /// 从供应商目录哪一条建来的(<see cref="ProviderCatalog" /> 的 id);
@@ -239,10 +262,18 @@ public sealed class AiModelConfig
     public int MaxTokens { get; set; } = 8192;
 
     /// <summary>
-    /// 模型的上下文窗口(最大输入 token)。不参与请求 —— 只用来把"这一轮吃掉了多少上下文"
-    /// 换算成输入框下方那个占比;填 0 表示未知,那时只显示累计用量。
+    /// 模型上下文窗口,用于用量占比、自动压缩与历史裁剪;0表示未知,不按窗口压缩或裁剪。
     /// </summary>
     public int MaxInputTokens { get; set; } = 128000;
+
+    /// <summary>上次实际自动填入的规格；缺失时保守保留已有配置，不把旧手填值当成自动值。</summary>
+    public ModelSpec? LastFetchedSpec { get; set; }
+
+    /// <summary>true=无法获取容量后的默认估值,false=获取或手动填写的值,null=旧配置/预置值来源未核实。</summary>
+    public bool? DefaultContextWindow { get; set; }
+
+    /// <summary>用户已明确设置窗口；即使数值与旧自动值相同,后续规格也不得覆盖。</summary>
+    public bool ContextWindowIsManual { get; set; }
 
     /// <summary>
     /// 自动打提示词缓存断点(仅 Anthropic 协议有效,见 <c>PromptCache</c>)。
@@ -515,6 +546,78 @@ public sealed class AiSettings
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// 用户自定义的故障转移顺序:越靠前越先试(可以跨供应商、跨模型)。
+    /// 空 = 自动发现 —— 见 <see cref="FailoverCandidates" />。
+    /// </summary>
+    public List<FailoverEntry> FailoverChain { get; set; } = [];
+
+    /// <summary>
+    /// 这一轮失败之后还能切去哪(按尝试顺序)。
+    /// </summary>
+    /// <remarks>
+    /// 自定义链里**还有活条目**就按链序:排除失败者自己、排除重复、排除已经删掉的 id;
+    /// 排完为空就是就地停下(用户排的链走完了,不悄悄改成自动发现)。
+    /// 链是空的、或链里一条都解析不出来(全是已删模型的死 id —— 删的时候全局设置窗口
+    /// 没开着,没人修剪)才退回自动发现 —— 同一家真实目录(<see cref="AiProvider.CatalogId" />)、
+    /// 同一厂商型号的其它接入,那正是"同一份模型多加了一份"的场景。
+    /// <b>自定义接入与 Azure OpenAI 不参与自动发现</b>:目录 id 为空、目录里的 custom-* 模板、
+    /// 或 Azure OpenAI 的不同资源可能对应不同中转站或租户,即使模型名相同也不能擅自跨站;
+    /// 要跨这些接入,显式排链。
+    /// <b>本轮已经试挂过的站整轮排除</b>(<paramref name="triedBefore" />):否则 A→B→C
+    /// 链里 B 失败时 A 的 60 秒冷却恰好过期,候选又排回 A —— 跳数被原地烧掉,
+    /// 健康的 C 永远轮不上;冷却只是"刚才失败过"的短窗,认不出"本回合试过"。
+    /// 目录 id 与厂商型号忽略大小写；模型配置 id、排除集和自定义链条按精确 id 匹配。
+    /// </remarks>
+    /// <param name="failed">刚失败的那一站。</param>
+    /// <param name="triedBefore">本回合(含最初那站)已经失败过的其它站 id;null = 没有。</param>
+    public List<ResolvedModel> FailoverCandidates(ResolvedModel failed, IEnumerable<string>? triedBefore = null)
+    {
+        ArgumentNullException.ThrowIfNull(failed);
+        List<ResolvedModel> all = ResolveModels();
+        HashSet<string> excluded = new(StringComparer.Ordinal) { failed.Id };
+        if (triedBefore is not null)
+        {
+            excluded.UnionWith(triedBefore);
+        }
+        // 空链、或链里**一条都解析不出来**(全是已删模型的死 id:删的时候全局设置窗口没
+        // 开着,没人修剪)走同一条路 —— 这等同没人排过链。否则链非空却一步都挪不动,
+        // 故障转移直接报"没有下一站",同目录同型号的健康接入排不上号(review②)。
+        // 链里只要还有一个活条目就仍按链走:那是用户的排布,被排除后为空 = 就地停下。
+        if (FailoverChain.All(entry => FindModel(entry.ModelId) is null))
+        {
+            return all
+                .Where(m => !excluded.Contains(m.Id)
+                            && (m.ApiKeyOwnerId != failed.ApiKeyOwnerId || m.Protocol != failed.Protocol
+                                || !SameRequestEndpoint(m.BaseUrl, failed.BaseUrl, m.Protocol))
+                            && failed.Provider.CatalogId is { Length: > 0 } catalog
+                            && !catalog.StartsWith("custom-", StringComparison.OrdinalIgnoreCase)
+                            && !string.Equals(catalog, "azure-openai", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(m.Provider.CatalogId, catalog, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(m.Model, failed.Model, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        var ordered = new List<ResolvedModel>();
+        foreach (FailoverEntry entry in FailoverChain)
+        {
+            if (excluded.Add(entry.ModelId) && FindModel(entry.ModelId) is { } hit)
+            {
+                ordered.Add(hit);
+            }
+        }
+        return ordered;
+    }
+
+    private static bool SameRequestEndpoint(string a, string b, ChatProtocol protocol)
+    {
+        a = AiSettingsStore.ClientBaseUrl(a, protocol);
+        b = AiSettingsStore.ClientBaseUrl(b, protocol);
+        return Uri.TryCreate(a, UriKind.Absolute, out Uri? left)
+            && Uri.TryCreate(b, UriKind.Absolute, out Uri? right)
+                ? left.Equals(right) : string.Equals(a, b, StringComparison.Ordinal);
     }
 
     /// <summary>找某模型所属的供应商;找不到返回 null。</summary>

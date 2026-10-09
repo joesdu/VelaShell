@@ -55,6 +55,8 @@ dotnet test VelaShell.slnx
 dotnet test tests/VelaShell.Tests/
 ```
 
+仓库根目录的 `nuget.config` 清除继承的包源,仅使用 nuget.org 还原依赖,避免本机额外包源触发中央包管理的 `NU1507`。该配置不修改用户级 NuGet 设置。
+
 `tests/velashell.runsettings` 由 `tests/Directory.Build.targets` 自动应用,**命令行不需要显式带 `--settings`**。它给每个测试设了 60 秒上限,理由见下一节。
 
 ### 真实 SSH 集成测试

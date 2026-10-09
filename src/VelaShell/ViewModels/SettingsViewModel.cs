@@ -735,7 +735,7 @@ public partial class SettingsViewModel : ReactiveObject
     /// </summary>
     public ContributorViewModel[] Contributors { get; } =
         [
-            new("joesdu"), new("tsaiggo"), new("pengqian089"), new("Cyaim"), new("Aecric")
+            new("joesdu"), new("tsaiggo"), new("pengqian089"), new("Cyaim"), new("Aecric"), new("LGinC")
         ];
 
     /// <summary>开源依赖(真实技术栈)。</summary>

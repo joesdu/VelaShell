@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk.Ui;
 
 namespace VelaShell.Plugin.Ai.Ui;
@@ -29,6 +30,11 @@ public partial class ChatPanelView
     private IPluginPanel? _mcpPanel;
     private IPluginPanel? _catalogPanel;
     private ProviderSetupView? _catalogView;
+    private (string Id, AiProvider Provider, long Version)[] _confirmedProviderRequests = [];
+
+    // 健康表跨窗口存在：初始化和真正清旧健康之后才确认，不让显示刷新吞掉提前发布的 Key 代次。
+    private void ConfirmProviderRequests() => _confirmedProviderRequests = _settings.Providers
+        .Select(provider => (provider.Id, provider, _store.ProviderConfigurationVersion(provider))).ToArray();
 
     /// <summary>MCP 表单视图本体。窗口已经开着时要把选中项挪到用户刚点的那台上,得有个把手。</summary>
     private McpServersView? _mcpView;
@@ -57,9 +63,10 @@ public partial class ChatPanelView
             [new PanelTitleAction(SettingsIconPath, _loc["GlobalSettings"], OpenGlobalSettingsDialog)],
             () =>
             {
-                var view = new SettingsView(_context, _store, _settings, _loc, OnProvidersChanged);
+                var view = new SettingsView(_context, _store, _settings, _loc, OnProvidersChanged, _health);
                 // 「新增供应商」与「管理登录」都通向目录页,窗口的开合仍统一在这里记账
                 view.ProviderCatalogRequested += OpenProviderCatalogDialog;
+                view.ModelsChanged += () => RefreshProviderViews();
                 return _settingsView = view;
             },
             panel => _settingsPanel = panel,
@@ -81,24 +88,32 @@ public partial class ChatPanelView
     /// 两件事的信息密度完全不同 —— 目录要留出说明和状态灯的地方,
     /// 挤进设置页那条 220 宽的侧栏里就只剩一列名字了(那正是它取代的东西)。
     /// </remarks>
-    /// <param name="focusCatalogId">要直接展开的目录条目;null = 停在列表上。</param>
-    private void OpenProviderCatalogDialog(string? focusCatalogId)
+    /// <param name="focusProviderId">要操作的实例 id;null 停在目录列表。</param>
+    private void OpenProviderCatalogDialog(string? focusProviderId)
     {
+        AiProvider? focused = _settings.Providers.Find(p => p.Id == focusProviderId);
+        string? catalogId = focused?.CatalogId;
         if (Activate(_catalogPanel))
         {
-            _catalogView?.FocusEntry(focusCatalogId);
+            _catalogView?.FocusEntry(catalogId, focused?.Id);
             return;
         }
         _ = OpenAsync(
             _loc["SetupProviders"], 720, 720, [],
             () =>
             {
-                var view = new ProviderSetupView(_context, _store, _settings, _loc, PersistSettingsAsync, focusCatalogId);
+                var view = new ProviderSetupView(_context, _store, _settings, _loc,
+                    catalogId, focused?.Id, _health);
                 view.ProviderChanged += id =>
                 {
                     // 目录那边已经落过盘,这里只把设置页的左栏与顶栏的模型下拉刷一遍
                     _settingsView?.ReloadFromCatalog(id);
                     OnProvidersChanged();
+                };
+                view.ModelsChanged += () =>
+                {
+                    _settingsView?.RefreshCatalogModels();
+                    RefreshProviderViews();
                 };
                 return _catalogView = view;
             },
@@ -125,13 +140,26 @@ public partial class ChatPanelView
         }
         _ = OpenAsync(
             _loc["GlobalSettings"], 640, 680, [],
-            () => _globalSettingsView = new GlobalSettingsView(_context, _settings, _loc, PersistSettingsAsync),
+            () => _globalSettingsView = new GlobalSettingsView(_context, _store, _settings, _loc,
+                draft => PersistGlobalSettingsAsync(draft), OnSharedSettingsReloaded, _health),
             panel => _globalSettingsPanel = panel,
             () =>
             {
                 _globalSettingsPanel = null;
                 _globalSettingsView = null;
             });
+    }
+
+    private void OnSharedSettingsReloaded(bool requestChanged)
+    {
+        requestChanged |= _confirmedProviderRequests.Length != _settings.Providers.Count
+            || _confirmedProviderRequests.Any(previous =>
+                !_settings.Providers.Any(provider => provider.Id == previous.Id
+                    && ReferenceEquals(provider, previous.Provider)
+                    && _store.ProviderConfigurationVersion(provider) == previous.Version));
+        _settingsView?.RefreshCatalogModels();
+        if (requestChanged) OnProvidersChanged();
+        else RefreshProviderViews(false);
     }
 
     /// <summary>打开"配置工具"窗口。</summary>

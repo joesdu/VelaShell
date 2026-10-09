@@ -1,5 +1,6 @@
 using System.ClientModel;
 using System.ClientModel.Primitives;
+using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.Plugin.Ai.Ui;
 
 namespace VelaShell.Plugin.Ai.Tests;
@@ -98,11 +99,34 @@ public sealed class ChatFormattingTests
 public sealed class TransientFailureTests
 {
     [TestMethod]
+    [DataRow(400, 401)]
+    [DataRow(400, 403)]
+    [DataRow(404, 401)]
+    [DataRow(404, 403)]
+    public void Review_OuterHttpFailureOverridesInnerAuthentication(int status, int innerStatus)
+    {
+        var nested = new HttpRequestException("inner-auth", null, (System.Net.HttpStatusCode)innerStatus);
+        var failure = new InvalidOperationException("SDK wrapper",
+            new HttpRequestException("outer-permanent", nested, (System.Net.HttpStatusCode)status));
+        Assert.IsFalse(TransientFailure.IsTransient(failure));
+        Assert.IsFalse(TransientFailure.IsApiKeyFailure(failure));
+        Assert.IsFalse(TransientFailure.IsWorthSwitching(failure));
+    }
+
+    [TestMethod]
     public void NetworkAndTimeoutFailuresAreRetryable()
     {
         Assert.IsTrue(TransientFailure.IsTransient(new HttpRequestException("boom")));
         Assert.IsTrue(TransientFailure.IsTransient(new IOException("reset")));
         Assert.IsTrue(TransientFailure.IsTransient(new TimeoutException()));
+    }
+
+    [TestMethod]
+    public void EmptyCompletedResponseIsRetryableAndSwitchable()
+    {
+        var empty = new HealthProbe.EmptyReplyException();
+        Assert.IsTrue(TransientFailure.IsTransient(empty));
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(empty));
     }
 
     [TestMethod]
@@ -124,6 +148,68 @@ public sealed class TransientFailureTests
         Assert.IsFalse(TransientFailure.IsTransient(new InvalidOperationException("bug")));
     }
 
+    /// <summary>
+    /// 带状态码的 <see cref="HttpRequestException" /> 是服务端答复过了 —— 按状态码判,
+    /// 不能因为类型是 HttpRequestException 就一律当网络抖动:400/404 那类换到哪儿都一样,
+    /// 放进故障转移只会白烧整条链的探测钱。
+    /// </summary>
+    [TestMethod]
+    public void StatusBearingHttpRequestsAreJudgedByStatus()
+    {
+        // 瞬时码照旧;没状态码(压根没连上)也照旧
+        Assert.IsTrue(TransientFailure.IsTransient(new HttpRequestException("bad gateway", null, System.Net.HttpStatusCode.BadGateway)));
+        Assert.IsTrue(TransientFailure.IsTransient(new HttpRequestException("timeout", null, System.Net.HttpStatusCode.RequestTimeout)));
+        Assert.IsTrue(TransientFailure.IsTransient(new HttpRequestException("offline")));
+
+        // 永久错:不重来、也不换家
+        Assert.IsFalse(TransientFailure.IsTransient(new HttpRequestException("bad request", null, System.Net.HttpStatusCode.BadRequest)));
+        Assert.IsFalse(TransientFailure.IsTransient(new HttpRequestException("not found", null, System.Net.HttpStatusCode.NotFound)));
+        Assert.IsFalse(TransientFailure.IsWorthSwitching(new HttpRequestException("bad request", null, System.Net.HttpStatusCode.BadRequest)));
+        Assert.IsFalse(TransientFailure.IsWorthSwitching(new HttpRequestException("not found", null, System.Net.HttpStatusCode.NotFound)));
+
+        // 401/403 经这条形态也得认出来:不瞬时(原地重试没用),但值得换一家
+        Assert.IsFalse(TransientFailure.IsTransient(new HttpRequestException("unauthorized", null, System.Net.HttpStatusCode.Unauthorized)));
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(new HttpRequestException("unauthorized", null, System.Net.HttpStatusCode.Unauthorized)));
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(new HttpRequestException("forbidden", null, System.Net.HttpStatusCode.Forbidden)));
+    }
+
+    /// <summary>
+    /// Anthropic SDK 自己的 <c>AnthropicApiException</c> 也得按状态码判(review⑥#1):
+    /// 只认 <c>HttpRequestException</c> 时,这家 401 鉴权失败既不瞬时、也不值得换一家,
+    /// 整条链原地不动;5xx 则被判成永久失败,白白不重试。
+    /// </summary>
+    [TestMethod]
+    public void AnthropicSdkExceptionsAreJudgedByStatusToo()
+    {
+        // 带状态码 = 服务端答复过了:瞬时码照旧,永久错照旧不重来
+        Assert.IsTrue(TransientFailure.IsTransient(Api(500)));
+        Assert.IsTrue(TransientFailure.IsTransient(Api(429)));
+        Assert.IsFalse(TransientFailure.IsTransient(Api(400)));
+        Assert.IsFalse(TransientFailure.IsTransient(Api(404)));
+
+        // 401/403:不瞬时(原地重试没用),但值得换一家 —— 故障转移要接得住它
+        Assert.IsFalse(TransientFailure.IsTransient(Api(401)));
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(Api(401)));
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(Api(403)));
+        Assert.IsFalse(TransientFailure.IsWorthSwitching(Api(400)));
+
+        // 码为 0(网络层失败被它包了进来):真实原因在 InnerException 那层,要走得到
+        Assert.IsTrue(TransientFailure.IsTransient(
+            new Anthropic.Exceptions.AnthropicApiException("wrapped", new HttpRequestException("offline"))
+            {
+                StatusCode = 0,
+                ResponseBody = ""
+            }));
+    }
+
+    /// <summary>造一个 Anthropic SDK 形态的异常(状态码用对象初始化器摆上)。</summary>
+    private static Anthropic.Exceptions.AnthropicApiException Api(int status)
+        => new("api error", new HttpRequestException("inner"))
+        {
+            StatusCode = (System.Net.HttpStatusCode)status,
+            ResponseBody = ""
+        };
+
     /// <summary>包了几层的真实原因照样认得出来。</summary>
     /// <remarks>
     /// HTTP 客户端与 SDK 会把真实原因包上一两层。只看最外层那个的话,
@@ -141,6 +227,103 @@ public sealed class TransientFailureTests
 
     [TestMethod]
     public void NullIsNotRetryable() => Assert.IsFalse(TransientFailure.IsTransient(null));
+
+    /// <summary>
+    /// 故障转移只接两类:瞬时故障与鉴权失败(401/403)。
+    /// 参数错换到哪儿都还是那个错 —— 那时该把真原因端给用户,而不是拖着链子挨个撞。
+    /// </summary>
+    [TestMethod]
+    public void FailoverSwitchesForTransientAndAuthFailuresOnly()
+    {
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(new HttpRequestException("boom")));
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(new ClientResultException("unauthorized", Response(401))));
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(new ClientResultException("forbidden", Response(403))));
+
+        Assert.IsFalse(TransientFailure.IsWorthSwitching(new ClientResultException("bad request", Response(400))));
+        Assert.IsFalse(TransientFailure.IsWorthSwitching(new ClientResultException("not found", Response(404))));
+        Assert.IsFalse(TransientFailure.IsWorthSwitching(new InvalidOperationException("bug")));
+        Assert.IsFalse(TransientFailure.IsWorthSwitching(null));
+
+        // 真实失败几乎都被 SDK 包过一两层,包着也得认出来
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(new InvalidOperationException(
+            "streaming failed", new ClientResultException("unauthorized", Response(401)))));
+    }
+
+    [TestMethod]
+    public void BuiltinOAuthHostMismatchCanSwitchButCannotRetry()
+    {
+        Exception mismatch = new AiSettingsStore.BuiltinOAuthHostMismatchException();
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(mismatch));
+        Assert.IsFalse(TransientFailure.IsTransient(mismatch));
+
+        Exception wrapped = new InvalidOperationException("client creation failed", new AggregateException(mismatch));
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(wrapped));
+        Assert.IsFalse(TransientFailure.IsTransient(wrapped));
+
+        Exception configurationError = new InvalidOperationException("configuration failed",
+            new InvalidOperationException("invalid endpoint"));
+        Assert.IsFalse(TransientFailure.IsWorthSwitching(configurationError));
+        Assert.IsFalse(TransientFailure.IsTransient(configurationError));
+    }
+
+    [TestMethod]
+    public void ChangedProviderConfigurationCanSwitchButCannotRetry()
+    {
+        Exception changed = new ProviderConfigurationChangedException();
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(changed));
+        Assert.IsFalse(TransientFailure.IsTransient(changed));
+        Exception wrapped = new InvalidOperationException("client preparation failed", new AggregateException(changed));
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(wrapped));
+        Assert.IsFalse(TransientFailure.IsTransient(wrapped));
+        Exception ordinary = new InvalidOperationException("Provider changed before sending");
+        Assert.IsFalse(TransientFailure.IsWorthSwitching(ordinary), "不得按英文消息将普通配置错误放行");
+        Assert.IsFalse(TransientFailure.IsTransient(ordinary));
+        Assert.IsFalse(TransientFailure.IsWorthSwitching(new OperationCanceledException()));
+        Assert.IsFalse(TransientFailure.IsTransient(new OperationCanceledException()));
+    }
+
+    [TestMethod]
+    [DataRow(401, true)]
+    [DataRow(403, true)]
+    [DataRow(429, true)]
+    [DataRow(400, false)]
+    [DataRow(404, false)]
+    [DataRow(408, false)]
+    [DataRow(500, false)]
+    public void KeyFailover_OnlyAuthAndQuotaFailuresRotateKeys(int status, bool expected)
+    {
+        Exception[] errors =
+        [
+            new HttpRequestException("http", null, (System.Net.HttpStatusCode)status),
+            new ClientResultException("sdk", Response(status)),
+            Api(status)
+        ];
+        foreach (Exception error in errors)
+        {
+            Assert.AreEqual(expected, TransientFailure.IsApiKeyFailure(error));
+            Assert.AreEqual(expected, TransientFailure.IsApiKeyFailure(new InvalidOperationException("wrapped", error)));
+        }
+    }
+
+    [TestMethod]
+    public void KeyFailover_OuterStatusAndConfigurationChangesNeverMasqueradeAsBadKeys()
+    {
+        var inner = new HttpRequestException("auth", null, System.Net.HttpStatusCode.Unauthorized);
+        Assert.IsFalse(TransientFailure.IsApiKeyFailure(new HttpRequestException("parameters", inner, System.Net.HttpStatusCode.BadRequest)));
+        Assert.IsFalse(TransientFailure.IsApiKeyFailure(new Anthropic.Exceptions.AnthropicApiException("model", inner)
+            { StatusCode = System.Net.HttpStatusCode.NotFound, ResponseBody = "" }));
+        Assert.IsTrue(TransientFailure.IsApiKeyFailure(new Anthropic.Exceptions.AnthropicApiException("transport", inner)
+            { StatusCode = 0, ResponseBody = "" }));
+        Assert.IsFalse(TransientFailure.IsApiKeyFailure(new HttpRequestException("offline")));
+        Assert.IsFalse(TransientFailure.IsApiKeyFailure(new TimeoutException()));
+        Assert.IsFalse(TransientFailure.IsApiKeyFailure(new HealthProbe.EmptyReplyException()));
+        Assert.IsFalse(TransientFailure.IsApiKeyFailure(null));
+        Exception changed = new AiSettingsStore.ApiKeySlotChangedException();
+        Assert.IsFalse(TransientFailure.IsApiKeyFailure(changed));
+        Assert.IsFalse(TransientFailure.IsTransient(changed));
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(changed));
+        Assert.IsTrue(TransientFailure.IsWorthSwitching(new InvalidOperationException("wrapped", changed)));
+    }
 
     /// <summary>造一个只带状态码的响应。</summary>
     private static StubResponse Response(int status) => new(status);

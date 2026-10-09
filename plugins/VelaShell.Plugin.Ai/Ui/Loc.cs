@@ -41,6 +41,11 @@ public sealed class Loc(string locale)
     /// <summary>带格式化参数取词。</summary>
     public string F(string key, params object[] args) => string.Format(this[key], args);
 
+    /// <summary>仅128000的默认估值或未核实来源需要核实提醒,真实获取或手动值不误报。</summary>
+    public string ContextWindowWarning(int window, bool? defaultWindow)
+        => window != 128000 || defaultWindow == false ? ""
+            : this[defaultWindow == true ? "ContextWindowDefaultHint" : "ContextWindowUnverifiedHint"];
+
     //                                 en, zh-Hans, zh-Hant, ja, ko
     private static readonly Dictionary<string, string[]> Table = new()
     {
@@ -150,7 +155,7 @@ public sealed class Loc(string locale)
         ["CacheShort"] = ["cache", "缓存", "快取", "キャッシュ", "캐시"],
         ["UsageCacheLine"] = ["Prompt cache hit: {0} / {1} ({2}%)", "缓存命中:{0} / {1}({2}%)", "快取命中:{0} / {1}({2}%)", "キャッシュヒット: {0} / {1}({2}%)", "캐시 적중: {0} / {1}({2}%)"],
         ["UsageCacheTotalsLine"] = ["Cache total: read {0} / written {1}", "缓存累计:读取 {0} / 写入 {1}", "快取累計:讀取 {0} / 寫入 {1}", "キャッシュ累計: 読み取り {0} / 書き込み {1}", "캐시 누적: 읽기 {0} / 쓰기 {1}"],
-        ["UsageCostLine"] = ["Estimated cost: {0} (at your configured rates)", "预计花费:{0}(按你在接入里填的单价)", "預計花費:{0}(按你在接入裡填的單價)", "推定コスト: {0}(設定した単価による)", "예상 비용: {0}(설정한 단가 기준)"],
+        ["UsageCostLine"] = ["Estimated cost: {0} (at the current connection's rates; not a per-connection bill)", "预计花费:{0}(按当前接入单价估算,非各接入账单)", "預計花費:{0}(按目前接續單價估算,非各接續帳單)", "推定コスト: {0}(現在の接続の単価で概算、接続ごとの請求額ではありません)", "예상 비용: {0}(현재 연결의 단가로 추정, 연결별 청구액이 아님)"],
         ["UsageLimitsLine"] = ["Max output {0} · context window {1}", "最大输出 {0} · 上下文窗口 {1}", "最大輸出 {0} · 上下文視窗 {1}", "最大出力 {0} · コンテキスト {1}", "최대 출력 {0} · 컨텍스트 {1}"],
         ["ApprovalTitle"] = ["The agent wants to run:", "Agent 请求执行:", "Agent 請求執行:", "エージェントが実行を要求:", "에이전트가 실행을 요청:"],
         ["Approve"] = ["Approve", "批准", "批准", "承認", "승인"],
@@ -193,6 +198,7 @@ public sealed class Loc(string locale)
         ["Testing"] = ["Testing…", "测试中…", "測試中…", "テスト中…", "테스트 중…"],
         ["TestOk"] = ["Connection OK: {0}", "连接正常:{0}", "連接正常:{0}", "接続 OK:{0}", "연결 정상: {0}"],
         ["TestFail"] = ["Test failed: {0}", "测试失败:{0}", "測試失敗:{0}", "テスト失敗:{0}", "테스트 실패: {0}"],
+        ["ProbeEmptyReply"] = ["The endpoint replied with nothing.", "端点返回了空回复。", "端點回傳了空回覆。", "エンドポイントから空の応答が返りました。", "엔드포인트가 빈 응답을 반환했습니다."],
         ["Name"] = ["Name", "名称", "名稱", "名前", "이름"],
         ["Protocol"] = ["Protocol", "协议", "協議", "プロトコル", "프로토콜"],
         ["BaseUrl"] = ["Base URL", "基地址", "基底位址", "ベース URL", "베이스 URL"],
@@ -203,7 +209,9 @@ public sealed class Loc(string locale)
         ["ModelId"] = ["Model ID", "模型 ID", "模型 ID", "モデル ID", "모델 ID"],
         ["MaxTokens"] = ["Max output tokens", "最大输出 tokens", "最大輸出 tokens", "最大出力トークン", "최대 출력 토큰"],
         ["MaxInputTokens"] = ["Context window (max input tokens)", "上下文窗口(最大输入 tokens)", "上下文視窗(最大輸入 tokens)", "コンテキスト長(最大入力トークン)", "컨텍스트 창(최대 입력 토큰)"],
-        ["MaxInputTokensHint"] = ["Only used for the usage ratio under the input box; 0 = unknown.", "只用于输入框下方的用量占比;填 0 表示未知。", "只用於輸入框下方的用量占比;填 0 表示未知。", "入力欄下の使用率表示にのみ使用します(0 = 不明)。", "입력창 아래 사용률 표시에만 쓰입니다(0 = 알 수 없음)."],
+        ["MaxInputTokensHint"] = ["Used for context usage, automatic compaction and history trimming. 0 means unknown and disables window-based compaction and trimming.", "用于上下文占比、自动压缩和历史裁剪;0 表示未知,不按窗口自动压缩或裁剪。", "用於上下文占比、自動壓縮和歷史裁剪;0 表示未知,不按視窗自動壓縮或裁剪。", "使用率・自動要約・履歴の切り詰めに使用します。0 は不明で、容量に基づく自動要約と切り詰めを行いません。", "컨텍스트 사용률, 자동 요약 및 기록 잘라내기에 사용합니다. 0은 알 수 없음을 뜻하며 창 크기 기준 자동 요약과 잘라내기를 하지 않습니다."],
+        ["ContextWindowDefaultHint"] = ["The actual context window could not be obtained automatically; 128000 is a default estimate, not a verified limit. Check the provider's documentation and adjust this value to the real limit.", "无法自动获取真实上下文窗口,已采用默认估值 128000,并非已核实的模型上限。请查阅供应商文档,核实并按实际长度修改。", "無法自動取得真實上下文視窗,已採用預設估值 128000,並非已核實的模型上限。請查閱供應商文件,核實並按實際長度修改。", "実際のコンテキスト長を自動取得できず、既定の推定値 128000 を使用しています。確認済みの上限ではありません。提供元の資料で確認し、実際の上限に修正してください。", "실제 컨텍스트 창 크기를 자동으로 가져오지 못해 기본 추정값 128000을 사용합니다. 확인된 모델 한도가 아닙니다. 제공업체 문서에서 확인하고 실제 한도로 수정하세요."],
+        ["ContextWindowUnverifiedHint"] = ["There is no record of automatically verifying this 128000 context window. It may be a preset or default estimate. Check the provider's documentation and adjust it if needed.", "此 128000 窗口没有自动获取的来源记录,可能是预置值或默认估值。请查阅供应商文档核实,必要时按实际长度修改。", "此 128000 視窗沒有自動取得的來源紀錄,可能是預置值或預設估值。請查閱供應商文件核實,必要時按實際長度修改。", "この 128000 のコンテキスト長は自動確認の記録がなく、プリセットや既定の推定値の可能性があります。提供元の資料で確認し、必要に応じて修正してください。", "이 128000 창 크기는 자동으로 확인한 출처 기록이 없어 사전 설정이나 기본 추정값일 수 있습니다. 제공업체 문서에서 확인하고 필요하면 수정하세요."],
         ["Reasoning"] = ["Thinking", "思考过程", "思考過程", "思考プロセス", "사고 과정"],
         ["ReasoningHint"] = ["\"Provider default\" usually means no reasoning is requested and none comes back — pick a level to actually see the thinking. Models that don't support it ignore the parameter.", "「跟随接入默认」通常等于不请求思考,也就看不到思考过程 —— 想看就选一个档位。不支持的模型会忽略该参数。", "「跟隨接入預設」通常等於不請求思考,也就看不到思考過程 —— 想看就選一個檔位。不支援的模型會忽略該參數。", "「プロバイダー既定」は通常「思考を要求しない」= 思考は返ってきません。表示したいならレベルを選んでください(非対応のモデルはこのパラメーターを無視します)。", "「프로바이더 기본값」은 보통 사고 과정을 요청하지 않아 아무것도 오지 않습니다 — 보려면 레벨을 고르세요(미지원 모델은 이 매개변수를 무시)."],
         ["PromptCache"] = ["Prompt caching", "提示词缓存", "提示詞快取", "プロンプトキャッシュ", "프롬프트 캐싱"],
@@ -238,9 +246,11 @@ public sealed class Loc(string locale)
         ["SetupHint"] = ["Click a provider to connect. Sign-in providers open your browser and come straight back — nothing to fill in. The rest ask for an API key and nothing else.", "点一下就连上:能登录的直接开浏览器,授权完自己跳回来,什么都不用填;其余的只问一把 API Key,别的都不问。", "點一下就連上:能登入的直接開瀏覽器,授權完自己跳回來,什麼都不用填;其餘的只問一把 API Key,別的都不問。", "クリックするだけで接続します。ログイン対応のものはブラウザーが開き、認証後そのまま戻ってきます(入力は不要)。それ以外は API キーだけを尋ねます。", "클릭 한 번으로 연결됩니다. 로그인을 지원하는 곳은 브라우저가 열리고 인증 후 바로 돌아옵니다(입력 불필요). 나머지는 API 키만 물어봅니다."],
         ["SetupFootnote"] = ["Sign-in uses an OAuth app VelaShell registers with each provider. Where that registration is still pending, the row asks for a client ID once — or you can register one yourself from the link it shows.", "登录用的是 VelaShell 在各家注册的 OAuth 应用。还没注册下来的那几家,行里会问一次客户端 id —— 你也可以照它给的链接自己去注册一个填进来。", "登入用的是 VelaShell 在各家註冊的 OAuth 應用。還沒註冊下來的那幾家,列裡會問一次用戶端 id —— 你也可以照它給的連結自己去註冊一個填進來。", "ログインには VelaShell が各社に登録した OAuth アプリを使います。登録が未了のものは一度だけクライアント ID を尋ねます(表示されるリンクから自分で登録することもできます)。", "로그인은 VelaShell이 각 업체에 등록한 OAuth 앱을 사용합니다. 아직 등록되지 않은 곳은 클라이언트 ID를 한 번만 물어봅니다(표시된 링크에서 직접 등록해도 됩니다)."],
         ["SetupSignInHint"] = ["Your browser is opening. Finish there and this window takes over — the credential is stored encrypted and the model is set up for you.", "正在打开浏览器。在那边授权完就行,这边会自动接上 —— 凭据加密存好,模型也一并配好。", "正在開啟瀏覽器。在那邊授權完就行,這邊會自動接上 —— 憑據加密存好,模型也一併配好。", "ブラウザーを開いています。そちらで認証を終えれば自動で引き継ぎます。資格情報は暗号化保存され、モデルも設定済みになります。", "브라우저를 여는 중입니다. 거기서 인증만 마치면 자동으로 이어받습니다. 자격 증명은 암호화 저장되고 모델도 함께 설정됩니다."],
-        ["SetupModelHint"] = ["A factory example — change it to a model this provider actually serves.", "出厂示例,按这家实际可用的型号改。", "出廠範例,按這家實際可用的型號改。", "出荷時の例です。実際に使える型番に変更してください。", "출고 시 예시입니다. 실제 사용 가능한 모델로 바꾸세요."],
+        ["SetupModelHint"] = ["A factory example — change it to a model this provider actually serves.", "出厂示例,按这家实际可用的模型改。", "出廠範例,按這家實際可用的模型改。", "出荷時の例です。実際に使える型番に変更してください。", "출고 시 예시입니다. 실제 사용 가능한 모델로 바꾸세요."],
         // 连不上(网络层),不是服务端拒绝 —— 指向宿主的代理设置,别让人去翻 Key
         ["ErrorUnreachable"] = ["could not reach the provider at all. This is the network, not your key: check the connection, and if this network needs a proxy, configure one in Settings → Proxy (VelaShell follows the system proxy by default; if the OS has none, pick HTTP / SOCKS5 there and fill in the address).", "根本没连上这家供应商。这是网络层的问题,不是 Key:检查网络;如果这个网络需要代理,去「设置 → 代理」配置(VelaShell 默认跟随系统代理;系统没配代理时,在那里选 HTTP / SOCKS5 并填地址)。", "根本沒連上這家供應商。這是網路層的問題,不是 Key:檢查網路;如果這個網路需要代理,去「設定 → 代理」設定(VelaShell 預設跟隨系統代理;系統沒設定代理時,在那裡選 HTTP / SOCKS5 並填位址)。", "プロバイダーに接続できませんでした。キーではなくネットワークの問題です。接続を確認し、プロキシが必要な環境なら「設定 → プロキシ」で設定してください(VelaShell は既定でシステムプロキシに従います。OS に設定が無い場合は HTTP / SOCKS5 を選び、アドレスを入力してください)。", "프로바이더에 아예 연결하지 못했습니다. 키가 아니라 네트워크 문제입니다. 연결을 확인하고, 프록시가 필요한 환경이면 「설정 → 프록시」에서 설정하세요(VelaShell은 기본적으로 시스템 프록시를 따릅니다. OS에 설정이 없으면 HTTP / SOCKS5를 선택하고 주소를 입력하세요)."],
+        ["ErrorProviderChanged"] = ["The connection settings changed while preparing this reply. Sending stopped to protect your conversation and credentials. Check the settings, then try again.", "准备回复时接入配置发生了变化。为保护会话内容和凭据,已停止发送。请检查配置后重试。", "準備回覆時接續設定發生了變更。為保護會話內容與憑證,已停止傳送。請檢查設定後重試。", "応答の準備中に接続設定が変更されました。会話内容と認証情報を保護するため送信を停止しました。設定を確認してから再試行してください。", "응답을 준비하는 동안 연결 설정이 변경되었습니다. 대화 내용과 인증 정보를 보호하기 위해 전송을 중단했습니다. 설정을 확인한 뒤 다시 시도하세요."],
+        ["SetupConfigChanged"] = ["These settings changed in another window. The draft was kept — review it, then save again.", "其它窗口已改过这份配置。草稿仍保留,请核对后再保存。", "其它視窗已改過這份設定。草稿仍保留,請核對後再儲存。", "別の画面で設定が変更されました。下書きは残してあります。内容を確認してから保存してください。", "다른 창에서 설정이 바뀌었습니다. 초안은 그대로 두었으니 확인한 뒤 다시 저장하세요."],
         // 接上之后自动去问"你这儿有哪些模型"
         ["ModelsPull"] = ["Fetch models", "拉取模型", "拉取模型", "モデルを取得", "모델 가져오기"],
         ["NavExpand"] = ["Show this provider's models", "展开这一家的模型", "展開這一家的模型", "このプロバイダーのモデルを表示", "이 프로바이더의 모델 펼치기"],
@@ -262,11 +272,38 @@ public sealed class Loc(string locale)
         ["SetupRemoved"] = ["Removed.", "已移除。", "已移除。", "削除しました。", "제거했습니다."],
         ["SetupAdd"] = ["Add", "添加", "新增", "追加", "추가"],
         ["SetupAdded"] = ["Added.", "已添加。", "已新增。", "追加しました。", "추가했습니다."],
+        ["SetupAddApiKey"] = ["Add API Key", "添加 API Key", "新增 API Key", "API Key を追加", "API Key 추가"],
+        ["SetupAddAnotherAccount"] = ["Add another account", "添加另一个账号", "新增另一個帳號", "別のアカウントを追加", "다른 계정 추가"],
+        ["SetupUniqueApiKey"] = ["Enter a non-empty, different Key", "请输入非空且不同的 Key", "請輸入非空且不同的 Key", "空でない別の Key を入力してください", "비어 있지 않은 다른 Key를 입력하세요"],
+        ["SetupSaveProviderFirst"] = ["Save current changes first", "先保存当前修改", "先儲存目前修改", "先に変更を保存してください", "현재 변경 사항을 먼저 저장하세요"],
+        ["SetupApiKeyOrdinal"] = ["Key {0}", "第 {0} 把 Key", "第 {0} 把 Key", "Key {0}", "Key {0}"],
+        ["SetupApiKeyActive"] = ["Currently in use", "当前使用", "目前使用", "現在使用中", "현재 사용 중"],
+        ["SetupRemoveApiKeyConfirm"] = ["Click again to remove Key {0}", "再次点击移除第 {0} 把 Key", "再次點擊移除第 {0} 把 Key", "もう一度クリックして Key {0} を削除", "다시 클릭하여 Key {0} 제거"],
+        ["SetupBalanceApiKeys"] = ["Rotate multiple API Keys", "轮流使用多个 API Key", "輪流使用多個 API Key", "複数の API Key を順番に使用", "여러 API Key 번갈아 사용"],
+        ["SetupBalanceApiKeysHint"] = ["Rotate non-cooling Keys for each chat turn's first send; HTTP requests, tokens and costs are not guaranteed to be balanced. Failover remains enabled when off.", "每轮聊天首发轮转非冷却 Key，不保证 HTTP 请求数/token/费用均摊；关闭仍会故障转移", "每輪聊天首次傳送輪替非冷卻 Key，不保證 HTTP 請求數/token/費用均攤；關閉仍會故障轉移", "各ターンの初回送信で冷却中でない Key を切替。HTTP リクエスト数・token・費用の均等化は保証しません。オフでもフェイルオーバーは有効です。", "각 대화 턴의 첫 전송에 대기 중이 아닌 Key를 순환합니다. HTTP 요청 수/token/비용 균등 분배는 보장하지 않으며 꺼도 장애 전환은 유지됩니다."],
+        ["SetupKeyEdit"] = ["Edit Key draft", "暂存 Key 修改", "暫存 Key 修改", "Key の変更を下書き", "Key 변경 임시 저장"],
+        ["SetupKeyRemove"] = ["Remove Key", "移除 Key", "移除 Key", "Key を削除", "Key 제거"],
+        ["SetupKeyProbe"] = ["Check Key health", "检测 Key 健康状态", "檢測 Key 健康狀態", "Key の状態を確認", "Key 상태 검사"],
+        ["SetupKeysProbeAll"] = ["Check all Keys", "检测全部 Key", "檢測全部 Key", "すべての Key を確認", "모든 Key 검사"],
+        ["SetupKeysSelectModel"] = ["Select a model to check all Keys", "选择模型以检测全部 Key", "選擇模型以檢測全部 Key", "すべての Key を確認するモデルを選択", "모든 Key를 검사할 모델 선택"],
+        ["SetupKeysNoModel"] = ["No model can use all these Keys", "没有可供全部 Key 使用的模型", "沒有可供全部 Key 使用的模型", "すべての Key で使用できるモデルがありません", "모든 Key가 사용할 수 있는 모델이 없습니다"],
+        ["SetupKeysInvalidDraft"] = ["An edited Key is no longer available. Cancel its edit before checking all Keys.", "正在编辑的 Key 已失效，请取消该行编辑后再检测全部 Key。", "正在編輯的 Key 已失效，請取消該行編輯後再檢測全部 Key。", "編集中の Key は利用できなくなりました。その編集をキャンセルしてから、すべての Key を確認してください。", "편집 중인 Key를 더 이상 사용할 수 없습니다. 해당 편집을 취소한 후 모든 Key를 검사하세요."],
+        ["SetupKeySelectModel"] = ["Select a model to check this Key", "选择模型以检测此 Key", "選擇模型以檢測此 Key", "この Key を確認するモデルを選択", "이 Key를 검사할 모델 선택"],
+        ["SetupKeyNoModel"] = ["No eligible model for this Key", "没有可使用此 Key 的模型", "沒有可使用此 Key 的模型", "この Key を使用できるモデルがありません", "이 Key를 사용할 수 있는 모델이 없습니다"],
+        ["SetupKeyUntested"] = ["Not checked", "未检测", "未檢測", "未確認", "검사하지 않음"],
+        ["SetupKeyChecking"] = ["Checking · {0}", "检测中 · {0}", "檢測中 · {0}", "確認中 · {0}", "검사 중 · {0}"],
+        ["SetupKeyPassed"] = ["Last check passed · {0} · {1}", "上次检测通过 · {0} · {1}", "上次檢測通過 · {0} · {1}", "前回の確認成功 · {0} · {1}", "최근 검사 성공 · {0} · {1}"],
+        ["SetupKeyFailed"] = ["Last check failed · {0} · {1}", "上次检测失败 · {0} · {1}", "上次檢測失敗 · {0} · {1}", "前回の確認失敗 · {0} · {1}", "최근 검사 실패 · {0} · {1}"],
+        ["SetupKeyReveal"] = ["Show this Key", "显示此 Key", "顯示此 Key", "この Key を表示", "이 Key 표시"],
+        ["SetupKeyHide"] = ["Mask this Key", "遮罩此 Key", "遮罩此 Key", "この Key を隠す", "이 Key 숨기기"],
+        ["SetupKeySaveHint"] = ["Editing only stages a draft; use Save to apply it with the provider settings.", "铅笔修改先暂存，按页面原“保存”才与地址配置一起生效", "鉛筆修改先暫存，按頁面原「儲存」才與位址設定一起生效", "編集は下書きです。「保存」で接続先設定と一緒に適用します。", "편집은 임시 저장이며 페이지의 저장 버튼으로 주소 설정과 함께 적용됩니다."],
         ["SetupSignIn"] = ["Sign in", "登录", "登入", "ログイン", "로그인"],
         ["SetupReconnect"] = ["Sign in again", "重新登录", "重新登入", "再ログイン", "다시 로그인"],
         ["SetupSignOut"] = ["Sign out", "退出登录", "登出", "ログアウト", "로그아웃"],
         ["SetupNeedsBaseUrl"] = ["Fill in the base URL first.", "先把基地址填上。", "先把基底位址填上。", "先にベース URL を入力してください。", "먼저 베이스 URL을 입력하세요."],
         ["SetupNeedsOAuth"] = ["Fill in the client ID and the endpoints first.", "先把客户端 id 与端点地址填上。", "先把用戶端 id 與端點位址填上。", "先にクライアント ID とエンドポイントを入力してください。", "먼저 클라이언트 ID와 엔드포인트를 입력하세요."],
+        ["SetupBuiltinOAuthHostMismatch"] = ["This sign-in belongs to the original provider. Add a custom connection and enter credentials for the new endpoint instead.", "此登录凭据只供原供应商使用。请新建自定义接入,为新地址填写专用凭据。", "此登入憑證只供原供應商使用。請新增自訂連線,為新位址填入專用憑證。", "このログイン認証情報は元のプロバイダー専用です。新しい接続先にはカスタム接続を作成し、専用の認証情報を入力してください。", "이 로그인 자격 증명은 기존 제공업체 전용입니다. 새 주소에는 사용자 지정 연결을 추가하고 전용 자격 증명을 입력하세요."],
+        ["SetupSourceRemoved"] = ["The source connection was removed. Cancel and start again.", "源接入已被移除。请取消并重新添加。", "來源接續已被移除。請取消並重新新增。", "元の接続が削除されました。キャンセルしてから追加し直してください。", "원래 연결이 제거되었습니다. 취소한 뒤 다시 추가하세요."],
         ["StatusNotAdded"] = ["Not added", "未添加", "未新增", "未追加", "추가 안 됨"],
         ["StatusNotConnected"] = ["Not connected", "未连接", "未連接", "未接続", "연결 안 됨"],
         ["StatusConnected"] = ["Connected", "已连接", "已連接", "接続済み", "연결됨"],
@@ -402,6 +439,20 @@ public sealed class Loc(string locale)
         ["DotUntested"] = ["Not tested in this window", "本次窗口内未测试", "本次視窗內未測試", "このウィンドウでは未テスト", "이 창에서 테스트하지 않음"],
         ["DotPassed"] = ["Test passed", "测试通过", "測試通過", "テスト成功", "테스트 통과"],
         ["DotFailed"] = ["Test failed", "测试失败", "測試失敗", "テスト失敗", "테스트 실패"],
+        ["DotCooling"] = ["Recent request failed; temporarily skipped", "近期请求失败,暂时跳过", "近期請求失敗,暫時略過", "直近のリクエストが失敗したため、一時的にスキップ", "최근 요청에 실패하여 일시적으로 건너뜀"],
+
+        // 故障转移(全局设置里的有序切换列表 + 发送时的自动切换提示)
+        ["SecFailover"] = ["Failover & Health", "故障转移与健康检查", "故障轉移與健康檢查", "フェイルオーバーとヘルスチェック", "페일오버 및 상태 점검"],
+        ["FailoverHint"] = ["Chat panel only (not IM bots). Ordered fallback: before any visible output or tool effects, transient, auth or changed-configuration failures try untried entries from the top of the list (excluding the failed model, not starting after its row). Bad requests and mid-stream breaks do not switch. Empty or only deleted entries: try another instance of the same catalog and model automatically; custom providers and Azure resources require explicit entries.", "仅聊天面板(不含 IM 机器人)。有序回退:尚未输出内容或产生工具副作用且遇瞬时、鉴权或配置失效时,从链首按优先级探测未试过的接入(排除失败者,不是从当前行往下找);参数错或中途断流不切。空链或仅剩已删项时,自动尝试同目录同模型的另一接入;自定义接入和 Azure 资源须显式入链。", "僅聊天面板(不含 IM 機器人)。有序回退:尚未輸出內容或產生工具副作用且遇瞬時、鑑權或設定失效時,從清單開頭依優先順序探測尚未嘗試的接續(排除失敗者,不是從目前項目往下找);參數錯誤或中途斷流不切換。清單為空或只剩已刪項目時,自動嘗試同目錄同模型的其他接續;自訂接續與 Azure 資源須明確加入清單。", "チャットパネルのみ(IM ボットは対象外)。順序付きフォールバック:応答やツールの作用がまだない状態で一時障害、認証エラー、設定の失効が起きた場合、失敗したモデルを除き、一覧の先頭から未試行の接続を優先順に確認します(現在の行の次からではありません)。パラメーターエラーや途中の切断では切り替えません。空、または削除済みの項目だけなら、同じカタログ・同じモデルの別接続を自動で試します。カスタム接続と Azure リソースは明示的に追加してください。", "채팅 패널에만 적용(IM 봇 제외). 순서가 있는 대체 목록: 출력이나 도구의 부작용이 발생하기 전 일시적 오류, 인증 오류 또는 설정 변경으로 검증이 무효화되면 실패한 모델을 제외하고 목록 맨 위부터 아직 시도하지 않은 연결을 우선순위대로 확인합니다(현재 행의 다음 항목부터가 아닙니다). 매개변수 오류나 응답 중 끊김에는 전환하지 않습니다. 목록이 비었거나 삭제된 항목만 있으면 같은 카탈로그와 모델의 다른 연결을 자동으로 시도합니다. 사용자 정의 연결과 Azure 리소스는 명시적으로 추가하세요."],
+        ["FailoverUp"] = ["Move up", "上移", "上移", "上へ移動", "위로 이동"],
+        ["FailoverDown"] = ["Move down", "下移", "下移", "下へ移動", "아래로 이동"],
+        ["FailoverRemove"] = ["Remove from the list", "移出列表", "移出清單", "リストから外す", "목록에서 제거"],
+        ["FailoverAddModel"] = ["Model to add to the failover chain", "要加入故障转移链的模型", "要加入故障轉移清單的模型", "フェイルオーバー一覧に追加するモデル", "페일오버 목록에 추가할 모델"],
+        ["FailoverProbeAll"] = ["Test all", "全部检测", "全部檢測", "すべてテスト", "전체 테스트"],
+        ["FailoverProbing"] = ["Testing {0}…", "正在检测 {0}…", "正在檢測 {0}…", "{0} をテスト中…", "{0} 테스트 중…"],
+        ["FailoverProbeDone"] = ["Done: {0} passed, {1} failed.", "检测完成:{0} 通过,{1} 失败。", "檢測完成:{0} 通過,{1} 失敗。", "完了:{0} 件成功、{1} 件失敗。", "완료: {0}개 통과, {1}개 실패."],
+        ["FailoverTo"] = ["Switched to {0} (previous provider unavailable).", "已切换到 {0}(原接入不可用)。", "已切換到 {0}(原接入不可用)。", "{0} に切り替えました(元の接続は利用不可)。", "{0}(으)로 전환했습니다(이전 연결 사용 불가)."],
+        ["FailoverEmpty"] = ["No models left to add.", "暂无可添加的模型。", "暫無可新增的模型。", "追加できるモデルがありません。", "추가할 모델이 없습니다."],
         // 上下文占用条的悬停说明(条只给量感,数字仍在用量提示里)
         ["MeterTip"] = ["Share of the context window taken by the last turn.", "上一轮占掉了多大比例的上下文窗口。", "上一輪佔掉了多大比例的上下文視窗。", "直近のターンがコンテキスト長のどれだけを占めたか。", "직전 턴이 컨텍스트 창을 얼마나 차지했는지."],
 

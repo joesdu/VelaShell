@@ -110,7 +110,7 @@ public sealed class ModelsDevCatalogTests
         var model = new AiModelConfig();
         ModelSpec gpt5 = ModelsDevCatalog.Parse(UpstreamShape)["openai"].First(m => m.Id == "gpt-5");
 
-        ModelsDevCatalog.Apply(model, gpt5);
+        ModelsDevCatalog.Apply(model, gpt5, newModel: true);
 
         Assert.AreEqual("gpt-5", model.Model);
         Assert.AreEqual(400000, model.MaxInputTokens);
@@ -135,7 +135,7 @@ public sealed class ModelsDevCatalogTests
         };
         ModelSpec bare = ModelsDevCatalog.Parse(UpstreamShape)["ollama"].Single();
 
-        ModelsDevCatalog.Apply(model, bare);
+        ModelsDevCatalog.Apply(model, bare, newModel: true);
 
         Assert.AreEqual("llama3.1", model.Model, "模型 id 是要换的");
         Assert.AreEqual(65536, model.MaxInputTokens);
@@ -233,6 +233,7 @@ public sealed class ModelsDevCatalogTests
     {
         // ActiveModelId 指着某个 AiModelConfig.Id;重建列表会让当前选中的模型凭空消失
         var first = new AiModelConfig { Model = "gpt-5-codex", Name = "我的 Codex" };
+        ModelsDevCatalog.Apply(first, new ModelSpec(first.Model, first.Name, 128000, 8192, 0, 0, 0, false), newModel: true);
         var provider = new AiProvider { Models = [first] };
         string id = first.Id;
 
@@ -266,6 +267,7 @@ public sealed class ModelsDevCatalogTests
             Model = "gpt-5",
             Name = "改过名的",
             Reasoning = ReasoningLevel.High,
+            MaxInputTokens = 65536,
             SystemPrompt = "专用提示词"
         };
         var provider = new AiProvider { Models = [tuned] };
@@ -275,7 +277,7 @@ public sealed class ModelsDevCatalogTests
         Assert.AreEqual("改过名的", tuned.Name);
         Assert.AreEqual(ReasoningLevel.High, tuned.Reasoning);
         Assert.AreEqual("专用提示词", tuned.SystemPrompt);
-        Assert.AreEqual(400000, tuned.MaxInputTokens, "但规格该补上");
+        Assert.AreEqual(65536, tuned.MaxInputTokens, "用户手动填写的窗口不能被目录规格覆盖");
     }
 
     [TestMethod]
@@ -421,7 +423,7 @@ public sealed class ModelsDevCatalogTests
         using var context = new TestPluginContext();
         ModelsDevCatalog catalog = await CachedAsync(context);
 
-        ModelSpec spec = catalog.Describe("openai", ["gpt-5"]).Single();
+        ModelSpec spec = catalog.Describe("openai", [("gpt-5", 0)]).Single();
 
         Assert.AreEqual(400000, spec.ContextTokens);
         Assert.AreEqual(1.25, spec.InputPrice, "自家目录里的单价就是这一家的,照填");
@@ -434,7 +436,7 @@ public sealed class ModelsDevCatalogTests
         ModelsDevCatalog catalog = await CachedAsync(context);
 
         // 中转站没有 ModelsDevId,只能跨供应商按 id 找
-        ModelSpec spec = catalog.Describe(null, ["gpt-5"]).Single();
+        ModelSpec spec = catalog.Describe(null, [("gpt-5", 0)]).Single();
 
         Assert.AreEqual(400000, spec.ContextTokens, "窗口是模型自身的属性,谁家跑都一样");
         Assert.AreEqual(0, spec.InputPrice, "中转站的价目是它自己定的,照抄原厂会让花费估算静默偏低");
@@ -448,22 +450,22 @@ public sealed class ModelsDevCatalogTests
         using var context = new TestPluginContext();
         ModelsDevCatalog catalog = await CachedAsync(context);
 
-        ModelSpec spec = catalog.Describe(null, ["openai/gpt-5"]).Single();
+        ModelSpec spec = catalog.Describe(null, [("openai/gpt-5", 0)]).Single();
 
         Assert.AreEqual("openai/gpt-5", spec.Id, "请求里要发的是端点报上来的那个 id,不是 models.dev 的写法");
         Assert.AreEqual(400000, spec.ContextTokens);
     }
 
     [TestMethod]
-    public async Task Describe_UnknownIdIsCarriedThroughWithNothingFilledIn()
+    public async Task Describe_UnknownIdKeepsOriginalIdAndUsesDefaultWindow()
     {
         using var context = new TestPluginContext();
         ModelsDevCatalog catalog = await CachedAsync(context);
 
-        ModelSpec spec = catalog.Describe("openai", ["some-private-build"]).Single();
+        ModelSpec spec = catalog.Describe("openai", [("some-private-build", 0)]).Single();
 
         Assert.AreEqual("some-private-build", spec.Id, "配不上也得留在清单里 —— 它确实是端点供应的");
-        Assert.AreEqual(0, spec.ContextTokens, "未知就是 0;Apply 只填非 0 的值,用户填过的不会被覆盖");
+        Assert.AreEqual(128000, spec.ContextTokens, "目录与接口都未知时才使用默认窗口");
         Assert.AreEqual(0, spec.InputPrice);
     }
 
@@ -473,10 +475,241 @@ public sealed class ModelsDevCatalogTests
         using var context = new TestPluginContext();
         ModelsDevCatalog catalog = await CachedAsync(context);
 
-        IReadOnlyList<ModelSpec> specs = catalog.Describe("openai", ["gpt-5.3-codex", "gpt-5"]);
+        IReadOnlyList<ModelSpec> specs = catalog.Describe("openai", [("gpt-5.3-codex", 0), ("gpt-5", 0)]);
 
         Assert.AreEqual("gpt-5.3-codex", specs[0].Id);
         Assert.AreEqual("gpt-5", specs[1].Id);
+    }
+
+    [TestMethod]
+    [DataRow("global:deepseek-v4.1-flash-sg", 1048576)]
+    [DataRow("Qwen3.6-35b-a3b-nvfp4", 262144)]
+    [DataRow("relay/QWEN3.6-35B-A3B-int4", 262144)]
+    [DataRow("global:deepseek-v4.1-flash-thinking-sg", 524288)]
+    [DataRow("deepseek-v4.10-flash-sg", 65536)]
+    [DataRow("Qwen3.6-36b-a3b-nvfp4", 65536)]
+    public void Describe_DeploymentAliasesMatchLongestWholeModelNameWithoutChangingRequestId(string id, int expected)
+    {
+        using var context = new TestPluginContext();
+        File.WriteAllText(Path.Combine(context.DataDirectory, "models-dev.json"), """
+            {"deepseek":{"deepseek/deepseek-v4.1-flash":{"ctx":1048576},
+                         "deepseek/deepseek-v4.1-flash-thinking":{"ctx":524288}},
+             "alibaba":{"alibaba/qwen3.6-35b-a3b":{"ctx":262144,"pin":9}}}
+            """);
+        var catalog = new ModelsDevCatalog(context);
+        ModelSpec spec = catalog.Describe(null, [(id, 65536)]).Single();
+        Assert.AreEqual(id, spec.Id);
+        Assert.AreEqual(expected, spec.ContextTokens);
+        Assert.AreEqual(0, spec.InputPrice, "模糊跨供应商匹配不能照抄另一供应商的价格");
+    }
+
+    [TestMethod]
+    [DataRow(65536, 65536)]
+    [DataRow(0, 128000)]
+    [DataRow(-1, 128000)]
+    public async Task Describe_UnknownModelUsesEndpointWindowBeforeDefault(int endpointWindow, int expected)
+    {
+        using var context = new TestPluginContext();
+        ModelsDevCatalog catalog = await CachedAsync(context);
+        ModelSpec spec = catalog.Describe(null, [("private-model", endpointWindow)]).Single();
+        var provider = new AiProvider();
+        ModelsDevCatalog.Materialise(provider, [spec]);
+        Assert.AreEqual(expected, provider.Models.Single().MaxInputTokens);
+    }
+
+    [TestMethod]
+    public async Task Describe_ExactCatalogueWindowWinsOverEndpointWindow()
+    {
+        using var context = new TestPluginContext();
+        ModelsDevCatalog catalog = await CachedAsync(context);
+        Assert.AreEqual(400000, catalog.Describe("openai", [("gpt-5", 65536)]).Single().ContextTokens);
+    }
+
+    [TestMethod]
+    [DataRow("private-model-sg")]
+    [DataRow("relay/private-model")]
+    [DataRow("private-model")]
+    public void Describe_AmbiguousCapacityUsesEndpointInsteadOfIndexOrder(string id)
+    {
+        using var context = new TestPluginContext();
+        File.WriteAllText(Path.Combine(context.DataDirectory, "models-dev.json"), """
+            {"a":{"a/private-model":{"ctx":100000}},"b":{"b/private-model":{"ctx":200000}}}
+            """);
+        Assert.AreEqual(65536, new ModelsDevCatalog(context).Describe(null, [(id, 65536)]).Single().ContextTokens);
+    }
+
+    [TestMethod]
+    public async Task Materialise_ManualLimitsPricesAndCapabilitiesSurvivePullsAndReload()
+    {
+        using var context = new TestPluginContext();
+        var provider = new AiProvider();
+        var first = new ModelSpec("private-model", "private-model", 400000, 8192, 1, 2, 0.5, true);
+        ModelsDevCatalog.Materialise(provider, [first]);
+        AiModelConfig model = provider.Models.Single();
+        model.MaxInputTokens = 65536;
+        model.MaxTokens = 1024;
+        model.InputPricePerMillion = 7;
+        model.OutputPricePerMillion = 8;
+        model.CachedInputPricePerMillion = 9;
+        model.SupportsReasoning = false;
+        var store = new AiSettingsStore(context);
+        await store.SaveAsync(new AiSettings { Providers = [provider] });
+        provider = (await store.LoadAsync()).Providers.Single();
+        ModelsDevCatalog.Materialise(provider, [first with { ContextTokens = 65536, OutputTokens = 1024,
+            InputPrice = 7, OutputPrice = 8, CachedInputPrice = 9, Reasoning = false }]);
+        ModelsDevCatalog.Materialise(provider, [first with { ContextTokens = 1000000, OutputTokens = 16384,
+            InputPrice = 10, OutputPrice = 20, CachedInputPrice = 3, Reasoning = true }]);
+        model = provider.Models.Single();
+        Assert.AreEqual(65536, model.MaxInputTokens);
+        Assert.AreEqual(1024, model.MaxTokens);
+        Assert.AreEqual(7d, model.InputPricePerMillion);
+        Assert.AreEqual(8d, model.OutputPricePerMillion);
+        Assert.AreEqual(9d, model.CachedInputPricePerMillion);
+        Assert.IsFalse(model.SupportsReasoning);
+    }
+
+    [TestMethod]
+    public void Materialise_AutomaticWindowStillRefreshesButLegacyValuesStayUntouched()
+    {
+        var spec = new ModelSpec("private-model", "private-model", 65536, 8192, 1, 2, 0, false);
+        var automatic = new AiProvider();
+        ModelsDevCatalog.Materialise(automatic, [spec]);
+        ModelsDevCatalog.Materialise(automatic, [spec with { ContextTokens = 262144 }]);
+        Assert.AreEqual(262144, automatic.Models.Single().MaxInputTokens);
+        var legacy = new AiProvider { Models = [new AiModelConfig { Model = spec.Id, MaxInputTokens = 128000,
+            MaxTokens = 1024, InputPricePerMillion = 7 }] };
+        ModelsDevCatalog.Materialise(legacy, [spec]);
+        Assert.AreEqual(128000, legacy.Models.Single().MaxInputTokens, "没有来源标记的旧值,包括128000,均不猜成自动值");
+        Assert.AreEqual(1024, legacy.Models.Single().MaxTokens);
+        Assert.AreEqual(7d, legacy.Models.Single().InputPricePerMillion);
+    }
+
+    [TestMethod]
+    [DataRow("thinking-sg")]
+    [DataRow("mini-sg")]
+    [DataRow("pro")]
+    [DataRow("vision")]
+    [DataRow("vl")]
+    public void Describe_UnknownSemanticVariantDoesNotBorrowBaseModelsWindow(string suffix)
+    {
+        using var context = new TestPluginContext();
+        File.WriteAllText(Path.Combine(context.DataDirectory, "models-dev.json"), """
+            {"deepseek":{"deepseek/deepseek-v4.1-flash":{"ctx":1048576}}}
+            """);
+        string id = "global:deepseek-v4.1-flash-" + suffix;
+        Assert.AreEqual(65536, new ModelsDevCatalog(context).Describe(null, [(id, 65536)]).Single().ContextTokens);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void Materialise_FactoryUnknownCapabilityCanFillButManualFalseStaysFalse(bool edited)
+    {
+        AiProvider provider = ProviderCatalog.Find("openai")!.CreateProvider();
+        AiModelConfig model = provider.Models.Single();
+        if (edited) model.SupportsReasoning = false;
+        ModelsDevCatalog.Materialise(provider, [new ModelSpec(model.Model, model.Model, 800000, 16384, 0, 0, 0, true)]);
+        Assert.AreEqual(edited ? false : true, model.SupportsReasoning);
+        Assert.AreEqual(800000, model.MaxInputTokens, "未编辑的自动窗口仍可填入目录新值");
+    }
+
+    [TestMethod]
+    public async Task Materialise_ManuallyClearedCapabilitySurvivesReloadAndFurtherPull()
+    {
+        using var context = new TestPluginContext();
+        var provider = new AiProvider();
+        var spec = new ModelSpec("private-model", "private-model", 65536, 8192, 0, 0, 0, false);
+        ModelsDevCatalog.Materialise(provider, [spec]);
+        provider.Models.Single().SupportsReasoning = null;
+        var store = new AiSettingsStore(context);
+        await store.SaveAsync(new AiSettings { Providers = [provider] });
+        provider = (await store.LoadAsync()).Providers.Single();
+        ModelsDevCatalog.Materialise(provider, [spec with { Reasoning = true, ContextTokens = 131072 }]);
+        Assert.IsNull(provider.Models.Single().SupportsReasoning);
+        Assert.AreEqual(131072, provider.Models.Single().MaxInputTokens);
+    }
+
+    [TestMethod]
+    public void Materialise_ManualRequestIdIsNotRewrittenOrReclassifiedAsAutomatic()
+    {
+        var provider = new AiProvider();
+        var original = new ModelSpec("original-model", "original", 65536, 8192, 0, 0, 0, false);
+        ModelsDevCatalog.Materialise(provider, [original]);
+        AiModelConfig model = provider.Models.Single();
+        model.Model = "USER-MODEL";
+        ModelsDevCatalog.Materialise(provider, [original with { Id = "user-model", ContextTokens = 131072 }]);
+        Assert.AreEqual("USER-MODEL", model.Model);
+        Assert.AreEqual(131072, model.MaxInputTokens, "未手动修改的自动窗口仍可更新");
+        ModelsDevCatalog.Materialise(provider, [original with { Id = "unrelated-model" }]);
+        Assert.AreEqual("USER-MODEL", model.Model, "不能把手动型号重新标成自动并在下一次拉取时换掉");
+    }
+
+    [TestMethod]
+    public async Task DefaultContextWindow_FallbackAndReal128000RemainDistinctAfterReload()
+    {
+        using var context = new TestPluginContext();
+        File.WriteAllText(Path.Combine(context.DataDirectory, "models-dev.json"), "{}");
+        var catalog = new ModelsDevCatalog(context);
+        var provider = new AiProvider();
+        ModelsDevCatalog.Materialise(provider, catalog.Describe(null, [("private-model", 0)]));
+        AiModelConfig model = provider.Models.Single();
+        Assert.AreEqual(128000, model.MaxInputTokens);
+        Assert.AreEqual(true, model.DefaultContextWindow);
+        var store = new AiSettingsStore(context);
+        await store.SaveAsync(new AiSettings { Providers = [provider] });
+        AiSettings saved = await store.LoadAsync();
+        provider = saved.Providers.Single();
+        Assert.AreEqual(true, provider.Models.Single().DefaultContextWindow);
+        ModelsDevCatalog.Materialise(provider, catalog.Describe(null, [("private-model", 128000)]));
+        model = provider.Models.Single();
+        Assert.AreEqual(128000, model.MaxInputTokens, "数值相同也必须更新来源,不能持续误报默认值");
+        Assert.AreEqual(false, model.DefaultContextWindow);
+        await store.SaveAsync(saved);
+        Assert.AreEqual(false, (await store.LoadAsync()).Providers.Single().Models.Single().DefaultContextWindow);
+        ModelsDevCatalog.Materialise(provider, catalog.Describe(null, [("private-model", 0)]));
+        Assert.AreEqual(false, model.DefaultContextWindow, "规格暂时缺失不应抹掉该已获取数值的来源");
+    }
+
+    [TestMethod]
+    [DataRow("ollama")]
+    [DataRow(null)]
+    public async Task DefaultContextWindow_MatchedModelWithoutCapacityUsesEndpointCapacity(string? providerId)
+    {
+        using var context = new TestPluginContext();
+        ModelsDevCatalog catalog = await CachedAsync(context);
+        ModelSpec spec = catalog.Describe(providerId, [("llama3.1", 65536)]).Single();
+        Assert.AreEqual(65536, spec.ContextTokens);
+        Assert.IsFalse(spec.DefaultContextWindow);
+    }
+
+    [TestMethod]
+    public void DefaultContextWindow_UnchangedPresetKeepsUnverifiedOrigin()
+    {
+        AiProvider provider = ProviderCatalog.Find("qwen")!.CreateProvider();
+        AiModelConfig model = provider.Models.Single();
+        ModelsDevCatalog.Materialise(provider, [new ModelSpec(model.Model, model.Model, 128000, 0, 0, 0, 0, false, true)]);
+        Assert.AreEqual(128000, model.MaxInputTokens);
+        Assert.IsNull(model.DefaultContextWindow);
+    }
+
+    [TestMethod]
+    [DataRow(65536)]
+    [DataRow(262144)]
+    public async Task DefaultContextWindow_MissingFreshCapacityDoesNotReplaceVerifiedLimit(int window)
+    {
+        using var context = new TestPluginContext();
+        File.WriteAllText(Path.Combine(context.DataDirectory, "models-dev.json"), "{}");
+        var catalogue = new ModelsDevCatalog(context);
+        var provider = new AiProvider();
+        ModelsDevCatalog.Materialise(provider, catalogue.Describe(null, [("private-model", window)]));
+        var store = new AiSettingsStore(context);
+        await store.SaveAsync(new AiSettings { Providers = [provider] });
+        provider = (await store.LoadAsync()).Providers.Single();
+        ModelsDevCatalog.Materialise(provider, catalogue.Describe(null, [("private-model", 0)]));
+        Assert.AreEqual(window, provider.Models.Single().MaxInputTokens);
+        Assert.AreEqual(false, provider.Models.Single().DefaultContextWindow);
+        ModelsDevCatalog.Materialise(provider, catalogue.Describe(null, [("private-model", window * 2)]));
+        Assert.AreEqual(window * 2, provider.Models.Single().MaxInputTokens, "下次真实容量仍可更新未手改的自动值");
     }
 
     // ---- 目录映射 ----

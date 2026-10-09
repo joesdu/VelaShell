@@ -14,6 +14,7 @@ namespace VelaShell.Plugin.Ai.Configuration;
 /// <param name="OutputPrice">每百万输出 token 单价。</param>
 /// <param name="CachedInputPrice">每百万缓存命中输入 token 单价。</param>
 /// <param name="Reasoning">这个模型支不支持思考。</param>
+/// <param name="DefaultContextWindow">窗口是否为无法获取容量后的默认估值。</param>
 public sealed record ModelSpec(
     string Id,
     string Name,
@@ -22,7 +23,8 @@ public sealed record ModelSpec(
     double InputPrice,
     double OutputPrice,
     double CachedInputPrice,
-    bool Reasoning);
+    bool? Reasoning,
+    bool DefaultContextWindow = false);
 
 /// <summary>
 /// 模型规格库,数据来自开源的 <b>models.dev</b>(<c>github.com/sst/models.dev</c>)。
@@ -100,8 +102,8 @@ public sealed class ModelsDevCatalog(IPluginContext context)
     /// <para>
     /// <b>清单以端点为准,规格来这儿补。</b> 返回的每条 <see cref="ModelSpec.Id" /> 一定是
     /// <paramref name="ids" /> 里那个原样的 id —— 请求里要发的是它,不是 models.dev 那边的写法。
-    /// 配不上就返回一条只有 id 的空规格:窗口与单价留 0,而 <see cref="Apply" /> 只填非 0 的值,
-    /// 于是用户已经填好的东西不会被"未知"覆盖掉。
+    /// 配不上时优先采用端点的正数 context_length,否则用 128000；不借用其它供应商单价。
+    /// 应用规格时只更新仍等于上次自动值的字段,保留用户编辑和没有来源标记的旧配置。
     /// </para>
     /// <para>
     /// <b>配不上这一家时,跨供应商按 id 找,但只补容量、不补单价。</b> 自定义端点与中转站没有
@@ -113,7 +115,7 @@ public sealed class ModelsDevCatalog(IPluginContext context)
     /// </remarks>
     /// <param name="modelsDevId">这一家在 models.dev 的 id;空表示那边没收录(自定义 / 自行部署)。</param>
     /// <param name="ids">端点报上来的模型 id。</param>
-    public IReadOnlyList<ModelSpec> Describe(string? modelsDevId, IReadOnlyList<string> ids)
+    public IReadOnlyList<ModelSpec> Describe(string? modelsDevId, IReadOnlyList<(string Id, int ContextTokens)> ids)
     {
         ArgumentNullException.ThrowIfNull(ids);
         var own = new Dictionary<string, ModelSpec>(StringComparer.OrdinalIgnoreCase);
@@ -122,16 +124,21 @@ public sealed class ModelsDevCatalog(IPluginContext context)
             own[spec.Id] = spec;
         }
         var described = new List<ModelSpec>(ids.Count);
-        foreach (string id in ids)
+        foreach ((string id, int contextTokens) in ids)
         {
+            int fallbackContext = contextTokens > 0 ? contextTokens : 128000;
             if (own.TryGetValue(id, out ModelSpec? exact))
             {
-                described.Add(exact with { Id = id });
+                described.Add(exact with { Id = id, ContextTokens = exact.ContextTokens > 0 ? exact.ContextTokens : fallbackContext,
+                    DefaultContextWindow = exact.ContextTokens <= 0 && contextTokens <= 0 });
                 continue;
             }
             described.Add(FindAnywhere(id) is { } loose
-                ? loose with { Id = id, InputPrice = 0, OutputPrice = 0, CachedInputPrice = 0 }
-                : new ModelSpec(id, id, 0, 0, 0, 0, 0, false));
+                ? loose with { Id = id, ContextTokens = loose.ContextTokens > 0 ? loose.ContextTokens : fallbackContext,
+                    DefaultContextWindow = loose.ContextTokens <= 0 && contextTokens <= 0,
+                    InputPrice = 0, OutputPrice = 0, CachedInputPrice = 0 }
+                : new ModelSpec(id, id, fallbackContext, 0, 0, 0, 0, false,
+                    DefaultContextWindow: contextTokens <= 0));
         }
         return described;
     }
@@ -140,29 +147,64 @@ public sealed class ModelsDevCatalog(IPluginContext context)
     /// 不限供应商,按 id 找一条规格。
     /// </summary>
     /// <remarks>
-    /// 先找完全相同的;找不到再拿<b>最后一段</b>找一次 —— 中转站习惯给 id 加前缀
-    /// (<c>anthropic/claude-sonnet-4</c>),剥掉前缀就能对上同一个型号。
+    /// 先找完整 id,再忽略供应商/路由前缀;仍不匹配时仅忽略已知部署标签,选最长完整型号候选。
+    /// 不使用编辑距离猜版本或参数量;同优先级候选容量不一致则退回端点规格。
     /// </remarks>
     private ModelSpec? FindAnywhere(string id)
     {
-        string bare = id[(id.LastIndexOf('/') + 1)..];
-        ModelSpec? loose = null;
+        ReadOnlySpan<char> bare = BareModelId(id);
+        ModelSpec? best = null;
+        int bestScore = 0;
+        bool ambiguous = false;
         foreach (List<ModelSpec> specs in Index().Values)
         {
             foreach (ModelSpec spec in specs)
             {
-                if (string.Equals(spec.Id, id, StringComparison.OrdinalIgnoreCase))
+                ReadOnlySpan<char> candidate = BareModelId(spec.Id);
+                int score = string.Equals(spec.Id, id, StringComparison.OrdinalIgnoreCase) ? int.MaxValue
+                    : candidate.Equals(bare, StringComparison.OrdinalIgnoreCase) ? int.MaxValue - 1
+                    : bare.Length > candidate.Length && bare[candidate.Length] == '-'
+                        && bare.StartsWith(candidate, StringComparison.OrdinalIgnoreCase)
+                        && IsDeploymentSuffix(bare[(candidate.Length + 1)..]) ? candidate.Length : 0;
+                if (score > bestScore)
                 {
-                    return spec;
+                    best = spec;
+                    bestScore = score;
+                    ambiguous = false;
                 }
-                if (loose is null && bare.Length > 0
-                                  && string.Equals(spec.Id, bare, StringComparison.OrdinalIgnoreCase))
-                {
-                    loose = spec;
-                }
+                else if (score > 0 && score == bestScore && best is not null
+                    && (best.ContextTokens != spec.ContextTokens || best.OutputTokens != spec.OutputTokens
+                        || best.Reasoning != spec.Reasoning)) ambiguous = true;
             }
         }
-        return loose;
+        return ambiguous ? null : best;
+    }
+
+    private static readonly string[] DeploymentLabels =
+        ["sg", "us", "eu", "cn", "jp", "kr", "hk", "tw", "in", "de", "fr", "gb", "uk", "ca", "au",
+         "nvfp4", "fp4", "fp8", "fp16", "fp32", "bf16", "int4", "int8", "awq", "gptq"];
+
+    private static bool IsDeploymentSuffix(ReadOnlySpan<char> suffix)
+    {
+        // ponytail: 仅忽略已知地区/精度标签；新部署命名需要扩充标签,不猜 thinking/mini 等真实型号变体。
+        foreach (Range part in suffix.Split('-'))
+        {
+            bool known = false;
+            foreach (string label in DeploymentLabels)
+                if (suffix[part].Equals(label, StringComparison.OrdinalIgnoreCase)) { known = true; break; }
+            if (!known) return false;
+        }
+        return !suffix.IsEmpty;
+    }
+
+    private static ReadOnlySpan<char> BareModelId(string id)
+    {
+        ReadOnlySpan<char> bare = id.AsSpan(id.LastIndexOf('/') + 1);
+        int colon = bare.IndexOf(':');
+        // 路由前缀在型号之前；Ollama 的 llama3.1:8b 等参数量标签不剥除。
+        return colon > 0 && !bare[..colon].Contains('-') && !bare[..colon].Contains('.')
+            && colon + 1 < bare.Length && !char.IsDigit(bare[colon + 1])
+                ? bare[(colon + 1)..] : bare;
     }
 
     /// <summary>
@@ -394,34 +436,50 @@ public sealed class ModelsDevCatalog(IPluginContext context)
     /// </remarks>
     /// <param name="model">要填的模型配置。</param>
     /// <param name="spec">规格。</param>
-    public static void Apply(AiModelConfig model, ModelSpec spec)
+    /// <param name="newModel">新拉取模型可初始化规格；已有模型只更新仍未手动修改的自动值。</param>
+    public static void Apply(AiModelConfig model, ModelSpec spec, bool newModel = false)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(spec);
-        model.Model = spec.Id;
-        if (spec.ContextTokens > 0)
+        ModelSpec? previous = model.LastFetchedSpec ?? (newModel ? spec : null);
+        if (previous is null) return;
+        bool identifier = newModel || model.Model == previous!.Id;
+        bool input = newModel || !model.ContextWindowIsManual && model.MaxInputTokens == previous!.ContextTokens
+            && (!spec.DefaultContextWindow || model.DefaultContextWindow == true);
+        bool output = newModel || model.MaxTokens == previous!.OutputTokens;
+        bool priceIn = newModel || model.InputPricePerMillion == previous!.InputPrice;
+        bool priceOut = newModel || model.OutputPricePerMillion == previous!.OutputPrice;
+        bool priceCached = newModel || model.CachedInputPricePerMillion == previous!.CachedInputPrice;
+        bool reasoning = newModel || model.SupportsReasoning == previous!.Reasoning;
+        if (identifier) model.Model = spec.Id;
+        if (input && spec.ContextTokens > 0)
         {
+            bool changed = model.MaxInputTokens != spec.ContextTokens || previous.Id != spec.Id;
             model.MaxInputTokens = spec.ContextTokens;
+            if (newModel || changed || !spec.DefaultContextWindow) model.DefaultContextWindow = spec.DefaultContextWindow;
         }
-        if (spec.OutputTokens > 0)
-        {
-            model.MaxTokens = spec.OutputTokens;
-        }
-        if (spec.InputPrice > 0)
-        {
-            model.InputPricePerMillion = spec.InputPrice;
-        }
-        if (spec.OutputPrice > 0)
-        {
-            model.OutputPricePerMillion = spec.OutputPrice;
-        }
-        if (spec.CachedInputPrice > 0)
-        {
-            model.CachedInputPricePerMillion = spec.CachedInputPrice;
-        }
-        // 这一项与上面几个不同:false 是有意义的答案("这个模型不会思考"),
-        // 不能照搬"0 就当没说过"的规矩 —— 那样永远回不到 false
-        model.SupportsReasoning = spec.Reasoning;
+        else if (newModel && model.MaxInputTokens == 128000) model.DefaultContextWindow = true;
+        if (output && spec.OutputTokens > 0) model.MaxTokens = spec.OutputTokens;
+        if (priceIn && spec.InputPrice > 0) model.InputPricePerMillion = spec.InputPrice;
+        if (priceOut && spec.OutputPrice > 0) model.OutputPricePerMillion = spec.OutputPrice;
+        if (priceCached && spec.CachedInputPrice > 0) model.CachedInputPricePerMillion = spec.CachedInputPrice;
+        if (reasoning) model.SupportsReasoning = spec.Reasoning;
+        if (!newModel && (!identifier || model.Model == previous!.Id)
+            && (!input || model.MaxInputTokens == previous.ContextTokens)
+            && (!input || (model.DefaultContextWindow == true) == previous.DefaultContextWindow)
+            && (!output || model.MaxTokens == previous.OutputTokens)
+            && (!priceIn || model.InputPricePerMillion == previous.InputPrice)
+            && (!priceOut || model.OutputPricePerMillion == previous.OutputPrice)
+            && (!priceCached || model.CachedInputPricePerMillion == previous.CachedInputPrice)
+            && (!reasoning || model.SupportsReasoning == previous.Reasoning)) return;
+        model.LastFetchedSpec = new ModelSpec(identifier ? model.Model : previous!.Id, spec.Name,
+            input ? model.MaxInputTokens : previous!.ContextTokens,
+            output ? model.MaxTokens : previous!.OutputTokens,
+            priceIn ? model.InputPricePerMillion : previous!.InputPrice,
+            priceOut ? model.OutputPricePerMillion : previous!.OutputPrice,
+            priceCached ? model.CachedInputPricePerMillion : previous!.CachedInputPrice,
+            reasoning ? model.SupportsReasoning : previous!.Reasoning,
+            input ? model.DefaultContextWindow == true : previous.DefaultContextWindow);
     }
 
     /// <summary>
@@ -452,7 +510,8 @@ public sealed class ModelsDevCatalog(IPluginContext context)
 
         // 出厂那一条(通常是目录给的示例)先对齐到清单里真实存在的型号 ——
         // 它的 Id 可能正被 ActiveModelId 指着,换掉的话当前选中的模型就没了
-        if (provider.Models.Count > 0 && ChooseDefault(provider.Models[0].Model, specs) is { } chosen)
+        if (provider.Models.Count > 0 && provider.Models[0].LastFetchedSpec is { } previous
+            && provider.Models[0].Model == previous.Id && ChooseDefault(provider.Models[0].Model, specs) is { } chosen)
         {
             Apply(provider.Models[0], chosen);
         }
@@ -470,7 +529,7 @@ public sealed class ModelsDevCatalog(IPluginContext context)
                 continue;
             }
             var model = new AiModelConfig();
-            Apply(model, spec);
+            Apply(model, spec, newModel: true);
             provider.Models.Add(model);
         }
         return provider.Models.Count;

@@ -59,41 +59,59 @@ public static class ModelPull
     /// <param name="store">设置存储(用它解出这一家的凭据)。</param>
     /// <param name="apiKeyOverride">设置页表单里还没保存的那把 Key;null = 用已存的。</param>
     /// <param name="force">用户明确点了「拉取模型」—— 这时还拿七天前的规格缓存糊弄他就没意义了。</param>
+    /// <param name="health">可选共享健康记录；只使本次规格应用真正改变的模型请求配置失效。</param>
     /// <param name="cancellationToken">取消。</param>
+    /// <param name="materialiseInto">可选分离的规格草稿;网络请求仍使用 provider 的当前地址和固定凭据。</param>
+    /// <param name="catalogueHttp">可选索引传输客户端,由调用方管理生命周期；不承载端点凭据或模型列表请求。</param>
     public static async Task<ModelPullResult> RunAsync(AiProvider provider, string? modelsDevId,
         ModelsDevCatalog catalogue, AiSettingsStore store, string? apiKeyOverride = null, bool force = false,
-        CancellationToken cancellationToken = default)
+        ProviderHealth? health = null, CancellationToken cancellationToken = default, AiProvider? materialiseInto = null,
+        HttpClient? catalogueHttp = null)
     {
         ArgumentNullException.ThrowIfNull(provider);
         ArgumentNullException.ThrowIfNull(catalogue);
         ArgumentNullException.ThrowIfNull(store);
+        AiProvider target = materialiseInto ?? provider;
+        if (apiKeyOverride is null)
+            await store.ValidateProviderCredentialScopeAsync(provider, cancellationToken).ConfigureAwait(false);
 
         using var http = new HttpClient { Timeout = Timeout };
         // 规格缓存:没点拉取时只在过期了才重下(见 ModelsDevCatalog.CacheLifetime)——
         // 各家出新模型是以周计的事,为一次登录拖四百万字节下来纯属浪费
-        await catalogue.RefreshAsync(http, force, cancellationToken).ConfigureAwait(false);
+        await catalogue.RefreshAsync(catalogueHttp ?? http, force, cancellationToken).ConfigureAwait(false);
 
-        IReadOnlyList<string> ids = await ListAsync(provider, store, apiKeyOverride, http, cancellationToken)
+        IReadOnlyList<(string Id, int ContextTokens)> models = await ListAsync(provider, store, apiKeyOverride, http, cancellationToken)
             .ConfigureAwait(false);
-        IReadOnlyList<ModelSpec> specs = ids.Count > 0
-            ? catalogue.Describe(modelsDevId, ids)
+        IReadOnlyList<ModelSpec> specs = models.Count > 0
+            ? catalogue.Describe(modelsDevId, models)
             : catalogue.ForProvider(modelsDevId);
         if (specs.Count == 0)
         {
-            return new ModelPullResult(ModelSource.None, 0, provider.Models.Count);
+            return new ModelPullResult(ModelSource.None, 0, target.Models.Count);
         }
 
-        provider.AvailableModels = [.. specs.Select(s => s.Id)];
-        int total = ModelsDevCatalog.Materialise(provider, specs);
+        // 网络在途期间用户可能已保存新配置；只能比较实际应用规格的同步前后。
+        (AiModelConfig Config, string Model, int InputTokens, int OutputTokens, bool? Reasoning)[] before =
+            health is null ? [] : target.Models.Select(model =>
+                (model, model.Model, model.MaxInputTokens, model.MaxTokens, model.SupportsReasoning)).ToArray();
+        target.AvailableModels = [.. specs.Select(s => s.Id)];
+        int total = ModelsDevCatalog.Materialise(target, specs);
+        foreach (var previous in before)
+        {
+            AiModelConfig model = previous.Config;
+            if (model.Model != previous.Model || model.MaxInputTokens != previous.InputTokens
+                || model.MaxTokens != previous.OutputTokens || model.SupportsReasoning != previous.Reasoning)
+                health!.Invalidate(model.Id);
+        }
         // 展开状态交回自动判断:用户上次表态时面对的是另一份清单(往往是出厂那一条),
         // 而这一拉可能就是三百个 —— 拿旧决定套新长度,左栏一进去就是滚不到底的长龙。
         // 见 AiProvider.ModelsExpanded 与设置页的 AutoCollapseFrom。
-        provider.ModelsExpanded = null;
-        return new ModelPullResult(ids.Count > 0 ? ModelSource.Endpoint : ModelSource.Catalogue, specs.Count, total);
+        target.ModelsExpanded = null;
+        return new ModelPullResult(models.Count > 0 ? ModelSource.Endpoint : ModelSource.Catalogue, specs.Count, total);
     }
 
     /// <summary>问端点要清单;问不到(没这条接口、没网、401)一律返回空,由调用方回落。</summary>
-    private static async Task<IReadOnlyList<string>> ListAsync(AiProvider provider, AiSettingsStore store,
+    private static async Task<IReadOnlyList<(string Id, int ContextTokens)>> ListAsync(AiProvider provider, AiSettingsStore store,
         string? apiKeyOverride, HttpClient http, CancellationToken cancellationToken)
     {
         try
@@ -107,7 +125,7 @@ public static class ModelPull
                          .FetchAsync(http, baseUrl, provider.DefaultProtocol, credential, cancellationToken)
                          .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException and not AiSettingsStore.ApiKeySlotChangedException)
         {
             return [];
         }

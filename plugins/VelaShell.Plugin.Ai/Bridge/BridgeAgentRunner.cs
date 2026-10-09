@@ -114,116 +114,122 @@ public sealed class BridgeAgentRunner(
         };
 
         IChatClient client = await store.CreateClientAsync(model, cancellationToken: cancellationToken).ConfigureAwait(false);
-        var options = new ChatOptions
-        {
-            MaxOutputTokens = model.MaxTokens,
-            Temperature = model.Temperature,
-            TopP = model.TopP
-        };
-        AiSettingsStore.ApplyReasoning(options, model);
-        // 这一家端点不认的参数在这儿摘掉。机器人这条路与聊天面板发的是<b>同一批模型</b>,
-        // 少了这一步,订阅型的私有后端(ChatGPT 的 Codex 后端最典型)会整轮 400,
-        // 而且面板里好好的、只有机器人报错 —— 最难想到是这儿漏了。
-        AiSettingsStore.ApplyEndpointQuirks(options, model);
-
-        bool nativeSearch = mode != ChatMode.Chat
-                            && ai.WebSearch.Enabled
-                            && ai.WebSearch.PreferProviderNative
-                            && NativeWebSearch.IsSupported(model.Protocol);
-        if (mode != ChatMode.Chat)
-        {
-            mcp.Approval = approval;
-            mcp.ApprovalHandler = approve;
-            IList<AITool> tools = toolbox.CreateTools(mode, nativeSearch);
-            if (mode == ChatMode.Agent && ai.McpServers.Any(s => s.Enabled))
-            {
-                (List<AITool> mcpTools, List<string> errors) =
-                    await mcp.GetToolsAsync(ai.McpServers, cancellationToken).ConfigureAwait(false);
-                foreach (AITool tool in mcpTools)
-                {
-                    tools.Add(tool);
-                }
-                if (errors.Count > 0)
-                {
-                    context.Log.Warn($"Bridge: MCP servers reported: {string.Join("; ", errors)}");
-                }
-            }
-            if (nativeSearch)
-            {
-                NativeWebSearch.Apply(options, model, tools, ai.WebSearch.MaxResults);
-            }
-            options.Tools = tools;
-            client = client.AsBuilder()
-                .UseFunctionInvocation(configure: c => c.MaximumIterationsPerRequest = MaxToolIterations)
-                .Build();
-        }
-
-        conversation.History.Add(new ChatMessage(ChatRole.User, message.Text));
-        await PersistAsync(conversation, "user", message.Text, cancellationToken).ConfigureAwait(false);
-
-        RequestContext request = ContextBuilder.Build(
-            BuildSystemPrompt(ai, bridge, mode, message, session, nativeSearch),
-            conversation.History, model.MaxInputTokens, model.MaxTokens);
-        // 有的订阅型端点不收 system 角色(ChatGPT 的 Codex 后端会回
-        // 400 {"detail":"System messages are not allowed"})。那时把系统提示词挪到
-        // Responses 协议自己的 instructions 字段上 —— 内容一个字不少,只是换了个位置。
-        if (!EndpointQuirks.Of(model.Provider).AllowSystemMessages)
-        {
-            options.Instructions = ContextBuilder.MoveSystemPromptOut(request.Messages);
-        }
-
-        var accumulated = new StringBuilder();
-        var updates = new List<ChatResponseUpdate>();
-        int toolCalls = 0;
-        string modelLabel = $"{model.ProviderName} / {model.Name}";
         try
         {
-            await foreach (ChatResponseUpdate update in client
-                               .GetStreamingResponseAsync(request.Messages, options, cancellationToken)
-                               .ConfigureAwait(false))
+            var options = new ChatOptions
             {
-                updates.Add(update);
-                foreach (AIContent content in update.Contents)
-                {
-                    switch (content)
-                    {
-                        case TextContent { Text.Length: > 0 } text:
-                            accumulated.Append(text.Text);
-                            progress?.Invoke(accumulated.ToString());
-                            break;
+                MaxOutputTokens = model.MaxTokens,
+                Temperature = model.Temperature,
+                TopP = model.TopP
+            };
+            AiSettingsStore.ApplyReasoning(options, model);
+            // 这一家端点不认的参数在这儿摘掉。机器人这条路与聊天面板发的是<b>同一批模型</b>,
+            // 少了这一步,订阅型的私有后端(ChatGPT 的 Codex 后端最典型)会整轮 400,
+            // 而且面板里好好的、只有机器人报错 —— 最难想到是这儿漏了。
+            AiSettingsStore.ApplyEndpointQuirks(options, model);
 
-                        case FunctionCallContent call:
-                            toolCalls++;
-                            // 进度里带一句"正在干什么" —— IM 那头看不到工具卡片,
-                            // 一分钟没动静会让人以为机器人死了。
-                            progress?.Invoke($"{accumulated}\n\n_{loc.F("BridgeRunningTool", call.Name)}_");
-                            break;
+            bool nativeSearch = mode != ChatMode.Chat
+                                && ai.WebSearch.Enabled
+                                && ai.WebSearch.PreferProviderNative
+                                && NativeWebSearch.IsSupported(model.Protocol);
+            if (mode != ChatMode.Chat)
+            {
+                mcp.Approval = approval;
+                mcp.ApprovalHandler = approve;
+                IList<AITool> tools = toolbox.CreateTools(mode, nativeSearch);
+                if (mode == ChatMode.Agent && ai.McpServers.Any(s => s.Enabled))
+                {
+                    (List<AITool> mcpTools, List<string> errors) =
+                        await mcp.GetToolsAsync(ai.McpServers, cancellationToken).ConfigureAwait(false);
+                    foreach (AITool tool in mcpTools)
+                    {
+                        tools.Add(tool);
+                    }
+                    if (errors.Count > 0)
+                    {
+                        context.Log.Warn($"Bridge: MCP servers reported: {string.Join("; ", errors)}");
+                    }
+                }
+                if (nativeSearch)
+                {
+                    NativeWebSearch.Apply(options, model, tools, ai.WebSearch.MaxResults);
+                }
+                options.Tools = tools;
+                client = client.AsBuilder()
+                    .UseFunctionInvocation(configure: c => c.MaximumIterationsPerRequest = MaxToolIterations)
+                    .Build();
+            }
+
+            conversation.History.Add(new ChatMessage(ChatRole.User, message.Text));
+            await PersistAsync(conversation, "user", message.Text, cancellationToken).ConfigureAwait(false);
+
+            RequestContext request = ContextBuilder.Build(
+                BuildSystemPrompt(ai, bridge, mode, message, session, nativeSearch),
+                conversation.History, model.MaxInputTokens, model.MaxTokens);
+            // 有的订阅型端点不收 system 角色(ChatGPT 的 Codex 后端会回
+            // 400 {"detail":"System messages are not allowed"})。那时把系统提示词挪到
+            // Responses 协议自己的 instructions 字段上 —— 内容一个字不少,只是换了个位置。
+            if (!EndpointQuirks.Of(model.Provider).AllowSystemMessages)
+            {
+                options.Instructions = ContextBuilder.MoveSystemPromptOut(request.Messages);
+            }
+
+            var accumulated = new StringBuilder();
+            var updates = new List<ChatResponseUpdate>();
+            int toolCalls = 0;
+            string modelLabel = $"{model.ProviderName} / {model.Name}";
+            try
+            {
+                await foreach (ChatResponseUpdate update in client
+                                   .GetStreamingResponseAsync(request.Messages, options, cancellationToken)
+                                   .ConfigureAwait(false))
+                {
+                    updates.Add(update);
+                    foreach (AIContent content in update.Contents)
+                    {
+                        switch (content)
+                        {
+                            case TextContent { Text.Length: > 0 } text:
+                                accumulated.Append(text.Text);
+                                progress?.Invoke(accumulated.ToString());
+                                break;
+
+                            case FunctionCallContent call:
+                                toolCalls++;
+                                // 进度里带一句"正在干什么" —— IM 那头看不到工具卡片,
+                                // 一分钟没动静会让人以为机器人死了。
+                                progress?.Invoke($"{accumulated}\n\n_{loc.F("BridgeRunningTool", call.Name)}_");
+                                break;
+                        }
                     }
                 }
             }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // 把<b>哪个模型</b>带进错误里。群里只看到一句 "401 Unauthorized" 时,
-            // 人第一反应会去查飞书的凭证 —— 而这条 401 来自模型服务商,两者差着十万八千里。
-            // ApiErrorText 顺带把 Anthropic 那种"只有一句 Status Code"的异常展开成服务端原话。
-            throw new InvalidOperationException(
-                $"{modelLabel}: {ApiErrorText.Describe(ex)}", ex);
-        }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // 把<b>哪个模型</b>带进错误里。群里只看到一句 "401 Unauthorized" 时,
+                // 人第一反应会去查飞书的凭证 —— 而这条 401 来自模型服务商,两者差着十万八千里。
+                // ApiErrorText 顺带把 Anthropic 那种"只有一句 Status Code"的异常展开成服务端原话。
+                throw new InvalidOperationException(
+                    $"{modelLabel}: {ApiErrorText.Describe(ex)}", ex);
+            }
 
-        var response = updates.ToChatResponse();
-        conversation.History.AddMessages(response);
-        string reply = response.Text.Trim();
-        if (reply.Length > 0)
-        {
-            await PersistAsync(conversation, "assistant", reply, cancellationToken).ConfigureAwait(false);
+            var response = updates.ToChatResponse();
+            conversation.History.AddMessages(response);
+            string reply = response.Text.Trim();
+            if (reply.Length > 0)
+            {
+                await PersistAsync(conversation, "assistant", reply, cancellationToken).ConfigureAwait(false);
+            }
+            return new BridgeTurn(
+                reply.Length > 0 ? reply : loc["BridgeEmptyReply"],
+                modelLabel,
+                TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt),
+                toolCalls);
         }
-        client.Dispose();
-        return new BridgeTurn(
-            reply.Length > 0 ? reply : loc["BridgeEmptyReply"],
-            modelLabel,
-            TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt),
-            toolCalls);
+        finally
+        {
+            client.Dispose();
+        }
     }
 
     /// <summary>桥接用哪个模型:设置里指定的优先,没指定就跟着面板当前那个。</summary>

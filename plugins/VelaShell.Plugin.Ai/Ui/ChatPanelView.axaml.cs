@@ -47,6 +47,8 @@ public partial class ChatPanelView : UserControl
 {
     private readonly IPluginContext _context;
     private readonly AiSettingsStore _store;
+    /// <summary>被动健康记录:失败进冷却。故障转移挑下一站时先绕开冷却中的接入(见 ProviderHealth)。</summary>
+    private readonly ProviderHealth _health = new();
     private readonly Loc _loc;
     private readonly AgentToolbox _toolbox;
     private readonly McpManager _mcp;
@@ -141,6 +143,75 @@ public partial class ChatPanelView : UserControl
 
     /// <summary>正在由代码回填下拉选中项(别把这一下当成用户在选)。</summary>
     private bool _syncingReasoning;
+
+    /// <summary>下拉正在重载(选中项由设置决定,不是由用户点的):此时的 <c>SelectionChanged</c> 是回声,别回写设置。</summary>
+    private bool _syncingProviders;
+
+    /// <summary>
+    /// 选择变更计数:手选、自动粘住和回滚每次 +1;下拉重载回声不计。
+    /// 故障转移靠它判断选择所有权,包括其它对话自动切走又切回的 ABA。
+    /// </summary>
+    private long _selectionEpoch;
+    private readonly Dictionary<string, string> _lastFirstApiKey = new(StringComparer.Ordinal);
+
+    /// <summary>开跑时固定槽顺序、均摊开关及 active 所有权;每个模型单独排除已试槽。</summary>
+    private sealed class ApiKeyTurnState(AiProvider provider, string[] slots)
+    {
+        public string[] Slots { get; } = slots;
+        public bool Balance { get; } = provider.BalanceApiKeys;
+        public string? OriginalActive { get; } = provider.ActiveApiKeyId;
+        public long ActiveEpoch { get; } = provider.ActiveApiKeySelectionEpoch;
+        public bool CursorAdvanced { get; set; }
+        public Dictionary<string, HashSet<string>> Tried { get; } = new(StringComparer.Ordinal);
+
+        public HashSet<string> TriedFor(string modelId)
+        {
+            if (!Tried.TryGetValue(modelId, out HashSet<string>? tried))
+                Tried[modelId] = tried = new(StringComparer.Ordinal);
+            return tried;
+        }
+    }
+
+    private readonly record struct OAuthAccountSnapshot(string? Id, string? Account, string? Catalog,
+        string? Client, string? Authorization, string? Token, string? Device, string? AccountClaim,
+        string? Exchange, OAuthFlow? Flow, long LoginVersion)
+    {
+        public bool Known => !string.IsNullOrEmpty(Id); // 显示名不是账号身份,不能授权外部令牌替换。
+    }
+
+    private async Task<OAuthAccountSnapshot?> CaptureOAuthAccountAsync(ResolvedModel model,
+        ProviderCredential credential, CancellationToken token)
+    {
+        if (!credential.IsBearerToken) return null;
+        var snapshot = await _store.GetTokenSnapshotAsync(model.Provider.Id, token);
+        OAuthTokens? tokens = snapshot.Tokens;
+        if (tokens is null || tokens.AccessToken != credential.Value) throw new ProviderConfigurationChangedException();
+        return CaptureOAuthIssuer(model.Provider) with
+            { Id = tokens.AccountId, Account = tokens.Account, LoginVersion = snapshot.Version };
+    }
+
+    private static OAuthAccountSnapshot CaptureOAuthIssuer(AiProvider provider)
+    {
+        OAuthConfig? oauth = provider.OAuth;
+        return new OAuthAccountSnapshot(null, null, provider.CatalogId, oauth?.ClientId,
+            oauth?.AuthorizationUrl, oauth?.TokenUrl, oauth?.DeviceCodeUrl, oauth?.AccountIdClaim,
+            oauth?.ExchangeUrl, oauth?.Flow, 0);
+    }
+
+    private static bool SameOAuthAccount(OAuthAccountSnapshot? a, OAuthAccountSnapshot? b)
+    {
+        if (a is not { } left || b is not { } right) return a == b;
+        if (left.Known && right.Known)
+            return left with { Account = null, LoginVersion = 0 } == right with { Account = null, LoginVersion = 0 };
+        return left == right;
+    }
+
+    private static bool SameRenewingAccount(ProviderCredential before, ProviderCredential after,
+        OAuthAccountSnapshot? oldAccount, OAuthAccountSnapshot? newAccount, ResolvedModel model)
+        => before.IsBearerToken && after.IsBearerToken && SameOAuthAccount(oldAccount, newAccount)
+            && SameSuggestionDestination(model, before, after)
+            && SameCredential(before with { Value = after.Value, BaseUrl = after.BaseUrl }, after);
+    private bool _detached;
     private List<SessionInfo> _sessions = [];
     private bool _switchingView;
     private bool _autoScroll = true;
@@ -245,6 +316,17 @@ public partial class ChatPanelView : UserControl
         };
         ProviderCombo.SelectionChanged += (_, _) =>
         {
+            // 重载中的回声整个不算数:换货那一瞬下拉的下标还是旧的,拿它回写会把
+            // 刚刚程序化切过去的那家悄悄改回去;下面"换模型作废临时思考档位"同样是
+            // **用户**换模型才该有的副作用 —— 程序化换站两样都不该有(否则第一次切换
+            // 就把档位清了,后续站跟第一站用的不是同一档)。界面刷新由 ReloadProviderCombo
+            // 收尾统一补,见那边。
+            if (_syncingProviders)
+            {
+                return;
+            }
+            // 手动改选(含改了又改回来):粘住/回滚要认的是"动过",不是"现在指着谁"
+            _selectionEpoch++;
             if (ProviderCombo.SelectedIndex >= 0 && ProviderCombo.SelectedIndex < _providers.Count)
             {
                 _settings.ActiveModelId = _providers[ProviderCombo.SelectedIndex].Id;
@@ -282,6 +364,7 @@ public partial class ChatPanelView : UserControl
     /// <summary>面板关闭时由插件调用,拆除宿主事件订阅并取消进行中的请求。</summary>
     public void Detach()
     {
+        _detached = true;
         _context.Events.SessionConnected -= OnSessionEvent;
         _context.Events.SessionDisconnected -= OnSessionEvent;
         _context.Events.LocaleChanged -= OnLocaleChanged;
@@ -343,6 +426,7 @@ public partial class ChatPanelView : UserControl
         try
         {
             _settings = await _store.LoadAsync();
+            ConfirmProviderRequests();
             _settings.Migrate(); // 旧版的两个布尔开关折算成新的模式枚举
             ModeCombo.SelectedIndex = (int)_settings.Mode;
             ApprovalCombo.SelectedIndex = (int)_settings.Approval;
@@ -559,7 +643,26 @@ public partial class ChatPanelView : UserControl
 
     private void OnProvidersChanged()
     {
+        // 配置变了,健康冷却描述的都是改之前那份 —— 而它们只按模型 id 记(地址、Key、
+        // 协议换完,同一个 id 还是它)。在这里清而不是全局设置窗口里:那扇窗没开时,
+        // 设置页 / 目录页保存走的也是这条路,旧冷却不该活过一次保存 ——
+        // 否则修好的接入还要在接下来 60 秒里被自动切换绕开。放心清:挑下一站时
+        // 还有切换前探测兜底,真坏的会被再探一次拦住。
+        _health.Clear();
+        ConfirmProviderRequests();
+        foreach (string id in _lastFirstApiKey.Keys.Where(id => !_settings.Providers.Any(p => p.Id == id)).ToList())
+        {
+            _lastFirstApiKey.Remove(id);
+        }
+        RefreshProviderViews();
+    }
+
+    private void RefreshProviderViews(bool requestChanged = true)
+    {
         ReloadProviderCombo();
+        // 并发开着的全局设置窗口:故障转移那节的"可添加"下拉也得跟上 ——
+        // 否则新模型排不出去、删掉的模型还能被加进链里存成一个不存在的 id
+        _globalSettingsView?.RefreshFromProviders(requestChanged);
         if (_providers.Count > 0 && StatusText.Text == _loc["NoProvider"])
         {
             StatusText.Text = "";
@@ -683,16 +786,62 @@ public partial class ChatPanelView : UserControl
         }
     }
 
+    /// <summary>
+    /// 重建下拉并把选中项对回 <see cref="AiSettings.ActiveModelId" />。
+    /// </summary>
+    /// <remarks>
+    /// 换 <c>ItemsSource</c> 时 ComboBox 会把选中项先清再(同条数时)按旧下标还原,
+    /// 两下都触发 <c>SelectionChanged</c> —— 那会儿下标指向的还是"换之前"的那一条。
+    /// 所以整段在 <see cref="_syncingProviders" /> 的护罩里做:回声只刷新界面,
+    /// 不回写设置(否则程序化切站 —— 故障转移的粘住 —— 会被这一下顶回原状)。
+    /// </remarks>
     private void ReloadProviderCombo()
     {
-        _providers = _settings.ResolveModels();
-        // 只有一家供应商时前缀是纯噪音;多家并存才需要"供应商 · 模型"来区分同名模型
-        bool prefix = _settings.Providers.Count > 1;
-        ProviderCombo.ItemsSource = _providers
-            .Select(p => prefix && !string.IsNullOrWhiteSpace(p.ProviderName) ? $"{p.ProviderName} · {p.Name}" : p.Name)
-            .ToList();
-        int active = _providers.FindIndex(p => p.Id == _settings.ActiveModelId);
-        ProviderCombo.SelectedIndex = active >= 0 ? active : (_providers.Count > 0 ? 0 : -1);
+        if (_detached) return;
+        // 重载前下拉指着的那份 —— 临时思考档位的主人。要在重建 _providers **之前**记:
+        // 旧表一换,这个 id 就再也找不回来了。
+        string? previousId = ActiveProvider?.Id;
+        _syncingProviders = true;
+        try
+        {
+            _providers = _settings.ResolveModels();
+            // 只有一家供应商时前缀是纯噪音;多家并存才需要"供应商 · 模型"来区分同名模型
+            bool prefix = _settings.Providers.Count > 1;
+            ProviderCombo.ItemsSource = _providers
+                .Select(p => prefix && !string.IsNullOrWhiteSpace(p.ProviderName) ? $"{p.ProviderName} · {p.Name}" : p.Name)
+                .ToList();
+            int active = _providers.FindIndex(p => p.Id == _settings.ActiveModelId);
+            if (active < 0 && _providers.Count > 0)
+            {
+                // ActiveModelId 为空、或指向刚被删掉的模型:界面显示并实际在用的都是第一项 ——
+                // 把这个有效选择**写回设置**。否则 selectionIntact 永远为假(实际用的 A ≠
+                // 记录的旧 id),第一站故障切走后粘不住,下一轮又从故障站起(review③)。
+                // 注意删除路径多半由 SettingsView 先自己修好 id,未必走得到这条兜底。
+                _settings.ActiveModelId = _providers[0].Id;
+                _ = PersistSettingsAsync();
+            }
+            ProviderCombo.SelectedIndex = active >= 0 ? active : (_providers.Count > 0 ? 0 : -1);
+        }
+        finally
+        {
+            _syncingProviders = false;
+        }
+        // 临时思考档位跟着它的主人走:重载后下拉指着的**已经不是**重载前那一个了,
+        // 上一家的档位就该作废 —— 否则粘住换到 B 之后,A 的 High 会一直套在 B 头上,
+        // 直到用户手动纠正(review⑥#6;同理删掉当前模型时 A 的档位也不该跟着落到别人
+        // 头上,review④那条一起被这个条件覆盖)。粘住换站、删当前模型、悬空兜底落到
+        // 别家都得作废;同一模型的普通刷新保留,但新规格明确不支持思考时也得作废。
+        // 手动换模型仍由选择处理器自己清(它不在同步护罩里)。
+        if (_reasoningOverride is not null &&
+            (previousId != ActiveProvider?.Id || ActiveProvider?.ReasoningAdjustable == false
+             || _reasoningOverride == ActiveProvider?.Config.Reasoning))
+        {
+            _reasoningOverride = null;
+        }
+        // 回声被上面的闸挡掉了,界面侧该跟着变的两样在这儿补:换了接入,
+        // 思考档位芯片与上下文占比都得按新那家重画(此前由回声顺带跑,现在显式跑)
+        SyncReasoningUi();
+        UpdateUsageText();
     }
 
     private ResolvedModel? ActiveProvider
@@ -751,11 +900,14 @@ public partial class ChatPanelView : UserControl
             return;
         }
         int window = ActiveProvider?.MaxInputTokens ?? 0;
+        string windowWarning = _loc.ContextWindowWarning(window, ActiveProvider?.Config.DefaultContextWindow);
+        ToolTip.SetTip(ProviderCombo, windowWarning.Length > 0 ? _loc["Model"] + "\n" + windowWarning : _loc["Model"]);
+        Avalonia.Automation.AutomationProperties.SetHelpText(ProviderCombo, windowWarning);
         if (TotalInputTokens == 0 && TotalOutputTokens == 0)
         {
             UsageText.Text = "";
             UsageMeterTrack.IsVisible = false;
-            ToolTip.SetTip(UsageText, _loc["UsageIdle"]);
+            ToolTip.SetTip(UsageText, windowWarning.Length > 0 ? _loc["UsageIdle"] + "\n" + windowWarning : _loc["UsageIdle"]);
             return;
         }
 
@@ -810,6 +962,7 @@ public partial class ChatPanelView : UserControl
             detail.Append(_loc.F("UsageLimitsLine",
                 $"{provider.MaxTokens:N0}",
                 window > 0 ? $"{window:N0}" : "—"));
+            if (windowWarning.Length > 0) detail.AppendLine().Append(windowWarning);
         }
         ToolTip.SetTip(UsageText, detail.ToString().TrimEnd());
     }
@@ -1039,6 +1192,7 @@ public partial class ChatPanelView : UserControl
 
     private async Task PersistSettingsAsync()
     {
+        if (_detached) return; // 关闭的旧面板无权覆盖新面板的共享配置;历史结算仍继续。
         try
         {
             await _store.SaveAsync(_settings);
@@ -1047,6 +1201,12 @@ public partial class ChatPanelView : UserControl
         {
             _context.Log.Error("Persist AI settings failed.", ex);
         }
+    }
+
+    private Task PersistGlobalSettingsAsync(AiSettings draft)
+    {
+        if (_detached) throw new InvalidOperationException(_loc["SetupConfigChanged"]);
+        return _store.SaveGlobalSettingsAsync(_settings, draft, _context.Shutdown);
     }
 
     // ---------- 发送与流式渲染 ----------
@@ -1189,6 +1349,7 @@ public partial class ChatPanelView : UserControl
         // 置进 _turnScope 后,这条方法(及它 await 出去的整条流水线)所有代理都落到这份上,
         // 而不是"此刻正显示的那份"—— 这就是切走之后它还能把话答完、且不串台的关键。
         Conversation conv = Cur;
+        string turnConversationId = conv.ConversationId;
         _turnScope.Value = conv;
         // 只带附件、正文为空也算一次有效发送(比如"看看这张图")
         if (text.Length == 0 && _attachments.Count == 0 && prepared is null)
@@ -1246,9 +1407,39 @@ public partial class ChatPanelView : UserControl
         long startedAt = Environment.TickCount64;
         bool cancelled = false;
         bool failed = false;
+        // 故障转移:切成功后 ActiveModelId 会改写并落盘(粘住新接入);
+        // 这轮没答完(取消/整链都挂)时退回原来那一站 —— 但只在期间没人动过选择时才退:
+        // 用户刚手动改的、或另一份对话刚切过去的,是更新的选择,这条老请求无权盖掉(见 finally)。
+        string? originalModelId = _settings.ActiveModelId;
+        long turnSelectionEpoch = _selectionEpoch; // 手选和其它对话的自动选择优先;本轮换站后同步自己的快照
+        string? switchedToId = null;
+        bool switched = false;
+        // 每次粘住写入时的选择代次:之后哪怕自动或手动切走又切回同一站,
+        // 也是更新的选择,这条老请求无权再盖(见 finally)。
+        long stickyEpoch = 0;
+        // 本轮已经试挂过的站(含最初那站):候选里整轮排除 —— 否则 A→B→C 链里 B 失败时
+        // A 的 60 秒冷却恰好过期,候选又排回 A,跳数被原地烧掉,健康的 C 永远轮不上(review⑤)。
+        HashSet<string> triedThisTurn = new(StringComparer.Ordinal);
+        // "答上来了"与 failed 分开记:回复之后的入库/落盘失败不算"这一轮没跑成" ——
+        // 新接入已经把话说完,此时回滚等于把它拽回一个已知坏的原站。
+        bool answered = false;
+        ProviderCredential verifiedCredential = default;
+        OAuthAccountSnapshot? verifiedAccount = null;
+        long verifiedProviderVersion = _store.ProviderConfigurationVersion(provider.Provider);
+        string? selectedKeyId = null;
+        var keyStates = _settings.Providers.Where(p => p.Auth == AuthMethod.ApiKey && p.Models.Any(m => !m.HasOwnApiKey))
+            .ToDictionary(p => p.Id,
+            p => new ApiKeyTurnState(p, [.. _store.ProviderApiKeyIds(p)]),
+            StringComparer.Ordinal);
+        string verifiedModel = provider.Model;
+        // ResolvedModel 持有设置页可就地改动的 Config;结果只记本轮实际尝试发送的型号。
+        string modelLabel = ModelLabel(provider);
+        int verifiedVersion = 0; // 每次真实流式请求开始时取配置代际,仅限制旧健康结果写回
+        long verifiedObservation = 0; // 每次真实流式请求单独取号,同模型的并发结果按起跑顺序结算
         string replyText = "";
         try
         {
+            TurnHistoryStart = History.Count; // 消息准备若失败,不能误删上轮的历史
             ChatMessage userMessage;
             if (prepared is { } queued)
             {
@@ -1278,95 +1469,26 @@ public partial class ChatPanelView : UserControl
             TrimMessageWindow(); // 常驻条数封顶,别让可视树越聊越长
             RequestAutoScroll(force: true);
 
-            // 插话通道垫在最里层(下面那层函数调用循环<b>之内</b>):循环每跑一步都要经过它,
-            // 排队中的补充说明就能赶在模型下一步之前进上下文(见 SteeringChatClient)。
-            var steering = new SteeringChatClient(
-                await _store.CreateClientAsync(provider, cancellationToken: token),
-                SteeringQueue, () => OnSteeringDelivered(conv));
-            BeginSteering(steering);
-            IChatClient client = steering;
-            var options = new ChatOptions
-            {
-                MaxOutputTokens = provider.MaxTokens,
-                Temperature = provider.Temperature,
-                TopP = provider.TopP,
-                StopSequences = SplitLines(provider.StopSequences)
-            };
-            // 思考档位:Default 表示"不带这个参数",交给服务端的默认行为。两家协议的翻译方式
-            // 不同(OpenAI 认 ChatOptions.Reasoning,Anthropic 只认请求体里的 thinking),
-            // 差异全收在 AiSettingsStore.ApplyReasoning 里。
-            AiSettingsStore.ApplyReasoning(options, provider);
-            // 这一家端点不认的参数在这儿摘掉(私有后端常常只是标准协议的受限子集,
-            // 多发一个字段就整轮 400)。差异全在目录数据里,见 UnsupportedParameters。
-            AiSettingsStore.ApplyEndpointQuirks(options, provider);
+            // ── 以下按"当前这一站"装配;换一家时清干净整段重来(见下面的 hop 循环)。
+            // 上下文每一轮由 ContextBuilder 从 History 现装配、与协议无关,切换后重新 Build
+            // 一次即可 —— 历史一个字都不会丢(见 ContextBuilder)。
+            ResolvedModel current = provider;
+            // 这一轮属于哪档、用哪档思考 —— 开跑时定死,整轮(含换站后的重装配)沿用。
+            // 中途有人改了模式下拉,也不该把正在跑的这一轮升格成 Agent:那会让同一轮
+            // 前后带的工具不一致,甚至给本该只读的对话补上能动手的。
             ChatMode mode = _settings.Mode;
-            // 检索优先走供应商自带的服务端工具:它跑在模型那一侧,不经本机,结果自带引用。
-            // 但只有 Anthropic Messages 与 OpenAI Responses 认这套,其余协议(Chat Completions、
-            // Ollama、多数中转站)解不出来,回落到插件自带的 web_search。用户可以在全局设置里关掉。
-            bool nativeSearch = mode != ChatMode.Chat
-                                && _settings.WebSearch.Enabled
-                                && _settings.WebSearch.PreferProviderNative
-                                && NativeWebSearch.IsSupported(provider.Protocol);
-            // 纯对话模式不给任何工具;计划模式只给只读工具(见 AgentToolbox.CreateTools)
-            if (mode != ChatMode.Chat)
-            {
-                ApplyApprovalMode(); // 挡位推给工具箱与 MCP(中途再改也会经这条路重推)
-                _toolbox.DisabledTools = new HashSet<string>(
-                    SplitLines(_settings.DisabledBuiltinTools) ?? [], StringComparer.OrdinalIgnoreCase);
-                _toolbox.WebSearch = _settings.WebSearch;
-                IList<AITool> tools = _toolbox.CreateTools(mode, nativeSearch);
-                // 计划模式下不接 MCP:那些工具的副作用由第三方服务器说了算,插件无从判断,
-                // 而"计划"的承诺是这一步不动任何东西。
-                if (mode == ChatMode.Agent && _settings.McpServers.Any(s => s.Enabled))
-                {
-                    SetStatus(_loc["McpConnecting"]);
-                    (List<AITool> mcpTools, List<string> mcpErrors) = await _mcp.GetToolsAsync(_settings.McpServers, token);
-                    foreach (AITool tool in mcpTools)
-                    {
-                        tools.Add(tool);
-                    }
-                    SetStatus(mcpErrors.Count > 0
-                        ? $"{_loc["Error"]} (MCP): {string.Join("; ", mcpErrors)}"
-                        : "");
-                }
-                if (nativeSearch)
-                {
-                    // 必须排在 ApplyReasoning 之后:Anthropic 那条路是在思考配置留下的
-                    // RawRepresentationFactory 上叠一层,先叠会被后设的整个盖掉。
-                    NativeWebSearch.Apply(options, provider, tools, _settings.WebSearch.MaxResults);
-                }
-                options.Tools = tools;
-                client = client.AsBuilder()
-                    .UseFunctionInvocation(configure: c => c.MaximumIterationsPerRequest = 25)
-                    .Build();
-            }
-
-            // 快撑满窗口就先把早期对话折成摘要(压不动也不拦,下面的装配还会兜底丢最早几条)
-            await CompactIfNeededAsync(provider, token);
-            // 装配上下文:摘要 + 近几轮原文,按窗口裁剪并把相邻同角色的消息并起来(见 ContextBuilder)
-            RequestContext request = ContextBuilder.Build(
-                BuildSystemPrompt(mode, nativeSearch), History, provider.MaxInputTokens, provider.MaxTokens,
-                ContextSummary, SummarizedThrough);
-            List<ChatMessage> requestMessages = request.Messages;
-            DroppedFromContext = request.DroppedMessages;
-            // 有的订阅型端点不收 system 角色(ChatGPT 的 Codex 后端会回
-            // 400 {"detail":"System messages are not allowed"})。那时把系统提示词挪到
-            // Responses 协议自己的 instructions 字段上 —— 内容一个字不少,只是换了个位置。
-            if (!EndpointQuirks.Of(provider.Provider).AllowSystemMessages)
-            {
-                options.Instructions = ContextBuilder.MoveSystemPromptOut(requestMessages);
-            }
-            // Anthropic 的提示词缓存断点(其它协议不认这个标记,打了也只是多一个被忽略的字段)
-            if (provider.Protocol == ChatProtocol.AnthropicMessages && provider.PromptCaching)
-            {
-                PromptCache.Apply(requestMessages);
-            }
-            else
-            {
-                // 关掉之后要把历史上残留的标记抹干净,否则一直挂着(内容对象跨轮复用)
-                PromptCache.Clear(History);
-            }
-
+            ReasoningLevel? turnOverride = provider.ReasoningOverride;
+            ResolvedModel WithTurn(ResolvedModel model)
+                => model.WithReasoning(model.ReasoningAdjustable ? turnOverride : ReasoningLevel.Default);
+            // 最多能换几站:开跑时数一次(链上除自己以外的站数),作为硬上限
+            int maxHops = _settings.FailoverCandidates(current).Count;
+            IChatClient client = null!;
+            ChatOptions options = null!;
+            List<ChatMessage> requestMessages = [];
+            int hop = 0;
+            bool credentialReady = false;
+            bool mustRevalidateProbe = false;
+            bool assembled = false;
             var updates = new List<ChatResponseUpdate>();
             // 网络流在线程池上消费,增量封送回 UI 线程,避免 SSE 读循环占用 UI。
             // 快流下逐 token Post 会打爆 UI 调度器:增量先入队,队列非空时只挂一次
@@ -1391,47 +1513,537 @@ public partial class ChatPanelView : UserControl
                 RequestAutoScroll();
             }
 
-            async Task StreamOnceAsync() => await Task.Run(async () =>
+            Action<UsageDetails> recordProbeUsage = usage => RecordUsage(usage, isContext: false);
+            // 已选 Key 槽保持固定;MCP/摘要等待后订阅续期和思考能力变化仍须重新证明。
+            async Task<bool> RefreshBeforeSendAsync()
             {
-                await foreach (ChatResponseUpdate update in client
-                                   .GetStreamingResponseAsync(requestMessages, options, token)
-                                   .ConfigureAwait(false))
+                if (_store.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
+                    throw new ProviderConfigurationChangedException();
+                if (!SameEndpoint(current, _settings.FindModel(current.Id))
+                    || !string.Equals(current.Model, verifiedModel, StringComparison.Ordinal))
                 {
-                    updates.Add(update);
-                    bool schedule;
-                    lock (pendingSync)
+                    throw new ProviderConfigurationChangedException();
+                }
+                var latestResolution = await _store.ResolveCredentialWithKeyIdAsync(current, token, keyId: selectedKeyId);
+                ProviderCredential latest = latestResolution.Credential;
+                OAuthAccountSnapshot? latestAccount = await CaptureOAuthAccountAsync(current, latest, token);
+                bool renewal = SameRenewingAccount(verifiedCredential, latest, verifiedAccount, latestAccount, current);
+                if (!SameOAuthAccount(verifiedAccount, latestAccount) || (!SameCredential(verifiedCredential, latest) && !renewal))
+                    throw new ProviderConfigurationChangedException();
+                bool stillVerified = latestResolution.KeyId == selectedKeyId && SameCredential(verifiedCredential, latest)
+                    && await StillVerifiedAsync(current, verifiedCredential, token, verifiedModel, selectedKeyId, verifiedProviderVersion);
+                ResolvedModel? latestModel = _settings.FindModel(current.Id);
+                if (stillVerified && latestModel is not null
+                    && current.Reasoning == WithTurn(latestModel).Reasoning)
+                {
+                    return false;
+                }
+                if (!SameEndpoint(current, _settings.FindModel(current.Id))
+                    || !string.Equals(current.Model, verifiedModel, StringComparison.Ordinal))
+                {
+                    throw new ProviderConfigurationChangedException();
+                }
+                // 已在发送前刷新;下面的复验只读取落库凭据,不再次旋转令牌。
+                if (hop == 0 && !mustRevalidateProbe && selectedKeyId is null)
+                {
+                    current = WithTurn(_settings.FindModel(current.Id)!);
+                    verifiedCredential = latest;
+                }
+                else
+                {
+                    if (!renewal && !SameCredential(verifiedCredential, latest))
                     {
-                        pendingUpdates.Add(update);
-                        schedule = !drainScheduled;
-                        drainScheduled = true;
+                        throw new ProviderConfigurationChangedException();
                     }
-                    if (schedule)
+                    ResolvedModel fresh = _settings.FindModel(current.Id)!;
+                    current = WithTurn(fresh);
+                    verifiedVersion = _health.Version;
+                    verifiedObservation = _health.BeginObservation();
+                    SetStatus(_loc.F("FailoverProbing", current.Name));
+                    (Exception? probeError, _) = await HealthProbe.ProbeAsync(_store, current, latest, token, recordProbeUsage);
+                    if (probeError is not null)
                     {
-                        Dispatcher.UIThread.Post(DrainUpdates);
+                        throw probeError;
+                    }
+                    verifiedCredential = latest;
+                }
+                verifiedAccount = latestAccount;
+                if (!await StillVerifiedAsync(current, verifiedCredential, token, verifiedModel, selectedKeyId, verifiedProviderVersion)
+                    || _settings.FindModel(current.Id) is not { } verifiedFresh
+                    || current.Reasoning != WithTurn(verifiedFresh).Reasoning)
+                {
+                    throw new ProviderConfigurationChangedException();
+                }
+                return true;
+            }
+
+            async Task VerifyFixedRequestAsync(CancellationToken cancellationToken, bool formal = false)
+            {
+                if (!Dispatcher.UIThread.CheckAccess())
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() => VerifyFixedRequestAsync(cancellationToken, formal));
+                    return;
+                }
+                if (_store.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
+                    throw new ProviderConfigurationChangedException();
+                if (!SameEndpoint(current, _settings.FindModel(current.Id))
+                    || !string.Equals(current.Model, verifiedModel, StringComparison.Ordinal))
+                    throw new ProviderConfigurationChangedException();
+                var latest = await _store.ResolveCredentialWithKeyIdAsync(current, cancellationToken, keyId: selectedKeyId);
+                OAuthAccountSnapshot? account = await CaptureOAuthAccountAsync(current, latest.Credential, cancellationToken);
+                bool renewed = !SameCredential(verifiedCredential, latest.Credential);
+                if (latest.KeyId != selectedKeyId || !SameOAuthAccount(verifiedAccount, account)
+                    || (renewed && !SameRenewingAccount(verifiedCredential, latest.Credential, verifiedAccount, account, current))
+                    || !await StillVerifiedAsync(current, latest.Credential, cancellationToken, verifiedModel, selectedKeyId, verifiedProviderVersion)
+                    || !SameOAuthAccount(account, await CaptureOAuthAccountAsync(current, latest.Credential, cancellationToken)))
+                    throw new ProviderConfigurationChangedException();
+                cancellationToken.ThrowIfCancellationRequested();
+                if (hop > 0 && renewed)
+                {
+                    string oldEndpoint = string.IsNullOrWhiteSpace(verifiedCredential.BaseUrl) ? current.BaseUrl : verifiedCredential.BaseUrl;
+                    string newEndpoint = string.IsNullOrWhiteSpace(latest.Credential.BaseUrl) ? current.BaseUrl : latest.Credential.BaseUrl;
+                    // 最后发送护栏不重新授权目的地；下一站必须先经过正常候选探活。
+                    if (!string.Equals(oldEndpoint, newEndpoint, StringComparison.Ordinal))
+                        throw new ProviderConfigurationChangedException();
+                }
+                if (renewed) Steering!.ReplaceInnerClient(_store.CreateClient(current, latest.Credential));
+                verifiedCredential = latest.Credential;
+                verifiedAccount = account;
+                ApiKeyTurnState? state = keyStates.GetValueOrDefault(current.Provider.Id);
+                if (formal && selectedKeyId is { } firstKey && state is { Balance: true, CursorAdvanced: false })
+                {
+                    _lastFirstApiKey[current.Provider.Id] = firstKey;
+                    state.CursorAdvanced = true;
+                }
+            }
+
+            SteeringChatClient WrapForSteering(IChatClient inner)
+            {
+                SteeringChatClient channel = null!;
+                channel = new SteeringChatClient(inner, SteeringQueue, () => OnSteeringDelivered(conv, channel),
+                    cancellationToken => VerifyFixedRequestAsync(cancellationToken, formal: true));
+                return channel;
+            }
+
+            void RecordUsage(UsageDetails? usage, bool isContext = true)
+            {
+                if (conv.ConversationId != turnConversationId)
+                {
+                    return;
+                }
+                if (isContext)
+                {
+                    LastInputTokens = usage?.InputTokenCount ?? 0;
+                    LastCachedInputTokens = usage?.CachedInputTokenCount ?? 0;
+                }
+                if (usage is null)
+                {
+                    if (isContext) UpdateUsageText();
+                    return;
+                }
+                TotalInputTokens += usage.InputTokenCount ?? 0;
+                TotalOutputTokens += usage.OutputTokenCount ?? 0;
+                TotalReasoningTokens += usage.ReasoningTokenCount ?? 0;
+                TotalCachedInputTokens += usage.CachedInputTokenCount ?? 0;
+                TotalCacheWriteTokens += usage.AdditionalCounts?.GetValueOrDefault("CacheCreationInputTokens") ?? 0;
+                UpdateUsageText();
+            }
+
+            async Task StreamOnceAsync()
+            {
+                if (await RefreshBeforeSendAsync())
+                {
+                    // 摘要期间刷新了令牌：重新装配，不允许旧 inner 再发正式流。
+                    await AssembleAsync();
+                    if (!await StillVerifiedAsync(current, verifiedCredential, token, verifiedModel, selectedKeyId)
+                        || _settings.FindModel(current.Id) is not { } fresh
+                        || current.Reasoning != WithTurn(fresh).Reasoning)
+                    {
+                        throw new ProviderConfigurationChangedException();
                     }
                 }
-            }, token);
-
-            // 断在开口之前就重来 —— 一次网络抖动不该让整轮作废。
-            // 已经吐出内容再断就不重试了:没有断点续传,重来会把已显示的那半截重复一遍。
-            for (int attempt = 0; ; attempt++)
-            {
+                modelLabel = string.IsNullOrWhiteSpace(verifiedModel) ? current.Name : verifiedModel;
+                verifiedVersion = _health.Version;
+                verifiedObservation = _health.BeginObservation();
                 try
                 {
-                    await StreamOnceAsync();
-                    break;
-                }
-                catch (Exception ex) when (attempt < StreamRetries && updates.Count == 0
-                                           && !token.IsCancellationRequested && TransientFailure.IsTransient(ex))
-                {
-                    _context.Log.Warn($"Stream failed before any content (attempt {attempt + 1}): {ex.Message}");
-                    // 重试是瞬时故障,给 warn 色区别于普通提示;成功后连色带字一起撤掉
-                    if (IsForeground)
+                    await Task.Run(async () =>
                     {
-                        StatusText.Classes.Add("retrying");
+                        await foreach (ChatResponseUpdate update in client
+                                           .GetStreamingResponseAsync(requestMessages, options, token)
+                                           .ConfigureAwait(false))
+                        {
+                            updates.Add(update);
+                            bool schedule;
+                            lock (pendingSync)
+                            {
+                                pendingUpdates.Add(update);
+                                schedule = !drainScheduled;
+                                drainScheduled = true;
+                            }
+                            if (schedule)
+                            {
+                                Dispatcher.UIThread.Post(DrainUpdates);
+                            }
+                        }
+                    }, token);
+                    if (!HasMeaningfulOutput(updates))
+                    {
+                        throw new HealthProbe.EmptyReplyException();
                     }
-                    SetStatus(_loc.F("Retrying", attempt + 1));
-                    await Task.Delay(TimeSpan.FromMilliseconds(400 * (attempt + 1)), token);
+                }
+                catch
+                {
+                    // 各次空流的 usage 属于真实已计费请求；只结算一次，不并入后续回答正文。
+                    if (updates.Count > 0)
+                    {
+                        RecordUsage(updates.ToChatResponse().Usage, isContext: false);
+                    }
+                    throw;
+                }
+            }
+
+            // 换 Key 或模型时重新装配客户端、参数、工具和上下文,不追加用户消息。
+            async Task AssembleAsync()
+            {
+                client?.Dispose();
+                client = null!;
+                // 上一站可能留下半拍增量或一个在途的封送,先清干净
+                if (assembled) bubble.ResetUnopenedContent();
+                assembled = true;
+                updates.Clear();
+                lock (pendingSync)
+                {
+                    pendingUpdates.Clear();
+                    drainScheduled = false;
+                }
+
+                if (!credentialReady)
+                {
+                    // 首站配置/凭据准备都在 hop 内复验;失效配置不能出境,未开口时可换下一站。
+                    if (!string.Equals(current.Model, verifiedModel, StringComparison.Ordinal)
+                        || !SameEndpoint(current, _settings.FindModel(current.Id)))
+                    {
+                        throw new ProviderConfigurationChangedException();
+                    }
+                    OAuthAccountSnapshot issuerBeforeResolve = CaptureOAuthIssuer(current.Provider);
+                    var initial = await SelectFirstApiKeyAsync(current, keyStates.GetValueOrDefault(current.Provider.Id), automatic: false, token)
+                        ?? throw new ProviderConfigurationChangedException();
+                    if (initial.Credential.IsBearerToken && CaptureOAuthIssuer(current.Provider) != issuerBeforeResolve)
+                        throw new ProviderConfigurationChangedException();
+                    if (_store.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
+                        throw new ProviderConfigurationChangedException();
+                    if (!string.Equals(current.Model, verifiedModel, StringComparison.Ordinal)
+                        || !SameEndpoint(current, _settings.FindModel(current.Id)))
+                    {
+                        throw new ProviderConfigurationChangedException();
+                    }
+                    verifiedCredential = initial.Credential;
+                    verifiedAccount = await CaptureOAuthAccountAsync(current, verifiedCredential, token);
+                    selectedKeyId = initial.KeyId;
+                    credentialReady = true;
+                }
+
+                // 插话通道垫在最里层(下面那层函数调用循环<b>之内</b>):循环每跑一步都要经过它,
+                // 排队中的补充说明就能赶在模型下一步之前进上下文(见 SteeringChatClient)。
+                IChatClient inner = _store.CreateClient(current, verifiedCredential);
+                var steering = WrapForSteering(inner);
+                client = steering;
+                await BeginSteering(steering);
+                options = new ChatOptions
+                {
+                    MaxOutputTokens = current.MaxTokens,
+                    Temperature = current.Temperature,
+                    TopP = current.TopP,
+                    StopSequences = SplitLines(current.StopSequences)
+                };
+                // 思考档位:Default 表示"不带这个参数",交给服务端的默认行为。两家协议的翻译方式
+                // 不同(OpenAI 认 ChatOptions.Reasoning,Anthropic 只认请求体里的 thinking),
+                // 差异全收在 AiSettingsStore.ApplyReasoning 里。
+                AiSettingsStore.ApplyReasoning(options, current);
+                // 这一家端点不认的参数在这儿摘掉(私有后端常常只是标准协议的受限子集,
+                // 多发一个字段就整轮 400)。差异全在目录数据里,见 UnsupportedParameters。
+                AiSettingsStore.ApplyEndpointQuirks(options, current);
+                // 检索优先走供应商自带的服务端工具:它跑在模型那一侧,不经本机,结果自带引用。
+                // 但只有 Anthropic Messages 与 OpenAI Responses 认这套,其余协议(Chat Completions、
+                // Ollama、多数中转站)解不出来,回落到插件自带的 web_search。用户可以在全局设置里关掉。
+                bool nativeSearch = mode != ChatMode.Chat
+                                    && _settings.WebSearch.Enabled
+                                    && _settings.WebSearch.PreferProviderNative
+                                    && NativeWebSearch.IsSupported(current.Protocol);
+                // 纯对话模式不给任何工具;计划模式只给只读工具(见 AgentToolbox.CreateTools)
+                if (mode != ChatMode.Chat)
+                {
+                    ApplyApprovalMode(); // 挡位推给工具箱与 MCP(中途再改也会经这条路重推)
+                    _toolbox.DisabledTools = new HashSet<string>(
+                        SplitLines(_settings.DisabledBuiltinTools) ?? [], StringComparer.OrdinalIgnoreCase);
+                    _toolbox.WebSearch = _settings.WebSearch;
+                    IList<AITool> tools = _toolbox.CreateTools(mode, nativeSearch);
+                    // 计划模式下不接 MCP:那些工具的副作用由第三方服务器说了算,插件无从判断,
+                    // 而"计划"的承诺是这一步不动任何东西。
+                    if (mode == ChatMode.Agent && _settings.McpServers.Any(s => s.Enabled))
+                    {
+                        SetStatus(_loc["McpConnecting"]);
+                        (List<AITool> mcpTools, List<string> mcpErrors) = await _mcp.GetToolsAsync(_settings.McpServers, token);
+                        foreach (AITool tool in mcpTools)
+                        {
+                            tools.Add(tool);
+                        }
+                        SetStatus(mcpErrors.Count > 0
+                            ? $"{_loc["Error"]} (MCP): {string.Join("; ", mcpErrors)}"
+                            : "");
+                    }
+                    // MCP await 后先复验；更新后必须同时重建裸客户端与正式请求参数。
+                    if (await RefreshBeforeSendAsync())
+                    {
+                        client.Dispose();
+                        client = null!;
+                        inner = _store.CreateClient(current, verifiedCredential);
+                        steering = WrapForSteering(inner);
+                        client = steering;
+                        await BeginSteering(steering);
+                        options = new ChatOptions
+                        {
+                            MaxOutputTokens = current.MaxTokens,
+                            Temperature = current.Temperature,
+                            TopP = current.TopP,
+                            StopSequences = SplitLines(current.StopSequences)
+                        };
+                        AiSettingsStore.ApplyReasoning(options, current);
+                        AiSettingsStore.ApplyEndpointQuirks(options, current);
+                    }
+                    if (nativeSearch)
+                    {
+                        // 必须排在 ApplyReasoning 之后:Anthropic 那条路是在思考配置留下的
+                        // RawRepresentationFactory 上叠一层,先叠会被后设的整个盖掉。
+                        NativeWebSearch.Apply(options, current, tools, _settings.WebSearch.MaxResults);
+                    }
+                    options.Tools = tools;
+                    client = client.AsBuilder()
+                        .UseFunctionInvocation(configure: c => c.MaximumIterationsPerRequest = 25)
+                        .Build();
+                }
+
+                // MCP 结束后完整复验，而非仅比较 BaseUrl：摘要不能使用已切账号的旧 inner。
+                if (mode == ChatMode.Chat && await RefreshBeforeSendAsync())
+                {
+                    client.Dispose();
+                    client = null!;
+                    inner = _store.CreateClient(current, verifiedCredential);
+                    steering = WrapForSteering(inner);
+                    client = steering;
+                    await BeginSteering(steering);
+                    options = new ChatOptions
+                    {
+                        MaxOutputTokens = current.MaxTokens,
+                        Temperature = current.Temperature,
+                        TopP = current.TopP,
+                        StopSequences = SplitLines(current.StopSequences)
+                    };
+                    AiSettingsStore.ApplyReasoning(options, current);
+                    AiSettingsStore.ApplyEndpointQuirks(options, current);
+                }
+                await CompactIfNeededAsync(current, token, async cancellationToken =>
+                {
+                    await VerifyFixedRequestAsync(cancellationToken);
+                    return Steering!.RequestClient;
+                });
+                // 装配上下文:摘要 + 近几轮原文,按窗口裁剪并把相邻同角色的消息并起来(见 ContextBuilder)
+                RequestContext request = ContextBuilder.Build(
+                    BuildSystemPrompt(current, mode, nativeSearch), History, current.MaxInputTokens, current.MaxTokens,
+                    ContextSummary, SummarizedThrough);
+                requestMessages = request.Messages;
+                DroppedFromContext = request.DroppedMessages;
+                // 有的订阅型端点不收 system 角色(ChatGPT 的 Codex 后端会回
+                // 400 {"detail":"System messages are not allowed"})。那时把系统提示词挪到
+                // Responses 协议自己的 instructions 字段上 —— 内容一个字不少,只是换了个位置。
+                if (!EndpointQuirks.Of(current.Provider).AllowSystemMessages)
+                {
+                    options.Instructions = ContextBuilder.MoveSystemPromptOut(requestMessages);
+                }
+                // Anthropic 的提示词缓存断点(其它协议不认这个标记,打了也只是多一个被忽略的字段)
+                if (current.Protocol == ChatProtocol.AnthropicMessages && current.PromptCaching)
+                {
+                    PromptCache.Apply(requestMessages);
+                }
+                else
+                {
+                    // 关掉之后要把历史上残留的标记抹干净,否则一直挂着(内容对象跨轮复用)
+                    PromptCache.Clear(History);
+                }
+            }
+
+            // ── 站与站之间:开口之前断掉或空结先原地重来一次,再换一家 ──
+            while (true)
+            {
+                provider = current; // 收尾、标模型名都按最后这一站
+                verifiedVersion = _health.Version;
+                verifiedObservation = _health.BeginObservation();
+                try
+                {
+                    await AssembleAsync();
+                    // 没开口就断掉或只返回元数据便结束可以重来 —— 一次短暂故障不该让整轮作废。
+                    // 已经吐出内容再断就不重试了:没有断点续传,重来会把已显示的那半截重复一遍。
+                    for (int attempt = 0; ; attempt++)
+                    {
+                        try
+                        {
+                            await StreamOnceAsync();
+                            break;
+                        }
+                        catch (Exception ex) when (attempt < StreamRetries && !HasMeaningfulOutput(updates)
+                                                   && !token.IsCancellationRequested && TransientFailure.IsTransient(ex))
+                        {
+                            _context.Log.Warn($"Stream failed before any content (attempt {attempt + 1}): {ex.Message}");
+                            // 未开口时给 warn 色区别于普通提示;成功后连色带字一起撤掉
+                            if (IsForeground)
+                            {
+                                StatusText.Classes.Add("retrying");
+                            }
+                            SetStatus(_loc.F("Retrying", attempt + 1));
+                            await Task.Delay(TimeSpan.FromMilliseconds(400 * (attempt + 1)), token);
+                            bubble.ResetUnopenedContent();
+                            updates.Clear(); // 前一次可能只有 role / usage 等不可见帧,不并进重试的回答
+                            lock (pendingSync)
+                            {
+                                pendingUpdates.Clear();
+                                drainScheduled = false;
+                            }
+                        }
+                    }
+                    answered = true;
+                    // 成功也是健康数据:不记的话,一家失败后被手动切过去、这轮又答成功了,
+                    // 它先前那次失败的 60s 冷却还压着,后续自动转移会跳过这个已被证明可用的选择
+                    _health.Record(current.Id, true, verifiedVersion, verifiedObservation);
+                    if (selectedKeyId is { } successfulKey)
+                    {
+                        _health.RecordKey(successfulKey, true, verifiedVersion, verifiedObservation);
+                        ApiKeyTurnState? state = keyStates.GetValueOrDefault(current.Provider.Id);
+                        if (state is { Balance: false } && !_detached && _health.Version == verifiedVersion
+                            && _selectionEpoch == turnSelectionEpoch && _settings.ActiveModelId == current.Id
+                            && _settings.Providers.Contains(current.Provider)
+                            && current.Provider.ActiveApiKeyId == state.OriginalActive
+                            && current.Provider.ActiveApiKeySelectionEpoch == state.ActiveEpoch
+                            && await StillVerifiedAsync(current, verifiedCredential, token, verifiedModel, selectedKeyId))
+                        {
+                            string? active = successfulKey == current.Provider.Id ? null : successfulKey;
+                            if (!_detached && _health.Version == verifiedVersion && _selectionEpoch == turnSelectionEpoch
+                                && _settings.ActiveModelId == current.Id && current.Provider.ActiveApiKeyId == state.OriginalActive
+                                && _settings.Providers.Contains(current.Provider)
+                                && current.Provider.ActiveApiKeySelectionEpoch == state.ActiveEpoch
+                                && current.Provider.ActiveApiKeyId != active)
+                            {
+                                current.Provider.ActiveApiKeyId = active;
+                                await PersistSettingsAsync();
+                            }
+                        }
+                    }
+                    break; // 这一站答上了
+                }
+                catch (Exception ex) when (!HasMeaningfulOutput(updates)
+                                           && !token.IsCancellationRequested && TransientFailure.IsWorthSwitching(ex))
+                {
+                    bool changedKeyCandidate = false;
+                    if (selectedKeyId is { } failedKey && CanPoolApiKeys(current) && TransientFailure.IsApiKeyFailure(ex))
+                    {
+                        _health.RecordKey(failedKey, false, verifiedVersion, verifiedObservation);
+                        try
+                        {
+                            if (_store.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
+                                throw new ProviderConfigurationChangedException();
+                            var nextKey = await ProbeApiKeysAsync(current, turnOverride,
+                                keyStates.GetValueOrDefault(current.Provider.Id), null, token, recordProbeUsage, verifiedProviderVersion);
+                            if (nextKey is { } replacement)
+                            {
+                                if (replacement.ProviderVersion != verifiedProviderVersion)
+                                    throw new ProviderConfigurationChangedException();
+                                verifiedCredential = replacement.Credential;
+                                verifiedAccount = await CaptureOAuthAccountAsync(current, verifiedCredential, token);
+                                verifiedModel = replacement.ProbedModel;
+                                selectedKeyId = replacement.KeyId;
+                                mustRevalidateProbe = true;
+                                continue; // 同模型换 Key 不消耗换站 hop,也不追加用户消息。
+                            }
+                        }
+                        catch (Exception changed) when (changed is ProviderConfigurationChangedException or AiSettingsStore.ApiKeySlotChangedException)
+                        {
+                            changedKeyCandidate = true;
+                            _context.Log.Warn($"Failover key candidate changed: {changed.Message}");
+                        }
+                    }
+                    if (!changedKeyCandidate && ex is not ProviderConfigurationChangedException and not AiSettingsStore.ApiKeySlotChangedException)
+                        _health.Record(current.Id, false, verifiedVersion, verifiedObservation);
+                    if (hop >= maxHops) throw;
+                    triedThisTurn.Add(current.Id); // 这一整轮的候选都不许再排回它(见 FailoverCandidates)
+                    // 探活最多等 15 秒:开探前先快照"选择动过吗" —— 用计数而不是 id,
+                    // 只比 id 认不出"选到 C 又选回 A/B"这种改了等于没改的手动操作。
+                    long epochBeforeProbe = _selectionEpoch;
+                    (ResolvedModel Model, ProviderCredential Credential, string ProbedModel, string? KeyId, long ProviderVersion)? nextStop =
+                        await PickNextAsync(current, turnOverride, triedThisTurn, keyStates, token, recordProbeUsage);
+                    if (nextStop is null)
+                    {
+                        throw; // 候选配置失效不是首站401/429的新诊断;原错误和取消各自保留。
+                    }
+                    _context.Log.Warn($"Failover: {current.Id} unavailable — {ex.Message}; switching to {nextStop.Value.Model.Id}.");
+                    SetStatus(_loc.F("FailoverTo", nextStop.Value.Model.Name));
+                    bool selectionIntact = !_detached && _selectionEpoch == turnSelectionEpoch
+                        && _selectionEpoch == epochBeforeProbe && _settings.ActiveModelId == current.Id;
+                    // PickNext 已按发送开始时的档位快照给备用站套好了:程序化换站不作废临时档位
+                    // (作废是"用户换了模型"才有的副作用,已被 _syncingProviders 挡在选择处理器外),
+                    // 也不能因用户探活期间改了档位就让本轮备用请求换一档(那要下一轮才生效)。
+                    current = nextStop.Value.Model;
+                    verifiedCredential = nextStop.Value.Credential;
+                    verifiedProviderVersion = nextStop.Value.ProviderVersion;
+                    verifiedAccount = await CaptureOAuthAccountAsync(current, verifiedCredential, token);
+                    verifiedModel = nextStop.Value.ProbedModel;
+                    selectedKeyId = nextStop.Value.KeyId;
+                    credentialReady = true;
+                    mustRevalidateProbe = true;
+                    hop++;
+                    if (selectionIntact)
+                    {
+                        // 粘住:这一轮以及下次启动默认走这一家,直到它也失败或用户手动切回。
+                        // 选择被动过就整个跳过 —— 这一轮照切去能用的下一站,但拿落盘去盖
+                        // 用户刚做的手选是写旧值(与 finally 回滚同一道守卫)。
+                        switched = true;
+                        switchedToId = current.Id;
+                        // 版本要在写入与落盘**之前**抓:落盘是 await,这期间用户亲手选中
+                        // 这一站的话,+1 落在快照之后,收尾对表才看得见 —— 那是更新的手动
+                        // 选择,这条老请求无权再把它回滚掉。原先等落盘回来才记,手选的 +1
+                        // 已经被吞进快照,对表恒等、回滚照做(review③)。
+                        stickyEpoch = ++_selectionEpoch;
+                        turnSelectionEpoch = stickyEpoch; // 自己的换站继续持有本轮选择;其它轮的换站使旧快照失效
+                        _settings.ActiveModelId = current.Id;
+                        if (!_detached && _selectionEpoch == stickyEpoch && _settings.ActiveModelId == current.Id)
+                        {
+                            ReloadProviderCombo();
+                            // 后台请求只更新自己的统计,共享顶栏按前台用量和新模型窗口重算。
+                            if (!IsForeground)
+                            {
+                                _turnScope.Value = null;
+                                try { UpdateUsageText(); }
+                                finally { _turnScope.Value = conv; }
+                            }
+                        }
+                        await PersistSettingsAsync();
+                    }
+                }
+                catch (Exception ex) when (HasMeaningfulOutput(updates)
+                                           && !token.IsCancellationRequested && TransientFailure.IsWorthSwitching(ex))
+                {
+                    // 已开口后断流不能换 Key/模型或原地重试,否则会重放可见内容或工具副作用。
+                    // 不切不等于没发生:这次失败仍是健康数据,不记的话下一轮仍会把这个
+                    // 刚断流的接入当没试过的端上来。
+                    if (selectedKeyId is { } key && TransientFailure.IsApiKeyFailure(ex))
+                        _health.RecordKey(key, false, verifiedVersion, verifiedObservation);
+                    else if (ex is not ProviderConfigurationChangedException and not AiSettingsStore.ApiKeySlotChangedException)
+                        _health.Record(current.Id, false, verifiedVersion, verifiedObservation);
+                    throw;
+                }
+                finally
+                {
+                    client?.Dispose();
+                    client = null!;
                 }
             }
             if (IsForeground)
@@ -1442,6 +2054,7 @@ public partial class ChatPanelView : UserControl
             DrainUpdates(); // 兜底清空残留批(此处已回到 UI 线程)
 
             var response = updates.ToChatResponse();
+            RecordUsage(response.Usage);
             // 兜底补齐插话:送达回调的 Post 可能还排在队里没跑到,而它必须排在
             // 这一轮的回复之前进历史与库(顺序:原消息 → 插话 → 回复)。
             await CommitSteeringAsync(conv);
@@ -1451,38 +2064,42 @@ public partial class ChatPanelView : UserControl
             {
                 // 思考、工具调用、模型、耗时另存一行 —— 翻回旧会话时这些才是"Agent 做了什么"的证据
                 await _historyStore.AppendMetaAsync(ConversationId, sequence,
-                    bubble.Snapshot(ModelLabel(provider),
+                    bubble.Snapshot(modelLabel,
                         TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt)));
             }
             HintIfThinkingWasNeverRequested(bubble, provider);
-            if (response.Usage is { } usage)
-            {
-                LastInputTokens = usage.InputTokenCount ?? LastInputTokens;
-                TotalInputTokens += usage.InputTokenCount ?? 0;
-                TotalOutputTokens += usage.OutputTokenCount ?? 0;
-                TotalReasoningTokens += usage.ReasoningTokenCount ?? 0;
-                LastCachedInputTokens = usage.CachedInputTokenCount ?? 0;
-                TotalCachedInputTokens += LastCachedInputTokens;
-                // 缓存"写入"只有 Anthropic 报(它单独收费),OpenAI 系没有这个概念
-                TotalCacheWriteTokens += usage.AdditionalCounts?.GetValueOrDefault("CacheCreationInputTokens") ?? 0;
-            }
-            UpdateUsageText();
             replyText = response.Text;
         }
         catch (OperationCanceledException)
         {
             // 取消是"这条回复"的属性,记在气泡头部;状态行不留话(留了就一直挂着,见截图反馈)
             cancelled = true;
+            // 故障转移途中状态行可能挂着「已切换到 X」,取消回滚后它就成了无主的话 ——
+            // 撤掉(review⑥#7)。answered 守卫:成功那路自己的收尾话(thinking-hint 等)
+            // 不能被这里顺手抹了;失败 catch 无条件清,是因为错误卡才是那次的结论。
+            if (!answered)
+            {
+                SetStatus("");
+            }
             await CommitSteeringAsync(conv); // 已经送到模型那儿的插话照样算数
             await SettleUnfinishedTurnAsync(bubble);
         }
         catch (Exception ex)
         {
             failed = true;
+            // 故障转移途中状态行可能还挂着"已切换到 X"——错误卡才是这次的结论,那句话撤掉
+            SetStatus("");
             // 带上服务端正文:Anthropic 的异常消息只有一句 "Status Code: BadRequest",
             // 真正说清哪儿不对的那段在 ResponseBody 里(见 ApiErrorText)。
             // 根本没连上的那一类另给一句 —— 那时该去查网络/代理,而不是翻 Key 有没有填错。
-            string detail = ApiErrorText.Describe(ex, _loc["ErrorUnreachable"]);
+            string detail = ex.GetBaseException() switch
+            {
+                HealthProbe.EmptyReplyException => _loc["ProbeEmptyReply"],
+                AiSettingsStore.BuiltinOAuthHostMismatchException => _loc["SetupBuiltinOAuthHostMismatch"],
+                ProviderConfigurationChangedException => _loc["ErrorProviderChanged"],
+                AiSettingsStore.ApiKeySlotChangedException => _loc["ErrorProviderChanged"],
+                _ => ApiErrorText.Describe(ex, _loc["ErrorUnreachable"])
+            };
             _context.Log.Error($"AI request failed. — {detail}", ex);
             // 失败不再当成一段 Markdown 追加进正文:它不是模型说的话,混排会让人分不清
             // 哪句是回答、哪句是故障。改成一张 error 卡挂在这条回复里(见 AddErrorCard)。
@@ -1492,6 +2109,27 @@ public partial class ChatPanelView : UserControl
         }
         finally
         {
+            // 故障转移这一轮没答完(取消/整链都挂):退回原来那一站。
+            // 答完(answered)就不退 —— 粘住在这一刻落定,直到它也失败或用户手动切回;
+            // 回答之后的入库/落盘失败同样不退(新接入是好的,回滚回已知坏的才是错的)。
+            // 另外只在选择仍指着本回合切过去的那家、且计数自粘住起没动过时才退:
+            // 期间用户手动改过(哪怕改了又改回同一站)、或别的对话刚切走,那是更新的选择,
+            // 拿这条老请求的 originalModelId 去盖就是写旧值 —— 只比 id 认不出"改了又改回"。
+            if (!_detached && switched && !answered && (cancelled || failed)
+                && _selectionEpoch == stickyEpoch && _settings.ActiveModelId == switchedToId
+                && _settings.FindModel(originalModelId) is not null)
+            {
+                _selectionEpoch++;
+                _settings.ActiveModelId = originalModelId;
+                ReloadProviderCombo();
+                if (!IsForeground)
+                {
+                    _turnScope.Value = null;
+                    try { UpdateUsageText(); }
+                    finally { _turnScope.Value = conv; }
+                }
+                await PersistSettingsAsync();
+            }
             Cts?.Dispose();
             Cts = null;
             ActiveBubble = null;
@@ -1503,7 +2141,7 @@ public partial class ChatPanelView : UserControl
             SetBusy(false);
             // 一轮到此为止(成功/取消/出错都算):收起思考区,补上"耗时 · 步数"与"时间 · 模型"
             bubble?.FinishStreaming(
-                ModelLabel(provider),
+                modelLabel,
                 DateTimeOffset.Now,
                 TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt),
                 cancelled);
@@ -1537,9 +2175,247 @@ public partial class ChatPanelView : UserControl
         // 后台那份也不弹后续提问(那是给正看着的人的)。
         if (replyText.Length > 0 && IsForeground)
         {
-            await SuggestFollowUpsAsync(provider, text, replyText);
+            await SuggestFollowUpsAsync(provider, text, replyText, verifiedCredential,
+                turnConversationId, verifiedModel, verifiedAccount, verifiedProviderVersion, selectedKeyId);
         }
     }
+
+    /// <summary>
+    /// 故障转移的下一站:按用户排的链(或自动发现)顺序走,冷却中的直接跳过,
+    /// 切换之前先探活一次 —— 一个刚挂的端点不值得再拿用户这一轮去撞。
+    /// </summary>
+    /// <param name="failed">刚失败的那一站(候选里要排除它)。</param>
+    /// <param name="turnOverride">
+    /// 本轮发送开始时的思考档位快照 —— 备用站按它套,不读实时的 <c>_reasoningOverride</c>:
+    /// 探活要等最多 15 秒,这期间用户改档位是下一轮的事,不能让本轮的备用请求跟着换档。
+    /// 只套给 <see cref="ResolvedModel.ReasoningAdjustable" /> 的站:显式关掉思考的模型
+    /// 套上 High 只会把这一站的请求打成参数错(review⑥#5)。
+    /// </param>
+    /// <param name="triedThisTurn">本轮已经试挂过的站 id(含 <paramref name="failed" /> 自己)——
+    /// 候选整轮排除,免得冷却过期后又排回原地打转的上家。</param>
+    /// <param name="keyStates">本回合固定的供应商槽顺序、开关和已试槽。</param>
+    /// <param name="token">取消令牌(探测超时之外的整轮取消也走它)。</param>
+    /// <param name="recordProbeUsage">只累加所属会话的探测费用，不改变正文上下文占窗读数。</param>
+    /// <returns>探通的模型、固定凭据、实际型号和槽 ID;整链不可用时返回 null。</returns>
+    private async Task<(ResolvedModel Model, ProviderCredential Credential, string ProbedModel, string? KeyId, long ProviderVersion)?> PickNextAsync(
+        ResolvedModel failed, ReasoningLevel? turnOverride, HashSet<string> triedThisTurn,
+        Dictionary<string, ApiKeyTurnState> keyStates, CancellationToken token, Action<UsageDetails> recordProbeUsage)
+    {
+        ResolvedModel WithTurn(ResolvedModel m)
+            => m.WithReasoning(m.ReasoningAdjustable ? turnOverride : ReasoningLevel.Default);
+        foreach (ResolvedModel candidate in _settings.FailoverCandidates(failed, triedThisTurn))
+        {
+            ResolvedModel target = WithTurn(candidate);
+            if (_health.IsCooling(target.Id)) continue;
+            long candidateProviderVersion = _store.ProviderConfigurationVersion(target.Provider);
+            OAuthAccountSnapshot issuerBeforeResolve = CaptureOAuthIssuer(target.Provider);
+            for (int round = 0; round < 2; round++)
+            {
+                int version = _health.Version;
+                long observation = _health.BeginObservation();
+                string? probedKeyId = null;
+                ProviderCredential? probedCredential = null;
+                OAuthAccountSnapshot? probedAccount = null;
+                try
+                {
+                    ApiKeyTurnState? state = keyStates.GetValueOrDefault(target.Provider.Id);
+                    var first = await SelectFirstApiKeyAsync(target, state, automatic: true, token);
+                    probedKeyId = first?.KeyId;
+                    if (first is null) break;
+                    if (first.Value.Credential.IsBearerToken && CaptureOAuthIssuer(target.Provider) != issuerBeforeResolve)
+                        throw new ProviderConfigurationChangedException();
+                    probedCredential = first.Value.Credential;
+                    probedAccount = await CaptureOAuthAccountAsync(target, first.Value.Credential, token);
+                    var result = await ProbeApiKeysAsync(target, turnOverride, state, first, token, recordProbeUsage, candidateProviderVersion);
+                    if (result is not null)
+                    {
+                        OAuthAccountSnapshot? afterProbe = await CaptureOAuthAccountAsync(target, result.Value.Credential, token);
+                        if (!SameOAuthAccount(probedAccount, afterProbe)) throw new ProviderConfigurationChangedException();
+                        return (target, result.Value.Credential, result.Value.ProbedModel, result.Value.KeyId, result.Value.ProviderVersion);
+                    }
+                    break;
+                }
+                catch (ProviderConfigurationChangedException) when (round == 0)
+                {
+                    if (CaptureOAuthIssuer(target.Provider) != issuerBeforeResolve) break;
+                    if (probedKeyId is not null) break; // 固定槽不得换值重试;无槽模型保留原有一次新配置探测。
+                    if (_settings.FindModel(target.Id) is not { } fresh) break;
+                    if (probedCredential is { } previous)
+                    {
+                        try
+                        {
+                            ProviderCredential latest = await _store.ResolveCredentialAsync(fresh, token, refreshTokens: false);
+                            OAuthAccountSnapshot? account = await CaptureOAuthAccountAsync(fresh, latest, token);
+                            if (!SameOAuthAccount(probedAccount, account) || (!SameCredential(previous, latest)
+                                && !SameRenewingAccount(previous, latest, probedAccount, account, target))) break;
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            token.ThrowIfCancellationRequested();
+                            _context.Log.Warn($"Failover candidate {target.Id} changed before reprobe: {ex.Message}");
+                            break;
+                        }
+                    }
+                    target = WithTurn(fresh);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (ex is not ProviderConfigurationChangedException and not AiSettingsStore.ApiKeySlotChangedException)
+                        _health.Record(target.Id, false, version, observation);
+                    _context.Log.Warn($"Failover candidate {target.Id} unavailable: {ex.Message}");
+                    break;
+                }
+            }
+            triedThisTurn.Add(target.Id);
+        }
+        return null;
+    }
+
+    private static bool CanPoolApiKeys(ResolvedModel model)
+        => model.Provider.Auth == AuthMethod.ApiKey && !model.Config.HasOwnApiKey
+            && AiSettingsStore.SameOrigin(model.BaseUrl, model.Provider.BaseUrl);
+
+    private async Task<(ProviderCredential Credential, string? KeyId)?> SelectFirstApiKeyAsync(
+        ResolvedModel model, ApiKeyTurnState? state, bool automatic, CancellationToken token)
+    {
+        if (state is null || !CanPoolApiKeys(model))
+            return await _store.ResolveCredentialWithKeyIdAsync(model, token);
+        HashSet<string> tried = state.TriedFor(model.Id);
+        int start = 0;
+        if (state.Balance && _lastFirstApiKey.TryGetValue(model.Provider.Id, out string? last))
+        {
+            int previous = Array.IndexOf(state.Slots, last);
+            if (previous >= 0 && state.Slots.Length > 0) start = (previous + 1) % state.Slots.Length;
+        }
+        else if (!state.Balance && state.OriginalActive is { } active)
+        {
+            int activeIndex = Array.IndexOf(state.Slots, active);
+            if (activeIndex >= 0) start = activeIndex;
+        }
+        // 自动备用跳过冷却;主动起跑在全池冷却时仍保留发送入口。
+        for (int pass = 0; pass < (automatic ? 1 : 2); pass++)
+        {
+            for (int offset = 0; offset < state.Slots.Length; offset++)
+            {
+                int index = state.Balance ? (start + offset) % state.Slots.Length
+                    : offset == 0 ? start : offset <= start ? offset - 1 : offset;
+                string id = state.Slots[index];
+                if (tried.Contains(id) || (pass == 0 && (automatic || state.Balance) && _health.IsKeyCooling(id)))
+                    continue;
+                try
+                {
+                    var credential = await _store.ResolveCredentialWithKeyIdAsync(model, token, keyId: id);
+                    tried.Add(id);
+                    return credential;
+                }
+                catch (AiSettingsStore.ApiKeySlotChangedException) { tried.Add(id); }
+            }
+        }
+        var fallback = await _store.ResolveCredentialWithKeyIdAsync(model, token);
+        if (fallback.KeyId is null) return fallback; // 本地无鉴权模型仍沿用原行为。
+        if (!state.Slots.Contains(fallback.KeyId, StringComparer.Ordinal))
+            throw new ProviderConfigurationChangedException();
+        return null;
+    }
+
+    private async Task<(ProviderCredential Credential, string? KeyId)?> NextApiKeyAsync(
+        ResolvedModel model, ApiKeyTurnState? state, CancellationToken token)
+    {
+        if (state is null || !CanPoolApiKeys(model)) return null;
+        HashSet<string> tried = state.TriedFor(model.Id);
+        foreach (string id in state.Slots)
+        {
+            if (!tried.Add(id) || _health.IsKeyCooling(id)) continue;
+            try { return await _store.ResolveCredentialWithKeyIdAsync(model, token, keyId: id); }
+            catch (AiSettingsStore.ApiKeySlotChangedException) { }
+        }
+        return null;
+    }
+
+    /// <summary>只有槽的鉴权/额度失败才继续试同模型的下一槽;其它失败直接结束该模型。</summary>
+    private async Task<(ProviderCredential Credential, string ProbedModel, string? KeyId, long ProviderVersion)?> ProbeApiKeysAsync(
+        ResolvedModel target, ReasoningLevel? turnOverride, ApiKeyTurnState? state,
+        (ProviderCredential Credential, string? KeyId)? first, CancellationToken token, Action<UsageDetails> recordProbeUsage,
+        long providerVersion)
+    {
+        var selected = first ?? await NextApiKeyAsync(target, state, token);
+        while (selected is { } attempt)
+        {
+            SetStatus(_loc.F("FailoverProbing", target.Name));
+            int version = _health.Version;
+            long observation = _health.BeginObservation();
+            string probedModel = target.Model;
+            ReasoningLevel reasoning = target.Reasoning;
+            bool SameReasoning() => _settings.FindModel(target.Id) is { } fresh
+                && reasoning == fresh.WithReasoning(fresh.ReasoningAdjustable ? turnOverride : ReasoningLevel.Default).Reasoning;
+            if (!await StillVerifiedAsync(target, attempt.Credential, token, probedModel, attempt.KeyId, providerVersion) || !SameReasoning())
+                throw new ProviderConfigurationChangedException();
+            (Exception? error, _) = await HealthProbe.ProbeAsync(_store, target, attempt.Credential, token, recordProbeUsage);
+            if (!await StillVerifiedAsync(target, attempt.Credential, token, probedModel, attempt.KeyId, providerVersion)
+                || !SameReasoning() || _health.Version != version)
+                throw new ProviderConfigurationChangedException();
+            if (error is null)
+            {
+                if (attempt.KeyId is { } key) _health.RecordKey(key, true, version, observation);
+                return (attempt.Credential, probedModel, attempt.KeyId, providerVersion);
+            }
+            _context.Log.Warn($"Failover candidate {target.Id} failed probe: {error.Message}");
+            if (attempt.KeyId is not { } failedKey || !TransientFailure.IsApiKeyFailure(error))
+            {
+                _health.Record(target.Id, false, version, observation);
+                return null;
+            }
+            _health.RecordKey(failedKey, false, version, observation);
+            selected = await NextApiKeyAsync(target, state, token);
+            if (selected is null) _health.Record(target.Id, false, version, observation);
+        }
+        return null;
+    }
+
+    /// <summary>核对探通的端点与实际鉴权信息;健康代数只负责隔离旧结果写回。</summary>
+    private async Task<bool> StillVerifiedAsync(ResolvedModel target, ProviderCredential credential,
+        CancellationToken token, string? probedModel = null, string? selectedKeyId = null, long? providerVersion = null)
+    {
+        if (providerVersion is { } expectedVersion && _store.ProviderConfigurationVersion(target.Provider) != expectedVersion) return false;
+        token.ThrowIfCancellationRequested();
+        if ((probedModel is not null && !string.Equals(probedModel, target.Model, StringComparison.Ordinal))
+            || !SameEndpoint(target, _settings.FindModel(target.Id))) return false;
+        try
+        {
+            ResolvedModel fresh = _settings.FindModel(target.Id)!;
+            var current = await _store.ResolveCredentialWithKeyIdAsync(fresh, token, refreshTokens: false, keyId: selectedKeyId);
+            token.ThrowIfCancellationRequested();
+            return (probedModel is null || string.Equals(probedModel, target.Model, StringComparison.Ordinal))
+                && SameEndpoint(target, _settings.FindModel(target.Id))
+                && (providerVersion is null || _store.ProviderConfigurationVersion(target.Provider) == providerVersion)
+                && current.KeyId == selectedKeyId && SameCredential(credential, current.Credential);
+        }
+        catch (AiSettingsStore.ApiKeySlotChangedException) { return false; }
+    }
+
+    private static bool SameCredential(ProviderCredential a, ProviderCredential b)
+        => string.Equals(a.Value, b.Value, StringComparison.Ordinal)
+           && a.IsBearerToken == b.IsBearerToken
+           && string.Equals(a.BaseUrl, b.BaseUrl, StringComparison.Ordinal)
+           && (a.Headers ?? []).SequenceEqual(b.Headers ?? []);
+
+    private static bool SameEndpoint(ResolvedModel a, ResolvedModel? b)
+        => b is not null && string.Equals(a.BaseUrl, b.BaseUrl, StringComparison.Ordinal)
+           && a.Protocol == b.Protocol && string.Equals(a.Model, b.Model, StringComparison.Ordinal)
+           && a.ApiKeyOwnerId == b.ApiKeyOwnerId;
+
+    /// <summary>role / usage 等纯元数据不算开口;可见内容、工具调用和副作用则绝不能重放。</summary>
+    internal static bool HasMeaningfulOutput(List<ChatResponseUpdate> updates)
+        => updates.Any(update => update.Contents.Any(content => content switch
+            {
+                TextContent text => !string.IsNullOrWhiteSpace(text.Text),
+                TextReasoningContent reasoning => !string.IsNullOrWhiteSpace(reasoning.Text),
+                FunctionCallContent or FunctionResultContent or ErrorContent => true,
+                _ => false
+            }) || (ReasoningPeek.IsBlank(update)
+                  && ReasoningPeek.TryRead(update.RawRepresentation, out string peeked)
+                  && !string.IsNullOrWhiteSpace(peeked)));
 
     /// <summary>
     /// 流还没开口就断掉时最多重来几次。<b>只给 1 次</b>:各家 SDK 自己已经对连接级失败退避重试过
@@ -1735,9 +2611,16 @@ public partial class ChatPanelView : UserControl
     /// 用户自定义的提示词<b>不追加模式说明</b>:他既然自己写了,就该完全由他说了算。
     /// 模式的实际约束靠"给不给工具"来兜底(计划模式根本拿不到写工具),不依赖提示词自觉。
     /// </remarks>
-    private string BuildSystemPrompt(ChatMode mode, bool nativeWebSearch = false)
+    /// <param name="current">
+    /// 按<b>当前这一站</b>取专用提示词,不看界面选中的那家:故障转移切到 B 时选择可能
+    /// 仍指着 A(或已被用户改去 C)—— 读 <c>ActiveProvider</c> 会把别家的专用提示词
+    /// 发给这一站,那是跨接入泄露。
+    /// </param>
+    /// <param name="mode">对话模式(纯对话 / 计划 / Agent),决定默认提示词的尾段。</param>
+    /// <param name="nativeWebSearch">本轮服务端检索可用时,默认提示词要点破"你连着网"。</param>
+    private string BuildSystemPrompt(ResolvedModel current, ChatMode mode, bool nativeWebSearch = false)
     {
-        if (ActiveProvider is { SystemPrompt: { } own } && !string.IsNullOrWhiteSpace(own))
+        if (current is { SystemPrompt: { } own } && !string.IsNullOrWhiteSpace(own))
         {
             return own;
         }
@@ -2373,6 +3256,24 @@ public partial class ChatPanelView : UserControl
         {
             _stack.Children.Add(card);
             _currentSegment = null; // 卡之后的新文本另起一个 Markdown 段
+        }
+
+        /// <summary>仅在尚无有效输出、允许重放时丢弃失败尝试留下的空白正文与思考。</summary>
+        public void ResetUnopenedContent()
+        {
+            // 插话卡已经送达并入历史；只清失败尝试的正文和思考节点，不能删卡。
+            for (int i = _stack.Children.Count - 1; i > 0; i--)
+            {
+                if (_stack.Children[i] is MarkdownRenderer || ReferenceEquals(_stack.Children[i], _thinking?.Root))
+                    _stack.Children.RemoveAt(i);
+            }
+            _replyText.Clear();
+            _thinkingText.Clear();
+            _currentSegment = null;
+            _thinking = null;
+            _thinkingStartedAt = 0;
+            _thinkingElapsed = null;
+            SetPhase("PhaseThinking");
         }
 
         public void AppendText(string text)

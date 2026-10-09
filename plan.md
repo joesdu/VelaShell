@@ -49,6 +49,17 @@
 | 09-22 ~ 09-23 | §91 – §103 | 换成 VelaShell.Ssh 并并入本仓库、Agent / X11 / 压缩、自动加钥、agent 转发限定、VelaShell.XServer M1 – M2 |
 | 09-23 ~ 09-24 | §104 – §113 | XServer 功能完备与 M3（接入宿主）、AltGr、M4（GLX 等）、键盘布局、SSH 库三批全库审查与主机证书 |
 | 09-25 ~ 09-26 | §114 – §124 | XServer 审查与渲染路径、SSH 库 API 规范、窗口外框跨平台适配、状态栏对齐、CI 行尾、软换行长行复制、XServer 审查 31 项修完 |
+| 09-27 ~ 09-29 | §125 – §143 | PTY 像素贯通、CI 偶发、SFTP 双栏远程、窗口位置、快捷键可改、共享凭据 |
+| 09-30 ~ 10-03 | §144 – §159 | chown、连接对话框改版、审计与快捷命令、SSH agent 修补 |
+| 10-05 ~ 10-07 | §160 – §166 | SSH 库审查落地、FIPS 混合 KEX、CI SSH 红用例 |
+| 09-22 ~ 10-07（按节号补录） | §167 – §172 | AI 插件:多实例、故障转移、多 API Key、凭据隔离与审阅整改 |
+| 10-08 | §173 | AI 插件:独立设置快照、目录并发、全局提交与探活边界修复 |
+| 10-08 | §174 | AI 插件:部署型号匹配、接口窗口回退与手动规格保护 |
+| 10-08 | §175 | AI 插件:默认128000来源核实提示与手动窗口归属 |
+| 10-08 | §176 | AI 插件:未提交代码复审、目录原子发布与流式夹具时序 |
+| 10-09 | §177 | AI 插件:供应商全部 API Key 状态检测 |
+| 10-09 | §178 | AI 插件:单 Key 检测复用最近选择的模型 |
+| 10-09 | §179 | AI 插件:失效 Key 草稿导致批量检测静默退出的审核修复 |
 
 ## 📈 阶段脉络
 
@@ -1744,6 +1755,7 @@ SSH 库此前没有成文的 API 规范，这次写进 `src/VelaShell.Ssh/AGENTS
 - **`服务端拒绝隧道时单条连接失败而转发器继续跑`(Ubuntu,偶发,修上面几条之后的那一轮冒出来)**:内存里的服务端拒得快,转发器重置本机连接的 RST 可能在 `ConnectAsync` 交回之前就到,Linux 上那时 connect 本身报 `ConnectionReset`,用例却只在之后的读里等它。改成「连上并读到被重置为止」,两种都认;转发器要是给了 FIN 照样红(变异检验:关掉 RST 时这条红)。同样写法的「打开通道超时」那条一并改了。
 
 「Code scanning AI findings」那一项是 GitHub 托管的 Copilot 任务,#562 之前就一直失败、日志里只有退出码,不在仓库的 CI 里,没有动。文档同步在 velashell-docs#92(规格 04 的 `.ppk` 决策)。
+全量测试通过(ShellIntegration 32 项按环境早退跳过,属既有行为)。
 
 ## ✅ 167. 2026-10-07 内置 X 服务端:按第二次全库审查的结论逐条修复(`xs_plan.md`)
 
@@ -1800,3 +1812,71 @@ SSH 库此前没有成文的 API 规范，这次写进 `src/VelaShell.Ssh/AGENTS
 - **根因**:Linux 的关于页沿用便携式原地更新流程,系统安装目录不可写时只显示「目录不可写」,没有打开下载页面。
 - **行为**:发现新版本且有当前平台的更新包后,通过 Avalonia 的系统浏览器入口打开 GitHub Releases 发布列表,由用户选择 deb、rpm 或便携包下载并安装。Linux 的 `CanSelfUpdate` 固定为 false,关于页在目录可写判断之前转入手动下载,不下载更新包、不显示「重启并更新」。发布列表兼容预发布版本;提示保留版本号与下载地址,浏览器打不开时仍能手动访问。启动检查仍只投递消息;Windows、macOS 与 Microsoft Store 的更新分支不变。
 - **验证**:更新、本地化键与设置懒加载相关测试 107 通过、0 失败、0 跳过,包括 Linux 可写/不可写分支、浏览器异常、无更新不打开浏览器和切页后浏览器入口仍绑定到设置窗口。五份 resx 同步;中英文规格同步到 velashell-docs。真实桌面浏览器的启动需在 Linux 桌面环境验收。
+
+## ✅ 173. 2026-09-22 AI 插件:provider 健康检查 + 请求故障转移(用户定稿)
+
+回答不上来时不再一头撞死:按用户排好的有序链自动换一家继续说,UI 落在全局设置窗口新一节。
+口径全部由用户答完,实现照办,过程中没有改设计。
+
+### 一、口径(用户确认的五条)
+
+1. **候选来源**:`AiSettings.FailoverChain` 非空按链序(可跨供应商跨模型);
+   空则自动发现(同 `CatalogId` + 同 `Model`,Ordinal 忽略大小写,排除失败者)。
+2. **健康 = 被动冷却 + 主动探测**:失败记内存冷却 60s,选下一站先过滤冷却中的;
+   切换前逐个探(15s 超时,极小真请求),探不通的 Record 失败跳过。
+3. **粘住**:成功切换改写 `ActiveModelId` 并落盘,直到手动切回或它也失败。
+4. **触发**:内层 `StreamRetries=1` 耗尽或 401/403(`IsWorthSwitching`)才切;
+   400 等永久错不切;仅尚未 `HasMeaningfulOutput`(可见正文、思考或工具副作用)才切。
+5. **不加总开关**(YAGNI):平时一次都触发不了,摆开关是让人多背一个不知道开不开的选项。
+
+### 二、落法
+
+* 新文件全在 Configuration:`FailoverChain.cs`(`FailoverEntry` + `FailoverCandidates`)、
+  `ProviderHealth.cs`(成败计数 + 冷却窗口,只在内存)、`HealthProbe.cs`(真请求探测);
+  `AiProvider.cs` 挂 `AiSettings.FailoverChain`;`TransientFailure.IsWorthSwitching` 在 Ui。
+* `ChatPanelView.SendAsync` 外层加 hop 循环:`AssembleAsync` / `StreamOnceAsync` / `DrainUpdates`
+  抽成局部函数,catch 里 `_health.Record` 失败 → `PickNextAsync`(滤冷却 → 逐个 Probe →
+  死的跳过)→ 改 `ActiveModelId` + 持久化 + `ReloadProviderCombo()`;整链耗尽 `throw;`
+  走原 error 卡。`finally` 回滚条件经复审收紧为
+  `switched && !answered && (cancelled || failed) && ActiveModelId == switchedToId`(见五)。
+* 全局设置 `GlobalSettingsView` 新节:有序行(上下移 / 移除)、添加下拉(只列不在链上的
+  模型)、「检测全部」按钮与状态行;10 个新 loc 键五语齐(`SecFailover` … `FailoverEmpty`)。
+  `SettingsView.TestAsync` 改走 `HealthProbe.ProbeAsync`,且**只在表单值与落库一致**
+  (`sameAsSaved`:协议/地址/模型/上限/Key 归属逐项比,Key 与机密库逐字符比)时才
+  `Record` —— 草稿测出来的成败不能污染共享健康记录。
+
+### 三、两个坑
+
+* **`ReloadProviderCombo` 换 `ItemsSource` 会回放旧下标的 `SelectionChanged`** ——
+  处理器拿它回写 `ActiveModelId`,把刚程序化切过去的那家悄悄顶回原状
+  (集成测试首轮就红在"切换成功却没粘住":`healthyReq=2`、`active` 还是第一家)。
+  修法是 `_syncingProviders` 护罩:回声只刷界面、不回写设置(与 `_syncingReasoning` 同款)。
+  这其实是既有隐患 —— 以前 `ActiveModelId` 只由下拉自己改,所以从没暴露。
+* **401 抛的是 `System.ClientModel.ClientResultException`**,与 `IsWorthSwitching`
+  的类型模式匹配是同一套程序集类型,不能按字符串猜;排查时先用一次性诊断测试
+  把异常类型和 `worth` 打出来,别对着 catch 过滤器空想。
+
+### 四、测试与文档
+
+`FailoverChainTests`(链序 / 自动发现 / 落盘往返)、`ProviderHealthTests`(冷却)、
+`HealthProbeTests`(探测)、`ChatFormattingTests` 里一条只在切换类错误换的单元
+加一条 `StatusBearingHttpRequestsAreJudgedByStatus`(带状态码的 `HttpRequestException`
+按状态码判),headless 集成:401 → 按链切到第二家 → 粘住 + 下拉跟着走;
+`Failover.cs` 另钉全局设置里链的增删与上下移。插件全量 **607 条全绿**,
+整个 `VelaShell.slnx` 退出码 0。
+
+插件 README 新增「故障转移与健康检查」一节;`plan.md` 记本节。
+
+## 174. 2026-10-07 AI 插件:同供应商多 API Key、逐 Key 检测与可选轮流首发
+
+**行为**:目录的 API Key「再添加一个」改为同实例「添加 API Key」,只收空遮罩草稿,不复制供应商/模型或触发模型拉取。OAuth 第二账号仍独立实例。主槽沿用 `apikey:<provider.Id>`,补充槽按 Guid 加密;JSON 仅存 `AdditionalApiKeyIds`、`ActiveApiKeyId` 与默认关闭的 `BalanceApiKeys`,旧配置不迁移、不合并历史实例。
+
+**设置页**:逐 Key 行显示遮罩/显隐、检测状态、心电/铅笔/减号;铅笔先暂存,按页面原保存键与地址、协议同轮提交。添加/二次确认移除即时保存,失败恢复机密、槽顺序和 active;跨窗口编辑源改变后拒绝覆盖。行检测只测已保存槽与端点,点击展开合格模型列表、选择前零 HTTP,选择后真实 SSE 探活,显示型号/时间/通过或失败。未保存地址/协议或该行 Key 不发探活;取消与配置变化后的旧结果不写健康。五语用途名、键盘显隐和焦点保留,水平减号用固定 24×24 图标坐标避免退化为点。
+
+**聊天**:只有未开口且未取消的 401/403/429 才先试同模型下一 Key,429 保留一次原地重试;多槽请求关闭 SDK 隐式重试,避免次数相乘。候选先固定槽探活,换值/删除/出境端点变化后不发送会话历史;Key 专属冷却用现有健康表的 `key:` 前缀,全池失败才冷却模型。非 Key 专属探活失败直接走原模型链,有正文、思考或工具副作用后不重放。成功正式回答在并发归属复验后粘住槽;均摊开启时每轮首发轮转非冷却槽,不改持久 active,关闭后回到开启前的 active,不承诺 HTTP/token/费用均摊。
+
+**安全与兼容**:同一插件上下文的多个 store 共享机密缓存和写事务闸,晚到解密不盖新 Key;编辑提交在闸内复验原机密及已应用的端点。补充 Key 不送模型跨 origin 覆盖地址,主槽保留旧行为;模型自有 Key 与 OAuth 不入池,内置 OAuth 目的地护栏不放宽。无槽模型及订阅续期保留原有一次配置变化重探。全局检测复验 active 槽及字节,桥接和拉模型不自动轮池。
+
+**实际验收**:插件构建 0 警告/0 错误;存储/旧订阅回归 36/36,目录入口及文案回归 100/100,设置界面回归 79/79,Key 故障转移与存储合跑 52/52,固定凭据复验专项 13/13。独立 .NET 消费者装载真实 SettingsView/ChatPanelView,环回 HTTP/SSE 观察到 `A:m1:检测 → B:m2:检测 → A:m1:聊天401 → B:m1:探活 → B:m1:回答 → B:m1:下一轮 → R:m1 → B:m1 → R:m1 → B:m1`；检测不改 active,故障转移粘住 B,开启轮流首发后 R→B→R,关闭后回 B。另一进程装载真实暗色宿主令牌与 Skia,420/900 DIP 光栅图均确认红/绿状态、型号/时间、三枚操作图标及默认未勾的轮流开关无重叠或裁切。本次结果与旧设备轮询回归独立。
+
+**文档**:更新插件工程 README 的入口、逐槽管理、机密归属和故障转移说明;未改变 SDK 契约或外部插件架构/威胁模型文档。

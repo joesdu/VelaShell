@@ -97,6 +97,43 @@
           </StackPanel>
         </Border>
 
+        <!-- ═══ 故障转移 ═══ -->
+        <TextBlock x:Name="SectionFailoverTitle" Classes="section-title" Margin="0,6,0,0" />
+        <Border Classes="section">
+          <StackPanel Spacing="10">
+            <TextBlock x:Name="FailoverHintText" Classes="hint" TextWrapping="Wrap" />
+            <!-- 有序列表:行在代码里搭(增删换位即整列重建),Name 是测试与文案刷新的抓手 -->
+            <StackPanel x:Name="FailoverRowsHost" Spacing="6" />
+            <Grid ColumnDefinitions="*,8,Auto,8,Auto">
+              <ComboBox x:Name="FailoverAddCombo" FontSize="{DynamicResource VelaFontSize12}" />
+              <Button x:Name="FailoverAddButton" Grid.Column="2" Classes="host">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <Viewbox Width="11" Height="11" VerticalAlignment="Center">
+                    <Path Width="24" Height="24" Data="{DynamicResource Icon.plus}"
+                          Stroke="{DynamicResource VelaTextSecondary}" StrokeThickness="2"
+                          StrokeLineCap="Round" />
+                  </Viewbox>
+                  <TextBlock x:Name="FailoverAddText" VerticalAlignment="Center"
+                             FontSize="{DynamicResource VelaFontSize11}" />
+                </StackPanel>
+              </Button>
+              <Button x:Name="FailoverProbeAllButton" Grid.Column="4" Classes="host">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <Viewbox Width="11" Height="11" VerticalAlignment="Center">
+                    <Path Width="24" Height="24" Data="{DynamicResource Icon.play}"
+                          Stroke="{DynamicResource VelaTextSecondary}" StrokeThickness="2"
+                          StrokeLineCap="Round" />
+                  </Viewbox>
+                  <TextBlock x:Name="FailoverProbeAllText" VerticalAlignment="Center"
+                             FontSize="{DynamicResource VelaFontSize11}" />
+                </StackPanel>
+              </Button>
+            </Grid>
+            <TextBlock x:Name="FailoverAddHintText" Classes="hint" IsVisible="False" />
+            <TextBlock x:Name="FailoverStatusText" Classes="dim" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
         <Border BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,1,0,0"
                 Padding="0,12,0,0" Margin="0,6,0,0">
           <Grid ColumnDefinitions="*,Auto">

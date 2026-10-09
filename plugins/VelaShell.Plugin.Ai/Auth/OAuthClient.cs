@@ -159,6 +159,7 @@ public sealed class OAuthClient(HttpClient http)
         };
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using HttpResponseMessage response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        EnsureOAuthResponseStatus(response);
         string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         Dictionary<string, string> payload = Parse(body, response.Content.Headers.ContentType?.MediaType);
         ThrowIfError(payload, response, body);
@@ -204,6 +205,7 @@ public sealed class OAuthClient(HttpClient http)
             request.Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
         using HttpResponseMessage response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        EnsureOAuthResponseStatus(response);
         string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         Dictionary<string, string> payload = Parse(body, response.Content.Headers.ContentType?.MediaType);
         ThrowIfError(payload, response, body);
@@ -357,7 +359,7 @@ public sealed class OAuthClient(HttpClient http)
             Dictionary<string, string> payload;
             try
             {
-                payload = await PostAsync(config.TokenUrl, form, cancellationToken).ConfigureAwait(false);
+                payload = await PostAsync(config.TokenUrl, form, cancellationToken, devicePolling: true).ConfigureAwait(false);
             }
             catch (OAuthException ex) when (ex.Error is "authorization_pending")
             {
@@ -385,9 +387,9 @@ public sealed class OAuthClient(HttpClient http)
         }
     }
 
-    /// <summary>POST 一个表单,把响应解成键值对;服务端报错则抛 <see cref="OAuthException" />。</summary>
+    /// <summary>POST 表单并解析响应;授权拒绝解析 OAuth 错误,其他 HTTP 失败保留状态码。</summary>
     private async Task<Dictionary<string, string>> PostAsync(string url,
-        IEnumerable<KeyValuePair<string, string>> form, CancellationToken cancellationToken)
+        IEnumerable<KeyValuePair<string, string>> form, CancellationToken cancellationToken, bool devicePolling = false)
     {
         if (string.IsNullOrWhiteSpace(url))
         {
@@ -401,10 +403,25 @@ public sealed class OAuthClient(HttpClient http)
         // 两种都能解(见 Parse),这里只是取更省事的那条路
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using HttpResponseMessage response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        bool pollingThrottle = devicePolling && response.StatusCode == System.Net.HttpStatusCode.TooManyRequests;
+        if (!pollingThrottle) EnsureOAuthResponseStatus(response);
         string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         Dictionary<string, string> payload = Parse(body, response.Content.Headers.ContentType?.MediaType);
+        // 仅设备轮询的429 slow_down是协议减速；其他429及所有非轮询请求保留HTTP故障。
+        if (pollingThrottle && payload.GetValueOrDefault("error") != "slow_down")
+            response.EnsureSuccessStatusCode();
         ThrowIfError(payload, response, body);
         return payload;
+    }
+
+    // 授权拒绝仍解析 OAuth 错误供设备码轮询使用;其他 HTTP 故障保留状态码,不能伪装成授权拒绝。
+    private static void EnsureOAuthResponseStatus(HttpResponseMessage response)
+    {
+        if (response.StatusCode is not (System.Net.HttpStatusCode.BadRequest
+            or System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden))
+        {
+            response.EnsureSuccessStatusCode();
+        }
     }
 
     /// <summary>

@@ -206,11 +206,10 @@ public sealed class OAuthClientTests
         OAuthStub stub = new OAuthStub().Json("<html>gateway down</html>", HttpStatusCode.BadGateway);
         using var http = new HttpClient(stub);
 
-        OAuthException error = await Assert.ThrowsExactlyAsync<OAuthException>(() =>
+        HttpRequestException error = await Assert.ThrowsExactlyAsync<HttpRequestException>(() =>
             new OAuthClient(http).ExchangeCodeAsync(Standard(), PkceCodes.Create(), "c", "http://127.0.0.1:1/cb"));
 
-        Assert.Contains("502", error.Message);
-        Assert.Contains("gateway down", error.Message);
+        Assert.AreEqual(HttpStatusCode.BadGateway, error.StatusCode);
     }
 
     [TestMethod]
@@ -261,13 +260,51 @@ public sealed class OAuthClientTests
     }
 
     [TestMethod]
-    public async Task DeviceCode_PendingThenSlowDown_BacksOffByFiveSecondsThenSucceeds()
+    [DataRow("code")]
+    [DataRow("key")]
+    [DataRow("device-start")]
+    [DataRow("device-poll")]
+    public async Task OAuthEndpoints_HttpFailureCannotBecomePayloadAuthorizationOrPolling(string operation)
+    {
+        OAuthStub stub = new OAuthStub().Json("""{"error":"authorization_pending"}""", HttpStatusCode.ServiceUnavailable);
+        using var http = new HttpClient(stub);
+        var client = new OAuthClient(http) { Delay = (_, _) => Task.CompletedTask };
+        OAuthConfig config = Standard();
+        config.TokenUrl = config.DeviceCodeUrl = "http://127.0.0.1/oauth";
+        if (operation == "key") config.Flow = OAuthFlow.OpenRouterPkce;
+        HttpRequestException error = await Assert.ThrowsExactlyAsync<HttpRequestException>(async () =>
+        {
+            switch (operation)
+            {
+                case "code":
+                case "key":
+                    await client.ExchangeCodeAsync(config, PkceCodes.Create(), "code", "http://127.0.0.1/callback");
+                    break;
+                case "device-start":
+                    await client.StartDeviceCodeAsync(config);
+                    break;
+                case "device-poll":
+                    await client.PollDeviceCodeAsync(config,
+                        new DeviceCodeGrant("dc", "code", "http://127.0.0.1/verify", null,
+                            TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(1)));
+                    break;
+            }
+        });
+        Assert.AreEqual(HttpStatusCode.ServiceUnavailable, error.StatusCode);
+        Assert.HasCount(1, stub.Requests, "HTTP 故障不能误判为 authorization_pending 后继续轮询");
+    }
+
+    [TestMethod]
+    [DataRow(200, 200)]
+    [DataRow(400, 400)]
+    [DataRow(400, 429)]
+    public async Task DeviceCode_PendingThenSlowDown_BacksOffByFiveSecondsThenSucceeds(int pendingStatus, int slowDownStatus)
     {
         OAuthStub stub = new OAuthStub()
             .Json("""{"device_code":"dc","user_code":"WXYZ-1234","verification_uri":"https://auth.example/device","interval":2,"expires_in":900}""")
-            .Json("""{"error":"authorization_pending"}""", HttpStatusCode.BadRequest)
-            .Json("""{"error":"slow_down"}""", HttpStatusCode.BadRequest)
-            .Json("""{"error":"authorization_pending"}""", HttpStatusCode.BadRequest)
+            .Json("""{"error":"authorization_pending"}""", (HttpStatusCode)pendingStatus)
+            .Json("""{"error":"slow_down"}""", (HttpStatusCode)slowDownStatus)
+            .Json("""{"error":"authorization_pending"}""", (HttpStatusCode)pendingStatus)
             .Json("""{"access_token":"at-device","expires_in":3600}""");
         using var http = new HttpClient(stub);
         List<TimeSpan> waits = [];
@@ -289,6 +326,35 @@ public sealed class OAuthClientTests
         Dictionary<string, string> poll = Query(stub.Requests[1].Body);
         Assert.AreEqual("urn:ietf:params:oauth:grant-type:device_code", poll["grant_type"]);
         Assert.AreEqual("dc", poll["device_code"]);
+    }
+
+    [TestMethod]
+    [DataRow("{\"error\":\"authorization_pending\"}")]
+    [DataRow("{\"error\":\"invalid_grant\"}")]
+    [DataRow("{}")]
+    [DataRow("not-json")]
+    public async Task DeviceCode_Other429RepliesKeepHttpFailure(string body)
+    {
+        var stub = new OAuthStub().Json(body, HttpStatusCode.TooManyRequests);
+        using var http = new HttpClient(stub);
+        var client = new OAuthClient(http) { Delay = (_, _) => Task.CompletedTask };
+        var grant = new DeviceCodeGrant("dc", "code", "https://auth.example/verify", null,
+            TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(1));
+        HttpRequestException error = await Assert.ThrowsExactlyAsync<HttpRequestException>(() =>
+            client.PollDeviceCodeAsync(Standard(), grant));
+        Assert.AreEqual(HttpStatusCode.TooManyRequests, error.StatusCode);
+        Assert.HasCount(1, stub.Requests, "非slow_down的429不进入下一轮");
+    }
+
+    [TestMethod]
+    public async Task Refresh_429SlowDownRemainsHttpFailure()
+    {
+        var stub = new OAuthStub().Json("""{"error":"slow_down"}""", HttpStatusCode.TooManyRequests);
+        using var http = new HttpClient(stub);
+        HttpRequestException error = await Assert.ThrowsExactlyAsync<HttpRequestException>(() =>
+            new OAuthClient(http).RefreshAsync(Standard(), new OAuthTokens { AccessToken = "old", RefreshToken = "rt" }));
+        Assert.AreEqual(HttpStatusCode.TooManyRequests, error.StatusCode);
+        Assert.HasCount(1, stub.Requests);
     }
 
     [TestMethod]

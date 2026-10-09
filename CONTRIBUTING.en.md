@@ -55,6 +55,8 @@ dotnet test VelaShell.slnx
 dotnet test tests/VelaShell.Tests/
 ```
 
+The root `nuget.config` clears inherited package sources and restores dependencies only from nuget.org, preventing extra local feeds from triggering `NU1507` under central package management. It does not modify user-level NuGet settings.
+
 `tests/velashell.runsettings` is applied automatically by `tests/Directory.Build.targets`, so **you do not need `--settings` on the command line**. It sets a 60-second per-test timeout; the reason is below.
 
 ### Real-SSH integration tests

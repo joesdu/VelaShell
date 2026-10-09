@@ -117,7 +117,11 @@ public partial class ChatPanelView
     /// 插话通道的送达回调。<b>在发请求的那个线程上被调</b>,所以只负责把活儿甩回 UI 线程。
     /// 带上 <paramref name="conv" />:这条回调不在原轮的异步流里,得显式说清楚补给哪份对话。
     /// </summary>
-    private void OnSteeringDelivered(Conversation conv) => Dispatcher.UIThread.Post(() => _ = CommitSteeringAsync(conv));
+    private void OnSteeringDelivered(Conversation conv, SteeringChatClient channel) => Dispatcher.UIThread.Post(() =>
+    {
+        // 换流前已提交旧名单;旧通道迟到的Post不能误提交下一条通道的插话。
+        if (ReferenceEquals(conv.Steering, channel)) _ = CommitSteeringAsync(conv);
+    });
 
     /// <summary>
     /// 把"已经送进请求"的插话补进界面、对话历史与库。
@@ -185,9 +189,11 @@ public partial class ChatPanelView
 
     // ---------- 收尾 ----------
 
-    /// <summary>一轮开始:换一条通道,送达名单从头数。</summary>
-    private void BeginSteering(SteeringChatClient steering)
+    /// <summary>创建或换流:先提交旧通道已送达但Post尚未入历史的插话,再从新通道计数。</summary>
+    private async Task BeginSteering(SteeringChatClient steering)
     {
+        if (ReferenceEquals(Steering, steering)) return;
+        await CommitSteeringAsync(Cur);
         Steering = steering;
         SteeringCommitted = 0;
     }

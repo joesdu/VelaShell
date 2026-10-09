@@ -13,7 +13,7 @@ namespace VelaShell.Plugin.Ai.Configuration;
 /// <list type="bullet">
 /// <item>端点知道<b>这个地址实际供应哪些型号</b> —— 中转站只转发其中一部分,自行部署的
 /// Ollama 装了哪几个权重,models.dev 一概不知道,也没法知道。</item>
-/// <item>models.dev 知道<b>规格</b>(上下文窗口、三档单价)—— 而 <c>/models</c> 只给一串 id。
+/// <item>models.dev 提供<b>规格</b>(上下文窗口、三档单价);端点若提供正数 <c>context_length</c>,也保留作未匹配模型的窗口回退。
 /// 那两项恰恰是本插件里最难填、填错了又<b>不报错</b>的东西(窗口错则输入框下方的占比错,
 /// 单价错则花费估算错)。</item>
 /// </list>
@@ -103,7 +103,7 @@ internal static class EndpointModelCatalog
     }
 
     /// <summary>
-    /// 发一次请求,拿这个端点供应的模型 id。
+    /// 发一次请求,拿这个端点供应的模型 id 与可选上下文窗口。
     /// </summary>
     /// <remarks>拿不到不抛异常 —— 调用方要的是"回落到 models.dev",不是一个要处理的异常。</remarks>
     /// <param name="http">发请求用的客户端。</param>
@@ -111,8 +111,8 @@ internal static class EndpointModelCatalog
     /// <param name="protocol">线协议。</param>
     /// <param name="credential">凭据。</param>
     /// <param name="cancellationToken">取消。</param>
-    /// <returns>模型 id(按字典序,已去重、已滤掉非聊天模型);拿不到时为空。</returns>
-    public static async Task<IReadOnlyList<string>> FetchAsync(HttpClient http, string? baseUrl,
+    /// <returns>按型号排序去重的模型及窗口;窗口未知时为0,拿不到清单时为空。</returns>
+    public static async Task<IReadOnlyList<(string Id, int ContextTokens)>> FetchAsync(HttpClient http, string? baseUrl,
         ChatProtocol protocol, ProviderCredential credential, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(http);
@@ -139,7 +139,7 @@ internal static class EndpointModelCatalog
     /// <c>{"models":[{"name":…}]}</c>。差别只在外面那层壳和 id 的字段名,解一次就够。
     /// </remarks>
     /// <param name="json">回应正文。</param>
-    public static IReadOnlyList<string> Parse(string json)
+    public static IReadOnlyList<(string Id, int ContextTokens)> Parse(string json)
     {
         JsonDocument document;
         try
@@ -163,15 +163,20 @@ internal static class EndpointModelCatalog
             {
                 return [];
             }
-            var ids = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            var models = new SortedDictionary<string, (string Id, int ContextTokens)>(StringComparer.OrdinalIgnoreCase);
             foreach (JsonElement item in list.EnumerateArray())
             {
                 if (IdOf(item) is { } id && IsUsableForChat(id))
                 {
-                    ids.Add(id);
+                    int contextTokens = item.ValueKind == JsonValueKind.Object
+                        && item.TryGetProperty("context_length", out JsonElement length)
+                        && length.ValueKind == JsonValueKind.Number && length.TryGetInt32(out int value) && value > 0
+                            ? value : 0;
+                    if (!models.TryGetValue(id, out var existing)) models.Add(id, (id, contextTokens));
+                    else if (existing.ContextTokens == 0 && contextTokens > 0) models[id] = (existing.Id, contextTokens);
                 }
             }
-            return [.. ids];
+            return models.Values.ToArray();
         }
     }
 

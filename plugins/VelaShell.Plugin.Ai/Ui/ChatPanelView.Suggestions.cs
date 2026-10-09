@@ -22,6 +22,7 @@ public partial class ChatPanelView
     private const int MaxSuggestionChars = 42;
 
     private CancellationTokenSource? _suggestCts;
+    private Task? _suggestionTask;
 
     private void ClearSuggestions()
     {
@@ -69,20 +70,66 @@ public partial class ChatPanelView
     /// 一轮答完后,额外问一次模型要几条后续提问。整条链路失败都只是"不显示建议",
     /// 不打扰用户 —— 这是锦上添花的东西,不该因为它报错。
     /// </summary>
-    private async Task SuggestFollowUpsAsync(ResolvedModel provider, string userText, string replyText)
+    private Task SuggestFollowUpsAsync(ResolvedModel provider, string userText, string replyText,
+        ProviderCredential credential, string conversationId, string sentModel,
+        OAuthAccountSnapshot? verifiedAccount, long verifiedProviderVersion, string? selectedKeyId = null)
+        => _suggestionTask = GenerateFollowUpsAsync(provider, userText, replyText, credential,
+            conversationId, sentModel, verifiedAccount, verifiedProviderVersion, selectedKeyId);
+
+    private async Task GenerateFollowUpsAsync(ResolvedModel provider, string userText, string replyText,
+        ProviderCredential credential, string conversationId, string sentModel,
+        OAuthAccountSnapshot? verifiedAccount, long verifiedProviderVersion, string? selectedKeyId)
     {
-        if (!_settings.SuggestFollowUps || replyText.Trim().Length == 0)
+        var conversation = Cur;
+        if (!_settings.SuggestFollowUps || replyText.Trim().Length == 0
+            || conversation.ConversationId != conversationId || !IsForeground || Busy)
         {
             return;
         }
         _suggestCts?.Cancel();
         _suggestCts?.Dispose();
-        _suggestCts = new CancellationTokenSource();
-        CancellationToken token = _suggestCts.Token;
+        var cts = new CancellationTokenSource();
+        _suggestCts = cts;
+        CancellationToken token = cts.Token;
+        bool IsCurrent() => !token.IsCancellationRequested && ReferenceEquals(_suggestCts, cts)
+            && ReferenceEquals(conversation, _active) && conversation.ConversationId == conversationId
+            && IsForeground && !conversation.Busy;
         try
         {
+            // 正文的账号与配置快照来自发送前;此时旧 token 可能已被其它请求合法旋转。
+            if (_store.ProviderConfigurationVersion(provider.Provider) != verifiedProviderVersion
+                || !SameEndpoint(provider, _settings.FindModel(provider.Id)) || provider.Model != sentModel
+                || (credential.IsBearerToken && (verifiedAccount is not { } issuer
+                    || issuer with { Id = null, Account = null, LoginVersion = 0 } != CaptureOAuthIssuer(provider.Provider)))
+                || !IsCurrent())
+            {
+                return;
+            }
+            var latest = await _store.ResolveCredentialWithKeyIdAsync(provider, token,
+                refreshTokens: false, keyId: selectedKeyId);
+            OAuthAccountSnapshot? latestAccount = await CaptureOAuthAccountAsync(provider, latest.Credential, token);
+            bool SameSource(ProviderCredential candidate, OAuthAccountSnapshot? account)
+                => SameOAuthAccount(verifiedAccount, account)
+                    && (SameCredential(credential, candidate)
+                        || SameRenewingAccount(credential, candidate, verifiedAccount, account, provider));
+            // 先验证原账号、issuer、目标与固定槽,再允许同账号续期,不额外探活。
+            if (latest.KeyId != selectedKeyId || !SameSource(latest.Credential, latestAccount)
+                || !await StillVerifiedAsync(provider, latest.Credential, token, sentModel, selectedKeyId, verifiedProviderVersion)
+                || !IsCurrent())
+            {
+                return;
+            }
+            var renewed = await _store.ResolveCredentialWithKeyIdAsync(provider, token, keyId: selectedKeyId);
+            ProviderCredential refreshed = renewed.Credential;
+            OAuthAccountSnapshot? after = await CaptureOAuthAccountAsync(provider, refreshed, token);
+            if (renewed.KeyId != selectedKeyId || !SameSource(refreshed, after)
+                || !await StillVerifiedAsync(provider, refreshed, token, sentModel, selectedKeyId, verifiedProviderVersion)
+                || !SameOAuthAccount(after, await CaptureOAuthAccountAsync(provider, refreshed, token)) || !IsCurrent())
+            {
+                return;
+            }
             // 裸客户端:不叠 UseFunctionInvocation,也不给 Tools —— 这一问不该触发任何工具
-            IChatClient client = await _store.CreateClientAsync(provider, cancellationToken: token);
+            using IChatClient client = _store.CreateClient(provider, refreshed);
             var options = new ChatOptions { MaxOutputTokens = 120 };
             // 思考对三行短句毫无意义,而且会把这次"便宜的附带请求"变贵
             if (provider.Reasoning is not ReasoningLevel.Default)
@@ -96,14 +143,17 @@ public partial class ChatPanelView
 
             ChatResponse response = await Task.Run(
                 () => client.GetResponseAsync(BuildFollowUpPrompt(userText, replyText), options, token), token);
-            token.ThrowIfCancellationRequested();
+            if (!IsCurrent())
+            {
+                return;
+            }
 
             // 附带请求的用量也算进累计(是真花的钱),但不动"上一轮上下文"那个读数 ——
             // 那个数表示的是对话本身占了多少窗口,掺进这一问会误导。
             if (response.Usage is { } usage)
             {
-                TotalInputTokens += usage.InputTokenCount ?? 0;
-                TotalOutputTokens += usage.OutputTokenCount ?? 0;
+                conversation.TotalInputTokens += usage.InputTokenCount ?? 0;
+                conversation.TotalOutputTokens += usage.OutputTokenCount ?? 0;
                 UpdateUsageText();
             }
             RenderSuggestions(ParseSuggestions(response.Text));
@@ -116,6 +166,22 @@ public partial class ChatPanelView
         {
             _context.Log.Warn($"Follow-up suggestions unavailable: {ex.Message}");
         }
+    }
+
+    private static bool SameSuggestionDestination(ResolvedModel provider, ProviderCredential before,
+        ProviderCredential after)
+    {
+        string oldEndpoint = string.IsNullOrWhiteSpace(before.BaseUrl) ? provider.BaseUrl : before.BaseUrl;
+        string newEndpoint = string.IsNullOrWhiteSpace(after.BaseUrl) ? provider.BaseUrl : after.BaseUrl;
+        if (string.Equals(oldEndpoint, newEndpoint, StringComparison.Ordinal)) return true;
+        // Copilot 可按同一账号重新下发个人/企业端点,但不能借续期把历史交给任意主机。
+        return string.Equals(provider.Provider.CatalogId, "github-copilot", StringComparison.OrdinalIgnoreCase)
+            && TrustedCopilotEndpoint(oldEndpoint) && TrustedCopilotEndpoint(newEndpoint);
+
+        static bool TrustedCopilotEndpoint(string endpoint)
+            => Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri) && uri.Scheme == "https"
+                && uri.Port == 443 && string.IsNullOrEmpty(uri.UserInfo)
+                && uri.IdnHost.EndsWith(".githubcopilot.com", StringComparison.OrdinalIgnoreCase);
     }
 
     private string BuildFollowUpPrompt(string userText, string replyText)

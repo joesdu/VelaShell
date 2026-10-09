@@ -379,3 +379,6 @@ out/
 # VelaShell.Ssh 互操作测试的本地私密配置(靶机地址与凭据)
 tests/**/interop.local.json
 *.local.env
+
+# CodeGraph 本机索引(数据库与守护进程文件,各机器一份)
+.codegraph/

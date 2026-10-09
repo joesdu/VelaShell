@@ -1,6 +1,7 @@
 using System.Net;
 using VelaShell.Plugin.Ai.Auth;
 using VelaShell.Plugin.Ai.Configuration;
+using VelaShell.Plugin.Ai.Ui;
 using VelaShell.PluginSdk.Testing;
 
 namespace VelaShell.Plugin.Ai.Tests;
@@ -169,6 +170,41 @@ public sealed class CopilotExchangeTests
         Assert.IsNull(credential.BaseUrl);
     }
 
+    [TestMethod]
+    [DataRow("openrouter")]
+    [DataRow("openai-codex")]
+    [DataRow("anthropic-claude")]
+    [DataRow("huggingface")]
+    [DataRow("github-copilot")]
+    public async Task BuiltInOAuthCredentialCannotBeUsedAtAnotherHost(string catalog)
+    {
+        using var context = new TestPluginContext();
+        var store = new AiSettingsStore(context);
+        AiProvider provider = ProviderCatalog.Find(catalog)!.CreateProvider();
+        await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "sk-or-secret" });
+
+        provider.BaseUrl = "https://relay.example/v1";
+        AiSettingsStore.BuiltinOAuthHostMismatchException providerError =
+            await Assert.ThrowsExactlyAsync<AiSettingsStore.BuiltinOAuthHostMismatchException>(() =>
+                store.ResolveProviderCredentialAsync(provider));
+        AiSettingsStore.BuiltinOAuthHostMismatchException clientError =
+            Assert.ThrowsExactly<AiSettingsStore.BuiltinOAuthHostMismatchException>(() =>
+            {
+                _ = store.CreateClient(new ResolvedModel(provider, provider.Models[0]), ProviderCredential.Key("sk-or-secret"));
+            });
+
+        provider.BaseUrl = ProviderCatalog.Find(catalog)!.CreateProvider().BaseUrl;
+        provider.Models[0].BaseUrlOverride = "https://relay.example/v1";
+        AiSettingsStore.BuiltinOAuthHostMismatchException modelError =
+            await Assert.ThrowsExactlyAsync<AiSettingsStore.BuiltinOAuthHostMismatchException>(() =>
+                store.ResolveCredentialAsync(new ResolvedModel(provider, provider.Models[0])));
+        foreach (Exception error in new Exception[] { providerError, clientError, modelError })
+        {
+            Assert.IsTrue(TransientFailure.IsWorthSwitching(error));
+            Assert.IsFalse(TransientFailure.IsTransient(error));
+        }
+    }
+
     // ---- Claude 订阅 ----
 
     [TestMethod]
@@ -209,4 +245,122 @@ public sealed class CopilotExchangeTests
         Assert.Contains(
             new KeyValuePair<string, string>("anthropic-beta", "oauth-2025-04-20"), credential.Headers!);
     }
+    [TestMethod]
+    [DataRow(400, true)]
+    [DataRow(401, true)]
+    [DataRow(403, true)]
+    [DataRow(404, false)]
+    [DataRow(405, false)]
+    [DataRow(408, false)]
+    [DataRow(429, false)]
+    [DataRow(500, false)]
+    [DataRow(503, false)]
+    public async Task StoreRefresh_HttpStatusDeterminesFallbackBeforeOAuthPayload(int status, bool fallback)
+    {
+        foreach (bool copilot in new[] { false, true })
+        foreach (string body in new[] { "{\"error\":\"invalid_grant\"}", "{}", "not-json" })
+        {
+            using var context = new TestPluginContext();
+            OAuthStub stub = new OAuthStub().Json(body, (HttpStatusCode)status);
+            using var http = new HttpClient(stub);
+            var store = new AiSettingsStore(context) { TokenClient = new OAuthClient(http) };
+            AiProvider provider = ProviderCatalog.Find(copilot ? "github-copilot" : "anthropic-claude")!.CreateProvider();
+            // handler 截获全部请求,使用环回占位地址,不接触供应商或国际域名。
+            provider.OAuth!.TokenUrl = provider.OAuth.ExchangeUrl = "http://127.0.0.1/oauth";
+            await store.SaveTokensAsync(provider.Id, new OAuthTokens
+            {
+                AccessToken = "old-access", RefreshToken = "old-refresh",
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1)
+            });
+            if (fallback)
+            {
+                ProviderCredential credential = await store.ResolveCredentialAsync(new ResolvedModel(provider, provider.Models[0]));
+                Assert.AreEqual("old-access", credential.Value);
+            }
+            else
+            {
+                HttpRequestException error = await Assert.ThrowsExactlyAsync<HttpRequestException>(() =>
+                    store.ResolveCredentialAsync(new ResolvedModel(provider, provider.Models[0])));
+                Assert.AreEqual((HttpStatusCode)status, error.StatusCode);
+            }
+            OAuthTokens saved = (await store.GetTokensAsync(provider.Id))!;
+            Assert.AreEqual("old-access", saved.AccessToken);
+            Assert.AreEqual("old-refresh", saved.RefreshToken);
+            Assert.IsTrue(saved.NeedsRefresh, "失败的刷新不可保存新令牌或过期时间");
+            Assert.HasCount(1, stub.Requests);
+        }
+    }
+
+    private sealed class RefreshFailureHandler(Exception error) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromException<HttpResponseMessage>(error);
+    }
+
+    [TestMethod]
+    public async Task StoreRefresh_TransportFailuresAndCancellationPropagateWithoutSaving()
+    {
+        foreach (Exception failure in new Exception[]
+        {
+            new HttpRequestException("network"), new IOException("read"), new TimeoutException("timeout"),
+            new OperationCanceledException("cancel"), new TaskCanceledException("HTTP timeout")
+        })
+        {
+            using var context = new TestPluginContext();
+            using var http = new HttpClient(new RefreshFailureHandler(failure));
+            var store = new AiSettingsStore(context) { TokenClient = new OAuthClient(http) };
+            AiProvider provider = ProviderCatalog.Find("anthropic-claude")!.CreateProvider();
+            provider.OAuth!.TokenUrl = "http://127.0.0.1/oauth";
+            await store.SaveTokensAsync(provider.Id, new OAuthTokens
+            {
+                AccessToken = "old-access", RefreshToken = "old-refresh",
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1)
+            });
+            Exception? caught = null;
+            try { await store.ResolveCredentialAsync(new ResolvedModel(provider, provider.Models[0])); }
+            catch (Exception error) { caught = error; }
+            Assert.IsNotNull(caught);
+            if (failure is OperationCanceledException) Assert.IsInstanceOfType<OperationCanceledException>(caught);
+            else Assert.AreSame(failure, caught);
+            Assert.AreEqual("old-access", (await store.GetTokensAsync(provider.Id))!.AccessToken);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(400)]
+    [DataRow(401)]
+    [DataRow(403)]
+    public async Task StoreRefresh_HttpAuthorizationExceptionsAlsoKeepOldToken(int status)
+    {
+        using var context = new TestPluginContext();
+        using var http = new HttpClient(new RefreshFailureHandler(new HttpRequestException("denied", null, (HttpStatusCode)status)));
+        var store = new AiSettingsStore(context) { TokenClient = new OAuthClient(http) };
+        AiProvider provider = ProviderCatalog.Find("anthropic-claude")!.CreateProvider();
+        provider.OAuth!.TokenUrl = "http://127.0.0.1/oauth";
+        await store.SaveTokensAsync(provider.Id, new OAuthTokens
+        {
+            AccessToken = "old-access", RefreshToken = "old-refresh", ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1)
+        });
+        Assert.AreEqual("old-access", (await store.ResolveCredentialAsync(new ResolvedModel(provider, provider.Models[0]))).Value);
+        Assert.AreEqual("old-access", (await store.GetTokensAsync(provider.Id))!.AccessToken);
+    }
+
+    [TestMethod]
+    [DataRow("{}")]
+    [DataRow("{\"error\":\"invalid_grant\"}")]
+    public async Task StoreRefresh_NonHttpOAuthFailuresStillKeepOldTokens(string body)
+    {
+        using var context = new TestPluginContext();
+        using var http = new HttpClient(new OAuthStub().Json(body));
+        var store = new AiSettingsStore(context) { TokenClient = new OAuthClient(http) };
+        AiProvider provider = ProviderCatalog.Find("anthropic-claude")!.CreateProvider();
+        provider.OAuth!.TokenUrl = "http://127.0.0.1/oauth";
+        await store.SaveTokensAsync(provider.Id, new OAuthTokens
+        {
+            AccessToken = "old-access", RefreshToken = "old-refresh", ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1)
+        });
+        Assert.AreEqual("old-access", (await store.ResolveCredentialAsync(new ResolvedModel(provider, provider.Models[0]))).Value);
+        Assert.AreEqual("old-refresh", (await store.GetTokensAsync(provider.Id))!.RefreshToken);
+    }
+
 }
