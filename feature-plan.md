@@ -40,7 +40,7 @@
 | 部分 | 🔴 P0 | 🟠 P1 | 🟡 P2 | 🟢 P3 | 合计 |
 | --- | :---: | :---: | :---: | :---: | :---: |
 | 一、欠账 | 4 | 2 | 9 | 9 | **24** |
-| 二、路线图 | — | 6 | 18 | 16 | **40** |
+| 二、路线图 | — | 6 | 18 | 17 | **41** |
 | 三、文档待同步 | — | — | — | — | **36** |
 
 
@@ -231,6 +231,7 @@
 | 💡 | 🟡 P2 | **按连接给信任级别 / 每个会话一个显示**(F2 / F1,决策 Q5) | 现在所有转发来的会话共用一个受信的显示,`RestrictForwardedClients` 是全局开关。F2:按连接给信任级别,在分派层做访问检查(隐藏 XTEST、原始事件、跨客户端 GetImage);F1:每个 SSH 会话一个显示号,彼此看不见。默认值要拍板 |
 | 💡 | 🟡 P2 | **草案第五节的其余功能**(F4–F30) | 本机输入法组好字上屏(F5,决策 Q1 的第一步)、宿主光标跟着 Warp(F8)、屏保 Suspend 转告宿主(F9)、更宽的边缘缩放区(F11)、可选的「一个大窗口」模式(F13,Q2)、GL 的选择 / 反馈 / 求值器(F23)等,逐项评估 |
 | ⏳ | 🟢 P3 | **审查留下的部分完成项** | 点本机窗口或桌面就收起 X 的弹出菜单(WN-M7):要全局指针钩子,各平台各写一份。另有审查之前就有的一处:外接框宽或高为 0 的宽弧只画出一半线宽 |
+| 💡 | 🟢 P3 | **合并本地草稿时顺带看到的**(`plan.md` §181) | 源 picture 带变换时 alpha-map 按源未变换的坐标取样(文档说 alpha 原点相对 drawable 原点);用磅数要字体时 75 dpi 的总排在前、换算也按 75 dpi,96 dpi 的宿主上 Adobe 字体偏小;`scripts/xserver/fonts/build-fonts.cs` 对 X.Org 的字体包没有哈希校验(GitLab 生成的归档不保证逐字节稳定,宜对挑出的文件算);文档说 alpha-map 必须是只有 alpha 的格式、否则 BadMatch,代码只核了是像素图 —— 先查规范定哪边对 |
 | 💡 | 🟢 P3 | **需要实机核对的** | 分数缩放下最后一列像素可能被裁(API-H13);macOS 上 Command 组合键收不到 KeyUp 时的处理(IN-E19);macOS / FreeBSD 经 `getpeereid` 取对端 uid(CN-S8) |
 
 ---
@@ -242,6 +243,7 @@
 
 | 出处 | 要改什么 | 进度 |
 | --- | --- | --- |
+| `plan.md` §181 alpha-map 只作用一层、字体就近匹配看平均宽度 | `{zh,en}/xserver/design/architecture.md` §7:RENDER 那段补「alpha-map 只作用一层」与长链会栈溢出的理由;字体那段补「一样近时先比平均宽度」 | [velashell-docs#104](https://github.com/VelaShellLabs/velashell-docs/pull/104) 已开,与宿主 PR 一起合 |
 | `plan.md` §180 连接导入导出、多选与分组排序（#571） | `{zh,en}/host/会话导入.md` 新增第七节（JSON / CSV 两种格式、导出口令加密、CSV 列与读法、重复与写入规则）、第六节补一条、标题注明；`{zh,en}/host/交互与界面规格.md` §3（「更多」菜单、Ctrl 双选改为 Ctrl / Shift 多选、分组拖动排序）、§6.2 的入口说法、§12（多选菜单、分组菜单、新增 §12.1 批量修改对话框）；`{zh,en}/host/快捷键参考.md` 新增「资源管理器」一节（Ctrl / Shift 单击多选、拖动连接换分组、拖动分组行排序）；`SFTP双栏与WinSCP差距分析.md` 的交叉引用；`host/README.md` 与根 README 的索引 | [velashell-docs#103](https://github.com/VelaShellLabs/velashell-docs/pull/103) 已开，与宿主 PR 一起合 |
 | `plan.md` §118 窗口外框 | `{zh,en}/host/architecture.md` §5「窗口壳」的 ⚠️ 限定为 Win32、新增「各平台的外框」；`交互与界面规格.md` §2 补 macOS 红绿灯与各平台外框；`design-specs.md` 补 macOS 红绿灯；标题栏统一 28 的口径（设置窗口与消息框保持 48 的例外） | [velashell-docs#70](https://github.com/VelaShellLabs/velashell-docs/pull/70) 已开，与宿主 PR 一起合；实机验收后改掉 architecture 里「验收」那一段 |
 | `plan.md` §74 / §75 目录比较与同步 | `SFTP双栏与WinSCP差距分析.md`（C1 改已实现、新增第七节）与 `交互与界面规格.md` §6（文档工具条、同步窗口、保持远端最新、SHA-256 优先比较） | [velashell-docs#35](https://github.com/VelaShellLabs/velashell-docs/pull/35) **待合入** |

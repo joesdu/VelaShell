@@ -78,6 +78,36 @@ public sealed class CoreDrawingTests
         Assert.AreEqual(0x00FF00u, Pixel(handle, 52, 7), "中间的角");
     }
 
+    [TestMethod]
+    public async Task PolyArc首尾相接的弧在一条请求里连成路径_细弧接点只画一次_宽弧按接头连起来()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        (uint window, XTopLevelWindow handle) = await MapWindowAsync(c, host);
+        Task<ushort> PolyArcAsync(uint gc, params (short X, short Y, ushort W, ushort H, short A1, short A2)[] arcs) =>
+            c.SendAsync(68, 0, b =>
+            {
+                b.U32(window).U32(gc);
+                foreach ((short x, short y, ushort w, ushort h, short a1, short a2) in arcs)
+                {
+                    b.I16(x).I16(y).U16(w).U16(h).I16(a1).I16(a2);
+                }
+            });
+
+        // GXxor 的细弧:同一个圆的两段四分之一弧在 (30,10) 相接,接点原先两条弧各画一次、互相抵消。
+        uint xor = await CreateGcAsync(c, window, (GcFunction, 6), (GcForeground, 0xFFFFFF));
+        await PolyArcAsync(xor, (10, 10, 40, 40, 0, 90 * 64), (10, 10, 40, 40, 90 * 64, 90 * 64));
+        await c.SyncAsync();
+        Assert.AreEqual(0xFFFFFFu, Pixel(handle, 30, 10), "接点只画一次");
+
+        // lw = 8 的两条弧在 (20,10) 拐成直角:Miter 把缺口补成方角;原先两个 Butt 端帽,(17,13) 空着。
+        uint wide = await CreateGcAsync(c, window, (GcForeground, 0x00FF00), (GcLineWidth, 8));
+        await PolyArcAsync(wide, (0, 10, 40, 40, 0, 90 * 64), (-20, -10, 40, 40, 0, 90 * 64));
+        await c.SyncAsync();
+        Assert.AreEqual(0x00FF00u, Pixel(handle, 17, 13), "接头");
+    }
+
     private static async Task<byte> ErrorOfAsync(XTestClient c, ushort sequence) =>
         (await c.NextAsync(m => m.IsError && m.Sequence == sequence)).Detail;
 

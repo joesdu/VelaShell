@@ -134,6 +134,98 @@ public sealed class RenderTests
     }
 
     [TestMethod]
+    public async Task 纯色源也能挂AlphaMap_源alpha按它减半()
+    {
+        await using Setup s = await SetupAsync();
+        XTestClient c = s.Client;
+
+        // 4×4 的 a8 像素图做 alpha-map,每个像素 alpha 0x80:PolyFillRectangle 用 0x80 作前景色。
+        uint amPixmap = c.NewId();
+        await c.SendAsync(53, 8, b => b.U32(amPixmap).U32(s.Window).U16(4).U16(4));
+        uint amGc = c.NewId();
+        await c.SendAsync(55, 0, b => b.U32(amGc).U32(amPixmap).U32(0x4).U32(0x80808080));
+        await c.SendAsync(70, 0, b => b.U32(amPixmap).U32(amGc).I16(0).I16(0).U16(4).U16(4));
+        uint am = c.NewId();
+        await c.SendAsync(s.Major, 4, b => b.U32(am).U32(amPixmap).U32(s.Formats.A8).U32(0));
+
+        // 源是 CreateSolidFill 的不透明红(没有 drawable),挂上 alpha-map 后 Over 到白底。
+        uint source = c.NewId();
+        await c.SendAsync(s.Major, 33, b => b.U32(source).U16(0xFFFF).U16(0).U16(0).U16(0xFFFF));
+        await c.SendAsync(s.Major, 5, b => b.U32(source).U32(1u << 1).U32(am));
+        await c.SendAsync(s.Major, 8, b => b.U8(3).U8(0).U8(0).U8(0).U32(source).U32(0).U32(s.Picture)
+            .I16(0).I16(0).I16(0).I16(0).I16(2).I16(2).U16(4).U16(4));
+        await c.SyncAsync();
+
+        // 源变成 alpha 0x80 的红(预乘 0x80800000);Over 到白底:红 0x80 + 0xFF·0.5 = 0xFF,绿 / 蓝 0xFF·0.5 = 0x7F。
+        Assert.AreEqual(0xFF7F7Fu, s.Pixel(3, 3));
+    }
+
+    [TestMethod]
+    public async Task AlphaMap只作用一层_先挂上再给alpha_map挂alpha_map时后者不生效()
+    {
+        await using Setup s = await SetupAsync();
+        XTestClient c = s.Client;
+        uint sourcePixmap = c.NewId(), alphaPixmap = c.NewId(), innerPixmap = c.NewId();
+        await c.SendAsync(53, 32, b => b.U32(sourcePixmap).U32(s.Window).U16(4).U16(4));
+        await c.SendAsync(53, 8, b => b.U32(alphaPixmap).U32(s.Window).U16(4).U16(4));
+        await c.SendAsync(53, 8, b => b.U32(innerPixmap).U32(s.Window).U16(4).U16(4));
+
+        uint source = c.NewId(), alpha = c.NewId(), inner = c.NewId();
+        await c.SendAsync(s.Major, 4, b => b.U32(source).U32(sourcePixmap).U32(s.Formats.Argb32).U32(0));
+        await c.SendAsync(s.Major, 4, b => b.U32(alpha).U32(alphaPixmap).U32(s.Formats.A8).U32(0));
+        await c.SendAsync(s.Major, 4, b => b.U32(inner).U32(innerPixmap).U32(s.Formats.A8).U32(0));
+
+        // 源不透明蓝;alpha-map 50%;alpha-map 自己的 alpha-map 全透明(像素图建好就是 0)。
+        await c.SendAsync(s.Major, 26, b => b.U8(1).U8(0).U8(0).U8(0).U32(source)
+            .U16(0).U16(0).U16(0xFFFF).U16(0xFFFF).I16(0).I16(0).U16(4).U16(4));
+        await c.SendAsync(s.Major, 26, b => b.U8(1).U8(0).U8(0).U8(0).U32(alpha)
+            .U16(0).U16(0).U16(0).U16(0x8000).I16(0).I16(0).U16(4).U16(4));
+
+        // 先 source → alpha,再 alpha → inner:ChangePicture 只核新挂上的那张有没有 alpha-map,这个顺序拦不住,
+        // 一张张接下去就是任意长的链。合成时只用一层,inner 不起作用。
+        await c.SendAsync(s.Major, 5, b => b.U32(source).U32(1u << 1).U32(alpha));
+        await c.SendAsync(s.Major, 5, b => b.U32(alpha).U32(1u << 1).U32(inner));
+        await c.SendAsync(s.Major, 8, b => b.U8(3).U8(0).U8(0).U8(0).U32(source).U32(0).U32(s.Picture)
+            .I16(0).I16(0).I16(0).I16(0).I16(10).I16(5).U16(4).U16(4));
+        await c.SyncAsync();
+
+        Assert.AreEqual(0x7F7FFFu, s.Pixel(11, 6));
+    }
+
+    [TestMethod]
+    public async Task AlphaMap接成很长的链_Composite不递归不崩()
+    {
+        await using Setup s = await SetupAsync();
+        XTestClient c = s.Client;
+        uint sourcePixmap = c.NewId(), alphaPixmap = c.NewId();
+        await c.SendAsync(53, 32, b => b.U32(sourcePixmap).U32(s.Window).U16(4).U16(4));
+        await c.SendAsync(53, 8, b => b.U32(alphaPixmap).U32(s.Window).U16(4).U16(4));
+        uint source = c.NewId();
+        await c.SendAsync(s.Major, 4, b => b.U32(source).U32(sourcePixmap).U32(s.Formats.Argb32).U32(0));
+        await c.SendAsync(s.Major, 26, b => b.U8(1).U8(0).U8(0).U8(0).U32(source)
+            .U16(0).U16(0).U16(0xFFFF).U16(0xFFFF).I16(0).I16(0).U16(4).U16(4));
+
+        // 同一张 a8 像素图上建 N 张 picture,依次把上一张的 alpha-map 设成下一张。每一步新挂上的那张都还没有
+        // alpha-map,ChangePicture 都接受;合成时若顺着链往下解,每一环一层递归,栈溢出在 .NET 里接不住,整个进程会崩。
+        const int Links = 100_000;
+        uint previous = source;
+        for (int i = 0; i < Links; i++)
+        {
+            uint next = c.NewId();
+            uint link = previous;
+            await c.SendAsync(s.Major, 4, b => b.U32(next).U32(alphaPixmap).U32(s.Formats.A8).U32(0));
+            await c.SendAsync(s.Major, 5, b => b.U32(link).U32(1u << 1).U32(next));
+            previous = next;
+        }
+        await c.SendAsync(s.Major, 8, b => b.U8(3).U8(0).U8(0).U8(0).U32(source).U32(0).U32(s.Picture)
+            .I16(0).I16(0).I16(0).I16(0).I16(10).I16(5).U16(4).U16(4));
+        await c.SyncAsync();
+
+        // alpha-map 全 0:源整个透明,白底不变。
+        Assert.AreEqual(0xFFFFFFu, s.Pixel(11, 6));
+    }
+
+    [TestMethod]
     public async Task AddGlyphs的尺寸与个数按不会回绕的算法核长度_回BadLength而不是分配几个GB()
     {
         await using Setup s = await SetupAsync();

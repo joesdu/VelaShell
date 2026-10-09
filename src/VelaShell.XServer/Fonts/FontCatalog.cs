@@ -252,7 +252,10 @@ internal static class FontCatalog
         /// 完整的 14 字段 XLFD 要了一个我们没有的字号(<c>-adobe-helvetica-medium-r-normal--13-*-*-*-*-*-iso8859-1</c>):
         /// foundry、family、weight、slant、charset 都对得上的里面,取像素高度最接近的(一样近取小的)。原先直接 BadName。
         /// 尺寸按 PIXEL_SIZE,没给时按 POINT_SIZE 与 RESOLUTION_Y(没给按 75 dpi)换算;两个都没给就不猜(通配本来就该匹配上)。
-        /// setwidth、add-style、spacing、平均宽度不看 —— 宁可给一个近似的也别让程序打不开字体。
+        /// 给了 AVERAGE_WIDTH 时,一样近的里面挑平均宽度最接近的:把平均宽度翻倍要双宽字体(给宽字符配的)的
+        /// <c>-misc-fixed-medium-r-semicondensed--13-120-75-75-c-120-iso10646-1</c> 拿到 12x13ja,而不是按名字的先后拿到 7x13。
+        /// 平均宽度只在一样近的里面比,不会为了字宽退到高度差得更远的字体。
+        /// setwidth、add-style、spacing 不看 —— 宁可给一个近似的也别让程序打不开字体。
         /// </summary>
         private string? NearestSize(string pattern)
         {
@@ -275,8 +278,11 @@ internal static class FontCatalog
             {
                 return null;
             }
+            int? wantWidth = int.TryParse(want[12], NumberStyles.None, CultureInfo.InvariantCulture, out int average) && average > 0
+                ? average
+                : null;
             string? best = null;
-            int bestDistance = int.MaxValue, bestPixels = 0;
+            int bestDistance = int.MaxValue, bestWidthDistance = int.MaxValue, bestPixels = 0;
             foreach (string name in SortedNames)
             {
                 string[] have = name.Split('-');
@@ -287,9 +293,12 @@ internal static class FontCatalog
                     continue;
                 }
                 int distance = Math.Abs(size - target);
-                if (distance < bestDistance || (distance == bestDistance && size < bestPixels))
+                int widthDistance = wantWidth is not { } w ? 0
+                    : int.TryParse(have[12], NumberStyles.None, CultureInfo.InvariantCulture, out int width) ? Math.Abs(width - w)
+                    : int.MaxValue;
+                if ((distance, widthDistance, size).CompareTo((bestDistance, bestWidthDistance, bestPixels)) < 0)
                 {
-                    (best, bestDistance, bestPixels) = (name, distance, size);
+                    (best, bestDistance, bestWidthDistance, bestPixels) = (name, distance, widthDistance, size);
                 }
             }
             return best;
