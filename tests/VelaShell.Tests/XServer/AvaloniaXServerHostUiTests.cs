@@ -908,6 +908,38 @@ public sealed class AvaloniaXServerHostUiTests
         await serve.WaitAsync(TimeSpan.FromSeconds(5));
     });
 
+    /// <summary>屏保(xs_plan F9):X 程序挂起屏保时宿主抑制本机屏保,恢复时恢复;停 X Server 时一并恢复;Reset 重置本机空闲计时。</summary>
+    [TestMethod]
+    public async Task X程序挂起屏保时抑制本机屏保_停服时恢复_Reset重置空闲计时() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        List<bool> inhibits = [];
+        int resets = 0;
+        host.InhibitIdle = on => { inhibits.Add(on); return true; };
+        host.ResetIdle = () => { resets++; return true; };
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        System.Collections.Concurrent.ConcurrentQueue<byte[]> replies = new();
+        await HandshakeAsync(client, replies: replies);
+        byte[] name = Encoding.ASCII.GetBytes("MIT-SCREEN-SAVER");
+        await SendAsync(client, 98, 0, w => w.U16((ushort)name.Length).U16(0).Bytes(name).Pad());                   // 序号 1
+        byte saver = (await WaitForAsync(() => replies.FirstOrDefault(r => BinaryPrimitives.ReadUInt16LittleEndian(r.AsSpan(2)) == 1)))[9];
+
+        await SendAsync(client, saver, 5, w => w.U32(1));   // Suspend(True)
+        await SendAsync(client, 115, 0, w => { });          // ForceScreenSaver(Reset)
+        await WaitForAsync(() => inhibits.Count > 0 && resets > 0 ? inhibits : null);
+        Assert.IsTrue(inhibits[^1], "挂起:抑制本机屏保");
+
+        host.Detach();
+        await Task.Delay(100);
+        Dispatcher.UIThread.RunJobs();
+        Assert.IsFalse(inhibits[^1], "停服:恢复");
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
     /// <summary>
     /// 平滑滚动(xs_plan F6):宿主把滚动增量原样交给服务端 —— 触控板的半格增量两次攒成一格,只认按钮的核心客户端收到一次按钮 4(向上)。
     /// </summary>

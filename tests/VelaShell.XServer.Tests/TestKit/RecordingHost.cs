@@ -130,6 +130,26 @@ internal sealed class RecordingHost : IX11ServerHost, IDisposable
         Note($"confine {area}");
     }
 
+    /// <summary><see cref="ScreenSaverSuspensionChanged" /> 收到的值,按先后。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<bool> SaverSuspensions { get; } = new();
+
+    /// <summary><see cref="ScreenSaverReset" /> 收到的次数。</summary>
+    public int SaverResets => _saverResets;
+
+    private int _saverResets;
+
+    public void ScreenSaverSuspensionChanged(bool suspended)
+    {
+        SaverSuspensions.Enqueue(suspended);
+        Note($"saver suspended {suspended}");
+    }
+
+    public void ScreenSaverReset()
+    {
+        Interlocked.Increment(ref _saverResets);
+        Note("saver reset");
+    }
+
     /// <summary>最近一次 <see cref="ClipboardContentChanged" /> 收到的整份内容(各种格式)。</summary>
     public XClipboardContent? ClipboardContent { get; private set; }
 

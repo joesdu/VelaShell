@@ -116,4 +116,20 @@ public interface IX11ServerHost
     void PointerConfinementChanged(XRect? area)
     {
     }
+
+    /// <summary>
+    /// X 程序挂起 / 恢复了屏保(MIT-SCREEN-SAVER 的 Suspend:视频播放器全屏放片子时)。<paramref name="suspended" /> 为真时宿主应当抑制
+    /// 本机的屏保与关显示器,为假时恢复 —— 远端程序防的是远端的屏保,用户眼前的是本机的。默认实现什么也不做。
+    /// </summary>
+    void ScreenSaverSuspensionChanged(bool suspended)
+    {
+    }
+
+    /// <summary>
+    /// X 程序重置了屏保计时(ForceScreenSaver(Reset),播放器常每隔几秒发一次;服务端至多每 5 秒报一次)。宿主可以据此重置本机的空闲计时。
+    /// 默认实现什么也不做。
+    /// </summary>
+    void ScreenSaverReset()
+    {
+    }
 }

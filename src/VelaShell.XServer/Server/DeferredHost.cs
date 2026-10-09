@@ -167,6 +167,10 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
 
     public void PointerConfinementChanged(XRect? area) => _pending.Add(() => inner.PointerConfinementChanged(area));
 
+    public void ScreenSaverSuspensionChanged(bool suspended) => _pending.Add(() => inner.ScreenSaverSuspensionChanged(suspended));
+
+    public void ScreenSaverReset() => _pending.Add(inner.ScreenSaverReset);
+
     /// <summary>调完攒下的回调。回调里再引起的回调(宿主同步调了注入方法 —— 那只是排工作项,不会同步回来)留到下一轮。</summary>
     public void Flush()
     {

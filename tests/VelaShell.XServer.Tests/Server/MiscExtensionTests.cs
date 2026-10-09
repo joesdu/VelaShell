@@ -127,6 +127,41 @@ public sealed class MiscExtensionTests
         Assert.IsLessThan(100u, after.U32(16), $"本机有动静之后空闲应归零,实际 {after.U32(16)} ms");
     }
 
+    /// <summary>
+    /// 屏保交给宿主(xs_plan F9):Suspend 每个客户端各自计数,任何一个挂着就告诉宿主「挂起」,都恢复(或挂着的客户端断开)才报「恢复」;
+    /// 别的客户端恢复不了别人挂起的。ForceScreenSaver(Reset) 隔一会儿告诉宿主一次。
+    /// </summary>
+    [TestMethod]
+    public async Task 屏保挂起按客户端计数交给宿主_断开即作废_Reset隔一会儿报一次()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        XTestClient player = await XTestClient.ConnectAsync(server);
+        await using XTestClient other = await XTestClient.ConnectAsync(server);
+        byte saver = await MajorAsync(player, "MIT-SCREEN-SAVER");
+        Task<ushort> SuspendAsync(XTestClient c, bool suspend) => c.SendAsync(saver, 5, b => b.U32(suspend ? 1u : 0u));
+
+        await SuspendAsync(player, true);
+        await SuspendAsync(player, true);   // 嵌套两次
+        await player.SyncAsync();
+        await host.WaitForAsync(() => !host.SaverSuspensions.IsEmpty);
+        CollectionAssert.AreEqual(new[] { true }, host.SaverSuspensions.ToArray(), "第一次挂起报一次");
+        await SuspendAsync(other, false);    // 别的客户端恢复不了
+        await SuspendAsync(player, false);   // 还剩一层
+        await other.SyncAsync();
+        await player.SyncAsync();
+        Assert.HasCount(1, host.SaverSuspensions);
+        await player.DisposeAsync();         // 挂着的客户端断开:作废
+        await host.WaitForAsync(() => host.SaverSuspensions.Count >= 2);
+        CollectionAssert.AreEqual(new[] { true, false }, host.SaverSuspensions.ToArray());
+
+        await other.SendAsync(115, 0);       // ForceScreenSaver(Reset)
+        await other.SendAsync(115, 0);
+        await other.SyncAsync();
+        await host.WaitForAsync(() => host.SaverResets >= 1);
+        Assert.AreEqual(1, host.SaverResets, "连着的 Reset 只报一次");
+    }
+
     [TestMethod]
     public async Task DPMS的超时与开关往返()
     {

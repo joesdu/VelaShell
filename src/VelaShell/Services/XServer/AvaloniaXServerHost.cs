@@ -225,6 +225,11 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
             _watchedScreens = null;
             _confinement = null;
             ApplyConfinement();
+            if (_saverSuspended)
+            {
+                _saverSuspended = false;
+                InhibitIdle(false);   // 停服:本机屏保恢复正常
+            }
             XNativeWindow[] windows = [.. _windows.Values];
             _windows.Clear();
             _desktops.Clear();
@@ -765,6 +770,27 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         _confinement = area;
         ApplyConfinement();
     });
+
+    /// <summary>
+    /// X 程序挂起 / 恢复了屏保(远端 mpv 全屏放视频,xs_plan F9):挂起期间抑制本机的屏保与关显示器 —— 远端程序防的是远端的屏保,
+    /// 用户眼前的是本机的。停 X Server 时恢复。
+    /// </summary>
+    public void ScreenSaverSuspensionChanged(bool suspended) => Dispatcher.UIThread.Post(() =>
+    {
+        _saverSuspended = suspended;
+        InhibitIdle(suspended);
+    });
+
+    /// <summary>X 程序重置了屏保计时(服务端至多每 5 秒报一次):重置本机的空闲计时一次。</summary>
+    public void ScreenSaverReset() => Dispatcher.UIThread.Post(() => ResetIdle());
+
+    private bool _saverSuspended;
+
+    /// <summary>抑制 / 恢复本机屏保;测试可以换掉。</summary>
+    internal Func<bool, bool> InhibitIdle { get; set; } = SystemIdle.Inhibit;
+
+    /// <summary>重置本机空闲计时;测试可以换掉。</summary>
+    internal Func<bool> ResetIdle { get; set; } = SystemIdle.Reset;
 
     /// <summary>X 程序要求的光标范围(根坐标);null = 没有。</summary>
     private XRect? _confinement;
