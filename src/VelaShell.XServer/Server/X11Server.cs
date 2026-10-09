@@ -403,7 +403,7 @@ public sealed partial class X11Server : IAsyncDisposable
         }
         Post(null, () =>
         {
-            if (LiveTopLevel(window) is { } top)
+            if (InputTarget(window) is { } top)
             {
                 ApplyScroll(top, x, y, dx, dy);
             }

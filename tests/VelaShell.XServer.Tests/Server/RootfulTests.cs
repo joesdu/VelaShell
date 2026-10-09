@@ -126,6 +126,9 @@ public sealed class RootfulTests
         server.InjectPointerButton(screen, 60, 30, 1, pressed: false);
         XMessage press = await c.NextEventAsync(ButtonPress);
         Assert.AreEqual(window, press.U32(12));
+        server.InjectScroll(screen, 60, 30, 0, 1);
+        XMessage wheel = await c.NextEventAsync(ButtonPress);
+        Assert.AreEqual((window, (byte)5), (wheel.U32(12), wheel.Detail), "滚动也按根坐标落到窗口上(一格 = 按钮 5)");
         Assert.AreEqual((60, 30, 10, 10), (press.I16(20), press.I16(22), press.I16(24), press.I16(26)));
         await host.WaitForAsync(() => host.CursorWindow is not null);
         Assert.AreSame(screen, host.CursorWindow, "光标报在屏幕句柄上");
