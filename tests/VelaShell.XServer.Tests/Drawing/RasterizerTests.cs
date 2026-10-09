@@ -391,4 +391,316 @@ public sealed class RasterizerTests
             }
         }
     }
+
+    // ------------------------------------------------------------------ PolyArc:首尾相接的弧
+
+    /// <summary>圆心 (cx, cy)、半径 r 的圆上从 start° 起、跨 extent° 的弧(逆时针为正)。</summary>
+    private static (int X, int Y, int W, int H, int A1, int A2) CircleArc(int cx, int cy, int r, int start, int extent) =>
+        (cx - r, cy - r, 2 * r, 2 * r, start * 64, extent * 64);
+
+    // 一个拐角:A 是圆心 (30,50) 的圆从 180° 顺时针 90°,终点 (30,30) 处朝右走;B 是圆心 (50,30) 的圆从 180° 逆时针 90°,
+    // 从 (30,30) 朝下走 —— 与折线 (10,30) → (30,30) → (30,50) 在 (30,30) 处的转角相同。
+    private static readonly (int X, int Y, int W, int H, int A1, int A2) CornerA = CircleArc(30, 50, 20, 180, -90);
+    private static readonly (int X, int Y, int W, int H, int A1, int A2) CornerB = CircleArc(50, 30, 20, 180, 90);
+
+    /// <summary>C:圆心 (30,50) 的下半圆,从 (50,50)(B 的终点)顺时针到 (10,50)(A 的起点)。B → C → A 首尾相接。</summary>
+    private static readonly (int X, int Y, int W, int H, int A1, int A2) LowerHalf = CircleArc(30, 50, 20, 0, -180);
+
+    /// <summary>G:圆心 (50,30) 的圆从 0° 起逆时针 90°,起点 (70,30) 谁都不接。</summary>
+    private static readonly (int X, int Y, int W, int H, int A1, int A2) Loose = CircleArc(50, 30, 20, 0, 90);
+
+    /// <summary>
+    /// 拐角外侧 R = [31,40) × [20,30) 里画了的像素数:A 的环带在 x ≤ 30、B 的在 y ≥ 30,都伸不到那里,只有接头(或端帽)画得到。
+    /// lw = 7 时接头的边都落在半像素上,不碰像素中心。
+    /// </summary>
+    private static int OutsideCorner(PixelBuffer buffer)
+    {
+        int count = 0;
+        for (int y = 20; y < 30; y++)
+        {
+            for (int x = 31; x < 40; x++)
+            {
+                count += buffer.Get(x, y) != 0 ? 1 : 0;
+            }
+        }
+        return count;
+    }
+
+    /// <summary>每条弧单独画(相当于各自一串:都加端帽、虚线各自从 dash-offset 开始)。</summary>
+    private static void EachAlone(Rasterizer raster, params (int X, int Y, int W, int H, int A1, int A2)[] arcs)
+    {
+        foreach ((int X, int Y, int W, int H, int A1, int A2) arc in arcs)
+        {
+            raster.PolyArc([arc]);
+        }
+    }
+
+    [TestMethod]
+    public void 相接的两条宽弧按join_style接_外侧与同样转角的折线接头相同_不再各自加端帽()
+    {
+        // 外侧 R 里:Miter 是 3 × 3 的方块,Round 是半径 3.5 的圆的一角,Bevel 是斜边 x − y = 3.5 下面的三角。
+        int[] expected = [9, 6, 3];
+        for (byte join = 0; join < 3; join++)
+        {
+            XGc gc = new(1, null, 24) { Foreground = 1, LineWidth = 7, JoinStyle = join, CapStyle = 1 };
+            PixelBuffer joined = Stroke(gc, r => r.PolyArc([CornerA, CornerB]));
+            PixelBuffer line = Stroke(gc, r => r.PolyLine([(10, 30), (30, 30), (30, 50)]));
+            Assert.AreEqual(expected[join], OutsideCorner(joined), $"join-style {join}");
+            for (int y = 20; y < 30; y++)
+            {
+                for (int x = 31; x < 40; x++)
+                {
+                    Assert.AreEqual(line.Get(x, y), joined.Get(x, y), $"join-style {join}:({x},{y}) 与折线的接头不同");
+                }
+            }
+            Assert.AreEqual(0, OutsideCorner(Stroke(gc, r => EachAlone(r, CornerA, CornerB))), "各自加 Butt 端帽时外侧什么都没有");
+        }
+
+        // 两个 Projecting 端帽在接点上合起来正好是 Miter 的方块;相接之后接点上不加端帽,Bevel 只剩三角。
+        XGc projecting = new(1, null, 24) { Foreground = 1, LineWidth = 7, JoinStyle = 2, CapStyle = 3 };
+        Assert.AreEqual(3, OutsideCorner(Stroke(projecting, r => r.PolyArc([CornerA, CornerB]))));
+        Assert.AreEqual(9, OutsideCorner(Stroke(projecting, r => EachAlone(r, CornerA, CornerB))));
+    }
+
+    [TestMethod]
+    public void 首尾相接的一串宽弧是闭合路径_哪里都不加端帽()
+    {
+        // B → C → A:A 的终点 (30,30) 又回到 B 的起点,那里按 Miter 接(外侧 R 里 9 个像素);cap-style 换成什么像素都不变。
+        PixelBuffer? first = null;
+        foreach (byte cap in new byte[] { 1, 2, 3 })
+        {
+            XGc gc = new(1, null, 24) { Foreground = 1, LineWidth = 7, JoinStyle = 0, CapStyle = cap };
+            PixelBuffer closed = Stroke(gc, r => r.PolyArc([CornerB, LowerHalf, CornerA]), size: 80);
+            Assert.AreEqual(9, OutsideCorner(closed), $"cap-style {cap}:接缝处是 Miter 接头");
+            first ??= closed;
+            CollectionAssert.AreEqual(first.Pixels, closed.Pixels, $"cap-style {cap}");
+        }
+
+        // 同一个椭圆的四段 90° 弧拼成整圈:与一条 360° 的弧逐个像素相同,没有端帽(lw = 20 时四个接点上的 Projecting 端帽会伸出环带),
+        // 0° 处水平的端面上那一排像素也不丢(分开算的两段端面差几个末位,那一排像素中心会两边都不算)。
+        (int X, int Y, int W, int H, int A1, int A2)[] quarters = [.. Enumerable.Range(0, 4).Select(k => (10, 10, 50, 30, k * 90 * 64, 90 * 64))];
+        XGc wide = new(1, null, 24) { Foreground = 1, LineWidth = 20, CapStyle = 3 };
+        PixelBuffer whole = Stroke(wide, r => r.PolyArc([(10, 10, 50, 30, 0, 360 * 64)]), size: 80);
+        CollectionAssert.AreEqual(whole.Pixels, Stroke(wide, r => r.PolyArc(quarters), size: 80).Pixels, "四段拼成的整圈");
+        Assert.AreEqual((0u, 1u), (whole.Get(69, 16), Stroke(wide, r => EachAlone(r, quarters), size: 80).Get(69, 16)), "各自加端帽时 0° 处伸出 Projecting 端帽");
+    }
+
+    [TestMethod]
+    public void 相接的弧虚线接着走_不相接的从dash_offset重新开始()
+    {
+        foreach (ushort lw in new ushort[] { 0, 4 })
+        {
+            // 拐角 A → B:两条弧各长约 31 个像素。虚线 [40, 100]:接着走时第一个偶数段盖住整条 A、再伸进 B 九个像素左右,
+            // B 的后半截落在奇数段里;B 若从 dash-offset 重新开始,整条 B 都在第一个偶数段里。
+            XGc gc = new(1, null, 24) { Foreground = 1, LineWidth = lw, LineStyle = 1, Dashes = [40, 100], CapStyle = 1 };
+            PixelBuffer joined = Stroke(gc, r => r.PolyArc([CornerA, CornerB]));
+            PixelBuffer reset = Stroke(gc, r => EachAlone(r, CornerA, CornerB));
+            Assert.IsGreaterThan(0, Count(joined, 28, 31, 34, 36), $"lw = {lw}:B 的开头还在第一个偶数段里");
+            Assert.AreEqual(0, Count(joined, 40, 45, 49, 53), $"lw = {lw}:B 的后半截落在奇数段里");
+            Assert.IsGreaterThan(0, Count(reset, 40, 45, 49, 53), $"lw = {lw}:各自从 dash-offset 开始时 B 全程都画");
+
+            // 圆心 (30,30) 的圆上 0° → 90° 与 90° → 180° 两段:同一个椭圆上接着走的两段,与一条 0° → 180° 的弧逐个像素相同。
+            gc.Dashes = [5, 3];
+            gc.DashOffset = 2;
+            gc.CapStyle = 2;
+            gc.Function = 6;
+            (int X, int Y, int W, int H, int A1, int A2) first = CircleArc(30, 30, 20, 0, 90);
+            PixelBuffer halves = Stroke(gc, r => r.PolyArc([first, CircleArc(30, 30, 20, 90, 90)]));
+            CollectionAssert.AreEqual(Stroke(gc, r => r.PolyArc([CircleArc(30, 30, 20, 0, 180)])).Pixels, halves.Pixels, $"lw = {lw}:同一个圆上的两段");
+
+            // 第二段往下挪一个像素就不相接了:各画各的,第二段从 dash-offset 重新开始。
+            (int X, int Y, int W, int H, int A1, int A2) moved = CircleArc(30, 31, 20, 90, 90);
+            CollectionAssert.AreEqual(Stroke(gc, r => EachAlone(r, first, moved)).Pixels, Stroke(gc, r => r.PolyArc([first, moved])).Pixels,
+                $"lw = {lw}:不相接");
+        }
+
+        // [x0, x1) × [y0, y1) 里画了的像素数。
+        static int Count(PixelBuffer b, int x0, int y0, int x1, int y1) =>
+            Enumerable.Range(y0, y1 - y0).Sum(y => Enumerable.Range(x0, x1 - x0).Count(x => b.Get(x, y) != 0));
+    }
+
+    [TestMethod]
+    public void 相接的弧整串一次填_GXxor下接缝不画两次()
+    {
+        // GXxor、前景背景都是全 1:画两次的像素会被抵消,与 GXcopy 的结果逐个比就看得出来。
+        (int X, int Y, int W, int H, int A1, int A2)[][] chains =
+        [
+            [CornerA, CornerB],
+            [CornerB, LowerHalf, CornerA],
+            [.. Enumerable.Range(0, 4).Select(k => (10, 10, 41, 25, k * 90 * 64, 90 * 64))],
+        ];
+        foreach ((int X, int Y, int W, int H, int A1, int A2)[] chain in chains)
+        {
+            foreach (ushort lw in new ushort[] { 0, 3, 8 })
+            {
+                for (int style = 0; style < 4 * 3 * 2; style++)
+                {
+                    XGc gc = new(1, null, 24)
+                    {
+                        Foreground = 0xFFFFFF,
+                        Background = 0xFFFFFF,
+                        Function = 3,
+                        LineWidth = lw,
+                        CapStyle = (byte)(style % 4),
+                        JoinStyle = (byte)(style / 4 % 3),
+                        LineStyle = (byte)(style / 12 * 2),
+                        Dashes = [7, 4],
+                    };
+                    PixelBuffer copy = Stroke(gc, r => r.PolyArc(chain), size: 80);
+                    gc.Function = 6;
+                    PixelBuffer xor = Stroke(gc, r => r.PolyArc(chain), size: 80);
+                    CollectionAssert.AreEqual(copy.Pixels, xor.Pixels,
+                        $"{chain.Length} 条弧,lw = {lw},cap {gc.CapStyle},join {gc.JoinStyle},line-style {gc.LineStyle}");
+                }
+            }
+        }
+    }
+
+    [TestMethod]
+    public void 随机的一串相接宽弧_DoubleDash与Solid像素相同且每个只画一次()
+    {
+        Random random = new(64);
+        for (int round = 0; round < 300; round++)
+        {
+            // 从一个整点出发:每条弧取整数半径的圆,起角是 0° / 90° / 180° / 270° 之一、跨 90° 的倍数 —— 端点都在整点上,一条接一条。
+            List<(int X, int Y, int W, int H, int A1, int A2)> chain = [];
+            (int x, int y) = (random.Next(10, Size - 10), random.Next(10, Size - 10));
+            for (int k = random.Next(2, 6); k > 0; k--)
+            {
+                int radius = random.Next(1, 16), start = random.Next(4) * 90, extent = random.Next(1, 5) * 90 * (random.Next(2) == 0 ? 1 : -1);
+                (int dx, int dy) = Offset(start, radius);
+                (int cx, int cy) = (x - dx, y - dy);
+                chain.Add(CircleArc(cx, cy, radius, start, extent));
+                (dx, dy) = Offset(start + extent, radius);
+                (x, y) = (cx + dx, cy + dy);
+            }
+            XGc gc = new(1, null, 24)
+            {
+                Foreground = 0xFFFFFF,
+                Background = 0xFFFFFF,
+                Function = 6,
+                LineWidth = (ushort)random.Next(1, 12),
+                JoinStyle = (byte)random.Next(3),
+                CapStyle = (byte)random.Next(4),
+                Dashes = [(byte)random.Next(1, 9), (byte)random.Next(1, 9)],
+                DashOffset = (ushort)random.Next(20),
+            };
+            string what = $"第 {round} 串:{string.Join(" ", chain)} lw={gc.LineWidth} join={gc.JoinStyle} cap={gc.CapStyle}";
+            PixelBuffer solid = Stroke(gc, r => r.PolyArc(chain));
+            gc.Function = 3;
+            CollectionAssert.AreEqual(Stroke(gc, r => r.PolyArc(chain)).Pixels, solid.Pixels, $"{what}:GXxor 下有像素画了两次");
+            gc.Function = 6;
+            gc.LineStyle = 2;
+            CollectionAssert.AreEqual(solid.Pixels, Stroke(gc, r => r.PolyArc(chain)).Pixels, $"{what}:DoubleDash 与 Solid 不同");
+        }
+
+        // 圆上角度 a(0° / 90° / 180° / 270°)处的点相对圆心的偏移(y 朝下)。
+        static (int Dx, int Dy) Offset(int angle, int radius) => (((angle % 360) + 360) % 360) switch
+        {
+            0 => (radius, 0),
+            90 => (0, -radius),
+            180 => (-radius, 0),
+            _ => (0, radius),
+        };
+    }
+
+    [TestMethod]
+    public void 拐角接点上外侧半个端面的像素都画到()
+    {
+        // A:圆心 (61,24)、半径 10,从 180° 逆时针 270° 到顶点 (61,14),在那里朝左走;B:圆心 (73,14)、半径 12,从 (61,14) 起朝下走。
+        // A 的终点端面是竖线 x = 61,外侧那一半 (61,6)–(61,14) 一边是 A 的环带、一边是 Bevel 的三角;按浮点算的 cos(π/2) 不是 0,
+        // 两边若各按差几个末位的端面取像素,压在线上的像素中心会两边都不算。
+        XGc gc = new(1, null, 24) { Foreground = 1, LineWidth = 16, JoinStyle = 2, CapStyle = 1 };
+        PixelBuffer corner = Stroke(gc, r => r.PolyArc([(51, 14, 20, 20, 180 * 64, 270 * 64), (61, 2, 24, 24, 180 * 64, 90 * 64)]), size: 80);
+        for (int y = 7; y < 14; y++)
+        {
+            Assert.AreEqual(1u, corner.Get(61, y), $"(61,{y})");
+        }
+
+        // 随机的拐角:两个整数半径的圆在 0° / 90° / 180° / 270° 处相接,A 终点端面上外侧那一半里压在线上的像素都要画到。
+        Random random = new(99);
+        for (int round = 0; round < 3000; round++)
+        {
+            (int cx, int cy, int radius, int start, int extent) a = (random.Next(25, 55), random.Next(25, 55), random.Next(3, 25), random.Next(4) * 90, 0);
+            a.extent = random.Next(1, 4) * 90 * (random.Next(2) == 0 ? 1 : -1);
+            (int px, int py) = (a.cx + RoundCos(a.start + a.extent, a.radius), a.cy - RoundSin(a.start + a.extent, a.radius));
+            (int radius, int start, int extent) b = (random.Next(3, 25), random.Next(4) * 90, random.Next(1, 4) * 90 * (random.Next(2) == 0 ? 1 : -1));
+            (int bx, int by) = (px - RoundCos(b.start, b.radius), py + RoundSin(b.start, b.radius));
+            int lw = random.Next(2, 2 * Math.Min(a.radius, b.radius));
+            gc = new(1, null, 24) { Foreground = 1, LineWidth = (ushort)lw, JoinStyle = (byte)random.Next(3), CapStyle = 1 };
+            PixelBuffer joined = Stroke(gc, r => r.PolyArc([CircleArc(a.cx, a.cy, a.radius, a.start, a.extent), CircleArc(bx, by, b.radius, b.start, b.extent)]), size: 80);
+
+            // 切向:逆时针的弧在角 t 处朝 (−sin t, −cos t)(y 朝下),顺时针的反过来。
+            (int ux, int uy) = (-RoundSin(a.start + a.extent, 1) * Math.Sign(a.extent), -RoundCos(a.start + a.extent, 1) * Math.Sign(a.extent));
+            (int vx, int vy) = (-RoundSin(b.start, 1) * Math.Sign(b.extent), -RoundCos(b.start, 1) * Math.Sign(b.extent));
+            int cross = (ux * vy) - (uy * vx);
+            if (cross == 0)
+            {
+                continue;   // 切线连续或折返:没有外侧
+            }
+            int side = cross < 0 ? 1 : -1;
+            (int nx, int ny) = (-uy * side, ux * side);
+            for (int s = 1; s < lw / 2.0 - (gc.JoinStyle == 1 ? 0.6 : 0); s++)
+            {
+                (int x, int y) = (px + (nx * s), py + (ny * s));
+                if (x is >= 0 and < 80 && y is >= 0 and < 80)
+                {
+                    Assert.AreEqual(1u, joined.Get(x, y), $"第 {round} 组:A {a} B {b} lw={lw} join={gc.JoinStyle}:({x},{y})");
+                }
+            }
+        }
+
+        static int RoundCos(int degrees, int r) => (((degrees % 360) + 360) % 360) switch { 0 => r, 180 => -r, _ => 0 };
+        static int RoundSin(int degrees, int r) => (((degrees % 360) + 360) % 360) switch { 90 => r, 270 => -r, _ => 0 };
+    }
+
+    [TestMethod]
+    public void 端点相差不到半个像素也算相接_接头照样补上()
+    {
+        // A:圆心 (20,40)、半径 20,从 135° 顺时针到 45°,终点 (34.14,25.86) 处朝右下走;B:外接框 (28,20,40,40),圆心 (48,40),
+        // 从 135° 顺时针到 45°,起点 (33.86,25.86) 与 A 的终点差 0.28 个像素,朝右上走。V 字的底在接点上,Miter 的尖朝下。
+        (int X, int Y, int W, int H, int A1, int A2) a = CircleArc(20, 40, 20, 135, -90), b = CircleArc(48, 40, 20, 135, -90);
+        XGc gc = new(1, null, 24) { Foreground = 1, LineWidth = 8, JoinStyle = 0, CapStyle = 1 };
+        PixelBuffer joined = Stroke(gc, r => r.PolyArc([a, b]), size: 80);
+        PixelBuffer apart = Stroke(gc, r => EachAlone(r, a, b), size: 80);
+        Assert.AreEqual((1u, 0u), (joined.Get(34, 29), apart.Get(34, 29)), "接点正下方只有 Miter 接头画得到");
+        foreach (uint p in apart.Pixels.Select((v, i) => v == 0 ? 1u : joined.Pixels[i]))
+        {
+            Assert.AreEqual(1u, p, "两条环带本身的像素都在");
+        }
+
+        // 圆端帽各自画时在接点上叠在一起;相接之后整串一次填,GXxor 下不抵消。
+        XGc xor = new(1, null, 24) { Foreground = 0xFFFFFF, Function = 6, LineWidth = 8, JoinStyle = 1, CapStyle = 2 };
+        PixelBuffer once = Stroke(xor, r => r.PolyArc([a, b]), size: 80);
+        xor.Function = 3;
+        CollectionAssert.AreEqual(Stroke(xor, r => r.PolyArc([a, b]), size: 80).Pixels, once.Pixels);
+    }
+
+    [TestMethod]
+    public void 不相接的弧照旧各自加端帽_半个像素之差不算重合()
+    {
+        XGc gc = new(1, null, 24) { Foreground = 1, LineWidth = 7, JoinStyle = 2, CapStyle = 3 };
+
+        // [A, B, G]:A 接 B(外侧只有 Bevel 的三角),G 的起点 (70,30) 谁都不接 —— 它照旧自己加端帽,与单独画一样。
+        PixelBuffer mixed = Stroke(gc, r => r.PolyArc([CornerA, CornerB, Loose]), size: 80);
+        Assert.AreEqual(3, OutsideCorner(mixed), "A 与 B 相接");
+        Assert.AreEqual(1u, mixed.Get(70, 32), "G 起点的 Projecting 端帽(G 从 (70,30) 往上走,端帽朝下伸)");
+        CollectionAssert.AreEqual(Stroke(gc, r => { r.PolyArc([CornerA, CornerB]); r.PolyArc([Loose]); }, size: 80).Pixels, mixed.Pixels);
+
+        // E 的外接框 (30,10,40,41):圆心 (50,30.5),起点 (30,30.5) 与 A 的终点 (30,30) 正好差半个像素 —— 不算重合,各自加端帽。
+        (int X, int Y, int W, int H, int A1, int A2) e = (30, 10, 40, 41, 180 * 64, 90 * 64);
+        PixelBuffer halfApart = Stroke(gc, r => r.PolyArc([CornerA, e]), size: 80);
+        Assert.AreEqual(9, OutsideCorner(halfApart), "A 终点的 Projecting 端帽");
+        CollectionAssert.AreEqual(Stroke(gc, r => EachAlone(r, CornerA, e), size: 80).Pixels, halfApart.Pixels);
+    }
+
+    [TestMethod]
+    public void 最后一条弧的终点与第一条的起点重合时也相接()
+    {
+        // [B, G, A]:B 与 G、G 与 A 都不相接,但 A 的终点就是 B 的起点 —— A 接 B,拐角处是 Bevel 接头,而不是两个 Projecting 端帽。
+        XGc gc = new(1, null, 24) { Foreground = 1, LineWidth = 7, JoinStyle = 2, CapStyle = 3 };
+        PixelBuffer wrapped = Stroke(gc, r => r.PolyArc([CornerB, Loose, CornerA]), size: 80);
+        Assert.AreEqual(3, OutsideCorner(wrapped));
+        CollectionAssert.AreEqual(Stroke(gc, r => { r.PolyArc([CornerA, CornerB]); r.PolyArc([Loose]); }, size: 80).Pixels, wrapped.Pixels);
+    }
 }

@@ -8,7 +8,7 @@
 //
 // 场景:核心填充、32 位 PutImage(小块与整窗)、Xft 式字形合成(a8 字形 + 纯色源 + Over)、ARGB 图像 Over 合成、
 // RENDER 通用路径(线性渐变源、带缩放变换的双线性源、ARGB 源 + a8 遮罩)、GLX 单缓冲的小三角形(每个 Render 请求一个)、
-// RENDER 多矩形填充、指针移动注入(窗口选了 PointerMotion)、请求往返延迟;
+// RENDER 多矩形填充、PolyArc(各自独立的宽弧、首尾相接的宽弧与细弧)、指针移动注入(窗口选了 PointerMotion)、请求往返延迟;
 // 最后量整窗 PutImage 满载时宿主读像素(另一条线程每 16 毫秒读一次整窗)要等多久 —— 宿主 UI 线程卡不卡看的就是它;
 // 再量四个窗口一起忙时宿主每帧逐个窗口读一遍(每个窗口拿一次像素锁)的总耗时。
 // 数字只用来比较前后改动,不同机器之间不可比。
@@ -114,6 +114,34 @@ Action<Client.Body> fillRects = b =>
         b.I16((short)(k * 15 % 780)).I16((short)(k * 11 % 580)).U16(10).U16(10);
     }
 };
+// PolyArc:一个请求四条弧,事先编好 16 个位置。「互不相接」是四个各自独立的 60×60 整圆(每条弧单独成一串);
+// 「四段拼整圆」是同一个 120×120 外接框的四段 90° 弧,首尾相接成一串闭合的路径。宽弧用 lw = 3 的 GC。
+uint wideGc = c.NewId();
+c.Request(55, 0, b => b.U32(wideGc).U32(window).U32(0x4 | 0x10).U32(0x993366).U32(3));
+byte[][] separateArcs = new byte[16][], wideQuarters = new byte[16][], thinQuarters = new byte[16][];
+for (int k = 0; k < 16; k++)
+{
+    short x = (short)(k % 4 * 170), y = (short)(k / 4 * 130);
+    separateArcs[k] = Client.Encode(68, 0, b =>
+    {
+        b.U32(window).U32(wideGc);
+        for (int a = 0; a < 4; a++)
+        {
+            b.I16((short)(x + (a * 30))).I16((short)(y + (a * 10))).U16(60).U16(60).I16(0).I16(360 * 64);
+        }
+    });
+    foreach ((byte[][] target, uint arcGc) in new[] { (wideQuarters, wideGc), (thinQuarters, gc) })
+    {
+        target[k] = Client.Encode(68, 0, b =>
+        {
+            b.U32(window).U32(arcGc);
+            for (int a = 0; a < 4; a++)
+            {
+                b.I16(x).I16(y).U16(120).U16(120).I16((short)(a * 90 * 64)).I16(90 * 64);
+            }
+        });
+    }
+}
 
 Console.WriteLine($"{"场景",-34}{"次数",8}{"耗时 ms",10}{"每秒",14}{"CPU ms",10}{"分配 B/次",12}");
 await RunAsync("PolyFillRectangle 50×50", 20_000, i =>
@@ -141,6 +169,9 @@ await RunAsync("Composite ARGB + a8 遮罩 100×100 Over", 5_000, i =>
 await RunAsync("GLX 单缓冲 Render 小三角形", 5_000, i => c.Raw(triangles[i % triangles.Length]));
 await RunAsync("PutImage 800×600 整窗(BIG-REQUESTS)", 1_000, _ => c.Raw(frameRequest));
 await RunAsync("RenderFillRectangles ×50", 5_000, _ => c.Request(render, 26, fillRects));
+await RunAsync("PolyArc 宽弧 ×4 互不相接", 5_000, i => c.Raw(separateArcs[i % separateArcs.Length]));
+await RunAsync("PolyArc 宽弧 四段 90° 拼整圆", 5_000, i => c.Raw(wideQuarters[i % wideQuarters.Length]));
+await RunAsync("PolyArc 细弧 四段 90° 拼整圆", 5_000, i => c.Raw(thinQuarters[i % thinQuarters.Length]));
 XTopLevelWindow mapped = host.Mapped ?? throw new InvalidOperationException("窗口没映射");
 await RunAsync("指针移动注入(选了 PointerMotion)", 50_000, i => server.InjectPointerMotion(mapped, i % 800, (i / 800) % 600));
 
