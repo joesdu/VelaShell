@@ -260,8 +260,9 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
         try
         {
+            SshCommandOptions? options = await ResolveCommandOptionsAsync(cancellationToken).ConfigureAwait(false);
             SshCommandResult output = await connection
-                .RunAsync(commandText, cancellationToken: cancellationToken).ConfigureAwait(false);
+                .RunAsync(commandText, options, cancellationToken).ConfigureAwait(false);
             return output.StandardOutput;
         }
         catch (Exception ex) when (IsTornDown(ex))
@@ -282,8 +283,9 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
         try
         {
+            SshCommandOptions? options = await ResolveCommandOptionsAsync(cancellationToken).ConfigureAwait(false);
             SshCommandResult output = await connection
-                .RunAsync(commandText, cancellationToken: cancellationToken).ConfigureAwait(false);
+                .RunAsync(commandText, options, cancellationToken).ConfigureAwait(false);
 
             // ExitCode 是 int? —— 被信号杀死或连接中断时没有退出码。
             // 契约这一侧只有 int,所以把「没有退出码」折成 -1:
@@ -320,13 +322,18 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
         try
         {
+            SshCommandOptions? forwarding = await ResolveCommandOptionsAsync(cancellationToken).ConfigureAwait(false);
+
             // 不要 stderr 时让库直接丢弃,而不是缓冲着没人读:缓冲的那份只有被读走才回补窗口,
             // 窗口一满对端就停发 —— stdout 也跟着停住,`docker logs -f` 这类长驻命令会就此卡死。
-            SshCommandOptions? options = includeStandardError
+            SshCommandOptions? options = includeStandardError && forwarding is null
                 ? null
                 : new SshCommandOptions
                 {
-                    Channel = SshChannelOptions.Default with { StderrMode = SshStderrMode.Discard },
+                    Channel = includeStandardError
+                        ? SshChannelOptions.Default
+                        : SshChannelOptions.Default with { StderrMode = SshStderrMode.Discard },
+                    X11Forwarding = forwarding?.X11Forwarding,
                 };
 
             command = await connection.ExecuteAsync(commandText, options, cancellationToken)
@@ -365,6 +372,33 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
                 try { await command.DisposeAsync().ConfigureAwait(false); } catch { }
             }
         }
+    }
+
+    /// <summary>
+    /// 为非交互式 exec 通道补上连接级 X11 转发。
+    /// </summary>
+    /// <remarks>
+    /// 交互式终端在 <see cref="CreateShellStreamAsync" /> 里单独装配过；
+    /// 命令 / 插件任务走的是另一条 session channel，若这里不发 x11-req，
+    /// 远端 GUI 程序会拿到空的 DISPLAY 或直接连接失败。
+    /// </remarks>
+    private async Task<SshCommandOptions?> ResolveCommandOptionsAsync(CancellationToken cancellationToken)
+    {
+        if (_features is not { X11Forwarding: true })
+        {
+            return null;
+        }
+
+        XServerDisplayResolution? localServer = await ResolveLocalXServerAsync([], cancellationToken).ConfigureAwait(false);
+        Func<CancellationToken, ValueTask<Stream>>? connector =
+            localServer?.Connector is { } connect ? ct => connect(_target, ct) : null;
+        X11ForwardOptions? x11 = SshForwardingOptions.X11(
+            _features,
+            [],
+            localServer?.Display,
+            connector);
+
+        return x11 is null ? null : new SshCommandOptions { X11Forwarding = x11 };
     }
 
     /// <summary>
