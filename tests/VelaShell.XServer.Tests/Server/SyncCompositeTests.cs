@@ -712,6 +712,50 @@ public sealed class SyncCompositeTests
     }
 
     [TestMethod]
+    public async Task Present的帧号跟着宿主报的帧走_有客户端等帧时才向宿主要帧时钟()
+    {
+        // xs_plan F25:宿主按 144 Hz 报帧,帧间隔取最短的那个(中间跳了一帧的那次不算);之后到了目标帧的呈现在报帧时当场做掉。
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        _ = await ExtAsync(c, "Generic Event Extension");
+        (byte present, _, _) = await ExtAsync(c, "Present");
+        uint top = await MapTopAsync(c, host);
+        uint blue = await SolidPixmapAsync(c, top, 0x0000FF);
+        await c.SendAsync(present, 3, b => b.U32(c.NewId()).U32(top).U32(2));
+
+        long frame = System.Diagnostics.Stopwatch.Frequency / 144;
+        await server.InvokeAsync(() =>
+        {
+            long start = server.ClockTicks - (42 * frame);
+            for (int k = 0; k <= 41; k++)
+            {
+                if (k != 20)
+                {
+                    server.ApplyHostFrame(start + (k * frame));   // 第 20 帧没报:宿主跳了一帧,那次间隔是两帧
+                }
+            }
+            return 0;
+        });
+        double hz = await server.InvokeAsync(() => System.Diagnostics.Stopwatch.Frequency / server.FrameIntervalTicks);
+        Assert.AreEqual(144, hz, 1, "最短的间隔就是刷新周期");
+
+        Assert.IsEmpty(host.FrameClockRequests, "没有客户端等帧:不要");
+        await PresentPixmapAsync(c, present, top, blue, 1);
+        ulong msc = CompleteMsc(await PresentCompleteAsync(c, 1));
+        await PresentPixmapAsync(c, present, top, blue, 2, targetMsc: msc + 1000);   // 约 7 秒之后
+        await host.WaitForAsync(() => host.FrameClockRequests.Contains(true));
+        await server.InvokeAsync(() =>
+        {
+            server.ApplyHostFrame(server.ClockTicks + (1001 * frame));   // 宿主报来的这一帧已经过了目标帧
+            return 0;
+        });
+        XMessage complete = await PresentCompleteAsync(c, 2, timeoutMs: 1000);
+        Assert.IsGreaterThanOrEqualTo(msc + 1000, CompleteMsc(complete));
+        await host.WaitForAsync(() => host.FrameClockRequests.LastOrDefault() == false);
+    }
+
+    [TestMethod]
     public async Task Present等到target_msc那一帧才呈现_像素图提前释放也照常呈现()
     {
         using RecordingHost host = new();

@@ -8,7 +8,8 @@
 //   §「Requests」(QueryVersion 0、Pixmap 1、NotifyMSC 2、SelectInput 3、QueryCapabilities 4)、§「Events」(经 Generic Event
 //   Extension 发出的 ConfigureNotify 0、CompleteNotify 1、IdleNotify 2)
 //
-//   纯软件实现,只有拷贝模式:MSC 按 60 Hz 从服务端时钟推算。PresentPixmap 等 wait-fence 触发(或被销毁)、
+//   纯软件实现,只有拷贝模式:MSC 默认按 60 Hz 从服务端时钟推算;宿主报帧(NotifyHostFrame)之后按宿主合成器真实的帧间隔与相位走
+//   (xs_plan F25,有客户端在等帧时经 IX11ServerHost.FrameClockWanted 向宿主要)。PresentPixmap 等 wait-fence 触发(或被销毁)、
 //   等到 target-msc / divisor / remainder 指定的那一帧再把像素图拷进窗口,随即报完成与空闲、触发 idle-fence;
 //   同一窗口上较早排队、还没呈现的那几条按 Skip 报完成。NotifyMSC 同样等到那一帧再报。
 
@@ -59,8 +60,74 @@ public sealed partial class X11Server
     /// <summary>挂着的 NotifyMSC 与 PresentPixmap 总条数(测试用)。</summary>
     internal int PendingPresents => _presentPending.Values.Sum(p => p.Count);
 
-    /// <summary>当前帧号:按 60 Hz 从服务端时钟推算。</summary>
-    private ulong CurrentMsc => (ulong)(_clock.ElapsedTicks * 60 / System.Diagnostics.Stopwatch.Frequency);
+    // ------------------------------------------------------------------ 帧时钟(xs_plan F25)
+
+    /// <summary>帧号 <see cref="_frameOriginMsc" /> 开始的那一刻(服务端时钟的 tick)与每帧多少 tick:宿主报帧之前是 60 Hz、从 0 起。</summary>
+    private long _frameOriginTicks;
+
+    private ulong _frameOriginMsc;
+
+    private double _frameTicks = System.Diagnostics.Stopwatch.Frequency / 60.0;
+
+    /// <summary>宿主最近几帧之间的间隔(tick),取最短的当帧间隔:宿主跳帧时间隔是整数倍,最短的那个才是真实的刷新周期。</summary>
+    private readonly long[] _hostFrameGaps = new long[32];
+
+    private int _hostFrameGapCount, _hostFrameGapNext;
+
+    /// <summary>宿主上一次报帧的时刻;还没报过为 0。</summary>
+    private long _lastHostFrameTicks;
+
+    /// <summary>已经告诉宿主的「要不要帧时钟」。</summary>
+    private bool _frameClockReported;
+
+    /// <summary>当前每帧多少 tick(测试看换算出来的刷新率用)。</summary>
+    internal double FrameIntervalTicks => _frameTicks;
+
+    /// <summary>当前帧号:从最近一次对齐的那一帧起,按帧间隔推算。</summary>
+    private ulong CurrentMsc => MscAt(_clock.ElapsedTicks);
+
+    private ulong MscAt(long ticks) =>
+        ticks <= _frameOriginTicks ? _frameOriginMsc : _frameOriginMsc + (ulong)((ticks - _frameOriginTicks) / _frameTicks);
+
+    /// <summary>
+    /// 宿主的合成器画了一帧(<see cref="NotifyHostFrame" />):这一刻对齐成一帧的开始 —— 过了半帧算下一帧,帧号只增不减 ——
+    /// 帧间隔取最近 32 次报帧里最短的间隔(限在 2–50 毫秒,即 20–500 Hz)。然后把到了目标帧的呈现做掉,不等计时器。
+    /// </summary>
+    internal void ApplyHostFrame(long ticks)
+    {
+        long frequency = System.Diagnostics.Stopwatch.Frequency;
+        if (_lastHostFrameTicks != 0 && ticks > _lastHostFrameTicks)
+        {
+            long gap = ticks - _lastHostFrameTicks;
+            if (gap >= frequency / 500 && gap <= frequency / 20)
+            {
+                _hostFrameGaps[_hostFrameGapNext] = gap;
+                _hostFrameGapNext = (_hostFrameGapNext + 1) % _hostFrameGaps.Length;
+                _hostFrameGapCount = Math.Min(_hostFrameGapCount + 1, _hostFrameGaps.Length);
+            }
+        }
+        _lastHostFrameTicks = ticks;
+        ulong msc = MscAt(ticks);
+        double into = (ticks - _frameOriginTicks) / _frameTicks;
+        bool pastHalf = ticks > _frameOriginTicks && into - Math.Floor(into) > 0.5;
+        (_frameOriginMsc, _frameOriginTicks) = (pastHalf ? msc + 1 : msc, ticks);
+        if (_hostFrameGapCount > 0)
+        {
+            _frameTicks = _hostFrameGaps.AsSpan(0, _hostFrameGapCount).ToArray().Min();
+        }
+        RunReadyPresents();
+    }
+
+    /// <summary>有客户端在等帧(挂着 NotifyMSC 或排队的 PresentPixmap)时告诉宿主要帧时钟,都没了就不要(宿主据此开关自己的逐帧回调)。</summary>
+    private void ReportFrameClock()
+    {
+        bool wanted = _presentPending.Count > 0;
+        if (wanted != _frameClockReported)
+        {
+            _frameClockReported = wanted;
+            _host.FrameClockWanted(wanted);
+        }
+    }
 
     /// <summary>UST:微秒计的服务端时间。</summary>
     private ulong CurrentUst => (ulong)(_clock.ElapsedTicks * 1_000_000 / System.Diagnostics.Stopwatch.Frequency);
@@ -209,20 +276,39 @@ public sealed partial class X11Server
     /// <summary>离第 <paramref name="msc" /> 帧开始还有多少毫秒(向上取整、至少 1;远在天边的目标由计时器的上限截住,到点再看)。</summary>
     private uint MillisecondsUntilMsc(ulong msc)
     {
-        long frequency = System.Diagnostics.Stopwatch.Frequency;
-        UInt128 startTicks = (((UInt128)msc * (ulong)frequency) + 59) / 60;
-        UInt128 nowTicks = (ulong)_clock.ElapsedTicks;
-        if (startTicks <= nowTicks)
+        if (msc <= _frameOriginMsc)
         {
             return 1;
         }
-        UInt128 ms = (((startTicks - nowTicks) * 1000) + (ulong)frequency - 1) / (ulong)frequency;
+        double startTicks = _frameOriginTicks + ((msc - _frameOriginMsc) * _frameTicks);
+        double remaining = startTicks - _clock.ElapsedTicks;
+        if (remaining <= 0)
+        {
+            return 1;
+        }
+        double ms = Math.Ceiling(remaining * 1000 / System.Diagnostics.Stopwatch.Frequency);
         return ms >= uint.MaxValue ? uint.MaxValue : Math.Max(1u, (uint)ms);
     }
 
-    /// <summary>PresentOptionUST:target / divisor / remainder 是微秒计的 UST,换算成帧(规范:服务端把 UST 换成合适的 MSC)。</summary>
-    private static ulong UstToMsc(ulong ust, bool roundUp) =>
-        (ulong)((((UInt128)ust * 60) + (roundUp ? 999_999u : 0u)) / 1_000_000);
+    /// <summary>
+    /// PresentOptionUST:target / divisor / remainder 是微秒计的 UST,换算成帧(规范:服务端把 UST 换成合适的 MSC)。
+    /// target 是时刻(按帧时钟换成那时的帧号,向上取整),divisor / remainder 是时长(按帧间隔换成帧数,向下取整)。
+    /// </summary>
+    private ulong UstToMsc(ulong ust, bool isTime)
+    {
+        double frequency = System.Diagnostics.Stopwatch.Frequency;
+        double ticks = ust * frequency / 1_000_000;
+        if (!isTime)
+        {
+            return (ulong)Math.Min(ulong.MaxValue, ticks / _frameTicks);
+        }
+        if (ticks <= _frameOriginTicks)
+        {
+            return _frameOriginMsc;
+        }
+        double frames = Math.Ceiling((ticks - _frameOriginTicks) / _frameTicks);
+        return frames >= ulong.MaxValue - _frameOriginMsc ? ulong.MaxValue : _frameOriginMsc + (ulong)frames;
+    }
 
     private void PresentPixmap(XClient c, XRequestReader r)
     {
@@ -267,7 +353,7 @@ public sealed partial class X11Server
 
         if ((options & PresentOptionUst) != 0)
         {
-            (target, divisor, remainder) = (UstToMsc(target, roundUp: true), UstToMsc(divisor, roundUp: false), UstToMsc(remainder, roundUp: false));
+            (target, divisor, remainder) = (UstToMsc(target, isTime: true), UstToMsc(divisor, isTime: false), UstToMsc(remainder, isTime: false));
         }
         PendingPresent present = new(c, window, pixmap, serial)
         {
@@ -463,6 +549,7 @@ public sealed partial class X11Server
         }
         cancel ??= CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         _presentPending[client] = (cancel, count + 1);
+        ReportFrameClock();
         return cancel.Token;
     }
 
@@ -481,6 +568,7 @@ public sealed partial class X11Server
         _presentPending.Remove(client);
         pending.Cancel.Cancel();   // 排队的呈现被别的一条当成过时跳过时,它的计时器还挂着:一并取消
         pending.Cancel.Dispose();
+        ReportFrameClock();
     }
 
     /// <summary>客户端断开:取消它挂着的 NotifyMSC 与排队的呈现。</summary>
@@ -498,6 +586,7 @@ public sealed partial class X11Server
             pending.Cancel.Cancel();
             pending.Cancel.Dispose();
         }
+        ReportFrameClock();
     }
 
     /// <summary>客户端的资源销毁了(<see cref="Extension.ClientResourcesDestroyed" />):摘掉它的事件上下文(它们是资源,Retain 模式断开时还留着);等它的栅栏的呈现不再等(栅栏随它没了)。</summary>

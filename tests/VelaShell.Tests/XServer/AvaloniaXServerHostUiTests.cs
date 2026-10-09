@@ -1167,6 +1167,51 @@ public sealed class AvaloniaXServerHostUiTests
         await serve.WaitAsync(TimeSpan.FromSeconds(5));
     });
 
+    /// <summary>帧时钟(xs_plan F25):服务端要帧时钟时宿主跟着合成器逐帧回调、每帧报一次;不要了就停。</summary>
+    [TestMethod]
+    public async Task 服务端要帧时钟时逐帧报帧_不要了就停() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        int frames = 0;
+        host.NotifyFrame = _ => frames++;
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        (uint idBase, uint root) = await HandshakeAsync(client);
+        await SendAsync(client, 1, 24, w => w.U32(idBase | 1).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+        await SendAsync(client, 8, 0, w => w.U32(idBase | 1));
+        await WaitForAsync(() => host.Windows.FirstOrDefault(w => w.IsVisible), "窗口显示出来");
+
+        async Task TickAsync(int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(5);
+            }
+        }
+        await TickAsync(3);
+        Assert.AreEqual(0, frames, "没人要:不逐帧回调");
+
+        host.FrameClockWanted(true);
+        Dispatcher.UIThread.RunJobs();
+        await TickAsync(5);
+        Assert.IsGreaterThanOrEqualTo(3, frames, "每帧报一次");
+
+        host.FrameClockWanted(false);
+        Dispatcher.UIThread.RunJobs();
+        await TickAsync(2);   // 已经挂上的那一次回调还会来,来了不报
+        int stopped = frames;
+        await TickAsync(5);
+        Assert.AreEqual(stopped, frames, "不要了就停");
+
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
     /// <summary>屏保(xs_plan F9):X 程序挂起屏保时宿主抑制本机屏保,恢复时恢复;停 X Server 时一并恢复;Reset 重置本机空闲计时。</summary>
     [TestMethod]
     public async Task X程序挂起屏保时抑制本机屏保_停服时恢复_Reset重置空闲计时() => await _session.RunOnUiAsync(async () =>

@@ -230,6 +230,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
                 _saverSuspended = false;
                 InhibitIdle(false);   // 停服:本机屏保恢复正常
             }
+            _frameClockWanted = false;   // 停服:不再逐帧回调
             XNativeWindow[] windows = [.. _windows.Values];
             _windows.Clear();
             _desktops.Clear();
@@ -840,6 +841,43 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
 
     /// <summary>X 程序重置了屏保计时(服务端至多每 5 秒报一次):重置本机的空闲计时一次。</summary>
     public void ScreenSaverReset() => Dispatcher.UIThread.Post(() => ResetIdle());
+
+    // ------------------------------------------------------------------ 帧时钟(xs_plan F25)
+
+    private bool _frameClockWanted, _frameRequested;
+
+    /// <summary>
+    /// 有 X 程序在等帧(Present):要的时候跟着合成器逐帧回调(<see cref="TopLevel.RequestAnimationFrame" />),每帧报给服务端,
+    /// 动画按本机显示器真实的刷新率与相位走(原先按 60 Hz 推算,144 Hz 的屏上一样只有 60 帧);不要了就停,不白白逐帧唤醒。
+    /// </summary>
+    public void FrameClockWanted(bool wanted) => Dispatcher.UIThread.Post(() =>
+    {
+        _frameClockWanted = wanted;
+        RequestHostFrame();
+    });
+
+    /// <summary>报一帧给服务端;测试可以换掉。</summary>
+    internal Action<X11Server> NotifyFrame { get; set; } = static server => server.NotifyHostFrame();
+
+    private void RequestHostFrame()
+    {
+        // 逐帧回调挂在一个显示着的 X 窗口上(等帧的程序就在那里画),没有时挂在主窗口上。
+        TopLevel? source = _windows.Values.FirstOrDefault(w => w.IsVisible) ?? (TopLevel?)MainWindow();
+        if (!_frameClockWanted || _frameRequested || source is null)
+        {
+            return;
+        }
+        _frameRequested = true;
+        source.RequestAnimationFrame(_ =>
+        {
+            _frameRequested = false;
+            if (_frameClockWanted && _server is { } server)
+            {
+                NotifyFrame(server);
+                RequestHostFrame();
+            }
+        });
+    }
 
     private bool _saverSuspended;
 

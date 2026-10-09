@@ -139,6 +139,15 @@ internal sealed class RecordingHost : IX11ServerHost, IDisposable
         Note($"redrawn {window.Id:x}");
     }
 
+    /// <summary><see cref="FrameClockWanted" /> 收到的值,按先后。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<bool> FrameClockRequests { get; } = new();
+
+    public void FrameClockWanted(bool wanted)
+    {
+        FrameClockRequests.Enqueue(wanted);
+        Note($"frame clock {wanted}");
+    }
+
     /// <summary><see cref="ScreenSaverSuspensionChanged" /> 收到的值,按先后。</summary>
     public System.Collections.Concurrent.ConcurrentQueue<bool> SaverSuspensions { get; } = new();
 

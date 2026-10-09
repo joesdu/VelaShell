@@ -135,6 +135,9 @@ public sealed partial class X11Server : IAsyncDisposable
     /// <summary>服务端时间(毫秒,32 位回绕)—— 事件里的 time 字段。</summary>
     internal uint Now => unchecked((uint)_clock.ElapsedMilliseconds);
 
+    /// <summary>服务端时钟此刻的 tick(帧时钟、看门狗与测试用)。</summary>
+    internal long ClockTicks => _clock.ElapsedTicks;
+
     // ================================================================== 生命周期
 
     /// <summary>
@@ -380,6 +383,17 @@ public sealed partial class X11Server : IAsyncDisposable
                 ApplyPointerButtonRelease(button);
             }
         });
+    }
+
+    /// <summary>
+    /// 宿主的合成器画了一帧(比如 Avalonia 的 <c>RequestAnimationFrame</c> 回调里):Present 的帧号(MSC)从此按宿主真实的帧节拍走 ——
+    /// 帧间隔取最近 32 次报帧里最短的间隔(宿主跳帧不会把刷新率算低),相位对齐到报帧的这一刻,到了目标帧的呈现当场做掉。
+    /// 不调时按 60 Hz 推算。只在 <see cref="IX11ServerHost.FrameClockWanted" /> 说要的时候逐帧调即可。任意线程上都可以调。
+    /// </summary>
+    public void NotifyHostFrame()
+    {
+        long ticks = _clock.ElapsedTicks;   // 报帧的这一刻:排进执行线程要一会儿,不能等到执行时再取
+        Post(null, () => ApplyHostFrame(ticks));
     }
 
     /// <summary>

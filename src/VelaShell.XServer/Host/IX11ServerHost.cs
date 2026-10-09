@@ -47,6 +47,14 @@ public interface IX11ServerHost
     }
 
     /// <summary>
+    /// 有没有客户端在等帧(Present 的 NotifyMSC、排队的 PresentPixmap):要的时候宿主每画一帧调一次 <see cref="X11Server.NotifyHostFrame" />,
+    /// 帧号就跟着宿主真实的刷新走;不要了就停(不必一直逐帧回调)。默认实现什么也不做,服务端按 60 Hz 推算。
+    /// </summary>
+    void FrameClockWanted(bool wanted)
+    {
+    }
+
+    /// <summary>
     /// 指针所在位置该显示的光标变了(换了窗口,或者同一窗口换了光标)。<paramref name="window" /> 是指针所在的顶层;
     /// 指针不在任何顶层里时为 null。
     /// </summary>
