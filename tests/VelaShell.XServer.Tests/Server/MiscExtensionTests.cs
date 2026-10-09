@@ -268,7 +268,16 @@ public sealed class MiscExtensionTests
         Task serving = c.ServerTask;
         await c.DisposeAsync();
         await serving.WaitAsync(TimeSpan.FromSeconds(3));
-        Assert.AreEqual((0, 0), await server.InvokeAsync(() => (server.PendingFakeInputDelays, server.PendingPresents)), "断开时计时器一并取消");
+        // 连接收尾排在这个客户端自己那条队里(在它还没执行的请求之后),宿主那条队的 InvokeAsync 可能先跑:等收尾做完再看。
+        (int Delays, int Presents) left = (-1, -1);
+        using (CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5)))
+        {
+            while ((left = await server.InvokeAsync(() => (server.PendingFakeInputDelays, server.PendingPresents))) != (0, 0))
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+        }
+        Assert.AreEqual((0, 0), left, "断开时计时器一并取消");
     }
 
     [TestMethod]
