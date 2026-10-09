@@ -236,7 +236,7 @@ public sealed class RenderTests
     }
 
     /// <summary>FillRectangles(预乘的 16 位颜色)。</summary>
-    private static Task FillAsync(Setup s, byte op, uint picture, ushort a, ushort r, ushort g, ushort b, short x, short y, ushort w, ushort h) =>
+    private static Task<ushort> FillAsync(Setup s, byte op, uint picture, ushort a, ushort r, ushort g, ushort b, short x, short y, ushort w, ushort h) =>
         s.Client.SendAsync(s.Major, 26, body => body.U8(op).U8(0).U8(0).U8(0).U32(picture)
             .U16(r).U16(g).U16(b).U16(a).I16(x).I16(y).U16(w).U16(h));
 
