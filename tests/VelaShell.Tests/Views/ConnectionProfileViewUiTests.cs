@@ -1,5 +1,4 @@
 using Avalonia;
-using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
@@ -51,7 +50,7 @@ public sealed class ConnectionProfileViewUiTests
             // 没装插件(单测宿主就是这种)时不出现,「插件」那一组的标题也跟着不出现。
             Assert.HasCount(3, protocolButtons);
             Assert.IsTrue(protocolButtons.All(button => button.IsTabStop));
-            AssertProtocolTabMotion(protocolButtons);
+            AssertProtocolTabHoverIsStable(protocolButtons);
             Assert.IsFalse(vm.HasPluginProtocols);
 
             // 禁用的占位项一个都不该剩下:最后一个(串口)已由 velashell.serial 插件接管,
@@ -152,6 +151,14 @@ public sealed class ConnectionProfileViewUiTests
                 ?? throw new AssertFailedException("SectionTabIndicator not found.");
             Button generalTab = window.FindControl<Button>("GeneralTab")!;
             Button forwardingTab = window.FindControl<Button>("ForwardingTab")!;
+
+            foreach (Button tab in window.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.Classes.Contains("section-tab")))
+            {
+                Assert.IsTrue(tab.Transitions is null || tab.Transitions.Count == 0,
+                    "分页 tab 不应在 Button 本体上启动悬停过渡");
+            }
 
             // 初始:下划线对齐「常规」。
             Assert.IsTrue(indicator.IsVisible);
@@ -498,24 +505,16 @@ public sealed class ConnectionProfileViewUiTests
         Assert.AreEqual(Math.Round(tab.Bounds.Width), actualWidth, 0.6, "下划线宽度应等于选中协议标签宽度。");
     }
 
-    private static void AssertProtocolTabMotion(IReadOnlyList<Button> protocolButtons)
+    /// <summary>
+    /// Tab 悬停只改变稳定的画刷值，不在 Button 本体上启动过渡。
+    /// Windows 150% 缩放下，按钮前景又被图标绑定时，过渡会让悬停命中区域出现闪烁。
+    /// </summary>
+    private static void AssertProtocolTabHoverIsStable(IReadOnlyList<Button> protocolButtons)
     {
         foreach (Button button in protocolButtons)
         {
-            Assert.IsNotNull(button.Transitions);
-            Assert.HasCount(3, button.Transitions);
-            Assert.Contains(transition =>
-                transition is BrushTransition { Property: var property, Duration: var duration }
-                && property == TemplatedControl.BackgroundProperty
-                && duration == TimeSpan.FromMilliseconds(120), button.Transitions);
-            Assert.Contains(transition =>
-                transition is BrushTransition { Property: var property, Duration: var duration }
-                && property == Border.BorderBrushProperty
-                && duration == TimeSpan.FromMilliseconds(120), button.Transitions);
-            Assert.Contains(transition =>
-                transition is BrushTransition { Property: var property, Duration: var duration }
-                && property == TemplatedControl.ForegroundProperty
-                && duration == TimeSpan.FromMilliseconds(120), button.Transitions);
+            Assert.IsTrue(button.Transitions is null || button.Transitions.Count == 0,
+                "协议 tab 不应在 Button 本体上启动悬停过渡");
         }
     }
 }
