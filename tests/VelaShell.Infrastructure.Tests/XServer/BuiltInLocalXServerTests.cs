@@ -236,6 +236,33 @@ public class BuiltInLocalXServerTests
         Assert.HasCount(2, await server.Instances[0].Server.GetClientsAsync());
     }
 
+    /// <summary>
+    /// 只开 Unix 套接字(xs_plan F4 / 决策 Q4):Linux / macOS 上默认不开 TCP 端口,设置打开才开;Windows 上一直开(本机 X 程序只会走 TCP)。
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Start_OpensTheTcpPortOnUnixOnlyWhenAsked(bool listenTcpOnUnix)
+    {
+        XServerOptions options = new() { ListenTcpOnUnix = listenTcpOnUnix };
+        bool expected = OperatingSystem.IsWindows() || listenTcpOnUnix;
+        Assert.AreEqual(expected, BuiltInLocalXServer.ListensOnTcp(options));
+        await using BuiltInLocalXServer server = Create(options, new RecordingHost());
+        Assert.IsTrue((await server.StartAsync()).Success);
+        using TcpClient tcp = new();
+        bool connected;
+        try
+        {
+            await tcp.ConnectAsync(IPAddress.Loopback, 6010);
+            connected = true;
+        }
+        catch (SocketException)
+        {
+            connected = false;
+        }
+        Assert.AreEqual(expected, connected, "6010 端口开没开");
+    }
+
     /// <summary>设置「X 窗口透明与圆角」(xs_plan F11)交给服务端:开着时 _NET_WM_CM_S0 有属主,默认没有。</summary>
     [TestMethod]
     [DataRow(false)]
@@ -417,7 +444,7 @@ public class BuiltInLocalXServerTests
         string xauthority = Path.Combine(Path.GetTempPath(), $"vx-xauth-{Guid.NewGuid():N}");
         try
         {
-            await using BuiltInLocalXServer server = new(Settings(new XServerOptions()), () => new RecordingHost(), LowDisplaysBusy,
+            await using BuiltInLocalXServer server = new(Settings(new XServerOptions { ListenTcpOnUnix = true }), () => new RecordingHost(), LowDisplaysBusy,
                 _ => Task.FromResult(false), xauthority);
             Assert.IsTrue((await server.StartAsync()).Success);
 

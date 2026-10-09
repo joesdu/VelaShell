@@ -5727,6 +5727,12 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
     <value>SSH 経由で転送された X ウィンドウのタイトルの前に接続元(ユーザー@ホスト:ポート)を付けます。複数のホストのウィンドウを見分けられ、リモートのプログラムがローカルのウィンドウを装うこともできません。このコンピューター上のプログラムには付きません。以後に開いたウィンドウに適用されます。</value>
   </data>
+  <data name="SetXServer_ListenTcp" xml:space="preserve">
+    <value>TCP ポートでも待ち受ける</value>
+  </data>
+  <data name="SetXServer_ListenTcpDesc" xml:space="preserve">
+    <value>Unix ソケットに加えて 6000+N ポートを開きます(cookie が必要です)。コンテナ内など、ネットワーク経由で接続するプログラムにだけ必要です。SSH 転送とこのコンピューター上のプログラム(DISPLAY=:N)には不要です。X Server の再起動後に反映されます。</value>
+  </data>
   <data name="XServer_WindowTitleWithSource" xml:space="preserve">
     <value>{0} — {1}</value>
   </data>

@@ -195,6 +195,14 @@
         <ToggleSwitch Grid.Column="1" x:Name="ShowSourceToggle"
                       IsChecked="{Binding XServer.ShowWindowSource}" VerticalAlignment="Center" />
       </Grid>
+      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding XServerTcpSelectable}">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_ListenTcp}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_ListenTcpDesc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" x:Name="ListenTcpToggle"
+                      IsChecked="{Binding XServer.ListenTcpOnUnix}" VerticalAlignment="Center" />
+      </Grid>
       <!-- 内置引擎下面直接是「启动」;VcXsrv 那一大块自己以分隔线收尾。 -->
       <Border Classes="sep" IsVisible="{Binding !XServerUsesVcXsrv}" />
 

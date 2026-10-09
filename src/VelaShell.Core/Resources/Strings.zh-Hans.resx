@@ -6186,6 +6186,12 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
     <value>经 SSH 转发来的 X 窗口在标题前写上来源(用户@主机:端口):几台主机的窗口分得清,远端程序也冒充不了本机窗口。本机的程序不标。对之后打开的窗口生效。</value>
   </data>
+  <data name="SetXServer_ListenTcp" xml:space="preserve">
+    <value>也开 TCP 端口</value>
+  </data>
+  <data name="SetXServer_ListenTcpDesc" xml:space="preserve">
+    <value>除了 Unix 套接字,再开 6000+N 端口(要 cookie)。只有经网络连的程序(比如容器里的)才需要;SSH 转发与本机程序(DISPLAY=:N)用不到。重启 X Server 后生效。</value>
+  </data>
   <data name="XServer_WindowTitleWithSource" xml:space="preserve">
     <value>{0} — {1}</value>
   </data>

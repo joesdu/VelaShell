@@ -1568,6 +1568,17 @@ public class XServerOptions : ObservableOptions
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>
+    /// 内置 X Server 在 Linux / macOS 上也开 TCP 端口(<c>6000+N</c>,要 cookie)。默认关:SSH 转发走进程内的连接器,本机程序走
+    /// Unix 套接字(<c>DISPLAY=:N</c>,MIT-SHM 也能用),TCP 端口只是多一个本机别的进程、别的用户够得着的入口。容器里经网络连的程序
+    /// 才需要打开。Windows 上没有 Unix 套接字的 X 程序,TCP 一直开着,这一项不起作用。重启 X Server 后生效。
+    /// </summary>
+    public bool ListenTcpOnUnix
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
     /// <summary>XKB 键盘布局(<c>-xkblayout</c>);留空 = 跟随 Windows 当前布局。</summary>
     public string KeyboardLayout
     {

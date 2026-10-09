@@ -342,7 +342,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         {
             DisplayNumber = display,
             AuthorizationCookie = cookie,
-            ListenTcp = cookie is null ? false : null,
+            ListenTcp = cookie is null ? false : ListensOnTcp(options),
             UnixSocketPath = cookie is null ? "" : null,
             SyncClipboard = options.Clipboard,
             SyncPrimary = options.Clipboard && options.CopyOnSelection,
@@ -354,6 +354,12 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
             Log = label is null ? static line => Trace.WriteLine($"[XServer] {line}") : line => Trace.WriteLine($"[XServer {label}] {line}"),
         };
     }
+
+    /// <summary>
+    /// 开不开 TCP 端口(xs_plan F4 / 决策 Q4):Windows 上一直开(本机的 X 程序 —— WSL、Cygwin —— 只会走 TCP);Linux / macOS 上默认只开
+    /// Unix 套接字,设置里打开 <see cref="AppXServerOptions.ListenTcpOnUnix" /> 才开。
+    /// </summary>
+    internal static bool ListensOnTcp(AppXServerOptions options) => OperatingSystem.IsWindows() || options.ListenTcpOnUnix;
 
     /// <summary>把 cookie 写进 .Xauthority,本机 X 程序经 Xlib 自动带上;写不成只记日志(SSH 转发不受影响)。</summary>
     private void PublishCookie(int display, byte[] cookie)

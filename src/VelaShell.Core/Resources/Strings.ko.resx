@@ -5727,6 +5727,12 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
     <value>SSH로 전달된 X 창의 제목 앞에 출처(사용자@호스트:포트)를 붙입니다. 여러 호스트의 창을 구분할 수 있고, 원격 프로그램이 로컬 창으로 위장할 수도 없습니다. 이 컴퓨터의 프로그램에는 붙지 않습니다. 이후에 여는 창부터 적용됩니다.</value>
   </data>
+  <data name="SetXServer_ListenTcp" xml:space="preserve">
+    <value>TCP 포트에서도 수신</value>
+  </data>
+  <data name="SetXServer_ListenTcpDesc" xml:space="preserve">
+    <value>Unix 소켓 외에 6000+N 포트를 엽니다(cookie 필요). 컨테이너 안처럼 네트워크로 연결하는 프로그램에만 필요하며, SSH 전달과 이 컴퓨터의 프로그램(DISPLAY=:N)에는 필요 없습니다. X Server를 다시 시작하면 적용됩니다.</value>
+  </data>
   <data name="XServer_WindowTitleWithSource" xml:space="preserve">
     <value>{0} — {1}</value>
   </data>
