@@ -41,6 +41,38 @@ internal static partial class Win32WindowChrome
 
     private static readonly HashSet<Window> Attached = [];
 
+    /// <summary>窗口的 WM_SYSCOMMAND 处理器(系统菜单里加的自定义项),见 <see cref="AddSystemCommandHandler" />。</summary>
+    private static readonly Dictionary<Window, Func<uint, bool>> SystemCommands = [];
+
+    private const uint WmSysCommand = 0x0112;
+
+    /// <summary>
+    /// 给窗口挂一个 WM_SYSCOMMAND 处理器(系统菜单里加的自定义项被选中时调,参数是去掉低 4 位的命令号;返回 true = 处理了)。
+    /// 窗口装了框架语义(<see cref="Attach" />)时并进同一个钩子;否则这就是它唯一的 WndProc 钩子 —— 一个窗口始终只有一个钩子
+    /// (第二个会把命中测试的返回值盖掉,见 WndProcHookOwnershipTests)。同一窗口再挂一次替换前一个处理器。只在 Windows 上有效。
+    /// </summary>
+    public static void AddSystemCommandHandler(Window window, Func<uint, bool> handler)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        ArgumentNullException.ThrowIfNull(handler);
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+        bool hooked = Attached.Contains(window) || SystemCommands.ContainsKey(window);
+        SystemCommands[window] = handler;
+        if (hooked)
+        {
+            return;
+        }
+        window.Closed += (_, _) => SystemCommands.Remove(window);
+        Win32Properties.AddWndProcHookCallback(window, (nint _, uint msg, nint wParam, nint _, ref bool handled) =>
+        {
+            handled |= msg == WmSysCommand && SystemCommands.TryGetValue(window, out Func<uint, bool>? h) && h((uint)wParam & 0xFFF0);
+            return 0;
+        });
+    }
+
     /// <summary>
     /// 为窗口装上原生框架语义。仅在 Windows 上有效,其他平台是空操作;同一窗口重复调用只装一次
     /// (Opened 每次 Show 都会重发,不去重会让钩子越积越多)。
@@ -184,6 +216,9 @@ internal static partial class Win32WindowChrome
         const int HTCLIENT = 1;
         switch (msg)
         {
+            case WmSysCommand when SystemCommands.TryGetValue(window, out Func<uint, bool>? command):
+                handled = command((uint)wParam & 0xFFF0);
+                break;
             case WM_SIZE:
                 // 每次尺寸变化都按当前状态重钉一次:退出最大化时 DWM 不一定把圆角还回来
                 // (反馈:窗口一缩小就变直角),进入最大化又必须收掉圆角,免得铺满的窗口

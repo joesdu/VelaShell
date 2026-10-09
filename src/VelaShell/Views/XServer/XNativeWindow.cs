@@ -126,7 +126,7 @@ public sealed class XNativeWindow : Window
     }
 
     /// <summary>系统菜单里的截图(xs_plan F20):复制或另存为;出错只记一行日志(截图不该把窗口带崩)。</summary>
-    private async void Screenshot(Func<TopLevel, XTopLevelWindow, Task<bool>> action)
+    private void Screenshot(Func<TopLevel, XTopLevelWindow, Task<bool>> action) => Services.FireAndForget.Run(async () =>
     {
         try
         {
@@ -136,7 +136,7 @@ public sealed class XNativeWindow : Window
         {
             System.Diagnostics.Trace.WriteLine($"[XServer] 截图失败:{ex.Message}");
         }
-    }
+    });
 
     /// <summary>服务端那边的顶层窗口。</summary>
     public XTopLevelWindow Handle { get; }

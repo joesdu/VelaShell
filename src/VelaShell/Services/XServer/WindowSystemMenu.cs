@@ -14,7 +14,7 @@ internal static partial class WindowSystemMenu
 {
     // WM_SYSCOMMAND 的命令号:低 4 位归系统用,要小于 0xF000(SC_SIZE 起是系统命令)。
     private const uint CopyScreenshotCommand = 0x1F10, SaveScreenshotCommand = 0x1F20;
-    private const uint WmSysCommand = 0x0112, MfString = 0x0, MfSeparator = 0x800;
+    private const uint MfString = 0x0, MfSeparator = 0x800;
 
     /// <summary>给窗口的系统菜单加上截图两项,选中时调 <paramref name="copy" /> / <paramref name="save" />。做不到时返回 false。</summary>
     public static bool Attach(Window window, Action copy, Action save)
@@ -44,17 +44,16 @@ internal static partial class WindowSystemMenu
         {
             return false;
         }
-        // X 窗口只有这一个钩子(不用 Win32WindowChrome):钩子的返回值只在这里定,不会盖掉别人的命中测试(见 WindowMoveDrag 的说明)。
-        Win32Properties.AddWndProcHookCallback(window, (nint _, uint msg, nint wParam, nint _, ref bool handled) =>
+        // 钩子归 Win32WindowChrome 一家(一个窗口只能有一个 WndProc 钩子,见 WndProcHookOwnershipTests)。
+        Views.Win32WindowChrome.AddSystemCommandHandler(window, command =>
         {
-            uint command = (uint)wParam & 0xFFF0;
-            if (msg == WmSysCommand && command is CopyScreenshotCommand or SaveScreenshotCommand)
+            if (command is not (CopyScreenshotCommand or SaveScreenshotCommand))
             {
-                handled = true;
-                // 不在窗口过程里直接做:另存为要开对话框,放到 UI 线程的下一拍。
-                Avalonia.Threading.Dispatcher.UIThread.Post(command == CopyScreenshotCommand ? copy : save);
+                return false;
             }
-            return 0;
+            // 不在窗口过程里直接做:另存为要开对话框,放到 UI 线程的下一拍。
+            Avalonia.Threading.Dispatcher.UIThread.Post(command == CopyScreenshotCommand ? copy : save);
+            return true;
         });
         return true;
     }
