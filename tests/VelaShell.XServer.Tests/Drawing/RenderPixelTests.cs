@@ -395,6 +395,81 @@ public sealed class RenderPixelTests
     }
 
     /// <summary>
+    /// 8888 目标上的 Porter-Duff、Disjoint、Conjoint 全部走整数。8 位像素(或 k / 255 的纯色)的源最多差 1:不带除法的运算差在
+    /// 源 × 遮罩与因子各取整到 8 位,带除法的运算(Saturate、Disjoint、Conjoint)因子按 1/65025 算、只剩最后一次取整。
+    /// 双线性与渐变的源在浮点版里没量化,整数路径先量化成 8 位(差半级),放宽到 2。
+    /// </summary>
+    [TestMethod]
+    public void a8r8g8b8与x8r8g8b8目标的PorterDuff与Disjoint和Conjoint走整数_与浮点只差取整()
+    {
+        const int size = 24;
+        Random random = new(37);
+        PixelBuffer a8Image = EdgeBuffer(random, 17, 13, 8);
+        PixelBuffer argbImage = EdgeBuffer(random, 17, 13, 32);
+        PixelBuffer rgbImage = EdgeBuffer(random, 17, 13, 24);
+        PixelBuffer a8Mask = EdgeBuffer(random, size, size, 8);
+        byte[] maskBytes = new byte[size * size];
+        random.NextBytes(maskBytes);
+        maskBytes[0] = 0;
+        maskBytes[1] = 255;
+        double c = Math.Cos(0.4), sn = Math.Sin(0.4);
+        double[] rotate = [c, -sn, 2.5, sn, c, -1.5, 0, 0, 1];
+        Argb[] colors = [new(1, 1, 0, 0), new(0.5f, 0, 0.5f, 0), new(0, 0, 0, 0), new(0.2f, 1, 1, 1)];
+        List<(string Name, Func<RenderSource> Make, int Limit)> sources =
+        [
+            ("纯色半透明", () => new SolidSource(new Argb(128 / 255f, 64 / 255f, 0, 128 / 255f)), 1),
+            ("纯色不透明", () => new SolidSource(new Argb(1, 10 / 255f, 128 / 255f, 1)), 1),
+            ("x8r8g8b8 图像", () => new ImageSource(rgbImage, 0, 0, 17, 13, PictFormat.X8R8G8B8) { Repeat = RenderSource.RepeatNormal }, 1),
+            ("argb 图像", () => new ImageSource(argbImage, 0, 0, 17, 13, PictFormat.A8R8G8B8) { Repeat = RenderSource.RepeatNormal }, 1),
+            ("a8 图像", () => new ImageSource(a8Image, 0, 0, 17, 13, PictFormat.A8) { Repeat = RenderSource.RepeatReflect }, 1),
+            ("argb 旋转双线性", () => new ImageSource(argbImage, 0, 0, 17, 13, PictFormat.A8R8G8B8) { Repeat = RenderSource.RepeatReflect, Bilinear = true, Transform = rotate }, 2),
+            ("线性渐变", () => new LinearGradientSource(3, 2, 21, 13, [0, 0.4, 0.4, 1], colors) { Repeat = RenderSource.RepeatReflect }, 2),
+        ];
+        List<(string Name, Func<RenderSource?> Make)> masks =
+        [
+            ("无遮罩", () => null),
+            ("单字节遮罩", () => new ByteMaskSource(maskBytes, 0, 0, size, size)),
+            ("a8 像素图遮罩", () => new ImageSource(a8Mask, 0, 0, size, size, PictFormat.A8)),
+        ];
+        int worst = 0;
+        foreach ((PictFormat format, byte depth) in ((PictFormat, byte)[])[(PictFormat.A8R8G8B8, 32), (PictFormat.X8R8G8B8, 24)])
+        {
+            foreach (byte op in AllOps.Where(o => o < 0x30))
+            {
+                foreach ((string sourceName, Func<RenderSource> makeSource, int limit) in sources)
+                {
+                    foreach ((string maskName, Func<RenderSource?> makeMask) in masks)
+                    {
+                        PixelBuffer dst = EdgeBuffer(random, size, size, depth);
+                        uint[] expected = FloatComposite(op, makeSource(), makeMask(), dst, format);
+                        RenderTarget target = new(dst, 0, 0, format, [new XRect(0, 0, size, size)]);
+                        RenderCompositor.Composite(op, makeSource(), makeMask(), false, target, 0, 0, 0, 0, 0, 0, size, size);
+                        for (int i = 0; i < expected.Length; i++)
+                        {
+                            int diff = MaxChannelDiff(expected[i], dst.Pixels[i]);
+                            worst = Math.Max(worst, diff);
+                            Assert.IsLessThanOrEqualTo(limit, diff,
+                                $"{format.Depth} 位目标、op 0x{op:X2}、{sourceName}、{maskName}:像素 {i} 期望 0x{expected[i]:X8},实际 0x{dst.Pixels[i]:X8}");
+                        }
+                    }
+                }
+            }
+        }
+        Console.WriteLine($"8888 目标 Porter-Duff / Disjoint / Conjoint 最大通道差 {worst}");
+    }
+
+    /// <summary>两个 0xAARRGGBB 四个通道里最大的差。</summary>
+    private static int MaxChannelDiff(uint a, uint b)
+    {
+        int worst = 0;
+        for (int shift = 0; shift < 32; shift += 8)
+        {
+            worst = Math.Max(worst, Math.Abs((int)((a >> shift) & 0xFF) - (int)((b >> shift) & 0xFF)));
+        }
+        return worst;
+    }
+
+    /// <summary>
     /// a1 目标:全部运算走整数,只算 alpha、按 ≥ 0.5 取 1(同浮点版的编码)。源与遮罩都是 8 位像素时与浮点版逐位相同 ——
     /// a1 的 alpha 只有 0 / 1,各因子不是 0、1 就是源 alpha 或 1 − 源 alpha,而阈值 0.5 = 127.5 / 255 正好落在 8 位取整的分界上。
     /// 双线性的源在浮点版里没量化:整数路径先把它量化成 8 位,alpha 至多挪半级(乘上遮罩只会更小),所以只允许在浮点结果离 0.5
