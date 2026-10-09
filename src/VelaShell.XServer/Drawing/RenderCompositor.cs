@@ -220,7 +220,12 @@ internal static class RenderCompositor
     private static void CombineRow(byte op, ReadOnlySpan<uint> src, ReadOnlySpan<uint> mask, Span<uint> dst, bool dstAlpha, uint depthMask)
     {
         uint keep = dstAlpha ? 0xFFFFFFFFu : 0x00FFFFFFu;
-        for (int i = 0; i < dst.Length; i++)
+        // 向量版一次 4 个像素(Over、Add;逐位与下面的标量版一致),剩下的按标量算。
+        int start = !RenderSimd.Enabled ? 0
+            : op == RenderOps.Over ? RenderSimd.OverRow(src, mask, dst, keep & depthMask)
+            : op == RenderOps.Add ? RenderSimd.AddRow(src, mask, dst, keep & depthMask)
+            : 0;
+        for (int i = start; i < dst.Length; i++)
         {
             uint s = src[i];
             if (!mask.IsEmpty)
@@ -793,6 +798,7 @@ internal static class RenderCompositor
         uint sa = Argb8.ToByte(color.A), sr = Argb8.ToByte(color.R), sg = Argb8.ToByte(color.G), sb = Argb8.ToByte(color.B);
         bool dstAlpha = dst.Format.HasAlpha;
         uint opaque = (dstAlpha ? 0xFF000000u : 0) | (sr << 16) | (sg << 8) | sb;
+        uint color8 = (sa << 24) | (sr << 16) | (sg << 8) | sb;
         uint[] px = dst.Buffer.Pixels;
         int stride = dst.Buffer.Width;
         XRect area = new(dstX + dst.OriginX, dstY + dst.OriginY, width, height);
@@ -813,7 +819,11 @@ internal static class RenderCompositor
                 int my = by - dst.OriginY + maskDy - mask.Y0;
                 int mRow = (my * mask.Width) + (r.X - dst.OriginX + maskDx - mask.X0);
                 int dRow = (by * stride) + r.X;
-                for (int i = 0; i < r.Width; i++)
+                // 向量版一次 4 个像素(逐位与下面的标量版一致),剩下不满 4 个的按标量算。
+                int start = RenderSimd.Enabled
+                    ? RenderSimd.OverSolidMaskRow(color8, mask.Alpha.AsSpan(mRow, r.Width), px.AsSpan(dRow, r.Width), dstAlpha)
+                    : 0;
+                for (int i = start; i < r.Width; i++)
                 {
                     uint m = mask.Alpha[mRow + i];
                     if (m == 0)
@@ -845,6 +855,7 @@ internal static class RenderCompositor
     {
         bool srcAlpha = image.Format.HasAlpha, dstAlpha = dst.Format.HasAlpha;
         bool copy = op == RenderOps.Src || !srcAlpha;   // 不透明的源 Over 就是 Src
+        bool vector = RenderSimd.Enabled && !ReferenceEquals(image.Buffer, dst.Buffer);
         uint[] sp = image.Buffer.Pixels, dp = dst.Buffer.Pixels;
         int sStride = image.Buffer.Width, dStride = dst.Buffer.Width;
         XRect area = new(dstX + dst.OriginX, dstY + dst.OriginY, width, height);
@@ -881,7 +892,9 @@ internal static class RenderCompositor
                     }
                     continue;
                 }
-                for (int i = 0; i < to.Length; i++)
+                // 向量版一次 4 个像素(逐位与下面的标量版一致);源、目标是同一块缓冲时按原样逐个算(重叠时的先后与原先一样)。
+                int start = vector ? RenderSimd.OverImageRow(from, to, dstAlpha) : 0;
+                for (int i = start; i < to.Length; i++)
                 {
                     uint s = from[i];
                     uint sa = s >> 24;
