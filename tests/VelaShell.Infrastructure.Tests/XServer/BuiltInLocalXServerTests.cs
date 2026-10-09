@@ -194,6 +194,20 @@ public class BuiltInLocalXServerTests
         Assert.HasCount(3, hosts, "每个服务端一个宿主");
         Assert.AreEqual(4, await server.CountConnectedClientsAsync(), "按会话分出来的显示上的一并数上");
 
+        // X 程序清单(F3)把各个显示上的程序一并列出,按键断开的是对的那个显示上的那个程序。
+        IReadOnlyList<XServerClient> clients = await server.GetClientsAsync();
+        Assert.HasCount(4, clients);
+        Assert.AreEqual(4, clients.Select(c => c.Key).Distinct().Count(), "不同显示上编号相同的程序,键也不同");
+        XServerClient bobClient = clients.Single(c => c.Source == "bob@b:22");
+        server.DisconnectClient(bobClient.Key);
+        X11Server bobServer = instances.Single(i => i.Label == "bob@b:22").Server;
+        for (int i = 0; i < 100 && (await bobServer.GetClientsAsync()).Count != 0; i++)
+        {
+            await Task.Delay(20);
+        }
+        Assert.IsEmpty(await bobServer.GetClientsAsync(), "断开的是 bob 那个显示上的程序");
+        Assert.HasCount(3, await server.GetClientsAsync());
+
         await aliceEnded.CancelAsync();
         for (int i = 0; i < 100 && server.Instances.Count != 2; i++)
         {

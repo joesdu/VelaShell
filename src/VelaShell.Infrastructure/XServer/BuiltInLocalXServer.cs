@@ -463,84 +463,119 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
     public event EventHandler<XServerGrabStallNotice>? ServerGrabStalled;
 
     /// <inheritdoc />
-    /// <remarks>程序名取它第一个窗口的 <c>WM_CLASS</c>(类名,没有退到实例名),来历是 SSH 连接器给的连接标签。</remarks>
+    /// <remarks>
+    /// 程序名取它第一个窗口的 <c>WM_CLASS</c>(类名,没有退到实例名),来历是 SSH 连接器给的连接标签。按会话分出来的显示上的一并列出
+    /// (共用的在前)。
+    /// </remarks>
     public async Task<IReadOnlyList<XServerClient>> GetClientsAsync()
     {
-        (X11Server? server, int generation) = Running();
-        if (server is null)
+        int generation = Generation();
+        List<XServerClient> all = [];
+        foreach (XServerInstance instance in Instances)
         {
-            return [];
+            try
+            {
+                all.AddRange((await instance.Server.GetClientsAsync().ConfigureAwait(false)).Select(c => ToClient(c, generation, instance.Index)));
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException)
+            {
+                // 刚好停了(或者这个会话的显示刚收掉)
+            }
         }
-        try
-        {
-            return [.. (await server.GetClientsAsync().ConfigureAwait(false)).Select(c => ToClient(c, generation))];
-        }
-        catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException)
-        {
-            return [];   // 刚好停了
-        }
+        return all;
     }
 
     /// <inheritdoc />
     public void DisconnectClient(string key)
     {
-        (X11Server? server, int generation) = Running();
-        if (server is not null && ParseKey(key) is { } parsed && parsed.Generation == generation)
+        int generation = Generation();
+        if (ParseKey(key) is { } parsed && parsed.Generation == generation
+            && Instances.FirstOrDefault(i => i.Index == parsed.Instance) is { } instance)
         {
-            server.DisconnectClient(parsed.Id);
+            instance.Server.DisconnectClient(parsed.Id);
         }
     }
 
     /// <inheritdoc />
-    public void BreakGrabs() => Running().Server?.BreakGrabs();
-
-    /// <summary>此刻在运行的服务端与它是第几次启动的;没在运行时服务端为 null。</summary>
-    private (X11Server? Server, int Generation) Running()
+    /// <remarks>每个服务端实例都做一遍(按会话分出来的显示各有各的抓取)。</remarks>
+    public void BreakGrabs()
     {
-        lock (_stateLock)
+        foreach (XServerInstance instance in Instances)
         {
-            return (_state == XServerState.Running ? _server : null, _generation);
+            instance.Server.BreakGrabs();
         }
     }
 
-    private static string Key(int generation, int id) => $"{generation.ToString(CultureInfo.InvariantCulture)}:{id.ToString(CultureInfo.InvariantCulture)}";
+    /// <summary>这是第几次启动(客户端的键带着它:停了再开,旧键作废)。</summary>
+    private int Generation()
+    {
+        lock (_stateLock)
+        {
+            return _generation;
+        }
+    }
 
-    private static (int Generation, int Id)? ParseKey(string key) =>
-        key.Split(':') is [var g, var i]
+    /// <summary>客户端的键:「第几次启动:哪个实例:客户端编号」。</summary>
+    private static string Key(int generation, int instance, int id) =>
+        string.Create(CultureInfo.InvariantCulture, $"{generation}:{instance}:{id}");
+
+    private static (int Generation, int Instance, int Id)? ParseKey(string key) =>
+        key.Split(':') is [var g, var n, var i]
         && int.TryParse(g, NumberStyles.None, CultureInfo.InvariantCulture, out int generation)
+        && int.TryParse(n, NumberStyles.None, CultureInfo.InvariantCulture, out int instance)
         && int.TryParse(i, NumberStyles.None, CultureInfo.InvariantCulture, out int id)
-            ? (generation, id)
+            ? (generation, instance, id)
             : null;
 
-    private static XServerClient ToClient(XClientInfo client, int generation)
+    private static XServerClient ToClient(XClientInfo client, int generation, int instance)
     {
         XTopLevelSnapshot? first = client.TopLevels.Select(w => w.Snapshot).FirstOrDefault();
         string name = first is null ? "" : first.ClassName.Length > 0 ? first.ClassName : first.InstanceName;
-        return new XServerClient(Key(generation, client.Id), client.Id, name, first?.Title ?? "", client.Label,
+        return new XServerClient(Key(generation, instance, client.Id), client.Id, name, first?.Title ?? "", client.Label,
             client.TopLevels.Count, client.MemoryBytes, client.Retained, client.HoldsServerGrab);
+    }
+
+    /// <summary>报来抓取卡住的宿主对应哪个实例(共用的那个,或某个会话的显示);已经收掉的为 null。</summary>
+    private XServerInstance? InstanceOfHost(object? host)
+    {
+        lock (_stateLock)
+        {
+            if (_state != XServerState.Running)
+            {
+                return null;
+            }
+            if (ReferenceEquals(host, _attached) && _server is { } shared)
+            {
+                return new XServerInstance(0, null, shared);
+            }
+            return _sessionDisplays.Values
+                .Where(t => t.IsCompletedSuccessfully && ReferenceEquals(t.Result.Host, host))
+                .Select(t => new XServerInstance(t.Result.Index, t.Result.Label, t.Result.Server))
+                .FirstOrDefault();
+        }
     }
 
     /// <summary>
     /// 服务端说有个客户端抓着整个服务端太久(在它的执行线程上):查出是哪个程序再转给界面 —— 查清单要回到执行线程,
     /// 这里不能同步等,另起一个任务。
     /// </summary>
-    private void OnGrabStallReported(object? sender, XServerGrabStall stall) => _ = ReportGrabStallAsync(stall);
+    private void OnGrabStallReported(object? sender, XServerGrabStall stall) => _ = ReportGrabStallAsync(sender, stall);
 
-    private async Task ReportGrabStallAsync(XServerGrabStall stall)
+    private async Task ReportGrabStallAsync(object? host, XServerGrabStall stall)
     {
         try
         {
-            (X11Server? server, int generation) = Running();
-            if (server is null)
+            int generation = Generation();
+            if (InstanceOfHost(host) is not { } instance)
             {
                 return;
             }
-            XClientInfo? holder = (await server.GetClientsAsync().ConfigureAwait(false)).FirstOrDefault(c => c.Id == stall.ClientId);
+            XClientInfo? holder = (await instance.Server.GetClientsAsync().ConfigureAwait(false)).FirstOrDefault(c => c.Id == stall.ClientId);
             if (holder is null || !holder.HoldsServerGrab)
             {
                 return;   // 查的这一会儿已经放开(或者断了)
             }
-            XServerClient client = ToClient(holder, generation);
+            XServerClient client = ToClient(holder, generation, instance.Index);
             ServerGrabStalled?.Invoke(this, new XServerGrabStallNotice(client.Key, client.Id, client.Name.Length > 0 ? client.Name : client.Title,
                 stall.ClientLabel, stall.Held));
         }
@@ -664,6 +699,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
             throw;
         }
         SessionDisplay created = new(index, source.Label, server, host);
+        host.GrabStallReported += OnGrabStallReported;   // 这个会话的显示上抓得太久也提示(F3)
         Trace.WriteLine($"[XServer] per-session display #{index} for {source.Label}");
         // 会话已经断开时 Register 当场回调:照样收掉。
         created.Ended = source.SessionEnded.Register(() => _ = EndSessionDisplayAsync(key));
@@ -688,7 +724,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         _sessionDisplays.Remove(key, out Task<SessionDisplay>? session) ? session : null;
 
     /// <summary>收掉一个会话的显示:关窗、断开它的 X 程序、停执行线程。没建成的跳过。</summary>
-    private static async Task CloseSessionDisplayAsync(Task<SessionDisplay> session)
+    private async Task CloseSessionDisplayAsync(Task<SessionDisplay> session)
     {
         SessionDisplay display;
         try
@@ -700,6 +736,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
             return;   // 没建成:CreateSessionDisplayAsync 自己收过尾
         }
         await display.Ended.DisposeAsync().ConfigureAwait(false);
+        display.Host.GrabStallReported -= OnGrabStallReported;
         display.Host.Detach();
         await display.Server.DisposeAsync().ConfigureAwait(false);
         Trace.WriteLine($"[XServer] per-session display #{display.Index} for {display.Label} closed");
