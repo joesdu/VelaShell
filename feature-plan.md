@@ -223,7 +223,7 @@
 
 ### H. 内置 X 服务端
 
-> 第二次全库审查(`plan.md` §167,草案 `xs_plan.md`)修完 184 条问题、2026-10-09 补齐只做了一部分的几项(§175)之后剩下的。新功能的编号沿用草案第五节(F1–F30)。
+> 第二次全库审查(`plan.md` §167,草案 `xs_plan.md`)修完 184 条问题、2026-10-09 补齐只做了一部分的几项(§178)之后剩下的。新功能的编号沿用草案第五节(F1–F30)。
 
 | 状态 | 优先级 | 项 | 架构落点 |
 | :---: | :---: | --- | --- |
@@ -242,7 +242,6 @@
 
 | 出处 | 要改什么 | 进度 |
 | --- | --- | --- |
-| `plan.md` §175 X 服务端第二次审查遗留项的收尾 | `{zh,en}/xserver/design/architecture.md`:§3 净室第 4 条(随库带的字体数据与许可)、§4 `Fonts/`、§6 光标的图像、§7 字体(整套 X.Org 位图字体与 Unifont、字符集派生、后台建字体)、PolyArc 的接头、RENDER 的整数路径与 alpha-map、GLX 单缓冲配置、XFIXES 的光标图像,§10 决策记录;`{zh,en}/xserver/troubleshooting.md` 有意的行为一行、已修缺陷两行 | [velashell-docs#101](https://github.com/VelaShellLabs/velashell-docs/pull/101) 已开,与宿主 [#591](https://github.com/joesdu/VelaShell/pull/591) 一起合 |
 | `plan.md` §118 窗口外框 | `{zh,en}/host/architecture.md` §5「窗口壳」的 ⚠️ 限定为 Win32、新增「各平台的外框」；`交互与界面规格.md` §2 补 macOS 红绿灯与各平台外框；`design-specs.md` 补 macOS 红绿灯；标题栏统一 28 的口径（设置窗口与消息框保持 48 的例外） | [velashell-docs#70](https://github.com/VelaShellLabs/velashell-docs/pull/70) 已开，与宿主 PR 一起合；实机验收后改掉 architecture 里「验收」那一段 |
 | `plan.md` §74 / §75 目录比较与同步 | `SFTP双栏与WinSCP差距分析.md`（C1 改已实现、新增第七节）与 `交互与界面规格.md` §6（文档工具条、同步窗口、保持远端最新、SHA-256 优先比较） | [velashell-docs#35](https://github.com/VelaShellLabs/velashell-docs/pull/35) **待合入** |
 | `plan.md` §82 #474 | `交互与界面规格.md` 资源管理器补**置顶**与 SFTP 路径栏的**复制当前路径**；`设置项审计.md` 补 `General.CollapseGroupsByDefault`、`Transfer.UseRecursiveDeleteCommand`（写明只对有 exec 通道的 SSH 会话生效、失败自动回退、没有逐条进度） | 已在 `docs/474-explorer-sftp` 分支改好（中英各 3 个文件），**待开 PR** |

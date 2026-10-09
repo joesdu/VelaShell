@@ -113,18 +113,52 @@ public class GutterFoldUiTests
     }
 
     [TestMethod]
-    public void GutterContextMenu_HasFourToggles_ReflectingCurrentState()
+    public void GutterContextMenu_HasFiveToggles_ReflectingCurrentState()
     {
         OnUi(() =>
         {
-            var control = new VelaTerminalControl { ShowLineNumber = true };
+            var control = new VelaTerminalControl { ShowLineNumber = true, ShowFoldGuideLine = true };
             ContextMenu menu = control.BuildGutterContextMenu();
-            Assert.AreEqual(4, menu.Items.Count, "菜单应含 4 个部件开关(行号/时间戳/折叠标记/空白)。");
+            Assert.AreEqual(5, menu.Items.Count, "菜单应含 5 个部件开关(行号/时间戳/分隔线/折叠标记/空白)。");
 
             var lineNumberItem = (MenuItem)menu.Items[0]!;
             var timestampItem = (MenuItem)menu.Items[1]!;
+            var guideLineItem = (MenuItem)menu.Items[2]!;
+            var foldItem = (MenuItem)menu.Items[3]!;
             Assert.IsTrue(lineNumberItem.IsChecked, "行号已开,菜单项应为勾选态。");
             Assert.IsFalse(timestampItem.IsChecked, "时间戳未开,菜单项应为未勾选态。");
+            Assert.IsTrue(guideLineItem.IsChecked, "分隔线已开,菜单项应为勾选态。");
+            Assert.IsFalse(foldItem.IsChecked, "分隔线与折叠是两个开关:只开线时折叠项不勾。");
+        });
+    }
+
+    /// <summary>右键菜单切分隔线:改的是分隔线自己,上报给上层持久化时也单独带着这一位。</summary>
+    [TestMethod]
+    public void GutterContextMenu_ClickingGuideLine_TogglesOnlyGuideLine_AndReportsIt()
+    {
+        OnUi(() =>
+        {
+            (VelaTerminalControl control, ContextMenu menu, Window window) = ShowGutterMenu(new() { ShowFoldMarker = true });
+            bool? reportedFold = null, reportedLine = null;
+            control.GutterOptionsChanged += (_, _, fold, _, line) =>
+            {
+                reportedFold = fold;
+                reportedLine = line;
+            };
+            try
+            {
+                ClickMenuItem((MenuItem)menu.Items[2]!);
+
+                Assert.IsTrue(control.ShowFoldGuideLine, "点「分隔线」应打开分隔线。");
+                Assert.IsTrue(control.ShowFoldMarker, "折叠开关不受影响。");
+                Assert.IsTrue(reportedLine, "上报的分隔线状态应为开。");
+                Assert.IsTrue(reportedFold, "上报的折叠状态应保持原样。");
+            }
+            finally
+            {
+                menu.Close();
+                window.Close();
+            }
         });
     }
 
@@ -257,6 +291,110 @@ public class GutterFoldUiTests
                 Dispatcher.UIThread.RunJobs();
 
                 Assert.AreEqual(0, control.FoldCountForTest, "正文区域点击不应折叠。");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    /// <summary>
+    /// #586 回归:从左往右拖选整行时,指针常常落在折叠列与正文之间的空白里。
+    /// 那段空白以前也算折叠命中,一按就把上方输出整段折掉。
+    /// </summary>
+    [TestMethod]
+    public void RealPointerClick_InBlankGap_DoesNotFold()
+    {
+        OnUi(() =>
+        {
+            var control = new VelaTerminalControl { ShowFoldMarker = true, ShowFoldGuideLine = true, GutterBlank = true };
+            control.Feed(Encoding.UTF8.GetBytes("L0\r\nL1\r\nL2\r\nL3\r\nL4\r\nL5"));
+            var window = new Window { Width = 480, Height = 320, Content = control };
+            window.Show();
+            try
+            {
+                Dispatcher.UIThread.RunJobs();
+                window.CaptureRenderedFrame();
+
+                GutterLayout gutter = control.GutterForTest;
+                var point = new Point(gutter.FoldLeft + gutter.FoldWidth + GutterLayout.BlankPixels / 2, 3 * control.CellHeightForTest + 2);
+                Assert.IsTrue(gutter.ContainsX(point.X), "点在侧栏的空白里。");
+                window.MouseDown(point, MouseButton.Left);
+                window.MouseUp(point, MouseButton.Left);
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.AreEqual(0, control.FoldCountForTest, "空白不是折叠列,点它不应折叠。");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    /// <summary>#586:只开分隔线、不开折叠时,在那一列上怎么点都不折叠。</summary>
+    [TestMethod]
+    public void RealPointerClick_GuideLineOnly_DoesNotFold()
+    {
+        OnUi(() =>
+        {
+            var control = new VelaTerminalControl { ShowFoldGuideLine = true };
+            control.Feed(Encoding.UTF8.GetBytes("L0\r\nL1\r\nL2\r\nL3\r\nL4\r\nL5"));
+            var window = new Window { Width = 480, Height = 320, Content = control };
+            window.Show();
+            try
+            {
+                Dispatcher.UIThread.RunJobs();
+                window.CaptureRenderedFrame();
+
+                GutterLayout gutter = control.GutterForTest;
+                Assert.IsGreaterThan(0, gutter.FoldWidth, "只开分隔线,这一列照样占位。");
+                var point = new Point(gutter.FoldLeft + gutter.FoldWidth / 2, 3 * control.CellHeightForTest + 2);
+                window.MouseDown(point, MouseButton.Left);
+                window.MouseUp(point, MouseButton.Left);
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.AreEqual(0, control.FoldCountForTest, "没开折叠,点分隔线不应折叠。");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    /// <summary>
+    /// 关掉折叠后折叠头不再画、也点不动;分隔线开着时侧栏宽度不变,不会经由重排顺手清掉折叠 ——
+    /// 必须由开关自己展开,否则被折起来的那段输出再也找不回来。
+    /// </summary>
+    [TestMethod]
+    public void TurningFoldOff_WithGuideLineOn_ExpandsExistingFolds()
+    {
+        OnUi(() =>
+        {
+            var control = new VelaTerminalControl { ShowFoldMarker = true, ShowFoldGuideLine = true };
+            control.Feed(Encoding.UTF8.GetBytes("L0\r\nL1\r\nL2\r\nL3\r\nL4\r\nL5"));
+            var window = new Window { Width = 480, Height = 320, Content = control };
+            window.Show();
+            try
+            {
+                Dispatcher.UIThread.RunJobs();
+                window.CaptureRenderedFrame();
+
+                GutterLayout gutter = control.GutterForTest;
+                var point = new Point(gutter.FoldLeft + 2, 3 * control.CellHeightForTest + 2);
+                window.MouseDown(point, MouseButton.Left);
+                window.MouseUp(point, MouseButton.Left);
+                Dispatcher.UIThread.RunJobs();
+                Assert.AreEqual(1, control.FoldCountForTest, "前提:先折出一个区域。");
+
+                double widthBefore = control.GutterForTest.TotalWidth;
+                control.ShowFoldMarker = false;
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.AreEqual(widthBefore, control.GutterForTest.TotalWidth, "分隔线开着,关折叠不改侧栏宽度。");
+                Assert.AreEqual(0, control.FoldCountForTest, "关掉折叠应展开已有的折叠。");
             }
             finally
             {

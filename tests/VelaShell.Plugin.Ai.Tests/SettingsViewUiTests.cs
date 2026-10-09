@@ -3900,6 +3900,93 @@ public sealed class SettingsViewUiTests
     }
 
     [TestMethod]
+    public void ProviderApiKey_AdditionalSlotDraftNeverGoesToCrossOriginFirstModel()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            using var own = new KeyProbeServer(_ => 200); own.Start();
+            using var elsewhere = new KeyProbeServer(_ => 200); elsewhere.Start();
+            // 首模型把地址改到了别家:补充槽的 Key 在任何路径上都只发往供应商自己的源
+            var routed = new AiModelConfig { Model = "m-routed", BaseUrlOverride = elsewhere.BaseUrl };
+            var local = new AiModelConfig { Model = "m-local" };
+            var provider = new AiProvider { BaseUrl = own.BaseUrl, Models = [routed, local] };
+            var settings = new AiSettings { Providers = [provider] };
+            var store = new AiSettingsStore(context);
+            await store.AddProviderApiKeyAsync(settings, provider, "primary");
+            string b = await store.AddProviderApiKeyAsync(settings, provider, "additional-old");
+            var view = new SettingsView(context, store, settings, new Loc("en"), () => { }, new ProviderHealth());
+            var window = new Window { Content = view, Width = 900, Height = 700 }; window.Show(); await PumpAsync();
+            try
+            {
+                EditProviderKey(view, b).Text = "additional-new";
+                await StartTestAsync(view).WaitAsync(TimeSpan.FromSeconds(15));
+                Assert.IsEmpty(elsewhere.Requests, "补充槽的草稿 Key 不得送往首模型覆盖的别家地址");
+                Assert.AreEqual("Bearer additional-new", own.Requests.Single().Auth, "改用同源的继承模型来测");
+                Assert.Contains("\"model\":\"m-local\"", own.Requests.Single().Body);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [TestMethod]
+    public void AddModel_AfterAnotherWindowSaved_ReloadsAndReportsTheConflict()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            var provider = new AiProvider { BaseUrl = "http://127.0.0.1:9", Models = [new AiModelConfig { Model = "m1" }] };
+            var settings = new AiSettings { Providers = [provider] };
+            var store = new AiSettingsStore(context);
+            await store.SaveAsync(settings);
+            var loc = new Loc("en");
+            var view = new SettingsView(context, store, settings, loc, () => { });
+            var window = new Window { Content = view, Width = 900, Height = 700 }; window.Show(); await PumpAsync();
+            try
+            {
+                // 另一份设置快照先落了盘:本页基线过期,「添加模型」的保存会被拒
+                AiSettings other = await new AiSettingsStore(context).LoadAsync();
+                other.SystemPrompt = "saved elsewhere";
+                await new AiSettingsStore(context).SaveAsync(other);
+
+                Click(view.GetControl<Button>("AddModelButton"));
+                await WaitUntilAsync(() => view.GetControl<TextBlock>("StatusText").Text == loc["SetupConfigChanged"]);
+                Assert.AreEqual("saved elsewhere", settings.SystemPrompt, "冲突后重载到最新落盘,而不是留一份只活在内存里的改动");
+                Assert.HasCount(1, provider.Models, "没落盘的新模型随重载撤掉,界面与磁盘一致");
+                Assert.AreEqual("saved elsewhere", (await new AiSettingsStore(context).LoadAsync()).SystemPrompt);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [TestMethod]
+    public void ProviderTest_PassingSavedKeyClearsThatKeysCooldown()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            using var endpoint = new KeyProbeServer(_ => 200); endpoint.Start();
+            var model = new AiModelConfig { Model = "m1" };
+            var provider = new AiProvider { BaseUrl = endpoint.BaseUrl, Models = [model] };
+            var settings = new AiSettings { Providers = [provider] };
+            var store = new AiSettingsStore(context);
+            await store.AddProviderApiKeyAsync(settings, provider, "primary");
+            var health = new ProviderHealth();
+            health.RecordKey(provider.Id, false);
+            var view = new SettingsView(context, store, settings, new Loc("en"), () => { }, health);
+            var window = new Window { Content = view, Width = 900, Height = 700 }; window.Show(); await PumpAsync();
+            try
+            {
+                await StartTestAsync(view).WaitAsync(TimeSpan.FromSeconds(15));
+                Assert.AreEqual("Bearer primary", endpoint.Requests.Single().Auth);
+                Assert.IsFalse(health.IsKeyCooling(provider.Id), "已保存的 Key 刚测通,不能继续显示冷却、被故障转移绕开");
+                Assert.IsFalse(health.IsCooling(model.Id));
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [TestMethod]
     public void ProviderApiKey_UnsavedDraftBlocksRowProbe_ExplicitPageTestAndSaveUseNewEndpointAndKey()
     {
         OnUi(async () =>

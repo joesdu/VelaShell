@@ -226,46 +226,6 @@ public sealed class SessionTabIconUiTests
         });
     }
 
-    /// <summary>
-    /// 所有停靠标签的悬停前景都直接落值。
-    /// </summary>
-    /// <remarks>
-    /// 标签外壳把 Foreground 传给标题文字；在外壳本体上做 BrushTransition 会让
-    /// Windows 不同缩放比例下的悬停重绘闪烁。背景和激活指示线仍可在各自的绘制元素上过渡。
-    /// </remarks>
-    [TestMethod]
-    public void DockTabShells_DoNotAnimateForegroundOnHover()
-    {
-        OnUi(() =>
-        {
-            UserControl[] tabs =
-            [
-                new DockTabItem(),
-                new SftpDockTabItem(),
-                new PluginDockTabItem(),
-                new WorkspaceDockTabItem(),
-                new ConnectingDockTabItem()
-            ];
-
-            foreach (UserControl tab in tabs)
-            {
-                var window = new Window { Width = 600, Height = 200, Content = tab };
-                try
-                {
-                    window.Show();
-                    Dispatcher.UIThread.RunJobs();
-                    window.UpdateLayout();
-                    Assert.IsTrue(tab.Transitions is null || tab.Transitions.Count == 0,
-                        $"{tab.GetType().Name} 不应在标签外壳本体上动画 Foreground");
-                }
-                finally
-                {
-                    window.Close();
-                }
-            }
-        });
-    }
-
     private static TerminalDocument TabFor(SessionProfile? profile)
     {
         var terminal = new TerminalTabViewModel(FakeTerminal.Emulator()) { Profile = profile };

@@ -148,14 +148,14 @@ public sealed class ModelsDevCatalog(IPluginContext context)
     /// </summary>
     /// <remarks>
     /// 先找完整 id,再忽略供应商/路由前缀;仍不匹配时仅忽略已知部署标签,选最长完整型号候选。
-    /// 不使用编辑距离猜版本或参数量;同优先级候选容量不一致则退回端点规格。
+    /// 不使用编辑距离猜版本或参数量;同优先级候选按多数取值(见 <see cref="Consensus" />),
+    /// 容量没有多数时退回端点规格。
     /// </remarks>
     private ModelSpec? FindAnywhere(string id)
     {
         ReadOnlySpan<char> bare = BareModelId(id);
-        ModelSpec? best = null;
+        var tied = new List<ModelSpec>();
         int bestScore = 0;
-        bool ambiguous = false;
         foreach (List<ModelSpec> specs in Index().Values)
         {
             foreach (ModelSpec spec in specs)
@@ -166,18 +166,50 @@ public sealed class ModelsDevCatalog(IPluginContext context)
                     : bare.Length > candidate.Length && bare[candidate.Length] == '-'
                         && bare.StartsWith(candidate, StringComparison.OrdinalIgnoreCase)
                         && IsDeploymentSuffix(bare[(candidate.Length + 1)..]) ? candidate.Length : 0;
+                if (score == 0 || score < bestScore)
+                {
+                    continue;
+                }
                 if (score > bestScore)
                 {
-                    best = spec;
+                    tied.Clear();
                     bestScore = score;
-                    ambiguous = false;
                 }
-                else if (score > 0 && score == bestScore && best is not null
-                    && (best.ContextTokens != spec.ContextTokens || best.OutputTokens != spec.OutputTokens
-                        || best.Reasoning != spec.Reasoning)) ambiguous = true;
+                tied.Add(spec);
             }
         }
-        return ambiguous ? null : best;
+        return tied.Count == 0 ? null : Consensus(tied);
+    }
+
+    /// <summary>同优先级的候选按多数定规格;窗口没有多数(并列)才算真歧义。</summary>
+    /// <remarks>
+    /// models.dev 里同一个型号常挂在十几家名下,总有一两家写法略有出入(输出上限 16000 对 16384、
+    /// 窗口 1000000 对 1047576、某家漏标 reasoning)。要求全体一致的话,gpt-5、gpt-4o、gemini-2.5-pro
+    /// 这些最常用的型号全会被判成歧义、退回 128000 的默认窗口,并把思考档位藏起来。
+    /// 所以:窗口取正值里的多数,票数并列才放弃(那时谁先谁后只是索引顺序,不能拿来定);
+    /// 同窗口内输出上限取多数,并列取小的 —— 超过端点上限的 max_tokens 会整轮 400;
+    /// 思考能力在标注过的家里过半(含一半)即认,漏标的少数家不该把整个型号的思考档位藏掉。
+    /// </remarks>
+    private static ModelSpec? Consensus(List<ModelSpec> tied)
+    {
+        List<ModelSpec> known = tied.Exists(spec => spec.ContextTokens > 0)
+            ? tied.FindAll(spec => spec.ContextTokens > 0)
+            : tied;
+        List<IGrouping<int, ModelSpec>> windows = [.. known.GroupBy(spec => spec.ContextTokens)
+            .OrderByDescending(group => group.Count())];
+        if (windows.Count > 1 && windows[0].Count() == windows[1].Count())
+        {
+            return null;
+        }
+        List<ModelSpec> agreed = [.. windows[0]];
+        List<ModelSpec> outputs = agreed.Exists(spec => spec.OutputTokens > 0)
+            ? agreed.FindAll(spec => spec.OutputTokens > 0)
+            : agreed;
+        int output = outputs.GroupBy(spec => spec.OutputTokens)
+            .OrderByDescending(group => group.Count()).ThenBy(group => group.Key).First().Key;
+        int yes = agreed.Count(spec => spec.Reasoning == true);
+        int no = agreed.Count(spec => spec.Reasoning == false);
+        return agreed[0] with { OutputTokens = output, Reasoning = yes + no == 0 ? null : yes >= no };
     }
 
     private static readonly string[] DeploymentLabels =

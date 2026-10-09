@@ -2661,6 +2661,125 @@ public sealed partial class ChatPanelViewUiTests
         });
     }
 
+    /// <summary>HttpClient.Timeout 到点时抛的就是与调用方令牌无关的 <see cref="TaskCanceledException" />。</summary>
+    private sealed class RefreshTimeoutHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromException<HttpResponseMessage>(new TaskCanceledException(
+                "The request was canceled due to the configured HttpClient.Timeout.", new TimeoutException()));
+    }
+
+    /// <summary>
+    /// 令牌刷新超时不是「本批次被取消」,只是这一行不通:批次得接着测下一行并给出汇总,
+    /// 不能悄悄收摊、让状态行一直停在「正在检测」。
+    /// </summary>
+    [TestMethod]
+    public void ProbeAll_TokenRefreshTimeoutFailsOnlyThatRow()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            using var healthy = new SseStub(LifecycleAnswer);
+            using var tokenHttp = new HttpClient(new RefreshTimeoutHandler());
+            var signedIn = new AiProvider
+            {
+                Name = "signed-in", BaseUrl = healthy.BaseUrl, DefaultProtocol = ChatProtocol.OpenAiChatCompletions,
+                Auth = AuthMethod.Subscription,
+                OAuth = new OAuthConfig
+                {
+                    Flow = OAuthFlow.AuthorizationCodePkce, TokenUrl = "https://auth.example/token", ClientId = "vela-client"
+                },
+                Models = [new AiModelConfig { Name = "m1", Model = "a" }]
+            };
+            AiProvider backup = StubProvider("backup", healthy.BaseUrl, "b");
+            backup.Models[0].Name = "m2";
+            var store = new AiSettingsStore(context) { TokenClient = new OAuthClient(tokenHttp) };
+            await store.SaveTokensAsync(signedIn.Id, new OAuthTokens
+            {
+                AccessToken = "expiring", RefreshToken = "rt", ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(20)
+            });
+            var settings = new AiSettings
+            {
+                Providers = [signedIn, backup],
+                FailoverChain =
+                [
+                    new FailoverEntry { ModelId = signedIn.Models[0].Id },
+                    new FailoverEntry { ModelId = backup.Models[0].Id }
+                ]
+            };
+            var view = new GlobalSettingsView(context, store, settings, new Loc("en"), _ => Task.CompletedTask, _ => { });
+            var window = new Window { Width = 640, Height = 700, Content = view };
+            window.Show();
+            try
+            {
+                await PumpAsync(5);
+                TextBlock status = FindIn<TextBlock>(view, "FailoverStatusText");
+                RaiseClick(FindIn<Button>(view, "FailoverProbeAllButton"));
+                Assert.IsTrue(await WaitForAsync(() => status.Text == "Done: 1 passed, 1 failed."),
+                    $"刷新超时那行记失败,后面的行照测;实际状态:{status.Text}");
+                Assert.HasCount(1, healthy.Requests, "只有备用行真的发出了探活");
+                Assert.IsTrue(FindIn<Button>(view, "FailoverProbeAllButton").IsEnabled);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    /// <summary>
+    /// 某一行的旧结果过期(聊天里那家粘到了另一把 Key)只作废那一行;
+    /// 不能顺手掐掉整个在途批次,让其余行一个都测不完、汇总也不出来。
+    /// </summary>
+    [TestMethod]
+    public void ProbeAll_OneStaleRowDoesNotCancelTheRestOfTheBatch()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            using var fast = new SseStub(LifecycleAnswer);
+            using var held = new SseStub(LifecycleAnswer, hold: true);
+            AiProvider first = StubProvider("first", fast.BaseUrl, "a");
+            first.Models[0].Name = "m1";
+            AiProvider second = StubProvider("second", held.BaseUrl, "b");
+            second.Models[0].Name = "m2";
+            var settings = new AiSettings
+            {
+                Providers = [first, second],
+                FailoverChain =
+                [
+                    new FailoverEntry { ModelId = first.Models[0].Id },
+                    new FailoverEntry { ModelId = second.Models[0].Id }
+                ]
+            };
+            var view = new GlobalSettingsView(context, new AiSettingsStore(context), settings, new Loc("en"),
+                _ => Task.CompletedTask, _ => { });
+            var window = new Window { Width = 640, Height = 700, Content = view };
+            window.Show();
+            try
+            {
+                await PumpAsync(5);
+                TextBlock status = FindIn<TextBlock>(view, "FailoverStatusText");
+                RaiseClick(FindIn<Button>(view, "FailoverProbeAllButton"));
+                Assert.IsTrue(await WaitForAsync(() => held.Requests.Count == 1), "前提:第一行测完,第二行挂在途中");
+                Assert.AreEqual("Testing m2…", status.Text);
+
+                first.ActiveApiKeyId = "sticky-after-chat"; // 聊天把第一家粘到了另一把 Key
+                view.RefreshFromProviders(requestChanged: false);
+                Assert.AreEqual("Testing m2…", status.Text, "单行过期不得清掉在途批次的进度");
+
+                held.Release();
+                Assert.IsTrue(await WaitForAsync(() => status.Text.StartsWith("Done:", StringComparison.Ordinal)),
+                    $"第二行照常测完并给出汇总;实际状态:{status.Text}");
+            }
+            finally
+            {
+                held.Release();
+                window.Close();
+            }
+        });
+    }
+
 
     /// <summary>
     /// 开跑时选的思考档位是<b>快照</b>:第一家 401、按链换到第二家,这一轮仍按开跑时的档位走 ——

@@ -1379,7 +1379,14 @@ public sealed class AiSettingsStore(IPluginContext context)
     }
 
     /// <summary>使用已经解析并固定的凭据建客户端,避免候选地址与后读到的新 Key 错配。</summary>
-    internal IChatClient CreateClient(ResolvedModel provider, ProviderCredential credential)
+    /// <param name="provider">已解出继承链的模型。</param>
+    /// <param name="credential">已固定的凭据。</param>
+    /// <param name="callerCountsRetries">
+    /// 调用方自己按 Key 槽计数重试(聊天回路、逐槽探活)时为 true:多槽供应商这时关掉 SDK 的隐式重试,
+    /// 免得一次 429 被乘成好几次 HTTP。桥接、后续提问等没有换槽逻辑的一次性请求保持 SDK 默认重试 ——
+    /// 否则加第二把 Key 反而让它们碰到一次抖动就直接失败。
+    /// </param>
+    internal IChatClient CreateClient(ResolvedModel provider, ProviderCredential credential, bool callerCountsRetries = false)
     {
         ArgumentNullException.ThrowIfNull(provider);
         EnsureBuiltinOAuthCredentialDestination(provider, credential);
@@ -1389,11 +1396,11 @@ public sealed class AiSettingsStore(IPluginContext context)
         switch (provider.Protocol)
         {
             case ChatProtocol.OpenAiChatCompletions:
-                return CreateOpenAiClient(provider, credential).GetChatClient(provider.Model).AsIChatClient();
+                return CreateOpenAiClient(provider, credential, callerCountsRetries).GetChatClient(provider.Model).AsIChatClient();
 
             case ChatProtocol.OpenAiResponses:
 #pragma warning disable OPENAI001 // Responses API 在 OpenAI SDK 中标记为实验性
-                return CreateOpenAiClient(provider, credential).GetResponsesClient().AsIChatClient(provider.Model);
+                return CreateOpenAiClient(provider, credential, callerCountsRetries).GetResponsesClient().AsIChatClient(provider.Model);
 #pragma warning restore OPENAI001
 
             case ChatProtocol.AnthropicMessages:
@@ -1408,11 +1415,12 @@ public sealed class AiSettingsStore(IPluginContext context)
                     // 属性为 init-only,按凭据形态分别构造:
                     // 无凭据时留给 SDK 的环境变量回退;登录换来的短期令牌要走 AuthToken
                     // (它发的是 Authorization: Bearer,而 ApiKey 发的是 x-api-key —— 两者不能混)。
+                    bool noSdkRetries = callerCountsRetries && HasProviderKeyPool(provider);
                     AnthropicClient anthropic = string.IsNullOrWhiteSpace(secret)
-                        ? new AnthropicClient { BaseUrl = baseUrl, Handlers = handlers, MaxRetries = HasProviderKeyPool(provider) ? 0 : null }
+                        ? new AnthropicClient { BaseUrl = baseUrl, Handlers = handlers, MaxRetries = noSdkRetries ? 0 : null }
                         : credential.IsBearerToken
-                            ? new AnthropicClient { BaseUrl = baseUrl, AuthToken = secret, Handlers = handlers, MaxRetries = HasProviderKeyPool(provider) ? 0 : null }
-                            : new AnthropicClient { BaseUrl = baseUrl, ApiKey = secret, Handlers = handlers, MaxRetries = HasProviderKeyPool(provider) ? 0 : null };
+                            ? new AnthropicClient { BaseUrl = baseUrl, AuthToken = secret, Handlers = handlers, MaxRetries = noSdkRetries ? 0 : null }
+                            : new AnthropicClient { BaseUrl = baseUrl, ApiKey = secret, Handlers = handlers, MaxRetries = noSdkRetries ? 0 : null };
                     return anthropic.AsIChatClient(provider.Model, provider.MaxTokens);
                 }
 
@@ -1651,11 +1659,11 @@ public sealed class AiSettingsStore(IPluginContext context)
             && SameOrigin(model.BaseUrl, model.Provider.BaseUrl)
             && ProviderApiKeyIds(model.Provider).Skip(1).Any();
 
-    private OpenAIClient CreateOpenAiClient(ResolvedModel provider, ProviderCredential credential)
+    private OpenAIClient CreateOpenAiClient(ResolvedModel provider, ProviderCredential credential, bool callerCountsRetries)
     {
         var options = new OpenAIClientOptions { Endpoint = new Uri(ClientBaseUrl(EndpointOf(provider, credential), provider.Protocol)) };
         // 多槽的重试由聊天回路统一计数;SDK 隐式重试会把一次 429 重试乘成多次 HTTP。
-        if (HasProviderKeyPool(provider)) options.RetryPolicy = NoSdkRetries;
+        if (callerCountsRetries && HasProviderKeyPool(provider)) options.RetryPolicy = NoSdkRetries;
         if (credential.Headers is { Count: > 0 } headers)
         {
             options.AddPolicy(new ExtraHeadersPolicy(headers), PipelinePosition.PerCall);

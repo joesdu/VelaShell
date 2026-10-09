@@ -2,6 +2,7 @@ namespace VelaShell.Plugin.Ai.Ui;
 
 using System.Net;
 using Anthropic.Exceptions;
+using AnthropicErrorType = Anthropic.Models.ErrorType;
 using VelaShell.Plugin.Ai.Configuration;
 
 /// <summary>发送准备期间配置已失效;只可换用其他已验证接入,不能原地重试。</summary>
@@ -57,6 +58,12 @@ public static class TransientFailure
                         return apiCode is 408 or 429 or >= 500 and < 600;
                     }
                     continue;
+                // 流式中途的 error 事件:HTTP 200 早已回过,overloaded_error 正是 529 的流式形态。
+                // SDK 抛的是不带状态码的 AnthropicSseException,只能按错误类型判 ——
+                // 不认的话,故障转移最该接手的"过载"反而原地报错
+                case AnthropicSseException { ErrorType: AnthropicErrorType.OverloadedError or AnthropicErrorType.ApiError
+                    or AnthropicErrorType.RateLimitError or AnthropicErrorType.TimeoutError }:
+                    return true;
                 // 没状态码 = 压根没连上(DNS/拒绝/断连),抖一下就好
                 case HttpRequestException:
                 case IOException:

@@ -376,8 +376,34 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         set => SetGutterOption(ref field, value);
     }
 
-    /// <summary>左侧栏显示折叠标记列:可折叠标记之前的历史内容(WindTerm 式)。</summary>
+    /// <summary>左侧栏显示折叠标记列:可折叠标记之前的历史内容(WindTerm 式)。与 <see cref="ShowFoldGuideLine" /> 相互独立。</summary>
+    /// <remarks>
+    /// 关掉时顺手展开已有的折叠:关了以后折叠头不再画、也点不动,留着的话那段输出就再也展不开了。
+    /// </remarks>
     public bool ShowFoldMarker
+    {
+        get;
+        set
+        {
+            SetGutterOption(ref field, value);
+            if (value)
+            {
+                return;
+            }
+            _foldHoverAbs = -1;
+            if (_foldModel.HasFolds)
+            {
+                ClearFolds();
+                AfterFoldChange();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 折叠列里显示竖直分隔线(#586 从折叠里拆出来)。只开它不开 <see cref="ShowFoldMarker" /> 时,
+    /// 侧栏与正文之间只有这条线,点上去什么都不会发生。
+    /// </summary>
+    public bool ShowFoldGuideLine
     {
         get;
         set => SetGutterOption(ref field, value);
@@ -476,11 +502,11 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         InvalidateTerminal();
     }
 
-    /// <summary>侧栏右键菜单改动部件开关后上报(时间戳, 行号, 折叠标记, 空白),供上层持久化。</summary>
-    public event Action<bool, bool, bool, bool>? GutterOptionsChanged;
+    /// <summary>侧栏右键菜单改动部件开关后上报(时间戳, 行号, 折叠标记, 空白, 分隔线),供上层持久化。</summary>
+    public event Action<bool, bool, bool, bool, bool>? GutterOptionsChanged;
 
-    /// <summary>侧栏右键菜单的本地化标签(行号 / 时间戳 / 折叠标记 / 空白),由上层按当前语言注入。</summary>
-    public GutterMenuLabels GutterMenu { get; set; } = new("行号", "时间戳", "折叠标记", "空白");
+    /// <summary>侧栏右键菜单的本地化标签(行号 / 时间戳 / 折叠标记 / 空白 / 分隔线),由上层按当前语言注入。</summary>
+    public GutterMenuLabels GutterMenu { get; set; } = new("行号", "时间戳", "折叠标记", "空白", "分隔线");
 
     /// <summary>
     /// 启用操作系统输入法(中文/日文/韩文组字)。关闭 = 终端从不提供 IME 客户端。
@@ -2303,7 +2329,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// 没装的会话它一个像素都不占,装了的会话整段一直在,不随滚动位置抖动。
     /// </remarks>
     private GutterLayout Gutter =>
-        new(CellWidthForTest, ShowLineTimestamp, ShowLineNumber, ShowFoldMarker, GutterBlank, Emulator.HasPromptMarks, ShowLineTimestampMillis);
+        new(CellWidthForTest, ShowLineTimestamp, ShowLineNumber, ShowFoldMarker, GutterBlank, Emulator.HasPromptMarks, ShowLineTimestampMillis, ShowFoldGuideLine);
 
     /// <summary>任一侧栏部件开启即绘制侧栏。</summary>
     private bool GutterEnabled => Gutter.Enabled;
@@ -2478,8 +2504,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         {
             RenderCommandMarks(context, screen, palette, rows, dim);
         }
-        // 唯一的竖线由折叠列绘制,只保留折叠标记这一条。
-        if (ShowFoldMarker)
+        // 唯一的竖线由折叠列绘制;线与折叠方框各有开关,任一开着就画这一列。
+        if (ShowFoldMarker || ShowFoldGuideLine)
         {
             RenderFoldColumn(context, screen, palette, rows, dim, contentBottom);
         }
@@ -2546,6 +2572,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// 点击把上方内容折叠到该行。标记用矢量线条绘制而非字体字形——任何字体/字号/DPI 下
     /// 形状一致且边缘锐利;方框以终端底色填充,天然打断背后的导引线(N++ 的断线观感)。
     /// 交互不变,折叠点击经指针命中 <see cref="GutterLayout" /> 折叠列区域触发。
+    /// 导引线(<see cref="ShowFoldGuideLine" />)与方框(<see cref="ShowFoldMarker" />)各画各的,互不依赖。
     /// </summary>
     private void RenderFoldColumn(
         DrawingContext context,
@@ -2559,21 +2586,23 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         GutterLayout g = Gutter;
         // 像素对齐:1px 笔画的中心必须落在 x.5/y.5 上,否则反锯齿会把它糊成 2px 灰线。
         double cx = Math.Floor(g.FoldLeft + g.FoldWidth / 2) + 0.5;
-        ImmutablePen linePen = PenFor(Blend(dim, palette.DefaultBackground, 0.4));
+
+        if (ShowFoldGuideLine)
+        {
+            // 导引线通到最后内容行,并以 └ 转角收尾(指向正文,暗示"折叠作用于上方内容")。
+            ImmutablePen linePen = PenFor(Blend(dim, palette.DefaultBackground, 0.4));
+            double bottomY = Math.Floor(contentBottom - CellHeightForTest / 2) + 0.5;
+            context.DrawLine(linePen, new Point(cx, 0), new Point(cx, bottomY));
+            context.DrawLine(linePen, new Point(cx, bottomY), new Point(cx + Math.Floor(g.FoldWidth / 2) - 1, bottomY));
+        }
+        if (!ShowFoldMarker)
+        {
+            return;
+        }
+
         ImmutablePen markPen = PenFor(dim);
         ImmutableSolidColorBrush boxFill = BrushFor(palette.DefaultBackground);
-
-        // 导引线通到最后内容行,并以 └ 转角收尾(指向正文,暗示"折叠作用于上方内容")。
-        double bottomY = Math.Floor(contentBottom - CellHeightForTest / 2) + 0.5;
-        context.DrawLine(linePen, new Point(cx, 0), new Point(cx, bottomY));
-        context.DrawLine(linePen, new Point(cx, bottomY), new Point(cx + Math.Floor(g.FoldWidth / 2) - 1, bottomY));
-
-        // 方框边长:随行高缩放,夹在 7–11px 且取奇数,保证 ± 符号有精确的单像素中心。
-        int box = (int)Math.Clamp(Math.Floor(CellHeightForTest * 0.55), 7, 11);
-        if (box % 2 == 0)
-        {
-            box--;
-        }
+        int box = g.FoldBoxSize(CellHeightForTest);
         int half = (box - 1) / 2;
 
         for (int screenRow = 0; screenRow < rows; screenRow++)
@@ -2764,7 +2793,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>上一次弹出的侧栏菜单。每次右键都新建实例,旧实例必须显式关闭,否则会叠着不消失。</summary>
     private ContextMenu? _gutterMenu;
 
-    /// <summary>侧栏右键菜单:四个部件(行号/时间戳/折叠标记/空白)的可勾选开关。</summary>
+    /// <summary>侧栏右键菜单:五个部件(行号/时间戳/分隔线/折叠标记/空白)的可勾选开关。</summary>
     private void ShowGutterContextMenu()
     {
         _gutterMenu?.Close();
@@ -2779,6 +2808,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         var menu = new ContextMenu();
         AddGutterMenuItem(menu, labels.LineNumber, ShowLineNumber, v => ShowLineNumber = v);
         AddGutterMenuItem(menu, labels.Timestamp, ShowLineTimestamp, v => ShowLineTimestamp = v);
+        AddGutterMenuItem(menu, labels.GuideLine, ShowFoldGuideLine, v => ShowFoldGuideLine = v);
         AddGutterMenuItem(menu, labels.FoldMarker, ShowFoldMarker, v => ShowFoldMarker = v);
         AddGutterMenuItem(menu, labels.Blank, GutterBlank, v => GutterBlank = v);
         return menu;
@@ -2796,24 +2826,25 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
             Header = label,
             ToggleType = MenuItemToggleType.CheckBox,
             IsChecked = on,
-            // 四个部件可一次性调完,不必每改一个都重新右键。
+            // 各部件可一次性调完,不必每改一个都重新右键。
             StaysOpenOnClick = true
         };
         // 读 item.IsChecked(点击时已由模板翻转)而非取反捕获的 on:菜单不关,同一项可被连点多次。
         item.Click += (_, _) =>
         {
             set(item.IsChecked);
-            GutterOptionsChanged?.Invoke(ShowLineTimestamp, ShowLineNumber, ShowFoldMarker, GutterBlank);
+            GutterOptionsChanged?.Invoke(ShowLineTimestamp, ShowLineNumber, ShowFoldMarker, GutterBlank, ShowFoldGuideLine);
         };
         menu.Items.Add(item);
     }
 
-    /// <summary>侧栏右键菜单四个部件的本地化标签。</summary>
+    /// <summary>侧栏右键菜单各部件的本地化标签。</summary>
     public sealed record GutterMenuLabels(
         string LineNumber,
         string Timestamp,
         string FoldMarker,
-        string Blank
+        string Blank,
+        string GuideLine
     );
 
     /// <summary>本帧「绝对行 → 屏幕行」反查(命中测试/光标定位用),未在可见窗口内返回 -1。</summary>

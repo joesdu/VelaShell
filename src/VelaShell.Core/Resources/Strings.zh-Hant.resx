@@ -3211,6 +3211,12 @@
   <data name="SetTerm_ShowFoldMarkerDesc" xml:space="preserve">
     <value>顯示摺疊列,可把較早的輸出摺疊成可展開的區域。</value>
   </data>
+  <data name="SetTerm_ShowFoldGuideLine" xml:space="preserve">
+    <value>側欄分隔線</value>
+  </data>
+  <data name="SetTerm_ShowFoldGuideLineDesc" xml:space="preserve">
+    <value>在側欄與輸出之間畫一條豎線。與摺疊標記各自獨立,只開它時點擊不會摺疊。</value>
+  </data>
   <data name="SetTerm_GutterBlank" xml:space="preserve">
     <value>側欄間隔</value>
   </data>
@@ -3225,6 +3231,9 @@
   </data>
   <data name="Gutter_FoldMarker" xml:space="preserve">
     <value>摺疊標記</value>
+  </data>
+  <data name="Gutter_GuideLine" xml:space="preserve">
+    <value>分隔線</value>
   </data>
   <data name="Gutter_Blank" xml:space="preserve">
     <value>空白</value>

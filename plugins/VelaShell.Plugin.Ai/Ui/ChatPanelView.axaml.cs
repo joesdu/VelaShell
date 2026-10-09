@@ -1606,7 +1606,7 @@ public partial class ChatPanelView : UserControl
                     if (!string.Equals(oldEndpoint, newEndpoint, StringComparison.Ordinal))
                         throw new ProviderConfigurationChangedException();
                 }
-                if (renewed) Steering!.ReplaceInnerClient(_store.CreateClient(current, latest.Credential));
+                if (renewed) Steering!.ReplaceInnerClient(_store.CreateClient(current, latest.Credential, callerCountsRetries: true));
                 verifiedCredential = latest.Credential;
                 verifiedAccount = account;
                 ApiKeyTurnState? state = keyStates.GetValueOrDefault(current.Provider.Id);
@@ -1746,7 +1746,7 @@ public partial class ChatPanelView : UserControl
 
                 // 插话通道垫在最里层(下面那层函数调用循环<b>之内</b>):循环每跑一步都要经过它,
                 // 排队中的补充说明就能赶在模型下一步之前进上下文(见 SteeringChatClient)。
-                IChatClient inner = _store.CreateClient(current, verifiedCredential);
+                IChatClient inner = _store.CreateClient(current, verifiedCredential, callerCountsRetries: true);
                 var steering = WrapForSteering(inner);
                 client = steering;
                 await BeginSteering(steering);
@@ -1798,7 +1798,7 @@ public partial class ChatPanelView : UserControl
                     {
                         client.Dispose();
                         client = null!;
-                        inner = _store.CreateClient(current, verifiedCredential);
+                        inner = _store.CreateClient(current, verifiedCredential, callerCountsRetries: true);
                         steering = WrapForSteering(inner);
                         client = steering;
                         await BeginSteering(steering);
@@ -1829,7 +1829,7 @@ public partial class ChatPanelView : UserControl
                 {
                     client.Dispose();
                     client = null!;
-                    inner = _store.CreateClient(current, verifiedCredential);
+                    inner = _store.CreateClient(current, verifiedCredential, callerCountsRetries: true);
                     steering = WrapForSteering(inner);
                     client = steering;
                     await BeginSteering(steering);

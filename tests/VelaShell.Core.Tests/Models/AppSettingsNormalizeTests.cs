@@ -125,4 +125,41 @@ public class AppSettingsNormalizeTests
 
         Assert.IsTrue(settings.Security.BlockOnFingerprintChange);
     }
+
+    /// <summary>
+    /// 侧栏竖线从折叠里拆出来(#586)之前,开着折叠的人一直看得到这条线:迁移时线跟着折叠走,
+    /// 升级后看到的侧栏和以前一模一样。
+    /// </summary>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public void FoldGuideLine_FollowsFoldMarkerOnce(bool foldOn)
+    {
+        AppSettings settings = new();
+        settings.TerminalBehavior.ShowFoldMarker = foldOn;
+        settings.TerminalBehavior.ShowFoldGuideLine = !foldOn;
+        settings.TerminalBehavior.FoldGuideLineMigrated = false;
+
+        settings.Normalize();
+
+        Assert.AreEqual(foldOn, settings.TerminalBehavior.ShowFoldGuideLine);
+        Assert.IsTrue(settings.TerminalBehavior.FoldGuideLineMigrated, "迁移标记要落下,之后不再插手用户的选择");
+    }
+
+    /// <summary>迁移只做一次:此后「只要线不要折叠」或「只要折叠不要线」都得留得住。</summary>
+    [TestMethod]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    public void FoldGuideLine_AfterMigration_IsIndependent(bool foldOn, bool lineOn)
+    {
+        AppSettings settings = new();
+        settings.TerminalBehavior.ShowFoldMarker = foldOn;
+        settings.TerminalBehavior.ShowFoldGuideLine = lineOn;
+        settings.TerminalBehavior.FoldGuideLineMigrated = true;
+
+        settings.Normalize();
+
+        Assert.AreEqual(foldOn, settings.TerminalBehavior.ShowFoldMarker);
+        Assert.AreEqual(lineOn, settings.TerminalBehavior.ShowFoldGuideLine);
+    }
 }

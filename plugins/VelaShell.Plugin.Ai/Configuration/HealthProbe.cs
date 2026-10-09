@@ -49,7 +49,7 @@ public static class HealthProbe
         try
         {
             using IChatClient client = credential is { } fixedCredential
-                ? store.CreateClient(model, fixedCredential)
+                ? store.CreateClient(model, fixedCredential, callerCountsRetries: true)
                 : await store.CreateClientAsync(model, apiKeyOverride, cts.Token);
             var options = new ChatOptions
             {

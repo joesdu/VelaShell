@@ -2940,6 +2940,12 @@
   <data name="SetTerm_ShowFoldMarkerDesc" xml:space="preserve">
     <value>접기 열을 표시하여 이전 출력을 펼칠 수 있는 영역으로 접습니다.</value>
   </data>
+  <data name="SetTerm_ShowFoldGuideLine" xml:space="preserve">
+    <value>여백 구분선</value>
+  </data>
+  <data name="SetTerm_ShowFoldGuideLineDesc" xml:space="preserve">
+    <value>여백과 출력 사이에 세로선을 표시합니다. 접기 마커와는 별개이며, 이것만 켜면 클릭해도 접히지 않습니다.</value>
+  </data>
   <data name="SetTerm_GutterBlank" xml:space="preserve">
     <value>여백 간격</value>
   </data>
@@ -2954,6 +2960,9 @@
   </data>
   <data name="Gutter_FoldMarker" xml:space="preserve">
     <value>접기 마커</value>
+  </data>
+  <data name="Gutter_GuideLine" xml:space="preserve">
+    <value>구분선</value>
   </data>
   <data name="Gutter_Blank" xml:space="preserve">
     <value>공백</value>

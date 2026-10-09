@@ -1457,7 +1457,7 @@ GLX 1.4 协议层（4 个 FBConfig、上下文标签按客户端分表、Render 
 - 本次继续完成 DR-M4：源 picture 的 alpha-map、alpha 原点、alpha-map 约束与裁剪已实现，并有 Composite 回归测试。
 - 本次继续完成间接 GLX 单缓冲视觉：`GetVisualConfigs` 为两个视觉同时发布单缓冲与双缓冲配置，并有配置 ID / DOUBLEBUFFER 回归测试。
 
-### 2026-10-09 第二次更新：其余四项也已完成（`fix/xserver-review-leftovers`，`plan.md §175`）
+### 2026-10-09 第二次更新：其余四项也已完成（`fix/xserver-review-leftovers`，`plan.md §178`）
 
 - **CP-16 / F21**（8167b38c）：随库带 X.Org 的整套位图字体（misc-fixed 全套含中日韩、cursor、nil2，Adobe 75 / 100 dpi 的 Courier / Helvetica / New Century Schoolbook / Symbol / Times）与 GNU Unifont 18，别名照 X.Org 的 `fonts.alias`，ISO10646-1 字体按覆盖面派生单字节字符集；数据由 `scripts/xserver/fonts/build-fonts.cs` 从固定的上游提交生成。字体第一次打开时在线程池上建、这个客户端的请求暂存（595869b3，真实客户端实测 `xlsfonts -l` 原先持锁 1.5 秒）。B&H 的 Lucida 因许可要求附特定声明，没有带。
 - **WN-M5**（d7ede105）：cursor 字体的字形光标烙成真实位图，GetCursorImage 给出它；有对应系统光标的字形仍显示系统光标，没有对应的把图像交给宿主。

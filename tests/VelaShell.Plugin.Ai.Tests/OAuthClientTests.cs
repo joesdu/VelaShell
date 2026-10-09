@@ -298,6 +298,7 @@ public sealed class OAuthClientTests
     [DataRow(200, 200)]
     [DataRow(400, 400)]
     [DataRow(400, 429)]
+    [DataRow(428, 400)] // Google 的设备码端点把"还没批"回成 428 Precondition Required
     public async Task DeviceCode_PendingThenSlowDown_BacksOffByFiveSecondsThenSucceeds(int pendingStatus, int slowDownStatus)
     {
         OAuthStub stub = new OAuthStub()
@@ -344,6 +345,33 @@ public sealed class OAuthClientTests
             client.PollDeviceCodeAsync(Standard(), grant));
         Assert.AreEqual(HttpStatusCode.TooManyRequests, error.StatusCode);
         Assert.HasCount(1, stub.Requests, "非slow_down的429不进入下一轮");
+    }
+
+    [TestMethod]
+    [DataRow("{\"error\":\"slow_down\"}")]
+    [DataRow("{\"error\":\"invalid_grant\"}")]
+    [DataRow("not-json")]
+    public async Task DeviceCode_Other428RepliesKeepHttpFailure(string body)
+    {
+        var stub = new OAuthStub().Json(body, HttpStatusCode.PreconditionRequired);
+        using var http = new HttpClient(stub);
+        var client = new OAuthClient(http) { Delay = (_, _) => Task.CompletedTask };
+        var grant = new DeviceCodeGrant("dc", "code", "https://auth.example/verify", null,
+            TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(1));
+        HttpRequestException error = await Assert.ThrowsExactlyAsync<HttpRequestException>(() =>
+            client.PollDeviceCodeAsync(Standard(), grant));
+        Assert.AreEqual(HttpStatusCode.PreconditionRequired, error.StatusCode);
+        Assert.HasCount(1, stub.Requests, "428 只为 authorization_pending 放行");
+    }
+
+    [TestMethod]
+    public async Task Refresh_428PendingRemainsHttpFailure()
+    {
+        var stub = new OAuthStub().Json("""{"error":"authorization_pending"}""", HttpStatusCode.PreconditionRequired);
+        using var http = new HttpClient(stub);
+        HttpRequestException error = await Assert.ThrowsExactlyAsync<HttpRequestException>(() =>
+            new OAuthClient(http).RefreshAsync(Standard(), new OAuthTokens { AccessToken = "old", RefreshToken = "rt" }));
+        Assert.AreEqual(HttpStatusCode.PreconditionRequired, error.StatusCode);
     }
 
     [TestMethod]
