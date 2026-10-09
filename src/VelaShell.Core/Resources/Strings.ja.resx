@@ -5709,6 +5709,12 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetXServer_DisplayPerSessionDesc" xml:space="preserve">
     <value>SSH セッションごとに X プログラムが別々のディスプレイを使います。互いのウィンドウは見えず、キーボード入力やクリップボードも読めず、入力を送ることもできません。このコンピューター上の X プログラムは引き続き共有のディスプレイを使います。セッションごとに少しのメモリーとスレッドを使います。次に X Server を起動したときに有効になります。</value>
   </data>
+  <data name="SetXServer_HostInputMethod" xml:space="preserve">
+    <value>X ウィンドウでこのコンピューターの IME を使う</value>
+  </data>
+  <data name="SetXServer_HostInputMethodDesc" xml:space="preserve">
+    <value>ローカルの IME(中国語・日本語・韓国語など)で確定した文字を X プログラムにそのまま入力します。サーバーに fcitx や ibus は不要です。オフにするとキーをそのまま送り、サーバー側の入力メソッドを使います。X Server の再起動後に反映されます。</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自動 - システムの現在のレイアウト</value>
   </data>

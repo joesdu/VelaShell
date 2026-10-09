@@ -1538,6 +1538,16 @@ public class XServerOptions : ObservableOptions
         set => Set(ref field, value);
     }
 
+    /// <summary>
+    /// 内置 X Server:X 窗口里也用本机的输入法 —— 组好的字直接输入给远端程序(远端不用装 fcitx / ibus)。默认开;
+    /// 关了之后 X 窗口里按键原样交给远端,远端自己的输入法框架照常工作。重启 X Server 后生效。
+    /// </summary>
+    public bool UseHostInputMethod
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
     /// <summary>XKB 键盘布局(<c>-xkblayout</c>);留空 = 跟随 Windows 当前布局。</summary>
     public string KeyboardLayout
     {

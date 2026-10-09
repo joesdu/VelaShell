@@ -6168,6 +6168,12 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SetXServer_DisplayPerSessionDesc" xml:space="preserve">
     <value>不同 SSH 工作階段的 X 程式各用各的顯示:彼此看不見視窗、讀不到對方的鍵盤輸入與剪貼簿,也不能對彼此注入輸入。本機的 X 程式照舊使用共用的顯示。每個工作階段會多佔一點記憶體與一條執行緒。下次啟動 X Server 時生效。</value>
   </data>
+  <data name="SetXServer_HostInputMethod" xml:space="preserve">
+    <value>X 視窗裡使用本機輸入法</value>
+  </data>
+  <data name="SetXServer_HostInputMethodDesc" xml:space="preserve">
+    <value>用本機輸入法(中文、日文、韓文……)組好的字直接輸入給 X 程式,伺服器上不用安裝 fcitx / ibus。關閉後按鍵原樣交給 X 程式,使用伺服器自己的輸入法。重新啟動 X Server 後生效。</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自動 - 跟隨系統目前配置</value>
   </data>

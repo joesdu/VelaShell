@@ -330,4 +330,56 @@ public sealed class KeyboardControlTests
         XMessage ledWithoutMode = await c.RequestAsync(102, 0, b => b.U32(0x10).U32(3));
         Assert.AreEqual(8, ledWithoutMode.Bytes[1], "只给 led 不给 led-mode 是 BadMatch");
     }
+
+    /// <summary>GetKeyboardMapping 取一个键码第一列的键值。</summary>
+    private static async Task<uint> KeysymAsync(XTestClient c, byte keycode) =>
+        (await c.RequestAsync(101, 0, b => b.U8(keycode).U8(1).U16(0))).U32(32);
+
+    [TestMethod]
+    public async Task InjectText_键位表里有的字直接按_没有的借一个空键码改成Unicode键值_再输入同一个字不再改()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        uint top = await MapTopAsync(c, host, 0x1 | 0x2);
+        server.FocusTopLevel(host.Mapped[top]);
+
+        server.InjectText("a中\n");
+        await c.SyncAsync();
+        XMessage mapping = await c.NextAsync(m => !m.IsReply && !m.IsError && m.EventCode == 34);
+        Assert.AreEqual(1, mapping.Bytes[4], "MappingNotify(Keyboard)");
+        byte borrowed = mapping.Bytes[5];
+        Assert.AreEqual(1, mapping.Bytes[6]);
+        Assert.AreEqual(0x01004E2Du, await KeysymAsync(c, borrowed), "U+4E2D 的 Unicode 键值");
+        CollectionAssert.AreEqual(
+            new List<(byte, byte)> { (KeyPress, 38), (KeyRelease, 38), (KeyPress, borrowed), (KeyRelease, borrowed), (KeyPress, 36), (KeyRelease, 36) },
+            await KeyEventsAsync(c), "a 按键位表里的 a 键;换行按 Return");
+
+        // 再输入同一个字:用同一个键码,不再发 MappingNotify;控制字符不输入。
+        server.InjectText("\u0007中");
+        CollectionAssert.AreEqual(new List<(byte, byte)> { (KeyPress, borrowed), (KeyRelease, borrowed) }, await KeyEventsAsync(c));
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => c.NextAsync(m => !m.IsReply && !m.IsError && m.EventCode == 34, timeoutMs: 100));
+        Assert.ThrowsExactly<ArgumentException>(() => server.InjectText(new string('x', X11Server.MaxInjectedTextLength + 1)));
+    }
+
+    [TestMethod]
+    public async Task InjectText_空键码用完时挪用最久没用的_刚用过的等一会儿_字一个不少()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        uint top = await MapTopAsync(c, host, 0x1);
+        server.FocusTopLevel(host.Mapped[top]);
+
+        // 300 个不同的汉字多于空着的键码:用完之后等刚用过的放开再挪用,一个字都不丢。
+        string text = string.Concat(Enumerable.Range(0x4E00, 300).Select(cp => char.ConvertFromUtf32(cp)));
+        server.InjectText(text);
+        int presses = 0;
+        while (presses < 300)
+        {
+            await c.NextAsync(m => !m.IsReply && !m.IsError && m.EventCode == KeyPress, timeoutMs: 5000);
+            presses++;
+        }
+        Assert.AreEqual(300, presses);
+    }
 }

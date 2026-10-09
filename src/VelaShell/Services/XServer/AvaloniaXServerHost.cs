@@ -450,6 +450,12 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     /// <inheritdoc />
     public void UseKeyboardLayout(string layout) => _chosenLayout = layout ?? "";
 
+    /// <inheritdoc />
+    public void UseHostInputMethod(bool enabled) => UsesHostInputMethod = enabled;
+
+    /// <summary>X 窗口里用本机的输入法(见 <see cref="XNativeWindow" /> 的输入法客户端)。</summary>
+    public bool UsesHostInputMethod { get; private set; } = true;
+
     private long _layoutCheckedAt;
 
     /// <summary>

@@ -5709,6 +5709,12 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SetXServer_DisplayPerSessionDesc" xml:space="preserve">
     <value>SSH 세션마다 X 프로그램이 서로 다른 디스플레이를 씁니다. 서로의 창을 볼 수 없고 키보드 입력과 클립보드를 읽을 수 없으며 입력을 보낼 수도 없습니다. 이 컴퓨터의 X 프로그램은 계속 공용 디스플레이를 씁니다. 세션마다 메모리와 스레드를 조금 더 씁니다. 다음에 X Server를 시작할 때 적용됩니다.</value>
   </data>
+  <data name="SetXServer_HostInputMethod" xml:space="preserve">
+    <value>X 창에서 이 컴퓨터의 입력기 사용</value>
+  </data>
+  <data name="SetXServer_HostInputMethodDesc" xml:space="preserve">
+    <value>로컬 입력기(중국어·일본어·한국어 등)로 조합한 글자를 X 프로그램에 바로 입력합니다. 서버에 fcitx나 ibus가 필요 없습니다. 끄면 키를 그대로 보내고 서버의 입력기를 사용합니다. X Server를 다시 시작하면 적용됩니다.</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>자동 - 시스템의 현재 레이아웃</value>
   </data>

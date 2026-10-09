@@ -171,6 +171,7 @@ public sealed partial class X11Server
             }
             _hostKeys[keycode] = keysyms;
             _keymap.Change(keycode, per, keysyms);
+            ForgetTextKeycode(keycode);   // 输入字时借用过的键码,宿主的新布局用上了
             (first, last) = (Math.Min(first, keycode), Math.Max(last, keycode));
         }
         bool modifiersChanged = false;

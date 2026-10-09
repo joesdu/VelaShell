@@ -47,6 +47,15 @@ public interface IEmbeddedXServerHost : IX11ServerHost
     {
     }
 
+    /// <summary>
+    /// X 窗口里用不用本机的输入法(设置里的开关):用的话,输入法组好的字经 <see cref="X11Server.InjectText" /> 输入给 X 程序。
+    /// 在 <see cref="AttachAsync" /> 之前调用。默认实现什么也不做。
+    /// </summary>
+    /// <param name="enabled">用本机输入法。</param>
+    void UseHostInputMethod(bool enabled)
+    {
+    }
+
     /// <summary>服务端要停了:关掉它所有顶层窗口对应的原生窗口,不再往它注入输入。可在任意线程上调用。</summary>
     void Detach();
 

@@ -464,6 +464,28 @@ public sealed partial class X11Server : IAsyncDisposable
         Post(null, () => ApplyKey(keycode, pressed, repeat));
     }
 
+    /// <summary><see cref="InjectText" /> 一次至多这么多 UTF-16 码元(输入法一次上屏的字远少于此)。</summary>
+    public const int MaxInjectedTextLength = 4096;
+
+    /// <summary>
+    /// 输入一串字(宿主的输入法组好、上屏的文字):送往当前的键盘焦点,与用户在 X 窗口里按键一样。X 程序只认键码,每个字找一个空着的键码、
+    /// 把它的键值改成这个字的 Unicode 键值再按下松开(客户端各收到一次 MappingNotify);键位表里本来就有、不按修饰键就打得出来的字直接按那个键。
+    /// 远端不用装输入法框架,所有工具包都能收到;没有预编辑,候选框由本机的输入法自己显示。换行按 Return、制表按 Tab,其余控制字符不输入。
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="text" /> 超过 <see cref="MaxInjectedTextLength" /> 个 UTF-16 码元。</exception>
+    public void InjectText(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (text.Length > MaxInjectedTextLength)
+        {
+            throw new ArgumentException($"一次至多 {MaxInjectedTextLength} 个字符。", nameof(text));
+        }
+        if (text.Length != 0)
+        {
+            Post(null, () => ApplyInjectText(text, 0));
+        }
+    }
+
     /// <summary>
     /// 宿主的锁定键状态(CapsLock、NumLock)换进服务端,不合成按键:客户端收到 XKB 的 StateNotify,之后的按键按它解释。
     /// 宿主在 X 窗口得到焦点时按系统的真实状态推一次 —— 服务端起步时两个都关着,用户在别的程序里切过也不会知道;

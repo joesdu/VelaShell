@@ -236,6 +236,8 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
                 // 先让宿主把显示器布局、DPI、键盘布局告诉服务端,再开门 —— 第一个客户端拿到的就是对的屏幕与键位表。
                 host.UseKeyboardLayout(options.KeyboardLayout);
                 host.UseWindowMode(options.WindowMode);
+
+                host.UseHostInputMethod(options.UseHostInputMethod);
                 await host.AttachAsync(candidate, cancellationToken).ConfigureAwait(false);
                 await candidate.StartAsync(cancellationToken).ConfigureAwait(false);
                 server = candidate;

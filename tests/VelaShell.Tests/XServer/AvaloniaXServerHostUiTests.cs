@@ -801,6 +801,67 @@ public sealed class AvaloniaXServerHostUiTests
     });
 
     /// <summary>
+    /// 本机输入法(xs_plan F5):输入法上屏的字经 InjectText 输入给 X(借一个键码,客户端先收到 MappingNotify);
+    /// 按键自己打出的字(KeyDown 之后的 TextInput)不重复输入;输入法在组字时的键(ImeProcessed)不转交;设置关了就不接输入法的字。
+    /// </summary>
+    [TestMethod]
+    public async Task 本机输入法上屏的字输入给X_按键自己的字不重复_组字中的键不转交() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        System.Collections.Concurrent.ConcurrentQueue<byte> events = new();
+        (uint idBase, uint root) = await HandshakeAsync(client, events);
+        uint window = idBase | 1;
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0)
+            .U32(0x800).U32(0x1 | 0x2));                                                // KeyPress | KeyRelease
+        await SendAsync(client, 8, 0, w => w.U32(window));
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+        native.Activate();
+        server.FocusTopLevel(native.Handle);
+        byte[] Seen() => [.. events.Where(e => e is 2 or 3 or 34)];
+        async Task SettleAsync()
+        {
+            await Task.Delay(150);
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        // 普通的键:KeyDown 注入了键码,随后系统为它报的 TextInput 不再输入一遍。
+        native.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+        native.KeyTextInput("a");
+        native.KeyReleaseQwerty(PhysicalKey.A, RawInputModifiers.None);
+        await SettleAsync();
+        CollectionAssert.AreEqual(new byte[] { 2, 3 }, Seen(), "a 只按了一次");
+
+        // 输入法在组字:键归输入法,上屏的字经 InjectText 来 —— MappingNotify,然后按下、松开。
+        native.KeyPress(Key.ImeProcessed, RawInputModifiers.None, PhysicalKey.N, null);
+        native.KeyRelease(Key.ImeProcessed, RawInputModifiers.None, PhysicalKey.N, null);
+        native.KeyTextInput("中");
+        await SettleAsync();
+        CollectionAssert.AreEqual(new byte[] { 2, 3, 34, 2, 3 }, Seen(), "组字的 N 不转交;上屏的字借键码输入");
+
+        // 不出字的键(方向键)之后输入法上屏的字照样输入。
+        native.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.None);
+        native.KeyReleaseQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.None);
+        native.KeyTextInput("中");
+        await SettleAsync();
+        CollectionAssert.AreEqual(new byte[] { 2, 3, 34, 2, 3, 2, 3, 2, 3 }, Seen(), "同一个字不再改键位表");
+
+        // 设置关掉:窗口不接输入法的字。
+        host.UseHostInputMethod(false);
+        native.KeyTextInput("文");
+        await SettleAsync();
+        Assert.HasCount(9, Seen());
+
+        native.CloseByHost();
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>
     /// 用户在 VelaShell 自己的窗口(终端之类)里打字:X 服务端的空闲时间同样归零 —— 远端程序经 MIT-SCREEN-SAVER 看到的不再只是 X 窗口里的输入。
     /// </summary>
     [TestMethod]

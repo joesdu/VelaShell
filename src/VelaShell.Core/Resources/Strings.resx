@@ -5714,6 +5714,12 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SetXServer_DisplayPerSessionDesc" xml:space="preserve">
     <value>X programs from different SSH sessions get separate displays: they cannot see each other&apos;s windows, read each other&apos;s keyboard input or clipboard, or send each other input. X programs on this computer keep using the shared display. Each session costs a little memory and a thread. Takes effect the next time the X Server starts.</value>
   </data>
+  <data name="SetXServer_HostInputMethod" xml:space="preserve">
+    <value>Use this computer&apos;s input method in X windows</value>
+  </data>
+  <data name="SetXServer_HostInputMethodDesc" xml:space="preserve">
+    <value>Text you compose with the local input method (Chinese, Japanese, Korean…) is typed into X programs directly, so the server doesn&apos;t need fcitx or ibus. Turn it off to send keys as they are and use the server&apos;s own input method instead. Takes effect after restarting the X Server.</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>auto - Follow the system layout</value>
   </data>

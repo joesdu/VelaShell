@@ -170,6 +170,15 @@
         <ToggleSwitch Grid.Column="1" x:Name="DisplayPerSessionToggle"
                       IsChecked="{Binding XServer.DisplayPerSession}" VerticalAlignment="Center" />
       </Grid>
+      <!-- 本机输入法:只有内置引擎做得到。 -->
+      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !XServerUsesVcXsrv}">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_HostInputMethod}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_HostInputMethodDesc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" x:Name="HostInputMethodToggle"
+                      IsChecked="{Binding XServer.UseHostInputMethod}" VerticalAlignment="Center" />
+      </Grid>
       <!-- 内置引擎下面直接是「启动」;VcXsrv 那一大块自己以分隔线收尾。 -->
       <Border Classes="sep" IsVisible="{Binding !XServerUsesVcXsrv}" />
 
