@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using VelaShell.Behaviors;
 using VelaShell.Core.Resources;
 using VelaShell.ViewModels;
 using FireAndForget = VelaShell.Services.FireAndForget;
@@ -12,12 +13,18 @@ public partial class TunnelPanelView : UserControl
     private readonly Func<string, Task<bool>> _confirmDeleteHandler;
     private TunnelPanelViewModel? _viewModel;
 
-    /// <summary>初始化 <see cref="TunnelPanelView"/> 并加载 XAML 组件。</summary>
+    /// <summary>初始化 <see cref="TunnelPanelView"/> 并加载 XAML 组件,接线标题栏拖拽。</summary>
     public TunnelPanelView()
     {
         InitializeComponent();
         _confirmDeleteHandler = ConfirmDeleteAsync;
         DataContextChanged += OnDataContextChanged;
+
+        // 拖拽 + 越界夹紧 + 松手落盘,与文件传输提示、消息中心共用一份实现。
+        if (this.FindControl<Border>("DragHandle") is { } handle)
+        {
+            PanelDragHandler.Attach(this, handle);
+        }
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)

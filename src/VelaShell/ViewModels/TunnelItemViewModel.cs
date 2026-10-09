@@ -114,6 +114,9 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
     /// <summary>承载会话掉线后是否自动重建这条隧道。</summary>
     public bool AutoReconnect => _tunnelInfo.Config.AutoReconnect;
 
+    /// <summary>程序启动时是否自动建立这条隧道。</summary>
+    public bool AutoStart => _tunnelInfo.Config.AutoStart;
+
     /// <summary>
     /// 这条隧道是被用户按停的,而不是被掉线带停的。自动恢复据此放过它 ——
     /// 「掉线后自动重连」说的是替用户扛住网络抖动,不是把他刚按下的停止键撤销掉。
@@ -123,6 +126,54 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
 
     /// <summary>隧道是否处于活动状态。</summary>
     public bool IsActive => Status == TunnelStatus.Active;
+
+    /// <summary>
+    /// 正在启动(含先在后台连上服务器)。启动与停止都要走网络、要等一会儿:这段时间里
+    /// 启停键换成一圈转着的环、行内按键全部点不动,免得用户以为没点上又连点几下。
+    /// </summary>
+    public bool IsStarting
+    {
+        get;
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref field, value);
+            RaiseBusyChanged();
+        }
+    }
+
+    /// <summary>正在停止;与 <see cref="IsStarting" /> 同理。</summary>
+    public bool IsStopping
+    {
+        get;
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref field, value);
+            RaiseBusyChanged();
+        }
+    }
+
+    /// <summary>启动或停止正在进行中。</summary>
+    public bool IsBusy => IsStarting || IsStopping;
+
+    /// <summary>显示「停止」键:运行中且没有正在进行的启停。</summary>
+    public bool ShowStopButton => IsActive && !IsBusy;
+
+    /// <summary>显示「启动」键:已停止且没有正在进行的启停。</summary>
+    public bool ShowStartButton => !IsActive && !IsBusy;
+
+    /// <summary>编辑键可用:只有停着、且不在启停途中的隧道能改配置。</summary>
+    public bool CanEdit => !IsActive && !IsBusy;
+
+    /// <summary>启停进行中那圈环的提示文字。</summary>
+    public string BusyText => IsStopping ? Strings.Get("Tunnel_Stopping") : Strings.Get("Tunnel_Starting");
 
     /// <summary>编辑按钮提示:活动隧道不可编辑。</summary>
     public string EditToolTip => Strings.Get(IsActive ? "Tunnel_EditDisabledTip" : "Tunnel_EditTip");
@@ -134,6 +185,7 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
         this.RaisePropertyChanged(nameof(StatsText));
         this.RaisePropertyChanged(nameof(EditToolTip));
         this.RaisePropertyChanged(nameof(StatusText));
+        this.RaisePropertyChanged(nameof(BusyText));
     }
 
     /// <summary>最近一次转发通道错误(目标拒绝连接等),由服务写入共享 TunnelInfo。</summary>
@@ -142,21 +194,36 @@ public class TunnelItemViewModel(TunnelInfo tunnelInfo) : ReactiveObject
     /// <summary>是否存在最近一次错误。</summary>
     public bool HasError => !string.IsNullOrEmpty(_tunnelInfo.LastError);
 
-    /// <summary>状态行:活动中显示运行时长,否则显示状态文字(设计 B3Rth tunI1Stats)。</summary>
-    public string StatusText => Status switch
-    {
-        TunnelStatus.Active => Strings.Format("Msg_TunnelRunning", FormatUptime(DateTime.UtcNow - CreatedAt)),
-        TunnelStatus.Error => Strings.Get("Msg_ErrorOccurred"),
-        _ => Strings.Get("Msg_Stopped")
-    };
+    /// <summary>状态行:启停途中显示「正在启动/停止…」,活动中显示运行时长,否则显示状态文字(设计 B3Rth tunI1Stats)。</summary>
+    public string StatusText => IsBusy
+        ? BusyText
+        : Status switch
+        {
+            TunnelStatus.Active => Strings.Format("Msg_TunnelRunning", FormatUptime(DateTime.UtcNow - CreatedAt)),
+            TunnelStatus.Error => Strings.Get("Msg_ErrorOccurred"),
+            _ => Strings.Get("Msg_Stopped")
+        };
 
     /// <summary>由面板的时钟周期性调用:刷新运行时长、透传服务侧的状态/错误变化。</summary>
     public void RefreshLive() => RaiseLiveChanged();
+
+    private void RaiseBusyChanged()
+    {
+        this.RaisePropertyChanged(nameof(IsBusy));
+        this.RaisePropertyChanged(nameof(ShowStopButton));
+        this.RaisePropertyChanged(nameof(ShowStartButton));
+        this.RaisePropertyChanged(nameof(CanEdit));
+        this.RaisePropertyChanged(nameof(BusyText));
+        this.RaisePropertyChanged(nameof(StatusText));
+    }
 
     private void RaiseLiveChanged()
     {
         this.RaisePropertyChanged(nameof(Status));
         this.RaisePropertyChanged(nameof(IsActive));
+        this.RaisePropertyChanged(nameof(ShowStopButton));
+        this.RaisePropertyChanged(nameof(ShowStartButton));
+        this.RaisePropertyChanged(nameof(CanEdit));
         this.RaisePropertyChanged(nameof(EditToolTip));
         this.RaisePropertyChanged(nameof(StatusText));
         this.RaisePropertyChanged(nameof(LastError));

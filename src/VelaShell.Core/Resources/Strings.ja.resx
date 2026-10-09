@@ -3660,6 +3660,21 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Tunnel_StopTip" xml:space="preserve">
     <value>トンネルを停止</value>
   </data>
+  <data name="Tunnel_Starting" xml:space="preserve">
+    <value>トンネルを開始しています…</value>
+  </data>
+  <data name="Tunnel_Stopping" xml:space="preserve">
+    <value>トンネルを停止しています…</value>
+  </data>
+  <data name="Tunnel_AutoStart" xml:space="preserve">
+    <value>起動時に自動で確立</value>
+  </data>
+  <data name="Tunnel_AutoStartTip" xml:space="preserve">
+    <value>VelaShell を起動するたびにバックグラウンドでこのサーバーへ接続し、このトンネルを確立します。オフの場合は手動で開始します。</value>
+  </data>
+  <data name="Tunnel_AutoStartBadge" xml:space="preserve">
+    <value>起動時</value>
+  </data>
   <data name="Tunnel_TargetHostLabel" xml:space="preserve">
     <value>ターゲットホスト(サーバー視点)</value>
   </data>
@@ -3858,6 +3873,12 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="Msg_TunnelAutoReconnectFailed" xml:space="preserve">
     <value>自動再接続に失敗しました: {0}</value>
+  </data>
+  <data name="Msg_TunnelAutoStartConnectFailed" xml:space="preserve">
+    <value>起動時のトンネル確立に失敗しました。サーバー {0} に接続できません: {1}</value>
+  </data>
+  <data name="Msg_TunnelAutoStartFailed" xml:space="preserve">
+    <value>起動時にトンネル「{0}」({1})を確立できませんでした: {2}</value>
   </data>
   <data name="Notify_Title" xml:space="preserve">
     <value>メッセージ</value>

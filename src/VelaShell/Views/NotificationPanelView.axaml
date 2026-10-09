@@ -107,11 +107,12 @@
                        FontFamily="{DynamicResource VelaUiMonoFont}"
                        FontSize="{DynamicResource VelaFontSize12}" FontWeight="Medium"
                        VerticalAlignment="Center" />
-            <Border Background="{DynamicResource VelaAccent}"
+            <!-- 未读数徽标:VelaAccentDim 浅底 + 强调色字,与隧道/传输的数量徽标同一套(Design/AccentOnAccentTests)。 -->
+            <Border Background="{DynamicResource VelaAccentDim}"
                     CornerRadius="8" Padding="6,1" VerticalAlignment="Center"
                     IsVisible="{Binding HasUnread}">
               <TextBlock Text="{Binding UnreadCount}"
-                         Foreground="{DynamicResource VelaAccentText}"
+                         Foreground="{DynamicResource VelaAccent}"
                          FontFamily="{DynamicResource VelaUiMonoFont}"
                          FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
             </Border>
