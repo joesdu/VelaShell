@@ -703,4 +703,15 @@ public sealed class RasterizerTests
         Assert.AreEqual(3, OutsideCorner(wrapped));
         CollectionAssert.AreEqual(Stroke(gc, r => { r.PolyArc([CornerA, CornerB]); r.PolyArc([Loose]); }, size: 80).Pixels, wrapped.Pixels);
     }
+
+    [TestMethod]
+    public void 宽或高为0的细弧连成虚线_与同一条折线逐像素相同()
+    {
+        // 宽为 0 的弧从 (10,50) 走到 (10,10),高为 0 的弧再从 (10,10) 走到 (50,10):两条扁弧就是这条折线,
+        // 虚线的相位要跨过接点接着走(扁弧在 ArcStroke 里另走一支)。
+        XGc thin = new(1, null, 24) { Foreground = 1, LineStyle = 1, Dashes = [7, 5], DashOffset = 3 };
+        CollectionAssert.AreEqual(
+            Stroke(thin, r => r.PolyLine([(10, 50), (10, 10), (50, 10)])).Pixels,
+            Stroke(thin, r => r.PolyArc([(10, 10, 0, 40, -90 * 64, 180 * 64), (10, 10, 40, 0, 180 * 64, -180 * 64)])).Pixels);
+    }
 }

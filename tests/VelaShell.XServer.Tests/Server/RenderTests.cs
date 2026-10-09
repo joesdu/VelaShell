@@ -134,6 +134,33 @@ public sealed class RenderTests
     }
 
     [TestMethod]
+    public async Task 纯色源也能挂AlphaMap_源alpha按它减半()
+    {
+        await using Setup s = await SetupAsync();
+        XTestClient c = s.Client;
+
+        // 4×4 的 a8 像素图做 alpha-map,每个像素 alpha 0x80:PolyFillRectangle 用 0x80 作前景色。
+        uint amPixmap = c.NewId();
+        await c.SendAsync(53, 8, b => b.U32(amPixmap).U32(s.Window).U16(4).U16(4));
+        uint amGc = c.NewId();
+        await c.SendAsync(55, 0, b => b.U32(amGc).U32(amPixmap).U32(0x4).U32(0x80808080));
+        await c.SendAsync(70, 0, b => b.U32(amPixmap).U32(amGc).I16(0).I16(0).U16(4).U16(4));
+        uint am = c.NewId();
+        await c.SendAsync(s.Major, 4, b => b.U32(am).U32(amPixmap).U32(s.Formats.A8).U32(0));
+
+        // 源是 CreateSolidFill 的不透明红(没有 drawable),挂上 alpha-map 后 Over 到白底。
+        uint source = c.NewId();
+        await c.SendAsync(s.Major, 33, b => b.U32(source).U16(0xFFFF).U16(0).U16(0).U16(0xFFFF));
+        await c.SendAsync(s.Major, 5, b => b.U32(source).U32(1u << 1).U32(am));
+        await c.SendAsync(s.Major, 8, b => b.U8(3).U8(0).U8(0).U8(0).U32(source).U32(0).U32(s.Picture)
+            .I16(0).I16(0).I16(0).I16(0).I16(2).I16(2).U16(4).U16(4));
+        await c.SyncAsync();
+
+        // 源变成 alpha 0x80 的红(预乘 0x80800000);Over 到白底:红 0x80 + 0xFF·0.5 = 0xFF,绿 / 蓝 0xFF·0.5 = 0x7F。
+        Assert.AreEqual(0xFF7F7Fu, s.Pixel(3, 3));
+    }
+
+    [TestMethod]
     public async Task AlphaMap只作用一层_先挂上再给alpha_map挂alpha_map时后者不生效()
     {
         await using Setup s = await SetupAsync();

@@ -318,6 +318,14 @@ public sealed class WindowAndDrawingTests
         Assert.AreEqual(8, await WidthAsync(unifont, 'A'));
         uint k14 = await OpenAsync("k14");
         Assert.AreEqual(14, await WidthAsync(k14, 0x3021), "JIS X 0208 的双字节字体:0x3021 是 亜");
+
+        // 经别名打开:FONT 是别名指向的真名,字符集属性跟着这个名字(ISO10646-1 的 BDF 以 ISO8859-1 打开);
+        // BDF 里带引号的 "1" 是字符串属性,按原子回。
+        uint fixedFont = await OpenAsync("fixed");
+        Assert.AreEqual("-misc-fixed-medium-r-semicondensed--13-120-75-75-c-60-iso8859-1", await PropertyAsync(fixedFont, "FONT"));
+        Assert.AreEqual("ISO8859", await PropertyAsync(fixedFont, "CHARSET_REGISTRY"));
+        Assert.AreEqual("1", await PropertyAsync(fixedFont, "CHARSET_ENCODING"));
+        Assert.AreEqual("Fixed", await PropertyAsync(fixedFont, "FAMILY_NAME"));
     }
 
     [TestMethod]
