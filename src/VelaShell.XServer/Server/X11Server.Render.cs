@@ -353,7 +353,7 @@ public sealed partial class X11Server
 
     // ------------------------------------------------------------------ 取样源与目标
 
-    private static RenderSource SourceOf(XPicture p)
+    private static RenderSource SourceOf(XPicture p, bool withAlphaMap = true)
     {
         RenderSource source = p.Fill ?? p.Drawable switch
         {
@@ -364,8 +364,10 @@ public sealed partial class X11Server
         source.Repeat = p.Repeat;
         source.Transform = p.Transform;
         source.Bilinear = p.Bilinear;
-        return p.AlphaMap is { } alphaMap
-            ? new AlphaMapSource(source, SourceOf(alphaMap), p.AlphaX, p.AlphaY)
+        // alpha-map 只作用一层:作 alpha-map 用的 picture 自己的 alpha-map 不算。ChangePicture 只核新挂上的那张有没有 alpha-map,
+        // 拦不住「先 P1 → P2、再 P2 → P3 ……」一张张接下去的长链;顺着链往下解,每一环一层递归,栈溢出在 .NET 里接不住,整个进程会崩。
+        return withAlphaMap && p.AlphaMap is { } alphaMap
+            ? new AlphaMapSource(source, SourceOf(alphaMap, withAlphaMap: false), p.AlphaX, p.AlphaY)
             : source;
     }
 
@@ -416,8 +418,9 @@ public sealed partial class X11Server
     /// 源 / 遮罩 picture 的裁剪换到目标坐标(源的 (0, 0) 对着目标的 (<paramref name="dx" />, <paramref name="dy" />)):RENDER 规范说 clip-mask
     /// 限制对这个 picture 的读写,裁剪之外的源像素读不到,对应的目标像素就不合成。只在源没有变换、不重复时这样做 ——
     /// 有变换或重复时读到的源像素与目标不是一一平移的关系,仍只裁目标。没有裁剪时为 null。
+    /// alpha-map 的裁剪也算,同 <see cref="SourceOf" /> 只看一层。
     /// </summary>
-    private static Region? ReadableIn(XPicture? p, int dx, int dy)
+    private static Region? ReadableIn(XPicture? p, int dx, int dy, bool withAlphaMap = true)
     {
         if (p is null)
         {
@@ -427,7 +430,8 @@ public sealed partial class X11Server
         Region? readable = p is { Clip: { } clip, Transform: null, Repeat: 0, Drawable: not null }
             ? clip.Clone().Translate(p.ClipX + dx, p.ClipY + dy)
             : null;
-        if (p.AlphaMap is { } alphaMap && ReadableIn(alphaMap, dx + p.AlphaX, dy + p.AlphaY) is { } alphaReadable)
+        if (withAlphaMap && p.AlphaMap is { } alphaMap
+            && ReadableIn(alphaMap, dx + p.AlphaX, dy + p.AlphaY, withAlphaMap: false) is { } alphaReadable)
         {
             readable = readable?.Intersect(alphaReadable) ?? alphaReadable;
         }
