@@ -259,6 +259,12 @@ public sealed class WindowAndDrawingTests
         Assert.AreEqual(10, await OpenWidthAsync("-*-fixed-medium-r-*-*-*-200-75-75-*-*-iso8859-1"), "按 POINT_SIZE 20 磅、75 dpi 匹配上 10x20");
         Assert.AreEqual(9, await OpenWidthAsync("-misc-fixed-bold-r-normal--16-*-*-*-*-*-iso10646-1"), "粗体没有 16 像素:退到最接近的 9x15B");
 
+        // 平均宽度翻倍要双宽字体(给宽字符配的):一样高的里面挑平均宽度最接近的,原先按名字的先后拿到 7x13 / 9x18。
+        Assert.AreEqual(12, await OpenWidthAsync("-misc-fixed-medium-r-semicondensed--13-120-75-75-c-120-iso10646-1"), "12x13ja");
+        Assert.AreEqual(18, await OpenWidthAsync("-misc-fixed-medium-r-normal--18-120-100-100-c-180-iso10646-1"), "18x18ja");
+        // 平均宽度只在一样高的里面挑,高度仍然优先:20 像素只有 10x20,不会为了字宽 6 退到 13 像素的 6x13。
+        Assert.AreEqual(10, await OpenWidthAsync("-misc-fixed-medium-r-normal--20-200-75-75-c-60-iso10646-1"), "10x20");
+
         // Adobe 75 / 100 dpi 的 Helvetica、Times、Courier 随库带:Motif / Xaw / Tk 的默认字体不再 BadName。
         Assert.IsNotNull(await OpenWidthAsync("-adobe-helvetica-medium-r-normal--12-*-*-*-*-*-iso8859-1"), "原先 BadName(xs_plan CP-16)");
         Assert.IsNotNull(await OpenWidthAsync("-adobe-times-bold-i-normal--17-120-100-100-p-*-iso8859-1"));
