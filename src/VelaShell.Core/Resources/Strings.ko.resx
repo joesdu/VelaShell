@@ -5730,6 +5730,18 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="XServer_WindowTitleWithSource" xml:space="preserve">
     <value>{0} — {1}</value>
   </data>
+  <data name="XServer_CopyScreenshot" xml:space="preserve">
+    <value>스크린샷 복사</value>
+  </data>
+  <data name="XServer_SaveScreenshot" xml:space="preserve">
+    <value>스크린샷 저장…</value>
+  </data>
+  <data name="XServer_SaveScreenshotTitle" xml:space="preserve">
+    <value>스크린샷 저장</value>
+  </data>
+  <data name="XServer_ScreenshotDefaultName" xml:space="preserve">
+    <value>X 창</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>자동 - 시스템의 현재 레이아웃</value>
   </data>

@@ -5735,6 +5735,18 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="XServer_WindowTitleWithSource" xml:space="preserve">
     <value>{0} — {1}</value>
   </data>
+  <data name="XServer_CopyScreenshot" xml:space="preserve">
+    <value>Copy Screenshot</value>
+  </data>
+  <data name="XServer_SaveScreenshot" xml:space="preserve">
+    <value>Save Screenshot…</value>
+  </data>
+  <data name="XServer_SaveScreenshotTitle" xml:space="preserve">
+    <value>Save Screenshot</value>
+  </data>
+  <data name="XServer_ScreenshotDefaultName" xml:space="preserve">
+    <value>X window</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>auto - Follow the system layout</value>
   </data>

@@ -6189,6 +6189,18 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="XServer_WindowTitleWithSource" xml:space="preserve">
     <value>{0} — {1}</value>
   </data>
+  <data name="XServer_CopyScreenshot" xml:space="preserve">
+    <value>复制截图</value>
+  </data>
+  <data name="XServer_SaveScreenshot" xml:space="preserve">
+    <value>截图另存为…</value>
+  </data>
+  <data name="XServer_SaveScreenshotTitle" xml:space="preserve">
+    <value>保存截图</value>
+  </data>
+  <data name="XServer_ScreenshotDefaultName" xml:space="preserve">
+    <value>X 窗口</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自动 - 跟随系统当前布局</value>
   </data>

@@ -122,6 +122,20 @@ public sealed class XNativeWindow : Window
         Opened += (_, _) => { _opened = true; UpdateFrameExtents(); ApplyGeometry(); UpdateRegion(Handle.Snapshot); _surface.Start(); ApplySizeOnOpen(); };
         // 本机的文本、文件拖进 X 程序(F16):服务端替宿主扮演 XDND 的源,见 XDropTarget。
         XDropTarget.Attach(this, _surface, handle, () => Server, ToPixels, host.DropUploader, AvaloniaXServerHost.NotifyUser);
+        WindowSystemMenu.Attach(this, () => Screenshot(WindowScreenshot.CopyAsync), () => Screenshot(WindowScreenshot.SaveAsync));
+    }
+
+    /// <summary>系统菜单里的截图(xs_plan F20):复制或另存为;出错只记一行日志(截图不该把窗口带崩)。</summary>
+    private async void Screenshot(Func<TopLevel, XTopLevelWindow, Task<bool>> action)
+    {
+        try
+        {
+            await action(this, Handle);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[XServer] 截图失败:{ex.Message}");
+        }
     }
 
     /// <summary>服务端那边的顶层窗口。</summary>

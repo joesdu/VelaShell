@@ -5730,6 +5730,18 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="XServer_WindowTitleWithSource" xml:space="preserve">
     <value>{0} — {1}</value>
   </data>
+  <data name="XServer_CopyScreenshot" xml:space="preserve">
+    <value>スクリーンショットをコピー</value>
+  </data>
+  <data name="XServer_SaveScreenshot" xml:space="preserve">
+    <value>スクリーンショットを保存…</value>
+  </data>
+  <data name="XServer_SaveScreenshotTitle" xml:space="preserve">
+    <value>スクリーンショットを保存</value>
+  </data>
+  <data name="XServer_ScreenshotDefaultName" xml:space="preserve">
+    <value>X ウィンドウ</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自動 - システムの現在のレイアウト</value>
   </data>

@@ -6189,6 +6189,18 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="XServer_WindowTitleWithSource" xml:space="preserve">
     <value>{0} — {1}</value>
   </data>
+  <data name="XServer_CopyScreenshot" xml:space="preserve">
+    <value>複製螢幕擷取畫面</value>
+  </data>
+  <data name="XServer_SaveScreenshot" xml:space="preserve">
+    <value>螢幕擷取畫面另存為…</value>
+  </data>
+  <data name="XServer_SaveScreenshotTitle" xml:space="preserve">
+    <value>儲存螢幕擷取畫面</value>
+  </data>
+  <data name="XServer_ScreenshotDefaultName" xml:space="preserve">
+    <value>X 視窗</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自動 - 跟隨系統目前配置</value>
   </data>

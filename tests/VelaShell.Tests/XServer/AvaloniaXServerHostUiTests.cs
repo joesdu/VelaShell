@@ -376,6 +376,64 @@ public sealed class AvaloniaXServerHostUiTests
         host.Detach();
     });
 
+    /// <summary>
+    /// X 窗口截图(xs_plan F20):截到的是窗口此刻的像素(深度 24 的补成不透明);非矩形窗口形状以外是透明的。
+    /// </summary>
+    [TestMethod]
+    public async Task Screenshot_CapturesTheWindowPixels_AndClearsOutsideTheShape() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        _ = server.ServeAsync(serverSide, isLocal: true);
+        System.Collections.Concurrent.ConcurrentQueue<byte[]> replies = new();
+        (uint idBase, uint root) = await HandshakeAsync(client, replies: replies);
+        byte[] shapeName = Encoding.ASCII.GetBytes("SHAPE");
+        await SendAsync(client, 98, 0, w => w.U16((ushort)shapeName.Length).U16(0).Bytes(shapeName).Pad());
+        byte shape = (await WaitForAsync(() => replies.TryDequeue(out byte[]? r) ? r : null))[9];
+        uint window = idBase | 1, gc = idBase | 2;
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(10).I16(10).U16(60).U16(40).U16(0).U16(1).U32(0)
+            .U32(0x2).U32(0xFFFFFF));
+        await SendAsync(client, 8, 0, w => w.U32(window));
+        await SendAsync(client, 55, 0, w => w.U32(gc).U32(window).U32(0x4).U32(0xFF0000));
+        await SendAsync(client, 70, 0, w => w.U32(window).U32(gc).I16(0).I16(0).U16(10).U16(10));
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+        await WaitForAsync(() => Pixel(native, 5, 5) == 0xFF0000 ? native : null, "画上了");
+
+        static uint At(Avalonia.Media.Imaging.WriteableBitmap bitmap, int x, int y)
+        {
+            using Avalonia.Platform.ILockedFramebuffer frame = bitmap.Lock();
+            return (uint)Marshal.ReadInt32(frame.Address, (y * frame.RowBytes) + (x * 4));
+        }
+        using (Avalonia.Media.Imaging.WriteableBitmap shot = WindowScreenshot.Capture(native.Handle)!)
+        {
+            Assert.AreEqual(new PixelSize(60, 40), shot.PixelSize);
+            Assert.AreEqual(0xFFFF0000u, At(shot, 5, 5), "填的红,不透明");
+            Assert.AreEqual(0xFFFFFFFFu, At(shot, 50, 30), "背景白");
+        }
+
+        // ShapeRectangles:边界形状只留左半边。
+        await SendAsync(client, shape, 1, w => w.U8(0).U8(0).U8(0).U8(0).U32(window).I16(0).I16(0).I16(0).I16(0).U16(30).U16(40));
+        await WaitForAsync(() => native.Handle.Snapshot.Shape is not null ? native : null, "形状生效");
+        using (Avalonia.Media.Imaging.WriteableBitmap shot = WindowScreenshot.Capture(native.Handle)!)
+        {
+            Assert.AreEqual(0xFFFF0000u, At(shot, 5, 5));
+            Assert.AreEqual(0u, At(shot, 50, 30), "形状以外透明");
+        }
+        host.Detach();
+    });
+
+    /// <summary>截图的默认文件名:标题里不能进文件名的字符换掉;没有标题用本地化的默认名。</summary>
+    [TestMethod]
+    public void ScreenshotFileName_IsSafe()
+    {
+        string name = WindowScreenshot.FileNameFor("a/b:c*d?\u0001");
+        Assert.AreEqual(-1, name.IndexOfAny(Path.GetInvalidFileNameChars()), name);
+        Assert.EndsWith(".png", name);
+        Assert.IsGreaterThan(4, WindowScreenshot.FileNameFor("  ").Length, "空标题有默认名");
+    }
+
     /// <summary>任务栏组名(xs_plan F17):按 WM_CLASS 的类名,只留 AppUserModelID 认的字符、不超过 128 个字符;没有类名的不归组。</summary>
     [TestMethod]
     [DataRow("XTerm", "VelaShell.X11.XTerm")]
