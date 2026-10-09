@@ -274,8 +274,9 @@ public sealed partial class X11Server
     private static readonly object HostLane = new();
 
     /// <summary>
-    /// 取下一项:先取放回来的暂存请求(<see cref="_ready" />,它们比同一个客户端队里的都早),再把通道里到了的分进各队,然后轮到哪条队取哪条。
-    /// 取完还有活的队排回轮转的末尾,空了的队删掉(断开的客户端不留空队)。
+    /// 取下一项:先取放回来的暂存请求(<see cref="_ready" />,它们比同一个客户端队里的都早),再把通道里到了的分进各队;宿主那条队优先
+    /// (注入的输入、换进来的配置、到点的计时器:量小、要及时,而且宿主先注入、客户端后查询时要看得到 —— 跟客户端一起轮转的话,
+    /// 宿主连着注入的几项会被客户端之后才到的请求插队),其余轮到哪条队取哪条。取完还有活的队排回轮转的末尾,空了的队删掉(断开的客户端不留空队)。
     /// </summary>
     private bool TryTakeItem(ChannelReader<WorkItem> reader, out WorkItem item)
     {
@@ -289,10 +290,23 @@ public sealed partial class X11Server
             if (!_lanes.TryGetValue(key, out Queue<WorkItem>? queue))
             {
                 _lanes[key] = queue = new Queue<WorkItem>();
-                _laneOrder.Enqueue(key);
+                if (key != HostLane)
+                {
+                    _laneOrder.Enqueue(key);
+                }
             }
             queue.Enqueue(arrived);
             _laneItems++;
+        }
+        if (_lanes.TryGetValue(HostLane, out Queue<WorkItem>? host))
+        {
+            item = host.Dequeue();
+            _laneItems--;
+            if (host.Count == 0)
+            {
+                _lanes.Remove(HostLane);
+            }
+            return true;
         }
         if (!_laneOrder.TryDequeue(out object? lane))
         {
