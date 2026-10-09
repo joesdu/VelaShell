@@ -38,7 +38,7 @@
         <!-- 栏头不再压一道分隔线(设计图 E):左栏本身已经比表单区亮一档,再加一条横线就是两重界。 -->
         <Border DockPanel.Dock="Top" Height="36" Padding="14,0">
           <TextBlock x:Name="ProvidersHeader" VerticalAlignment="Center"
-                     FontSize="{DynamicResource VelaFontSize11}" FontWeight="SemiBold"
+                     FontSize="{DynamicResource VelaFontSize12}" FontWeight="SemiBold"
                      Foreground="{DynamicResource VelaTextSecondary}" />
         </Border>
         <StackPanel DockPanel.Dock="Bottom" Spacing="6" Margin="10,8,10,10">
@@ -52,7 +52,7 @@
                       StrokeLineCap="Round" StrokeJoin="Round" />
               </Viewbox>
               <TextBlock x:Name="AddModelText" VerticalAlignment="Center"
-                         FontSize="{DynamicResource VelaFontSize11}" />
+                         FontSize="{DynamicResource VelaFontSize12}" />
             </StackPanel>
           </Button>
           <Border Classes="sep" />
@@ -67,7 +67,7 @@
                       StrokeLineCap="Round" StrokeJoin="Round" />
               </Viewbox>
               <TextBlock x:Name="AddText" VerticalAlignment="Center"
-                         FontSize="{DynamicResource VelaFontSize11}" />
+                         FontSize="{DynamicResource VelaFontSize12}" />
             </StackPanel>
           </Button>
         </StackPanel>
@@ -113,7 +113,7 @@
                 <!-- 折起来时也得看得出这一家有多少个模型 -->
                 <TextBlock Grid.Column="3" Classes="count" Text="{Binding CountText}"
                            Margin="8,0,0,0" VerticalAlignment="Center"
-                           FontSize="{DynamicResource VelaFontSize10}" />
+                           FontSize="{DynamicResource VelaFontSize11}" />
                 <Ellipse Grid.Column="4" Width="6" Height="6" Margin="8,0,0,0"
                          VerticalAlignment="Center" Fill="{Binding Dot}"
                          ToolTip.Tip="{Binding DotTip}" />
@@ -139,7 +139,7 @@
                右边那枚徽章是本次窗口内的测试结果(没测过就不显示,不假装知道)。 -->
           <Grid ColumnDefinitions="Auto,Auto,*">
             <TextBlock x:Name="BreadcrumbText" VerticalAlignment="Center"
-                       FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
+                       FontSize="{DynamicResource VelaFontSize14}" FontWeight="SemiBold"
                        Foreground="{DynamicResource VelaTextPrimary}" TextTrimming="CharacterEllipsis" />
             <!-- 只有淡底、没有描边(设计图 E):它紧挨着面包屑,描一圈边会让这枚小标签看起来像个可点的按钮 -->
             <Border x:Name="TestBadge" Grid.Column="1" IsVisible="False" CornerRadius="3"
@@ -150,7 +150,7 @@
                         StrokeLineCap="Round" StrokeJoin="Round" />
                 </Viewbox>
                 <TextBlock x:Name="TestBadgeText" VerticalAlignment="Center"
-                           FontSize="{DynamicResource VelaFontSize10}" />
+                           FontSize="{DynamicResource VelaFontSize11}" />
               </StackPanel>
             </Border>
           </Grid>
@@ -192,7 +192,7 @@
                                 StrokeLineCap="Round" StrokeJoin="Round" />
                         </Viewbox>
                         <TextBlock x:Name="ProviderKeyBadgeText" VerticalAlignment="Center"
-                                   FontSize="{DynamicResource VelaFontSize10}"
+                                   FontSize="{DynamicResource VelaFontSize11}"
                                    Foreground="{DynamicResource VelaAccent}" />
                       </StackPanel>
                     </Border>
@@ -212,7 +212,7 @@
                   <TextBlock x:Name="ProviderApiKeyHintText" Classes="hint" TextWrapping="Wrap" />
                   <CheckBox x:Name="BalanceApiKeysCheck" IsChecked="False" Margin="0,8,0,0"
                             Theme="{StaticResource AiCheckBoxTheme}"
-                            FontSize="{DynamicResource VelaFontSize12}"
+                            FontSize="{DynamicResource VelaFontSize13}"
                             Foreground="{DynamicResource VelaTextPrimary}" />
                   <TextBlock x:Name="BalanceApiKeysHintText" Classes="hint" TextWrapping="Wrap" />
                 </StackPanel>
@@ -225,7 +225,7 @@
                     <Button x:Name="ManageSignInButton" Grid.Column="2"
                             Theme="{DynamicResource VelaOutlineButtonTheme}" Height="26" Padding="12,0">
                       <TextBlock x:Name="ManageSignInText" VerticalAlignment="Center"
-                                 FontSize="{DynamicResource VelaFontSize11}" />
+                                 FontSize="{DynamicResource VelaFontSize12}" />
                     </Button>
                   </Grid>
                   <TextBlock x:Name="ProviderAuthHintText" Classes="hint" />
@@ -239,7 +239,7 @@
                     <Button x:Name="PullModelsButton"
                             Theme="{DynamicResource VelaOutlineButtonTheme}" Height="26" Padding="12,0">
                       <TextBlock x:Name="PullModelsText" VerticalAlignment="Center"
-                                 FontSize="{DynamicResource VelaFontSize11}" />
+                                 FontSize="{DynamicResource VelaFontSize12}" />
                     </Button>
                     <TextBlock x:Name="PullModelsHintText" Grid.Column="2" Classes="hint"
                                Margin="0" TextWrapping="Wrap" VerticalAlignment="Center" />
@@ -295,7 +295,7 @@
                   <StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="7">
                       <CheckBox x:Name="OwnKeyCheck" Theme="{StaticResource AiCheckBoxTheme}"
-                                FontSize="{DynamicResource VelaFontSize12}"
+                                FontSize="{DynamicResource VelaFontSize13}"
                                 Foreground="{DynamicResource VelaTextPrimary}" />
                       <Border Background="{DynamicResource VelaAccentDim}" CornerRadius="3" Padding="6,1"
                               VerticalAlignment="Center">
@@ -306,7 +306,7 @@
                                   StrokeLineCap="Round" StrokeJoin="Round" />
                           </Viewbox>
                           <TextBlock x:Name="ModelKeyBadgeText" VerticalAlignment="Center"
-                                     FontSize="{DynamicResource VelaFontSize10}"
+                                     FontSize="{DynamicResource VelaFontSize11}"
                                      Foreground="{DynamicResource VelaAccent}" />
                         </StackPanel>
                       </Border>
@@ -359,7 +359,7 @@
                   <!-- 提示词缓存:只有 Anthropic 协议吃这个标记,解出的协议不是它时整块隐藏 -->
                   <StackPanel x:Name="PromptCachePanel">
                     <CheckBox x:Name="PromptCacheCheck" Theme="{StaticResource AiCheckBoxTheme}"
-                              FontSize="{DynamicResource VelaFontSize12}"
+                              FontSize="{DynamicResource VelaFontSize13}"
                               Foreground="{DynamicResource VelaTextPrimary}" />
                     <TextBlock x:Name="PromptCacheHintText" Classes="hint" />
                   </StackPanel>
@@ -446,7 +446,7 @@
                             StrokeLineCap="Round" StrokeJoin="Round" />
                     </Viewbox>
                     <TextBlock x:Name="SaveText" VerticalAlignment="Center"
-                               FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
+                               FontSize="{DynamicResource VelaFontSize12}" FontWeight="Medium" />
                   </StackPanel>
                 </Button>
                 <Button x:Name="TestButton" Theme="{DynamicResource VelaOutlineButtonTheme}" Height="26" Padding="12,0">
@@ -457,7 +457,7 @@
                             StrokeLineCap="Round" StrokeJoin="Round" />
                     </Viewbox>
                     <TextBlock x:Name="TestText" VerticalAlignment="Center"
-                               FontSize="{DynamicResource VelaFontSize11}" />
+                               FontSize="{DynamicResource VelaFontSize12}" />
                   </StackPanel>
                 </Button>
                 <Button x:Name="DeleteButton" Theme="{DynamicResource VelaOutlineButtonTheme}" Height="26" Padding="12,0"
@@ -469,7 +469,7 @@
                             StrokeLineCap="Round" StrokeJoin="Round" />
                     </Viewbox>
                     <TextBlock x:Name="DeleteText" VerticalAlignment="Center"
-                               FontSize="{DynamicResource VelaFontSize11}" />
+                               FontSize="{DynamicResource VelaFontSize12}" />
                   </StackPanel>
                 </Button>
               </StackPanel>

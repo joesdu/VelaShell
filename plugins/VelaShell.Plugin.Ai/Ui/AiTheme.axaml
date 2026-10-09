@@ -39,7 +39,7 @@
     <Setter Property="CornerRadius" Value="3" />
     <Setter Property="Padding" Value="8,0" />
     <Setter Property="Height" Value="26" />
-    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
     <Setter Property="FontWeight" Value="Medium" />
     <Setter Property="HorizontalContentAlignment" Value="Center" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -118,7 +118,7 @@
        对勾几何内联(lucide check),不依赖宿主 Icon.* 资源,隔离进程仅有令牌时也可用。 -->
   <ControlTheme x:Key="AiCheckBoxTheme" TargetType="CheckBox">
     <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
-    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
     <Setter Property="MinHeight" Value="26" />
     <Setter Property="HorizontalAlignment" Value="Left" />
     <Setter Property="VerticalAlignment" Value="Center" />

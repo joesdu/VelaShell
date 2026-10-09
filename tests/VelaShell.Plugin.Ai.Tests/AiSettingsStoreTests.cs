@@ -1841,6 +1841,32 @@ public sealed class AiSettingsStoreTests
     }
 
     [TestMethod]
+    public async Task Save_TimestampWithPositiveOffset_KeepsBaselineAcrossSaves()
+    {
+        // 东八区的 MCP 工具刷新时间:对象序列化写 "+08:00",读回再序列化是 "\u002B08:00"。
+        // 基线若取前者,第二次保存与之后每次取凭据都会被误判为"配置已变"
+        using var context = new TestPluginContext();
+        var store = new AiSettingsStore(context);
+        var model = new AiModelConfig { Model = "m" };
+        var provider = new AiProvider { BaseUrl = "https://api.example/v1", Models = [model] };
+        var settings = new AiSettings
+        {
+            Providers = [provider],
+            ActiveModelId = model.Id,
+            McpServers = [new McpServerConfig { Name = "srv", ToolsRefreshedAt = new DateTimeOffset(2026, 10, 9, 23, 50, 0, TimeSpan.FromHours(8)) }]
+        };
+        await context.Secrets.SetAsync("apikey:" + provider.Id, "key-a");
+
+        await store.SaveAsync(settings);
+        settings.PanelWidthPercent = 40;
+        await store.SaveAsync(settings);
+
+        ProviderCredential credential = await store.ResolveCredentialAsync(settings.FindModel(model.Id)!);
+        Assert.AreEqual("key-a", credential.Value);
+        Assert.AreEqual(40, (await store.LoadAsync()).PanelWidthPercent);
+    }
+
+    [TestMethod]
     public async Task SaveAndLoad_RoundTripsProviders()
     {
         using var context = new TestPluginContext();

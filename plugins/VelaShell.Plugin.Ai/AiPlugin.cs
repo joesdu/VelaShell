@@ -131,6 +131,11 @@ public sealed class AiPlugin : IVelaPlugin
         // 中与插件无关的程序集。
         var pending = new Queue<AssemblyName>(self.GetReferencedAssemblies());
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // 元数据里的引用不等于运行时真会装:CSharpMath.Rendering 引着 CSharpMath.Editor(只给公式编辑键盘
+        // FrontEnd.MathKeyboard 用),而 Sylinko.CSharpMath.Avalonia 包只带了渲染那三个 dll —— 只渲染时运行期
+        // 从不碰它,照着引用硬装却每次启动都白抛一个 FileNotFoundException。先按插件 ALC 的解析规则判断装不装得到。
+        var resolver = new AssemblyDependencyResolver(self.Location);
+        HashSet<string>? platform = TrustedPlatformAssemblyNames();
         int warmed = 0;
         while (pending.Count > 0)
         {
@@ -143,6 +148,11 @@ public sealed class AiPlugin : IVelaPlugin
             string identity = name.FullName ?? name.Name ?? string.Empty;
             if (!visited.Add(identity))
             {
+                continue;
+            }
+            if (!CanResolve(name, resolver.ResolveAssemblyToPath, platform))
+            {
+                context.Log.Debug($"Preloading skipped '{name.Name}': referenced in metadata, but shipped by neither the plugin nor the host.");
                 continue;
             }
             try
@@ -169,6 +179,27 @@ public sealed class AiPlugin : IVelaPlugin
         }
         context.Log.Info($"Preloaded {warmed} plugin assemblies; the first chat panel no longer pays for them on the UI thread.");
     }
+
+    /// <summary>
+    /// 插件 ALC 装不装得到这个名字。规则与 <see cref="PluginAssemblyLoadContext" /> 的 <c>Load</c> 一致:
+    /// 插件 deps.json 里有;或者回落默认 ALC 后,在它的可信平台程序集里(框架、宿主带的 Avalonia / SDK)。
+    /// </summary>
+    /// <param name="name">要装的程序集。</param>
+    /// <param name="resolvePrivate">按插件 deps.json 解析出路径,解析不到返回 null。</param>
+    /// <param name="platform">默认 ALC 的可信平台程序集简单名;null = 拿不到这份清单,不过滤(照旧去装)。</param>
+    internal static bool CanResolve(AssemblyName name, Func<AssemblyName, string?> resolvePrivate,
+        IReadOnlySet<string>? platform)
+        => name.Name is { Length: > 0 } simple
+           && (platform is null || platform.Contains(simple) || resolvePrivate(name) is not null);
+
+    /// <summary>默认 ALC 的可信平台程序集(TPA)简单名;运行时没给这份清单时返回 null。</summary>
+    private static HashSet<string>? TrustedPlatformAssemblyNames()
+        => AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string { Length: > 0 } list
+            ? list.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+                .Select(Path.GetFileNameWithoutExtension)
+                .OfType<string>()
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : null;
 
     /// <inheritdoc />
     public async Task DeactivateAsync(CancellationToken cancellationToken)
@@ -230,14 +261,15 @@ public sealed class AiPlugin : IVelaPlugin
             return;
         }
         var loc = new Loc(context.Host.Locale);
+        (double width, double height) = WindowFit.Fit(1000, 880);
         _collaborationPanel = await context.Ui.ShowPanelAsync(
             new PanelOptions
             {
                 Title = loc["Collaboration"],
                 Icon = AiIcon.Panel,
                 DisplayMode = PanelDisplayMode.Window,
-                WindowWidth = 860,
-                WindowHeight = 780
+                WindowWidth = width,
+                WindowHeight = height
             },
             () => new CollaborationView(context, loc, RestartServicesAsync, Bridge));
         _collaborationPanel.Closed += () => _collaborationPanel = null;
@@ -264,6 +296,7 @@ public sealed class AiPlugin : IVelaPlugin
             return _view; // 已开着(面板是活控件)
         }
         ChatPanelView? view = null;
+        (double width, double height) = WindowFit.Fit(820, 660);
         _panel = await context.Ui.ShowPanelAsync(
             new PanelOptions
             {
@@ -276,8 +309,8 @@ public sealed class AiPlugin : IVelaPlugin
                 // 终端与它并排看得见,而不是把当前终端顶掉
                 Placement = PanelPlacement.Right,
                 PlacementRatio = await PanelWidthRatioAsync(),
-                WindowWidth = 720,
-                WindowHeight = 560
+                WindowWidth = width,
+                WindowHeight = height
             },
             () => view = new ChatPanelView(context, _store!));
         _view = view;

@@ -524,8 +524,12 @@ public sealed class AiSettingsStore(IPluginContext context)
     private async Task WriteSettingsSnapshotAsync(AiSettings settings, string json, CancellationToken cancellationToken)
     {
         // 写入不可变快照，基线必须对应实际落盘值，而不是 await 后可能已经变化的活对象。
-        await context.Storage.SetAsync(SettingsKey, JsonSerializer.Deserialize<JsonElement>(json), cancellationToken).ConfigureAwait(false);
-        _providerKeys.SettingsBaselines.GetValue(settings, static _ => new()).Json = json;
+        // 基线也要取 JsonElement 重新序列化后的文本:比对时读回来的就是这一种。DateTimeOffset 在对象序列化里
+        // 原样写成 "+08:00",经 JsonElement 再写一遍会按默认编码器转成 "\u002B08:00" —— 直接拿 json 当基线,
+        // 东八区下 MCP 刷过工具清单之后,保存一次就再也对不上,之后的保存与发送全被当成配置已变而拒绝。
+        JsonElement snapshot = JsonSerializer.Deserialize<JsonElement>(json);
+        await context.Storage.SetAsync(SettingsKey, snapshot, cancellationToken).ConfigureAwait(false);
+        _providerKeys.SettingsBaselines.GetValue(settings, static _ => new()).Json = SavedSettingsJson(snapshot);
         _knownSettings = settings;
         RegisterSettingsScope(settings);
     }

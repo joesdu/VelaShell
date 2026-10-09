@@ -2112,3 +2112,57 @@ VelaShell 的连接存在 SonnetDB 里,既没有导入导出,资源管理器也�
 **四、验证**:`VelaShell.XServer.Tests` 464 例,455 通过 / 9 例按平台跳过(起点 450 通过)。10 万环的 alpha-map 链在改之前测试进程直接栈溢出退出,
 改之后 0.5 秒跑完;双宽字体的两条断言在改之前红。宿主 `VelaShell.Tests` 与 `Infrastructure.Tests` 里 X Server 相关的用例 41 / 40 通过(1 例按环境跳过)。
 文档同步见 [velashell-docs#104](https://github.com/VelaShellLabs/velashell-docs/pull/104)(`xserver/design/architecture.md` §7,中英两边)。
+
+## ✅ 182. 2026-10-09 AI 插件:保存一次之后再也发不出消息;字号与设置窗口整体放大一档
+
+**一、现象**:AI 插件启动后能用,改一下模式/拖一下侧栏宽度之后,调试输出里就开始刷 `ApiKeySlotChangedException`:
+`Persist AI settings failed`(`ValidateSettingsBaselineAsync`)与 `AI request failed — 准备回复时接入配置发生了变化`(`ValidateCredentialScopeAsync`),
+之后每次保存、每次发送都失败,只有重启插件才暂时恢复。
+
+**二、根因**:#582 起设置写入走"基线比对":`WriteSettingsSnapshotAsync` 把 `JsonSerializer.Serialize(settings)` 原文记成基线,
+校验时读回存储、把那个 `JsonElement` 再序列化一遍来比。两种序列化对 `DateTimeOffset` 不一致 —— 对象序列化原样写 `"+08:00"`,
+`JsonElement` 重写时按默认编码器转成 `"\u002B08:00"`。MCP 刷过工具清单(`McpServerConfig.ToolsRefreshedAt`)之后设置里就有一个东八区时间,
+于是第一次保存成功、随后的每次比对都对不上,被当成"配置被别处改了"而拒绝。测试里的存储替身与宿主 SonnetDB 存储都会这样(问题出在序列化本身,不在存储)。
+
+**三、做了什么**:
+- `WriteSettingsSnapshotAsync` 的基线改取 `SavedSettingsJson(snapshot)` —— 与读回比对用的是同一种规范化文本。存量数据不用迁移:
+  `LoadAsync` 本来就按读回的文本记基线,重启后第一次写入起就一致了。
+- 新用例 `Save_TimestampWithPositiveOffset_KeepsBaselineAcrossSaves`:带 `+08:00` 时间的设置连存两次、再取凭据;改之前红在第二次保存。
+- **字号**:插件内全部 `VelaFontSize*` 令牌上调一档(10→11 … 15→16、16→18);字段说明 `TextBlock.hint` 从 10 提到 12,与标签同号,
+  层级靠 Tertiary 颜色拉开。`ToolPickerView` 里五处写死的 `FontSize = 10/11/12` 换成令牌(同样上调一档),跟着宿主的界面字号设置走。
+- **窗口**:模型配置 900×740→1080×860、连接供应商 720×720→860×820、全局设置 640×680→780×800、配置工具 940×680→1100×800、
+  MCP 服务器 900×660→1060×780、协作接入 860×780→1000×880、聊天独立窗口 720×560→820×660。宿主不替插件窗口收边,
+  新增 `Ui/WindowFit.cs` 把设计尺寸夹到所在屏幕工作区以内(四周留 48),拿不到屏幕信息时按设计值原样开。
+
+**四、没动的**:同一段调试输出里成批的 `TaskCanceledException`(位于 `VelaShell.Ssh.dll`)是连接/通道收尾时保活、重协商监视等内部等待被取消,
+库里都已捕获,只是调试器报的首次机会异常,与这次故障无关。
+
+**五、验证**:`VelaShell.Plugin.Ai.Tests` 1437 条全过(5 分 51 秒);新用例在去掉修复后红在第二次保存(`ApiKeySlotChangedException`)。
+另用一个文件式小程序直接走宿主的 `SonnetDbPluginDataStore` 做了一次写入/读回,确认读回文本里的 `+` 被转义、与写入原文不等。
+
+## ✅ 183. 2026-10-09 AI 插件:启动预热每次都报 `Preloading 'CSharpMath.Editor' failed`
+
+- **现象**:每次启动,调试输出里一条 `System.IO.FileNotFoundException`(CSharpMath.Editor, Version=1.0.0.0)紧跟一条插件警告
+  `Preloading 'CSharpMath.Editor' failed`。功能上没有影响,公式照常渲染。
+- **原因**:`AiPlugin.PrewarmPanelAssemblies` 从入口程序集沿**元数据引用图**逐个 `LoadFromAssemblyName`。`Sylinko.CSharpMath.Avalonia` 12.0.0
+  这个 fork 包只带了 `CSharpMath` / `CSharpMath.Rendering` / `CSharpMath.Avalonia` 三个 dll,也没声明别的包依赖,
+  而 `CSharpMath.Rendering.dll` 的元数据里引着 `CSharpMath.Editor`(只有公式编辑键盘 `CSharpMath.Rendering.FrontEnd.MathKeyboard`
+  用到 `Editor.MathKeyboard<,>` / `MathListIndex`)。插件只渲染、不编辑,运行期从不碰这个类型,所以从来不缺;
+  预热却照着引用硬装 —— 插件 deps.json 里没有、宿主的可信平台程序集里也没有,只能抛。headless 用例 `MarkdownProjectionNotificationTests`
+  在没有这个 dll 的测试输出目录里渲染 `$E = mc^2$` 一直是绿的,同样说明渲染路径用不到它。
+- **改法**:预热前先按 `PluginAssemblyLoadContext.Load` 的同一套规则判断装不装得到(新的 `AiPlugin.CanResolve`):
+  插件 deps.json 解析得到(另起一个 `AssemblyDependencyResolver`),或者在默认 ALC 的 `TRUSTED_PLATFORM_ASSEMBLIES` 里;
+  两边都没有的只是元数据里的悬空引用,记一条 Debug 跳过,不再去装。拿不到 TPA 清单时不过滤,与原来一样。
+  `catch` 与那条警告保留,真装不动的(损坏、无权限)照旧报。
+- **验证**:新用例 `PanelPreloadTests`(5 条);拿真实插件输出目录模拟走一遍引用图,跳过的只有 `CSharpMath.Editor`,
+  外加 `VelaShell.PluginSdk` / `Avalonia.*` / `AvaloniaEdit` 几个 —— 后者都在宿主 `VelaShell.deps.json` 里,宿主进程的 TPA 有它们,真跑时照常预热。
+
+## ✅ 184. 2026-10-09 AI 插件:模型下拉一律写成"供应商·模型"
+
+- **来由**:用户反馈多家供应商挂同名模型(几家中转站都有 `gpt-5.5`)时下拉里分不清。原先 `ReloadProviderCombo` 只在供应商多于一家时
+  才加 `供应商 · 模型` 前缀,只配一家时只显示模型名。
+- **改法**:聊天面板的模型下拉一律显示 `供应商·模型`(如 `Routin·gpt-5.5`,按用户给的格式,中点两侧不留空格);供应商名为空时退回只显示模型名。
+  前缀让名字变长,下拉的 `MaxWidth` 从 230 放到 300,并给 `ItemTemplate` 一个带 `CharacterEllipsis` 的 `TextBlock`,
+  超长时收成省略号而不是从字中间切断(选中框沿用 `ItemTemplate`,用例里核过)。
+- **没动的**:全局设置里故障转移链的下拉(多于一家时 `供应商 · 模型`)与协作接入页的桥接模型下拉(`供应商 / 模型`)保持原样。
+- **验证**:新用例 `ModelCombo_LabelsEveryModelWithItsProvider`:单供应商带前缀、两家同名模型各自带前缀、选中框文字可省略。`VelaShell.Plugin.Ai.Tests` 1443 条全过(5 分 56 秒)。
