@@ -107,8 +107,14 @@ public sealed class GlxTests
         Assert.AreEqual(0x8013u, configs.U32(32), "第一对是 GLX_FBCONFIG_ID");
 
         XMessage visuals = await c.RequestAsync(glx, 14, b => b.U32(0));        // GetVisualConfigs
-        Assert.AreEqual(2u, visuals.U32(8), "每个 TrueColor 视觉一条");
+        Assert.AreEqual(4u, visuals.U32(8), "每个 TrueColor 视觉发布双缓冲与单缓冲配置");
         Assert.AreEqual(RootVisual, visuals.U32(32));
+        int visualConfigBytes = checked((int)visuals.U32(12) * 4);
+        int secondVisual = 32 + visualConfigBytes;
+        Assert.AreEqual(1u, visuals.U32(32 + 11 * 4), "第一个视觉保留双缓冲");
+        Assert.AreEqual(RootVisual, visuals.U32(secondVisual));
+        Assert.AreEqual(0u, visuals.U32(secondVisual + 11 * 4), "第二条配置是单缓冲");
+        Assert.AreEqual(0x102u, visuals.U32(secondVisual + 27 * 4), "第二条配置关联单缓冲 FBConfig");
 
         XMessage badScreen = await c.RequestAsync(glx, 21, b => b.U32(1));
         Assert.IsTrue(badScreen.IsError);
