@@ -82,12 +82,14 @@ public static class TerminalSettingsApplier
         control.ShowLineTimestampMillis = behavior.ShowLineTimestampMillis;
         control.ShowLineNumber = behavior.ShowLineNumber;
         control.ShowFoldMarker = behavior.ShowFoldMarker;
+        control.ShowFoldGuideLine = behavior.ShowFoldGuideLine;
         control.GutterBlank = behavior.GutterBlank;
         control.GutterMenu = new(
             Strings.Get("Gutter_LineNumber"),
             Strings.Get("Gutter_Timestamp"),
             Strings.Get("Gutter_FoldMarker"),
-            Strings.Get("Gutter_Blank")
+            Strings.Get("Gutter_Blank"),
+            Strings.Get("Gutter_GuideLine")
         );
         control.ScrollOnKeystroke = behavior.ScrollOnKeystroke;
         control.CopyOnSelect = behavior.CopyOnSelect;

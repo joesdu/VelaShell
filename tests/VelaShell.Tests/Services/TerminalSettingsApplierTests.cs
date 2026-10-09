@@ -119,6 +119,8 @@ public sealed class TerminalSettingsApplierTests
                     CopyOnSelect = true,
                     AlternateScroll = true,
                     ShowLineNumber = true,
+                    ShowFoldGuideLine = true,
+                    ShowFoldMarker = false,
                     ConfirmMultilinePaste = true,
                 },
             };
@@ -130,6 +132,9 @@ public sealed class TerminalSettingsApplierTests
             Assert.IsTrue(control.CopyOnSelect);
             Assert.IsTrue(control.AlternateScrollEnabled);
             Assert.IsTrue(control.ShowLineNumber);
+            // 分隔线与折叠是两个开关(#586),只开线不能把折叠也带开。
+            Assert.IsTrue(control.ShowFoldGuideLine);
+            Assert.IsFalse(control.ShowFoldMarker);
             Assert.IsTrue(control.ConfirmMultilinePaste);
         });
 

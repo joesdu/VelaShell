@@ -2940,6 +2940,12 @@
   <data name="SetTerm_ShowFoldMarkerDesc" xml:space="preserve">
     <value>折り畳み列を表示し、以前の出力を展開可能な領域に折り畳めます。</value>
   </data>
+  <data name="SetTerm_ShowFoldGuideLine" xml:space="preserve">
+    <value>余白の区切り線</value>
+  </data>
+  <data name="SetTerm_ShowFoldGuideLineDesc" xml:space="preserve">
+    <value>余白と出力の間に縦線を表示します。折り畳みマーカーとは独立しており、これだけを有効にした場合はクリックしても折り畳まれません。</value>
+  </data>
   <data name="SetTerm_GutterBlank" xml:space="preserve">
     <value>余白の間隔</value>
   </data>
@@ -2954,6 +2960,9 @@
   </data>
   <data name="Gutter_FoldMarker" xml:space="preserve">
     <value>折り畳みマーカー</value>
+  </data>
+  <data name="Gutter_GuideLine" xml:space="preserve">
+    <value>区切り線</value>
   </data>
   <data name="Gutter_Blank" xml:space="preserve">
     <value>空白</value>
