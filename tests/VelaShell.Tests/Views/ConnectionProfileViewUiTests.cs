@@ -506,8 +506,10 @@ public sealed class ConnectionProfileViewUiTests
     }
 
     /// <summary>
-    /// Tab 悬停只改变稳定的画刷值，不在 Button 本体上启动过渡。
-    /// Windows 不同缩放比例下，按钮前景又被图标绑定时，过渡会让悬停命中区域出现闪烁。
+    /// 协议栏项的悬停直接落值,不在 Button 本体上挂画刷过渡(#577)。
+    /// 常态背景是 Transparent(#00FFFFFF,全透明的白),Avalonia 按非预乘的 ARGB 逐通道插值,
+    /// 过渡到不透明的悬停色途中是半透明的白,暗色主题下指针每进出一次就闪一下亮灰。
+    /// 更一般的守门见 Design/BrushTransitionFromTransparentTests。
     /// </summary>
     private static void AssertProtocolTabHoverIsStable(IReadOnlyList<Button> protocolButtons)
     {
