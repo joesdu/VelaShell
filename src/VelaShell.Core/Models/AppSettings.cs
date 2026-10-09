@@ -143,6 +143,14 @@ public class AppSettings
             Proxy.DefaultsMigrated = true;
         }
 
+        // 侧栏的竖线原先画在折叠列里,开折叠才有(#586 拆成两个开关)。老配置里开着折叠的人
+        // 一直看得到这条线,只迁这一次:线跟着折叠走;打上标记后两个开关各听各的。
+        if (!TerminalBehavior.FoldGuideLineMigrated)
+        {
+            TerminalBehavior.ShowFoldGuideLine = TerminalBehavior.ShowFoldMarker;
+            TerminalBehavior.FoldGuideLineMigrated = true;
+        }
+
         // 双击行为是个字符串枚举,磁盘上的内容拦不住:认不出来的一律回落到默认的
         // "系统默认程序",而不是让面板双击变成什么都不做。
         if (Transfer.DoubleClickAction is not ("system" or "builtin" or "editor"))
@@ -776,12 +784,28 @@ public class TerminalBehaviorOptions : ObservableOptions
         set => Set(ref field, value);
     }
 
-    /// <summary>开 = 侧栏显示折叠标记列,可折叠标记之前的历史内容(WindTerm 式,默认关)。</summary>
+    /// <summary>开 = 侧栏显示折叠标记列,可折叠标记之前的历史内容(WindTerm 式,默认关)。与 <see cref="ShowFoldGuideLine" /> 独立。</summary>
     public bool ShowFoldMarker
     {
         get;
         set => Set(ref field, value);
     }
+
+    /// <summary>
+    /// 开 = 侧栏与正文之间显示一条竖直分隔线(默认关)。原先是折叠列的一部分,开了折叠才有;
+    /// #586 拆成独立开关,只要线不要折叠的人不再被折叠方框误伤。
+    /// </summary>
+    public bool ShowFoldGuideLine
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
+    /// <summary>
+    /// <see cref="ShowFoldGuideLine" /> 从折叠里拆出来时的一次性迁移标记。拆之前开着折叠的人一直看得到这条线,
+    /// 迁移时让线跟着折叠走一次,之后两个开关各听各的(见 <see cref="AppSettings.Normalize" />)。
+    /// </summary>
+    public bool FoldGuideLineMigrated { get; set; }
 
     /// <summary>开 = 在侧栏与命令输出之间插入约 5px 的空白间隔(默认关)。</summary>
     public bool GutterBlank

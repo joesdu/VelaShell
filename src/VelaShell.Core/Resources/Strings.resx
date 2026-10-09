@@ -3102,6 +3102,12 @@ Paste anyway?</value>
   <data name="SetTerm_ShowFoldMarkerDesc" xml:space="preserve">
     <value>Show a fold column to collapse earlier output into expandable regions.</value>
   </data>
+  <data name="SetTerm_ShowFoldGuideLine" xml:space="preserve">
+    <value>Gutter separator line</value>
+  </data>
+  <data name="SetTerm_ShowFoldGuideLineDesc" xml:space="preserve">
+    <value>Draw a vertical line between the gutter and the output. Independent of fold markers: on its own it does not respond to clicks.</value>
+  </data>
   <data name="SetTerm_GutterBlank" xml:space="preserve">
     <value>Gutter spacing</value>
   </data>
@@ -3116,6 +3122,9 @@ Paste anyway?</value>
   </data>
   <data name="Gutter_FoldMarker" xml:space="preserve">
     <value>Fold marker</value>
+  </data>
+  <data name="Gutter_GuideLine" xml:space="preserve">
+    <value>Separator line</value>
   </data>
   <data name="Gutter_Blank" xml:space="preserve">
     <value>Spacing</value>

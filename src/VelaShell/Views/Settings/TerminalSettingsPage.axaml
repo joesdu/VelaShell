@@ -69,6 +69,13 @@
     </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetTerm_ShowFoldGuideLine}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetTerm_ShowFoldGuideLineDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding TerminalBehavior.ShowFoldGuideLine}" VerticalAlignment="Center" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="{loc:Localize SetTerm_ShowFoldMarker}" />
         <TextBlock Classes="row-desc" Text="{loc:Localize SetTerm_ShowFoldMarkerDesc}" />
       </StackPanel>

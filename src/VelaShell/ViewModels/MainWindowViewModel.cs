@@ -5357,7 +5357,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     }
 
     /// <summary>侧栏右键菜单切换部件后写回设置;SaveSettingsAsync 会广播到所有已打开标签,保持一致。</summary>
-    private void OnGutterOptionsChanged(bool timestamp, bool number, bool fold, bool blank)
+    private void OnGutterOptionsChanged(bool timestamp, bool number, bool fold, bool blank, bool guideLine)
     {
         if (_settingsService is null)
         {
@@ -5376,6 +5376,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     && b.ShowLineNumber == number
                     && b.ShowFoldMarker == fold
                     && b.GutterBlank == blank
+                    && b.ShowFoldGuideLine == guideLine
                 )
                 {
                     return;
@@ -5384,6 +5385,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 b.ShowLineNumber = number;
                 b.ShowFoldMarker = fold;
                 b.GutterBlank = blank;
+                b.ShowFoldGuideLine = guideLine;
                 await _settingsService.SaveSettingsAsync(settings).ConfigureAwait(false);
             }
             catch
