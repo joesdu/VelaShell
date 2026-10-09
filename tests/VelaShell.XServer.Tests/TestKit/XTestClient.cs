@@ -127,6 +127,13 @@ internal sealed class XTestClient : IAsyncDisposable
         return await HandshakeAsync(clientSide, serverTask, bigEndian, authName, authData);
     }
 
+    /// <summary>以给定的对端身份连上服务端(内存双工):uid、pid 这些只有 Unix 套接字才取得到的,在别的平台上也能测。</summary>
+    public static async Task<XTestClient> ConnectAsPeerAsync(X11Server server, X11Server.Peer peer)
+    {
+        (Stream serverSide, Stream clientSide) = DuplexPair.Create();
+        return await HandshakeAsync(clientSide, server.ServeCoreAsync(serverSide, peer, CancellationToken.None), false, "", null);
+    }
+
     /// <summary>经 Unix 套接字连服务端(服务端当它是同一台机器上的客户端 —— MIT-SHM 之类只对这样的客户端可见)。</summary>
     public static async Task<XTestClient> ConnectUnixAsync(string path)
     {

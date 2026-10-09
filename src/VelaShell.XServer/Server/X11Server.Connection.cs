@@ -210,9 +210,9 @@ public sealed partial class X11Server
     /// <param name="Authenticated">调用方已经验过身份(<see cref="ServeAuthenticatedAsync(Stream, CancellationToken)" />),不再查授权。</param>
     /// <param name="Label">宿主给这条连接起的名字(比如它来自哪个 SSH 会话);进日志与 <see cref="XClientInfo" />。</param>
     /// <param name="Untrusted">宿主指明这条连接非受信(<see cref="XClientTrust.Untrusted" />)。</param>
+    /// <param name="Pid">对端进程的 pid(Unix 套接字:Linux 经 SO_PEERCRED,macOS 经 LOCAL_PEERPID);不知道为 0。X-Resource 的 LocalClientPid 用。</param>
     internal readonly record struct Peer(bool IsLocal, bool SameHost, uint? Uid, bool LocalUser, bool Authenticated, string? Label = null,
-        bool Untrusted = false);
-
+        bool Untrusted = false, int Pid = 0);
     /// <summary>
     /// 连接建立的时限:读连接建立报文(12 字节的头与授权名 / 数据)、回失败,都要在这之内做完。
     /// 对端连上来却迟迟不发完(卡住的,或者故意占着不放的),到点就断开 —— 否则每个这样的连接都一直占着一个套接字和一个任务,
@@ -231,7 +231,7 @@ public sealed partial class X11Server
 
     private int _pendingSetups;
 
-    private async Task ServeCoreAsync(Stream stream, Peer peer, CancellationToken cancellationToken)
+    internal async Task ServeCoreAsync(Stream stream, Peer peer, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -511,6 +511,7 @@ public sealed partial class X11Server
                 PeerUid = peer.Uid,
                 Untrusted = peer.Untrusted || authorization is { Untrusted: true },
                 Authorization = authorization,
+                PeerPid = peer.Pid,
             };
             _clients[index] = client;
             if (authorization is not null)

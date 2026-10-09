@@ -289,6 +289,9 @@ internal sealed class XClient : IDisposable
     /// <summary>连接对端的 uid(Linux 上经 SO_PEERCRED、macOS / FreeBSD 上经 getpeereid 取得);取不到时为 null。MIT-SHM 按它核对段的访问权限。</summary>
     public uint? PeerUid { get; init; }
 
+    /// <summary>连接对端进程的 pid(Unix 套接字:Linux 经 SO_PEERCRED、macOS 经 LOCAL_PEERPID);不知道时为 0。X-Resource 的 LocalClientPid 用。</summary>
+    public int PeerPid { get; init; }
+
     /// <summary>
     /// 非受信客户端(SECURITY 扩展「SecurityClientUntrusted」):用 SecurityGenerateAuthorization 签出的非受信 cookie 连进来的,
     /// 或者宿主经 <see cref="X11Server.ServeAuthenticatedAsync(System.IO.Stream, string?, XClientTrust, System.Threading.CancellationToken)" />

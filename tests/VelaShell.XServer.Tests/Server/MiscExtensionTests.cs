@@ -293,4 +293,41 @@ public sealed class MiscExtensionTests
         XMessage list = await c.RequestAsync(xcmisc, 2, b => b.U32(uint.MaxValue));
         Assert.AreEqual(X11Server.MaxXidListCount, list.U32(8), "给的可以比要的少(XC-MISC 规范)");
     }
+
+    /// <summary>
+    /// X-Resource 的 LocalClientPid(xs_plan F28):经 Unix 套接字连进来、取得到 pid 的客户端报出 pid(xrestop 与 _NET_WM_PID 对得上);
+    /// mask = None 时两种标识都回;只回给本身也是本机客户端的请求方(规范 §5.2),pid 不知道的客户端只有 ClientXid。
+    /// </summary>
+    [TestMethod]
+    public async Task QueryClientIds报出本机客户端的pid_只回给本机的请求方()
+    {
+        await using X11Server server = new();
+        X11Server.Peer unix = new(IsLocal: true, SameHost: true, Uid: 1000, LocalUser: true, Authenticated: false, Pid: 4321);
+        await using XTestClient local = await XTestClient.ConnectAsPeerAsync(server, unix);
+        await using XTestClient tcp = await XTestClient.ConnectAsync(server);
+        byte xres = await MajorAsync(local, "X-Resource");
+        static List<(uint Client, uint Mask, uint[] Value)> Ids(XMessage reply)
+        {
+            List<(uint, uint, uint[])> ids = [];
+            int at = 32;
+            for (uint i = 0; i < reply.U32(8); i++)
+            {
+                uint length = reply.U32(at + 8);
+                ids.Add((reply.U32(at), reply.U32(at + 4), [.. Enumerable.Range(0, (int)length).Select(k => reply.U32(at + 12 + (4 * k)))]));
+                at += 12 + (4 * (int)length);
+            }
+            return ids;
+        }
+
+        List<(uint Client, uint Mask, uint[] Value)> all = Ids(await local.RequestAsync(xres, 4, b => b.U32(1).U32(0).U32(0)));   // 全部客户端、全部方法
+        Assert.HasCount(3, all, "本机客户端:ClientXid + pid;另一个只有 ClientXid");
+        (uint _, uint _, uint[] pid) = all.Single(id => id.Mask == 2);
+        CollectionAssert.AreEqual(new uint[] { 4321 }, pid);
+
+        List<(uint Client, uint Mask, uint[] Value)> onlyPid = Ids(await local.RequestAsync(xres, 4, b => b.U32(1).U32(0).U32(2)));
+        Assert.HasCount(1, onlyPid);
+        Assert.AreEqual(2u, onlyPid[0].Mask);
+
+        Assert.IsEmpty(Ids(await tcp.RequestAsync(xres, 4, b => b.U32(1).U32(0).U32(2))), "请求方不是本机客户端:不回 pid");
+    }
 }

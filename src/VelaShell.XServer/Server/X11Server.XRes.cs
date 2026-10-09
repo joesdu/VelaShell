@@ -3,7 +3,7 @@
 //
 // 规范依据(AGENTS.md §2 纪律 1):
 //   X-Resource Extension, Version 1.2 —— QueryVersion 0、QueryClients 1、QueryClientResources 2、
-//   QueryClientPixmapBytes 3、QueryClientIds 4(ClientXIDMask)、QueryResourceBytes 5
+//   QueryClientPixmapBytes 3、QueryClientIds 4(§4.2.1 ClientXIDMask 与 LocalClientPidMask、§5.2)、QueryResourceBytes 5
 //
 //   只回答问题、不改状态:数据取自资源表。
 
@@ -16,6 +16,9 @@ namespace VelaShell.XServer;
 
 public sealed partial class X11Server
 {
+    // CLIENTIDMASK(§4.2.1)。
+    private const uint ClientXidMask = 0x1, LocalClientPidMask = 0x2;
+
     private void XRes(XClient c, XRequestReader r)
     {
         switch (r.Data)
@@ -67,34 +70,50 @@ public sealed partial class X11Server
                     c.Reply(0, w => w.U32((uint)bytes).U32((uint)(bytes >> 32)).Zero(16));
                     break;
                 }
-            case 4:   // QueryClientIds:只回答 ClientXIDMask(远端客户端的 PID 我们不知道)
+            case 4:   // QueryClientIds:ClientXIDMask 与 LocalClientPidMask(只有经 Unix 套接字连进来、取得到 pid 的客户端有)
                 {
                     uint count = r.U32();
-                    // 每个客户端只回一次:client = 0 表示「全部客户端」,两百万条这样的 spec 各展开一遍就是几 GB 的回复。
-                    List<XClient> matched = [];
-                    HashSet<XClient> seen = [];
+                    // 规范:LocalClientPid 只回给本身也是本机客户端的请求方(远端问本机进程的 pid 没有意义)—— 这里指经 Unix 套接字连进来的。
+                    bool askerLocal = c.PeerUid is not null || c.PeerPid > 0;
+                    // 每个客户端的每种标识只回一次:client = 0 表示「全部客户端」,两百万条这样的 spec 各展开一遍就是几 GB 的回复。
+                    List<(XClient Client, uint Mask)> ids = [];
+                    HashSet<(XClient, uint)> seen = [];
                     for (uint i = 0; i < count && r.Remaining >= 8; i++)
                     {
                         uint client = r.U32();
                         uint mask = r.U32();
-                        if ((mask & 1) == 0 && mask != 0)
+                        bool xid = mask == 0 || (mask & ClientXidMask) != 0;   // mask = None:所有支持的标识方法
+                        bool pid = (mask == 0 || (mask & LocalClientPidMask) != 0) && askerLocal;
+                        if (!xid && !pid)
                         {
                             continue;
                         }
                         foreach (XClient one in client == 0 ? [.. ClientsWithResources()] : (XClient[])[ClientOfXid(client)])
                         {
-                            if (seen.Add(one))
+                            if (xid && seen.Add((one, ClientXidMask)))
                             {
-                                matched.Add(one);
+                                ids.Add((one, ClientXidMask));
+                            }
+                            if (pid && one.PeerPid > 0 && seen.Add((one, LocalClientPidMask)))
+                            {
+                                ids.Add((one, LocalClientPidMask));
                             }
                         }
                     }
                     c.Reply(0, w =>
                     {
-                        w.U32((uint)matched.Count).Zero(20);
-                        foreach (XClient client in matched)
+                        w.U32((uint)ids.Count).Zero(20);
+                        foreach ((XClient client, uint mask) in ids)
                         {
-                            w.U32(client.ResourceBase).U32(1).U32(0);   // spec(client, mask)、length = 0
+                            w.U32(client.ResourceBase).U32(mask);   // spec(client, 单一一种标识)
+                            if (mask == LocalClientPidMask)
+                            {
+                                w.U32(1).U32((uint)client.PeerPid);   // length = 1 个 CARD32:pid
+                            }
+                            else
+                            {
+                                w.U32(0);   // ClientXid:spec 本身就是标识,length = 0
+                            }
                         }
                     });
                     break;
