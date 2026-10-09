@@ -181,6 +181,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
 
     private AppSettings? _latestSettings;
     private AppState _appState = new();
+    private bool _startupStatePrepared;
     private bool _isApplyingSidebarState;
     private CancellationTokenSource? _sidebarStateSaveDebounce;
 
@@ -1882,13 +1883,41 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         }
         if (_settingsService is not null)
         {
-            _appState = await _settingsService.GetStateAsync();
-            ApplySidebarState(_appState);
+            bool stateAlreadyPrepared = _startupStatePrepared;
+            if (!stateAlreadyPrepared)
+            {
+                _appState = await _settingsService.GetStateAsync();
+                ApplySidebarState(_appState);
+            }
             ApplyShellPreferences(await LoadSettingsSnapshotAsync());
+            _startupStatePrepared = false;
         }
         await Sidebar.RecentConnections.RefreshAsync();
         await RefreshSessionTreeAsync();
         RevealActiveSessionInSidebar();
+    }
+
+    /// <summary>
+    /// 在主窗口显示前回填会影响布局的持久化状态。若等到 <see cref="InitializeAsync" />
+    /// 的首帧之后才读取，侧栏折叠状态和多行标签设置会把整棵布局树再排一次，启动时就会闪动。
+    /// </summary>
+    public void PrepareForStartup(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (_settingsService is not null)
+        {
+            try
+            {
+                _appState = _settingsService.GetStateAsync().GetAwaiter().GetResult();
+                ApplySidebarState(_appState);
+            }
+            catch
+            {
+                // 状态文档损坏或暂时不可读时沿用默认布局，不能让启动准备阶段阻断窗口显示。
+            }
+        }
+        ApplyShellPreferences(settings);
+        _startupStatePrepared = true;
     }
 
     private void ApplyShellPreferences(AppSettings settings)

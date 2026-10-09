@@ -234,7 +234,19 @@ public class App : Application
                 _serviceProvider?.GetRequiredService<MainWindowViewModel>()
                 ?? new MainWindowViewModel();
             StartupTrace.Mark("MainWindowViewModel");
+            if (_startupSettings is { } startupSettings)
+            {
+                // 先回填会影响布局的侧栏/标签状态，再构造首帧；否则 InitializeAsync 在窗口
+                // 已显示后才把折叠和多行设置套上，会触发一次可见的布局跳变。
+                viewModel.PrepareForStartup(startupSettings);
+            }
             var mainWindow = new MainWindow { DataContext = viewModel };
+            if (_startupSettings is { } startupAppearanceSettings)
+            {
+                // MainWindow 会在 Opened 后继续异步加载设置。把已经读好的启动外观先套上，
+                // 让第一帧就使用最终透明度、背景图、字体和侧栏位置，避免首帧后的整窗重排闪烁。
+                mainWindow.ApplyStartupAppearance(startupAppearanceSettings);
+            }
             StartupTrace.Mark("MainWindowView");
             desktop.MainWindow = mainWindow;
             // 主窗口真正关闭(不是缩到托盘):内置 X Server 一起停掉。X 窗口原先让进程退不出去 ——

@@ -57,6 +57,7 @@ public partial class MainWindow : Window
     private bool _standaloneSftpShutdownInProgress;
     private bool _standaloneSftpShutdownComplete;
     private bool _openedInitialized;
+    private bool _startupAppearanceApplied;
 
     /// <summary>
     /// 自绘缩放抓取区:普通状态按下即进入原生缩放;最大化时与 macOS 上整层隐藏(由 <see cref="WindowChrome" /> 管)。
@@ -199,6 +200,19 @@ public partial class MainWindow : Window
                 hover => TitleBar?.SetMaximizeNcHover(hover),
                 () => TitleBar?.ToggleMaximize()
             );
+    }
+
+    /// <summary>
+    /// 在窗口第一次显示前应用启动外观。启动设置已经由 <see cref="App" /> 读取，
+    /// 因此不应等到 <c>Opened</c> 后再异步套用；否则首帧会先用默认透明度、背景和侧栏位置
+    /// 绘制，随后又整窗重排一次，表现为启动闪烁。
+    /// </summary>
+    internal void ApplyStartupAppearance(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        _settings = settings;
+        ApplyWindowAppearance(settings);
+        _startupAppearanceApplied = true;
     }
 
     // ---- 原生窗口效果 ----------------------------------------------------------
@@ -536,8 +550,14 @@ public partial class MainWindow : Window
             }
             try
             {
-                _settings = await settingsService.GetSnapshotAsync();
-                ApplyWindowAppearance(_settings);
+                AppSettings loadedSettings = await settingsService.GetSnapshotAsync();
+                bool appearanceChanged = !_startupAppearanceApplied
+                    || !HasSameWindowAppearance(_settings, loadedSettings);
+                _settings = loadedSettings;
+                if (appearanceChanged)
+                {
+                    ApplyWindowAppearance(loadedSettings);
+                }
                 // 键位表的服务可能早于设置载入就建好了(那时只能给出厂键位),这里补一次。
                 _keymapService?.Update(_settings.Shortcuts);
             }
@@ -643,6 +663,24 @@ public partial class MainWindow : Window
         {
             ApplyUiFontTokens(app, a);
         }
+    }
+
+    private static bool HasSameWindowAppearance(AppSettings? left, AppSettings right)
+    {
+        if (left is null)
+        {
+            return false;
+        }
+
+        AppearanceOptions a = left.Appearance;
+        AppearanceOptions b = right.Appearance;
+        return a.WindowOpacityPercent == b.WindowOpacityPercent
+            && string.Equals(a.SidebarPosition, b.SidebarPosition, StringComparison.Ordinal)
+            && string.Equals(a.BackgroundImagePath, b.BackgroundImagePath, StringComparison.Ordinal)
+            && a.BackgroundImageOpacity == b.BackgroundImageOpacity
+            && a.ContentBackgroundOpacity == b.ContentBackgroundOpacity
+            && string.Equals(a.UiFont, b.UiFont, StringComparison.Ordinal)
+            && a.UiFontSize == b.UiFontSize;
     }
 
     /// <summary>

@@ -330,6 +330,22 @@ public class MainWindowViewModelTests
     }
 
     [TestMethod]
+    [TestCategory("Startup")]
+    public void PrepareForStartup_AppliesLayoutStateBeforeTheWindowIsShown()
+    {
+        ISettingsService settingsService = Substitute.For<ISettingsService>();
+        settingsService.GetStateAsync().Returns(Task.FromResult(new AppState { SidebarCollapsed = true }));
+        var vm = new MainWindowViewModel(settingsService: settingsService);
+        var settings = new AppSettings { Appearance = new() { MultiRowTabs = true } };
+
+        vm.PrepareForStartup(settings);
+
+        Assert.IsTrue(vm.Sidebar.IsCollapsed);
+        Assert.IsTrue(vm.Layout.MultiRowTabs);
+        settingsService.Received(1).GetStateAsync();
+    }
+
+    [TestMethod]
     [TestCategory("QuickCommands")]
     public void SettingsSaved_UpdatesQuickCommandsPanelVisibility()
     {
