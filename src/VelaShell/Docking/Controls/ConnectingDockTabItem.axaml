@@ -21,11 +21,6 @@
     <Style Selector="local|ConnectingDockTabItem">
       <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
-      <Setter Property="Transitions">
-        <Transitions>
-          <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
-        </Transitions>
-      </Setter>
     </Style>
     <Style Selector="local|ConnectingDockTabItem Border#TabRoot">
       <Setter Property="Background" Value="{DynamicResource VelaTabInactiveBg}" />

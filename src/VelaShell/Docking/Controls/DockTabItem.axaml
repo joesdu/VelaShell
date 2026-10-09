@@ -32,11 +32,11 @@
     <Style Selector="local|DockTabItem">
       <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
-      <Setter Property="Transitions">
-        <Transitions>
-          <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
-        </Transitions>
-      </Setter>
+      <!--
+        标签文字跟随外壳的 Foreground；不要在外壳本体上动画它。Windows 高 DPI
+        下悬停时会让整条标签和文字反复重采样，产生闪烁。背景/边框仍在 TabRoot
+        上过渡，激活指示线仍由 DockGroupControl 动画。
+      -->
     </Style>
     <Style Selector="local|DockTabItem Border#TabRoot">
       <Setter Property="Background" Value="{DynamicResource VelaTabInactiveBg}" />

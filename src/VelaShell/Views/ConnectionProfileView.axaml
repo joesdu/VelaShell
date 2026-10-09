@@ -35,13 +35,11 @@
       <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="FocusAdorner" Value="{x:Null}" />
-      <Setter Property="Transitions">
-        <Transitions>
-          <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
-          <BrushTransition Property="BorderBrush" Duration="0:0:0.12" Easing="CubicEaseOut" />
-          <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
-        </Transitions>
-      </Setter>
+      <!--
+        不在 Button 本体上做画刷过渡。协议图标绑定了 Button.Foreground；在 Windows
+        150% 缩放下，悬停时同时动画按钮和图标会让 Avalonia 反复重采样同一块命中区域，
+        指针停住时也会看到 tab 闪烁。悬停态直接落值，避免把输入状态和动画状态绑在一起。
+      -->
       <Setter Property="Template">
         <ControlTemplate>
           <Border Background="{TemplateBinding Background}"
@@ -84,12 +82,7 @@
       <Setter Property="FontWeight" Value="Medium" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="FocusAdorner" Value="{x:Null}" />
-      <Setter Property="Transitions">
-        <Transitions>
-          <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
-          <BrushTransition Property="Foreground" Duration="0:0:0.12" Easing="CubicEaseOut" />
-        </Transitions>
-      </Setter>
+      <!-- 悬停态直接落值；见 ProtoItemTheme 的说明。下划线仍保留 180ms 的切页动画。 -->
       <Setter Property="Template">
         <ControlTemplate>
           <Border Background="{TemplateBinding Background}"
