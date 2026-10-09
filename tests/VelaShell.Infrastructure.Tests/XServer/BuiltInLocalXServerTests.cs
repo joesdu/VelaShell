@@ -107,12 +107,51 @@ public class BuiltInLocalXServerTests
 
         Assert.AreEqual("localhost:10.0", resolution.Display);
         Assert.IsNotNull(resolution.Connector);
-        await using Stream stream = await resolution.Connector("user@host:22", CancellationToken.None);
+        await using Stream stream = await resolution.Connector(new XServerChannelSource("user@host:22"), CancellationToken.None);
         await stream.WriteAsync(new byte[] { (byte)'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
         await stream.FlushAsync();
         byte[] head = new byte[8];
         await stream.ReadExactlyAsync(head).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.AreEqual(1, head[0], "Success —— 经连接器来的连接按本机连接放行");
+    }
+
+    /// <summary>
+    /// 没勾「受信任」的会话(ssh -X)经连接器连进来是非受信客户端:服务端按 SECURITY 的语义对它藏起 XTEST;
+    /// 受信的会话照常看得见。原先非受信的会话根本开不起转发。
+    /// </summary>
+    [TestMethod]
+    public async Task Connector_UntrustedSource_ConnectsAsAnUntrustedClient()
+    {
+        await using BuiltInLocalXServer server = Create(new XServerOptions(), new RecordingHost());
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+
+        await using Stream untrusted = await resolution.Connector!(new XServerChannelSource("user@host:22", Trusted: false), CancellationToken.None);
+        await using Stream trusted = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
+
+        CollectionAssert.DoesNotContain(await ListExtensionsAsync(untrusted), "XTEST");
+        CollectionAssert.Contains(await ListExtensionsAsync(trusted), "XTEST");
+
+        static async Task<List<string>> ListExtensionsAsync(Stream stream)
+        {
+            await stream.WriteAsync(new byte[] { (byte)'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+            await stream.FlushAsync();
+            byte[] head = new byte[8];
+            await stream.ReadExactlyAsync(head).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(1, head[0]);
+            await stream.ReadExactlyAsync(new byte[BitConverter.ToUInt16(head, 6) * 4]);
+            await stream.WriteAsync(new byte[] { 99, 0, 1, 0 });   // ListExtensions
+            await stream.FlushAsync();
+            byte[] reply = new byte[32];
+            await stream.ReadExactlyAsync(reply).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            byte[] body = new byte[BitConverter.ToUInt32(reply, 4) * 4];
+            await stream.ReadExactlyAsync(body);
+            List<string> names = [];
+            for (int i = 0, at = 0; i < reply[1]; i++, at += 1 + body[at])
+            {
+                names.Add(Encoding.Latin1.GetString(body, at + 1, body[at]));
+            }
+            return names;
+        }
     }
 
     /// <summary>停之前数得出连着几个 X 程序(标题栏按钮据此确认「会断开 N 个程序」);没在运行时为 0。</summary>
@@ -122,8 +161,8 @@ public class BuiltInLocalXServerTests
         await using BuiltInLocalXServer server = Create(new XServerOptions(), new RecordingHost());
         Assert.AreEqual(0, await server.CountConnectedClientsAsync(), "没在运行");
         XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
-        await using Stream first = await resolution.Connector!("user@host:22", CancellationToken.None);
-        await using Stream second = await resolution.Connector!("user@host:22", CancellationToken.None);
+        await using Stream first = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
+        await using Stream second = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
         Assert.AreEqual(1, await HandshakeAsync(first));
         Assert.AreEqual(1, await HandshakeAsync(second));
         Assert.AreEqual(2, await server.CountConnectedClientsAsync());
@@ -142,7 +181,7 @@ public class BuiltInLocalXServerTests
         Assert.IsTrue(server.CanManageClients);
         Assert.IsEmpty(await server.GetClientsAsync(), "没在运行");
         XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
-        await using Stream stream = await resolution.Connector!("user@host:22", CancellationToken.None);
+        await using Stream stream = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
         Assert.AreEqual(1, await HandshakeAsync(stream));
 
         XServerClient client = (await server.GetClientsAsync()).Single();
@@ -156,7 +195,7 @@ public class BuiltInLocalXServerTests
         // 停了再开:新服务端上第一个程序的编号与刚才那个相同,旧键不能把它断开。
         await server.StopAsync();
         Assert.IsTrue((await server.StartAsync()).Success);
-        await using Stream again = await resolution.Connector!("user@host:22", CancellationToken.None);
+        await using Stream again = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
         Assert.AreEqual(1, await HandshakeAsync(again));
         XServerClient fresh = (await server.GetClientsAsync()).Single();
         Assert.AreEqual(client.Id, fresh.Id, "同一个编号");
@@ -191,7 +230,7 @@ public class BuiltInLocalXServerTests
         RecordingHost host = new();
         await using BuiltInLocalXServer server = Create(new XServerOptions(), host);
         XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
-        await using Stream stream = await resolution.Connector!("user@stuck:22", CancellationToken.None);
+        await using Stream stream = await resolution.Connector!(new XServerChannelSource("user@stuck:22"), CancellationToken.None);
         Assert.AreEqual(1, await HandshakeAsync(stream));
         XServerClient client = (await server.GetClientsAsync()).Single();
         TaskCompletionSource<XServerGrabStallNotice> reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -228,10 +267,10 @@ public class BuiltInLocalXServerTests
         Assert.IsNotNull(resolution.Connector);
 
         await server.StopAsync();
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await resolution.Connector("user@host:22", CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await resolution.Connector(new XServerChannelSource("user@host:22"), CancellationToken.None));
 
         Assert.IsTrue((await server.StartAsync()).Success);
-        await using Stream stream = await resolution.Connector("user@host:22", CancellationToken.None);
+        await using Stream stream = await resolution.Connector(new XServerChannelSource("user@host:22"), CancellationToken.None);
         await stream.WriteAsync(new byte[] { (byte)'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
         await stream.FlushAsync();
         byte[] head = new byte[8];
@@ -287,7 +326,7 @@ public class BuiltInLocalXServerTests
                 Assert.AreEqual(1, await HandshakeAsync(authorized.GetStream(), entry.Data.ToArray()), "带上 .Xauthority 里的 cookie:Success");
             }
             XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
-            await using (Stream channel = await resolution.Connector!("user@host:22", CancellationToken.None))
+            await using (Stream channel = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None))
             {
                 Assert.AreEqual(1, await HandshakeAsync(channel), "SSH 的连接器:转发层核对过假 cookie,不再要");
             }

@@ -217,29 +217,31 @@ public sealed class X11ForwardTests
     }
 
     /// <summary>
-    /// 连接器与非受信模式同时设是配置矛盾：开会话的入口在开通道之前就抛 <see cref="ArgumentException"/>，
-    /// 「转发没开成也继续」也不吞它。曾经要到发 x11-req 时才报成「转发没开成」。
+    /// 〔spec 07 §7.5.9〕非受信模式也能经连接器接入:不跑 <c>xauth</c>(给一个不存在的也照样开成),x11-req 照发,
+    /// 连接器那一端自己按非受信处理这条连接(内嵌的 X server 直接当它是非受信客户端)。原先两者同时设当作配置矛盾、开通道之前就抛。
     /// </summary>
     [TestMethod]
-    public async Task 连接器与非受信模式同时设时开通道之前就抛()
+    public async Task 非受信模式也能经连接器接入_不跑xauth()
     {
         await using Fixture fixture = await Fixture.StartAsync();
-        int opensBefore = fixture.Harness.Channels.Observation.ReceivedOpens;
+        int connects = 0;
 
-        await Assert.ThrowsExactlyAsync<ArgumentException>(async () => await fixture.Harness.Connection.OpenShellAsync(
+        await using SshShell shell = await fixture.Harness.Connection.OpenShellAsync(
             new SshShellOptions
             {
                 X11Forwarding = fixture.Options with
                 {
                     IsTrusted = false,
-                    LocalConnector = _ => ValueTask.FromResult<Stream>(new MemoryStream()),
-                    FailureMode = ForwardFailureMode.Continue,
+                    XAuthLocation = Path.Combine(Path.GetTempPath(), $"velashell-no-xauth-{Guid.NewGuid():N}", "xauth"),
+                    LocalConnector = _ => { Interlocked.Increment(ref connects); return ValueTask.FromResult<Stream>(new MemoryStream()); },
+                    FailureMode = ForwardFailureMode.Fail,
                 },
             },
-            fixture.Harness.Token));
+            fixture.Harness.Token);
 
-        Assert.AreEqual(opensBefore, fixture.Harness.Channels.Observation.ReceivedOpens, "开了通道");
-        Assert.IsEmpty(fixture.Harness.Channels.Observation.X11Requests, "没有发 x11-req");
+        Assert.IsNull(shell.X11SetupFailure, "没有去跑 xauth,也就没有失败");
+        Assert.IsNotNull(shell.X11);
+        Assert.HasCount(1, fixture.Harness.Channels.Observation.X11Requests, "x11-req 照发");
     }
 
     [TestMethod]

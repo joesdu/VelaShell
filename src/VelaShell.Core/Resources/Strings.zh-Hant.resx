@@ -5914,7 +5914,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>受信任(-Y)</value>
   </data>
   <data name="Profile_SshX11TrustedHint" xml:space="preserve">
-    <value>受信任轉送讓遠端 X 程式對本機顯示擁有完整存取權,而且所有轉送的工作階段共用這一個顯示:能看到彼此的視窗、讀取剪貼簿、注入輸入。內建 X Server 與 Windows 上的多數 X 伺服器只支援這種模式;非受信任模式需要支援 SECURITY 擴充的外部 X 伺服器,並在本機安裝 xauth。</value>
+    <value>受信任轉送讓遠端 X 程式對本機顯示擁有完整存取權:能看到其他程式的視窗、讀取剪貼簿與鍵盤、注入輸入。非受信任轉送(相當於 ssh -X)只讓它們存取自己的視窗:無法擷取其他程式的畫面、讀不到其他程式的鍵盤輸入、不能偽造輸入。內建 X Server 兩種都支援;外部 X 伺服器的非受信任模式需要它支援 SECURITY 擴充,並在本機安裝 xauth。少數舊程式在非受信任模式下無法正常運作。</value>
   </data>
   <data name="Ssh_X11ForwardOn" xml:space="preserve">
     <value>X11 轉送已開啟 → 本機顯示 {0}</value>
@@ -5930,9 +5930,6 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="Ssh_X11BadDisplay" xml:space="preserve">
     <value>無法辨識顯示位址「{0}」(應形如 localhost:0.0)</value>
-  </data>
-  <data name="Ssh_X11UntrustedBuiltIn" xml:space="preserve">
-    <value>內建 X Server 只支援受信任轉送(它沒有 SECURITY 擴充)。請為這個連線勾選「受信任(-Y)」,或改用外部 X 伺服器。</value>
   </data>
   <data name="SshErr_AgentUnavailable" xml:space="preserve">
     <value>無法連線到本機 ssh-agent:{0}</value>

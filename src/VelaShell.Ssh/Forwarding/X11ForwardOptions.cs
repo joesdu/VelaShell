@@ -26,7 +26,8 @@ public sealed record X11ForwardOptions
     /// 的输入输出交给远端，要有明确的理由。
     /// <para>
     /// 非受信模式需要本机有 <c>xauth</c>、且 X server 支持 SECURITY 扩展；
-    /// Windows 上通常两者都没有，那里只能用受信模式。
+    /// Windows 上通常两者都没有，那里只能用受信模式。经 <see cref="LocalConnector"/> 接本机显示时不用 <c>xauth</c>：
+    /// 连接器那一端自己按非受信处理这条连接。
     /// </para>
     /// </remarks>
     public bool IsTrusted { get; init; }
@@ -111,11 +112,12 @@ public sealed record X11ForwardOptions
     /// <para>
     /// 〔<c>velashell-docs/zh/ssh/spec/07</c> §7.5.9〕假 cookie 的核对照旧 —— 那一层防的是远端,与本机这一端怎么接无关。
     /// 核对通过之后,建立报文里的 cookie 换成 <see cref="LocalCookie" />(没给就是空的),再写进这条流。
-    /// 连接器那一端自己负责访问控制:给出的流就等于一条已被信任的本机连接。
+    /// 连接器那一端自己负责访问控制:受信模式下给出的流就等于一条已被信任的本机连接。
     /// </para>
     /// <para>
-    /// 只支持受信模式:非受信模式要 <c>xauth</c> 连上本机显示签一个受限 cookie,而连接器后面未必有可供 <c>xauth</c>
-    /// 去连的显示 —— 两者同时设时请求 X11 转发会抛 <see cref="SshForwardException" />。
+    /// 非受信模式(<see cref="IsTrusted" /> 为 <see langword="false" />)下不跑 <c>xauth</c> 去签受限 cookie ——
+    /// 连接器后面未必有可供 <c>xauth</c> 去连的显示 —— 由连接器那一端把这条连接当成非受信的处理
+    /// (比如进程内嵌的 X server 直接按 SECURITY 扩展的非受信语义限制它)。原先两者同时设是配置矛盾、开通道之前就抛。
     /// <see cref="Display" /> 仍然要给(或取 <c>DISPLAY</c>):屏幕号与诊断信息用它。
     /// </para>
     /// <para>
@@ -133,22 +135,4 @@ public sealed record X11ForwardOptions
 
     /// <summary>默认选项。</summary>
     public static X11ForwardOptions Default { get; } = new();
-
-    /// <summary>跨字段的核对：给了 <see cref="LocalConnector"/> 就必须是受信模式。</summary>
-    /// <exception cref="ArgumentException">给了连接器却不是受信模式。</exception>
-    /// <remarks>
-    /// 由几条 <c>init</c> 拼成，赋值的先后不定，做不到设值时校验 —— 由开会话的入口在<b>开通道之前</b>代为调用。
-    /// 曾经要到发 <c>x11-req</c> 的时候才报，而且报成「转发没开成」（<see cref="SshForwardException"/>）：
-    /// 在 <see cref="ForwardFailureMode.Continue"/> 下，一处写错的配置变成了一条每次都出现的「X11 没开成」。
-    /// </remarks>
-    internal void Validate()
-    {
-        if (LocalConnector is not null && !IsTrusted)
-        {
-            throw new ArgumentException(
-                "本机显示经连接器接入时只支持受信模式（IsTrusted = true）：非受信模式要 xauth 连上本机显示签受限 cookie，" +
-                "连接器后面没有可供它去连的显示。",
-                nameof(LocalConnector));
-        }
-    }
 }

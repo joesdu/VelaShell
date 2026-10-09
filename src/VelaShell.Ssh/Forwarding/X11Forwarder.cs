@@ -115,8 +115,6 @@ public sealed class X11Forwarder : IAsyncDisposable
                 "拿不到本机的 X 显示：DISPLAY 没设或者格式不认识。" +
                 "可以在 X11ForwardOptions.Display 里显式指定。");
 
-        effective.Validate();   // 开会话的入口已经核对过；这里留着是给直接调用的（测试）
-
         byte[] realCookie = effective.LocalConnector is not null
             ? effective.LocalCookie.ToArray()
             : await ResolveRealCookieAsync(display, effective, cancellationToken).ConfigureAwait(false);

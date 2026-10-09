@@ -33,11 +33,11 @@ public sealed record XServerStartResult(bool Success, string? Error = null)
 /// <param name="Error">自动启动失败的原因(已本地化);没有尝试启动或启动成功时为 <see langword="null" />。</param>
 /// <param name="Connector">
 /// 内置 X 服务端给的本机连接器:调一次得到一条直接接进服务端的双工流,SSH 的 x11 通道不必再去连本机端口。
-/// 第一个参数是这条连接的来历(比如 <c>user@host:22</c>),服务端记进日志与客户端清单,说得出是哪个会话的程序。
+/// 第一个参数说明这条通道从哪来、该受什么限制(<see cref="XServerChannelSource" />)。
 /// <see langword="null" /> = 按 <paramref name="Display" /> 走套接字(VcXsrv 等外部 X 服务端)。
 /// </param>
 public sealed record XServerDisplayResolution(
-    string? Display, string? Error = null, Func<string?, CancellationToken, ValueTask<Stream>>? Connector = null)
+    string? Display, string? Error = null, Func<XServerChannelSource, CancellationToken, ValueTask<Stream>>? Connector = null)
 {
     /// <summary>不接管。</summary>
     public static XServerDisplayResolution None { get; } = new(Display: null);
@@ -63,6 +63,20 @@ public sealed record XServerClient(
 /// <param name="Source">从哪来(见 <see cref="XServerClient.Source" />)。</param>
 /// <param name="Held">已经抓了多久。</param>
 public sealed record XServerGrabStallNotice(string ClientKey, int Id, string Name, string? Source, TimeSpan Held);
+
+/// <summary>经连接器接进内置 X 服务端的一条 SSH x11 通道:它的来历与该受的限制。</summary>
+/// <param name="Label">来历(比如 <c>user@host:22</c>),服务端记进日志与客户端清单,说得出是哪个会话的程序。</param>
+/// <param name="Trusted">
+/// 受信(<c>ssh -Y</c>,连接里勾了「受信任」);<see langword="false" /> = 非受信(<c>ssh -X</c>):服务端按 SECURITY 扩展的
+/// 非受信语义限制它 —— 只碰得到非受信程序的窗口,拿不到别的程序的画面与键盘、不能伪造输入。
+/// </param>
+/// <param name="Session">
+/// 发起它的 SSH 会话(同一个对象就是同一个会话)。设置里开了「每个 SSH 会话一个显示」时,内置服务端按它把会话分到各自的显示上;
+/// <see langword="null" /> = 不分(落在共用的显示上)。
+/// </param>
+/// <param name="SessionEnded">会话结束时取消:按会话分出来的显示随之收掉。</param>
+public sealed record XServerChannelSource(
+    string? Label, bool Trusted = true, object? Session = null, CancellationToken SessionEnded = default);
 
 /// <summary>
 /// 由 VelaShell 管理的本机 X 服务端(标题栏的 X Server 按钮、设置 → X Server)。

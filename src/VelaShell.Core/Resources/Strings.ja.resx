@@ -5455,7 +5455,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>信頼済み(-Y)</value>
   </data>
   <data name="Profile_SshX11TrustedHint" xml:space="preserve">
-    <value>信頼済み転送では、リモートの X クライアントがローカルのディスプレイに完全にアクセスできます。転送中のセッションはすべて同じディスプレイを共有するため、互いのウィンドウを見たり、クリップボードを読んだり、入力を送ったりできます。内蔵 X Server と Windows の多くの X サーバーはこのモードにしか対応していません。非信頼モードには SECURITY 拡張に対応した外部の X サーバーと、ローカルの xauth が必要です。</value>
+    <value>信頼済み転送では、リモートの X クライアントがローカルのディスプレイに完全にアクセスでき、ほかのプログラムのウィンドウを見たり、クリップボードやキーボードを読んだり、入力を送ったりできます。非信頼転送(ssh -X 相当)では自分のウィンドウにしかアクセスできず、ほかのプログラムの画面取得、キーボード入力の読み取り、入力の偽装はできません。内蔵 X Server はどちらのモードにも対応しています。外部の X サーバーで非信頼モードを使うには、SECURITY 拡張とローカルの xauth が必要です。古いプログラムの一部は非信頼モードで正しく動かないことがあります。</value>
   </data>
   <data name="Ssh_X11ForwardOn" xml:space="preserve">
     <value>X11 転送が有効です → ローカル ディスプレイ {0}</value>
@@ -5471,9 +5471,6 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="Ssh_X11BadDisplay" xml:space="preserve">
     <value>ディスプレイ「{0}」を認識できません(localhost:0.0 のような形式にしてください)</value>
-  </data>
-  <data name="Ssh_X11UntrustedBuiltIn" xml:space="preserve">
-    <value>内蔵 X Server は信頼済み転送にしか対応していません(SECURITY 拡張がありません)。この接続で「信頼済み(-Y)」をオンにするか、外部の X サーバーを使ってください。</value>
   </data>
   <data name="SshErr_AgentUnavailable" xml:space="preserve">
     <value>ローカルの ssh-agent に接続できません: {0}</value>

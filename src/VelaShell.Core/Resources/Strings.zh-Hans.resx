@@ -5914,7 +5914,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>受信任(-Y)</value>
   </data>
   <data name="Profile_SshX11TrustedHint" xml:space="preserve">
-    <value>受信任转发让远端 X 程序对本机显示有完全的访问权,而且所有转发的会话共用这一个显示:能看到彼此的窗口、读剪贴板、注入输入。内置 X Server 与 Windows 上的多数 X 服务器只支持这种模式;非受信模式需要支持 SECURITY 扩展的外部 X 服务器,并在本机装有 xauth。</value>
+    <value>受信任转发让远端 X 程序对本机显示有完全的访问权:能看到别的程序的窗口、读剪贴板与键盘、注入输入。非受信转发(相当于 ssh -X)只让它们碰自己的窗口:截不了别的程序的画面、读不到别的程序的键盘输入、不能伪造输入。内置 X Server 两种都支持;外部 X 服务器的非受信模式要它支持 SECURITY 扩展,并在本机装有 xauth。少数老程序在非受信模式下工作不正常。</value>
   </data>
   <data name="Ssh_X11ForwardOn" xml:space="preserve">
     <value>X11 转发已开启 → 本机显示 {0}</value>
@@ -5930,9 +5930,6 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="Ssh_X11BadDisplay" xml:space="preserve">
     <value>认不出显示地址「{0}」(应形如 localhost:0.0)</value>
-  </data>
-  <data name="Ssh_X11UntrustedBuiltIn" xml:space="preserve">
-    <value>内置 X Server 只支持受信任转发(它没有 SECURITY 扩展)。请为这个连接勾上「受信任(-Y)」,或改用外部 X 服务器。</value>
   </data>
   <data name="SshErr_AgentUnavailable" xml:space="preserve">
     <value>连不上本机 ssh-agent:{0}</value>

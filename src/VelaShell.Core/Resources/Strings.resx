@@ -5460,7 +5460,7 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
     <value>Trusted (-Y)</value>
   </data>
   <data name="Profile_SshX11TrustedHint" xml:space="preserve">
-    <value>Trusted forwarding gives remote X clients full access to your local display, and all forwarded sessions share it: they can see each other&apos;s windows, read the clipboard and send input. The built-in X Server and most X servers on Windows support only this mode; untrusted mode needs an external X server with the SECURITY extension and xauth installed locally.</value>
+    <value>Trusted forwarding gives remote X clients full access to your local display: they can see the windows of other programs, read the clipboard and the keyboard, and send input. Untrusted forwarding (like ssh -X) limits them to their own windows: they cannot capture other programs, read their keyboard input or fake input. The built-in X Server supports both modes; with an external X server, untrusted mode needs its SECURITY extension and xauth installed locally. A few old programs do not work correctly when untrusted.</value>
   </data>
   <data name="Ssh_X11ForwardOn" xml:space="preserve">
     <value>X11 forwarding on → local display {0}</value>
@@ -5476,9 +5476,6 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   </data>
   <data name="Ssh_X11BadDisplay" xml:space="preserve">
     <value>unrecognized display &quot;{0}&quot; (expected something like localhost:0.0)</value>
-  </data>
-  <data name="Ssh_X11UntrustedBuiltIn" xml:space="preserve">
-    <value>the built-in X Server supports only trusted forwarding (it has no SECURITY extension). Turn on &quot;Trusted (-Y)&quot; for this connection, or use an external X server.</value>
   </data>
   <data name="SshErr_AgentUnavailable" xml:space="preserve">
     <value>Cannot reach the local ssh-agent: {0}</value>

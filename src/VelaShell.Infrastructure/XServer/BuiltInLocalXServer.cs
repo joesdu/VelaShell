@@ -508,7 +508,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
     /// 此刻没在运行就抛 <see cref="InvalidOperationException" />:<see cref="LocalXServerSelector" /> 接住它改走本机 TCP
     /// (用户换成了 VcXsrv),直接用的转发层按「本机显示连不上」处理。
     /// </remarks>
-    private ValueTask<Stream> ConnectAsync(string? label, CancellationToken cancellationToken)
+    private ValueTask<Stream> ConnectAsync(XServerChannelSource source, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         X11Server? server;
@@ -522,17 +522,19 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
             throw new InvalidOperationException("The built-in X server is not running.");
         }
         (InMemoryDuplexStream serverSide, InMemoryDuplexStream clientSide) = InMemoryTransport.CreatePair();
-        _ = ServeAsync(server, serverSide, label);
+        _ = ServeAsync(server, serverSide, source);
         return ValueTask.FromResult<Stream>(clientSide);
     }
 
-    private static async Task ServeAsync(X11Server server, InMemoryDuplexStream stream, string? label)
+    private static async Task ServeAsync(X11Server server, InMemoryDuplexStream stream, XServerChannelSource source)
     {
         try
         {
             // 服务端不拥有流:连接结束(客户端断开、服务端停下)后在这里释放,SSH 那一端随之读到 EOF。
             // SSH 转发层已经核对过远端给的假 cookie:这条流不再查授权(服务端的 cookie 只给 TCP 上的本机程序)。
-            await server.ServeAuthenticatedAsync(stream, label).ConfigureAwait(false);
+            // 没勾「受信任」的会话(ssh -X)以非受信级别连进去:服务端按 SECURITY 扩展的语义限制它。
+            await server.ServeAuthenticatedAsync(stream, source.Label, source.Trusted ? XClientTrust.Trusted : XClientTrust.Untrusted)
+                .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is ObjectDisposedException or IOException or OperationCanceledException)
         {
