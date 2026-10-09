@@ -15,6 +15,9 @@ internal sealed class RecordingHost : IX11ServerHost, IDisposable
     /// <summary>最近一次 <see cref="CursorChanged" /> 收到的光标。</summary>
     public XCursor? Cursor { get; private set; }
 
+    /// <summary>最近一次光标变化指名的顶层(null = 不在任何顶层上)。</summary>
+    public XTopLevelWindow? CursorWindow { get; private set; }
+
     /// <summary>最近一次 <see cref="TopLevelChanged" /> 报告的变化。</summary>
     public XTopLevelChanges LastChanges { get; private set; }
 
@@ -66,6 +69,7 @@ internal sealed class RecordingHost : IX11ServerHost, IDisposable
     public void CursorChanged(XTopLevelWindow? window, XCursor cursor)
     {
         Cursor = cursor;
+        CursorWindow = window;
         Note($"cursor {cursor.Shape}{(cursor.Image is { } image ? $" {image.Width}x{image.Height}" : "")}");
     }
 
@@ -75,6 +79,31 @@ internal sealed class RecordingHost : IX11ServerHost, IDisposable
     {
         Requests.Enqueue(request);
         Note($"wm {request.GetType().Name}");
+    }
+
+    public ConcurrentDictionary<XTopLevelWindow, string> TrayIcons { get; } = new();
+
+    public ConcurrentQueue<XTopLevelWindow> TrayIconsRemoved { get; } = new();
+
+    public void SystemTrayIconAdded(XTopLevelWindow icon, string title)
+    {
+        TrayIcons[icon] = title;
+        Note($"tray +{icon.Id:x} {title}");
+    }
+
+    public void SystemTrayIconRemoved(XTopLevelWindow icon)
+    {
+        TrayIcons.TryRemove(icon, out _);
+        TrayIconsRemoved.Enqueue(icon);
+        Note($"tray -{icon.Id:x}");
+    }
+
+    public ConcurrentQueue<XServerGrabStall> ServerGrabStalls { get; } = new();
+
+    public void ServerGrabStalled(XServerGrabStall stall)
+    {
+        ServerGrabStalls.Enqueue(stall);
+        Note($"server grab stalled by {stall.ClientId}");
     }
 
     public void ClipboardChanged(string text)

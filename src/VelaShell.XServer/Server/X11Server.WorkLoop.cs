@@ -298,6 +298,7 @@ public sealed partial class X11Server
                         break;
                     }
                 }
+                ComposeScreenBatch();   // 单窗口模式:这一批的变化拼进屏幕(要在像素锁里)
             }
             finally
             {
@@ -307,6 +308,7 @@ public sealed partial class X11Server
         // 宿主回调与日志一律在放锁之后调:回调里同步等 UI 线程、而 UI 线程正在 ReadPixels 里等这把锁,就是死锁。
         FlushLog();
         FlushDamage();
+        FlushScreenDamage();
         _host.Flush();
     }
 
@@ -406,8 +408,11 @@ public sealed partial class X11Server
         }
         if (_deferred.Count != 0)
         {
-            Log($"{holder} has held the server grab for {(int)(ServerGrabWarningDelay.TotalSeconds * ((6 * (round - 1)) + 1))} s; "
+            TimeSpan held = ServerGrabWarningDelay * ((6 * (round - 1)) + 1);
+            Log($"{holder} has held the server grab for {(int)held.TotalSeconds} s; "
                 + $"{_deferred.Count} requests of other clients are waiting (BreakGrabs or disconnecting {holder} releases them)");
+            // 只记日志时用户与宿主都不知道该断开谁:告诉宿主,由它提示用户(F3)。
+            _host.ServerGrabStalled(new XServerGrabStall(holder.Index, holder.Label, held, _deferred.Count));
         }
         _ = DelayThenPostAsync((uint)(ServerGrabWarningDelay.TotalMilliseconds * 6), () => WarnLongServerGrab(epoch, round + 1), _lifetime.Token);
     }

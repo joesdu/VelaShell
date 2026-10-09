@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -44,6 +45,9 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
 
     private X11Server? _server;
     private IEmbeddedXServerHost? _attached;
+
+    /// <summary>每成功启动一次加一:客户端的键(<see cref="XServerClient.Key" />)带着它,停了再开之后旧键不会断开新服务端上同编号的程序。</summary>
+    private int _generation;
     private int? _displayNumber;
     private XServerState _state = XServerState.Stopped;
     private bool _disposed;
@@ -172,6 +176,8 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
             try
             {
                 cookie = RandomNumberGenerator.GetBytes(16);
+                // 窗口模式里除了多窗口与「无根」,其余几种(带框的大窗口、无框、全屏)都是单窗口模式(F13):整个桌面在一个窗口里,远端的窗口管理器接手。
+                bool rootful = options.WindowMode is XServerWindowModes.Windowed or XServerWindowModes.NoDecoration or XServerWindowModes.Fullscreen;
                 candidate = new(new X11ServerOptions
                 {
                     DisplayNumber = display,
@@ -179,10 +185,14 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
                     SyncClipboard = options.Clipboard,
                     SyncPrimary = options.Clipboard && options.CopyOnSelection,
                     RestrictForwardedClients = options.RestrictForwardedClients,
+                    // 宿主把 X 程序的托盘图标显示成自己的托盘图标(F12),关闭到托盘的程序找得回来;单窗口模式下托盘归远端桌面的面板。
+                    SystemTray = !rootful,
+                    Rootful = rootful,
                     Log = static line => Trace.WriteLine($"[XServer] {line}"),
                 }, host);
                 // 先让宿主把显示器布局、DPI、键盘布局告诉服务端,再开门 —— 第一个客户端拿到的就是对的屏幕与键位表。
                 host.UseKeyboardLayout(options.KeyboardLayout);
+                host.UseWindowMode(options.WindowMode);
                 await host.AttachAsync(candidate, cancellationToken).ConfigureAwait(false);
                 await candidate.StartAsync(cancellationToken).ConfigureAwait(false);
                 server = candidate;
@@ -224,7 +234,9 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
             _server = server;
             _attached = host;
             _state = XServerState.Running;
+            _generation++;
         }
+        host.GrabStallReported += OnGrabStallReported;
         Trace.WriteLine($"[XServer] built-in server listening on :{display}");
         RaiseStateChanged();
         return XServerStartResult.Ok;
@@ -259,6 +271,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         {
             return;
         }
+        host?.GrabStallReported -= OnGrabStallReported;
         host?.Detach();
         await server.DisposeAsync().ConfigureAwait(false);
         RetractCookie();
@@ -371,6 +384,104 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException)
         {
             return 0;   // 刚好停了
+        }
+    }
+
+    /// <inheritdoc />
+    public bool CanManageClients => true;
+
+    /// <inheritdoc />
+    public event EventHandler<XServerGrabStallNotice>? ServerGrabStalled;
+
+    /// <inheritdoc />
+    /// <remarks>程序名取它第一个窗口的 <c>WM_CLASS</c>(类名,没有退到实例名),来历是 SSH 连接器给的连接标签。</remarks>
+    public async Task<IReadOnlyList<XServerClient>> GetClientsAsync()
+    {
+        (X11Server? server, int generation) = Running();
+        if (server is null)
+        {
+            return [];
+        }
+        try
+        {
+            return [.. (await server.GetClientsAsync().ConfigureAwait(false)).Select(c => ToClient(c, generation))];
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException)
+        {
+            return [];   // 刚好停了
+        }
+    }
+
+    /// <inheritdoc />
+    public void DisconnectClient(string key)
+    {
+        (X11Server? server, int generation) = Running();
+        if (server is not null && ParseKey(key) is { } parsed && parsed.Generation == generation)
+        {
+            server.DisconnectClient(parsed.Id);
+        }
+    }
+
+    /// <inheritdoc />
+    public void BreakGrabs() => Running().Server?.BreakGrabs();
+
+    /// <summary>此刻在运行的服务端与它是第几次启动的;没在运行时服务端为 null。</summary>
+    private (X11Server? Server, int Generation) Running()
+    {
+        lock (_stateLock)
+        {
+            return (_state == XServerState.Running ? _server : null, _generation);
+        }
+    }
+
+    private static string Key(int generation, int id) => $"{generation.ToString(CultureInfo.InvariantCulture)}:{id.ToString(CultureInfo.InvariantCulture)}";
+
+    private static (int Generation, int Id)? ParseKey(string key) =>
+        key.Split(':') is [var g, var i]
+        && int.TryParse(g, NumberStyles.None, CultureInfo.InvariantCulture, out int generation)
+        && int.TryParse(i, NumberStyles.None, CultureInfo.InvariantCulture, out int id)
+            ? (generation, id)
+            : null;
+
+    private static XServerClient ToClient(XClientInfo client, int generation)
+    {
+        XTopLevelSnapshot? first = client.TopLevels.Select(w => w.Snapshot).FirstOrDefault();
+        string name = first is null ? "" : first.ClassName.Length > 0 ? first.ClassName : first.InstanceName;
+        return new XServerClient(Key(generation, client.Id), client.Id, name, first?.Title ?? "", client.Label,
+            client.TopLevels.Count, client.MemoryBytes, client.Retained, client.HoldsServerGrab);
+    }
+
+    /// <summary>
+    /// 服务端说有个客户端抓着整个服务端太久(在它的执行线程上):查出是哪个程序再转给界面 —— 查清单要回到执行线程,
+    /// 这里不能同步等,另起一个任务。
+    /// </summary>
+    private void OnGrabStallReported(object? sender, XServerGrabStall stall) => _ = ReportGrabStallAsync(stall);
+
+    private async Task ReportGrabStallAsync(XServerGrabStall stall)
+    {
+        try
+        {
+            (X11Server? server, int generation) = Running();
+            if (server is null)
+            {
+                return;
+            }
+            XClientInfo? holder = (await server.GetClientsAsync().ConfigureAwait(false)).FirstOrDefault(c => c.Id == stall.ClientId);
+            if (holder is null || !holder.HoldsServerGrab)
+            {
+                return;   // 查的这一会儿已经放开(或者断了)
+            }
+            XServerClient client = ToClient(holder, generation);
+            ServerGrabStalled?.Invoke(this, new XServerGrabStallNotice(client.Key, client.Id, client.Name.Length > 0 ? client.Name : client.Title,
+                stall.ClientLabel, stall.Held));
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException)
+        {
+            // 刚好停了
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[XServer] reporting a stalled server grab failed: {ex}");
         }
     }
 

@@ -8,7 +8,9 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using ReactiveUI.Primitives;
 using VelaShell.Core.Resources;
+using VelaShell.Core.XServer;
 using VelaShell.Infrastructure.XServer;
 using VelaShell.Views;
 using VelaShell.Views.XServer;
@@ -54,7 +56,38 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     private bool _damagePosted;
 
     /// <summary>新建一个宿主;经 <see cref="AttachAsync" /> 接到服务端上。</summary>
-    public AvaloniaXServerHost() => _deliverDamage = DeliverDamage;
+    /// <param name="dropUploader">本机文件拖进经 SSH 转发来的 X 程序时,把文件传到远端(F16);没有时那类窗口不接文件。</param>
+    public AvaloniaXServerHost(IXServerDropUploader? dropUploader = null)
+    {
+        _deliverDamage = DeliverDamage;
+        DropUploader = dropUploader;
+        _trayIcons = new XTrayIcons(CurrentServer);
+    }
+
+    /// <summary>X 程序的托盘图标(F12),画成宿主的托盘图标。只在 UI 线程上碰。</summary>
+    private readonly XTrayIcons _trayIcons;
+
+    /// <summary>此刻挂着的 X 托盘图标数(测试看)。</summary>
+    internal int TrayIconCount => _trayIcons.Count;
+
+    /// <summary>本机文件拖进经 SSH 转发来的 X 程序时,把文件传到远端(见 <see cref="Views.XServer.XDropTarget" />)。</summary>
+    internal IXServerDropUploader? DropUploader { get; }
+
+    /// <summary>给用户一条提示(主窗口右下的提示浮层;主窗口不在时不提示)。UI 线程上调。</summary>
+    internal static void NotifyUser(string message, bool error)
+    {
+        if (MainWindow()?.DataContext is ViewModels.MainWindowViewModel { Toasts: { } toasts })
+        {
+            if (error)
+            {
+                toasts.Error(message);
+            }
+            else
+            {
+                toasts.Info(message);
+            }
+        }
+    }
 
     /// <summary>当前附着的服务端;没在运行时为 <see langword="null" />。窗口的注入经它走。</summary>
     public X11Server? Server => _server;
@@ -120,7 +153,16 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
             _keyboardLayout = 0;
             _appliedKeymap = null;   // 新起的服务端是 US 键位表:按当前布局重推一次
             ApplyKeyboardLayout(server);
-            if (MainWindow() is { } main)
+            if (server.Screen is { } screen)
+            {
+                // 单窗口模式(F13):屏幕尺寸是屏幕窗口的尺寸,不跟本机的显示器布局;窗口随即显示出来(远端桌面还没连上时是黑的)。
+                if (MainWindow() is { } owner)
+                {
+                    ApplyScreenSize(server, owner.Screens);
+                }
+                Map(screen);
+            }
+            else if (MainWindow() is { } main)
             {
                 ApplyLayout(server, main.Screens);
                 if (!ReferenceEquals(_watchedScreens, main.Screens))
@@ -158,6 +200,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         }
         Dispatcher.UIThread.Post(() =>
         {
+            _trayIcons.Clear();
             XNativeWindow[] windows = [.. _windows.Values];
             _windows.Clear();
             _desktops.Clear();
@@ -176,6 +219,51 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     /// <summary>
     /// 显示器布局与 DPI 告诉服务端:根窗口是所有显示器的外接矩形,每台一个输出;DPI 取主显示器的缩放。
     /// </summary>
+    /// <summary>设置里选的窗口模式(见 <see cref="UseWindowMode" />)。</summary>
+    private string _windowMode = XServerWindowModes.MultiWindow;
+
+    /// <inheritdoc />
+    public void UseWindowMode(string mode) => _windowMode = mode;
+
+    /// <summary>单窗口模式的屏幕窗口不带边框(窗口模式「无边框」)。</summary>
+    internal bool ScreenUndecorated => _windowMode == XServerWindowModes.NoDecoration;
+
+    /// <summary>单窗口模式的屏幕窗口一开始就全屏(窗口模式「全屏」)。</summary>
+    internal bool ScreenFullscreen => _windowMode == XServerWindowModes.Fullscreen;
+
+    /// <summary>屏幕窗口的标题:「X 桌面 :N」。</summary>
+    internal static string ScreenTitle(X11Server server) =>
+        Strings.Format("XServer_ScreenTitle", server.Display is { } display ? display.Split('.')[0].Replace("localhost", "") : $":{server.DisplayNumber}");
+
+    /// <summary>
+    /// 单窗口模式起步的屏幕尺寸(物理像素,一台显示器覆盖全部):全屏时是主显示器的大小,否则是主显示器工作区的八成 ——
+    /// 之后跟着用户把屏幕窗口拖到多大。DPI 照主显示器的报。
+    /// </summary>
+    private void ApplyScreenSize(X11Server server, Screens screens)
+    {
+        if ((screens.Primary ?? (screens.All.Count > 0 ? screens.All[0] : null)) is not { } primary)
+        {
+            return;
+        }
+        (int width, int height) = ScreenFullscreen
+            ? (primary.Bounds.Width, primary.Bounds.Height)
+            : ((int)(primary.WorkingArea.Width * 0.8), (int)(primary.WorkingArea.Height * 0.8));
+        width = Math.Clamp(width, 1, X11ServerOptions.MaxScreenSize);
+        height = Math.Clamp(height, 1, X11ServerOptions.MaxScreenSize);
+        server.SetScreenLayout(width, height);
+        double scaling = primary.Scaling;
+        server.SetDisplayScale(Math.Max(1, (int)Math.Round(96 * scaling)), scaling >= 2 ? (int)Math.Floor(scaling) : 1);
+    }
+
+    /// <summary>用户关了屏幕窗口:当作要停 X Server(有程序连着时先确认),与标题栏的停止一样。</summary>
+    internal static void RequestStop()
+    {
+        if (MainWindow()?.DataContext is ViewModels.MainWindowViewModel { XServer: { } xserver })
+        {
+            xserver.StopCommand.Execute().Subscribe(_ => { }, _ => { });
+        }
+    }
+
     private void ApplyLayout(X11Server server, Screens screens)
     {
         IReadOnlyList<Screen> all = LimitScreens(screens.All);
@@ -514,6 +602,10 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
             {
                 native.AddDamage(rects);
             }
+            else
+            {
+                _trayIcons.Damaged(handle);   // 托盘图标重画了:过一会儿换图标
+            }
         }
         batch.Clear();
     }
@@ -535,6 +627,28 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
             Dispatcher.UIThread.Post(SystemSound.Alert);
         }
     }
+
+    /// <inheritdoc />
+    public void SystemTrayIconAdded(XTopLevelWindow icon, string title) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (IsCurrent(icon))
+            {
+                _trayIcons.Add(icon, title);
+            }
+        });
+
+    /// <inheritdoc />
+    public void SystemTrayIconRemoved(XTopLevelWindow icon) => Dispatcher.UIThread.Post(() => _trayIcons.Remove(icon));
+
+    /// <inheritdoc />
+    public event EventHandler<XServerGrabStall>? GrabStallReported;
+
+    /// <summary>
+    /// 有个客户端抓着整个服务端太久:原样转给 <see cref="GrabStallReported" />(<c>BuiltInLocalXServer</c> 查出是哪个程序,
+    /// 标题栏的 X Server 按钮据此提示用户断开它)。在服务端的执行线程上,不切 UI 线程。
+    /// </summary>
+    public void ServerGrabStalled(XServerGrabStall stall) => GrabStallReported?.Invoke(this, stall);
 
     /// <inheritdoc />
     public void ClipboardChanged(string text) => Dispatcher.UIThread.Post(() => FireAndForget.Run(async () =>
@@ -634,7 +748,10 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         }
         XNativeWindow window = new(this, handle);
         _windows[handle] = window;
-        PlaceIfUnpositioned(handle, window);
+        if (!window.IsScreen)
+        {
+            PlaceIfUnpositioned(handle, window);
+        }
         window.ApplyProperties(XTopLevelChanges.All);
         window.ApplyInitialStates();   // 映射前就设好的最大化 / 全屏 / initial_state = Iconic
 

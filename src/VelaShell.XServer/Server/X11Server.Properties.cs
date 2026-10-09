@@ -427,7 +427,12 @@ public sealed partial class X11Server
         {
             if (owner.Client is null)
             {
-                // 属主是服务端自己(宿主的剪贴板)。
+                // 属主是服务端自己:宿主的拖放(XdndSelection),或宿主的剪贴板。
+                if (IsHostXdndSelection(selection))
+                {
+                    ServeXdndSelection(c, requestor, selection, target, property, time, owner.Time);
+                    return;
+                }
                 ServeSelection(c, requestor, selection, target, property, time, owner.Time);
                 return;
             }
@@ -490,8 +495,12 @@ public sealed partial class X11Server
         }
         if (ReferenceEquals(target, _selectionWindow))
         {
-            // 发给服务端自己的请求窗口:这是选区属主回的 SelectionNotify。
-            OnSelectionWindowEvent(raw, c.BigEndian);
+            // 发给服务端自己的请求窗口:拖放的目标回的 XdndStatus / XdndFinished(它也是宿主拖放的源窗口),
+            // 或者选区属主回的 SelectionNotify。
+            if (!OnXdndClientMessage(raw, c.BigEndian) && !OnSystemTrayClientMessage(raw, c.BigEndian))
+            {
+                OnSelectionWindowEvent(raw, c.BigEndian);
+            }
             return;
         }
 

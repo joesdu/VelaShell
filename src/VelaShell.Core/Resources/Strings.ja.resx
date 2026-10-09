@@ -5659,7 +5659,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>ウィンドウモード</value>
   </data>
   <data name="SetXServer_WindowModeDesc" xml:space="preserve">
-    <value>マルチウィンドウでは各リモートプログラムが個別の Windows ウィンドウになります。ほかのモードは X 画面全体を 1 つのウィンドウに表示します。</value>
+    <value>マルチウィンドウでは各リモートプログラムが個別のウィンドウになります。ほかのモードは X 画面全体を 1 つのウィンドウに表示し、中のプログラムはリモートのウィンドウマネージャーが管理します(Xfce や MATE などのリモートデスクトップ全体を使うとき向け)。内蔵 X Server ではルートレスはマルチウィンドウと同じで、変更は次に X Server を起動したときに反映されます。</value>
   </data>
   <data name="SetXServer_ModeMultiWindow" xml:space="preserve">
     <value>マルチウィンドウ</value>
@@ -5834,6 +5834,81 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="XServer_Stop" xml:space="preserve">
     <value>停止</value>
+  </data>
+  <data name="XServer_TipPanel" xml:space="preserve">
+    <value>X Server 実行中({0})— クリックで接続中のプログラムを表示</value>
+  </data>
+  <data name="XServer_PanelTitle" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="XServer_PanelEmpty" xml:space="preserve">
+    <value>接続中の X プログラムはまだありません。</value>
+  </data>
+  <data name="XServer_PanelLocal" xml:space="preserve">
+    <value>このコンピューター</value>
+  </data>
+  <data name="XServer_PanelUnnamed" xml:space="preserve">
+    <value>X プログラム #{0}</value>
+  </data>
+  <data name="XServer_PanelStats" xml:space="preserve">
+    <value>ウィンドウ {0} 個 · {1}</value>
+  </data>
+  <data name="XServer_PanelRetained" xml:space="preserve">
+    <value>切断済み(リソースが残っています)</value>
+  </data>
+  <data name="XServer_PanelGrabbing" xml:space="preserve">
+    <value>占有中</value>
+  </data>
+  <data name="XServer_PanelGrabbingTip" xml:space="preserve">
+    <value>X Server 全体を占有しています。ほかの X プログラムはすべて待たされています。</value>
+  </data>
+  <data name="XServer_PanelDisconnectTip" xml:space="preserve">
+    <value>このプログラムを切断(ウィンドウはすべて閉じます)</value>
+  </data>
+  <data name="XServer_PanelBreakGrabs" xml:space="preserve">
+    <value>固まりを解除</value>
+  </data>
+  <data name="XServer_PanelBreakGrabsTip" xml:space="preserve">
+    <value>すべての X プログラムによるマウス・キーボードの占有と X Server の占有を解除します。クリックも入力も効かないとき(リモートのメニューを開いたままネットワークが切れたときなど)に使います。</value>
+  </data>
+  <data name="XServer_BreakGrabsDone" xml:space="preserve">
+    <value>すべての X プログラムの占有を解除しました。</value>
+  </data>
+  <data name="XServer_PanelStop" xml:space="preserve">
+    <value>X Server を停止</value>
+  </data>
+  <data name="XServer_DisconnectConfirmTitle" xml:space="preserve">
+    <value>X プログラムを切断</value>
+  </data>
+  <data name="XServer_DisconnectConfirmMessage" xml:space="preserve">
+    <value>「{0}」を切断すると、そのウィンドウはすべて閉じられます。保存していない内容は失われます。</value>
+  </data>
+  <data name="XServer_Disconnect" xml:space="preserve">
+    <value>切断</value>
+  </data>
+  <data name="XServer_GrabStalled" xml:space="preserve">
+    <value>X プログラム「{0}」({1})が X Server を {2} 秒間占有しています。ほかの X プログラムはすべて待たされています。</value>
+  </data>
+  <data name="XServer_GrabStalledDisconnect" xml:space="preserve">
+    <value>切断する</value>
+  </data>
+  <data name="XServer_DropUploading" xml:space="preserve">
+    <value>{0} 件を {1} にアップロードして X プログラムに渡しています…</value>
+  </data>
+  <data name="XServer_DropNoSession" xml:space="preserve">
+    <value>SSH セッション {0} は切断されています。何もドロップされませんでした。</value>
+  </data>
+  <data name="XServer_DropFailed" xml:space="preserve">
+    <value>ドロップしたファイルをアップロードできませんでした:{0}</value>
+  </data>
+  <data name="XServer_TrayClick" xml:space="preserve">
+    <value>開く(クリック)</value>
+  </data>
+  <data name="XServer_TrayMenu" xml:space="preserve">
+    <value>メニュー(右クリック)</value>
+  </data>
+  <data name="XServer_ScreenTitle" xml:space="preserve">
+    <value>X デスクトップ {0}</value>
   </data>
   <data name="Cmd_ToggleXServer" xml:space="preserve">
     <value>X Server を起動 / 停止</value>

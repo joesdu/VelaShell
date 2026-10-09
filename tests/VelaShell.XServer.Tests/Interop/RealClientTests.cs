@@ -225,4 +225,71 @@ public sealed class RealClientTests
             Assert.IsEmpty(errors, string.Join('\n', errors));
         }
     }
+
+    [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task 单窗口模式下twm接管顶层_xterm套上外框_拼进屏幕()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        byte[] cookie = RandomNumberGenerator.GetBytes(16);
+        ConcurrentQueue<string> errors = new();
+        using RecordingHost host = new();
+        await using X11Server server = new(new X11ServerOptions
+        {
+            DisplayNumber = DisplayNumber,
+            ListenAddress = IPAddress.Any,
+            AuthorizationCookie = cookie,
+            ScreenWidth = 800,
+            ScreenHeight = 600,
+            Rootful = true,
+            Log = line =>
+            {
+                if (line.Contains(": Bad", StringComparison.Ordinal))
+                {
+                    errors.Enqueue(line);
+                }
+            },
+        }, host);
+        await server.StartAsync();
+        Task<(int ExitCode, string Output)> client = RunClientAsync(cookie,
+            "command -v twm >/dev/null || { echo NO-TWM; exit 0; }; "
+            + "twm 2>/tmp/twm.err & sleep 2; xterm -geometry 40x10+30+40 -e sleep 20 & "
+            + "w=$(xdotool search --sync --class xterm | head -1); sleep 2; "
+            + "echo root=$(xwininfo -root | awk '/Window id:/{print $4}'); "
+            + "echo parent=$(xwininfo -id $w -tree | awk '/Parent window id:/{print $4}'); "
+            + "sleep 3; cat /tmp/twm.err; echo done");
+        // 客户端还连着时看屏幕:xterm 的白底拼进了屏幕(容器一退出,窗口就都没了)。
+        int white = 0;
+        while (!client.IsCompleted)
+        {
+            int count = 0;
+            server.Screen!.ReadPixels((pixels, _, _) =>
+            {
+                foreach (uint p in pixels)
+                {
+                    count += (p & 0xFFFFFF) == 0xFFFFFF ? 1 : 0;
+                }
+            });
+            white = Math.Max(white, count);
+            await Task.Delay(200);
+        }
+        (int exit, string output) = await client;
+        TestContext.WriteLine(output);
+        if (output.Contains("NO-TWM", StringComparison.Ordinal))
+        {
+            TestContext.WriteLine("[SKIP] 镜像里没有 twm:按 scripts/xserver/interop/Dockerfile 重建 velashell-xclients");
+            return;
+        }
+        Assert.AreEqual(0, exit, output);
+        Assert.DoesNotContain("another window manager", output, "服务端不占窗口管理器的位置");
+        string root = output.Split('\n').Single(l => l.StartsWith("root=", StringComparison.Ordinal))[5..].Trim();
+        string parent = output.Split('\n').Single(l => l.StartsWith("parent=", StringComparison.Ordinal))[7..].Trim();
+        Assert.AreNotEqual(root, parent, "xterm 被 twm 套进了外框");
+        Assert.IsTrue(host.Mapped.IsEmpty, "顶层不单独交给宿主");
+        Assert.IsGreaterThan(10_000, white, "xterm 的白底拼进了屏幕");
+        Assert.IsEmpty(errors, string.Join('\n', errors));
+    }
 }

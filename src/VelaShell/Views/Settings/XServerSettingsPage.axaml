@@ -95,7 +95,7 @@
                   ItemsSource="{Binding XServerDisplayNumbers}"
                   SelectedIndex="{Binding XServerDisplayNumberIndex}" VerticalAlignment="Center" />
       </Grid>
-      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding XServerUsesVcXsrv}">
+      <Grid ColumnDefinitions="*,Auto">
         <StackPanel Spacing="2" Margin="0,0,16,0">
           <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_WindowMode}" />
           <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_WindowModeDesc}" />

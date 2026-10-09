@@ -117,6 +117,24 @@ public sealed class X11ServerOptions
     public bool ClientSideShadows { get; init; }
 
     /// <summary>
+    /// 当系统托盘(freedesktop System Tray Protocol):服务端占住 <c>_NET_SYSTEM_TRAY_S0</c>,X 程序的托盘图标按 XEmbed 嵌进服务端的嵌入窗口,
+    /// 经 <see cref="IX11ServerHost.SystemTrayIconAdded" /> 交给宿主画成宿主自己的托盘图标。默认关:宿主得真把它们显示出来 ——
+    /// 有托盘时程序会「关闭到托盘」,宿主不显示的话关掉的窗口就再也找不回来。
+    /// </summary>
+    public bool SystemTray { get; init; }
+
+    /// <summary>
+    /// 单窗口(rootful)模式:整个根窗口作为一个顶层交给宿主(<see cref="X11Server.Screen" />),宿主开一个原生窗口显示整块桌面,
+    /// 远端的窗口管理器照常管理顶层 —— 跑完整的远端桌面(xfce、MATE)或图形安装器时用。服务端不再当窗口管理器(不占 <c>WM_S0</c>、
+    /// 不写 <c>_NET_SUPPORTED</c> 这些,根窗口的 SubstructureRedirect 让给客户端),也不当 XSETTINGS 管理器与托盘(<see cref="SystemTray" /> 不起作用),
+    /// 那些归远端桌面自己的守护进程。默认关(rootless:每个顶层一个原生窗口)。
+    /// </summary>
+    public bool Rootful { get; init; }
+
+    /// <summary>托盘图标嵌入窗口的边长(像素,16–128,默认 24)。图标程序照这个尺寸画。</summary>
+    public int SystemTrayIconSize { get; init; } = 24;
+
+    /// <summary>
     /// 窗口管理器的名字(<c>_NET_SUPPORTING_WM_CHECK</c> 窗口上的 <c>_NET_WM_NAME</c>)。默认 <c>LG3D</c>:服务端占着 <c>WM_S0</c> 与根窗口的
     /// SubstructureRedirect,Java(AWT / Swing)据此认定有窗口管理器,再按这个名字决定它套不套外框 —— 不认得的名字一律当成会套外框,
     /// 于是一直等 ReparentNotify、不理 ConfigureNotify(最大化、改尺寸之后内容不重排,假定有 25 像素的标题栏)。<c>LG3D</c> 是 Java 认得的
@@ -149,6 +167,7 @@ public sealed class X11ServerOptions
             $"{nameof(ScreenWidth)} / {nameof(ScreenHeight)} 必须在 1–{MaxScreenSize} 之间。");
         Require(Dpi >= 1, $"{nameof(Dpi)} 必须 ≥ 1。");
         Require(ScaleFactor >= 1, $"{nameof(ScaleFactor)} 必须 ≥ 1。");
+        Require(SystemTrayIconSize is >= 16 and <= 128, $"{nameof(SystemTrayIconSize)} 必须在 16–128 之间。");
         Require(!string.IsNullOrEmpty(KeyboardLayout), $"{nameof(KeyboardLayout)} 不能为空。");
         Require(Vendor is not null && WindowManagerName is not null, $"{nameof(Vendor)} / {nameof(WindowManagerName)} 不能为 null。");
         Require(MaxClientMemory >= 1 && MaxTotalMemory >= 1, $"{nameof(MaxClientMemory)} / {nameof(MaxTotalMemory)} 必须 ≥ 1。");

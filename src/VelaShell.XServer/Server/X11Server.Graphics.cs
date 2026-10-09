@@ -541,6 +541,18 @@ public sealed partial class X11Server
     private (uint[] Pixels, XRect Available) ReadRoot(int x, int y, int width, int height)
     {
         XRect available = new XRect(x, y, width, height).Intersect(new XRect(0, 0, Root.Width, Root.Height));
+        if (Root.Buffer is { } screen)
+        {
+            // 单窗口模式:根窗口有拼好的屏幕(连背景),先把这一批到此为止画的拼进去再读。
+            ComposeScreenBatch();
+            available = available.Intersect(screen.Bounds);
+            uint[] composed = ArrayPool<uint>.Shared.Rent(Math.Max(1, available.Width * available.Height));
+            for (int row = 0; row < available.Height; row++)
+            {
+                Array.Copy(screen.Pixels, ((available.Y + row) * screen.Width) + available.X, composed, row * available.Width, available.Width);
+            }
+            return (composed, available);
+        }
         uint[] pixels = ArrayPool<uint>.Shared.Rent(Math.Max(1, available.Width * available.Height));
         Array.Clear(pixels, 0, Math.Max(1, available.Width * available.Height));
         foreach (XWindow top in Root.Children)

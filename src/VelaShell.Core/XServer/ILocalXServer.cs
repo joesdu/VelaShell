@@ -43,6 +43,27 @@ public sealed record XServerDisplayResolution(
     public static XServerDisplayResolution None { get; } = new(Display: null);
 }
 
+/// <summary>标题栏 X Server 浮层里的一行:一个连着的 X 程序(<see cref="ILocalXServer.GetClientsAsync" />)。</summary>
+/// <param name="Key">断开它用的键(<see cref="ILocalXServer.DisconnectClient" />);只在这一次运行之内有效,停了再开的服务端不认。</param>
+/// <param name="Id">服务端给它的编号(X 协议里资源 ID 的高位),给人对照日志用。</param>
+/// <param name="Name">程序名:它第一个窗口的 <c>WM_CLASS</c>;没有窗口、或窗口没写 <c>WM_CLASS</c> 时为空串。</param>
+/// <param name="Title">它第一个窗口的标题;没有为空串。</param>
+/// <param name="Source">从哪来:经 SSH 会话转发来的是连接的来历(<c>user@host:22</c>);本机直接连进来的为 <see langword="null" />。</param>
+/// <param name="Windows">映射着的顶层窗口数。</param>
+/// <param name="MemoryBytes">记在它账上的内存,字节(像素图、窗口缓冲、字形……)。</param>
+/// <param name="Retained">已经以 Retain 模式断开,只剩资源还留着。</param>
+/// <param name="HoldsServerGrab">正抓着整个 X 服务端(GrabServer):别的程序都在等它。</param>
+public sealed record XServerClient(
+    string Key, int Id, string Name, string Title, string? Source, int Windows, long MemoryBytes, bool Retained, bool HoldsServerGrab);
+
+/// <summary>一个 X 程序抓着整个服务端太久,别的 X 程序都在等它(<see cref="ILocalXServer.ServerGrabStalled" />)。</summary>
+/// <param name="ClientKey">断开它用的键(<see cref="ILocalXServer.DisconnectClient" />)。</param>
+/// <param name="Id">服务端给它的编号(见 <see cref="XServerClient.Id" />)。</param>
+/// <param name="Name">程序名(见 <see cref="XServerClient.Name" />,退到窗口标题;都没有为空串)。</param>
+/// <param name="Source">从哪来(见 <see cref="XServerClient.Source" />)。</param>
+/// <param name="Held">已经抓了多久。</param>
+public sealed record XServerGrabStallNotice(string ClientKey, int Id, string Name, string? Source, TimeSpan Held);
+
 /// <summary>
 /// 由 VelaShell 管理的本机 X 服务端(标题栏的 X Server 按钮、设置 → X Server)。
 /// </summary>
@@ -103,4 +124,43 @@ public interface ILocalXServer
     /// 外部 X 服务端(VcXsrv)、没在运行时为 0。
     /// </summary>
     Task<int> CountConnectedClientsAsync() => Task.FromResult(0);
+
+    /// <summary>
+    /// 列得出连着的 X 程序、能逐个断开(<see cref="GetClientsAsync" /> / <see cref="DisconnectClient" /> / <see cref="BreakGrabs" /> 有效)。
+    /// 只有内置引擎能;外部 X 服务端(VcXsrv)为 <see langword="false" />,标题栏按钮照旧一点开、一点关。
+    /// </summary>
+    bool CanManageClients => false;
+
+    /// <summary>
+    /// 连着的 X 程序,连同以 Retain 模式断开、资源还留着的(标题栏 X Server 浮层:「谁连着、来自哪个会话、占多少内存」)。
+    /// 没在运行、或 <see cref="CanManageClients" /> 为假时为空。
+    /// </summary>
+    Task<IReadOnlyList<XServerClient>> GetClientsAsync() => Task.FromResult<IReadOnlyList<XServerClient>>([]);
+
+    /// <summary>
+    /// 断开这个 X 程序(KillClient 语义:连接断开,它的窗口全部关闭;只剩资源的,资源一并销毁)。键过期(服务端已经停了又开)时什么也不做。
+    /// </summary>
+    /// <param name="key"><see cref="XServerClient.Key" />。</param>
+    void DisconnectClient(string key)
+    {
+    }
+
+    /// <summary>
+    /// 卡住时的恢复手段:解除所有 X 程序的鼠标 / 键盘抓取与冻结、放开 GrabServer。远端菜单开着时 SSH 断网、远端程序挂住时,
+    /// 所有 X 窗口点不动、打不了字 —— 用这个,不必停掉整个 X Server。
+    /// </summary>
+    void BreakGrabs()
+    {
+    }
+
+    /// <summary>一个 X 程序抓着整个服务端太久,别的 X 程序都在等它(可能在任意线程上触发)。默认实现从不触发。</summary>
+    event EventHandler<XServerGrabStallNotice>? ServerGrabStalled
+    {
+        add
+        {
+        }
+        remove
+        {
+        }
+    }
 }

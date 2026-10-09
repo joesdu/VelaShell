@@ -818,6 +818,43 @@ public sealed class RobustnessTests
     }
 
     [TestMethod]
+    public async Task GrabServer抓得太久时告诉宿主是谁_客户端清单标出持有者_解除之后标记消失()
+    {
+        // 原先只记一行日志:宿主不知道该断开谁,只能停掉整个服务端(F3)。
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host) { ServerGrabWarningDelay = TimeSpan.FromMilliseconds(100) };
+        await using XTestClient grabber = await XTestClient.ConnectAsync(server, label: "user@stuck:22");
+        await using XTestClient other = await XTestClient.ConnectAsync(server);
+        int grabberId = (int)(grabber.ResourceBase >> 21);
+        await grabber.SendAsync(36, 0);   // GrabServer
+        await grabber.SyncAsync();
+        Assert.IsTrue((await server.GetClientsAsync()).Single(c => c.Id == grabberId).HoldsServerGrab, "清单标出抓着服务端的那个");
+        Assert.IsFalse((await server.GetClientsAsync()).Single(c => c.Id != grabberId).HoldsServerGrab);
+
+        ushort waiting = await other.SendAsync(43, 0);   // 被暂存:有人在等,才算「抓得太久」
+        await host.WaitForAsync(() => !host.ServerGrabStalls.IsEmpty);
+        XServerGrabStall stall = host.ServerGrabStalls.First();
+        Assert.AreEqual((grabberId, "user@stuck:22", 1), (stall.ClientId, stall.ClientLabel, stall.WaitingRequests));
+        Assert.IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(100), stall.Held);
+
+        server.BreakGrabs();
+        Assert.IsTrue((await other.NextAsync(m => m.IsReply && m.Sequence == waiting)).IsReply);
+        Assert.IsFalse((await server.GetClientsAsync()).Any(c => c.HoldsServerGrab), "解除之后没有持有者");
+    }
+
+    [TestMethod]
+    public async Task GrabServer抓着但没人在等时不告诉宿主()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host) { ServerGrabWarningDelay = TimeSpan.FromMilliseconds(50) };
+        await using XTestClient grabber = await XTestClient.ConnectAsync(server);
+        await grabber.SendAsync(36, 0);
+        await grabber.SyncAsync();
+        await Task.Delay(300);
+        Assert.IsEmpty(host.ServerGrabStalls, "抓着不妨碍谁:不打扰用户");
+    }
+
+    [TestMethod]
     public async Task 抓着服务端的客户端断开_抓取随之解除()
     {
         await using X11Server server = new();

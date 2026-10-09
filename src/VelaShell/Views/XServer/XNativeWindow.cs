@@ -80,6 +80,10 @@ public sealed class XNativeWindow : Window
         SizeToContent = SizeToContent.Manual;
         WindowStartupLocation = WindowStartupLocation.Manual;
         Focusable = true;
+        if (IsScreen)
+        {
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;   // 屏幕窗口由用户摆:起步居中,之后不跟服务端的几何
+        }
         ApplyStyle(handle.Snapshot);
         // 系统边框的尺寸要等显示出来才量得到:先按宿主上一个有边框的窗口量到的预估,第一帧就摆在对的地方,
         // 不必等 Opened 之后再挪(原先按 0 摆,显示出来跳一下)。
@@ -91,10 +95,18 @@ public sealed class XNativeWindow : Window
         Deactivated += (_, _) => OnDeactivated();
         ScalingChanged += (_, _) => ApplyGeometry();
         Opened += (_, _) => { _opened = true; UpdateFrameExtents(); ApplyGeometry(); UpdateRegion(Handle.Snapshot); _surface.Start(); };
+        // 本机的文本、文件拖进 X 程序(F16):服务端替宿主扮演 XDND 的源,见 XDropTarget。
+        XDropTarget.Attach(this, _surface, handle, () => Server, ToPixels, host.DropUploader, AvaloniaXServerHost.NotifyUser);
     }
 
     /// <summary>服务端那边的顶层窗口。</summary>
     public XTopLevelWindow Handle { get; }
+
+    /// <summary>
+    /// 单窗口模式的屏幕窗口(F13,<see cref="X11Server.Screen" />):里面是整个 X 屏幕,窗口由远端的窗口管理器管。原生窗口自己的位置、
+    /// 边框与状态归用户 —— 不跟服务端的几何摆、不报位置;拖大拖小就是改屏幕尺寸;关掉就是停 X Server。
+    /// </summary>
+    internal bool IsScreen => ReferenceEquals(Handle, Handle.Server.Screen);
 
     /// <summary>这个窗口的服务端,只在它就是宿主此刻附着的那个时给出:停服后马上重启,旧窗口的事件不会把旧句柄交给新服务端。</summary>
     private X11Server? Server => _host.CurrentServer(Handle);
@@ -109,7 +121,7 @@ public sealed class XNativeWindow : Window
         XTopLevelSnapshot s = Handle.Snapshot;
         if ((changes & XTopLevelChanges.Title) != 0)
         {
-            Title = s.Title.Length > 0 ? s.Title : s.ClassName;
+            Title = IsScreen ? AvaloniaXServerHost.ScreenTitle(Handle.Server) : s.Title.Length > 0 ? s.Title : s.ClassName;
         }
         if ((changes & (XTopLevelChanges.Hints | XTopLevelChanges.States | XTopLevelChanges.Shape)) != 0)
         {
@@ -177,6 +189,10 @@ public sealed class XNativeWindow : Window
             _appliedSize = (Math.Max(1, s.Width), Math.Max(1, s.Height));
             Width = _appliedSize.Width / scale;
             Height = _appliedSize.Height / scale;
+            if (IsScreen)
+            {
+                return;   // 屏幕窗口只跟尺寸,位置归用户
+            }
             (int ox, int oy) = _host.RootOrigin;
             (int x, int y) = (s.X, s.Y);
             if (s.NeedsPlacement)
@@ -363,6 +379,13 @@ public sealed class XNativeWindow : Window
     public void ApplyInitialStates()
     {
         XTopLevelSnapshot s = Handle.Snapshot;
+        if (IsScreen)
+        {
+            WindowState = _host.ScreenFullscreen ? WindowState.FullScreen : WindowState.Normal;
+            _resizeState = WindowState;
+            _reportedStates = StatesFromWindow();
+            return;
+        }
         if (s.OverrideRedirect)
         {
             return;
@@ -400,6 +423,16 @@ public sealed class XNativeWindow : Window
 
     private void ApplyStyle(XTopLevelSnapshot s)
     {
+        if (IsScreen)
+        {
+            WindowDecorations = _host.ScreenUndecorated ? WindowDecorations.None : WindowDecorations.Full;
+            ShowInTaskbar = true;
+            ShowActivated = true;
+            CanMinimize = true;
+            CanMaximize = true;
+            TransparencyLevelHint = [WindowTransparencyLevel.None];
+            return;
+        }
         bool popup = s.OverrideRedirect;
         bool undecorated = popup || !s.Decorated
                            || s.WindowType is XWindowType.Splash or XWindowType.Tooltip or XWindowType.Notification
@@ -424,8 +457,8 @@ public sealed class XNativeWindow : Window
 
     private void OnMovedByUser()
     {
-        // 显示出来之前外框尺寸还不知道,算出来的位置不对(位置等 Opened 之后由 ApplyGeometry 摆好再报)。
-        if (_applying || !_opened || Server is not { } server || WindowState is WindowState.Minimized)
+        // 显示出来之前外框尺寸还不知道,算出来的位置不对(位置等 Opened 之后由 ApplyGeometry 摆好再报)。屏幕窗口的位置与 X 无关。
+        if (_applying || !_opened || IsScreen || Server is not { } server || WindowState is WindowState.Minimized)
         {
             return;
         }
@@ -607,7 +640,11 @@ public sealed class XNativeWindow : Window
                 // 弹层(override-redirect:菜单、提示框)不归窗口管理器管,它的关闭不转给客户端 —— 原先没有 WM_DELETE_WINDOW
                 // 的弹层一关就断开了整个 X 程序。
                 e.Cancel = true;
-                if (!Handle.Snapshot.OverrideRedirect)
+                if (IsScreen)
+                {
+                    AvaloniaXServerHost.RequestStop();   // 关掉整个 X 桌面 = 停 X Server(有程序连着时先确认)
+                }
+                else if (!Handle.Snapshot.OverrideRedirect)
                 {
                     Server?.CloseTopLevel(Handle);
                 }

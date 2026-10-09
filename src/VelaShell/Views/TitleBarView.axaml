@@ -139,7 +139,8 @@
           <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.zap}"
                          Foreground="{DynamicResource VelaTextMuted}" />
         </Button>
-        <!-- 本机 X Server:点一下开、再点一下关;运行中转强调色(与资源管理器同一套写法)。排在这组最后(用户决定,2026-09-26)。
+        <!-- 本机 X Server:没在运行时点一下开;运行中转强调色(与资源管理器同一套写法)。内置引擎运行中时点开浮层
+             (连着的 X 程序、断开、解除卡住、停止,见 XServerPanelView),VcXsrv 运行中时点一下关。排在这组最后(用户决定,2026-09-26)。
              默认是内置引擎,各平台都能用,所以按钮在各平台都出现(没有 X 服务可用时 IsSupported 为假,按钮隐藏)。
              启动中命令不可用,按钮随之变灰,免得连点拉起两个。
              Icon.xorg 是实心字形,着色走 Fill 而不是 Foreground(后者会只描出轮廓)。 -->
@@ -147,7 +148,7 @@
                 Theme="{StaticResource VelaTitleActionButtonTheme}"
                 IsVisible="{Binding XServer.IsSupported}"
                 ToolTip.Tip="{Binding XServer.ToolTip}"
-                Command="{Binding XServer.ToggleCommand}">
+                Command="{Binding XServer.ButtonCommand}">
           <Panel>
             <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.xorg}"
                            Fill="{DynamicResource VelaTextMuted}"

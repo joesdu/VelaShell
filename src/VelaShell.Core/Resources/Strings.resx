@@ -5664,7 +5664,7 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
     <value>Window mode</value>
   </data>
   <data name="SetXServer_WindowModeDesc" xml:space="preserve">
-    <value>Multiple windows shows each remote program as its own Windows window; the other modes put the whole X screen in one window.</value>
+    <value>Multiple windows shows each remote program as its own window. The other modes put the whole X screen in one window, where a remote window manager manages the programs — use them for a full remote desktop such as Xfce or MATE. With the built-in X Server, Rootless is the same as Multiple windows, and a change takes effect the next time the X Server starts.</value>
   </data>
   <data name="SetXServer_ModeMultiWindow" xml:space="preserve">
     <value>Multiple windows</value>
@@ -5839,6 +5839,81 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   </data>
   <data name="XServer_Stop" xml:space="preserve">
     <value>Stop</value>
+  </data>
+  <data name="XServer_TipPanel" xml:space="preserve">
+    <value>X Server running on {0} — click to see connected programs</value>
+  </data>
+  <data name="XServer_PanelTitle" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="XServer_PanelEmpty" xml:space="preserve">
+    <value>No X programs are connected yet.</value>
+  </data>
+  <data name="XServer_PanelLocal" xml:space="preserve">
+    <value>This computer</value>
+  </data>
+  <data name="XServer_PanelUnnamed" xml:space="preserve">
+    <value>X program #{0}</value>
+  </data>
+  <data name="XServer_PanelStats" xml:space="preserve">
+    <value>{0} window(s) · {1}</value>
+  </data>
+  <data name="XServer_PanelRetained" xml:space="preserve">
+    <value>Disconnected; its resources are still kept</value>
+  </data>
+  <data name="XServer_PanelGrabbing" xml:space="preserve">
+    <value>Exclusive</value>
+  </data>
+  <data name="XServer_PanelGrabbingTip" xml:space="preserve">
+    <value>It has grabbed the whole X Server; every other X program is waiting for it.</value>
+  </data>
+  <data name="XServer_PanelDisconnectTip" xml:space="preserve">
+    <value>Disconnect this program (all its windows close)</value>
+  </data>
+  <data name="XServer_PanelBreakGrabs" xml:space="preserve">
+    <value>Unstick</value>
+  </data>
+  <data name="XServer_PanelBreakGrabsTip" xml:space="preserve">
+    <value>Release every X program&apos;s mouse and keyboard grabs and its hold on the X Server. Use it when no X window responds to clicks or typing — for example a remote menu was open when the network dropped.</value>
+  </data>
+  <data name="XServer_BreakGrabsDone" xml:space="preserve">
+    <value>Released all X programs&apos; grabs.</value>
+  </data>
+  <data name="XServer_PanelStop" xml:space="preserve">
+    <value>Stop X Server</value>
+  </data>
+  <data name="XServer_DisconnectConfirmTitle" xml:space="preserve">
+    <value>Disconnect X program</value>
+  </data>
+  <data name="XServer_DisconnectConfirmMessage" xml:space="preserve">
+    <value>Disconnecting “{0}” closes all of its windows. Unsaved work in them will be lost.</value>
+  </data>
+  <data name="XServer_Disconnect" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="XServer_GrabStalled" xml:space="preserve">
+    <value>X program “{0}” ({1}) has held the X Server exclusively for {2} s; every other X program is waiting for it.</value>
+  </data>
+  <data name="XServer_GrabStalledDisconnect" xml:space="preserve">
+    <value>Disconnect it</value>
+  </data>
+  <data name="XServer_DropUploading" xml:space="preserve">
+    <value>Uploading {0} item(s) to {1} for the X program…</value>
+  </data>
+  <data name="XServer_DropNoSession" xml:space="preserve">
+    <value>The SSH session {0} is no longer connected; nothing was dropped.</value>
+  </data>
+  <data name="XServer_DropFailed" xml:space="preserve">
+    <value>Could not upload the dropped files: {0}</value>
+  </data>
+  <data name="XServer_TrayClick" xml:space="preserve">
+    <value>Open (click)</value>
+  </data>
+  <data name="XServer_TrayMenu" xml:space="preserve">
+    <value>Menu (right-click)</value>
+  </data>
+  <data name="XServer_ScreenTitle" xml:space="preserve">
+    <value>X Desktop {0}</value>
   </data>
   <data name="Cmd_ToggleXServer" xml:space="preserve">
     <value>Start / Stop X Server</value>

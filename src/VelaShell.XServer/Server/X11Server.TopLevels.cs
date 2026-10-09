@@ -45,7 +45,7 @@ public sealed partial class X11Server
     {
         if (_topLevelHandles.TryGetValue(top, out XTopLevelWindow? handle)
             && RefreshSnapshot(top, handle) is var changes and not XTopLevelChanges.None
-            && top.Mapped)
+            && top.Mapped && !Rootful)
         {
             _host.TopLevelChanged(handle, changes);
         }
@@ -54,6 +54,7 @@ public sealed partial class X11Server
     /// <summary>顶层窗口的属性变了:标题、类名、协议、提示可能跟着变。</summary>
     private void OnTopLevelPropertyChanged(XWindow window, uint property)
     {
+        OnTrayIconPropertyChanged(window, property);   // 停靠着的托盘图标跟着 _XEMBED_INFO 映射 / 取消映射
         if (window.IsTopLevel && AffectsHandle(property))   // _NET_WM_USER_TIME 之类每次输入都改,与宿主无关
         {
             RefreshTopLevel(window);

@@ -123,8 +123,15 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
         }
     }
 
+    /// <summary>单窗口模式:窗口管理器是远端的,服务端不向宿主提窗口管理器的请求(宿主手里也没有那些顶层)。</summary>
+    public bool DropWindowManagerRequests { get; set; }
+
     public void WindowManagerRequested(XWindowManagerRequest request)
     {
+        if (DropWindowManagerRequests)
+        {
+            return;
+        }
         if (++_requests > MaxRequestsPerBatch)
         {
             if (_requests == MaxRequestsPerBatch + 1)
@@ -135,6 +142,12 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
         }
         _pending.Add(() => inner.WindowManagerRequested(request));
     }
+
+    public void ServerGrabStalled(XServerGrabStall stall) => _pending.Add(() => inner.ServerGrabStalled(stall));
+
+    public void SystemTrayIconAdded(XTopLevelWindow icon, string title) => _pending.Add(() => inner.SystemTrayIconAdded(icon, title));
+
+    public void SystemTrayIconRemoved(XTopLevelWindow icon) => _pending.Add(() => inner.SystemTrayIconRemoved(icon));
 
     /// <summary>调完攒下的回调。回调里再引起的回调(宿主同步调了注入方法 —— 那只是排工作项,不会同步回来)留到下一轮。</summary>
     public void Flush()

@@ -255,7 +255,8 @@ public sealed partial class X11Server
         XCursor cursor = CursorHiddenAt(_pointerWindow) ? XCursor.Hidden
             : CurrentCursor() is { } resource ? AppearanceOf(resource)
             : XCursor.Default;
-        XTopLevelWindow? handle = _pointerWindow.TopLevel is { } top && _topLevelHandles.TryGetValue(top, out XTopLevelWindow? h) ? h : null;
+        XTopLevelWindow? handle = _screenHandle   // 单窗口模式:光标都显示在屏幕窗口上
+            ?? (_pointerWindow.TopLevel is { } top && _topLevelHandles.TryGetValue(top, out XTopLevelWindow? h) ? h : null);
         if (_reportedCursor is { } last && ReferenceEquals(last.Window, handle) && last.Cursor == cursor)
         {
             return;

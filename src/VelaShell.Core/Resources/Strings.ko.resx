@@ -5659,7 +5659,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>창 모드</value>
   </data>
   <data name="SetXServer_WindowModeDesc" xml:space="preserve">
-    <value>다중 창은 원격 프로그램마다 별도의 Windows 창으로 표시하고, 나머지 모드는 X 화면 전체를 하나의 창에 표시합니다.</value>
+    <value>다중 창은 원격 프로그램마다 별도의 창으로 표시합니다. 나머지 모드는 X 화면 전체를 하나의 창에 표시하고, 그 안의 프로그램은 원격 창 관리자가 관리합니다(Xfce, MATE 같은 원격 데스크톱 전체를 쓸 때). 내장 X Server에서 루트리스는 다중 창과 같으며, 변경 사항은 다음에 X Server를 시작할 때 적용됩니다.</value>
   </data>
   <data name="SetXServer_ModeMultiWindow" xml:space="preserve">
     <value>다중 창</value>
@@ -5834,6 +5834,81 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="XServer_Stop" xml:space="preserve">
     <value>중지</value>
+  </data>
+  <data name="XServer_TipPanel" xml:space="preserve">
+    <value>X Server 실행 중({0}) — 클릭하여 연결된 프로그램 보기</value>
+  </data>
+  <data name="XServer_PanelTitle" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="XServer_PanelEmpty" xml:space="preserve">
+    <value>아직 연결된 X 프로그램이 없습니다.</value>
+  </data>
+  <data name="XServer_PanelLocal" xml:space="preserve">
+    <value>이 컴퓨터</value>
+  </data>
+  <data name="XServer_PanelUnnamed" xml:space="preserve">
+    <value>X 프로그램 #{0}</value>
+  </data>
+  <data name="XServer_PanelStats" xml:space="preserve">
+    <value>창 {0}개 · {1}</value>
+  </data>
+  <data name="XServer_PanelRetained" xml:space="preserve">
+    <value>연결 끊김, 리소스는 남아 있음</value>
+  </data>
+  <data name="XServer_PanelGrabbing" xml:space="preserve">
+    <value>독점 중</value>
+  </data>
+  <data name="XServer_PanelGrabbingTip" xml:space="preserve">
+    <value>X Server 전체를 독점하고 있어 다른 X 프로그램이 모두 기다리고 있습니다.</value>
+  </data>
+  <data name="XServer_PanelDisconnectTip" xml:space="preserve">
+    <value>이 프로그램 연결 끊기(창이 모두 닫힘)</value>
+  </data>
+  <data name="XServer_PanelBreakGrabs" xml:space="preserve">
+    <value>멈춤 해제</value>
+  </data>
+  <data name="XServer_PanelBreakGrabsTip" xml:space="preserve">
+    <value>모든 X 프로그램의 마우스·키보드 점유와 X Server 독점을 해제합니다. 클릭이나 입력이 먹히지 않을 때(예: 원격 메뉴가 열린 채 네트워크가 끊겼을 때) 사용하세요.</value>
+  </data>
+  <data name="XServer_BreakGrabsDone" xml:space="preserve">
+    <value>모든 X 프로그램의 점유를 해제했습니다.</value>
+  </data>
+  <data name="XServer_PanelStop" xml:space="preserve">
+    <value>X Server 중지</value>
+  </data>
+  <data name="XServer_DisconnectConfirmTitle" xml:space="preserve">
+    <value>X 프로그램 연결 끊기</value>
+  </data>
+  <data name="XServer_DisconnectConfirmMessage" xml:space="preserve">
+    <value>“{0}”의 연결을 끊으면 그 창이 모두 닫힙니다. 저장하지 않은 내용은 사라집니다.</value>
+  </data>
+  <data name="XServer_Disconnect" xml:space="preserve">
+    <value>연결 끊기</value>
+  </data>
+  <data name="XServer_GrabStalled" xml:space="preserve">
+    <value>X 프로그램 “{0}”({1})이(가) {2}초째 X Server를 독점하고 있어 다른 X 프로그램이 모두 기다리고 있습니다.</value>
+  </data>
+  <data name="XServer_GrabStalledDisconnect" xml:space="preserve">
+    <value>연결 끊기</value>
+  </data>
+  <data name="XServer_DropUploading" xml:space="preserve">
+    <value>{0}개 항목을 {1}에 올려 X 프로그램에 넘기는 중…</value>
+  </data>
+  <data name="XServer_DropNoSession" xml:space="preserve">
+    <value>SSH 세션 {0}의 연결이 끊어져 아무것도 놓지 않았습니다.</value>
+  </data>
+  <data name="XServer_DropFailed" xml:space="preserve">
+    <value>끌어 놓은 파일을 올리지 못했습니다: {0}</value>
+  </data>
+  <data name="XServer_TrayClick" xml:space="preserve">
+    <value>열기(클릭)</value>
+  </data>
+  <data name="XServer_TrayMenu" xml:space="preserve">
+    <value>메뉴(오른쪽 클릭)</value>
+  </data>
+  <data name="XServer_ScreenTitle" xml:space="preserve">
+    <value>X 데스크톱 {0}</value>
   </data>
   <data name="Cmd_ToggleXServer" xml:space="preserve">
     <value>X Server 시작 / 중지</value>

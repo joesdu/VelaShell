@@ -138,6 +138,7 @@ public sealed partial class X11Server
             DeliverToSelectors(Root, XEventMask.StructureNotify, c => c.Event(XEventCode.ConfigureNotify, 0, w => w
                 .U32(Root.Id).U32(Root.Id).U32(0).I16(0).I16(0).U16((ushort)width).U16((ushort)height).U16(0).Bool(false)));
             SendXiDeviceChanged();   // 指针的轴范围跟着根窗口变了
+            OnRootfulScreenResized();
         }
         NotifyRandRChange();
     }

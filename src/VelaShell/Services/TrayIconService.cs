@@ -23,7 +23,7 @@ public sealed class TrayIconService(Application app) : IDisposable
         {
             return;
         }
-        TrayIcon.SetIcons(app, []);
+        TrayIcon.GetIcons(app)?.Remove(_trayIcon);   // 只摘自己的:内置 X 服务端交来的 X 程序托盘图标也在这个集合里
         _trayIcon.Dispose();
         _trayIcon = null;
     }
@@ -51,7 +51,14 @@ public sealed class TrayIconService(Application app) : IDisposable
                 Menu = BuildMenu()
             };
             _trayIcon.Clicked += (_, _) => ShowRequested?.Invoke();
-            TrayIcon.SetIcons(app, [_trayIcon]);
+            if (TrayIcon.GetIcons(app) is { } icons)
+            {
+                icons.Insert(0, _trayIcon);   // 排在 X 程序的托盘图标前面
+            }
+            else
+            {
+                TrayIcon.SetIcons(app, [_trayIcon]);
+            }
         }
         else
         {

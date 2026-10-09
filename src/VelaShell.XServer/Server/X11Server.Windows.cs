@@ -197,20 +197,20 @@ public sealed partial class X11Server
     /// <summary>设置某客户端在窗口上选的事件。三种「独占」事件同一时间只能有一个客户端选(否则 BadAccess)。</summary>
     private void SelectEvents(XClient c, XWindow window, uint mask)
     {
-        SelectEventsCore(c, window, mask);
+        SelectEventsCore(c, window, mask, Rootful);
         if ((mask & (uint)XEventMask.VisibilityChange) != 0 && _visibilityWatchers.Add(window))
         {
             window.VisibilityState = VisibilityOf(window);   // 起点:之后状态变了才报
         }
     }
 
-    private static void SelectEventsCore(XClient c, XWindow window, uint mask)
+    private static void SelectEventsCore(XClient c, XWindow window, uint mask, bool rootful)
     {
         if ((mask & ~(uint)XEventMask.AllValid) != 0)
         {
             throw new XProtocolError(XErrorCode.Value, mask);
         }
-        if (window.IsRoot && (mask & (uint)XEventMask.SubstructureRedirect) != 0)
+        if (window.IsRoot && !rootful && (mask & (uint)XEventMask.SubstructureRedirect) != 0)
         {
             // 窗口管理器是服务端(宿主)自己:根窗口的 SubstructureRedirect 一直有人占着,与真实桌面上已有窗口管理器时一样回 BadAccess。
             // 原先谁都选得上 —— 远端误跑 openbox / xfwm4,所有会话的新窗口都变成发给它的 MapRequest、被它套进自己的外框。
@@ -380,6 +380,7 @@ public sealed partial class X11Server
             extension.WindowDestroyed?.Invoke(window);
         }
         CleanupEwmh(window);
+        CleanupSystemTray(window);
         foreach ((SelectionSlot slot, (XWindow Window, XClient? Client, uint Time) owner) in _selections.ToArray())
         {
             if (ReferenceEquals(owner.Window, window))
@@ -557,8 +558,15 @@ public sealed partial class X11Server
             {
                 ExposeWindowTree(window, new Drawing.Region(buffer.Bounds));
             }
-            _host.TopLevelMapped(handle);
-            OnTopLevelMappedEwmh(window);
+            if (IsTrayEmbedder(window))
+            {
+                _host.SystemTrayIconAdded(handle, TrayIconTitle(window));   // 托盘图标:不当普通顶层窗口交给宿主
+            }
+            else if (!Rootful)   // 单窗口模式:顶层拼进屏幕,不单独交给宿主;外框、客户端列表归远端的窗口管理器
+            {
+                _host.TopLevelMapped(handle);
+                OnTopLevelMappedEwmh(window);
+            }
         }
         else
         {
@@ -603,8 +611,15 @@ public sealed partial class X11Server
             if (_topLevelHandles.TryGetValue(window, out XTopLevelWindow? handle))
             {
                 SetMapped(handle, false);
-                _host.TopLevelUnmapped(handle);
-                OnTopLevelUnmappedEwmh(window);
+                if (IsTrayEmbedder(window))
+                {
+                    _host.SystemTrayIconRemoved(handle);
+                }
+                else if (!Rootful)
+                {
+                    _host.TopLevelUnmapped(handle);
+                    OnTopLevelUnmappedEwmh(window);
+                }
             }
         }
         else if (wasViewable)
@@ -1038,6 +1053,7 @@ public sealed partial class X11Server
         {
             Map(requester, window);
         }
+        OnTrayIconReparented(window, parent);
     }
 
     // ------------------------------------------------------------------ 查询

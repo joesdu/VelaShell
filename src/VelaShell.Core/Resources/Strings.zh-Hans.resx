@@ -6118,7 +6118,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>窗口模式</value>
   </data>
   <data name="SetXServer_WindowModeDesc" xml:space="preserve">
-    <value>多窗口:每个远端程序都是一个独立的 Windows 窗口;其余几种把整个 X 屏幕放进一个窗口。</value>
+    <value>多窗口:每个远端程序都是一个独立的窗口。其余几种把整个 X 屏幕放进一个窗口,里面的程序由远端的窗口管理器管 —— 跑完整的远端桌面(Xfce、MATE)时用。内置 X Server 的「无根窗口」与多窗口相同;改了在下次启动 X Server 时生效。</value>
   </data>
   <data name="SetXServer_ModeMultiWindow" xml:space="preserve">
     <value>多窗口</value>
@@ -6293,6 +6293,81 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="XServer_Stop" xml:space="preserve">
     <value>停止</value>
+  </data>
+  <data name="XServer_TipPanel" xml:space="preserve">
+    <value>X Server 运行中({0}),点击查看连着的程序</value>
+  </data>
+  <data name="XServer_PanelTitle" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="XServer_PanelEmpty" xml:space="preserve">
+    <value>还没有 X 程序连着。</value>
+  </data>
+  <data name="XServer_PanelLocal" xml:space="preserve">
+    <value>本机</value>
+  </data>
+  <data name="XServer_PanelUnnamed" xml:space="preserve">
+    <value>X 程序 #{0}</value>
+  </data>
+  <data name="XServer_PanelStats" xml:space="preserve">
+    <value>{0} 个窗口 · {1}</value>
+  </data>
+  <data name="XServer_PanelRetained" xml:space="preserve">
+    <value>已断开，资源还留着</value>
+  </data>
+  <data name="XServer_PanelGrabbing" xml:space="preserve">
+    <value>独占中</value>
+  </data>
+  <data name="XServer_PanelGrabbingTip" xml:space="preserve">
+    <value>它抓着整个 X Server，其它 X 程序都在等它。</value>
+  </data>
+  <data name="XServer_PanelDisconnectTip" xml:space="preserve">
+    <value>断开这个程序（它的窗口全部关闭）</value>
+  </data>
+  <data name="XServer_PanelBreakGrabs" xml:space="preserve">
+    <value>解除卡住</value>
+  </data>
+  <data name="XServer_PanelBreakGrabsTip" xml:space="preserve">
+    <value>解除所有 X 程序对鼠标、键盘的抓取与对 X Server 的独占。点不动、打不了字的时候用 —— 比如远端菜单开着时断了网。</value>
+  </data>
+  <data name="XServer_BreakGrabsDone" xml:space="preserve">
+    <value>已解除所有 X 程序的抓取。</value>
+  </data>
+  <data name="XServer_PanelStop" xml:space="preserve">
+    <value>停止 X Server</value>
+  </data>
+  <data name="XServer_DisconnectConfirmTitle" xml:space="preserve">
+    <value>断开 X 程序</value>
+  </data>
+  <data name="XServer_DisconnectConfirmMessage" xml:space="preserve">
+    <value>断开“{0}”后它的窗口会全部关闭，未保存的内容会丢失。</value>
+  </data>
+  <data name="XServer_Disconnect" xml:space="preserve">
+    <value>断开</value>
+  </data>
+  <data name="XServer_GrabStalled" xml:space="preserve">
+    <value>X 程序“{0}”（{1}）已独占 X Server {2} 秒，其它 X 程序都在等它。</value>
+  </data>
+  <data name="XServer_GrabStalledDisconnect" xml:space="preserve">
+    <value>断开它</value>
+  </data>
+  <data name="XServer_DropUploading" xml:space="preserve">
+    <value>正在把 {0} 项传到 {1},交给 X 程序…</value>
+  </data>
+  <data name="XServer_DropNoSession" xml:space="preserve">
+    <value>{0} 的 SSH 会话已经断开,没有放下任何东西。</value>
+  </data>
+  <data name="XServer_DropFailed" xml:space="preserve">
+    <value>拖进来的文件没能传到远端:{0}</value>
+  </data>
+  <data name="XServer_TrayClick" xml:space="preserve">
+    <value>打开(单击)</value>
+  </data>
+  <data name="XServer_TrayMenu" xml:space="preserve">
+    <value>菜单(右键单击)</value>
+  </data>
+  <data name="XServer_ScreenTitle" xml:space="preserve">
+    <value>X 桌面 {0}</value>
   </data>
   <data name="Cmd_ToggleXServer" xml:space="preserve">
     <value>启动 / 停止 X Server</value>

@@ -100,11 +100,13 @@ public sealed partial class X11Server : IAsyncDisposable
         _resources[Root.Id] = Root;
         InitMonitors();
         RebuildRandRModes();
+        InitRootful();
         _resources[DefaultColormapId] = new XColormap(DefaultColormapId, null, RootVisualId);
         InitAtoms();
         _glx = new GlxExtension(this);
         InitExtensions();
         InitXSettings();
+        InitSystemTray();
         InitSyncCounters();
         PublishXkbRulesNames();
         InitEwmh();
@@ -325,7 +327,7 @@ public sealed partial class X11Server : IAsyncDisposable
         CheckCoordinate(y, nameof(y));
         Post(null, () =>
         {
-            if (LiveTopLevel(window) is { } top)
+            if (InputTarget(window) is { } top)
             {
                 ApplyPointerMotion(top, x, y);
             }
@@ -348,7 +350,7 @@ public sealed partial class X11Server : IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfGreaterThan(button, 255);
         Post(null, () =>
         {
-            if (LiveTopLevel(window) is { } top)
+            if (InputTarget(window) is { } top)
             {
                 ApplyPointerButton(top, x, y, button, pressed);
             }
@@ -361,6 +363,66 @@ public sealed partial class X11Server : IAsyncDisposable
 
     /// <summary>指针离开了所有顶层窗口(移到了宿主的其他窗口或桌面上)。</summary>
     public void InjectPointerLeave() => Post(null, ApplyPointerLeave);
+
+    /// <summary>
+    /// 宿主那边拖着东西(本机的文件、文本)在这个顶层的内区 (x, y) 上:服务端替宿主扮演 XDND 的源(freedesktop XDND 第 5 版),
+    /// 给指针所在、声明了 XdndAware 的 X 窗口发 XdndEnter / XdndPosition。<paramref name="types" /> 是放下时能给的数据类型
+    /// (MIME 类型或 <c>UTF8_STRING</c> 这类 X 的目标名,文件给 <c>text/uri-list</c>);目标接不接受见 <see cref="IsDragAccepted" />。
+    /// 指针每动一下调一次;离开时调 <see cref="InjectDragLeave" />,松手时调 <see cref="InjectDrop" />。
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="types" /> 为 null。</exception>
+    /// <exception cref="ArgumentOutOfRangeException">坐标超出 X 的 16 位范围。</exception>
+    public void InjectDragOver(XTopLevelWindow window, int x, int y, IReadOnlyList<string> types)
+    {
+        CheckHandle(window);
+        CheckCoordinate(x, nameof(x));
+        CheckCoordinate(y, nameof(y));
+        ArgumentNullException.ThrowIfNull(types);
+        string[] copy = [.. types];
+        Post(null, () =>
+        {
+            if (InputTarget(window) is { } top)
+            {
+                ApplyDragOver(top, x, y, copy);
+            }
+        });
+    }
+
+    /// <summary>拖着的东西离开了 X 窗口,或宿主那边取消了拖放:给目标发 XdndLeave。没在拖时什么也不做。</summary>
+    public void InjectDragLeave() => Post(null, ApplyDragLeave);
+
+    /// <summary>
+    /// 在这个顶层的内区 (x, y) 上松手:目标最后说接受就发 XdndDrop,目标经 XdndSelection 取 <paramref name="data" />(类型 → 字节,
+    /// 类型的写法同 <see cref="InjectDragOver" />);不接受、或放在不接受拖放的地方,就发 XdndLeave。最后一条 XdndStatus 还没回来时先等它
+    /// (至多 3 秒)。宿主的文件要先传到远端、把远端路径写成 <c>text/uri-list</c> 再调这个 —— 目标拖着时取不到数据。
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="data" /> 为 null。</exception>
+    /// <exception cref="ArgumentOutOfRangeException">坐标超出 X 的 16 位范围。</exception>
+    public void InjectDrop(XTopLevelWindow window, int x, int y, IReadOnlyDictionary<string, ReadOnlyMemory<byte>> data)
+    {
+        CheckHandle(window);
+        CheckCoordinate(x, nameof(x));
+        CheckCoordinate(y, nameof(y));
+        ArgumentNullException.ThrowIfNull(data);
+        Dictionary<string, ReadOnlyMemory<byte>> copy = data.ToDictionary(p => p.Key, p => (ReadOnlyMemory<byte>)p.Value.ToArray());
+        Post(null, () =>
+        {
+            if (InputTarget(window) is { } top)
+            {
+                ApplyDrop(top, x, y, copy);
+            }
+            else
+            {
+                ApplyDragLeave();
+            }
+        });
+    }
+
+    /// <summary>
+    /// 宿主那边的拖放(<see cref="InjectDragOver" />)此刻的目标说会接受:宿主据此显示「可以放」的光标。异步更新(目标回 XdndStatus 之后),
+    /// 任何线程上都可以读。
+    /// </summary>
+    public bool IsDragAccepted => _dragAccepted;
 
     /// <summary>按键按下 / 松开(X 键码,见 <see cref="XKeycodes" />)。按键送往当前的键盘焦点(<see cref="FocusTopLevel" />)。</summary>
     public void InjectKey(byte keycode, bool pressed) => InjectKey(keycode, pressed, repeat: false);
@@ -412,6 +474,10 @@ public sealed partial class X11Server : IAsyncDisposable
     /// <summary>宿主让某个顶层窗口得到键盘焦点(用户激活了它的原生窗口);null = 所有顶层都失去焦点。</summary>
     public void FocusTopLevel(XTopLevelWindow? window)
     {
+        if (Rootful)
+        {
+            return;   // 单窗口模式:焦点归远端的窗口管理器(没有窗口管理器时是 PointerRoot),宿主窗口失去焦点不改 X 的焦点
+        }
         if (window is null)
         {
             Post(null, () => ApplyFocus(null));
@@ -450,7 +516,11 @@ public sealed partial class X11Server : IAsyncDisposable
         CheckSize(height, nameof(height));
         Post(null, () =>
         {
-            if (LiveTopLevel(window) is { } top)
+            if (ReferenceEquals(window, _screenHandle))
+            {
+                ApplyScreenResize(width, height);   // 单窗口模式:缩放屏幕窗口就是改屏幕尺寸
+            }
+            else if (LiveTopLevel(window) is { } top)
             {
                 ApplyResize(top, width, height);
             }
@@ -652,6 +722,9 @@ public sealed partial class X11Server : IAsyncDisposable
         && ReferenceEquals(current, handle)
             ? top
             : null;
+
+    /// <summary>注入输入的落点:普通顶层同 <see cref="LiveTopLevel" />;单窗口模式的屏幕句柄是根窗口(坐标就是根坐标)。只在执行线程上调。</summary>
+    private XWindow? InputTarget(XTopLevelWindow handle) => ReferenceEquals(handle, _screenHandle) ? Root : LiveTopLevel(handle);
 
     /// <summary>当前监听着的传输对应的 DISPLAY(见 <see cref="Display" />)。</summary>
     private string? DisplayAddress()

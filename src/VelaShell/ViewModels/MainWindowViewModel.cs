@@ -459,6 +459,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         );
         XServer = new(localXServer, Toasts,
             () => SettingsSectionRequested?.Invoke(this, SettingsSectionKey.XServer));
+        // X Server 浮层与隧道面板默认都在菜单栏下方右侧:开一个就收起另一个,免得叠在一起(隧道面板拖开了也照样,简单起见)。
+        XServer.WhenAnyValue(x => x.IsPanelOpen).Where(open => open).Subscribe(_ => IsTunnelPanelOpen = false);
+        this.WhenAnyValue(x => x.IsTunnelPanelOpen).Where(open => open).Subscribe(_ => XServer.IsPanelOpen = false);
         // 最近使用记录:让常用命令/会话在同分时排到前面。载入是异步的,先建后载 ——
         // 载入完成前只是没有加权,不影响面板可用。
         _paletteRecency = new(appDataStore);

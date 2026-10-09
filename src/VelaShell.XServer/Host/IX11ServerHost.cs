@@ -61,4 +61,28 @@ public interface IX11ServerHost
     void WindowManagerRequested(XWindowManagerRequest request)
     {
     }
+
+    /// <summary>
+    /// 一个客户端 GrabServer 抓着太久(10 秒起,之后每隔一分钟再报一次),别的客户端的请求都在等它 —— 所有会话的 X 程序都冻着。
+    /// 宿主据此提示用户:断开它(<see cref="X11Server.DisconnectClient(int)" />)或解除抓取(<see cref="X11Server.BreakGrabs" />)。
+    /// 没人在等时不报(抓着不妨碍谁)。默认实现什么也不做。
+    /// </summary>
+    void ServerGrabStalled(XServerGrabStall stall)
+    {
+    }
+
+    /// <summary>
+    /// 一个 X 程序的托盘图标停靠进来了(开着 <see cref="X11ServerOptions.SystemTray" /> 时):<paramref name="icon" /> 是服务端的嵌入窗口,
+    /// 不当普通顶层窗口显示 —— 宿主把它的像素(<see cref="XTopLevelWindow.ReadPixels" />,随 <see cref="TopLevelDamaged" /> 更新)
+    /// 画成自己的托盘图标,点击时往它里面注入指针(<see cref="X11Server.InjectPointerButton" />,坐标是图标的内区)。
+    /// <paramref name="title" /> 是图标的名字(<c>_NET_WM_NAME</c>,退到 WM_NAME、WM_CLASS),可以当悬停提示。默认实现什么也不做。
+    /// </summary>
+    void SystemTrayIconAdded(XTopLevelWindow icon, string title)
+    {
+    }
+
+    /// <summary>托盘图标没了(程序退出、图标窗口销毁或被挪走):宿主收掉对应的托盘图标。默认实现什么也不做。</summary>
+    void SystemTrayIconRemoved(XTopLevelWindow icon)
+    {
+    }
 }

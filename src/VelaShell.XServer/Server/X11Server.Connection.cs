@@ -789,7 +789,8 @@ public sealed partial class X11Server
                 .OrderBy(e => e.Client.Index)
                 .Select(e => new XClientInfo(e.Client.Index, e.Client.Label, e.Retained, resources.GetValueOrDefault(e.Client),
                     e.Client.MemoryInUse,
-                    [.. _topLevelHandles.Where(p => ReferenceEquals(p.Key.Owner, e.Client)).Select(p => p.Value)])),
+                    [.. _topLevelHandles.Where(p => ReferenceEquals(p.Key.Owner, e.Client)).Select(p => p.Value)],
+                    ReferenceEquals(_serverGrabber, e.Client))),
         ];
     }
 

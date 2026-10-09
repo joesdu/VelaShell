@@ -133,6 +133,90 @@ public class BuiltInLocalXServerTests
     }
 
     /// <summary>
+    /// 标题栏 X Server 浮层的程序清单(F3):经 SSH 连接器来的程序带着会话的来历;按键断开它;停了再开之后旧键不碰新服务端上同编号的程序。
+    /// </summary>
+    [TestMethod]
+    public async Task Clients_CarryTheSessionSource_DisconnectByKey_AndOldKeysExpireAfterRestart()
+    {
+        await using BuiltInLocalXServer server = Create(new XServerOptions(), new RecordingHost());
+        Assert.IsTrue(server.CanManageClients);
+        Assert.IsEmpty(await server.GetClientsAsync(), "没在运行");
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+        await using Stream stream = await resolution.Connector!("user@host:22", CancellationToken.None);
+        Assert.AreEqual(1, await HandshakeAsync(stream));
+
+        XServerClient client = (await server.GetClientsAsync()).Single();
+        Assert.AreEqual(("user@host:22", 0, false, false, ""), (client.Source, client.Windows, client.Retained, client.HoldsServerGrab, client.Name));
+
+        server.DisconnectClient("not-a-key");
+        Assert.HasCount(1, await server.GetClientsAsync(), "认不出的键什么也不做");
+        server.DisconnectClient(client.Key);
+        Assert.IsEmpty(await server.GetClientsAsync());
+
+        // 停了再开:新服务端上第一个程序的编号与刚才那个相同,旧键不能把它断开。
+        await server.StopAsync();
+        Assert.IsTrue((await server.StartAsync()).Success);
+        await using Stream again = await resolution.Connector!("user@host:22", CancellationToken.None);
+        Assert.AreEqual(1, await HandshakeAsync(again));
+        XServerClient fresh = (await server.GetClientsAsync()).Single();
+        Assert.AreEqual(client.Id, fresh.Id, "同一个编号");
+        server.DisconnectClient(client.Key);
+        Assert.HasCount(1, await server.GetClientsAsync(), "上一次运行的键过期了");
+    }
+
+    /// <summary>窗口模式里多窗口与「无根」以外的几种,内置引擎以单窗口模式(F13)起,模式在附着之前交给宿主。</summary>
+    [TestMethod]
+    public async Task WindowModes_OtherThanMultiWindowAndRootless_StartTheEngineInOneWindowMode()
+    {
+        foreach ((string mode, bool rootful) in new[]
+        {
+            (XServerWindowModes.MultiWindow, false), (XServerWindowModes.Rootless, false),
+            (XServerWindowModes.Windowed, true), (XServerWindowModes.NoDecoration, true), (XServerWindowModes.Fullscreen, true),
+        })
+        {
+            RecordingHost host = new();
+            await using BuiltInLocalXServer server = Create(new XServerOptions { WindowMode = mode }, host);
+            await server.ResolveForwardingDisplayAsync();
+            Assert.AreEqual(mode, host.WindowMode, "窗口模式在附着之前交给宿主");
+            Assert.AreEqual(rootful, host.Attached!.Screen is not null, mode);
+        }
+    }
+
+    /// <summary>
+    /// 宿主转来「GrabServer 抓得太久」:查出是哪个程序、带着断开它用的键转给界面(F3);查的时候已经放开了就不报。
+    /// </summary>
+    [TestMethod]
+    public async Task GrabStall_IsReportedWithTheHoldersKey_OnlyWhileItStillHoldsTheGrab()
+    {
+        RecordingHost host = new();
+        await using BuiltInLocalXServer server = Create(new XServerOptions(), host);
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+        await using Stream stream = await resolution.Connector!("user@stuck:22", CancellationToken.None);
+        Assert.AreEqual(1, await HandshakeAsync(stream));
+        XServerClient client = (await server.GetClientsAsync()).Single();
+        TaskCompletionSource<XServerGrabStallNotice> reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        server.ServerGrabStalled += (_, notice) => reported.TrySetResult(notice);
+
+        host.RaiseGrabStall(new XServerGrabStall(client.Id, "user@stuck:22", TimeSpan.FromSeconds(10), 3));
+        await Task.Delay(200);
+        Assert.IsFalse(reported.Task.IsCompleted, "它没抓着:不报");
+
+        await stream.WriteAsync(new byte[] { 36, 0, 1, 0 });   // GrabServer
+        await stream.FlushAsync();
+        for (int i = 0; i < 100 && !(await server.GetClientsAsync()).Single().HoldsServerGrab; i++)
+        {
+            await Task.Delay(20);
+        }
+        host.RaiseGrabStall(new XServerGrabStall(client.Id, "user@stuck:22", TimeSpan.FromSeconds(10), 3));
+        XServerGrabStallNotice notice = await reported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual((client.Key, client.Id, "user@stuck:22", TimeSpan.FromSeconds(10)), (notice.ClientKey, notice.Id, notice.Source, notice.Held));
+
+        // 停下之后宿主的事件不再接到这里。
+        await server.StopAsync();
+        Assert.AreEqual(0, host.GrabStallSubscribers);
+    }
+
+    /// <summary>
     /// 回归:SSH 会话比服务端活得久。标题栏上停掉再开之后,会话早先拿到的连接器要接进新的服务端 ——
     /// 以前它记住的是旧实例,每条 x11 通道都接进已释放的服务端,远端只看到 Failed to open display。
     /// </summary>
@@ -358,7 +442,26 @@ public class BuiltInLocalXServerTests
 
         public void UseKeyboardLayout(string layout) => KeyboardLayout = layout;
 
+        /// <summary>附着之前交来的窗口模式。</summary>
+        public string? WindowMode { get; private set; }
+
+        public void UseWindowMode(string mode) => WindowMode = mode;
+
         public void Detach() => Detaches++;
+
+        private EventHandler<XServerGrabStall>? _grabStallReported;
+
+        public event EventHandler<XServerGrabStall>? GrabStallReported
+        {
+            add => _grabStallReported += value;
+            remove => _grabStallReported -= value;
+        }
+
+        /// <summary>挂在 <see cref="GrabStallReported" /> 上的处理器数。</summary>
+        public int GrabStallSubscribers => _grabStallReported?.GetInvocationList().Length ?? 0;
+
+        /// <summary>模拟服务端报来「GrabServer 抓得太久」。</summary>
+        public void RaiseGrabStall(XServerGrabStall stall) => _grabStallReported?.Invoke(this, stall);
 
         public void TopLevelMapped(XTopLevelWindow window)
         {
