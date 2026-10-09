@@ -102,12 +102,12 @@ public sealed class GlxTests
 
         XMessage configs = await c.RequestAsync(glx, 21, b => b.U32(0));        // GetFBConfigs
         uint count = configs.U32(8), properties = configs.U32(12);
-        Assert.AreEqual(4u, count);
+        Assert.AreEqual(6u, count, "双缓冲 / 单缓冲 × 24 / 32 位,另加两个 4 倍多重采样的双缓冲配置");
         Assert.AreEqual(count * properties * 2, configs.U32(4), "reply length = 2 × 配置数 × 属性数");
         Assert.AreEqual(0x8013u, configs.U32(32), "第一对是 GLX_FBCONFIG_ID");
 
         XMessage visuals = await c.RequestAsync(glx, 14, b => b.U32(0));        // GetVisualConfigs
-        Assert.AreEqual(4u, visuals.U32(8), "每个 TrueColor 视觉发布双缓冲与单缓冲配置");
+        Assert.AreEqual(6u, visuals.U32(8), "每个 TrueColor 视觉发布双缓冲、单缓冲与多重采样配置");
         Assert.AreEqual(RootVisual, visuals.U32(32));
         int visualConfigBytes = checked((int)visuals.U32(12) * 4);
         int secondVisual = 32 + visualConfigBytes;
@@ -119,6 +119,44 @@ public sealed class GlxTests
         XMessage badScreen = await c.RequestAsync(glx, 21, b => b.U32(1));
         Assert.IsTrue(badScreen.IsError);
         Assert.AreEqual(2, badScreen.Bytes[1], "屏幕不存在:BadValue");
+    }
+
+    /// <summary>
+    /// 多重采样 FBConfig 与 GLX_EXT_libglvnd(xs_plan F22):两个 4 倍多重采样的双缓冲配置(SAMPLE_BUFFERS 1、SAMPLES 4);
+    /// QueryServerString(GLX_VENDOR_NAMES_EXT)报 mesa;GetDrawableAttributes 的回复带 GLX_SCREEN;扩展串里列出 GLX_EXT_libglvnd。
+    /// </summary>
+    [TestMethod]
+    public async Task 多重采样配置_libglvnd的厂商名与可绘对象的屏幕()
+    {
+        await using X11Server server = new();
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        byte glx = await GlxAsync(c);
+        static string Text(XMessage reply) => Encoding.Latin1.GetString(reply.Bytes, 32, (int)reply.U32(12)).TrimEnd('\0');
+        static Dictionary<uint, uint> Pairs(XMessage reply, int at, uint count)
+        {
+            Dictionary<uint, uint> pairs = [];
+            for (int i = 0; i < count; i++)
+            {
+                pairs[reply.U32(at + (8 * i))] = reply.U32(at + (8 * i) + 4);
+            }
+            return pairs;
+        }
+
+        Assert.AreEqual("mesa", Text(await c.RequestAsync(glx, 19, b => b.U32(0).U32(0x20F6))), "GLX_VENDOR_NAMES_EXT");
+        Assert.Contains("GLX_EXT_libglvnd", Text(await c.RequestAsync(glx, 19, b => b.U32(0).U32(3))));
+
+        XMessage configs = await c.RequestAsync(glx, 21, b => b.U32(0));
+        uint count = configs.U32(8), properties = configs.U32(12);
+        List<Dictionary<uint, uint>> all = [.. Enumerable.Range(0, (int)count).Select(i => Pairs(configs, 32 + (int)(i * properties * 8), properties))];
+        List<Dictionary<uint, uint>> multisample = [.. all.Where(cfg => cfg[100000] == 1)];   // GLX_SAMPLE_BUFFERS
+        Assert.HasCount(2, multisample);
+        Assert.IsTrue(multisample.All(cfg => cfg[100001] == 4 && cfg[5] == 1), "4 倍、双缓冲");   // GLX_SAMPLES、GLX_DOUBLEBUFFER
+        CollectionAssert.AreEquivalent(new uint[] { 24, 32 }, multisample.Select(cfg => cfg[2]).ToArray(), "24 / 32 位各一个");   // GLX_BUFFER_SIZE
+
+        uint window = c.NewId();
+        await c.SendAsync(1, 24, b => b.U32(window).U32(c.RootWindow).I16(0).I16(0).U16(10).U16(10).U16(0).U16(1).U32(0).U32(0));
+        XMessage attributes = await c.RequestAsync(glx, 29, b => b.U32(window));   // GetDrawableAttributes(GLX 1.2 的窗口)
+        Assert.AreEqual(0u, Pairs(attributes, 32, attributes.U32(8))[0x800C], "GLX_SCREEN");
     }
 
     [TestMethod]

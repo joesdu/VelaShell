@@ -189,6 +189,36 @@ public sealed class RealClientTests
         }
     }
 
+    /// <summary>
+    /// 多重采样 FBConfig 与 GLX_EXT_libglvnd(xs_plan F22):<c>glxgears -samples 4</c> 直接、间接两条路径都拿得到多重采样配置
+    /// (原先报「couldn't get an RGB, Double-buffered, Multisample visual」退出);服务端的 GLX 扩展里列出 GLX_EXT_libglvnd。
+    /// 跑满 4 秒被 timeout 结束(退出码 124)就是一直在正常画。
+    /// </summary>
+    [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task glxgears要多重采样也拿得到配置_服务端列出libglvnd扩展()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartServer();
+        await using (server)
+        {
+            await server.StartAsync();
+            // 间接的那个放最后:它被 timeout 结束时服务端还排着它的一长串渲染请求,之后连进来的客户端要等那些做完。
+            (_, string output) = await RunClientAsync(cookie,
+                "glxinfo | grep -A3 'server glx extensions'; "
+                + "timeout 4 glxgears -samples 4 > /tmp/d.txt 2>&1; echo direct-exit=$?; head -3 /tmp/d.txt; "
+                + "LIBGL_ALWAYS_INDIRECT=1 timeout 4 glxgears -samples 4 > /tmp/i.txt 2>&1; echo indirect-exit=$?; head -3 /tmp/i.txt");
+            TestContext.WriteLine(output);
+            Assert.Contains("direct-exit=124", output);
+            Assert.Contains("indirect-exit=124", output);
+            Assert.Contains("GLX_EXT_libglvnd", output);
+            Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
     [TestMethod]
     [DataRow("xterm -geometry 40x6 -e sh -c 'echo hello; sleep 3'")]
     [DataRow("xeyes")]
