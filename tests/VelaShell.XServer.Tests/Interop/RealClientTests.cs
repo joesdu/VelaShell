@@ -206,7 +206,6 @@ public sealed class RealClientTests
         await using (server)
         {
             await server.StartAsync();
-            // 间接的那个放最后:它被 timeout 结束时服务端还排着它的一长串渲染请求,之后连进来的客户端要等那些做完。
             (_, string output) = await RunClientAsync(cookie,
                 "glxinfo | grep -A3 'server glx extensions'; "
                 + "timeout 4 glxgears -samples 4 > /tmp/d.txt 2>&1; echo direct-exit=$?; head -3 /tmp/d.txt; "
@@ -215,6 +214,33 @@ public sealed class RealClientTests
             Assert.Contains("direct-exit=124", output);
             Assert.Contains("indirect-exit=124", output);
             Assert.Contains("GLX_EXT_libglvnd", output);
+            Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
+    /// <summary>
+    /// 执行线程在客户端之间轮流:间接 GL 的 glxgears 排满渲染请求时,同时连进来的 xdpyinfo 几秒内就拿到回复
+    /// (原先先来先做,它要等 glxgears 那一千多条请求全做完 —— 实测 25 秒)。
+    /// </summary>
+    [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task 间接GL客户端排满请求时_别的客户端照样很快得到回复()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartServer();
+        await using (server)
+        {
+            await server.StartAsync();
+            (_, string output) = await RunClientAsync(cookie,
+                "(LIBGL_ALWAYS_INDIRECT=1 timeout 10 glxgears > /dev/null 2>&1 &); sleep 3; "
+                + "start=$(date +%s); timeout 30 xdpyinfo > /dev/null; echo xdpyinfo-exit=$? waited=$(( $(date +%s) - start ))");
+            TestContext.WriteLine(output);
+            Assert.Contains("xdpyinfo-exit=0", output);
+            int waited = int.Parse(output[(output.IndexOf("waited=", StringComparison.Ordinal) + 7)..].Trim(), System.Globalization.CultureInfo.InvariantCulture);
+            Assert.IsLessThanOrEqualTo(5, waited, "xdpyinfo 不用等 glxgears 的请求全做完");
             Assert.IsEmpty(errors, string.Join('\n', errors));
         }
     }

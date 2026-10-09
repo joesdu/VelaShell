@@ -24,12 +24,21 @@ public sealed partial class X11Server
 
     private XClient? _serverGrabber;
 
-    /// <summary>一项工作:客户端的一条请求(<see cref="Request" />),或者一段要在执行线程上跑的代码。</summary>
-    /// <summary>执行线程上的一项工作:一段代码,或者一条请求(<see cref="Request" /> 是池里租来的缓冲,前 <see cref="RequestLength" /> 字节是请求)。</summary>
-    private readonly record struct WorkItem(XClient? Client, Action? Action, byte[]? Request = null, int RequestLength = 0);
+    /// <summary>
+    /// 执行线程上的一项工作:一段代码,或者一条请求(<see cref="Request" /> 是池里租来的缓冲,前 <see cref="RequestLength" /> 字节是请求)。
+    /// <see cref="Lane" /> 只管排在哪条队(见 <see cref="TryTakeItem" />):为 null 时按 <see cref="Client" />;<see cref="Client" /> 才决定暂存规则
+    /// (GrabServer、SYNC 的 Await 之类只拦客户端的工作)。
+    /// </summary>
+    private readonly record struct WorkItem(XClient? Client, Action? Action, byte[]? Request = null, int RequestLength = 0, XClient? Lane = null);
 
     /// <summary>把一件事排进执行线程。可以在任意线程上调。</summary>
     internal void Post(XClient? client, Action action) => _work.Writer.TryWrite(new WorkItem(client, action));
+
+    /// <summary>
+    /// 排一件事到 <paramref name="lane" /> 这个客户端的队尾:等它前面还排着的请求都做完再做(连接收尾用 —— 客户端发完请求就关连接的,
+    /// 那些请求照样执行)。不受 GrabServer 之类的暂存规则管(那些只拦 <see cref="WorkItem.Client" /> 不为 null 的工作)。
+    /// </summary>
+    private void PostAfterRequests(XClient lane, Action action) => _work.Writer.TryWrite(new WorkItem(null, action, Lane: lane));
 
     /// <summary>把客户端的一条请求排进执行线程(不为每条请求分配闭包)。</summary>
     private void PostRequest(XClient client, byte[] request, int length) => _work.Writer.TryWrite(new WorkItem(client, null, request, length));
@@ -247,8 +256,61 @@ public sealed partial class X11Server
         }
     }
 
-    private bool TryTakeItem(ChannelReader<WorkItem> reader, out WorkItem item) =>
-        _ready.TryDequeue(out item) || reader.TryRead(out item);
+    /// <summary>
+    /// 从通道取出、还没执行的工作,按客户端分队(宿主与计时器的工作是另一条队,键是 <see cref="HostLane" />),每条队内保持到达顺序。
+    /// 原先全部工作排一条队、先来先做:一个间接 GL 客户端(glxgears)排满一千多条渲染请求,之后连进来的 xdpyinfo 要等它们全做完才轮到
+    /// (实测 25 秒),整个 X 桌面跟着卡住。现在执行循环在有活的队之间轮流、每次取一项:协议只要求同一个客户端的请求按序执行
+    /// (第 1 节「Protocol Formats」),不同客户端之间的先后本来就不保证。
+    /// </summary>
+    private readonly Dictionary<object, Queue<WorkItem>> _lanes = [];
+
+    /// <summary>有活的队,轮到谁(一条队只在里面出现一次)。</summary>
+    private readonly Queue<object> _laneOrder = new();
+
+    /// <summary>各队里合计还有几项。</summary>
+    private int _laneItems;
+
+    /// <summary>宿主调用与计时器的工作排的那条队。</summary>
+    private static readonly object HostLane = new();
+
+    /// <summary>
+    /// 取下一项:先取放回来的暂存请求(<see cref="_ready" />,它们比同一个客户端队里的都早),再把通道里到了的分进各队,然后轮到哪条队取哪条。
+    /// 取完还有活的队排回轮转的末尾,空了的队删掉(断开的客户端不留空队)。
+    /// </summary>
+    private bool TryTakeItem(ChannelReader<WorkItem> reader, out WorkItem item)
+    {
+        if (_ready.TryDequeue(out item))
+        {
+            return true;
+        }
+        while (reader.TryRead(out WorkItem arrived))
+        {
+            object key = arrived.Lane ?? arrived.Client ?? HostLane;
+            if (!_lanes.TryGetValue(key, out Queue<WorkItem>? queue))
+            {
+                _lanes[key] = queue = new Queue<WorkItem>();
+                _laneOrder.Enqueue(key);
+            }
+            queue.Enqueue(arrived);
+            _laneItems++;
+        }
+        if (!_laneOrder.TryDequeue(out object? lane))
+        {
+            return false;
+        }
+        Queue<WorkItem> next = _lanes[lane];
+        item = next.Dequeue();
+        _laneItems--;
+        if (next.Count > 0)
+        {
+            _laneOrder.Enqueue(lane);
+        }
+        else
+        {
+            _lanes.Remove(lane);
+        }
+        return true;
+    }
 
     private async Task RunLoopAsync()
     {
@@ -256,7 +318,7 @@ public sealed partial class X11Server
         await using Timer watchdog = new(CheckWatchdog, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         try
         {
-            while (_ready.Count != 0 || await reader.WaitToReadAsync(_lifetime.Token).ConfigureAwait(false))
+            while (_ready.Count != 0 || _laneItems != 0 || await reader.WaitToReadAsync(_lifetime.Token).ConfigureAwait(false))
             {
                 _lifetime.Token.ThrowIfCancellationRequested();
                 try

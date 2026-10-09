@@ -377,7 +377,7 @@ public sealed partial class X11Server
             if (client is not null)
             {
                 XClient gone = client;
-                Post(null, () => DisconnectClient(gone));
+                PostAfterRequests(gone, () => DisconnectClient(gone));   // 排在它还没执行的请求之后:发完请求就关连接的客户端,请求照样生效
                 gone.Output.Writer.TryComplete();
             }
             if (writer is not null)
