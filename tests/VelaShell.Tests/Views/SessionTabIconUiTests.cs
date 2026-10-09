@@ -231,7 +231,7 @@ public sealed class SessionTabIconUiTests
     /// </summary>
     /// <remarks>
     /// 标签外壳把 Foreground 传给标题文字；在外壳本体上做 BrushTransition 会让
-    /// Windows 高 DPI 下的悬停重绘闪烁。背景和激活指示线仍可在各自的绘制元素上过渡。
+    /// Windows 不同缩放比例下的悬停重绘闪烁。背景和激活指示线仍可在各自的绘制元素上过渡。
     /// </remarks>
     [TestMethod]
     public void DockTabShells_DoNotAnimateForegroundOnHover()

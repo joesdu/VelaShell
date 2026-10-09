@@ -507,7 +507,7 @@ public sealed class ConnectionProfileViewUiTests
 
     /// <summary>
     /// Tab 悬停只改变稳定的画刷值，不在 Button 本体上启动过渡。
-    /// Windows 150% 缩放下，按钮前景又被图标绑定时，过渡会让悬停命中区域出现闪烁。
+    /// Windows 不同缩放比例下，按钮前景又被图标绑定时，过渡会让悬停命中区域出现闪烁。
     /// </summary>
     private static void AssertProtocolTabHoverIsStable(IReadOnlyList<Button> protocolButtons)
     {
