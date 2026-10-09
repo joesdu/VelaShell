@@ -5703,6 +5703,12 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SetXServer_RestrictForwardedDesc" xml:space="preserve">
     <value>SSH로 전달된 프로그램은 입력 흉내(XTEST), X 창에서 입력한 모든 키 감시(원시 키 이벤트), 입력 장치 변경을 할 수 없습니다. 완전히 신뢰하지 않는 서버에 연결할 때는 켜 두세요. 켜면 그 서버의 xdotool 같은 도구는 동작하지 않습니다.</value>
   </data>
+  <data name="SetXServer_DisplayPerSession" xml:space="preserve">
+    <value>SSH 세션마다 별도 디스플레이</value>
+  </data>
+  <data name="SetXServer_DisplayPerSessionDesc" xml:space="preserve">
+    <value>SSH 세션마다 X 프로그램이 서로 다른 디스플레이를 씁니다. 서로의 창을 볼 수 없고 키보드 입력과 클립보드를 읽을 수 없으며 입력을 보낼 수도 없습니다. 이 컴퓨터의 X 프로그램은 계속 공용 디스플레이를 씁니다. 세션마다 메모리와 스레드를 조금 더 씁니다. 다음에 X Server를 시작할 때 적용됩니다.</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>자동 - 시스템의 현재 레이아웃</value>
   </data>

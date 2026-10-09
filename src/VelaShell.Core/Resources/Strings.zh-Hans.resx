@@ -6162,6 +6162,12 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SetXServer_RestrictForwardedDesc" xml:space="preserve">
     <value>经 SSH 转发来的程序不能模拟输入(XTEST)、不能监听在 X 窗口里敲的所有按键(原始按键事件)、不能改动输入设备。连接不完全信任的服务器时建议打开;打开后那些服务器上的 xdotool 之类的工具会失效。</value>
   </data>
+  <data name="SetXServer_DisplayPerSession" xml:space="preserve">
+    <value>每个 SSH 会话一个显示</value>
+  </data>
+  <data name="SetXServer_DisplayPerSessionDesc" xml:space="preserve">
+    <value>不同 SSH 会话的 X 程序各用各的显示:彼此看不见窗口、读不到对方的键盘输入与剪贴板、也不能往对方注入输入。本机的 X 程序照旧用共用的显示。每个会话多占一点内存与一条线程。下次启动 X Server 时生效。</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自动 - 跟随系统当前布局</value>
   </data>

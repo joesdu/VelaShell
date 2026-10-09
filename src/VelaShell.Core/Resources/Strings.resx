@@ -5708,6 +5708,12 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SetXServer_RestrictForwardedDesc" xml:space="preserve">
     <value>Programs forwarded over SSH can&apos;t simulate input (XTEST), listen to every key typed in X windows (raw key events) or change input devices. Turn this on when you connect to servers you don&apos;t fully trust; tools like xdotool on those servers stop working.</value>
   </data>
+  <data name="SetXServer_DisplayPerSession" xml:space="preserve">
+    <value>One display per SSH session</value>
+  </data>
+  <data name="SetXServer_DisplayPerSessionDesc" xml:space="preserve">
+    <value>X programs from different SSH sessions get separate displays: they cannot see each other&apos;s windows, read each other&apos;s keyboard input or clipboard, or send each other input. X programs on this computer keep using the shared display. Each session costs a little memory and a thread. Takes effect the next time the X Server starts.</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>auto - Follow the system layout</value>
   </data>

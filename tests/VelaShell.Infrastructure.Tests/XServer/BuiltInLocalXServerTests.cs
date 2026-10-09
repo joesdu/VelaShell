@@ -154,6 +154,74 @@ public class BuiltInLocalXServerTests
         }
     }
 
+    /// <summary>
+    /// 「每个 SSH 会话一个显示」开着:同一个会话的通道进同一个服务端,不同会话各进各的,没带会话的(本机)进共用的那个;
+    /// 每个服务端各配一个宿主;会话断开时它的服务端收掉、宿主脱离;停服时全部收掉。
+    /// </summary>
+    [TestMethod]
+    public async Task DisplayPerSession_EachSessionGetsItsOwnServer_ClosedWhenTheSessionEnds()
+    {
+        List<RecordingHost> hosts = [];
+        await using BuiltInLocalXServer server = new(Settings(new XServerOptions { DisplayPerSession = true }), () =>
+        {
+            RecordingHost created = new();
+            lock (hosts)
+            {
+                hosts.Add(created);
+            }
+            return created;
+        }, LowDisplaysBusy, _ => Task.FromResult(false));
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+        using CancellationTokenSource aliceEnded = new(), bobEnded = new();
+        object alice = new(), bob = new();
+
+        await using Stream a1 = await resolution.Connector!(new("alice@a:22", Session: alice, SessionEnded: aliceEnded.Token), CancellationToken.None);
+        await using Stream a2 = await resolution.Connector!(new("alice@a:22", Session: alice, SessionEnded: aliceEnded.Token), CancellationToken.None);
+        await using Stream b1 = await resolution.Connector!(new("bob@b:22", Session: bob, SessionEnded: bobEnded.Token), CancellationToken.None);
+        await using Stream shared = await resolution.Connector!(new("local"), CancellationToken.None);
+        foreach (Stream stream in (Stream[])[a1, a2, b1, shared])
+        {
+            Assert.AreEqual(1, await HandshakeAsync(stream));
+        }
+
+        IReadOnlyList<BuiltInLocalXServer.XServerInstance> instances = server.Instances;
+        Assert.HasCount(3, instances, "共用的一个 + 两个会话各一个");
+        Assert.IsNull(instances[0].Label);
+        X11Server aliceServer = instances.Single(i => i.Label == "alice@a:22").Server;
+        Assert.HasCount(2, await aliceServer.GetClientsAsync(), "同一个会话的两条通道进同一个服务端");
+        Assert.HasCount(1, await instances.Single(i => i.Label == "bob@b:22").Server.GetClientsAsync());
+        Assert.HasCount(1, await instances[0].Server.GetClientsAsync(), "没带会话的进共用的那个");
+        Assert.HasCount(3, hosts, "每个服务端一个宿主");
+        Assert.AreEqual(4, await server.CountConnectedClientsAsync(), "按会话分出来的显示上的一并数上");
+
+        await aliceEnded.CancelAsync();
+        for (int i = 0; i < 100 && server.Instances.Count != 2; i++)
+        {
+            await Task.Delay(20);
+        }
+        Assert.HasCount(2, server.Instances, "会话断开:它的显示收掉");
+        Assert.AreEqual(1, hosts.Single(h => ReferenceEquals(h.Attached, aliceServer)).Detaches);
+
+        await server.StopAsync();
+        Assert.IsTrue(hosts.All(h => h.Detaches == 1), "停服时全部收掉");
+        Assert.IsEmpty(server.Instances);
+    }
+
+    /// <summary>设置没开(默认):带着会话的通道照旧进共用的显示,不另建服务端。</summary>
+    [TestMethod]
+    public async Task DisplayPerSession_Off_SessionsShareTheDisplay()
+    {
+        await using BuiltInLocalXServer server = Create(new XServerOptions(), new RecordingHost());
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+        await using Stream a = await resolution.Connector!(new("alice@a:22", Session: new object()), CancellationToken.None);
+        await using Stream b = await resolution.Connector!(new("bob@b:22", Session: new object()), CancellationToken.None);
+        Assert.AreEqual(1, await HandshakeAsync(a));
+        Assert.AreEqual(1, await HandshakeAsync(b));
+
+        Assert.HasCount(1, server.Instances);
+        Assert.HasCount(2, await server.Instances[0].Server.GetClientsAsync());
+    }
+
     /// <summary>停之前数得出连着几个 X 程序(标题栏按钮据此确认「会断开 N 个程序」);没在运行时为 0。</summary>
     [TestMethod]
     public async Task CountConnectedClients_CountsConnections()

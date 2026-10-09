@@ -1528,6 +1528,16 @@ public class XServerOptions : ObservableOptions
         set => Set(ref field, value);
     }
 
+    /// <summary>
+    /// 内置 X Server:每个 SSH 会话一个显示 —— 各会话的 X 程序彼此看不见窗口、读不到键盘与剪贴板、注入不了输入;本机的 X 程序照旧用共用的显示。
+    /// 默认关(所有会话共用一个显示,与以往一样)。下次启动 X Server 时生效。
+    /// </summary>
+    public bool DisplayPerSession
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
     /// <summary>XKB 键盘布局(<c>-xkblayout</c>);留空 = 跟随 Windows 当前布局。</summary>
     public string KeyboardLayout
     {

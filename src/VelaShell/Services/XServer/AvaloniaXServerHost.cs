@@ -117,8 +117,13 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
 
     // ================================================================== 生命周期
 
-    /// <summary>当前附着着的宿主:本机活动上报给它的服务端(见 <see cref="HookLocalActivity" />)。</summary>
-    private static volatile AvaloniaXServerHost? s_attached;
+    /// <summary>
+    /// 当前附着着的宿主:本机活动上报给它们的服务端(见 <see cref="HookLocalActivity" />)。开了「每个 SSH 会话一个显示」时不止一个。
+    /// 整份替换(写时复制),读的一方不加锁。
+    /// </summary>
+    private static volatile AvaloniaXServerHost[] s_attached = [];
+
+    private static readonly Lock s_attachedGate = new();
 
     private static bool s_activityHooked;
 
@@ -140,13 +145,22 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         InputElement.PointerWheelChangedEvent.AddClassHandler<TopLevel>((_, _) => ReportLocalActivity(), RoutingStrategies.Tunnel, handledEventsToo: true);
     }
 
-    private static void ReportLocalActivity() => s_attached?._server?.NoteUserActivity();
+    private static void ReportLocalActivity()
+    {
+        foreach (AvaloniaXServerHost host in s_attached)
+        {
+            host._server?.NoteUserActivity();
+        }
+    }
 
     /// <inheritdoc />
     public async Task AttachAsync(X11Server server, CancellationToken cancellationToken)
     {
         _server = server;
-        s_attached = this;
+        lock (s_attachedGate)
+        {
+            s_attached = [.. s_attached.Where(h => !ReferenceEquals(h, this)), this];
+        }
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             HookLocalActivity();
@@ -167,40 +181,47 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
                 ApplyLayout(server, main.Screens);
                 if (!ReferenceEquals(_watchedScreens, main.Screens))
                 {
+                    _watchedScreens?.Changed -= OnScreensChanged;
                     _watchedScreens = main.Screens;
-                    _watchedScreens.Changed += (_, _) =>
-                    {
-                        if (_server is { } current && _watchedScreens is { } screens)
-                        {
-                            (int, int) before = RootOrigin;
-                            ApplyLayout(current, screens);
-                            if (RootOrigin != before)
-                            {
-                                // 左侧 / 上方的显示器插拔:根原点挪了,原生窗口没动,X 坐标却整体差了这么多(菜单、对话框会摆到别处)。
-                                // 按每个窗口此刻的原生位置重报一次。
-                                foreach (XNativeWindow window in _windows.Values)
-                                {
-                                    window.ReportPosition();
-                                }
-                            }
-                        }
-                    };
+                    _watchedScreens.Changed += OnScreensChanged;
                 }
             }
         }, DispatcherPriority.Normal, cancellationToken);
+    }
+
+    /// <summary>显示器布局变了:重报给服务端;根原点挪了时各窗口重报位置。</summary>
+    private void OnScreensChanged(object? sender, EventArgs e)
+    {
+        if (_server is { } current && _watchedScreens is { } screens)
+        {
+            (int, int) before = RootOrigin;
+            ApplyLayout(current, screens);
+            if (RootOrigin != before)
+            {
+                // 左侧 / 上方的显示器插拔:根原点挪了,原生窗口没动,X 坐标却整体差了这么多(菜单、对话框会摆到别处)。
+                // 按每个窗口此刻的原生位置重报一次。
+                foreach (XNativeWindow window in _windows.Values)
+                {
+                    window.ReportPosition();
+                }
+            }
+        }
     }
 
     /// <inheritdoc />
     public void Detach()
     {
         _server = null;
-        if (ReferenceEquals(s_attached, this))
+        lock (s_attachedGate)
         {
-            s_attached = null;
+            s_attached = [.. s_attached.Where(h => !ReferenceEquals(h, this))];
         }
         Dispatcher.UIThread.Post(() =>
         {
             _trayIcons.Clear();
+            // 按会话分出来的显示收掉时这个宿主就不再用了:别让显示器的事件一直拽着它。
+            _watchedScreens?.Changed -= OnScreensChanged;
+            _watchedScreens = null;
             XNativeWindow[] windows = [.. _windows.Values];
             _windows.Clear();
             _desktops.Clear();
@@ -231,9 +252,16 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     /// <summary>单窗口模式的屏幕窗口一开始就全屏(窗口模式「全屏」)。</summary>
     internal bool ScreenFullscreen => _windowMode == XServerWindowModes.Fullscreen;
 
-    /// <summary>屏幕窗口的标题:「X 桌面 :N」。</summary>
-    internal static string ScreenTitle(X11Server server) =>
-        Strings.Format("XServer_ScreenTitle", server.Display is { } display ? display.Split('.')[0].Replace("localhost", "") : $":{server.DisplayNumber}");
+    /// <summary>按会话分出来的显示:是哪个会话的(见 <see cref="UseSessionLabel" />);共用的显示为 null。</summary>
+    private string? _sessionLabel;
+
+    /// <inheritdoc />
+    public void UseSessionLabel(string label) => _sessionLabel = label;
+
+    /// <summary>屏幕窗口的标题:「X 桌面 :N」;按会话分出来的显示写会话的来历(「X 桌面 user@host:22」)。</summary>
+    internal string ScreenTitle(X11Server server) =>
+        Strings.Format("XServer_ScreenTitle", _sessionLabel
+            ?? (server.Display is { } display ? display.Split('.')[0].Replace("localhost", "") : $":{server.DisplayNumber}"));
 
     /// <summary>
     /// 单窗口模式起步的屏幕尺寸(物理像素,一台显示器覆盖全部):全屏时是主显示器的大小,否则是主显示器工作区的八成 ——

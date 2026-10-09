@@ -835,6 +835,54 @@ public sealed class AvaloniaXServerHostUiTests
     });
 
     /// <summary>
+    /// 「每个 SSH 会话一个显示」时同时附着着几个宿主:本机窗口里的按键让每个服务端的空闲时间都归零。
+    /// 原先只记着最后附着的那一个宿主,先开的会话的服务端一直以为用户走了。
+    /// </summary>
+    [TestMethod]
+    public async Task 同时附着几个宿主时_本机按键让每个服务端的空闲时间都归零() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost firstHost = new(), secondHost = new();
+        await using X11Server first = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, firstHost);
+        await using X11Server second = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, secondHost);
+        await firstHost.AttachAsync(first, CancellationToken.None);
+        await secondHost.AttachAsync(second, CancellationToken.None);
+        List<(InMemoryDuplexStream Client, Task Serve, System.Collections.Concurrent.ConcurrentQueue<byte[]> Replies, uint Root, byte Saver)> clients = [];
+        static ushort Sequence(byte[] reply) => BinaryPrimitives.ReadUInt16LittleEndian(reply.AsSpan(2));
+        foreach (X11Server server in (X11Server[])[first, second])
+        {
+            (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+            Task serve = server.ServeAsync(serverSide, isLocal: true);
+            System.Collections.Concurrent.ConcurrentQueue<byte[]> replies = new();
+            (_, uint root) = await HandshakeAsync(client, replies: replies);
+            byte[] name = Encoding.ASCII.GetBytes("MIT-SCREEN-SAVER");
+            await SendAsync(client, 98, 0, w => w.U16((ushort)name.Length).U16(0).Bytes(name).Pad());               // 序号 1
+            byte saver = (await WaitForAsync(() => replies.FirstOrDefault(r => Sequence(r) == 1)))[9];
+            clients.Add((client, serve, replies, root, saver));
+        }
+        Avalonia.Controls.Window local = new() { Width = 100, Height = 80 };
+        local.Show();
+        await Task.Delay(300);
+
+        local.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+        foreach ((InMemoryDuplexStream client, _, System.Collections.Concurrent.ConcurrentQueue<byte[]> replies, uint root, byte saver) in clients)
+        {
+            await SendAsync(client, saver, 1, w => w.U32(root));                                                     // QueryInfo,序号 2
+            byte[] info = await WaitForAsync(() => replies.FirstOrDefault(r => Sequence(r) == 2));
+            uint idle = BinaryPrimitives.ReadUInt32LittleEndian(info.AsSpan(16));
+            Assert.IsLessThan(150u, idle, $"本机窗口里刚按了键,每个服务端的空闲都应归零,实际 {idle} ms");
+        }
+
+        local.Close();
+        firstHost.Detach();
+        secondHost.Detach();
+        foreach ((InMemoryDuplexStream client, Task serve, _, _, _) in clients)
+        {
+            client.Dispose();
+            await serve.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    });
+
+    /// <summary>
     /// macOS 上 Command 组合键收不到 KeyUp:Command 松开时把按着它时按下的键一并松开 —— 否则 X 那边以为 C 一直按着。
     /// 在别的系统上打开这个处理来测(macOS 才默认打开)。
     /// </summary>

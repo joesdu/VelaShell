@@ -121,7 +121,7 @@ public sealed class XNativeWindow : Window
         XTopLevelSnapshot s = Handle.Snapshot;
         if ((changes & XTopLevelChanges.Title) != 0)
         {
-            Title = IsScreen ? AvaloniaXServerHost.ScreenTitle(Handle.Server) : s.Title.Length > 0 ? s.Title : s.ClassName;
+            Title = IsScreen ? _host.ScreenTitle(Handle.Server) : s.Title.Length > 0 ? s.Title : s.ClassName;
         }
         if ((changes & (XTopLevelChanges.Hints | XTopLevelChanges.States | XTopLevelChanges.Shape)) != 0)
         {

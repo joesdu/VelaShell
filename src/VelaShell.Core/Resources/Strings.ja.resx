@@ -5703,6 +5703,12 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetXServer_RestrictForwardedDesc" xml:space="preserve">
     <value>SSH で転送されたプログラムは、入力の模擬(XTEST)、X ウィンドウで入力したすべてのキーの監視(生のキーイベント)、入力デバイスの変更ができなくなります。完全には信頼できないサーバーに接続するときはオンにしてください。オンにすると、それらのサーバー上の xdotool などのツールは動かなくなります。</value>
   </data>
+  <data name="SetXServer_DisplayPerSession" xml:space="preserve">
+    <value>SSH セッションごとに別のディスプレイ</value>
+  </data>
+  <data name="SetXServer_DisplayPerSessionDesc" xml:space="preserve">
+    <value>SSH セッションごとに X プログラムが別々のディスプレイを使います。互いのウィンドウは見えず、キーボード入力やクリップボードも読めず、入力を送ることもできません。このコンピューター上の X プログラムは引き続き共有のディスプレイを使います。セッションごとに少しのメモリーとスレッドを使います。次に X Server を起動したときに有効になります。</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自動 - システムの現在のレイアウト</value>
   </data>

@@ -161,6 +161,15 @@
         <ToggleSwitch Grid.Column="1" x:Name="RestrictForwardedToggle"
                       IsChecked="{Binding XServer.RestrictForwardedClients}" VerticalAlignment="Center" />
       </Grid>
+      <!-- 每个 SSH 会话一个显示:同样只有内置引擎做得到(VcXsrv 是一个外部进程、一个显示)。 -->
+      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !XServerUsesVcXsrv}">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_DisplayPerSession}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_DisplayPerSessionDesc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" x:Name="DisplayPerSessionToggle"
+                      IsChecked="{Binding XServer.DisplayPerSession}" VerticalAlignment="Center" />
+      </Grid>
       <!-- 内置引擎下面直接是「启动」;VcXsrv 那一大块自己以分隔线收尾。 -->
       <Border Classes="sep" IsVisible="{Binding !XServerUsesVcXsrv}" />
 

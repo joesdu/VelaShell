@@ -30,6 +30,13 @@ namespace VelaShell.Infrastructure.XServer;
 /// 走 <see cref="X11Server.ServeAuthenticatedAsync(Stream, string?, CancellationToken)" />。
 /// </para>
 /// <para>
+/// <b>每个 SSH 会话一个显示</b>(设置 <see cref="AppXServerOptions.DisplayPerSession" />,默认关):开着时,带着会话对象
+/// (<see cref="XServerChannelSource.Session" />)进来的 x11 通道不进共用的服务端,而进这个会话自己的一个 <see cref="X11Server" />
+/// —— 不监听任何端口、只经连接器喂流,有自己的根窗口、选区与剪贴板、XTEST 只碰得到自己;各配一个宿主(窗口、键位表、DPI、
+/// 显示器布局、剪贴板各管各的)。第一条通道来时建,会话断开(<see cref="XServerChannelSource.SessionEnded" />)或停服时收掉;
+/// 至多 <see cref="MaxSessionDisplays" /> 个。本机程序(<c>DISPLAY=:N</c>)照旧连共用的那个。
+/// </para>
+/// <para>
 /// 状态变化(<see cref="StateChanged" />)在调用启动 / 停止的那个线程上触发,界面侧自己切回 UI 线程。
 /// </para>
 /// </remarks>
@@ -54,6 +61,55 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
 
     /// <summary>写进 .Xauthority 的那一条(停下时按它撤);没写成为 null。</summary>
     private (string Path, string Host, int Display, byte[] Cookie)? _published;
+
+    /// <summary>按会话分显示时同时开着的会话显示上限:每个一条执行线程、一份根窗口与宿主。超了新会话的 X 程序连不上(不落回共用的显示)。</summary>
+    internal const int MaxSessionDisplays = 32;
+
+    /// <summary>这一次启动时的设置(按会话建显示时照它配);没在运行时为 null。只在 <see cref="_stateLock" /> 里读写。</summary>
+    private AppXServerOptions? _runningOptions;
+
+    /// <summary>按会话分出来的显示(键是会话对象,按引用比);值是建它的任务。只在 <see cref="_stateLock" /> 里改字典。</summary>
+    private readonly Dictionary<object, Task<SessionDisplay>> _sessionDisplays = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>下一个实例的编号(共用的那个是 0):客户端清单用它与客户端编号合成键,收掉的实例的编号不再复用。</summary>
+    private int _nextInstanceIndex = 1;
+
+    /// <summary>一个按会话分出来的显示:编号、会话的来历、服务端与它的宿主,以及「会话断开就收掉」的登记。</summary>
+    private sealed record SessionDisplay(int Index, string? Label, X11Server Server, IEmbeddedXServerHost Host)
+    {
+        public CancellationTokenRegistration Ended { get; set; }
+    }
+
+    /// <summary>此刻在运行的一个服务端实例(见 <see cref="Instances" />)。</summary>
+    /// <param name="Index">编号:共用的那个是 0,按会话分出来的从 1 起,停服之前不复用。</param>
+    /// <param name="Label">按会话分出来的那个会话的来历(<c>user@host:port</c>);共用的那个为 null。</param>
+    /// <param name="Server">服务端。</param>
+    internal sealed record XServerInstance(int Index, string? Label, X11Server Server);
+
+    /// <summary>
+    /// 此刻在运行的全部服务端实例:共用的那个排第一(编号 0),之后是按会话分出来的(建好了的)。没在运行时为空。
+    /// 客户端清单、强制结束、解除卡住的抓取这类「对所有 X 程序」的动作照它逐个做。
+    /// </summary>
+    internal IReadOnlyList<XServerInstance> Instances
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                if (_state != XServerState.Running || _server is not { } shared)
+                {
+                    return [];
+                }
+                List<XServerInstance> all = [new(0, null, shared)];
+                all.AddRange(_sessionDisplays.Values
+                    .Where(t => t.IsCompletedSuccessfully)
+                    .Select(t => t.Result)
+                    .OrderBy(d => d.Index)
+                    .Select(d => new XServerInstance(d.Index, d.Label, d.Server)));
+                return all;
+            }
+        }
+    }
 
     /// <summary>构造。</summary>
     /// <param name="settings">设置服务(显示号、剪贴板、自动启动)。</param>
@@ -176,20 +232,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
             try
             {
                 cookie = RandomNumberGenerator.GetBytes(16);
-                // 窗口模式里除了多窗口与「无根」,其余几种(带框的大窗口、无框、全屏)都是单窗口模式(F13):整个桌面在一个窗口里,远端的窗口管理器接手。
-                bool rootful = options.WindowMode is XServerWindowModes.Windowed or XServerWindowModes.NoDecoration or XServerWindowModes.Fullscreen;
-                candidate = new(new X11ServerOptions
-                {
-                    DisplayNumber = display,
-                    AuthorizationCookie = cookie,
-                    SyncClipboard = options.Clipboard,
-                    SyncPrimary = options.Clipboard && options.CopyOnSelection,
-                    RestrictForwardedClients = options.RestrictForwardedClients,
-                    // 宿主把 X 程序的托盘图标显示成自己的托盘图标(F12),关闭到托盘的程序找得回来;单窗口模式下托盘归远端桌面的面板。
-                    SystemTray = !rootful,
-                    Rootful = rootful,
-                    Log = static line => Trace.WriteLine($"[XServer] {line}"),
-                }, host);
+                candidate = new(ServerOptions(options, display, cookie, label: null), host);
                 // 先让宿主把显示器布局、DPI、键盘布局告诉服务端,再开门 —— 第一个客户端拿到的就是对的屏幕与键位表。
                 host.UseKeyboardLayout(options.KeyboardLayout);
                 host.UseWindowMode(options.WindowMode);
@@ -233,6 +276,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         {
             _server = server;
             _attached = host;
+            _runningOptions = options;
             _state = XServerState.Running;
             _generation++;
         }
@@ -260,12 +304,20 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
     {
         X11Server? server;
         IEmbeddedXServerHost? host;
+        List<Task<SessionDisplay>> sessions;
         lock (_stateLock)
         {
             server = _server;
             host = _attached;
             _server = null;
             _attached = null;
+            _runningOptions = null;
+            sessions = [.. _sessionDisplays.Values];
+            _sessionDisplays.Clear();
+        }
+        foreach (Task<SessionDisplay> session in sessions)
+        {
+            await CloseSessionDisplayAsync(session).ConfigureAwait(false);
         }
         if (server is null)
         {
@@ -276,6 +328,27 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         await server.DisposeAsync().ConfigureAwait(false);
         RetractCookie();
         SetStopped();
+    }
+
+    /// <summary>一个服务端的选项:共用的那个带 cookie、照常监听;按会话分出来的(<paramref name="cookie" /> 为 null)什么都不听,只经连接器喂流。</summary>
+    private static X11ServerOptions ServerOptions(AppXServerOptions options, int display, byte[]? cookie, string? label)
+    {
+        // 窗口模式里除了多窗口与「无根」,其余几种(带框的大窗口、无框、全屏)都是单窗口模式(F13):整个桌面在一个窗口里,远端的窗口管理器接手。
+        bool rootful = options.WindowMode is XServerWindowModes.Windowed or XServerWindowModes.NoDecoration or XServerWindowModes.Fullscreen;
+        return new()
+        {
+            DisplayNumber = display,
+            AuthorizationCookie = cookie,
+            ListenTcp = cookie is null ? false : null,
+            UnixSocketPath = cookie is null ? "" : null,
+            SyncClipboard = options.Clipboard,
+            SyncPrimary = options.Clipboard && options.CopyOnSelection,
+            RestrictForwardedClients = options.RestrictForwardedClients,
+            // 宿主把 X 程序的托盘图标显示成自己的托盘图标(F12),关闭到托盘的程序找得回来;单窗口模式下托盘归远端桌面的面板。
+            SystemTray = !rootful,
+            Rootful = rootful,
+            Log = label is null ? static line => Trace.WriteLine($"[XServer] {line}") : line => Trace.WriteLine($"[XServer {label}] {line}"),
+        };
     }
 
     /// <summary>把 cookie 写进 .Xauthority,本机 X 程序经 Xlib 自动带上;写不成只记日志(SSH 转发不受影响)。</summary>
@@ -365,26 +438,22 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
     }
 
     /// <inheritdoc />
-    /// <remarks>以 Retain 模式断开、只剩资源的不算:它们已经没有连接了。</remarks>
+    /// <remarks>以 Retain 模式断开、只剩资源的不算:它们已经没有连接了。按会话分出来的显示上的一并算上。</remarks>
     public async Task<int> CountConnectedClientsAsync()
     {
-        X11Server? server;
-        lock (_stateLock)
+        int count = 0;
+        foreach (XServerInstance instance in Instances)
         {
-            server = _state == XServerState.Running ? _server : null;
+            try
+            {
+                count += (await instance.Server.GetClientsAsync().ConfigureAwait(false)).Count(c => !c.Retained);
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException)
+            {
+                // 刚好停了
+            }
         }
-        if (server is null)
-        {
-            return 0;
-        }
-        try
-        {
-            return (await server.GetClientsAsync().ConfigureAwait(false)).Count(c => !c.Retained);
-        }
-        catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException)
-        {
-            return 0;   // 刚好停了
-        }
+        return count;
     }
 
     /// <inheritdoc />
@@ -512,18 +581,136 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
     {
         cancellationToken.ThrowIfCancellationRequested();
         X11Server? server;
+        Task<SessionDisplay>? session = null;
         lock (_stateLock)
         {
             server = _state == XServerState.Running ? _server : null;
+            if (server is not null && _runningOptions is { DisplayPerSession: true } options && source.Session is { } key)
+            {
+                session = SessionDisplayFor(key, source, options);
+            }
         }
         if (server is null)
         {
             Trace.WriteLine("[XServer] x11 channel refused: the built-in server is not running");
             throw new InvalidOperationException("The built-in X server is not running.");
         }
+        return session is null ? ValueTask.FromResult<Stream>(Serve(server, source)) : ConnectToSessionAsync(session, source);
+    }
+
+    /// <summary>经这个会话自己的显示连进去(见类注释的「每个 SSH 会话一个显示」)。建不起来时这条通道按「本机显示连不上」处理。</summary>
+    private static async ValueTask<Stream> ConnectToSessionAsync(Task<SessionDisplay> session, XServerChannelSource source)
+    {
+        SessionDisplay display;
+        try
+        {
+            display = await session.ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Trace.WriteLine($"[XServer] x11 channel refused: the display for {source.Label} could not be created: {ex.Message}");
+            throw new IOException("The X display for this session could not be created.", ex);
+        }
+        return Serve(display.Server, source);
+    }
+
+    /// <summary>
+    /// 这个会话的显示:已经有(或正在建)就用它,没有就建。只在 <see cref="_stateLock" /> 里调。到了上限抛
+    /// <see cref="InvalidOperationException" />:不落回共用的显示 —— 那等于悄悄取消了用户要的隔离。
+    /// </summary>
+    private Task<SessionDisplay> SessionDisplayFor(object key, XServerChannelSource source, AppXServerOptions options)
+    {
+        if (_sessionDisplays.TryGetValue(key, out Task<SessionDisplay>? existing))
+        {
+            return existing;
+        }
+        if (_sessionDisplays.Count >= MaxSessionDisplays)
+        {
+            Trace.WriteLine($"[XServer] x11 channel refused: already {MaxSessionDisplays} per-session displays");
+            throw new InvalidOperationException($"Too many per-session X displays ({MaxSessionDisplays}).");
+        }
+        Task<SessionDisplay> created = CreateSessionDisplayAsync(key, source, options, _nextInstanceIndex++, _displayNumber ?? 0);
+        _sessionDisplays[key] = created;
+        return created;
+    }
+
+    /// <summary>建一个会话自己的显示:不监听的 <see cref="X11Server" />,配一个新的宿主;会话断开时收掉。</summary>
+    private async Task<SessionDisplay> CreateSessionDisplayAsync(object key, XServerChannelSource source, AppXServerOptions options, int index, int display)
+    {
+        await Task.Yield();   // 别在调用方(持着 _stateLock)的线程上往下走
+        if (_host() is not { } host)
+        {
+            throw new InvalidOperationException(Strings.Get("XServer_ErrNoHost"));
+        }
+        X11Server server = new(ServerOptions(options, display, cookie: null, source.Label), host);
+        try
+        {
+            host.UseKeyboardLayout(options.KeyboardLayout);
+            host.UseWindowMode(options.WindowMode);
+            if (source.Label is { } label)
+            {
+                host.UseSessionLabel(label);   // 单窗口模式下屏幕窗口的标题写上是哪个会话的桌面
+            }
+            await host.AttachAsync(server, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            host.Detach();
+            await server.DisposeAsync().ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                RemoveSessionDisplay(key);
+            }
+            throw;
+        }
+        SessionDisplay created = new(index, source.Label, server, host);
+        Trace.WriteLine($"[XServer] per-session display #{index} for {source.Label}");
+        // 会话已经断开时 Register 当场回调:照样收掉。
+        created.Ended = source.SessionEnded.Register(() => _ = EndSessionDisplayAsync(key));
+        return created;
+    }
+
+    /// <summary>会话断开:收掉它的显示(停服时已经一并收掉的就什么都不做)。</summary>
+    private async Task EndSessionDisplayAsync(object key)
+    {
+        Task<SessionDisplay>? session;
+        lock (_stateLock)
+        {
+            session = RemoveSessionDisplay(key);
+        }
+        if (session is not null)
+        {
+            await CloseSessionDisplayAsync(session).ConfigureAwait(false);
+        }
+    }
+
+    private Task<SessionDisplay>? RemoveSessionDisplay(object key) =>
+        _sessionDisplays.Remove(key, out Task<SessionDisplay>? session) ? session : null;
+
+    /// <summary>收掉一个会话的显示:关窗、断开它的 X 程序、停执行线程。没建成的跳过。</summary>
+    private static async Task CloseSessionDisplayAsync(Task<SessionDisplay> session)
+    {
+        SessionDisplay display;
+        try
+        {
+            display = await session.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return;   // 没建成:CreateSessionDisplayAsync 自己收过尾
+        }
+        await display.Ended.DisposeAsync().ConfigureAwait(false);
+        display.Host.Detach();
+        await display.Server.DisposeAsync().ConfigureAwait(false);
+        Trace.WriteLine($"[XServer] per-session display #{display.Index} for {display.Label} closed");
+    }
+
+    /// <summary>一条接进 <paramref name="server" /> 的双工流:服务端那一端在后台服务,另一端交给 SSH。</summary>
+    private static InMemoryDuplexStream Serve(X11Server server, XServerChannelSource source)
+    {
         (InMemoryDuplexStream serverSide, InMemoryDuplexStream clientSide) = InMemoryTransport.CreatePair();
         _ = ServeAsync(server, serverSide, source);
-        return ValueTask.FromResult<Stream>(clientSide);
+        return clientSide;
     }
 
     private static async Task ServeAsync(X11Server server, InMemoryDuplexStream stream, XServerChannelSource source)

@@ -38,6 +38,15 @@ public interface IEmbeddedXServerHost : IX11ServerHost
     {
     }
 
+    /// <summary>
+    /// 这个服务端是哪个 SSH 会话自己的显示(「每个 SSH 会话一个显示」;共用的显示不调)。在 <see cref="AttachAsync" /> 之前调用。
+    /// 单窗口模式下宿主拿它当屏幕窗口的标题,几个会话的桌面分得清。默认实现什么也不做。
+    /// </summary>
+    /// <param name="label">会话的来历,如 <c>user@host:22</c>。</param>
+    void UseSessionLabel(string label)
+    {
+    }
+
     /// <summary>服务端要停了:关掉它所有顶层窗口对应的原生窗口,不再往它注入输入。可在任意线程上调用。</summary>
     void Detach();
 
