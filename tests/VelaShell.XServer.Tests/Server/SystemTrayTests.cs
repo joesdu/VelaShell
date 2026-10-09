@@ -82,7 +82,7 @@ public sealed class SystemTrayTests
         Assert.IsFalse(host.Mapped.ContainsKey(embedder), "嵌入窗口不当普通顶层交给宿主");
 
         XMessage geometry = await c.RequestAsync(14, 0, b => b.U32(icon));
-        Assert.AreEqual((0, 0, 24, 24), (geometry.I16(12), geometry.I16(14), (int)geometry.U16(16), (int)geometry.U16(18)), "撑满嵌入窗口");
+        Assert.AreEqual((0, 0, 24, 24), (geometry.I16(12), geometry.I16(14), geometry.U16(16), geometry.U16(18)), "撑满嵌入窗口");
         XMessage tree = await c.RequestAsync(15, 0, b => b.U32(icon));
         Assert.AreEqual(embedder, tree.U32(12), "父窗口是嵌入窗口");
 

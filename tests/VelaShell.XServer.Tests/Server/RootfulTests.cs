@@ -126,7 +126,7 @@ public sealed class RootfulTests
         server.InjectPointerButton(screen, 60, 30, 1, pressed: false);
         XMessage press = await c.NextEventAsync(ButtonPress);
         Assert.AreEqual(window, press.U32(12));
-        Assert.AreEqual((60, 30, 10, 10), ((int)press.I16(20), (int)press.I16(22), (int)press.I16(24), (int)press.I16(26)));
+        Assert.AreEqual((60, 30, 10, 10), (press.I16(20), press.I16(22), press.I16(24), press.I16(26)));
         await host.WaitForAsync(() => host.CursorWindow is not null);
         Assert.AreSame(screen, host.CursorWindow, "光标报在屏幕句柄上");
 
@@ -136,7 +136,7 @@ public sealed class RootfulTests
         server.SetTopLevelStates(screen, XWindowStates.Maximized);
         server.ResizeTopLevel(screen, 300, 150);
         XMessage configure = await c.NextEventAsync(ConfigureNotify);
-        Assert.AreEqual((c.RootWindow, 300, 150), (configure.U32(8), (int)configure.U16(20), (int)configure.U16(22)));
+        Assert.AreEqual((c.RootWindow, 300, 150), (configure.U32(8), configure.U16(20), configure.U16(22)));
         await host.WaitForAsync(() => screen.Snapshot.Width == 300);
         (int width, int height) = (0, 0);
         screen.ReadPixels((_, w, h) => (width, height) = (w, h));
