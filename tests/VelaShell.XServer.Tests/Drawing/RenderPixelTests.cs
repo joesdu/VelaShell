@@ -77,6 +77,22 @@ public sealed class RenderPixelTests
     }
 
     [TestMethod]
+    public void HSL的ClipColor在灰色亮度大于1时拉到1_整数与浮点一致()
+    {
+        // 没按规矩预乘的源(颜色 230 > alpha 128)让 cs ≈ 1.8:HSLLuminosity 把黑色的目标平移成亮度 1.8 的灰色,ClipColor 的分母
+        // x − l 为 0。照公式取极限拉到 1,结果是 αs·αd·1 ≈ 128;原先整数版停在 1.8(夹取后 230),浮点版靠舍入噪声碰运气。
+        PixelBuffer image = new(1, 1, 32);
+        image.Pixels[0] = 0x80E6E6E6;
+        PixelBuffer dst = new(1, 1, 32);
+        dst.Pixels[0] = 0xFF000000;
+        uint[] expected = FloatComposite(0x3E, new ImageSource(image, 0, 0, 1, 1, PictFormat.A8R8G8B8), null, dst, PictFormat.A8R8G8B8);
+        RenderCompositor.Composite(0x3E, new ImageSource(image, 0, 0, 1, 1, PictFormat.A8R8G8B8), null, false,
+            new RenderTarget(dst, 0, 0, PictFormat.A8R8G8B8, [new XRect(0, 0, 1, 1)]), 0, 0, 0, 0, 0, 0, 1, 1);
+        Assert.AreEqual(0xFF808080u, expected[0], "浮点版");
+        Assert.AreEqual(0xFF808080u, dst.Pixels[0], "整数路径");
+    }
+
+    [TestMethod]
     public void 线性渐变的中点与Pad和None()
     {
         LinearGradientSource g = new(0, 0, 100, 0, [0, 1], [new Argb(1, 0, 0, 0), new Argb(1, 1, 1, 1)]) { Repeat = RenderSource.RepeatPad };
@@ -258,8 +274,11 @@ public sealed class RenderPixelTests
         return result;
     }
 
-    /// <summary>通用路径的浮点算法(源与遮罩取浮点、按 alpha 乘遮罩、RenderOps.Combine、按目标格式编码):整数路径拿它当真值。</summary>
-    private static uint[] FloatComposite(byte op, RenderSource src, RenderSource? mask, PixelBuffer dst, PictFormat format)
+    /// <summary>
+    /// 通用路径的浮点算法(源与遮罩取浮点、乘遮罩、RenderOps.Combine、按目标格式编码):整数路径拿它当真值。
+    /// <paramref name="componentAlpha" /> 时同合成器的浮点路径:遮罩的颜色通道各乘源的对应通道与源 alpha。
+    /// </summary>
+    private static uint[] FloatComposite(byte op, RenderSource src, RenderSource? mask, PixelBuffer dst, PictFormat format, bool componentAlpha = false)
     {
         uint[] result = (uint[])dst.Pixels.Clone();
         var s = new Argb[dst.Width];
@@ -271,22 +290,31 @@ public sealed class RenderPixelTests
             for (int x = 0; x < dst.Width; x++)
             {
                 Argb sc = s[x];
+                Argb sa = Argb.Gray(sc.A);
                 if (mask is not null)
                 {
-                    float ma = m[x].A;
-                    sc = new Argb(sc.A * ma, sc.R * ma, sc.G * ma, sc.B * ma);
+                    Argb mc = m[x];
+                    if (componentAlpha)
+                    {
+                        sa = new Argb(sc.A * mc.A, sc.A * mc.R, sc.A * mc.G, sc.A * mc.B);
+                        sc = new Argb(sc.A * mc.A, sc.R * mc.R, sc.G * mc.G, sc.B * mc.B);
+                    }
+                    else
+                    {
+                        sc = new Argb(sc.A * mc.A, sc.R * mc.A, sc.G * mc.A, sc.B * mc.A);
+                        sa = Argb.Gray(sc.A);
+                    }
                 }
-                if (op == RenderOps.Over && sc.A <= 0)
+                if (op == RenderOps.Over && sa.R <= 0 && sa.G <= 0 && sa.B <= 0 && sc.A <= 0)
                 {
                     continue;
                 }
                 int i = (y * dst.Width) + x;
-                result[i] = format.Encode(RenderOps.Combine(op, sc, Argb.Gray(sc.A), format.Decode(result[i]))) & dst.DepthMask;
+                result[i] = format.Encode(RenderOps.Combine(op, sc, sa, format.Decode(result[i]))) & dst.DepthMask;
             }
         }
         return result;
     }
-
     /// <summary>
     /// 8888 目标上的 Src / Over / Add 走整数:源量化成 8 位、乘遮罩、目标乘 (1 − αs) 各取整一次,
     /// 与全程浮点最多差 2(字形快路径也是这样算的)。渐变、变换、各种 repeat、各种源格式与遮罩都在取样里,一起对一遍。
@@ -548,6 +576,69 @@ public sealed class RenderPixelTests
             }
         }
         Console.WriteLine($"8888 目标混合模式最大通道差:8 位像素的源 {worstExact},双线性 / 渐变的源 {worstSampled}");
+    }
+
+    /// <summary>
+    /// 分量 alpha 的遮罩(次像素字形:纯色源 + a8r8g8b8 字形 + Over)走整数:全部 53 种运算,8888 目标逐通道算,a8 / a1 目标只用遮罩的
+    /// alpha。遮罩一半是带边界值的预乘像素、一半是完全随机的 32 位值(颜色通道可以大于 alpha —— HSL 的 cs 因此超过 1)。
+    /// 8 位像素的源最多差 1、a1 逐位相同;双线性的源放宽到 2,斜率无界的四种混合模式与 a1 目标先把取样量化成 8 位再交给浮点版
+    /// (见 <see cref="Quantized" />),要求只差 1 / 逐位相同。
+    /// </summary>
+    [TestMethod]
+    public void 分量alpha遮罩的合成走整数_与浮点只差取整()
+    {
+        const int size = 24;
+        Random random = new(71);
+        PixelBuffer argbImage = EdgeBuffer(random, 17, 13, 32);
+        PixelBuffer rgbImage = EdgeBuffer(random, 17, 13, 24);
+        PixelBuffer maskImage = EdgeBuffer(random, size, size, 32);
+        uint[] glyph = (uint[])EdgeBuffer(random, size, size, 32).Pixels.Clone();
+        for (int i = 0; i < glyph.Length; i += 2)
+        {
+            glyph[i] = (uint)random.NextInt64(0, 1L << 32);
+        }
+        double c = Math.Cos(0.4), sn = Math.Sin(0.4);
+        double[] rotate = [c, -sn, 2.5, sn, c, -1.5, 0, 0, 1];
+        List<(string Name, Func<RenderSource> Make, bool Exact)> sources =
+        [
+            ("纯色不透明", () => new SolidSource(new Argb(1, 30 / 255f, 30 / 255f, 30 / 255f)), true),
+            ("纯色半透明", () => new SolidSource(new Argb(128 / 255f, 64 / 255f, 0, 128 / 255f)), true),
+            ("x8r8g8b8 图像", () => new ImageSource(rgbImage, 0, 0, 17, 13, PictFormat.X8R8G8B8) { Repeat = RenderSource.RepeatNormal }, true),
+            ("argb 图像", () => new ImageSource(argbImage, 0, 0, 17, 13, PictFormat.A8R8G8B8) { Repeat = RenderSource.RepeatNormal }, true),
+            ("argb 旋转双线性", () => new ImageSource(argbImage, 0, 0, 17, 13, PictFormat.A8R8G8B8) { Repeat = RenderSource.RepeatReflect, Bilinear = true, Transform = rotate }, false),
+        ];
+        List<(string Name, Func<RenderSource> Make)> masks =
+        [
+            ("字形遮罩", () => new ColorMaskSource(glyph, 0, 0, size, size)),
+            ("a8r8g8b8 像素图遮罩", () => new ImageSource(maskImage, 0, 0, size, size, PictFormat.A8R8G8B8)),
+        ];
+        int worst = 0;
+        foreach ((PictFormat format, byte depth) in ((PictFormat, byte)[])[(PictFormat.A8R8G8B8, 32), (PictFormat.X8R8G8B8, 24), (PictFormat.A8, 8), (PictFormat.A1, 1)])
+        {
+            foreach (byte op in AllOps)
+            {
+                foreach ((string sourceName, Func<RenderSource> makeSource, bool exact) in sources)
+                {
+                    bool quantize = !exact && (depth == 1 || op is 0x35 or 0x36 or 0x3B or 0x3E);
+                    int limit = depth == 1 ? 0 : exact || quantize ? 1 : 2;
+                    foreach ((string maskName, Func<RenderSource> makeMask) in masks)
+                    {
+                        PixelBuffer dst = EdgeBuffer(random, size, size, depth);
+                        uint[] expected = FloatComposite(op, quantize ? Quantized(makeSource(), size) : makeSource(), makeMask(), dst, format, componentAlpha: true);
+                        RenderTarget target = new(dst, 0, 0, format, [new XRect(0, 0, size, size)]);
+                        RenderCompositor.Composite(op, makeSource(), makeMask(), true, target, 0, 0, 0, 0, 0, 0, size, size);
+                        for (int i = 0; i < expected.Length; i++)
+                        {
+                            int diff = MaxChannelDiff(expected[i], dst.Pixels[i]);
+                            worst = Math.Max(worst, diff);
+                            Assert.IsLessThanOrEqualTo(limit, diff,
+                                $"{format.Depth} 位目标、op 0x{op:X2}、{sourceName}、{maskName}:像素 {i} 期望 0x{expected[i]:X8},实际 0x{dst.Pixels[i]:X8}");
+                        }
+                    }
+                }
+            }
+        }
+        Console.WriteLine($"分量 alpha 最大通道差 {worst}");
     }
 
     /// <summary>
