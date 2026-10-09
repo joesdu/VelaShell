@@ -253,6 +253,7 @@ public sealed partial class X11Server
     private async Task RunLoopAsync()
     {
         ChannelReader<WorkItem> reader = _work.Reader;
+        await using Timer watchdog = new(CheckWatchdog, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         try
         {
             while (_ready.Count != 0 || await reader.WaitToReadAsync(_lifetime.Token).ConfigureAwait(false))
@@ -336,6 +337,10 @@ public sealed partial class X11Server
             return;
         }
         long started = Stopwatch.GetTimestamp();
+        _runningClient = item.Client;
+        _runningOpcode = item.Request is { } running ? running[0] | (running[1] << 8) : -1;
+        _runningSerial++;
+        Volatile.Write(ref _runningSince, started);   // 最后写:看门狗读到它非 0 时,上面几项已经是这一项的
         // 每项工作一份预算(X-1):扣光时请求回 Alloc,而不是持着像素锁跑上几分钟、让宿主界面陪着冻住。
         WorkBudget.Begin(RequestWorkBudget);
         try
@@ -359,8 +364,13 @@ public sealed partial class X11Server
         finally
         {
             WorkBudget.End();
+            Volatile.Write(ref _runningSince, 0);
         }
         long elapsed = Stopwatch.GetTimestamp() - started;
+        if (XServerMetrics.WorkItemDuration.Enabled)
+        {
+            XServerMetrics.WorkItemDuration.Record(elapsed * 1000.0 / Stopwatch.Frequency);
+        }
         if (elapsed >= SlowItemTicks && ShouldLogFrequent())
         {
             // 预算之内的单项也可能慢(合法但昂贵的请求):点名客户端,宿主日志里才找得到是谁让界面卡了一下。
@@ -373,6 +383,48 @@ public sealed partial class X11Server
 
     /// <summary>一项工作持锁超过这么久就记一行日志(见 <see cref="RunItem" />)。</summary>
     private static readonly long SlowItemTicks = Stopwatch.Frequency / 4;   // 250 毫秒
+
+    // ------------------------------------------------------------------ 看门狗(xs_plan F27)
+
+    // 执行线程正在做的那一项:开始的时间戳(0 = 空闲)、所属客户端、操作码(主 | 次 << 8;内部工作为 -1)、序号。
+    // 执行线程写、看门狗的计时器线程读;时间戳最后写、最先读,读到的其余几项至多是下一项的(那时看门狗按序号认出已经换了)。
+    private long _runningSince;
+    private XClient? _runningClient;
+    private int _runningOpcode;
+    private long _runningSerial;
+
+    /// <summary>看门狗已经点过名的那一项的序号(同一项只记一次)。</summary>
+    private long _stalledSerial;
+
+    /// <summary>一项工作做了这么久还没做完,看门狗就记一行日志点名客户端(测试可以调短)。</summary>
+    internal TimeSpan WatchdogThreshold { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// 看门狗:计时器线程上每秒看一眼执行线程。工作预算(<see cref="WorkBudget" />)管得住花在协议上的工作量,管不住真正卡住的一项
+    /// (宿主回调阻塞、实现里的死循环);那时执行线程自己记不了日志(慢的那一行要等这一项做完),所有客户端都停着,宿主日志里却什么也没有。
+    /// 这里不等它做完:超过 <see cref="WatchdogThreshold" /> 就记一行,点名是哪个客户端的哪条请求,并计入 <see cref="XServerMetrics.StalledWorkItems" />。
+    /// </summary>
+    private void CheckWatchdog(object? state)
+    {
+        long since = Volatile.Read(ref _runningSince);
+        if (since == 0 || Stopwatch.GetElapsedTime(since) < WatchdogThreshold)
+        {
+            return;
+        }
+        long serial = _runningSerial;
+        XClient? client = _runningClient;
+        int opcode = _runningOpcode;
+        if (Volatile.Read(ref _runningSince) != since || serial == _stalledSerial)
+        {
+            return;   // 读的途中换了一项,或者这一项已经点过名
+        }
+        _stalledSerial = serial;
+        XServerMetrics.StalledWorkItems.Add(1);
+        string what = opcode < 0
+            ? client is not null ? $"{client} (internal)" : "host or timer"
+            : $"{client} opcode {opcode & 0xFF}{((opcode & 0xFF) >= XOpcode.FirstExtension ? $".{opcode >> 8}" : "")}";
+        Log($"watchdog: {what} has been running for {(int)Stopwatch.GetElapsedTime(since).TotalSeconds} s; all clients are waiting");
+    }
 
     /// <summary>每项工作的工作量预算(<see cref="WorkBudget" />);测试可以调小。</summary>
     internal long RequestWorkBudget { get; set; } = WorkBudget.DefaultUnits;

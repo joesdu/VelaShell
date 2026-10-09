@@ -243,6 +243,7 @@ public sealed partial class X11Server
         if (Interlocked.Increment(ref _pendingSetups) > MaxPendingSetups)
         {
             Interlocked.Decrement(ref _pendingSetups);
+            XServerMetrics.RefusedConnections.Add(1, new KeyValuePair<string, object?>("reason", "too_many_setups"));
             return;   // 正在握手的连接太多:当场关掉(流由调用方释放)
         }
         bool pending = true;
@@ -275,6 +276,7 @@ public sealed partial class X11Server
             if (nameLength > MaxAuthFieldLength || dataLength > MaxAuthFieldLength)
             {
                 // 先按客户端给的长度分配的话,每条连接各 128 KB(进大对象堆);真实的授权数据只有几十字节。
+                XServerMetrics.RefusedConnections.Add(1, new KeyValuePair<string, object?>("reason", "bad_setup"));
                 await SendSetupFailureAsync(stream, bigEndian, "Authorization data too long", setup.Token).ConfigureAwait(false);
                 return;
             }
@@ -285,6 +287,7 @@ public sealed partial class X11Server
 
             if (major != 11)
             {
+                XServerMetrics.RefusedConnections.Add(1, new KeyValuePair<string, object?>("reason", "bad_setup"));
                 await SendSetupFailureAsync(stream, bigEndian, "Protocol version mismatch", setup.Token).ConfigureAwait(false);
                 return;
             }
@@ -298,6 +301,7 @@ public sealed partial class X11Server
             }
             if (refused is { } reason)
             {
+                XServerMetrics.RefusedConnections.Add(1, new KeyValuePair<string, object?>("reason", "authorization"));
                 Post(null, () =>
                 {
                     if (ShouldLogFrequent())
@@ -518,6 +522,7 @@ public sealed partial class X11Server
             {
                 authorization.Connections++;
             }
+            XServerMetrics.ActiveClients.Add(1);
             client.Send(BuildSetupReply(client));
             if (ShouldLogFrequent())
             {
@@ -525,6 +530,7 @@ public sealed partial class X11Server
             }
             return (client, null);
         }
+        XServerMetrics.RefusedConnections.Add(1, new KeyValuePair<string, object?>("reason", "too_many_clients"));
         if (ShouldLogFrequent())
         {
             LogFrequent($"connection refused: {MaxClients} clients already connected");
@@ -710,6 +716,7 @@ public sealed partial class X11Server
             return;
         }
         _clients.Remove(client.Index);
+        XServerMetrics.ActiveClients.Add(-1);
         client.Closed = true;
         if (ShouldLogFrequent())
         {
@@ -797,6 +804,10 @@ public sealed partial class X11Server
         {
             DestroyRetainedClient(client);
             return;
+        }
+        if (!client.Closed)
+        {
+            XServerMetrics.Disconnects.Add(1, new KeyValuePair<string, object?>("reason", "killed"));
         }
         client.Abort();
         DisconnectClient(client);

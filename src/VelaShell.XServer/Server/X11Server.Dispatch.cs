@@ -60,6 +60,7 @@ public sealed partial class X11Server
                     + $"(之前:{client.RecentRequests()})");
             }
             client.Error(error.Code, error.BadValue, minor, r.Opcode);
+            CountError(error.Code);
         }
         catch (Exception ex)
         {
@@ -68,10 +69,20 @@ public sealed partial class X11Server
                 LogFailure($"{client} #{client.Sequence} opcode {r.Opcode}.{minor}: BadImplementation", $"{r.Opcode}.{minor}", ex);
             }
             client.Error(XErrorCode.Implementation, 0, minor, r.Opcode);
+            CountError(XErrorCode.Implementation);
         }
         finally
         {
             (_untrustedRequester, _serverWindowsAllowed, _anyWindowAllowed) = saved;
+        }
+    }
+
+    /// <summary>协议错误计数(<see cref="XServerMetrics.ProtocolErrors" />);没人订阅时不拼标签。</summary>
+    private static void CountError(XErrorCode code)
+    {
+        if (XServerMetrics.ProtocolErrors.Enabled)
+        {
+            XServerMetrics.ProtocolErrors.Add(1, new KeyValuePair<string, object?>("code", code.ToString()));
         }
     }
 

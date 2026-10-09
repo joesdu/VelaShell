@@ -192,6 +192,7 @@ internal sealed class XClient : IDisposable
         }
         if (Interlocked.Add(ref _queuedBytes, bytes.Length) - bytes.Length >= MaxQueuedOutputBytes)
         {
+            XServerMetrics.Disconnects.Add(1, new KeyValuePair<string, object?>("reason", "output_backlog"));
             Abort();   // 客户端不读了:与其让内存涨到进程崩溃,不如断开它(X.Org 同样会断开写不出去的客户端)
             return;
         }
