@@ -1911,3 +1911,32 @@ Avalonia 12.1.3 的 `ColorAnimator.InterpolateCore` 按 A、R、G、B 逐通道�
 * 停靠标签(五种 `*DockTabItem`)的标签文字恢复 120ms 前景淡变,删掉 `DockTabShells_DoNotAnimateForegroundOnHover`。
   #581 按「高 DPI 下重绘闪烁」把它一并去掉了,但这里两头都是不透明的文字令牌(`VelaTextTertiary` →
   `VelaTextSecondary` / `VelaTextPrimary`),插值是单调的、不会过冲,跟 #577 无关;五个文件回到 #581 之前的样子。
+
+## ✅ 176. 2026-10-09 侧栏分隔线与折叠拆成两个开关,折叠方框加大(#586)
+
+**现象**:开着折叠时,从左往右拖选整行,按下的位置稍微偏左一点就落到折叠上,上方输出整段被折掉;
+用户只能改成从右往左选。
+
+**原因**:两件事叠在一起。
+* 侧栏那条竖线是折叠列画的,想要线就得开折叠,而大多数人要的只是线。
+* 折叠列的点击区还**借用了右侧的空白间隔**(`GutterLayout.IsFoldColumnHit` 一直算到 `TotalWidth`),
+  那段空白紧贴正文第一列,正好是拖选整行时最容易按下去的地方 ——「间隔」开着反而更容易误折。
+
+**改动**:
+* 新增 `TerminalBehavior.ShowFoldGuideLine`(设置 → 终端「侧栏分隔线」、侧栏右键菜单「分隔线」),
+  与 `ShowFoldMarker` 各自独立。两者共用折叠列、列宽相同,分隔线开着时来回切折叠,正文不会左右跳。
+  只开分隔线时那一列只画线,点击照旧被侧栏吞掉、不会折叠。
+* 一次性迁移(`FoldGuideLineMigrated`):老配置里线跟着折叠走一次,升级后看到的侧栏和以前一样;
+  之后两个开关各听各的。
+* 折叠命中区只认折叠列本身,空白间隔不再算折叠。列宽从 1.6 个单元格加到 2 个,补回点击面积。
+* 方框边长从 7–11px 加到 9–13px(行高 × 0.65,取奇数,且左右至少给列宽各留 1px),
+  算法挪进 `GutterLayout.FoldBoxSize` 单测。
+* 关掉折叠时展开已有的折叠:分隔线开着时侧栏宽度不变,不会再经由重排顺手清掉折叠,
+  不展开的话那段输出就再也找不回来。
+* `GutterOptionsChanged` 多带一位分隔线、`GutterMenuLabels` 多一个标签;五份 resx 各加 3 条。
+
+**测试**:`GutterLayoutTests` 新增空白不算折叠、只开分隔线无折叠命中、切折叠不改侧栏宽度、方框尺寸;
+`GutterFoldUiTests` 新增真实指针点空白 / 只开分隔线时都不折叠、关折叠展开已有折叠、右键菜单五项与上报;
+`AppSettingsNormalizeTests` 覆盖迁移只做一次;`TerminalSettingsApplierTests` 确认两个开关分别落到控件上。
+
+**文档**:velashell-docs `{zh,en}/host/architecture.md` 侧栏一段补上分隔线与折叠的独立开关和点击区。

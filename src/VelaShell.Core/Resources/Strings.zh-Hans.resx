@@ -3211,6 +3211,12 @@
   <data name="SetTerm_ShowFoldMarkerDesc" xml:space="preserve">
     <value>显示折叠列,可把较早的输出折叠成可展开的区域。</value>
   </data>
+  <data name="SetTerm_ShowFoldGuideLine" xml:space="preserve">
+    <value>侧栏分隔线</value>
+  </data>
+  <data name="SetTerm_ShowFoldGuideLineDesc" xml:space="preserve">
+    <value>在侧栏与输出之间画一条竖线。与折叠标记各自独立,只开它时点击不会折叠。</value>
+  </data>
   <data name="SetTerm_GutterBlank" xml:space="preserve">
     <value>侧栏间隔</value>
   </data>
@@ -3225,6 +3231,9 @@
   </data>
   <data name="Gutter_FoldMarker" xml:space="preserve">
     <value>折叠标记</value>
+  </data>
+  <data name="Gutter_GuideLine" xml:space="preserve">
+    <value>分隔线</value>
   </data>
   <data name="Gutter_Blank" xml:space="preserve">
     <value>空白</value>
