@@ -2085,3 +2085,30 @@ VelaShell 的连接存在 SonnetDB 里,既没有导入导出,资源管理器也�
 第一次截图就拍出导入对话框每行出现两遍(窗口 `Opened` 与调用方各初始化一次),`InitializeAsync` 改为只比对一次并补了用例。
 全解决方案零警告零错误;rebase 到 main 后 Core 769 通过 / 23 跳过,Infrastructure 637 / 4,Presentation 84,宿主 1875 / 19。
 文档同步见 [velashell-docs#103](https://github.com/VelaShellLabs/velashell-docs/pull/103)(`会话导入.md` 第七节、`交互与界面规格.md` §3 / §12 / §6.2、`快捷键参考.md` 新增「资源管理器」一节,中英两边)。
+
+## ✅ 181. 2026-10-09 内置 X 服务端:合并本地遗留的草稿 —— alpha-map 长链会把进程带崩、字体就近匹配看平均宽度
+
+**一、来由**:§178 那一批开工前,有两个并行会话在本地 worktree 里起过 DR-M1 / DR-M4 / DR-P3 与 WN-M5 / CP-16 的草稿,中途因额度用尽停下,
+改动一直没提交地留在主工作区。§178 已在 `dev` 上把这几项做完,而且做得更完整(字体用 Brotli 与全套 X.Org / Unifont、PolyArc 同椭圆合并、
+整数 RENDER),草稿逐文件对过一遍:绝大部分与 `dev` 重复或已过时,收进 stash 不再用;挑出 `dev` 上没有的几处补进来。
+
+**二、做了什么**:
+- **alpha-map 只作用一层**(e05c3553):ChangePicture 只核新挂上的那张自己有没有 alpha-map,不核 p 是不是已经被别人当 alpha-map 用,
+  先 P1 → P2、再 P2 → P3 …… 能接成任意长的链(成环接不上)。合成时 `SourceOf`、`ReadableIn` 与 `AlphaMapSource` 顺着链每环递归一层,
+  约 6400 环栈溢出(`ReadableIn` 先倒);.NET 接不住栈溢出,服务端在宿主进程里,任何能连上的 X 客户端都能这样把 VelaShell 整个带崩。
+  现在合成时只看一层:作 alpha-map 用的那张自己的 alpha-map 不算,与 ChangePicture 不许挂已有 alpha-map 的那张同一个意思。
+  这是草稿里 `SourceOf(p, withAlphaMap)` 的思路。
+- **字体就近匹配一样近时先比平均宽度**(52ce6b57):`FontIndex.NearestSize` 原先在像素高度一样近时按名字先后取第一个,把平均宽度翻倍要
+  双宽字体的 `-misc-fixed-medium-r-semicondensed--13-120-75-75-c-120-iso10646-1` 拿到 7x13、18 像素的拿到 9x18;随库带的 12x13ja / 18x18ja
+  正是这两个尺寸的双宽字体。现在给了 AVERAGE_WIDTH 时一样近的里面先挑平均宽度最接近的;只在一样近的里面比,没给时与原先完全一样。
+- **补测试**(efb0d666):PolyArc 走真实的请求 68(原先只在光栅化器层面测)、宽或高为 0 的细弧连成虚线与同一条折线逐像素相同、
+  纯色源挂 alpha-map、经别名 `fixed` 打开的字体的 FONT / CHARSET_REGISTRY / CHARSET_ENCODING / FAMILY_NAME。
+- **文档两句**(8d8017f1):XServer `README.md` 的 `Fonts/` 一行对上随库字体的现状;`AGENTS.md` 净室规程第 1 条的规范清单补上 XLFD。
+
+**三、没做的**(记进 `feature-plan.md` H 节):草稿与 `dev` 比对时顺带看到、两边都没做的几处 —— 源 picture 带变换时 alpha-map 按源未变换的坐标取样;
+用磅数要字体时 75 dpi 的总排在前、换算也按 75 dpi;`build-fonts.cs` 对 X.Org 的字体包没有哈希校验;文档说 alpha-map 必须是只有 alpha 的格式、
+否则 BadMatch,代码只核了是像素图、没有核格式。
+
+**四、验证**:`VelaShell.XServer.Tests` 464 例,455 通过 / 9 例按平台跳过(起点 450 通过)。10 万环的 alpha-map 链在改之前测试进程直接栈溢出退出,
+改之后 0.5 秒跑完;双宽字体的两条断言在改之前红。宿主 `VelaShell.Tests` 与 `Infrastructure.Tests` 里 X Server 相关的用例 41 / 40 通过(1 例按环境跳过)。
+文档同步见 [velashell-docs#104](https://github.com/VelaShellLabs/velashell-docs/pull/104)(`xserver/design/architecture.md` §7,中英两边)。
