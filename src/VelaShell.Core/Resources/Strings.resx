@@ -5726,6 +5726,15 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
     <value>Tells X programs that a compositing manager is running, so GTK rounded corners and translucent Qt or Electron windows become truly transparent. Off by default because translucent windows need extra compositing by the system. Takes effect after restarting the X Server.</value>
   </data>
+  <data name="SetXServer_ShowSource" xml:space="preserve">
+    <value>Show where X windows come from</value>
+  </data>
+  <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
+    <value>Puts the source (user@host:port) in front of the title of X windows forwarded over SSH, so you can tell hosts apart and a remote program can&apos;t pass itself off as a local window. Programs on this computer aren&apos;t marked. Applies to windows opened afterwards.</value>
+  </data>
+  <data name="XServer_WindowTitleWithSource" xml:space="preserve">
+    <value>{0} — {1}</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>auto - Follow the system layout</value>
   </data>

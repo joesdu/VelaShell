@@ -319,6 +319,39 @@ public sealed class AvaloniaXServerHostUiTests
     });
 
     /// <summary>
+    /// 来源标识(xs_plan F18):转发来的连接(有标签)的窗口标题前标出来源,远端把标题设成什么都盖不住;本机连接(没标签)不标;设置关掉也不标。
+    /// </summary>
+    [TestMethod]
+    [DataRow("alice@build:22", true, "alice@build:22 — Windows Security")]
+    [DataRow("alice@build:22", false, "Windows Security")]
+    [DataRow(null, true, "Windows Security")]
+    public async Task ForwardedWindowTitle_ShowsTheSource(string? label, bool show, string expected) => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        host.ShowWindowSource(show);
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = label is null ? server.ServeAsync(serverSide, isLocal: true) : server.ServeAuthenticatedAsync(serverSide, label);
+
+        (uint idBase, uint root) = await HandshakeAsync(client);
+        uint window = idBase | 1;
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(100).I16(50).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+        byte[] title = Encoding.ASCII.GetBytes("Windows Security");
+        await SendAsync(client, 18, 0, w => w.U32(window).U32(39).U32(31).U8(8).Zero(3).U32((uint)title.Length).Bytes(title).Pad());
+        await SendAsync(client, 8, 0, w => w.U32(window));
+
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+        await WaitForAsync(() => native.Title?.EndsWith("Windows Security", StringComparison.Ordinal) == true ? native : null);
+        Assert.AreEqual(expected, native.Title);
+
+        native.CloseByHost();
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>
     /// 原生窗口的尺寸变了而不是我们按服务端几何设的(Linux 上 Avalonia 的 X11 后端给的原因是 Unspecified 而不是 User):照样回报给服务端。
     /// </summary>
     [TestMethod]

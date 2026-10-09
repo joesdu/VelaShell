@@ -116,13 +116,25 @@ public sealed class XNativeWindow : Window
 
     // ================================================================== 服务端 → 窗口
 
+    /// <summary>
+    /// 原生窗口(与任务栏)上的标题。转发来的窗口(连接有标签,如 <c>user@host:22</c>)按设置在前面标出来源(xs_plan F18):
+    /// 同时转发几台主机时分得清;远端程序把标题设成「Windows 安全中心」也盖不住前面的来源 —— 标在前面,任务栏截断长标题时也还看得到。
+    /// </summary>
+    internal static string TitleOf(XTopLevelSnapshot s, bool showSource)
+    {
+        string title = s.Title.Length > 0 ? s.Title : s.ClassName;
+        return showSource && !string.IsNullOrEmpty(s.ClientLabel)
+            ? VelaShell.Core.Resources.Strings.Format("XServer_WindowTitleWithSource", s.ClientLabel, title)
+            : title;
+    }
+
     /// <summary>快照里的属性变了(映射时按 <see cref="XTopLevelChanges.All" /> 调一次):只重新应用变了的那几组。</summary>
     public void ApplyProperties(XTopLevelChanges changes)
     {
         XTopLevelSnapshot s = Handle.Snapshot;
         if ((changes & XTopLevelChanges.Title) != 0)
         {
-            Title = IsScreen ? _host.ScreenTitle(Handle.Server) : s.Title.Length > 0 ? s.Title : s.ClassName;
+            Title = IsScreen ? _host.ScreenTitle(Handle.Server) : TitleOf(s, _host.ShowsWindowSource);
         }
         if ((changes & (XTopLevelChanges.Hints | XTopLevelChanges.States | XTopLevelChanges.Shape)) != 0)
         {

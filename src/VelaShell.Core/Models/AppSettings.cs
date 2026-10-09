@@ -1558,6 +1558,16 @@ public class XServerOptions : ObservableOptions
         set => Set(ref field, value);
     }
 
+    /// <summary>
+    /// 内置 X Server:经 SSH 转发来的 X 窗口在标题(以及任务栏)前标出来源(<c>用户@主机:端口</c>)—— 同时转发几台主机时分得清,
+    /// 远端程序画一个像本机凭据框的窗口也露馅。本机直接连的程序不标。默认开,新开的窗口生效。
+    /// </summary>
+    public bool ShowWindowSource
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
     /// <summary>XKB 键盘布局(<c>-xkblayout</c>);留空 = 跟随 Windows 当前布局。</summary>
     public string KeyboardLayout
     {

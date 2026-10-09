@@ -5721,6 +5721,15 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
     <value>X プログラムにコンポジットマネージャーがあると伝え、GTK の角丸や Qt・Electron の半透明ウィンドウを実際に透過させます。半透明ウィンドウはシステムの合成処理が増えるため、既定ではオフです。X Server の再起動後に反映されます。</value>
   </data>
+  <data name="SetXServer_ShowSource" xml:space="preserve">
+    <value>X ウィンドウの接続元を表示</value>
+  </data>
+  <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
+    <value>SSH 経由で転送された X ウィンドウのタイトルの前に接続元(ユーザー@ホスト:ポート)を付けます。複数のホストのウィンドウを見分けられ、リモートのプログラムがローカルのウィンドウを装うこともできません。このコンピューター上のプログラムには付きません。以後に開いたウィンドウに適用されます。</value>
+  </data>
+  <data name="XServer_WindowTitleWithSource" xml:space="preserve">
+    <value>{0} — {1}</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自動 - システムの現在のレイアウト</value>
   </data>

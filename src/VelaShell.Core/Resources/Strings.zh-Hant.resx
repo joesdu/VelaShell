@@ -6180,6 +6180,15 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
     <value>告訴 X 程式有合成管理器:GTK 的圓角、Qt / Electron 的半透明視窗真正透明。預設關閉,因為半透明視窗要系統多合成一層。重新啟動 X Server 後生效。</value>
   </data>
+  <data name="SetXServer_ShowSource" xml:space="preserve">
+    <value>標出 X 視窗的來源</value>
+  </data>
+  <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
+    <value>經 SSH 轉送來的 X 視窗在標題前寫上來源(使用者@主機:連接埠):幾台主機的視窗分得清,遠端程式也冒充不了本機視窗。本機的程式不標。對之後開啟的視窗生效。</value>
+  </data>
+  <data name="XServer_WindowTitleWithSource" xml:space="preserve">
+    <value>{0} — {1}</value>
+  </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自動 - 跟隨系統目前配置</value>
   </data>

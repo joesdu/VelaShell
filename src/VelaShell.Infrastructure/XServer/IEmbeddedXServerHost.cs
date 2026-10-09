@@ -56,6 +56,15 @@ public interface IEmbeddedXServerHost : IX11ServerHost
     {
     }
 
+    /// <summary>
+    /// X 窗口的标题前标不标来源(设置里的开关):标的话,转发来的窗口(连接有标签,<see cref="XTopLevelSnapshot.ClientLabel" />)
+    /// 标题写成「来源 — 标题」。在 <see cref="AttachAsync" /> 之前调用。默认实现什么也不做。
+    /// </summary>
+    /// <param name="enabled">标出来源。</param>
+    void ShowWindowSource(bool enabled)
+    {
+    }
+
     /// <summary>服务端要停了:关掉它所有顶层窗口对应的原生窗口,不再往它注入输入。可在任意线程上调用。</summary>
     void Detach();
 

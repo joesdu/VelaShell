@@ -238,6 +238,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
                 host.UseWindowMode(options.WindowMode);
 
                 host.UseHostInputMethod(options.UseHostInputMethod);
+                host.ShowWindowSource(options.ShowWindowSource);
                 await host.AttachAsync(candidate, cancellationToken).ConfigureAwait(false);
                 await candidate.StartAsync(cancellationToken).ConfigureAwait(false);
                 server = candidate;

@@ -465,6 +465,12 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     /// <summary>X 窗口里用本机的输入法(见 <see cref="XNativeWindow" /> 的输入法客户端)。</summary>
     public bool UsesHostInputMethod { get; private set; } = true;
 
+    /// <inheritdoc />
+    public void ShowWindowSource(bool enabled) => ShowsWindowSource = enabled;
+
+    /// <summary>转发来的 X 窗口在标题前标出来源(见 <see cref="XNativeWindow.TitleOf" />)。</summary>
+    public bool ShowsWindowSource { get; private set; } = true;
+
     private long _layoutCheckedAt;
 
     /// <summary>
