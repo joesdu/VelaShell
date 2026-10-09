@@ -28,7 +28,7 @@ public sealed partial class X11Server
     private readonly HashSet<byte[]> _fontsPrepared = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>这些名字要用到、还没建好的字体(<see cref="FontCatalog.Unprepared" />);测试可以换掉。</summary>
-    internal Func<IEnumerable<string>, List<string>> UnpreparedFonts { get; set; } = FontCatalog.Unprepared;
+    internal Func<IEnumerable<string>, int, List<string>> UnpreparedFonts { get; set; } = FontCatalog.Unprepared;
 
     /// <summary>在后台把字体建好(<see cref="FontCatalog.PrepareAsync" />);测试可以换成自己控制完成时机的。</summary>
     internal Func<IReadOnlyList<string>, CancellationToken, Task> PrepareFonts { get; set; } = FontCatalog.PrepareAsync;
@@ -64,13 +64,13 @@ public sealed partial class X11Server
                 r.Skip(4);
                 int length = r.U16();
                 r.Skip(2);
-                fonts = UnpreparedFonts([r.String8(length)]);
+                fonts = UnpreparedFonts([r.String8(length)], _dpi);
             }
             else
             {
                 int max = r.U16();
                 int length = r.U16();
-                fonts = UnpreparedFonts(FontCatalog.Match(r.String8(length), max));
+                fonts = UnpreparedFonts(FontCatalog.Match(r.String8(length), max), _dpi);
             }
         }
         catch (XProtocolError)
@@ -119,7 +119,7 @@ public sealed partial class X11Server
         int length = r.U16();
         r.Skip(2);
         string name = r.String8(length);
-        XFont? font = FontCatalog.Open(name);
+        XFont? font = FontCatalog.Open(name, _dpi);
         if (font is null)
         {
             if (ShouldLogFrequent())
@@ -230,7 +230,7 @@ public sealed partial class X11Server
         List<string> names = FontCatalog.Match(pattern, max);
         for (int i = 0; i < names.Count; i++)
         {
-            if (FontCatalog.Open(names[i]) is not { } font)
+            if (FontCatalog.Open(names[i], _dpi) is not { } font)
             {
                 continue;
             }

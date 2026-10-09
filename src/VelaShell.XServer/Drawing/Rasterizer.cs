@@ -1559,6 +1559,10 @@ internal sealed class Rasterizer
     {
         private readonly double _half;
         private readonly int _a1, _a2;
+
+        /// <summary><see cref="Segment" /> 时线段的法线方向上半个线宽(竖线朝右、横线朝下):边界是中线两侧各平移这么多。</summary>
+        private readonly double _nx, _ny;
+
         private ArcFace? _begin, _end;
 
         public ArcStroke(ArcSpec arc, double half)
@@ -1569,7 +1573,12 @@ internal sealed class Rasterizer
             (Start, Extent) = ArcAngles(arc.A1, arc.A2);
             Full = Math.Abs(arc.A2) >= 360 * 64;
             N = ArcSteps(Extent, Math.Max(Rx, Ry) + half);
+            Segment = (Rx == 0) != (Ry == 0);
+            (_nx, _ny) = Rx == 0 ? (half, 0.0) : (0.0, half);
         }
+
+        /// <summary>外接框的宽或高(只有一个)为 0:路径是一条线段,在上面来回走(见 <see cref="AddSegmentBand" />)。</summary>
+        public bool Segment { get; }
 
         /// <summary>
         /// 两端在 90° 的倍数上时按精确的 cos / sin(0、±1)取点(在 <see cref="Sample" /> 之前设)。与别的弧相接的弧这样做:
@@ -1649,8 +1658,7 @@ internal sealed class Rasterizer
             {
                 (double Cos, double Sin) t = Angle(i);
                 Center[i] = Point(Rx, Ry, t);
-                Outer[i] = Point(Rx + _half, Ry + _half, t);
-                Inner[i] = Point(Math.Max(0, Rx - _half), Math.Max(0, Ry - _half), t);
+                (Outer[i], Inner[i]) = Bounds(Center[i], t);
                 if (i > 0)
                 {
                     double dx = Center[i].X - Center[i - 1].X, dy = Center[i].Y - Center[i - 1].Y;
@@ -1719,8 +1727,19 @@ internal sealed class Rasterizer
                 d = Math.Sqrt((ux * ux) + (uy * uy));
             }
             d = d > 0 ? d : 1;
-            return new ArcFace(p.X, p.Y, ux / d, uy / d, Point(Rx + _half, Ry + _half, t), Point(Math.Max(0, Rx - _half), Math.Max(0, Ry - _half), t));
+            ((double X, double Y) outer, (double X, double Y) inner) = Bounds(p, t);
+            return new ArcFace(p.X, p.Y, ux / d, uy / d, outer, inner);
         }
+
+        /// <summary>
+        /// 中线上参数角为 <paramref name="t" /> 的点 <paramref name="center" /> 对应的外边界与内边界上的点:半轴各加 / 减半个线宽(不小于 0)的椭圆上
+        /// 同一参数角的点;<see cref="Segment" /> 时是中线两侧各平移半个线宽(协议:宽或高为 0 时边界就是与路径相距 lw/2 的两条线,
+        /// 不由实现决定 —— 原先内边界缩成中线自己,只画出一半线宽)。
+        /// </summary>
+        private ((double X, double Y) Outer, (double X, double Y) Inner) Bounds((double X, double Y) center, (double Cos, double Sin) t) =>
+            Segment
+                ? ((center.X + _nx, center.Y + _ny), (center.X - _nx, center.Y - _ny))
+                : (Point(Rx + _half, Ry + _half, t), Point(Math.Max(0, Rx - _half), Math.Max(0, Ry - _half), t));
     }
 
     /// <summary>一串宽弧在一张活动边表里攒到这么多个顶点就先填掉(见 <see cref="WideArcs" />)。</summary>
@@ -1729,7 +1748,7 @@ internal sealed class Rasterizer
     /// <summary>
     /// 一串宽弧:每条弧是沿弧的内外两条边界围成的环带。外边界是半轴各加半个线宽的椭圆,内边界是各减半个线宽(不小于 0)的椭圆 ——
     /// 对圆来说正好是与弧相距线宽一半的两条曲线;椭圆的边界协议留给实现,只要求形状(相对圆心)只取决于宽、高与线宽,
-    /// 所以圆心与半轴都不取整。相邻两条弧之间按 join-style 加接头(<see cref="AddArcJoin" />);整串的两头按 cap-style 加端帽
+    /// 所以圆心与半轴都不取整;外接框宽或高为 0 的弧是一条线段,边界是它两侧的两条线(<see cref="AddSegmentBand" />)。相邻两条弧之间按 join-style 加接头(<see cref="AddArcJoin" />);整串的两头按 cap-style 加端帽
     /// (端面是同一参数角上内外两点的连线),<paramref name="loop" />(首尾相接,或一条整圆)时哪里都不加,<paramref name="seamJoin" />
     /// 时接缝上也按 join-style 接。虚线沿中线量,跨过接点接着走。整串的各块放进同一张活动边表一次填,每个像素只画一次。
     /// </summary>
@@ -1941,6 +1960,11 @@ internal sealed class Rasterizer
     {
         (int i0, double f0) = arc.Locate(s0);
         (int i1, double f1) = arc.Locate(s1);
+        if (arc.Segment)
+        {
+            AddSegmentBand(polys, arc, ArcStroke.Lerp(arc.Center, i0, f0), i0, i1, arc.At(arc.Center, s1, i1, f1));
+            return;
+        }
         Polygon band = [with(((i1 - i0 + 2) * 2) + 2)];
         band.Add(ArcStroke.Lerp(arc.Outer, i0, f0));
         for (int i = i0 + 1; i <= i1; i++)
@@ -1955,6 +1979,52 @@ internal sealed class Rasterizer
         }
         band.Add(ArcStroke.Lerp(arc.Inner, i0, f0));
         AddIfReaches(polys, band);
+    }
+
+    /// <summary>
+    /// 外接框宽或高为 0 的弧(<see cref="ArcStroke.Segment" />)上从 <paramref name="from" /> 到 <paramref name="to" /> 的一截:中线是一条线段,
+    /// 在 ±90°(宽为 0)或 0° / 180°(高为 0)处走到头折返。协议「PolyArc」:宽高有一个为 0 时边界不由实现决定,就是与路径相距 lw/2 的
+    /// 两条线 —— 所以每段单调的走位画一个宽为线宽的矩形;在两端之间折返的地方,边界绕着线段的一头转半圈(宽高趋于 0 的椭圆在那一头的极限),
+    /// 补一个直径为线宽的圆。中间的采样点只用来看往哪边走,折返点取线段的端点本身(采样点不一定正好落在上面)。
+    /// </summary>
+    private void AddSegmentBand(List<Polygon> polys, ArcStroke arc, (double X, double Y) from, int i0, int i1, (double X, double Y) to)
+    {
+        double half = _gc.LineWidth / 2.0;
+        bool vertical = arc.Rx == 0;
+        double across = vertical ? arc.Cx : arc.Cy, middle = vertical ? arc.Cy : arc.Cx, reach = vertical ? arc.Ry : arc.Rx;
+        double runStart = vertical ? from.Y : from.X, previous = runStart;
+        int direction = 0;
+        for (int i = i0 + 1; i <= i1 + 1; i++)
+        {
+            (double X, double Y) p = i <= i1 ? arc.Center[i] : to;
+            double along = vertical ? p.Y : p.X;
+            int step = Math.Sign(along - previous);
+            if (step != 0 && direction != 0 && step != direction)
+            {
+                double tip = middle + (direction * reach);
+                AddSegmentRect(polys, vertical, across, runStart, tip, half);
+                AddCircle(polys, vertical ? across : tip, vertical ? tip : across, half);
+                runStart = tip;
+            }
+            if (step != 0)
+            {
+                direction = step;
+            }
+            previous = along;
+        }
+        AddSegmentRect(polys, vertical, across, runStart, previous, half);
+    }
+
+    /// <summary>线段(竖线在 x = <paramref name="across" />、横线在 y = <paramref name="across" />)上 [a, b] 这一截的宽线矩形。</summary>
+    private void AddSegmentRect(List<Polygon> polys, bool vertical, double across, double a, double b, double half)
+    {
+        if (a == b)
+        {
+            return;
+        }
+        AddIfReaches(polys, vertical
+            ? [(across - half, a), (across + half, a), (across + half, b), (across - half, b)]
+            : [(a, across - half), (b, across - half), (b, across + half), (a, across + half)]);
     }
 
     /// <summary>

@@ -714,4 +714,56 @@ public sealed class RasterizerTests
             Stroke(thin, r => r.PolyLine([(10, 50), (10, 10), (50, 10)])).Pixels,
             Stroke(thin, r => r.PolyArc([(10, 10, 0, 40, -90 * 64, 180 * 64), (10, 10, 40, 0, 180 * 64, -180 * 64)])).Pixels);
     }
+
+    [TestMethod]
+    public void 宽或高为0的宽弧就是一条宽线_整个线宽_端帽与接头照线的画()
+    {
+        // 协议「PolyArc」:宽高有一个为 0 时边界不由实现决定,就是与路径相距 lw/2 的两条线。原先内边界缩成中线自己,只画出一半线宽。
+        foreach (ushort lw in new ushort[] { 1, 2, 5, 6 })
+        {
+            foreach (byte cap in new byte[] { 1, 2, 3 })
+            {
+                XGc gc = new(1, null, 24) { Foreground = 1, LineWidth = lw, CapStyle = cap };
+                // 宽为 0:从 (20,50) 往上走到 (20,10);高为 0:从 (10,30) 往右走到 (50,30)(顺时针的半圈,180° → 0°)。
+                CollectionAssert.AreEqual(Stroke(gc, r => r.PolyLine([(20, 50), (20, 10)])).Pixels,
+                    Stroke(gc, r => r.Arc(20, 10, 0, 40, -90 * 64, 180 * 64)).Pixels, $"lw = {lw}、cap = {cap}:竖线");
+                CollectionAssert.AreEqual(Stroke(gc, r => r.PolyLine([(10, 30), (50, 30)])).Pixels,
+                    Stroke(gc, r => r.Arc(10, 30, 40, 0, 180 * 64, -180 * 64)).Pixels, $"lw = {lw}、cap = {cap}:横线");
+            }
+        }
+
+        // 两条扁弧首尾相接成一个直角:接头照两条线的 join-style。
+        foreach (byte join in new byte[] { 0, 1, 2 })
+        {
+            XGc gc = new(1, null, 24) { Foreground = 1, LineWidth = 7, JoinStyle = join, CapStyle = 3 };
+            CollectionAssert.AreEqual(Stroke(gc, r => r.PolyLine([(10, 50), (10, 10), (50, 10)])).Pixels,
+                Stroke(gc, r => r.PolyArc([(10, 10, 0, 40, -90 * 64, 180 * 64), (10, 10, 40, 0, 180 * 64, -180 * 64)])).Pixels, $"join = {join}");
+        }
+    }
+
+    [TestMethod]
+    public void 宽或高为0的宽弧折返时绕过线段的一头转半圈()
+    {
+        // 整圈:从中点 (20,30) 上到 (20,10)、下到 (20,50)、再回中点。没有端帽(整圈首尾相接),两头折返处各是半个圆 ——
+        // 与一条两头是圆端帽的宽线相同,不管 GC 的 cap-style 是什么。
+        XGc round = new(1, null, 24) { Foreground = 1, LineWidth = 6, CapStyle = 2 };
+        PixelBuffer expected = Stroke(round, r => r.PolyLine([(20, 10), (20, 50)]));
+        foreach (byte cap in new byte[] { 1, 2, 3 })
+        {
+            XGc gc = new(1, null, 24) { Foreground = 1, LineWidth = 6, CapStyle = cap };
+            CollectionAssert.AreEqual(expected.Pixels, Stroke(gc, r => r.Arc(20, 10, 0, 40, 0, 360 * 64)).Pixels, $"cap = {cap}");
+        }
+
+        // 半圈 0° → 180°:从中点上到 (20,10) 折返、回到中点。上头是半个圆,两端都在中点、Butt 端帽齐着中点 —— 中点以下什么都没有。
+        XGc butt = new(1, null, 24) { Foreground = 1, LineWidth = 6, CapStyle = 1 };
+        PixelBuffer half = Stroke(butt, r => r.Arc(20, 10, 0, 40, 0, 180 * 64));
+        PixelBuffer roundLine = Stroke(round, r => r.PolyLine([(20, 30), (20, 10)]));
+        for (int y = 0; y < Size; y++)
+        {
+            for (int x = 0; x < Size; x++)
+            {
+                Assert.AreEqual(y < 30 ? roundLine.Get(x, y) : 0u, half.Get(x, y), $"({x},{y})");
+            }
+        }
+    }
 }

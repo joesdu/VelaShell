@@ -353,7 +353,7 @@ public sealed partial class X11Server
 
     // ------------------------------------------------------------------ 取样源与目标
 
-    private static RenderSource SourceOf(XPicture p, bool withAlphaMap = true)
+    private static RenderSource SourceOf(XPicture p)
     {
         RenderSource source = p.Fill ?? p.Drawable switch
         {
@@ -362,13 +362,33 @@ public sealed partial class X11Server
             _ => new SolidSource(default),   // 根窗口与不可见窗口:没有可读的内容
         };
         source.Repeat = p.Repeat;
+        // alpha-map 只作用一层:作 alpha-map 用的 picture 只取它的像素图(它自己的 alpha-map、变换、repeat 都不算)。ChangePicture 只核
+        // 新挂上的那张有没有 alpha-map,拦不住「先 P1 → P2、再 P2 → P3 ……」一张张接下去的长链;顺着链往下解,每一环一层递归,
+        // 栈溢出在 .NET 里接不住,整个进程会崩。变换与过滤作用在 drawable 与 alpha-map 拼好的那张上(见 AlphaMapSource)。
+        if (p.AlphaMap is { Drawable: XPixmap alphaPixmap } alphaMap)
+        {
+            source.Transform = null;
+            source.Bilinear = false;
+            return new AlphaMapSource(source, AlphaMapImage(alphaMap, alphaPixmap), p.AlphaX, p.AlphaY)
+            {
+                Transform = p.Transform,
+                Bilinear = p.Bilinear,
+            };
+        }
         source.Transform = p.Transform;
         source.Bilinear = p.Bilinear;
-        // alpha-map 只作用一层:作 alpha-map 用的 picture 自己的 alpha-map 不算。ChangePicture 只核新挂上的那张有没有 alpha-map,
-        // 拦不住「先 P1 → P2、再 P2 → P3 ……」一张张接下去的长链;顺着链往下解,每一环一层递归,栈溢出在 .NET 里接不住,整个进程会崩。
-        return withAlphaMap && p.AlphaMap is { } alphaMap
-            ? new AlphaMapSource(source, SourceOf(alphaMap, withAlphaMap: false), p.AlphaX, p.AlphaY)
-            : source;
+        return source;
+    }
+
+    /// <summary>作 alpha-map 用的 picture 的像素:原样,不变换、不重复(规范:「Rendering is additionally clipped by the geometry ... of alpha-map」)。</summary>
+    private static ImageSource AlphaMapImage(XPicture alphaMap, XPixmap pixmap) =>
+        new(pixmap.Buffer, 0, 0, pixmap.Width, pixmap.Height, alphaMap.Format!);
+
+    /// <summary>alpha-map 限制读写的范围(alpha-map 自己的坐标):像素图的范围 ∩ 它的 clip-mask。</summary>
+    private static Region AlphaMapArea(XPicture alphaMap, XPixmap pixmap)
+    {
+        Region area = new(new XRect(0, 0, pixmap.Width, pixmap.Height));
+        return alphaMap.Clip is { } clip ? area.Intersect(clip.Clone().Translate(alphaMap.ClipX, alphaMap.ClipY)) : area;
     }
 
     private static ImageSource WindowSource(XWindow w, PixelBuffer buffer, PictFormat format)
@@ -407,6 +427,11 @@ public sealed partial class X11Server
         {
             region.Intersect(clip.Clone().Translate(p.ClipX + ox, p.ClipY + oy));
         }
+        if (p.AlphaMap is { Drawable: XPixmap alphaPixmap } alphaMap)
+        {
+            // 写进挂了 alpha-map 的目标也受 alpha-map 的范围与裁剪限制(合成见 CompositeOnto)。
+            region.Intersect(AlphaMapArea(alphaMap, alphaPixmap).Translate(p.AlphaX + ox, p.AlphaY + oy));
+        }
         if (readable is not null)
         {
             region.Intersect(readable.Clone().Translate(ox, oy));
@@ -418,9 +443,11 @@ public sealed partial class X11Server
     /// 源 / 遮罩 picture 的裁剪换到目标坐标(源的 (0, 0) 对着目标的 (<paramref name="dx" />, <paramref name="dy" />)):RENDER 规范说 clip-mask
     /// 限制对这个 picture 的读写,裁剪之外的源像素读不到,对应的目标像素就不合成。只在源没有变换、不重复时这样做 ——
     /// 有变换或重复时读到的源像素与目标不是一一平移的关系,仍只裁目标。没有裁剪时为 null。
-    /// alpha-map 的裁剪也算,同 <see cref="SourceOf" /> 只看一层。
+    /// 挂了 alpha-map 的,alpha-map 的范围与裁剪也限制读(规范「CreatePicture」:「Rendering is additionally clipped by the geometry and clip mask
+    /// of alpha-map」;alpha-map 不重复,所以源有 repeat 也照样裁);同样只在没有变换时 —— 有变换时 alpha-map 之外取到的 alpha 为 0。
+    /// 同 <see cref="SourceOf" /> 只看一层。
     /// </summary>
-    private static Region? ReadableIn(XPicture? p, int dx, int dy, bool withAlphaMap = true)
+    private static Region? ReadableIn(XPicture? p, int dx, int dy)
     {
         if (p is null)
         {
@@ -430,9 +457,9 @@ public sealed partial class X11Server
         Region? readable = p is { Clip: { } clip, Transform: null, Repeat: 0, Drawable: not null }
             ? clip.Clone().Translate(p.ClipX + dx, p.ClipY + dy)
             : null;
-        if (withAlphaMap && p.AlphaMap is { } alphaMap
-            && ReadableIn(alphaMap, dx + p.AlphaX, dy + p.AlphaY, withAlphaMap: false) is { } alphaReadable)
+        if (p is { AlphaMap: { Drawable: XPixmap alphaPixmap } alphaMap, Transform: null })
         {
+            Region alphaReadable = AlphaMapArea(alphaMap, alphaPixmap).Translate(dx + p.AlphaX, dy + p.AlphaY);
             readable = readable?.Intersect(alphaReadable) ?? alphaReadable;
         }
         return readable;
@@ -445,9 +472,87 @@ public sealed partial class X11Server
         {
             return;
         }
-        XRect dirty = RenderCompositor.Composite(op, src, mask, componentAlpha, target.Target,
-            srcX, srcY, maskX, maskY, dstX, dstY, width, height);
+        XRect dirty = CompositeOnto(dst, target.Target, op, src, mask, componentAlpha, srcX, srcY, maskX, maskY, dstX, dstY, width, height);
         NoteRendered(dst, target.TopLevel, dirty);
+    }
+
+    /// <summary>
+    /// 合成到 <paramref name="dst" />(<paramref name="target" /> 是 <see cref="TargetOf" /> 给的目标),返回写过的范围(目标缓冲坐标)。
+    /// 目标挂了 alpha-map 时(规范「CreatePicture」:alpha-map 的 alpha 通道「is used in place of any alpha channel contained within the drawable
+    /// for all rendering operations」),把要写的这一块拼成一张临时的 a8r8g8b8 —— 颜色取自 drawable、alpha 取自 alpha-map ——
+    /// 在它上面合成,再把颜色写回 drawable(drawable 自己的 alpha 通道不动)、alpha 写回 alpha-map。原先目标的 alpha-map 接受但不生效。
+    /// 只拼请求的这一块与可写区域的交,工作量按两遍拷贝扣。
+    /// </summary>
+    private XRect CompositeOnto(XPicture dst, RenderTarget target, byte op, RenderSource src, RenderSource? mask, bool componentAlpha,
+        int srcX, int srcY, int maskX, int maskY, int dstX, int dstY, int width, int height)
+    {
+        if (dst.AlphaMap is not { Drawable: XPixmap alphaPixmap } alphaMap)
+        {
+            return RenderCompositor.Composite(op, src, mask, componentAlpha, target, srcX, srcY, maskX, maskY, dstX, dstY, width, height);
+        }
+        XRect requested = new(dstX + target.OriginX, dstY + target.OriginY, width, height);
+        List<XRect> clip = [];
+        XRect box = default;
+        foreach (XRect c in target.Clip)
+        {
+            XRect r = c.Intersect(requested);
+            if (!r.IsEmpty)
+            {
+                clip.Add(r);
+                box = box.IsEmpty ? r : Union(box, r);
+            }
+        }
+        if (box.IsEmpty)
+        {
+            return default;
+        }
+        WorkBudget.Charge(2L * box.Width * box.Height);
+
+        // 目标缓冲上的 (x, y) 对着 alpha-map 的 (x − ax, y − ay)。
+        PixelBuffer buffer = target.Buffer, alphaBuffer = alphaPixmap.Buffer;
+        PictFormat format = target.Format, alphaFormat = alphaMap.Format!;
+        int ax = target.OriginX + dst.AlphaX, ay = target.OriginY + dst.AlphaY;
+        PixelBuffer staged = new(box.Width, box.Height, 32);
+        for (int y = box.Y; y < box.Bottom; y++)
+        {
+            for (int x = box.X; x < box.Right; x++)
+            {
+                Argb color = format.Decode(buffer.Get(x, y));
+                color.A = alphaFormat.Decode(alphaBuffer.Get(x - ax, y - ay)).A;
+                staged.Pixels[((y - box.Y) * box.Width) + (x - box.X)] = Argb8.Pack(color);
+            }
+        }
+        RenderTarget stagedTarget = new(staged, target.OriginX - box.X, target.OriginY - box.Y, PictFormat.A8R8G8B8,
+            [.. clip.Select(r => r.Offset(-box.X, -box.Y))]);
+        XRect written = RenderCompositor.Composite(op, src, mask, componentAlpha, stagedTarget, srcX, srcY, maskX, maskY, dstX, dstY, width, height);
+        if (written.IsEmpty)
+        {
+            return default;
+        }
+        written = written.Offset(box.X, box.Y);
+        uint depthMask = buffer.DepthMask, alphaDepthMask = alphaBuffer.DepthMask;
+        foreach (XRect c in clip)
+        {
+            XRect r = c.Intersect(written);
+            for (int y = r.Y; y < r.Bottom; y++)
+            {
+                for (int x = r.X; x < r.Right; x++)
+                {
+                    Argb result = PictFormat.A8R8G8B8.Decode(staged.Pixels[((y - box.Y) * box.Width) + (x - box.X)]);
+                    ref uint pixel = ref buffer.Pixels[(y * buffer.Width) + x];
+                    Argb color = result with { A = format.Decode(pixel).A };
+                    pixel = format.Encode(color) & depthMask;
+                    if ((uint)(x - ax) < (uint)alphaBuffer.Width && (uint)(y - ay) < (uint)alphaBuffer.Height)
+                    {
+                        ref uint alpha = ref alphaBuffer.Pixels[((y - ay) * alphaBuffer.Width) + (x - ax)];
+                        Argb kept = alphaFormat.Decode(alpha);
+                        alpha = alphaFormat.Encode(kept with { A = result.A }) & alphaDepthMask;
+                    }
+                }
+            }
+        }
+        NotePixmapDrawn(alphaPixmap, written.Offset(-ax, -ay).Intersect(new XRect(0, 0, alphaPixmap.Width, alphaPixmap.Height)));
+        return written;
     }
 
     /// <summary>合成写过的范围(缓冲坐标)记成损伤:窗口记到顶层上,像素图交给 DAMAGE。</summary>
@@ -513,7 +618,7 @@ public sealed partial class X11Server
             {
                 continue;
             }
-            XRect dirty = RenderCompositor.Composite(op, source, null, false, target.Target, 0, 0, 0, 0, x, y, w, h);
+            XRect dirty = CompositeOnto(dst, target.Target, op, source, null, false, 0, 0, 0, 0, x, y, w, h);
             NoteRendered(dst, target.TopLevel, dirty);
         }
     }
@@ -555,7 +660,7 @@ public sealed partial class X11Server
                 draw(coverage);
             }
             ByteMaskSource mask = coverage.ToByteSource(maskFormat?.Depth ?? 8);
-            XRect written = RenderCompositor.Composite(op, source, mask, false, target.Target,
+            XRect written = CompositeOnto(dst, target.Target, op, source, mask, false,
                 srcX + bounds.X - anchor.X, srcY + bounds.Y - anchor.Y, bounds.X, bounds.Y, bounds.X, bounds.Y, bounds.Width, bounds.Height);
             dirty = dirty.IsEmpty ? written : written.IsEmpty ? dirty : Union(dirty, written);
         }
@@ -935,7 +1040,7 @@ public sealed partial class X11Server
                 RenderSource mask = glyph.Alpha is { } alpha
                     ? new ByteMaskSource(alpha, x, y, glyph.Width, glyph.Height)
                     : new ColorMaskSource(glyph.Color!, x, y, glyph.Width, glyph.Height);
-                Accumulate(RenderCompositor.Composite(op, source, mask, color, target.Target,
+                Accumulate(CompositeOnto(dst, target.Target, op, source, mask, color,
                     srcX + x - anchor.X, srcY + y - anchor.Y, x, y, x, y, glyph.Width, glyph.Height));
             }
             NoteRendered(dst, target.TopLevel, dirty);
@@ -978,7 +1083,7 @@ public sealed partial class X11Server
                 }
                 QuantizeMask(alphaMask.AsSpan(0, size), maskFormat.Depth);
                 ByteMaskSource combined = new(alphaMask, bounds.X, bounds.Y, bounds.Width, bounds.Height);
-                Accumulate(RenderCompositor.Composite(op, source, combined, false, target.Target,
+                Accumulate(CompositeOnto(dst, target.Target, op, source, combined, false,
                     srcX + bounds.X - anchor.X, srcY + bounds.Y - anchor.Y, bounds.X, bounds.Y, bounds.X, bounds.Y, bounds.Width, bounds.Height));
             }
             finally
@@ -1027,7 +1132,7 @@ public sealed partial class X11Server
             accum[i] = maskFormat.Decode(maskFormat.Encode(accum[i]));
         }
         ArraySource colorMask = new(accum, bounds.X, bounds.Y, bounds.Width, bounds.Height);
-        Accumulate(RenderCompositor.Composite(op, source, colorMask, maskFormat.HasColor, target.Target,
+        Accumulate(CompositeOnto(dst, target.Target, op, source, colorMask, maskFormat.HasColor,
             srcX + bounds.X - anchor.X, srcY + bounds.Y - anchor.Y, bounds.X, bounds.Y, bounds.X, bounds.Y, bounds.Width, bounds.Height));
         NoteRendered(dst, target.TopLevel, dirty);
     }

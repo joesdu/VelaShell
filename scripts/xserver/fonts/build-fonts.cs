@@ -11,7 +11,9 @@
 // LICENSE-xorg-fonts.txt / LICENSE-unifont.txt 是上游的许可原文(X.Org 各仓库的 COPYING;Unifont 的版权行与 SIL OFL 1.1),
 // 与数据一起嵌进程序集 —— OFL 要求字体的每一份拷贝都带着许可。
 //
-// 上游固定在下面的提交 / 版本;升级时改这里再重跑,并同步 Fonts/Data/README.md 与 NOTICE.md。
+// 上游固定在下面的提交 / 版本,下载的内容按固定的 SHA-256 核对:Unifont 核对发布的 .bdf.gz 本身;X.Org 的仓库核对从归档里挑出来的文件
+// (GitLab 按提交现做的归档不保证逐字节稳定 —— 压缩参数、tar 头里的时间与属主随 GitLab 的版本变 —— 文件内容才是固定的)。
+// 全部下载、核对完才动输出目录,哪一份对不上都原样不动。升级时改这里再重跑(对不上时会打印实际的摘要),并同步 Fonts/Data/README.md 与 NOTICE.md。
 using System.Formats.Tar;
 using System.Globalization;
 using System.IO.Compression;
@@ -25,15 +27,16 @@ if (!File.Exists(Path.Combine(output, "README.md")))
     return 1;
 }
 
-// X.Org 的字体仓库:仓库名、固定的提交、放进哪个字体目录。
-(string Repo, string Commit, string Directory)[] xorg =
+// X.Org 的字体仓库:仓库名、固定的提交、放进哪个字体目录、挑出来的文件(.bdf 与 COPYING)的摘要(见 Digest)。
+(string Repo, string Commit, string Directory, string Sha256)[] xorg =
 [
-    ("misc-misc", "c4e2af05583764fae3d0b2aa20d5c93b031cbcbf", "misc"),
-    ("cursor-misc", "73b2095391d5bcf326c903946de48d0710daa169", "misc"),
-    ("adobe-75dpi", "6189f2a653b7daa9566f9331bfed41813cbd8cb1", "75dpi"),
-    ("adobe-100dpi", "13f867e9f5be0fcc4776f323f5d5f8f354d2a2c0", "100dpi"),
+    ("misc-misc", "c4e2af05583764fae3d0b2aa20d5c93b031cbcbf", "misc", "52a58e34d311f885b8e4ccfb2e7d28f763f8740486934f483c6288a8c321076b"),
+    ("cursor-misc", "73b2095391d5bcf326c903946de48d0710daa169", "misc", "c2be9dbb53976b74b289ed4f02f8ab32b5ef7cc747675c1d1936ee6576cbc751"),
+    ("adobe-75dpi", "6189f2a653b7daa9566f9331bfed41813cbd8cb1", "75dpi", "ecbc9efca651b1a190f3b5dbfbdcc148364287d211f2f54b87be500b1960c54e"),
+    ("adobe-100dpi", "13f867e9f5be0fcc4776f323f5d5f8f354d2a2c0", "100dpi", "2a26bba9816abeb02b8908cb0606c7dc314f9d4d5568de4fea5306eb50688c77"),
 ];
 const string AliasCommit = "ebeee85f070dc12197ad98d1c849786f8e3be124";   // xorg/font/alias
+const string AliasSha256 = "eb4ed272b5dbd99852f86ef66f830c6f85409e30fa0364b16657c23ebc697704";   // misc/fonts.alias 与 COPYING
 const string UnifontVersion = "18.0.01";
 const string UnifontSha256 = "2989e0211030d8219fd931aba599fc95c86bc327ce1423848ef949783b208257";
 const string OflSha256 = "869692af094c57fb7258c57fe26820c759319603321d0ffeb278de3651763ded";   // unifoundry.com/OFL-1.1.txt
@@ -46,16 +49,41 @@ StringBuilder xorgLicenses = new();
 xorgLicenses.Append("Licenses of the X.Org fonts bundled with VelaShell.XServer (src/VelaShell.XServer/Fonts/Data).\n")
     .Append("Each section is the verbatim COPYING file of the upstream repository at the pinned commit.\n");
 
+// 先全部下载、核对。
+bool verified = true;
+List<(string Repo, string Commit, string Directory, List<(string Name, byte[] Bytes)> Files)> xorgFiles = [];
+foreach ((string repo, string commit, string directory, string sha256) in xorg)
+{
+    Console.WriteLine($"xorg/font/{repo} @ {commit[..12]}");
+    List<(string Name, byte[] Bytes)> files = await ArchiveFilesAsync(repo, commit, name => name.EndsWith(".bdf", StringComparison.Ordinal) || name == "COPYING");
+    verified &= Check($"xorg/font/{repo} 挑出来的 {files.Count} 个文件", Digest(files), sha256);
+    xorgFiles.Add((repo, commit, directory, files));
+}
+
+Console.WriteLine($"GNU Unifont {UnifontVersion}");
+byte[] unifontGz = await http.GetByteArrayAsync($"https://unifoundry.com/pub/unifont/unifont-{UnifontVersion}/font-builds/unifont-{UnifontVersion}.bdf.gz");
+verified &= Check($"unifont-{UnifontVersion}.bdf.gz", Convert.ToHexStringLower(SHA256.HashData(unifontGz)), UnifontSha256);
+byte[] ofl = await http.GetByteArrayAsync("https://unifoundry.com/OFL-1.1.txt");
+verified &= Check("OFL-1.1.txt", Convert.ToHexStringLower(SHA256.HashData(ofl)), OflSha256);
+
+Console.WriteLine($"xorg/font/alias @ {AliasCommit[..12]}");
+List<(string Name, byte[] Bytes)> aliasFiles = await ArchiveFilesAsync("alias", AliasCommit, name => name is "misc/fonts.alias" or "COPYING");
+verified &= Check($"xorg/font/alias 挑出来的 {aliasFiles.Count} 个文件", Digest(aliasFiles), AliasSha256);
+if (!verified)
+{
+    Console.Error.WriteLine("有内容与固定的摘要对不上,输出目录没有动。");
+    return 1;
+}
+
 // 旧数据整个换掉(包括早先放在 Data 根目录、裁剪过的那几份 BDF)。
 foreach (string old in Directory.EnumerateFiles(output, "*.bdf").Concat(Directory.EnumerateFiles(output, "*.br", SearchOption.AllDirectories)))
 {
     File.Delete(old);
 }
 
-foreach ((string repo, string commit, string directory) in xorg)
+foreach ((string repo, string commit, string directory, List<(string Name, byte[] Bytes)> files) in xorgFiles)
 {
-    Console.WriteLine($"xorg/font/{repo} @ {commit[..12]}");
-    foreach ((string name, byte[] bytes) in await ArchiveFilesAsync(repo, commit, name => name.EndsWith(".bdf", StringComparison.Ordinal) || name == "COPYING"))
+    foreach ((string name, byte[] bytes) in files)
     {
         if (name == "COPYING")
         {
@@ -68,14 +96,6 @@ foreach ((string repo, string commit, string directory) in xorg)
     }
 }
 
-Console.WriteLine($"GNU Unifont {UnifontVersion}");
-byte[] unifontGz = await http.GetByteArrayAsync($"https://unifoundry.com/pub/unifont/unifont-{UnifontVersion}/font-builds/unifont-{UnifontVersion}.bdf.gz");
-string actual = Convert.ToHexStringLower(SHA256.HashData(unifontGz));
-if (actual != UnifontSha256)
-{
-    Console.Error.WriteLine($"unifont-{UnifontVersion}.bdf.gz 的 SHA-256 对不上:{actual}");
-    return 1;
-}
 using (MemoryStream bdf = new())
 {
     using (GZipStream gz = new(new MemoryStream(unifontGz), CompressionMode.Decompress))
@@ -83,12 +103,6 @@ using (MemoryStream bdf = new())
         gz.CopyTo(bdf);
     }
     Store("misc", "unifont.bdf", bdf.ToArray());
-    byte[] ofl = await http.GetByteArrayAsync("https://unifoundry.com/OFL-1.1.txt");
-    if (Convert.ToHexStringLower(SHA256.HashData(ofl)) != OflSha256)
-    {
-        Console.Error.WriteLine("OFL-1.1.txt 的 SHA-256 对不上");
-        return 1;
-    }
     string copyright = BdfProperty(bdf.ToArray(), "COPYRIGHT") ?? throw new InvalidDataException("unifont.bdf 没有 COPYRIGHT");
     await File.WriteAllTextAsync(Path.Combine(output, "LICENSE-unifont.txt"),
         $"GNU Unifont {UnifontVersion} (misc/unifont.bdf.br), from https://unifoundry.com/unifont/\n\n{copyright}\n\n"
@@ -97,8 +111,7 @@ using (MemoryStream bdf = new())
         + Encoding.UTF8.GetString(ofl).Replace("\r\n", "\n", StringComparison.Ordinal));
 }
 
-Console.WriteLine($"xorg/font/alias @ {AliasCommit[..12]}");
-foreach ((string name, byte[] bytes) in await ArchiveFilesAsync("alias", AliasCommit, name => name is "misc/fonts.alias" or "COPYING"))
+foreach ((string name, byte[] bytes) in aliasFiles)
 {
     if (name == "COPYING")
     {
@@ -149,6 +162,27 @@ void Store(string directory, string name, byte[] bytes)
         string stem = xlfd[..^"iso10646-1".Length];
         entries.AddRange(DerivedCharsets(bytes, charsetTable).Select(charset => (file, stem + charset)));
     }
+}
+
+static bool Check(string what, string actual, string expected)
+{
+    if (actual == expected)
+    {
+        return true;
+    }
+    Console.Error.WriteLine($"{what} 的 SHA-256 对不上:固定的是 {expected},实际是 {actual}");
+    return false;
+}
+
+// 从归档里挑出来的一组文件的摘要:按文件名排序,每个文件一行「文件名 文件内容的 SHA-256」,再对这几行整体算 SHA-256。
+static string Digest(List<(string Name, byte[] Bytes)> files)
+{
+    StringBuilder lines = new();
+    foreach ((string name, byte[] bytes) in files.OrderBy(f => f.Name, StringComparer.Ordinal))
+    {
+        lines.Append(name).Append(' ').Append(Convert.ToHexStringLower(SHA256.HashData(bytes))).Append('\n');
+    }
+    return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(lines.ToString())));
 }
 
 void AppendLicense(string repo, string commit, string usedFor, byte[] copying) =>

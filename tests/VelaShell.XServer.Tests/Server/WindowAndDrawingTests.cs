@@ -276,6 +276,52 @@ public sealed class WindowAndDrawingTests
     }
 
     [TestMethod]
+    public async Task 按磅数要字体_分辨率留空时挑离屏幕分辨率最近的那份_磅数按屏幕分辨率换算()
+    {
+        // 打开的那份字体的 PIXEL_SIZE(QueryFont 的字体属性);打不开为 null。
+        static async Task<int?> PixelsAsync(X11Server server, string name)
+        {
+            await using XTestClient c = await XTestClient.ConnectAsync(server);
+            uint font = c.NewId();
+            byte[] bytes = Encoding.Latin1.GetBytes(name);
+            await c.SendAsync(45, 0, b => b.U32(font).U16((ushort)bytes.Length).U16(0).Bytes(bytes).Pad());
+            XMessage reply = await c.RequestAsync(47, 0, b => b.U32(font));
+            if (!reply.IsReply)
+            {
+                return null;
+            }
+            uint atom = (await c.RequestAsync(16, 0, b => b.U16(10).U16(0).Bytes(Encoding.Latin1.GetBytes("PIXEL_SIZE")).Pad())).U32(8);
+            for (int i = 0; i < reply.U16(46); i++)
+            {
+                if (reply.U32(60 + (8 * i)) == atom)
+                {
+                    return (int)reply.U32(64 + (8 * i));
+                }
+            }
+            return -1;
+        }
+
+        // 默认 96 dpi:12 磅取 100 dpi 的那份(17 像素),原先按名字的先后拿到 75 dpi 的 12 像素;fonts.alias 的 variable 同样。
+        await using (X11Server server = new())
+        {
+            Assert.AreEqual(17, await PixelsAsync(server, "-adobe-helvetica-medium-r-normal--*-120-*-*-*-*-iso8859-1"));
+            Assert.AreEqual(17, await PixelsAsync(server, "variable"), "-*-helvetica-bold-r-normal-*-*-120-*-*-*-*-iso8859-1");
+            // 没有的磅数退到最接近的:11 磅在 96 dpi 上是 15 像素,最近的是 14(原先按 75 dpi 换成 11 像素)。
+            Assert.AreEqual(14, await PixelsAsync(server, "-adobe-helvetica-medium-r-normal--*-110-*-*-*-*-iso8859-1"));
+            // 给了分辨率或像素高度的照旧。
+            Assert.AreEqual(12, await PixelsAsync(server, "-adobe-helvetica-medium-r-normal--*-120-75-75-*-*-iso8859-1"));
+            Assert.AreEqual(12, await PixelsAsync(server, "-adobe-helvetica-medium-r-normal--12-*-*-*-*-*-iso8859-1"));
+        }
+
+        // 屏幕就是 75 dpi 时取 75 dpi 的那份。
+        await using (X11Server server = new(new X11ServerOptions { Dpi = 75 }))
+        {
+            Assert.AreEqual(12, await PixelsAsync(server, "-adobe-helvetica-medium-r-normal--*-120-*-*-*-*-iso8859-1"));
+            Assert.AreEqual(11, await PixelsAsync(server, "-adobe-helvetica-medium-r-normal--*-110-*-*-*-*-iso8859-1"));
+        }
+    }
+
+    [TestMethod]
     public async Task 字体的单字节字符集按映射表从ISO10646字体派生_中日韩有字形()
     {
         await using X11Server server = new();
@@ -340,7 +386,7 @@ public sealed class WindowAndDrawingTests
         await using X11Server server = new();
         TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
         List<string> prepared = [];
-        server.UnpreparedFonts = names => [.. names];   // 一律当成还没建好
+        server.UnpreparedFonts = (names, _) => [.. names];   // 一律当成还没建好
         server.PrepareFonts = async (fonts, _) =>
         {
             await gate.Task;

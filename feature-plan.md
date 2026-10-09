@@ -223,15 +223,15 @@
 
 ### H. 内置 X 服务端
 
-> 第二次全库审查(`plan.md` §167,草案 `xs_plan.md`)修完 184 条问题、2026-10-09 补齐只做了一部分的几项(§178)之后剩下的。新功能的编号沿用草案第五节(F1–F30)。
+> 第二次全库审查(`plan.md` §167,草案 `xs_plan.md`)修完 184 条问题、2026-10-09 补齐只做了一部分的几项(§178)、2026-10-10 对着清单逐条核对并补完最后几项(§185)之后剩下的。新功能的编号沿用草案第十二节(F1–F30);草案已经删掉(登记的问题都修完了),各项的使用场景、工作量与风险在 git 历史里:`git log -- xs_plan.md` 找到删除它的提交,`git show <提交>^:xs_plan.md`。
 
 | 状态 | 优先级 | 项 | 架构落点 |
 | :---: | :---: | --- | --- |
 | ⏳ | 🟠 P1 | **X 程序清单与强制结束的界面**(F3) | 库已经就绪(`plan.md` §167):`GetClientsAsync` / `XClientInfo`、`DisconnectClient`、`KillTopLevelClient`、`BreakGrabs`、连接标签(SSH 会话的 `user@host:port`)。差标题栏 X Server 按钮的浮层:列出「谁连着、来自哪个会话、占多少内存」,能断开单个程序、能解除卡住的抓取与冻结;GrabServer 被占太久时提示(库已记日志点名持有者)。五份 resx |
 | 💡 | 🟡 P2 | **按连接给信任级别 / 每个会话一个显示**(F2 / F1,决策 Q5) | 现在所有转发来的会话共用一个受信的显示,`RestrictForwardedClients` 是全局开关。F2:按连接给信任级别,在分派层做访问检查(隐藏 XTEST、原始事件、跨客户端 GetImage);F1:每个 SSH 会话一个显示号,彼此看不见。默认值要拍板 |
 | 💡 | 🟡 P2 | **草案第五节的其余功能**(F4–F30) | 本机输入法组好字上屏(F5,决策 Q1 的第一步)、宿主光标跟着 Warp(F8)、屏保 Suspend 转告宿主(F9)、更宽的边缘缩放区(F11)、可选的「一个大窗口」模式(F13,Q2)、GL 的选择 / 反馈 / 求值器(F23)等,逐项评估 |
-| ⏳ | 🟢 P3 | **审查留下的部分完成项** | 点本机窗口或桌面就收起 X 的弹出菜单(WN-M7):要全局指针钩子,各平台各写一份。另有审查之前就有的一处:外接框宽或高为 0 的宽弧只画出一半线宽 |
-| 💡 | 🟢 P3 | **合并本地草稿时顺带看到的**(`plan.md` §181) | 源 picture 带变换时 alpha-map 按源未变换的坐标取样(文档说 alpha 原点相对 drawable 原点);用磅数要字体时 75 dpi 的总排在前、换算也按 75 dpi,96 dpi 的宿主上 Adobe 字体偏小;`scripts/xserver/fonts/build-fonts.cs` 对 X.Org 的字体包没有哈希校验(GitLab 生成的归档不保证逐字节稳定,宜对挑出的文件算);文档说 alpha-map 必须是只有 alpha 的格式、否则 BadMatch,代码只核了是像素图 —— 先查规范定哪边对 |
+| ⏳ | 🟢 P3 | **审查留下的部分完成项** | 点本机窗口或桌面就收起 X 的弹出菜单(WN-M7):要全局指针钩子,各平台各写一份。另有 §185 核对时看到的一处:半径小于半个线宽的圆上的一段宽弧,内边界停在圆心、没有穿到对侧(协议对圆要求理想边界,整圆不受影响;椭圆由实现决定,不算) |
+| 💡 | 🟢 P3 | **互操作靶场扩充**(审查的测试缺口 T16) | 真实客户端现在只覆盖 x11-apps、xterm、xdpyinfo、glxgears 与 Swing。现有镜像保持轻量、留在 CI,另建一个 heavy 镜像手动或每晚跑,断言沿用「零 `: Bad` 日志 + 画出了东西」再加专项:GTK3(`gtk-3-examples`、`zenity`、`meld`:拖放、剪贴板、弹出层、自绘标题栏的边缘缩放)、GTK4(`gtk-4-examples`、`gnome-calculator`:`GSK_RENDERER=gl` 与 `cairo` 都零错误)、GTK2(`gimp`)、Qt(`wireshark`)、浏览器(`firefox-esr`、`chromium --disable-gpu`:剪贴板提供哪些格式)、Motif / Xaw / Tk / Emacs(`ddd`、`xfig`、`gnuplot-x11`、`gitk`、`emacs-lucid`:核心字体告警、中文与西里尔文)、桌面会话(`xserver-xephyr`、`openbox`、`xfwm4`、`xfdesktop4`:窗口管理器要以「已有窗口管理器」退出,桌面类窗口不开原生窗口)、托盘(`stalonetray`、`yad --notification`)、中日韩输入(`fcitx5`)、办公(`libreoffice-calc`:富格式剪贴板、启动时恢复最大化) |
 | 💡 | 🟢 P3 | **需要实机核对的** | 分数缩放下最后一列像素可能被裁(API-H13);macOS 上 Command 组合键收不到 KeyUp 时的处理(IN-E19);macOS / FreeBSD 经 `getpeereid` 取对端 uid(CN-S8) |
 
 ---
@@ -243,7 +243,7 @@
 
 | 出处 | 要改什么 | 进度 |
 | --- | --- | --- |
-| `plan.md` §181 alpha-map 只作用一层、字体就近匹配看平均宽度 | `{zh,en}/xserver/design/architecture.md` §7:RENDER 那段补「alpha-map 只作用一层」与长链会栈溢出的理由;字体那段补「一样近时先比平均宽度」 | [velashell-docs#104](https://github.com/VelaShellLabs/velashell-docs/pull/104) 已开,与宿主 PR 一起合 |
+| `plan.md` §185 第二次审查清单的最后一轮收尾 | `{zh,en}/xserver/design/architecture.md`:§6 扁弧按线段画满线宽;§7 字体按屏幕分辨率挑 75 / 100 dpi、RENDER 的 alpha-map(只换 alpha 通道、跟着变换、目标上生效,删掉「必须是只有 alpha 的格式」);§2 字体脚本核对摘要;里程碑记下这一轮 | [velashell-docs#105](https://github.com/VelaShellLabs/velashell-docs/pull/105) 已开,与宿主 PR 一起合 |
 | `plan.md` §180 连接导入导出、多选与分组排序（#571） | `{zh,en}/host/会话导入.md` 新增第七节（JSON / CSV 两种格式、导出口令加密、CSV 列与读法、重复与写入规则）、第六节补一条、标题注明；`{zh,en}/host/交互与界面规格.md` §3（「更多」菜单、Ctrl 双选改为 Ctrl / Shift 多选、分组拖动排序）、§6.2 的入口说法、§12（多选菜单、分组菜单、新增 §12.1 批量修改对话框）；`{zh,en}/host/快捷键参考.md` 新增「资源管理器」一节（Ctrl / Shift 单击多选、拖动连接换分组、拖动分组行排序）；`SFTP双栏与WinSCP差距分析.md` 的交叉引用；`host/README.md` 与根 README 的索引 | [velashell-docs#103](https://github.com/VelaShellLabs/velashell-docs/pull/103) 已开，与宿主 PR 一起合 |
 | `plan.md` §118 窗口外框 | `{zh,en}/host/architecture.md` §5「窗口壳」的 ⚠️ 限定为 Win32、新增「各平台的外框」；`交互与界面规格.md` §2 补 macOS 红绿灯与各平台外框；`design-specs.md` 补 macOS 红绿灯；标题栏统一 28 的口径（设置窗口与消息框保持 48 的例外） | [velashell-docs#70](https://github.com/VelaShellLabs/velashell-docs/pull/70) 已开，与宿主 PR 一起合；实机验收后改掉 architecture 里「验收」那一段 |
 | `plan.md` §74 / §75 目录比较与同步 | `SFTP双栏与WinSCP差距分析.md`（C1 改已实现、新增第七节）与 `交互与界面规格.md` §6（文档工具条、同步窗口、保持远端最新、SHA-256 优先比较） | [velashell-docs#35](https://github.com/VelaShellLabs/velashell-docs/pull/35) **待合入** |

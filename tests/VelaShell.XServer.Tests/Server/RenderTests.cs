@@ -225,6 +225,123 @@ public sealed class RenderTests
         Assert.AreEqual(0xFFFFFFu, s.Pixel(11, 6));
     }
 
+    /// <summary>建一张 <paramref name="depth" /> 位、w × h 的像素图和它上面的 picture。</summary>
+    private static async Task<(uint Pixmap, uint Picture)> PixmapPictureAsync(Setup s, byte depth, uint format, ushort w, ushort h)
+    {
+        XTestClient c = s.Client;
+        uint pixmap = c.NewId(), picture = c.NewId();
+        await c.SendAsync(53, depth, b => b.U32(pixmap).U32(s.Window).U16(w).U16(h));
+        await c.SendAsync(s.Major, 4, b => b.U32(picture).U32(pixmap).U32(format).U32(0));
+        return (pixmap, picture);
+    }
+
+    /// <summary>FillRectangles(预乘的 16 位颜色)。</summary>
+    private static Task<ushort> FillAsync(Setup s, byte op, uint picture, ushort a, ushort r, ushort g, ushort b, short x, short y, ushort w, ushort h) =>
+        s.Client.SendAsync(s.Major, 26, body => body.U8(op).U8(0).U8(0).U8(0).U32(picture)
+            .U16(r).U16(g).U16(b).U16(a).I16(x).I16(y).U16(w).U16(h));
+
+    /// <summary>核心 GetImage(ZPixmap)取一个像素的原始值:深度 8 取一个字节,深度 24 / 32 取四个字节。</summary>
+    private static async Task<uint> RawPixelAsync(XTestClient c, uint drawable, short x, short y, bool oneByte)
+    {
+        XMessage image = await c.RequestAsync(73, 2, b => b.U32(drawable).I16(x).I16(y).U16(1).U16(1).U32(0xFFFFFFFF));
+        Assert.IsFalse(image.IsError);
+        return oneByte ? image.Bytes[32] : image.U32(32);
+    }
+
+    [TestMethod]
+    public async Task 源带变换时AlphaMap跟着变换取样()
+    {
+        await using Setup s = await SetupAsync();
+        XTestClient c = s.Client;
+        (_, uint source) = await PixmapPictureAsync(s, 32, s.Formats.Argb32, 4, 4);
+        (_, uint alpha) = await PixmapPictureAsync(s, 8, s.Formats.A8, 4, 4);
+        await FillAsync(s, 1, source, 0xFFFF, 0, 0, 0xFFFF, 0, 0, 4, 4);   // 不透明蓝
+        await FillAsync(s, 1, alpha, 0xFFFF, 0, 0, 0, 2, 0, 2, 4);         // alpha-map 只有右边两列不透明
+        await c.SendAsync(s.Major, 5, b => b.U32(source).U32(1u << 1).U32(alpha));
+        // 变换把目标的 x 映到源的 x + 2:目标上的两列取的是源与 alpha-map 的右边两列。
+        await c.SendAsync(s.Major, 28, b => b.U32(source)
+            .I32(0x10000).I32(0).I32(0x20000)
+            .I32(0).I32(0x10000).I32(0)
+            .I32(0).I32(0).I32(0x10000));
+        await c.SendAsync(s.Major, 8, b => b.U8(3).U8(0).U8(0).U8(0).U32(source).U32(0).U32(s.Picture)
+            .I16(0).I16(0).I16(0).I16(0).I16(10).I16(5).U16(2).U16(4));
+        await c.SyncAsync();
+
+        // 原先 alpha-map 按变换前的坐标取到左边两列的 0,什么都没画上。
+        Assert.AreEqual(0x0000FFu, s.Pixel(10, 5));
+        Assert.AreEqual(0x0000FFu, s.Pixel(11, 8));
+        Assert.AreEqual(0xFFFFFFu, s.Pixel(12, 5));
+    }
+
+    [TestMethod]
+    public async Task AlphaMap只换alpha通道_颜色通道照原样()
+    {
+        await using Setup s = await SetupAsync();
+        XTestClient c = s.Client;
+        (_, uint source) = await PixmapPictureAsync(s, 32, s.Formats.Argb32, 4, 4);
+        (_, uint alpha) = await PixmapPictureAsync(s, 8, s.Formats.A8, 4, 4);
+        await FillAsync(s, 1, source, 0x8080, 0x8080, 0, 0, 0, 0, 4, 4);   // 预乘的半透明红:a = r = 0x80
+        await FillAsync(s, 1, alpha, 0xFFFF, 0, 0, 0, 0, 0, 4, 4);
+        await c.SendAsync(s.Major, 5, b => b.U32(source).U32(1u << 1).U32(alpha));
+        await c.SendAsync(s.Major, 8, b => b.U8(1).U8(0).U8(0).U8(0).U32(source).U32(0).U32(s.Picture)
+            .I16(0).I16(0).I16(0).I16(0).I16(10).I16(5).U16(4).U16(4));
+        await c.SyncAsync();
+
+        // 像素是 (a 0xFF, r 0x80, g 0, b 0),Src 写进窗口就是 0x800000。原先颜色按 drawable 的 alpha 除、再乘 alpha-map 的,成了 0xFF0000。
+        Assert.AreEqual(0x800000u, s.Pixel(11, 6));
+    }
+
+    [TestMethod]
+    public async Task 目标的AlphaMap_合成按它的alpha算_颜色写回drawable_alpha写回alpha_map_范围之外不画()
+    {
+        await using Setup s = await SetupAsync();
+        XTestClient c = s.Client;
+        // 白底窗口的 picture 挂一张 8×8、全 0 的 a8 alpha-map,原点在 (2,2)。
+        (uint alphaPixmap, uint alpha) = await PixmapPictureAsync(s, 8, s.Formats.A8, 8, 8);
+        await c.SendAsync(s.Major, 5, b => b.U32(s.Picture).U32((1u << 1) | (1u << 2) | (1u << 3)).U32(alpha).U32(2).U32(2));
+
+        // Atop:结果 = 源 × αd + 目标 × (1 − αs)。目标的 alpha 来自 alpha-map(0),颜色是白底的 50%;不挂 alpha-map 时 αd = 1,是 0xFF7F7F。
+        await FillAsync(s, 9, s.Picture, 0x8000, 0x8000, 0, 0, 0, 0, 20, 20);
+        await c.SyncAsync();
+        Assert.AreEqual(0x7F7F7Fu, s.Pixel(5, 5));
+        Assert.AreEqual(0xFFFFFFu, s.Pixel(1, 1), "alpha-map 范围之外不画");
+        Assert.AreEqual(0xFFFFFFu, s.Pixel(12, 12), "alpha-map 范围之外不画");
+        Assert.AreEqual(0u, await RawPixelAsync(c, alphaPixmap, 3, 3, oneByte: true), "Atop 不改目标的 alpha:仍是 0");
+
+        // Over:结果的 alpha = αs + αd × (1 − αs) = 0.5,写回 alpha-map(原先 alpha-map 一直不变)。
+        await FillAsync(s, 3, s.Picture, 0x8000, 0x8000, 0, 0, 0, 0, 20, 20);
+        await c.SyncAsync();
+        Assert.AreEqual(0x80u, await RawPixelAsync(c, alphaPixmap, 3, 3, oneByte: true));
+    }
+
+    [TestMethod]
+    public async Task 挂了AlphaMap的源与目标是同一张像素图时先读完再写()
+    {
+        await using Setup s = await SetupAsync();
+        XTestClient c = s.Client;
+        // 1×8 的像素图,每行一个不同的颜色;同一张像素图上两张 picture:一张挂上全不透明的 alpha-map 当源,一张当目标。
+        (uint pixmap, uint dst) = await PixmapPictureAsync(s, 32, s.Formats.Argb32, 1, 8);
+        uint source = c.NewId();
+        await c.SendAsync(s.Major, 4, b => b.U32(source).U32(pixmap).U32(s.Formats.Argb32).U32(0));
+        (_, uint alpha) = await PixmapPictureAsync(s, 8, s.Formats.A8, 1, 8);
+        await FillAsync(s, 1, alpha, 0xFFFF, 0, 0, 0, 0, 0, 1, 8);
+        await c.SendAsync(s.Major, 5, b => b.U32(source).U32(1u << 1).U32(alpha));
+        for (short y = 0; y < 8; y++)
+        {
+            ushort v = (ushort)(0x1111 * (y + 1));
+            await FillAsync(s, 1, dst, 0xFFFF, v, v, v, 0, y, 1, 1);
+        }
+        // 整列往下挪一行。逐行合成时目标在源下面:原先没看出挂了 alpha-map 的源读的就是目标,第 0 行的颜色一路传到底。
+        await c.SendAsync(s.Major, 8, b => b.U8(1).U8(0).U8(0).U8(0).U32(source).U32(0).U32(dst)
+            .I16(0).I16(0).I16(0).I16(0).I16(0).I16(1).U16(1).U16(7));
+        await c.SyncAsync();
+        for (short y = 1; y < 8; y++)
+        {
+            uint want = 0x111111u * (uint)y;
+            Assert.AreEqual(want, await RawPixelAsync(c, pixmap, 0, y, oneByte: false) & 0xFFFFFF, $"第 {y} 行");
+        }
+    }
+
     [TestMethod]
     public async Task AddGlyphs的尺寸与个数按不会回绕的算法核长度_回BadLength而不是分配几个GB()
     {
