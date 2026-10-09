@@ -49,7 +49,7 @@ server.SetClipboardText(text);   // 宿主剪贴板 → X;反方向是 IX11Serve
 | `Drawing/` | 像素缓冲、区域、软件光栅化、RENDER 的合成 / 取样 / 覆盖率 |
 | `Gl/` | GLX 间接渲染的软件 GL:渲染命令解码、显示列表、变换 / 光照 / 裁剪、三角形 / 线 / 点光栅化、纹理、逐片元操作 |
 | `Resources/` | GC、像素图、颜色表、光标、字体、颜色名,以及各扩展的资源(RENDER、SYNC、DAMAGE、XFIXES、Present、MIT-SHM、GLX) |
-| `Fonts/` | BDF 解析、内置 misc-fixed 字体、XLFD 匹配 |
+| `Fonts/` | BDF 解析、XLFD 匹配;`Fonts/Data/` 是内置核心字体的数据(来源与许可见那里的 README) |
 | `Input/` | 键码表、抓取的数据结构 |
 
 开发约定(净室规程)见 [`AGENTS.md`](AGENTS.md);架构见
