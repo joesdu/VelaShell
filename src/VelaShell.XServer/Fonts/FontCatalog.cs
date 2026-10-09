@@ -70,21 +70,27 @@ internal static class FontCatalog
         return result;
     }
 
-    /// <summary>按名字打开(OpenFont):名字可以带通配符,取第一个匹配的;找不到返回 null(BadName)。</summary>
-    public static XFont? Open(string name) => Index.Value.Find(name) is { } font ? Index.Value.Build(font) : null;
+    /// <summary>没有给屏幕分辨率时按这个算(<see cref="X11ServerOptions.Dpi" /> 的默认值)。</summary>
+    public const int DefaultDpi = 96;
+
+    /// <summary>
+    /// 按名字打开(OpenFont):名字可以带通配符,取第一个匹配的;找不到返回 null(BadName)。<paramref name="dpi" /> 是屏幕的分辨率:
+    /// 按磅数要字体、分辨率留空时用它挑 75 / 100 dpi 的哪一份,并按它把磅数换成像素(见 <c>FontIndex.Resolve</c>)。
+    /// </summary>
+    public static XFont? Open(string name, int dpi = DefaultDpi) => Index.Value.Find(name, dpi) is { } font ? Index.Value.Build(font) : null;
 
     /// <summary>
     /// 打开这些名字(可以是别名、带通配符)要用到、还没建好的字体(按字体名去重)。第一次打开要解压、解析整份 BDF ——
     /// GNU Unifont 要 180 毫秒,把所有字体列一遍信息(<c>xlsfonts -l</c>)要一秒多 —— 执行线程不该持着像素锁做这件事
     /// (宿主的 UI 线程在 ReadPixels 里等这把锁),先用 <see cref="PrepareAsync" /> 在后台建好。
     /// </summary>
-    public static List<string> Unprepared(IEnumerable<string> names)
+    public static List<string> Unprepared(IEnumerable<string> names, int dpi = DefaultDpi)
     {
         FontIndex index = Index.Value;
         HashSet<string> pending = [];
         foreach (string name in names)
         {
-            if (index.Find(name) is { } font && !index.IsBuilt(font))
+            if (index.Find(name, dpi) is { } font && !index.IsBuilt(font))
             {
                 pending.Add(font);
             }
@@ -187,7 +193,7 @@ internal static class FontCatalog
             index._sortedFonts = [.. index._fonts.Keys.Order(StringComparer.Ordinal)];
             foreach ((string alias, string target) in ParseAliases(ReadLines("misc.fonts.alias")))
             {
-                if (index.Resolve(target) is not null)
+                if (index.Resolve(target, DefaultDpi) is not null)
                 {
                     index._aliases.TryAdd(alias.ToLowerInvariant(), target);
                 }
@@ -201,7 +207,7 @@ internal static class FontCatalog
         }
 
         /// <summary>名字(字体名、别名,可以带通配符)→ 打开时用的字体名;找不到为 null。只查名字表,不解析字体。</summary>
-        public string? Find(string name)
+        public string? Find(string name, int dpi)
         {
             for (int depth = 0; depth < 4; depth++)   // 别名指向别名:最多跟几层,防成环
             {
@@ -210,7 +216,7 @@ internal static class FontCatalog
                     name = target;
                     continue;
                 }
-                if (Resolve(name) is { } resolved)
+                if (Resolve(name, dpi) is { } resolved)
                 {
                     return resolved;
                 }
@@ -220,13 +226,18 @@ internal static class FontCatalog
                     name = alias;
                     continue;
                 }
-                return NearestSize(name);
+                return NearestSize(name, dpi);
             }
             return null;
         }
 
-        /// <summary>名字(可带通配符)→ 字体名:完全一致的优先,否则按序第一个匹配上的字体(不看别名)。</summary>
-        private string? Resolve(string pattern)
+        /// <summary>
+        /// 名字(可带通配符)→ 字体名:完全一致的优先,否则按序第一个匹配上的字体(不看别名)。按磅数要、分辨率留空的 XLFD
+        /// (<c>-*-helvetica-bold-r-normal-*-*-120-*-*-*-*-iso8859-1</c>,fonts.alias 的 <c>variable</c> 就是这样)匹配上的里面,
+        /// 先挑 RESOLUTION_Y 离屏幕分辨率 <paramref name="dpi" /> 最近的:XLFD 的 POINT_SIZE 是物理尺寸,同一个磅数 75 dpi 的那份
+        /// (12 磅 12 像素)在 96 dpi 的屏幕上偏小,100 dpi 的那份(17 像素)才对。原先按名字的先后,75 dpi 的总排在前。
+        /// </summary>
+        private string? Resolve(string pattern, int dpi)
         {
             if (_fonts.ContainsKey(pattern))
             {
@@ -234,16 +245,42 @@ internal static class FontCatalog
             }
             if (pattern.Contains('*', StringComparison.Ordinal) || pattern.Contains('?', StringComparison.Ordinal))
             {
+                bool byResolution = PointSizeWithoutResolution(pattern.Split('-'));
+                string? best = null;
+                int bestDistance = int.MaxValue;
                 foreach (string name in _sortedFonts)
                 {
-                    if (WildcardMatch(pattern, name))
+                    if (!WildcardMatch(pattern, name))
+                    {
+                        continue;
+                    }
+                    if (!byResolution)
                     {
                         return name;
                     }
+                    int distance = ResolutionDistance(name.Split('-'), dpi);
+                    if (distance < bestDistance)
+                    {
+                        (best, bestDistance) = (name, distance);
+                    }
                 }
+                return best;
             }
             return null;
         }
+
+        /// <summary>完整的 14 字段 XLFD,按磅数要(POINT_SIZE 是数字、PIXEL_SIZE 不是),RESOLUTION_Y 留空(不是数字)。</summary>
+        private static bool PointSizeWithoutResolution(string[] fields) =>
+            fields.Length == 15 && fields[0].Length == 0
+            && IsNumber(fields[8]) && !IsNumber(fields[7]) && !IsNumber(fields[10]);
+
+        private static bool IsNumber(string field) => field.Length > 0 && field.All(char.IsAsciiDigit);
+
+        /// <summary>字体的 RESOLUTION_Y 离 <paramref name="dpi" /> 多远;不是 XLFD 的排在最后。</summary>
+        private static int ResolutionDistance(string[] fields, int dpi) =>
+            fields.Length == 15 && int.TryParse(fields[10], NumberStyles.None, CultureInfo.InvariantCulture, out int resolution)
+                ? Math.Abs(resolution - dpi)
+                : int.MaxValue - 1;
 
         /// <summary>就近回退时必须对得上的 XLFD 字段:FOUNDRY、FAMILY_NAME、WEIGHT_NAME、SLANT、CHARSET_REGISTRY、CHARSET_ENCODING。</summary>
         private static readonly int[] NearestSizeFields = [1, 2, 3, 4, 13, 14];
@@ -251,13 +288,14 @@ internal static class FontCatalog
         /// <summary>
         /// 完整的 14 字段 XLFD 要了一个我们没有的字号(<c>-adobe-helvetica-medium-r-normal--13-*-*-*-*-*-iso8859-1</c>):
         /// foundry、family、weight、slant、charset 都对得上的里面,取像素高度最接近的(一样近取小的)。原先直接 BadName。
-        /// 尺寸按 PIXEL_SIZE,没给时按 POINT_SIZE 与 RESOLUTION_Y(没给按 75 dpi)换算;两个都没给就不猜(通配本来就该匹配上)。
+        /// 尺寸按 PIXEL_SIZE,没给时按 POINT_SIZE 与 RESOLUTION_Y(没给按屏幕分辨率 <paramref name="dpi" />;原先按 75 dpi)换算;
+        /// 两个都没给就不猜(通配本来就该匹配上)。按磅数要、分辨率留空时,一样近的里面再挑分辨率离屏幕最近的(同 <see cref="Resolve" />)。
         /// 给了 AVERAGE_WIDTH 时,一样近的里面挑平均宽度最接近的:把平均宽度翻倍要双宽字体(给宽字符配的)的
         /// <c>-misc-fixed-medium-r-semicondensed--13-120-75-75-c-120-iso10646-1</c> 拿到 12x13ja,而不是按名字的先后拿到 7x13。
         /// 平均宽度只在一样近的里面比,不会为了字宽退到高度差得更远的字体。
         /// setwidth、add-style、spacing 不看 —— 宁可给一个近似的也别让程序打不开字体。
         /// </summary>
-        private string? NearestSize(string pattern)
+        private string? NearestSize(string pattern, int dpi)
         {
             string[] want = pattern.ToLowerInvariant().Split('-');
             if (want.Length != 15 || want[0].Length != 0)
@@ -271,8 +309,8 @@ internal static class FontCatalog
             }
             else if (int.TryParse(want[8], NumberStyles.None, CultureInfo.InvariantCulture, out int decipoints) && decipoints > 0)
             {
-                int dpi = int.TryParse(want[10], NumberStyles.None, CultureInfo.InvariantCulture, out int y) && y > 0 ? y : 75;
-                target = (int)Math.Round(decipoints / 10.0 * dpi / 72.27);
+                int resolution = int.TryParse(want[10], NumberStyles.None, CultureInfo.InvariantCulture, out int y) && y > 0 ? y : dpi;
+                target = (int)Math.Round(decipoints / 10.0 * resolution / 72.27);
             }
             else
             {
@@ -281,8 +319,9 @@ internal static class FontCatalog
             int? wantWidth = int.TryParse(want[12], NumberStyles.None, CultureInfo.InvariantCulture, out int average) && average > 0
                 ? average
                 : null;
+            bool byResolution = PointSizeWithoutResolution(want);
             string? best = null;
-            int bestDistance = int.MaxValue, bestWidthDistance = int.MaxValue, bestPixels = 0;
+            int bestDistance = int.MaxValue, bestWidthDistance = int.MaxValue, bestResolution = int.MaxValue, bestPixels = 0;
             foreach (string name in SortedNames)
             {
                 string[] have = name.Split('-');
@@ -296,9 +335,10 @@ internal static class FontCatalog
                 int widthDistance = wantWidth is not { } w ? 0
                     : int.TryParse(have[12], NumberStyles.None, CultureInfo.InvariantCulture, out int width) ? Math.Abs(width - w)
                     : int.MaxValue;
-                if ((distance, widthDistance, size).CompareTo((bestDistance, bestWidthDistance, bestPixels)) < 0)
+                int resolutionDistance = byResolution ? ResolutionDistance(have, dpi) : 0;
+                if ((distance, widthDistance, resolutionDistance, size).CompareTo((bestDistance, bestWidthDistance, bestResolution, bestPixels)) < 0)
                 {
-                    (best, bestDistance, bestWidthDistance, bestPixels) = (name, distance, widthDistance, size);
+                    (best, bestDistance, bestWidthDistance, bestResolution, bestPixels) = (name, distance, widthDistance, resolutionDistance, size);
                 }
             }
             return best;
