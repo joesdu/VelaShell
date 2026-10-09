@@ -8,6 +8,8 @@
 //   §2.5「Large Data Transfers」(INCR 分块协议)、§2.6.2「Target Atoms」(TARGETS、TIMESTAMP、TEXT、STRING)、
 //   §2.7.1「Text Properties」(TEXT 由属主挑 STRING / UTF8_STRING / COMPOUND_TEXT,取回的按类型解码)
 //   X Window System Protocol —— 「SetSelectionOwner」「ConvertSelection」及 SelectionRequest / SelectionNotify 事件
+//   freedesktop.org Clipboard Manager Specification —— CLIPBOARD_MANAGER 选区、SAVE_TARGETS(内容取完之前不回答)
+//   剪贴板的富格式按 MIME 类型当目标(text/html、image/png;freedesktop 的惯例,ICCCM §2.6.2 允许属主自定目标)
 //
 //   与宿主的剪贴板互通:
 //   · 宿主 → X:SetClipboardText 让服务端自己占有 CLIPBOARD(可选 PRIMARY),X 客户端来要时直接回;
@@ -31,26 +33,42 @@ public sealed partial class X11Server
 
     private XWindow? _selectionWindow;
 
-    /// <summary>宿主最近一次给的文本;服务端占有选区时拿它回应(见 <see cref="SetHostClipboard" />)。</summary>
-    private string _hostClipboard = "";
+    /// <summary>
+    /// 最新的剪贴板内容(宿主给的,或从 X 端取来交给宿主的);服务端占有选区时拿它回应(见 <see cref="SetHostClipboard" />)。
+    /// 文本、HTML、PNG 各有各的目标(<see cref="ConvertHostSelection" />)。
+    /// </summary>
+    private XClipboardContent _hostContent = new();
 
-    /// <summary>宿主文本的 UTF-8 / Latin-1 / COMPOUND_TEXT 编码:第一次有人要时编一次,之后各次 ConvertSelection 共用(原先每次都重编码)。</summary>
-    private byte[]? _hostClipboardUtf8, _hostClipboardLatin1, _hostClipboardCompound;
+    /// <summary>文本的 UTF-8 / Latin-1 / COMPOUND_TEXT 编码与 HTML 的 UTF-8:第一次有人要时编一次,之后各次 ConvertSelection 共用。</summary>
+    private byte[]? _hostClipboardUtf8, _hostClipboardLatin1, _hostClipboardCompound, _hostHtmlUtf8;
 
-    private void SetHostClipboard(string text)
+    private void SetHostClipboard(XClipboardContent content)
     {
-        _hostClipboard = text;
+        _hostContent = content;
         _hostClipboardUtf8 = null;
         _hostClipboardLatin1 = null;
         _hostClipboardCompound = null;
+        _hostHtmlUtf8 = null;
     }
 
-    private byte[] HostClipboardUtf8 => _hostClipboardUtf8 ??= Encoding.UTF8.GetBytes(_hostClipboard);
+    private string HostClipboardText => _hostContent.Text ?? "";
 
-    private byte[] HostClipboardLatin1 => _hostClipboardLatin1 ??= Encoding.Latin1.GetBytes(_hostClipboard);
+    private byte[] HostClipboardUtf8 => _hostClipboardUtf8 ??= Encoding.UTF8.GetBytes(HostClipboardText);
 
-    /// <summary>最近一次交给宿主的文本 —— 宿主把它写回来时不再抢选区(防回声)。</summary>
-    private string? _lastDeliveredText;
+    private byte[] HostClipboardLatin1 => _hostClipboardLatin1 ??= Encoding.Latin1.GetBytes(HostClipboardText);
+
+    /// <summary>最近一次交给宿主的内容 —— 宿主把它(或其中几种格式)写回来时不再抢选区(防回声)。</summary>
+    private XClipboardContent? _lastDelivered;
+
+    /// <summary>
+    /// <paramref name="content" /> 是不是宿主把我们刚交给它的写了回来:它给的每种格式都与交出去的相同(宿主可能只写回其中几种,
+    /// 比如只认文本的宿主只写回文本 —— 那也是回声,抢过来就把 X 那边的 HTML / 图片丢了)。
+    /// </summary>
+    private bool IsEcho(XClipboardContent content) =>
+        _lastDelivered is { } last && !content.IsEmpty
+        && (content.Text is null || content.Text == last.Text)
+        && (content.Html is null || content.Html == last.Html)
+        && (content.Png.IsEmpty || content.Png.Span.SequenceEqual(last.Png.Span));
 
     /// <summary>
     /// 进行中的「从 X 客户端取选区」,每个选区一份(CLIPBOARD 与 PRIMARY 同时变化时各取各的,原先只有一个槽,后来的把先来的冲掉)。
@@ -68,7 +86,20 @@ public sealed partial class X11Server
 
         public uint Selection => Slot.Atom;
 
+        /// <summary>这一步在取的目标。</summary>
         public uint Target { get; set; } = target;
+
+        /// <summary>这一步之后还要取的目标,按顺序(CLIPBOARD 先取 TARGETS,再按它排:文本、HTML、PNG)。</summary>
+        public Queue<uint> Plan { get; } = new();
+
+        /// <summary>取到的:目标 → (类型, 数据)。</summary>
+        public Dictionary<uint, (uint Type, byte[] Data)> Results { get; } = [];
+
+        /// <summary>文本的退路:UTF8_STRING 不给时再要 STRING(属主不回 TARGETS 时,或 TARGETS 里只列了 UTF8_STRING 却又不给)。</summary>
+        public bool StringFallback { get; set; } = true;
+
+        /// <summary>这次取完(或放弃)时要做的:剪贴板管理器在等它才回 SAVE_TARGETS。参数是取没取到东西。</summary>
+        public List<Action<bool>> Finished { get; } = [];
 
         public uint Time { get; } = time;
 
@@ -155,14 +186,14 @@ public sealed partial class X11Server
 
     private readonly Dictionary<SelectionSlot, long> _slotStamps = [];
 
-    /// <summary>宿主的剪贴板有了新文本(见 <see cref="SetClipboardText" />):服务端替宿主在焦点所在的会话里占有 CLIPBOARD(与 PRIMARY)。</summary>
-    private void ApplyClipboardText(string text)
+    /// <summary>宿主的剪贴板有了新内容(见 <see cref="SetClipboard" />):服务端替宿主在焦点所在的会话里占有 CLIPBOARD(有文本时连同 PRIMARY)。</summary>
+    private void ApplyClipboardContent(XClipboardContent content)
     {
-        if (!_options.SyncClipboard || text == _lastDeliveredText)
+        if (!_options.SyncClipboard || content.IsEmpty || IsEcho(content))
         {
             return;   // 宿主把我们刚给的写回来了
         }
-        SetHostClipboard(text);
+        SetHostClipboard(content);
         _clipboardStamp = ++_clipboardClock;
         SyncFocusedSessionClipboard();
     }
@@ -251,6 +282,29 @@ public sealed partial class X11Server
         {
             property = target;   // 旧式请求方(ICCCM §2.2)
         }
+        if (selection == Intern("CLIPBOARD_MANAGER"))
+        {
+            if (target == Intern("SAVE_TARGETS") && !oldStyle)
+            {
+                SaveTargets(c, requestor, property, time);   // 回答等内容取完再发(剪贴板管理器规范)
+                return;
+            }
+            if (target == Intern("TARGETS"))
+            {
+                WriteConverted(requestor, property, (XAtom.Atom, 32, AtomList([Intern("TARGETS"), Intern("SAVE_TARGETS"), Intern("TIMESTAMP")])));
+            }
+            else if (target == Intern("TIMESTAMP"))
+            {
+                WriteConverted(requestor, property, (XAtom.Integer, 32, AtomList([ownerTime])));
+            }
+            else
+            {
+                property = 0;
+            }
+            XClient managerReply = requestor.Owner is { Closed: false } o ? o : c;
+            managerReply.Event(XEventCode.SelectionNotify, 0, w => w.U32(time).U32(requestor.Id).U32(selection).U32(target).U32(property));
+            return;
+        }
         if (selection != Intern("CLIPBOARD") && selection != XAtom.Primary)
         {
             property = 0;   // 服务端占有的其它选区(_XSETTINGS_S0 这类管理器选区)没有可转换的内容
@@ -278,7 +332,21 @@ public sealed partial class X11Server
         to.Event(XEventCode.SelectionNotify, 0, w => w.U32(time).U32(requestor.Id).U32(selection).U32(target).U32(property));
     }
 
-    /// <summary>宿主的文本按目标转换;不支持的目标为 null。</summary>
+    /// <summary>32 位的一串值(原子、时间戳),按服务端的字节序(属性数据按小端存,发出时按客户端的字节序换)。</summary>
+    private static byte[] AtomList(ReadOnlySpan<uint> values)
+    {
+        byte[] data = new byte[values.Length * 4];
+        for (int i = 0; i < values.Length; i++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(i * 4), values[i]);
+        }
+        return data;
+    }
+
+    /// <summary>剪贴板的 HTML 与 PNG 图片的目标名(freedesktop 的惯例:MIME 类型当目标)。</summary>
+    private const string HtmlTarget = "text/html", PngTarget = "image/png";
+
+    /// <summary>宿主的内容按目标转换;不支持的目标(或这份内容里没有那种格式)为 null。</summary>
     private (uint Type, byte Format, byte[] Data)? ConvertHostSelection(uint target, uint ownerTime)
     {
         uint utf8 = Intern("UTF8_STRING");
@@ -287,22 +355,41 @@ public sealed partial class X11Server
         uint text = Intern("TEXT");
         uint plainUtf8 = Intern("text/plain;charset=utf-8");
         uint compound = Intern("COMPOUND_TEXT");
+        uint html = Intern(HtmlTarget), png = Intern(PngTarget);
+        bool hasText = _hostContent.Text is not null;
         if (target == targets)
         {
-            // ICCCM §2.6.2:属主必须支持 TARGETS、MULTIPLE、TIMESTAMP。原先不列 MULTIPLE 与 COMPOUND_TEXT。
-            uint[] atoms = [targets, Intern("MULTIPLE"), timestamp, utf8, plainUtf8, compound, XAtom.String, text];
-            byte[] data = new byte[atoms.Length * 4];
-            for (int i = 0; i < atoms.Length; i++)
+            // ICCCM §2.6.2:属主必须支持 TARGETS、MULTIPLE、TIMESTAMP。原先不列 MULTIPLE 与 COMPOUND_TEXT。只列这份内容里有的格式。
+            List<uint> atoms = [targets, Intern("MULTIPLE"), timestamp];
+            if (hasText)
             {
-                BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(i * 4), atoms[i]);
+                atoms.AddRange([utf8, plainUtf8, compound, XAtom.String, text]);
             }
-            return (XAtom.Atom, 32, data);
+            if (_hostContent.Html is not null)
+            {
+                atoms.Add(html);
+            }
+            if (!_hostContent.Png.IsEmpty)
+            {
+                atoms.Add(png);
+            }
+            return (XAtom.Atom, 32, AtomList([.. atoms]));
         }
         if (target == timestamp)
         {
-            byte[] data = new byte[4];
-            BinaryPrimitives.WriteUInt32LittleEndian(data, ownerTime);
-            return (XAtom.Integer, 32, data);
+            return (XAtom.Integer, 32, AtomList([ownerTime]));
+        }
+        if (target == html && _hostContent.Html is { } markup)
+        {
+            return (html, 8, _hostHtmlUtf8 ??= Encoding.UTF8.GetBytes(markup));
+        }
+        if (target == png && !_hostContent.Png.IsEmpty)
+        {
+            return (png, 8, _hostContent.Png.ToArray());
+        }
+        if (!hasText)
+        {
+            return null;
         }
         if (target == utf8 || target == plainUtf8)
         {
@@ -310,9 +397,9 @@ public sealed partial class X11Server
         }
         if (target == compound)
         {
-            return (compound, 8, _hostClipboardCompound ??= XText.EncodeCompoundText(_hostClipboard));   // Motif / Xaw 要的
+            return (compound, 8, _hostClipboardCompound ??= XText.EncodeCompoundText(HostClipboardText));   // Motif / Xaw 要的
         }
-        if (target == text && !IsLatin1(_hostClipboard))
+        if (target == text && !IsLatin1(HostClipboardText))
         {
             // TEXT 由属主挑编码(ICCCM §2.6.2):Latin-1 装不下(中日韩)就回 UTF8_STRING —— 原先按 Latin-1 有损转换,汉字变成「?」。
             return (utf8, 8, HostClipboardUtf8);
@@ -458,7 +545,10 @@ public sealed partial class X11Server
 
     // ------------------------------------------------------------------ 服务端当请求方
 
-    /// <summary>X 客户端占有了同步的选区:向它要 UTF8_STRING(不给再退回 STRING)。</summary>
+    /// <summary>
+    /// X 客户端占有了同步的选区:把内容要过来。CLIPBOARD 先要 TARGETS,再按它列的要文本(UTF8_STRING,没有退到 COMPOUND_TEXT / STRING)、
+    /// <c>text/html</c>、<c>image/png</c>;属主不回 TARGETS 时只要文本。PRIMARY 只要文本(UTF8_STRING,不给再退回 STRING)。
+    /// </summary>
     private void OnClientTookSelection(XClient owner, XWindow ownerWindow, SelectionSlot slot, uint time)
     {
         uint selection = slot.Atom;
@@ -466,8 +556,14 @@ public sealed partial class X11Server
         {
             return;   // 后台会话的复制不进系统剪贴板:否则远端程序可以反复改写本机剪贴板,用户往别处粘贴时中招
         }
-        SelectionFetch fetch = new(slot, Intern("UTF8_STRING"), time, Intern("_VELASHELL_" + (AtomName(selection) ?? "SELECTION")));
-        _fetches[selection] = fetch;   // 同一个选区又换了属主:旧的那次作废
+        bool clipboard = selection == Intern("CLIPBOARD");
+        SelectionFetch fetch = new(slot, clipboard ? Intern("TARGETS") : Intern("UTF8_STRING"), time,
+            Intern("_VELASHELL_" + (AtomName(selection) ?? "SELECTION")));
+        if (_fetches.Remove(selection, out SelectionFetch? replaced))
+        {
+            FinishFetch(replaced, delivered: false);   // 同一个选区又换了属主:旧的那次作废
+        }
+        _fetches[selection] = fetch;
         RequestFetch(fetch, owner, ownerWindow);
     }
 
@@ -487,30 +583,163 @@ public sealed partial class X11Server
         {
             if (_fetches.TryGetValue(fetch.Selection, out SelectionFetch? current) && ReferenceEquals(current, fetch) && current.Step == step)
             {
-                EndFetch(fetch);
+                // 这一个目标等不到了:不再要后面的,已经取到的照样交出去(文本取到了、图片卡住,文本不该陪着丢)。
+                fetch.Incr = null;
+                fetch.Plan.Clear();
+                NextFetch(fetch);
             }
         }, _lifetime.Token);
     }
 
-    private void EndFetch(SelectionFetch fetch)
+    /// <summary>
+    /// 这一个目标有了结果(<paramref name="data" /> 为 null 是属主不给):TARGETS 的结果排出要取的目标;UTF8_STRING 不给时退到 STRING;
+    /// 其余记下。然后取下一个,都取完了交给宿主。
+    /// </summary>
+    private void OnFetched(SelectionFetch fetch, uint type, byte[]? data)
     {
+        fetch.Incr = null;
+        uint target = fetch.Target;
+        uint utf8 = Intern("UTF8_STRING");
+        if (target == Intern("TARGETS"))
+        {
+            PlanFetch(fetch, data is not null && type == XAtom.Atom ? ReadAtoms(data) : null);
+        }
+        else if (data is null)
+        {
+            if (target == utf8 && fetch.StringFallback && !fetch.Results.ContainsKey(XAtom.String))
+            {
+                fetch.Plan.Clear();
+                fetch.Plan.Enqueue(XAtom.String);   // 属主不给 UTF8_STRING:退回 STRING(只要文本时才走到这)
+            }
+        }
+        else if (data.Length <= MaxFetchBytes(target))
+        {
+            fetch.Results[target] = (type, data);
+        }
+        NextFetch(fetch);
+    }
+
+    /// <summary>
+    /// 按属主的 TARGETS 排要取的目标:文本一个(UTF8_STRING,没有就 COMPOUND_TEXT,再没有就 STRING)、<c>text/html</c>、<c>image/png</c>。
+    /// 属主不回 TARGETS(<paramref name="offered" /> 为 null)时只要文本,UTF8_STRING 不给再退 STRING。
+    /// </summary>
+    private void PlanFetch(SelectionFetch fetch, uint[]? offered)
+    {
+        uint utf8 = Intern("UTF8_STRING"), compound = Intern("COMPOUND_TEXT");
+        fetch.Plan.Clear();
+        if (offered is null)
+        {
+            fetch.Plan.Enqueue(utf8);
+            return;
+        }
+        fetch.StringFallback = false;
+        uint? text = offered.Contains(utf8) ? utf8 : offered.Contains(compound) ? compound : offered.Contains(XAtom.String) ? XAtom.String : null;
+        if (text is { } t)
+        {
+            fetch.Plan.Enqueue(t);
+        }
+        foreach (uint extra in (uint[])[Intern(HtmlTarget), Intern(PngTarget)])
+        {
+            if (offered.Contains(extra))
+            {
+                fetch.Plan.Enqueue(extra);
+            }
+        }
+    }
+
+    /// <summary>一个目标至多收这么多字节:PNG 图片 <see cref="MaxClipboardImageBytes" />,其余 <see cref="MaxClipboardBytes" />。</summary>
+    private int MaxFetchBytes(uint target) => target == Intern(PngTarget) ? MaxClipboardImageBytes : MaxClipboardBytes;
+
+    private static uint[] ReadAtoms(byte[] data)
+    {
+        uint[] atoms = new uint[Math.Min(data.Length / 4, 1024)];
+        for (int i = 0; i < atoms.Length; i++)
+        {
+            atoms[i] = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(i * 4));
+        }
+        return atoms;
+    }
+
+    /// <summary>取计划里的下一个目标;没有了(或者属主已经不在)就结束这次,把取到的交给宿主。</summary>
+    private void NextFetch(SelectionFetch fetch)
+    {
+        DeleteSelectionProperty(fetch.Property);
+        if (fetch.Plan.Count > 0 && _selections.TryGetValue(fetch.Slot, out (XWindow Window, XClient? Client, uint Time) owner) && owner.Client is { } client)
+        {
+            fetch.Target = fetch.Plan.Dequeue();
+            RequestFetch(fetch, client, owner.Window);
+            return;
+        }
         if (_fetches.TryGetValue(fetch.Selection, out SelectionFetch? current) && ReferenceEquals(current, fetch))
         {
             _fetches.Remove(fetch.Selection);
         }
-        DeleteSelectionProperty(fetch.Property);
+        FinishFetch(fetch, Deliver(fetch));
     }
 
-    /// <summary>某个客户端断开了:正在取的选区若已没了属主,这次取不回来了。</summary>
+    /// <summary>这次取结束了:等着它的剪贴板管理器请求(SAVE_TARGETS)现在回答。</summary>
+    private static void FinishFetch(SelectionFetch fetch, bool delivered)
+    {
+        foreach (Action<bool> finished in fetch.Finished)
+        {
+            finished(delivered);
+        }
+        fetch.Finished.Clear();
+    }
+
+    /// <summary>某个客户端断开了:正在取的选区若已没了属主,不再要后面的目标,已经取到的照样交出去。</summary>
     private void DropOrphanedFetches()
     {
         foreach (SelectionFetch fetch in _fetches.Values.ToArray())
         {
             if (!_selections.ContainsKey(fetch.Slot))
             {
-                EndFetch(fetch);
+                fetch.Incr = null;
+                fetch.Plan.Clear();
+                NextFetch(fetch);
             }
         }
+    }
+
+    // ------------------------------------------------------------------ 剪贴板管理器(CLIPBOARD_MANAGER)
+
+    /// <summary>
+    /// 服务端当剪贴板管理器(freedesktop 的 Clipboard Manager Specification;开着剪贴板同步时):占有 CLIPBOARD_MANAGER,
+    /// GTK 之类的程序退出前用 SAVE_TARGETS 请管理器把剪贴板接过去。服务端在程序复制时就把内容取过来了(<see cref="OnClientTookSelection" />),
+    /// 属主一走就以宿主的身份接管 CLIPBOARD(<see cref="OnSelectionOwnerLost" />);这里要做的只是在内容取完之前不回答 ——
+    /// 规范:属主收到 SAVE_TARGETS 的 SelectionNotify 就退出,不等 INCR 传完。原先没有管理器,程序复制一张大图马上退出,图就丢了。
+    /// </summary>
+    private void InitClipboardManager()
+    {
+        if (_options.SyncClipboard)
+        {
+            _selections[new SelectionSlot(Intern("CLIPBOARD_MANAGER"), null)] = (SelectionWindow, null, 0);
+        }
+    }
+
+    /// <summary>
+    /// SAVE_TARGETS:请求方的 CLIPBOARD 正在取 → 取完再回;已经取到、宿主手里就是它的 → 马上回成功;别的情况(后台会话的复制不进系统剪贴板、
+    /// 请求方不是属主)回 None —— 规范:管理器存不了,程序照常退出。属性里列的目标不另外取:要存的就是服务端认得的那几种格式。
+    /// </summary>
+    private void SaveTargets(XClient c, XWindow requestor, uint property, uint time)
+    {
+        uint manager = Intern("CLIPBOARD_MANAGER"), save = Intern("SAVE_TARGETS");
+        SelectionSlot slot = SlotOf(Intern("CLIPBOARD"), c);
+        XClient to = requestor.Owner is { Closed: false } creator ? creator : c;
+        void Reply(bool saved)
+        {
+            if (!to.Closed)
+            {
+                to.Event(XEventCode.SelectionNotify, 0, w => w.U32(time).U32(requestor.Id).U32(manager).U32(save).U32(saved ? property : 0));
+            }
+        }
+        if (_fetches.TryGetValue(slot.Atom, out SelectionFetch? fetch) && fetch.Slot == slot)
+        {
+            fetch.Finished.Add(Reply);
+            return;
+        }
+        bool owner = _selections.TryGetValue(slot, out (XWindow Window, XClient? Client, uint Time) current) && ReferenceEquals(current.Client, c);
+        Reply(owner && _clipboardStamp != 0 && _slotStamps.GetValueOrDefault(slot) == _clipboardStamp && ReferenceEquals(_lastDelivered, _hostContent));
     }
 
     /// <summary>属主用 SendEvent 把 SelectionNotify 发到了我们的请求窗口。</summary>
@@ -526,24 +755,9 @@ public sealed partial class X11Server
         {
             return;
         }
-        if (property == 0)
+        if (property == 0 || property != fetch.Property || !SelectionWindow.Properties.TryGetValue(property, out XProperty? value))
         {
-            // 属主不给这个目标:UTF8_STRING 不行就退回 STRING,再不行就算了。
-            if (fetch.Target != XAtom.String && _selections.TryGetValue(fetch.Slot, out (XWindow Window, XClient? Client, uint Time) owner) && owner.Client is { } client)
-            {
-                fetch.Target = XAtom.String;
-                RequestFetch(fetch, client, owner.Window);
-            }
-            else
-            {
-                EndFetch(fetch);
-            }
-            return;
-        }
-
-        if (property != fetch.Property || !SelectionWindow.Properties.TryGetValue(property, out XProperty? value))
-        {
-            EndFetch(fetch);
+            OnFetched(fetch, 0, null);   // 属主不给这个目标
             return;
         }
         if (value.Type == Intern("INCR"))
@@ -554,8 +768,7 @@ public sealed partial class X11Server
             ExpireFetchLater(fetch);
             return;
         }
-        EndFetch(fetch);
-        Deliver(fetch.Slot, value.Type, value.Data.ToArray());
+        OnFetched(fetch, value.Type, value.Data.ToArray());
     }
 
     /// <summary>INCR 传输中:属主往请求窗口写了一块。空块表示结束。</summary>
@@ -581,15 +794,15 @@ public sealed partial class X11Server
         DeleteSelectionProperty(property);
         if (chunk.Data.Length == 0)
         {
-            EndFetch(fetch);
-            Deliver(fetch.Slot, fetch.IncrType, [.. buffer]);
+            OnFetched(fetch, fetch.IncrType, [.. buffer]);
             return;
         }
         fetch.IncrType = chunk.Type;
         buffer.AddRange(chunk.Data);
-        if (buffer.Count > MaxClipboardBytes)
+        if (buffer.Count > MaxFetchBytes(fetch.Target))
         {
-            EndFetch(fetch);   // 太大:放弃。属主写下一块时没人删属性,它自己会超时
+            // 太大:这个目标不要了,接着要下一个(属主写下一块时没人删属性,它自己会超时)。
+            OnFetched(fetch, 0, null);
             return;
         }
         ExpireFetchLater(fetch);
@@ -607,23 +820,47 @@ public sealed partial class X11Server
     }
 
     /// <summary>
-    /// 从 X 端取来的文本交给宿主。它也就成了最新的剪贴板内容:复制它的那个会话已经有了,别的会话拿到焦点时由服务端替宿主占有
-    /// (按会话隔离时,跨会话的复制粘贴就是这样经宿主的剪贴板中转的)。
+    /// 从 X 端取来的内容交给宿主(取到一种格式也算;一种都没有返回 false)。它也就成了最新的剪贴板内容:复制它的那个会话已经有了,
+    /// 别的会话拿到焦点时由服务端替宿主占有(按会话隔离时,跨会话的复制粘贴就是这样经宿主的剪贴板中转的);属主退出时服务端接管它。
     /// </summary>
-    private void Deliver(SelectionSlot slot, uint type, byte[] data)
+    private bool Deliver(SelectionFetch fetch)
     {
-        if (data.Length > MaxClipboardBytes)
+        string? text = null, html = null;
+        byte[] png = [];
+        foreach ((uint target, (uint type, byte[] data)) in fetch.Results)
         {
-            return;
+            if (target == Intern(HtmlTarget))
+            {
+                html = DecodeHtml(data);
+            }
+            else if (target == Intern(PngTarget))
+            {
+                png = data;
+            }
+            else
+            {
+                // 文本按属主回的类型解码:STRING 是 Latin-1,COMPOUND_TEXT 解转义序列,其余按 UTF-8。
+                text = XText.Decode(data, type == XAtom.String ? XTextEncoding.Latin1
+                    : type == Intern("COMPOUND_TEXT") ? XTextEncoding.CompoundText
+                    : XTextEncoding.Utf8);
+            }
         }
-        // 我们要的是 UTF8_STRING(不给再要 STRING),属主回的类型照样按类型解码:STRING 是 Latin-1,COMPOUND_TEXT 解转义序列。
-        string text = XText.Decode(data, type == XAtom.String ? XTextEncoding.Latin1
-            : type == Intern("COMPOUND_TEXT") ? XTextEncoding.CompoundText
-            : XTextEncoding.Utf8);
-        _lastDeliveredText = text;
-        SetHostClipboard(text);
+        XClipboardContent content = new() { Text = text, Html = html, Png = png };
+        if (content.IsEmpty)
+        {
+            return false;
+        }
+        _lastDelivered = content;
+        SetHostClipboard(content);
         _clipboardStamp = ++_clipboardClock;
-        _slotStamps[slot] = _clipboardStamp;
-        _host.ClipboardChanged(text);
+        _slotStamps[fetch.Slot] = _clipboardStamp;
+        _host.ClipboardContentChanged(content);
+        return true;
     }
+
+    /// <summary><c>text/html</c> 的字节:带 UTF-16 的字节序标记时按 UTF-16 解(有的浏览器这样给),否则按 UTF-8。</summary>
+    private static string DecodeHtml(byte[] data) =>
+        data is [0xFF, 0xFE, ..] ? Encoding.Unicode.GetString(data, 2, data.Length - 2)
+        : data is [0xFE, 0xFF, ..] ? Encoding.BigEndianUnicode.GetString(data, 2, data.Length - 2)
+        : Encoding.UTF8.GetString(data);
 }

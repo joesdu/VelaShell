@@ -32,6 +32,44 @@ public sealed class ClipboardTests
             .U8(SelectionNotify).U8(0).U16(0).U32(request.U32(4)).U32(request.U32(12)).U32(request.U32(16))
             .U32(request.U32(20)).U32(property).U32(0).U32(0));
 
+    /// <summary>
+    /// 服务端取 CLIPBOARD 时先要 TARGETS(xs_plan F15):像不认 TARGETS 的老属主那样拒绝它,返回随后的文本请求(UTF8_STRING)。
+    /// 取 PRIMARY 不要 TARGETS,第一个就是文本请求。
+    /// </summary>
+    private static async Task<XMessage> TextRequestAsync(XTestClient c, Func<XMessage, bool>? match = null)
+    {
+        uint targets = await InternAsync(c, "TARGETS");
+        bool Match(XMessage m) => !m.IsReply && !m.IsError && m.EventCode == SelectionRequest && (match?.Invoke(m) ?? true);
+        XMessage request = await c.NextAsync(Match);
+        if (request.U32(20) == targets)
+        {
+            await SendSelectionNotifyAsync(c, request, 0);
+            request = await c.NextAsync(Match);
+        }
+        return request;
+    }
+
+    /// <summary>X 端属主回一个目标:把数据写到服务端给的属性上,再发 SelectionNotify。</summary>
+    private static async Task AnswerAsync(XTestClient c, XMessage request, uint type, byte[] data)
+    {
+        await ChangePropertyAsync(c, request.U32(12), request.U32(24), type, data);
+        await SendSelectionNotifyAsync(c, request, request.U32(24));
+    }
+
+    /// <summary>ATOM 列表(TARGETS 的回答),小端。</summary>
+    private static async Task AnswerTargetsAsync(XTestClient c, XMessage request, params uint[] atoms)
+    {
+        await c.SendAsync(18, 0, b =>
+        {
+            b.U32(request.U32(12)).U32(request.U32(24)).U32(4).U8(32).U8(0).U8(0).U8(0).U32((uint)atoms.Length);   // type ATOM(4)、format 32
+            foreach (uint atom in atoms)
+            {
+                b.U32(atom);
+            }
+        });
+        await SendSelectionNotifyAsync(c, request, request.U32(24));
+    }
+
     [TestMethod]
     public async Task 宿主的文本X客户端能以UTF8与TARGETS取到()
     {
@@ -103,7 +141,7 @@ public sealed class ClipboardTests
         uint compound = await InternAsync(c, "COMPOUND_TEXT");
         uint owner = await CreateWindowAsync(c);
         await c.SendAsync(22, 0, b => b.U32(owner).U32(clipboard).U32(0));
-        XMessage request = await c.NextEventAsync(SelectionRequest);
+        XMessage request = await TextRequestAsync(c);
         byte[] encoded = [(byte)'x', 0x1B, (byte)'%', (byte)'G', .. Encoding.UTF8.GetBytes("文本"), 0x1B, (byte)'%', (byte)'@'];
         await ChangePropertyAsync(c, request.U32(12), request.U32(24), compound, encoded);
         await SendSelectionNotifyAsync(c, request, request.U32(24));
@@ -233,7 +271,7 @@ public sealed class ClipboardTests
         await c.SendAsync(22, 0, b => b.U32(window).U32(1).U32(0));
         await c.SendAsync(22, 0, b => b.U32(window).U32(clipboard).U32(0));
         XMessage primaryRequest = await c.NextAsync(m => m.EventCode == SelectionRequest && m.U32(16) == 1);
-        XMessage clipboardRequest = await c.NextAsync(m => m.EventCode == SelectionRequest && m.U32(16) == clipboard);
+        XMessage clipboardRequest = await TextRequestAsync(c, m => m.U32(16) == clipboard);
         Assert.AreNotEqual(primaryRequest.U32(24), clipboardRequest.U32(24), "两个选区取到不同的属性上");
         await ChangePropertyAsync(c, primaryRequest.U32(12), primaryRequest.U32(24), utf8, Encoding.UTF8.GetBytes("选中的"));
         await SendSelectionNotifyAsync(c, primaryRequest, primaryRequest.U32(24));
@@ -265,9 +303,12 @@ public sealed class ClipboardTests
         uint window = await CreateWindowAsync(c);
 
         await c.SendAsync(22, 0, b => b.U32(window).U32(clipboard).U32(0));   // SetSelectionOwner
+        XMessage targetsRequest = await c.NextEventAsync(SelectionRequest);
+        Assert.AreEqual(window, targetsRequest.U32(8), "owner");
+        Assert.AreEqual(await InternAsync(c, "TARGETS"), targetsRequest.U32(20), "先要 TARGETS");
+        await AnswerTargetsAsync(c, targetsRequest, await InternAsync(c, "TARGETS"), utf8);
         XMessage request = await c.NextEventAsync(SelectionRequest);
-        Assert.AreEqual(window, request.U32(8), "owner");
-        Assert.AreEqual(utf8, request.U32(20), "先要 UTF8_STRING");
+        Assert.AreEqual(utf8, request.U32(20), "TARGETS 里有 UTF8_STRING:要它");
 
         uint property = request.U32(24);
         await ChangePropertyAsync(c, request.U32(12), property, utf8, Encoding.UTF8.GetBytes("来自 X"));
@@ -295,7 +336,7 @@ public sealed class ClipboardTests
         uint window = await CreateWindowAsync(copier);
 
         await copier.SendAsync(22, 0, b => b.U32(window).U32(clipboard).U32(0));
-        XMessage request = await copier.NextEventAsync(SelectionRequest);
+        XMessage request = await TextRequestAsync(copier);
         uint property = request.U32(24);
         await ChangePropertyAsync(copier, request.U32(12), property, utf8, Encoding.UTF8.GetBytes("复制的文本"));
         await SendSelectionNotifyAsync(copier, request, property);
@@ -332,7 +373,7 @@ public sealed class ClipboardTests
         uint window = await CreateWindowAsync(c);
 
         await c.SendAsync(22, 0, b => b.U32(window).U32(clipboard).U32(0));
-        XMessage request = await c.NextEventAsync(SelectionRequest);
+        XMessage request = await TextRequestAsync(c);
         uint requestor = request.U32(12), property = request.U32(24);
 
         await c.SendAsync(2, 0, b => b.U32(requestor).U32(0x800).U32(0x400000));   // PropertyChangeMask
@@ -460,7 +501,7 @@ public sealed class ClipboardTests
 
         // 焦点所在的会话 A 复制:照常交给宿主。
         await a.SendAsync(22, 0, w => w.U32(windowA).U32(clipboard).U32(0));
-        XMessage request = await a.NextEventAsync(SelectionRequest);
+        XMessage request = await TextRequestAsync(a);
         await ChangePropertyAsync(a, request.U32(12), request.U32(24), utf8, Encoding.UTF8.GetBytes("从 A 复制"));
         await SendSelectionNotifyAsync(a, request, request.U32(24));
         await host.WaitForAsync(() => host.Clipboard == "从 A 复制");
@@ -516,7 +557,7 @@ public sealed class ClipboardTests
     private static async Task CopyAsync(XTestClient c, uint window, uint clipboard, uint utf8, string text)
     {
         await c.SendAsync(22, 0, w => w.U32(window).U32(clipboard).U32(0));
-        XMessage request = await c.NextEventAsync(SelectionRequest);
+        XMessage request = await TextRequestAsync(c);
         await ChangePropertyAsync(c, request.U32(12), request.U32(24), utf8, Encoding.UTF8.GetBytes(text));
         await SendSelectionNotifyAsync(c, request, request.U32(24));
     }
@@ -630,5 +671,130 @@ public sealed class ClipboardTests
         await attacker.SendAsync(22, 0, b => b.U32(evil).U32(selection).U32(1));
         await attacker.SyncAsync();
         Assert.AreEqual(0u, await OwnerAsync(), "早于最后一次换属主的时间:无效");
+    }
+
+    /// <summary>PNG 文件头加几个字节:测试里当一张图片用(服务端不解码图片)。</summary>
+    private static readonly byte[] FakePng = [0x89, (byte)'P', (byte)'N', (byte)'G', 13, 10, 26, 10, 1, 2, 3];
+
+    [TestMethod]
+    public async Task X端复制带HTML与图片_按TARGETS逐个取回_一起交给宿主()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ClipboardFollowsFocus = false }, host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        uint clipboard = await InternAsync(c, "CLIPBOARD");
+        uint utf8 = await InternAsync(c, "UTF8_STRING");
+        uint html = await InternAsync(c, "text/html"), png = await InternAsync(c, "image/png");
+        uint window = await CreateWindowAsync(c);
+
+        await c.SendAsync(22, 0, b => b.U32(window).U32(clipboard).U32(0));
+        XMessage targets = await c.NextEventAsync(SelectionRequest);
+        await AnswerTargetsAsync(c, targets, await InternAsync(c, "TARGETS"), utf8, html, png, await InternAsync(c, "SAVE_TARGETS"));
+        List<uint> asked = [];
+        foreach ((uint type, byte[] data) in (List<(uint, byte[])>)[(utf8, Encoding.UTF8.GetBytes("表格")), (html, Encoding.UTF8.GetBytes("<b>表格</b>")), (png, FakePng)])
+        {
+            XMessage request = await c.NextEventAsync(SelectionRequest);
+            asked.Add(request.U32(20));
+            await AnswerAsync(c, request, type, data);
+        }
+        CollectionAssert.AreEqual(new[] { utf8, html, png }, asked, "文本、HTML、图片依次要");
+        await host.WaitForAsync(() => host.ClipboardContent is not null);
+        XClipboardContent content = host.ClipboardContent!;
+        Assert.AreEqual("表格", content.Text);
+        Assert.AreEqual("<b>表格</b>", content.Html);
+        CollectionAssert.AreEqual(FakePng, content.Png.ToArray());
+        Assert.AreEqual("表格", host.Clipboard, "只认文本的宿主照样收到文本");
+    }
+
+    [TestMethod]
+    public async Task 宿主给的图片与HTML_TARGETS只列有的格式_按目标取得到()
+    {
+        await using X11Server server = new(new X11ServerOptions { ClipboardFollowsFocus = false });
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        uint clipboard = await InternAsync(c, "CLIPBOARD");
+        uint targets = await InternAsync(c, "TARGETS"), utf8 = await InternAsync(c, "UTF8_STRING");
+        uint html = await InternAsync(c, "text/html"), png = await InternAsync(c, "image/png");
+        uint prop = await InternAsync(c, "MY_PROP");
+        uint window = await CreateWindowAsync(c);
+        async Task<(uint Property, uint Type, byte[] Data)> ConvertAsync(uint target)
+        {
+            await c.SendAsync(24, 0, b => b.U32(window).U32(clipboard).U32(target).U32(prop).U32(0));
+            uint property = (await c.NextEventAsync(SelectionNotify)).U32(20);
+            XMessage value = await c.RequestAsync(20, 1, b => b.U32(window).U32(prop).U32(0).U32(0).U32(1000));
+            return (property, value.U32(8), value.Bytes[32..(32 + (int)(value.U32(16) * (value.Bytes[1] / 8)))]);
+        }
+
+        server.SetClipboard(new XClipboardContent { Html = "<i>x</i>", Png = FakePng });
+        while ((await c.RequestAsync(23, 0, b => b.U32(clipboard))).U32(8) == 0)
+        {
+        }
+        (_, _, byte[] list) = await ConvertAsync(targets);
+        uint[] atoms = [.. Enumerable.Range(0, list.Length / 4).Select(i => BitConverter.ToUInt32(list, i * 4))];
+        CollectionAssert.Contains(atoms, html);
+        CollectionAssert.Contains(atoms, png);
+        CollectionAssert.DoesNotContain(atoms, utf8, "没有文本就不列文本的目标");
+        (uint property, uint type, byte[] data) = await ConvertAsync(png);
+        Assert.AreEqual(png, type);
+        CollectionAssert.AreEqual(FakePng, data);
+        Assert.AreEqual(0u, (await ConvertAsync(utf8)).Property, "没有文本:UTF8_STRING 拒绝");
+        Assert.ThrowsExactly<ArgumentException>(() => server.SetClipboard(new XClipboardContent()));
+    }
+
+    [TestMethod]
+    public async Task 宿主只写回交出去的文本也算回声_不抢走带图片的选区()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ClipboardFollowsFocus = false }, host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        uint clipboard = await InternAsync(c, "CLIPBOARD");
+        uint utf8 = await InternAsync(c, "UTF8_STRING"), png = await InternAsync(c, "image/png");
+        uint window = await CreateWindowAsync(c);
+
+        await c.SendAsync(22, 0, b => b.U32(window).U32(clipboard).U32(0));
+        await AnswerTargetsAsync(c, await c.NextEventAsync(SelectionRequest), utf8, png);
+        await AnswerAsync(c, await c.NextEventAsync(SelectionRequest), utf8, Encoding.UTF8.GetBytes("图注"));
+        await AnswerAsync(c, await c.NextEventAsync(SelectionRequest), png, FakePng);
+        await host.WaitForAsync(() => host.ClipboardContent is not null);
+
+        server.SetClipboardText("图注");   // 只认文本的宿主写回来的只有文本
+        Assert.AreEqual(window, (await c.RequestAsync(23, 0, b => b.U32(clipboard))).U32(8), "X 程序仍是属主,图片没丢");
+    }
+
+    [TestMethod]
+    public async Task 剪贴板管理器_SAVE_TARGETS在内容取完之后才回答_属主退出后别的程序照样粘贴到()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ClipboardFollowsFocus = false }, host);
+        XTestClient copier = await XTestClient.ConnectAsync(server);
+        await using XTestClient paster = await XTestClient.ConnectAsync(server);
+        uint clipboard = await InternAsync(copier, "CLIPBOARD");
+        uint manager = await InternAsync(copier, "CLIPBOARD_MANAGER"), save = await InternAsync(copier, "SAVE_TARGETS");
+        uint utf8 = await InternAsync(copier, "UTF8_STRING");
+        uint window = await CreateWindowAsync(copier);
+        Assert.AreNotEqual(0u, (await copier.RequestAsync(23, 0, b => b.U32(manager))).U32(8), "服务端占着 CLIPBOARD_MANAGER");
+
+        // 复制,还没把内容交出去就请管理器保存(GTK 退出时就是这样):管理器等内容取完才回答。
+        await copier.SendAsync(22, 0, b => b.U32(window).U32(clipboard).U32(0));
+        XMessage request = await TextRequestAsync(copier);
+        uint saveProperty = await InternAsync(copier, "SAVE_PROP");
+        await copier.SendAsync(24, 0, b => b.U32(window).U32(manager).U32(save).U32(saveProperty).U32(0));
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => copier.NextEventAsync(SelectionNotify, timeoutMs: 200),
+            "内容还没取完:不回答(规范:属主收到回答就退出,不等传完)");
+        await AnswerAsync(copier, request, utf8, Encoding.UTF8.GetBytes("退出前复制的"));
+        XMessage saved = await copier.NextAsync(m => !m.IsReply && !m.IsError && m.EventCode == SelectionNotify && m.U32(12) == manager);
+        Assert.AreEqual(save, saved.U32(16));
+        Assert.AreEqual(saveProperty, saved.U32(20), "保存成功");
+
+        await copier.DisposeAsync();   // 复制的程序退出
+        uint requestor = await CreateWindowAsync(paster);
+        uint pasted = await InternAsync(paster, "PASTED");
+        while ((await paster.RequestAsync(23, 0, b => b.U32(clipboard))).U32(8) == 0)
+        {
+            await Task.Delay(20);
+        }
+        await paster.SendAsync(24, 0, b => b.U32(requestor).U32(clipboard).U32(utf8).U32(pasted).U32(0));
+        Assert.AreEqual(pasted, (await paster.NextEventAsync(SelectionNotify)).U32(20));
+        XMessage value = await paster.RequestAsync(20, 1, b => b.U32(requestor).U32(pasted).U32(0).U32(0).U32(1000));
+        Assert.AreEqual("退出前复制的", Encoding.UTF8.GetString(value.Bytes, 32, (int)value.U32(16)));
     }
 }

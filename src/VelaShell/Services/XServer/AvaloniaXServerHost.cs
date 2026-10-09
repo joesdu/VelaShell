@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -685,21 +686,78 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     public void ServerGrabStalled(XServerGrabStall stall) => GrabStallReported?.Invoke(this, stall);
 
     /// <inheritdoc />
-    public void ClipboardChanged(string text) => Dispatcher.UIThread.Post(() => FireAndForget.Run(async () =>
+    public void ClipboardChanged(string text) => ClipboardContentChanged(new XClipboardContent { Text = text });
+
+    /// <summary>
+    /// X 程序复制的内容写进系统剪贴板:文本、HTML(各平台自己的格式,见 <see cref="HtmlClipboard" />)、图片放进同一份条目,
+    /// 本机程序粘贴时各取所需。写完再读一遍图片记下它的指纹 —— 之后切回 X 窗口时看得出系统剪贴板里还是这张图,不把它当新内容交回去。
+    /// </summary>
+    public void ClipboardContentChanged(XClipboardContent content) => Dispatcher.UIThread.Post(() => FireAndForget.Run(async () =>
     {
-        _lastClipboard = text;
-        if (MainWindow()?.Clipboard is { } clipboard)
+        _lastClipboard = content.Text;
+        _lastImageFingerprint = null;
+        if (MainWindow()?.Clipboard is not { } clipboard)
         {
-            try
+            return;
+        }
+        try
+        {
+            DataTransferItem item = new();
+            if (content.Text is { } text)
             {
-                await clipboard.SetTextAsync(text);
+                item.SetText(text);
             }
-            catch (Exception ex)
+            if (content.Html is { } html)
             {
-                Trace.WriteLine($"[XServer] clipboard write failed: {ex.Message}");
+                item.Set(HtmlClipboard.Format, HtmlClipboard.Encode(html));
+            }
+            if (!content.Png.IsEmpty && DecodeImage(content.Png) is { } bitmap)
+            {
+                item.SetBitmap(bitmap);
+            }
+            DataTransfer data = new();
+            data.Add(item);
+            await clipboard.SetDataAsync(data);
+            if (!content.Png.IsEmpty)
+            {
+                using Bitmap? stored = await clipboard.TryGetBitmapAsync();
+                _lastImageFingerprint = stored is null ? null : ImageFingerprint(stored);
             }
         }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[XServer] clipboard write failed: {ex.Message}");
+        }
     }));
+
+    /// <summary>上一次与 X 交换过的图片(系统剪贴板读出来的样子)的指纹;没有图片为 null。</summary>
+    private string? _lastImageFingerprint;
+
+    private static Bitmap? DecodeImage(ReadOnlyMemory<byte> png)
+    {
+        try
+        {
+            return new Bitmap(new MemoryStream(png.ToArray()));
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[XServer] clipboard image could not be decoded: {ex.Message}");   // X 程序给的不是图片:只交其余格式
+            return null;
+        }
+    }
+
+    /// <summary>图片的指纹:尺寸加像素的 SHA-256(同一张图从系统剪贴板读两次,指纹相同)。</summary>
+    internal static unsafe string ImageFingerprint(Bitmap bitmap)
+    {
+        PixelSize size = bitmap.PixelSize;
+        int stride = size.Width * 4;
+        byte[] pixels = new byte[stride * size.Height];
+        fixed (byte* p = pixels)
+        {
+            bitmap.CopyPixels(new PixelRect(size), (nint)p, pixels.Length, stride);
+        }
+        return $"{size.Width}x{size.Height}:{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(pixels))}";
+    }
 
     /// <inheritdoc />
     public void WindowManagerRequested(XWindowManagerRequest request) => Dispatcher.UIThread.Post(() =>
@@ -855,16 +913,46 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         FireAndForget.Run(() => OfferSystemClipboardAsync(server, window));
     }
 
-    /// <summary>系统剪贴板里有别的程序复制的新文本时交给 X(没有剪贴板变化事件可用,活动窗口切进来时看一眼)。</summary>
+    /// <summary>
+    /// 系统剪贴板里有别的程序复制的新内容时交给 X(没有剪贴板变化事件可用,活动窗口切进来时看一眼):文本、HTML、图片(编成 PNG)一起交。
+    /// 文本与图片都还是上次与 X 交换过的那份就不交(那是 X 程序复制、我们写进去的)。超过服务端上限的格式不交。
+    /// </summary>
     private async Task OfferSystemClipboardAsync(X11Server server, XNativeWindow window)
     {
         try
         {
-            if (window.Clipboard is { } clipboard && await clipboard.TryGetTextAsync() is { Length: > 0 } text
-                && text != _lastClipboard)
+            if (window.Clipboard is not { } clipboard)
             {
-                _lastClipboard = text;
-                server.SetClipboardText(text);
+                return;
+            }
+            string? text = await clipboard.TryGetTextAsync() is { Length: > 0 } t ? t : null;
+            using Bitmap? bitmap = await clipboard.TryGetBitmapAsync();
+            string? fingerprint = bitmap is null ? null : ImageFingerprint(bitmap);
+            bool textChanged = text is not null && text != _lastClipboard;
+            bool imageChanged = fingerprint is not null && fingerprint != _lastImageFingerprint;
+            if (!textChanged && !imageChanged)
+            {
+                return;
+            }
+            _lastClipboard = text;
+            _lastImageFingerprint = fingerprint;
+            string? html = await clipboard.TryGetValueAsync(HtmlClipboard.Format) is { } markup ? HtmlClipboard.Decode(markup) : null;
+            byte[] png = [];
+            if (bitmap is not null)
+            {
+                using MemoryStream encoded = new();
+                bitmap.Save(encoded, PngBitmapEncoderOptions.Default);
+                png = encoded.Length <= X11Server.MaxClipboardImageBytes ? encoded.ToArray() : [];
+            }
+            XClipboardContent content = new()
+            {
+                Text = text is not null && Encoding.UTF8.GetByteCount(text) <= X11Server.MaxClipboardBytes ? text : null,
+                Html = html is not null && Encoding.UTF8.GetByteCount(html) <= X11Server.MaxClipboardBytes ? html : null,
+                Png = png,
+            };
+            if (!content.IsEmpty)
+            {
+                server.SetClipboard(content);
             }
         }
         catch (Exception ex)

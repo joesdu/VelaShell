@@ -107,6 +107,7 @@ public sealed partial class X11Server : IAsyncDisposable
         InitExtensions();
         InitXSettings();
         InitSystemTray();
+        InitClipboardManager();
         InitSyncCounters();
         PublishXkbRulesNames();
         InitEwmh();
@@ -746,11 +747,39 @@ public sealed partial class X11Server : IAsyncDisposable
     public void SetClipboardText(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        if (text.Length > MaxClipboardBytes || System.Text.Encoding.UTF8.GetByteCount(text) > MaxClipboardBytes)
+        SetClipboard(new XClipboardContent { Text = text });
+    }
+
+    /// <summary>剪贴板图片(PNG)的上限:X 程序复制的超过它不收,宿主给的超过它抛异常。</summary>
+    public const int MaxClipboardImageBytes = 32 * 1024 * 1024;
+
+    /// <summary>
+    /// 宿主的剪贴板有了新内容(文本、HTML、PNG 图片,至少一种):服务端占有 CLIPBOARD(有文本且 <see cref="X11ServerOptions.SyncPrimary" /> 时连同 PRIMARY),
+    /// 之后 X 客户端粘贴时按目标拿到对应的格式(TARGETS 只列有的;大的分块按 INCR 交)。与刚交给宿主的相同(或只是其中几种格式)时什么也不做 ——
+    /// 那是宿主把我们给的写回来了。
+    /// </summary>
+    /// <exception cref="ArgumentException">一种格式都没有。</exception>
+    /// <exception cref="ArgumentOutOfRangeException">文本或 HTML 按 UTF-8 超过 <see cref="MaxClipboardBytes" />,或图片超过 <see cref="MaxClipboardImageBytes" />。</exception>
+    public void SetClipboard(XClipboardContent content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (content.IsEmpty)
         {
-            throw new ArgumentOutOfRangeException(nameof(text), text.Length, $"剪贴板文本超过 {MaxClipboardBytes} 字节(UTF-8)。");
+            throw new ArgumentException("剪贴板内容至少要有一种格式。", nameof(content));
         }
-        Post(null, () => ApplyClipboardText(text));
+        foreach (string? text in (string?[])[content.Text, content.Html])
+        {
+            if (text is not null && (text.Length > MaxClipboardBytes || System.Text.Encoding.UTF8.GetByteCount(text) > MaxClipboardBytes))
+            {
+                throw new ArgumentOutOfRangeException(nameof(content), text.Length, $"剪贴板文本超过 {MaxClipboardBytes} 字节(UTF-8)。");
+            }
+        }
+        if (content.Png.Length > MaxClipboardImageBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(content), content.Png.Length, $"剪贴板图片超过 {MaxClipboardImageBytes} 字节。");
+        }
+        XClipboardContent copy = content with { Png = content.Png.ToArray() };   // 宿主之后再改那块内存不影响这里
+        Post(null, () => ApplyClipboardContent(copy));
     }
 
     // ================================================================== 参数校验

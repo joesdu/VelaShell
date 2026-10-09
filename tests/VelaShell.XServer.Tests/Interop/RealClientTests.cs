@@ -83,6 +83,46 @@ public sealed class RealClientTests
         return (server, errors, cookie);
     }
 
+    /// <summary>
+    /// 剪贴板的图片(xs_plan F15):xclip 以 image/png 复制,服务端按 TARGETS 取回交给宿主;宿主给的图片 xclip 按 TARGETS 看得到、取回来逐字节相同。
+    /// </summary>
+    [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task xclip复制的PNG交给宿主_宿主给的PNG用xclip取得回来()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        using RecordingHost host = new();
+        byte[] cookie = RandomNumberGenerator.GetBytes(16);
+        await using X11Server server = new(new X11ServerOptions
+        {
+            DisplayNumber = DisplayNumber,
+            ListenAddress = IPAddress.Any,
+            AuthorizationCookie = cookie,
+            ClipboardFollowsFocus = false,   // 这里没有 X 窗口有焦点:只看传输
+        }, host);
+        await server.StartAsync();
+        byte[] copied = [0x89, (byte)'P', (byte)'N', (byte)'G', 13, 10, 26, 10, .. RandomNumberGenerator.GetBytes(3000)];
+        (int exit, string output) = await RunClientAsync(cookie,
+            $"echo {Convert.ToBase64String(copied)} | base64 -d > /tmp/a.png && xclip -selection clipboard -t image/png -i /tmp/a.png && sleep 2");
+        Assert.AreEqual(0, exit, output);
+        await host.WaitForAsync(() => host.ClipboardContent is { Png.IsEmpty: false });
+        CollectionAssert.AreEqual(copied, host.ClipboardContent!.Png.ToArray());
+
+        byte[] given = [0x89, (byte)'P', (byte)'N', (byte)'G', 13, 10, 26, 10, .. RandomNumberGenerator.GetBytes(400_000)];   // 大于 INCR 的分块
+        server.SetClipboard(new XClipboardContent { Text = "图注", Png = given });
+        (exit, output) = await RunClientAsync(cookie,
+            "xclip -selection clipboard -t TARGETS -o; echo '----8<----'; xclip -selection clipboard -t image/png -o | base64 -w0");
+        TestContext.WriteLine(output[..Math.Min(output.Length, 600)]);
+        Assert.AreEqual(0, exit, output);
+        string[] parts = output.Split("----8<----");
+        Assert.Contains("image/png", parts[0]);
+        Assert.Contains("UTF8_STRING", parts[0]);
+        CollectionAssert.AreEqual(given, Convert.FromBase64String(parts[1].Trim()));
+    }
+
     /// <summary>平滑滚动(xs_plan F6):libXi 解得出指针设备的两个滚动轴与 ScrollClass(xinput list --long 列出「Scroll info」)。</summary>
     [TestMethod]
     [Timeout(120_000, CooperativeCancellation = true)]

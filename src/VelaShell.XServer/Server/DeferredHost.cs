@@ -29,7 +29,7 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
     private readonly Dictionary<XTopLevelWindow, int> _mapped = [];
     private int _cursorAt = -1, _clipboardAt = -1, _requests;
     private (XTopLevelWindow? Window, XCursor Cursor) _cursor;
-    private string _clipboard = "";
+    private XClipboardContent _clipboard = new();
 
     /// <summary>一批里最多交这么多个窗口管理器请求,多的丢掉(真实程序一批里不过一两个)。</summary>
     internal const int MaxRequestsPerBatch = 32;
@@ -113,13 +113,15 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
     private long _lastBell;
 
     /// <summary>剪贴板同样只交最后一次。</summary>
-    public void ClipboardChanged(string text)
+    public void ClipboardChanged(string text) => ClipboardContentChanged(new XClipboardContent { Text = text });
+
+    public void ClipboardContentChanged(XClipboardContent content)
     {
-        _clipboard = text;
+        _clipboard = content;
         if (_clipboardAt < 0)
         {
             _clipboardAt = _pending.Count;
-            _pending.Add(() => inner.ClipboardChanged(_clipboard));
+            _pending.Add(() => inner.ClipboardContentChanged(_clipboard));
         }
     }
 

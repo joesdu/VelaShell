@@ -112,6 +112,19 @@ internal sealed class RecordingHost : IX11ServerHost, IDisposable
         Note($"clipboard {text.Length}");
     }
 
+    /// <summary>最近一次 <see cref="ClipboardContentChanged" /> 收到的整份内容(各种格式)。</summary>
+    public XClipboardContent? ClipboardContent { get; private set; }
+
+    public void ClipboardContentChanged(XClipboardContent content)
+    {
+        ClipboardContent = content;
+        if (content.Text is { } text)
+        {
+            Clipboard = text;
+        }
+        Note($"clipboard content {content.Text?.Length} / {content.Html?.Length} / {content.Png.Length}");
+    }
+
     /// <summary>等到条件成立(每次有新通知时重新检查)。</summary>
     public async Task WaitForAsync(Func<bool> condition, int timeoutMs = 5000)
     {
