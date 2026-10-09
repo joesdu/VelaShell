@@ -314,6 +314,9 @@ public partial class ChatPanelView : UserControl
             ApplyApprovalMode(); // 并且当场对这一轮生效(含放行已经挂出来的卡)
             _ = PersistSettingsAsync();
         };
+        // 项是"供应商·模型"字符串,名字长时被 MaxWidth 截住:收成省略号,而不是从半个字中间切断
+        ProviderCombo.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<string>(
+            (label, _) => new TextBlock { Text = label, TextTrimming = TextTrimming.CharacterEllipsis });
         ProviderCombo.SelectionChanged += (_, _) =>
         {
             // 重载中的回声整个不算数:换货那一瞬下拉的下标还是旧的,拿它回写会把
@@ -805,10 +808,10 @@ public partial class ChatPanelView : UserControl
         try
         {
             _providers = _settings.ResolveModels();
-            // 只有一家供应商时前缀是纯噪音;多家并存才需要"供应商 · 模型"来区分同名模型
-            bool prefix = _settings.Providers.Count > 1;
+            // 一律写成"供应商·模型"(如 Routin·gpt-5.5):几家中转站挂着同名模型时只看模型名分不清,
+            // 只配了一家时也照样带上 —— 下拉里看到的就是请求实际发往哪儿,不随供应商个数变来变去。
             ProviderCombo.ItemsSource = _providers
-                .Select(p => prefix && !string.IsNullOrWhiteSpace(p.ProviderName) ? $"{p.ProviderName} · {p.Name}" : p.Name)
+                .Select(p => string.IsNullOrWhiteSpace(p.ProviderName) ? p.Name : $"{p.ProviderName}·{p.Name}")
                 .ToList();
             int active = _providers.FindIndex(p => p.Id == _settings.ActiveModelId);
             if (active < 0 && _providers.Count > 0)

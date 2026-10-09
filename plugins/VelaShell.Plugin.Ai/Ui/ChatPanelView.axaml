@@ -850,7 +850,7 @@
                     StrokeLineCap="Round" StrokeJoin="Round" />
             </Viewbox>
           </Button>
-          <ComboBox x:Name="ProviderCombo" Grid.Column="1" MaxWidth="230" HorizontalAlignment="Left" />
+          <ComboBox x:Name="ProviderCombo" Grid.Column="1" MaxWidth="300" HorizontalAlignment="Left" />
           <!-- 思考档位:只管这一轮,不写回设置(见 ResolvedModel.ReasoningOverride)。
                外观<b>不在代码里设</b> —— 本插件允许在拿不到宿主主题令牌的环境下装载
                (见 Panel_Loads_WithoutHostThemeTokens),那时 FindResource 返回 null,

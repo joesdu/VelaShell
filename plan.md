@@ -2156,3 +2156,13 @@ VelaShell 的连接存在 SonnetDB 里,既没有导入导出,资源管理器也�
   `catch` 与那条警告保留,真装不动的(损坏、无权限)照旧报。
 - **验证**:新用例 `PanelPreloadTests`(5 条);拿真实插件输出目录模拟走一遍引用图,跳过的只有 `CSharpMath.Editor`,
   外加 `VelaShell.PluginSdk` / `Avalonia.*` / `AvaloniaEdit` 几个 —— 后者都在宿主 `VelaShell.deps.json` 里,宿主进程的 TPA 有它们,真跑时照常预热。
+
+## ✅ 184. 2026-10-09 AI 插件:模型下拉一律写成"供应商·模型"
+
+- **来由**:用户反馈多家供应商挂同名模型(几家中转站都有 `gpt-5.5`)时下拉里分不清。原先 `ReloadProviderCombo` 只在供应商多于一家时
+  才加 `供应商 · 模型` 前缀,只配一家时只显示模型名。
+- **改法**:聊天面板的模型下拉一律显示 `供应商·模型`(如 `Routin·gpt-5.5`,按用户给的格式,中点两侧不留空格);供应商名为空时退回只显示模型名。
+  前缀让名字变长,下拉的 `MaxWidth` 从 230 放到 300,并给 `ItemTemplate` 一个带 `CharacterEllipsis` 的 `TextBlock`,
+  超长时收成省略号而不是从字中间切断(选中框沿用 `ItemTemplate`,用例里核过)。
+- **没动的**:全局设置里故障转移链的下拉(多于一家时 `供应商 · 模型`)与协作接入页的桥接模型下拉(`供应商 / 模型`)保持原样。
+- **验证**:新用例 `ModelCombo_LabelsEveryModelWithItsProvider`:单供应商带前缀、两家同名模型各自带前缀、选中框文字可省略。`VelaShell.Plugin.Ai.Tests` 1443 条全过(5 分 56 秒)。

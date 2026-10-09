@@ -1530,6 +1530,38 @@ public sealed partial class ChatPanelViewUiTests
     [System.Text.RegularExpressions.GeneratedRegex(@"\d{1,2}:\d{2}")]
     private static partial System.Text.RegularExpressions.Regex TimeStamp();
 
+    /// <summary>模型下拉一律"供应商·模型":只配一家时也带前缀,两家挂同名模型时分得清;长名字收成省略号。</summary>
+    [TestMethod]
+    public void ModelCombo_LabelsEveryModelWithItsProvider()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            AiProvider routin = StubProvider("Routin", "http://127.0.0.1:1/v1", "gpt-5.5");
+            await new AiSettingsStore(context).SaveAsync(new AiSettings { Providers = [routin], ActiveModelId = routin.Models[0].Id });
+
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                ComboBox combo = Find<ComboBox>(panel, "ProviderCombo");
+                CollectionAssert.AreEqual(new[] { "Routin·gpt-5.5" }, combo.Items.Cast<object>().ToArray());
+                TextBlock shown = combo.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "Routin·gpt-5.5");
+                Assert.AreEqual(Avalonia.Media.TextTrimming.CharacterEllipsis, shown.TextTrimming, "选中框里的长名字要收成省略号");
+
+                AiSettings live = PanelSettings(panel);
+                AiProvider other = StubProvider("Other", "http://127.0.0.1:2/v1", "gpt-5.5");
+                live.Providers.Add(other);
+                typeof(ChatPanelView).GetMethod("ReloadProviderCombo",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(panel, null);
+                CollectionAssert.AreEqual(new[] { "Routin·gpt-5.5", "Other·gpt-5.5" }, combo.Items.Cast<object>().ToArray());
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
     /// <summary>消息流里所有已收尾的回复底部条(时间 · 模型那一行)。</summary>
     private static List<Border> Footers(StackPanel messages)
         => [.. messages.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("replyFooter"))];
