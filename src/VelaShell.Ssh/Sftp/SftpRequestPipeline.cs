@@ -439,12 +439,22 @@ internal sealed class SftpRequestPipeline : IAsyncDisposable
     private TaskCompletionSource<SftpResponse>? _versionCompletion;
 
     /// <summary>等 <c>SSH_FXP_VERSION</c>。<b>它没有 request-id</b>，所以要单独等。</summary>
+    /// <remarks>
+    /// 流水线已经收工时当场以收工的原因结算。sftp-server 一起来就退出时，通道里早就排着 stderr、退出状态与 CLOSE，
+    /// 收包循环一开跑就收工 —— 可能抢在握手走到这里之前。<see cref="Fault"/> 只结算已经有人在等的 VERSION，
+    /// 曾经晚来的这一个要等满握手时限（30 秒），报成「sftp-server 没有回应」，退出码与 stderr 都丢了。
+    /// </remarks>
     internal Task<SftpResponse> WaitForVersionAsync()
     {
         lock (_stateLock)
         {
             _versionCompletion ??= new TaskCompletionSource<SftpResponse>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
+            if (_fault is { } fault)
+            {
+                // VERSION 已经到了的话 TrySetException 什么也不做，照样交出它。
+                _versionCompletion.TrySetException(fault);
+            }
             return _versionCompletion.Task;
         }
     }
