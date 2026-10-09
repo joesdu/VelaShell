@@ -45,7 +45,6 @@ public sealed class XNativeWindow : Window
 
     /// <summary>最后一次按服务端的几何设的内容区尺寸(物理像素):迟到的 Resized 与它相同就是我们自己设的(见 OnResized)。</summary>
     private (int Width, int Height) _appliedSize;
-    private Vector _wheelRemainder;
     private XWindowStates _reportedStates;
     private WindowState _resizeState = WindowState.Normal;
 
@@ -748,22 +747,13 @@ public sealed class XNativeWindow : Window
         {
             return;
         }
-        // X 的滚轮是按钮:每一格一次按下 + 松开(4 上、5 下、6 左、7 右)。触控板的小数增量攒够一格再发。
+        // 平滑滚动:原样交给服务端(Avalonia 的向上 / 向左为正,X 的滚动轴向下 / 向右为正)。用滚动轴的 XI2 客户端(GTK3/4、Qt、
+        // 浏览器)拿到触控板的小数增量;只认滚轮按钮的由服务端攒够一格模拟成按钮 4–7。原先宿主自己攒格子,触控板一格一跳。
         (int x, int y) = ToPixels(e.GetPosition(_surface));
-        _wheelRemainder += e.Delta;
-        while (Math.Abs(_wheelRemainder.Y) >= 1)
+        double dx = Math.Clamp(-e.Delta.X, -10000, 10000), dy = Math.Clamp(-e.Delta.Y, -10000, 10000);
+        if (double.IsFinite(dx) && double.IsFinite(dy) && (dx != 0 || dy != 0))
         {
-            int button = _wheelRemainder.Y > 0 ? 4 : 5;
-            server.InjectPointerButton(Handle, x, y, button, pressed: true);
-            server.InjectPointerButton(Handle, x, y, button, pressed: false);
-            _wheelRemainder = _wheelRemainder.WithY(_wheelRemainder.Y - Math.Sign(_wheelRemainder.Y));
-        }
-        while (Math.Abs(_wheelRemainder.X) >= 1)
-        {
-            int button = _wheelRemainder.X > 0 ? 6 : 7;
-            server.InjectPointerButton(Handle, x, y, button, pressed: true);
-            server.InjectPointerButton(Handle, x, y, button, pressed: false);
-            _wheelRemainder = _wheelRemainder.WithX(_wheelRemainder.X - Math.Sign(_wheelRemainder.X));
+            server.InjectScroll(Handle, x, y, dx, dy);
         }
         e.Handled = true;
     }

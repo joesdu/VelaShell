@@ -862,6 +862,39 @@ public sealed class AvaloniaXServerHostUiTests
     });
 
     /// <summary>
+    /// 平滑滚动(xs_plan F6):宿主把滚动增量原样交给服务端 —— 触控板的半格增量两次攒成一格,只认按钮的核心客户端收到一次按钮 4(向上)。
+    /// </summary>
+    [TestMethod]
+    public async Task 滚动增量原样交给服务端_半格两次攒成一次按钮4() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        System.Collections.Concurrent.ConcurrentQueue<byte> events = new();
+        (uint idBase, uint root) = await HandshakeAsync(client, events);
+        uint window = idBase | 1;
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0)
+            .U32(0x800).U32(0x4 | 0x8));                                                // ButtonPress | ButtonRelease
+        await SendAsync(client, 8, 0, w => w.U32(window));
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+
+        native.MouseWheel(new Point(10, 10), new Vector(0, 0.5), RawInputModifiers.None);
+        await Task.Delay(100);
+        Dispatcher.UIThread.RunJobs();
+        Assert.IsEmpty(events.Where(e => e is 4 or 5), "半格:还没攒够");
+        native.MouseWheel(new Point(10, 10), new Vector(0, 0.5), RawInputModifiers.None);
+        await WaitForAsync(() => events.Count(e => e is 4 or 5) >= 2 ? native : null);
+        CollectionAssert.AreEqual(new byte[] { 4, 5 }, events.Where(e => e is 4 or 5).ToArray(), "一次按下、一次松开");
+
+        native.CloseByHost();
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>
     /// 用户在 VelaShell 自己的窗口(终端之类)里打字:X 服务端的空闲时间同样归零 —— 远端程序经 MIT-SCREEN-SAVER 看到的不再只是 X 窗口里的输入。
     /// </summary>
     [TestMethod]

@@ -7,7 +7,10 @@
 //   §6「Requests」(XIQueryPointer 40 … XIGetSelectedEvents 60、XIBarrierReleasePointer 61)、
 //   §7「Events」(经 Generic Event Extension 发出:DeviceEvent —— KeyPress 2 / KeyRelease 3 / ButtonPress 4 /
 //   ButtonRelease 5 / Motion 6;EnterLeave —— Enter 7 / Leave 8 / FocusIn 9 / FocusOut 10;
-//   RawEvent —— RawKeyPress 13 … RawMotion 17,只发给在根窗口上选了它的客户端)
+//   RawEvent —— RawKeyPress 13 … RawMotion 17,只发给在根窗口上选了它的客户端);§「Smooth scrolling」(XI 2.1:滚动轴、
+//   ScrollClass、与按钮 4–7 的双向模拟、PointerEmulated)
+//   xorgproto 的 XI2.h / XI2proto.h(XI2 的协议定义)—— 类的编号(Key 0、Button 1、Valuator 2、Scroll 3)、ScrollClass 的线上布局
+//   (xXIScrollInfo)、XIScrollTypeVertical 1 / Horizontal 2、XIScrollFlagPreferred、XIPointerEmulated、XIModeRelative
 //   X Input Device Extension Protocol, Version 1.5 —— GetExtensionVersion 1、ListInputDevices 2、OpenDevice 3、
 //   CloseDevice 4、SelectExtensionEvent 6、GetSelectedExtensionEvents 7、GetDeviceFocus 20、SetDeviceFocus 21、
 //   GetDeviceKeyMapping 24、GetDeviceModifierMapping 26、GetDeviceButtonMapping 28、QueryDeviceState 30、
@@ -31,6 +34,27 @@ public sealed partial class X11Server
     private const ushort XiMasterPointer = 2, XiMasterKeyboard = 3, XiSlavePointer = 4, XiSlaveKeyboard = 5;
     private const int XiEnter = 7, XiLeave = 8, XiFocusIn = 9, XiFocusOut = 10;
     private const int XiRawKeyPress = 13, XiRawKeyRelease = 14, XiRawButtonPress = 15, XiRawButtonRelease = 16, XiRawMotion = 17;
+
+    /// <summary>滚动轴的编号(轴 0、1 是 Abs X / Abs Y)。</summary>
+    private const ushort XiScrollAxisHorizontal = 2, XiScrollAxisVertical = 3;
+
+    /// <summary>ScrollClass 的 Preferred 标志(XI2.h:XIScrollFlagPreferred)。</summary>
+    private const uint XiScrollFlagPreferred = 1u << 1;
+
+    /// <summary>DeviceEvent / RawEvent 的 PointerEmulated 标志(XI2.h:XIPointerEmulated):这个事件是从另一种事件模拟出来的。</summary>
+    private const uint XiPointerEmulatedFlag = 1u << 16;
+
+    /// <summary>两个滚动轴累计的滚动量(单位 = 一格);XIQueryDevice 的 ValuatorClass 与 Motion 事件里报的就是它。</summary>
+    private (double X, double Y) _scrollValue;
+
+    /// <summary>还没攒够一格、没模拟成按钮 4–7 的滚动量。</summary>
+    private (double X, double Y) _scrollRemainder;
+
+    /// <summary>正在投递的 Motion 事件带哪几个滚动轴(<see cref="SendXi2DeviceEvent" /> 据此写轴的掩码与值);平时都为假。</summary>
+    private (bool Horizontal, bool Vertical) _xi2ScrollAxes;
+
+    /// <summary>正在投递的指针事件额外带的 XI2 标志(模拟出来的事件带 PointerEmulated);平时为 0。</summary>
+    private uint _xi2PointerFlags;
     private const int XiButtonCount = 9;
 
     private static readonly string[] XiButtonLabels =
@@ -433,7 +457,8 @@ public sealed partial class X11Server
         WriteXiClasses(w, pointer);
     }
 
-    private static ushort XiClassCount(bool pointer) => pointer ? (ushort)3 : (ushort)1;
+    /// <summary>指针的类:按钮 + Abs X / Abs Y + 两个滚动轴的 ValuatorClass + 两个 ScrollClass;键盘只有按键。</summary>
+    private static ushort XiClassCount(bool pointer) => pointer ? (ushort)7 : (ushort)1;
 
     /// <summary>
     /// XI_DeviceChanged(evtype 1,reason DeviceChange 2):指针设备的轴范围随根窗口的尺寸变了(Abs X / Abs Y 的最大值),
@@ -480,6 +505,12 @@ public sealed partial class X11Server
             }
             WriteValuatorClass(w, source, 0, "Abs X", Root.Width, _pointerX);
             WriteValuatorClass(w, source, 1, "Abs Y", Root.Height, _pointerY);
+            // 平滑滚动(XI 2.1「Smooth scrolling」):两个相对轴,值是累计的滚动量,一个单位 = 一格(increment 1.0)。
+            WriteScrollValuatorClass(w, source, XiScrollAxisHorizontal, "Rel Horiz Scroll", _scrollValue.X);
+            WriteScrollValuatorClass(w, source, XiScrollAxisVertical, "Rel Vert Scroll", _scrollValue.Y);
+            // ScrollClass:type 3、len 6、sourceid、number、scroll_type(Vertical 1 / Horizontal 2)、pad、flags(Preferred)、increment(FP3232)
+            w.U16(3).U16(6).U16(source).U16(XiScrollAxisHorizontal).U16(2).Zero(2).U32(XiScrollFlagPreferred).I32(1).U32(0);
+            w.U16(3).U16(6).U16(source).U16(XiScrollAxisVertical).U16(1).Zero(2).U32(XiScrollFlagPreferred).I32(1).U32(0);
         }
         else
         {
@@ -499,6 +530,22 @@ public sealed partial class X11Server
             .I32(max - 1).U32(0)            // max
             .I32(value).U32(0)              // value
             .U32(1).U8(1).Zero(3);          // resolution、mode = Absolute
+
+    /// <summary>滚动轴的 ValuatorClass:相对模式、没有范围(min = max = 0),value 是到目前为止累计的滚动量(客户端据此接着算增量)。</summary>
+    private void WriteScrollValuatorClass(XWriter w, ushort source, ushort number, string label, double value)
+    {
+        w.U16(2).U16(11).U16(source).U16(number).U32(Intern(label))
+            .I32(0).U32(0).I32(0).U32(0);   // min、max:没有
+        WriteFp3232(w, value);
+        w.U32(0).U8(0).Zero(3);             // resolution、mode = Relative
+    }
+
+    /// <summary>FP3232:整数部分 32 位有符号、小数部分 32 位无符号(XI2「Notations」)。</summary>
+    private static void WriteFp3232(XWriter w, double value)
+    {
+        double integral = Math.Floor(value);
+        w.I32((int)Math.Clamp(integral, int.MinValue, int.MaxValue)).U32((uint)Math.Min(uint.MaxValue, (value - integral) * 4294967296.0));
+    }
 
     private void XiListInputDevices(XClient c)
     {
@@ -1015,6 +1062,13 @@ public sealed partial class X11Server
         uint child = ChildOnPath(eventWindow, source);
         int px = _pointerX, py = _pointerY;
         uint time = Now;
+        if (!key)
+        {
+            flags |= _xi2PointerFlags;
+        }
+        // 滚动的 Motion 还带滚动轴:轴 2(水平)、3(垂直),值是累计的滚动量(XI 2.1「Smooth scrolling」)。
+        (bool scrollX, bool scrollY) = evtype == XEventCode.MotionNotify ? _xi2ScrollAxes : default;
+        (double valueX, double valueY) = _scrollValue;
         client.GenericEvent(XInputMajor, (ushort)evtype, w =>
         {
             w.U16(device).U32(time).U32(detail).U32(Root.Id).U32(eventWindow.Id).U32(child)
@@ -1024,8 +1078,16 @@ public sealed partial class X11Server
             WriteButtonMask(w, 1);
             if (!key)
             {
-                w.U32(0x3);                                    // 轴 0、1
-                w.I32(px).U32(0).I32(py).U32(0);               // FP3232 值
+                w.U32(0x3u | (scrollX ? 0x4u : 0) | (scrollY ? 0x8u : 0));   // 轴 0、1(还有滚动轴)
+                w.I32(px).U32(0).I32(py).U32(0);                             // FP3232 值,按轴号从小到大
+                if (scrollX)
+                {
+                    WriteFp3232(w, valueX);
+                }
+                if (scrollY)
+                {
+                    WriteFp3232(w, valueY);
+                }
             }
         });
     }
@@ -1121,6 +1183,56 @@ public sealed partial class X11Server
                 w.U32(0x3);
                 w.I32(x).U32(0).I32(y).U32(0);   // 处理后的值
                 w.I32(x).U32(0).I32(y).U32(0);   // 原始值
+            }
+        });
+    }
+
+    /// <summary>
+    /// 滚动的原始事件:RawMotion,只带滚动轴(2 水平、3 垂直),值是这一次的增量(原始事件报设备给的数据,相对轴就是增量);
+    /// 处理后的值与原始值相同。<paramref name="emulated" /> 时是从按钮 4–7 模拟出来的(带 PointerEmulated)。
+    /// </summary>
+    private void SendRawScroll(double dx, double dy, bool emulated)
+    {
+        if (!Root.AnyXi2Selects(XiRawMotion))
+        {
+            return;
+        }
+        bool horizontal = dx != 0, vertical = dy != 0;
+        uint mask = (horizontal ? 0x4u : 0) | (vertical ? 0x8u : 0);
+        uint flags = emulated ? XiPointerEmulatedFlag : 0;
+        uint time = Now;
+        ulong bit = 1UL << XiRawMotion;
+        foreach ((XClient client, (ulong master, ulong slave)) in Root.Xi2Selections)
+        {
+            if (client.Closed || ((master | slave) & bit) == 0)
+            {
+                continue;
+            }
+            bool floating = IsFloating(pointer: true);
+            if ((slave & bit) != 0 || floating)
+            {
+                Send(client, XiSlavePointer);
+            }
+            if ((master & bit) != 0 && !floating)
+            {
+                Send(client, MasterOf(pointer: true));
+            }
+        }
+
+        void Send(XClient client, ushort device) => client.GenericEvent(XInputMajor, XiRawMotion, w =>
+        {
+            w.U16(device).U32(time).U32(0).U16(XiSlavePointer).U16(1).U32(flags).Zero(4);
+            w.U32(mask);
+            for (int pass = 0; pass < 2; pass++)   // 处理后的值,然后原始值
+            {
+                if (horizontal)
+                {
+                    WriteFp3232(w, dx);
+                }
+                if (vertical)
+                {
+                    WriteFp3232(w, dy);
+                }
             }
         });
     }

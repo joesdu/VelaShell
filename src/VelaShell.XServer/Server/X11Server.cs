@@ -381,6 +381,34 @@ public sealed partial class X11Server : IAsyncDisposable
         });
     }
 
+    /// <summary>
+    /// 滚动(内区坐标 (x, y) 处,滚 (<paramref name="dx" />, <paramref name="dy" />) 格;正 = 向右 / 向下,一格 = 鼠标滚轮的一下,
+    /// 触控板给小数)。XI2 客户端经两个滚动轴收到原样的增量(平滑滚动,XI 2.1);只认滚轮按钮的客户端由服务端攒够一格模拟一次按钮 4–7。
+    /// 宿主有滚动增量时用它,不必自己攒格子注入按钮。窗口已经不在时忽略。坐标的范围同 <see cref="InjectPointerMotion" />。
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">坐标超出 −32768…32767,或增量不是有限数、绝对值超过 10000。</exception>
+    public void InjectScroll(XTopLevelWindow window, int x, int y, double dx, double dy)
+    {
+        CheckHandle(window);
+        CheckCoordinate(x, nameof(x));
+        CheckCoordinate(y, nameof(y));
+        if (!double.IsFinite(dx) || Math.Abs(dx) > 10000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(dx));
+        }
+        if (!double.IsFinite(dy) || Math.Abs(dy) > 10000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(dy));
+        }
+        Post(null, () =>
+        {
+            if (LiveTopLevel(window) is { } top)
+            {
+                ApplyScroll(top, x, y, dx, dy);
+            }
+        });
+    }
+
     /// <summary>指针离开了所有顶层窗口(移到了宿主的其他窗口或桌面上)。</summary>
     public void InjectPointerLeave() => Post(null, ApplyPointerLeave);
 

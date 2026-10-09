@@ -423,11 +423,101 @@ public sealed class XInputTests
         List<XMessage> changed = [await NextXiAsync(c, xi, 1), await NextXiAsync(c, xi, 1)];
         CollectionAssert.AreEquivalent(new ushort[] { 2, 4 }, changed.Select(e => e.U16(10)).ToArray(), "主指针与从指针各一条");
         XMessage e = changed[0];
-        Assert.AreEqual(3, e.U16(16), "num_classes");
+        Assert.AreEqual(7, e.U16(16), "num_classes:按钮、Abs X / Y、两个滚动轴、两个 ScrollClass");
         Assert.AreEqual(2, e.Bytes[20], "reason = DeviceChange");
         // 类从第 32 字节起:按钮类 12 个四字节,之后是 Abs X 的轴类(max 的整数部分在轴类的第 20 字节)。
         Assert.AreEqual(2, e.U16(80), "第二个类是轴");
         Assert.AreEqual(2559, (int)e.U32(100), "Abs X 的最大值 = 新的根窗口宽 − 1");
+    }
+
+    /// <summary>XIQueryDevice(一个设备)回复里的类:(type, 类在回复里的起点)。</summary>
+    private static List<(ushort Type, int Offset)> Classes(XMessage reply)
+    {
+        int nameLength = reply.U16(40), classes = reply.U16(38);
+        int at = 44 + ((nameLength + 3) & ~3);
+        List<(ushort, int)> found = [];
+        for (int i = 0; i < classes; i++)
+        {
+            found.Add((reply.U16(at), at));
+            at += reply.U16(at + 2) * 4;
+        }
+        return found;
+    }
+
+    /// <summary>FP3232 → double。</summary>
+    private static double Fp3232(XMessage m, int offset) => (int)m.U32(offset) + (m.U32(offset + 4) / 4294967296.0);
+
+    [TestMethod]
+    public async Task 指针设备有两个滚动轴与两个ScrollClass()
+    {
+        await using X11Server server = new();
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        byte xi = await XiAsync(c);
+        XMessage slave = await c.RequestAsync(xi, 48, b => b.U16(4).U16(0));
+        List<(ushort Type, int Offset)> classes = Classes(slave);
+        CollectionAssert.AreEqual(new ushort[] { 1, 2, 2, 2, 2, 3, 3 }, classes.Select(k => k.Type).ToArray(), "按钮、四个轴、两个 ScrollClass");
+        (ushort, ushort, uint, double)[] scroll = [.. classes.Where(k => k.Type == 3)
+            .Select(k => (slave.U16(k.Offset + 6), slave.U16(k.Offset + 8), slave.U32(k.Offset + 12), Fp3232(slave, k.Offset + 16)))];
+        CollectionAssert.AreEqual(new (ushort, ushort, uint, double)[] { (2, 2, 2u, 1.0), (3, 1, 2u, 1.0) }, scroll,
+            "轴 2 水平、轴 3 垂直,Preferred,一格 = 1.0");
+        int vertical = classes[4].Offset;
+        Assert.AreEqual(0, slave.Bytes[vertical + 40], "滚动轴是相对模式");
+    }
+
+    [TestMethod]
+    public async Task 平滑滚动_XI2经滚动轴收到累计值_攒够一格模拟成按钮_XI2那份带PointerEmulated_核心只收按钮()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        await using XTestClient core = await XTestClient.ConnectAsync(server);
+        byte xi = await XiAsync(c);
+        uint top = await MapTopAsync(c, host);
+        await SelectAsync(c, xi, top, 1, (1u << 4) | (1u << 5) | (1u << 6));   // ButtonPress、ButtonRelease、Motion
+        await core.SendAsync(2, 0, b => b.U32(top).U32(0x800).U32(0x4 | 0x8));
+        await core.SyncAsync();
+        await c.SyncAsync();
+        XTopLevelWindow window = host.Mapped[top];
+
+        server.InjectScroll(window, 5, 5, 0, 0.5);
+        server.InjectScroll(window, 5, 5, 0, 0.5);
+
+        Task<XMessage> ScrollMotionAsync() => c.NextAsync(m => !m.IsReply && !m.IsError && m.EventCode == GenericEvent && m.Bytes[1] == xi
+            && m.U16(8) == 6 && m.U32(84) == 0xB);
+        XMessage first = await ScrollMotionAsync(), second = await ScrollMotionAsync();
+        Assert.AreEqual(0.5, Fp3232(first, 104), "轴 3 的累计值");
+        Assert.AreEqual(1.0, Fp3232(second, 104));
+        Assert.AreEqual(0u, first.U32(56) & (1u << 16), "滚动轴的事件本身不是模拟的");
+        XMessage press = await NextXiAsync(c, xi, 4);
+        Assert.AreEqual(5u, press.U32(16), "攒够一格:模拟一次按钮 5(向下)");
+        Assert.AreEqual(1u << 16, press.U32(56) & (1u << 16), "PointerEmulated");
+        XMessage corePress = await core.NextEventAsync(4);
+        Assert.AreEqual(5, corePress.Bytes[1], "核心客户端照样收到按钮 5");
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => server.InjectScroll(window, 5, 5, double.NaN, 0));
+    }
+
+    [TestMethod]
+    public async Task 滚轮按钮反过来模拟成滚动轴_带PointerEmulated()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        byte xi = await XiAsync(c);
+        uint top = await MapTopAsync(c, host);
+        await SelectAsync(c, xi, top, 1, (1u << 4) | (1u << 6));
+        await c.SyncAsync();
+        XTopLevelWindow window = host.Mapped[top];
+
+        server.InjectPointerButton(window, 5, 5, 4, pressed: true);
+        server.InjectPointerButton(window, 5, 5, 4, pressed: false);
+
+        XMessage motion = await c.NextAsync(m => !m.IsReply && !m.IsError && m.EventCode == GenericEvent && m.Bytes[1] == xi
+            && m.U16(8) == 6 && m.U32(84) == 0xB);
+        Assert.AreEqual(-1.0, Fp3232(motion, 104), "按钮 4 = 向上一格");
+        Assert.AreEqual(1u << 16, motion.U32(56) & (1u << 16), "模拟出来的滚动带 PointerEmulated");
+        XMessage press = await NextXiAsync(c, xi, 4);
+        Assert.AreEqual(4u, press.U32(16));
+        Assert.AreEqual(0u, press.U32(56) & (1u << 16), "真的按钮不带");
     }
 
     [TestMethod]

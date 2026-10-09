@@ -92,6 +92,94 @@ public sealed partial class X11Server
         });
     }
 
+    /// <summary>宿主的滚动(平滑):先把指针挪到 (x, y)(内区坐标),再滚 (<paramref name="dx" />, <paramref name="dy" />) 格,见 <see cref="ScrollEvent" />。</summary>
+    private void ApplyScroll(XWindow top, int x, int y, double dx, double dy)
+    {
+        NoteInputActivity();
+        _pointerTop = top;
+        int rootX = top.X + top.BorderWidth + x, rootY = top.Y + top.BorderWidth + y;
+        ProcessPointerMotion(() =>
+        {
+            MovePointer(rootX, rootY);
+            ScrollEvent(dx, dy);
+        });
+    }
+
+    /// <summary>
+    /// 滚了 (<paramref name="dx" />, <paramref name="dy" />) 格(正 = 向右 / 向下)。XI 2.1「Smooth scrolling」:滚动轴的值放进一个 Motion 事件
+    /// (只发 XI2,核心客户端没有滚动轴)与一个原始事件;同时做两路模拟 —— 攒够一格就模拟一次按钮 4 / 5 / 6 / 7 的按下与松开
+    /// (核心与只认按钮的客户端靠它滚;XI2 的那一份带 PointerEmulated,用滚动轴的客户端据此不重复滚)。不到一格的留着下次接着攒。
+    /// </summary>
+    private void ScrollEvent(double dx, double dy)
+    {
+        if (dx == 0 && dy == 0)
+        {
+            return;
+        }
+        SendRawScroll(dx, dy, emulated: false);
+        _scrollValue = (_scrollValue.X + dx, _scrollValue.Y + dy);
+        _xi2ScrollAxes = (dx != 0, dy != 0);
+        try
+        {
+            DeliverDeviceEvent(XEventCode.MotionNotify, 0, 0, _pointerWindow);
+        }
+        finally
+        {
+            _xi2ScrollAxes = default;
+        }
+        _scrollRemainder = (_scrollRemainder.X + dx, _scrollRemainder.Y + dy);
+        EmulateScrollButtons(ref _scrollRemainder.Y, up: 4, down: 5);
+        EmulateScrollButtons(ref _scrollRemainder.X, up: 6, down: 7);
+    }
+
+    /// <summary>攒够的整格模拟成按钮(负的 <paramref name="up" />、正的 <paramref name="down" />),带 PointerEmulated;剩下不到一格的留在 <paramref name="remainder" />。</summary>
+    private void EmulateScrollButtons(ref double remainder, int up, int down)
+    {
+        const double epsilon = 1e-9;   // 几次小数加起来正好一格时,浮点误差不让它差一点点不够
+        while (Math.Abs(remainder) >= 1 - epsilon)
+        {
+            int button = remainder < 0 ? up : down;
+            remainder -= Math.Sign(remainder);
+            _xi2PointerFlags = XiPointerEmulatedFlag;
+            try
+            {
+                ButtonEvent(button, pressed: true);
+                ButtonEvent(button, pressed: false);
+            }
+            finally
+            {
+                _xi2PointerFlags = 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 反方向的模拟(XI 2.1:两路都要做):设备按了滚轮按钮(宿主或 XTEST 给的按钮 4–7),用滚动轴的 XI2 客户端也要看到一格滚动 ——
+    /// 发一个带滚动轴、带 PointerEmulated 的 Motion 与原始事件。
+    /// </summary>
+    private void EmulateScrollFromButton(int physical)
+    {
+        (double dx, double dy) = physical switch
+        {
+            4 => (0.0, -1.0),
+            5 => (0.0, 1.0),
+            6 => (-1.0, 0.0),
+            _ => (1.0, 0.0),
+        };
+        SendRawScroll(dx, dy, emulated: true);
+        _scrollValue = (_scrollValue.X + dx, _scrollValue.Y + dy);
+        _xi2ScrollAxes = (dx != 0, dy != 0);
+        _xi2PointerFlags = XiPointerEmulatedFlag;
+        try
+        {
+            DeliverDeviceEvent(XEventCode.MotionNotify, 0, 0, _pointerWindow);
+        }
+        finally
+        {
+            (_xi2ScrollAxes, _xi2PointerFlags) = (default, 0);
+        }
+    }
+
     /// <summary>松开一个(物理)按钮,指针留在原处(按下它的那个顶层已经不在了);X 这边并没按着它就什么也不做。</summary>
     private void ApplyPointerButtonRelease(int button)
     {
@@ -459,7 +547,11 @@ public sealed partial class X11Server
         {
             _physicalButtonsDown[physical >> 3] &= (byte)~(1 << (physical & 7));
         }
-        SendRawEvent(pressed ? XiRawButtonPress : XiRawButtonRelease, (uint)physical, 0, 0);
+        SendRawEvent(pressed ? XiRawButtonPress : XiRawButtonRelease, (uint)physical, 0, 0, _xi2PointerFlags);
+        if (pressed && physical is >= 4 and <= 7 && _xi2PointerFlags == 0)
+        {
+            EmulateScrollFromButton(physical);   // 真的滚轮按钮(不是从滚动轴模拟出来的):用滚动轴的客户端也要看到
+        }
         int button = MapButton(physical);
         if (button == 0)
         {

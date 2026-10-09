@@ -83,6 +83,29 @@ public sealed class RealClientTests
         return (server, errors, cookie);
     }
 
+    /// <summary>平滑滚动(xs_plan F6):libXi 解得出指针设备的两个滚动轴与 ScrollClass(xinput list --long 列出「Scroll info」)。</summary>
+    [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task xinput看得到指针的两个滚动轴()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartServer();
+        await using (server)
+        {
+            await server.StartAsync();
+            (int exit, string output) = await RunClientAsync(cookie, "xinput list --long");
+            TestContext.WriteLine(output);
+            Assert.AreEqual(0, exit, output);
+            Assert.Contains("Rel Vert Scroll", output);
+            Assert.Contains("Scroll info for Valuator 2", output);
+            Assert.Contains("Scroll info for Valuator 3", output);
+            Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
     [TestMethod]
     [Timeout(120_000, CooperativeCancellation = true)]
     public async Task xdpyinfo连上并看到VelaShell这块屏幕()
