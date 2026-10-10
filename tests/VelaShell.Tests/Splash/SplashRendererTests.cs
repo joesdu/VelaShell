@@ -61,6 +61,26 @@ public sealed class SplashRendererTests
     }
 
     [TestMethod]
+    public void ReleasingTheOldRenderer_DoesNotBreakTheOneThatReplacedIt()
+    {
+        // 设置页换样式时是「先建新的、再放旧的」。Skia 对同一个原生字体只给一个托管包装,
+        // 两个渲染器拿到的是同一个 SKTypeface 实例:旧的那边若把它释放了,新的就跟着画错字或直接崩。
+        SplashPalette palette = SplashPalette.Resolve("dark", null, true);
+        SplashFrame frame = new SplashSimulation().At(2000);
+        using SKBitmap expected = RenderIsolated("terminal", palette, frame);
+
+        SplashRenderer old = CreateRenderer("classic", palette);
+        using (Render(old, frame))
+        {
+        }
+        using SplashRenderer replacement = CreateRenderer("terminal", palette);
+        old.Dispose();
+        using SKBitmap actual = Render(replacement, frame);
+
+        Assert.AreEqual(0, CountDifferences(expected, actual), "旧渲染器释放之后,新渲染器画出来的和单独画的不一样。");
+    }
+
+    [TestMethod]
     public void Palette_FollowsSystemAndAccentOverride()
     {
         Assert.AreEqual(SplashPalette.From(UiThemeCatalog.DefaultDark, null), SplashPalette.Resolve("system", null, true));
@@ -123,6 +143,28 @@ public sealed class SplashRendererTests
         renderer.Render(canvas, frame);
         canvas.Flush();
         return bitmap;
+    }
+
+    private static SKBitmap RenderIsolated(string style, SplashPalette palette, SplashFrame frame)
+    {
+        using SplashRenderer renderer = CreateRenderer(style, palette);
+        return Render(renderer, frame);
+    }
+
+    private static int CountDifferences(SKBitmap left, SKBitmap right)
+    {
+        int count = 0;
+        for (int y = 0; y < left.Height; y++)
+        {
+            for (int x = 0; x < left.Width; x++)
+            {
+                if (left.GetPixel(x, y) != right.GetPixel(x, y))
+                {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 
     private static int CountInk(SKBitmap bitmap, SKColor background)

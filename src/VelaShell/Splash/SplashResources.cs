@@ -132,6 +132,12 @@ internal sealed class SplashResources : IDisposable
 /// 一种字体外观(字族 + 字重),附带逐字回退:主字体里没有的字(中日韩、盲文点阵、符号)
 /// 交给系统里有这个字的字体画。Skia 的 <c>DrawText</c> 自己不做回退,不处理的话这些字就是豆腐块。
 /// </summary>
+/// <remarks>
+/// <b>字体对象(<see cref="SKTypeface" />)不归这里释放。</b>Skia 的字体管理器缓存字体,SkiaSharp 又按原生句柄
+/// 只给一个托管包装 —— 两次按同名取字体、两个字各自回退到雅黑,拿到的都是同一个实例,而且与 Avalonia 用的
+/// 也可能是同一个。设置页换样式时是「先建新渲染器、再放旧的」,旧的这边若把字体释放了,新的就在用一个
+/// 已释放的对象。它们本来就由缓存持有、随进程存在;这里只释放自己新建的 <see cref="SKFont" /> 与画笔。
+/// </remarks>
 internal sealed class SplashFace : IDisposable
 {
     private readonly SKTypeface _primary;
@@ -153,13 +159,13 @@ internal sealed class SplashFace : IDisposable
         SKTypeface? chosen = null;
         foreach (string family in families)
         {
+            // 系统里没有这个字族时拿到的是默认字体(共享实例,不释放,见类型注释)。
             SKTypeface candidate = SKTypeface.FromFamilyName(family, style);
             if (string.Equals(candidate.FamilyName, family, StringComparison.OrdinalIgnoreCase))
             {
                 chosen = candidate;
                 break;
             }
-            candidate.Dispose();
         }
         _primary = chosen ?? SKTypeface.FromFamilyName(null, style);
     }
@@ -228,15 +234,8 @@ internal sealed class SplashFace : IDisposable
             font.Dispose();
         }
         _fonts.Clear();
-        foreach (SKTypeface typeface in _fallbacks.Values.Distinct())
-        {
-            if (!ReferenceEquals(typeface, _primary))
-            {
-                typeface.Dispose();
-            }
-        }
+        // 字体对象是共享的,不释放(见类型注释)。
         _fallbacks.Clear();
-        _primary.Dispose();
         _paint.Dispose();
     }
 
@@ -297,18 +296,8 @@ internal sealed class SplashFace : IDisposable
         }
         if (!_fallbacks.TryGetValue(codepoint, out SKTypeface? face))
         {
+            // 许多字回退到同一个字体时拿到的是同一个实例(见类型注释),相邻的字因此并成一段来画。
             face = SKFontManager.Default.MatchCharacter(_primary.FamilyName, _style, _bcp47, codepoint) ?? _primary;
-            // 同一个回退字体会被许多字命中:按字族去重,避免每个汉字各持一份句柄。
-            foreach (SKTypeface known in _fallbacks.Values)
-            {
-                if (!ReferenceEquals(face, _primary) && !ReferenceEquals(known, face)
-                    && known.FamilyName == face.FamilyName && known.FontStyle.Weight == face.FontStyle.Weight)
-                {
-                    face.Dispose();
-                    face = known;
-                    break;
-                }
-            }
             _fallbacks[codepoint] = face;
         }
         return face;
