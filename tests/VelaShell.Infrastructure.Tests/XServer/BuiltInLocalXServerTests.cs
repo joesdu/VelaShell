@@ -511,7 +511,8 @@ public class BuiltInLocalXServerTests
         using TcpListener squatter = new(IPAddress.Loopback, 6010);   // 探测(注入的)看不见它
         squatter.Start();
         RecordingHost host = new();
-        await using BuiltInLocalXServer server = Create(new XServerOptions(), host);
+        // 抢占的是 TCP 端口:Linux / macOS 上默认只开 Unix 套接字(F4),要打开 TCP 才撞得上。
+        await using BuiltInLocalXServer server = Create(new XServerOptions { ListenTcpOnUnix = true }, host);
         List<XServerState> states = [];
         server.StateChanged += (_, _) => states.Add(server.State);
 

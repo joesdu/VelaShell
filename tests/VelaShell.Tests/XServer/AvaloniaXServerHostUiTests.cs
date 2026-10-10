@@ -1012,7 +1012,8 @@ public sealed class AvaloniaXServerHostUiTests
     [TestMethod]
     public async Task 本机输入法上屏的字输入给X_按键自己的字不重复_组字中的键不转交() => await _session.RunOnUiAsync(async () =>
     {
-        AvaloniaXServerHost host = new();
+        // 不在后台读桌面的键盘(Linux 上默认会读):读完换键位表的那一次 MappingNotify 会混进这里数的事件。
+        AvaloniaXServerHost host = new() { DesktopKeyboardReader = null };
         await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
         await host.AttachAsync(server, CancellationToken.None);
         (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
@@ -1338,7 +1339,7 @@ public sealed class AvaloniaXServerHostUiTests
         }
         Avalonia.Controls.Window local = new() { Width = 100, Height = 80 };
         local.Show();
-        await Task.Delay(300);
+        await Task.Delay(1000);   // 没归零的话空闲至少 1 秒;归零了的话只剩按键之后这一两次往返(CI 的 macOS 上曾到 174 毫秒)
 
         local.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
         foreach ((InMemoryDuplexStream client, _, System.Collections.Concurrent.ConcurrentQueue<byte[]> replies, uint root, byte saver) in clients)
@@ -1346,7 +1347,7 @@ public sealed class AvaloniaXServerHostUiTests
             await SendAsync(client, saver, 1, w => w.U32(root));                                                     // QueryInfo,序号 2
             byte[] info = await WaitForAsync(() => replies.FirstOrDefault(r => Sequence(r) == 2));
             uint idle = BinaryPrimitives.ReadUInt32LittleEndian(info.AsSpan(16));
-            Assert.IsLessThan(150u, idle, $"本机窗口里刚按了键,每个服务端的空闲都应归零,实际 {idle} ms");
+            Assert.IsLessThan(600u, idle, $"本机窗口里刚按了键,每个服务端的空闲都应归零,实际 {idle} ms");
         }
 
         local.Close();
