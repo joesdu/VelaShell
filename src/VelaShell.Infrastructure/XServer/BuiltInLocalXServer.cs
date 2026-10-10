@@ -19,15 +19,16 @@ namespace VelaShell.Infrastructure.XServer;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 不拉外部进程、不装任何东西,各平台都能用。监听环回上的 TCP <c>6000+N</c> 与(类 Unix 上)<c>/tmp/.X11-unix/XN</c>,
-/// 本机别的 X 程序照样能用 <c>DISPLAY=localhost:N</c> 连进来;SSH 的 x11 通道则经
-/// <see cref="XServerDisplayResolution.Connector" /> 直接接进服务端,不绕本机端口。
+/// 不拉外部进程、不装任何东西,各平台都能用。类 Unix 上监听 <c>/tmp/.X11-unix/XN</c>(本机 X 程序用 <c>DISPLAY=:N</c>),
+/// 环回上的 TCP <c>6000+N</c> 只在设置打开「也开 TCP 端口」时才开(<see cref="ListensOnTcp" />);Windows 上没有 Unix 套接字的 X 程序,
+/// 一直开 TCP(<c>DISPLAY=localhost:N</c>)。SSH 的 x11 通道则经 <see cref="XServerDisplayResolution.Connector" /> 直接接进服务端,不绕本机端口 ——
+/// 所以 Unix 套接字建不起来、TCP 又没开时也照样启动,只是本机程序连不上(启动结果里带一条提示)。
 /// </para>
 /// <para>
 /// <b>授权</b>:每次启动生成一个随机的 <c>MIT-MAGIC-COOKIE-1</c>,TCP 连接(包括环回 —— 本机别的进程、别的用户都连得到那个端口)
-/// 必须带上它;cookie 写进用户的 <c>.Xauthority</c>(<see cref="XAuthorityFile" />,停下时撤出),本机 X 程序经 Xlib 自动带上。
-/// Unix 套接字只有同一个用户连得进来,不要 cookie。SSH 的 x11 通道经连接器进来,转发层已经核对过远端的假 cookie,
-/// 走 <see cref="X11Server.ServeAuthenticatedAsync(Stream, string?, CancellationToken)" />。
+/// 与以别的用户身份连 Unix 套接字的(sudo 跑的程序、挂进套接字目录的容器)必须带上它;cookie 写进用户的 <c>.Xauthority</c>
+/// (<see cref="XAuthorityFile" />,停下时撤出),本机 X 程序经 Xlib 自动带上。同一个用户连 Unix 套接字不要 cookie。
+/// SSH 的 x11 通道经连接器进来,转发层已经核对过远端的假 cookie,走 <see cref="X11Server.ServeAuthenticatedAsync(Stream, string?, CancellationToken)" />。
 /// </para>
 /// <para>
 /// <b>每个 SSH 会话一个显示</b>(设置 <see cref="AppXServerOptions.DisplayPerSession" />,默认关):开着时,带着会话对象
@@ -74,10 +75,13 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
     /// <summary>下一个实例的编号(共用的那个是 0):客户端清单用它与客户端编号合成键,收掉的实例的编号不再复用。</summary>
     private int _nextInstanceIndex = 1;
 
-    /// <summary>一个按会话分出来的显示:编号、会话的来历、服务端与它的宿主,以及「会话断开就收掉」的登记。</summary>
+    /// <summary>一个按会话分出来的显示:编号、会话的来历、服务端与它的宿主,以及「会话断开 / 用户关掉它的屏幕窗口就收掉」的登记。</summary>
     private sealed record SessionDisplay(int Index, string? Label, X11Server Server, IEmbeddedXServerHost Host)
     {
         public CancellationTokenRegistration Ended { get; set; }
+
+        /// <summary>挂在宿主 <see cref="IEmbeddedXServerHost.SessionDisplayCloseRequested" /> 上的处理器(收掉时摘下)。</summary>
+        public EventHandler? CloseRequested { get; set; }
     }
 
     /// <summary>此刻在运行的一个服务端实例(见 <see cref="Instances" />)。</summary>
@@ -119,14 +123,18 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
     {
     }
 
-    /// <summary>可注入显示探测、.Xauthority 的位置与本机主机名(单测用;<paramref name="xauthorityPath" /> 为 null 时不写)。</summary>
+    /// <summary>
+    /// 可注入显示探测、.Xauthority 的位置、本机主机名与 Unix 套接字的路径(单测用;<paramref name="xauthorityPath" /> 为 null 时不写,
+    /// <paramref name="unixSocketPath" /> 为 null 时用库的默认位置)。
+    /// </summary>
     internal BuiltInLocalXServer(
         ISettingsService settings,
         Func<IEmbeddedXServerHost?> host,
         Func<int, CancellationToken, Task<bool>> isDisplayInUse,
         Func<CancellationToken, Task<bool>> hasOtherDisplay,
         string? xauthorityPath = null,
-        Func<string?>? hostName = null)
+        Func<string?>? hostName = null,
+        string? unixSocketPath = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _host = host ?? throw new ArgumentNullException(nameof(host));
@@ -134,6 +142,41 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         _hasOtherDisplay = hasOtherDisplay;
         _xauthorityPath = xauthorityPath;
         _hostName = hostName ?? HostName;
+        _unixSocketPath = unixSocketPath;
+        _settings.SettingsSaved += OnSettingsSaved;
+    }
+
+    /// <summary>共用的服务端的 Unix 套接字路径;null = 库的默认位置(<c>/tmp/.X11-unix/XN</c>)。</summary>
+    private readonly string? _unixSocketPath;
+
+    /// <summary>「标出 X 窗口的来源」此刻的值(运行中改了设置就跟着变;启动时按当时的设置)。只在 <see cref="_stateLock" /> 里读写。</summary>
+    private bool _showWindowSource = true;
+
+    /// <summary>
+    /// 设置存了:「标出 X 窗口的来源」当场交给每个附着着的宿主(它们把开着的窗口的标题改过来)。别的项照旧下次启动生效 ——
+    /// 这一项是防冒充的,用户打开它就是要看眼前的窗口是哪来的;原先说明写「对之后打开的窗口生效」,实际要重启 X Server。
+    /// </summary>
+    private void OnSettingsSaved(VelaShell.Core.Models.AppSettings saved)
+    {
+        bool show = saved.XServer.ShowWindowSource;
+        List<IEmbeddedXServerHost> hosts = [];
+        lock (_stateLock)
+        {
+            if (_showWindowSource == show)
+            {
+                return;
+            }
+            _showWindowSource = show;
+            if (_attached is { } shared)
+            {
+                hosts.Add(shared);
+            }
+            hosts.AddRange(_sessionDisplays.Values.Where(t => t.IsCompletedSuccessfully).Select(t => t.Result.Host));
+        }
+        foreach (IEmbeddedXServerHost host in hosts)
+        {
+            host.ShowWindowSource(show);
+        }
     }
 
     /// <summary>本机主机名(.Xauthority 记录的地址;Xlib 连本机时按它找)。</summary>
@@ -167,7 +210,27 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
     }
 
     /// <inheritdoc />
-    public string? Display => DisplayNumber is { } number ? XServerCommandLine.DisplayAddress(number) : null;
+    /// <remarks>
+    /// 按服务端实际开着的监听给(<see cref="X11Server.Display" />):Linux / macOS 上默认只开 Unix 套接字,是 <c>:N</c>;
+    /// 只有 TCP(Windows)时是 <c>localhost:N.0</c>。原先一律写 <c>localhost:N.0</c> —— 不开 TCP 端口(F4)之后,
+    /// 照着启动提示、按钮悬停里的地址设 <c>DISPLAY</c> 的本机程序连不上。
+    /// </remarks>
+    public string? Display
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _state == XServerState.Running && _server is { } server && _displayNumber is { } number ? AddressOf(server, number) : null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 服务端给本机程序的显示地址。什么都没在听时(本机的传输一种都开不起来、只经连接器服务 SSH 转发)给 <c>:N</c>:只用来显示与比对显示号,
+    /// 这时本机程序本来就连不上(启动时已经提示过)。
+    /// </summary>
+    private static string AddressOf(X11Server server, int display) => server.Display ?? ":" + display.ToString(CultureInfo.InvariantCulture);
 
     /// <inheritdoc />
     public event EventHandler? StateChanged;
@@ -224,21 +287,23 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         }
 
         SetState(XServerState.Starting, display);
+        lock (_stateLock)
+        {
+            _showWindowSource = options.ShowWindowSource;
+        }
         X11Server server;
         byte[] cookie;
+        bool listen = true;
+        string? warning = null;
         for (int attempt = 1; ; attempt++)
         {
             X11Server? candidate = null;
             try
             {
                 cookie = RandomNumberGenerator.GetBytes(16);
-                candidate = new(ServerOptions(options, display, cookie, label: null), host);
+                candidate = new(ServerOptions(options, display, cookie, label: null, listen, _unixSocketPath), host);
                 // 先让宿主把显示器布局、DPI、键盘布局告诉服务端,再开门 —— 第一个客户端拿到的就是对的屏幕与键位表。
-                host.UseKeyboardLayout(options.KeyboardLayout);
-                host.UseWindowMode(options.WindowMode);
-
-                host.UseHostInputMethod(options.UseHostInputMethod);
-                host.ShowWindowSource(options.ShowWindowSource);
+                ConfigureHost(host, options);
                 await host.AttachAsync(candidate, cancellationToken).ConfigureAwait(false);
                 await candidate.StartAsync(cancellationToken).ConfigureAwait(false);
                 server = candidate;
@@ -252,6 +317,16 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
                 if (candidate is not null)
                 {
                     await candidate.DisposeAsync().ConfigureAwait(false);
+                }
+                // Unix 套接字建不起来(/tmp/.X11-unix 归别的用户、属主不可信、建不了目录……)而 TCP 又没开:一种传输都没开起来。
+                // 照样起一个只经连接器喂流的服务端 —— SSH 的 X11 转发本来就不经本机端口;本机程序连不上,启动结果里带一条提示。
+                // 原先整个服务端起不来,连 SSH 的 X11 转发一并失败(不开 TCP 之后,macOS 上快速切换用户时第二个用户就会碰上)。
+                if (ex is IOException && listen && !ListensOnTcp(options))
+                {
+                    Trace.WriteLine($"[XServer] no local transport could be opened on :{display} ({ex.Message}); serving SSH forwarding only");
+                    listen = false;
+                    warning = Strings.Get("XServer_WarnLocalUnavailable");
+                    continue;
                 }
                 // 自动选号时,探测说空着的号在绑定时被占了(探测与绑定之间别的程序抢先了;或者别的服务端持着 /tmp/.X{N}-lock、
                 // 抽象名被占 —— 探测看不出来,服务端开的时候才知道):换下一个空闲的号再试。原先直接报「显示号被占用」。
@@ -270,11 +345,14 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
                 }
                 return XServerStartResult.Fail(ex is SocketException
                     ? Strings.Format("XServer_ErrDisplayInUse", display)
-                    : Strings.Format("XServer_ErrLaunch", ex.Message));
+                    : Strings.Format("XServer_ErrBuiltInStart", ex.Message));   // 原先用的是 VcXsrv 的那句(「无法启动 VcXsrv」)
             }
         }
 
-        PublishCookie(display, cookie);
+        if (listen)
+        {
+            PublishCookie(display, cookie);   // 什么都不听时本机程序用不上它
+        }
         lock (_stateLock)
         {
             _server = server;
@@ -284,9 +362,11 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
             _generation++;
         }
         host.GrabStallReported += OnGrabStallReported;
-        Trace.WriteLine($"[XServer] built-in server listening on :{display}");
+        Trace.WriteLine(listen
+            ? $"[XServer] built-in server listening on :{display}"
+            : $"[XServer] built-in server :{display} serving SSH forwarding only (no local transport)");
         RaiseStateChanged();
-        return XServerStartResult.Ok;
+        return warning is null ? XServerStartResult.Ok : new XServerStartResult(true, Warning: warning);
     }
 
     /// <inheritdoc />
@@ -333,17 +413,22 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         SetStopped();
     }
 
-    /// <summary>一个服务端的选项:共用的那个带 cookie、照常监听;按会话分出来的(<paramref name="cookie" /> 为 null)什么都不听,只经连接器喂流。</summary>
-    private static X11ServerOptions ServerOptions(AppXServerOptions options, int display, byte[]? cookie, string? label)
+    /// <summary>
+    /// 一个服务端的选项:共用的那个带 cookie、照常监听(<paramref name="listen" /> 为假时什么都不听:本机的传输一种都开不起来时退到这一步);
+    /// 按会话分出来的(<paramref name="cookie" /> 为 null)什么都不听,只经连接器喂流。
+    /// </summary>
+    private static X11ServerOptions ServerOptions(AppXServerOptions options, int display, byte[]? cookie, string? label, bool listen = true,
+        string? unixSocketPath = null)
     {
         // 窗口模式里除了多窗口与「无根」,其余几种(带框的大窗口、无框、全屏)都是单窗口模式(F13):整个桌面在一个窗口里,远端的窗口管理器接手。
         bool rootful = options.WindowMode is XServerWindowModes.Windowed or XServerWindowModes.NoDecoration or XServerWindowModes.Fullscreen;
+        listen &= cookie is not null;
         return new()
         {
             DisplayNumber = display,
             AuthorizationCookie = cookie,
-            ListenTcp = cookie is null ? false : ListensOnTcp(options),
-            UnixSocketPath = cookie is null ? "" : null,
+            ListenTcp = listen && ListensOnTcp(options),
+            UnixSocketPath = listen ? unixSocketPath : "",
             SyncClipboard = options.Clipboard,
             SyncPrimary = options.Clipboard && options.CopyOnSelection,
             RestrictForwardedClients = options.RestrictForwardedClients,
@@ -353,6 +438,24 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
             Rootful = rootful,
             Log = label is null ? static line => Trace.WriteLine($"[XServer] {line}") : line => Trace.WriteLine($"[XServer {label}] {line}"),
         };
+    }
+
+    /// <summary>
+    /// 设置里归宿主管的几项,附着之前交给它。共用的显示与按会话分出来的显示走同一处:原先会话的显示只给了键盘布局与窗口模式,
+    /// 每个会话一个新宿主,于是「X 窗口里用本机输入法」「标出 X 窗口的来源」关掉了在会话的显示上也照样开着。
+    /// </summary>
+    /// <remarks>「标出 X 窗口的来源」按此刻的值(运行中可以改,见 <see cref="OnSettingsSaved" />),其余按这次启动时的设置。</remarks>
+    private void ConfigureHost(IEmbeddedXServerHost host, AppXServerOptions options)
+    {
+        host.UseKeyboardLayout(options.KeyboardLayout);
+        host.UseWindowMode(options.WindowMode);
+        host.UseHostInputMethod(options.UseHostInputMethod);
+        bool showSource;
+        lock (_stateLock)
+        {
+            showSource = _showWindowSource;
+        }
+        host.ShowWindowSource(showSource);
     }
 
     /// <summary>
@@ -611,7 +714,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         }
         return server is null || display is null
             ? null
-            : new(XServerCommandLine.DisplayAddress(display.Value), Connector: ConnectAsync);
+            : new(AddressOf(server, display.Value), Connector: ConnectAsync);
     }
 
     /// <summary>一条直接接进服务端的双工流:一端交给服务端的 <see cref="X11Server.ServeAsync" />,另一端交给 SSH。</summary>
@@ -690,8 +793,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         X11Server server = new(ServerOptions(options, display, cookie: null, source.Label), host);
         try
         {
-            host.UseKeyboardLayout(options.KeyboardLayout);
-            host.UseWindowMode(options.WindowMode);
+            ConfigureHost(host, options);
             if (source.Label is { } label)
             {
                 host.UseSessionLabel(label);   // 单窗口模式下屏幕窗口的标题写上是哪个会话的桌面
@@ -710,13 +812,17 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         }
         SessionDisplay created = new(index, source.Label, server, host);
         host.GrabStallReported += OnGrabStallReported;   // 这个会话的显示上抓得太久也提示(F3)
+        // 单窗口模式下用户关掉这个会话的「X 桌面」窗口:只收掉这个会话的显示(原先一律停整个 X Server,别的会话一并断开)。
+        // 之后这个会话再开 X 程序时照常另建一个。
+        created.CloseRequested = (_, _) => _ = EndSessionDisplayAsync(key);
+        host.SessionDisplayCloseRequested += created.CloseRequested;
         Trace.WriteLine($"[XServer] per-session display #{index} for {source.Label}");
         // 会话已经断开时 Register 当场回调:照样收掉。
         created.Ended = source.SessionEnded.Register(() => _ = EndSessionDisplayAsync(key));
         return created;
     }
 
-    /// <summary>会话断开:收掉它的显示(停服时已经一并收掉的就什么都不做)。</summary>
+    /// <summary>会话断开(或用户关掉了它的屏幕窗口):收掉它的显示(停服时已经一并收掉的就什么都不做)。</summary>
     private async Task EndSessionDisplayAsync(object key)
     {
         Task<SessionDisplay>? session;
@@ -747,6 +853,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         }
         await display.Ended.DisposeAsync().ConfigureAwait(false);
         display.Host.GrabStallReported -= OnGrabStallReported;
+        display.Host.SessionDisplayCloseRequested -= display.CloseRequested;
         display.Host.Detach();
         await display.Server.DisposeAsync().ConfigureAwait(false);
         Trace.WriteLine($"[XServer] per-session display #{display.Index} for {display.Label} closed");
@@ -765,7 +872,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         try
         {
             // 服务端不拥有流:连接结束(客户端断开、服务端停下)后在这里释放,SSH 那一端随之读到 EOF。
-            // SSH 转发层已经核对过远端给的假 cookie:这条流不再查授权(服务端的 cookie 只给 TCP 上的本机程序)。
+            // SSH 转发层已经核对过远端给的假 cookie:这条流不再查授权(服务端的 cookie 给 TCP 与以别的用户身份连 Unix 套接字的本机程序)。
             // 没勾「受信任」的会话(ssh -X)以非受信级别连进去:服务端按 SECURITY 扩展的语义限制它。
             await server.ServeAuthenticatedAsync(stream, source.Label, source.Trusted ? XClientTrust.Trusted : XClientTrust.Untrusted)
                 .ConfigureAwait(false);
@@ -833,6 +940,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
         try
         {
             _disposed = true;
+            _settings.SettingsSaved -= OnSettingsSaved;
             await StopCoreAsync().ConfigureAwait(false);
         }
         finally

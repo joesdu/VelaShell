@@ -316,4 +316,24 @@ internal sealed class XTestClient : IAsyncDisposable
             // 收尾阶段的异常不关心。
         }
     }
+
+    /// <summary>断开,并等服务端把这条连接的收尾做完(资源销毁,或者按 SetCloseDownMode 留下)再返回。</summary>
+    /// <remarks>
+    /// 执行线程按客户端分队轮流之后,连接收尾排在这个客户端自己那条队里、在它还没执行的请求之后:ServeAsync 返回时它不一定做了,
+    /// 宿主那条队(InvokeAsync、GetClientsAsync)优先,别的客户端的请求也可能先轮到 —— 紧接着去看收尾之后的状态,偶尔看到的是收尾之前的
+    /// (慢的 CI 机器上红过:GlxTests「客户端断开时它的 Pbuffer 表面随之释放」在 macOS 上看到表面还在)。收尾在一个工作项里做完
+    /// (摘掉客户端、还 save-set、销毁或保留资源、通知各扩展),所以客户端清单里这个编号不再是连着的客户端,就说明收尾做完了。
+    /// </remarks>
+    public async Task DisconnectAsync(X11Server server)
+    {
+        int index = (int)(ResourceBase >> 21);   // 资源 ID 的基数是客户端编号左移 21 位(XClient)
+        Task serving = ServerTask;
+        await DisposeAsync();
+        await serving.WaitAsync(TimeSpan.FromSeconds(3));
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+        while ((await server.GetClientsAsync()).Any(c => c.Id == index && !c.Retained))
+        {
+            await Task.Delay(10, timeout.Token);
+        }
+    }
 }

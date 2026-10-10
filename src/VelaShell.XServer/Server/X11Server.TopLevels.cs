@@ -132,14 +132,24 @@ public sealed partial class X11Server
             TransientFor = transientFor,
             SupportsDeleteWindow = SupportsProtocol(top, _wmDeleteWindowAtom),
             ClientId = top.Owner?.Index ?? 0,
-            ClientLabel = top.Owner?.Label,
-            HasAlpha = top.Depth == 32,
+            // 托盘图标的嵌入窗口是服务端的,来源取停靠进来的那个图标所属的连接(宿主据此在提示里标出来源)。
+            ClientLabel = top.Owner?.Label ?? TrayIconOwnerLabel(top),
+            HasAlpha = HasAlphaOnHost(top),
             InputOnly = top.IsInputOnly,
             Shape = shape,
             InputShape = inputShape,
         };
         return ReadWindowManagerHints(top, snapshot, hasTransientFor: transientId != 0);
     }
+
+    /// <summary>
+    /// 宿主按逐像素透明显示这个顶层吗:深度 32(ARGB 视觉)的窗口,而且服务端在当合成管理器(<see cref="X11ServerOptions.CompositingManager" />,
+    /// 单窗口模式下不当)—— 没有合成管理器时 X 显示 ARGB 窗口不看 alpha。原先只看深度:设置关着(默认)时,要了 8 位 alpha 的 GL 程序
+    /// (GLFW 默认就要,只拿得到 ARGB 视觉)清屏的 alpha 是 0,整个窗口透出后面的东西,还白付了系统合成的开销。
+    /// 托盘图标例外:托盘管理器就是服务端自己,ARGB 图标本来就是要透明的。
+    /// </summary>
+    private bool HasAlphaOnHost(XWindow top) =>
+        top.Depth == 32 && (IsTrayEmbedder(top) || (_options.CompositingManager && !Rootful));
 
     /// <summary>两份快照之间哪几组字段不同;不属于前几组的字段一律算 <see cref="XTopLevelChanges.Hints" />。</summary>
     private static XTopLevelChanges Diff(XTopLevelSnapshot a, XTopLevelSnapshot b)

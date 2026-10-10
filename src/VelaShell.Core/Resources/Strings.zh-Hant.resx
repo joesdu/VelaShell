@@ -6057,6 +6057,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SetXServer_BuiltInNote" xml:space="preserve">
     <value>每個 X 視窗都是一個獨立的原生視窗。SSH 的 X11 轉送直接接進內建伺服器,不經本機連接埠;本機其他 X 程式照樣可以用 DISPLAY=localhost:N 連線 —— 每次啟動產生新的授權 cookie、寫進 ~/.Xauthority(停止時撤出),讀不到它的程式連不進來。</value>
   </data>
+  <data name="SetXServer_BuiltInNoteUnix" xml:space="preserve">
+    <value>每個 X 視窗都是一個獨立的原生視窗。SSH 的 X11 轉送直接接進內建伺服器,不經本機連接埠;本機其他 X 程式以 DISPLAY=:N 經 Unix 通訊端連線,只有你這個使用者連得進來。每次啟動還會產生新的授權 cookie、寫進 ~/.Xauthority(停止時撤出),給以其他使用者身分執行、或經可選的 TCP 連接埠連進來的程式使用。</value>
+  </data>
   <data name="SetXServer_Engine" xml:space="preserve">
     <value>X 伺服器</value>
   </data>
@@ -6108,6 +6111,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SetXServer_DisplayNumberDesc" xml:space="preserve">
     <value>即 DISPLAY=localhost:N 中的 N(TCP 連接埠 6000+N)。自動 = 挑第一個空閒的,已在執行的 X 伺服器占用的編號會跳過。</value>
   </data>
+  <data name="SetXServer_DisplayNumberDescUnix" xml:space="preserve">
+    <value>即 DISPLAY=:N 中的 N(Unix 通訊端 /tmp/.X11-unix/XN;開啟「也開啟 TCP 連接埠」時還有 TCP 連接埠 6000+N)。自動 = 挑第一個空閒的,已在執行的 X 伺服器占用的編號會跳過。</value>
+  </data>
   <data name="SetXServer_DisplayAuto" xml:space="preserve">
     <value>自動</value>
   </data>
@@ -6150,6 +6156,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SetXServer_SectionKeyboard" xml:space="preserve">
     <value>鍵盤</value>
   </data>
+  <data name="SetXServer_SectionSecurity" xml:space="preserve">
+    <value>安全性</value>
+  </data>
   <data name="SetXServer_KeyboardLayout" xml:space="preserve">
     <value>鍵盤配置</value>
   </data>
@@ -6178,19 +6187,19 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>X 視窗透明與圓角</value>
   </data>
   <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
-    <value>告訴 X 程式有合成管理器:GTK 的圓角、Qt / Electron 的半透明視窗真正透明。預設關閉,因為半透明視窗要系統多合成一層。重新啟動 X Server 後生效。</value>
+    <value>告訴 X 程式有合成管理器:GTK 的圓角、Qt / Electron 的半透明視窗真正透明。預設關閉,因為半透明視窗要系統多合成一層;關閉時它們以不透明顯示。單視窗模式下不起作用。重新啟動 X Server 後生效。</value>
   </data>
   <data name="SetXServer_ShowSource" xml:space="preserve">
     <value>標出 X 視窗的來源</value>
   </data>
   <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
-    <value>經 SSH 轉送來的 X 視窗在標題前寫上來源(使用者@主機:連接埠):幾台主機的視窗分得清,遠端程式也冒充不了本機視窗。本機的程式不標。對之後開啟的視窗生效。</value>
+    <value>經 SSH 轉送來的 X 視窗在標題前寫上來源(使用者@主機:連接埠),工作列與系統匣圖示的提示裡也有:幾台主機的視窗分得清,遠端視窗冒充本機程式也容易認出來。自行繪製標題列的視窗只在工作列上看得到。本機的程式不標。立即生效。</value>
   </data>
   <data name="SetXServer_ListenTcp" xml:space="preserve">
     <value>也開啟 TCP 連接埠</value>
   </data>
   <data name="SetXServer_ListenTcpDesc" xml:space="preserve">
-    <value>除了 Unix 通訊端,再開啟 6000+N 連接埠(需要 cookie)。只有經網路連線的程式(例如容器裡的)才需要;SSH 轉送與本機程式(DISPLAY=:N)用不到。重新啟動 X Server 後生效。</value>
+    <value>除了 Unix 通訊端,再在 127.0.0.1 上開啟 6000+N 連接埠(需要 cookie)。只有經 TCP 連線本機迴路位址的程式才需要,例如使用主機網路的容器;橋接網路裡的容器連不到它 —— Linux 上把 /tmp/.X11-unix 掛進容器、使用 DISPLAY=:N。SSH 轉送與本機程式(DISPLAY=:N)用不到。重新啟動 X Server 後生效。</value>
   </data>
   <data name="XServer_WindowTitleWithSource" xml:space="preserve">
     <value>{0} — {1}</value>
@@ -6291,6 +6300,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="XServer_ErrLaunch" xml:space="preserve">
     <value>無法啟動 VcXsrv:{0}</value>
   </data>
+  <data name="XServer_ErrBuiltInStart" xml:space="preserve">
+    <value>無法啟動內建 X Server:{0}</value>
+  </data>
   <data name="XServer_ErrExited" xml:space="preserve">
     <value>VcXsrv 在啟動過程中結束了(結束代碼 {0})。記錄檔:{1}</value>
   </data>
@@ -6302,6 +6314,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="XServer_Started" xml:space="preserve">
     <value>X Server 已啟動:{0}</value>
+  </data>
+  <data name="XServer_WarnLocalUnavailable" xml:space="preserve">
+    <value>X Server 已經啟動,但本機的 X 程式連不上它:/tmp/.X11-unix 裡的 Unix 通訊端建立不起來(原因見記錄檔)。SSH 的 X11 轉送照常可用;開啟「也開啟 TCP 連接埠」後本機程式可以用 DISPLAY=localhost:N 連線。</value>
   </data>
   <data name="XServer_StartFailed" xml:space="preserve">
     <value>X Server 啟動失敗:{0}</value>
@@ -6332,6 +6347,12 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="XServer_StopConfirmMessage" xml:space="preserve">
     <value>停止 X Server 會中斷 {0} 個 X 程式的連線，它們的視窗會全部關閉，未儲存的內容會遺失。</value>
+  </data>
+  <data name="XServer_CloseDesktopConfirmTitle" xml:space="preserve">
+    <value>關閉 X 桌面</value>
+  </data>
+  <data name="XServer_CloseDesktopConfirmMessage" xml:space="preserve">
+    <value>關掉 {0} 的 X 桌面會中斷它的 {1} 個 X 程式的連線，它們的視窗會全部關閉，未儲存的內容會遺失。其他工作階段的 X 程式不受影響。</value>
   </data>
   <data name="XServer_Stop" xml:space="preserve">
     <value>停止</value>

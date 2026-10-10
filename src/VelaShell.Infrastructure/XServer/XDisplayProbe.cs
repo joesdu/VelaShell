@@ -88,10 +88,47 @@ internal static partial class XDisplayProbe
     /// <summary>探测一个端口有没有人听的上限。环回上连不上是立刻被拒,这个数只防意外。</summary>
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromMilliseconds(300);
 
-    /// <summary>TCP 与 Unix 套接字任何一处有人在听即为占用。</summary>
+    /// <summary>TCP 与 Unix 套接字任何一处有人在听,或者(类 Unix 上)显示号锁由一个活着的进程持着,即为占用。</summary>
     public static async Task<bool> IsInUseAsync(int display, CancellationToken cancellationToken) =>
-        await IsTcpListeningAsync(display, cancellationToken).ConfigureAwait(false)
+        IsDisplayLocked(display)
+        || await IsTcpListeningAsync(display, cancellationToken).ConfigureAwait(false)
         || await IsUnixSocketLiveAsync(display, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// 类 Unix 上 <c>/tmp/.X{N}-lock</c>(Xserver(1) 的约定:里面是持有者的进程号)在、持有者还活着或者读不出是谁:这个号有人用。
+    /// 只开 TCP、只开抽象名的服务端、<c>xvfb-run</c> 占着的号,套接字探测都看不出来 —— 原先自动选号挑中它,开的时候才撞上、再换号,至多换 4 次。
+    /// 持有者已经不在的(崩溃留下的)不算,服务端开的时候会收回。
+    /// </summary>
+    internal static bool IsDisplayLocked(int display, string lockDirectory = "/tmp")
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+        string path = Path.Combine(lockDirectory, $".X{display}-lock");
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return false;
+            }
+            if (!int.TryParse(File.ReadAllText(path).Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int pid)
+                || pid <= 0)
+            {
+                return true;   // 读不出是谁持着:当作有人用
+            }
+            using System.Diagnostics.Process holder = System.Diagnostics.Process.GetProcessById(pid);
+            return !holder.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;   // 没有这个进程:崩溃留下的锁
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return true;
+        }
+    }
 
     /// <summary>环回上 <c>6000+N</c> 有没有人在听。</summary>
     public static async Task<bool> IsTcpListeningAsync(int display, CancellationToken cancellationToken)

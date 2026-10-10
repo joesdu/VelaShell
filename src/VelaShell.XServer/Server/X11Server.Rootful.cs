@@ -224,8 +224,8 @@ public sealed partial class X11Server
 
     /// <summary>
     /// 把根坐标里的 <paramref name="area" /> 重新拼进屏幕缓冲:先铺根窗口的背景(像素图按根窗口原点平铺,没有背景是黑的),
-    /// 再从下往上画映射着的顶层 —— 边框(边框像素图按窗口内区原点平铺)与内区,按边界形状裁;带 alpha 的(深度 32)按预乘 over 叠上去。
-    /// 拿着像素锁时调。
+    /// 再从下往上画映射着的顶层 —— 边框(边框像素图按窗口内区原点平铺)与内区,按边界形状裁;深度 32 的在有合成管理器时按预乘 over 叠上去,
+    /// 没有时与别的窗口一样整块盖上(X 不看 alpha)。拿着像素锁时调。
     /// </summary>
     private void ComposeScreen(XRect area)
     {
@@ -235,6 +235,7 @@ public sealed partial class X11Server
         {
             return;
         }
+        bool compositorPresent = _selections.ContainsKey(new SelectionSlot(Intern("_NET_WM_CM_S0"), null));
         uint[] pixels = screen.Pixels;
         int stride = screen.Width;
         PixelBuffer? backgroundTile = Root.BackgroundTile?.Buffer;
@@ -266,7 +267,8 @@ public sealed partial class X11Server
             }
             // 内区里只有缓冲覆盖到的部分有像素(被 PixelBuffer.MaxPixels 削掉的行、缩放之后还没换的缓冲之外是黑的)。
             XRect inner = new(ix, iy, Math.Min(top.Width, buffer.Width), Math.Min(top.Height, buffer.Height));
-            bool alpha = top.Depth == 32;
+            // ARGB 窗口只在有合成管理器(远端的合成器占着 _NET_WM_CM_S0)时按 alpha 叠;没有时 X 显示它不看 alpha。
+            bool alpha = top.Depth == 32 && compositorPresent;
             PixelBuffer? borderTile = bw > 0 ? top.BorderTile?.Buffer : null;
             IReadOnlyList<XRect> pieces = top.BoundingShape is { } shape
                 ? shape.Clone().Translate(ix, iy).Intersect(outer).Rects

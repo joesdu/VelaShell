@@ -5598,6 +5598,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetXServer_BuiltInNote" xml:space="preserve">
     <value>X のウィンドウはそれぞれ独立したネイティブウィンドウになります。SSH の X11 転送はローカルのポートを経由せず内蔵サーバーに直接つながります。ほかのローカルの X プログラムも DISPLAY=localhost:N で接続できます。起動のたびに新しい認証 cookie を ~/.Xauthority に書き込み(停止時に削除)、それを読めないプログラムは接続できません。</value>
   </data>
+  <data name="SetXServer_BuiltInNoteUnix" xml:space="preserve">
+    <value>X のウィンドウはそれぞれ独立したネイティブウィンドウになります。SSH の X11 転送はローカルのポートを経由せず内蔵サーバーに直接つながります。ほかのローカルの X プログラムは DISPLAY=:N で Unix ソケット経由で接続し、接続できるのはあなたのユーザーだけです。起動のたびに新しい認証 cookie も ~/.Xauthority に書き込み(停止時に削除)、別のユーザーとして動くプログラムや任意の TCP ポート経由で接続するプログラムが使います。</value>
+  </data>
   <data name="SetXServer_Engine" xml:space="preserve">
     <value>X サーバー</value>
   </data>
@@ -5649,6 +5652,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetXServer_DisplayNumberDesc" xml:space="preserve">
     <value>DISPLAY=localhost:N の N(TCP ポート 6000+N)。自動にすると、実行中の X サーバーが使っている番号を避けて最初の空き番号を選びます。</value>
   </data>
+  <data name="SetXServer_DisplayNumberDescUnix" xml:space="preserve">
+    <value>DISPLAY=:N の N(Unix ソケット /tmp/.X11-unix/XN。「TCP ポートでも待ち受ける」をオンにしたときだけ TCP ポート 6000+N も)。自動にすると、実行中の X サーバーが使っている番号を避けて最初の空き番号を選びます。</value>
+  </data>
   <data name="SetXServer_DisplayAuto" xml:space="preserve">
     <value>自動</value>
   </data>
@@ -5691,6 +5697,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetXServer_SectionKeyboard" xml:space="preserve">
     <value>キーボード</value>
   </data>
+  <data name="SetXServer_SectionSecurity" xml:space="preserve">
+    <value>セキュリティ</value>
+  </data>
   <data name="SetXServer_KeyboardLayout" xml:space="preserve">
     <value>キーボードレイアウト</value>
   </data>
@@ -5719,19 +5728,19 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>X ウィンドウの透過と角丸</value>
   </data>
   <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
-    <value>X プログラムにコンポジットマネージャーがあると伝え、GTK の角丸や Qt・Electron の半透明ウィンドウを実際に透過させます。半透明ウィンドウはシステムの合成処理が増えるため、既定ではオフです。X Server の再起動後に反映されます。</value>
+    <value>X プログラムにコンポジットマネージャーがあると伝え、GTK の角丸や Qt・Electron の半透明ウィンドウを実際に透過させます。半透明ウィンドウはシステムの合成処理が増えるため、既定ではオフです。オフの間は不透明で表示されます。単一ウィンドウのモードでは効果がありません。X Server の再起動後に反映されます。</value>
   </data>
   <data name="SetXServer_ShowSource" xml:space="preserve">
     <value>X ウィンドウの接続元を表示</value>
   </data>
   <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
-    <value>SSH 経由で転送された X ウィンドウのタイトルの前に接続元(ユーザー@ホスト:ポート)を付けます。複数のホストのウィンドウを見分けられ、リモートのプログラムがローカルのウィンドウを装うこともできません。このコンピューター上のプログラムには付きません。以後に開いたウィンドウに適用されます。</value>
+    <value>SSH 経由で転送された X ウィンドウのタイトルの前に接続元(ユーザー@ホスト:ポート)を付けます。タスクバーやトレイアイコンのヒントにも付きます。複数のホストのウィンドウを見分けられ、ローカルのウィンドウを装うリモートのウィンドウにも気づきやすくなります。タイトルバーを自分で描くウィンドウではタスクバーにだけ表示されます。このコンピューター上のプログラムには付きません。すぐに反映されます。</value>
   </data>
   <data name="SetXServer_ListenTcp" xml:space="preserve">
     <value>TCP ポートでも待ち受ける</value>
   </data>
   <data name="SetXServer_ListenTcpDesc" xml:space="preserve">
-    <value>Unix ソケットに加えて 6000+N ポートを開きます(cookie が必要です)。コンテナ内など、ネットワーク経由で接続するプログラムにだけ必要です。SSH 転送とこのコンピューター上のプログラム(DISPLAY=:N)には不要です。X Server の再起動後に反映されます。</value>
+    <value>Unix ソケットに加えて、127.0.0.1 で 6000+N ポートを開きます(cookie が必要です)。このコンピューターのループバックに TCP で接続するプログラム(ホストネットワークを使うコンテナなど)にだけ必要です。ブリッジネットワーク上のコンテナからは届かないため、Linux ではコンテナに /tmp/.X11-unix をマウントして DISPLAY=:N を使ってください。SSH 転送とこのコンピューター上のプログラム(DISPLAY=:N)には不要です。X Server の再起動後に反映されます。</value>
   </data>
   <data name="XServer_WindowTitleWithSource" xml:space="preserve">
     <value>{0} — {1}</value>
@@ -5832,6 +5841,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="XServer_ErrLaunch" xml:space="preserve">
     <value>VcXsrv を起動できませんでした: {0}</value>
   </data>
+  <data name="XServer_ErrBuiltInStart" xml:space="preserve">
+    <value>内蔵 X Server を起動できませんでした: {0}</value>
+  </data>
   <data name="XServer_ErrExited" xml:space="preserve">
     <value>VcXsrv が起動中に終了しました(終了コード {0})。ログ: {1}</value>
   </data>
@@ -5843,6 +5855,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="XServer_Started" xml:space="preserve">
     <value>X Server を起動しました: {0}</value>
+  </data>
+  <data name="XServer_WarnLocalUnavailable" xml:space="preserve">
+    <value>X Server は起動しましたが、このコンピューター上のプログラムからは接続できません。/tmp/.X11-unix に Unix ソケットを作成できませんでした(詳細はログを参照)。SSH の X11 転送は通常どおり使えます。「TCP ポートでも待ち受ける」をオンにすると、ローカルのプログラムは DISPLAY=localhost:N で接続できます。</value>
   </data>
   <data name="XServer_StartFailed" xml:space="preserve">
     <value>X Server を起動できませんでした: {0}</value>
@@ -5873,6 +5888,12 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="XServer_StopConfirmMessage" xml:space="preserve">
     <value>X Server を停止すると {0} 個の X プログラムの接続が切断され、そのウィンドウはすべて閉じられます。保存していない内容は失われます。</value>
+  </data>
+  <data name="XServer_CloseDesktopConfirmTitle" xml:space="preserve">
+    <value>X デスクトップを閉じる</value>
+  </data>
+  <data name="XServer_CloseDesktopConfirmMessage" xml:space="preserve">
+    <value>{0} の X デスクトップを閉じると、その {1} 個の X プログラムの接続が切断され、そのウィンドウはすべて閉じられます。保存していない内容は失われます。ほかのセッションの X プログラムには影響しません。</value>
   </data>
   <data name="XServer_Stop" xml:space="preserve">
     <value>停止</value>

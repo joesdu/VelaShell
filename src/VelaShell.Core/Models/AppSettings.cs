@@ -1559,8 +1559,9 @@ public class XServerOptions : ObservableOptions
     }
 
     /// <summary>
-    /// 内置 X Server:经 SSH 转发来的 X 窗口在标题(以及任务栏)前标出来源(<c>用户@主机:端口</c>)—— 同时转发几台主机时分得清,
-    /// 远端程序画一个像本机凭据框的窗口也露馅。本机直接连的程序不标。默认开,新开的窗口生效。
+    /// 内置 X Server:经 SSH 转发来的 X 窗口在标题(以及任务栏、托盘图标的提示)前标出来源(<c>用户@主机:端口</c>)—— 同时转发几台主机时分得清,
+    /// 远端程序画一个像本机凭据框的窗口也容易露馅(自己画标题栏的窗口只在任务栏上看得到)。本机直接连的程序不标。默认开,立即生效
+    /// (运行中改了,开着的窗口当场改标题)。
     /// </summary>
     public bool ShowWindowSource
     {
@@ -1569,9 +1570,10 @@ public class XServerOptions : ObservableOptions
     } = true;
 
     /// <summary>
-    /// 内置 X Server 在 Linux / macOS 上也开 TCP 端口(<c>6000+N</c>,要 cookie)。默认关:SSH 转发走进程内的连接器,本机程序走
-    /// Unix 套接字(<c>DISPLAY=:N</c>,MIT-SHM 也能用),TCP 端口只是多一个本机别的进程、别的用户够得着的入口。容器里经网络连的程序
-    /// 才需要打开。Windows 上没有 Unix 套接字的 X 程序,TCP 一直开着,这一项不起作用。重启 X Server 后生效。
+    /// 内置 X Server 在 Linux / macOS 上也开 TCP 端口(<c>127.0.0.1:6000+N</c>,要 cookie)。默认关:SSH 转发走进程内的连接器,本机程序走
+    /// Unix 套接字(<c>DISPLAY=:N</c>,MIT-SHM 也能用),TCP 端口只是多一个本机别的进程、别的用户够得着的入口。经 TCP 连本机环回地址的程序
+    /// (用主机网络的容器)才需要打开;桥接网络里的容器连不到环回地址,Linux 上把 <c>/tmp/.X11-unix</c> 挂进去用 <c>DISPLAY=:N</c>。
+    /// Windows 上没有 Unix 套接字的 X 程序,TCP 一直开着,这一项不起作用。重启 X Server 后生效。
     /// </summary>
     public bool ListenTcpOnUnix
     {

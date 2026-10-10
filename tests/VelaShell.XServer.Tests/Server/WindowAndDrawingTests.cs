@@ -560,9 +560,7 @@ public sealed class WindowAndDrawingTests
         await c.SendAsync(18, 0, b => b.U32(win).U32(protocols).U32(4).U8(32).U8(0).U8(0).U8(0).U32(1).U32(delete));
         await c.SendAsync(112, 1, _ => { });   // SetCloseDownMode(RetainPermanent)
         await c.SyncAsync();
-        Task serving = c.ServerTask;
-        await c.DisposeAsync();
-        await serving.WaitAsync(TimeSpan.FromSeconds(3));
+        await c.DisconnectAsync(server);
         Assert.IsTrue((await server.GetClientsAsync()).Single().Retained);
 
         // 原先:WM_DELETE_WINDOW 发给已经关掉的连接被丢弃,窗口成了关不掉的僵尸。

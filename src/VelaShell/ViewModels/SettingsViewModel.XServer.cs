@@ -38,6 +38,20 @@ public partial class SettingsViewModel
     public bool XServerTcpSelectable { get; } = !OperatingSystem.IsWindows();
 
     /// <summary>
+    /// 选内置引擎时的说明。本机程序怎么连按平台不同:Windows 上是 <c>DISPLAY=localhost:N</c>(TCP);Linux / macOS 上是 <c>DISPLAY=:N</c>
+    /// (Unix 套接字,TCP 端口默认不开)—— 原先一律写 localhost:N,照着做的 Linux 用户连不上。
+    /// </summary>
+    public string XServerBuiltInNote { get; private set; } = BuiltInNote();
+
+    private static string BuiltInNote() => Strings.Get(OperatingSystem.IsWindows() ? "SetXServer_BuiltInNote" : "SetXServer_BuiltInNoteUnix");
+
+    /// <summary>显示号一行的说明(同 <see cref="XServerBuiltInNote" />,按平台写 DISPLAY 的形式)。</summary>
+    public string XServerDisplayNumberDesc { get; private set; } = DisplayNumberDesc();
+
+    private static string DisplayNumberDesc() =>
+        Strings.Get(OperatingSystem.IsWindows() ? "SetXServer_DisplayNumberDesc" : "SetXServer_DisplayNumberDescUnix");
+
+    /// <summary>
     /// 键盘布局下拉:首项「自动」(不传 <c>-xkblayout</c>,VcXsrv 跟随 Windows 当前布局),其后是常用 XKB 布局。
     /// </summary>
     /// <remarks>
@@ -262,6 +276,10 @@ public partial class SettingsViewModel
         this.RaisePropertyChanged(nameof(XServerDisplayNumberIndex));
         this.RaisePropertyChanged(nameof(XServerDetectionText));
         this.RaisePropertyChanged(nameof(XServerCommandPreview));
+        XServerBuiltInNote = BuiltInNote();
+        XServerDisplayNumberDesc = DisplayNumberDesc();
+        this.RaisePropertyChanged(nameof(XServerBuiltInNote));
+        this.RaisePropertyChanged(nameof(XServerDisplayNumberDesc));
     }
 
     private static int IndexOf(IReadOnlyList<string> values, string value)

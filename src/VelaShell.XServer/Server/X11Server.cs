@@ -504,7 +504,7 @@ public sealed partial class X11Server : IAsyncDisposable
         {
             throw new ArgumentException("自动重复只有按下,没有松开。", nameof(repeat));
         }
-        Post(null, () => ApplyKey(keycode, pressed, repeat));
+        Post(null, () => ApplyInjectedKey(keycode, pressed, repeat));   // 前面还有没输入完的字(InjectText)时排在它们后面
     }
 
     /// <summary><see cref="InjectText" /> 一次至多这么多 UTF-16 码元(输入法一次上屏的字远少于此)。</summary>
@@ -512,8 +512,10 @@ public sealed partial class X11Server : IAsyncDisposable
 
     /// <summary>
     /// 输入一串字(宿主的输入法组好、上屏的文字):送往当前的键盘焦点,与用户在 X 窗口里按键一样。X 程序只认键码,每个字找一个空着的键码、
-    /// 把它的键值改成这个字的 Unicode 键值再按下松开(客户端各收到一次 MappingNotify);键位表里本来就有、不按修饰键就打得出来的字直接按那个键。
-    /// 远端不用装输入法框架,所有工具包都能收到;没有预编辑,候选框由本机的输入法自己显示。换行按 Return、制表按 Tab,其余控制字符不输入。
+    /// 把它的键值改成这个字的 Unicode 键值再按下松开(一段字里新借的键码一起改、客户端收到一次 MappingNotify);键位表里本来就有、
+    /// 不按修饰键就打得出来的字直接按那个键。空键码用完时挪用空闲够久的,挪不了就等:等的时候后来的 <see cref="InjectText" /> 与
+    /// <see cref="InjectKey(byte, bool, bool)" /> 排在后面,顺序不乱。远端不用装输入法框架,所有工具包都能收到;没有预编辑,候选框由本机的输入法自己显示。
+    /// 换行(CR LF 算一个)按 Return、制表按 Tab,其余控制字符不输入。
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="text" /> 超过 <see cref="MaxInjectedTextLength" /> 个 UTF-16 码元。</exception>
     public void InjectText(string text)
@@ -525,7 +527,7 @@ public sealed partial class X11Server : IAsyncDisposable
         }
         if (text.Length != 0)
         {
-            Post(null, () => ApplyInjectText(text, 0));
+            Post(null, () => ApplyInjectText(text));
         }
     }
 

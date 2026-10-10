@@ -16,7 +16,8 @@ public enum XServerState
 /// <summary>一次启动的结果。</summary>
 /// <param name="Success">是否已在运行(包括调用前就已在运行)。</param>
 /// <param name="Error">失败原因(已本地化,可直接给人看);成功时为 <see langword="null" />。</param>
-public sealed record XServerStartResult(bool Success, string? Error = null)
+/// <param name="Warning">开起来了,但有一部分没开成(已本地化,比如本机程序连不上、SSH 转发照常):界面提示一下;没有为 <see langword="null" />。</param>
+public sealed record XServerStartResult(bool Success, string? Error = null, string? Warning = null)
 {
     /// <summary>成功。</summary>
     public static XServerStartResult Ok { get; } = new(true);

@@ -101,6 +101,24 @@ public class LocalXServerSelectorTests
         await Assert.ThrowsAsync<IOException>(async () => await LocalXServerSelector.ConnectTcpAsync(display + 1, CancellationToken.None));
     }
 
+    /// <summary>
+    /// 没有 VcXsrv 的平台(Linux / macOS):内置引擎停了,老会话的 x11 通道不退到本机 TCP —— 环回 6000+N 上不会是我们的服务端,
+    /// 只可能是别的用户的、或者 sshd 自己的 X11 转发端口。按「本机显示连不上」报。
+    /// </summary>
+    [TestMethod]
+    public async Task BuiltInConnector_DoesNotFallBackToTcp_WhereThereIsNoVcXsrv()
+    {
+        ILocalXServer builtIn = Engine(), vcXsrv = Engine(supported: false);
+        builtIn.State.Returns(XServerState.Running);
+        builtIn.ResolveForwardingDisplayAsync(Arg.Any<CancellationToken>()).Returns(new XServerDisplayResolution(
+            ":10", Connector: (_, _) => throw new InvalidOperationException("The built-in X server is not running.")));
+        LocalXServerSelector selector = new(Settings(XServerEngines.BuiltIn), builtIn, vcXsrv);
+        XServerDisplayResolution resolution = await selector.ResolveForwardingDisplayAsync();
+        builtIn.State.Returns(XServerState.Stopped);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None));
+    }
+
     [TestMethod]
     public void StateChanged_IsForwardedFromBothEngines_AndOnEngineChange()
     {
