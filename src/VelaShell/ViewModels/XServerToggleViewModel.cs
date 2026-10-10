@@ -177,6 +177,10 @@ public sealed class XServerToggleViewModel : ReactiveObject
             {
                 _toasts.Info(Strings.Format("XServer_Started", display));
             }
+            if (result.Warning is { } warning)
+            {
+                _toasts.Warning(warning);   // 开起来了但有一部分没开成(本机程序连不上之类)
+            }
             return;
         }
 

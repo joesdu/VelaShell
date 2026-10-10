@@ -6,8 +6,8 @@
              x:DataType="vm:SettingsViewModel">
 
   <!-- X Server 页。最前面一节选引擎:内置的 X 服务端(默认,各平台可用)或 Windows 上用户自己装的 VcXsrv。
-       两者共用显示号、剪贴板、键盘布局、启动;其余各节(程序、窗口模式、键盘型号、扩展、高级、托盘图标)只对 VcXsrv 起作用,
-       选了 VcXsrv 才出现。VcXsrv 那几节的分组参照 WindTerm 的「X Server」设置,「程序」摆最前 ——
+       两者共用显示号、窗口模式、剪贴板、键盘布局、启动;只有内置引擎做得到的(X 窗口的外观、本机输入法、「安全」一节)选了内置才出现;
+       其余各节(程序、键盘型号、扩展、高级、托盘图标)只对 VcXsrv 起作用,选了 VcXsrv 才出现。VcXsrv 那几节的分组参照 WindTerm 的「X Server」设置,「程序」摆最前 ——
        我们不捆绑 VcXsrv,装在哪、找没找到必须先看见。改动在下一次启动 X Server 时生效(副标题里说清)。 -->
 
   <UserControl.Styles>
@@ -51,7 +51,7 @@
         </Grid>
       </StackPanel>
       <Border Classes="note" IsVisible="{Binding XServerUsesBuiltIn}">
-        <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_BuiltInNote}" />
+        <TextBlock Classes="row-desc" Text="{Binding XServerBuiltInNote}" />
       </Border>
 
       <Border Classes="sep" />
@@ -89,7 +89,7 @@
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Spacing="2" Margin="0,0,16,0">
           <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_DisplayNumber}" />
-          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_DisplayNumberDesc}" />
+          <TextBlock Classes="row-desc" Text="{Binding XServerDisplayNumberDesc}" />
         </StackPanel>
         <ComboBox Grid.Column="1" Width="220" x:Name="DisplayNumberCombo"
                   ItemsSource="{Binding XServerDisplayNumbers}"
@@ -109,6 +109,23 @@
           <ComboBoxItem Content="{loc:Localize SetXServer_ModeFullscreen}" />
           <ComboBoxItem Content="{loc:Localize SetXServer_ModeRootless}" />
         </ComboBox>
+      </Grid>
+      <!-- X 窗口的外观(只有内置引擎):透明与圆角(当合成管理器)、标题前标出来源。 -->
+      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding XServerUsesBuiltIn}">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_CompositingManager}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_CompositingManagerDesc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" x:Name="CompositingManagerToggle"
+                      IsChecked="{Binding XServer.CompositingManager}" VerticalAlignment="Center" />
+      </Grid>
+      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding XServerUsesBuiltIn}">
+        <StackPanel Spacing="2" Margin="0,0,16,0">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_ShowSource}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_ShowSourceDesc}" />
+        </StackPanel>
+        <ToggleSwitch Grid.Column="1" x:Name="ShowSourceToggle"
+                      IsChecked="{Binding XServer.ShowWindowSource}" VerticalAlignment="Center" />
       </Grid>
 
       <Border Classes="sep" />
@@ -152,24 +169,6 @@
           </ComboBox.ItemTemplate>
         </ComboBox>
       </Grid>
-      <!-- 限制经 SSH 转发来的程序:只有内置引擎能按连接区分。 -->
-      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !XServerUsesVcXsrv}">
-        <StackPanel Spacing="2" Margin="0,0,16,0">
-          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_RestrictForwarded}" />
-          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_RestrictForwardedDesc}" />
-        </StackPanel>
-        <ToggleSwitch Grid.Column="1" x:Name="RestrictForwardedToggle"
-                      IsChecked="{Binding XServer.RestrictForwardedClients}" VerticalAlignment="Center" />
-      </Grid>
-      <!-- 每个 SSH 会话一个显示:同样只有内置引擎做得到(VcXsrv 是一个外部进程、一个显示)。 -->
-      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !XServerUsesVcXsrv}">
-        <StackPanel Spacing="2" Margin="0,0,16,0">
-          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_DisplayPerSession}" />
-          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_DisplayPerSessionDesc}" />
-        </StackPanel>
-        <ToggleSwitch Grid.Column="1" x:Name="DisplayPerSessionToggle"
-                      IsChecked="{Binding XServer.DisplayPerSession}" VerticalAlignment="Center" />
-      </Grid>
       <!-- 本机输入法:只有内置引擎做得到。 -->
       <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !XServerUsesVcXsrv}">
         <StackPanel Spacing="2" Margin="0,0,16,0">
@@ -179,30 +178,37 @@
         <ToggleSwitch Grid.Column="1" x:Name="HostInputMethodToggle"
                       IsChecked="{Binding XServer.UseHostInputMethod}" VerticalAlignment="Center" />
       </Grid>
-      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !XServerUsesVcXsrv}">
-        <StackPanel Spacing="2" Margin="0,0,16,0">
-          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_CompositingManager}" />
-          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_CompositingManagerDesc}" />
-        </StackPanel>
-        <ToggleSwitch Grid.Column="1" x:Name="CompositingManagerToggle"
-                      IsChecked="{Binding XServer.CompositingManager}" VerticalAlignment="Center" />
-      </Grid>
-      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !XServerUsesVcXsrv}">
-        <StackPanel Spacing="2" Margin="0,0,16,0">
-          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_ShowSource}" />
-          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_ShowSourceDesc}" />
-        </StackPanel>
-        <ToggleSwitch Grid.Column="1" x:Name="ShowSourceToggle"
-                      IsChecked="{Binding XServer.ShowWindowSource}" VerticalAlignment="Center" />
-      </Grid>
-      <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding XServerTcpSelectable}">
-        <StackPanel Spacing="2" Margin="0,0,16,0">
-          <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_ListenTcp}" />
-          <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_ListenTcpDesc}" />
-        </StackPanel>
-        <ToggleSwitch Grid.Column="1" x:Name="ListenTcpToggle"
-                      IsChecked="{Binding XServer.ListenTcpOnUnix}" VerticalAlignment="Center" />
-      </Grid>
+
+      <!-- 安全(只有内置引擎):限制转发来的程序、每个 SSH 会话一个显示都要按连接区分(VcXsrv 是一个外部进程、一个显示);
+           「也开 TCP 端口」只在 Linux / macOS 上出现。原先这几项都排在「键盘」下面。 -->
+      <StackPanel Spacing="14" IsVisible="{Binding XServerUsesBuiltIn}">
+        <Border Classes="sep" />
+        <TextBlock Classes="section-title" Text="{loc:Localize SetXServer_SectionSecurity}" />
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="2" Margin="0,0,16,0">
+            <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_RestrictForwarded}" />
+            <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_RestrictForwardedDesc}" />
+          </StackPanel>
+          <ToggleSwitch Grid.Column="1" x:Name="RestrictForwardedToggle"
+                        IsChecked="{Binding XServer.RestrictForwardedClients}" VerticalAlignment="Center" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="2" Margin="0,0,16,0">
+            <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_DisplayPerSession}" />
+            <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_DisplayPerSessionDesc}" />
+          </StackPanel>
+          <ToggleSwitch Grid.Column="1" x:Name="DisplayPerSessionToggle"
+                        IsChecked="{Binding XServer.DisplayPerSession}" VerticalAlignment="Center" />
+        </Grid>
+        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding XServerTcpSelectable}">
+          <StackPanel Spacing="2" Margin="0,0,16,0">
+            <TextBlock Classes="row-label" Text="{loc:Localize SetXServer_ListenTcp}" />
+            <TextBlock Classes="row-desc" Text="{loc:Localize SetXServer_ListenTcpDesc}" />
+          </StackPanel>
+          <ToggleSwitch Grid.Column="1" x:Name="ListenTcpToggle"
+                        IsChecked="{Binding XServer.ListenTcpOnUnix}" VerticalAlignment="Center" />
+        </Grid>
+      </StackPanel>
       <!-- 内置引擎下面直接是「启动」;VcXsrv 那一大块自己以分隔线收尾。 -->
       <Border Classes="sep" IsVisible="{Binding !XServerUsesVcXsrv}" />
 

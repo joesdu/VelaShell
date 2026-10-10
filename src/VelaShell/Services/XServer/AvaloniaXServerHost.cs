@@ -62,7 +62,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     {
         _deliverDamage = DeliverDamage;
         DropUploader = dropUploader;
-        _trayIcons = new XTrayIcons(CurrentServer);
+        _trayIcons = new XTrayIcons(CurrentServer, () => ShowsWindowSource);
     }
 
     /// <summary>X 程序的托盘图标(F12),画成宿主的托盘图标。只在 UI 线程上碰。</summary>
@@ -293,7 +293,53 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         server.SetDisplayScale(Math.Max(1, (int)Math.Round(96 * scaling)), scaling >= 2 ? (int)Math.Floor(scaling) : 1);
     }
 
-    /// <summary>用户关了屏幕窗口:当作要停 X Server(有程序连着时先确认),与标题栏的停止一样。</summary>
+    /// <inheritdoc />
+    public event EventHandler? SessionDisplayCloseRequested;
+
+    /// <summary>
+    /// 按会话分出来的显示关掉屏幕窗口之前的确认:参数是屏幕窗口、会话的来历与连着的程序数,返回 true 才关。默认弹确认框;测试换掉它。
+    /// </summary>
+    internal Func<Window, string, int, Task<bool>> ConfirmCloseSessionDisplay { get; set; } = static (owner, label, clients) =>
+        MessageDialog.ConfirmAsync(owner, Strings.Get("XServer_CloseDesktopConfirmTitle"),
+            Strings.Format("XServer_CloseDesktopConfirmMessage", label, clients), Strings.Get("Close"), Strings.Cancel,
+            MessageDialogKind.Warning, danger: true);
+
+    /// <summary>
+    /// 用户关了单窗口模式的屏幕窗口(F13)。共用的显示:当作停 X Server(有程序连着时由主窗口确认),与标题栏的停止一样。
+    /// 按会话分出来的显示(F1):只收掉这个会话的显示,有程序连着时先确认会断开几个 —— 原先也是停整个 X Server,别的会话的 X 程序一并断开。
+    /// UI 线程上调。
+    /// </summary>
+    internal async Task CloseScreenAsync(XNativeWindow screen)
+    {
+        if (_sessionLabel is not { } label)
+        {
+            RequestStop();
+            return;
+        }
+        if (CurrentServer(screen.Handle) is not { } server)
+        {
+            return;
+        }
+        int clients;
+        try
+        {
+            clients = (await server.GetClientsAsync()).Count(c => !c.Retained);
+        }
+        catch (ObjectDisposedException)
+        {
+            return;   // 这个显示刚好收掉了(会话断开)
+        }
+        if (clients > 0 && !await ConfirmCloseSessionDisplay(screen, label, clients))
+        {
+            return;
+        }
+        if (ReferenceEquals(_server, server))
+        {
+            SessionDisplayCloseRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>用户关了共用显示的屏幕窗口:当作要停 X Server(有程序连着时先确认),与标题栏的停止一样。</summary>
     internal static void RequestStop()
     {
         if (MainWindow()?.DataContext is ViewModels.MainWindowViewModel { XServer: { } xserver })
@@ -470,7 +516,26 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     internal Func<Window, string?, bool> GroupWindow { get; set; } = Services.XServer.TaskbarGroup.Apply;
 
     /// <inheritdoc />
-    public void ShowWindowSource(bool enabled) => ShowsWindowSource = enabled;
+    /// <remarks>
+    /// 运行中也可以调(设置里改了这一项):开着的窗口与托盘图标的标题当场改过来 —— 原先只记下开关,已经开着的窗口不变,
+    /// 用户担心有窗口冒充本机程序而打开它时,眼前的窗口照样没有来源。任意线程上调。
+    /// </remarks>
+    public void ShowWindowSource(bool enabled)
+    {
+        if (ShowsWindowSource == enabled)
+        {
+            return;
+        }
+        ShowsWindowSource = enabled;
+        Dispatcher.UIThread.Post(() =>
+        {
+            foreach (XNativeWindow window in _windows.Values)
+            {
+                window.ApplyProperties(XTopLevelChanges.Title);
+            }
+            _trayIcons.RefreshToolTips();
+        });
+    }
 
     /// <summary>转发来的 X 窗口在标题前标出来源(见 <see cref="XNativeWindow.TitleOf" />)。</summary>
     public bool ShowsWindowSource { get; private set; } = true;
@@ -994,8 +1059,8 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     /// </summary>
     private async Task ConfirmKillAsync(XNativeWindow native, XTopLevelWindow handle)
     {
-        XTopLevelSnapshot snapshot = handle.Snapshot;
-        string name = snapshot.Title.Length > 0 ? snapshot.Title : snapshot.ClassName;
+        // 名字照窗口标题的写法(按设置标出来源):强制结束的是哪个会话的程序,确认框里要看得出来。
+        string name = XNativeWindow.TitleOf(handle.Snapshot, ShowsWindowSource);
         bool kill = await MessageDialog.ConfirmAsync(native,
             Strings.Get("XServer_NotRespondingTitle"),
             Strings.Format("XServer_NotRespondingMessage", name),
@@ -1090,14 +1155,16 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
 
     // ------------------------------------------------------------------ 记住窗口位置(xs_plan F17)
 
-    /// <summary>一个程序的窗口上次关掉时的外框左上角(根窗口坐标)与内容尺寸。</summary>
+    /// <summary>一个程序的窗口上次关掉时的外框左上角(系统桌面坐标,物理像素)与内容尺寸。</summary>
     private sealed record RememberedPlacement(int FrameX, int FrameY, int Width, int Height);
 
     /// <summary>
     /// 按 WM_CLASS(类名 + 实例名)与 WM_WINDOW_ROLE 记住的位置(ICCCM §5.1:没有 role 时按类名区分窗口)。只记在这次运行里:
-    /// 远端程序的类名不落盘;宿主是单例,停了再开 X Server 照样记得。
+    /// 远端程序的类名不落盘。所有宿主共用一份(静态,只在 UI 线程上碰):宿主在 DI 里是 Transient,每次启动 X Server、每个按会话分出来的显示
+    /// 都是新的一个 —— 原先记在实例上,停了再开 X Server 就全忘了。位置记系统桌面坐标而不是根坐标:左边插拔显示器时根原点会挪,
+    /// 按根坐标记的位置整体错开一块屏幕。
     /// </summary>
-    private readonly Dictionary<(string Class, string Instance, string Role), RememberedPlacement> _placements = [];
+    private static readonly Dictionary<(string Class, string Instance, string Role), RememberedPlacement> s_placements = [];
 
     /// <summary>最多记这么多个程序(多了丢最早记的)。</summary>
     private const int MaxRememberedPlacements = 256;
@@ -1109,41 +1176,45 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
             : null;
 
     /// <summary>窗口要收掉了:记下它此刻的位置与尺寸(最大化、最小化、全屏时不记,留着上次正常时的)。</summary>
-    private void RememberPlacement(XNativeWindow native)
+    private static void RememberPlacement(XNativeWindow native)
     {
         XTopLevelSnapshot s = native.Handle.Snapshot;
         if (PlacementKey(s) is not { } key || !native.HasOpened || native.WindowState != WindowState.Normal)
         {
             return;
         }
-        if (!_placements.ContainsKey(key) && _placements.Count >= MaxRememberedPlacements)
+        if (!s_placements.ContainsKey(key) && s_placements.Count >= MaxRememberedPlacements)
         {
-            _placements.Remove(_placements.Keys.First());
+            s_placements.Remove(s_placements.Keys.First());
         }
-        (int ox, int oy) = RootOrigin;
-        _placements[key] = new RememberedPlacement(native.Position.X - ox, native.Position.Y - oy, s.Width, s.Height);
+        s_placements[key] = new RememberedPlacement(native.Position.X, native.Position.Y, s.Width, s.Height);
     }
+
+    /// <summary>记住的位置清空(测试用:各条用例之间不互相影响)。</summary>
+    internal static void ForgetPlacements() => s_placements.Clear();
 
     /// <summary>
     /// 没给位置的窗口摆回这个程序上次关掉时的位置 —— 原先每次打开 xterm 都跳到屏幕正中。同一个程序已经开着一个窗口时不摆
-    /// (摆过去就叠在一起),记住的位置已经不在任何一块屏幕上(拔了显示器)时也不摆;客户端没指定尺寸(USSize)、窗口能改尺寸时
+    /// (摆过去就叠在一起);记住的位置上标题栏左段已经不在任何一块屏幕的工作区里(拔了显示器、换了排列)时也不摆 ——
+    /// 原先只要求外框与工作区有一个像素的交集,窗口可能大半在屏幕外、标题栏够不着。客户端没指定尺寸(USSize)、窗口能改尺寸时
     /// 连尺寸一起恢复(按尺寸提示夹好、对齐步长)。
     /// </summary>
     private bool RestorePlacement(XTopLevelWindow handle, XNativeWindow window)
     {
         XTopLevelSnapshot s = handle.Snapshot;
-        if (PlacementKey(s) is not { } key || !_placements.TryGetValue(key, out RememberedPlacement? remembered)
+        if (PlacementKey(s) is not { } key || !s_placements.TryGetValue(key, out RememberedPlacement? remembered)
             || _windows.Values.Any(w => !ReferenceEquals(w, window) && PlacementKey(w.Handle.Snapshot) == key))
         {
             return false;
         }
-        (int ox, int oy) = RootOrigin;
-        PixelRect frame = new(remembered.FrameX + ox, remembered.FrameY + oy, Math.Max(1, remembered.Width), Math.Max(1, remembered.Height));
-        if (!window.Screens.All.Any(screen => screen.WorkingArea.Intersects(frame)))
+        // 标题栏左段上的一点(外框左上角往里一些):它在某块屏幕的工作区里,用户就拖得动这个窗口。
+        PixelPoint grip = new(remembered.FrameX + Math.Min(Math.Max(1, remembered.Width) / 2, 48), remembered.FrameY + 8);
+        if (!window.Screens.All.Any(screen => screen.WorkingArea.Contains(grip)))
         {
             return false;
         }
-        window.PlaceFrameAt(remembered.FrameX, remembered.FrameY);
+        (int ox, int oy) = RootOrigin;
+        window.PlaceFrameAt(remembered.FrameX - ox, remembered.FrameY - oy);
         bool resizable = (s.Functions & XWindowFunctions.Resize) != 0 && !(s.MaxWidth > 0 && s.MinWidth == s.MaxWidth && s.MinHeight == s.MaxHeight);
         if (!s.UserSize && resizable)
         {

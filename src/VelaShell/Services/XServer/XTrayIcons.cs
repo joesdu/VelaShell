@@ -5,21 +5,26 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using VelaShell.Core.Resources;
+using VelaShell.Views.XServer;
 using VelaShell.XServer;
 
 namespace VelaShell.Services.XServer;
 
 /// <summary>
 /// X 程序的托盘图标(F12)画成宿主自己的托盘图标:服务端当托盘管理器(<see cref="X11ServerOptions.SystemTray" />),图标停靠进来时
-/// 交来嵌入窗口的句柄 —— 这里读它的像素做图标(随损伤更新,攒一下再读),悬停提示用图标的名字;单击送一次左键,
-/// 菜单里的「菜单」送一次右键(程序据此弹出自己的 X 菜单)。只在 UI 线程上用。
+/// 交来嵌入窗口的句柄 —— 这里读它的像素做图标(随损伤更新,攒一下再读),悬停提示用图标的名字,经 SSH 转发来的按设置在前面标出来源
+/// (与窗口标题同一个开关,<paramref name="showSource" />;原先托盘提示不标,远端程序挂一个盾牌图标、提示写「Windows 安全中心」就看不出是远端的);
+/// 单击送一次左键,菜单里的「菜单」送一次右键(程序据此弹出自己的 X 菜单)。只在 UI 线程上用。
 /// </summary>
-internal sealed class XTrayIcons(Func<XTopLevelWindow, X11Server?> server)
+internal sealed class XTrayIcons(Func<XTopLevelWindow, X11Server?> server, Func<bool> showSource)
 {
     /// <summary>损伤之后隔这么久再读像素换图标:动画图标一秒几十帧地重画,托盘图标不必跟那么紧。</summary>
     private static readonly TimeSpan RefreshDelay = TimeSpan.FromMilliseconds(200);
 
     private readonly Dictionary<XTopLevelWindow, TrayIcon> _icons = [];
+
+    /// <summary>每个图标的名字(服务端给的,没加来源):开关变了重算提示用。</summary>
+    private readonly Dictionary<XTopLevelWindow, string> _titles = [];
     private readonly HashSet<XTopLevelWindow> _stale = [];
     private DispatcherTimer? _timer;
 
@@ -42,14 +47,32 @@ internal sealed class XTrayIcons(Func<XTopLevelWindow, X11Server?> server)
         menu.Click += (_, _) => Click(handle, 3);
         TrayIcon tray = new()
         {
-            ToolTipText = title.Length > 0 ? title : null,
+            ToolTipText = ToolTip(handle, title),
             Menu = new NativeMenu { Items = { click, menu } },
             Icon = Render(handle),
             IsVisible = true,
         };
         tray.Clicked += (_, _) => Click(handle, 1);
         _icons[handle] = tray;
+        _titles[handle] = title;
         IconsOf(app).Add(tray);
+    }
+
+    /// <summary>「标出来源」开关变了:按它重算每个图标的悬停提示。</summary>
+    public void RefreshToolTips()
+    {
+        foreach ((XTopLevelWindow handle, TrayIcon tray) in _icons)
+        {
+            tray.ToolTipText = ToolTip(handle, _titles.GetValueOrDefault(handle, ""));
+        }
+    }
+
+    /// <summary>悬停提示:图标的名字(没有时用来源本身),经 SSH 转发来的按设置在前面标出来源。</summary>
+    private string? ToolTip(XTopLevelWindow handle, string title)
+    {
+        string? label = handle.Snapshot.ClientLabel;
+        string text = title.Length > 0 ? XNativeWindow.WithSource(label, title, showSource()) : showSource() && !string.IsNullOrEmpty(label) ? label : "";
+        return text.Length > 0 ? text : null;
     }
 
     /// <summary>图标没了:收掉对应的托盘图标。</summary>
@@ -59,6 +82,7 @@ internal sealed class XTrayIcons(Func<XTopLevelWindow, X11Server?> server)
         {
             return;
         }
+        _titles.Remove(handle);
         _stale.Remove(handle);
         if (Application.Current is { } app)
         {

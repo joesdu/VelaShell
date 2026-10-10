@@ -81,4 +81,19 @@ public interface IEmbeddedXServerHost : IX11ServerHost
         {
         }
     }
+
+    /// <summary>
+    /// 用户在单窗口模式下关掉了屏幕窗口,而这个服务端是某个 SSH 会话自己的显示(调过 <see cref="UseSessionLabel" />;有程序连着时
+    /// 宿主已经确认过):<see cref="BuiltInLocalXServer" /> 据此只收掉这个会话的显示,共用的显示与别的会话不受影响。
+    /// 共用的显示关掉屏幕窗口照旧是停 X Server,不触发它。在 UI 线程上触发。默认实现从不触发。
+    /// </summary>
+    event EventHandler? SessionDisplayCloseRequested
+    {
+        add
+        {
+        }
+        remove
+        {
+        }
+    }
 }

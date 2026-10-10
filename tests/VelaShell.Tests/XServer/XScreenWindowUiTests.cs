@@ -87,4 +87,58 @@ public sealed class XScreenWindowUiTests
         client.Dispose();
         await serve.WaitAsync(TimeSpan.FromSeconds(5));
     });
+
+    /// <summary>
+    /// 按会话分出来的显示(F1)关掉屏幕窗口:不停整个 X Server,而是请求只收掉这个会话的显示(SessionDisplayCloseRequested);
+    /// 没有程序连着时直接请求,有程序连着时先确认(带会话的来历与程序数),用户取消就什么都不做。
+    /// </summary>
+    [TestMethod]
+    public async Task SessionScreenWindow_Close_AsksToCloseOnlyThatSessionsDisplay_ConfirmingWhenProgramsAreConnected() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        host.UseWindowMode(XServerWindowModes.Windowed);
+        host.UseSessionLabel("alice@a:22");
+        int requested = 0;
+        host.SessionDisplayCloseRequested += (_, _) => requested++;
+        List<(string Label, int Clients)> asked = [];
+        bool answer = false;
+        host.ConfirmCloseSessionDisplay = (_, label, clients) =>
+        {
+            asked.Add((label, clients));
+            return Task.FromResult(answer);
+        };
+        await using X11Server server = new(new X11ServerOptions
+        {
+            ListenTcp = false, UnixSocketPath = "", Rootful = true, ScreenWidth = 400, ScreenHeight = 300,
+        }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        XNativeWindow screen = await XTestWire.WaitForAsync(() => host.Windows.SingleOrDefault());
+        StringAssert.Contains(screen.Title, "alice@a:22", "屏幕窗口的标题写会话的来历");
+
+        screen.Close();
+        await XTestWire.WaitForAsync(() => requested == 1 ? screen : null);
+        Assert.IsEmpty(asked, "没有程序连着:不问");
+        Assert.IsTrue(screen.IsVisible, "窗口由 BuiltInLocalXServer 收掉这个显示时关,这里不自己关");
+
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        XTestWire wire = await XTestWire.ConnectAsync(client);
+        await wire.SyncAsync();
+
+        screen.Close();
+        await XTestWire.WaitForAsync(() => asked.Count == 1 ? screen : null);
+        Assert.AreEqual(("alice@a:22", 1), asked[0]);
+        Dispatcher.UIThread.RunJobs();
+        Assert.AreEqual(1, requested, "用户取消:不收");
+
+        answer = true;
+        screen.Close();
+        await XTestWire.WaitForAsync(() => requested == 2 ? screen : null);
+        Assert.HasCount(2, asked);
+
+        host.Detach();
+        Dispatcher.UIThread.RunJobs();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
 }

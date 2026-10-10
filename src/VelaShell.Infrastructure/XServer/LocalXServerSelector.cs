@@ -99,7 +99,8 @@ public sealed class LocalXServerSelector : ILocalXServer
 
     /// <summary>
     /// 先走内置引擎的连接器;它此刻没在运行就按显示地址走本机 TCP(见 <see cref="ResolveForwardingDisplayAsync" />)。
-    /// 非受信的通道不退到 TCP:本机 TCP 上连的是受信的显示,退过去等于悄悄把这个会话升成受信。
+    /// 非受信的通道不退到 TCP:本机 TCP 上连的是受信的显示,退过去等于悄悄把这个会话升成受信。只在有 VcXsrv 的平台(Windows)上退:
+    /// Linux / macOS 上没有别的引擎,内置的停了,环回 <c>6000+N</c> 上不会是我们的服务端 —— 只可能是别的用户的、或者 sshd 自己的 X11 转发端口。
     /// </summary>
     private async ValueTask<Stream> ConnectAsync(
         Func<XServerChannelSource, CancellationToken, ValueTask<Stream>> connector, string? resolvedDisplay, XServerChannelSource source,
@@ -109,7 +110,7 @@ public sealed class LocalXServerSelector : ILocalXServer
         {
             return await connector(source, cancellationToken).ConfigureAwait(false);
         }
-        catch (InvalidOperationException) when (_builtIn.State != XServerState.Running && source.Trusted)
+        catch (InvalidOperationException) when (_builtIn.State != XServerState.Running && source.Trusted && _vcXsrv.IsSupported)
         {
             int? display = _vcXsrv.State == XServerState.Running ? _vcXsrv.DisplayNumber : null;
             if (display is null && X11Display.TryParse(resolvedDisplay, out X11Display? parsed))

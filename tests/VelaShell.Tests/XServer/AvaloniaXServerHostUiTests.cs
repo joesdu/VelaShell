@@ -4,6 +4,7 @@ using System.Text;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Input.TextInput;
 using Avalonia.Threading;
 using VelaShell.Services.XServer;
 using VelaShell.Ssh.Transport;
@@ -492,9 +493,10 @@ public sealed class AvaloniaXServerHostUiTests
 
     /// <summary>
     /// 来源标识(xs_plan F18):转发来的连接(有标签)的窗口标题前标出来源,远端把标题设成什么都盖不住;本机连接(没标签)不标;设置关掉也不标。
+    /// 来源与标题各自包在双向隔离符里(来源里的 U+202E 倒不过后面的标题)。运行中改开关,开着的窗口当场改标题(原先只对之后打开的窗口生效)。
     /// </summary>
     [TestMethod]
-    [DataRow("alice@build:22", true, "alice@build:22 — Windows Security")]
+    [DataRow("alice@build:22", true, "⁨alice@build:22⁩ — ⁨Windows Security⁩")]
     [DataRow("alice@build:22", false, "Windows Security")]
     [DataRow(null, true, "Windows Security")]
     public async Task ForwardedWindowTitle_ShowsTheSource(string? label, bool show, string expected) => await _session.RunOnUiAsync(async () =>
@@ -514,8 +516,16 @@ public sealed class AvaloniaXServerHostUiTests
         await SendAsync(client, 8, 0, w => w.U32(window));
 
         XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
-        await WaitForAsync(() => native.Title?.EndsWith("Windows Security", StringComparison.Ordinal) == true ? native : null);
+        await WaitForAsync(() => native.Title?.Contains("Windows Security", StringComparison.Ordinal) == true ? native : null);
         Assert.AreEqual(expected, native.Title);
+
+        if (label is not null)
+        {
+            // 运行中改开关:开着的窗口当场改标题。
+            host.ShowWindowSource(!show);
+            await WaitForAsync(() => native.Title != expected ? native : null, "开关一改,标题跟着改");
+            Assert.AreEqual(show ? "Windows Security" : $"⁨{label}⁩ — ⁨Windows Security⁩", native.Title);
+        }
 
         native.CloseByHost();
         host.Detach();
@@ -1055,11 +1065,34 @@ public sealed class AvaloniaXServerHostUiTests
         await SettleAsync();
         CollectionAssert.AreEqual(new byte[] { 2, 3, 34, 2, 3, 2, 3, 2, 3 }, Seen(), "同一个字不再改键位表");
 
+        // 按着 Shift 时输入法上屏的字(有的中文输入法按 Shift 把拼音原样上屏)照样输入:修饰键不出字,原先被当成 Shift 打出的字吞掉。
+        native.KeyPressQwerty(PhysicalKey.ShiftLeft, RawInputModifiers.None);
+        native.KeyTextInput("文");
+        native.KeyReleaseQwerty(PhysicalKey.ShiftLeft, RawInputModifiers.Shift);
+        await SettleAsync();
+        CollectionAssert.AreEqual(new byte[] { 2, 3, 34, 2, 3, 2, 3, 2, 3, 2, 34, 2, 3, 3 }, Seen(), "Shift、上屏的字、Shift 松开");
+
+        // 一个键报来两个字(Windows 上死键后跟拼不上的字母:「´」「x」):都是这个键的,原先第二个又输入了一遍。
+        native.KeyPressQwerty(PhysicalKey.X, RawInputModifiers.None);
+        native.KeyTextInput("´");
+        native.KeyTextInput("x");
+        native.KeyReleaseQwerty(PhysicalKey.X, RawInputModifiers.None);
+        await SettleAsync();
+        Assert.HasCount(16, Seen(), "只有 x 键的按下、松开");
+
+        // 组着字切走:叠画的预编辑收掉(无头平台不发 Deactivated,直接调它的处理器)。
+        TextInputMethodClientRequestedEventArgs request = new() { RoutedEvent = InputElement.TextInputMethodClientRequestedEvent };
+        native.RaiseEvent(request);
+        request.Client!.SetPreeditText("ni");
+        Assert.AreEqual("ni", native.Preedit);
+        native.OnDeactivated();
+        Assert.IsNull(native.Preedit, "窗口失活时清掉预编辑");
+
         // 设置关掉:窗口不接输入法的字。
         host.UseHostInputMethod(false);
         native.KeyTextInput("文");
         await SettleAsync();
-        Assert.HasCount(9, Seen());
+        Assert.HasCount(16, Seen());
 
         native.CloseByHost();
         host.Detach();

@@ -5603,6 +5603,9 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SetXServer_BuiltInNote" xml:space="preserve">
     <value>Each X window opens as its own native window. SSH X11 forwarding connects straight into the built-in server without going through a local port; other local X programs can still use DISPLAY=localhost:N — each start writes a fresh authorization cookie to ~/.Xauthority (removed on stop), and programs that cannot read it are refused.</value>
   </data>
+  <data name="SetXServer_BuiltInNoteUnix" xml:space="preserve">
+    <value>Each X window opens as its own native window. SSH X11 forwarding connects straight into the built-in server without going through a local port; other local X programs connect with DISPLAY=:N over the Unix socket, which only your user can use. Each start also writes a fresh authorization cookie to ~/.Xauthority (removed on stop) for programs running as another user or connecting over the optional TCP port.</value>
+  </data>
   <data name="SetXServer_Engine" xml:space="preserve">
     <value>X server</value>
   </data>
@@ -5654,6 +5657,9 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SetXServer_DisplayNumberDesc" xml:space="preserve">
     <value>The N in DISPLAY=localhost:N (TCP port 6000+N). Auto picks the first free one, skipping X servers already running.</value>
   </data>
+  <data name="SetXServer_DisplayNumberDescUnix" xml:space="preserve">
+    <value>The N in DISPLAY=:N (the Unix socket /tmp/.X11-unix/XN; TCP port 6000+N only when &quot;Also listen on a TCP port&quot; is on). Auto picks the first free one, skipping X servers already running.</value>
+  </data>
   <data name="SetXServer_DisplayAuto" xml:space="preserve">
     <value>Auto</value>
   </data>
@@ -5696,6 +5702,9 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SetXServer_SectionKeyboard" xml:space="preserve">
     <value>Keyboard</value>
   </data>
+  <data name="SetXServer_SectionSecurity" xml:space="preserve">
+    <value>Security</value>
+  </data>
   <data name="SetXServer_KeyboardLayout" xml:space="preserve">
     <value>Keyboard layout</value>
   </data>
@@ -5724,19 +5733,19 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
     <value>Transparent X windows</value>
   </data>
   <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
-    <value>Tells X programs that a compositing manager is running, so GTK rounded corners and translucent Qt or Electron windows become truly transparent. Off by default because translucent windows need extra compositing by the system. Takes effect after restarting the X Server.</value>
+    <value>Tells X programs that a compositing manager is running, so GTK rounded corners and translucent Qt or Electron windows become truly transparent. Off by default because translucent windows need extra compositing by the system; while off, they are shown opaque. Has no effect in the single-window modes. Takes effect after restarting the X Server.</value>
   </data>
   <data name="SetXServer_ShowSource" xml:space="preserve">
     <value>Show where X windows come from</value>
   </data>
   <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
-    <value>Puts the source (user@host:port) in front of the title of X windows forwarded over SSH, so you can tell hosts apart and a remote program can&apos;t pass itself off as a local window. Programs on this computer aren&apos;t marked. Applies to windows opened afterwards.</value>
+    <value>Puts the source (user@host:port) in front of the title of X windows forwarded over SSH, also in taskbar and tray tooltips, so you can tell hosts apart and spot a remote window posing as a local one. Windows that draw their own title bar show it only in the taskbar. Programs on this computer aren&apos;t marked. Takes effect immediately.</value>
   </data>
   <data name="SetXServer_ListenTcp" xml:space="preserve">
     <value>Also listen on a TCP port</value>
   </data>
   <data name="SetXServer_ListenTcpDesc" xml:space="preserve">
-    <value>Opens port 6000+N (a cookie is required) besides the Unix socket. Only needed for programs that connect over the network, such as those in containers; SSH forwarding and local programs (DISPLAY=:N) don&apos;t need it. Takes effect after restarting the X Server.</value>
+    <value>Besides the Unix socket, opens port 6000+N on 127.0.0.1 (a cookie is required). Only needed for programs that connect to this computer&apos;s loopback over TCP, such as containers using host networking; containers on a bridge network can&apos;t reach it — on Linux, mount /tmp/.X11-unix into them and use DISPLAY=:N instead. SSH forwarding and local programs (DISPLAY=:N) don&apos;t need it. Takes effect after restarting the X Server.</value>
   </data>
   <data name="XServer_WindowTitleWithSource" xml:space="preserve">
     <value>{0} — {1}</value>
@@ -5837,6 +5846,9 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="XServer_ErrLaunch" xml:space="preserve">
     <value>Could not start VcXsrv: {0}</value>
   </data>
+  <data name="XServer_ErrBuiltInStart" xml:space="preserve">
+    <value>Could not start the built-in X Server: {0}</value>
+  </data>
   <data name="XServer_ErrExited" xml:space="preserve">
     <value>VcXsrv exited during startup (exit code {0}). See the log: {1}</value>
   </data>
@@ -5848,6 +5860,9 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   </data>
   <data name="XServer_Started" xml:space="preserve">
     <value>X Server started on {0}</value>
+  </data>
+  <data name="XServer_WarnLocalUnavailable" xml:space="preserve">
+    <value>The X Server is running, but programs on this computer can&apos;t connect to it: the Unix socket in /tmp/.X11-unix could not be created (details in the log). SSH X11 forwarding works as usual. Turning on &quot;Also listen on a TCP port&quot; lets local programs use DISPLAY=localhost:N.</value>
   </data>
   <data name="XServer_StartFailed" xml:space="preserve">
     <value>X Server failed to start: {0}</value>
@@ -5878,6 +5893,12 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   </data>
   <data name="XServer_StopConfirmMessage" xml:space="preserve">
     <value>Stopping the X Server disconnects {0} X program connection(s) and closes all their windows. Unsaved work in them will be lost.</value>
+  </data>
+  <data name="XServer_CloseDesktopConfirmTitle" xml:space="preserve">
+    <value>Close X Desktop</value>
+  </data>
+  <data name="XServer_CloseDesktopConfirmMessage" xml:space="preserve">
+    <value>Closing the X desktop of {0} disconnects its {1} X program connection(s) and closes all their windows. Unsaved work in them will be lost. X programs of other sessions are not affected.</value>
   </data>
   <data name="XServer_Stop" xml:space="preserve">
     <value>Stop</value>

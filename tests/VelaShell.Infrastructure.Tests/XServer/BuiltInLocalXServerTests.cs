@@ -36,6 +36,28 @@ public class BuiltInLocalXServerTests
     private static BuiltInLocalXServer Create(XServerOptions options, RecordingHost? host, bool otherDisplay = false) =>
         new(Settings(options), () => host, LowDisplaysBusy, _ => Task.FromResult(otherDisplay));
 
+    /// <summary>
+    /// :10 上的服务端给本机程序的地址:Linux / macOS 上走 Unix 套接字(默认不开 TCP 端口,F4),Windows 上只有 TCP。
+    /// 原先一律报 <c>localhost:10.0</c>,不开 TCP 之后照着设 DISPLAY 的本机程序连不上。
+    /// </summary>
+    private static string ExpectedDisplay => OperatingSystem.IsWindows() ? "localhost:10.0" : ":10";
+
+    /// <summary>按会话分显示时,每个服务端都向这里要一个新宿主(宿主在 DI 里是 Transient)。</summary>
+    private static (BuiltInLocalXServer Server, List<RecordingHost> Hosts) CreatePerSession(XServerOptions options)
+    {
+        List<RecordingHost> hosts = [];
+        BuiltInLocalXServer server = new(Settings(options), () =>
+        {
+            RecordingHost created = new();
+            lock (hosts)
+            {
+                hosts.Add(created);
+            }
+            return created;
+        }, LowDisplaysBusy, _ => Task.FromResult(false));
+        return (server, hosts);
+    }
+
     [TestMethod]
     public async Task Start_AttachesHost_ThenStop_DetachesIt()
     {
@@ -49,7 +71,7 @@ public class BuiltInLocalXServerTests
         Assert.IsTrue(result.Success, result.Error);
         Assert.AreEqual(XServerState.Running, server.State);
         Assert.AreEqual(10, server.DisplayNumber);
-        Assert.AreEqual("localhost:10.0", server.Display);
+        Assert.AreEqual(ExpectedDisplay, server.Display);
         Assert.IsNotNull(host.Attached, "启动时先把服务端交给宿主");
 
         await server.StopAsync();
@@ -105,7 +127,7 @@ public class BuiltInLocalXServerTests
 
         XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
 
-        Assert.AreEqual("localhost:10.0", resolution.Display);
+        Assert.AreEqual(ExpectedDisplay, resolution.Display);
         Assert.IsNotNull(resolution.Connector);
         await using Stream stream = await resolution.Connector(new XServerChannelSource("user@host:22"), CancellationToken.None);
         await stream.WriteAsync(new byte[] { (byte)'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
@@ -219,6 +241,146 @@ public class BuiltInLocalXServerTests
         await server.StopAsync();
         Assert.IsTrue(hosts.All(h => h.Detaches == 1), "停服时全部收掉");
         Assert.IsEmpty(server.Instances);
+    }
+
+    /// <summary>
+    /// 设置里归宿主管的几项(输入法、来源标识、键盘布局、窗口模式)每个会话的宿主都拿到:原先会话的显示只拿到键盘布局与窗口模式,
+    /// 每个会话又是一个新宿主,「X 窗口里用本机输入法」「标出 X 窗口的来源」关掉了在会话的显示上也照样开着。
+    /// </summary>
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, true)]
+    [DataRow(false, true)]
+    public async Task DisplayPerSession_EachSessionHost_GetsTheHostSettings(bool inputMethod, bool windowSource)
+    {
+        (BuiltInLocalXServer server, List<RecordingHost> hosts) = CreatePerSession(new XServerOptions
+        {
+            DisplayPerSession = true, UseHostInputMethod = inputMethod, ShowWindowSource = windowSource, KeyboardLayout = "de",
+        });
+        await using (server)
+        {
+            XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+            await using Stream alice = await resolution.Connector!(new("alice@a:22", Session: new object()), CancellationToken.None);
+            Assert.AreEqual(1, await HandshakeAsync(alice));
+
+            Assert.HasCount(2, hosts, "共用的一个 + 会话的一个");
+            foreach (RecordingHost host in hosts)
+            {
+                Assert.AreEqual((inputMethod, windowSource, "de"), (host.HostInputMethod, host.WindowSource, host.LayoutAtAttach),
+                    ReferenceEquals(host, hosts[0]) ? "共用的显示" : "会话的显示");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 单窗口模式下用户关掉某个会话的「X 桌面」窗口(宿主报 SessionDisplayCloseRequested):只收掉这个会话的显示,共用的显示与别的会话照旧;
+    /// 这个会话再开 X 程序时另建一个。原先关掉任何一个会话的桌面都停整个 X Server。
+    /// </summary>
+    [TestMethod]
+    public async Task DisplayPerSession_ClosingOneSessionsScreen_ClosesOnlyThatSessionsDisplay()
+    {
+        (BuiltInLocalXServer server, List<RecordingHost> hosts) = CreatePerSession(new XServerOptions { DisplayPerSession = true });
+        await using (server)
+        {
+            XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+            object alice = new(), bob = new();
+            await using Stream a = await resolution.Connector!(new("alice@a:22", Session: alice), CancellationToken.None);
+            await using Stream b = await resolution.Connector!(new("bob@b:22", Session: bob), CancellationToken.None);
+            Assert.AreEqual(1, await HandshakeAsync(a));
+            Assert.AreEqual(1, await HandshakeAsync(b));
+            Assert.HasCount(3, server.Instances);
+            X11Server aliceServer = server.Instances.Single(i => i.Label == "alice@a:22").Server;
+            RecordingHost aliceHost = hosts.Single(h => ReferenceEquals(h.Attached, aliceServer));
+            Assert.AreEqual(1, aliceHost.SessionCloseSubscribers);
+            Assert.AreEqual(0, hosts[0].SessionCloseSubscribers, "共用的显示关屏幕窗口是停 X Server,不走这条");
+
+            aliceHost.RaiseSessionDisplayCloseRequested();
+            for (int i = 0; i < 100 && server.Instances.Count != 2; i++)
+            {
+                await Task.Delay(20);
+            }
+
+            Assert.AreEqual(XServerState.Running, server.State, "X Server 照旧运行");
+            CollectionAssert.AreEquivalent(new[] { null, "bob@b:22" }, server.Instances.Select(i => i.Label).ToList(), "只收掉 alice 的显示");
+            Assert.AreEqual(1, aliceHost.Detaches);
+            Assert.AreEqual(0, aliceHost.SessionCloseSubscribers, "收掉时摘下处理器");
+            Assert.IsTrue(hosts.Where(h => !ReferenceEquals(h, aliceHost)).All(h => h.Detaches == 0));
+
+            await using Stream again = await resolution.Connector!(new("alice@a:22", Session: alice), CancellationToken.None);
+            Assert.AreEqual(1, await HandshakeAsync(again));
+            Assert.HasCount(3, server.Instances, "alice 再开 X 程序:另建一个显示");
+            Assert.AreNotSame(aliceServer, server.Instances.Single(i => i.Label == "alice@a:22").Server);
+        }
+    }
+
+    public TestContext TestContext { get; set; } = null!;
+
+    /// <summary>
+    /// 「标出 X 窗口的来源」运行中改了:当场交给每个附着着的宿主(共用的与会话的),之后新建的会话显示也按新的值 ——
+    /// 原先只在启动时交一次,说明写「对之后打开的窗口生效」,实际要重启 X Server。
+    /// </summary>
+    [TestMethod]
+    public async Task ShowWindowSource_ChangedWhileRunning_ReachesEveryHost_AndLaterSessionDisplays()
+    {
+        ISettingsService settings = Settings(new XServerOptions { DisplayPerSession = true });
+        List<RecordingHost> hosts = [];
+        await using BuiltInLocalXServer server = new(settings, () =>
+        {
+            RecordingHost created = new();
+            lock (hosts)
+            {
+                hosts.Add(created);
+            }
+            return created;
+        }, LowDisplaysBusy, _ => Task.FromResult(false));
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+        await using Stream alice = await resolution.Connector!(new("alice@a:22", Session: new object()), CancellationToken.None);
+        Assert.AreEqual(1, await HandshakeAsync(alice));
+        Assert.IsTrue(hosts.All(h => h.WindowSource == true), "默认开");
+
+        settings.SettingsSaved += Raise.Event<Action<AppSettings>>(new AppSettings
+        {
+            XServer = new XServerOptions { DisplayPerSession = true, ShowWindowSource = false },
+        });
+        Assert.HasCount(2, hosts);
+        Assert.IsTrue(hosts.All(h => h.WindowSource == false), "共用的与会话的宿主当场改了");
+
+        await using Stream bob = await resolution.Connector!(new("bob@b:22", Session: new object()), CancellationToken.None);
+        Assert.AreEqual(1, await HandshakeAsync(bob));
+        Assert.HasCount(3, hosts);
+        Assert.IsFalse(hosts[2].WindowSource, "之后新建的会话显示按新的值");
+    }
+
+    /// <summary>
+    /// Unix 套接字建不起来、TCP 又没开(Linux / macOS 的默认):照样起一个只经连接器服务的服务端,SSH 的 X11 转发连得进去,启动结果带一条提示 ——
+    /// 原先整个服务端起不来,连 SSH 转发一并失败(macOS 上快速切换用户、<c>/tmp/.X11-unix</c> 归先登录的用户时)。
+    /// Windows 上一直开 TCP 碰不上;Linux 上抽象名照样开得起来,也碰不上。
+    /// </summary>
+    [TestMethod]
+    public async Task UnixSocketUnavailable_AndNoTcp_StillServesSshForwarding_WithAWarning()
+    {
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+        {
+            TestContext.WriteLine("[SKIP] 只在没有抽象命名空间、默认不开 TCP 的平台上碰得到(macOS / BSD)");
+            return;
+        }
+        string blocker = Path.GetTempFileName();   // 一个普通文件:套接字放在它「下面」,目录建不起来
+        try
+        {
+            await using BuiltInLocalXServer server = new(Settings(new XServerOptions()), () => new RecordingHost(), LowDisplaysBusy,
+                _ => Task.FromResult(false), unixSocketPath: Path.Combine(blocker, "X10"));
+            XServerStartResult result = await server.StartAsync();
+            Assert.IsTrue(result.Success, result.Error);
+            Assert.IsFalse(string.IsNullOrEmpty(result.Warning), "提示本机程序连不上");
+            Assert.AreEqual(":10", server.Display);
+            XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+            await using Stream stream = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
+            Assert.AreEqual(1, await HandshakeAsync(stream), "SSH 转发照常");
+        }
+        finally
+        {
+            File.Delete(blocker);
+        }
     }
 
     /// <summary>设置没开(默认):带着会话的通道照旧进共用的显示,不另建服务端。</summary>
@@ -589,7 +751,7 @@ public class BuiltInLocalXServerTests
 
         XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
 
-        Assert.AreEqual("localhost:10.0", resolution.Display);
+        Assert.AreEqual(ExpectedDisplay, resolution.Display);
         Assert.IsNotNull(resolution.Connector);
     }
 
@@ -626,7 +788,31 @@ public class BuiltInLocalXServerTests
 
         public void UseWindowMode(string mode) => WindowMode = mode;
 
+        /// <summary>附着之前交来的「X 窗口里用本机输入法」;没交过为 null。</summary>
+        public bool? HostInputMethod { get; private set; }
+
+        public void UseHostInputMethod(bool enabled) => HostInputMethod = enabled;
+
+        /// <summary>附着之前交来的「标出 X 窗口的来源」;没交过为 null。</summary>
+        public bool? WindowSource { get; private set; }
+
+        public void ShowWindowSource(bool enabled) => WindowSource = enabled;
+
         public void Detach() => Detaches++;
+
+        private EventHandler? _sessionDisplayCloseRequested;
+
+        public event EventHandler? SessionDisplayCloseRequested
+        {
+            add => _sessionDisplayCloseRequested += value;
+            remove => _sessionDisplayCloseRequested -= value;
+        }
+
+        /// <summary>挂在 <see cref="SessionDisplayCloseRequested" /> 上的处理器数。</summary>
+        public int SessionCloseSubscribers => _sessionDisplayCloseRequested?.GetInvocationList().Length ?? 0;
+
+        /// <summary>模拟用户关掉了这个会话的屏幕窗口(宿主确认过之后)。</summary>
+        public void RaiseSessionDisplayCloseRequested() => _sessionDisplayCloseRequested?.Invoke(this, EventArgs.Empty);
 
         private EventHandler<XServerGrabStall>? _grabStallReported;
 

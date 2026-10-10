@@ -158,13 +158,19 @@ public sealed class XNativeWindow : Window
     /// 原生窗口(与任务栏)上的标题。转发来的窗口(连接有标签,如 <c>user@host:22</c>)按设置在前面标出来源(xs_plan F18):
     /// 同时转发几台主机时分得清;远端程序把标题设成「Windows 安全中心」也盖不住前面的来源 —— 标在前面,任务栏截断长标题时也还看得到。
     /// </summary>
-    internal static string TitleOf(XTopLevelSnapshot s, bool showSource)
-    {
-        string title = s.Title.Length > 0 ? s.Title : s.ClassName;
-        return showSource && !string.IsNullOrEmpty(s.ClientLabel)
-            ? VelaShell.Core.Resources.Strings.Format("XServer_WindowTitleWithSource", s.ClientLabel, title)
+    internal static string TitleOf(XTopLevelSnapshot s, bool showSource) =>
+        WithSource(s.ClientLabel, s.Title.Length > 0 ? s.Title : s.ClassName, showSource);
+
+    /// <summary>
+    /// 「来源 — 标题」(没有来源或不标时就是标题)。来源与标题各自包在双向隔离符(FSI … PDI)里:来源取自连接配置、不经服务端过滤,
+    /// 里面要是有 U+202E 之类,原先能把后面的标题连同分隔符一起倒过来显示;隔离之后各管各的方向。托盘提示也用它。
+    /// </summary>
+    internal static string WithSource(string? label, string title, bool showSource) =>
+        showSource && !string.IsNullOrEmpty(label)
+            ? VelaShell.Core.Resources.Strings.Format("XServer_WindowTitleWithSource", Isolate(label), Isolate(title))
             : title;
-    }
+
+    private static string Isolate(string text) => "⁨" + text + "⁩";
 
     /// <summary>快照里的属性变了(映射时按 <see cref="XTopLevelChanges.All" /> 调一次):只重新应用变了的那几组。</summary>
     public void ApplyProperties(XTopLevelChanges changes)
@@ -554,7 +560,8 @@ public sealed class XNativeWindow : Window
         OnMovedByUser();   // 最大化 / 左上角拖动缩放时位置也变了
     }
 
-    private void OnDeactivated()
+    /// <summary>窗口失活(别的程序拿走了键盘)。内部可见:无头平台不发 Deactivated,测试直接调。</summary>
+    internal void OnDeactivated()
     {
         // 别的程序拿走了键盘:按着的键在 X 那边松开,免得 Alt+Tab 回来之后 Alt 一直按着。
         if (Server is { } server)
@@ -567,6 +574,8 @@ public sealed class XNativeWindow : Window
         _heldKeys.Clear();
         _pressedWithCommand.Clear();
         ReleaseHeldButtons();
+        // 组着字切走了:叠画的预编辑收掉(只有 Win32 会替我们清,macOS / Linux 上原先留着一个过期的组字框盖在 X 窗口上)。
+        SetPreedit(null);
         _host.OnWindowDeactivated(this);
     }
 
@@ -698,7 +707,8 @@ public sealed class XNativeWindow : Window
                 e.Cancel = true;
                 if (IsScreen)
                 {
-                    AvaloniaXServerHost.RequestStop();   // 关掉整个 X 桌面 = 停 X Server(有程序连着时先确认)
+                    // 关掉整个 X 桌面 = 停 X Server;按会话分出来的显示只收掉这个会话的(有程序连着时都先确认)。
+                    Services.FireAndForget.Run(() => _host.CloseScreenAsync(this));
                 }
                 else if (!Handle.Snapshot.OverrideRedirect)
                 {
@@ -863,15 +873,23 @@ public sealed class XNativeWindow : Window
             _pressedWithCommand.Add(keycode);
         }
         Server?.InjectKey(keycode, pressed: true, repeat);
-        _keyTextPending = true;
+        // 修饰键不出字:按着 Shift 时输入法上屏的字(有的中文输入法按 Shift 把拼音原样上屏)原先被当成 Shift 打出来的字吞掉。
+        _keyTextPending = !IsModifierKey(e.PhysicalKey);
         e.Handled = true;
     }
+
+    /// <summary>修饰键与锁定键:按下它们不出字。</summary>
+    private static bool IsModifierKey(PhysicalKey key) => key is PhysicalKey.ShiftLeft or PhysicalKey.ShiftRight
+        or PhysicalKey.ControlLeft or PhysicalKey.ControlRight or PhysicalKey.AltLeft or PhysicalKey.AltRight
+        or PhysicalKey.MetaLeft or PhysicalKey.MetaRight or PhysicalKey.CapsLock or PhysicalKey.NumLock or PhysicalKey.ScrollLock;
 
     // ================================================================== 本机输入法
 
     /// <summary>
-    /// 刚把一个按键注入了 X:系统随后为它报的文字(Windows 的 WM_CHAR、macOS 的 insertText)就是这个键打出来的,X 那边按键码自己会解释,
-    /// 不再当文字输入一遍。下一个按键、这个键松开时作废 —— 不出字的键(方向键、F1)不会让之后输入法上屏的字被吞掉。
+    /// 刚把一个(出字的)按键注入了 X:系统随后为它报的文字(Windows 的 WM_CHAR、macOS 的 insertText)就是这个键打出来的,X 那边按键码自己会解释,
+    /// 不再当文字输入一遍。下一个按键、这个键松开时作废 —— 不出字的键(方向键、F1)不会让之后输入法上屏的字被吞掉;修饰键不算出字的键。
+    /// 作废之前报来的文字全算这个键的:Windows 上死键后跟一个拼不上的字母会报两个字符(「´」「x」),原先只吞第一个,「x」又输入了一遍。
+    /// 输入法正在组字时报来的文字是上屏,不吞。
     /// </summary>
     private bool _keyTextPending;
 
@@ -900,9 +918,8 @@ public sealed class XNativeWindow : Window
     protected override void OnTextInput(TextInputEventArgs e)
     {
         base.OnTextInput(e);
-        if (_keyTextPending)
+        if (_keyTextPending && Preedit is null)
         {
-            _keyTextPending = false;
             e.Handled = true;
             return;
         }
