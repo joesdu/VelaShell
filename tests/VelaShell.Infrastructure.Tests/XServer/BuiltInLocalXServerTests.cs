@@ -455,6 +455,39 @@ public class BuiltInLocalXServerTests
         Assert.AreEqual(compositing, BitConverter.ToUInt32(reply, 8) != 0);
     }
 
+    /// <summary>
+    /// 设置「X 窗口里用本机输入法」开着时服务端当 XIM 输入法服务端(F5 第二步):选区 @server=velashell 有属主,远端设了
+    /// XMODIFIERS=@im=velashell 的程序连得上;关着时没有。
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Start_HostInputMethodSetting_DecidesWhetherTheXimSelectionIsOwned(bool useHostInputMethod)
+    {
+        await using BuiltInLocalXServer server = Create(new XServerOptions { UseHostInputMethod = useHostInputMethod }, new RecordingHost());
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+        await using Stream stream = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
+        await stream.WriteAsync(new byte[] { (byte)'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        byte[] head = new byte[8];
+        await stream.ReadExactlyAsync(head).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await stream.ReadExactlyAsync(new byte[BitConverter.ToUInt16(head, 6) * 4]).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        byte[] name = Encoding.ASCII.GetBytes("@server=" + VelaShell.Core.XServer.XServerInputMethod.Name);   // 17 字节,补到 20
+        List<byte> intern = [16, 0, (byte)(2 + ((name.Length + 3) / 4)), 0, (byte)name.Length, 0, 0, 0];
+        intern.AddRange(name);
+        intern.AddRange(new byte[((name.Length + 3) & ~3) - name.Length]);
+        await stream.WriteAsync(intern.ToArray());
+        byte[] reply = new byte[32];
+        await stream.ReadExactlyAsync(reply).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        uint atom = BitConverter.ToUInt32(reply, 8);
+        byte[] getOwner = [23, 0, 2, 0, .. BitConverter.GetBytes(atom)];   // GetSelectionOwner
+        await stream.WriteAsync(getOwner);
+        await stream.ReadExactlyAsync(reply).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.AreEqual(1, reply[0], "回复");
+        Assert.AreEqual(useHostInputMethod, BitConverter.ToUInt32(reply, 8) != 0);
+    }
+
     /// <summary>停之前数得出连着几个 X 程序(标题栏按钮据此确认「会断开 N 个程序」);没在运行时为 0。</summary>
     [TestMethod]
     public async Task CountConnectedClients_CountsConnections()

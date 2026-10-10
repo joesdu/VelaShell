@@ -85,6 +85,36 @@ public sealed class MainWindowSshFeatureTests
         Assert.IsEmpty(MainWindowViewModel.WorkingDirectoryScript(settings, RemoteShellKind.Bash));
     }
 
+    /// <summary>
+    /// 本机输入法的 XIM 桥(F5 第二步):X11 转发经内置 X Server(没指定显示地址、引擎是内置的)、开着「X 窗口里用本机输入法」时,
+    /// 连接后连同目录钩子一起注入设 <c>XMODIFIERS=@im=velashell</c> 的那一句(已经设了的不动);任何一个条件不满足就不注入。
+    /// 关掉「上报终端工作目录」也照样要探 shell 种类(否则不知道该用哪一种写法)。
+    /// </summary>
+    [TestMethod]
+    public void InputMethodEnvironmentScript_OnlyWhenX11GoesToTheBuiltInServerWithTheHostInputMethod()
+    {
+        AppSettings settings = new();
+        settings.TerminalBehavior.ReportWorkingDirectory = false;
+        SessionProfile forwarding = new() { Ssh = new SshSessionOptions { X11Forwarding = true } };
+
+        Assert.IsTrue(MainWindowViewModel.WantsInputMethodEnvironment(settings, forwarding), "目录上报关了也要探 shell 种类");
+        Assert.AreEqual("[ -n \"${XMODIFIERS-}\" ] || export XMODIFIERS=@im=velashell",
+            MainWindowViewModel.InputMethodEnvironmentScript(settings, forwarding, RemoteShellKind.Bash));
+        Assert.AreEqual("set -q XMODIFIERS; or set -gx XMODIFIERS @im=velashell",
+            MainWindowViewModel.InputMethodEnvironmentScript(settings, forwarding, RemoteShellKind.Fish));
+        Assert.IsEmpty(MainWindowViewModel.InputMethodEnvironmentScript(settings, forwarding, RemoteShellKind.NonPosix), "cmd.exe / PowerShell 不注入");
+        Assert.IsEmpty(MainWindowViewModel.InputMethodEnvironmentScript(settings, forwarding, RemoteShellKind.Unknown));
+
+        Assert.IsFalse(MainWindowViewModel.WantsInputMethodEnvironment(settings, new SessionProfile()), "没开 X11 转发");
+        Assert.IsFalse(MainWindowViewModel.WantsInputMethodEnvironment(settings,
+            new SessionProfile { Ssh = new SshSessionOptions { X11Forwarding = true, X11Display = "localhost:0.0" } }), "指定了别的 X 服务端");
+        settings.XServer.UseHostInputMethod = false;
+        Assert.IsFalse(MainWindowViewModel.WantsInputMethodEnvironment(settings, forwarding), "不用本机输入法");
+        settings.XServer.UseHostInputMethod = true;
+        settings.XServer.Engine = VelaShell.Core.XServer.XServerEngines.VcXsrv;
+        Assert.IsFalse(MainWindowViewModel.WantsInputMethodEnvironment(settings, forwarding), "用的是 VcXsrv");
+    }
+
     [TestMethod]
     public async Task ConnectProfileAsync_AddsTerminalTab_AndUpdatesStatusBar()
     {

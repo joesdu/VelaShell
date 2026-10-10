@@ -436,6 +436,11 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
             // 宿主把 X 程序的托盘图标显示成自己的托盘图标(F12),关闭到托盘的程序找得回来;单窗口模式下托盘归远端桌面的面板。
             SystemTray = !rootful,
             Rootful = rootful,
+            // 本机输入法的 XIM 桥(F5 第二步):远端程序设了 XMODIFIERS=@im=velashell(连接后注入 shell)就经 XIM 连过来,
+            // 组好的字以 XIM_COMMIT 交给它、候选框跟着它报的插入点走。不用本机输入法时不当输入法服务端。
+            InputMethodName = options.UseHostInputMethod ? XServerInputMethod.Name : null,
+            // 从 X 程序往本机拖出来(F16 的另一半):拖到 X 窗口以外时服务端接住,宿主发起一次本机的拖放。单窗口模式下根窗口是远端桌面的。
+            AcceptOutgoingDrags = !rootful,
             Log = label is null ? static line => Trace.WriteLine($"[XServer] {line}") : line => Trace.WriteLine($"[XServer {label}] {line}"),
         };
     }

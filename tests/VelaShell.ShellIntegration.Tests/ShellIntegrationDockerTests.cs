@@ -199,6 +199,35 @@ public sealed class ShellIntegrationDockerTests
     }
 
     /// <summary>
+    /// 本机输入法的 XIM 桥(F5 第二步):<c>XMODIFIERS</c> 那一句与目录钩子一起藏在哨兵之前(宿主的 SendStartupCommand 就是这样拼的)。
+    /// 每种 shell 都解析得了、真的设上了 <c>@im=velashell</c>、钩子照常工作、屏幕上不留痕;已经设过的(远端装了 fcitx)不动。
+    /// </summary>
+    [TestMethod]
+    [DynamicData(nameof(Shells))]
+    [Timeout(60_000)]
+    public async Task InputMethodEnvironment_IsSetSilently_AndAnExistingValueIsKept(string user, RemoteShellKind expected)
+    {
+        await using ShellIntegrationHarness harness = await ShellIntegrationHarness.ConnectAsync(user);
+        RemoteShellKind kind = await harness.DetectShellKindAsync();
+        Assert.AreEqual(expected, kind);
+
+        harness.WaitForOutputIdle();
+        string hidden = Core.XServer.XServerInputMethod.ShellExport(kind) + "; " + ShellIntegrationScript.For(kind);
+        await harness.InjectAsync(kind, hidden, ShellIntegrationScript.FunctionName);
+        harness.WaitForWorkingDirectory(HomeOf(user));
+        AssertNoTrace(harness);
+        await harness.InjectUserCommandAsync(kind, "echo XM=$XMODIFIERS=");
+        harness.WaitFor(() => harness.Visible.Contains("XM=" + Core.XServer.XServerInputMethod.Modifiers + "=", StringComparison.Ordinal),
+            "XMODIFIERS 设上了");
+
+        // 已经设了别的输入法:再注入一次(重连时就是这样)也不动它。
+        await harness.InjectUserCommandAsync(kind, kind == RemoteShellKind.Fish ? "set -gx XMODIFIERS @im=fcitx" : "export XMODIFIERS=@im=fcitx");
+        await harness.InjectAsync(kind, Core.XServer.XServerInputMethod.ShellExport(kind), null);
+        await harness.InjectUserCommandAsync(kind, "echo KEPT=$XMODIFIERS=");
+        harness.WaitFor(() => harness.Visible.Contains("KEPT=@im=fcitx=", StringComparison.Ordinal), "已有的 XMODIFIERS 留着");
+    }
+
+    /// <summary>
     /// <b>两边互不打扰(其二):用户的 <c>PROMPT_COMMAND</c> 长什么样都不该把我们弄坏。</b>
     /// </summary>
     /// <remarks>

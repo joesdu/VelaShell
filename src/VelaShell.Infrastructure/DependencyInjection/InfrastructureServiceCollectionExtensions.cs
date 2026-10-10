@@ -201,6 +201,9 @@ public static class InfrastructureServiceCollectionExtensions
         // 本机文件拖进经 SSH 转发来的 X 程序:经那个会话的 SFTP 传到远端临时目录,再交远端路径(F16)。
         services.AddSingleton<XServer.IXServerDropUploader>(sp => new XServer.SftpXServerDropUploader(
             sp.GetRequiredService<ISshConnectionService>(), sp.GetRequiredService<ISftpService>()));
+        // 反方向:从经 SSH 转发来的 X 程序往本机拖出文件,先经那个会话的 SFTP 取回本机的临时目录(F16 的另一半)。
+        services.AddSingleton<XServer.IXServerDragDownloader>(sp => new XServer.SftpXServerDragDownloader(
+            sp.GetRequiredService<ISshConnectionService>(), sp.GetRequiredService<ISftpService>()));
         // 远程文件服务对外仍是唯一的 ISftpService;路由按会话归属分派到 SFTP / FTP / 插件协议,
         // 文件浏览器、传输管理器、限速、拖放因此零改动。
         services.AddSingleton<ISftpService>(sp => new RoutingRemoteFileService(

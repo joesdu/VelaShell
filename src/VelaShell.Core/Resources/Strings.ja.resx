@@ -5964,6 +5964,18 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="XServer_DropFailed" xml:space="preserve">
     <value>ドロップしたファイルをアップロードできませんでした:{0}</value>
   </data>
+  <data name="XServer_DragOutDownloading" xml:space="preserve">
+    <value>{1} からドラッグした {0} 件を取得しています。マウスボタンを押したままにしてください…</value>
+  </data>
+  <data name="XServer_DragOutNoSession" xml:space="preserve">
+    <value>SSH セッション {0} は切断されています。ドラッグしたファイルを取得できません。</value>
+  </data>
+  <data name="XServer_DragOutFailed" xml:space="preserve">
+    <value>ドラッグしたファイルを取得できませんでした:{0}</value>
+  </data>
+  <data name="XServer_DragOutReleased" xml:space="preserve">
+    <value>ファイルを取得する前にマウスボタンが離されたため、何もドロップされませんでした。</value>
+  </data>
   <data name="XServer_TrayClick" xml:space="preserve">
     <value>開く(クリック)</value>
   </data>

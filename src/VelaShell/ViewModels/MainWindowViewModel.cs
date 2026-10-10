@@ -3143,7 +3143,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         AppSettings settings,
         CancellationToken cancellationToken
     ) =>
-        settings.TerminalBehavior.ReportWorkingDirectory
+        settings.TerminalBehavior.ReportWorkingDirectory || WantsInputMethodEnvironment(settings, profile)
             ? RemoteShellProbe.DetectAsync(
                 client,
                 RemoteShellProbe.CacheKey(profile?.Host, profile?.Port ?? 22, profile?.Username),
@@ -3198,7 +3198,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 {
                     return;
                 }
-                SendStartupCommand(tab, settings, shellKind);
+                SendStartupCommand(tab, settings, shellKind, profile);
                 if (profile is not null)
                 {
                     SendPostAuthCommand(tab, profile);
@@ -3219,6 +3219,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 用户自己配的"连接后执行命令"不受它影响 —— 那是用户明确要求执行的东西,
     /// 对端是什么 shell 由用户自己负责。
     /// </param>
+    /// <param name="profile">本次连接的配置:X11 转发经内置 X Server 时连同 <c>XMODIFIERS</c> 一起注入(见 <see cref="InputMethodEnvironmentScript" />)。</param>
     /// <remarks>
     /// <para>
     /// <b>钩子与用户命令分两条发,钩子那条带「注入窗口」</b>(把注入<b>引发的</b>输出也一并扣住,
@@ -3238,20 +3239,41 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     private static void SendStartupCommand(
         TerminalTabViewModel tab,
         AppSettings settings,
-        RemoteShellKind shellKind
+        RemoteShellKind shellKind,
+        SessionProfile? profile
     )
     {
-        if (WorkingDirectoryScript(settings, shellKind) is { Length: > 0 } script)
+        string script = WorkingDirectoryScript(settings, shellKind);
+        string environment = InputMethodEnvironmentScript(settings, profile, shellKind);
+        if (script.Length > 0 || environment.Length > 0)
         {
             // 装载排在哨兵之前(可能炸,而用户没敲过这一行,凭什么为它的报错买单);
             // 末尾那次上报排在哨兵之后(必须让仿真器看见,否则文件浏览器要等到用户第一次 cd)。
-            tab.SendShellIntegration(script, ShellIntegrationScript.FunctionName);
+            // XMODIFIERS 那一句也藏在哨兵之前,与目录钩子同一行发出,不多占一个提示符周期。
+            string hidden = environment.Length == 0 ? script : script.Length == 0 ? environment : environment + "; " + script;
+            tab.SendShellIntegration(hidden, script.Length > 0 ? ShellIntegrationScript.FunctionName : string.Empty);
         }
         if (settings.TerminalBehavior.StartupCommand?.Trim() is { Length: > 0 } userCommand)
         {
             tab.SendSilentCommand(userCommand);
         }
     }
+
+    /// <summary>
+    /// 这个会话的 X 程序会不会经内置 X Server 用本机输入法(F5 第二步):开着 X11 转发、没指定显示地址(于是用 VelaShell 管理的 X Server)、
+    /// 引擎是内置的、设置里开着「X 窗口里用本机输入法」。
+    /// </summary>
+    internal static bool WantsInputMethodEnvironment(AppSettings settings, SessionProfile? profile) =>
+        settings.XServer is { Engine: XServerEngines.BuiltIn, UseHostInputMethod: true }
+        && profile?.Ssh is { X11Forwarding: true } ssh
+        && string.IsNullOrWhiteSpace(ssh.X11Display);
+
+    /// <summary>
+    /// 本次要注入的 <c>XMODIFIERS</c>(见 <see cref="XServerInputMethod.ShellExport" />):Xlib 只在它写了 <c>@im=velashell</c> 时才去连内置 X Server
+    /// 的输入法服务端,sshd 又通常不放行这个变量的 env 请求。远端 shell 里已经设了的不动;不该注入、探不出 shell 种类时为空串。
+    /// </summary>
+    internal static string InputMethodEnvironmentScript(AppSettings settings, SessionProfile? profile, RemoteShellKind shellKind) =>
+        WantsInputMethodEnvironment(settings, profile) ? XServerInputMethod.ShellExport(shellKind) : string.Empty;
 
     /// <summary>
     /// 本次该注入的目录上报脚本:开关关着、或探不出 shell 种类时一律返回空串

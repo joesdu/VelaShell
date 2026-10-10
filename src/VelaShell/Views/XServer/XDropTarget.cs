@@ -69,6 +69,10 @@ internal sealed class XDropTarget
 
     private static Payload? Read(DragEventArgs e)
     {
+        if (XDragSource.IsFromX(e.DataTransfer))
+        {
+            return null;   // 从 X 程序拖出来的(还在拖、发起它的 X 程序还抓着指针):拖回 X 窗口不接,那只是把刚取回的文件再传回远端
+        }
         string[] files = [.. (e.DataTransfer.TryGetFiles() ?? []).Select(i => i.TryGetLocalPath()).OfType<string>().Where(p => p.Length > 0)];
         if (files.Length > 0)
         {
