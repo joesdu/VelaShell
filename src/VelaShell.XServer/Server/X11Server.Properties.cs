@@ -420,6 +420,7 @@ public sealed partial class X11Server
         {
             OnClientTookSelection(c, owner, slot, time);
         }
+        OnXdndSelectionOwnerChanged(slot, clientOwns: owner is not null);   // X 程序开始拖了:垫上拖出的接手窗口
     }
 
     private void GetSelectionOwner(XClient c, XRequestReader r)
@@ -454,6 +455,11 @@ public sealed partial class X11Server
                 if (IsHostXdndSelection(selection))
                 {
                     ServeXdndSelection(c, requestor, selection, target, property, time, owner.Time);
+                    return;
+                }
+                if (_xim is { } xim && selection == xim.SelectionAtom)
+                {
+                    ServeXimSelection(c, requestor, selection, target, property, time, owner.Time);   // 输入法服务端:LOCALES / TRANSPORT
                     return;
                 }
                 ServeSelection(c, requestor, selection, target, property, time, owner.Time);
@@ -512,9 +518,23 @@ public sealed partial class X11Server
         {
             return;   // 非受信客户端经 PointerWindow / InputFocus 往受信客户端的窗口发:不投递(SECURITY 不许它指名那个窗口)
         }
-        if (!(ReferenceEquals(target, _selectionWindow) && code == XEventCode.SelectionNotify))   // 选区属主回给服务端的 SelectionNotify 照收
+        // XIM 的通信窗口、拖出用的 XDND 代理窗口收的是协议消息,非受信的程序也照常用(输入法、往本机拖东西不泄露别人的东西)。
+        bool protocolWindow = _xim?.OwnsWindow(target) == true || IsOutgoingDragWindow(target);
+        if (!protocolWindow && !(ReferenceEquals(target, _selectionWindow) && code == XEventCode.SelectionNotify))   // 选区属主回给服务端的 SelectionNotify 照收
         {
             CheckUntrustedSendEvent(target, propagate, mask, code);
+        }
+        if (protocolWindow)
+        {
+            if (_xim is { } xim && xim.OwnsWindow(target))
+            {
+                xim.OnClientMessage(c, target, raw, c.BigEndian);   // _XIM_XCONNECT / _XIM_PROTOCOL / _XIM_MOREDATA
+            }
+            else
+            {
+                OnOutgoingDragMessage(c, raw, c.BigEndian);   // X 程序往本机拖:XdndEnter / Position / Leave / Drop
+            }
+            return;
         }
         if (ReferenceEquals(target, Root) && code == XEventCode.ClientMessage)
         {

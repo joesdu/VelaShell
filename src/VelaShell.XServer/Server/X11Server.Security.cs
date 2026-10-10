@@ -347,10 +347,12 @@ public sealed partial class X11Server
     /// <remarks>
     /// 例外:服务端选区窗口上 <c>_VELASHELL_*</c> 的属性 —— 服务端替宿主向选区属主要剪贴板时让它写到这里;非受信程序复制的内容
     /// 照样能经宿主到本机剪贴板(选区经宿主中转)。XSETTINGS 的属性也在这个窗口上,不在例外里。
+    /// XIM 连接的服务端通信窗口也是例外:程序把长的 XIM 包写成它上面的属性(X 传输的「属性 + ClientMessage」),窗口只属于那条连接。
     /// </remarks>
     private bool IgnoredPropertyWrite(XWindow window, uint property) =>
         RequesterUntrusted && window.Owner is null
-        && !(ReferenceEquals(window, _selectionWindow) && AtomName(property) is { } name && name.StartsWith("_VELASHELL_", StringComparison.Ordinal));
+        && !(ReferenceEquals(window, _selectionWindow) && AtomName(property) is { } name && name.StartsWith("_VELASHELL_", StringComparison.Ordinal))
+        && !(_xim?.OwnsWindow(window) == true && !ReferenceEquals(window, _xim.ServerWindow));
 
     /// <summary>
     /// 非受信客户端在服务端的窗口上改属性:只许 event-mask 一项、值只含 StructureNotify 与 PropertyChange(规范例外 3.g)——

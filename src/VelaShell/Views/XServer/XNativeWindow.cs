@@ -573,9 +573,13 @@ public sealed class XNativeWindow : Window
         }
         _heldKeys.Clear();
         _pressedWithCommand.Clear();
-        ReleaseHeldButtons();
-        // 组着字切走了:叠画的预编辑收掉(只有 Win32 会替我们清,macOS / Linux 上原先留着一个过期的组字框盖在 X 窗口上)。
-        SetPreedit(null);
+        if (!_nativeDragging)
+        {
+            ReleaseHeldButtons();   // 拖出期间的本机拖放可能让窗口失活:那时 X 程序还在等松手,拖放结束时再松开
+        }
+        // 组着字切走了:叠画的预编辑收掉(只有 Win32 会替我们清,macOS / Linux 上原先留着一个过期的组字框盖在 X 窗口上);
+        // 经 XIM 按 on-the-spot 连着的程序那边画的预编辑也一并擦掉。
+        SetPreedit(null, null);
         _host.OnWindowDeactivated(this);
     }
 
@@ -609,7 +613,10 @@ public sealed class XNativeWindow : Window
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
-        ReleaseHeldButtons();
+        if (!_nativeDragging)
+        {
+            ReleaseHeldButtons();   // 发起本机拖放时 Avalonia 先放掉捕获:X 程序还在拖,等拖放结束再松开(见 RunOutgoingDragAsync)
+        }
     }
 
     /// <summary>系统边框的尺寸(物理像素)告诉服务端(<c>_NET_FRAME_EXTENTS</c>),摆放时也用它把内容区对准 X 的坐标。</summary>
@@ -893,13 +900,44 @@ public sealed class XNativeWindow : Window
     /// </summary>
     private bool _keyTextPending;
 
-    /// <summary>最后一次在窗口里按下指针的位置(DIP):输入法的候选框摆在这里(X 程序不告诉我们插入点在哪,点进输入框的位置最接近)。</summary>
+    /// <summary>
+    /// 最后一次在窗口里按下指针的位置(DIP):程序没经 XIM 报插入点时,输入法的候选框摆在这里(点进输入框的位置最接近插入点)。
+    /// </summary>
     private Point? _lastClick;
 
     private XImeClient? _imeClient;
 
-    /// <summary>输入法正在组的字(预编辑);X 程序画不了它,由 <see cref="XSurface" /> 叠在候选框的位置上。</summary>
+    /// <summary>
+    /// 键盘焦点在这个窗口里的、经 XIM 连着的程序报的输入上下文(F5 第二步,<see cref="AvaloniaXServerHost.InputMethodFocusChanged" />):
+    /// 插入点在哪、预编辑谁来画。没有为 null(程序不用 XIM,或焦点不在这个窗口)。
+    /// </summary>
+    private XInputMethodFocus? _inputMethod;
+
+    /// <summary>输入法正在组的字(预编辑)。</summary>
     internal string? Preedit { get; private set; }
+
+    /// <summary>
+    /// 要叠画在窗口上的预编辑:程序经 XIM 按 on-the-spot 自己画的时候不叠画(交给它画,见 <see cref="SetPreedit" />),否则就是 <see cref="Preedit" />
+    /// (程序不用 XIM,或用的是 over-the-spot / 根窗口风格)。
+    /// </summary>
+    internal string? OverlayPreedit => _inputMethod is { ClientDrawsPreedit: true } ? null : Preedit;
+
+    /// <summary>程序经 XIM 报了插入点(候选框与叠画的预编辑都跟着它,而不是最后一次点击处)。</summary>
+    internal bool HasReportedCursor => _inputMethod?.Cursor is not null;
+
+    /// <summary>
+    /// 接受本机输入法输入的 XIM 输入上下文换了或插入点动了(只交给它所在的那个窗口;别的窗口收到 null):候选框挪过去,叠画的预编辑按新的风格重画。
+    /// </summary>
+    internal void ApplyInputMethodFocus(XInputMethodFocus? focus)
+    {
+        if (Equals(focus, _inputMethod))
+        {
+            return;
+        }
+        _inputMethod = focus;
+        _imeClient?.NotifyCursorMoved();
+        _surface.InvalidateVisual();
+    }
 
     private void OnTextInputMethodClientRequested(object? sender, TextInputMethodClientRequestedEventArgs e)
     {
@@ -941,17 +979,38 @@ public sealed class XNativeWindow : Window
         e.Handled = true;
     }
 
-    private void SetPreedit(string? text)
+    /// <summary>
+    /// 预编辑变了:交给服务端(<see cref="X11Server.InjectPreedit" />:经 XIM 按 on-the-spot 连着的程序自己画,别的情况服务端不理),
+    /// 需要时自己叠画。<paramref name="caret" /> 是插入点在预编辑里的位置,没给时在末尾。
+    /// </summary>
+    internal void SetPreedit(string? text, int? caret)
     {
         Preedit = string.IsNullOrEmpty(text) ? null : text;
+        if (Server is { } server)
+        {
+            string value = Preedit ?? "";
+            if (value.Length > X11Server.MaxInjectedTextLength)
+            {
+                value = value[..X11Server.MaxInjectedTextLength];
+            }
+            server.InjectPreedit(value, Math.Clamp(caret ?? value.Length, 0, value.Length));
+        }
         _surface.InvalidateVisual();
     }
 
-    /// <summary>候选框与预编辑的位置(DIP,相对 <see cref="XSurface" />):最后一次点击处;还没点过时是左上角附近。</summary>
+    /// <summary>
+    /// 候选框与叠画的预编辑的位置(DIP,相对 <see cref="XSurface" />):程序经 XIM 报了插入点时是那一行的插入点;否则是最后一次点击处,
+    /// 还没点过时是左上角附近。
+    /// </summary>
     internal Rect ImeCursorRect
     {
         get
         {
+            if (_inputMethod?.Cursor is { } cursor)
+            {
+                double scale = Scale;
+                return new Rect(cursor.X / scale, cursor.Y / scale, Math.Max(1, cursor.Width / scale), Math.Max(1, cursor.Height / scale));
+            }
             Point at = _lastClick ?? new Point(8, 8);
             return new Rect(at.X, at.Y, 1, 18);
         }
@@ -979,12 +1038,95 @@ public sealed class XNativeWindow : Window
             set { }
         }
 
-        public override void SetPreeditText(string? preeditText) => owner.SetPreedit(preeditText);
+        public override void SetPreeditText(string? preeditText) => owner.SetPreedit(preeditText, null);
 
-        public override void SetPreeditText(string? preeditText, int? cursorPosition) => owner.SetPreedit(preeditText);
+        public override void SetPreeditText(string? preeditText, int? cursorPosition) => owner.SetPreedit(preeditText, cursorPosition);
 
         public void NotifyCursorMoved() => RaiseCursorRectangleChanged();
     }
+
+    // ================================================================== X 程序往本机拖出来(F16 的另一半)
+
+    /// <summary>正在为 X 程序拖出来的东西准备或进行本机拖放:那一次,与取消准备用的令牌(X 那边先结束了就取消)。</summary>
+    private (XOutgoingDrag Drag, CancellationTokenSource Cancel)? _outgoingDrag;
+
+    /// <summary>
+    /// 本机拖放进行中:Avalonia 发起拖放时会先放掉指针捕获,系统的拖放循环也可能让窗口失活 —— 这期间不替 X 那边松开按钮,
+    /// 发起拖动的 X 程序还抓着指针、等着松手(拖放结束时由 <see cref="RunOutgoingDragAsync" /> 补上)。
+    /// </summary>
+    private bool _nativeDragging;
+
+    /// <summary>用户此刻按着鼠标(X 程序的拖动是从这个窗口里开始的)。</summary>
+    internal bool HoldsButtons => _heldButtons.Count > 0;
+
+    /// <summary>X 程序把东西拖到了 X 窗口以外(服务端已经取来数据):准备好本机拖放的数据,趁用户还按着鼠标发起。</summary>
+    internal void BeginOutgoingDrag(XOutgoingDrag drag) => Services.FireAndForget.Run(() => RunOutgoingDragAsync(drag));
+
+    /// <summary>X 那边的这一次先结束了(指针回到了 X 窗口里、用户在准备好之前就松了手):不再发起本机拖放,正在取的文件停下。</summary>
+    internal void CancelOutgoingDrag(XOutgoingDrag drag)
+    {
+        if (_outgoingDrag is { } current && ReferenceEquals(current.Drag, drag))
+        {
+            current.Cancel.Cancel();
+        }
+    }
+
+    /// <summary>
+    /// 一次拖出:准备数据(文件先取回本机,见 <see cref="XDragSource" />)→ 用户还按着鼠标就发起本机拖放 → 拖放结束时先把结果交回服务端
+    /// (<see cref="X11Server.CompleteOutgoingDrag" />),再在 X 那边松开按钮 —— X 程序随后发的 XdndDrop 按这个结果回答。
+    /// 准备期间用户就松了手(按钮已经照常送进 X、X 程序的拖放已经结束)时不发起,提示一句。
+    /// </summary>
+    private async Task RunOutgoingDragAsync(XOutgoingDrag drag)
+    {
+        if (Server is not { } server)
+        {
+            return;
+        }
+        if (_lastPress is not { } press || _heldButtons.Count == 0 || _outgoingDrag is not null)
+        {
+            server.CompleteOutgoingDrag(drag, dropped: false);
+            return;
+        }
+        using CancellationTokenSource cancel = new();
+        _outgoingDrag = (drag, cancel);
+        bool dropped = false, started = false;
+        try
+        {
+            DataTransfer? data = await XDragSource.BuildAsync(this, drag, _host.DragDownloader, AvaloniaXServerHost.NotifyUser, cancel.Token);
+            if (data is null || cancel.IsCancellationRequested)
+            {
+                return;
+            }
+            if (_heldButtons.Count == 0)
+            {
+                AvaloniaXServerHost.NotifyUser(VelaShell.Core.Resources.Strings.Get("XServer_DragOutReleased"), false);
+                return;
+            }
+            started = _nativeDragging = true;
+            dropped = await StartNativeDrag(press, data, DragDropEffects.Copy) != DragDropEffects.None;
+        }
+        catch (OperationCanceledException)
+        {
+            // X 那边先结束了:什么也不发起
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[XServer] drag out failed: {ex.Message}");
+        }
+        finally
+        {
+            _nativeDragging = false;
+            _outgoingDrag = null;
+            server.CompleteOutgoingDrag(drag, dropped);
+            if (started)
+            {
+                ReleaseHeldButtons();   // 系统的拖放循环吃掉了松开:在 X 那边补上,X 程序随即发 XdndDrop
+            }
+        }
+    }
+
+    /// <summary>发起本机拖放(Avalonia 的 <see cref="DragDrop.DoDragDropAsync" />,一直等到放下或取消);测试换掉它,不去碰真的系统拖放。</summary>
+    internal Func<PointerPressedEventArgs, IDataTransfer, DragDropEffects, Task<DragDropEffects>> StartNativeDrag { get; set; } = DragDrop.DoDragDropAsync;
 
     /// <summary>
     /// macOS:AppKit 不给带 Command 的组合键发 KeyUp(❓ 未在真机上确认;Avalonia 若已补上,下面的处理只是多余,不出错)。
@@ -1396,17 +1538,18 @@ public sealed class XNativeWindow : Window
                 context.DrawImage(tile, new Rect(0, 0, size.Width, size.Height),
                     new Rect(x / scale, y / scale, size.Width / scale, size.Height / scale));
             }
-            if (_owner.Preedit is { } preedit)
+            if (_owner.OverlayPreedit is { } preedit)
             {
-                DrawPreedit(context, preedit, _owner.ImeCursorRect);
+                DrawPreedit(context, preedit, _owner.ImeCursorRect, onLine: _owner.HasReportedCursor);
             }
         }
 
         /// <summary>
-        /// 输入法正在组的字:X 程序看不到它,叠在候选框的位置上画一个浮层(<c>VelaBgSurface</c> 底、<c>VelaBorderSecondary</c> 边、
-        /// <c>VelaTextPrimary</c> 字、下划线),上屏之后随预编辑清空消失。
+        /// 输入法正在组的字:程序自己不画时(没经 XIM 连上,或用的是 over-the-spot / 根窗口风格)叠一个浮层(<c>VelaBgSurface</c> 底、
+        /// <c>VelaBorderSecondary</c> 边、<c>VelaTextPrimary</c> 字、下划线),上屏之后随预编辑清空消失。程序报了插入点时(<paramref name="onLine" />)
+        /// 盖在插入点那一行上(over-the-spot 的本义);否则摆在最后一次点击处的下方。
         /// </summary>
-        private void DrawPreedit(DrawingContext context, string preedit, Rect anchor)
+        private void DrawPreedit(DrawingContext context, string preedit, Rect anchor, bool onLine)
         {
             IBrush background = Brush("VelaBgSurface"), border = Brush("VelaBorderSecondary"), foreground = Brush("VelaTextPrimary");
             double fontSize = this.TryFindResource("VelaFontSize13", out object? size) && size is double s ? s : 13;
@@ -1415,7 +1558,8 @@ public sealed class XNativeWindow : Window
             const double padX = 6, padY = 3;
             double width = text.Width + (2 * padX), height = text.Height + (2 * padY);
             double x = Math.Clamp(anchor.X, 0, Math.Max(0, Bounds.Width - width));
-            double y = anchor.Bottom + height <= Bounds.Height ? anchor.Bottom : Math.Max(0, anchor.Y - height);
+            double y = onLine ? Math.Clamp(anchor.Y + ((anchor.Height - height) / 2), 0, Math.Max(0, Bounds.Height - height))
+                : anchor.Bottom + height <= Bounds.Height ? anchor.Bottom : Math.Max(0, anchor.Y - height);
             Rect box = new(x, y, width, height);
             context.DrawRectangle(background, new Pen(border, 1), box, 4, 4);
             context.DrawText(text, new Point(x + padX, y + padY));

@@ -129,6 +129,13 @@ public sealed partial class X11Server
         {
             if (item.Text is { } text)
             {
+                if (item.Start == 0 && CommitThroughXim(text))
+                {
+                    // 焦点所在的程序经 XIM 连着(X11Server.Xim.cs):组好的字整段交过去,不动键位表。轮到它时才决定 ——
+                    // 排在前面、还在等键码的字先输完,顺序不乱。
+                    _pendingInput.Dequeue();
+                    continue;
+                }
                 item.Start = TypeText(text, item.Start);
                 if (item.Start < text.Length)
                 {

@@ -5969,6 +5969,18 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="XServer_DropFailed" xml:space="preserve">
     <value>Could not upload the dropped files: {0}</value>
   </data>
+  <data name="XServer_DragOutDownloading" xml:space="preserve">
+    <value>Fetching {0} item(s) dragged out of {1}; keep holding the mouse button…</value>
+  </data>
+  <data name="XServer_DragOutNoSession" xml:space="preserve">
+    <value>The SSH session {0} is no longer connected; the dragged files can't be fetched.</value>
+  </data>
+  <data name="XServer_DragOutFailed" xml:space="preserve">
+    <value>Could not fetch the dragged files: {0}</value>
+  </data>
+  <data name="XServer_DragOutReleased" xml:space="preserve">
+    <value>The mouse button was released before the files were fetched; nothing was dropped.</value>
+  </data>
   <data name="XServer_TrayClick" xml:space="preserve">
     <value>Open (click)</value>
   </data>

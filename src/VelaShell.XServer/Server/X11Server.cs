@@ -36,7 +36,8 @@ namespace VelaShell.XServer;
 /// 宿主方法的命名:<c>Inject*</c> 是合成的用户输入;名字里带 <c>TopLevel</c>、第一个参数是 <see cref="XTopLevelWindow" /> 的,
 /// 是宿主作为窗口管理器对那个顶层的动作,按「动词 + TopLevel + 宾语」起名(<c>MoveTopLevel</c>、<c>SetTopLevelStates</c>、
 /// <c>ChangeTopLevelStates</c>、<c>KillTopLevelClient</c>);不带 <c>TopLevel</c> 的 <c>Set*</c> 是宿主那边的环境变了、换进服务端
-/// (键位表、显示器布局、DPI、锁定键、剪贴板内容)。它们都可以在任意线程上调、立即返回,参数不合法时当场抛异常;
+/// (键位表、显示器布局、DPI、锁定键、剪贴板内容);<c>Complete*</c> 是宿主对服务端经回调交给它的一件事的答复,第一个参数是那件事
+/// (<c>CompleteOutgoingDrag</c>)。它们都可以在任意线程上调、立即返回,参数不合法时当场抛异常;
 /// 指名的窗口在执行时已经不在(客户端刚销毁了它)时静默忽略。
 /// </para>
 /// <para>
@@ -108,6 +109,8 @@ public sealed partial class X11Server : IAsyncDisposable
         InitXSettings();
         InitSystemTray();
         InitClipboardManager();
+        InitXim();
+        InitOutgoingDrags();
         InitSyncCounters();
         PublishXkbRulesNames();
         InitEwmh();
@@ -511,11 +514,13 @@ public sealed partial class X11Server : IAsyncDisposable
     public const int MaxInjectedTextLength = 4096;
 
     /// <summary>
-    /// 输入一串字(宿主的输入法组好、上屏的文字):送往当前的键盘焦点,与用户在 X 窗口里按键一样。X 程序只认键码,每个字找一个空着的键码、
-    /// 把它的键值改成这个字的 Unicode 键值再按下松开(一段字里新借的键码一起改、客户端收到一次 MappingNotify);键位表里本来就有、
-    /// 不按修饰键就打得出来的字直接按那个键。空键码用完时挪用空闲够久的,挪不了就等:等的时候后来的 <see cref="InjectText" /> 与
-    /// <see cref="InjectKey(byte, bool, bool)" /> 排在后面,顺序不乱。远端不用装输入法框架,所有工具包都能收到;没有预编辑,候选框由本机的输入法自己显示。
-    /// 换行(CR LF 算一个)按 Return、制表按 Tab,其余控制字符不输入。
+    /// 输入一串字(宿主的输入法组好、上屏的文字):送往当前的键盘焦点,与用户在 X 窗口里按键一样。
+    /// 焦点所在的程序经 XIM 连着服务端、有报了焦点的输入上下文时(<see cref="X11ServerOptions.InputMethodName" />,
+    /// <see cref="IX11ServerHost.InputMethodFocusChanged" /> 报的那个),字整段以 XIM_COMMIT 交给它,不动键位表。否则借键码:X 程序只认键码,
+    /// 每个字找一个空着的键码、把它的键值改成这个字的 Unicode 键值再按下松开(一段字里新借的键码一起改、客户端收到一次 MappingNotify);
+    /// 键位表里本来就有、不按修饰键就打得出来的字直接按那个键 —— 远端不用装输入法框架,所有工具包都能收到。空键码用完时挪用空闲够久的,
+    /// 挪不了就等:等的时候后来的 <see cref="InjectText" /> 与 <see cref="InjectKey(byte, bool, bool)" /> 排在后面,顺序不乱(经 XIM 交的也排在它们后面)。
+    /// 两种都是换行(CR LF 算一个)按 Return、制表按 Tab,其余控制字符不输入。
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="text" /> 超过 <see cref="MaxInjectedTextLength" /> 个 UTF-16 码元。</exception>
     public void InjectText(string text)
@@ -529,6 +534,38 @@ public sealed partial class X11Server : IAsyncDisposable
         {
             Post(null, () => ApplyInjectText(text));
         }
+    }
+
+    /// <summary>
+    /// 宿主的输入法正在组的字(预编辑)变了;<paramref name="text" /> 为空表示组字结束或取消。接受输入的 XIM 输入上下文是 on-the-spot 的
+    /// (<see cref="XInputMethodFocus.ClientDrawsPreedit" />)时,服务端经 XIM 的预编辑回调(XIM_PREEDIT_START / DRAW / DONE)让程序画在
+    /// 自己的输入框里,每个字加下划线;别的情况什么也不做(宿主自己叠画)。随后的 <see cref="InjectText" /> 先擦掉程序那边的预编辑再上屏。
+    /// </summary>
+    /// <param name="text">预编辑的字;空串 = 没有预编辑了。</param>
+    /// <param name="caret">插入点在 <paramref name="text" /> 里的位置(UTF-16 下标,0 – 长度)。</param>
+    /// <exception cref="ArgumentException"><paramref name="text" /> 超过 <see cref="MaxInjectedTextLength" /> 个 UTF-16 码元。</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="caret" /> 不在 0 – <paramref name="text" /> 的长度之间。</exception>
+    public void InjectPreedit(string text, int caret)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (text.Length > MaxInjectedTextLength)
+        {
+            throw new ArgumentException($"一次至多 {MaxInjectedTextLength} 个字符。", nameof(text));
+        }
+        ArgumentOutOfRangeException.ThrowIfNegative(caret);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(caret, text.Length);
+        Post(null, () => _xim?.Preedit(text, caret));
+    }
+
+    /// <summary>
+    /// 宿主为 X 程序拖出来的东西(<see cref="IX11ServerHost.OutgoingDragStarted" />)发起的本机拖放结束了:<paramref name="dropped" /> 为真是放下了
+    /// (本机那边接受了),为假是取消了或没发起成。宿主在把松开的鼠标按钮注入回服务端<b>之前</b>调它 —— X 程序松手后发的 XdndDrop 就按这个结果
+    /// 回 XdndFinished(动作只回复制:本机拿到的是副本,远端的原件不会被当成「移走了」删掉)。不是当前这一次的(已经结束、又开始了新的)静默忽略。
+    /// </summary>
+    public void CompleteOutgoingDrag(XOutgoingDrag drag, bool dropped)
+    {
+        ArgumentNullException.ThrowIfNull(drag);
+        Post(null, () => ApplyCompleteOutgoingDrag(drag, dropped));
     }
 
     /// <summary>

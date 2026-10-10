@@ -175,6 +175,24 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
 
     public void FrameClockWanted(bool wanted) => _pending.Add(() => inner.FrameClockWanted(wanted));
 
+    private int _inputMethodAt = -1;
+    private XInputMethodFocus? _inputMethod;
+
+    /// <summary>输入法的焦点与插入点:同一批里只交最后一次(xterm 每敲一个字都报一次插入点)。</summary>
+    public void InputMethodFocusChanged(XInputMethodFocus? focus)
+    {
+        _inputMethod = focus;
+        if (_inputMethodAt < 0)
+        {
+            _inputMethodAt = _pending.Count;
+            _pending.Add(() => inner.InputMethodFocusChanged(_inputMethod));
+        }
+    }
+
+    public void OutgoingDragStarted(XOutgoingDrag drag) => _pending.Add(() => inner.OutgoingDragStarted(drag));
+
+    public void OutgoingDragEnded(XOutgoingDrag drag) => _pending.Add(() => inner.OutgoingDragEnded(drag));
+
     /// <summary>调完攒下的回调。回调里再引起的回调(宿主同步调了注入方法 —— 那只是排工作项,不会同步回来)留到下一轮。</summary>
     public void Flush()
     {
@@ -206,6 +224,7 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
         _cursorAt = -1;
         _clipboardAt = -1;
         _warpAt = -1;
+        _inputMethodAt = -1;
     }
 }
 

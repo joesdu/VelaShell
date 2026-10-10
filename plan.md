@@ -2297,7 +2297,7 @@ Mesa 或工具包的源码。各项的理由与验证写在提交信息里;这�
 **四、拖放进 X 窗口(F16)**:库替宿主当 XDND 第 5 版的源(`InjectDragOver` / `InjectDragLeave` / `InjectDrop`、`IsDragAccepted`):按 XdndAware /
 XdndProxy 找目标,Enter / Position / Status / Leave / Drop / Finished 带流控,XdndSelection 由服务端供数据。宿主 `XDropTarget` 接上原生窗口的拖放:
 文本按 UTF8_STRING / text/plain 等给;文件经该 X 程序所属 SSH 会话的 SFTP 先传到远端 `/tmp/velashell-drop-<guid>`(权限 700,重名改成「a (2).txt」),
-再以 `text/uri-list` 给;程序不是经 SSH 会话来的时提示用户。从 X 程序往本机拖出来没做。
+再以 `text/uri-list` 给;程序不是经 SSH 会话来的时提示用户。当时从 X 程序往本机拖出来没做,已由 §189 补上。
 
 **五、托盘图标(F12)**:库可选当托盘管理器(`X11ServerOptions.SystemTray`、`SystemTrayIconSize`):占 `_NET_SYSTEM_TRAY_S0`,按 XEmbed 把图标嵌进
 服务端的嵌入窗口(按 `_XEMBED_INFO` 映射、发 XEMBED_EMBEDDED_NOTIFY),经 `SystemTrayIconAdded` / `Removed` 交给宿主,不当普通顶层。宿主 `XTrayIcons`
@@ -2310,13 +2310,13 @@ XdndProxy 找目标,Enter / Position / Status / Leave / Drop / Finished 带流�
 按堆叠次序拼进根窗口的缓冲(背景像素或平铺图、边框、边界形状、深度 32 的预乘叠加);指针、滚动与拖放按根坐标注入;缩放屏幕窗口就是改屏幕尺寸;
 GetImage 读根窗口拿到拼好的屏幕。宿主:设置的「窗口模式」对内置引擎也生效 —— 单个大窗口 / 无标题栏 / 全屏时开一个「X 桌面 :N」窗口
 (按会话分出来的显示写会话的来历),起步是主显示器工作区的八成、居中;关掉它当作停 X Server;指针 Warp / confine 的根坐标换算到这个窗口里。
-互操作镜像加装 twm,新用例实跑:twm 接管、xterm 套进外框、拼进屏幕,零协议错误。没做的:直接画在根窗口上的内容不显示(只显示背景);
-远端合成器画在 Composite 叠加窗口上的效果不显示。
+互操作镜像加装 twm,新用例实跑:twm 接管、xterm 套进外框、拼进屏幕,零协议错误。§187 当时没做的:直接画在根窗口上的内容不显示(只显示背景);
+远端合成器画在 Composite 叠加窗口上的效果不显示。F5 第二步与 F16 反方向当时也未做,已在 §189 完成。
 
 **七、F4–F30 的其余各项**(子会话 B,各一个提交,`xs_plan: Fn` 行标着对应哪一项):
 - **F5 第一步,本机输入法上屏**:库 `InjectText` —— 每个字借一个空键码改成 Unicode 键值再按下松开(键位表里本来就有的直接按),改过的不改回去,
   空键码用完才挪用最久没用的;宿主的 X 窗口成为本机输入法的客户端(预编辑叠画在窗口里、候选框在最后一次点击处)。设置「X 窗口里用本机输入法」默认开。
-  这部分推翻了「确认不做」里的 XIM 一条 —— 只做上屏,XIM 桥仍没做。
+  这部分推翻了「确认不做」里的 XIM 一条 —— 当时只做上屏,XIM 桥仍没做;后续已在 §189 完成。
 - **F6 平滑滚动**:XI 2.1 的两个滚动轴与 ScrollClass,`InjectScroll` 交原样增量,攒够一格再模拟按钮 4–7,反向也模拟。
 - **F8 Warp / confine-to**:回调 `PointerWarped` / `PointerConfinementChanged`(只报抓着指针的、不受限的客户端);宿主在用户用着 X 窗口时挪 / 关系统光标
   (Windows 与 Linux 的 X11 桌面;macOS、Wayland 不做;单窗口模式下换算到屏幕窗口里)。
@@ -2337,7 +2337,7 @@ GetImage 读根窗口拿到拼好的屏幕。宿主:设置的「窗口模式」�
 - **执行线程按客户端轮流取工作**(做 F22 的互操作用例时发现:间接 glxgears 排满请求时 xdpyinfo 要等 25 秒):按客户端分队轮流,宿主与计时器那条队优先,
   现在 1 秒内。
 - 此前就有、只核对的:F21、F26 与 F22 的 create_context。只做了一部分的:F19(各显示器的 DPI 已按各自缩放报;整数放大要全服务端统一的放大倍数,
-  宿主所有根坐标换算都要改,没做)。没做的:F5 第二步 XIM 桥、F7 压感 / 触摸 / 手势、F29 WSL、F30 MIT-SHM 1.2 —— 理由与范围记在 `feature-plan.md` H。
+  宿主所有根坐标换算都要改,没做)。当时没做的:F5 第二步 XIM 桥与 F16 反向拖出已在 §189 完成;仍没做的是 F7 压感 / 触摸 / 手势、F29 WSL、F30 MIT-SHM 1.2 —— 理由与范围记在 `feature-plan.md` H。
 
 **八、合进来时的衔接**(单独的提交,或改在被合的那个提交里,提交信息里写明):
 - X 程序清单覆盖按会话分出来的显示(F3 × F1,见二);单窗口模式与按会话的显示一起用时,每个会话的屏幕窗口标题写会话的来历(F13 × F1)。
@@ -2361,8 +2361,8 @@ twm 在单窗口模式下接管、非受信 cookie 与非受信下常见程序�
 
 ## ✅ 188. 2026-10-10 内置 X 服务端:核对 §187 的几项新设置,修掉看到的问题(用户需求)
 
-**一、来由**:§187 做完之后给维护者列了几项要拍板的默认值 —— Linux / macOS 默认不开 TCP 端口(行为变化)、X 窗口里用本机输入法默认开(部分推翻
-「XIM 不做」)、标出 X 窗口的来源默认开、合成管理器默认关(`ClientSideShadows` 也关)、每个 SSH 会话一个显示默认关 —— 以及 F19 整数倍放大
+**一、来由**:§187 做完之后给维护者列了几项要拍板的默认值 —— Linux / macOS 默认不开 TCP 端口(行为变化)、X 窗口里用本机输入法默认开(当时部分推翻
+「XIM 不做」,完整桥接已在 §189 落地)、标出 X 窗口的来源默认开、合成管理器默认关(`ClientSideShadows` 也关)、每个 SSH 会话一个显示默认关 —— 以及 F19 整数倍放大
 是现在按全服务端一个倍数做、还是等按会话的显示各给一个。维护者确认默认值都保持、F19 先等(`feature-plan.md` H 记着),要求再核对一遍
 这几项的实现、把没做完的做完。核对分两路:主会话读宿主一侧(设置 → 引擎 → 宿主的整条链),另开三个只读的审查子会话分别看库里的
 F5 文字输入、F11 合成管理器与 F17 / F18 来源标识、F4 只开 Unix 套接字;审查报的每一条先对着代码核实,不成立的不改(比如「客户端断开时
@@ -2456,3 +2456,23 @@ Core.Tests 769 / 23;Presentation.Tests 84、Controls.Tests 31 全过(跳过的�
 重跑之后 Ubuntu 上又红了一条同类的:`GlxTests.第一次用到反馈模式时记一行日志…` 数到 0 行。服务端持锁时记的日志放锁之后才交出去,回复在批次中间
 就写给了客户端,往返一次之后马上数日志会数漏。测试工具加 `ServerLog.WaitForAsync`(等日志里出现要的行,5 秒为限),往返之后数日志的 6 处
 (反馈模式、GLX 表面超限、借不到键码、刷屏限额的补记、字体名转义、持锁过久)都换过去;成批响铃那条先等第一次响铃到了再数上限。
+
+## ✅ 189. 2026-10-10 内置 X 服务端:本机输入法的 XIM 桥(F5 第二步,决策 Q1)与从 X 程序往本机拖出来(F16 的另一半)(用户需求)
+
+**一、XIM 服务端(库)**:
+- `X11Server` 在 `InputMethodName` 非空时占住 `@server=名字`,把它加入根窗口的 `XIM_SERVERS`,并提供 `LOCALES` / `TRANSPORT` 转换目标。`LOCALES` 与 `TRANSPORT` 在启动 XIM 时先建好:真实 Xlib 会用 only-if-exists 的 `InternAtom` 查它们,不预先建就认为没有输入法服务端;这是 xterm 互操作才逮到、单元测试没有覆盖的互操作边界。
+- 按 *The Input Method Protocol* 1.0、*The XIM Transport Specification* 0.1 实现 X 传输:短包放 `_XIM_PROTOCOL`,长包写接收方通信窗口的属性再通知,支持 `_XIM_MOREDATA`、两种字节序与 20 字节分界长度。两份规范正文与表格对长包的属性属主、通知格式有冲突,按 Input Method Protocol 附录 D 的表实现,读取时兼容检查发送方窗口。
+- 支持 CONNECT / DISCONNECT / OPEN / CLOSE、编码协商、查询扩展、IM / IC 属性读写、CREATE / DESTROY_IC、焦点、RESET / SYNC / TRIGGER_NOTIFY 与必要错误。协商优先 COMPOUND_TEXT,其次 UTF-8;支持 on-the-spot、over-the-spot、根窗口与无预编辑区风格,不接 off-the-spot。每条连接最多 256 条、每条最多 1024 个输入上下文,包长约 256 KB。
+- 输入上下文建立后发送 `XIM_SET_EVENT_MASK(0,0)`,按键不走 XIM,避免 SSH 上每个键多一个往返。服务端记录最后报告焦点的输入上下文,在顶层焦点与插入点变化时经 `InputMethodFocusChanged` 告诉宿主;`XNSpotLocation` 换成候选窗需要的顶层内光标矩形。`InjectText` 有 XIM 上下文时先结束预编辑、用 XIM_COMMIT 交可见字,换行与制表仍按键;`InjectPreedit` 给 on-the-spot 客户端发 START / DRAW / DONE,按 Unicode 码点计算光标与变更范围,其它风格由宿主叠画。
+- XIM 通信窗口、输入法选区与输入上下文销毁时清焦点和预编辑;XIM 协议窗口的受信写入例外只限对应连接的窗口。`Gtk/IMModule=xim` 只在开启宿主输入法时写入 XSETTINGS,Qt 5/6 与 GTK 4 没有 XIM,仍使用原有借键码路径。
+
+**二、拖出(库与宿主)**:
+- 多窗口模式下服务端把根窗口 `XdndProxy` 指到自己的代理窗口,按 XDND v5 接收 `XdndEnter` / `XdndPosition` / `XdndLeave` / `XdndDrop`,接受 `text/uri-list` 与文字并只声明 `XdndActionCopy`。第一次接受时复用选择取数流程取 URI 或文字,解析后经 `OutgoingDragStarted` 交给宿主;源窗口销毁、离开、取数失败与宿主未及时答复都收尾并阻止旧结果污染新拖动。
+- Java AWT 不查根窗口代理,所以 X 程序拥有 `XdndSelection` 且指针抓取期间,服务端把代理窗口静默垫进根窗口子窗口最底层,补 `WM_STATE` 与 `XdndAware`;源窗口缓存形成后不再看见它。抓取结束后一秒开始每半秒清理,不在 X 窗口之间的拖放链路里留下代理。
+- 宿主收到 URI / 文字后,文字直接建本机 `DataTransfer`;远端文件由相同 SSH 会话的 SFTP 取到 `%TEMP%/velashell-xdrag` 下的隔离目录,目录递归、符号链接目录不跟随、文件名做非法字符与 Windows 保留名处理,一天后在后续拖出时清理。取回期间提示用户保持按键,松开、会话断开或传输失败不启动本机拖放。
+- `XNativeWindow` 只有在按钮仍按住时调用 Avalonia 原生拖放;无论成功、取消还是宿主在中途收到 X 侧结束,都通过 `CompleteOutgoingDrag(drag, dropped)` 把结果交回服务端,再释放被保持的按钮。拖回 X 窗口不接受,所有拖出结果均为复制,远端原件不删除;单窗口模式不接拖出。
+
+**三、宿主接线与验证**:
+- 新增 `XServerInputMethod` 的 `XMODIFIERS=@im=velashell` 静默 shell 注入,保留用户已有值;新增 `XServerOptions.InputMethodName` 与 `AcceptOutgoingDrags`,五份资源文件补齐拖出过程提示。`BuiltInLocalXServer` 默认按宿主输入法设置打开 XIM,多窗口模式打开拖出;`AvaloniaXServerHost` 合并同一批焦点变化并把拖出交给原生拖放。
+- 新增 XIM / XDND 的逐字节与流控单元测试、宿主 UI 测试、SFTP 下载器测试及真实客户端用例。rebase 后最终验证:`VelaShell.XServer.Tests` 547 通过 / 9 跳过(独立连续 9 次全绿),`VelaShell.Tests` 1927 / 20、`VelaShell.Infrastructure.Tests` 663 / 5、`VelaShell.Core.Tests` 778 / 14、`VelaShell.ShellIntegration.Tests` 38 / 0;真实互操作 27 / 27,无 `[SKIP]`,其中 xterm 的 XIM_COMMIT、Swing on-the-spot 预编辑与 Swing 拖出后 `exportDone=COPY` 均通过。
+- 行为与接口的文档已在 velashell-docs 中英镜像的 X Server 架构、排障、宿主交互规格与设置审计工作树改好;文档 PR 尚未开,待与本次宿主 PR 互相引用后一起合。实现后已从 `feature-plan.md` H 和「确认不做」移除两项待办。

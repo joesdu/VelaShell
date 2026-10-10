@@ -1101,6 +1101,141 @@ public sealed class AvaloniaXServerHostUiTests
     });
 
     /// <summary>
+    /// 本机输入法的 XIM 桥(F5 第二步):服务端报来接受输入的输入上下文 → 只交给它所在的那个窗口:候选框挪到它报的插入点;
+    /// on-the-spot(程序自己画预编辑)时窗口不叠画;over-the-spot 时叠画、盖在插入点那一行;撤了就回到最后一次点击处。
+    /// </summary>
+    [TestMethod]
+    public async Task XIM报来的插入点决定候选框位置_onthespot时不叠画预编辑() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new() { DesktopKeyboardReader = null };
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "", InputMethodName = "velashell" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        (uint idBase, uint root) = await HandshakeAsync(client);
+        for (uint i = 1; i <= 2; i++)
+        {
+            uint id = idBase | i;
+            await SendAsync(client, 1, 24, w => w.U32(id).U32(root).I16((short)(i * 100)).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+            await SendAsync(client, 8, 0, w => w.U32(id));
+        }
+        XNativeWindow first = await WaitForAsync(() => host.Windows.FirstOrDefault(w => w.Handle.Id == (idBase | 1)));
+        XNativeWindow second = await WaitForAsync(() => host.Windows.FirstOrDefault(w => w.Handle.Id == (idBase | 2)));
+        first.MouseDown(new Point(7, 9), MouseButton.Left);
+        first.MouseUp(new Point(7, 9), MouseButton.Left);
+        Rect clicked = first.ImeCursorRect;
+        first.SetPreedit("ni", 2);
+
+        host.InputMethodFocusChanged(new XInputMethodFocus(first.Handle, ClientDrawsPreedit: true, Cursor: new XRect(30, 20, 1, 16)));
+        await WaitForAsync(() => first.HasReportedCursor ? first : null, "插入点交给了它所在的窗口");
+        Assert.AreEqual(new Rect(30, 20, 1, 16), first.ImeCursorRect, "候选框跟着插入点(headless 的缩放是 1)");
+        Assert.AreEqual("ni", first.Preedit);
+        Assert.IsNull(first.OverlayPreedit, "on-the-spot:程序自己画,窗口不叠画");
+        Assert.IsFalse(second.HasReportedCursor, "别的窗口不受影响");
+
+        host.InputMethodFocusChanged(new XInputMethodFocus(first.Handle, ClientDrawsPreedit: false, Cursor: new XRect(30, 20, 1, 16)));
+        await WaitForAsync(() => first.OverlayPreedit is not null ? first : null);
+        Assert.AreEqual("ni", first.OverlayPreedit, "over-the-spot:程序不画,窗口叠画");
+
+        host.InputMethodFocusChanged(null);
+        await WaitForAsync(() => first.HasReportedCursor ? null : first);
+        Assert.AreEqual(clicked, first.ImeCursorRect, "撤了:回到最后一次点击处");
+
+        first.CloseByHost();
+        second.CloseByHost();
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>
+    /// 从 X 程序往本机拖出来(F16 的另一半):手拼的 XDND 源在用户按着鼠标时把文字拖到根窗口的代理上 → 宿主在按着鼠标的那个窗口里发起本机拖放
+    /// (这里换成桩:看交过去的数据,回「复制」)→ 先把结果交回服务端、再在 X 那边松开按钮 → 源发 XdndDrop,收到成功的 XdndFinished。
+    /// 交出去的数据带「从 X 拖出来」的标记,拖回 X 窗口时 XDropTarget 不接。
+    /// </summary>
+    [TestMethod]
+    public async Task X程序拖到窗口外_宿主发起本机拖放_放下之后X程序收到成功的XdndFinished() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new() { DesktopKeyboardReader = null };
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "", AcceptOutgoingDrags = true }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        System.Collections.Concurrent.ConcurrentQueue<byte[]> messages = new();
+        (uint idBase, uint root) = await HandshakeAsync(client, messages: messages);
+        ushort sequence = 0;
+        async Task<byte[]> RequestAsync(byte opcode, byte data, Action<Body> body)
+        {
+            await SendAsync(client, opcode, data, body);
+            ushort seq = ++sequence;
+            return await WaitForAsync(() => messages.FirstOrDefault(m => m[0] == 1 && BinaryPrimitives.ReadUInt16LittleEndian(m.AsSpan(2)) == seq));
+        }
+        async Task<uint> InternAsync(string name)
+        {
+            byte[] bytes = Encoding.ASCII.GetBytes(name);
+            return BinaryPrimitives.ReadUInt32LittleEndian((await RequestAsync(16, 0, w => w.U16((ushort)bytes.Length).U16(0).Bytes(bytes).Pad())).AsSpan(8));
+        }
+        uint U32(byte[] m, int offset) => BinaryPrimitives.ReadUInt32LittleEndian(m.AsSpan(offset));
+
+        uint window = idBase | 1, source = idBase | 2;
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(300).I16(300).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0x800).U32(0x4 | 0x8));
+        sequence++;
+        await SendAsync(client, 8, 0, w => w.U32(window));
+        sequence++;
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+        IDataTransfer? handedOver = null;
+        native.StartNativeDrag = (_, data, effects) =>
+        {
+            handedOver = data;
+            Assert.AreEqual(DragDropEffects.Copy, effects, "只给复制");
+            return Task.FromResult(DragDropEffects.Copy);
+        };
+        native.Activate();
+        native.MouseDown(new Point(5, 5), MouseButton.Left);   // 用户按着鼠标开始拖
+
+        uint selection = await InternAsync("XdndSelection"), utf8 = await InternAsync("UTF8_STRING");
+        uint enter = await InternAsync("XdndEnter"), position = await InternAsync("XdndPosition"), drop = await InternAsync("XdndDrop");
+        uint finished = await InternAsync("XdndFinished"), proxyAtom = await InternAsync("XdndProxy");
+        uint proxy = U32(await RequestAsync(20, 0, w => w.U32(root).U32(proxyAtom).U32(0).U32(0).U32(1)), 32);
+        await SendAsync(client, 1, 0, w => w.U32(source).U32(root).I16(0).I16(0).U16(1).U16(1).U16(0).U16(2).U32(0).U32(0));
+        sequence++;
+        await SendAsync(client, 22, 0, w => w.U32(source).U32(selection).U32(0));
+        sequence++;
+        Task SendXdndAsync(uint type, uint l0, uint l1 = 0, uint l2 = 0, uint l3 = 0, uint l4 = 0)
+        {
+            sequence++;
+            return SendAsync(client, 25, 0, w => w.U32(proxy).U32(0).U8(33).U8(32).U16(0).U32(root).U32(type).U32(l0).U32(l1).U32(l2).U32(l3).U32(l4));
+        }
+        await SendXdndAsync(enter, source, 5u << 24, utf8);
+        await SendXdndAsync(position, source, 0, (10u << 16) | 10, 1);
+
+        // 服务端要数据:写到请求方的属性上,发 SelectionNotify。
+        byte[] request = await WaitForAsync(() => messages.FirstOrDefault(m => (m[0] & 0x7F) == 30));
+        uint requestor = U32(request, 12), property = U32(request, 24);
+        byte[] text = Encoding.UTF8.GetBytes("拖出来的字");
+        await SendAsync(client, 18, 0, w => w.U32(requestor).U32(property).U32(utf8).U8(8).Zero(3).U32((uint)text.Length).Bytes(text).Pad());
+        sequence++;
+        await SendAsync(client, 25, 0, w => w.U32(requestor).U32(0).U8(31).U8(0).U16(0).U32(1).U32(requestor).U32(selection).U32(utf8).U32(property).Zero(8));
+        sequence++;
+
+        // 宿主发起了本机拖放(桩回「复制」),之后在 X 那边松开按钮。
+        await WaitForAsync(() => handedOver);
+        Assert.AreEqual("拖出来的字", handedOver!.TryGetText());
+        Assert.IsTrue(XDragSource.IsFromX(handedOver), "带着标记:拖回 X 窗口时不接");
+        await WaitForAsync(() => messages.FirstOrDefault(m => (m[0] & 0x7F) == 5), "X 那边收到了松开");
+        Assert.IsFalse(native.HoldsButtons);
+
+        await SendXdndAsync(drop, source, 0, 2);
+        byte[] reply = await WaitForAsync(() => messages.FirstOrDefault(m => (m[0] & 0x7F) == 33 && U32(m, 8) == finished));
+        Assert.AreEqual(1u, U32(reply, 16), "XdndFinished:接受了");
+
+        native.CloseByHost();
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>
     /// 指针交给宿主(xs_plan F8):X 窗口活动时,抓着指针的程序的 Warp 挪系统光标(根坐标加 RootOrigin)、confine-to 关住光标;
     /// 抓取解除时光标放开、之后的 Warp 不挪。
     /// </summary>
@@ -1580,7 +1715,7 @@ public sealed class AvaloniaXServerHostUiTests
     // ------------------------------------------------------------------ 最小的 X 客户端(小端)
 
     private static async Task<(uint IdBase, uint Root)> HandshakeAsync(Stream stream, System.Collections.Concurrent.ConcurrentQueue<byte>? events = null,
-        System.Collections.Concurrent.ConcurrentQueue<byte[]>? replies = null)
+        System.Collections.Concurrent.ConcurrentQueue<byte[]>? replies = null, System.Collections.Concurrent.ConcurrentQueue<byte[]>? messages = null)
     {
         await stream.WriteAsync(new byte[] { (byte)'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
         await stream.FlushAsync();
@@ -1595,8 +1730,35 @@ public sealed class AvaloniaXServerHostUiTests
         int formats = reply[29];
         uint root = BinaryPrimitives.ReadUInt32LittleEndian(reply.AsSpan(40 + ((vendor + 3) & ~3) + (formats * 8)));
         // 不看的就读掉,只要别把管道堵住
-        _ = replies is not null ? ReadRepliesAsync(stream, replies) : events is null ? ReadAndDiscardAsync(stream) : ReadEventsAsync(stream, events);
+        _ = messages is not null ? ReadMessagesAsync(stream, messages)
+            : replies is not null ? ReadRepliesAsync(stream, replies) : events is null ? ReadAndDiscardAsync(stream) : ReadEventsAsync(stream, events);
         return (idBase, root);
+    }
+
+    /// <summary>回复与事件都整条记下(错误跳过)。</summary>
+    private static async Task ReadMessagesAsync(Stream stream, System.Collections.Concurrent.ConcurrentQueue<byte[]> messages)
+    {
+        try
+        {
+            while (true)
+            {
+                byte[] head = new byte[32];
+                await stream.ReadExactlyAsync(head);
+                byte[] extra = [];
+                if (head[0] == 1 || (head[0] & 0x7F) == 35)
+                {
+                    extra = new byte[BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(4)) * 4];
+                    await stream.ReadExactlyAsync(extra);
+                }
+                if (head[0] != 0)
+                {
+                    messages.Enqueue([.. head, .. extra]);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or EndOfStreamException)
+        {
+        }
     }
 
     /// <summary>记下收到的回复(整条,含额外长度);事件与错误跳过。</summary>

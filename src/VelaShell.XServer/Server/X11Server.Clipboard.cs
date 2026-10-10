@@ -113,6 +113,12 @@ public sealed partial class X11Server
 
         /// <summary>第几步:限时检查只认安排它时的那一步。</summary>
         public int Step { get; set; }
+
+        /// <summary>
+        /// 取完了交给谁:null = 剪贴板(交给宿主的剪贴板,见 <see cref="Deliver" />);别的取法(X 程序往本机拖时取 XdndSelection)给自己的去处,
+        /// 取到的在 <see cref="Results" /> 里(可能一个都没有)。
+        /// </summary>
+        public Action<SelectionFetch>? Completed { get; init; }
     }
 
     private XWindow SelectionWindow
@@ -693,6 +699,12 @@ public sealed partial class X11Server
         if (_fetches.TryGetValue(fetch.Selection, out SelectionFetch? current) && ReferenceEquals(current, fetch))
         {
             _fetches.Remove(fetch.Selection);
+        }
+        if (fetch.Completed is { } completed)
+        {
+            completed(fetch);
+            FinishFetch(fetch, fetch.Results.Count > 0);
+            return;
         }
         FinishFetch(fetch, Deliver(fetch));
     }

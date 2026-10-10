@@ -6423,6 +6423,18 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="XServer_DropFailed" xml:space="preserve">
     <value>拖进来的文件没能传到远端:{0}</value>
   </data>
+  <data name="XServer_DragOutDownloading" xml:space="preserve">
+    <value>正在从 {1} 取回拖出的 {0} 项,请按住鼠标…</value>
+  </data>
+  <data name="XServer_DragOutNoSession" xml:space="preserve">
+    <value>{0} 的 SSH 会话已经断开,拖出的文件取不回来。</value>
+  </data>
+  <data name="XServer_DragOutFailed" xml:space="preserve">
+    <value>拖出的文件没能取回本机:{0}</value>
+  </data>
+  <data name="XServer_DragOutReleased" xml:space="preserve">
+    <value>文件取回之前就松开了鼠标,没有放下任何东西。</value>
+  </data>
   <data name="XServer_TrayClick" xml:space="preserve">
     <value>打开(单击)</value>
   </data>

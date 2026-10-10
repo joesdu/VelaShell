@@ -148,4 +148,31 @@ public interface IX11ServerHost
     void ScreenSaverReset()
     {
     }
+
+    /// <summary>
+    /// 接受宿主输入法输入的 XIM 输入上下文换了,或它的插入点动了(开着 <see cref="X11ServerOptions.InputMethodName" /> 时;同一批里只报最后一次):
+    /// <paramref name="focus" /> 是键盘焦点所在的程序报了焦点的那个输入上下文 —— 宿主把本机输入法的候选框摆到 <see cref="XInputMethodFocus.Cursor" />,
+    /// <see cref="XInputMethodFocus.ClientDrawsPreedit" /> 时不再自己叠画预编辑;null 表示没有(焦点所在的程序不用 XIM:宿主照旧叠画,
+    /// 上屏的字借键码输入)。默认实现什么也不做。
+    /// </summary>
+    void InputMethodFocusChanged(XInputMethodFocus? focus)
+    {
+    }
+
+    /// <summary>
+    /// 一个 X 程序把东西拖到了所有 X 窗口以外(开着 <see cref="X11ServerOptions.AcceptOutgoingDrags" /> 时),服务端已经把数据取了过来:
+    /// 宿主趁用户还按着鼠标发起一次本机的拖放(文件得先取回本机);本机那边放下或取消之后先调 <see cref="X11Server.CompleteOutgoingDrag" />,
+    /// 再把松开的按钮注入回服务端 —— X 程序随后发的 XdndDrop 按那个结果回答。默认实现什么也不做(X 程序在用户松手后收到「没放成」)。
+    /// </summary>
+    void OutgoingDragStarted(XOutgoingDrag drag)
+    {
+    }
+
+    /// <summary>
+    /// 拖出去的那一次在 X 这边结束了、宿主还没交回结果:指针又回到了 X 窗口里(X 程序转去拖给那个窗口)、用户在本机拖放开始之前就松了手、
+    /// 或者拖的程序走了。宿主不要再为它发起本机拖放(正在取回的文件可以停了)。默认实现什么也不做。
+    /// </summary>
+    void OutgoingDragEnded(XOutgoingDrag drag)
+    {
+    }
 }

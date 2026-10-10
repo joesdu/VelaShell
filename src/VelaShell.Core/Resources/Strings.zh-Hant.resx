@@ -6423,6 +6423,18 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="XServer_DropFailed" xml:space="preserve">
     <value>拖進來的檔案沒能傳到遠端:{0}</value>
   </data>
+  <data name="XServer_DragOutDownloading" xml:space="preserve">
+    <value>正在從 {1} 取回拖出的 {0} 項,請按住滑鼠…</value>
+  </data>
+  <data name="XServer_DragOutNoSession" xml:space="preserve">
+    <value>{0} 的 SSH 工作階段已經中斷,拖出的檔案取不回來。</value>
+  </data>
+  <data name="XServer_DragOutFailed" xml:space="preserve">
+    <value>拖出的檔案沒能取回本機:{0}</value>
+  </data>
+  <data name="XServer_DragOutReleased" xml:space="preserve">
+    <value>檔案取回之前就放開了滑鼠,沒有放下任何東西。</value>
+  </data>
   <data name="XServer_TrayClick" xml:space="preserve">
     <value>開啟(單擊)</value>
   </data>

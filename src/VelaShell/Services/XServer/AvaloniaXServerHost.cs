@@ -58,10 +58,12 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
 
     /// <summary>新建一个宿主;经 <see cref="AttachAsync" /> 接到服务端上。</summary>
     /// <param name="dropUploader">本机文件拖进经 SSH 转发来的 X 程序时,把文件传到远端(F16);没有时那类窗口不接文件。</param>
-    public AvaloniaXServerHost(IXServerDropUploader? dropUploader = null)
+    /// <param name="dragDownloader">从经 SSH 转发来的 X 程序往本机拖出文件时,把文件取回本机(F16 的另一半);没有时那类程序拖不出文件。</param>
+    public AvaloniaXServerHost(IXServerDropUploader? dropUploader = null, IXServerDragDownloader? dragDownloader = null)
     {
         _deliverDamage = DeliverDamage;
         DropUploader = dropUploader;
+        DragDownloader = dragDownloader;
         _trayIcons = new XTrayIcons(CurrentServer, () => ShowsWindowSource);
     }
 
@@ -73,6 +75,9 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
 
     /// <summary>本机文件拖进经 SSH 转发来的 X 程序时,把文件传到远端(见 <see cref="Views.XServer.XDropTarget" />)。</summary>
     internal IXServerDropUploader? DropUploader { get; }
+
+    /// <summary>从经 SSH 转发来的 X 程序往本机拖出文件时,把文件取回本机(见 <see cref="Views.XServer.XDragSource" />)。</summary>
+    internal IXServerDragDownloader? DragDownloader { get; }
 
     /// <summary>给用户一条提示(主窗口右下的提示浮层;主窗口不在时不提示)。UI 线程上调。</summary>
     internal static void NotifyUser(string message, bool error)
@@ -231,6 +236,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
                 InhibitIdle(false);   // 停服:本机屏保恢复正常
             }
             _frameClockWanted = false;   // 停服:不再逐帧回调
+            _inputMethodFocus = null;
             XNativeWindow[] windows = [.. _windows.Values];
             _windows.Clear();
             _desktops.Clear();
@@ -907,6 +913,58 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     /// <summary>X 程序重置了屏保计时(服务端至多每 5 秒报一次):重置本机的空闲计时一次。</summary>
     public void ScreenSaverReset() => Dispatcher.UIThread.Post(() => ResetIdle());
 
+    // ------------------------------------------------------------------ 本机输入法的 XIM 桥(F5 第二步)
+
+    /// <summary>接受本机输入法输入的 XIM 输入上下文(见 <see cref="InputMethodFocusChanged" />);没有为 null。只在 UI 线程上碰。</summary>
+    private XInputMethodFocus? _inputMethodFocus;
+
+    /// <summary>
+    /// 键盘焦点所在的 X 程序经 XIM 报了输入上下文(或者撤了、插入点动了):交给它所在的那个原生窗口 —— 候选框挪到它报的插入点,
+    /// on-the-spot 的程序自己画预编辑、窗口不再叠画;别的窗口一律清掉。
+    /// </summary>
+    public void InputMethodFocusChanged(XInputMethodFocus? focus) => Dispatcher.UIThread.Post(() =>
+    {
+        if (focus is not null && !IsCurrent(focus.Window))
+        {
+            return;   // 旧服务端排在队列里的
+        }
+        _inputMethodFocus = focus;
+        foreach (XNativeWindow window in _windows.Values)
+        {
+            window.ApplyInputMethodFocus(InputMethodFocusFor(window.Handle));
+        }
+    });
+
+    private XInputMethodFocus? InputMethodFocusFor(XTopLevelWindow handle) =>
+        _inputMethodFocus is { } focus && ReferenceEquals(focus.Window, handle) ? focus : null;
+
+    // ------------------------------------------------------------------ X 程序往本机拖出来(F16 的另一半)
+
+    /// <summary>
+    /// X 程序把东西拖到了所有 X 窗口以外,服务端已经取来数据:交给用户正按着鼠标的那个原生窗口(拖动就是从那里开始的),由它准备好数据、
+    /// 趁用户还按着发起本机拖放(见 <see cref="XNativeWindow.BeginOutgoingDrag" />)。没有按着鼠标的窗口时(拖动不是从本机的指针来的)回「没放成」。
+    /// </summary>
+    public void OutgoingDragStarted(XOutgoingDrag drag) => Dispatcher.UIThread.Post(() =>
+    {
+        if (_windows.Values.FirstOrDefault(w => w.HoldsButtons) is { } source)
+        {
+            source.BeginOutgoingDrag(drag);
+        }
+        else
+        {
+            _server?.CompleteOutgoingDrag(drag, dropped: false);
+        }
+    });
+
+    /// <summary>拖出的那一次在 X 那边先结束了:还在准备的窗口不再发起本机拖放(正在取回的文件停下)。</summary>
+    public void OutgoingDragEnded(XOutgoingDrag drag) => Dispatcher.UIThread.Post(() =>
+    {
+        foreach (XNativeWindow window in _windows.Values)
+        {
+            window.CancelOutgoingDrag(drag);
+        }
+    });
+
     // ------------------------------------------------------------------ 帧时钟(xs_plan F25)
 
     private bool _frameClockWanted, _frameRequested;
@@ -1095,6 +1153,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         }
         window.ApplyProperties(XTopLevelChanges.All);
         window.ApplyInitialStates();   // 映射前就设好的最大化 / 全屏 / initial_state = Iconic
+        window.ApplyInputMethodFocus(InputMethodFocusFor(handle));
         if (window.ShowInTaskbar && TaskbarGroup.IdFor(handle.Snapshot) is { } group && GroupWindow(window, group))
         {
             window.TaskbarGroup = group;   // 显示之前就归好组:任务栏按钮不先出现在 VelaShell 的按钮里再跳走

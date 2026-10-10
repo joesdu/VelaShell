@@ -119,7 +119,7 @@ public sealed partial class X11Server
     {
         List<byte> data = [0, 0, 0, 0];   // byte-order:LSBFirst,3 字节空
         AddU32(data, _xsettingsSerial);
-        (string Name, object Value)[] items =
+        List<(string Name, object Value)> items =
         [
             ("Xft/DPI", _dpi * 1024),
             ("Xft/Antialias", 1),
@@ -129,7 +129,13 @@ public sealed partial class X11Server
             ("Gdk/WindowScalingFactor", _scale),
             ("Gdk/UnscaledDPI", _dpi * 1024 / _scale),
         ];
-        AddU32(data, (uint)items.Length);
+        if (_options.InputMethodName is not null)
+        {
+            // 服务端当着 XIM 输入法服务端:请 GTK 2/3 用 XIM 输入模块(环境变量 GTK_IM_MODULE 设了的照它)。没有 XMODIFIERS 时
+            // Xlib 用本地的组合键处理,与 GTK 自己的简单输入法一样能打字。
+            items.Add(("Gtk/IMModule", "xim"));
+        }
+        AddU32(data, (uint)items.Count);
         foreach ((string name, object value) in items)
         {
             byte[] nameBytes = Encoding.ASCII.GetBytes(name);
