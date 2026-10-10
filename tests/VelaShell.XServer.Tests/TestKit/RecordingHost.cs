@@ -181,6 +181,37 @@ internal sealed class RecordingHost : IX11ServerHost, IDisposable
         Note($"clipboard content {content.Text?.Length} / {content.Html?.Length} / {content.Png.Length}");
     }
 
+    /// <summary><see cref="InputMethodFocusChanged" /> 收到的值,按先后(null = 没有接受输入的输入上下文)。</summary>
+    public ConcurrentQueue<XInputMethodFocus?> InputMethodFocuses { get; } = new();
+
+    /// <summary>最近一次 <see cref="InputMethodFocusChanged" /> 收到的值。</summary>
+    public XInputMethodFocus? InputMethodFocus { get; private set; }
+
+    public void InputMethodFocusChanged(XInputMethodFocus? focus)
+    {
+        InputMethodFocus = focus;
+        InputMethodFocuses.Enqueue(focus);
+        Note($"input method {focus}");
+    }
+
+    /// <summary><see cref="OutgoingDragStarted" /> 收到的,按先后。</summary>
+    public ConcurrentQueue<XOutgoingDrag> OutgoingDrags { get; } = new();
+
+    /// <summary><see cref="OutgoingDragEnded" /> 收到的,按先后。</summary>
+    public ConcurrentQueue<XOutgoingDrag> OutgoingDragsEnded { get; } = new();
+
+    public void OutgoingDragStarted(XOutgoingDrag drag)
+    {
+        OutgoingDrags.Enqueue(drag);
+        Note($"outgoing drag {drag.Uris.Count} uris, text {drag.Text?.Length}");
+    }
+
+    public void OutgoingDragEnded(XOutgoingDrag drag)
+    {
+        OutgoingDragsEnded.Enqueue(drag);
+        Note("outgoing drag ended");
+    }
+
     /// <summary>等到条件成立(每次有新通知时重新检查)。</summary>
     public async Task WaitForAsync(Func<bool> condition, int timeoutMs = 5000)
     {

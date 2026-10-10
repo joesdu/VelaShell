@@ -48,6 +48,8 @@ public sealed class RealClientTests
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,   // 容器里输出 UTF-8;不指定时按本机控制台的代码页解,中文成了乱码
+            StandardErrorEncoding = System.Text.Encoding.UTF8,
         };
         foreach (string arg in (string[])["run", "--rm", "--add-host=host.docker.internal:host-gateway", Image, "sh", "-c", script])
         {
@@ -463,6 +465,245 @@ public sealed class RealClientTests
             Assert.Contains("insets-top=0", output, "不假定有标题栏");
             Assert.Contains("size=1920x1080", output, "最大化之后按新尺寸重排");
             Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
+    /// <summary>XIM 与拖出用例的服务端日志(失败时打出来看走到了哪一步)。</summary>
+    private readonly ConcurrentQueue<string> _trace = new();
+
+    /// <summary>开着 XIM 输入法服务端(名字 velashell)与拖出的服务端,错误照常收集;全部日志进 <see cref="_trace" />。</summary>
+    private (X11Server Server, ConcurrentQueue<string> Errors, byte[] Cookie) StartImServer(IX11ServerHost host)
+    {
+        byte[] cookie = RandomNumberGenerator.GetBytes(16);
+        ConcurrentQueue<string> errors = new();
+        ConcurrentQueue<string> trace = _trace;
+        X11Server server = new(new X11ServerOptions
+        {
+            DisplayNumber = DisplayNumber,
+            ListenAddress = IPAddress.Any,
+            AuthorizationCookie = cookie,
+            ScreenWidth = 1920,
+            ScreenHeight = 1080,
+            InputMethodName = "velashell",
+            AcceptOutgoingDrags = true,
+            Log = line =>
+            {
+                trace.Enqueue(line);
+                if (line.Contains(": Bad", StringComparison.Ordinal) || line.StartsWith("xim:", StringComparison.Ordinal))
+                {
+                    errors.Enqueue(line);
+                }
+            },
+        }, host);
+        return (server, errors, cookie);
+    }
+
+    /// <summary>
+    /// XIM(F5 第二步)对真实的 Xlib:xterm 在 <c>XMODIFIERS=@im=velashell</c> 下经 XIM 连上来(over-the-spot,报插入点),
+    /// 宿主上屏的中文经 XIM_COMMIT 交给它 —— shell 的 read 读到的就是那两个字,键位表没被借用。
+    /// </summary>
+    [TestMethod]
+    [Timeout(180_000, CooperativeCancellation = true)]
+    public async Task xterm经XIM连上_宿主上屏的中文经XIM_COMMIT进到shell()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        using RecordingHost host = new();
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartImServer(host);
+        await using (server)
+        {
+            await server.StartAsync();
+            Task<(int ExitCode, string Output)> client = RunClientAsync(cookie,
+                "export LANG=C.UTF-8 LC_ALL=C.UTF-8 XMODIFIERS=@im=velashell; "
+                + "xterm -geometry 40x6 -e sh -c 'read line; printf \"GOT=%s\" \"$line\" > /tmp/o' ; cat /tmp/o; echo", 150);
+            await host.WaitForAsync(() => !host.Mapped.IsEmpty, 90_000);
+            XTopLevelWindow window = host.Mapped.Values.First();
+            server.FocusTopLevel(window);
+            try
+            {
+                await host.WaitForAsync(() => host.InputMethodFocus is not null, 30_000);
+            }
+            catch (OperationCanceledException)
+            {
+                TestContext.WriteLine(string.Join('\n', _trace));
+                throw;
+            }
+            XInputMethodFocus focus = host.InputMethodFocus!;
+            TestContext.WriteLine($"focus: {focus}");
+            await Task.Delay(500);
+            server.InjectText("中文\n");
+            (int exit, string output) = await client;
+            TestContext.WriteLine(output);
+            TestContext.WriteLine(string.Join('\n', errors));
+            Assert.AreEqual(0, exit, output);
+            Assert.Contains("GOT=中文", output, "XIM_COMMIT 的字进了 shell");
+            Assert.AreSame(window, focus.Window);
+            Assert.IsFalse(focus.ClientDrawsPreedit, "xterm 用 over-the-spot:预编辑由宿主画");
+            Assert.IsNotNull(focus.Cursor, "xterm 报了插入点");
+            Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
+    /// <summary>一个 Swing 文本框:拿到焦点,等输入法交来的字,按 UTF-16 码元的十六进制打印出来(不依赖容器的字体与输出编码)。</summary>
+    private const string SwingInputProbe = """
+        import javax.swing.*;
+        public class I {
+            public static void main(String[] a) throws Exception {
+                JTextField[] t = new JTextField[1];
+                SwingUtilities.invokeAndWait(() -> { JFrame f = new JFrame("im"); t[0] = new JTextField(20); f.add(t[0]); f.pack(); f.setVisible(true); t[0].requestFocusInWindow(); });
+                String[] s = { "" };
+                for (int i = 0; i < 400 && !s[0].contains("文"); i++) { Thread.sleep(100); SwingUtilities.invokeAndWait(() -> s[0] = t[0].getText()); }
+                StringBuilder hex = new StringBuilder();
+                for (char c : s[0].toCharArray()) hex.append(Integer.toHexString(c)).append(',');
+                System.out.println("TEXT=" + hex);
+                System.exit(0);
+            }
+        }
+        """;
+
+    /// <summary>
+    /// XIM 的 on-the-spot 对真实的 Java:<c>java.awt.im.style=on-the-spot</c> 的 Swing 文本框经 XIM 连上来、报焦点,宿主的预编辑经回调交过去、
+    /// 上屏的字经 XIM_COMMIT 进了文本框(预编辑先被擦掉,文本框里只有上屏的字)。
+    /// </summary>
+    [TestMethod]
+    [Timeout(240_000, CooperativeCancellation = true)]
+    public async Task Swing文本框经XIM_onthespot连上_预编辑交给程序画_上屏的字进了文本框()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        using RecordingHost host = new();
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartImServer(host);
+        await using (server)
+        {
+            await server.StartAsync();
+            Task<(int ExitCode, string Output)> client = RunClientAsync(cookie,
+                $"command -v java >/dev/null || {{ echo NO-JAVA; exit 0; }}; export LANG=C.UTF-8 LC_ALL=C.UTF-8 XMODIFIERS=@im=velashell; "
+                + $"cat > /tmp/I.java <<'EOF'\n{SwingInputProbe}\nEOF\njava -Djava.awt.im.style=on-the-spot /tmp/I.java", 200);
+            await host.WaitForAsync(() => !host.Mapped.IsEmpty || client.IsCompleted, 150_000);
+            XInputMethodFocus? focus = null;
+            if (!client.IsCompleted)
+            {
+                XTopLevelWindow window = host.Mapped.Values.First();
+                server.FocusTopLevel(window);
+                await host.WaitForAsync(() => host.InputMethodFocus is not null || client.IsCompleted, 60_000);
+                focus = host.InputMethodFocus;   // 程序退出时输入上下文跟着销毁,之后再看就是 null 了
+                TestContext.WriteLine($"focus: {focus}");
+                server.InjectPreedit("zhongwen", 8);
+                await Task.Delay(1000);
+                server.InjectText("中文");
+            }
+            (_, string output) = await client;
+            TestContext.WriteLine(output);
+            TestContext.WriteLine(string.Join('\n', errors));
+            if (output.Contains("NO-JAVA", StringComparison.Ordinal))
+            {
+                TestContext.WriteLine("[SKIP] 镜像里没有 Java:按 scripts/xserver/interop/Dockerfile 重建 velashell-xclients");
+                return;
+            }
+            Assert.IsNotNull(focus, "Swing 经 XIM 报了焦点");
+            Assert.IsTrue(focus.ClientDrawsPreedit, "on-the-spot:预编辑由程序画");
+            Assert.Contains("TEXT=4e2d,6587,", output, "文本框里正好是上屏的「中文」(预编辑擦掉了)");
+            Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
+    /// <summary>
+    /// 一个能拖出文字的 Swing 标签:在它上面拖动就以复制发起 XDND,拖放结束时打印 exportDone 的动作(1 = COPY、0 = NONE)。
+    /// 窗口摆在 (400, 300),拖到它外面就是根窗口(rootless 下那里是本机桌面)。
+    /// </summary>
+    private const string SwingDragProbe = """
+        import javax.swing.*;
+        import java.awt.event.*;
+        import java.awt.datatransfer.*;
+        public class D {
+            public static void main(String[] a) throws Exception {
+                SwingUtilities.invokeAndWait(() -> {
+                    JFrame f = new JFrame("drag");
+                    JLabel l = new JLabel("drag me out");
+                    l.setTransferHandler(new TransferHandler() {
+                        @Override public int getSourceActions(JComponent c) { return COPY; }
+                        @Override protected Transferable createTransferable(JComponent c) { return new StringSelection("drag me out"); }
+                        @Override protected void exportDone(JComponent c, Transferable t, int action) { System.out.println("DONE=" + action); System.out.flush(); System.exit(0); }
+                    });
+                    l.addMouseMotionListener(new MouseMotionAdapter() {
+                        @Override public void mouseDragged(MouseEvent e) { JComponent c = (JComponent) e.getSource(); c.getTransferHandler().exportAsDrag(c, e, TransferHandler.COPY); }
+                    });
+                    f.add(l); f.setSize(240, 120); f.setLocation(400, 300); f.setVisible(true);
+                });
+                Thread.sleep(60000);
+                System.out.println("TIMEOUT");
+                System.exit(0);
+            }
+        }
+        """;
+
+    /// <summary>
+    /// 拖出(F16 的另一半)对真实的 XDND 源:Swing 的拖放拖到 X 窗口外面,按「拖到根窗口」的约定找到根窗口的 XdndProxy,
+    /// 服务端取来文字交给宿主;宿主说放下了,Swing 收到成功的 XdndFinished,exportDone 报 COPY。
+    /// </summary>
+    [TestMethod]
+    [Timeout(240_000, CooperativeCancellation = true)]
+    public async Task Swing往X窗口外拖_找到根窗口的XdndProxy_文字交给宿主_宿主放下之后Swing报COPY()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        using RecordingHost host = new();
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartImServer(host);
+        await using (server)
+        {
+            await server.StartAsync();
+            Task<(int ExitCode, string Output)> client = RunClientAsync(cookie,
+                $"command -v java >/dev/null || {{ echo NO-JAVA; exit 0; }}; cat > /tmp/D.java <<'EOF'\n{SwingDragProbe}\nEOF\njava /tmp/D.java", 200);
+            await host.WaitForAsync(() => !host.Mapped.IsEmpty || client.IsCompleted, 150_000);
+            if (!client.IsCompleted)
+            {
+                await Task.Delay(2000);   // 等 Swing 画好、把位置摆好
+                XTopLevelWindow window = host.Mapped.Values.First();
+                XTopLevelSnapshot s = window.Snapshot;
+                TestContext.WriteLine($"window at {s.X},{s.Y} {s.Width}x{s.Height}");
+                server.FocusTopLevel(window);
+                server.InjectPointerMotion(window, 40, 40);
+                await Task.Delay(300);
+                server.InjectPointerButton(window, 40, 40, 1, pressed: true);
+                for (int step = 1; step <= 10; step++)
+                {
+                    server.InjectPointerMotion(window, 40 + (step * 3), 40);   // 先在标签里动,触发拖动
+                    await Task.Delay(50);
+                }
+                // 再拖到窗口外面(根坐标 (50, 50) 附近:那里没有 X 窗口),来回动几下让 Swing 报位置。
+                for (int step = 0; step < 30 && host.OutgoingDrags.IsEmpty; step++)
+                {
+                    server.InjectPointerMotion(window, 50 - s.X - (step % 3), 50 - s.Y);
+                    await Task.Delay(150);
+                }
+                if (host.OutgoingDrags.TryPeek(out XOutgoingDrag? drag))
+                {
+                    TestContext.WriteLine($"drag: text='{drag.Text}' uris={drag.Uris.Count} at {drag.RootX},{drag.RootY}");
+                    server.CompleteOutgoingDrag(drag, dropped: true);   // 宿主的本机拖放放下了:先交回结果,再松开按钮
+                }
+                server.InjectPointerButton(window, 50 - s.X, 50 - s.Y, 1, pressed: false);
+            }
+            (_, string output) = await client;
+            TestContext.WriteLine(output);
+            TestContext.WriteLine(string.Join('\n', _trace));
+            if (output.Contains("NO-JAVA", StringComparison.Ordinal))
+            {
+                TestContext.WriteLine("[SKIP] 镜像里没有 Java:按 scripts/xserver/interop/Dockerfile 重建 velashell-xclients");
+                return;
+            }
+            Assert.IsTrue(host.OutgoingDrags.TryPeek(out XOutgoingDrag? started), "Swing 拖到了根窗口的代理上,服务端取到了数据");
+            Assert.AreEqual("drag me out", started.Text);
+            Assert.Contains("DONE=1", output, "Swing 收到成功的 XdndFinished,exportDone 报 COPY");
+            // OpenJDK 17 收到成功的 XdndFinished 之后收尾做了两遍,第二遍对窗口 0 恢复事件掩码(ChangeWindowAttributes,BadWindow 0x0)。
+            // 2026-10-10 对照过:Swing 把字拖进它自己的文本框(完全不经过服务端的代理)也一样,与服务端无关;AWT 自己吞掉这个错误。
+            string[] real = [.. errors.Where(e => !e.Contains("opcode 2.0: BadWindow 0x0", StringComparison.Ordinal))];
+            Assert.IsEmpty(real, string.Join('\n', real));
         }
     }
 

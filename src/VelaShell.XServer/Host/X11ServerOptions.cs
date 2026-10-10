@@ -135,6 +135,25 @@ public sealed class X11ServerOptions
     public int SystemTrayIconSize { get; init; } = 24;
 
     /// <summary>
+    /// 当 XIM 输入法服务端(X Consortium 的 <i>The Input Method Protocol</i>)时用的名字:服务端占住选区 <c>@server=名字</c>、把它写进根窗口的
+    /// <c>XIM_SERVERS</c>。远端程序设了 <c>XMODIFIERS=@im=名字</c> 就经 Xlib 的 XIM 连过来(xterm、Emacs、Java、Tk、Motif,以及
+    /// <c>GTK_IM_MODULE=xim</c> 的 GTK 2/3;Qt 5/6 与 GTK 4 没有 XIM):宿主的输入法上屏的字(<see cref="X11Server.InjectText" />)以 XIM_COMMIT 交给它,
+    /// 不再借键码;on-the-spot 的程序把预编辑(<see cref="X11Server.InjectPreedit" />)画在自己的输入框里;插入点经
+    /// <see cref="IX11ServerHost.InputMethodFocusChanged" /> 告诉宿主,候选框跟着光标走。同时经 XSETTINGS 的 <c>Gtk/IMModule</c> 请 GTK 2/3 用 XIM
+    /// (单窗口模式下服务端不当 XSETTINGS 管理器,这一项没有)。null(默认)= 不当输入法服务端。
+    /// 名字只能用 POSIX 可移植文件名字符(字母、数字、<c>.</c>、<c>_</c>、<c>-</c>),1–64 个。
+    /// </summary>
+    public string? InputMethodName { get; init; }
+
+    /// <summary>
+    /// 接 X 程序往本机拖出来的东西(XDND 第 4 版起「拖到根窗口」的约定):根窗口的 <c>XdndProxy</c> 指向服务端自己的一个代理窗口,
+    /// 指针拖到所有 X 窗口以外(本机的桌面、本机的程序上)时 X 程序把 XDND 消息发给它。服务端取来数据,经
+    /// <see cref="IX11ServerHost.OutgoingDragStarted" /> 交给宿主发起一次本机的拖放,本机那边的结果由 <see cref="X11Server.CompleteOutgoingDrag" /> 交回、
+    /// 转成给 X 程序的 XdndFinished。默认关:宿主得真能发起本机拖放。单窗口模式下不起作用(根窗口是远端桌面的)。
+    /// </summary>
+    public bool AcceptOutgoingDrags { get; init; }
+
+    /// <summary>
     /// 服务端占住 <c>_NET_WM_CM_S0</c>(EWMH「Compositing Managers」):告诉客户端有合成管理器 —— GTK 用 ARGB 视觉画圆角与阴影、
     /// Qt 的半透明窗口、Electron 的 <c>transparent</c> 窗口才拿得到 alpha。宿主必须能显示带 alpha 的窗口(<see cref="XTopLevelSnapshot.HasAlpha" />)。
     /// 默认关:带 alpha 的原生窗口在 Windows 上要多走一层合成,开不开由宿主决定。
@@ -182,6 +201,8 @@ public sealed class X11ServerOptions
             $"{nameof(AuthorizationCookie)} 的长度必须在 {MinAuthorizationCookieLength}–{MaxAuthorizationCookieLength} 字节之间。");
         Require(UnixSocketPath is null or "" || FitsSocketAddress(UnixSocketPath),
             $"{nameof(UnixSocketPath)} 太长,放不进 Unix 套接字的地址(连同 Linux 抽象命名空间里的同名套接字)。");
+        Require(InputMethodName is null || IsPortableName(InputMethodName),
+            $"{nameof(InputMethodName)} 只能用 1–64 个 POSIX 可移植文件名字符(字母、数字、.、_、-)。");
 
         static void Require(bool condition, string message)
         {
@@ -191,6 +212,10 @@ public sealed class X11ServerOptions
             }
         }
     }
+
+    /// <summary>输入法服务端的名字限在 POSIX 可移植文件名字符集里(The Input Method Protocol「Default Preconnection Convention」)。</summary>
+    private static bool IsPortableName(string name) =>
+        name.Length is >= 1 and <= 64 && name.All(ch => ch is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '0' and <= '9') or '.' or '_' or '-');
 
     /// <summary>
     /// 路径放得进 sockaddr_un(Linux 上连同抽象命名空间里多一个前导 NUL 的同名套接字)。原先到 StartAsync 才抛

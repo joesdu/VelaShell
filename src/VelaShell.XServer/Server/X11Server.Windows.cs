@@ -395,6 +395,8 @@ public sealed partial class X11Server
         }
         CleanupEwmh(window);
         CleanupSystemTray(window);
+        _xim?.WindowDestroyed(window);
+        CleanupOutgoingDrag(window);
         foreach ((SelectionSlot slot, (XWindow Window, XClient? Client, uint Time) owner) in _selections.ToArray())
         {
             if (ReferenceEquals(owner.Window, window))
