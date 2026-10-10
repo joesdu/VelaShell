@@ -2432,7 +2432,7 @@ F5 文字输入、F11 合成管理器与 F17 / F18 来源标识、F4 只开 Unix
 任务栏分组);按着 Ctrl / Alt 时上屏的字带修饰位、核心协议客户端在 CapsLock 下仍转大写、宿主的输入法判断没在 macOS / Linux 的真实输入法上核对;
 容器要的监听地址选项、macOS 上 XQuartz 的 launchd 显示。
 
-**八、验证**:`VelaShell.slnx` 构建零警告零错误。VelaShell.XServer.Tests 529 通过 / 9 按平台跳过;Infrastructure.Tests 658 / 5;VelaShell.Tests 1897 / 47;
+**八、验证**:`VelaShell.slnx` 构建零警告零错误。VelaShell.XServer.Tests 530 通过 / 9 按平台跳过;Infrastructure.Tests 658 / 5;VelaShell.Tests 1897 / 47;
 Core.Tests 769 / 23;Presentation.Tests 84、Controls.Tests 31 全过(跳过的都是按环境早退的老用例;本节新加的只有下面说的那一条在 Windows 上跳过)。新用例(在改之前的代码上都红或编不过;会话显示的四条与 xev 那条在旧代码上实际跑过、看着红了):
 - 库:挪用键码要空闲够久、一批一次通知、等的时候宿主的回车排在整段字后面(假时钟);借来的键是 ALPHABETIC、CapsLock 下借键码、CR LF 一次 Return;
   非受信客户端看不见输入给受信程序的字、输入给它自己时才看得见;一个键码都借不到时丢掉这段字、不卡住后面的按键。
@@ -2445,3 +2445,11 @@ Core.Tests 769 / 23;Presentation.Tests 84、Controls.Tests 31 全过(跳过的�
 文档在 velashell-docs(中英两份):X Server 架构 §5 的快照、§7(按会话的显示、本机输入法上屏、合成管理器、F4、单窗口模式的拼屏、托盘)、M3 与决策记录、
 排障(容器、`localhost:N`、本机程序连不上的提示、四条已修的缺陷)、设置审计第十二批、交互与界面规格(按钮提示、形状与透明、标题与位置、输入法、单窗口模式、
 托盘、本机 X 显示、设置页一行);顺手修了英文文档里十几处 `''`(PowerShell 转义漏出来的)。
+
+**九、CI 上 macOS 那一次红**:PR 的 macOS 任务里 `GlxTests.客户端断开时它的Pbuffer表面随之释放` 红了(断开之后表面数还是 1),与本节的改动无关,
+是 §187「按客户端轮流取工作」之后留下的一类测试竞态(f5ee4a6c 修过同一类的一条):连接收尾排在那个客户端自己的队里、在它还没执行的请求之后,
+`ServeAsync` 返回时不一定做了,宿主那条队的 `InvokeAsync` / `GetClientsAsync` 优先、别的客户端的请求也可能先轮到 —— 慢的机器上就偶尔看到收尾之前的状态。
+测试工具加 `XTestClient.DisconnectAsync(server)`:断开后等客户端清单里这个编号不再是连着的客户端(收尾在一个工作项里做完,看到它没了就说明做完了);
+同样写法的 8 处(GLX 两条、CloseDownMode / Retain 三条、save-set、Retain 模式下关窗、断开时取消计时器)都换过去。新加一条让竞态必然出现的用例
+(断开前往这个客户端的队里排 300 次填满 2000×2000 像素图):旧写法 5 次红 5 次,`DisconnectAsync` 5 次绿 5 次;XServer 整套连跑 3 遍全过。宿主里没有依赖
+「ServeAsync 返回时收尾已做完」的地方。

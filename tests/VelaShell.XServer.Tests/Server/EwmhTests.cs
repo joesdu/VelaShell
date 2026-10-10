@@ -432,9 +432,7 @@ public sealed class EwmhTests
         XMessage before = await embedded.RequestAsync(15, 0, b => b.U32(plug));      // QueryTree
         Assert.AreEqual(frame, before.U32(12));
 
-        Task serving = embedder.ServerTask;
-        await embedder.DisposeAsync();   // 嵌入方崩溃
-        await serving.WaitAsync(TimeSpan.FromSeconds(3));
+        await embedder.DisconnectAsync(server);   // 嵌入方崩溃
 
         XMessage after = await embedded.RequestAsync(15, 0, b => b.U32(plug));
         Assert.IsTrue(after.IsReply, "原先 save-set 不生效:外框被销毁,别人的窗口跟着被销毁");

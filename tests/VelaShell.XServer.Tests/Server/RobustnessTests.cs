@@ -632,9 +632,7 @@ public sealed class RobustnessTests
             await c.SendAsync(53, 24, b => b.U32(pixmap).U32(c.RootWindow).U16(8).U16(8));
             await c.SendAsync(112, mode, _ => { });   // SetCloseDownMode
             await c.SyncAsync();
-            Task serving = c.ServerTask;
-            await c.DisposeAsync();
-            await serving.WaitAsync(TimeSpan.FromSeconds(3));
+            await c.DisconnectAsync(server);
             return pixmap;
         }
         async Task<bool> ExistsAsync(uint id) => (await observer.RequestAsync(14, 0, b => b.U32(id))).IsReply;   // GetGeometry
@@ -671,9 +669,7 @@ public sealed class RobustnessTests
         await retainer.SendAsync(damage, 1, b => b.U32(damageId).U32(pixmap).U8(0).U8(0).U8(0).U8(0));  // DamageCreate(RawRectangles)
         await retainer.SendAsync(112, 1);   // SetCloseDownMode(RetainPermanent)
         await retainer.SyncAsync();
-        Task serving = retainer.ServerTask;
-        await retainer.DisposeAsync();
-        await serving.WaitAsync(TimeSpan.FromSeconds(3));
+        await retainer.DisconnectAsync(server);
 
         // 别的客户端往留下来的像素图上画:损伤照常累积在留下来的损伤对象上。
         uint gc = observer.NewId(), region = observer.NewId();
@@ -689,6 +685,32 @@ public sealed class RobustnessTests
         await observer.SendAsync(113, 0, b => b.U32(pixmap));
         XMessage gone = await observer.RequestAsync(damage, 3, b => b.U32(damageId).U32(0).U32(0));
         Assert.IsTrue(gone.IsError, "损伤对象随 KillClient 销毁了");
+    }
+
+    /// <summary>
+    /// 测试工具 <see cref="XTestClient.DisconnectAsync" /> 的保证:客户端那条队里还排着一批请求时断开,连接收尾排在它们后面,
+    /// 宿主那条队的查询先跑 —— 只等 ServeAsync 返回就去看,看到的是收尾之前的状态(慢的 CI 机器上偶尔红,这里让它必然出现);
+    /// DisconnectAsync 等到收尾做完才返回。
+    /// </summary>
+    [TestMethod]
+    public async Task 断开时客户端的队里还排着请求_DisconnectAsync等到收尾做完才返回()
+    {
+        await using X11Server server = new();
+        await using XTestClient observer = await XTestClient.ConnectAsync(server);
+        XTestClient c = await XTestClient.ConnectAsync(server);
+        uint pixmap = c.NewId(), gc = c.NewId();
+        await c.SendAsync(53, 24, b => b.U32(pixmap).U32(c.RootWindow).U16(2000).U16(2000));   // CreatePixmap
+        await c.SendAsync(55, 0, b => b.U32(gc).U32(pixmap).U32(0x4).U32(0xFF0000));             // CreateGC
+        await c.SyncAsync();
+        for (int i = 0; i < 300; i++)
+        {
+            await c.SendAsync(70, 0, b => b.U32(pixmap).U32(gc).I16(0).I16(0).U16(2000).U16(2000));   // PolyFillRectangle:排在连接收尾前面
+        }
+
+        await c.DisconnectAsync(server);
+
+        Assert.HasCount(1, await server.GetClientsAsync(), "收尾做完了:只剩 observer");
+        Assert.IsTrue((await observer.RequestAsync(14, 0, b => b.U32(pixmap))).IsError, "它的像素图销毁了");   // GetGeometry
     }
 
     [TestMethod]
@@ -717,9 +739,7 @@ public sealed class RobustnessTests
             await c.SendAsync(53, 24, b => b.U32(pixmap).U32(c.RootWindow).U16(8).U16(8));
             await c.SendAsync(112, 1);   // SetCloseDownMode(RetainPermanent)
             await c.SyncAsync();
-            Task serving = c.ServerTask;
-            await c.DisposeAsync();
-            await serving.WaitAsync(TimeSpan.FromSeconds(3));
+            await c.DisconnectAsync(server);
             left.Add((c.ResourceBase, pixmap));
         }
         await observer.SyncAsync();

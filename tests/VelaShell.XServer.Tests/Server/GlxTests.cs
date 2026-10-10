@@ -663,9 +663,7 @@ public sealed class GlxTests
         Assert.IsTrue(made.IsReply);
         Assert.AreEqual(1, await server.InvokeAsync(() => server.Glx.SurfaceCount));
 
-        Task serving = c.ServerTask;
-        await c.DisposeAsync();
-        await serving.WaitAsync(TimeSpan.FromSeconds(3));
+        await c.DisconnectAsync(server);
         Assert.AreEqual(0, await server.InvokeAsync(() => server.Glx.SurfaceCount), "断开时表面随之释放");
     }
 
@@ -974,9 +972,7 @@ public sealed class GlxTests
         Assert.AreEqual(0u, await GlErrorAsync(c, glx, tag));
         Assert.IsGreaterThan(baseline + (64 * 64 * 4), await server.InvokeAsync(() => server.MemoryInUse));
 
-        Task serving = c.ServerTask;
-        await c.DisposeAsync();
-        await serving.WaitAsync(TimeSpan.FromSeconds(3));
+        await c.DisconnectAsync(server);
         Assert.AreEqual(baseline, await server.InvokeAsync(() => server.MemoryInUse), "还是当前的上下文、共享组、表面在断开时一并销账");
     }
 
