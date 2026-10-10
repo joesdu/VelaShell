@@ -2483,3 +2483,49 @@ Core.Tests 769 / 23;Presentation.Tests 84、Controls.Tests 31 全过(跳过的�
 - 说明、状态、模型信息等弱化文字不再使用 10 号,统一至少 11 号;全部继续引用 `VelaFontSize*` 动态令牌,随宿主 UI 字号设置缩放。
 - 增加字号令牌回归用例,检查关键样式的紧凑档位、弱化文字下限和临时占位键不会混入源码。
 - 验证:`VelaShell.Plugin.Ai.Tests` 1464 条全过,无跳过;宿主 Debug 构建通过,0 警告 / 0 错误。
+
+## ✅ 191. 2026-10-10 启动画面:五套样式,设置里可选,跟随主题(用户需求)
+
+**起因**:用户反馈「有时候软件启动得较慢,但是没有一个指示的东西,用户还以为软件打不开」,要一个类似 Visual Studio 的启动画面。
+本机的 `[Startup] timeline` 量得很清楚:冷启动首帧 8.1 s,其中 `Main` 之前 2.2 s(运行时与程序集装载)、`Main → DI` 3.5 s(Avalonia 平台初始化 +
+XAML 加载)—— Avalonia 窗口最早也只能在这 3.5 s 之后出现,恰好错过最需要反馈的那一段。
+
+**设计**:先做了一页可动的本地预览(五套方案,可切主题与冷/热启动节奏)给用户挑,用户的决定是五套都做、放进设置让用户选、默认经典。
+五套是:经典(最接近 VS)、终端开机(逐行打出真实阶段与耗时)、船帆座(Vela 星座随进度点亮)、提示符(Logo 的 `>_` 把产品名敲出来)、
+看板娘(原图 + 气泡台词 + 猫爪进度)。规格写进了 DESIGN.md §7.4。
+
+**实现**:
+- `Splash/SplashScreen`:`Program.Main` 拿到单实例锁之后起一条独立线程(默认 MTA),读镜像、建窗口、跑消息循环;`FirstFrameSignal` 到达时淡出,
+  60 s 保险丝;启动中途失败时 `Close(wait: true)` 先收掉画面再弹错误框。非 Windows、选了「不显示」、`VELASHELL_NO_SPLASH=1` 时什么都不做。
+- `Splash/Win32SplashWindow`:`WS_EX_LAYERED` 分层窗口,Skia 直接画进 DIB(预乘 BGRA,零拷贝),`UpdateLayeredWindow` 按逐像素 alpha 贴屏,
+  圆角与投影自己画(Win10/11 一致,投影区点击穿透),淡入 120 ms / 淡出 160 ms;`SW_SHOWNOACTIVATE` 不抢焦点,保留任务栏按钮;
+  线程级 Per-Monitor V2 DPI(不碰进程级设置,Avalonia 之后照常设);窗口过程里的异常收掉画面而不是带走进程。
+- `Splash/SplashFrame`:五个阶段由启动打点宣告结束(Main / DbWarmup 或 Settings / DI / MainWindowViewModel / FirstFrame)。数据库与界面框架并行,
+  阶段结束时刻取「自己及之后任一阶段的点」里最早的那个,耗时单调不为负;进行中的阶段按 `1 − e^(−t/τ)` 估计、封顶 0.95;总进度指数平滑。
+  `StartupTrace` 新增 `MarkRecorded` 事件供它订阅,时间线里多一个 `SplashShown` 点。
+- `Splash/SplashRenderer` + `Designs/`:五套样式只认 600 × 340 的逻辑坐标与 `SplashFrame`;配色取 `UiThemeCatalog` 的种子色 + 强调色覆盖,
+  不出现颜色字面量。字体用系统字体(Segoe UI、Cascadia Mono / Consolas),主字体没有的字(中日韩、盲文转圈符)由 `SplashFace` 逐字回退;
+  图片按画布的像素缩放预先逐级减半缩好并缓存。
+- `Controls/SplashPreview`:设置页的实时预览,经 `ISkiaSharpApiLeaseFeature` 在 Avalonia 的 Skia 画布上跑同一份绘制代码,时间线换成
+  `SplashSimulation`;渲染线程与 UI 线程经一把锁交接渲染器。
+- 设置:`AppearanceOptions.SplashStyle`(`SplashStyles`,出厂 `classic`,`Normalize` 兜底)、外观页「窗口」一节的下拉 + 预览(仅 Windows);
+  五份 resx 补齐 24 个键。数据库开之前要用的主题 / 强调色 / 语言 / 样式镜像进 `~/.velashell/startup.appearance`
+  (`Infrastructure/Persistence/StartupAppearance`,保存设置时写,每次启动按读到的设置对齐一次,内容没变不写)。
+- 资源:Logo 以嵌入资源再编一份(95 KB,Avalonia 起来之前读不到 avares://);看板娘插画近 800 KB,作为松散文件 `splash/mascot.png` 随包分发,
+  选了那一套才读,不让每次冷启动都多扫一遍。
+
+**实测**(Debug,`--data-root` 指向临时目录):热启动 `Main` 115 ms → `SplashShown` 165 ms,首帧 1.9 s;改完代码后的冷启动 `Main` 3.0 s →
+`SplashShown` 3.09 s,首帧 6.0 s,中间画面一直在动。五套样式、亮暗主题、中英文都在真实启动里截图核对过。
+
+**一个没坐实的现象**:接入后的头两次启动(都是改完代码后的首次,且前一个测试实例刚被强杀)9 s / 12 s 内没等到首帧,之后连续十几次
+(含又一次冷启动)都正常;`dotnet-dump` 10.0 读不了 .NET 11 的转储,没拿到栈。为降低风险把画面线程从 STA 改回默认 MTA
+(主线程的 COM 调用不会再被封送过来等它泵消息),并加了一行 `[Splash] style=… open=… frames=… render avg/max` 的自诊断日志。
+再遇到时先看这一行和时间线里的 `SplashShown`。
+
+**验证**:新增 `SplashStylesTests`、`StartupAppearanceTests`、`SplashProgressTests`、`SplashRendererTests`(5 样式 × 5 主题 × 5 个时刻看像素:
+圆角外透明、贴边是主题底色、内容区有墨迹)、`SplashPreviewUiTests`(headless 截帧 + 外观页)、`Win32SplashWindowTests`(真建分层窗口、
+定时器驱动重绘、请求关闭后消息循环退出)。
+在 PR 工作树(只含本节改动,基于 origin/main)里:`VelaShell.Tests` 1986 / 11、`VelaShell.Infrastructure.Tests` 675 / 5、`VelaShell.Core.Tests` 794 / 10,
+另有 1 条 `X11_RefusedByServer_KeepsAgentForwardingAndWarnsOnce` 失败 —— Docker 靶机上的 `vela-dash` 接受了 X11 转发,与用例预期的「拒绝」对不上,
+与本次改动无关。行为与设置项的文档在 [velashell-docs#110](https://github.com/VelaShellLabs/velashell-docs/pull/110)
+(交互与界面规格 §14.5、设置审计第十三批,中英同步),与宿主 PR 互相引用。

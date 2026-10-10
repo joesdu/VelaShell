@@ -64,6 +64,7 @@ public sealed class SonnetDbSettingsService(SonnetDbEngine engine, IReadOnlyList
         _settingsJsonCache = json;
         _snapshot = DeserializeNormalized(json);
         MirrorRenderMode(settings);
+        StartupAppearance.Mirror(settings, new VelaShellStoragePaths().StartupAppearanceFile);
         SettingsSaved?.Invoke(settings);
     }
 

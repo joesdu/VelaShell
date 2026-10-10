@@ -7400,4 +7400,73 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="BatchEdit_Failed" xml:space="preserve">
     <value>儲存失敗：{0}</value>
   </data>
+  <data name="SetAppear_SplashStyle" xml:space="preserve">
+    <value>啟動畫面</value>
+  </data>
+  <data name="SetAppear_SplashStyleDesc" xml:space="preserve">
+    <value>// 啟動時顯示,主視窗畫出來後自動消失;下次啟動生效(Windows)</value>
+  </data>
+  <data name="SetAppear_SplashClassic" xml:space="preserve">
+    <value>經典</value>
+  </data>
+  <data name="SetAppear_SplashTerminal" xml:space="preserve">
+    <value>終端機開機</value>
+  </data>
+  <data name="SetAppear_SplashConstellation" xml:space="preserve">
+    <value>船帆座</value>
+  </data>
+  <data name="SetAppear_SplashPrompt" xml:space="preserve">
+    <value>提示字元</value>
+  </data>
+  <data name="SetAppear_SplashMascot" xml:space="preserve">
+    <value>看板娘</value>
+  </data>
+  <data name="SetAppear_SplashNone" xml:space="preserve">
+    <value>不顯示</value>
+  </data>
+  <data name="Splash_StageRuntime" xml:space="preserve">
+    <value>載入執行環境</value>
+  </data>
+  <data name="Splash_StageDatabase" xml:space="preserve">
+    <value>開啟資料庫</value>
+  </data>
+  <data name="Splash_StageInterface" xml:space="preserve">
+    <value>初始化介面框架</value>
+  </data>
+  <data name="Splash_StageSessions" xml:space="preserve">
+    <value>讀取工作階段與設定</value>
+  </data>
+  <data name="Splash_StageWindow" xml:space="preserve">
+    <value>繪製主視窗</value>
+  </data>
+  <data name="Splash_Starting" xml:space="preserve">
+    <value>正在啟動…</value>
+  </data>
+  <data name="Splash_Ready" xml:space="preserve">
+    <value>準備就緒</value>
+  </data>
+  <data name="Splash_Tagline" xml:space="preserve">
+    <value>SSH · SFTP · 終端機用戶端</value>
+  </data>
+  <data name="Splash_ConstellationName" xml:space="preserve">
+    <value>船帆座</value>
+  </data>
+  <data name="Splash_MascotHello" xml:space="preserve">
+    <value>喵~ 來啦</value>
+  </data>
+  <data name="Splash_MascotDatabase" xml:space="preserve">
+    <value>在翻你的連線記錄…</value>
+  </data>
+  <data name="Splash_MascotInterface" xml:space="preserve">
+    <value>正在把介面鋪好…</value>
+  </data>
+  <data name="Splash_MascotSessions" xml:space="preserve">
+    <value>把工作階段一個個擺整齊…</value>
+  </data>
+  <data name="Splash_MascotWindow" xml:space="preserve">
+    <value>馬上就好!</value>
+  </data>
+  <data name="Splash_MascotReady" xml:space="preserve">
+    <value>準備好啦,我們出發!</value>
+  </data>
 </root>

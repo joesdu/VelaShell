@@ -6946,4 +6946,73 @@ Send anyway?</value>
   <data name="BatchEdit_Failed" xml:space="preserve">
     <value>Saving failed: {0}</value>
   </data>
+  <data name="SetAppear_SplashStyle" xml:space="preserve">
+    <value>Splash screen</value>
+  </data>
+  <data name="SetAppear_SplashStyleDesc" xml:space="preserve">
+    <value>// Shown while VelaShell starts, gone once the main window is drawn. Takes effect on next launch (Windows)</value>
+  </data>
+  <data name="SetAppear_SplashClassic" xml:space="preserve">
+    <value>Classic</value>
+  </data>
+  <data name="SetAppear_SplashTerminal" xml:space="preserve">
+    <value>Terminal boot</value>
+  </data>
+  <data name="SetAppear_SplashConstellation" xml:space="preserve">
+    <value>Vela constellation</value>
+  </data>
+  <data name="SetAppear_SplashPrompt" xml:space="preserve">
+    <value>Prompt</value>
+  </data>
+  <data name="SetAppear_SplashMascot" xml:space="preserve">
+    <value>Mascot</value>
+  </data>
+  <data name="SetAppear_SplashNone" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="Splash_StageRuntime" xml:space="preserve">
+    <value>Loading runtime</value>
+  </data>
+  <data name="Splash_StageDatabase" xml:space="preserve">
+    <value>Opening database</value>
+  </data>
+  <data name="Splash_StageInterface" xml:space="preserve">
+    <value>Initializing interface</value>
+  </data>
+  <data name="Splash_StageSessions" xml:space="preserve">
+    <value>Loading sessions and settings</value>
+  </data>
+  <data name="Splash_StageWindow" xml:space="preserve">
+    <value>Drawing main window</value>
+  </data>
+  <data name="Splash_Starting" xml:space="preserve">
+    <value>Starting…</value>
+  </data>
+  <data name="Splash_Ready" xml:space="preserve">
+    <value>Ready</value>
+  </data>
+  <data name="Splash_Tagline" xml:space="preserve">
+    <value>SSH · SFTP · Terminal client</value>
+  </data>
+  <data name="Splash_ConstellationName" xml:space="preserve">
+    <value>the Sails</value>
+  </data>
+  <data name="Splash_MascotHello" xml:space="preserve">
+    <value>Meow~ here I come</value>
+  </data>
+  <data name="Splash_MascotDatabase" xml:space="preserve">
+    <value>Digging out your connections…</value>
+  </data>
+  <data name="Splash_MascotInterface" xml:space="preserve">
+    <value>Laying out the interface…</value>
+  </data>
+  <data name="Splash_MascotSessions" xml:space="preserve">
+    <value>Lining up your sessions…</value>
+  </data>
+  <data name="Splash_MascotWindow" xml:space="preserve">
+    <value>Almost there!</value>
+  </data>
+  <data name="Splash_MascotReady" xml:space="preserve">
+    <value>All set, let's go!</value>
+  </data>
 </root>

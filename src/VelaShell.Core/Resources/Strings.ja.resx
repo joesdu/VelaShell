@@ -6941,4 +6941,73 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="BatchEdit_Failed" xml:space="preserve">
     <value>保存に失敗しました：{0}</value>
   </data>
+  <data name="SetAppear_SplashStyle" xml:space="preserve">
+    <value>スプラッシュ画面</value>
+  </data>
+  <data name="SetAppear_SplashStyleDesc" xml:space="preserve">
+    <value>// 起動中に表示し、メインウィンドウが描画されると消えます。次回の起動から有効(Windows)</value>
+  </data>
+  <data name="SetAppear_SplashClassic" xml:space="preserve">
+    <value>クラシック</value>
+  </data>
+  <data name="SetAppear_SplashTerminal" xml:space="preserve">
+    <value>ターミナル起動</value>
+  </data>
+  <data name="SetAppear_SplashConstellation" xml:space="preserve">
+    <value>ほ座</value>
+  </data>
+  <data name="SetAppear_SplashPrompt" xml:space="preserve">
+    <value>プロンプト</value>
+  </data>
+  <data name="SetAppear_SplashMascot" xml:space="preserve">
+    <value>看板娘</value>
+  </data>
+  <data name="SetAppear_SplashNone" xml:space="preserve">
+    <value>表示しない</value>
+  </data>
+  <data name="Splash_StageRuntime" xml:space="preserve">
+    <value>ランタイムの読み込み</value>
+  </data>
+  <data name="Splash_StageDatabase" xml:space="preserve">
+    <value>データベースを開く</value>
+  </data>
+  <data name="Splash_StageInterface" xml:space="preserve">
+    <value>UI の初期化</value>
+  </data>
+  <data name="Splash_StageSessions" xml:space="preserve">
+    <value>セッションと設定の読み込み</value>
+  </data>
+  <data name="Splash_StageWindow" xml:space="preserve">
+    <value>メインウィンドウの描画</value>
+  </data>
+  <data name="Splash_Starting" xml:space="preserve">
+    <value>起動しています…</value>
+  </data>
+  <data name="Splash_Ready" xml:space="preserve">
+    <value>準備完了</value>
+  </data>
+  <data name="Splash_Tagline" xml:space="preserve">
+    <value>SSH · SFTP · ターミナルクライアント</value>
+  </data>
+  <data name="Splash_ConstellationName" xml:space="preserve">
+    <value>ほ座</value>
+  </data>
+  <data name="Splash_MascotHello" xml:space="preserve">
+    <value>にゃ~ 来たよ</value>
+  </data>
+  <data name="Splash_MascotDatabase" xml:space="preserve">
+    <value>接続履歴を探してるよ…</value>
+  </data>
+  <data name="Splash_MascotInterface" xml:space="preserve">
+    <value>画面を並べてるよ…</value>
+  </data>
+  <data name="Splash_MascotSessions" xml:space="preserve">
+    <value>セッションを整列中…</value>
+  </data>
+  <data name="Splash_MascotWindow" xml:space="preserve">
+    <value>もうすぐだよ!</value>
+  </data>
+  <data name="Splash_MascotReady" xml:space="preserve">
+    <value>準備OK、行こう!</value>
+  </data>
 </root>

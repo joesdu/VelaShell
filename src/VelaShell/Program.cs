@@ -9,6 +9,7 @@ using VelaShell.Infrastructure.Persistence;
 using VelaShell.Infrastructure.Startup;
 using VelaShell.Services;
 using VelaShell.Services.Update;
+using VelaShell.Splash;
 
 // ReSharper disable InconsistentNaming
 
@@ -79,6 +80,10 @@ internal static partial class Program
             // 主窗口还没有,先入队;App 起来后 Attach 时一并放行。
             ExternalLaunchInbox.Publish(launch);
         }
+
+        // 启动画面排在单实例守卫之后:第二次双击只是把已有窗口唤到前台,不该闪一下启动画面。
+        // 它在自己的线程上画,主窗口第一帧画完时自己淡出(见 SplashScreen)。
+        SplashScreen.Start();
         try
         {
             // 首次运行新版时，先完整迁移旧 LocalAppData 数据。失败则中止启动，绝不能在
@@ -102,6 +107,8 @@ internal static partial class Program
             // VS 设计器曾经就会 —— 见 App.Initialize 的设计期守卫),也可能是上一个实例
             // 尚未退干净;两种情况下互斥锁都是空的。给一句说得清的提示后干净退出,不再 rethrow。
             Trace.WriteLine($"[VelaShell] Database locked at startup: {ex}");
+            // 先收掉启动画面再弹框,否则提示框会被画面压在底下。
+            SplashScreen.Close(wait: true);
             ShowMessage(Strings.Get("Boot_DatabaseLocked"), Strings.Get("Boot_StartupErrorTitle"));
         }
         catch (Exception ex)
@@ -109,11 +116,14 @@ internal static partial class Program
             // 最后手段:向测试人员弹出可读对话框,而非原始的 .NET 崩溃框。
             Trace.WriteLine($"[VelaShell] Fatal startup error: {ex}");
             DiagnosticLog.WriteCrash("FatalStartupError", ex);
+            SplashScreen.Close(wait: true);
             ShowMessage(Strings.Format("Boot_StartupFailed", ex.Message), Strings.Get("Boot_StartupErrorTitle"));
             throw;
         }
         finally
         {
+            // 正常退出时它早已在第一帧后收掉了,这里是空操作;兜的是启动半途中断的情形。
+            SplashScreen.Close();
             // 启动在 DI 认领之前就断了(迁移抛异常、库被占用)时,那个后台开出来的引擎
             // 还占着 WAL —— 不收回的话,用户重开一次就撞上"数据库被占用",
             // 一个为了快半秒的优化反而把应用变成打不开。已认领的话这里是空操作。

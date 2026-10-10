@@ -37,6 +37,7 @@ public sealed class VelaShellStoragePaths
         SonnetDbDirectory = Path.Combine(root, "sonnetdb");
         SecretKeyFile = Path.Combine(root, "secret.key");
         RenderModeFile = Path.Combine(root, "render.mode");
+        StartupAppearanceFile = Path.Combine(root, "startup.appearance");
         GeoIpDirectory = Path.Combine(root, "geoip");
         UserPluginDirectory = Path.Combine(root, "plugins");
         LegacyLocalAppDataDirectory = Path.Combine(
@@ -90,6 +91,13 @@ public sealed class VelaShellStoragePaths
     /// 启动路径只做一次 File.ReadAllText,不引入任何数据库初始化开销。
     /// </summary>
     public string RenderModeFile { get; }
+
+    /// <summary>
+    /// 启动外观镜像文件(主题、强调色、界面语言与启动画面样式)。启动画面在 <c>Main</c> 里就要画出来,
+    /// 比 Avalonia 与 SonnetDB 都早,读不到设置 —— 与 <see cref="RenderModeFile" /> 同理,
+    /// 保存设置时把这几项额外镜像成几行 <c>key=value</c>,见 <c>StartupAppearance</c>。
+    /// </summary>
+    public string StartupAppearanceFile { get; }
 
     /// <summary>离线 IP 归属地数据库(*.mmdb)的存放目录。</summary>
     public string GeoIpDirectory { get; }

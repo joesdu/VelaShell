@@ -642,6 +642,10 @@ public class App : Application
                 .GetRequiredService<ISettingsService>()
                 .GetSnapshotBlocking();
             _startupSettings = settings;
+            // 启动画面读的是保存设置时写的镜像文件;从没保存过设置的老配置还没有它,
+            // 这里按刚读出来的设置对齐一次(内容没变时不写盘)。放后台,不占首帧。
+            _ = Task.Run(() => Infrastructure.Persistence.StartupAppearance.Mirror(
+                settings, new Infrastructure.Persistence.VelaShellStoragePaths().StartupAppearanceFile));
             _serviceProvider
                 .GetRequiredService<ILocalizationService>()
                 .SetLanguage(settings.Language);
