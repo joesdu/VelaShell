@@ -206,7 +206,11 @@ public sealed partial class X11Server
         UpdatePointerWindow();
     }
 
-    /// <summary>托盘图标给宿主的名字:图标窗口的 <c>_NET_WM_NAME</c>(UTF-8),没有退到 WM_NAME,再退到 WM_CLASS 的类名。</summary>
+    /// <summary>
+    /// 托盘图标给宿主的名字:图标窗口的 <c>_NET_WM_NAME</c>(UTF-8),没有退到 WM_NAME(按类型解码),再退到 WM_CLASS 的类名。
+    /// 与窗口标题同样经 <see cref="HostText(ReadOnlySpan{byte}, XTextEncoding, int)" />:限长、去掉控制字符与双向排版控制符 ——
+    /// 原先原样解码,远端程序的托盘提示可以有 32 MB,也能用 U+202E 把提示倒着显示。
+    /// </summary>
     private string TrayIconTitle(XWindow embedder)
     {
         if (!_trayByEmbedder.TryGetValue(embedder, out TrayDock? dock))
@@ -214,19 +218,26 @@ public sealed partial class X11Server
             return "";
         }
         XWindow icon = dock.Icon;
-        if (icon.Properties.TryGetValue(Intern("_NET_WM_NAME"), out XProperty? netName) && netName.Format == 8 && netName.Length > 0)
+        if (icon.Properties.TryGetValue(_netWmNameAtom, out XProperty? netName) && netName.Format == 8 && netName.Length > 0)
         {
-            return System.Text.Encoding.UTF8.GetString(netName.Data);
+            return HostText(netName.Data, utf8: true, MaxHostTitleChars);
         }
         if (icon.Properties.TryGetValue(XAtom.WmName, out XProperty? name) && name.Format == 8 && name.Length > 0)
         {
-            return System.Text.Encoding.Latin1.GetString(name.Data);
+            return HostText(name.Data, TextEncodingOf(name.Type), MaxHostTitleChars);
         }
         if (icon.Properties.TryGetValue(XAtom.WmClass, out XProperty? wmClass) && wmClass.Format == 8)
         {
-            string[] parts = System.Text.Encoding.Latin1.GetString(wmClass.Data).Split('\0');
-            return parts.Length > 1 ? parts[1] : parts[0];
+            ReadOnlySpan<byte> data = wmClass.Data[..Math.Min(wmClass.Data.Length, (2 * MaxHostNameChars) + 2)];
+            int split = data.IndexOf((byte)0);
+            ReadOnlySpan<byte> classPart = split < 0 ? data : data[(split + 1)..];
+            int end = classPart.IndexOf((byte)0);
+            return HostText(end < 0 ? classPart : classPart[..end], utf8: false, MaxHostNameChars);
         }
         return "";
     }
+
+    /// <summary>托盘图标嵌入窗口的来源:停靠进来的那个图标所属连接的标签;不是嵌入窗口、或连接没有标签时为 null。</summary>
+    private string? TrayIconOwnerLabel(XWindow embedder) =>
+        _trayByEmbedder.TryGetValue(embedder, out TrayDock? dock) ? dock.Icon.Owner?.Label : null;
 }

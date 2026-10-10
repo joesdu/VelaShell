@@ -146,7 +146,7 @@ public sealed partial class X11Server
                         {
                             for (int col = 0; col < per; col++)
                             {
-                                w.U32(_keymap.Keysym((byte)(first + k), col));
+                                w.U32(KeysymFor(c, (byte)(first + k), col));
                             }
                         }
                     });

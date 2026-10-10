@@ -267,6 +267,26 @@ public sealed partial class X11Server
         {
             TakeSelectionForHost(slot);
         }
+        else if (_options.CompositingManager && !Rootful && slot.Atom == Intern("_NET_WM_CM_S0") && !_selections.ContainsKey(slot))
+        {
+            RetakeCompositingManagerSelection(slot);
+        }
+    }
+
+    /// <summary>
+    /// 合成管理器的选区没了属主(远端跑了个 <c>xfwm4 --replace</c> 之类的合成器、它又退出了,或者谁把属主设成了 None):服务端接回来。
+    /// 原先不接,之后直到重启 X Server 都没有合成管理器,新开的 GTK / Chromium / Qt 程序一律不透明,设置却还开着。
+    /// 按 ICCCM §2.8 向根窗口广播 MANAGER(选了 StructureNotify 的客户端收到):时间、选区、属主窗口。
+    /// </summary>
+    private void RetakeCompositingManagerSelection(SelectionSlot slot)
+    {
+        uint now = Now;
+        _selections[slot] = (SelectionWindow, null, now);
+        _selectionLastChange[slot] = now;
+        NotifySelectionChange(slot.Atom, 0, SelectionWindowId, now, client => InScope(client, slot));
+        uint manager = Intern("MANAGER");
+        DeliverToSelectors(Root, XEventMask.StructureNotify, client => client.Event(XEventCode.ClientMessage, 32,
+            w => w.U32(Root.Id).U32(manager).U32(now).U32(slot.Atom).U32(SelectionWindowId).U32(0).U32(0), sent: true));
     }
 
     private bool IsSyncedSelection(uint selection) =>

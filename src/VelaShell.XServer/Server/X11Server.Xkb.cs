@@ -282,9 +282,15 @@ public sealed partial class X11Server
     /// 核心键位表的列与 XKB 的对应(XKB 规范 §17「Interactions Between XKB and the Core Protocol」):
     /// 第 1、2 列是组 1 的第 1、2 级,第 3、4 列是组 2 的第 1、2 级,第 5、6 列是组 1 的第 3、4 级。
     /// 只有一组,所以第 3、4 列不看;第 5、6 列有键值时这个键是四级的(AltGr 层)。
+    /// 为输入字借来的键码(<see cref="InjectText" />)两级同一个键值、类型是 ALPHABETIC:Lock 算作被这个键消耗,CapsLock 开着时不转大写;
+    /// 对非受信客户端 <paramref name="viewer" />,还没让它看过的借来的键码没有键值(SECURITY「Keyboard Security」,见 <see cref="KeysymFor" />)。
     /// </remarks>
-    private (byte Type, byte Width, uint[] Syms) XkbKey(byte keycode)
+    private (byte Type, byte Width, uint[] Syms) XkbKey(byte keycode, XClient? viewer = null)
     {
+        if (TextKeyAt(keycode) is { } text)
+        {
+            return viewer is { Untrusted: true } && !text.Revealed ? (0, 0, []) : (2, 2, [text.Keysym, text.Keysym]);
+        }
         uint s0 = _keymap.Keysym(keycode, 0), s1 = _keymap.KeysymsPerKeycode > 1 ? _keymap.Keysym(keycode, 1) : 0;
         uint s4 = _keymap.Keysym(keycode, 4), s5 = _keymap.Keysym(keycode, 5);
         // 核心协议第 5 节:一组的第二个键值是 NoSymbol、第一个是有大小写之分的字母时,按「小写、大写」两级看待(xmodmap 常这样写单列)。
@@ -426,7 +432,7 @@ public sealed partial class X11Server
         int totalSyms = 0;
         for (int k = 0; k < symsCount; k++)
         {
-            (byte Type, byte Width, uint[] Syms) key = XkbKey((byte)(symsFirst + k));
+            (byte Type, byte Width, uint[] Syms) key = XkbKey((byte)(symsFirst + k), c);
             keys.Add(key);
             totalSyms += key.Syms.Length;
         }
@@ -436,7 +442,7 @@ public sealed partial class X11Server
         for (int k = 0; k < actsCount; k++)
         {
             byte code = (byte)(actsFirst + k);
-            byte width = XkbKey(code).Width;
+            byte width = XkbKey(code, c).Width;
             if (width > 0 && XkbActionOf(code, out byte type))
             {
                 actionCounts.Add(width);
@@ -709,8 +715,12 @@ public sealed partial class X11Server
         }
     }
 
-    /// <summary>核心键位表 / 修饰键表变了:XKB 键位表随之改变,发 MapNotify。</summary>
-    private void NotifyXkbMapChanged()
+    /// <summary>
+    /// 核心键位表 / 修饰键表变了:XKB 键位表随之改变,发 MapNotify(只发给 <paramref name="to" /> 认可的客户端;null = 都发)。
+    /// 给了 <paramref name="keySyms" /> 时只有这一段键的键值(连同键的类型下标)变了:changed 只有 KeySyms 一位、只报这一段 ——
+    /// 为字借键码时用,Xlib 只重取这几个键;否则报所有部分、所有键。
+    /// </summary>
+    private void NotifyXkbMapChanged(Func<XClient, bool>? to = null, (byte First, byte Count)? keySyms = null)
     {
         if (_xkbSelections.Count == 0)
         {
@@ -721,8 +731,17 @@ public sealed partial class X11Server
         const byte count = Keymap.MaxKeycode - Keymap.MinKeycode + 1;
         foreach ((XClient client, uint[] details) in _xkbSelections)
         {
-            if (client.Closed || details[XkbMapNotify] == 0)
+            if (client.Closed || details[XkbMapNotify] == 0 || (to is not null && !to(client)))
             {
+                continue;
+            }
+            if (keySyms is { } syms)
+            {
+                // changed = KeySyms(2);类型、动作、行为、显式、修饰映射各段计数为 0。
+                client.Event(XkbEventBase, XkbMapNotify, w => w
+                    .U32(time).U8(XkbDeviceId).U8(0).U16(0x02).U8(min).U8(Keymap.MaxKeycode)
+                    .U8(0).U8(0).U8(syms.First).U8(syms.Count).U8(min).U8(0).U8(min).U8(0)
+                    .U8(min).U8(0).U8(min).U8(0).U8(min).U8(0).U16(0));
                 continue;
             }
             client.Event(XkbEventBase, XkbMapNotify, w => w

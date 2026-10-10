@@ -362,24 +362,145 @@ public sealed class KeyboardControlTests
         Assert.ThrowsExactly<ArgumentException>(() => server.InjectText(new string('x', X11Server.MaxInjectedTextLength + 1)));
     }
 
+    /// <summary>
+    /// 300 个不同的汉字多于空着的键码:第一批用完空键码(一批只发一次 MappingNotify);之后挪用的键码要空闲够
+    /// <see cref="X11Server.TextKeyReuseMilliseconds" /> —— 原先 200 毫秒就挪,慢链路上客户端为前面的字重取键位表时那个键码已经改成了后面的字。
+    /// 等的时候宿主的回车排在这段字后面(原先插到中间);字一个不少。
+    /// </summary>
     [TestMethod]
-    public async Task InjectText_空键码用完时挪用最久没用的_刚用过的等一会儿_字一个不少()
+    public async Task InjectText_挪用的键码要空闲够久_一批只通知一次_等的时候宿主的按键排在后面_字一个不少()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        long now = 1_000_000;
+        server.TextInputClock = () => Volatile.Read(ref now);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        uint top = await MapTopAsync(c, host, 0x1 | 0x2);
+        server.FocusTopLevel(host.Mapped[top]);
+
+        string text = string.Concat(Enumerable.Range(0x4E00, 300).Select(char.ConvertFromUtf32));
+        server.InjectText(text);
+        server.InjectKey(36, pressed: true);   // Return
+        server.InjectKey(36, pressed: false);
+        List<(byte Code, byte Key)> events = await KeyEventsAsync(c);
+        int firstBatch = events.Count(e => e.Code == KeyPress);
+        Assert.IsTrue(firstBatch is > 50 and < 300, $"先用完空着的键码:{firstBatch}");
+        Assert.DoesNotContain((KeyPress, (byte)36), events, "字没输入完,回车不插队");
+        XMessage mapping = await c.NextEventAsync(34);
+        Assert.IsGreaterThanOrEqualTo(firstBatch, mapping.Bytes[6], "第一批借的键码一次通知完");
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => c.NextEventAsync(34, timeoutMs: 100), "一批只有一次 MappingNotify");
+
+        await Task.Delay(X11Server.TextRetryMilliseconds * 4);
+        Assert.IsEmpty(await KeyEventsAsync(c), "刚用过的键码不挪(时钟没走)");
+
+        // 时钟每走够一次,空闲够久的键码挪给后面的字;直到全部输入完、回车最后到。
+        for (int round = 0; round < 10 && events.Count(e => e.Code == KeyPress) < 301; round++)
+        {
+            Interlocked.Add(ref now, X11Server.TextKeyReuseMilliseconds);
+            await Task.Delay(X11Server.TextRetryMilliseconds * 3);
+            events.AddRange(await KeyEventsAsync(c));
+        }
+        Assert.AreEqual(301, events.Count(e => e.Code == KeyPress), "300 个字一个不少,外加回车");
+        Assert.AreEqual((KeyPress, (byte)36), events[^2]);
+        Assert.AreEqual((KeyRelease, (byte)36), events[^1], "回车排在整段字后面");
+    }
+
+    /// <summary>
+    /// 借来的键两级同一个键值、XKB 类型是 ALPHABETIC(Lock 被这个键消耗)—— 原先推成 ONE_LEVEL,CapsLock 开着时 XKB 客户端把「é」变成「É」;
+    /// CapsLock 开着时键位表里有的字母也借键码(第一列的 a 在 CapsLock 下是 A)。CR LF 只按一次 Return。
+    /// </summary>
+    [TestMethod]
+    public async Task InjectText_借来的键是ALPHABETIC类型_CapsLock开着也借键码_CRLF只按一次回车()
     {
         using RecordingHost host = new();
         await using X11Server server = new(host: host);
         await using XTestClient c = await XTestClient.ConnectAsync(server);
-        uint top = await MapTopAsync(c, host, 0x1);
+        uint top = await MapTopAsync(c, host, 0x1 | 0x2);
         server.FocusTopLevel(host.Mapped[top]);
+        byte xkb = await ExtensionAsync(c, "XKEYBOARD");
+        await c.RequestAsync(xkb, 0, b => b.U16(1).U16(0));   // UseExtension
 
-        // 300 个不同的汉字多于空着的键码:用完之后等刚用过的放开再挪用,一个字都不丢。
-        string text = string.Concat(Enumerable.Range(0x4E00, 300).Select(cp => char.ConvertFromUtf32(cp)));
-        server.InjectText(text);
-        int presses = 0;
-        while (presses < 300)
+        server.InjectText("é\r\n");
+        XMessage mapping = await c.NextEventAsync(34);
+        byte borrowed = mapping.Bytes[5];
+        CollectionAssert.AreEqual(new List<(byte, byte)> { (KeyPress, borrowed), (KeyRelease, borrowed), (KeyPress, 36), (KeyRelease, 36) },
+            await KeyEventsAsync(c), "CR LF 是一个换行");
+        // GetMap:只要键码 borrowed 的键值。
+        XMessage map = await c.RequestAsync(xkb, 8, b => b.U16(UseCoreKbd).U16(0).U16(0x2).U8(0).U8(0).U8(borrowed).U8(1).Bytes(new byte[14]));
+        Assert.AreEqual(2, map.Bytes[40], "ALPHABETIC");
+        Assert.AreEqual(2, map.Bytes[45], "两级");
+        Assert.AreEqual((0xe9u, 0xe9u), (map.U32(48), map.U32(52)), "两级都是 é");
+
+        server.InjectKey(XKeycodes.CapsLock, pressed: true);
+        server.InjectKey(XKeycodes.CapsLock, pressed: false);
+        server.InjectText("a");
+        XMessage capsMapping = await c.NextEventAsync(34);
+        Assert.AreNotEqual(38, capsMapping.Bytes[5], "CapsLock 开着:不按键位表里的 a 键(那是 A),借一个键码");
+        Assert.AreEqual('a', (char)await KeysymAsync(c, capsMapping.Bytes[5]));
+    }
+
+    /// <summary>
+    /// SECURITY「Keyboard Security」:输入给受信程序的字,非受信客户端收不到改键位表的通知、读键位表时那个键码是 NoSymbol
+    /// (原先它重取键位表就能逐字读出用户输入的字);输入给非受信程序时(键盘事件本来就给它)才让它看见。
+    /// </summary>
+    [TestMethod]
+    public async Task InjectText_非受信客户端看不见输入给受信程序的字_输入给它自己时才看得见()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        await using XTestClient trusted = await XTestClient.ConnectAsync(server);
+        await using XTestClient untrusted = await XTestClient.ConnectAsync(server, untrusted: true);
+        uint trustedTop = await MapTopAsync(trusted, host, 0x1 | 0x2);
+        uint untrustedTop = await MapTopAsync(untrusted, host, 0x1 | 0x2);
+        await untrusted.SyncAsync();
+        server.FocusTopLevel(host.Mapped[trustedTop]);
+        await trusted.SyncAsync();
+
+        server.InjectText("中");
+        XMessage mapping = await trusted.NextEventAsync(34);
+        byte borrowed = mapping.Bytes[5];
+        Assert.AreEqual(0x01004E2Du, await KeysymAsync(trusted, borrowed));
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => untrusted.NextEventAsync(34, timeoutMs: 150), "非受信客户端收不到通知");
+        Assert.AreEqual(0u, await KeysymAsync(untrusted, borrowed), "非受信客户端读到 NoSymbol");
+
+        server.FocusTopLevel(host.Mapped[untrustedTop]);
+        await untrusted.SyncAsync();
+        server.InjectText("中");
+        XMessage revealed = await untrusted.NextEventAsync(34);
+        Assert.AreEqual(borrowed, revealed.Bytes[5], "输入给它自己:告诉它这个键码变了");
+        Assert.AreEqual(0x01004E2Du, await KeysymAsync(untrusted, borrowed));
+        CollectionAssert.AreEqual(new List<(byte, byte)> { (KeyPress, borrowed), (KeyRelease, borrowed) }, await KeyEventsAsync(untrusted));
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => trusted.NextEventAsync(34, timeoutMs: 100), "受信客户端早就知道,不再通知");
+    }
+
+    /// <summary>客户端把每个键码都占了、一个都借不到:这段字丢掉(记日志),不无限地等;之后宿主的按键照常送到。</summary>
+    [TestMethod]
+    public async Task InjectText_一个键码都借不到时丢掉这段字_不卡住后面的按键()
+    {
+        using RecordingHost host = new();
+        List<string> log = [];
+        await using X11Server server = new(new X11ServerOptions { Log = line => { lock (log) { log.Add(line); } } }, host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        uint top = await MapTopAsync(c, host, 0x1 | 0x2);
+        server.FocusTopLevel(host.Mapped[top]);
+        // ChangeKeyboardMapping:8–255 每个键码都给一个键值(F35)。
+        await c.SendAsync(100, 248, b =>
         {
-            await c.NextAsync(m => !m.IsReply && !m.IsError && m.EventCode == KeyPress, timeoutMs: 5000);
-            presses++;
+            b.U8(8).U8(1).U16(0);
+            for (int i = 0; i < 248; i++)
+            {
+                b.U32(0xffe0);
+            }
+        });
+        await c.SyncAsync();
+
+        server.InjectText("中");
+        server.InjectKey(38, pressed: true);
+        server.InjectKey(38, pressed: false);
+        CollectionAssert.AreEqual(new List<(byte, byte)> { (KeyPress, 38), (KeyRelease, 38) }, await KeyEventsAsync(c));
+        lock (log)
+        {
+            Assert.IsTrue(log.Exists(l => l.Contains("no keycode can be borrowed", StringComparison.Ordinal)), "记一行日志");
         }
-        Assert.AreEqual(300, presses);
     }
 }

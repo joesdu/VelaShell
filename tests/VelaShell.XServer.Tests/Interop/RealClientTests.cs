@@ -123,6 +123,52 @@ public sealed class RealClientTests
         CollectionAssert.AreEqual(given, Convert.FromBase64String(parts[1].Trim()));
     }
 
+    /// <summary>
+    /// 本机输入法上屏(xs_plan F5):真实的 Xlib 客户端(xev)收到借来的键码时按新的键值解释 —— 一段字里新借的几个键码只有一次通知
+    /// (核心 MappingNotify 与只报键值那一段的 XKB MapNotify);CapsLock 开着时借来的「é」仍是 eacute(借来的键是 ALPHABETIC 类型,
+    /// Lock 被这个键消耗;原先推成 ONE_LEVEL,Xlib 把它转成 Eacute);超过空键码数的字挪用键码之后也照样对。没有协议错误。
+    /// </summary>
+    [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task 输入法上屏的字_xev按借来的键值解释_CapsLock开着也不转大写()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        using RecordingHost host = new();
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartServer(host);
+        await using (server)
+        {
+            await server.StartAsync();
+            Task<(int ExitCode, string Output)> client = RunClientAsync(cookie, "timeout 12 xev -event keyboard -geometry 200x100; true");
+            while (host.Mapped.IsEmpty && !client.IsCompleted)
+            {
+                await Task.Delay(100);
+            }
+            Assert.IsFalse(host.Mapped.IsEmpty, "xev 的窗口映射了:" + (client.IsCompleted ? (await client).Output : ""));
+            await Task.Delay(1000);   // xev 映射之后还要选好事件、取键位表
+            server.FocusTopLevel(host.Mapped.Values.First());
+            server.InjectText("中文é");
+            await Task.Delay(1500);
+            server.InjectKey(XKeycodes.CapsLock, pressed: true);
+            server.InjectKey(XKeycodes.CapsLock, pressed: false);
+            server.InjectText("éa");
+            (_, string output) = await client;
+            TestContext.WriteLine(output);
+
+            Assert.Contains("keysym 0x1004e2d, U4E2D", output, "中:借来的键码按 Unicode 键值解释");
+            Assert.Contains("keysym 0x1006587, U6587", output, "文");
+            int caps = output.IndexOf("Caps_Lock", StringComparison.Ordinal);
+            Assert.IsGreaterThan(0, caps, "CapsLock 按下了");
+            string afterCaps = output[caps..];
+            Assert.Contains("keysym 0xe9, eacute", afterCaps, "CapsLock 开着时借来的 é 仍是小写");
+            Assert.DoesNotContain("Eacute", output, "没有被转成大写");
+            Assert.Contains("keysym 0x61, a", afterCaps, "CapsLock 开着时键位表里的 a 也借键码,打出来是 a");
+            Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
     /// <summary>平滑滚动(xs_plan F6):libXi 解得出指针设备的两个滚动轴与 ScrollClass(xinput list --long 列出「Scroll info」)。</summary>
     [TestMethod]
     [Timeout(120_000, CooperativeCancellation = true)]

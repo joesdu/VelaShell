@@ -325,12 +325,15 @@ public sealed partial class X11Server
         return true;
     }
 
-    /// <summary>核心 MappingNotify(request = Keyboard):这一段键码的键值变了,客户端该重新取。</summary>
-    private void NotifyKeyboardMappingChanged(byte first, int count)
+    /// <summary>核心 MappingNotify(request = Keyboard):这一段键码的键值变了,客户端该重新取。只发给 <paramref name="to" /> 认可的客户端(null = 都发)。</summary>
+    private void NotifyKeyboardMappingChanged(byte first, int count, Func<XClient, bool>? to = null)
     {
         foreach (XClient client in _clients.Values)
         {
-            client.Event(XEventCode.MappingNotify, 0, w => w.U8(1).U8(first).U8((byte)count));
+            if (to is null || to(client))
+            {
+                client.Event(XEventCode.MappingNotify, 0, w => w.U8(1).U8(first).U8((byte)count));
+            }
         }
     }
 
@@ -1784,7 +1787,7 @@ public sealed partial class X11Server
             {
                 for (int col = 0; col < per; col++)
                 {
-                    w.U32(_keymap.Keysym((byte)(first + k), col));
+                    w.U32(KeysymFor(c, (byte)(first + k), col));
                 }
             }
         });
