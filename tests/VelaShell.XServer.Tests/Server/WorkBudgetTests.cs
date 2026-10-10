@@ -190,6 +190,6 @@ public sealed class WorkBudgetTests
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         server.Post(null, () => Thread.Sleep(300));
         await c.SyncAsync();
-        Assert.IsTrue(log.Any(line => line.Contains("slow work item", StringComparison.Ordinal)), string.Join('\n', log));
+        Assert.IsNotEmpty(await ServerLog.WaitForAsync(() => log, line => line.Contains("slow work item", StringComparison.Ordinal)), string.Join('\n', log));
     }
 }

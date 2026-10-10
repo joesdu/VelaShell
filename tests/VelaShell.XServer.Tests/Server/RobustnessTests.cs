@@ -458,7 +458,8 @@ public sealed class RobustnessTests
 
         await Task.Delay(1100);
         await c.RequestAsync(8, 0, b => b.U32(0x7FFFFF));
-        Assert.Contains(l => l.Contains("more log lines were not written", StringComparison.Ordinal), lines, "补一行没记的有几条");
+        Assert.IsNotEmpty(await ServerLog.WaitForAsync(() => lines, l => l.Contains("more log lines were not written", StringComparison.Ordinal)),
+            "补一行没记的有几条");
     }
 
     [TestMethod]
@@ -530,7 +531,7 @@ public sealed class RobustnessTests
             (45, 0, b => b.U32(c.NewId()).U16((ushort)bytes.Length).U16(0).Bytes(bytes).Pad())));
         await c.SyncAsync();
 
-        string[] fontLines = [.. lines.Where(l => l.Contains("OpenFont", StringComparison.Ordinal))];
+        string[] fontLines = await ServerLog.WaitForAsync(() => lines, l => l.Contains("OpenFont", StringComparison.Ordinal));
         Assert.IsNotEmpty(fontLines);
         foreach (string line in fontLines)
         {

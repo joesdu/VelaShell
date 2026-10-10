@@ -644,6 +644,8 @@ public sealed class HostApiTests
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         await c.SendManyAsync(Enumerable.Range(0, 5000).Select<int, (byte, byte, Action<XTestClient.Body>?)>(_ => (104, 0, null)));
         await c.SyncAsync();
+        // 宿主回调放锁之后才交出去,回复可能先到:先等第一次响铃到了,再给后面的一点时间(要数的是「不超过几次」)。
+        await host.WaitForAsync(() => host.Log.Any(e => e.StartsWith("bell", StringComparison.Ordinal)));
         await Task.Delay(50);
         int delivered = host.Log.Count(e => e.StartsWith("bell", StringComparison.Ordinal));
         Assert.IsTrue(delivered is >= 1 and <= 3, $"5000 次响铃交给宿主 {delivered} 次");

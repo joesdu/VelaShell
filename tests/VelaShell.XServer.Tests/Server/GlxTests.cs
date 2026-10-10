@@ -1350,10 +1350,7 @@ public sealed class GlxTests
         Assert.AreEqual(0xFF0000u, await PixelAsync(c, window, 31, Height - 32));
         Assert.AreEqual(0u, await PixelAsync(c, window, 1, 1), "表面之外(左上)没画");
         Assert.AreEqual(0u, await PixelAsync(c, window, 40, Height - 1), "表面之外(右下)没画");
-        lock (log)
-        {
-            Assert.IsTrue(log.Exists(line => line.Contains("over the surface limit", StringComparison.Ordinal)), "记一行日志");
-        }
+        Assert.IsNotEmpty(await ServerLog.WaitForAsync(log, line => line.Contains("over the surface limit", StringComparison.Ordinal)), "记一行日志");
     }
 
     [TestMethod]
@@ -1426,9 +1423,11 @@ public sealed class GlxTests
         }
         await RenderAsync(c, glx, tag, new Commands().Add(155, b => b.U32(0x1B02).I32(0).I32(10)));  // EvalMesh1
         await c.SyncAsync();
+        // 日志放锁之后才交出去,回复可能先到:等它出现再数(见 ServerLog)。
+        string[] feedbackLines = await ServerLog.WaitForAsync(log, line => line.Contains("Feedback", StringComparison.Ordinal));
+        Assert.HasCount(1, feedbackLines, "结果落空不再无迹可查,同一样只记一次");
         lock (log)
         {
-            Assert.AreEqual(1, log.Count(line => line.Contains("Feedback", StringComparison.Ordinal)), "结果落空不再无迹可查,同一样只记一次");
             Assert.AreEqual(0, log.Count(line => line.Contains("Evaluators", StringComparison.Ordinal)), "求值器已经实现(EvalMesh1 的模式 FILL 只记 GL 错误)");
         }
     }

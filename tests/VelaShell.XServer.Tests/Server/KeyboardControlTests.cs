@@ -498,9 +498,6 @@ public sealed class KeyboardControlTests
         server.InjectKey(38, pressed: true);
         server.InjectKey(38, pressed: false);
         CollectionAssert.AreEqual(new List<(byte, byte)> { (KeyPress, 38), (KeyRelease, 38) }, await KeyEventsAsync(c));
-        lock (log)
-        {
-            Assert.IsTrue(log.Exists(l => l.Contains("no keycode can be borrowed", StringComparison.Ordinal)), "记一行日志");
-        }
+        Assert.IsNotEmpty(await ServerLog.WaitForAsync(log, l => l.Contains("no keycode can be borrowed", StringComparison.Ordinal)), "记一行日志");
     }
 }
