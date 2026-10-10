@@ -111,7 +111,7 @@
                   <TextBlock x:Name="PairCodeText" Grid.Column="1" Margin="10,0,0,0"
                              VerticalAlignment="Center"
                              FontFamily="{DynamicResource VelaUiMonoFont}"
-                             FontSize="{DynamicResource VelaFontSize18}"
+                             FontSize="{DynamicResource VelaFontSize16}"
                              Foreground="{DynamicResource VelaTextPrimary}" />
                   <Button x:Name="IssuePairSelfButton" Grid.Column="2" MinWidth="96" Classes="host" />
                 </Grid>

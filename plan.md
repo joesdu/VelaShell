@@ -2476,3 +2476,10 @@ Core.Tests 769 / 23;Presentation.Tests 84、Controls.Tests 31 全过(跳过的�
 - 新增 `XServerInputMethod` 的 `XMODIFIERS=@im=velashell` 静默 shell 注入,保留用户已有值;新增 `XServerOptions.InputMethodName` 与 `AcceptOutgoingDrags`,五份资源文件补齐拖出过程提示。`BuiltInLocalXServer` 默认按宿主输入法设置打开 XIM,多窗口模式打开拖出;`AvaloniaXServerHost` 合并同一批焦点变化并把拖出交给原生拖放。
 - 新增 XIM / XDND 的逐字节与流控单元测试、宿主 UI 测试、SFTP 下载器测试及真实客户端用例。rebase 后最终验证:`VelaShell.XServer.Tests` 547 通过 / 9 跳过(独立连续 9 次全绿),`VelaShell.Tests` 1927 / 20、`VelaShell.Infrastructure.Tests` 663 / 5、`VelaShell.Core.Tests` 778 / 14、`VelaShell.ShellIntegration.Tests` 38 / 0;真实互操作 27 / 27,无 `[SKIP]`,其中 xterm 的 XIM_COMMIT、Swing on-the-spot 预编辑与 Swing 拖出后 `exportDone=COPY` 均通过。
 - 行为与接口的文档已在 velashell-docs 中英镜像的 X Server 架构、排障、宿主交互规格与设置审计中同步;文档 PR [velashell-docs#109](https://github.com/VelaShellLabs/velashell-docs/pull/109) 与本次宿主 PR [VelaShell#600](https://github.com/joesdu/VelaShell/pull/600) 互相引用。实现后已从 `feature-plan.md` H 和「确认不做」移除两项待办。
+
+## ✅ 190. 2026-10-10 AI 插件:字号恢复紧凑比例,弱化文字统一 11 号
+
+- 将 AI 插件在上一轮整体放大的字号恢复一档:聊天正文回到 13 号,Markdown 标题、设置表单、工具栏和各窗口文本回到原有层级;窗口设计尺寸与屏幕工作区收边不变。
+- 说明、状态、模型信息等弱化文字不再使用 10 号,统一至少 11 号;全部继续引用 `VelaFontSize*` 动态令牌,随宿主 UI 字号设置缩放。
+- 增加字号令牌回归用例,检查关键样式的紧凑档位、弱化文字下限和临时占位键不会混入源码。
+- 验证:`VelaShell.Plugin.Ai.Tests` 1464 条全过,无跳过;宿主 Debug 构建通过,0 警告 / 0 错误。

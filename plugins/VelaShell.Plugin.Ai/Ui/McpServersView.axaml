@@ -46,7 +46,7 @@
                    光一个名字看不出这台连的是什么、拉没拉过工具 -->
               <StackPanel Spacing="1" Margin="2,3">
                 <TextBlock Text="{Binding Name}" FontWeight="Medium"
-                           FontSize="{DynamicResource VelaFontSize13}"
+                           FontSize="{DynamicResource VelaFontSize12}"
                            TextTrimming="CharacterEllipsis" />
                 <TextBlock Text="{Binding Detail}" Classes="dim" TextTrimming="CharacterEllipsis" />
               </StackPanel>
@@ -69,10 +69,10 @@
           <!-- 卡片头:名字 + 启用开关。启用与否是这台服务器最要紧的一个状态,放最上面 -->
           <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,2">
             <TextBlock x:Name="McpTitleText" FontWeight="SemiBold"
-                       FontSize="{DynamicResource VelaFontSize14}"
+                       FontSize="{DynamicResource VelaFontSize13}"
                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             <CheckBox x:Name="McpEnabledCheck" Grid.Column="1" Theme="{StaticResource AiCheckBoxTheme}"
-                      FontSize="{DynamicResource VelaFontSize13}" VerticalAlignment="Center" />
+                      FontSize="{DynamicResource VelaFontSize12}" VerticalAlignment="Center" />
           </Grid>
           <TextBlock x:Name="McpToolsText" DockPanel.Dock="Top" Classes="dim"
                      TextWrapping="Wrap" Margin="0,0,0,4" />
@@ -90,7 +90,7 @@
                             StrokeLineCap="Round" StrokeJoin="Round" />
                     </Viewbox>
                     <TextBlock x:Name="McpSaveText" VerticalAlignment="Center"
-                               FontSize="{DynamicResource VelaFontSize12}" FontWeight="Medium" />
+                               FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
                   </StackPanel>
                 </Button>
                 <!-- 「测试」顺带把工具库拉下来 —— 连都连上了,再让人去别处点一次"更新工具库"是多余的 -->

@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
 namespace VelaShell.Plugin.Ai.Tests;
 
@@ -114,6 +115,65 @@ public sealed class ThemeTokenUsageTests
         Assert.IsEmpty(missing,
             "these resource keys resolve to nothing at runtime (no error, just no styling): "
             + string.Join(", ", missing.Distinct()));
+    }
+
+    /// <summary>聊天正文恢复 13 号,工具栏与说明保持 11 号;字号仍从宿主令牌动态取得。</summary>
+    [TestMethod]
+    [DataRow("ChatPanelView.axaml", "SelectableTextBlock.body", 13)]
+    [DataRow("ChatPanelView.axaml", "Border.inputWrap ae|TextEditor", 13)]
+    [DataRow("ChatPanelView.axaml", "TextBlock.placeholder", 12)]
+    [DataRow("ChatPanelView.axaml", "md|MarkdownRenderer md|MarkdownTextBlock", 13)]
+    [DataRow("ChatPanelView.axaml", "md|MarkdownRenderer Border.Heading1Block md|MarkdownTextBlock", 16)]
+    [DataRow("ChatPanelView.axaml", "md|MarkdownRenderer Border.Heading2Block md|MarkdownTextBlock", 15)]
+    [DataRow("ChatPanelView.axaml", "md|MarkdownRenderer Border.Heading3Block md|MarkdownTextBlock", 14)]
+    [DataRow("ChatPanelView.axaml", "md|CodeBlock", 11)]
+    [DataRow("ChatPanelView.axaml", "TextBlock.dim", 11)]
+    [DataRow("ChatPanelView.axaml", "TextBlock.meta", 11)]
+    [DataRow("ChatPanelView.axaml", "TextBlock.toolName", 11)]
+    [DataRow("ChatPanelView.axaml", "Grid#InputToolbar ComboBox", 11)]
+    [DataRow("ChatPanelView.axaml", "Grid#TopBar ComboBox", 11)]
+    [DataRow("DialogStyles.axaml", "TextBlock.label", 11)]
+    [DataRow("DialogStyles.axaml", "TextBlock.dim", 11)]
+    [DataRow("DialogStyles.axaml", "TextBlock.hint", 11)]
+    [DataRow("DialogStyles.axaml", "TextBlock.section-title", 11)]
+    [DataRow("DialogStyles.axaml", "TextBlock.body", 12)]
+    [DataRow("DialogStyles.axaml", "TextBox", 12)]
+    [DataRow("DialogStyles.axaml", "ComboBox", 12)]
+    public void TextStyles_UseCompactHostFontTokens(string file, string selector, int size)
+    {
+        string path = Path.Combine(RepositoryRoot().FullName, "plugins", "VelaShell.Plugin.Ai", "Ui", file);
+        XNamespace axaml = "https://github.com/avaloniaui";
+        XElement style = XDocument.Load(path).Descendants(axaml + "Style")
+            .Single(e => (string?)e.Attribute("Selector") == selector);
+        XElement setter = style.Elements(axaml + "Setter")
+            .Single(e => (string?)e.Attribute("Property") == "FontSize");
+
+        Assert.AreEqual($"{{DynamicResource VelaFontSize{size}}}", (string?)setter.Attribute("Value"),
+            $"{file}: {selector} must keep the compact size and follow the host UI font setting");
+    }
+
+    /// <summary>连弱化文字也不再用 10 号;同时防止临时占位键混进最终代码。</summary>
+    [TestMethod]
+    public void FontTokens_InXamlAndCode_AreDefinedAndAtLeast11()
+    {
+        DirectoryInfo root = RepositoryRoot();
+        HashSet<string> defined = DefinedKeys(root);
+        string ui = Path.Combine(root.FullName, "plugins", "VelaShell.Plugin.Ai", "Ui");
+        int count = 0;
+        foreach (string file in Directory.EnumerateFiles(ui)
+                     .Where(f => f.EndsWith(".axaml", StringComparison.Ordinal) || f.EndsWith(".cs", StringComparison.Ordinal)))
+        {
+            string text = Comments.Replace(File.ReadAllText(file), "");
+            foreach (Match match in Regex.Matches(text, @"\bVelaFontSize[0-9_]+\b"))
+            {
+                string key = match.Value;
+                Assert.Contains(key, defined, $"{Path.GetFileName(file)}: {key} is not a host font token");
+                Assert.IsTrue(int.TryParse(key["VelaFontSize".Length..], out int size) && size >= 11,
+                    $"{Path.GetFileName(file)}: {key} is smaller than the 11px minimum");
+                count++;
+            }
+        }
+        Assert.IsGreaterThan(50, count, "the scan must cover both XAML styles and code-created controls");
     }
 
     /// <summary>
