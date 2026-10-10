@@ -2475,4 +2475,4 @@ Core.Tests 769 / 23;Presentation.Tests 84、Controls.Tests 31 全过(跳过的�
 **三、宿主接线与验证**:
 - 新增 `XServerInputMethod` 的 `XMODIFIERS=@im=velashell` 静默 shell 注入,保留用户已有值;新增 `XServerOptions.InputMethodName` 与 `AcceptOutgoingDrags`,五份资源文件补齐拖出过程提示。`BuiltInLocalXServer` 默认按宿主输入法设置打开 XIM,多窗口模式打开拖出;`AvaloniaXServerHost` 合并同一批焦点变化并把拖出交给原生拖放。
 - 新增 XIM / XDND 的逐字节与流控单元测试、宿主 UI 测试、SFTP 下载器测试及真实客户端用例。rebase 后最终验证:`VelaShell.XServer.Tests` 547 通过 / 9 跳过(独立连续 9 次全绿),`VelaShell.Tests` 1927 / 20、`VelaShell.Infrastructure.Tests` 663 / 5、`VelaShell.Core.Tests` 778 / 14、`VelaShell.ShellIntegration.Tests` 38 / 0;真实互操作 27 / 27,无 `[SKIP]`,其中 xterm 的 XIM_COMMIT、Swing on-the-spot 预编辑与 Swing 拖出后 `exportDone=COPY` 均通过。
-- 行为与接口的文档已在 velashell-docs 中英镜像的 X Server 架构、排障、宿主交互规格与设置审计工作树改好;文档 PR 尚未开,待与本次宿主 PR 互相引用后一起合。实现后已从 `feature-plan.md` H 和「确认不做」移除两项待办。
+- 行为与接口的文档已在 velashell-docs 中英镜像的 X Server 架构、排障、宿主交互规格与设置审计中同步;文档 PR [velashell-docs#109](https://github.com/VelaShellLabs/velashell-docs/pull/109) 与本次宿主 PR [VelaShell#600](https://github.com/joesdu/VelaShell/pull/600) 互相引用。实现后已从 `feature-plan.md` H 和「确认不做」移除两项待办。
