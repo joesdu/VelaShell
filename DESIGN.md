@@ -550,6 +550,42 @@ Windows Explorer semantics, both orientations, application-wide (ScrollViewer, l
   itself would clip away its own `BoxShadow`.
 - **All floats**: Position-aware edge avoidance, theme-synced at runtime
 
+### 7.4 Splash Screen (`src/VelaShell/Splash/`, Windows only)
+
+Shown from `Program.Main` until the main window paints its first frame, so a cold start (8 s
+measured, 3.5 s of it Avalonia initialisation) never looks like a dead click. It is **not** an
+Avalonia window — it would only appear after that 3.5 s. A native layered window on its own thread
+presents frames drawn with SkiaSharp; the settings page preview (`Controls/SplashPreview`) runs the
+same drawing code on Avalonia's Skia canvas, so the preview is pixel-identical.
+
+- **Card**: 600 × 340 DIP, `CornerRadius:8`, 1px border, self-drawn shadow (a layered window gets no
+  DWM shadow): ambient blur σ12 offset y8 + contact blur σ2 offset y1, black at 43% / 24% on dark
+  themes, 27% / 16% on light. Fades in 120 ms, fades out 160 ms. Shown without activation, centred on
+  the monitor under the pointer, with a taskbar button.
+- **Colours** come from the seed palette of the theme the user picked (`UiThemeCatalog`) plus their
+  accent override — the same source as every `Vela*` token, never a literal. Because the splash runs
+  before the database opens, theme, accent, language and style are mirrored to
+  `~/.velashell/startup.appearance` on every settings save.
+- **Fonts** are system fonts (`Segoe UI`, `Cascadia Mono` → `Consolas`), not the bundled Inter and
+  Cascadia Mono: those are Avalonia resources, unreadable before Avalonia starts. Glyphs the primary
+  face lacks (CJK, Braille spinner) fall back per character to a system face that has them.
+- **Progress is real**: five stages (runtime → database → interface → sessions & settings → main
+  window) end on `StartupTrace` marks; the running stage's completion is estimated as
+  `1 − e^(−t/τ)` capped at 0.95, and the total is smoothed (τ 140 ms) so stage ends do not jump.
+
+| Style (`SplashStyles`) | Ground / border | What moves |
+|---|---|---|
+| `classic` (default) | `BgPage` / `BorderPrimary` | 64px logo + 36px name + tagline; five 4px `Accent` dots sliding across the bottom (VS's wait animation: fast–slow–fast, staggered 130 ms, 2.6 s cycle) |
+| `terminal` | `BgTerminal` / `BorderSecondary` | 30px title bar on `BgPage`; prompt types `velashell`, then one mono 13.5/24 line per stage — `[ ok ]` in `Success`, Braille spinner in `Accent`, real durations right-aligned in `TextTertiary`; 2px `Accent` progress line at the bottom |
+| `constellation` | `BgPage` / `BorderPrimary` | 52 twinkling `TextTertiary` dust stars; seven Vela stars light up in `Accent` and are joined one segment per 1/7 of progress, closing the loop on the main window's first frame |
+| `prompt` | `BgTerminal` / `BorderSecondary` | 46px mono `> ` in `Accent`, the cursor `_` types `VelaShell`; status line + five 8px squares (done `Accent`, running breathes, waiting `BorderSecondary`) |
+| `mascot` | `BgPage` / `BorderPrimary` | The original `mascot/chibi-laptop.png` multiplied onto a light panel (dark themes: `TextPrimary` mixed 75% toward white; light themes: `BgTerminal`); speech bubble on `BgSurface` with the stage in her voice; five paw prints |
+| `none` | — | No splash |
+
+The `mascot` style is the one deliberate exception to §1's "no illustrative imagery": it is opt-in,
+the splash is a brand moment rather than working UI, and the art is used as drawn (cropped, never
+redrawn).
+
 ---
 
 ## SFTP Dual-Pane Document Contract

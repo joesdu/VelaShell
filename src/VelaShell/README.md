@@ -18,6 +18,7 @@
 | `Services/` | 应用级服务：`SessionRecorder`/`SessionLogService`（会话录制）、`UpdateService`（便携式自更新，GitHub Releases 清单 + 原地换版，见 `Services/Update/`）、`AppPackaging`（运行时判定包身份 —— MSIX 商店版自动关闭应用内自更新）、`TrayIconService`（托盘）、`KeyboardShortcutService`（快捷键）、`CommandHistoryService`/`CommandSuggestionProvider`（命令建议）、`StartupRegistration`（开机自启）、`ExternalEditSessionManager`（外部编辑器回传）、`SyncInputCoordinator`/`SyncInputChannels`（多终端同步输入/广播）、`WindowLayoutStore`（窗口布局记忆）、`LocalShellCatalog`（本地 Shell 枚举）、`TransferLogService`、`TerminalAppearanceMapper` 等。 |
 | `Services/Plugins/` | 插件系统的**应用侧**能力落地：`PluginUiApi`（面板宿主）、`PluginPanel`、`HostTerminal`/`HostClipboard`（终端与剪贴板能力）、`DialogPermissionPrompt`（权限授权弹窗）、`PluginThemeTokens`（下发给隔离进程的令牌快照）。运行时与权限闸门本身在 `Infrastructure/Plugins/`。 |
 | `Services/Syntax/` | 远程文件编辑器的语法高亮：`FileTypeDetector`（按扩展名/内容判定类型）+ `SyntaxHighlightingService`（供 AvaloniaEdit 使用）。 |
+| `Splash/` | 启动画面（仅 Windows）：`SplashScreen`（`Program.Main` 里起一条独立线程，主窗口第一帧后淡出）、`Win32SplashWindow`（分层窗口 + 消息循环）、`SplashRenderer` 与 `Designs/` 下的五套样式（Skia 绘制，设置页预览 `Controls/SplashPreview` 共用同一份代码）、`SplashFrame`（把启动打点折算成五个阶段的进度）。 |
 | `Themes/` | `DarkTheme`/`LightTheme`/`InputStyles`/`DockStyles`：应用级主题与样式覆盖。 |
 | `Converters/` `Behaviors/` `Controls/` | XAML 值转换器、输入行为（`SecurePasswordBox`、`EnglishInputLocale`）、`ReparentingHost` 宿主控件、`ColorPickerField` 颜色字段（设置页与连接对话框里所有挑颜色的地方）。 |
 | `Security/` `Localization/` | `SecureStringConvert` 安全字符串互转、`LocalizeExtension` XAML 本地化标记扩展。 |

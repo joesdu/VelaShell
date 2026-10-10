@@ -187,6 +187,30 @@
         <ComboBoxItem Content="{loc:Localize SetAppear_WindowStateDefault}" />
       </ComboBox>
     </Grid>
+    <!-- 启动画面(只在 Windows 上有,见 Splash/SplashScreen):样式下拉 + 实时预览。
+         预览与真正的启动画面是同一份绘制代码,主题与强调色取这里正在编辑的值。
+         条目顺序与 SplashStyles.All 一致,SplashStyleIndex 按它映射。 -->
+    <StackPanel Spacing="10" IsVisible="{x:Static vm:SettingsViewModel.IsSplashScreenSupported}">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2">
+          <TextBlock Classes="row-label" Text="{loc:Localize SetAppear_SplashStyle}" />
+          <TextBlock Classes="row-desc" Text="{loc:Localize SetAppear_SplashStyleDesc}" TextWrapping="Wrap" />
+        </StackPanel>
+        <ComboBox Grid.Column="1" Width="140" SelectedIndex="{Binding SplashStyleIndex}" VerticalAlignment="Center">
+          <ComboBoxItem Content="{loc:Localize SetAppear_SplashClassic}" />
+          <ComboBoxItem Content="{loc:Localize SetAppear_SplashTerminal}" />
+          <ComboBoxItem Content="{loc:Localize SetAppear_SplashConstellation}" />
+          <ComboBoxItem Content="{loc:Localize SetAppear_SplashPrompt}" />
+          <ComboBoxItem Content="{loc:Localize SetAppear_SplashMascot}" />
+          <ComboBoxItem Content="{loc:Localize SetAppear_SplashNone}" />
+        </ComboBox>
+      </Grid>
+      <ctl:SplashPreview HorizontalAlignment="Left" Width="420"
+                         IsVisible="{Binding ShowSplashPreview}"
+                         SplashStyle="{Binding Appearance.SplashStyle}"
+                         ThemeId="{Binding Theme}"
+                         AccentColor="{Binding AccentColor}" />
+    </StackPanel>
 
     <Border Classes="sep" />
 

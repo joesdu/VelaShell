@@ -1557,6 +1557,32 @@ public partial class SettingsViewModel : ReactiveObject
         }
     }
 
+    /// <summary>
+    /// 启动画面样式下拉选中项与 <see cref="AppearanceOptions.SplashStyle" /> 之间的索引映射
+    /// (顺序即 <see cref="SplashStyles.All" />:经典在前,「不显示」置末)。
+    /// </summary>
+    public int SplashStyleIndex
+    {
+        get => Math.Max(0, SplashStyles.All.ToList().IndexOf(SplashStyles.Normalize(Appearance.SplashStyle)));
+        set
+        {
+            // -1 是换语言重建条目时 ComboBox 清空的选中项,不是用户的选择(同 ThemeIndex)。
+            if (value < 0)
+            {
+                return;
+            }
+            Appearance.SplashStyle = value < SplashStyles.All.Count ? SplashStyles.All[value] : SplashStyles.Classic;
+            this.RaisePropertyChanged();
+            this.RaisePropertyChanged(nameof(ShowSplashPreview));
+        }
+    }
+
+    /// <summary>选了「不显示」时收起预览。</summary>
+    public bool ShowSplashPreview => SplashStyles.Normalize(Appearance.SplashStyle) != SplashStyles.None;
+
+    /// <summary>启动画面目前只在 Windows 上有(macOS / Linux 的桌面本身就有启动反馈),其余平台不出现这一项。</summary>
+    public static bool IsSplashScreenSupported => OperatingSystem.IsWindows();
+
     /// <summary>保存/取消后由窗口关闭。</summary>
     public event EventHandler? CloseRequested;
 
@@ -1757,6 +1783,8 @@ public partial class SettingsViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(TabBarPositionIndex));
         this.RaisePropertyChanged(nameof(SidebarPositionIndex));
         this.RaisePropertyChanged(nameof(WindowStateIndex));
+        this.RaisePropertyChanged(nameof(SplashStyleIndex));
+        this.RaisePropertyChanged(nameof(ShowSplashPreview));
         this.RaisePropertyChanged(nameof(ProxyTypeIndex));
         this.RaisePropertyChanged(nameof(IsProxyEditable));
         this.RaisePropertyChanged(nameof(XServerDisplayNumberIndex));

@@ -158,6 +158,9 @@ public class AppSettings
             Transfer.DoubleClickAction = "system";
         }
 
+        // 启动画面样式同理:认不出来(手改的、更新版本写的)就回到出厂的经典样式。
+        Appearance.SplashStyle = SplashStyles.Normalize(Appearance.SplashStyle);
+
         // 同理:窗口模式认不出来就回落到多窗口,而不是拼出一条 VcXsrv 不认识的命令行。
         // 老配置里没有 XServer 这一节时反序列化给的是 null(JSON 里显式写了 null 也一样)。
         XServer ??= new();
@@ -536,6 +539,19 @@ public class AppearanceOptions : ObservableOptions
         get;
         set => Set(ref field, value);
     } = "remember";
+
+    /// <summary>
+    /// 启动画面的样式(<see cref="SplashStyles" /> 里的一个值);<c>none</c> 不显示。出厂为经典样式。
+    /// </summary>
+    /// <remarks>
+    /// 启动画面在数据库打开之前就要画出来,读不到这份设置 —— 保存时它连同主题、强调色、语言一起
+    /// 镜像进一个小文件,见 <c>VelaShellStoragePaths.StartupAppearanceFile</c>。
+    /// </remarks>
+    public string SplashStyle
+    {
+        get;
+        set => Set(ref field, value);
+    } = SplashStyles.Classic;
 
     /// <summary>
     /// 是否启用 GPU 硬件加速渲染;默认开启。关闭后改用软件渲染。

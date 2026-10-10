@@ -43,6 +43,15 @@ public static class StartupTrace
     /// <summary>已记录的打点,按记录顺序。</summary>
     public static IReadOnlyList<(string Name, TimeSpan At)> Marks => [.. MarkQueue];
 
+    /// <summary>
+    /// 每记一个打点触发一次(参数是节点名与自基准起的时刻)。启动画面据此推进进度。
+    /// </summary>
+    /// <remarks>
+    /// 在打点的那条线程上同步触发 —— 数据库预热的点来自后台线程,其余来自 UI 线程。
+    /// 订阅方必须又快又不抛:这里吞掉订阅方的异常,但吞不掉它占用的时间。
+    /// </remarks>
+    public static event Action<string, TimeSpan>? MarkRecorded;
+
     /// <summary>自基准时刻起已过去的时间。</summary>
     public static TimeSpan Elapsed => Stopwatch.GetElapsedTime(OriginTimestamp);
 
@@ -64,6 +73,7 @@ public static class StartupTrace
             {
                 Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"[startup] {at.TotalMilliseconds,8:F1} ms  {name}"));
             }
+            MarkRecorded?.Invoke(name, at);
         }
         catch
         {
