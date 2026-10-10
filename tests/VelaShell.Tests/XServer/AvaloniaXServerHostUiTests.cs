@@ -1196,16 +1196,20 @@ public sealed class AvaloniaXServerHostUiTests
         await TickAsync(3);
         Assert.AreEqual(0, frames, "没人要:不逐帧回调");
 
+        // 慢的 CI 机器上几次强制的渲染节拍可能并成一帧(Ubuntu 上见过 5 拍只报了 2 帧):拍到报够为止,至多 40 拍。
         host.FrameClockWanted(true);
         Dispatcher.UIThread.RunJobs();
-        await TickAsync(5);
-        Assert.IsGreaterThanOrEqualTo(3, frames, "每帧报一次");
+        for (int i = 0; i < 40 && frames < 3; i++)
+        {
+            await TickAsync(1);
+        }
+        Assert.IsGreaterThanOrEqualTo(3, frames, "要帧时钟时逐帧报帧");
 
         host.FrameClockWanted(false);
         Dispatcher.UIThread.RunJobs();
-        await TickAsync(2);   // 已经挂上的那一次回调还会来,来了不报
+        await TickAsync(5);   // 已经挂上的那一次回调还会来,来了不报
         int stopped = frames;
-        await TickAsync(5);
+        await TickAsync(10);
         Assert.AreEqual(stopped, frames, "不要了就停");
 
         host.Detach();
