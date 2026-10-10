@@ -391,6 +391,7 @@ internal sealed partial class GlContext
             return;
         }
         _primitiveMode = mode;
+        _lineStippleCounter = 0;   // 点画计数器在 Begin 时清零(§3.4.2)
         _primitive.Clear();
         _primitiveOverflow = false;
     }
@@ -406,7 +407,8 @@ internal sealed partial class GlContext
         _primitiveMode = uint.MaxValue;
         try
         {
-            if (RenderModeValue == GlEnum.RENDER && Draw is not null)
+            // 选择模式不需要可绘对象:图元裁剪之后只记命中(见 GlContext.Select.cs)。
+            if ((RenderModeValue == GlEnum.RENDER && Draw is not null) || RenderModeValue == GlEnum.SELECT)
             {
                 Assemble(mode, _primitive);
             }
@@ -630,6 +632,7 @@ internal sealed partial class GlContext
             case GlEnum.LINES:
                 for (int i = 0; i + 1 < n; i += 2)
                 {
+                    _lineStippleCounter = 0;   // 独立线段:每段之前清零
                     LinePrimitive(v[i], v[i + 1], flat);
                 }
                 break;
@@ -704,6 +707,11 @@ internal sealed partial class GlContext
         {
             return;
         }
+        if (RenderModeValue == GlEnum.SELECT)
+        {
+            Hit(ToWindow(a, front: true).Z);
+            return;
+        }
         RasterPoint(ToWindow(a, front: true), State.PointSize);
     }
 
@@ -715,6 +723,12 @@ internal sealed partial class GlContext
         }
         if (!ClipLine(ref a, ref b))
         {
+            return;
+        }
+        if (RenderModeValue == GlEnum.SELECT)
+        {
+            Hit(ToWindow(a, front: true).Z);
+            Hit(ToWindow(b, front: true).Z);
             return;
         }
         RasterLine(ToWindow(a, front: true), ToWindow(b, front: true), State.LineWidth);
@@ -755,12 +769,21 @@ internal sealed partial class GlContext
         }
         if (area == 0)
         {
+            if (RenderModeValue == GlEnum.SELECT)
+            {
+                Hit(w);   // 退化成线 / 点的多边形照样与裁剪体相交;没有正反面,谈不上剔除
+            }
             return;
         }
         bool front = (area > 0) == (State.FrontFace == GlEnum.CCW);
         if (State.Enabled.Has(GlEnum.CULL_FACE)
             && (State.CullFaceMode == GlEnum.FRONT_AND_BACK || (State.CullFaceMode == GlEnum.FRONT) == front))
         {
+            return;   // 会被剔除的多边形在选择模式里也不算命中(§5.2)
+        }
+        if (RenderModeValue == GlEnum.SELECT)
+        {
+            Hit(w);   // 与 PolygonMode 无关,不加深度偏移
             return;
         }
         if (!front && State.LightModelTwoSide && State.Enabled.Has(GlEnum.LIGHTING))
@@ -792,6 +815,7 @@ internal sealed partial class GlContext
             case GlEnum.LINE:
                 {
                     float offset = OffsetFor(w, GlEnum.POLYGON_OFFSET_LINE);
+                    _lineStippleCounter = 0;
                     for (int i = 0; i < w.Length; i++)
                     {
                         if (!boundary[i])
@@ -1013,6 +1037,10 @@ internal sealed partial class GlContext
         State.RasterColor = v.Front;
         State.RasterTexCoord = v.Tex;
         State.RasterDistance = v.Fog;
+        if (RenderModeValue == GlEnum.SELECT)
+        {
+            HitRasterPos(State.RasterPos);
+        }
     }
 
     /// <summary>

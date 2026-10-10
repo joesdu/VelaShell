@@ -24,12 +24,21 @@ public sealed partial class X11Server
 
     private XClient? _serverGrabber;
 
-    /// <summary>一项工作:客户端的一条请求(<see cref="Request" />),或者一段要在执行线程上跑的代码。</summary>
-    /// <summary>执行线程上的一项工作:一段代码,或者一条请求(<see cref="Request" /> 是池里租来的缓冲,前 <see cref="RequestLength" /> 字节是请求)。</summary>
-    private readonly record struct WorkItem(XClient? Client, Action? Action, byte[]? Request = null, int RequestLength = 0);
+    /// <summary>
+    /// 执行线程上的一项工作:一段代码,或者一条请求(<see cref="Request" /> 是池里租来的缓冲,前 <see cref="RequestLength" /> 字节是请求)。
+    /// <see cref="Lane" /> 只管排在哪条队(见 <see cref="TryTakeItem" />):为 null 时按 <see cref="Client" />;<see cref="Client" /> 才决定暂存规则
+    /// (GrabServer、SYNC 的 Await 之类只拦客户端的工作)。
+    /// </summary>
+    private readonly record struct WorkItem(XClient? Client, Action? Action, byte[]? Request = null, int RequestLength = 0, XClient? Lane = null);
 
     /// <summary>把一件事排进执行线程。可以在任意线程上调。</summary>
     internal void Post(XClient? client, Action action) => _work.Writer.TryWrite(new WorkItem(client, action));
+
+    /// <summary>
+    /// 排一件事到 <paramref name="lane" /> 这个客户端的队尾:等它前面还排着的请求都做完再做(连接收尾用 —— 客户端发完请求就关连接的,
+    /// 那些请求照样执行)。不受 GrabServer 之类的暂存规则管(那些只拦 <see cref="WorkItem.Client" /> 不为 null 的工作)。
+    /// </summary>
+    private void PostAfterRequests(XClient lane, Action action) => _work.Writer.TryWrite(new WorkItem(null, action, Lane: lane));
 
     /// <summary>把客户端的一条请求排进执行线程(不为每条请求分配闭包)。</summary>
     private void PostRequest(XClient client, byte[] request, int length) => _work.Writer.TryWrite(new WorkItem(client, null, request, length));
@@ -247,15 +256,83 @@ public sealed partial class X11Server
         }
     }
 
-    private bool TryTakeItem(ChannelReader<WorkItem> reader, out WorkItem item) =>
-        _ready.TryDequeue(out item) || reader.TryRead(out item);
+    /// <summary>
+    /// 从通道取出、还没执行的工作,按客户端分队(宿主与计时器的工作是另一条队,键是 <see cref="HostLane" />),每条队内保持到达顺序。
+    /// 原先全部工作排一条队、先来先做:一个间接 GL 客户端(glxgears)排满一千多条渲染请求,之后连进来的 xdpyinfo 要等它们全做完才轮到
+    /// (实测 25 秒),整个 X 桌面跟着卡住。现在执行循环在有活的队之间轮流、每次取一项:协议只要求同一个客户端的请求按序执行
+    /// (第 1 节「Protocol Formats」),不同客户端之间的先后本来就不保证。
+    /// </summary>
+    private readonly Dictionary<object, Queue<WorkItem>> _lanes = [];
+
+    /// <summary>有活的队,轮到谁(一条队只在里面出现一次)。</summary>
+    private readonly Queue<object> _laneOrder = new();
+
+    /// <summary>各队里合计还有几项。</summary>
+    private int _laneItems;
+
+    /// <summary>宿主调用与计时器的工作排的那条队。</summary>
+    private static readonly object HostLane = new();
+
+    /// <summary>
+    /// 取下一项:先取放回来的暂存请求(<see cref="_ready" />,它们比同一个客户端队里的都早),再把通道里到了的分进各队;宿主那条队优先
+    /// (注入的输入、换进来的配置、到点的计时器:量小、要及时,而且宿主先注入、客户端后查询时要看得到 —— 跟客户端一起轮转的话,
+    /// 宿主连着注入的几项会被客户端之后才到的请求插队),其余轮到哪条队取哪条。取完还有活的队排回轮转的末尾,空了的队删掉(断开的客户端不留空队)。
+    /// </summary>
+    private bool TryTakeItem(ChannelReader<WorkItem> reader, out WorkItem item)
+    {
+        if (_ready.TryDequeue(out item))
+        {
+            return true;
+        }
+        while (reader.TryRead(out WorkItem arrived))
+        {
+            object key = arrived.Lane ?? arrived.Client ?? HostLane;
+            if (!_lanes.TryGetValue(key, out Queue<WorkItem>? queue))
+            {
+                _lanes[key] = queue = new Queue<WorkItem>();
+                if (key != HostLane)
+                {
+                    _laneOrder.Enqueue(key);
+                }
+            }
+            queue.Enqueue(arrived);
+            _laneItems++;
+        }
+        if (_lanes.TryGetValue(HostLane, out Queue<WorkItem>? host))
+        {
+            item = host.Dequeue();
+            _laneItems--;
+            if (host.Count == 0)
+            {
+                _lanes.Remove(HostLane);
+            }
+            return true;
+        }
+        if (!_laneOrder.TryDequeue(out object? lane))
+        {
+            return false;
+        }
+        Queue<WorkItem> next = _lanes[lane];
+        item = next.Dequeue();
+        _laneItems--;
+        if (next.Count > 0)
+        {
+            _laneOrder.Enqueue(lane);
+        }
+        else
+        {
+            _lanes.Remove(lane);
+        }
+        return true;
+    }
 
     private async Task RunLoopAsync()
     {
         ChannelReader<WorkItem> reader = _work.Reader;
+        await using Timer watchdog = new(CheckWatchdog, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         try
         {
-            while (_ready.Count != 0 || await reader.WaitToReadAsync(_lifetime.Token).ConfigureAwait(false))
+            while (_ready.Count != 0 || _laneItems != 0 || await reader.WaitToReadAsync(_lifetime.Token).ConfigureAwait(false))
             {
                 _lifetime.Token.ThrowIfCancellationRequested();
                 try
@@ -298,6 +375,7 @@ public sealed partial class X11Server
                         break;
                     }
                 }
+                ComposeScreenBatch();   // 单窗口模式:这一批的变化拼进屏幕(要在像素锁里)
             }
             finally
             {
@@ -307,6 +385,7 @@ public sealed partial class X11Server
         // 宿主回调与日志一律在放锁之后调:回调里同步等 UI 线程、而 UI 线程正在 ReadPixels 里等这把锁,就是死锁。
         FlushLog();
         FlushDamage();
+        FlushScreenDamage();
         _host.Flush();
     }
 
@@ -334,6 +413,10 @@ public sealed partial class X11Server
             return;
         }
         long started = Stopwatch.GetTimestamp();
+        _runningClient = item.Client;
+        _runningOpcode = item.Request is { } running ? running[0] | (running[1] << 8) : -1;
+        _runningSerial++;
+        Volatile.Write(ref _runningSince, started);   // 最后写:看门狗读到它非 0 时,上面几项已经是这一项的
         // 每项工作一份预算(X-1):扣光时请求回 Alloc,而不是持着像素锁跑上几分钟、让宿主界面陪着冻住。
         WorkBudget.Begin(RequestWorkBudget);
         try
@@ -357,8 +440,13 @@ public sealed partial class X11Server
         finally
         {
             WorkBudget.End();
+            Volatile.Write(ref _runningSince, 0);
         }
         long elapsed = Stopwatch.GetTimestamp() - started;
+        if (XServerMetrics.WorkItemDuration.Enabled)
+        {
+            XServerMetrics.WorkItemDuration.Record(elapsed * 1000.0 / Stopwatch.Frequency);
+        }
         if (elapsed >= SlowItemTicks && ShouldLogFrequent())
         {
             // 预算之内的单项也可能慢(合法但昂贵的请求):点名客户端,宿主日志里才找得到是谁让界面卡了一下。
@@ -371,6 +459,48 @@ public sealed partial class X11Server
 
     /// <summary>一项工作持锁超过这么久就记一行日志(见 <see cref="RunItem" />)。</summary>
     private static readonly long SlowItemTicks = Stopwatch.Frequency / 4;   // 250 毫秒
+
+    // ------------------------------------------------------------------ 看门狗(xs_plan F27)
+
+    // 执行线程正在做的那一项:开始的时间戳(0 = 空闲)、所属客户端、操作码(主 | 次 << 8;内部工作为 -1)、序号。
+    // 执行线程写、看门狗的计时器线程读;时间戳最后写、最先读,读到的其余几项至多是下一项的(那时看门狗按序号认出已经换了)。
+    private long _runningSince;
+    private XClient? _runningClient;
+    private int _runningOpcode;
+    private long _runningSerial;
+
+    /// <summary>看门狗已经点过名的那一项的序号(同一项只记一次)。</summary>
+    private long _stalledSerial;
+
+    /// <summary>一项工作做了这么久还没做完,看门狗就记一行日志点名客户端(测试可以调短)。</summary>
+    internal TimeSpan WatchdogThreshold { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// 看门狗:计时器线程上每秒看一眼执行线程。工作预算(<see cref="WorkBudget" />)管得住花在协议上的工作量,管不住真正卡住的一项
+    /// (宿主回调阻塞、实现里的死循环);那时执行线程自己记不了日志(慢的那一行要等这一项做完),所有客户端都停着,宿主日志里却什么也没有。
+    /// 这里不等它做完:超过 <see cref="WatchdogThreshold" /> 就记一行,点名是哪个客户端的哪条请求,并计入 <see cref="XServerMetrics.StalledWorkItems" />。
+    /// </summary>
+    private void CheckWatchdog(object? state)
+    {
+        long since = Volatile.Read(ref _runningSince);
+        if (since == 0 || Stopwatch.GetElapsedTime(since) < WatchdogThreshold)
+        {
+            return;
+        }
+        long serial = _runningSerial;
+        XClient? client = _runningClient;
+        int opcode = _runningOpcode;
+        if (Volatile.Read(ref _runningSince) != since || serial == _stalledSerial)
+        {
+            return;   // 读的途中换了一项,或者这一项已经点过名
+        }
+        _stalledSerial = serial;
+        XServerMetrics.StalledWorkItems.Add(1);
+        string what = opcode < 0
+            ? client is not null ? $"{client} (internal)" : "host or timer"
+            : $"{client} opcode {opcode & 0xFF}{((opcode & 0xFF) >= XOpcode.FirstExtension ? $".{opcode >> 8}" : "")}";
+        Log($"watchdog: {what} has been running for {(int)Stopwatch.GetElapsedTime(since).TotalSeconds} s; all clients are waiting");
+    }
 
     /// <summary>每项工作的工作量预算(<see cref="WorkBudget" />);测试可以调小。</summary>
     internal long RequestWorkBudget { get; set; } = WorkBudget.DefaultUnits;
@@ -406,8 +536,11 @@ public sealed partial class X11Server
         }
         if (_deferred.Count != 0)
         {
-            Log($"{holder} has held the server grab for {(int)(ServerGrabWarningDelay.TotalSeconds * ((6 * (round - 1)) + 1))} s; "
+            TimeSpan held = ServerGrabWarningDelay * ((6 * (round - 1)) + 1);
+            Log($"{holder} has held the server grab for {(int)held.TotalSeconds} s; "
                 + $"{_deferred.Count} requests of other clients are waiting (BreakGrabs or disconnecting {holder} releases them)");
+            // 只记日志时用户与宿主都不知道该断开谁:告诉宿主,由它提示用户(F3)。
+            _host.ServerGrabStalled(new XServerGrabStall(holder.Index, holder.Label, held, _deferred.Count));
         }
         _ = DelayThenPostAsync((uint)(ServerGrabWarningDelay.TotalMilliseconds * 6), () => WarnLongServerGrab(epoch, round + 1), _lifetime.Token);
     }

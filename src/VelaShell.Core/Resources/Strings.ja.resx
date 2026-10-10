@@ -5455,7 +5455,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>信頼済み(-Y)</value>
   </data>
   <data name="Profile_SshX11TrustedHint" xml:space="preserve">
-    <value>信頼済み転送では、リモートの X クライアントがローカルのディスプレイに完全にアクセスできます。転送中のセッションはすべて同じディスプレイを共有するため、互いのウィンドウを見たり、クリップボードを読んだり、入力を送ったりできます。内蔵 X Server と Windows の多くの X サーバーはこのモードにしか対応していません。非信頼モードには SECURITY 拡張に対応した外部の X サーバーと、ローカルの xauth が必要です。</value>
+    <value>信頼済み転送では、リモートの X クライアントがローカルのディスプレイに完全にアクセスでき、ほかのプログラムのウィンドウを見たり、クリップボードやキーボードを読んだり、入力を送ったりできます。非信頼転送(ssh -X 相当)では自分のウィンドウにしかアクセスできず、ほかのプログラムの画面取得、キーボード入力の読み取り、入力の偽装はできません。内蔵 X Server はどちらのモードにも対応しています。外部の X サーバーで非信頼モードを使うには、SECURITY 拡張とローカルの xauth が必要です。古いプログラムの一部は非信頼モードで正しく動かないことがあります。</value>
   </data>
   <data name="Ssh_X11ForwardOn" xml:space="preserve">
     <value>X11 転送が有効です → ローカル ディスプレイ {0}</value>
@@ -5471,9 +5471,6 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="Ssh_X11BadDisplay" xml:space="preserve">
     <value>ディスプレイ「{0}」を認識できません(localhost:0.0 のような形式にしてください)</value>
-  </data>
-  <data name="Ssh_X11UntrustedBuiltIn" xml:space="preserve">
-    <value>内蔵 X Server は信頼済み転送にしか対応していません(SECURITY 拡張がありません)。この接続で「信頼済み(-Y)」をオンにするか、外部の X サーバーを使ってください。</value>
   </data>
   <data name="SshErr_AgentUnavailable" xml:space="preserve">
     <value>ローカルの ssh-agent に接続できません: {0}</value>
@@ -5659,7 +5656,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>ウィンドウモード</value>
   </data>
   <data name="SetXServer_WindowModeDesc" xml:space="preserve">
-    <value>マルチウィンドウでは各リモートプログラムが個別の Windows ウィンドウになります。ほかのモードは X 画面全体を 1 つのウィンドウに表示します。</value>
+    <value>マルチウィンドウでは各リモートプログラムが個別のウィンドウになります。ほかのモードは X 画面全体を 1 つのウィンドウに表示し、中のプログラムはリモートのウィンドウマネージャーが管理します(Xfce や MATE などのリモートデスクトップ全体を使うとき向け)。内蔵 X Server ではルートレスはマルチウィンドウと同じで、変更は次に X Server を起動したときに反映されます。</value>
   </data>
   <data name="SetXServer_ModeMultiWindow" xml:space="preserve">
     <value>マルチウィンドウ</value>
@@ -5705,6 +5702,51 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="SetXServer_RestrictForwardedDesc" xml:space="preserve">
     <value>SSH で転送されたプログラムは、入力の模擬(XTEST)、X ウィンドウで入力したすべてのキーの監視(生のキーイベント)、入力デバイスの変更ができなくなります。完全には信頼できないサーバーに接続するときはオンにしてください。オンにすると、それらのサーバー上の xdotool などのツールは動かなくなります。</value>
+  </data>
+  <data name="SetXServer_DisplayPerSession" xml:space="preserve">
+    <value>SSH セッションごとに別のディスプレイ</value>
+  </data>
+  <data name="SetXServer_DisplayPerSessionDesc" xml:space="preserve">
+    <value>SSH セッションごとに X プログラムが別々のディスプレイを使います。互いのウィンドウは見えず、キーボード入力やクリップボードも読めず、入力を送ることもできません。このコンピューター上の X プログラムは引き続き共有のディスプレイを使います。セッションごとに少しのメモリーとスレッドを使います。次に X Server を起動したときに有効になります。</value>
+  </data>
+  <data name="SetXServer_HostInputMethod" xml:space="preserve">
+    <value>X ウィンドウでこのコンピューターの IME を使う</value>
+  </data>
+  <data name="SetXServer_HostInputMethodDesc" xml:space="preserve">
+    <value>ローカルの IME(中国語・日本語・韓国語など)で確定した文字を X プログラムにそのまま入力します。サーバーに fcitx や ibus は不要です。オフにするとキーをそのまま送り、サーバー側の入力メソッドを使います。X Server の再起動後に反映されます。</value>
+  </data>
+  <data name="SetXServer_CompositingManager" xml:space="preserve">
+    <value>X ウィンドウの透過と角丸</value>
+  </data>
+  <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
+    <value>X プログラムにコンポジットマネージャーがあると伝え、GTK の角丸や Qt・Electron の半透明ウィンドウを実際に透過させます。半透明ウィンドウはシステムの合成処理が増えるため、既定ではオフです。X Server の再起動後に反映されます。</value>
+  </data>
+  <data name="SetXServer_ShowSource" xml:space="preserve">
+    <value>X ウィンドウの接続元を表示</value>
+  </data>
+  <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
+    <value>SSH 経由で転送された X ウィンドウのタイトルの前に接続元(ユーザー@ホスト:ポート)を付けます。複数のホストのウィンドウを見分けられ、リモートのプログラムがローカルのウィンドウを装うこともできません。このコンピューター上のプログラムには付きません。以後に開いたウィンドウに適用されます。</value>
+  </data>
+  <data name="SetXServer_ListenTcp" xml:space="preserve">
+    <value>TCP ポートでも待ち受ける</value>
+  </data>
+  <data name="SetXServer_ListenTcpDesc" xml:space="preserve">
+    <value>Unix ソケットに加えて 6000+N ポートを開きます(cookie が必要です)。コンテナ内など、ネットワーク経由で接続するプログラムにだけ必要です。SSH 転送とこのコンピューター上のプログラム(DISPLAY=:N)には不要です。X Server の再起動後に反映されます。</value>
+  </data>
+  <data name="XServer_WindowTitleWithSource" xml:space="preserve">
+    <value>{0} — {1}</value>
+  </data>
+  <data name="XServer_CopyScreenshot" xml:space="preserve">
+    <value>スクリーンショットをコピー</value>
+  </data>
+  <data name="XServer_SaveScreenshot" xml:space="preserve">
+    <value>スクリーンショットを保存…</value>
+  </data>
+  <data name="XServer_SaveScreenshotTitle" xml:space="preserve">
+    <value>スクリーンショットを保存</value>
+  </data>
+  <data name="XServer_ScreenshotDefaultName" xml:space="preserve">
+    <value>X ウィンドウ</value>
   </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自動 - システムの現在のレイアウト</value>
@@ -5834,6 +5876,81 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="XServer_Stop" xml:space="preserve">
     <value>停止</value>
+  </data>
+  <data name="XServer_TipPanel" xml:space="preserve">
+    <value>X Server 実行中({0})— クリックで接続中のプログラムを表示</value>
+  </data>
+  <data name="XServer_PanelTitle" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="XServer_PanelEmpty" xml:space="preserve">
+    <value>接続中の X プログラムはまだありません。</value>
+  </data>
+  <data name="XServer_PanelLocal" xml:space="preserve">
+    <value>このコンピューター</value>
+  </data>
+  <data name="XServer_PanelUnnamed" xml:space="preserve">
+    <value>X プログラム #{0}</value>
+  </data>
+  <data name="XServer_PanelStats" xml:space="preserve">
+    <value>ウィンドウ {0} 個 · {1}</value>
+  </data>
+  <data name="XServer_PanelRetained" xml:space="preserve">
+    <value>切断済み(リソースが残っています)</value>
+  </data>
+  <data name="XServer_PanelGrabbing" xml:space="preserve">
+    <value>占有中</value>
+  </data>
+  <data name="XServer_PanelGrabbingTip" xml:space="preserve">
+    <value>X Server 全体を占有しています。ほかの X プログラムはすべて待たされています。</value>
+  </data>
+  <data name="XServer_PanelDisconnectTip" xml:space="preserve">
+    <value>このプログラムを切断(ウィンドウはすべて閉じます)</value>
+  </data>
+  <data name="XServer_PanelBreakGrabs" xml:space="preserve">
+    <value>固まりを解除</value>
+  </data>
+  <data name="XServer_PanelBreakGrabsTip" xml:space="preserve">
+    <value>すべての X プログラムによるマウス・キーボードの占有と X Server の占有を解除します。クリックも入力も効かないとき(リモートのメニューを開いたままネットワークが切れたときなど)に使います。</value>
+  </data>
+  <data name="XServer_BreakGrabsDone" xml:space="preserve">
+    <value>すべての X プログラムの占有を解除しました。</value>
+  </data>
+  <data name="XServer_PanelStop" xml:space="preserve">
+    <value>X Server を停止</value>
+  </data>
+  <data name="XServer_DisconnectConfirmTitle" xml:space="preserve">
+    <value>X プログラムを切断</value>
+  </data>
+  <data name="XServer_DisconnectConfirmMessage" xml:space="preserve">
+    <value>「{0}」を切断すると、そのウィンドウはすべて閉じられます。保存していない内容は失われます。</value>
+  </data>
+  <data name="XServer_Disconnect" xml:space="preserve">
+    <value>切断</value>
+  </data>
+  <data name="XServer_GrabStalled" xml:space="preserve">
+    <value>X プログラム「{0}」({1})が X Server を {2} 秒間占有しています。ほかの X プログラムはすべて待たされています。</value>
+  </data>
+  <data name="XServer_GrabStalledDisconnect" xml:space="preserve">
+    <value>切断する</value>
+  </data>
+  <data name="XServer_DropUploading" xml:space="preserve">
+    <value>{0} 件を {1} にアップロードして X プログラムに渡しています…</value>
+  </data>
+  <data name="XServer_DropNoSession" xml:space="preserve">
+    <value>SSH セッション {0} は切断されています。何もドロップされませんでした。</value>
+  </data>
+  <data name="XServer_DropFailed" xml:space="preserve">
+    <value>ドロップしたファイルをアップロードできませんでした:{0}</value>
+  </data>
+  <data name="XServer_TrayClick" xml:space="preserve">
+    <value>開く(クリック)</value>
+  </data>
+  <data name="XServer_TrayMenu" xml:space="preserve">
+    <value>メニュー(右クリック)</value>
+  </data>
+  <data name="XServer_ScreenTitle" xml:space="preserve">
+    <value>X デスクトップ {0}</value>
   </data>
   <data name="Cmd_ToggleXServer" xml:space="preserve">
     <value>X Server を起動 / 停止</value>

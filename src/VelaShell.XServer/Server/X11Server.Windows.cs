@@ -111,6 +111,14 @@ public sealed partial class X11Server
     {
         XWindow window = Window(r.U32());
         uint mask = r.U32();
+        if (RequesterUntrusted && window.Owner is null)
+        {
+            // SECURITY 规范例外 3.g:非受信客户端在根窗口(与服务端别的窗口)上只能选 StructureNotify / PropertyChange。
+            uint events = mask == (uint)XWindowAttrMask.EventMask ? r.U32() : 0;
+            CheckUntrustedWindowAttributes(window, mask, events);
+            SelectEvents(c, window, events);
+            return;
+        }
         if (IsServerWindow(window) && (mask & ~(uint)XWindowAttrMask.EventMask) != 0)
         {
             throw new XProtocolError(XErrorCode.Access);   // 只许选事件(GTK 在 WM 检查窗口上选 StructureNotify)
@@ -140,10 +148,16 @@ public sealed partial class X11Server
             uint v = r.U32();
             switch ((XWindowAttrMask)(1u << bit))
             {
+                case XWindowAttrMask.BackgroundPixmap when v == XWindow.BackgroundPixmapNone && RequesterUntrusted:
+                    // SECURITY「Image Security」:非受信客户端把背景设成 None 时,改用服务端定的背景(黑色)。
+                    window.BackgroundPixmap = XWindow.BackgroundPixmapNone;
+                    window.BackgroundTile = null;
+                    window.BackgroundPixel = 0;
+                    break;
                 case XWindowAttrMask.BackgroundPixmap:
                     window.BackgroundPixmap = v;
                     window.BackgroundPixel = null;
-                    window.BackgroundTile = v > 1 ? Lookup<XPixmap>(v) ?? throw new XProtocolError(XErrorCode.Pixmap, v) : null;
+                    window.BackgroundTile = v > 1 ? Use<XPixmap>(v) ?? throw new XProtocolError(XErrorCode.Pixmap, v) : null;
                     break;
                 case XWindowAttrMask.BackgroundPixel:
                     window.BackgroundPixmap = XWindow.BackgroundPixmapNone;
@@ -151,7 +165,7 @@ public sealed partial class X11Server
                     window.BackgroundPixel = v;
                     break;
                 case XWindowAttrMask.BorderPixmap:
-                    window.BorderTile = v == 0 ? window.Parent?.BorderTile : Lookup<XPixmap>(v) ?? throw new XProtocolError(XErrorCode.Pixmap, v);
+                    window.BorderTile = v == 0 ? window.Parent?.BorderTile : Use<XPixmap>(v) ?? throw new XProtocolError(XErrorCode.Pixmap, v);
                     break;
                 case XWindowAttrMask.BorderPixel:
                     window.BorderTile = null;
@@ -188,7 +202,7 @@ public sealed partial class X11Server
                     window.Colormap = v == 0 ? window.Parent?.Colormap ?? DefaultColormapId : v;
                     break;
                 case XWindowAttrMask.Cursor:
-                    window.Cursor = v == 0 ? null : Lookup<XCursorResource>(v) ?? throw new XProtocolError(XErrorCode.Cursor, v);
+                    window.Cursor = v == 0 ? null : Use<XCursorResource>(v) ?? throw new XProtocolError(XErrorCode.Cursor, v);
                     break;
             }
         }
@@ -197,20 +211,20 @@ public sealed partial class X11Server
     /// <summary>设置某客户端在窗口上选的事件。三种「独占」事件同一时间只能有一个客户端选(否则 BadAccess)。</summary>
     private void SelectEvents(XClient c, XWindow window, uint mask)
     {
-        SelectEventsCore(c, window, mask);
+        SelectEventsCore(c, window, mask, Rootful);
         if ((mask & (uint)XEventMask.VisibilityChange) != 0 && _visibilityWatchers.Add(window))
         {
             window.VisibilityState = VisibilityOf(window);   // 起点:之后状态变了才报
         }
     }
 
-    private static void SelectEventsCore(XClient c, XWindow window, uint mask)
+    private static void SelectEventsCore(XClient c, XWindow window, uint mask, bool rootful)
     {
         if ((mask & ~(uint)XEventMask.AllValid) != 0)
         {
             throw new XProtocolError(XErrorCode.Value, mask);
         }
-        if (window.IsRoot && (mask & (uint)XEventMask.SubstructureRedirect) != 0)
+        if (window.IsRoot && !rootful && (mask & (uint)XEventMask.SubstructureRedirect) != 0)
         {
             // 窗口管理器是服务端(宿主)自己:根窗口的 SubstructureRedirect 一直有人占着,与真实桌面上已有窗口管理器时一样回 BadAccess。
             // 原先谁都选得上 —— 远端误跑 openbox / xfwm4,所有会话的新窗口都变成发给它的 MapRequest、被它套进自己的外框。
@@ -380,6 +394,7 @@ public sealed partial class X11Server
             extension.WindowDestroyed?.Invoke(window);
         }
         CleanupEwmh(window);
+        CleanupSystemTray(window);
         foreach ((SelectionSlot slot, (XWindow Window, XClient? Client, uint Time) owner) in _selections.ToArray())
         {
             if (ReferenceEquals(owner.Window, window))
@@ -404,6 +419,7 @@ public sealed partial class X11Server
         if (_topLevelHandles.Remove(window, out XTopLevelWindow? handle))
         {
             RetireHandle(handle);
+            ForgetRedrawSync(window);
         }
         _damage.Remove(window);
         window.Buffer = null;
@@ -517,6 +533,10 @@ public sealed partial class X11Server
         {
             return;
         }
+        if (window.IsInputOnly && window.Owner is { Untrusted: true } && window.Parent?.Owner is { Untrusted: false })
+        {
+            return;   // SECURITY「Keyboard Security」:非受信客户端挂在受信客户端窗口下的 InputOnly 窗口一律不映射(父是根窗口的照常)
+        }
         if (!window.OverrideRedirect && window.Parent is { } parent
             && RedirectClient(parent, XEventMask.SubstructureRedirect) is { } wm && !ReferenceEquals(wm, requester))
         {
@@ -557,8 +577,15 @@ public sealed partial class X11Server
             {
                 ExposeWindowTree(window, new Drawing.Region(buffer.Bounds));
             }
-            _host.TopLevelMapped(handle);
-            OnTopLevelMappedEwmh(window);
+            if (IsTrayEmbedder(window))
+            {
+                _host.SystemTrayIconAdded(handle, TrayIconTitle(window));   // 托盘图标:不当普通顶层窗口交给宿主
+            }
+            else if (!Rootful)   // 单窗口模式:顶层拼进屏幕,不单独交给宿主;外框、客户端列表归远端的窗口管理器
+            {
+                _host.TopLevelMapped(handle);
+                OnTopLevelMappedEwmh(window);
+            }
         }
         else
         {
@@ -603,8 +630,15 @@ public sealed partial class X11Server
             if (_topLevelHandles.TryGetValue(window, out XTopLevelWindow? handle))
             {
                 SetMapped(handle, false);
-                _host.TopLevelUnmapped(handle);
-                OnTopLevelUnmappedEwmh(window);
+                if (IsTrayEmbedder(window))
+                {
+                    _host.SystemTrayIconRemoved(handle);
+                }
+                else if (!Rootful)
+                {
+                    _host.TopLevelUnmapped(handle);
+                    OnTopLevelUnmappedEwmh(window);
+                }
             }
         }
         else if (wasViewable)
@@ -1023,6 +1057,7 @@ public sealed partial class X11Server
             if (_topLevelHandles.Remove(window, out XTopLevelWindow? handle))
             {
                 RetireHandle(handle);
+                ForgetRedrawSync(window);
             }
             ReleaseNamedWindowPixmaps(window);
             window.Buffer = null;
@@ -1038,6 +1073,7 @@ public sealed partial class X11Server
         {
             Map(requester, window);
         }
+        OnTrayIconReparented(window, parent);
     }
 
     // ------------------------------------------------------------------ 查询

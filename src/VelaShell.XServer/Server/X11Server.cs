@@ -100,11 +100,14 @@ public sealed partial class X11Server : IAsyncDisposable
         _resources[Root.Id] = Root;
         InitMonitors();
         RebuildRandRModes();
+        InitRootful();
         _resources[DefaultColormapId] = new XColormap(DefaultColormapId, null, RootVisualId);
         InitAtoms();
         _glx = new GlxExtension(this);
         InitExtensions();
         InitXSettings();
+        InitSystemTray();
+        InitClipboardManager();
         InitSyncCounters();
         PublishXkbRulesNames();
         InitEwmh();
@@ -131,6 +134,9 @@ public sealed partial class X11Server : IAsyncDisposable
 
     /// <summary>服务端时间(毫秒,32 位回绕)—— 事件里的 time 字段。</summary>
     internal uint Now => unchecked((uint)_clock.ElapsedMilliseconds);
+
+    /// <summary>服务端时钟此刻的 tick(帧时钟、看门狗与测试用)。</summary>
+    internal long ClockTicks => _clock.ElapsedTicks;
 
     // ================================================================== 生命周期
 
@@ -219,10 +225,30 @@ public sealed partial class X11Server : IAsyncDisposable
     /// <param name="cancellationToken">取消令牌。</param>
     /// <exception cref="ArgumentNullException"><paramref name="stream" /> 为 null(当场抛)。</exception>
     /// <exception cref="ObjectDisposedException">服务端已经释放(当场抛)。</exception>
-    public Task ServeAuthenticatedAsync(Stream stream, string? label, CancellationToken cancellationToken = default)
+    public Task ServeAuthenticatedAsync(Stream stream, string? label, CancellationToken cancellationToken = default) =>
+        ServeAuthenticatedAsync(stream, label, XClientTrust.Trusted, cancellationToken);
+
+    /// <summary>
+    /// 同 <see cref="ServeAuthenticatedAsync(Stream, string?, CancellationToken)" />,并指明这条连接的信任级别:
+    /// <see cref="XClientTrust.Untrusted" /> 的客户端按 SECURITY 扩展的非受信语义受限(<c>ssh -X</c> 那一档)——
+    /// 进程内的连接器用不着 <c>xauth generate</c> 去签受限 cookie,直接在这里说明。
+    /// </summary>
+    /// <param name="stream">见 <see cref="ServeAuthenticatedAsync(Stream, CancellationToken)" />。</param>
+    /// <param name="label">见 <see cref="ServeAuthenticatedAsync(Stream, string?, CancellationToken)" />。</param>
+    /// <param name="trust">信任级别。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <exception cref="ArgumentNullException"><paramref name="stream" /> 为 null(当场抛)。</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="trust" /> 不是定义了的值(当场抛)。</exception>
+    /// <exception cref="ObjectDisposedException">服务端已经释放(当场抛)。</exception>
+    public Task ServeAuthenticatedAsync(Stream stream, string? label, XClientTrust trust, CancellationToken cancellationToken = default)
     {
         CheckServable(stream);
-        return ServeCoreAsync(stream, new Peer(IsLocal: true, SameHost: false, Uid: null, LocalUser: false, Authenticated: true, label), cancellationToken);
+        if (trust is not (XClientTrust.Trusted or XClientTrust.Untrusted))
+        {
+            throw new ArgumentOutOfRangeException(nameof(trust), trust, "未定义的信任级别。");
+        }
+        return ServeCoreAsync(stream, new Peer(IsLocal: true, SameHost: false, Uid: null, LocalUser: false, Authenticated: true, label,
+            Untrusted: trust == XClientTrust.Untrusted), cancellationToken);
     }
 
     /// <summary>
@@ -325,7 +351,7 @@ public sealed partial class X11Server : IAsyncDisposable
         CheckCoordinate(y, nameof(y));
         Post(null, () =>
         {
-            if (LiveTopLevel(window) is { } top)
+            if (InputTarget(window) is { } top)
             {
                 ApplyPointerMotion(top, x, y);
             }
@@ -348,7 +374,7 @@ public sealed partial class X11Server : IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfGreaterThan(button, 255);
         Post(null, () =>
         {
-            if (LiveTopLevel(window) is { } top)
+            if (InputTarget(window) is { } top)
             {
                 ApplyPointerButton(top, x, y, button, pressed);
             }
@@ -359,8 +385,107 @@ public sealed partial class X11Server : IAsyncDisposable
         });
     }
 
+    /// <summary>
+    /// 宿主的合成器画了一帧(比如 Avalonia 的 <c>RequestAnimationFrame</c> 回调里):Present 的帧号(MSC)从此按宿主真实的帧节拍走 ——
+    /// 帧间隔取最近 32 次报帧里最短的间隔(宿主跳帧不会把刷新率算低),相位对齐到报帧的这一刻,到了目标帧的呈现当场做掉。
+    /// 不调时按 60 Hz 推算。只在 <see cref="IX11ServerHost.FrameClockWanted" /> 说要的时候逐帧调即可。任意线程上都可以调。
+    /// </summary>
+    public void NotifyHostFrame()
+    {
+        long ticks = _clock.ElapsedTicks;   // 报帧的这一刻:排进执行线程要一会儿,不能等到执行时再取
+        Post(null, () => ApplyHostFrame(ticks));
+    }
+
+    /// <summary>
+    /// 滚动(内区坐标 (x, y) 处,滚 (<paramref name="dx" />, <paramref name="dy" />) 格;正 = 向右 / 向下,一格 = 鼠标滚轮的一下,
+    /// 触控板给小数)。XI2 客户端经两个滚动轴收到原样的增量(平滑滚动,XI 2.1);只认滚轮按钮的客户端由服务端攒够一格模拟一次按钮 4–7。
+    /// 宿主有滚动增量时用它,不必自己攒格子注入按钮。窗口已经不在时忽略。坐标的范围同 <see cref="InjectPointerMotion" />。
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">坐标超出 −32768…32767,或增量不是有限数、绝对值超过 10000。</exception>
+    public void InjectScroll(XTopLevelWindow window, int x, int y, double dx, double dy)
+    {
+        CheckHandle(window);
+        CheckCoordinate(x, nameof(x));
+        CheckCoordinate(y, nameof(y));
+        if (!double.IsFinite(dx) || Math.Abs(dx) > 10000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(dx));
+        }
+        if (!double.IsFinite(dy) || Math.Abs(dy) > 10000)
+        {
+            throw new ArgumentOutOfRangeException(nameof(dy));
+        }
+        Post(null, () =>
+        {
+            if (InputTarget(window) is { } top)
+            {
+                ApplyScroll(top, x, y, dx, dy);
+            }
+        });
+    }
+
     /// <summary>指针离开了所有顶层窗口(移到了宿主的其他窗口或桌面上)。</summary>
     public void InjectPointerLeave() => Post(null, ApplyPointerLeave);
+
+    /// <summary>
+    /// 宿主那边拖着东西(本机的文件、文本)在这个顶层的内区 (x, y) 上:服务端替宿主扮演 XDND 的源(freedesktop XDND 第 5 版),
+    /// 给指针所在、声明了 XdndAware 的 X 窗口发 XdndEnter / XdndPosition。<paramref name="types" /> 是放下时能给的数据类型
+    /// (MIME 类型或 <c>UTF8_STRING</c> 这类 X 的目标名,文件给 <c>text/uri-list</c>);目标接不接受见 <see cref="IsDragAccepted" />。
+    /// 指针每动一下调一次;离开时调 <see cref="InjectDragLeave" />,松手时调 <see cref="InjectDrop" />。
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="types" /> 为 null。</exception>
+    /// <exception cref="ArgumentOutOfRangeException">坐标超出 X 的 16 位范围。</exception>
+    public void InjectDragOver(XTopLevelWindow window, int x, int y, IReadOnlyList<string> types)
+    {
+        CheckHandle(window);
+        CheckCoordinate(x, nameof(x));
+        CheckCoordinate(y, nameof(y));
+        ArgumentNullException.ThrowIfNull(types);
+        string[] copy = [.. types];
+        Post(null, () =>
+        {
+            if (InputTarget(window) is { } top)
+            {
+                ApplyDragOver(top, x, y, copy);
+            }
+        });
+    }
+
+    /// <summary>拖着的东西离开了 X 窗口,或宿主那边取消了拖放:给目标发 XdndLeave。没在拖时什么也不做。</summary>
+    public void InjectDragLeave() => Post(null, ApplyDragLeave);
+
+    /// <summary>
+    /// 在这个顶层的内区 (x, y) 上松手:目标最后说接受就发 XdndDrop,目标经 XdndSelection 取 <paramref name="data" />(类型 → 字节,
+    /// 类型的写法同 <see cref="InjectDragOver" />);不接受、或放在不接受拖放的地方,就发 XdndLeave。最后一条 XdndStatus 还没回来时先等它
+    /// (至多 3 秒)。宿主的文件要先传到远端、把远端路径写成 <c>text/uri-list</c> 再调这个 —— 目标拖着时取不到数据。
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="data" /> 为 null。</exception>
+    /// <exception cref="ArgumentOutOfRangeException">坐标超出 X 的 16 位范围。</exception>
+    public void InjectDrop(XTopLevelWindow window, int x, int y, IReadOnlyDictionary<string, ReadOnlyMemory<byte>> data)
+    {
+        CheckHandle(window);
+        CheckCoordinate(x, nameof(x));
+        CheckCoordinate(y, nameof(y));
+        ArgumentNullException.ThrowIfNull(data);
+        Dictionary<string, ReadOnlyMemory<byte>> copy = data.ToDictionary(p => p.Key, p => (ReadOnlyMemory<byte>)p.Value.ToArray());
+        Post(null, () =>
+        {
+            if (InputTarget(window) is { } top)
+            {
+                ApplyDrop(top, x, y, copy);
+            }
+            else
+            {
+                ApplyDragLeave();
+            }
+        });
+    }
+
+    /// <summary>
+    /// 宿主那边的拖放(<see cref="InjectDragOver" />)此刻的目标说会接受:宿主据此显示「可以放」的光标。异步更新(目标回 XdndStatus 之后),
+    /// 任何线程上都可以读。
+    /// </summary>
+    public bool IsDragAccepted => _dragAccepted;
 
     /// <summary>按键按下 / 松开(X 键码,见 <see cref="XKeycodes" />)。按键送往当前的键盘焦点(<see cref="FocusTopLevel" />)。</summary>
     public void InjectKey(byte keycode, bool pressed) => InjectKey(keycode, pressed, repeat: false);
@@ -380,6 +505,28 @@ public sealed partial class X11Server : IAsyncDisposable
             throw new ArgumentException("自动重复只有按下,没有松开。", nameof(repeat));
         }
         Post(null, () => ApplyKey(keycode, pressed, repeat));
+    }
+
+    /// <summary><see cref="InjectText" /> 一次至多这么多 UTF-16 码元(输入法一次上屏的字远少于此)。</summary>
+    public const int MaxInjectedTextLength = 4096;
+
+    /// <summary>
+    /// 输入一串字(宿主的输入法组好、上屏的文字):送往当前的键盘焦点,与用户在 X 窗口里按键一样。X 程序只认键码,每个字找一个空着的键码、
+    /// 把它的键值改成这个字的 Unicode 键值再按下松开(客户端各收到一次 MappingNotify);键位表里本来就有、不按修饰键就打得出来的字直接按那个键。
+    /// 远端不用装输入法框架,所有工具包都能收到;没有预编辑,候选框由本机的输入法自己显示。换行按 Return、制表按 Tab,其余控制字符不输入。
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="text" /> 超过 <see cref="MaxInjectedTextLength" /> 个 UTF-16 码元。</exception>
+    public void InjectText(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (text.Length > MaxInjectedTextLength)
+        {
+            throw new ArgumentException($"一次至多 {MaxInjectedTextLength} 个字符。", nameof(text));
+        }
+        if (text.Length != 0)
+        {
+            Post(null, () => ApplyInjectText(text, 0));
+        }
     }
 
     /// <summary>
@@ -412,6 +559,10 @@ public sealed partial class X11Server : IAsyncDisposable
     /// <summary>宿主让某个顶层窗口得到键盘焦点(用户激活了它的原生窗口);null = 所有顶层都失去焦点。</summary>
     public void FocusTopLevel(XTopLevelWindow? window)
     {
+        if (Rootful)
+        {
+            return;   // 单窗口模式:焦点归远端的窗口管理器(没有窗口管理器时是 PointerRoot),宿主窗口失去焦点不改 X 的焦点
+        }
         if (window is null)
         {
             Post(null, () => ApplyFocus(null));
@@ -450,7 +601,11 @@ public sealed partial class X11Server : IAsyncDisposable
         CheckSize(height, nameof(height));
         Post(null, () =>
         {
-            if (LiveTopLevel(window) is { } top)
+            if (ReferenceEquals(window, _screenHandle))
+            {
+                ApplyScreenResize(width, height);   // 单窗口模式:缩放屏幕窗口就是改屏幕尺寸
+            }
+            else if (LiveTopLevel(window) is { } top)
             {
                 ApplyResize(top, width, height);
             }
@@ -606,11 +761,39 @@ public sealed partial class X11Server : IAsyncDisposable
     public void SetClipboardText(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        if (text.Length > MaxClipboardBytes || System.Text.Encoding.UTF8.GetByteCount(text) > MaxClipboardBytes)
+        SetClipboard(new XClipboardContent { Text = text });
+    }
+
+    /// <summary>剪贴板图片(PNG)的上限:X 程序复制的超过它不收,宿主给的超过它抛异常。</summary>
+    public const int MaxClipboardImageBytes = 32 * 1024 * 1024;
+
+    /// <summary>
+    /// 宿主的剪贴板有了新内容(文本、HTML、PNG 图片,至少一种):服务端占有 CLIPBOARD(有文本且 <see cref="X11ServerOptions.SyncPrimary" /> 时连同 PRIMARY),
+    /// 之后 X 客户端粘贴时按目标拿到对应的格式(TARGETS 只列有的;大的分块按 INCR 交)。与刚交给宿主的相同(或只是其中几种格式)时什么也不做 ——
+    /// 那是宿主把我们给的写回来了。
+    /// </summary>
+    /// <exception cref="ArgumentException">一种格式都没有。</exception>
+    /// <exception cref="ArgumentOutOfRangeException">文本或 HTML 按 UTF-8 超过 <see cref="MaxClipboardBytes" />,或图片超过 <see cref="MaxClipboardImageBytes" />。</exception>
+    public void SetClipboard(XClipboardContent content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (content.IsEmpty)
         {
-            throw new ArgumentOutOfRangeException(nameof(text), text.Length, $"剪贴板文本超过 {MaxClipboardBytes} 字节(UTF-8)。");
+            throw new ArgumentException("剪贴板内容至少要有一种格式。", nameof(content));
         }
-        Post(null, () => ApplyClipboardText(text));
+        foreach (string? text in (string?[])[content.Text, content.Html])
+        {
+            if (text is not null && (text.Length > MaxClipboardBytes || System.Text.Encoding.UTF8.GetByteCount(text) > MaxClipboardBytes))
+            {
+                throw new ArgumentOutOfRangeException(nameof(content), text.Length, $"剪贴板文本超过 {MaxClipboardBytes} 字节(UTF-8)。");
+            }
+        }
+        if (content.Png.Length > MaxClipboardImageBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(content), content.Png.Length, $"剪贴板图片超过 {MaxClipboardImageBytes} 字节。");
+        }
+        XClipboardContent copy = content with { Png = content.Png.ToArray() };   // 宿主之后再改那块内存不影响这里
+        Post(null, () => ApplyClipboardContent(copy));
     }
 
     // ================================================================== 参数校验
@@ -652,6 +835,9 @@ public sealed partial class X11Server : IAsyncDisposable
         && ReferenceEquals(current, handle)
             ? top
             : null;
+
+    /// <summary>注入输入的落点:普通顶层同 <see cref="LiveTopLevel" />;单窗口模式的屏幕句柄是根窗口(坐标就是根坐标)。只在执行线程上调。</summary>
+    private XWindow? InputTarget(XTopLevelWindow handle) => ReferenceEquals(handle, _screenHandle) ? Root : LiveTopLevel(handle);
 
     /// <summary>当前监听着的传输对应的 DISPLAY(见 <see cref="Display" />)。</summary>
     private string? DisplayAddress()

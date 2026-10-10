@@ -58,6 +58,13 @@
                              HorizontalAlignment="Right" VerticalAlignment="Top"
                              Margin="0,8,48,0" />
     </Panel>
+    <!-- X Server 浮层:非模态,内置引擎运行中时由标题栏的 X Server 按钮切换;与隧道面板默认的位置相同,开一个就收起另一个。 -->
+    <Panel Grid.Row="1" ZIndex="60"
+           HorizontalAlignment="Right" VerticalAlignment="Top"
+           Margin="0,8,48,0"
+           IsVisible="{Binding XServer.IsPanelOpen}">
+      <views:XServerPanelView DataContext="{Binding XServer}" />
+    </Panel>
     <!-- 消息中心:非模态,由侧边栏底部铃铛切换。锚在左下贴着铃铛 —— 浮层从哪个按钮
          开出来就该长在哪个按钮旁边,开在右上会让人一时找不到它和什么有关。
          外层 Panel **铺满整行**,对齐与边距落在里面那个视图上:面板可拖动,而拖拽的

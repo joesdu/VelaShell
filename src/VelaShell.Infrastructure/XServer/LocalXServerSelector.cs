@@ -91,21 +91,25 @@ public sealed class LocalXServerSelector : ILocalXServer
             return resolution;
         }
         string? resolved = resolution.Display;
-        return resolution with { Connector = (label, token) => ConnectAsync(connector, resolved, label, token) };
+        return resolution with { Connector = (source, token) => ConnectAsync(connector, resolved, source, token) };
     }
 
     /// <inheritdoc />
     public Task<int> CountConnectedClientsAsync() => Running?.CountConnectedClientsAsync() ?? Task.FromResult(0);
 
-    /// <summary>先走内置引擎的连接器;它此刻没在运行就按显示地址走本机 TCP(见 <see cref="ResolveForwardingDisplayAsync" />)。</summary>
+    /// <summary>
+    /// 先走内置引擎的连接器;它此刻没在运行就按显示地址走本机 TCP(见 <see cref="ResolveForwardingDisplayAsync" />)。
+    /// 非受信的通道不退到 TCP:本机 TCP 上连的是受信的显示,退过去等于悄悄把这个会话升成受信。
+    /// </summary>
     private async ValueTask<Stream> ConnectAsync(
-        Func<string?, CancellationToken, ValueTask<Stream>> connector, string? resolvedDisplay, string? label, CancellationToken cancellationToken)
+        Func<XServerChannelSource, CancellationToken, ValueTask<Stream>> connector, string? resolvedDisplay, XServerChannelSource source,
+        CancellationToken cancellationToken)
     {
         try
         {
-            return await connector(label, cancellationToken).ConfigureAwait(false);
+            return await connector(source, cancellationToken).ConfigureAwait(false);
         }
-        catch (InvalidOperationException) when (_builtIn.State != XServerState.Running)
+        catch (InvalidOperationException) when (_builtIn.State != XServerState.Running && source.Trusted)
         {
             int? display = _vcXsrv.State == XServerState.Running ? _vcXsrv.DisplayNumber : null;
             if (display is null && X11Display.TryParse(resolvedDisplay, out X11Display? parsed))

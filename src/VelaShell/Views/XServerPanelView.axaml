@@ -1,0 +1,195 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:loc="using:VelaShell.Localization"
+             mc:Ignorable="d" d:DesignWidth="340" d:DesignHeight="320"
+             x:Class="VelaShell.Views.XServerPanelView"
+             x:DataType="vm:XServerToggleViewModel"
+             ClipToBounds="False">
+
+  <!-- 标题栏 X Server 按钮的浮层(规范 §4A.2):连着的 X 程序 —— 叫什么、来自哪个会话、几个窗口、占多少内存 ——
+       能逐个断开、能「解除卡住」、能停掉整个 X Server。外形照隧道面板(§10):340px、bg-surface、圆角 6、
+       1px border-secondary、窗口阴影;非模态,点按钮或右上角的 × 收起。 -->
+
+  <UserControl.Styles>
+    <Style Selector="Button.row-action">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="TextBlock.desc">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize10}" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <!-- 行模板里直接写 Foreground 压不过上面那条样式(模板里设的值优先级低于样式),要换颜色的说明行另起一个更具体的类。 -->
+    <Style Selector="TextBlock.desc.warn">
+      <Setter Property="Foreground" Value="{DynamicResource VelaWarning}" />
+    </Style>
+    <!-- 断开按钮平时不占眼:悬停到那一行才显出来(与隧道行的操作一样只在需要时出现)。 -->
+    <Style Selector="Border.client-row Button.row-action">
+      <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="Border.client-row:pointerover Button.row-action">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Border.client-row:pointerover">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+  </UserControl.Styles>
+
+  <!-- 根上的 ClipToBounds="False" 不能删:同隧道面板,卡片铺满 UserControl,阴影画在边界外。 -->
+  <Border Width="340"
+          VerticalAlignment="Top"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}"
+          BorderThickness="1"
+          CornerRadius="6"
+          BoxShadow="{DynamicResource VelaShadowWindow}">
+    <StackPanel>
+
+      <!-- 标题栏(36px):图标 + X Server + 显示地址 + 程序数徽标 | 关闭 -->
+      <Border Height="36" Padding="12,0"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
+              BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <!-- 与标题栏按钮同一图标;Icon.xorg 是实心字形,着色走 Fill。 -->
+            <pc:LucideIcon Width="12" Height="12"
+                           Data="{StaticResource Icon.xorg}"
+                           Fill="{DynamicResource VelaAccent}" />
+            <TextBlock Text="{loc:Localize XServer_PanelTitle}"
+                       Foreground="{DynamicResource VelaTextPrimary}"
+                       FontFamily="{DynamicResource VelaUiMonoFont}"
+                       FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium"
+                       VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Display}"
+                       Foreground="{DynamicResource VelaTextMuted}"
+                       FontFamily="{DynamicResource VelaUiMonoFont}"
+                       FontSize="{DynamicResource VelaFontSize10}"
+                       VerticalAlignment="Center" />
+            <!-- 数量徽标:VelaAccentDim 底 + VelaAccent 字(实底上的强调色字看不见,见 AccentOnAccentTests)。 -->
+            <Border Background="{DynamicResource VelaAccentDim}"
+                    CornerRadius="8" Padding="6,1" VerticalAlignment="Center"
+                    IsVisible="{Binding HasClients}">
+              <TextBlock Text="{Binding Clients.Count}"
+                         Foreground="{DynamicResource VelaAccent}"
+                         FontFamily="{DynamicResource VelaUiMonoFont}"
+                         FontSize="{DynamicResource VelaFontSize10}" FontWeight="Medium" />
+            </Border>
+          </StackPanel>
+          <Button Grid.Column="2" Classes="row-action" Opacity="1"
+                  ToolTip.Tip="{loc:Localize Tunnel_ClosePanel}"
+                  Command="{Binding ClosePanelCommand}">
+            <pc:LucideIcon Width="12" Height="12"
+                           Data="{StaticResource Icon.x}"
+                           Foreground="{DynamicResource VelaTextTertiary}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <!-- 空状态 -->
+      <Border Padding="12,10"
+              BorderBrush="{DynamicResource VelaBorderPrimary}"
+              BorderThickness="0,0,0,1"
+              IsVisible="{Binding !HasClients}">
+        <TextBlock Text="{loc:Localize XServer_PanelEmpty}"
+                   Foreground="{DynamicResource VelaTextMuted}"
+                   FontFamily="{DynamicResource VelaUiMonoFont}"
+                   FontSize="{DynamicResource VelaFontSize10}" />
+      </Border>
+
+      <!-- 程序行:名字 + 「独占中」+ 来源 | 断开;下面是窗口数 · 内存、窗口标题、Retain 状态 -->
+      <ScrollViewer MaxHeight="280" VerticalScrollBarVisibility="Auto" IsVisible="{Binding HasClients}">
+        <ItemsControl ItemsSource="{Binding Clients}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:XServerClientItemViewModel">
+              <!-- 右内边距 20 > 覆盖式滚动条展开宽 16:展开的滑道不压住行尾的断开键(同隧道行)。 -->
+              <Border Classes="client-row" Padding="12,8,20,8"
+                      BorderBrush="{DynamicResource VelaBorderPrimary}"
+                      BorderThickness="0,0,0,1">
+                <StackPanel Spacing="3">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                      <TextBlock Text="{Binding Name}"
+                                 Foreground="{DynamicResource VelaTextPrimary}"
+                                 FontFamily="{DynamicResource VelaUiMonoFont}"
+                                 FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium"
+                                 TextTrimming="CharacterEllipsis" MaxWidth="150"
+                                 ToolTip.Tip="{Binding Name}"
+                                 VerticalAlignment="Center" />
+                      <Border CornerRadius="3" Padding="5,0" VerticalAlignment="Center"
+                              Background="{DynamicResource VelaWarning}"
+                              IsVisible="{Binding HoldsServerGrab}"
+                              ToolTip.Tip="{loc:Localize XServer_PanelGrabbingTip}">
+                        <TextBlock Text="{loc:Localize XServer_PanelGrabbing}"
+                                   Foreground="{DynamicResource VelaWarningForeground}"
+                                   FontFamily="{DynamicResource VelaUiMonoFont}"
+                                   FontSize="{DynamicResource VelaFontSize10}" />
+                      </Border>
+                      <Border CornerRadius="3" Padding="5,0" VerticalAlignment="Center"
+                              Background="{DynamicResource VelaAccentDim}">
+                        <TextBlock Text="{Binding Source}"
+                                   Foreground="{DynamicResource VelaAccent}"
+                                   FontFamily="{DynamicResource VelaUiMonoFont}"
+                                   FontSize="{DynamicResource VelaFontSize10}"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="130"
+                                   ToolTip.Tip="{Binding Source}" />
+                      </Border>
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="row-action"
+                            ToolTip.Tip="{loc:Localize XServer_PanelDisconnectTip}"
+                            Command="{Binding $parent[ItemsControl].((vm:XServerToggleViewModel)DataContext).DisconnectCommand}"
+                            CommandParameter="{Binding}">
+                      <pc:LucideIcon Width="12" Height="12"
+                                     Data="{StaticResource Icon.unplug}"
+                                     Foreground="{DynamicResource VelaStatusDisconnected}" />
+                    </Button>
+                  </Grid>
+                  <TextBlock Classes="desc" Text="{Binding Stats}" />
+                  <TextBlock Classes="desc" Text="{Binding Detail}"
+                             IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                             ToolTip.Tip="{Binding Detail}" />
+                  <TextBlock Classes="desc warn" Text="{loc:Localize XServer_PanelRetained}"
+                             IsVisible="{Binding Retained}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+      <!-- 底部操作:解除卡住(不必停服)| 停止 X Server(有程序连着先确认) -->
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="12,10">
+        <Button Padding="12,5" CornerRadius="3" Background="Transparent" Cursor="Hand"
+                BorderBrush="{DynamicResource VelaBorderSecondary}" BorderThickness="1"
+                ToolTip.Tip="{loc:Localize XServer_PanelBreakGrabsTip}"
+                Command="{Binding BreakGrabsCommand}">
+          <TextBlock Text="{loc:Localize XServer_PanelBreakGrabs}"
+                     Foreground="{DynamicResource VelaTextSecondary}"
+                     FontFamily="{DynamicResource VelaUiFont}" FontSize="{DynamicResource VelaFontSize12}" />
+        </Button>
+        <Button Padding="12,5" CornerRadius="3" Background="Transparent" Cursor="Hand"
+                BorderBrush="{DynamicResource VelaError}" BorderThickness="1"
+                Command="{Binding StopCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+            <pc:LucideIcon Width="12" Height="12"
+                           Data="{StaticResource Icon.square}"
+                           Foreground="{DynamicResource VelaError}" VerticalAlignment="Center" />
+            <TextBlock Text="{loc:Localize XServer_PanelStop}"
+                       Foreground="{DynamicResource VelaError}"
+                       FontFamily="{DynamicResource VelaUiFont}" FontSize="{DynamicResource VelaFontSize12}" />
+          </StackPanel>
+        </Button>
+      </StackPanel>
+
+    </StackPanel>
+  </Border>
+</UserControl>

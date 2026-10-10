@@ -34,6 +34,9 @@ public partial class SettingsViewModel
     /// <summary>当前选的是内置引擎。</summary>
     public bool XServerUsesBuiltIn => !XServerUsesVcXsrv;
 
+    /// <summary>「也开 TCP 端口」能不能选:只在 Linux / macOS 上(Windows 上内置引擎一直开 TCP,见 XServerOptions.ListenTcpOnUnix)。</summary>
+    public bool XServerTcpSelectable { get; } = !OperatingSystem.IsWindows();
+
     /// <summary>
     /// 键盘布局下拉:首项「自动」(不传 <c>-xkblayout</c>,VcXsrv 跟随 Windows 当前布局),其后是常用 XKB 布局。
     /// </summary>

@@ -221,7 +221,7 @@ public sealed partial class X11Server
     /// <summary>画到某个可绘对象上时的缓冲、原点与可画区域。窗口不可见时返回 null(画了也看不见,按协议是空操作)。</summary>
     internal (PixelBuffer Buffer, int OriginX, int OriginY, Region Clip, XWindow? TopLevel)? DrawTarget(uint drawable, XGc? gc)
     {
-        switch (Lookup<XResource>(drawable))
+        switch (Use<XResource>(drawable))
         {
             case XPixmap pixmap:
                 if (gc is not null && gc.Depth != pixmap.Depth)

@@ -2262,3 +2262,99 @@ Fluent 给它铺的灰底在放大后像「被选中」,改成透明底 + 0.4 �
 会红,是已知问题、与本节无关 —— SSH 靶机镜像建于 Dockerfile 那次改动之前,见 §159、§161、§167,重建测试镜像即可)。
 暗色 / 亮色 / 忙碌态 / 英文长名字截图人工看过。交互规格 §10 同步(velashell-docs,中英两份):尺寸字号、徽标配色、拖拽、启停转圈、
 第三个勾选框、启停状态不落盘与启动时自动建立的失败提示。
+
+## ✅ 187. 2026-10-10 内置 X 服务端:草案第十二节的新功能 —— X 程序清单、信任级别与按会话的显示、拖放、托盘、单窗口模式,以及 F4–F30 的其余各项(用户需求)
+
+**一、来由**:`feature-plan.md`「H. 内置 X 服务端」里剩下的三行新功能 —— X 程序清单与强制结束的界面(F3)、按连接给信任级别 / 每个会话一个显示
+(F2 / F1,决策 Q5)、草案第五节的其余功能(F4–F30)。用户要求主会话做 F3,另开两个子会话分别做 F2 / F1 与 F4–F30,都在 `dev` 上、做完一起提交。
+主会话另从 F4–F30 里接了 F12(托盘)、F13(单窗口模式)、F16(拖放)。两个子会话各在自己的 git worktree 里一项一个提交,做完由主会话
+cherry-pick 回 `dev`、手工合冲突(交叉处另有几个衔接提交,见下文)。全程守净室规程:新用到的规范先登记进 `src/VelaShell.XServer/AGENTS.md` §2 纪律 1
+的清单(SECURITY 7.1、XDND 5 与 RFC 2483、System Tray Protocol 0.3 与 XEmbed 0.5、XI 2.1 的平滑滚动,以及子会话补的几份),没有打开任何其它 X 服务端、
+Mesa 或工具包的源码。各项的理由与验证写在提交信息里;这里记全貌。
+
+**二、X 程序清单与强制结束(F3)**:
+- 库:`XClientInfo.HoldsServerGrab`;GrabServer 抓得太久(10 秒起,之后每分钟)新增宿主回调 `ServerGrabStalled(XServerGrabStall)`,
+  经延后队列在放锁之后交出(原先只记日志,宿主与用户都不知道该断开谁)。
+- 宿主:`ILocalXServer` 加 `CanManageClients` / `GetClientsAsync` / `DisconnectClient(key)` / `BreakGrabs` 与 `ServerGrabStalled` 事件。
+  内置引擎给每个程序一个键「第几次启动:哪个实例:客户端编号」—— 停了再开旧键作废,按会话分出来的显示(F1)上编号相同的程序也不会混;
+  清单、断开、解除卡住逐个服务端实例做。标题栏 X Server 按钮在内置引擎运行时打开一个面板(与隧道面板同一套样式、互斥):
+  程序名 / 标题、来源会话、窗口数与内存、保留资源与抓着 GrabServer 的标记,悬停出「断开」(先确认),底部「解除卡住」与「停止」;
+  打开时每 2 秒原地刷新。抓得太久时弹一条警告提示,带「断开它」。外部 VcXsrv 列不出程序,按钮照旧一点开、一点关。
+
+**三、信任级别(F2)与每个 SSH 会话一个显示(F1)**(子会话 A,三个提交):
+- 库:SECURITY 扩展(Security Extension Specification 7.1)—— 签发 / 撤销 / 到期 MIT-MAGIC-COOKIE-1 授权与 AuthorizationRevoked 事件;
+  `ServeAuthenticatedAsync(stream, label, XClientTrust.Untrusted)` 让宿主直接指明一条连接非受信;`XClientInfo.Trust`。非受信客户端按规范第三章受限:
+  碰不到受信客户端的资源,根窗口只在规范列的请求里可用(另许工具包初始化必发的几样),XTEST / MIT-SCREEN-SAVER / DPMS / X-Resource / Composite /
+  MIT-SHM / SECURITY 看不见,键盘不归它时读到全 0、抓不到、焦点改不动,CUT_BUFFER 隐藏,受信程序的选区回 None,被挡住的 GetImage 填 0。
+  规范第五章编码表与 xauth 实际发的线格式不一致(value-mask 的位置),照协议头,已记进 AGENTS 的规范清单。
+- `ssh -X`:连接器的参数换成 `XServerChannelSource(来历、受信与否、会话、会话断开)`;非受信的通道经连接器以非受信客户端接入、不跑 xauth;
+  SSH 库的 `X11ForwardOptions` 不再把「连接器 + 非受信」当配置矛盾(`Validate()` 连同三处调用删掉);内置引擎没在运行时非受信的通道不再退到本机 TCP
+  (那等于悄悄升成受信);连接对话框里「受信任」的说明改写;`Ssh_X11UntrustedBuiltIn` 删掉。行为规格 `zh/ssh/spec/07` §7.5.9 同步。
+- 「每个 SSH 会话一个显示」(`XServerOptions.DisplayPerSession`,默认关,下次启动生效):带着会话的通道进这个会话自己的、不监听的 `X11Server`,
+  有自己的根窗口、选区与剪贴板;第一条通道时建,会话断开或停服时收掉;至多 32 个,超了连不上(不落回共用的显示)。宿主改成一个服务端一个
+  (`AvaloniaXServerHost` 在 DI 里 Transient),本机活动报给每个附着着的服务端,显示器事件在脱离时摘掉。
+
+**四、拖放进 X 窗口(F16)**:库替宿主当 XDND 第 5 版的源(`InjectDragOver` / `InjectDragLeave` / `InjectDrop`、`IsDragAccepted`):按 XdndAware /
+XdndProxy 找目标,Enter / Position / Status / Leave / Drop / Finished 带流控,XdndSelection 由服务端供数据。宿主 `XDropTarget` 接上原生窗口的拖放:
+文本按 UTF8_STRING / text/plain 等给;文件经该 X 程序所属 SSH 会话的 SFTP 先传到远端 `/tmp/velashell-drop-<guid>`(权限 700,重名改成「a (2).txt」),
+再以 `text/uri-list` 给;程序不是经 SSH 会话来的时提示用户。从 X 程序往本机拖出来没做。
+
+**五、托盘图标(F12)**:库可选当托盘管理器(`X11ServerOptions.SystemTray`、`SystemTrayIconSize`):占 `_NET_SYSTEM_TRAY_S0`,按 XEmbed 把图标嵌进
+服务端的嵌入窗口(按 `_XEMBED_INFO` 映射、发 XEMBED_EMBEDDED_NOTIFY),经 `SystemTrayIconAdded` / `Removed` 交给宿主,不当普通顶层。宿主 `XTrayIcons`
+把每个图标画成本机托盘里的一个图标(像素随损伤更新,攒 200 毫秒),单击送左键、菜单里可送右键;`TrayIconService` 改成只增删自己的图标,不再整组替换
+(原先会把 X 程序的托盘图标一并抹掉)。气泡消息收下不显示。
+
+**六、单窗口(rootful)模式(F13,决策 Q2)**:库 `X11ServerOptions.Rootful` 与 `X11Server.Screen`:整个根窗口作为一个顶层交给宿主;服务端不当窗口管理器
+(不占 WM_S0、不写 `_NET_SUPPORTED` 这些、根窗口的 SubstructureRedirect 让给客户端、不向宿主提窗口管理器请求),也不当 XSETTINGS 管理器、托盘与合成管理器。
+顶层照旧各有缓冲,每批放锁前把变了的地方(画过的区域;映射 / 位置 / 尺寸 / 形状 / 边框 / 根背景的变化;只换了堆叠次序时只取颠倒了的两个窗口的交集)
+按堆叠次序拼进根窗口的缓冲(背景像素或平铺图、边框、边界形状、深度 32 的预乘叠加);指针、滚动与拖放按根坐标注入;缩放屏幕窗口就是改屏幕尺寸;
+GetImage 读根窗口拿到拼好的屏幕。宿主:设置的「窗口模式」对内置引擎也生效 —— 单个大窗口 / 无标题栏 / 全屏时开一个「X 桌面 :N」窗口
+(按会话分出来的显示写会话的来历),起步是主显示器工作区的八成、居中;关掉它当作停 X Server;指针 Warp / confine 的根坐标换算到这个窗口里。
+互操作镜像加装 twm,新用例实跑:twm 接管、xterm 套进外框、拼进屏幕,零协议错误。没做的:直接画在根窗口上的内容不显示(只显示背景);
+远端合成器画在 Composite 叠加窗口上的效果不显示。
+
+**七、F4–F30 的其余各项**(子会话 B,各一个提交,`xs_plan: Fn` 行标着对应哪一项):
+- **F5 第一步,本机输入法上屏**:库 `InjectText` —— 每个字借一个空键码改成 Unicode 键值再按下松开(键位表里本来就有的直接按),改过的不改回去,
+  空键码用完才挪用最久没用的;宿主的 X 窗口成为本机输入法的客户端(预编辑叠画在窗口里、候选框在最后一次点击处)。设置「X 窗口里用本机输入法」默认开。
+  这部分推翻了「确认不做」里的 XIM 一条 —— 只做上屏,XIM 桥仍没做。
+- **F6 平滑滚动**:XI 2.1 的两个滚动轴与 ScrollClass,`InjectScroll` 交原样增量,攒够一格再模拟按钮 4–7,反向也模拟。
+- **F8 Warp / confine-to**:回调 `PointerWarped` / `PointerConfinementChanged`(只报抓着指针的、不受限的客户端);宿主在用户用着 X 窗口时挪 / 关系统光标
+  (Windows 与 Linux 的 X11 桌面;macOS、Wayland 不做;单窗口模式下换算到屏幕窗口里)。
+- **F9 屏保协作**:Suspend 按客户端计数、`ScreenSaverSuspensionChanged` / `ScreenSaverReset`;宿主挂起期间抑制本机屏保(只在 Windows 上)。
+- **F10 `_NET_WM_SYNC_REQUEST`**:宿主改尺寸时先发同步请求,`AwaitingRedraw` 期间宿主攒着损伤,`TopLevelRedrawn`(或 300 毫秒到点)时一次显示。
+- **F11 合成管理器**:`CompositingManager` 选项与设置「X 窗口透明与圆角」,默认关;`ClientSideShadows` 仍关(Windows 上透明阴影区接住鼠标)。
+- **F14 / F15 剪贴板**:`XClipboardContent`(文本、HTML、PNG)两个方向都通;服务端当 CLIPBOARD_MANAGER,SAVE_TARGETS 取完才回答。
+- **F17 / F18**:窗口标题前标来源(设置「标出 X 窗口的来源」,默认开);Windows 任务栏按 WM_CLASS 归组、不能固定;按类名 / 实例名 / role 记住上次关掉时的
+  位置与尺寸(只在这次运行里);快照加 `UserSize`。
+- **F20 截图**:Windows 上 X 窗口的系统菜单里「复制截图」「截图另存为…」。录屏没做。
+- **F22**:GLX 两个 4 倍多重采样配置、`GLX_EXT_libglvnd`(VENDOR_NAMES 报 `mesa`)。
+- **F23**:间接 GL 的选择模式、线 / 多边形点画、求值器(反馈模式、mipmap LOD、PixelMap、深度 / 模板 DrawPixels 没做)。
+- **F24**:RENDER 的 Over / Add / 纯色过遮罩用 `Vector128`,与标量版逐位一致(微基准约 2 倍 / 3.7 倍);双线性取样与 GL 光栅化没动。
+- **F25**:Present 的帧号跟着宿主报来的帧节拍(`NotifyHostFrame` / `FrameClockWanted`),一个全局帧时钟。
+- **F27**:`XServerMetrics`(仪表源 `VelaShell.XServer`)与执行线程看门狗(一项超过 5 秒就记一行 `watchdog:`,不等它做完)。
+- **F28**:X-Resource 的 LocalClientPid(Linux SO_PEERCRED、macOS LOCAL_PEERPID,后者没有实机核对)。
+- **F4**:Linux / macOS 上默认只开 Unix 套接字,设置「也开 TCP 端口」默认关(行为变化:经网络连的容器程序要打开它);Windows 照旧开。
+- **执行线程按客户端轮流取工作**(做 F22 的互操作用例时发现:间接 glxgears 排满请求时 xdpyinfo 要等 25 秒):按客户端分队轮流,宿主与计时器那条队优先,
+  现在 1 秒内。
+- 此前就有、只核对的:F21、F26 与 F22 的 create_context。只做了一部分的:F19(各显示器的 DPI 已按各自缩放报;整数放大要全服务端统一的放大倍数,
+  宿主所有根坐标换算都要改,没做)。没做的:F5 第二步 XIM 桥、F7 压感 / 触摸 / 手势、F29 WSL、F30 MIT-SHM 1.2 —— 理由与范围记在 `feature-plan.md` H。
+
+**八、合进来时的衔接**(单独的提交,或改在被合的那个提交里,提交信息里写明):
+- X 程序清单覆盖按会话分出来的显示(F3 × F1,见二);单窗口模式与按会话的显示一起用时,每个会话的屏幕窗口标题写会话的来历(F13 × F1)。
+- 单窗口模式下 `InjectScroll` 原先只认普通顶层,整个 X 桌面里滚不动 —— 改成与指针、拖放一样按根坐标注入(F6 × F13);合成管理器的选区在单窗口模式下
+  也让给远端(F11 × F13);指针 Warp / confine 的根坐标在单窗口模式下换算到屏幕窗口的内容区(F8 × F13)。
+- 截图那个提交触发了两条守门用例:WndProc 钩子只许 `Win32WindowChrome.cs` 注册 —— 给它加了 `AddSystemCommandHandler`,系统菜单改用它;
+  `XNativeWindow.Screenshot` 不用 async void,改走 `FireAndForget.Run`。
+- 几处「两边都留」的冲突合并丢了共用的一行(resx 的 `</data>`、接口的 `{ }`、axaml 的 `</Grid>`、`finally` 被挤到方法外),每合一个就核 resx 的 XML、
+  整个解决方案构建一遍;分析器警告(CA1859、IDE0004、IDE0100)一并清掉。
+- 按客户端轮流取工作之后,连接收尾排在那个客户端自己的队里,`ServeAsync` 返回时不一定已经做了:「断开时取消计时器」那条用例紧接着用宿主那条队看结果,
+  整套并行跑时红过一次,改成轮询到收尾做完(宿主里没有依赖这个先后的地方)。
+
+**九、验证**:`VelaShell.slnx` 构建零警告零错误。
+各测试项目(整个 `dev`):VelaShell.XServer.Tests 525 通过 / 9 按平台跳过;Infrastructure.Tests 651 / 4;VelaShell.Tests 1932 / 11;
+Ssh.Tests 1352 / 57;Terminal.Tests 527、ShellIntegration.Tests 33、Presentation.Tests 84、Controls.Tests 31、Terminal.RenderTests 5、Plugin.Ai.Tests 1443 全过;
+Core.Tests 781 / 10,只有 `X11_RefusedByServer_KeepsAgentForwardingAndWarnsOnce` 红 —— 已知问题,SSH 靶机镜像建于 Dockerfile 那次改动之前(§159、§161、§167),
+与本节无关。真实客户端(`VELASHELL_XSERVER_INTEROP=1`,镜像 `velashell-xclients`,本节加装了 twm)23 例全过、没有 `[SKIP]`,其中新加的:
+twm 在单窗口模式下接管、非受信 cookie 与非受信下常见程序、xclip 的 PNG 两个方向、xinput 的滚动轴、`glxgears -samples 4` 与 libglvnd、
+间接 GL 排满请求时 xdpyinfo 照样很快。每项新用例在改之前的代码上红或编不过的情况,写在各自的提交信息里。
+文档在 velashell-docs(中英两份):X Server 架构 §2 / §5 / §6 / §7 / §10、排障、SSH 行为规格 07 §7.5.9 与 SSH 架构、交互与界面规格的 X Server 一节、设置审计第十二批。

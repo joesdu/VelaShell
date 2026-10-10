@@ -209,8 +209,10 @@ public sealed partial class X11Server
     /// <param name="LocalUser">能确定对端就是运行服务端的这个用户(权限 0600 的套接字文件,或 uid 与本进程相同)。</param>
     /// <param name="Authenticated">调用方已经验过身份(<see cref="ServeAuthenticatedAsync(Stream, CancellationToken)" />),不再查授权。</param>
     /// <param name="Label">宿主给这条连接起的名字(比如它来自哪个 SSH 会话);进日志与 <see cref="XClientInfo" />。</param>
-    internal readonly record struct Peer(bool IsLocal, bool SameHost, uint? Uid, bool LocalUser, bool Authenticated, string? Label = null);
-
+    /// <param name="Untrusted">宿主指明这条连接非受信(<see cref="XClientTrust.Untrusted" />)。</param>
+    /// <param name="Pid">对端进程的 pid(Unix 套接字:Linux 经 SO_PEERCRED,macOS 经 LOCAL_PEERPID);不知道为 0。X-Resource 的 LocalClientPid 用。</param>
+    internal readonly record struct Peer(bool IsLocal, bool SameHost, uint? Uid, bool LocalUser, bool Authenticated, string? Label = null,
+        bool Untrusted = false, int Pid = 0);
     /// <summary>
     /// 连接建立的时限:读连接建立报文(12 字节的头与授权名 / 数据)、回失败,都要在这之内做完。
     /// 对端连上来却迟迟不发完(卡住的,或者故意占着不放的),到点就断开 —— 否则每个这样的连接都一直占着一个套接字和一个任务,
@@ -229,7 +231,7 @@ public sealed partial class X11Server
 
     private int _pendingSetups;
 
-    private async Task ServeCoreAsync(Stream stream, Peer peer, CancellationToken cancellationToken)
+    internal async Task ServeCoreAsync(Stream stream, Peer peer, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -241,6 +243,7 @@ public sealed partial class X11Server
         if (Interlocked.Increment(ref _pendingSetups) > MaxPendingSetups)
         {
             Interlocked.Decrement(ref _pendingSetups);
+            XServerMetrics.RefusedConnections.Add(1, new KeyValuePair<string, object?>("reason", "too_many_setups"));
             return;   // 正在握手的连接太多:当场关掉(流由调用方释放)
         }
         bool pending = true;
@@ -273,6 +276,7 @@ public sealed partial class X11Server
             if (nameLength > MaxAuthFieldLength || dataLength > MaxAuthFieldLength)
             {
                 // 先按客户端给的长度分配的话,每条连接各 128 KB(进大对象堆);真实的授权数据只有几十字节。
+                XServerMetrics.RefusedConnections.Add(1, new KeyValuePair<string, object?>("reason", "bad_setup"));
                 await SendSetupFailureAsync(stream, bigEndian, "Authorization data too long", setup.Token).ConfigureAwait(false);
                 return;
             }
@@ -283,11 +287,21 @@ public sealed partial class X11Server
 
             if (major != 11)
             {
+                XServerMetrics.RefusedConnections.Add(1, new KeyValuePair<string, object?>("reason", "bad_setup"));
                 await SendSetupFailureAsync(stream, bigEndian, "Protocol version mismatch", setup.Token).ConfigureAwait(false);
                 return;
             }
-            if (Authorize(authName, authData, peer) is { } reason)
+            // 不是服务端自己的 cookie、而 SECURITY 签过授权时,cookie 可能是签出来的那种:授权表只在执行线程上读写,
+            // 留到登记时在那里核对(见 RegisterClient)。
+            string? refused = Authorize(authName, authData, peer);
+            byte[]? generated = null;
+            if (refused is not null && authName == "MIT-MAGIC-COOKIE-1" && Volatile.Read(ref _authorizationCount) > 0)
             {
+                (generated, refused) = (authData, null);
+            }
+            if (refused is { } reason)
+            {
+                XServerMetrics.RefusedConnections.Add(1, new KeyValuePair<string, object?>("reason", "authorization"));
                 Post(null, () =>
                 {
                     if (ShouldLogFrequent())
@@ -300,17 +314,18 @@ public sealed partial class X11Server
             }
 
             setup.CancelAfter(Timeout.InfiniteTimeSpan);   // 报文收齐了:下面等执行线程登记,不计时
-            Task<XClient?> registering = InvokeAsync(() => RegisterClient(bigEndian, peer));
+            Task<(XClient? Client, string? Refused)> registering = InvokeAsync(() => RegisterClient(bigEndian, peer, generated));
+            string? refusedAtRegistration;
             try
             {
-                client = await registering.WaitAsync(ct).ConfigureAwait(false);
+                (client, refusedAtRegistration) = await registering.WaitAsync(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
                 // 等的时候调用方取消了:登记照样会在执行线程上执行,登记成了就当场断开 —— 原先没人管它,永久占着一个编号。
                 _ = registering.ContinueWith(t =>
                 {
-                    if (t.Result is { } orphan)
+                    if (t.Result.Client is { } orphan)
                     {
                         Post(null, () =>
                         {
@@ -326,7 +341,8 @@ public sealed partial class X11Server
             if (client is null)
             {
                 setup.CancelAfter(SetupTimeout);
-                await SendSetupFailureAsync(stream, bigEndian, "Maximum number of clients reached", setup.Token).ConfigureAwait(false);
+                await SendSetupFailureAsync(stream, bigEndian, refusedAtRegistration ?? "Maximum number of clients reached", setup.Token)
+                    .ConfigureAwait(false);
                 return;
             }
             SetupDone();   // 登记成了客户端:不再占「正在握手」的名额
@@ -361,7 +377,7 @@ public sealed partial class X11Server
             if (client is not null)
             {
                 XClient gone = client;
-                Post(null, () => DisconnectClient(gone));
+                PostAfterRequests(gone, () => DisconnectClient(gone));   // 排在它还没执行的请求之后:发完请求就关连接的客户端,请求照样生效
                 gone.Output.Writer.TryComplete();
             }
             if (writer is not null)
@@ -466,9 +482,21 @@ public sealed partial class X11Server
     /// </summary>
     internal const int MaxClients = 255;
 
-    /// <summary>分一个空闲的客户端编号并发出连接建立回复;编号用完了返回 null。</summary>
-    private XClient? RegisterClient(bool bigEndian, Peer peer)
+    /// <summary>
+    /// 分一个空闲的客户端编号并发出连接建立回复;编号用完了返回 null。<paramref name="generated" /> 不为 null 时这条连接带的是
+    /// 服务端自己那个以外的 cookie:在 SECURITY 签过的授权里找,找不到就拒,返回给客户端看的原因。
+    /// </summary>
+    private (XClient? Client, string? Refused) RegisterClient(bool bigEndian, Peer peer, byte[]? generated = null)
     {
+        SecurityAuthorization? authorization = null;
+        if (generated is not null && (authorization = FindAuthorization(generated)) is null)
+        {
+            if (ShouldLogFrequent())
+            {
+                LogFrequent("connection refused: invalid MIT-MAGIC-COOKIE-1 key");
+            }
+            return (null, "Invalid MIT-MAGIC-COOKIE-1 key");
+        }
         int index = _nextClientIndex;
         for (int tried = 0; tried < MaxClients; tried++, index = index >= MaxClients ? 1 : index + 1)
         {
@@ -485,20 +513,29 @@ public sealed partial class X11Server
                 SameHost = peer.SameHost,
                 Forwarded = peer.Authenticated,
                 PeerUid = peer.Uid,
+                Untrusted = peer.Untrusted || authorization is { Untrusted: true },
+                Authorization = authorization,
+                PeerPid = peer.Pid,
             };
             _clients[index] = client;
+            if (authorization is not null)
+            {
+                authorization.Connections++;
+            }
+            XServerMetrics.ActiveClients.Add(1);
             client.Send(BuildSetupReply(client));
             if (ShouldLogFrequent())
             {
-                LogFrequent($"{client} connected ({(bigEndian ? "MSB" : "LSB")} first)");
+                LogFrequent($"{client} connected ({(bigEndian ? "MSB" : "LSB")} first{(client.Untrusted ? ", untrusted" : "")})");
             }
-            return client;
+            return (client, null);
         }
+        XServerMetrics.RefusedConnections.Add(1, new KeyValuePair<string, object?>("reason", "too_many_clients"));
         if (ShouldLogFrequent())
         {
             LogFrequent($"connection refused: {MaxClients} clients already connected");
         }
-        return null;
+        return (null, null);
     }
 
     /// <summary>连接建立成功回复:一块屏幕、深度 24 的 TrueColor 视觉(外加深度 32 与深度 1)。</summary>
@@ -679,6 +716,7 @@ public sealed partial class X11Server
             return;
         }
         _clients.Remove(client.Index);
+        XServerMetrics.ActiveClients.Add(-1);
         client.Closed = true;
         if (ShouldLogFrequent())
         {
@@ -767,6 +805,10 @@ public sealed partial class X11Server
             DestroyRetainedClient(client);
             return;
         }
+        if (!client.Closed)
+        {
+            XServerMetrics.Disconnects.Add(1, new KeyValuePair<string, object?>("reason", "killed"));
+        }
         client.Abort();
         DisconnectClient(client);
     }
@@ -789,7 +831,9 @@ public sealed partial class X11Server
                 .OrderBy(e => e.Client.Index)
                 .Select(e => new XClientInfo(e.Client.Index, e.Client.Label, e.Retained, resources.GetValueOrDefault(e.Client),
                     e.Client.MemoryInUse,
-                    [.. _topLevelHandles.Where(p => ReferenceEquals(p.Key.Owner, e.Client)).Select(p => p.Value)])),
+                    [.. _topLevelHandles.Where(p => ReferenceEquals(p.Key.Owner, e.Client)).Select(p => p.Value)],
+                    e.Client.Untrusted ? XClientTrust.Untrusted : XClientTrust.Trusted,
+                    ReferenceEquals(_serverGrabber, e.Client))),
         ];
     }
 

@@ -107,12 +107,190 @@ public class BuiltInLocalXServerTests
 
         Assert.AreEqual("localhost:10.0", resolution.Display);
         Assert.IsNotNull(resolution.Connector);
-        await using Stream stream = await resolution.Connector("user@host:22", CancellationToken.None);
+        await using Stream stream = await resolution.Connector(new XServerChannelSource("user@host:22"), CancellationToken.None);
         await stream.WriteAsync(new byte[] { (byte)'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
         await stream.FlushAsync();
         byte[] head = new byte[8];
         await stream.ReadExactlyAsync(head).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.AreEqual(1, head[0], "Success —— 经连接器来的连接按本机连接放行");
+    }
+
+    /// <summary>
+    /// 没勾「受信任」的会话(ssh -X)经连接器连进来是非受信客户端:服务端按 SECURITY 的语义对它藏起 XTEST;
+    /// 受信的会话照常看得见。原先非受信的会话根本开不起转发。
+    /// </summary>
+    [TestMethod]
+    public async Task Connector_UntrustedSource_ConnectsAsAnUntrustedClient()
+    {
+        await using BuiltInLocalXServer server = Create(new XServerOptions(), new RecordingHost());
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+
+        await using Stream untrusted = await resolution.Connector!(new XServerChannelSource("user@host:22", Trusted: false), CancellationToken.None);
+        await using Stream trusted = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
+
+        CollectionAssert.DoesNotContain(await ListExtensionsAsync(untrusted), "XTEST");
+        CollectionAssert.Contains(await ListExtensionsAsync(trusted), "XTEST");
+
+        static async Task<List<string>> ListExtensionsAsync(Stream stream)
+        {
+            await stream.WriteAsync(new byte[] { (byte)'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+            await stream.FlushAsync();
+            byte[] head = new byte[8];
+            await stream.ReadExactlyAsync(head).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(1, head[0]);
+            await stream.ReadExactlyAsync(new byte[BitConverter.ToUInt16(head, 6) * 4]);
+            await stream.WriteAsync(new byte[] { 99, 0, 1, 0 });   // ListExtensions
+            await stream.FlushAsync();
+            byte[] reply = new byte[32];
+            await stream.ReadExactlyAsync(reply).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            byte[] body = new byte[BitConverter.ToUInt32(reply, 4) * 4];
+            await stream.ReadExactlyAsync(body);
+            List<string> names = [];
+            for (int i = 0, at = 0; i < reply[1]; i++, at += 1 + body[at])
+            {
+                names.Add(Encoding.Latin1.GetString(body, at + 1, body[at]));
+            }
+            return names;
+        }
+    }
+
+    /// <summary>
+    /// 「每个 SSH 会话一个显示」开着:同一个会话的通道进同一个服务端,不同会话各进各的,没带会话的(本机)进共用的那个;
+    /// 每个服务端各配一个宿主;会话断开时它的服务端收掉、宿主脱离;停服时全部收掉。
+    /// </summary>
+    [TestMethod]
+    public async Task DisplayPerSession_EachSessionGetsItsOwnServer_ClosedWhenTheSessionEnds()
+    {
+        List<RecordingHost> hosts = [];
+        await using BuiltInLocalXServer server = new(Settings(new XServerOptions { DisplayPerSession = true }), () =>
+        {
+            RecordingHost created = new();
+            lock (hosts)
+            {
+                hosts.Add(created);
+            }
+            return created;
+        }, LowDisplaysBusy, _ => Task.FromResult(false));
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+        using CancellationTokenSource aliceEnded = new(), bobEnded = new();
+        object alice = new(), bob = new();
+
+        await using Stream a1 = await resolution.Connector!(new("alice@a:22", Session: alice, SessionEnded: aliceEnded.Token), CancellationToken.None);
+        await using Stream a2 = await resolution.Connector!(new("alice@a:22", Session: alice, SessionEnded: aliceEnded.Token), CancellationToken.None);
+        await using Stream b1 = await resolution.Connector!(new("bob@b:22", Session: bob, SessionEnded: bobEnded.Token), CancellationToken.None);
+        await using Stream shared = await resolution.Connector!(new("local"), CancellationToken.None);
+        foreach (Stream stream in (Stream[])[a1, a2, b1, shared])
+        {
+            Assert.AreEqual(1, await HandshakeAsync(stream));
+        }
+
+        IReadOnlyList<BuiltInLocalXServer.XServerInstance> instances = server.Instances;
+        Assert.HasCount(3, instances, "共用的一个 + 两个会话各一个");
+        Assert.IsNull(instances[0].Label);
+        X11Server aliceServer = instances.Single(i => i.Label == "alice@a:22").Server;
+        Assert.HasCount(2, await aliceServer.GetClientsAsync(), "同一个会话的两条通道进同一个服务端");
+        Assert.HasCount(1, await instances.Single(i => i.Label == "bob@b:22").Server.GetClientsAsync());
+        Assert.HasCount(1, await instances[0].Server.GetClientsAsync(), "没带会话的进共用的那个");
+        Assert.HasCount(3, hosts, "每个服务端一个宿主");
+        Assert.AreEqual(4, await server.CountConnectedClientsAsync(), "按会话分出来的显示上的一并数上");
+
+        // X 程序清单(F3)把各个显示上的程序一并列出,按键断开的是对的那个显示上的那个程序。
+        IReadOnlyList<XServerClient> clients = await server.GetClientsAsync();
+        Assert.HasCount(4, clients);
+        Assert.AreEqual(4, clients.Select(c => c.Key).Distinct().Count(), "不同显示上编号相同的程序,键也不同");
+        XServerClient bobClient = clients.Single(c => c.Source == "bob@b:22");
+        server.DisconnectClient(bobClient.Key);
+        X11Server bobServer = instances.Single(i => i.Label == "bob@b:22").Server;
+        for (int i = 0; i < 100 && (await bobServer.GetClientsAsync()).Count != 0; i++)
+        {
+            await Task.Delay(20);
+        }
+        Assert.IsEmpty(await bobServer.GetClientsAsync(), "断开的是 bob 那个显示上的程序");
+        Assert.HasCount(3, await server.GetClientsAsync());
+
+        await aliceEnded.CancelAsync();
+        for (int i = 0; i < 100 && server.Instances.Count != 2; i++)
+        {
+            await Task.Delay(20);
+        }
+        Assert.HasCount(2, server.Instances, "会话断开:它的显示收掉");
+        Assert.AreEqual(1, hosts.Single(h => ReferenceEquals(h.Attached, aliceServer)).Detaches);
+
+        await server.StopAsync();
+        Assert.IsTrue(hosts.All(h => h.Detaches == 1), "停服时全部收掉");
+        Assert.IsEmpty(server.Instances);
+    }
+
+    /// <summary>设置没开(默认):带着会话的通道照旧进共用的显示,不另建服务端。</summary>
+    [TestMethod]
+    public async Task DisplayPerSession_Off_SessionsShareTheDisplay()
+    {
+        await using BuiltInLocalXServer server = Create(new XServerOptions(), new RecordingHost());
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+        await using Stream a = await resolution.Connector!(new("alice@a:22", Session: new object()), CancellationToken.None);
+        await using Stream b = await resolution.Connector!(new("bob@b:22", Session: new object()), CancellationToken.None);
+        Assert.AreEqual(1, await HandshakeAsync(a));
+        Assert.AreEqual(1, await HandshakeAsync(b));
+
+        Assert.HasCount(1, server.Instances);
+        Assert.HasCount(2, await server.Instances[0].Server.GetClientsAsync());
+    }
+
+    /// <summary>
+    /// 只开 Unix 套接字(xs_plan F4 / 决策 Q4):Linux / macOS 上默认不开 TCP 端口,设置打开才开;Windows 上一直开(本机 X 程序只会走 TCP)。
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Start_OpensTheTcpPortOnUnixOnlyWhenAsked(bool listenTcpOnUnix)
+    {
+        XServerOptions options = new() { ListenTcpOnUnix = listenTcpOnUnix };
+        bool expected = OperatingSystem.IsWindows() || listenTcpOnUnix;
+        Assert.AreEqual(expected, BuiltInLocalXServer.ListensOnTcp(options));
+        await using BuiltInLocalXServer server = Create(options, new RecordingHost());
+        Assert.IsTrue((await server.StartAsync()).Success);
+        using TcpClient tcp = new();
+        bool connected;
+        try
+        {
+            await tcp.ConnectAsync(IPAddress.Loopback, 6010);
+            connected = true;
+        }
+        catch (SocketException)
+        {
+            connected = false;
+        }
+        Assert.AreEqual(expected, connected, "6010 端口开没开");
+    }
+
+    /// <summary>设置「X 窗口透明与圆角」(xs_plan F11)交给服务端:开着时 _NET_WM_CM_S0 有属主,默认没有。</summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Start_CompositingSetting_DecidesWhetherTheCompositingSelectionIsOwned(bool compositing)
+    {
+        await using BuiltInLocalXServer server = Create(new XServerOptions { CompositingManager = compositing }, new RecordingHost());
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+        await using Stream stream = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
+        await stream.WriteAsync(new byte[] { (byte)'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        byte[] head = new byte[8];
+        await stream.ReadExactlyAsync(head).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await stream.ReadExactlyAsync(new byte[BitConverter.ToUInt16(head, 6) * 4]).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        byte[] name = Encoding.ASCII.GetBytes("_NET_WM_CM_S0");   // 13 字节,补到 16
+        List<byte> intern = [16, 0, 6, 0, (byte)name.Length, 0, 0, 0];
+        intern.AddRange(name);
+        intern.AddRange(new byte[3]);
+        await stream.WriteAsync(intern.ToArray());
+        byte[] reply = new byte[32];
+        await stream.ReadExactlyAsync(reply).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        uint atom = BitConverter.ToUInt32(reply, 8);
+        byte[] getOwner = [23, 0, 2, 0, .. BitConverter.GetBytes(atom)];   // GetSelectionOwner
+        await stream.WriteAsync(getOwner);
+        await stream.ReadExactlyAsync(reply).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.AreEqual(1, reply[0], "回复");
+        Assert.AreEqual(compositing, BitConverter.ToUInt32(reply, 8) != 0);
     }
 
     /// <summary>停之前数得出连着几个 X 程序(标题栏按钮据此确认「会断开 N 个程序」);没在运行时为 0。</summary>
@@ -122,14 +300,98 @@ public class BuiltInLocalXServerTests
         await using BuiltInLocalXServer server = Create(new XServerOptions(), new RecordingHost());
         Assert.AreEqual(0, await server.CountConnectedClientsAsync(), "没在运行");
         XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
-        await using Stream first = await resolution.Connector!("user@host:22", CancellationToken.None);
-        await using Stream second = await resolution.Connector!("user@host:22", CancellationToken.None);
+        await using Stream first = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
+        await using Stream second = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
         Assert.AreEqual(1, await HandshakeAsync(first));
         Assert.AreEqual(1, await HandshakeAsync(second));
         Assert.AreEqual(2, await server.CountConnectedClientsAsync());
 
         await server.StopAsync();
         Assert.AreEqual(0, await server.CountConnectedClientsAsync());
+    }
+
+    /// <summary>
+    /// 标题栏 X Server 浮层的程序清单(F3):经 SSH 连接器来的程序带着会话的来历;按键断开它;停了再开之后旧键不碰新服务端上同编号的程序。
+    /// </summary>
+    [TestMethod]
+    public async Task Clients_CarryTheSessionSource_DisconnectByKey_AndOldKeysExpireAfterRestart()
+    {
+        await using BuiltInLocalXServer server = Create(new XServerOptions(), new RecordingHost());
+        Assert.IsTrue(server.CanManageClients);
+        Assert.IsEmpty(await server.GetClientsAsync(), "没在运行");
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+        await using Stream stream = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
+        Assert.AreEqual(1, await HandshakeAsync(stream));
+
+        XServerClient client = (await server.GetClientsAsync()).Single();
+        Assert.AreEqual(("user@host:22", 0, false, false, ""), (client.Source, client.Windows, client.Retained, client.HoldsServerGrab, client.Name));
+
+        server.DisconnectClient("not-a-key");
+        Assert.HasCount(1, await server.GetClientsAsync(), "认不出的键什么也不做");
+        server.DisconnectClient(client.Key);
+        Assert.IsEmpty(await server.GetClientsAsync());
+
+        // 停了再开:新服务端上第一个程序的编号与刚才那个相同,旧键不能把它断开。
+        await server.StopAsync();
+        Assert.IsTrue((await server.StartAsync()).Success);
+        await using Stream again = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
+        Assert.AreEqual(1, await HandshakeAsync(again));
+        XServerClient fresh = (await server.GetClientsAsync()).Single();
+        Assert.AreEqual(client.Id, fresh.Id, "同一个编号");
+        server.DisconnectClient(client.Key);
+        Assert.HasCount(1, await server.GetClientsAsync(), "上一次运行的键过期了");
+    }
+
+    /// <summary>窗口模式里多窗口与「无根」以外的几种,内置引擎以单窗口模式(F13)起,模式在附着之前交给宿主。</summary>
+    [TestMethod]
+    public async Task WindowModes_OtherThanMultiWindowAndRootless_StartTheEngineInOneWindowMode()
+    {
+        foreach ((string mode, bool rootful) in new[]
+        {
+            (XServerWindowModes.MultiWindow, false), (XServerWindowModes.Rootless, false),
+            (XServerWindowModes.Windowed, true), (XServerWindowModes.NoDecoration, true), (XServerWindowModes.Fullscreen, true),
+        })
+        {
+            RecordingHost host = new();
+            await using BuiltInLocalXServer server = Create(new XServerOptions { WindowMode = mode }, host);
+            await server.ResolveForwardingDisplayAsync();
+            Assert.AreEqual(mode, host.WindowMode, "窗口模式在附着之前交给宿主");
+            Assert.AreEqual(rootful, host.Attached!.Screen is not null, mode);
+        }
+    }
+
+    /// <summary>
+    /// 宿主转来「GrabServer 抓得太久」:查出是哪个程序、带着断开它用的键转给界面(F3);查的时候已经放开了就不报。
+    /// </summary>
+    [TestMethod]
+    public async Task GrabStall_IsReportedWithTheHoldersKey_OnlyWhileItStillHoldsTheGrab()
+    {
+        RecordingHost host = new();
+        await using BuiltInLocalXServer server = Create(new XServerOptions(), host);
+        XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
+        await using Stream stream = await resolution.Connector!(new XServerChannelSource("user@stuck:22"), CancellationToken.None);
+        Assert.AreEqual(1, await HandshakeAsync(stream));
+        XServerClient client = (await server.GetClientsAsync()).Single();
+        TaskCompletionSource<XServerGrabStallNotice> reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        server.ServerGrabStalled += (_, notice) => reported.TrySetResult(notice);
+
+        host.RaiseGrabStall(new XServerGrabStall(client.Id, "user@stuck:22", TimeSpan.FromSeconds(10), 3));
+        await Task.Delay(200);
+        Assert.IsFalse(reported.Task.IsCompleted, "它没抓着:不报");
+
+        await stream.WriteAsync(new byte[] { 36, 0, 1, 0 });   // GrabServer
+        await stream.FlushAsync();
+        for (int i = 0; i < 100 && !(await server.GetClientsAsync()).Single().HoldsServerGrab; i++)
+        {
+            await Task.Delay(20);
+        }
+        host.RaiseGrabStall(new XServerGrabStall(client.Id, "user@stuck:22", TimeSpan.FromSeconds(10), 3));
+        XServerGrabStallNotice notice = await reported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual((client.Key, client.Id, "user@stuck:22", TimeSpan.FromSeconds(10)), (notice.ClientKey, notice.Id, notice.Source, notice.Held));
+
+        // 停下之后宿主的事件不再接到这里。
+        await server.StopAsync();
+        Assert.AreEqual(0, host.GrabStallSubscribers);
     }
 
     /// <summary>
@@ -144,10 +406,10 @@ public class BuiltInLocalXServerTests
         Assert.IsNotNull(resolution.Connector);
 
         await server.StopAsync();
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await resolution.Connector("user@host:22", CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await resolution.Connector(new XServerChannelSource("user@host:22"), CancellationToken.None));
 
         Assert.IsTrue((await server.StartAsync()).Success);
-        await using Stream stream = await resolution.Connector("user@host:22", CancellationToken.None);
+        await using Stream stream = await resolution.Connector(new XServerChannelSource("user@host:22"), CancellationToken.None);
         await stream.WriteAsync(new byte[] { (byte)'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
         await stream.FlushAsync();
         byte[] head = new byte[8];
@@ -182,7 +444,7 @@ public class BuiltInLocalXServerTests
         string xauthority = Path.Combine(Path.GetTempPath(), $"vx-xauth-{Guid.NewGuid():N}");
         try
         {
-            await using BuiltInLocalXServer server = new(Settings(new XServerOptions()), () => new RecordingHost(), LowDisplaysBusy,
+            await using BuiltInLocalXServer server = new(Settings(new XServerOptions { ListenTcpOnUnix = true }), () => new RecordingHost(), LowDisplaysBusy,
                 _ => Task.FromResult(false), xauthority);
             Assert.IsTrue((await server.StartAsync()).Success);
 
@@ -203,7 +465,7 @@ public class BuiltInLocalXServerTests
                 Assert.AreEqual(1, await HandshakeAsync(authorized.GetStream(), entry.Data.ToArray()), "带上 .Xauthority 里的 cookie:Success");
             }
             XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
-            await using (Stream channel = await resolution.Connector!("user@host:22", CancellationToken.None))
+            await using (Stream channel = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None))
             {
                 Assert.AreEqual(1, await HandshakeAsync(channel), "SSH 的连接器:转发层核对过假 cookie,不再要");
             }
@@ -249,7 +511,8 @@ public class BuiltInLocalXServerTests
         using TcpListener squatter = new(IPAddress.Loopback, 6010);   // 探测(注入的)看不见它
         squatter.Start();
         RecordingHost host = new();
-        await using BuiltInLocalXServer server = Create(new XServerOptions(), host);
+        // 抢占的是 TCP 端口:Linux / macOS 上默认只开 Unix 套接字(F4),要打开 TCP 才撞得上。
+        await using BuiltInLocalXServer server = Create(new XServerOptions { ListenTcpOnUnix = true }, host);
         List<XServerState> states = [];
         server.StateChanged += (_, _) => states.Add(server.State);
 
@@ -358,7 +621,26 @@ public class BuiltInLocalXServerTests
 
         public void UseKeyboardLayout(string layout) => KeyboardLayout = layout;
 
+        /// <summary>附着之前交来的窗口模式。</summary>
+        public string? WindowMode { get; private set; }
+
+        public void UseWindowMode(string mode) => WindowMode = mode;
+
         public void Detach() => Detaches++;
+
+        private EventHandler<XServerGrabStall>? _grabStallReported;
+
+        public event EventHandler<XServerGrabStall>? GrabStallReported
+        {
+            add => _grabStallReported += value;
+            remove => _grabStallReported -= value;
+        }
+
+        /// <summary>挂在 <see cref="GrabStallReported" /> 上的处理器数。</summary>
+        public int GrabStallSubscribers => _grabStallReported?.GetInvocationList().Length ?? 0;
+
+        /// <summary>模拟服务端报来「GrabServer 抓得太久」。</summary>
+        public void RaiseGrabStall(XServerGrabStall stall) => _grabStallReported?.Invoke(this, stall);
 
         public void TopLevelMapped(XTopLevelWindow window)
         {

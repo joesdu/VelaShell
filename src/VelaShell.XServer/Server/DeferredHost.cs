@@ -29,7 +29,7 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
     private readonly Dictionary<XTopLevelWindow, int> _mapped = [];
     private int _cursorAt = -1, _clipboardAt = -1, _requests;
     private (XTopLevelWindow? Window, XCursor Cursor) _cursor;
-    private string _clipboard = "";
+    private XClipboardContent _clipboard = new();
 
     /// <summary>一批里最多交这么多个窗口管理器请求,多的丢掉(真实程序一批里不过一两个)。</summary>
     internal const int MaxRequestsPerBatch = 32;
@@ -113,18 +113,27 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
     private long _lastBell;
 
     /// <summary>剪贴板同样只交最后一次。</summary>
-    public void ClipboardChanged(string text)
+    public void ClipboardChanged(string text) => ClipboardContentChanged(new XClipboardContent { Text = text });
+
+    public void ClipboardContentChanged(XClipboardContent content)
     {
-        _clipboard = text;
+        _clipboard = content;
         if (_clipboardAt < 0)
         {
             _clipboardAt = _pending.Count;
-            _pending.Add(() => inner.ClipboardChanged(_clipboard));
+            _pending.Add(() => inner.ClipboardContentChanged(_clipboard));
         }
     }
 
+    /// <summary>单窗口模式:窗口管理器是远端的,服务端不向宿主提窗口管理器的请求(宿主手里也没有那些顶层)。</summary>
+    public bool DropWindowManagerRequests { get; set; }
+
     public void WindowManagerRequested(XWindowManagerRequest request)
     {
+        if (DropWindowManagerRequests)
+        {
+            return;
+        }
         if (++_requests > MaxRequestsPerBatch)
         {
             if (_requests == MaxRequestsPerBatch + 1)
@@ -135,6 +144,36 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
         }
         _pending.Add(() => inner.WindowManagerRequested(request));
     }
+
+    public void ServerGrabStalled(XServerGrabStall stall) => _pending.Add(() => inner.ServerGrabStalled(stall));
+
+    public void SystemTrayIconAdded(XTopLevelWindow icon, string title) => _pending.Add(() => inner.SystemTrayIconAdded(icon, title));
+
+    public void SystemTrayIconRemoved(XTopLevelWindow icon) => _pending.Add(() => inner.SystemTrayIconRemoved(icon));
+
+    private int _warpAt = -1;
+    private (int X, int Y) _warp;
+
+    /// <summary>挪指针:同一批里只交最后一次(拖拽中的程序每次移动都可能 Warp 回中心)。</summary>
+    public void PointerWarped(int rootX, int rootY)
+    {
+        _warp = (rootX, rootY);
+        if (_warpAt < 0)
+        {
+            _warpAt = _pending.Count;
+            _pending.Add(() => inner.PointerWarped(_warp.X, _warp.Y));
+        }
+    }
+
+    public void PointerConfinementChanged(XRect? area) => _pending.Add(() => inner.PointerConfinementChanged(area));
+
+    public void ScreenSaverSuspensionChanged(bool suspended) => _pending.Add(() => inner.ScreenSaverSuspensionChanged(suspended));
+
+    public void ScreenSaverReset() => _pending.Add(inner.ScreenSaverReset);
+
+    public void TopLevelRedrawn(XTopLevelWindow window) => _pending.Add(() => inner.TopLevelRedrawn(window));
+
+    public void FrameClockWanted(bool wanted) => _pending.Add(() => inner.FrameClockWanted(wanted));
 
     /// <summary>调完攒下的回调。回调里再引起的回调(宿主同步调了注入方法 —— 那只是排工作项,不会同步回来)留到下一轮。</summary>
     public void Flush()
@@ -166,6 +205,7 @@ internal sealed class DeferredHost(IX11ServerHost inner, Action<string> log) : I
         _running.Clear();
         _cursorAt = -1;
         _clipboardAt = -1;
+        _warpAt = -1;
     }
 }
 

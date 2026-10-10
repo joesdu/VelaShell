@@ -4,6 +4,7 @@
 // 规范依据(AGENTS.md §2 纪律 1):
 //   X Window System Protocol, X Version 11 —— 第 4 节「Errors」(出错时请求不产生任何效果、错误带序号与操作码)、
 //   附录 B「Requests」(操作码表)
+//   Security Extension Specification, Version 7.1 —— 第三章「Changes to Core Requests」(非受信客户端的请求,规则在 X11Server.Security.cs)
 
 using System.Buffers;
 using VelaShell.XServer.Protocol;
@@ -42,6 +43,11 @@ public sealed partial class X11Server
         }
         ushort minor = r.Opcode >= XOpcode.FirstExtension ? r.Data : (ushort)0;
         client.NoteRequest(r.Opcode, minor);
+        // 非受信客户端的请求:记下是谁、这条请求可以指名哪些窗口(SECURITY「Resource ID Usage」,见 Permits)。
+        // 先存后恢复:执行一条请求的中途可能放回别的客户端暂存的请求。
+        (XClient? requester, bool serverWindows, bool anyWindow) saved = (_untrustedRequester, _serverWindowsAllowed, _anyWindowAllowed);
+        _untrustedRequester = client.Untrusted ? client : null;
+        (_serverWindowsAllowed, _anyWindowAllowed) = client.Untrusted ? UntrustedWindowPolicy(r.Opcode, minor) : (false, false);
         try
         {
             Dispatch(client, r);
@@ -54,6 +60,7 @@ public sealed partial class X11Server
                     + $"(之前:{client.RecentRequests()})");
             }
             client.Error(error.Code, error.BadValue, minor, r.Opcode);
+            CountError(error.Code);
         }
         catch (Exception ex)
         {
@@ -62,6 +69,20 @@ public sealed partial class X11Server
                 LogFailure($"{client} #{client.Sequence} opcode {r.Opcode}.{minor}: BadImplementation", $"{r.Opcode}.{minor}", ex);
             }
             client.Error(XErrorCode.Implementation, 0, minor, r.Opcode);
+            CountError(XErrorCode.Implementation);
+        }
+        finally
+        {
+            (_untrustedRequester, _serverWindowsAllowed, _anyWindowAllowed) = saved;
+        }
+    }
+
+    /// <summary>协议错误计数(<see cref="XServerMetrics.ProtocolErrors" />);没人订阅时不拼标签。</summary>
+    private static void CountError(XErrorCode code)
+    {
+        if (XServerMetrics.ProtocolErrors.Enabled)
+        {
+            XServerMetrics.ProtocolErrors.Add(1, new KeyValuePair<string, object?>("code", code.ToString()));
         }
     }
 
@@ -104,15 +125,15 @@ public sealed partial class X11Server
             case XOpcode.GrabKey: GrabKey(c, r); break;
             case XOpcode.UngrabKey: UngrabKey(c, r); break;
             case XOpcode.AllowEvents: AllowEvents(c, r.Data, r.U32()); break;
-            case XOpcode.GrabServer: GrabServer(c); break;
+            case XOpcode.GrabServer: if (!c.Untrusted) { GrabServer(c); } break;   // 非受信的忽略:否则能冻住所有受信的客户端
             case XOpcode.UngrabServer: if (ReferenceEquals(_serverGrabber, c)) { ReleaseServerGrab(); } break;
             case XOpcode.QueryPointer: QueryPointer(c, r); break;
             case XOpcode.GetMotionEvents: c.MotionHint = default; c.Reply(0, w => w.U32(0).Zero(20)); break;
             case XOpcode.TranslateCoordinates: TranslateCoordinates(c, r); break;
-            case XOpcode.WarpPointer: WarpPointer(r); break;
+            case XOpcode.WarpPointer: WarpPointer(c, r); break;
             case XOpcode.SetInputFocus: SetInputFocus(r); break;
             case XOpcode.GetInputFocus: GetInputFocus(c); break;
-            case XOpcode.QueryKeymap: c.Reply(0, w => w.Bytes(_keysDown)); break;
+            case XOpcode.QueryKeymap: c.Reply(0, w => w.Bytes(MaySeeKeyboard(c) ? _keysDown : new byte[32])); break;   // SECURITY「Keyboard Security」
             case XOpcode.OpenFont: OpenFont(c, r); break;
             case XOpcode.CloseFont: CloseFont(r); break;
             case XOpcode.QueryFont: QueryFont(c, r); break;
@@ -168,25 +189,25 @@ public sealed partial class X11Server
             case XOpcode.QueryBestSize: QueryBestSize(c, r); break;
             case XOpcode.QueryExtension: QueryExtension(c, r); break;
             case XOpcode.ListExtensions: ListExtensions(c); break;
-            case XOpcode.ChangeKeyboardMapping: ChangeKeyboardMapping(c, r); break;
+            case XOpcode.ChangeKeyboardMapping: DenyUntrusted(c); ChangeKeyboardMapping(c, r); break;
             case XOpcode.GetKeyboardMapping: GetKeyboardMapping(c, r); break;
-            case XOpcode.ChangeKeyboardControl: ChangeKeyboardControl(r); break;
+            case XOpcode.ChangeKeyboardControl: DenyUntrusted(c); ChangeKeyboardControl(r); break;
             case XOpcode.GetKeyboardControl: GetKeyboardControl(c); break;
             case XOpcode.Bell: Bell(r); break;
-            case XOpcode.ChangePointerControl: break;
+            case XOpcode.ChangePointerControl: DenyUntrusted(c); break;
             case XOpcode.GetPointerControl: c.Reply(0, w => w.U16(2).U16(1).U16(4).Zero(18)); break;
             case XOpcode.SetScreenSaver: SetScreenSaver(r); break;
             case XOpcode.GetScreenSaver: GetScreenSaver(c); break;
-            case XOpcode.ChangeHosts: ChangeHosts(r); break;
-            case XOpcode.ListHosts: ListHosts(c); break;
-            case XOpcode.SetAccessControl: SetAccessControl(r); break;
+            case XOpcode.ChangeHosts: DenyUntrusted(c); ChangeHosts(r); break;
+            case XOpcode.ListHosts: DenyUntrusted(c); ListHosts(c); break;
+            case XOpcode.SetAccessControl: DenyUntrusted(c); SetAccessControl(r); break;
             case XOpcode.SetCloseDownMode: SetCloseDownMode(c, r); break;
-            case XOpcode.KillClient: KillClient(r); break;
+            case XOpcode.KillClient: KillClient(c, r); break;
             case XOpcode.RotateProperties: RotateProperties(r); break;
             case XOpcode.ForceScreenSaver: ForceScreenSaver(r); break;
-            case XOpcode.SetPointerMapping: SetPointerMapping(c, r); break;
+            case XOpcode.SetPointerMapping: DenyUntrusted(c); SetPointerMapping(c, r); break;
             case XOpcode.GetPointerMapping: GetPointerMapping(c); break;
-            case XOpcode.SetModifierMapping: SetModifierMapping(c, r); break;
+            case XOpcode.SetModifierMapping: DenyUntrusted(c); SetModifierMapping(c, r); break;
             case XOpcode.GetModifierMapping: GetModifierMapping(c); break;
             case XOpcode.NoOperation: break;
             default:

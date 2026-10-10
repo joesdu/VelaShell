@@ -83,6 +83,69 @@ public sealed class RealClientTests
         return (server, errors, cookie);
     }
 
+    /// <summary>
+    /// 剪贴板的图片(xs_plan F15):xclip 以 image/png 复制,服务端按 TARGETS 取回交给宿主;宿主给的图片 xclip 按 TARGETS 看得到、取回来逐字节相同。
+    /// </summary>
+    [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task xclip复制的PNG交给宿主_宿主给的PNG用xclip取得回来()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        using RecordingHost host = new();
+        byte[] cookie = RandomNumberGenerator.GetBytes(16);
+        await using X11Server server = new(new X11ServerOptions
+        {
+            DisplayNumber = DisplayNumber,
+            ListenAddress = IPAddress.Any,
+            AuthorizationCookie = cookie,
+            ClipboardFollowsFocus = false,   // 这里没有 X 窗口有焦点:只看传输
+        }, host);
+        await server.StartAsync();
+        byte[] copied = [0x89, (byte)'P', (byte)'N', (byte)'G', 13, 10, 26, 10, .. RandomNumberGenerator.GetBytes(3000)];
+        (int exit, string output) = await RunClientAsync(cookie,
+            $"echo {Convert.ToBase64String(copied)} | base64 -d > /tmp/a.png && xclip -selection clipboard -t image/png -i /tmp/a.png && sleep 2");
+        Assert.AreEqual(0, exit, output);
+        await host.WaitForAsync(() => host.ClipboardContent is { Png.IsEmpty: false });
+        CollectionAssert.AreEqual(copied, host.ClipboardContent!.Png.ToArray());
+
+        byte[] given = [0x89, (byte)'P', (byte)'N', (byte)'G', 13, 10, 26, 10, .. RandomNumberGenerator.GetBytes(400_000)];   // 大于 INCR 的分块
+        server.SetClipboard(new XClipboardContent { Text = "图注", Png = given });
+        (exit, output) = await RunClientAsync(cookie,
+            "xclip -selection clipboard -t TARGETS -o; echo '----8<----'; xclip -selection clipboard -t image/png -o | base64 -w0");
+        TestContext.WriteLine(output[..Math.Min(output.Length, 600)]);
+        Assert.AreEqual(0, exit, output);
+        string[] parts = output.Split("----8<----");
+        Assert.Contains("image/png", parts[0]);
+        Assert.Contains("UTF8_STRING", parts[0]);
+        CollectionAssert.AreEqual(given, Convert.FromBase64String(parts[1].Trim()));
+    }
+
+    /// <summary>平滑滚动(xs_plan F6):libXi 解得出指针设备的两个滚动轴与 ScrollClass(xinput list --long 列出「Scroll info」)。</summary>
+    [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task xinput看得到指针的两个滚动轴()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartServer();
+        await using (server)
+        {
+            await server.StartAsync();
+            (int exit, string output) = await RunClientAsync(cookie, "xinput list --long");
+            TestContext.WriteLine(output);
+            Assert.AreEqual(0, exit, output);
+            Assert.Contains("Rel Vert Scroll", output);
+            Assert.Contains("Scroll info for Valuator 2", output);
+            Assert.Contains("Scroll info for Valuator 3", output);
+            Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
     [TestMethod]
     [Timeout(120_000, CooperativeCancellation = true)]
     public async Task xdpyinfo连上并看到VelaShell这块屏幕()
@@ -126,6 +189,62 @@ public sealed class RealClientTests
         }
     }
 
+    /// <summary>
+    /// 多重采样 FBConfig 与 GLX_EXT_libglvnd(xs_plan F22):<c>glxgears -samples 4</c> 直接、间接两条路径都拿得到多重采样配置
+    /// (原先报「couldn't get an RGB, Double-buffered, Multisample visual」退出);服务端的 GLX 扩展里列出 GLX_EXT_libglvnd。
+    /// 跑满 4 秒被 timeout 结束(退出码 124)就是一直在正常画。
+    /// </summary>
+    [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task glxgears要多重采样也拿得到配置_服务端列出libglvnd扩展()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartServer();
+        await using (server)
+        {
+            await server.StartAsync();
+            (_, string output) = await RunClientAsync(cookie,
+                "glxinfo | grep -A3 'server glx extensions'; "
+                + "timeout 4 glxgears -samples 4 > /tmp/d.txt 2>&1; echo direct-exit=$?; head -3 /tmp/d.txt; "
+                + "LIBGL_ALWAYS_INDIRECT=1 timeout 4 glxgears -samples 4 > /tmp/i.txt 2>&1; echo indirect-exit=$?; head -3 /tmp/i.txt");
+            TestContext.WriteLine(output);
+            Assert.Contains("direct-exit=124", output);
+            Assert.Contains("indirect-exit=124", output);
+            Assert.Contains("GLX_EXT_libglvnd", output);
+            Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
+    /// <summary>
+    /// 执行线程在客户端之间轮流:间接 GL 的 glxgears 排满渲染请求时,同时连进来的 xdpyinfo 几秒内就拿到回复
+    /// (原先先来先做,它要等 glxgears 那一千多条请求全做完 —— 实测 25 秒)。
+    /// </summary>
+    [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task 间接GL客户端排满请求时_别的客户端照样很快得到回复()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartServer();
+        await using (server)
+        {
+            await server.StartAsync();
+            (_, string output) = await RunClientAsync(cookie,
+                "(LIBGL_ALWAYS_INDIRECT=1 timeout 10 glxgears > /dev/null 2>&1 &); sleep 3; "
+                + "start=$(date +%s); timeout 30 xdpyinfo > /dev/null; echo xdpyinfo-exit=$? waited=$(( $(date +%s) - start ))");
+            TestContext.WriteLine(output);
+            Assert.Contains("xdpyinfo-exit=0", output);
+            int waited = int.Parse(output[(output.IndexOf("waited=", StringComparison.Ordinal) + 7)..].Trim(), System.Globalization.CultureInfo.InvariantCulture);
+            Assert.IsLessThanOrEqualTo(5, waited, "xdpyinfo 不用等 glxgears 的请求全做完");
+            Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
     [TestMethod]
     [DataRow("xterm -geometry 40x6 -e sh -c 'echo hello; sleep 3'")]
     [DataRow("xeyes")]
@@ -158,6 +277,81 @@ public sealed class RealClientTests
             (_, string output) = await client;
             TestContext.WriteLine(output);
             Assert.IsGreaterThan(1, distinct, "窗口里应当画出了不止背景一种颜色");
+            Assert.IsEmpty(errors, string.Join('\n', errors));
+        }
+    }
+
+    /// <summary>
+    /// 非受信(<c>ssh -X</c> 的做法):真的 xauth 先用受信 cookie 连上、经 SECURITY 签一个非受信 cookie 写回 .Xauthority,
+    /// 之后的程序带着它连进来 —— 照常画窗口,看不到 XTEST,截不了根窗口。
+    /// </summary>
+    [TestMethod]
+    [Timeout(180_000, CooperativeCancellation = true)]
+    public async Task 非受信_xauth签出的受限cookie连进来_程序照常画_看不到XTEST_截不了根窗口()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        using RecordingHost host = new();
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartServer(host);
+        await using (server)
+        {
+            await server.StartAsync();
+            Task<(int ExitCode, string Output)> client = RunClientAsync(cookie,
+                "xauth generate $DISPLAY . untrusted timeout 120 && echo GENERATED; "
+                + "xdpyinfo -queryExtensions | sed -n 's/^ *\\(XTEST\\|RENDER\\|SECURITY\\|XInputExtension\\)\\b.*/EXT \\1/p'; "
+                + "xwd -root -silent >/dev/null 2>&1 && echo ROOT-CAPTURED || echo ROOT-DENIED; "
+                + "timeout 6 xeyes; true", 120);
+            await host.WaitForAsync(() => !host.Mapped.IsEmpty, 90_000);
+            await Task.Delay(1500);
+            XTopLevelWindow window = host.Mapped.Values.First();
+            (uint[] pixels, _, _) = RecordingHost.Snapshot(window);
+            IReadOnlyList<XClientInfo> clients = await server.GetClientsAsync();
+            (_, string output) = await client;
+            TestContext.WriteLine(output);
+            TestContext.WriteLine(string.Join('\n', errors));
+            Assert.Contains("GENERATED", output, "xauth 经 SECURITY 签出了 cookie");
+            Assert.Contains("EXT RENDER", output);
+            Assert.Contains("EXT XInputExtension", output);
+            Assert.DoesNotContain("EXT XTEST", output, "非受信客户端看不到 XTEST");
+            Assert.DoesNotContain("EXT SECURITY", output);
+            Assert.Contains("ROOT-DENIED", output, "xwd -root 截不了屏");
+            Assert.IsGreaterThan(1, pixels.Distinct().Count(), "xeyes 照常画出来");
+            Assert.IsTrue(clients.Any(c => c.Trust == XClientTrust.Untrusted && c.TopLevels.Count > 0), "画窗口的是非受信客户端");
+        }
+    }
+
+    /// <summary>非受信 cookie 下常见的程序照常画出来,也没有协议错误(SECURITY 的限制没有误伤正常的用法)。</summary>
+    [TestMethod]
+    [DataRow("xterm -geometry 40x6 -e sh -c 'echo hello; sleep 3'")]
+    [DataRow("xterm -fa Monospace -fs 11 -geometry 40x6 -e sh -c 'echo hello; sleep 3'")]
+    [DataRow("xclock -render -update 1")]
+    [DataRow("xlogo")]
+    [DataRow("env LIBGL_ALWAYS_INDIRECT=1 glxgears")]
+    [Timeout(180_000, CooperativeCancellation = true)]
+    public async Task 非受信cookie下常见程序照常画出来且没有协议错误(string program)
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        using RecordingHost host = new();
+        (X11Server server, ConcurrentQueue<string> errors, byte[] cookie) = StartServer(host);
+        await using (server)
+        {
+            await server.StartAsync();
+            Task<(int ExitCode, string Output)> client = RunClientAsync(cookie,
+                $"xauth generate $DISPLAY . untrusted timeout 120 || exit 1; timeout 5 {program}; true", 120);
+            await host.WaitForAsync(() => !host.Mapped.IsEmpty, 90_000);
+            await Task.Delay(1500);
+            XTopLevelWindow window = host.Mapped.Values.First();
+            (uint[] pixels, _, _) = RecordingHost.Snapshot(window);
+            bool untrusted = (await server.GetClientsAsync()).Any(c => c.Trust == XClientTrust.Untrusted && c.TopLevels.Count > 0);
+            (_, string output) = await client;
+            TestContext.WriteLine(output);
+            Assert.IsTrue(untrusted, "画窗口的是非受信客户端");
+            Assert.IsGreaterThan(1, pixels.Distinct().Count(), "窗口里画出了东西");
             Assert.IsEmpty(errors, string.Join('\n', errors));
         }
     }
@@ -224,5 +418,72 @@ public sealed class RealClientTests
             Assert.Contains("size=1920x1080", output, "最大化之后按新尺寸重排");
             Assert.IsEmpty(errors, string.Join('\n', errors));
         }
+    }
+
+    [TestMethod]
+    [Timeout(120_000, CooperativeCancellation = true)]
+    public async Task 单窗口模式下twm接管顶层_xterm套上外框_拼进屏幕()
+    {
+        if (ShouldSkip())
+        {
+            return;
+        }
+        byte[] cookie = RandomNumberGenerator.GetBytes(16);
+        ConcurrentQueue<string> errors = new();
+        using RecordingHost host = new();
+        await using X11Server server = new(new X11ServerOptions
+        {
+            DisplayNumber = DisplayNumber,
+            ListenAddress = IPAddress.Any,
+            AuthorizationCookie = cookie,
+            ScreenWidth = 800,
+            ScreenHeight = 600,
+            Rootful = true,
+            Log = line =>
+            {
+                if (line.Contains(": Bad", StringComparison.Ordinal))
+                {
+                    errors.Enqueue(line);
+                }
+            },
+        }, host);
+        await server.StartAsync();
+        Task<(int ExitCode, string Output)> client = RunClientAsync(cookie,
+            "command -v twm >/dev/null || { echo NO-TWM; exit 0; }; "
+            + "twm 2>/tmp/twm.err & sleep 2; xterm -geometry 40x10+30+40 -e sleep 20 & "
+            + "w=$(xdotool search --sync --class xterm | head -1); sleep 2; "
+            + "echo root=$(xwininfo -root | awk '/Window id:/{print $4}'); "
+            + "echo parent=$(xwininfo -id $w -tree | awk '/Parent window id:/{print $4}'); "
+            + "sleep 3; cat /tmp/twm.err; echo done");
+        // 客户端还连着时看屏幕:xterm 的白底拼进了屏幕(容器一退出,窗口就都没了)。
+        int white = 0;
+        while (!client.IsCompleted)
+        {
+            int count = 0;
+            server.Screen!.ReadPixels((pixels, _, _) =>
+            {
+                foreach (uint p in pixels)
+                {
+                    count += (p & 0xFFFFFF) == 0xFFFFFF ? 1 : 0;
+                }
+            });
+            white = Math.Max(white, count);
+            await Task.Delay(200);
+        }
+        (int exit, string output) = await client;
+        TestContext.WriteLine(output);
+        if (output.Contains("NO-TWM", StringComparison.Ordinal))
+        {
+            TestContext.WriteLine("[SKIP] 镜像里没有 twm:按 scripts/xserver/interop/Dockerfile 重建 velashell-xclients");
+            return;
+        }
+        Assert.AreEqual(0, exit, output);
+        Assert.DoesNotContain("another window manager", output, "服务端不占窗口管理器的位置");
+        string root = output.Split('\n').Single(l => l.StartsWith("root=", StringComparison.Ordinal))[5..].Trim();
+        string parent = output.Split('\n').Single(l => l.StartsWith("parent=", StringComparison.Ordinal))[7..].Trim();
+        Assert.AreNotEqual(root, parent, "xterm 被 twm 套进了外框");
+        Assert.IsTrue(host.Mapped.IsEmpty, "顶层不单独交给宿主");
+        Assert.IsGreaterThan(10_000, white, "xterm 的白底拼进了屏幕");
+        Assert.IsEmpty(errors, string.Join('\n', errors));
     }
 }

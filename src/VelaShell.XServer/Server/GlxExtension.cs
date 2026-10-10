@@ -23,6 +23,8 @@
 //   CreateContextAttribsARB 34:context、fbconfig、screen、share_list、isdirect、两个保留字段、num_attribs,再跟属性对、
 //   SetClientInfo2ARB 35)与「Errors」一节(版本与特性组合没有定义 → BadMatch;配置给不了请求的版本 → GLXBadFBConfig;
 //   不认识的属性或标志位 → BadValue;profile 掩码不合法或不支持 → GLXBadProfileARB;版本低于 3.2 时 profile 掩码不看)。
+//   Khronos GLX_EXT_libglvnd —— QueryServerString 认 GLX_VENDOR_NAMES_EXT(0x20F6,按偏好排的厂商名)、GetDrawableAttributes
+//   的回复带 GLX_SCREEN(「GLX Protocol」一节:不加新请求)。
 //   枚举值对照 Khronos GLX API Registry(glx.xml)。
 //
 //   间接上下文由 Gl/GlContext 执行;直接上下文(is direct = True,比如 Mesa 在客户端用软件渲染、再经 PutImage 送像素)
@@ -67,7 +69,7 @@ internal sealed class GlxExtension(X11Server server)
     private const byte GlxBadProfileArb = X11Server.GlxErrorBase + 13;
 
     // GLX 枚举(glx.xml)
-    private const uint GLX_VENDOR = 1, GLX_VERSION = 2, GLX_EXTENSIONS = 3;
+    private const uint GLX_VENDOR = 1, GLX_VERSION = 2, GLX_EXTENSIONS = 3, GLX_VENDOR_NAMES_EXT = 0x20F6;
     private const uint GLX_USE_GL = 1, GLX_BUFFER_SIZE = 2, GLX_LEVEL = 3, GLX_RGBA = 4, GLX_DOUBLEBUFFER = 5, GLX_STEREO = 6,
         GLX_AUX_BUFFERS = 7, GLX_RED_SIZE = 8, GLX_GREEN_SIZE = 9, GLX_BLUE_SIZE = 10, GLX_ALPHA_SIZE = 11, GLX_DEPTH_SIZE = 12,
         GLX_STENCIL_SIZE = 13, GLX_ACCUM_RED_SIZE = 14, GLX_ACCUM_GREEN_SIZE = 15, GLX_ACCUM_BLUE_SIZE = 16, GLX_ACCUM_ALPHA_SIZE = 17,
@@ -103,7 +105,7 @@ internal sealed class GlxExtension(X11Server server)
     }
 
     /// <summary>一个 FBConfig:对应一个 X 视觉;颜色 8/8/8(ARGB 视觉再加 8 位 alpha),深度 24、模板 8,没有累积缓冲与多重采样。</summary>
-    internal sealed record GlxConfig(uint Id, uint Visual, byte Depth, bool DoubleBuffer, bool Alpha);
+    internal sealed record GlxConfig(uint Id, uint Visual, byte Depth, bool DoubleBuffer, bool Alpha, uint Samples = 0);
 
     private static readonly GlxConfig[] GlxConfigs =
     [
@@ -111,6 +113,8 @@ internal sealed class GlxExtension(X11Server server)
         new(0x102, X11Server.RootVisualId, 24, DoubleBuffer: false, Alpha: false),
         new(0x103, X11Server.ArgbVisualId, 32, DoubleBuffer: true, Alpha: true),
         new(0x104, X11Server.ArgbVisualId, 32, DoubleBuffer: false, Alpha: true),
+        new(0x105, X11Server.RootVisualId, 24, DoubleBuffer: true, Alpha: false, Samples: 4),
+        new(0x106, X11Server.ArgbVisualId, 32, DoubleBuffer: true, Alpha: true, Samples: 4),
     ];
 
     /// <summary>
@@ -224,7 +228,7 @@ internal sealed class GlxExtension(X11Server server)
             case 4:   // DestroyContext(跨客户端:别人的也能销毁,见类注释)
                 {
                     uint id = r.U32();
-                    _ = server.Lookup<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
+                    _ = server.Use<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
                     server.RemoveResource(id);   // 还是当前的上下文要等不再是当前时才真正释放:绑定里留着引用
                     break;
                 }
@@ -237,7 +241,7 @@ internal sealed class GlxExtension(X11Server server)
             case 6:   // IsDirect
                 {
                     uint id = r.U32();
-                    XGlxContext ctx = server.Lookup<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
+                    XGlxContext ctx = server.Use<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
                     c.Reply(0, w => w.Bool(ctx.Direct).Zero(23));
                     break;
                 }
@@ -259,8 +263,8 @@ internal sealed class GlxExtension(X11Server server)
             case 10:   // CopyContext
                 {
                     uint source = r.U32(), dest = r.U32(), mask = r.U32(), tag = r.U32();
-                    XGlxContext src = server.Lookup<XGlxContext>(source) ?? throw GlxError(GlxBadContext, source);
-                    XGlxContext dst = server.Lookup<XGlxContext>(dest) ?? throw GlxError(GlxBadContext, dest);   // 跨客户端:见类注释
+                    XGlxContext src = server.Use<XGlxContext>(source) ?? throw GlxError(GlxBadContext, source);
+                    XGlxContext dst = server.Use<XGlxContext>(dest) ?? throw GlxError(GlxBadContext, dest);   // 跨客户端:见类注释
                     if (tag != 0)
                     {
                         GlxBinding current = GlxBindingOf(c, tag);
@@ -318,7 +322,7 @@ internal sealed class GlxExtension(X11Server server)
             case 23:   // DestroyPixmap
                 {
                     uint id = r.U32();
-                    if (server.Lookup<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Pixmap })
+                    if (server.Use<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Pixmap })
                     {
                         throw GlxError(GlxBadPixmap, id);
                     }
@@ -355,6 +359,7 @@ internal sealed class GlxExtension(X11Server server)
                         GLX_VENDOR => "VelaShell",
                         GLX_VERSION => "1.4",
                         GLX_EXTENSIONS => GlxExtensionsString,
+                        GLX_VENDOR_NAMES_EXT => GlxVendorNames,
                         var name => throw new XProtocolError(XErrorCode.Value, name),
                     };
                     ReplyGlxString(c, value);
@@ -391,7 +396,7 @@ internal sealed class GlxExtension(X11Server server)
             case 25:   // QueryContext
                 {
                     uint id = r.U32();
-                    XGlxContext ctx = server.Lookup<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
+                    XGlxContext ctx = server.Use<XGlxContext>(id) ?? throw GlxError(GlxBadContext, id);
                     ReplyAttributes(c, [(GLX_FBCONFIG_ID, ctx.Config.Id), (GLX_RENDER_TYPE, GLX_RGBA_TYPE), (GLX_SCREEN, 0)]);
                     break;
                 }
@@ -407,7 +412,7 @@ internal sealed class GlxExtension(X11Server server)
             case 28:   // DestroyPbuffer
                 {
                     uint id = r.U32();
-                    if (server.Lookup<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Pbuffer })
+                    if (server.Use<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Pbuffer })
                     {
                         throw GlxError(GlxBadPbuffer, id);
                     }
@@ -421,7 +426,7 @@ internal sealed class GlxExtension(X11Server server)
                 {
                     uint id = r.U32();
                     uint count = r.U32();
-                    XGlxDrawable drawable = server.Lookup<XGlxDrawable>(id) ?? throw GlxError(GlxBadDrawable, id);
+                    XGlxDrawable drawable = server.Use<XGlxDrawable>(id) ?? throw GlxError(GlxBadDrawable, id);
                     for (uint i = 0; i < count; i++)
                     {
                         uint attribute = r.U32(), value = r.U32();
@@ -438,7 +443,7 @@ internal sealed class GlxExtension(X11Server server)
                     uint screen = r.U32(), fbconfig = r.U32(), window = r.U32(), glxWindow = r.U32();
                     CheckGlxScreen(screen);
                     GlxConfig config = FbConfig(fbconfig);
-                    XWindow target = server.Lookup<XWindow>(window) ?? throw GlxError(GlxBadWindow, window);
+                    XWindow target = server.Use<XWindow>(window) ?? throw GlxError(GlxBadWindow, window);
                     if (target.Depth != config.Depth || target.IsInputOnly)
                     {
                         throw new XProtocolError(XErrorCode.Match);
@@ -456,7 +461,7 @@ internal sealed class GlxExtension(X11Server server)
             case 32:   // DestroyWindow
                 {
                     uint id = r.U32();
-                    if (server.Lookup<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Window })
+                    if (server.Use<XGlxDrawable>(id) is not { Kind: GlxDrawableKind.Window })
                     {
                         throw GlxError(GlxBadWindow, id);
                     }
@@ -475,7 +480,14 @@ internal sealed class GlxExtension(X11Server server)
     }
 
     private const string GlxExtensionsString =
-        "GLX_ARB_create_context GLX_ARB_create_context_profile GLX_ARB_get_proc_address GLX_EXT_visual_info GLX_EXT_visual_rating";
+        "GLX_ARB_create_context GLX_ARB_create_context_profile GLX_ARB_get_proc_address GLX_EXT_libglvnd GLX_EXT_visual_info GLX_EXT_visual_rating";
+
+    /// <summary>
+    /// GLX_EXT_libglvnd 的 GLX_VENDOR_NAMES_EXT:客户端的 libglvnd 按它挑厂商库(规范 Issue 3:名字由服务端的 GLX 实现定,通常是驱动名)。
+    /// 这里的直接渲染靠客户端 Mesa 的软件渲染(drisw),间接渲染的协议编码也是 Mesa 的客户端库在做,所以报 mesa —— 远端同时装了 NVIDIA 与
+    /// Mesa 时,NVIDIA 的客户端库不会被选上再因为服务端不是 NVIDIA 而失败。
+    /// </summary>
+    private const string GlxVendorNames = "mesa";
 
     private static void CheckGlxScreen(uint screen)
     {
@@ -492,7 +504,7 @@ internal sealed class GlxExtension(X11Server server)
         XGlxContext? share = null;
         if (shareId != 0)
         {
-            share = server.Lookup<XGlxContext>(shareId) ?? throw GlxError(GlxBadContext, shareId);   // 跨客户端:见类注释
+            share = server.Use<XGlxContext>(shareId) ?? throw GlxError(GlxBadContext, shareId);   // 跨客户端:见类注释
             if (share.Direct != direct)
             {
                 throw new XProtocolError(XErrorCode.Match);   // 直接与间接上下文不在同一个地址空间
@@ -620,7 +632,7 @@ internal sealed class GlxExtension(X11Server server)
 
     private void CreateGlxPixmap(XClient c, uint glxPixmap, uint pixmap, GlxConfig config)
     {
-        XPixmap target = server.Lookup<XPixmap>(pixmap) ?? throw new XProtocolError(XErrorCode.Pixmap, pixmap);
+        XPixmap target = server.Use<XPixmap>(pixmap) ?? throw new XProtocolError(XErrorCode.Pixmap, pixmap);
         if (target.Depth != config.Depth)
         {
             throw new XProtocolError(XErrorCode.Match);
@@ -680,7 +692,7 @@ internal sealed class GlxExtension(X11Server server)
     /// </summary>
     private (uint Key, (int Width, int Height) Size, GlxConfig? Config) ResolveGlxDrawable(uint id, GlxConfig? contextConfig)
     {
-        switch (server.Lookup<XResource>(id))
+        switch (server.Use<XResource>(id))
         {
             case XGlxDrawable { Kind: GlxDrawableKind.Pbuffer } pbuffer:
                 return (id, (pbuffer.PbufferWidth, pbuffer.PbufferHeight), pbuffer.Config);
@@ -1019,7 +1031,7 @@ internal sealed class GlxExtension(X11Server server)
             c.Reply(0, w => w.U32(0).Zero(20));
             return;
         }
-        XGlxContext context = server.Lookup<XGlxContext>(contextId) ?? throw GlxError(GlxBadContext, contextId);   // 跨客户端:见类注释
+        XGlxContext context = server.Use<XGlxContext>(contextId) ?? throw GlxError(GlxBadContext, contextId);   // 跨客户端:见类注释
         if (drawable == 0 || read == 0)
         {
             throw new XProtocolError(XErrorCode.Match);
@@ -1318,21 +1330,30 @@ internal sealed class GlxExtension(X11Server server)
                     c.Reply(0, w => w.U32(first).Zero(20));
                     break;
                 }
-            case 105:   // FeedbackBuffer
-            case 106:   // SelectBuffer:选择与反馈不实现(RenderMode 回 0 条)
+            case 105:   // FeedbackBuffer:反馈模式不实现(RenderMode 回 0 条)
+                break;
+            case 106:   // SelectBuffer:选择数组在服务端,数据在下一次 RenderMode 的回复里
+                gl.SelectBuffer(r.I32());
                 break;
             case 107:   // RenderMode
                 {
                     uint previous = gl.RenderModeValue;
                     uint mode = r.U32();
-                    int result = gl.RenderMode(mode);
+                    int result = gl.RenderMode(mode, out uint[] data);
                     ReportUnimplemented(c, gl);
-                    // GLX 协议规范 1.3 §2.2.1「RenderMode」:之前在反馈 / 选择模式才有回复(返回值、n、新模式、数据);
-                    // 「之前在渲染模式时没有回复」。选择 / 反馈不实现,n 恒为 0。
+                    // GLX 协议规范 1.3 §2.2.1「RenderMode」:之前在反馈 / 选择模式才有回复(返回值、n、新模式,再跟 n 个 CARD32 的选择数据 /
+                    // FLOAT32 的反馈数据);「之前在渲染模式时没有回复」。反馈不实现,n 为 0。
                     if (previous != GlEnum.RENDER)
                     {
                         uint current = gl.RenderModeValue;
-                        c.Reply(0, w => w.I32(result).U32(0).U32(current).Zero(12));
+                        c.Reply(0, w =>
+                        {
+                            w.I32(result).U32((uint)data.Length).U32(current).Zero(12);
+                            foreach (uint value in data)
+                            {
+                                w.U32(value);
+                            }
+                        });
                     }
                     break;
                 }
@@ -1389,13 +1410,8 @@ internal sealed class GlxExtension(X11Server server)
                 break;
             case 120:   // GetMapdv
             case 121:   // GetMapfv
-            case 122:   // GetMapiv:求值器不实现
-                r.U32();
-                r.U32();
-                gl.SetError(GlEnum.INVALID_ENUM);
-                gl.NoteUnimplemented(GlUnimplementedFeatures.Evaluators);
-                ReportUnimplemented(c, gl);
-                ReplyGlValues(c, minor == 120 ? (byte)114 : minor == 121 ? (byte)116 : (byte)117, null);
+            case 122:   // GetMapiv
+                ReplyGlValues(c, minor == 120 ? (byte)114 : minor == 121 ? (byte)116 : (byte)117, gl.GetMap(r.U32(), r.U32()));
                 break;
             case 123:   // GetMaterialfv
             case 124:   // GetMaterialiv
@@ -1410,10 +1426,12 @@ internal sealed class GlxExtension(X11Server server)
                 r.U32();
                 c.Reply(0, w => w.U32(0).U32(1).U16(0).Zero(14));
                 break;
-            case 128:   // GetPolygonStipple:点画不实现,回全 1 的初值(32 行 × 4 字节)
-                r.Bool();
-                c.Reply(0, w => w.Zero(24).Bytes(Enumerable.Repeat((byte)0xFF, 128).ToArray()));
-                break;
+            case 128:   // GetPolygonStipple:32 行 × 4 字节,按请求的 lsbfirst 排位
+                {
+                    byte[] stipple = gl.PolygonStippleBytes(r.Bool());
+                    c.Reply(0, w => w.Zero(24).Bytes(stipple));
+                    break;
+                }
             case 129:   // GetString
                 {
                     string? value = GlContext.GetString(r.U32());
@@ -1618,8 +1636,8 @@ internal sealed class GlxExtension(X11Server server)
         (GLX_MAX_PBUFFER_WIDTH, MaxPbufferSize),
         (GLX_MAX_PBUFFER_HEIGHT, MaxPbufferSize),
         (GLX_MAX_PBUFFER_PIXELS, MaxPbufferSize * MaxPbufferSize),
-        (GLX_SAMPLE_BUFFERS, 0),
-        (GLX_SAMPLES, 0),
+        (GLX_SAMPLE_BUFFERS, cfg.Samples > 0 ? 1u : 0),
+        (GLX_SAMPLES, cfg.Samples),
     ];
 
     private static void ReplyFbConfigs(XClient c)
@@ -1645,8 +1663,8 @@ internal sealed class GlxExtension(X11Server server)
         [
             (GLX_CONFIG_CAVEAT, GLX_NONE),
             (GLX_TRANSPARENT_TYPE, GLX_NONE),
-            (GLX_SAMPLE_BUFFERS, 0),
-            (GLX_SAMPLES, 0),
+            (GLX_SAMPLE_BUFFERS, cfg.Samples > 0 ? 1u : 0),
+            (GLX_SAMPLES, cfg.Samples),
             (GLX_FBCONFIG_ID, cfg.Id),
         ];
         int properties = 18 + (2 * Extra(GlxVisualConfigs[0]).Length);
@@ -1681,26 +1699,28 @@ internal sealed class GlxExtension(X11Server server)
     private void ReplyDrawableAttributes(XClient c, uint id)
     {
         List<(uint, uint)> attributes;
-        switch (server.Lookup<XResource>(id))
+        switch (server.Use<XResource>(id))
         {
             case XGlxDrawable { Kind: GlxDrawableKind.Pbuffer } p:
                 attributes =
                 [
                     (GLX_WIDTH, (uint)p.PbufferWidth), (GLX_HEIGHT, (uint)p.PbufferHeight), (GLX_FBCONFIG_ID, p.Config.Id),
                     (GLX_EVENT_MASK, p.EventMask), (GLX_PRESERVED_CONTENTS, p.PreservedContents ? 1u : 0),
-                    (GLX_LARGEST_PBUFFER, p.LargestPbuffer ? 1u : 0),
+                    (GLX_LARGEST_PBUFFER, p.LargestPbuffer ? 1u : 0), (GLX_SCREEN, 0),
                 ];
                 break;
             case XGlxDrawable d:
                 {
                     (_, (int Width, int Height) size, _) = ResolveGlxDrawable(id, null);
-                    attributes = [(GLX_WIDTH, (uint)size.Width), (GLX_HEIGHT, (uint)size.Height), (GLX_FBCONFIG_ID, d.Config.Id), (GLX_EVENT_MASK, d.EventMask)];
+                    attributes = [(GLX_WIDTH, (uint)size.Width), (GLX_HEIGHT, (uint)size.Height), (GLX_FBCONFIG_ID, d.Config.Id), (GLX_EVENT_MASK, d.EventMask),
+                        (GLX_SCREEN, 0)];
                     break;
                 }
             case XWindow window:
                 {
                     GlxConfig? config = GlxVisualConfigs.FirstOrDefault(cfg => cfg.Visual == window.Visual);
-                    attributes = [(GLX_WIDTH, (uint)window.Width), (GLX_HEIGHT, (uint)window.Height), (GLX_FBCONFIG_ID, config?.Id ?? 0), (GLX_EVENT_MASK, 0)];
+                    attributes = [(GLX_WIDTH, (uint)window.Width), (GLX_HEIGHT, (uint)window.Height), (GLX_FBCONFIG_ID, config?.Id ?? 0), (GLX_EVENT_MASK, 0),
+                        (GLX_SCREEN, 0)];
                     break;
                 }
             default:
@@ -1725,7 +1745,7 @@ internal sealed class GlxExtension(X11Server server)
         {
             throw GlxError(GlxBadContextState, tag);
         }
-        Fonts.XFont font = server.Lookup<XFontResource>(fontId)?.Font ?? throw new XProtocolError(XErrorCode.Font, fontId);
+        Fonts.XFont font = server.Use<XFontResource>(fontId)?.Font ?? throw new XProtocolError(XErrorCode.Font, fontId);
         if (count > 65536)
         {
             throw new XProtocolError(XErrorCode.Value, count);

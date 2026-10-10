@@ -49,6 +49,18 @@ public sealed class XTopLevelWindow
     internal void Retire() => _alive = false;
 
     /// <summary>
+    /// 宿主改了它的尺寸,正在等客户端重画完(EWMH 的 _NET_WM_SYNC_REQUEST,只对声明了它的客户端):宿主这期间先别把画到一半的像素显示出来,
+    /// 等 <see cref="IX11ServerHost.TopLevelRedrawn" />(客户端迟迟不画完,服务端几百毫秒后也会报)。任意线程上都可以读。
+    /// </summary>
+    public bool AwaitingRedraw
+    {
+        get => Volatile.Read(ref _awaitingRedraw);
+        internal set => Volatile.Write(ref _awaitingRedraw, value);
+    }
+
+    private bool _awaitingRedraw;
+
+    /// <summary>
     /// 当前的属性快照。服务端在执行线程上整份替换它(引用赋值是原子的),可以在任意线程上读;
     /// 要读多个字段时先取到局部变量里,见 <see cref="XTopLevelSnapshot" />。
     /// </summary>

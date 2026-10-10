@@ -180,7 +180,9 @@ internal sealed partial class GlContext
                     SetLightModel(pname, pname == GlEnum.LIGHT_MODEL_AMBIENT ? ReadIntColor(ref r, 4) : [r.I32()]);
                     break;
                 }
-            case 94:   // LineStipple:不实现点画
+            case 94:   // LineStipple:factor 夹到 [1, 256],图样取低 16 位(§3.4.2)
+                State.LineStippleFactor = Math.Clamp(r.I32(), 1, 256);
+                State.LineStipplePattern = r.U16();
                 break;
             case 95:   // LineWidth
                 {
@@ -240,7 +242,8 @@ internal sealed partial class GlContext
                     }
                     break;
                 }
-            case 102:   // PolygonStipple:不实现点画
+            case 102:   // PolygonStipple
+                SetPolygonStipple(ref r);
                 break;
             case 103:   // Scissor
                 {
@@ -331,7 +334,15 @@ internal sealed partial class GlContext
                     SetTexGen(coord, pname, opcode == 118 ? ReadFloats(ref r, n) : ReadInts(ref r, n));
                     break;
                 }
-            case >= 121 and <= 125:   // InitNames / LoadName / PassThrough / PopName / PushName:选择与反馈模式不实现
+            case 121:   // InitNames
+            case 124:   // PopName
+                NameStack(opcode, 0);
+                break;
+            case 122:   // LoadName
+            case 125:   // PushName
+                NameStack(opcode, r.U32());
+                break;
+            case 123:   // PassThrough:反馈模式不实现
                 break;
             case 126:   // DrawBuffer
                 SetColorBuffer(ref State.DrawBuffer, r.U32(), forRead: false);
@@ -377,9 +388,83 @@ internal sealed partial class GlContext
             case 142:   // PushAttrib
                 PushAttrib(r.U32());
                 break;
-            case >= 143 and <= 158:   // Map / MapGrid / EvalCoord / EvalMesh / EvalPoint:求值器不实现
-                NoteUnimplemented(GlUnimplementedFeatures.Evaluators);
+            // 求值器(§5.1,见 GlContext.Eval.cs)
+            case 143:   // Map1d
+            case 144:   // Map1f
+                Map1(ref r, isDouble: opcode == 143);
                 break;
+            case 145:   // Map2d
+            case 146:   // Map2f
+                Map2(ref r, isDouble: opcode == 145);
+                break;
+            case 147:   // MapGrid1d:u1、u2、n
+                {
+                    double u1 = r.F64(), u2 = r.F64();
+                    MapGrid1(r.I32(), (float)u1, (float)u2);
+                    break;
+                }
+            case 148:   // MapGrid1f:n、u1、u2
+                {
+                    int n = r.I32();
+                    MapGrid1(n, r.F32(), r.F32());
+                    break;
+                }
+            case 149:   // MapGrid2d:u1、u2、v1、v2、nu、nv
+                {
+                    double u1 = r.F64(), u2 = r.F64(), v1 = r.F64(), v2 = r.F64();
+                    int nu = r.I32(), nv = r.I32();
+                    MapGrid2(nu, (float)u1, (float)u2, nv, (float)v1, (float)v2);
+                    break;
+                }
+            case 150:   // MapGrid2f:nu、u1、u2、nv、v1、v2
+                {
+                    int nu = r.I32();
+                    float u1 = r.F32(), u2 = r.F32();
+                    int nv = r.I32();
+                    MapGrid2(nu, u1, u2, nv, r.F32(), r.F32());
+                    break;
+                }
+            case 151:   // EvalCoord1dv
+                EvalCoord1((float)r.F64());
+                break;
+            case 152:   // EvalCoord1fv
+                EvalCoord1(r.F32());
+                break;
+            case 153:   // EvalCoord2dv
+                {
+                    double u = r.F64();
+                    EvalCoord2((float)u, (float)r.F64());
+                    break;
+                }
+            case 154:   // EvalCoord2fv
+                {
+                    float u = r.F32();
+                    EvalCoord2(u, r.F32());
+                    break;
+                }
+            case 155:   // EvalMesh1
+                {
+                    uint mode = r.U32();
+                    int i1 = r.I32();
+                    EvalMesh1(mode, i1, r.I32());
+                    break;
+                }
+            case 156:   // EvalPoint1
+                EvalPoint1(r.I32());
+                break;
+            case 157:   // EvalMesh2
+                {
+                    uint mode = r.U32();
+                    int i1 = r.I32(), i2 = r.I32(), j1 = r.I32();
+                    EvalMesh2(mode, i1, i2, j1, r.I32());
+                    break;
+                }
+            case 158:   // EvalPoint2
+                {
+                    int i = r.I32();
+                    EvalPoint2(i, r.I32());
+                    break;
+                }
             case 159:   // AlphaFunc
                 {
                     uint func = r.U32();

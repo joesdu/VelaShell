@@ -319,6 +319,211 @@ public sealed class AvaloniaXServerHostUiTests
     });
 
     /// <summary>
+    /// 记住窗口位置(xs_plan F17):一个程序的窗口关掉时记下位置与尺寸,下次没给位置的同类窗口摆回去、尺寸也恢复;
+    /// 同类窗口还开着时不摆过去(免得叠在一起),别的程序照常居中,客户端指定了尺寸(USSize)时不盖掉它。
+    /// </summary>
+    [TestMethod]
+    public async Task ReopenedProgram_ComesBackWhereItWasClosed() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        _ = server.ServeAsync(serverSide, isLocal: true);
+        (uint idBase, uint root) = await HandshakeAsync(client);
+        uint next = 0;
+        async Task<XNativeWindow> MapAsync(string wmClass, bool userSize = false)
+        {
+            uint window = idBase | ++next;
+            await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+            byte[] cls = Encoding.ASCII.GetBytes(wmClass);
+            await SendAsync(client, 18, 0, w => w.U32(window).U32(67).U32(31).U8(8).Zero(3).U32((uint)cls.Length).Bytes(cls).Pad());   // WM_CLASS
+            if (userSize)
+            {
+                await SendAsync(client, 18, 0, w => w.U32(window).U32(40).U32(41).U8(32).Zero(3).U32(18).U32(2).Zero(17 * 4));   // USSize
+            }
+            await SendAsync(client, 8, 0, w => w.U32(window));
+            return await WaitForAsync(() => host.Windows.FirstOrDefault(n => n.Handle.Id == window && n.HasOpened && !n.Handle.Snapshot.NeedsPlacement),
+                $"{wmClass} 显示出来并摆好");
+        }
+        (int ox, int oy) = host.RootOrigin;
+
+        XNativeWindow first = await MapAsync("xterm\0XTerm\0");
+        PixelPoint centered = first.Position;
+        first.Position = new PixelPoint(ox + 37, oy + 29);   // 用户把它拖到一边、拉大
+        server.ResizeTopLevel(first.Handle, 90, 70);
+        await WaitForAsync(() => first.Handle.Snapshot.Width == 90 ? first : null, "拉大");
+        await SendAsync(client, 10, 0, w => w.U32(first.Handle.Id));   // UnmapWindow:程序关掉了这个窗口
+        await WaitForAsync(() => host.Windows.Count == 0 ? first : null, "收掉");
+
+        XNativeWindow again = await MapAsync("xterm\0XTerm\0");
+        Assert.AreEqual(new PixelPoint(ox + 37, oy + 29), again.Position, "回到上次关掉的位置");
+        await WaitForAsync(() => again.Handle.Snapshot.Width == 90 ? again : null, $"尺寸恢复({again.Handle.Snapshot.Width})");
+        Assert.AreEqual(70, again.Handle.Snapshot.Height, "尺寸也恢复");
+
+        XNativeWindow second = await MapAsync("xterm\0XTerm\0");
+        Assert.AreEqual(centered, second.Position, "同一个程序已经开着一个窗口:不叠过去");
+        XNativeWindow other = await MapAsync("xclock\0XClock\0");
+        Assert.AreEqual(centered, other.Position, "别的程序照常居中");
+
+        await SendAsync(client, 10, 0, w => w.U32(second.Handle.Id));   // 后关的那个说了算:先关居中的,再关挪过的
+        await SendAsync(client, 10, 0, w => w.U32(again.Handle.Id));
+        await WaitForAsync(() => host.Windows.Count == 1 ? other : null);
+        XNativeWindow sized = await MapAsync("xterm\0XTerm\0", userSize: true);
+        Assert.AreEqual(new PixelPoint(ox + 37, oy + 29), sized.Position);
+        await Task.Delay(100);
+        Assert.AreEqual((60, 40), (sized.Handle.Snapshot.Width, sized.Handle.Snapshot.Height), "客户端指定了尺寸:不盖掉");
+        host.Detach();
+    });
+
+    /// <summary>
+    /// X 窗口截图(xs_plan F20):截到的是窗口此刻的像素(深度 24 的补成不透明);非矩形窗口形状以外是透明的。
+    /// </summary>
+    [TestMethod]
+    public async Task Screenshot_CapturesTheWindowPixels_AndClearsOutsideTheShape() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        _ = server.ServeAsync(serverSide, isLocal: true);
+        System.Collections.Concurrent.ConcurrentQueue<byte[]> replies = new();
+        (uint idBase, uint root) = await HandshakeAsync(client, replies: replies);
+        byte[] shapeName = Encoding.ASCII.GetBytes("SHAPE");
+        await SendAsync(client, 98, 0, w => w.U16((ushort)shapeName.Length).U16(0).Bytes(shapeName).Pad());
+        byte shape = (await WaitForAsync(() => replies.TryDequeue(out byte[]? r) ? r : null))[9];
+        uint window = idBase | 1, gc = idBase | 2;
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(10).I16(10).U16(60).U16(40).U16(0).U16(1).U32(0)
+            .U32(0x2).U32(0xFFFFFF));
+        await SendAsync(client, 8, 0, w => w.U32(window));
+        await SendAsync(client, 55, 0, w => w.U32(gc).U32(window).U32(0x4).U32(0xFF0000));
+        await SendAsync(client, 70, 0, w => w.U32(window).U32(gc).I16(0).I16(0).U16(10).U16(10));
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+        await WaitForAsync(() => Pixel(native, 5, 5) == 0xFF0000 ? native : null, "画上了");
+
+        static uint At(Avalonia.Media.Imaging.WriteableBitmap bitmap, int x, int y)
+        {
+            using Avalonia.Platform.ILockedFramebuffer frame = bitmap.Lock();
+            return (uint)Marshal.ReadInt32(frame.Address, (y * frame.RowBytes) + (x * 4));
+        }
+        using (Avalonia.Media.Imaging.WriteableBitmap shot = WindowScreenshot.Capture(native.Handle)!)
+        {
+            Assert.AreEqual(new PixelSize(60, 40), shot.PixelSize);
+            Assert.AreEqual(0xFFFF0000u, At(shot, 5, 5), "填的红,不透明");
+            Assert.AreEqual(0xFFFFFFFFu, At(shot, 50, 30), "背景白");
+        }
+
+        // ShapeRectangles:边界形状只留左半边。
+        await SendAsync(client, shape, 1, w => w.U8(0).U8(0).U8(0).U8(0).U32(window).I16(0).I16(0).I16(0).I16(0).U16(30).U16(40));
+        await WaitForAsync(() => native.Handle.Snapshot.Shape is not null ? native : null, "形状生效");
+        using (Avalonia.Media.Imaging.WriteableBitmap shot = WindowScreenshot.Capture(native.Handle)!)
+        {
+            Assert.AreEqual(0xFFFF0000u, At(shot, 5, 5));
+            Assert.AreEqual(0u, At(shot, 50, 30), "形状以外透明");
+        }
+        host.Detach();
+    });
+
+    /// <summary>截图的默认文件名:标题里不能进文件名的字符换掉;没有标题用本地化的默认名。</summary>
+    [TestMethod]
+    public void ScreenshotFileName_IsSafe()
+    {
+        string name = WindowScreenshot.FileNameFor("a/b:c*d?\u0001");
+        Assert.AreEqual(-1, name.IndexOfAny(Path.GetInvalidFileNameChars()), name);
+        Assert.EndsWith(".png", name);
+        Assert.IsGreaterThan(4, WindowScreenshot.FileNameFor("  ").Length, "空标题有默认名");
+    }
+
+    /// <summary>任务栏组名(xs_plan F17):按 WM_CLASS 的类名,只留 AppUserModelID 认的字符、不超过 128 个字符;没有类名的不归组。</summary>
+    [TestMethod]
+    [DataRow("XTerm", "VelaShell.X11.XTerm")]
+    [DataRow("Gimp-2.10", "VelaShell.X11.Gimp-2.10")]
+    [DataRow("My App/中文", "VelaShell.X11.My_App___")]
+    [DataRow("", null)]
+    public void TaskbarGroupId_FollowsTheClassName(string className, string? expected)
+    {
+        Assert.AreEqual(expected, TaskbarGroup.IdFor(new XTopLevelSnapshot { ClassName = className }));
+        Assert.IsLessThanOrEqualTo(128, TaskbarGroup.IdFor(new XTopLevelSnapshot { ClassName = new string('a', 500) })!.Length);
+    }
+
+    /// <summary>
+    /// 任务栏按 X 程序归组(xs_plan F17):进任务栏的窗口显示之前按类名归组,窗口收掉之前清掉;没有类名的、对话框(不进任务栏)不归组。
+    /// </summary>
+    [TestMethod]
+    public async Task TaskbarButtons_AreGroupedByProgram() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        List<(Avalonia.Controls.Window Window, string? Group)> calls = [];
+        host.GroupWindow = (window, group) =>
+        {
+            calls.Add((window, group));
+            return true;
+        };
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        _ = server.ServeAsync(serverSide, isLocal: true);
+        (uint idBase, uint root) = await HandshakeAsync(client);
+        uint xterm = idBase | 1, anonymous = idBase | 2, dialog = idBase | 3;
+        foreach (uint window in new[] { xterm, anonymous, dialog })
+        {
+            await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(10).I16(10).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+        }
+        byte[] cls = Encoding.ASCII.GetBytes("xterm\0XTerm\0");
+        await SendAsync(client, 18, 0, w => w.U32(xterm).U32(67).U32(31).U8(8).Zero(3).U32((uint)cls.Length).Bytes(cls).Pad());
+        await SendAsync(client, 18, 0, w => w.U32(dialog).U32(67).U32(31).U8(8).Zero(3).U32((uint)cls.Length).Bytes(cls).Pad());
+        await SendAsync(client, 18, 0, w => w.U32(dialog).U32(68).U32(33).U8(32).Zero(3).U32(1).U32(xterm));   // WM_TRANSIENT_FOR
+        foreach (uint window in new[] { xterm, anonymous, dialog })
+        {
+            await SendAsync(client, 8, 0, w => w.U32(window));
+        }
+        await WaitForAsync(() => host.Windows.Count == 3 ? host : null, "三个窗口");
+        XNativeWindow main = host.Windows.Single(w => w.Handle.Id == xterm);
+        Assert.HasCount(1, calls, "只有进任务栏、有类名的那个归组");
+        Assert.AreSame(main, calls[0].Window);
+        Assert.AreEqual("VelaShell.X11.XTerm", calls[0].Group);
+
+        await SendAsync(client, 10, 0, w => w.U32(xterm));
+        await WaitForAsync(() => calls.Count == 2 ? calls : null, "收掉时清掉");
+        Assert.AreSame(main, calls[1].Window);
+        Assert.IsNull(calls[1].Group);
+        host.Detach();
+    });
+
+    /// <summary>
+    /// 来源标识(xs_plan F18):转发来的连接(有标签)的窗口标题前标出来源,远端把标题设成什么都盖不住;本机连接(没标签)不标;设置关掉也不标。
+    /// </summary>
+    [TestMethod]
+    [DataRow("alice@build:22", true, "alice@build:22 — Windows Security")]
+    [DataRow("alice@build:22", false, "Windows Security")]
+    [DataRow(null, true, "Windows Security")]
+    public async Task ForwardedWindowTitle_ShowsTheSource(string? label, bool show, string expected) => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        host.ShowWindowSource(show);
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = label is null ? server.ServeAsync(serverSide, isLocal: true) : server.ServeAuthenticatedAsync(serverSide, label);
+
+        (uint idBase, uint root) = await HandshakeAsync(client);
+        uint window = idBase | 1;
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(100).I16(50).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+        byte[] title = Encoding.ASCII.GetBytes("Windows Security");
+        await SendAsync(client, 18, 0, w => w.U32(window).U32(39).U32(31).U8(8).Zero(3).U32((uint)title.Length).Bytes(title).Pad());
+        await SendAsync(client, 8, 0, w => w.U32(window));
+
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+        await WaitForAsync(() => native.Title?.EndsWith("Windows Security", StringComparison.Ordinal) == true ? native : null);
+        Assert.AreEqual(expected, native.Title);
+
+        native.CloseByHost();
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>
     /// 原生窗口的尺寸变了而不是我们按服务端几何设的(Linux 上 Avalonia 的 X11 后端给的原因是 Unspecified 而不是 User):照样回报给服务端。
     /// </summary>
     [TestMethod]
@@ -801,6 +1006,283 @@ public sealed class AvaloniaXServerHostUiTests
     });
 
     /// <summary>
+    /// 本机输入法(xs_plan F5):输入法上屏的字经 InjectText 输入给 X(借一个键码,客户端先收到 MappingNotify);
+    /// 按键自己打出的字(KeyDown 之后的 TextInput)不重复输入;输入法在组字时的键(ImeProcessed)不转交;设置关了就不接输入法的字。
+    /// </summary>
+    [TestMethod]
+    public async Task 本机输入法上屏的字输入给X_按键自己的字不重复_组字中的键不转交() => await _session.RunOnUiAsync(async () =>
+    {
+        // 不在后台读桌面的键盘(Linux 上默认会读):读完换键位表的那一次 MappingNotify 会混进这里数的事件。
+        AvaloniaXServerHost host = new() { DesktopKeyboardReader = null };
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        System.Collections.Concurrent.ConcurrentQueue<byte> events = new();
+        (uint idBase, uint root) = await HandshakeAsync(client, events);
+        uint window = idBase | 1;
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0)
+            .U32(0x800).U32(0x1 | 0x2));                                                // KeyPress | KeyRelease
+        await SendAsync(client, 8, 0, w => w.U32(window));
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+        native.Activate();
+        server.FocusTopLevel(native.Handle);
+        byte[] Seen() => [.. events.Where(e => e is 2 or 3 or 34)];
+        async Task SettleAsync()
+        {
+            await Task.Delay(150);
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        // 普通的键:KeyDown 注入了键码,随后系统为它报的 TextInput 不再输入一遍。
+        native.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+        native.KeyTextInput("a");
+        native.KeyReleaseQwerty(PhysicalKey.A, RawInputModifiers.None);
+        await SettleAsync();
+        CollectionAssert.AreEqual(new byte[] { 2, 3 }, Seen(), "a 只按了一次");
+
+        // 输入法在组字:键归输入法,上屏的字经 InjectText 来 —— MappingNotify,然后按下、松开。
+        native.KeyPress(Key.ImeProcessed, RawInputModifiers.None, PhysicalKey.N, null);
+        native.KeyRelease(Key.ImeProcessed, RawInputModifiers.None, PhysicalKey.N, null);
+        native.KeyTextInput("中");
+        await SettleAsync();
+        CollectionAssert.AreEqual(new byte[] { 2, 3, 34, 2, 3 }, Seen(), "组字的 N 不转交;上屏的字借键码输入");
+
+        // 不出字的键(方向键)之后输入法上屏的字照样输入。
+        native.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.None);
+        native.KeyReleaseQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.None);
+        native.KeyTextInput("中");
+        await SettleAsync();
+        CollectionAssert.AreEqual(new byte[] { 2, 3, 34, 2, 3, 2, 3, 2, 3 }, Seen(), "同一个字不再改键位表");
+
+        // 设置关掉:窗口不接输入法的字。
+        host.UseHostInputMethod(false);
+        native.KeyTextInput("文");
+        await SettleAsync();
+        Assert.HasCount(9, Seen());
+
+        native.CloseByHost();
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>
+    /// 指针交给宿主(xs_plan F8):X 窗口活动时,抓着指针的程序的 Warp 挪系统光标(根坐标加 RootOrigin)、confine-to 关住光标;
+    /// 抓取解除时光标放开、之后的 Warp 不挪。
+    /// </summary>
+    [TestMethod]
+    public async Task 抓着指针的程序Warp挪系统光标_confine_to关住光标_解除就放开() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        List<(int X, int Y)> warps = [];
+        List<PixelRect?> confines = [];
+        host.WarpCursor = (x, y) => { warps.Add((x, y)); return true; };
+        host.ConfineCursor = area => { confines.Add(area); return true; };
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        (uint idBase, uint root) = await HandshakeAsync(client, new System.Collections.Concurrent.ConcurrentQueue<byte>());
+        uint window = idBase | 1;
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+        await SendAsync(client, 8, 0, w => w.U32(window));
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+        native.Activate();
+        await Task.Delay(100);
+        Dispatcher.UIThread.RunJobs();
+        (int ox, int oy) = host.RootOrigin;
+
+        await SendAsync(client, 26, 0, w => w.U32(window).U16(0x40).U8(1).U8(1).U32(window).U32(0).U32(0));   // GrabPointer,confine-to = 自己
+        await SendAsync(client, 41, 0, w => w.U32(0).U32(window).I16(0).I16(0).U16(0).U16(0).I16(10).I16(12));   // WarpPointer 到窗口里的 (10, 12)
+        await WaitForAsync(() => warps.Count > 0 ? native : null);
+        XTopLevelSnapshot s = native.Handle.Snapshot;
+        Assert.AreEqual((s.X + s.BorderWidth + 10 + ox, s.Y + s.BorderWidth + 12 + oy), warps[0], "根坐标加 RootOrigin");
+        Assert.IsTrue(confines.Count > 0 && confines[^1] is { } area && area.Width > 0, "关在 confine-to 窗口里");
+
+        // 抓取解除:光标放开;之后不抓着指针的 Warp 不挪光标。(用户切到本机窗口时同样放开 —— 无头平台不会让 X 窗口失活,这条路靠 OnWindowDeactivated。)
+        await SendAsync(client, 27, 0, w => w.U32(0));   // UngrabPointer
+        await WaitForAsync(() => confines.Count > 0 && confines[^1] is null ? native : null);
+        await SendAsync(client, 41, 0, w => w.U32(0).U32(root).I16(0).I16(0).U16(0).U16(0).I16(30).I16(30));
+        await Task.Delay(150);
+        Dispatcher.UIThread.RunJobs();
+        Assert.HasCount(1, warps, "不再抓着指针:不挪光标");
+
+        native.CloseByHost();
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>
+    /// _NET_WM_SYNC_REQUEST(xs_plan F10):宿主改尺寸之后、客户端重画完之前画进来的像素先攒着不显示,客户端把计数器推上去才显示。
+    /// </summary>
+    [TestMethod]
+    public async Task 改尺寸后客户端重画完之前的损伤先攒着_重画完才显示() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        System.Collections.Concurrent.ConcurrentQueue<byte[]> replies = new();
+        (uint idBase, uint root) = await HandshakeAsync(client, replies: replies);
+        byte[] syncName = Encoding.ASCII.GetBytes("SYNC");
+        await SendAsync(client, 98, 0, w => w.U16((ushort)syncName.Length).U16(0).Bytes(syncName).Pad());
+        byte sync = (await WaitForAsync(() => replies.TryDequeue(out byte[]? r) ? r : null))[9];   // 取走,后面的 InternAsync 按先后取回复
+        uint protocols = await InternAsync(client, replies, "WM_PROTOCOLS");
+        uint request = await InternAsync(client, replies, "_NET_WM_SYNC_REQUEST");
+        uint counterProperty = await InternAsync(client, replies, "_NET_WM_SYNC_REQUEST_COUNTER");
+        uint window = idBase | 1, counter = idBase | 2, gc = idBase | 3;
+        await SendAsync(client, sync, 2, w => w.U32(counter).U32(0).U32(0));                                          // CreateCounter
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+        await SendAsync(client, 18, 0, w => w.U32(window).U32(protocols).U32(4).U8(32).U8(0).U8(0).U8(0).U32(1).U32(request));
+        await SendAsync(client, 18, 0, w => w.U32(window).U32(counterProperty).U32(6).U8(32).U8(0).U8(0).U8(0).U32(1).U32(counter));
+        await SendAsync(client, 55, 0, w => w.U32(gc).U32(window).U32(0x4).U32(0xFF0000));                          // CreateGC,前景红
+        await SendAsync(client, 8, 0, w => w.U32(window));
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+
+        server.ResizeTopLevel(native.Handle, 80, 50);
+        bool awaiting = false;
+        for (int i = 0; i < 100 && !awaiting; i++)
+        {
+            awaiting = native.Handle.AwaitingRedraw;
+            await Task.Delay(5);
+        }
+        Assert.IsTrue(awaiting, $"改尺寸之后在等客户端重画(快照 {native.Handle.Snapshot.Width}×{native.Handle.Snapshot.Height})");
+        await SendAsync(client, 70, 0, w => w.U32(window).U32(gc).I16(0).I16(0).U16(80).U16(50));                    // 画了一半(PolyFillRectangle)
+        bool held = false;
+        for (int i = 0; i < 40 && !held; i++)
+        {
+            await Task.Delay(5);
+            Dispatcher.UIThread.RunJobs();
+            held = host.IsHoldingDamage(native.Handle);
+        }
+        Assert.IsTrue(held, $"损伤攒着(还在等:{native.Handle.AwaitingRedraw})");
+        await SendAsync(client, sync, 3, w => w.U32(counter).U32(0).U32(1));                                           // 重画完:计数器推到 1
+        await WaitForAsync(() => !host.IsHoldingDamage(native.Handle) && !native.Handle.AwaitingRedraw ? native : null);
+
+        native.CloseByHost();
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>帧时钟(xs_plan F25):服务端要帧时钟时宿主跟着合成器逐帧回调、每帧报一次;不要了就停。</summary>
+    [TestMethod]
+    public async Task 服务端要帧时钟时逐帧报帧_不要了就停() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        int frames = 0;
+        host.NotifyFrame = _ => frames++;
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        (uint idBase, uint root) = await HandshakeAsync(client);
+        await SendAsync(client, 1, 24, w => w.U32(idBase | 1).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+        await SendAsync(client, 8, 0, w => w.U32(idBase | 1));
+        await WaitForAsync(() => host.Windows.FirstOrDefault(w => w.IsVisible), "窗口显示出来");
+
+        async Task TickAsync(int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(5);
+            }
+        }
+        await TickAsync(3);
+        Assert.AreEqual(0, frames, "没人要:不逐帧回调");
+
+        // 慢的 CI 机器上几次强制的渲染节拍可能并成一帧(Ubuntu 上见过 5 拍只报了 2 帧):拍到报够为止,至多 40 拍。
+        host.FrameClockWanted(true);
+        Dispatcher.UIThread.RunJobs();
+        for (int i = 0; i < 40 && frames < 3; i++)
+        {
+            await TickAsync(1);
+        }
+        Assert.IsGreaterThanOrEqualTo(3, frames, "要帧时钟时逐帧报帧");
+
+        host.FrameClockWanted(false);
+        Dispatcher.UIThread.RunJobs();
+        await TickAsync(5);   // 已经挂上的那一次回调还会来,来了不报
+        int stopped = frames;
+        await TickAsync(10);
+        Assert.AreEqual(stopped, frames, "不要了就停");
+
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>屏保(xs_plan F9):X 程序挂起屏保时宿主抑制本机屏保,恢复时恢复;停 X Server 时一并恢复;Reset 重置本机空闲计时。</summary>
+    [TestMethod]
+    public async Task X程序挂起屏保时抑制本机屏保_停服时恢复_Reset重置空闲计时() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        List<bool> inhibits = [];
+        int resets = 0;
+        host.InhibitIdle = on => { inhibits.Add(on); return true; };
+        host.ResetIdle = () => { resets++; return true; };
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        System.Collections.Concurrent.ConcurrentQueue<byte[]> replies = new();
+        await HandshakeAsync(client, replies: replies);
+        byte[] name = Encoding.ASCII.GetBytes("MIT-SCREEN-SAVER");
+        await SendAsync(client, 98, 0, w => w.U16((ushort)name.Length).U16(0).Bytes(name).Pad());                   // 序号 1
+        byte saver = (await WaitForAsync(() => replies.FirstOrDefault(r => BinaryPrimitives.ReadUInt16LittleEndian(r.AsSpan(2)) == 1)))[9];
+
+        await SendAsync(client, saver, 5, w => w.U32(1));   // Suspend(True)
+        await SendAsync(client, 115, 0, w => { });          // ForceScreenSaver(Reset)
+        await WaitForAsync(() => inhibits.Count > 0 && resets > 0 ? inhibits : null);
+        Assert.IsTrue(inhibits[^1], "挂起:抑制本机屏保");
+
+        host.Detach();
+        await Task.Delay(100);
+        Dispatcher.UIThread.RunJobs();
+        Assert.IsFalse(inhibits[^1], "停服:恢复");
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>
+    /// 平滑滚动(xs_plan F6):宿主把滚动增量原样交给服务端 —— 触控板的半格增量两次攒成一格,只认按钮的核心客户端收到一次按钮 4(向上)。
+    /// </summary>
+    [TestMethod]
+    public async Task 滚动增量原样交给服务端_半格两次攒成一次按钮4() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
+        await host.AttachAsync(server, CancellationToken.None);
+        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+        Task serve = server.ServeAsync(serverSide, isLocal: true);
+        System.Collections.Concurrent.ConcurrentQueue<byte> events = new();
+        (uint idBase, uint root) = await HandshakeAsync(client, events);
+        uint window = idBase | 1;
+        await SendAsync(client, 1, 24, w => w.U32(window).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0)
+            .U32(0x800).U32(0x4 | 0x8));                                                // ButtonPress | ButtonRelease
+        await SendAsync(client, 8, 0, w => w.U32(window));
+        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+
+        native.MouseWheel(new Point(10, 10), new Vector(0, 0.5), RawInputModifiers.None);
+        await Task.Delay(100);
+        Dispatcher.UIThread.RunJobs();
+        Assert.IsEmpty(events.Where(e => e is 4 or 5), "半格:还没攒够");
+        native.MouseWheel(new Point(10, 10), new Vector(0, 0.5), RawInputModifiers.None);
+        await WaitForAsync(() => events.Count(e => e is 4 or 5) >= 2 ? native : null);
+        CollectionAssert.AreEqual(new byte[] { 4, 5 }, events.Where(e => e is 4 or 5).ToArray(), "一次按下、一次松开");
+
+        native.CloseByHost();
+        host.Detach();
+        client.Dispose();
+        await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>
     /// 用户在 VelaShell 自己的窗口(终端之类)里打字:X 服务端的空闲时间同样归零 —— 远端程序经 MIT-SCREEN-SAVER 看到的不再只是 X 窗口里的输入。
     /// </summary>
     [TestMethod]
@@ -832,6 +1314,54 @@ public sealed class AvaloniaXServerHostUiTests
         host.Detach();
         client.Dispose();
         await serve.WaitAsync(TimeSpan.FromSeconds(5));
+    });
+
+    /// <summary>
+    /// 「每个 SSH 会话一个显示」时同时附着着几个宿主:本机窗口里的按键让每个服务端的空闲时间都归零。
+    /// 原先只记着最后附着的那一个宿主,先开的会话的服务端一直以为用户走了。
+    /// </summary>
+    [TestMethod]
+    public async Task 同时附着几个宿主时_本机按键让每个服务端的空闲时间都归零() => await _session.RunOnUiAsync(async () =>
+    {
+        AvaloniaXServerHost firstHost = new(), secondHost = new();
+        await using X11Server first = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, firstHost);
+        await using X11Server second = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, secondHost);
+        await firstHost.AttachAsync(first, CancellationToken.None);
+        await secondHost.AttachAsync(second, CancellationToken.None);
+        List<(InMemoryDuplexStream Client, Task Serve, System.Collections.Concurrent.ConcurrentQueue<byte[]> Replies, uint Root, byte Saver)> clients = [];
+        static ushort Sequence(byte[] reply) => BinaryPrimitives.ReadUInt16LittleEndian(reply.AsSpan(2));
+        foreach (X11Server server in (X11Server[])[first, second])
+        {
+            (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+            Task serve = server.ServeAsync(serverSide, isLocal: true);
+            System.Collections.Concurrent.ConcurrentQueue<byte[]> replies = new();
+            (_, uint root) = await HandshakeAsync(client, replies: replies);
+            byte[] name = Encoding.ASCII.GetBytes("MIT-SCREEN-SAVER");
+            await SendAsync(client, 98, 0, w => w.U16((ushort)name.Length).U16(0).Bytes(name).Pad());               // 序号 1
+            byte saver = (await WaitForAsync(() => replies.FirstOrDefault(r => Sequence(r) == 1)))[9];
+            clients.Add((client, serve, replies, root, saver));
+        }
+        Avalonia.Controls.Window local = new() { Width = 100, Height = 80 };
+        local.Show();
+        await Task.Delay(1000);   // 没归零的话空闲至少 1 秒;归零了的话只剩按键之后这一两次往返(CI 的 macOS 上曾到 174 毫秒)
+
+        local.KeyPressQwerty(PhysicalKey.A, RawInputModifiers.None);
+        foreach ((InMemoryDuplexStream client, _, System.Collections.Concurrent.ConcurrentQueue<byte[]> replies, uint root, byte saver) in clients)
+        {
+            await SendAsync(client, saver, 1, w => w.U32(root));                                                     // QueryInfo,序号 2
+            byte[] info = await WaitForAsync(() => replies.FirstOrDefault(r => Sequence(r) == 2));
+            uint idle = BinaryPrimitives.ReadUInt32LittleEndian(info.AsSpan(16));
+            Assert.IsLessThan(600u, idle, $"本机窗口里刚按了键,每个服务端的空闲都应归零,实际 {idle} ms");
+        }
+
+        local.Close();
+        firstHost.Detach();
+        secondHost.Detach();
+        foreach ((InMemoryDuplexStream client, Task serve, _, _, _) in clients)
+        {
+            client.Dispose();
+            await serve.WaitAsync(TimeSpan.FromSeconds(5));
+        }
     });
 
     /// <summary>
@@ -1000,7 +1530,7 @@ public sealed class AvaloniaXServerHostUiTests
         }
     }
 
-    private static async Task<T> WaitForAsync<T>(Func<T?> probe) where T : class
+    private static async Task<T> WaitForAsync<T>(Func<T?> probe, string? what = null) where T : class
     {
         for (int i = 0; i < 250; i++)
         {
@@ -1011,7 +1541,7 @@ public sealed class AvaloniaXServerHostUiTests
             }
             await Task.Delay(20);
         }
-        throw new TimeoutException("等不到预期的状态");
+        throw new TimeoutException(what is null ? "等不到预期的状态" : $"等不到预期的状态:{what}");
     }
 
     // ------------------------------------------------------------------ 最小的 X 客户端(小端)

@@ -73,7 +73,7 @@ public sealed partial class X11Server
     /// </summary>
     internal XShmSegment Segment(XClient c, uint id, bool write)
     {
-        XShmSegment segment = Lookup<XShmSegment>(id) ?? throw new XProtocolError((XErrorCode)ShmErrorBase, id);
+        XShmSegment segment = Use<XShmSegment>(id) ?? throw new XProtocolError((XErrorCode)ShmErrorBase, id);
         if (!ReferenceEquals(segment.Owner, c) && !MayAccess(c, segment.Access, readOnly: !write))
         {
             throw new XProtocolError(XErrorCode.Access, id);

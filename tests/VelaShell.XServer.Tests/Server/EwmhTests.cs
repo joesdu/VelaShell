@@ -132,7 +132,7 @@ public sealed class EwmhTests
         await using XTestClient c = await XTestClient.ConnectAsync(server);
         uint top = await CreateTopAsync(c);
         // flags:USPosition | PMinSize | PMaxSize | PResizeInc | PAspect | PBaseSize | PWinGravity
-        const uint flags = 1 | 16 | 32 | 64 | 128 | 256 | 512;
+        const uint flags = 1 | 2 | 16 | 32 | 64 | 128 | 256 | 512;
         await SetCard32Async(c, top, 40, 41, flags, 0, 0, 0, 0,
             unchecked((uint)-5), 0x80000000, 800, 100000, 6, 13,   // 最小尺寸是负数、最大高度超出 X 的范围、步长 6×13
             4, 3, 16, 9,                                                // 宽高比 4:3 – 16:9
@@ -150,6 +150,7 @@ public sealed class EwmhTests
         Assert.AreEqual(XGravity.SouthEast, s.WinGravity);
         Assert.IsTrue(s.UserPosition, "xterm -geometry +0+0:宿主要照 (0, 0) 摆,不能当成没给位置");
         Assert.IsFalse(s.ProgramPosition);
+        Assert.IsTrue(s.UserSize, "xterm -geometry 80x24:宿主不拿记住的尺寸盖掉它");
 
         // 只给基准尺寸、没给最小尺寸:最小尺寸按基准尺寸(ICCCM §4.1.2.3);老程序的 15 个值的 WM_SIZE_HINTS 没有重力也照样认。
         await SetCard32Async(c, top, 40, 41, 4 | 256, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 30, 20, 0);
@@ -157,6 +158,7 @@ public sealed class EwmhTests
         s = host.Mapped[top].Snapshot;
         Assert.AreEqual((30, 20), (s.BaseWidth, s.MinHeight));
         Assert.IsTrue(s.ProgramPosition);
+        Assert.IsFalse(s.UserSize);
         Assert.AreEqual(XGravity.NorthWest, s.WinGravity, "没给重力:NorthWest");
         await SetCard32Async(c, top, 40, 41, 16 | 64, 0, 0, 0, 0, 50, 40, 0, 0, 7, 7, 0, 0, 0, 0);   // 15 个值
         await host.WaitForAsync(() => host.Mapped[top].Snapshot.MinWidth == 50);
@@ -387,6 +389,29 @@ public sealed class EwmhTests
         uint checkWindow = (await c.RequestAsync(20, 0, b => b.U32(c.RootWindow).U32(check).U32(0).U32(0).U32(1))).U32(32);
         XMessage wmName = await c.RequestAsync(20, 0, b => b.U32(checkWindow).U32(name).U32(0).U32(0).U32(16));
         Assert.AreEqual("LG3D", Encoding.UTF8.GetString(wmName.Bytes, 32, (int)wmName.U32(16)), "Java 认得的「不套外框」的名字");
+    }
+
+    /// <summary>
+    /// 合成管理器(xs_plan F11):打开 CompositingManager 时服务端占着 _NET_WM_CM_S0(工具包据此用 ARGB 视觉画透明窗口与圆角),
+    /// 属主就是 _NET_SUPPORTING_WM_CHECK 窗口;默认没人占(与原先一样)。
+    /// </summary>
+    [TestMethod]
+    public async Task 打开合成管理器时服务端占着_NET_WM_CM_S0_默认没人占()
+    {
+        await using (X11Server plain = new())
+        {
+            await using XTestClient c = await XTestClient.ConnectAsync(plain);
+            uint cm = await InternAsync(c, "_NET_WM_CM_S0");
+            Assert.AreEqual(0u, (await c.RequestAsync(23, 0, b => b.U32(cm))).U32(8), "默认没有合成管理器");
+        }
+
+        await using X11Server server = new(new X11ServerOptions { CompositingManager = true });
+        await using XTestClient client = await XTestClient.ConnectAsync(server);
+        uint selection = await InternAsync(client, "_NET_WM_CM_S0");
+        uint owner = (await client.RequestAsync(23, 0, b => b.U32(selection))).U32(8);
+        uint check = await InternAsync(client, "_NET_SUPPORTING_WM_CHECK");
+        uint checkWindow = (await client.RequestAsync(20, 0, b => b.U32(client.RootWindow).U32(check).U32(0).U32(0).U32(1))).U32(32);
+        Assert.AreEqual(checkWindow, owner, "属主是服务端自己的隐藏窗口");
     }
 
     [TestMethod]

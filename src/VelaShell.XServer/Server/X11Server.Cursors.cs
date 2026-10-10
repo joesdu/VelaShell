@@ -38,8 +38,8 @@ public sealed partial class X11Server
         uint id = r.U32();
         uint sourceId = r.U32();
         uint maskId = r.U32();
-        XPixmap source = Lookup<XPixmap>(sourceId) ?? throw new XProtocolError(XErrorCode.Pixmap, sourceId);
-        XPixmap? mask = maskId == 0 ? null : Lookup<XPixmap>(maskId) ?? throw new XProtocolError(XErrorCode.Pixmap, maskId);
+        XPixmap source = Use<XPixmap>(sourceId) ?? throw new XProtocolError(XErrorCode.Pixmap, sourceId);
+        XPixmap? mask = maskId == 0 ? null : Use<XPixmap>(maskId) ?? throw new XProtocolError(XErrorCode.Pixmap, maskId);
         if (source.Depth != 1 || mask is { Depth: not 1 }
             || (mask is not null && (mask.Buffer.Width != source.Buffer.Width || mask.Buffer.Height != source.Buffer.Height)))
         {
@@ -72,8 +72,8 @@ public sealed partial class X11Server
         ushort sourceChar = r.U16();
         ushort maskChar = r.U16();
         ushort fr = r.U16(), fg = r.U16(), fb = r.U16(), br = r.U16(), bg = r.U16(), bb = r.U16();
-        XFontResource font = Lookup<XFontResource>(sourceFont) ?? throw new XProtocolError(XErrorCode.Font, sourceFont);
-        XFontResource? maskResource = maskFont == 0 ? null : Lookup<XFontResource>(maskFont) ?? throw new XProtocolError(XErrorCode.Font, maskFont);
+        XFontResource font = Use<XFontResource>(sourceFont) ?? throw new XProtocolError(XErrorCode.Font, sourceFont);
+        XFontResource? maskResource = maskFont == 0 ? null : Use<XFontResource>(maskFont) ?? throw new XProtocolError(XErrorCode.Font, maskFont);
         if (!font.Font.Glyphs.TryGetValue(sourceChar, out XGlyph? source))
         {
             throw new XProtocolError(XErrorCode.Value, sourceChar);
@@ -95,7 +95,7 @@ public sealed partial class X11Server
     private void FreeCursor(XRequestReader r)
     {
         uint id = r.U32();
-        _ = Lookup<XCursorResource>(id) ?? throw new XProtocolError(XErrorCode.Cursor, id);
+        _ = Use<XCursorResource>(id) ?? throw new XProtocolError(XErrorCode.Cursor, id);
         RemoveResource(id);
     }
 
@@ -144,7 +144,7 @@ public sealed partial class X11Server
         {
             uint cursor = r.U32();
             _ = r.U32();   // 帧间隔
-            first ??= Lookup<XCursorResource>(cursor) ?? throw new XProtocolError(XErrorCode.Cursor, cursor);
+            first ??= Use<XCursorResource>(cursor) ?? throw new XProtocolError(XErrorCode.Cursor, cursor);
         }
         AddResource(c, new XCursorResource(id, c) { Glyph = first?.Glyph ?? -1, Image = first?.Image, Blank = first?.Blank ?? false, Name = first?.Name });
     }
@@ -255,7 +255,8 @@ public sealed partial class X11Server
         XCursor cursor = CursorHiddenAt(_pointerWindow) ? XCursor.Hidden
             : CurrentCursor() is { } resource ? AppearanceOf(resource)
             : XCursor.Default;
-        XTopLevelWindow? handle = _pointerWindow.TopLevel is { } top && _topLevelHandles.TryGetValue(top, out XTopLevelWindow? h) ? h : null;
+        XTopLevelWindow? handle = _screenHandle   // 单窗口模式:光标都显示在屏幕窗口上
+            ?? (_pointerWindow.TopLevel is { } top && _topLevelHandles.TryGetValue(top, out XTopLevelWindow? h) ? h : null);
         if (_reportedCursor is { } last && ReferenceEquals(last.Window, handle) && last.Cursor == cursor)
         {
             return;

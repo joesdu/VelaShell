@@ -127,6 +127,41 @@ public sealed class MiscExtensionTests
         Assert.IsLessThan(100u, after.U32(16), $"本机有动静之后空闲应归零,实际 {after.U32(16)} ms");
     }
 
+    /// <summary>
+    /// 屏保交给宿主(xs_plan F9):Suspend 每个客户端各自计数,任何一个挂着就告诉宿主「挂起」,都恢复(或挂着的客户端断开)才报「恢复」;
+    /// 别的客户端恢复不了别人挂起的。ForceScreenSaver(Reset) 隔一会儿告诉宿主一次。
+    /// </summary>
+    [TestMethod]
+    public async Task 屏保挂起按客户端计数交给宿主_断开即作废_Reset隔一会儿报一次()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        XTestClient player = await XTestClient.ConnectAsync(server);
+        await using XTestClient other = await XTestClient.ConnectAsync(server);
+        byte saver = await MajorAsync(player, "MIT-SCREEN-SAVER");
+        Task<ushort> SuspendAsync(XTestClient c, bool suspend) => c.SendAsync(saver, 5, b => b.U32(suspend ? 1u : 0u));
+
+        await SuspendAsync(player, true);
+        await SuspendAsync(player, true);   // 嵌套两次
+        await player.SyncAsync();
+        await host.WaitForAsync(() => !host.SaverSuspensions.IsEmpty);
+        CollectionAssert.AreEqual(new[] { true }, host.SaverSuspensions.ToArray(), "第一次挂起报一次");
+        await SuspendAsync(other, false);    // 别的客户端恢复不了
+        await SuspendAsync(player, false);   // 还剩一层
+        await other.SyncAsync();
+        await player.SyncAsync();
+        Assert.HasCount(1, host.SaverSuspensions);
+        await player.DisposeAsync();         // 挂着的客户端断开:作废
+        await host.WaitForAsync(() => host.SaverSuspensions.Count >= 2);
+        CollectionAssert.AreEqual(new[] { true, false }, host.SaverSuspensions.ToArray());
+
+        await other.SendAsync(115, 0);       // ForceScreenSaver(Reset)
+        await other.SendAsync(115, 0);
+        await other.SyncAsync();
+        await host.WaitForAsync(() => host.SaverResets >= 1);
+        Assert.AreEqual(1, host.SaverResets, "连着的 Reset 只报一次");
+    }
+
     [TestMethod]
     public async Task DPMS的超时与开关往返()
     {
@@ -233,7 +268,16 @@ public sealed class MiscExtensionTests
         Task serving = c.ServerTask;
         await c.DisposeAsync();
         await serving.WaitAsync(TimeSpan.FromSeconds(3));
-        Assert.AreEqual((0, 0), await server.InvokeAsync(() => (server.PendingFakeInputDelays, server.PendingPresents)), "断开时计时器一并取消");
+        // 连接收尾排在这个客户端自己那条队里(在它还没执行的请求之后),宿主那条队的 InvokeAsync 可能先跑:等收尾做完再看。
+        (int Delays, int Presents) left = (-1, -1);
+        using (CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5)))
+        {
+            while ((left = await server.InvokeAsync(() => (server.PendingFakeInputDelays, server.PendingPresents))) != (0, 0))
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+        }
+        Assert.AreEqual((0, 0), left, "断开时计时器一并取消");
     }
 
     [TestMethod]
@@ -257,5 +301,42 @@ public sealed class MiscExtensionTests
         byte xcmisc = await MajorAsync(c, "XC-MISC");
         XMessage list = await c.RequestAsync(xcmisc, 2, b => b.U32(uint.MaxValue));
         Assert.AreEqual(X11Server.MaxXidListCount, list.U32(8), "给的可以比要的少(XC-MISC 规范)");
+    }
+
+    /// <summary>
+    /// X-Resource 的 LocalClientPid(xs_plan F28):经 Unix 套接字连进来、取得到 pid 的客户端报出 pid(xrestop 与 _NET_WM_PID 对得上);
+    /// mask = None 时两种标识都回;只回给本身也是本机客户端的请求方(规范 §5.2),pid 不知道的客户端只有 ClientXid。
+    /// </summary>
+    [TestMethod]
+    public async Task QueryClientIds报出本机客户端的pid_只回给本机的请求方()
+    {
+        await using X11Server server = new();
+        X11Server.Peer unix = new(IsLocal: true, SameHost: true, Uid: 1000, LocalUser: true, Authenticated: false, Pid: 4321);
+        await using XTestClient local = await XTestClient.ConnectAsPeerAsync(server, unix);
+        await using XTestClient tcp = await XTestClient.ConnectAsync(server);
+        byte xres = await MajorAsync(local, "X-Resource");
+        static List<(uint Client, uint Mask, uint[] Value)> Ids(XMessage reply)
+        {
+            List<(uint, uint, uint[])> ids = [];
+            int at = 32;
+            for (uint i = 0; i < reply.U32(8); i++)
+            {
+                uint length = reply.U32(at + 8);
+                ids.Add((reply.U32(at), reply.U32(at + 4), [.. Enumerable.Range(0, (int)length).Select(k => reply.U32(at + 12 + (4 * k)))]));
+                at += 12 + (4 * (int)length);
+            }
+            return ids;
+        }
+
+        List<(uint Client, uint Mask, uint[] Value)> all = Ids(await local.RequestAsync(xres, 4, b => b.U32(1).U32(0).U32(0)));   // 全部客户端、全部方法
+        Assert.HasCount(3, all, "本机客户端:ClientXid + pid;另一个只有 ClientXid");
+        (uint _, uint _, uint[] pid) = all.Single(id => id.Mask == 2);
+        CollectionAssert.AreEqual(new uint[] { 4321 }, pid);
+
+        List<(uint Client, uint Mask, uint[] Value)> onlyPid = Ids(await local.RequestAsync(xres, 4, b => b.U32(1).U32(0).U32(2)));
+        Assert.HasCount(1, onlyPid);
+        Assert.AreEqual(2u, onlyPid[0].Mask);
+
+        Assert.IsEmpty(Ids(await tcp.RequestAsync(xres, 4, b => b.U32(1).U32(0).U32(2))), "请求方不是本机客户端:不回 pid");
     }
 }

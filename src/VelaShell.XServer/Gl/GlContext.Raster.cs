@@ -4,7 +4,8 @@
 // 规范依据(AGENTS.md §2 纪律 1):
 //   The OpenGL Graphics System, Version 1.5 ——
 //   §3.3「Points」(非反走样的点:以 (x_w, y_w) 为中心、边长为取整后点大小的正方形覆盖的像素中心)、
-//   §3.4「Line Segments」(非反走样线段的「菱形出口」规则;宽线沿次轴方向加宽)、
+//   §3.4「Line Segments」(非反走样线段的「菱形出口」规则;宽线沿次轴方向加宽;§3.4.2 线的点画:计数器 s、factor、16 位图样)、
+//   §3.5.2「Stippling」(多边形的点画:按窗口坐标 mod 32 取 32×32 图样的位)、
 //   §3.5.1「Basic Polygon Rasterization」(取像素中心判定覆盖,属性按重心坐标插值,式 3.9 的透视校正)、
 //   §3.8.8–3.8.9「Texture Minification / Magnification」(NEAREST / LINEAR)、§3.8.7「Texture Wrap Modes」、
 //   §3.8.10「Texture Completeness」(要 mipmap 的缩小过滤而各级不全时,纹理视为未启用)、
@@ -160,9 +161,16 @@ internal sealed partial class GlContext
         // 只插值这次真用得上的属性:没有纹理不插纹理坐标,没开颜色求和不插副颜色,没开雾不插雾坐标,三个顶点同色不插颜色。
         bool flatColor = a.Color == b.Color && b.Color == c.Color;
         bool texture = _activeTexture is not null, spec = _colorSum, fog = _fog;
+        uint[]? stipple = State.Enabled.Has(GlEnum.POLYGON_STIPPLE) ? State.PolygonStipple : null;   // §3.5.2:按窗口坐标 mod 32 取位
         for (int y = minY; y <= maxY; y++)
         {
             float py = y + 0.5f;
+            uint stippleRow = stipple is null ? uint.MaxValue : stipple[y & 31];
+            if (stippleRow == 0)
+            {
+                WorkBudget.Charge(1);
+                continue;
+            }
             // 扫描线:先由三条边函数解出这一行可能被覆盖的那一段,只在段里逐像素判定 —— 细长的斜三角形不再白扫整个包围盒
             // (原先每个包围盒像素都算三条边函数)。段放宽了一个像素,逐像素仍按原式判定,覆盖与原先一样。
             if (!RowSpan(a, b, c, py, minX, maxX, out int x0, out int x1))
@@ -178,7 +186,8 @@ internal sealed partial class GlContext
                 float w1 = ((a.X - c.X) * (py - c.Y)) - ((a.Y - c.Y) * (px - c.X));
                 float w2 = ((b.X - a.X) * (py - a.Y)) - ((b.Y - a.Y) * (px - a.X));
                 if (w0 < 0 || w1 < 0 || w2 < 0
-                    || (w0 == 0 && !topLeft0) || (w1 == 0 && !topLeft1) || (w2 == 0 && !topLeft2))
+                    || (w0 == 0 && !topLeft0) || (w1 == 0 && !topLeft1) || (w2 == 0 && !topLeft2)
+                    || ((stippleRow >> (x & 31)) & 1) == 0)
                 {
                     continue;
                 }
@@ -260,6 +269,11 @@ internal sealed partial class GlContext
         float end = xMajor ? MathF.Max(a.X, b.X) : MathF.Max(a.Y, b.Y);
         int lo = xMajor ? _clipX0 : _clipY0, hi = xMajor ? _clipX1 : _clipY1;
         int i0 = (int)Math.Clamp(MathF.Floor(start + 0.5f), lo, hi), i1 = (int)Math.Clamp(MathF.Floor(end + 0.5f), lo, hi);
+        // 线的点画(§3.4.2):片元从起点往终点数,第 s 个片元看图样的第 (s / factor) mod 16 位;这里按主轴从小到大走,
+        // 终点在小的那头时倒过来数。计数器在一条折线里接着数(见 _lineStippleCounter)。
+        bool stipple = State.Enabled.Has(GlEnum.LINE_STIPPLE);
+        bool forward = (xMajor ? dx : dy) > 0;
+        int total = stipple ? CountLineFragments(a, xMajor, dx, dy, i0, i1) : 0, produced = 0;
         for (int i = i0; i < i1; i++)
         {
             float center = i + 0.5f;
@@ -267,6 +281,15 @@ internal sealed partial class GlContext
             if (t is < 0 or > 1)
             {
                 continue;
+            }
+            if (stipple)
+            {
+                int counter = _lineStippleCounter + (forward ? produced : total - 1 - produced);
+                produced++;
+                if (((State.LineStipplePattern >> (counter / State.LineStippleFactor % 16)) & 1) == 0)
+                {
+                    continue;
+                }
             }
             float minor = xMajor ? a.Y + (t * dy) : a.X + (t * dx);
             int m0 = (int)MathF.Floor(minor - ((w - 1) / 2f));
@@ -286,6 +309,25 @@ internal sealed partial class GlContext
                 }
             }
         }
+        _lineStippleCounter += total;
+    }
+
+    /// <summary>
+    /// 线的点画计数器 s(§3.4.2):每产生一个片元加一;Begin 时、LINES 的每条线段之前、每个多边形按线框画之前清零,
+    /// LINE_STRIP / LINE_LOOP 的各段接着数。
+    /// </summary>
+    private int _lineStippleCounter;
+
+    /// <summary>这条线段在 [i0, i1) 里产生几个片元(主轴位置的 t 落在 [0, 1] 里的个数)。</summary>
+    private static int CountLineFragments(in RasterVertex a, bool xMajor, float dx, float dy, int i0, int i1)
+    {
+        int count = 0;
+        for (int i = i0; i < i1; i++)
+        {
+            float t = ((i + 0.5f - (xMajor ? a.X : a.Y)) / (xMajor ? dx : dy));
+            count += t is >= 0 and <= 1 ? 1 : 0;
+        }
+        return count;
     }
 
     private void RasterPoint(RasterVertex p, float size)

@@ -79,7 +79,7 @@ public sealed partial class X11Server
         }
     }
 
-    internal XWindow Window(uint id) => Lookup<XWindow>(id) ?? throw new XProtocolError(XErrorCode.Window, id);
+    internal XWindow Window(uint id) => Use<XWindow>(id) ?? throw new XProtocolError(XErrorCode.Window, id);
 
     private void InternAtom(XClient c, XRequestReader r)
     {
@@ -127,6 +127,10 @@ public sealed partial class X11Server
         byte format = r.U8();
         r.Skip(3);
         uint count = r.U32();
+        if (IgnoredPropertyWrite(window, property))
+        {
+            return;   // SECURITY:非受信客户端改服务端窗口上的属性,当作 NoOperation
+        }
         CheckAtom(property);
         CheckAtom(type);
         if (format is not (8 or 16 or 32))
@@ -212,6 +216,10 @@ public sealed partial class X11Server
     {
         XWindow window = Window(r.U32());
         uint property = r.U32();
+        if (IgnoredPropertyWrite(window, property))
+        {
+            return;
+        }
         CheckAtom(property);
         if (window.Properties.Remove(property, out XProperty? removed))
         {
@@ -235,10 +243,14 @@ public sealed partial class X11Server
             CheckAtom(type);
         }
 
-        if (!window.Properties.TryGetValue(property, out XProperty? prop))
+        if (!window.Properties.TryGetValue(property, out XProperty? prop) || (c.Untrusted && HiddenFromUntrusted(window, property)))
         {
             c.Reply(0, w => w.U32(0).U32(0).U32(0).Zero(12));
             return;
+        }
+        if (delete && IgnoredPropertyWrite(window, property))
+        {
+            delete = false;   // 非受信客户端读服务端窗口上的属性:照读,不删
         }
         if (type != 0 && type != prop.Type)
         {
@@ -287,7 +299,7 @@ public sealed partial class X11Server
     private void ListProperties(XClient c, XRequestReader r)
     {
         XWindow window = Window(r.U32());
-        uint[] atoms = [.. window.Properties.Keys];
+        uint[] atoms = [.. window.Properties.Keys.Where(a => !c.Untrusted || !HiddenFromUntrusted(window, a))];
         c.Reply(0, w =>
         {
             w.U16((ushort)atoms.Length).Zero(22);
@@ -301,6 +313,10 @@ public sealed partial class X11Server
     private void RotateProperties(XRequestReader r)
     {
         XWindow window = Window(r.U32());
+        if (IgnoredPropertyWrite(window, XAtom.None))
+        {
+            return;
+        }
         int count = r.U16();
         int delta = r.I16();
         uint[] atoms = new uint[count];
@@ -338,8 +354,14 @@ public sealed partial class X11Server
     private void SendPropertyNotify(XWindow window, uint atom, bool deleted)
     {
         uint time = Now;
+        bool hidden = HiddenFromUntrusted(window, atom);
         DeliverToSelectors(window, XEventMask.PropertyChange, c =>
-            c.Event(XEventCode.PropertyNotify, 0, w => w.U32(window.Id).U32(atom).U32(time).U8(deleted ? (byte)1 : (byte)0)));
+        {
+            if (!(hidden && c.Untrusted))   // SECURITY:隐藏的属性不给非受信客户端发 PropertyNotify
+            {
+                c.Event(XEventCode.PropertyNotify, 0, w => w.U32(window.Id).U32(atom).U32(time).U8(deleted ? (byte)1 : (byte)0));
+            }
+        });
         if (ReferenceEquals(window, _selectionWindow))
         {
             OnSelectionWindowProperty(atom, deleted);
@@ -423,11 +445,17 @@ public sealed partial class X11Server
             // 拿它当属性名写到请求方给的窗口上(可以是根窗口),之后 xprop -root 之类列属性的都收到 BadAtom。
             CheckAtom(property);
         }
-        if (_selections.TryGetValue(SlotOf(selection, c), out (XWindow Window, XClient? Client, uint Time) owner))
+        if (_selections.TryGetValue(SlotOf(selection, c), out (XWindow Window, XClient? Client, uint Time) owner)
+            && !(c.Untrusted && owner.Window.Owner is { Untrusted: false }))   // SECURITY:非受信客户端要受信客户端占着的选区,回 None
         {
             if (owner.Client is null)
             {
-                // 属主是服务端自己(宿主的剪贴板)。
+                // 属主是服务端自己:宿主的拖放(XdndSelection),或宿主的剪贴板。
+                if (IsHostXdndSelection(selection))
+                {
+                    ServeXdndSelection(c, requestor, selection, target, property, time, owner.Time);
+                    return;
+                }
                 ServeSelection(c, requestor, selection, target, property, time, owner.Time);
                 return;
             }
@@ -480,9 +508,13 @@ public sealed partial class X11Server
             1 => FocusTargetForSendEvent(),                       // InputFocus
             _ => Window(destination),
         };
-        if (target is null)
+        if (target is null || (c.Untrusted && destination <= 1 && target.Owner is { Untrusted: false }))
         {
-            return;
+            return;   // 非受信客户端经 PointerWindow / InputFocus 往受信客户端的窗口发:不投递(SECURITY 不许它指名那个窗口)
+        }
+        if (!(ReferenceEquals(target, _selectionWindow) && code == XEventCode.SelectionNotify))   // 选区属主回给服务端的 SelectionNotify 照收
+        {
+            CheckUntrustedSendEvent(target, propagate, mask, code);
         }
         if (ReferenceEquals(target, Root) && code == XEventCode.ClientMessage)
         {
@@ -490,8 +522,12 @@ public sealed partial class X11Server
         }
         if (ReferenceEquals(target, _selectionWindow))
         {
-            // 发给服务端自己的请求窗口:这是选区属主回的 SelectionNotify。
-            OnSelectionWindowEvent(raw, c.BigEndian);
+            // 发给服务端自己的请求窗口:拖放的目标回的 XdndStatus / XdndFinished(它也是宿主拖放的源窗口),
+            // 或者选区属主回的 SelectionNotify。
+            if (!OnXdndClientMessage(raw, c.BigEndian) && !OnSystemTrayClientMessage(raw, c.BigEndian))
+            {
+                OnSelectionWindowEvent(raw, c.BigEndian);
+            }
             return;
         }
 
@@ -631,15 +667,16 @@ public sealed partial class X11Server
         }
     }
 
-    private void KillClient(XRequestReader r)
+    private void KillClient(XClient c, XRequestReader r)
     {
         uint id = r.U32();
         if (id == 0)
         {
+            DenyUntrusted(c);   // 留下的资源可能是受信客户端的
             DestroyRetainedTemporaryClients();   // AllTemporary
             return;
         }
-        if (Lookup<XResource>(id) is not { Owner: { } owner })
+        if (Use<XResource>(id) is not { Owner: { } owner })
         {
             throw new XProtocolError(XErrorCode.Value, id);
         }

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -8,7 +9,9 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using ReactiveUI.Primitives;
 using VelaShell.Core.Resources;
+using VelaShell.Core.XServer;
 using VelaShell.Infrastructure.XServer;
 using VelaShell.Views;
 using VelaShell.Views.XServer;
@@ -54,7 +57,38 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     private bool _damagePosted;
 
     /// <summary>新建一个宿主;经 <see cref="AttachAsync" /> 接到服务端上。</summary>
-    public AvaloniaXServerHost() => _deliverDamage = DeliverDamage;
+    /// <param name="dropUploader">本机文件拖进经 SSH 转发来的 X 程序时,把文件传到远端(F16);没有时那类窗口不接文件。</param>
+    public AvaloniaXServerHost(IXServerDropUploader? dropUploader = null)
+    {
+        _deliverDamage = DeliverDamage;
+        DropUploader = dropUploader;
+        _trayIcons = new XTrayIcons(CurrentServer);
+    }
+
+    /// <summary>X 程序的托盘图标(F12),画成宿主的托盘图标。只在 UI 线程上碰。</summary>
+    private readonly XTrayIcons _trayIcons;
+
+    /// <summary>此刻挂着的 X 托盘图标数(测试看)。</summary>
+    internal int TrayIconCount => _trayIcons.Count;
+
+    /// <summary>本机文件拖进经 SSH 转发来的 X 程序时,把文件传到远端(见 <see cref="Views.XServer.XDropTarget" />)。</summary>
+    internal IXServerDropUploader? DropUploader { get; }
+
+    /// <summary>给用户一条提示(主窗口右下的提示浮层;主窗口不在时不提示)。UI 线程上调。</summary>
+    internal static void NotifyUser(string message, bool error)
+    {
+        if (MainWindow()?.DataContext is ViewModels.MainWindowViewModel { Toasts: { } toasts })
+        {
+            if (error)
+            {
+                toasts.Error(message);
+            }
+            else
+            {
+                toasts.Info(message);
+            }
+        }
+    }
 
     /// <summary>当前附着的服务端;没在运行时为 <see langword="null" />。窗口的注入经它走。</summary>
     public X11Server? Server => _server;
@@ -84,8 +118,13 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
 
     // ================================================================== 生命周期
 
-    /// <summary>当前附着着的宿主:本机活动上报给它的服务端(见 <see cref="HookLocalActivity" />)。</summary>
-    private static volatile AvaloniaXServerHost? s_attached;
+    /// <summary>
+    /// 当前附着着的宿主:本机活动上报给它们的服务端(见 <see cref="HookLocalActivity" />)。开了「每个 SSH 会话一个显示」时不止一个。
+    /// 整份替换(写时复制),读的一方不加锁。
+    /// </summary>
+    private static volatile AvaloniaXServerHost[] s_attached = [];
+
+    private static readonly Lock s_attachedGate = new();
 
     private static bool s_activityHooked;
 
@@ -107,60 +146,95 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         InputElement.PointerWheelChangedEvent.AddClassHandler<TopLevel>((_, _) => ReportLocalActivity(), RoutingStrategies.Tunnel, handledEventsToo: true);
     }
 
-    private static void ReportLocalActivity() => s_attached?._server?.NoteUserActivity();
+    private static void ReportLocalActivity()
+    {
+        foreach (AvaloniaXServerHost host in s_attached)
+        {
+            host._server?.NoteUserActivity();
+        }
+    }
 
     /// <inheritdoc />
     public async Task AttachAsync(X11Server server, CancellationToken cancellationToken)
     {
         _server = server;
-        s_attached = this;
+        lock (s_attachedGate)
+        {
+            s_attached = [.. s_attached.Where(h => !ReferenceEquals(h, this)), this];
+        }
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             HookLocalActivity();
             _keyboardLayout = 0;
             _appliedKeymap = null;   // 新起的服务端是 US 键位表:按当前布局重推一次
             ApplyKeyboardLayout(server);
-            if (MainWindow() is { } main)
+            if (server.Screen is { } screen)
+            {
+                // 单窗口模式(F13):屏幕尺寸是屏幕窗口的尺寸,不跟本机的显示器布局;窗口随即显示出来(远端桌面还没连上时是黑的)。
+                if (MainWindow() is { } owner)
+                {
+                    ApplyScreenSize(server, owner.Screens);
+                }
+                Map(screen);
+            }
+            else if (MainWindow() is { } main)
             {
                 ApplyLayout(server, main.Screens);
                 if (!ReferenceEquals(_watchedScreens, main.Screens))
                 {
+                    _watchedScreens?.Changed -= OnScreensChanged;
                     _watchedScreens = main.Screens;
-                    _watchedScreens.Changed += (_, _) =>
-                    {
-                        if (_server is { } current && _watchedScreens is { } screens)
-                        {
-                            (int, int) before = RootOrigin;
-                            ApplyLayout(current, screens);
-                            if (RootOrigin != before)
-                            {
-                                // 左侧 / 上方的显示器插拔:根原点挪了,原生窗口没动,X 坐标却整体差了这么多(菜单、对话框会摆到别处)。
-                                // 按每个窗口此刻的原生位置重报一次。
-                                foreach (XNativeWindow window in _windows.Values)
-                                {
-                                    window.ReportPosition();
-                                }
-                            }
-                        }
-                    };
+                    _watchedScreens.Changed += OnScreensChanged;
                 }
             }
         }, DispatcherPriority.Normal, cancellationToken);
+    }
+
+    /// <summary>显示器布局变了:重报给服务端;根原点挪了时各窗口重报位置。</summary>
+    private void OnScreensChanged(object? sender, EventArgs e)
+    {
+        if (_server is { } current && _watchedScreens is { } screens)
+        {
+            (int, int) before = RootOrigin;
+            ApplyLayout(current, screens);
+            if (RootOrigin != before)
+            {
+                // 左侧 / 上方的显示器插拔:根原点挪了,原生窗口没动,X 坐标却整体差了这么多(菜单、对话框会摆到别处)。
+                // 按每个窗口此刻的原生位置重报一次。
+                foreach (XNativeWindow window in _windows.Values)
+                {
+                    window.ReportPosition();
+                }
+            }
+        }
     }
 
     /// <inheritdoc />
     public void Detach()
     {
         _server = null;
-        if (ReferenceEquals(s_attached, this))
+        lock (s_attachedGate)
         {
-            s_attached = null;
+            s_attached = [.. s_attached.Where(h => !ReferenceEquals(h, this))];
         }
         Dispatcher.UIThread.Post(() =>
         {
+            _trayIcons.Clear();
+            // 按会话分出来的显示收掉时这个宿主就不再用了:别让显示器的事件一直拽着它。
+            _watchedScreens?.Changed -= OnScreensChanged;
+            _watchedScreens = null;
+            _confinement = null;
+            ApplyConfinement();
+            if (_saverSuspended)
+            {
+                _saverSuspended = false;
+                InhibitIdle(false);   // 停服:本机屏保恢复正常
+            }
+            _frameClockWanted = false;   // 停服:不再逐帧回调
             XNativeWindow[] windows = [.. _windows.Values];
             _windows.Clear();
             _desktops.Clear();
+            _heldDamage.Clear();
             // 先全部打上标记再关:关 owner 时 Avalonia 先问它的子窗口,子窗口不拦,owner 才关得掉(原先留下关不掉的空壳)。
             foreach (XNativeWindow window in windows)
             {
@@ -176,6 +250,58 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     /// <summary>
     /// 显示器布局与 DPI 告诉服务端:根窗口是所有显示器的外接矩形,每台一个输出;DPI 取主显示器的缩放。
     /// </summary>
+    /// <summary>设置里选的窗口模式(见 <see cref="UseWindowMode" />)。</summary>
+    private string _windowMode = XServerWindowModes.MultiWindow;
+
+    /// <inheritdoc />
+    public void UseWindowMode(string mode) => _windowMode = mode;
+
+    /// <summary>单窗口模式的屏幕窗口不带边框(窗口模式「无边框」)。</summary>
+    internal bool ScreenUndecorated => _windowMode == XServerWindowModes.NoDecoration;
+
+    /// <summary>单窗口模式的屏幕窗口一开始就全屏(窗口模式「全屏」)。</summary>
+    internal bool ScreenFullscreen => _windowMode == XServerWindowModes.Fullscreen;
+
+    /// <summary>按会话分出来的显示:是哪个会话的(见 <see cref="UseSessionLabel" />);共用的显示为 null。</summary>
+    private string? _sessionLabel;
+
+    /// <inheritdoc />
+    public void UseSessionLabel(string label) => _sessionLabel = label;
+
+    /// <summary>屏幕窗口的标题:「X 桌面 :N」;按会话分出来的显示写会话的来历(「X 桌面 user@host:22」)。</summary>
+    internal string ScreenTitle(X11Server server) =>
+        Strings.Format("XServer_ScreenTitle", _sessionLabel
+            ?? (server.Display is { } display ? display.Split('.')[0].Replace("localhost", "") : $":{server.DisplayNumber}"));
+
+    /// <summary>
+    /// 单窗口模式起步的屏幕尺寸(物理像素,一台显示器覆盖全部):全屏时是主显示器的大小,否则是主显示器工作区的八成 ——
+    /// 之后跟着用户把屏幕窗口拖到多大。DPI 照主显示器的报。
+    /// </summary>
+    private void ApplyScreenSize(X11Server server, Screens screens)
+    {
+        if ((screens.Primary ?? (screens.All.Count > 0 ? screens.All[0] : null)) is not { } primary)
+        {
+            return;
+        }
+        (int width, int height) = ScreenFullscreen
+            ? (primary.Bounds.Width, primary.Bounds.Height)
+            : ((int)(primary.WorkingArea.Width * 0.8), (int)(primary.WorkingArea.Height * 0.8));
+        width = Math.Clamp(width, 1, X11ServerOptions.MaxScreenSize);
+        height = Math.Clamp(height, 1, X11ServerOptions.MaxScreenSize);
+        server.SetScreenLayout(width, height);
+        double scaling = primary.Scaling;
+        server.SetDisplayScale(Math.Max(1, (int)Math.Round(96 * scaling)), scaling >= 2 ? (int)Math.Floor(scaling) : 1);
+    }
+
+    /// <summary>用户关了屏幕窗口:当作要停 X Server(有程序连着时先确认),与标题栏的停止一样。</summary>
+    internal static void RequestStop()
+    {
+        if (MainWindow()?.DataContext is ViewModels.MainWindowViewModel { XServer: { } xserver })
+        {
+            xserver.StopCommand.Execute().Subscribe(_ => { }, _ => { });
+        }
+    }
+
     private void ApplyLayout(X11Server server, Screens screens)
     {
         IReadOnlyList<Screen> all = LimitScreens(screens.All);
@@ -334,6 +460,21 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     /// <inheritdoc />
     public void UseKeyboardLayout(string layout) => _chosenLayout = layout ?? "";
 
+    /// <inheritdoc />
+    public void UseHostInputMethod(bool enabled) => UsesHostInputMethod = enabled;
+
+    /// <summary>X 窗口里用本机的输入法(见 <see cref="XNativeWindow" /> 的输入法客户端)。</summary>
+    public bool UsesHostInputMethod { get; private set; } = true;
+
+    /// <summary>把原生窗口归进任务栏的一组(null = 清掉);测试换成记录用的。见 <see cref="Services.XServer.TaskbarGroup" />。</summary>
+    internal Func<Window, string?, bool> GroupWindow { get; set; } = Services.XServer.TaskbarGroup.Apply;
+
+    /// <inheritdoc />
+    public void ShowWindowSource(bool enabled) => ShowsWindowSource = enabled;
+
+    /// <summary>转发来的 X 窗口在标题前标出来源(见 <see cref="XNativeWindow.TitleOf" />)。</summary>
+    public bool ShowsWindowSource { get; private set; } = true;
+
     private long _layoutCheckedAt;
 
     /// <summary>
@@ -408,6 +549,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         _desktops.Remove(window);
         if (_windows.Remove(window, out XNativeWindow? native))
         {
+            RememberPlacement(native);
             CloseWithOwnedWindows(native);
         }
     });
@@ -510,13 +652,63 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         }
         foreach ((XTopLevelWindow handle, List<XRect> rects) in batch)
         {
+            if (handle.AwaitingRedraw)
+            {
+                HoldDamage(handle, rects);   // 改了尺寸、客户端还没重画完:画到一半的先不显示
+                continue;
+            }
             if (_windows.TryGetValue(handle, out XNativeWindow? native))
             {
+                if (_heldDamage.Remove(handle, out List<XRect>? held))
+                {
+                    native.AddDamage(held);
+                }
                 native.AddDamage(rects);
+            }
+            else
+            {
+                _trayIcons.Damaged(handle);   // 托盘图标重画了:过一会儿换图标
             }
         }
         batch.Clear();
     }
+
+    /// <summary>等客户端重画完(_NET_WM_SYNC_REQUEST,xs_plan F10)期间攒着没显示的损伤;UI 线程上用。</summary>
+    private readonly Dictionary<XTopLevelWindow, List<XRect>> _heldDamage = [];
+
+    /// <summary>测试看攒着的损伤用。</summary>
+    internal bool IsHoldingDamage(XTopLevelWindow window) => _heldDamage.ContainsKey(window);
+
+    private void HoldDamage(XTopLevelWindow handle, List<XRect> rects)
+    {
+        if (!_heldDamage.TryGetValue(handle, out List<XRect>? held))
+        {
+            _heldDamage[handle] = held = [];
+        }
+        held.AddRange(rects);
+        if (held.Count > MaxQueuedDamageRects)
+        {
+            int x1 = int.MaxValue, y1 = int.MaxValue, x2 = int.MinValue, y2 = int.MinValue;
+            foreach (XRect r in held)
+            {
+                (x1, y1) = (Math.Min(x1, r.X), Math.Min(y1, r.Y));
+                (x2, y2) = (Math.Max(x2, r.X + r.Width), Math.Max(y2, r.Y + r.Height));
+            }
+            held.Clear();
+            held.Add(new XRect(x1, y1, x2 - x1, y2 - y1));
+        }
+    }
+
+    /// <summary>
+    /// 客户端改尺寸之后重画完了(或服务端不再等):把攒着的损伤一次显示出来 —— 拖动缩放 GTK / Qt 窗口时看到的是画完的帧,不再闪出没画完的空白。
+    /// </summary>
+    public void TopLevelRedrawn(XTopLevelWindow window) => Dispatcher.UIThread.Post(() =>
+    {
+        if (_heldDamage.Remove(window, out List<XRect>? held) && _windows.TryGetValue(window, out XNativeWindow? native))
+        {
+            native.AddDamage(held);
+        }
+    });
 
     /// <inheritdoc />
     public void CursorChanged(XTopLevelWindow? window, XCursor cursor) => Dispatcher.UIThread.Post(() =>
@@ -537,21 +729,219 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
     }
 
     /// <inheritdoc />
-    public void ClipboardChanged(string text) => Dispatcher.UIThread.Post(() => FireAndForget.Run(async () =>
-    {
-        _lastClipboard = text;
-        if (MainWindow()?.Clipboard is { } clipboard)
+    public void SystemTrayIconAdded(XTopLevelWindow icon, string title) =>
+        Dispatcher.UIThread.Post(() =>
         {
-            try
+            if (IsCurrent(icon))
             {
-                await clipboard.SetTextAsync(text);
+                _trayIcons.Add(icon, title);
             }
-            catch (Exception ex)
+        });
+
+    /// <inheritdoc />
+    public void SystemTrayIconRemoved(XTopLevelWindow icon) => Dispatcher.UIThread.Post(() => _trayIcons.Remove(icon));
+
+    /// <inheritdoc />
+    public event EventHandler<XServerGrabStall>? GrabStallReported;
+
+    /// <summary>
+    /// 有个客户端抓着整个服务端太久:原样转给 <see cref="GrabStallReported" />(<c>BuiltInLocalXServer</c> 查出是哪个程序,
+    /// 标题栏的 X Server 按钮据此提示用户断开它)。在服务端的执行线程上,不切 UI 线程。
+    /// </summary>
+    public void ServerGrabStalled(XServerGrabStall stall) => GrabStallReported?.Invoke(this, stall);
+
+    /// <inheritdoc />
+    public void ClipboardChanged(string text) => ClipboardContentChanged(new XClipboardContent { Text = text });
+
+    /// <summary>
+    /// X 程序复制的内容写进系统剪贴板:文本、HTML(各平台自己的格式,见 <see cref="HtmlClipboard" />)、图片放进同一份条目,
+    /// 本机程序粘贴时各取所需。写完再读一遍图片记下它的指纹 —— 之后切回 X 窗口时看得出系统剪贴板里还是这张图,不把它当新内容交回去。
+    /// </summary>
+    public void ClipboardContentChanged(XClipboardContent content) => Dispatcher.UIThread.Post(() => FireAndForget.Run(async () =>
+    {
+        _lastClipboard = content.Text;
+        _lastImageFingerprint = null;
+        if (MainWindow()?.Clipboard is not { } clipboard)
+        {
+            return;
+        }
+        try
+        {
+            DataTransferItem item = new();
+            if (content.Text is { } text)
             {
-                Trace.WriteLine($"[XServer] clipboard write failed: {ex.Message}");
+                item.SetText(text);
+            }
+            if (content.Html is { } html)
+            {
+                item.Set(HtmlClipboard.Format, HtmlClipboard.Encode(html));
+            }
+            if (!content.Png.IsEmpty && DecodeImage(content.Png) is { } bitmap)
+            {
+                item.SetBitmap(bitmap);
+            }
+            DataTransfer data = new();
+            data.Add(item);
+            await clipboard.SetDataAsync(data);
+            if (!content.Png.IsEmpty)
+            {
+                using Bitmap? stored = await clipboard.TryGetBitmapAsync();
+                _lastImageFingerprint = stored is null ? null : ImageFingerprint(stored);
             }
         }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[XServer] clipboard write failed: {ex.Message}");
+        }
     }));
+
+    /// <summary>
+    /// 抓着指针的 X 程序挪了指针(xs_plan F8):用户此刻正用 X 窗口时把系统光标挪到对应的屏幕位置(根坐标加 <see cref="RootOrigin" />),
+    /// 服务端的指针与真实光标不再分叉 —— Blender 连续拖拽、CAD 旋转、远端游戏的视角。用户在用本机窗口时不挪。
+    /// </summary>
+    public void PointerWarped(int rootX, int rootY) => Dispatcher.UIThread.Post(() =>
+    {
+        if (XActive)
+        {
+            (int x, int y) = RootToScreen(rootX, rootY);
+            WarpCursor(x, y);
+        }
+    });
+
+    /// <summary>
+    /// 根坐标换成本机屏幕坐标(物理像素):rootless 下加根原点;单窗口模式(F13)下根窗口就是屏幕窗口的内容区,加它的左上角。
+    /// </summary>
+    private (int X, int Y) RootToScreen(int x, int y)
+    {
+        if (_server?.Screen is { } screen && _windows.TryGetValue(screen, out XNativeWindow? window))
+        {
+            PixelPoint origin = window.PointToScreen(default);
+            return (origin.X + x, origin.Y + y);
+        }
+        (int ox, int oy) = RootOrigin;
+        return (x + ox, y + oy);
+    }
+
+    /// <summary>带 confine-to 的指针抓取开始 / 结束(根坐标):X 窗口活动时把系统光标关在那块里,见 <see cref="ApplyConfinement" />。</summary>
+    public void PointerConfinementChanged(XRect? area) => Dispatcher.UIThread.Post(() =>
+    {
+        _confinement = area;
+        ApplyConfinement();
+    });
+
+    /// <summary>
+    /// X 程序挂起 / 恢复了屏保(远端 mpv 全屏放视频,xs_plan F9):挂起期间抑制本机的屏保与关显示器 —— 远端程序防的是远端的屏保,
+    /// 用户眼前的是本机的。停 X Server 时恢复。
+    /// </summary>
+    public void ScreenSaverSuspensionChanged(bool suspended) => Dispatcher.UIThread.Post(() =>
+    {
+        _saverSuspended = suspended;
+        InhibitIdle(suspended);
+    });
+
+    /// <summary>X 程序重置了屏保计时(服务端至多每 5 秒报一次):重置本机的空闲计时一次。</summary>
+    public void ScreenSaverReset() => Dispatcher.UIThread.Post(() => ResetIdle());
+
+    // ------------------------------------------------------------------ 帧时钟(xs_plan F25)
+
+    private bool _frameClockWanted, _frameRequested;
+
+    /// <summary>
+    /// 有 X 程序在等帧(Present):要的时候跟着合成器逐帧回调(<see cref="TopLevel.RequestAnimationFrame" />),每帧报给服务端,
+    /// 动画按本机显示器真实的刷新率与相位走(原先按 60 Hz 推算,144 Hz 的屏上一样只有 60 帧);不要了就停,不白白逐帧唤醒。
+    /// </summary>
+    public void FrameClockWanted(bool wanted) => Dispatcher.UIThread.Post(() =>
+    {
+        _frameClockWanted = wanted;
+        RequestHostFrame();
+    });
+
+    /// <summary>报一帧给服务端;测试可以换掉。</summary>
+    internal Action<X11Server> NotifyFrame { get; set; } = static server => server.NotifyHostFrame();
+
+    private void RequestHostFrame()
+    {
+        // 逐帧回调挂在一个显示着的 X 窗口上(等帧的程序就在那里画),没有时挂在主窗口上。
+        TopLevel? source = _windows.Values.FirstOrDefault(w => w.IsVisible) ?? (TopLevel?)MainWindow();
+        if (!_frameClockWanted || _frameRequested || source is null)
+        {
+            return;
+        }
+        _frameRequested = true;
+        source.RequestAnimationFrame(_ =>
+        {
+            _frameRequested = false;
+            if (_frameClockWanted && _server is { } server)
+            {
+                NotifyFrame(server);
+                RequestHostFrame();
+            }
+        });
+    }
+
+    private bool _saverSuspended;
+
+    /// <summary>抑制 / 恢复本机屏保;测试可以换掉。</summary>
+    internal Func<bool, bool> InhibitIdle { get; set; } = SystemIdle.Inhibit;
+
+    /// <summary>重置本机空闲计时;测试可以换掉。</summary>
+    internal Func<bool> ResetIdle { get; set; } = SystemIdle.Reset;
+
+    /// <summary>X 程序要求的光标范围(根坐标);null = 没有。</summary>
+    private XRect? _confinement;
+
+    /// <summary>系统光标此刻被我们关着。</summary>
+    private bool _confined;
+
+    /// <summary>有范围且用户正用 X 窗口时关住光标,否则放开 —— 用户切到本机窗口时光标不能还被关在 X 窗口里。</summary>
+    private void ApplyConfinement()
+    {
+        if (_confinement is { } area && XActive)
+        {
+            (int x, int y) = RootToScreen(area.X, area.Y);
+            _confined = ConfineCursor(new PixelRect(x, y, area.Width, area.Height));
+        }
+        else if (_confined)
+        {
+            ConfineCursor(null);
+            _confined = false;
+        }
+    }
+
+    /// <summary>挪系统光标(物理像素的屏幕坐标);测试可以换掉,不去碰真鼠标。</summary>
+    internal Func<int, int, bool> WarpCursor { get; set; } = SystemPointer.Warp;
+
+    /// <summary>关住 / 放开系统光标;测试可以换掉。</summary>
+    internal Func<PixelRect?, bool> ConfineCursor { get; set; } = SystemPointer.Confine;
+
+    /// <summary>上一次与 X 交换过的图片(系统剪贴板读出来的样子)的指纹;没有图片为 null。</summary>
+    private string? _lastImageFingerprint;
+
+    private static Bitmap? DecodeImage(ReadOnlyMemory<byte> png)
+    {
+        try
+        {
+            return new Bitmap(new MemoryStream(png.ToArray()));
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[XServer] clipboard image could not be decoded: {ex.Message}");   // X 程序给的不是图片:只交其余格式
+            return null;
+        }
+    }
+
+    /// <summary>图片的指纹:尺寸加像素的 SHA-256(同一张图从系统剪贴板读两次,指纹相同)。</summary>
+    internal static unsafe string ImageFingerprint(Bitmap bitmap)
+    {
+        PixelSize size = bitmap.PixelSize;
+        int stride = size.Width * 4;
+        byte[] pixels = new byte[stride * size.Height];
+        fixed (byte* p = pixels)
+        {
+            bitmap.CopyPixels(new PixelRect(size), (nint)p, pixels.Length, stride);
+        }
+        return $"{size.Width}x{size.Height}:{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(pixels))}";
+    }
 
     /// <inheritdoc />
     public void WindowManagerRequested(XWindowManagerRequest request) => Dispatcher.UIThread.Post(() =>
@@ -634,9 +1024,16 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         }
         XNativeWindow window = new(this, handle);
         _windows[handle] = window;
-        PlaceIfUnpositioned(handle, window);
+        if (!window.IsScreen)
+        {
+            PlaceIfUnpositioned(handle, window);
+        }
         window.ApplyProperties(XTopLevelChanges.All);
         window.ApplyInitialStates();   // 映射前就设好的最大化 / 全屏 / initial_state = Iconic
+        if (window.ShowInTaskbar && TaskbarGroup.IdFor(handle.Snapshot) is { } group && GroupWindow(window, group))
+        {
+            window.TaskbarGroup = group;   // 显示之前就归好组:任务栏按钮不先出现在 VelaShell 的按钮里再跳走
+        }
 
         // 对话框、瞬态窗口(连同声明了 WM_TRANSIENT_FOR 的弹出菜单)压在父窗口之上。没声明的弹层不借用「当前活动的 X 窗口」当 owner:
         // 那个窗口可能属于别的程序甚至别的会话,owner 关闭时会把它连带关掉(弹层本身照样置顶,不需要 owner)。
@@ -666,6 +1063,10 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         {
             return;
         }
+        if (RestorePlacement(handle, window))
+        {
+            return;
+        }
         (int ox, int oy) = RootOrigin;
         PixelRect area;
         if (snapshot.TransientFor is { } transientFor && _windows.TryGetValue(transientFor, out XNativeWindow? parent))
@@ -687,6 +1088,86 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         window.PlaceFrameAt(area.X + Math.Max(0, (area.Width - outerWidth) / 2) - ox, area.Y + Math.Max(0, (area.Height - outerHeight) / 2) - oy);
     }
 
+    // ------------------------------------------------------------------ 记住窗口位置(xs_plan F17)
+
+    /// <summary>一个程序的窗口上次关掉时的外框左上角(根窗口坐标)与内容尺寸。</summary>
+    private sealed record RememberedPlacement(int FrameX, int FrameY, int Width, int Height);
+
+    /// <summary>
+    /// 按 WM_CLASS(类名 + 实例名)与 WM_WINDOW_ROLE 记住的位置(ICCCM §5.1:没有 role 时按类名区分窗口)。只记在这次运行里:
+    /// 远端程序的类名不落盘;宿主是单例,停了再开 X Server 照样记得。
+    /// </summary>
+    private readonly Dictionary<(string Class, string Instance, string Role), RememberedPlacement> _placements = [];
+
+    /// <summary>最多记这么多个程序(多了丢最早记的)。</summary>
+    private const int MaxRememberedPlacements = 256;
+
+    /// <summary>值得记位置的窗口:有类名的普通顶层窗口(对话框、弹层、瞬态窗口跟着父窗口走)。</summary>
+    private static (string Class, string Instance, string Role)? PlacementKey(XTopLevelSnapshot s) =>
+        s.ClassName.Length > 0 && !s.OverrideRedirect && s.TransientFor is null && s.WindowType == XWindowType.Normal
+            ? (s.ClassName, s.InstanceName, s.Role)
+            : null;
+
+    /// <summary>窗口要收掉了:记下它此刻的位置与尺寸(最大化、最小化、全屏时不记,留着上次正常时的)。</summary>
+    private void RememberPlacement(XNativeWindow native)
+    {
+        XTopLevelSnapshot s = native.Handle.Snapshot;
+        if (PlacementKey(s) is not { } key || !native.HasOpened || native.WindowState != WindowState.Normal)
+        {
+            return;
+        }
+        if (!_placements.ContainsKey(key) && _placements.Count >= MaxRememberedPlacements)
+        {
+            _placements.Remove(_placements.Keys.First());
+        }
+        (int ox, int oy) = RootOrigin;
+        _placements[key] = new RememberedPlacement(native.Position.X - ox, native.Position.Y - oy, s.Width, s.Height);
+    }
+
+    /// <summary>
+    /// 没给位置的窗口摆回这个程序上次关掉时的位置 —— 原先每次打开 xterm 都跳到屏幕正中。同一个程序已经开着一个窗口时不摆
+    /// (摆过去就叠在一起),记住的位置已经不在任何一块屏幕上(拔了显示器)时也不摆;客户端没指定尺寸(USSize)、窗口能改尺寸时
+    /// 连尺寸一起恢复(按尺寸提示夹好、对齐步长)。
+    /// </summary>
+    private bool RestorePlacement(XTopLevelWindow handle, XNativeWindow window)
+    {
+        XTopLevelSnapshot s = handle.Snapshot;
+        if (PlacementKey(s) is not { } key || !_placements.TryGetValue(key, out RememberedPlacement? remembered)
+            || _windows.Values.Any(w => !ReferenceEquals(w, window) && PlacementKey(w.Handle.Snapshot) == key))
+        {
+            return false;
+        }
+        (int ox, int oy) = RootOrigin;
+        PixelRect frame = new(remembered.FrameX + ox, remembered.FrameY + oy, Math.Max(1, remembered.Width), Math.Max(1, remembered.Height));
+        if (!window.Screens.All.Any(screen => screen.WorkingArea.Intersects(frame)))
+        {
+            return false;
+        }
+        window.PlaceFrameAt(remembered.FrameX, remembered.FrameY);
+        bool resizable = (s.Functions & XWindowFunctions.Resize) != 0 && !(s.MaxWidth > 0 && s.MinWidth == s.MaxWidth && s.MinHeight == s.MaxHeight);
+        if (!s.UserSize && resizable)
+        {
+            (int width, int height) = (FitSize(remembered.Width, s.MinWidth, s.MaxWidth, s.BaseWidth, s.WidthIncrement),
+                FitSize(remembered.Height, s.MinHeight, s.MaxHeight, s.BaseHeight, s.HeightIncrement));
+            if ((width, height) != (s.Width, s.Height))
+            {
+                window.RequestSizeOnOpen(width, height);
+            }
+        }
+        return true;
+    }
+
+    /// <summary>按 WM_NORMAL_HINTS 的最小 / 最大尺寸与步长(从基准尺寸起,ICCCM §4.1.2.3)把一个边长夹好。</summary>
+    private static int FitSize(int size, int min, int max, int baseSize, int increment)
+    {
+        if (increment > 1 && size > baseSize)
+        {
+            size = baseSize + ((size - baseSize) / increment * increment);
+        }
+        size = Math.Max(size, Math.Max(1, min));
+        return max > 0 ? Math.Min(size, max) : size;
+    }
+
     /// <summary>某个 X 窗口成了活动窗口:键盘焦点给它;顺带把系统剪贴板里别的程序复制的新文本交给 X。</summary>
     public void OnWindowActivated(XNativeWindow window)
     {
@@ -695,6 +1176,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
             return;
         }
         UpdateTopmost(xActive: true);
+        ApplyConfinement();
         server.FocusTopLevel(window.Handle);
         if (HostLockState.Read() is var (capsLock, numLock))
         {
@@ -704,16 +1186,46 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         FireAndForget.Run(() => OfferSystemClipboardAsync(server, window));
     }
 
-    /// <summary>系统剪贴板里有别的程序复制的新文本时交给 X(没有剪贴板变化事件可用,活动窗口切进来时看一眼)。</summary>
+    /// <summary>
+    /// 系统剪贴板里有别的程序复制的新内容时交给 X(没有剪贴板变化事件可用,活动窗口切进来时看一眼):文本、HTML、图片(编成 PNG)一起交。
+    /// 文本与图片都还是上次与 X 交换过的那份就不交(那是 X 程序复制、我们写进去的)。超过服务端上限的格式不交。
+    /// </summary>
     private async Task OfferSystemClipboardAsync(X11Server server, XNativeWindow window)
     {
         try
         {
-            if (window.Clipboard is { } clipboard && await clipboard.TryGetTextAsync() is { Length: > 0 } text
-                && text != _lastClipboard)
+            if (window.Clipboard is not { } clipboard)
             {
-                _lastClipboard = text;
-                server.SetClipboardText(text);
+                return;
+            }
+            string? text = await clipboard.TryGetTextAsync() is { Length: > 0 } t ? t : null;
+            using Bitmap? bitmap = await clipboard.TryGetBitmapAsync();
+            string? fingerprint = bitmap is null ? null : ImageFingerprint(bitmap);
+            bool textChanged = text is not null && text != _lastClipboard;
+            bool imageChanged = fingerprint is not null && fingerprint != _lastImageFingerprint;
+            if (!textChanged && !imageChanged)
+            {
+                return;
+            }
+            _lastClipboard = text;
+            _lastImageFingerprint = fingerprint;
+            string? html = await clipboard.TryGetValueAsync(HtmlClipboard.Format) is { } markup ? HtmlClipboard.Decode(markup) : null;
+            byte[] png = [];
+            if (bitmap is not null)
+            {
+                using MemoryStream encoded = new();
+                bitmap.Save(encoded, PngBitmapEncoderOptions.Default);
+                png = encoded.Length <= X11Server.MaxClipboardImageBytes ? encoded.ToArray() : [];
+            }
+            XClipboardContent content = new()
+            {
+                Text = text is not null && Encoding.UTF8.GetByteCount(text) <= X11Server.MaxClipboardBytes ? text : null,
+                Html = html is not null && Encoding.UTF8.GetByteCount(html) <= X11Server.MaxClipboardBytes ? html : null,
+                Png = png,
+            };
+            if (!content.IsEmpty)
+            {
+                server.SetClipboard(content);
             }
         }
         catch (Exception ex)
@@ -732,6 +1244,7 @@ public sealed class AvaloniaXServerHost : IEmbeddedXServerHost
         if (!XActive)
         {
             UpdateTopmost(xActive: false);   // 用户回到了本机窗口:X 的弹出层与「总在最前」的窗口退到后面
+            ApplyConfinement();              // 光标不再关在 X 窗口里
         }
     });
 

@@ -69,13 +69,13 @@ public sealed partial class X11Server
     };
 
     private XSyncCounter Counter(uint id) =>
-        Lookup<XSyncCounter>(id) ?? throw new XProtocolError((XErrorCode)SyncErrorBase, id);
+        Use<XSyncCounter>(id) ?? throw new XProtocolError((XErrorCode)SyncErrorBase, id);
 
     private XSyncAlarm Alarm(uint id) =>
-        Lookup<XSyncAlarm>(id) ?? throw new XProtocolError((XErrorCode)(SyncErrorBase + 1), id);
+        Use<XSyncAlarm>(id) ?? throw new XProtocolError((XErrorCode)(SyncErrorBase + 1), id);
 
     private XSyncFence Fence(uint id) =>
-        Lookup<XSyncFence>(id) ?? throw new XProtocolError((XErrorCode)(SyncErrorBase + 2), id);
+        Use<XSyncFence>(id) ?? throw new XProtocolError((XErrorCode)(SyncErrorBase + 2), id);
 
     private static long ReadInt64(XRequestReader r)
     {
@@ -138,6 +138,7 @@ public sealed partial class X11Server
                     }
                     counter.Value = value;
                     EvaluateSync();
+                    CheckRedrawSync(counter);   // _NET_WM_SYNC_REQUEST:客户端重画完了
                     break;
                 }
             case 5:   // QueryCounter

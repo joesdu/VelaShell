@@ -15,6 +15,9 @@ internal sealed class RecordingHost : IX11ServerHost, IDisposable
     /// <summary>最近一次 <see cref="CursorChanged" /> 收到的光标。</summary>
     public XCursor? Cursor { get; private set; }
 
+    /// <summary>最近一次光标变化指名的顶层(null = 不在任何顶层上)。</summary>
+    public XTopLevelWindow? CursorWindow { get; private set; }
+
     /// <summary>最近一次 <see cref="TopLevelChanged" /> 报告的变化。</summary>
     public XTopLevelChanges LastChanges { get; private set; }
 
@@ -66,6 +69,7 @@ internal sealed class RecordingHost : IX11ServerHost, IDisposable
     public void CursorChanged(XTopLevelWindow? window, XCursor cursor)
     {
         Cursor = cursor;
+        CursorWindow = window;
         Note($"cursor {cursor.Shape}{(cursor.Image is { } image ? $" {image.Width}x{image.Height}" : "")}");
     }
 
@@ -77,10 +81,104 @@ internal sealed class RecordingHost : IX11ServerHost, IDisposable
         Note($"wm {request.GetType().Name}");
     }
 
+    public ConcurrentDictionary<XTopLevelWindow, string> TrayIcons { get; } = new();
+
+    public ConcurrentQueue<XTopLevelWindow> TrayIconsRemoved { get; } = new();
+
+    public void SystemTrayIconAdded(XTopLevelWindow icon, string title)
+    {
+        TrayIcons[icon] = title;
+        Note($"tray +{icon.Id:x} {title}");
+    }
+
+    public void SystemTrayIconRemoved(XTopLevelWindow icon)
+    {
+        TrayIcons.TryRemove(icon, out _);
+        TrayIconsRemoved.Enqueue(icon);
+        Note($"tray -{icon.Id:x}");
+    }
+
+    public ConcurrentQueue<XServerGrabStall> ServerGrabStalls { get; } = new();
+
+    public void ServerGrabStalled(XServerGrabStall stall)
+    {
+        ServerGrabStalls.Enqueue(stall);
+        Note($"server grab stalled by {stall.ClientId}");
+    }
+
     public void ClipboardChanged(string text)
     {
         Clipboard = text;
         Note($"clipboard {text.Length}");
+    }
+
+    /// <summary><see cref="PointerWarped" /> 收到的根坐标,按先后。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<(int X, int Y)> Warps { get; } = new();
+
+    /// <summary><see cref="PointerConfinementChanged" /> 收到的范围,按先后(null = 解除)。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<XRect?> Confinements { get; } = new();
+
+    public void PointerWarped(int rootX, int rootY)
+    {
+        Warps.Enqueue((rootX, rootY));
+        Note($"warp {rootX},{rootY}");
+    }
+
+    public void PointerConfinementChanged(XRect? area)
+    {
+        Confinements.Enqueue(area);
+        Note($"confine {area}");
+    }
+
+    /// <summary><see cref="TopLevelRedrawn" /> 报过的窗口,按先后。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<XTopLevelWindow> Redrawn { get; } = new();
+
+    public void TopLevelRedrawn(XTopLevelWindow window)
+    {
+        Redrawn.Enqueue(window);
+        Note($"redrawn {window.Id:x}");
+    }
+
+    /// <summary><see cref="FrameClockWanted" /> 收到的值,按先后。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<bool> FrameClockRequests { get; } = new();
+
+    public void FrameClockWanted(bool wanted)
+    {
+        FrameClockRequests.Enqueue(wanted);
+        Note($"frame clock {wanted}");
+    }
+
+    /// <summary><see cref="ScreenSaverSuspensionChanged" /> 收到的值,按先后。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<bool> SaverSuspensions { get; } = new();
+
+    /// <summary><see cref="ScreenSaverReset" /> 收到的次数。</summary>
+    public int SaverResets => _saverResets;
+
+    private int _saverResets;
+
+    public void ScreenSaverSuspensionChanged(bool suspended)
+    {
+        SaverSuspensions.Enqueue(suspended);
+        Note($"saver suspended {suspended}");
+    }
+
+    public void ScreenSaverReset()
+    {
+        Interlocked.Increment(ref _saverResets);
+        Note("saver reset");
+    }
+
+    /// <summary>最近一次 <see cref="ClipboardContentChanged" /> 收到的整份内容(各种格式)。</summary>
+    public XClipboardContent? ClipboardContent { get; private set; }
+
+    public void ClipboardContentChanged(XClipboardContent content)
+    {
+        ClipboardContent = content;
+        if (content.Text is { } text)
+        {
+            Clipboard = text;
+        }
+        Note($"clipboard content {content.Text?.Length} / {content.Html?.Length} / {content.Png.Length}");
     }
 
     /// <summary>等到条件成立(每次有新通知时重新检查)。</summary>

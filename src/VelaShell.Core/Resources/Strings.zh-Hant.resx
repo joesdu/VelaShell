@@ -5914,7 +5914,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>受信任(-Y)</value>
   </data>
   <data name="Profile_SshX11TrustedHint" xml:space="preserve">
-    <value>受信任轉送讓遠端 X 程式對本機顯示擁有完整存取權,而且所有轉送的工作階段共用這一個顯示:能看到彼此的視窗、讀取剪貼簿、注入輸入。內建 X Server 與 Windows 上的多數 X 伺服器只支援這種模式;非受信任模式需要支援 SECURITY 擴充的外部 X 伺服器,並在本機安裝 xauth。</value>
+    <value>受信任轉送讓遠端 X 程式對本機顯示擁有完整存取權:能看到其他程式的視窗、讀取剪貼簿與鍵盤、注入輸入。非受信任轉送(相當於 ssh -X)只讓它們存取自己的視窗:無法擷取其他程式的畫面、讀不到其他程式的鍵盤輸入、不能偽造輸入。內建 X Server 兩種都支援;外部 X 伺服器的非受信任模式需要它支援 SECURITY 擴充,並在本機安裝 xauth。少數舊程式在非受信任模式下無法正常運作。</value>
   </data>
   <data name="Ssh_X11ForwardOn" xml:space="preserve">
     <value>X11 轉送已開啟 → 本機顯示 {0}</value>
@@ -5930,9 +5930,6 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="Ssh_X11BadDisplay" xml:space="preserve">
     <value>無法辨識顯示位址「{0}」(應形如 localhost:0.0)</value>
-  </data>
-  <data name="Ssh_X11UntrustedBuiltIn" xml:space="preserve">
-    <value>內建 X Server 只支援受信任轉送(它沒有 SECURITY 擴充)。請為這個連線勾選「受信任(-Y)」,或改用外部 X 伺服器。</value>
   </data>
   <data name="SshErr_AgentUnavailable" xml:space="preserve">
     <value>無法連線到本機 ssh-agent:{0}</value>
@@ -6118,7 +6115,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>視窗模式</value>
   </data>
   <data name="SetXServer_WindowModeDesc" xml:space="preserve">
-    <value>多視窗:每個遠端程式都是一個獨立的 Windows 視窗;其餘幾種把整個 X 螢幕放進一個視窗。</value>
+    <value>多視窗:每個遠端程式都是一個獨立的視窗。其餘幾種把整個 X 螢幕放進一個視窗,裡面的程式由遠端的視窗管理員管理 —— 執行完整的遠端桌面(Xfce、MATE)時使用。內建 X Server 的「無根視窗」與多視窗相同;變更會在下次啟動 X Server 時生效。</value>
   </data>
   <data name="SetXServer_ModeMultiWindow" xml:space="preserve">
     <value>多視窗</value>
@@ -6164,6 +6161,51 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="SetXServer_RestrictForwardedDesc" xml:space="preserve">
     <value>經 SSH 轉送來的程式不能模擬輸入(XTEST)、不能監聽在 X 視窗裡敲的所有按鍵(原始按鍵事件)、不能變更輸入裝置。連線到不完全信任的伺服器時建議開啟;開啟後那些伺服器上的 xdotool 之類的工具會失效。</value>
+  </data>
+  <data name="SetXServer_DisplayPerSession" xml:space="preserve">
+    <value>每個 SSH 工作階段一個顯示</value>
+  </data>
+  <data name="SetXServer_DisplayPerSessionDesc" xml:space="preserve">
+    <value>不同 SSH 工作階段的 X 程式各用各的顯示:彼此看不見視窗、讀不到對方的鍵盤輸入與剪貼簿,也不能對彼此注入輸入。本機的 X 程式照舊使用共用的顯示。每個工作階段會多佔一點記憶體與一條執行緒。下次啟動 X Server 時生效。</value>
+  </data>
+  <data name="SetXServer_HostInputMethod" xml:space="preserve">
+    <value>X 視窗裡使用本機輸入法</value>
+  </data>
+  <data name="SetXServer_HostInputMethodDesc" xml:space="preserve">
+    <value>用本機輸入法(中文、日文、韓文……)組好的字直接輸入給 X 程式,伺服器上不用安裝 fcitx / ibus。關閉後按鍵原樣交給 X 程式,使用伺服器自己的輸入法。重新啟動 X Server 後生效。</value>
+  </data>
+  <data name="SetXServer_CompositingManager" xml:space="preserve">
+    <value>X 視窗透明與圓角</value>
+  </data>
+  <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
+    <value>告訴 X 程式有合成管理器:GTK 的圓角、Qt / Electron 的半透明視窗真正透明。預設關閉,因為半透明視窗要系統多合成一層。重新啟動 X Server 後生效。</value>
+  </data>
+  <data name="SetXServer_ShowSource" xml:space="preserve">
+    <value>標出 X 視窗的來源</value>
+  </data>
+  <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
+    <value>經 SSH 轉送來的 X 視窗在標題前寫上來源(使用者@主機:連接埠):幾台主機的視窗分得清,遠端程式也冒充不了本機視窗。本機的程式不標。對之後開啟的視窗生效。</value>
+  </data>
+  <data name="SetXServer_ListenTcp" xml:space="preserve">
+    <value>也開啟 TCP 連接埠</value>
+  </data>
+  <data name="SetXServer_ListenTcpDesc" xml:space="preserve">
+    <value>除了 Unix 通訊端,再開啟 6000+N 連接埠(需要 cookie)。只有經網路連線的程式(例如容器裡的)才需要;SSH 轉送與本機程式(DISPLAY=:N)用不到。重新啟動 X Server 後生效。</value>
+  </data>
+  <data name="XServer_WindowTitleWithSource" xml:space="preserve">
+    <value>{0} — {1}</value>
+  </data>
+  <data name="XServer_CopyScreenshot" xml:space="preserve">
+    <value>複製螢幕擷取畫面</value>
+  </data>
+  <data name="XServer_SaveScreenshot" xml:space="preserve">
+    <value>螢幕擷取畫面另存為…</value>
+  </data>
+  <data name="XServer_SaveScreenshotTitle" xml:space="preserve">
+    <value>儲存螢幕擷取畫面</value>
+  </data>
+  <data name="XServer_ScreenshotDefaultName" xml:space="preserve">
+    <value>X 視窗</value>
   </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>自動 - 跟隨系統目前配置</value>
@@ -6293,6 +6335,81 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="XServer_Stop" xml:space="preserve">
     <value>停止</value>
+  </data>
+  <data name="XServer_TipPanel" xml:space="preserve">
+    <value>X Server 執行中({0}),點擊查看連線中的程式</value>
+  </data>
+  <data name="XServer_PanelTitle" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="XServer_PanelEmpty" xml:space="preserve">
+    <value>還沒有 X 程式連線。</value>
+  </data>
+  <data name="XServer_PanelLocal" xml:space="preserve">
+    <value>本機</value>
+  </data>
+  <data name="XServer_PanelUnnamed" xml:space="preserve">
+    <value>X 程式 #{0}</value>
+  </data>
+  <data name="XServer_PanelStats" xml:space="preserve">
+    <value>{0} 個視窗 · {1}</value>
+  </data>
+  <data name="XServer_PanelRetained" xml:space="preserve">
+    <value>已中斷，資源還留著</value>
+  </data>
+  <data name="XServer_PanelGrabbing" xml:space="preserve">
+    <value>獨占中</value>
+  </data>
+  <data name="XServer_PanelGrabbingTip" xml:space="preserve">
+    <value>它抓著整個 X Server，其他 X 程式都在等它。</value>
+  </data>
+  <data name="XServer_PanelDisconnectTip" xml:space="preserve">
+    <value>中斷這個程式（它的視窗全部關閉）</value>
+  </data>
+  <data name="XServer_PanelBreakGrabs" xml:space="preserve">
+    <value>解除卡住</value>
+  </data>
+  <data name="XServer_PanelBreakGrabsTip" xml:space="preserve">
+    <value>解除所有 X 程式對滑鼠、鍵盤的擷取與對 X Server 的獨占。點不動、打不了字的時候用 —— 例如遠端選單開著時斷了網。</value>
+  </data>
+  <data name="XServer_BreakGrabsDone" xml:space="preserve">
+    <value>已解除所有 X 程式的擷取。</value>
+  </data>
+  <data name="XServer_PanelStop" xml:space="preserve">
+    <value>停止 X Server</value>
+  </data>
+  <data name="XServer_DisconnectConfirmTitle" xml:space="preserve">
+    <value>中斷 X 程式</value>
+  </data>
+  <data name="XServer_DisconnectConfirmMessage" xml:space="preserve">
+    <value>中斷「{0}」後它的視窗會全部關閉，未儲存的內容會遺失。</value>
+  </data>
+  <data name="XServer_Disconnect" xml:space="preserve">
+    <value>中斷</value>
+  </data>
+  <data name="XServer_GrabStalled" xml:space="preserve">
+    <value>X 程式「{0}」（{1}）已獨占 X Server {2} 秒，其他 X 程式都在等它。</value>
+  </data>
+  <data name="XServer_GrabStalledDisconnect" xml:space="preserve">
+    <value>中斷它</value>
+  </data>
+  <data name="XServer_DropUploading" xml:space="preserve">
+    <value>正在把 {0} 項傳到 {1},交給 X 程式…</value>
+  </data>
+  <data name="XServer_DropNoSession" xml:space="preserve">
+    <value>{0} 的 SSH 工作階段已經中斷,沒有放下任何東西。</value>
+  </data>
+  <data name="XServer_DropFailed" xml:space="preserve">
+    <value>拖進來的檔案沒能傳到遠端:{0}</value>
+  </data>
+  <data name="XServer_TrayClick" xml:space="preserve">
+    <value>開啟(單擊)</value>
+  </data>
+  <data name="XServer_TrayMenu" xml:space="preserve">
+    <value>選單(右鍵單擊)</value>
+  </data>
+  <data name="XServer_ScreenTitle" xml:space="preserve">
+    <value>X 桌面 {0}</value>
   </data>
   <data name="Cmd_ToggleXServer" xml:space="preserve">
     <value>啟動 / 停止 X Server</value>

@@ -24,7 +24,7 @@ public sealed partial class X11Server
     private readonly Dictionary<XResource, List<XDamage>> _damageObjects = [];
 
     private XDamage DamageRes(uint id) =>
-        Lookup<XDamage>(id) ?? throw new XProtocolError((XErrorCode)DamageErrorBase, id);
+        Use<XDamage>(id) ?? throw new XProtocolError((XErrorCode)DamageErrorBase, id);
 
     private void DamageExtension(XClient c, XRequestReader r)
     {
@@ -42,8 +42,8 @@ public sealed partial class X11Server
                     uint id = r.U32();
                     uint drawableId = r.U32();
                     byte level = r.U8();
-                    XResource drawable = Lookup<XResource>(drawableId) is XWindow or XPixmap
-                        ? Lookup<XResource>(drawableId)!
+                    XResource drawable = Use<XResource>(drawableId) is XWindow or XPixmap
+                        ? Use<XResource>(drawableId)!
                         : throw new XProtocolError(XErrorCode.Drawable, drawableId);
                     if (level > XDamage.NonEmpty)
                     {
@@ -108,7 +108,7 @@ public sealed partial class X11Server
             case 4:   // Add:客户端自己报告的损伤(比如它用直接渲染画了东西)
                 {
                     uint drawableId = r.U32();
-                    XResource drawable = Lookup<XResource>(drawableId) ?? throw new XProtocolError(XErrorCode.Drawable, drawableId);
+                    XResource drawable = Use<XResource>(drawableId) ?? throw new XProtocolError(XErrorCode.Drawable, drawableId);
                     AccumulateDamage(drawable, RegionRes(r.U32()).Region);
                     break;
                 }

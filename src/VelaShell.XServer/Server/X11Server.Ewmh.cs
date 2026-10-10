@@ -7,7 +7,8 @@
 //   _NET_WORKAREA、_NET_SUPPORTING_WM_CHECK)、§4「Other Root Window Messages」(_NET_CLOSE_WINDOW、
 //   _NET_MOVERESIZE_WINDOW、_NET_WM_MOVERESIZE、_NET_REQUEST_FRAME_EXTENTS)、§5「Application Window Properties」
 //   (_NET_WM_NAME、_NET_WM_DESKTOP、_NET_WM_WINDOW_TYPE、_NET_WM_STATE 及其 ClientMessage、_NET_WM_ICON、_NET_WM_PID、
-//   _NET_WM_WINDOW_OPACITY)、§6「Window Manager Protocols」(_NET_FRAME_EXTENTS)
+//   _NET_WM_WINDOW_OPACITY)、§6「Window Manager Protocols」(_NET_FRAME_EXTENTS)、
+//   「Compositing Managers」(_NET_WM_CM_Sn 管理器选区;X11ServerOptions.CompositingManager 时占住)
 //   ICCCM 2.0 —— §4.1.2.3 WM_NORMAL_HINTS(含基准尺寸、宽高比、win_gravity、USPosition / PPosition)、§4.1.2.4 WM_HINTS(含 initial_state、
 //   icon_pixmap / icon_mask、window_group)、§4.1.3.1 WM_STATE、§4.1.4 WM_CHANGE_STATE(IconicState)
 //   Motif Window Manager hints(_MOTIF_WM_HINTS 的 flags / functions / decorations 三个字段,EWMH 附录所引)
@@ -81,6 +82,12 @@ public sealed partial class X11Server
 
     private void InitEwmh()
     {
+        if (_options.CompositingManager && !Rootful)
+        {
+            // 合成管理器的管理器选区:工具包据此用 ARGB 视觉画半透明窗口与阴影(宿主显示带 alpha 的窗口)。
+            // 单窗口模式下归远端的窗口管理器(xfwm4、compiz 自带合成器);服务端拼屏幕时照样按 alpha 叠。
+            _selections[new SelectionSlot(Intern("_NET_WM_CM_S0"), null)] = (SelectionWindow, null, 0);
+        }
         uint window = XAtom.Window, cardinal = XAtom.Cardinal, atom = XAtom.Atom;
         _stateAtoms = [.. NetWmStates.Select(s => Intern(s.Atom))];
         _typeAtoms = [.. NetWmTypes.Select(t => Intern(t.Atom))];
@@ -102,6 +109,17 @@ public sealed partial class X11Server
         _compoundTextAtom = Intern("COMPOUND_TEXT");
         _netWmStrutAtom = Intern("_NET_WM_STRUT");
         _netWmStrutPartialAtom = Intern("_NET_WM_STRUT_PARTIAL");
+        _handleProperties =
+        [
+            XAtom.WmName, XAtom.WmClass, XAtom.WmTransientFor, XAtom.WmHints, XAtom.WmNormalHints,
+            .. ((string[])["_NET_WM_NAME", "WM_PROTOCOLS", "_NET_WM_WINDOW_TYPE", "_NET_WM_STATE", "_MOTIF_WM_HINTS",
+                "_NET_WM_ICON", "_NET_WM_WINDOW_OPACITY", "_GTK_FRAME_EXTENTS", "_NET_WM_PID", "WM_CLIENT_MACHINE",
+                "WM_WINDOW_ROLE", "_NET_WM_STRUT", "_NET_WM_STRUT_PARTIAL"]).Select(Intern),
+        ];
+        if (Rootful)
+        {
+            return;   // 单窗口模式:窗口管理器是远端的,WM_S0、_NET_SUPPORTED、客户端列表这些归它
+        }
         XWindow check = SelectionWindow;   // 服务端自己的隐藏窗口兼作 _NET_SUPPORTING_WM_CHECK 窗口
         List<string> supported =
         [
@@ -110,6 +128,7 @@ public sealed partial class X11Server
             "_NET_ACTIVE_WINDOW", "_NET_WORKAREA", "_NET_CLOSE_WINDOW", "_NET_MOVERESIZE_WINDOW", "_NET_WM_MOVERESIZE",
             "_NET_REQUEST_FRAME_EXTENTS", "_NET_FRAME_EXTENTS", "_NET_WM_NAME", "_NET_WM_DESKTOP", "_NET_WM_WINDOW_TYPE",
             "_NET_WM_STATE", "_NET_WM_ICON", "_NET_WM_PID", "_NET_WM_WINDOW_OPACITY", "_NET_WM_PING",
+            "_NET_WM_SYNC_REQUEST", "_NET_WM_SYNC_REQUEST_COUNTER",
         ];
         supported.AddRange(NetWmStates.Select(s => s.Atom));
         supported.AddRange(NetWmTypes.Select(t => t.Atom));
@@ -131,14 +150,6 @@ public sealed partial class X11Server
         SetProperty(Root, Intern("_NET_CLIENT_LIST"), window, []);
         SetProperty(Root, Intern("_NET_CLIENT_LIST_STACKING"), window, []);
         UpdateDesktopGeometry();
-
-        _handleProperties =
-        [
-            XAtom.WmName, XAtom.WmClass, XAtom.WmTransientFor, XAtom.WmHints, XAtom.WmNormalHints,
-            .. ((string[])["_NET_WM_NAME", "WM_PROTOCOLS", "_NET_WM_WINDOW_TYPE", "_NET_WM_STATE", "_MOTIF_WM_HINTS",
-                "_NET_WM_ICON", "_NET_WM_WINDOW_OPACITY", "_GTK_FRAME_EXTENTS", "_NET_WM_PID", "WM_CLIENT_MACHINE",
-                "WM_WINDOW_ROLE", "_NET_WM_STRUT", "_NET_WM_STRUT_PARTIAL"]).Select(Intern),
-        ];
     }
 
     /// <summary>这个属性变了要不要刷新宿主看到的快照。</summary>
@@ -215,6 +226,10 @@ public sealed partial class X11Server
 
     private void UpdateDesktopGeometry()
     {
+        if (Rootful)
+        {
+            return;   // 单窗口模式:_NET_DESKTOP_GEOMETRY、_NET_WORKAREA 归远端的窗口管理器
+        }
         uint w = (uint)Root.Width, h = (uint)Root.Height;
         SetProperty(Root, Intern("_NET_DESKTOP_GEOMETRY"), XAtom.Cardinal, [w, h]);
         XRect area = WorkArea();
@@ -392,6 +407,10 @@ public sealed partial class X11Server
     /// <summary>发到根窗口的 ClientMessage:窗口管理器的请求。解析、能自己办的自己办,其余交给宿主。</summary>
     private void OnRootClientMessage(XClient sender, byte[] raw)
     {
+        if (Rootful)
+        {
+            return;   // 单窗口模式:发给窗口管理器的请求由远端的窗口管理器照常收(它选了根窗口的 SubstructureRedirect)
+        }
         bool be = sender.BigEndian;
         uint Read(int offset) => be ? BinaryPrimitives.ReadUInt32BigEndian(raw.AsSpan(offset)) : BinaryPrimitives.ReadUInt32LittleEndian(raw.AsSpan(offset));
         uint windowId = Read(4), type = Read(8);
@@ -401,7 +420,7 @@ public sealed partial class X11Server
             OnPong(data[1], data[2]);   // ping 的回应:窗口字段是根窗口,data[2] 才是它自己的窗口
             return;
         }
-        if (Lookup<XWindow>(windowId) is not { IsTopLevel: true } top)
+        if (Use<XWindow>(windowId) is not { IsTopLevel: true } top)
         {
             return;
         }
@@ -652,6 +671,7 @@ public sealed partial class X11Server
             WinGravity = gravity is >= 1 and <= 10 ? (XGravity)gravity : XGravity.NorthWest,
             UserPosition = (flags & 1) != 0,
             ProgramPosition = (flags & 4) != 0,
+            UserSize = (flags & 2) != 0,
         };
     }
 

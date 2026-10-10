@@ -1528,6 +1528,57 @@ public class XServerOptions : ObservableOptions
         set => Set(ref field, value);
     }
 
+    /// <summary>
+    /// 内置 X Server:每个 SSH 会话一个显示 —— 各会话的 X 程序彼此看不见窗口、读不到键盘与剪贴板、注入不了输入;本机的 X 程序照旧用共用的显示。
+    /// 默认关(所有会话共用一个显示,与以往一样)。下次启动 X Server 时生效。
+    /// </summary>
+    public bool DisplayPerSession
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
+    /// <summary>
+    /// 内置 X Server:X 窗口里也用本机的输入法 —— 组好的字直接输入给远端程序(远端不用装 fcitx / ibus)。默认开;
+    /// 关了之后 X 窗口里按键原样交给远端,远端自己的输入法框架照常工作。重启 X Server 后生效。
+    /// </summary>
+    public bool UseHostInputMethod
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
+    /// <summary>
+    /// 内置 X Server:告诉 X 程序有合成管理器(占住 <c>_NET_WM_CM_S0</c>)—— GTK 的圆角、Qt / Electron 的半透明窗口拿得到 alpha,
+    /// 宿主按逐像素透明显示。默认关:带 alpha 的窗口要系统多合成一层,开销还没在真机上量过。重启 X Server 后生效。
+    /// </summary>
+    public bool CompositingManager
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
+    /// <summary>
+    /// 内置 X Server:经 SSH 转发来的 X 窗口在标题(以及任务栏)前标出来源(<c>用户@主机:端口</c>)—— 同时转发几台主机时分得清,
+    /// 远端程序画一个像本机凭据框的窗口也露馅。本机直接连的程序不标。默认开,新开的窗口生效。
+    /// </summary>
+    public bool ShowWindowSource
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
+    /// <summary>
+    /// 内置 X Server 在 Linux / macOS 上也开 TCP 端口(<c>6000+N</c>,要 cookie)。默认关:SSH 转发走进程内的连接器,本机程序走
+    /// Unix 套接字(<c>DISPLAY=:N</c>,MIT-SHM 也能用),TCP 端口只是多一个本机别的进程、别的用户够得着的入口。容器里经网络连的程序
+    /// 才需要打开。Windows 上没有 Unix 套接字的 X 程序,TCP 一直开着,这一项不起作用。重启 X Server 后生效。
+    /// </summary>
+    public bool ListenTcpOnUnix
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
     /// <summary>XKB 键盘布局(<c>-xkblayout</c>);留空 = 跟随 Windows 当前布局。</summary>
     public string KeyboardLayout
     {

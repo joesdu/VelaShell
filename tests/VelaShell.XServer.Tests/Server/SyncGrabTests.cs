@@ -166,6 +166,40 @@ public sealed class SyncGrabTests
         Assert.AreEqual(79, moves[1].I16(26));
     }
 
+    /// <summary>
+    /// 指针交给宿主(xs_plan F8):抓着指针的客户端 Warp 才告诉宿主挪系统光标(根坐标),没抓着的不报;带 confine-to 的抓取开始时报那个窗口的内区,
+    /// 解除时报 null。
+    /// </summary>
+    [TestMethod]
+    public async Task 抓着指针的客户端Warp才交给宿主_confine_to的范围开始与解除都报()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ScreenWidth = 800, ScreenHeight = 600 }, host);
+        await using XTestClient c = await XTestClient.ConnectAsync(server);
+        await using XTestClient other = await XTestClient.ConnectAsync(server);
+        uint top = await MapTopAsync(c, host);   // 在 (0, 0),100 × 80
+        Task<ushort> WarpAsync(XTestClient client, short x, short y) =>
+            client.SendAsync(41, 0, b => b.U32(0).U32(client.RootWindow).I16(0).I16(0).U16(0).U16(0).I16(x).I16(y));
+
+        await WarpAsync(c, 300, 200);
+        await c.SyncAsync();
+        Assert.IsEmpty(host.Warps, "没抓着指针:不挪用户的鼠标");
+
+        await c.RequestAsync(26, 0, b => b.U32(top).U16(0x40).U8(Asynchronous).U8(Asynchronous).U32(top).U32(0).U32(0));   // 带 confine-to
+        await host.WaitForAsync(() => !host.Confinements.IsEmpty);
+        Assert.AreEqual(new XRect(0, 0, 100, 80), host.Confinements.Last(), "confine-to 窗口的内区(根坐标)");
+        await WarpAsync(c, 30, 20);
+        await host.WaitForAsync(() => !host.Warps.IsEmpty);
+        Assert.AreEqual((30, 20), host.Warps.Last());
+        await WarpAsync(other, 60, 60);
+        await other.SyncAsync();
+        Assert.HasCount(1, host.Warps, "别的客户端挪:不报");
+
+        await c.SendAsync(27, 0, b => b.U32(0));   // UngrabPointer
+        await host.WaitForAsync(() => host.Confinements.Count >= 2);
+        Assert.IsNull(host.Confinements.Last(), "解除");
+    }
+
     /// <summary>重放的按下按事件之前的状态报:按钮 1 的位、Shift 自己的位都不在 state 里(原先重放时已经带上了)。</summary>
     [TestMethod]
     public async Task 重放的按下按事件之前的状态报_不带这次按下的按钮与修饰位()

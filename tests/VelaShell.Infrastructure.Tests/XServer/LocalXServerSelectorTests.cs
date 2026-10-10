@@ -93,7 +93,7 @@ public class LocalXServerSelectorTests
         vcXsrv.State.Returns(XServerState.Running);
         vcXsrv.DisplayNumber.Returns(display);
         Task<System.Net.Sockets.TcpClient> accepted = listener.AcceptTcpClientAsync();
-        await using Stream stream = await resolution.Connector!("user@host:22", CancellationToken.None);
+        await using Stream stream = await resolution.Connector!(new XServerChannelSource("user@host:22"), CancellationToken.None);
         using System.Net.Sockets.TcpClient peer = await accepted.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.IsTrue(peer.Connected, "连到了此刻在运行的 X 服务端的 6000+N");
 

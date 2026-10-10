@@ -286,9 +286,12 @@ internal static class XAtom
     public const uint Secondary = 2;
     public const uint Atom = 4;
     public const uint Cardinal = 6;
+    public const uint CutBuffer0 = 9;
+    public const uint CutBuffer7 = 16;
     public const uint Font = 18;
     public const uint Integer = 19;
     public const uint String = 31;
+    public const uint VisualId = 32;
     public const uint Window = 33;
     public const uint WmHints = 35;
     public const uint WmIconName = 37;

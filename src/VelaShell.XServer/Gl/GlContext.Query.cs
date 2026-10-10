@@ -95,8 +95,8 @@ internal sealed partial class GlContext
             0x0B21 => One(State.LineWidth),                   // LINE_WIDTH
             0x0B22 or 0x846E => new GlValue([1, MaxLineWidth]), // LINE_WIDTH_RANGE / ALIASED_LINE_WIDTH_RANGE
             0x0B23 => One(1),                                 // LINE_WIDTH_GRANULARITY
-            0x0B25 => One(0xFFFF),                            // LINE_STIPPLE_PATTERN
-            0x0B26 => One(1),                                 // LINE_STIPPLE_REPEAT
+            0x0B25 => One(State.LineStipplePattern),          // LINE_STIPPLE_PATTERN
+            0x0B26 => One(State.LineStippleFactor),           // LINE_STIPPLE_REPEAT
             0x0B40 => new GlValue([State.PolygonModeFront, State.PolygonModeBack]),   // POLYGON_MODE
             0x0B45 => One(State.CullFaceMode),                // CULL_FACE_MODE
             0x0B46 => One(State.FrontFace),                   // FRONT_FACE
@@ -176,6 +176,13 @@ internal sealed partial class GlContext
             0x0C31 => Bool(true),                             // RGBA_MODE
             0x0C32 => Bool(DoubleBuffered),                   // DOUBLEBUFFER
             0x0C33 => Bool(false),                            // STEREO
+            0x0C40 => One(RenderModeValue),                   // RENDER_MODE
+            0x0D70 => One(NameStackDepth),                    // NAME_STACK_DEPTH
+            0x0DD0 => new GlValue([State.Grid1U1, State.Grid1U2]),                                                // MAP1_GRID_DOMAIN
+            0x0DD1 => One(State.Grid1Segments),                                                                   // MAP1_GRID_SEGMENTS
+            0x0DD2 => new GlValue([State.Grid2U1, State.Grid2U2, State.Grid2V1, State.Grid2V2]),                  // MAP2_GRID_DOMAIN
+            0x0DD3 => new GlValue([State.Grid2USegments, State.Grid2VSegments]),                                  // MAP2_GRID_SEGMENTS
+            0x0DF4 => One(SelectBufferSize),                  // SELECTION_BUFFER_SIZE
             0x0C00 => One(0),                                 // AUX_BUFFERS
 
             // 纹理
@@ -194,14 +201,14 @@ internal sealed partial class GlContext
             0x0D15 or 0x0D19 or 0x0D1B or 0x0D1D or 0x0D1F => One(0),
 
             // 实现相关的上限
-            0x0D30 => One(8),                                 // MAX_EVAL_ORDER
+            0x0D30 => One(MaxEvalOrder),                      // MAX_EVAL_ORDER
             0x0D31 => One(MaxLights),                         // MAX_LIGHTS
             0x0D32 => One(MaxClipPlanes),                     // MAX_CLIP_PLANES
             0x0D33 => One(MaxTextureSize),                    // MAX_TEXTURE_SIZE
             0x0D34 => One(256),                               // MAX_PIXEL_MAP_TABLE
             0x0D35 => One(MaxAttribDepth),                    // MAX_ATTRIB_STACK_DEPTH
             0x0D36 => One(MaxMatrixDepth),                    // MAX_MODELVIEW_STACK_DEPTH
-            0x0D37 => One(64),                                // MAX_NAME_STACK_DEPTH
+            0x0D37 => One(MaxNameStackDepth),                 // MAX_NAME_STACK_DEPTH
             0x0D38 => One(MaxMatrixDepth),                    // MAX_PROJECTION_STACK_DEPTH
             0x0D39 => One(MaxMatrixDepth),                    // MAX_TEXTURE_STACK_DEPTH
             0x0D3A => new GlValue([16384, 16384]),            // MAX_VIEWPORT_DIMS

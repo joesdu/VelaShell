@@ -4,7 +4,8 @@
 // 规范依据(AGENTS.md §2 纪律 1):
 //   ICCCM 2.0 —— §4.1.2.1 WM_NAME、§4.1.2.5 WM_CLASS、§4.1.2.6 WM_TRANSIENT_FOR、§4.1.2.7 WM_PROTOCOLS、
 //   §4.1.5(窗口管理器移动顶层后发合成的 ConfigureNotify,根坐标)、§4.2.8(WM_DELETE_WINDOW)
-//   EWMH 1.5 —— §5「Application Window Properties」(_NET_WM_NAME)
+//   EWMH 1.5 —— §5「Application Window Properties」(_NET_WM_NAME、_NET_WM_SYNC_REQUEST_COUNTER)、
+//   §6.2「_NET_WM_SYNC_REQUEST」(改尺寸前的 ClientMessage、序号的高低 32 位、第一次管窗口时设计数器)
 //   架构:velashell-docs/zh/xserver/design/architecture.md §6(rootless:宿主就是窗口管理器)
 //
 //   服务端与宿主之间关于顶层窗口的一切:给宿主的句柄与快照、快照的变化、损伤的交付,
@@ -12,6 +13,7 @@
 
 using System.Runtime.InteropServices;
 using VelaShell.XServer.Protocol;
+using VelaShell.XServer.Resources;
 using VelaShell.XServer.Server;
 using VelaShell.XServer.Windowing;
 
@@ -45,7 +47,7 @@ public sealed partial class X11Server
     {
         if (_topLevelHandles.TryGetValue(top, out XTopLevelWindow? handle)
             && RefreshSnapshot(top, handle) is var changes and not XTopLevelChanges.None
-            && top.Mapped)
+            && top.Mapped && !Rootful)
         {
             _host.TopLevelChanged(handle, changes);
         }
@@ -54,6 +56,7 @@ public sealed partial class X11Server
     /// <summary>顶层窗口的属性变了:标题、类名、协议、提示可能跟着变。</summary>
     private void OnTopLevelPropertyChanged(XWindow window, uint property)
     {
+        OnTrayIconPropertyChanged(window, property);   // 停靠着的托盘图标跟着 _XEMBED_INFO 映射 / 取消映射
         if (window.IsTopLevel && AffectsHandle(property))   // _NET_WM_USER_TIME 之类每次输入都改,与宿主无关
         {
             RefreshTopLevel(window);
@@ -306,7 +309,94 @@ public sealed partial class X11Server
     {
         if (top.Width != width || top.Height != height)
         {
+            BeginRedrawSync(top);   // _NET_WM_SYNC_REQUEST 要先于 ConfigureNotify 发出
             Configure(top, top.X, top.Y, width, height, top.BorderWidth, null, -1);
+        }
+    }
+
+    // ------------------------------------------------------------------ _NET_WM_SYNC_REQUEST
+
+    /// <summary>等客户端重画完的顶层:→ (它的 SYNC 计数器, 要等到的值)。</summary>
+    private readonly Dictionary<XWindow, (XSyncCounter Counter, long Value)> _redrawSyncs = [];
+
+    /// <summary>每个顶层发过的最后一个更新序号(从 1 起;第一次用时把计数器设成 0)。</summary>
+    private readonly Dictionary<XWindow, long> _redrawSerials = [];
+
+    /// <summary>客户端迟迟不把计数器推上去时,过了这么久不再等(测试可以调短)。</summary>
+    internal TimeSpan RedrawSyncTimeout { get; set; } = TimeSpan.FromMilliseconds(300);
+
+    /// <summary>
+    /// EWMH「_NET_WM_SYNC_REQUEST」:宿主改一个顶层的尺寸时,窗口在 WM_PROTOCOLS 里声明了它、_NET_WM_SYNC_REQUEST_COUNTER 指着一个 SYNC 计数器,
+    /// 就先发一条 ClientMessage(data:_NET_WM_SYNC_REQUEST、时间戳、更新序号的低 32 位、高 32 位),再发 ConfigureNotify;客户端处理完、重画完
+    /// 把计数器设成这个序号(见 <see cref="CheckRedrawSync" />)。等的期间顶层句柄的 <see cref="XTopLevelWindow.AwaitingRedraw" /> 为真,
+    /// 宿主据此先不把画到一半的帧显示出来,等 <see cref="IX11ServerHost.TopLevelRedrawn" /> 再显示 —— 拖动缩放 GTK / Qt 窗口不再闪出没画完的空白。
+    /// 规范:窗口管理器第一次管一个窗口时必须设一次计数器的值(这里设成 0)。
+    /// </summary>
+    private void BeginRedrawSync(XWindow top)
+    {
+        uint request = Intern("_NET_WM_SYNC_REQUEST");
+        if (top.Owner is not { Closed: false } owner || !SupportsProtocol(top, request) || RedrawCounterOf(top) is not { } counter
+            || !_topLevelHandles.TryGetValue(top, out XTopLevelWindow? handle))
+        {
+            return;
+        }
+        if (!_redrawSerials.TryGetValue(top, out long serial))
+        {
+            counter.Value = 0;
+            EvaluateSync();
+        }
+        long value = ++serial;
+        _redrawSerials[top] = serial;
+        uint time = Now;
+        _redrawSyncs[top] = (counter, value);
+        handle.AwaitingRedraw = true;   // 先置上再发:客户端收到请求时宿主已经看得到在等
+        owner.Event(XEventCode.ClientMessage, 32, w => w.U32(top.Id).U32(_wmProtocolsAtom).U32(request).U32(time)
+            .U32(unchecked((uint)value)).U32((uint)(value >> 32)).Zero(4), sent: true);
+        _ = DelayThenPostAsync((uint)RedrawSyncTimeout.TotalMilliseconds, () =>
+        {
+            if (_redrawSyncs.TryGetValue(top, out (XSyncCounter Counter, long Value) pending) && pending.Value == value)
+            {
+                EndRedrawSync(top);   // 客户端没跟上:不再等,画到哪儿显示到哪儿
+            }
+        }, _lifetime.Token);
+    }
+
+    /// <summary>窗口的 _NET_WM_SYNC_REQUEST_COUNTER(CARDINAL/32,扩展形式有两个,第一个是基本计数器)指着的 SYNC 计数器。</summary>
+    private XSyncCounter? RedrawCounterOf(XWindow top) =>
+        top.Properties.TryGetValue(Intern("_NET_WM_SYNC_REQUEST_COUNTER"), out XProperty? property) && property.Format == 32 && property.Data.Length >= 4
+            ? Lookup<XSyncCounter>(System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(property.Data))
+            : null;
+
+    /// <summary>某个 SYNC 计数器的值变了:等它的顶层到了要等的值就算重画完了。</summary>
+    private void CheckRedrawSync(XSyncCounter counter)
+    {
+        if (_redrawSyncs.Count == 0)
+        {
+            return;
+        }
+        foreach ((XWindow top, (XSyncCounter Counter, long Value) pending) in _redrawSyncs.ToArray())
+        {
+            if (ReferenceEquals(pending.Counter, counter) && counter.Value >= pending.Value)
+            {
+                EndRedrawSync(top);
+            }
+        }
+    }
+
+    /// <summary>窗口不再是顶层(销毁、被 reparent 走):忘掉它的同步状态(句柄已经作废,不必再报)。</summary>
+    private void ForgetRedrawSync(XWindow window)
+    {
+        _redrawSyncs.Remove(window);
+        _redrawSerials.Remove(window);
+    }
+
+    private void EndRedrawSync(XWindow top)
+    {
+        _redrawSyncs.Remove(top);
+        if (_topLevelHandles.TryGetValue(top, out XTopLevelWindow? handle) && handle.AwaitingRedraw)
+        {
+            handle.AwaitingRedraw = false;
+            _host.TopLevelRedrawn(handle);
         }
     }
 

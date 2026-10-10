@@ -299,7 +299,7 @@ public sealed partial class X11Server
         }
         try
         {
-            await ServeCoreAsync(stream, new Peer(IsLocal: true, SameHost: SharesMemoryWith(peerPid), peerUid, localUser,
+            await ServeCoreAsync(stream, new Peer(IsLocal: true, SameHost: SharesMemoryWith(peerPid), peerUid, localUser, Pid: peerPid,
                 Authenticated: false), cancellationToken).ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
@@ -317,7 +317,7 @@ public sealed partial class X11Server
 
     /// <summary>
     /// 连接对端的 uid 与 pid:Linux 上经 SO_PEERCRED(struct ucred:pid、uid、gid 各 4 字节;pid 已换算到本进程所在的 pid 命名空间,
-    /// 对端在那里看不见时为 0),macOS / FreeBSD 上经 getpeereid(只有 uid)。取不到的为 null / 0。
+    /// 对端在那里看不见时为 0),macOS / FreeBSD 上经 getpeereid(uid),macOS 另经 LOCAL_PEERPID 取 pid。取不到的为 null / 0。
     /// </summary>
     private static (uint? Uid, int Pid) PeerCredentials(Socket connection)
     {
@@ -331,7 +331,21 @@ public sealed partial class X11Server
             }
             if (OperatingSystem.IsMacOS() || OperatingSystem.IsFreeBSD())
             {
-                return (GetPeerEid((int)connection.Handle, out uint uid, out _) == 0 ? uid : null, 0);
+                uint? uid = GetPeerEid((int)connection.Handle, out uint peer, out _) == 0 ? peer : null;
+                int pid = 0;
+                if (OperatingSystem.IsMacOS())
+                {
+                    try
+                    {
+                        Span<byte> value = stackalloc byte[4];
+                        pid = connection.GetRawSocketOption(0, 2, value) >= 4 ? BitConverter.ToInt32(value) : 0;   // SOL_LOCAL、LOCAL_PEERPID
+                    }
+                    catch (SocketException)
+                    {
+                        // 取不到 pid 不影响 uid(授权只看 uid)
+                    }
+                }
+                return (uid, pid);
             }
         }
         catch (Exception ex) when (ex is SocketException or EntryPointNotFoundException or DllNotFoundException)

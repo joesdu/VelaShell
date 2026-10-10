@@ -165,8 +165,9 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
             // 服务端认证时发来的横幅排在最前面(法律声明、「密码将于 3 天后过期」);只在第一个 shell 上显示一次。
             List<ShellStreamNotice> notices = [.. _banners?.TakeNotices() ?? []];
             XServerDisplayResolution? localServer = await ResolveLocalXServerAsync(notices, cancellationToken).ConfigureAwait(false);
-            // 连接器带上这个会话的来历(user@host:port):内置 X 服务端的日志与客户端清单据此说得出是哪个会话的程序。
-            Func<CancellationToken, ValueTask<Stream>>? connector = localServer?.Connector is { } connect ? ct => connect(_target, ct) : null;
+            // 连接器带上这个会话的来历(user@host:port)与信任级别:内置 X 服务端的日志与客户端清单据此说得出是哪个会话的程序,
+            // 非受信的会话按 SECURITY 的语义受限(见 X11ChannelSource)。
+            Func<CancellationToken, ValueTask<Stream>>? connector = localServer?.Connector is { } connect ? ct => connect(X11ChannelSource(), ct) : null;
             X11ForwardOptions? x11 = SshForwardingOptions.X11(_features, notices, localServer?.Display, connector);
             // agent 的端点交给库的默认值(Windows 上指向命名管道的 SSH_AUTH_SOCK 也认),与认证时连 agent 是同一个。
             AgentForwardOptions? agent = SshForwardingOptions.Agent(_features, notices, _agentPrompt, _target, hostKeys: _hostKeys);
@@ -375,6 +376,12 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     }
 
     /// <summary>
+    /// 这个会话的 x11 通道交给内置 X 服务端时带上的来历:哪个会话(user@host:port)、勾没勾「受信任」、
+    /// 会话对象本身与它断开的信号(设置里开了「每个 SSH 会话一个显示」时,服务端按它们分显示、在会话断开时收掉)。
+    /// </summary>
+    private XServerChannelSource X11ChannelSource() => new(_target, _features?.X11Trusted ?? true, this, Disconnected);
+
+    /// <summary>
     /// 为非交互式 exec 通道补上连接级 X11 转发。
     /// </summary>
     /// <remarks>
@@ -391,7 +398,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
         XServerDisplayResolution? localServer = await ResolveLocalXServerAsync([], cancellationToken).ConfigureAwait(false);
         Func<CancellationToken, ValueTask<Stream>>? connector =
-            localServer?.Connector is { } connect ? ct => connect(_target, ct) : null;
+            localServer?.Connector is { } connect ? ct => connect(X11ChannelSource(), ct) : null;
         X11ForwardOptions? x11 = SshForwardingOptions.X11(
             _features,
             [],

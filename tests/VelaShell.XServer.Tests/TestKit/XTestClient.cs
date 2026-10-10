@@ -113,13 +113,25 @@ internal sealed class XTestClient : IAsyncDisposable
         }
     }
 
-    /// <summary>连上服务端(内存双工),走完连接建立。建立失败时返回的 SetupReply[0] 为 0。</summary>
+    /// <summary>
+    /// 连上服务端(内存双工),走完连接建立。建立失败时返回的 SetupReply[0] 为 0。<paramref name="untrusted" /> 时经
+    /// ServeAuthenticatedAsync 以非受信级别连进去(SECURITY 的 SecurityClientUntrusted)。
+    /// </summary>
     public static async Task<XTestClient> ConnectAsync(X11Server server, bool bigEndian = false, bool isLocal = true,
-        string authName = "", byte[]? authData = null, bool authenticated = false, string? label = null)
+        string authName = "", byte[]? authData = null, bool authenticated = false, string? label = null, bool untrusted = false)
     {
         (Stream serverSide, Stream clientSide) = DuplexPair.Create();
-        Task serverTask = authenticated || label is not null ? server.ServeAuthenticatedAsync(serverSide, label) : server.ServeAsync(serverSide, isLocal);
+        Task serverTask = untrusted ? server.ServeAuthenticatedAsync(serverSide, label, XClientTrust.Untrusted)
+            : authenticated || label is not null ? server.ServeAuthenticatedAsync(serverSide, label)
+            : server.ServeAsync(serverSide, isLocal);
         return await HandshakeAsync(clientSide, serverTask, bigEndian, authName, authData);
+    }
+
+    /// <summary>以给定的对端身份连上服务端(内存双工):uid、pid 这些只有 Unix 套接字才取得到的,在别的平台上也能测。</summary>
+    public static async Task<XTestClient> ConnectAsPeerAsync(X11Server server, X11Server.Peer peer)
+    {
+        (Stream serverSide, Stream clientSide) = DuplexPair.Create();
+        return await HandshakeAsync(clientSide, server.ServeCoreAsync(serverSide, peer, CancellationToken.None), false, "", null);
     }
 
     /// <summary>经 Unix 套接字连服务端(服务端当它是同一台机器上的客户端 —— MIT-SHM 之类只对这样的客户端可见)。</summary>

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.TextInput;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -44,12 +45,35 @@ public sealed class XNativeWindow : Window
 
     /// <summary>最后一次按服务端的几何设的内容区尺寸(物理像素):迟到的 Resized 与它相同就是我们自己设的(见 OnResized)。</summary>
     private (int Width, int Height) _appliedSize;
-    private Vector _wheelRemainder;
     private XWindowStates _reportedStates;
     private WindowState _resizeState = WindowState.Normal;
 
     /// <summary>原生窗口已经显示出来(<c>Opened</c>):外框尺寸量得到了,摆好的位置才报回服务端。</summary>
     private bool _opened;
+
+    /// <summary>已经显示出来过(位置是真的摆好的,宿主据此记住它)。</summary>
+    internal bool HasOpened => _opened;
+
+    /// <summary>窗口在任务栏上归进的组(按 X 程序的类名,见 <see cref="Services.XServer.TaskbarGroup" />);没归组为 null。</summary>
+    internal string? TaskbarGroup { get; set; }
+
+    /// <summary>显示出来之后要改成的尺寸(宿主记住的上次的尺寸,见 <see cref="RequestSizeOnOpen" />)。</summary>
+    private (int Width, int Height)? _sizeOnOpen;
+
+    /// <summary>
+    /// 显示出来之后把 X 窗口改成这个尺寸。不在映射时马上改:原生窗口按原尺寸显示时迟到的 Resized 会被当成用户改的,把尺寸改回去;
+    /// 显示出来之后再改,那些 Resized 与按服务端几何设的尺寸相同,认得出是自己的。
+    /// </summary>
+    internal void RequestSizeOnOpen(int width, int height) => _sizeOnOpen = (width, height);
+
+    private void ApplySizeOnOpen()
+    {
+        if (_sizeOnOpen is { } size && Server is { } server)
+        {
+            server.ResizeTopLevel(Handle, size.Width, size.Height);
+        }
+        _sizeOnOpen = null;
+    }
 
     /// <summary>宿主替没给位置的窗口选的外框左上角(根窗口坐标);服务端那边摆好之后清掉。</summary>
     private (int X, int Y)? _frameAt;
@@ -80,6 +104,10 @@ public sealed class XNativeWindow : Window
         SizeToContent = SizeToContent.Manual;
         WindowStartupLocation = WindowStartupLocation.Manual;
         Focusable = true;
+        if (IsScreen)
+        {
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;   // 屏幕窗口由用户摆:起步居中,之后不跟服务端的几何
+        }
         ApplyStyle(handle.Snapshot);
         // 系统边框的尺寸要等显示出来才量得到:先按宿主上一个有边框的窗口量到的预估,第一帧就摆在对的地方,
         // 不必等 Opened 之后再挪(原先按 0 摆,显示出来跳一下)。
@@ -87,14 +115,37 @@ public sealed class XNativeWindow : Window
 
         PositionChanged += (_, _) => OnMovedByUser();
         Resized += OnResized;
+        AddHandler(TextInputMethodClientRequestedEvent, OnTextInputMethodClientRequested);
         Activated += (_, _) => _host.OnWindowActivated(this);
         Deactivated += (_, _) => OnDeactivated();
         ScalingChanged += (_, _) => ApplyGeometry();
-        Opened += (_, _) => { _opened = true; UpdateFrameExtents(); ApplyGeometry(); UpdateRegion(Handle.Snapshot); _surface.Start(); };
+        Opened += (_, _) => { _opened = true; UpdateFrameExtents(); ApplyGeometry(); UpdateRegion(Handle.Snapshot); _surface.Start(); ApplySizeOnOpen(); };
+        // 本机的文本、文件拖进 X 程序(F16):服务端替宿主扮演 XDND 的源,见 XDropTarget。
+        XDropTarget.Attach(this, _surface, handle, () => Server, ToPixels, host.DropUploader, AvaloniaXServerHost.NotifyUser);
+        WindowSystemMenu.Attach(this, () => Screenshot(WindowScreenshot.CopyAsync), () => Screenshot(WindowScreenshot.SaveAsync));
     }
+
+    /// <summary>系统菜单里的截图(xs_plan F20):复制或另存为;出错只记一行日志(截图不该把窗口带崩)。</summary>
+    private void Screenshot(Func<TopLevel, XTopLevelWindow, Task<bool>> action) => Services.FireAndForget.Run(async () =>
+    {
+        try
+        {
+            await action(this, Handle);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[XServer] 截图失败:{ex.Message}");
+        }
+    });
 
     /// <summary>服务端那边的顶层窗口。</summary>
     public XTopLevelWindow Handle { get; }
+
+    /// <summary>
+    /// 单窗口模式的屏幕窗口(F13,<see cref="X11Server.Screen" />):里面是整个 X 屏幕,窗口由远端的窗口管理器管。原生窗口自己的位置、
+    /// 边框与状态归用户 —— 不跟服务端的几何摆、不报位置;拖大拖小就是改屏幕尺寸;关掉就是停 X Server。
+    /// </summary>
+    internal bool IsScreen => ReferenceEquals(Handle, Handle.Server.Screen);
 
     /// <summary>这个窗口的服务端,只在它就是宿主此刻附着的那个时给出:停服后马上重启,旧窗口的事件不会把旧句柄交给新服务端。</summary>
     private X11Server? Server => _host.CurrentServer(Handle);
@@ -103,13 +154,25 @@ public sealed class XNativeWindow : Window
 
     // ================================================================== 服务端 → 窗口
 
+    /// <summary>
+    /// 原生窗口(与任务栏)上的标题。转发来的窗口(连接有标签,如 <c>user@host:22</c>)按设置在前面标出来源(xs_plan F18):
+    /// 同时转发几台主机时分得清;远端程序把标题设成「Windows 安全中心」也盖不住前面的来源 —— 标在前面,任务栏截断长标题时也还看得到。
+    /// </summary>
+    internal static string TitleOf(XTopLevelSnapshot s, bool showSource)
+    {
+        string title = s.Title.Length > 0 ? s.Title : s.ClassName;
+        return showSource && !string.IsNullOrEmpty(s.ClientLabel)
+            ? VelaShell.Core.Resources.Strings.Format("XServer_WindowTitleWithSource", s.ClientLabel, title)
+            : title;
+    }
+
     /// <summary>快照里的属性变了(映射时按 <see cref="XTopLevelChanges.All" /> 调一次):只重新应用变了的那几组。</summary>
     public void ApplyProperties(XTopLevelChanges changes)
     {
         XTopLevelSnapshot s = Handle.Snapshot;
         if ((changes & XTopLevelChanges.Title) != 0)
         {
-            Title = s.Title.Length > 0 ? s.Title : s.ClassName;
+            Title = IsScreen ? _host.ScreenTitle(Handle.Server) : TitleOf(s, _host.ShowsWindowSource);
         }
         if ((changes & (XTopLevelChanges.Hints | XTopLevelChanges.States | XTopLevelChanges.Shape)) != 0)
         {
@@ -177,6 +240,10 @@ public sealed class XNativeWindow : Window
             _appliedSize = (Math.Max(1, s.Width), Math.Max(1, s.Height));
             Width = _appliedSize.Width / scale;
             Height = _appliedSize.Height / scale;
+            if (IsScreen)
+            {
+                return;   // 屏幕窗口只跟尺寸,位置归用户
+            }
             (int ox, int oy) = _host.RootOrigin;
             (int x, int y) = (s.X, s.Y);
             if (s.NeedsPlacement)
@@ -363,6 +430,13 @@ public sealed class XNativeWindow : Window
     public void ApplyInitialStates()
     {
         XTopLevelSnapshot s = Handle.Snapshot;
+        if (IsScreen)
+        {
+            WindowState = _host.ScreenFullscreen ? WindowState.FullScreen : WindowState.Normal;
+            _resizeState = WindowState;
+            _reportedStates = StatesFromWindow();
+            return;
+        }
         if (s.OverrideRedirect)
         {
             return;
@@ -400,6 +474,16 @@ public sealed class XNativeWindow : Window
 
     private void ApplyStyle(XTopLevelSnapshot s)
     {
+        if (IsScreen)
+        {
+            WindowDecorations = _host.ScreenUndecorated ? WindowDecorations.None : WindowDecorations.Full;
+            ShowInTaskbar = true;
+            ShowActivated = true;
+            CanMinimize = true;
+            CanMaximize = true;
+            TransparencyLevelHint = [WindowTransparencyLevel.None];
+            return;
+        }
         bool popup = s.OverrideRedirect;
         bool undecorated = popup || !s.Decorated
                            || s.WindowType is XWindowType.Splash or XWindowType.Tooltip or XWindowType.Notification
@@ -424,8 +508,8 @@ public sealed class XNativeWindow : Window
 
     private void OnMovedByUser()
     {
-        // 显示出来之前外框尺寸还不知道,算出来的位置不对(位置等 Opened 之后由 ApplyGeometry 摆好再报)。
-        if (_applying || !_opened || Server is not { } server || WindowState is WindowState.Minimized)
+        // 显示出来之前外框尺寸还不知道,算出来的位置不对(位置等 Opened 之后由 ApplyGeometry 摆好再报)。屏幕窗口的位置与 X 无关。
+        if (_applying || !_opened || IsScreen || Server is not { } server || WindowState is WindowState.Minimized)
         {
             return;
         }
@@ -598,6 +682,11 @@ public sealed class XNativeWindow : Window
         base.OnClosing(e);
         if (ClosingByHost)
         {
+            if (TaskbarGroup is not null)
+            {
+                _host.GroupWindow(this, null);   // 窗口销毁之前清掉任务栏分组的属性(Windows 的要求)
+                TaskbarGroup = null;
+            }
             return;
         }
         switch (e.CloseReason)
@@ -607,7 +696,11 @@ public sealed class XNativeWindow : Window
                 // 弹层(override-redirect:菜单、提示框)不归窗口管理器管,它的关闭不转给客户端 —— 原先没有 WM_DELETE_WINDOW
                 // 的弹层一关就断开了整个 X 程序。
                 e.Cancel = true;
-                if (!Handle.Snapshot.OverrideRedirect)
+                if (IsScreen)
+                {
+                    AvaloniaXServerHost.RequestStop();   // 关掉整个 X 桌面 = 停 X Server(有程序连着时先确认)
+                }
+                else if (!Handle.Snapshot.OverrideRedirect)
                 {
                     Server?.CloseTopLevel(Handle);
                 }
@@ -676,6 +769,8 @@ public sealed class XNativeWindow : Window
         _heldButtons.Add(button);
         (int x, int y) = ToPixels(e.GetPosition(_surface));
         _lastPointer = (x, y);
+        _lastClick = e.GetPosition(_surface);
+        _imeClient?.NotifyCursorMoved();
         Server?.InjectPointerButton(Handle, x, y, button, pressed: true);
         e.Handled = true;
     }
@@ -707,22 +802,13 @@ public sealed class XNativeWindow : Window
         {
             return;
         }
-        // X 的滚轮是按钮:每一格一次按下 + 松开(4 上、5 下、6 左、7 右)。触控板的小数增量攒够一格再发。
+        // 平滑滚动:原样交给服务端(Avalonia 的向上 / 向左为正,X 的滚动轴向下 / 向右为正)。用滚动轴的 XI2 客户端(GTK3/4、Qt、
+        // 浏览器)拿到触控板的小数增量;只认滚轮按钮的由服务端攒够一格模拟成按钮 4–7。原先宿主自己攒格子,触控板一格一跳。
         (int x, int y) = ToPixels(e.GetPosition(_surface));
-        _wheelRemainder += e.Delta;
-        while (Math.Abs(_wheelRemainder.Y) >= 1)
+        double dx = Math.Clamp(-e.Delta.X, -10000, 10000), dy = Math.Clamp(-e.Delta.Y, -10000, 10000);
+        if (double.IsFinite(dx) && double.IsFinite(dy) && (dx != 0 || dy != 0))
         {
-            int button = _wheelRemainder.Y > 0 ? 4 : 5;
-            server.InjectPointerButton(Handle, x, y, button, pressed: true);
-            server.InjectPointerButton(Handle, x, y, button, pressed: false);
-            _wheelRemainder = _wheelRemainder.WithY(_wheelRemainder.Y - Math.Sign(_wheelRemainder.Y));
-        }
-        while (Math.Abs(_wheelRemainder.X) >= 1)
-        {
-            int button = _wheelRemainder.X > 0 ? 6 : 7;
-            server.InjectPointerButton(Handle, x, y, button, pressed: true);
-            server.InjectPointerButton(Handle, x, y, button, pressed: false);
-            _wheelRemainder = _wheelRemainder.WithX(_wheelRemainder.X - Math.Sign(_wheelRemainder.X));
+            server.InjectScroll(Handle, x, y, dx, dy);
         }
         e.Handled = true;
     }
@@ -741,6 +827,11 @@ public sealed class XNativeWindow : Window
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        _keyTextPending = false;
+        if (e.Key == Key.ImeProcessed)
+        {
+            return;   // 输入法在组字:这个键归它,组好的字经 OnTextInput 来
+        }
         byte keycode = XInputMap.Keycode(e.PhysicalKey);
         if (keycode == 0)
         {
@@ -772,7 +863,110 @@ public sealed class XNativeWindow : Window
             _pressedWithCommand.Add(keycode);
         }
         Server?.InjectKey(keycode, pressed: true, repeat);
+        _keyTextPending = true;
         e.Handled = true;
+    }
+
+    // ================================================================== 本机输入法
+
+    /// <summary>
+    /// 刚把一个按键注入了 X:系统随后为它报的文字(Windows 的 WM_CHAR、macOS 的 insertText)就是这个键打出来的,X 那边按键码自己会解释,
+    /// 不再当文字输入一遍。下一个按键、这个键松开时作废 —— 不出字的键(方向键、F1)不会让之后输入法上屏的字被吞掉。
+    /// </summary>
+    private bool _keyTextPending;
+
+    /// <summary>最后一次在窗口里按下指针的位置(DIP):输入法的候选框摆在这里(X 程序不告诉我们插入点在哪,点进输入框的位置最接近)。</summary>
+    private Point? _lastClick;
+
+    private XImeClient? _imeClient;
+
+    /// <summary>输入法正在组的字(预编辑);X 程序画不了它,由 <see cref="XSurface" /> 叠在候选框的位置上。</summary>
+    internal string? Preedit { get; private set; }
+
+    private void OnTextInputMethodClientRequested(object? sender, TextInputMethodClientRequestedEventArgs e)
+    {
+        if (!_host.UsesHostInputMethod)
+        {
+            return;   // 不用本机输入法:没有输入法客户端,系统输入法不在这个窗口里组字,按键原样交给 X
+        }
+        _imeClient ??= new XImeClient(this);
+        e.Client = _imeClient;
+    }
+
+    /// <summary>
+    /// 系统报来的文字:输入法上屏的字(或者 X 键位表里没有的键打出的字)经 <see cref="X11Server.InjectText" /> 输入给 X 程序;
+    /// 刚注入过的按键自己打出的字不重复输入。
+    /// </summary>
+    protected override void OnTextInput(TextInputEventArgs e)
+    {
+        base.OnTextInput(e);
+        if (_keyTextPending)
+        {
+            _keyTextPending = false;
+            e.Handled = true;
+            return;
+        }
+        if (!_host.UsesHostInputMethod || string.IsNullOrEmpty(e.Text) || Server is not { } server)
+        {
+            return;
+        }
+        int at = 0;
+        while (at < e.Text.Length)
+        {
+            int length = Math.Min(X11Server.MaxInjectedTextLength, e.Text.Length - at);
+            if (length < e.Text.Length - at && char.IsHighSurrogate(e.Text[at + length - 1]))
+            {
+                length--;   // 不把一个代理对切成两半
+            }
+            server.InjectText(e.Text.Substring(at, length));
+            at += length;
+        }
+        e.Handled = true;
+    }
+
+    private void SetPreedit(string? text)
+    {
+        Preedit = string.IsNullOrEmpty(text) ? null : text;
+        _surface.InvalidateVisual();
+    }
+
+    /// <summary>候选框与预编辑的位置(DIP,相对 <see cref="XSurface" />):最后一次点击处;还没点过时是左上角附近。</summary>
+    internal Rect ImeCursorRect
+    {
+        get
+        {
+            Point at = _lastClick ?? new Point(8, 8);
+            return new Rect(at.X, at.Y, 1, 18);
+        }
+    }
+
+    /// <summary>
+    /// X 窗口的输入法客户端:只给候选框的位置、接预编辑,不提供环绕文字(插入点左右的字在远端程序里,我们看不到)。
+    /// 预编辑必须报支持:Avalonia 的 Win32 后端不让输入法自己画组字窗,不接的话用户看不见自己敲了什么(同终端的输入法客户端)。
+    /// </summary>
+    private sealed class XImeClient(XNativeWindow owner) : TextInputMethodClient
+    {
+        public override Visual TextViewVisual => owner._surface;
+
+        public override bool SupportsPreedit => true;
+
+        public override bool SupportsSurroundingText => false;
+
+        public override string SurroundingText => string.Empty;
+
+        public override Rect CursorRectangle => owner.ImeCursorRect;
+
+        public override TextSelection Selection
+        {
+            get => default;
+            set { }
+        }
+
+        public override void SetPreeditText(string? preeditText) => owner.SetPreedit(preeditText);
+
+        public override void SetPreeditText(string? preeditText, int? cursorPosition) => owner.SetPreedit(preeditText);
+
+        public void NotifyCursorMoved() => RaiseCursorRectangleChanged();
     }
 
     /// <summary>
@@ -812,6 +1006,7 @@ public sealed class XNativeWindow : Window
     protected override void OnKeyUp(KeyEventArgs e)
     {
         base.OnKeyUp(e);
+        _keyTextPending = false;
         byte keycode = XInputMap.Keycode(e.PhysicalKey);
         if (keycode == 0)
         {
@@ -1184,6 +1379,32 @@ public sealed class XNativeWindow : Window
                 context.DrawImage(tile, new Rect(0, 0, size.Width, size.Height),
                     new Rect(x / scale, y / scale, size.Width / scale, size.Height / scale));
             }
+            if (_owner.Preedit is { } preedit)
+            {
+                DrawPreedit(context, preedit, _owner.ImeCursorRect);
+            }
+        }
+
+        /// <summary>
+        /// 输入法正在组的字:X 程序看不到它,叠在候选框的位置上画一个浮层(<c>VelaBgSurface</c> 底、<c>VelaBorderSecondary</c> 边、
+        /// <c>VelaTextPrimary</c> 字、下划线),上屏之后随预编辑清空消失。
+        /// </summary>
+        private void DrawPreedit(DrawingContext context, string preedit, Rect anchor)
+        {
+            IBrush background = Brush("VelaBgSurface"), border = Brush("VelaBorderSecondary"), foreground = Brush("VelaTextPrimary");
+            double fontSize = this.TryFindResource("VelaFontSize13", out object? size) && size is double s ? s : 13;
+            FormattedText text = new(preedit, System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+                Typeface.Default, fontSize, foreground);
+            const double padX = 6, padY = 3;
+            double width = text.Width + (2 * padX), height = text.Height + (2 * padY);
+            double x = Math.Clamp(anchor.X, 0, Math.Max(0, Bounds.Width - width));
+            double y = anchor.Bottom + height <= Bounds.Height ? anchor.Bottom : Math.Max(0, anchor.Y - height);
+            Rect box = new(x, y, width, height);
+            context.DrawRectangle(background, new Pen(border, 1), box, 4, 4);
+            context.DrawText(text, new Point(x + padX, y + padY));
+            context.DrawLine(new Pen(foreground, 1), new Point(x + padX, y + padY + text.Height), new Point(x + padX + text.Width, y + padY + text.Height));
+
+            IBrush Brush(string key) => this.TryFindResource(key, ActualThemeVariant, out object? value) && value is IBrush brush ? brush : Brushes.Transparent;
         }
     }
 }

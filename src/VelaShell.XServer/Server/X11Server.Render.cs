@@ -32,11 +32,11 @@ public sealed partial class X11Server
 
     private static XProtocolError RenderError(int offset, uint value = 0) => new((XErrorCode)(RenderErrorBase + offset), value);
 
-    private XPicture Picture(uint id) => Lookup<XPicture>(id) ?? throw RenderError(1, id);
+    private XPicture Picture(uint id) => Use<XPicture>(id) ?? throw RenderError(1, id);
 
     private static PictFormat Format(uint id) => PictFormat.ById(id) ?? throw RenderError(0, id);
 
-    private XGlyphSet GlyphSet(uint id) => Lookup<XGlyphSet>(id) ?? throw RenderError(3, id);
+    private XGlyphSet GlyphSet(uint id) => Use<XGlyphSet>(id) ?? throw RenderError(3, id);
 
     private static void CheckOp(byte op)
     {
@@ -127,7 +127,7 @@ public sealed partial class X11Server
         uint id = r.U32();
         uint drawableId = r.U32();
         PictFormat format = Format(r.U32());
-        XResource drawable = Lookup<XResource>(drawableId) switch
+        XResource drawable = Use<XResource>(drawableId) switch
         {
             XPixmap p => p,
             XWindow { IsInputOnly: false } w => w,
@@ -191,7 +191,7 @@ public sealed partial class X11Server
                         p.Clip = null;
                         break;
                     }
-                    XPixmap clip = Lookup<XPixmap>(v) ?? throw new XProtocolError(XErrorCode.Pixmap, v);
+                    XPixmap clip = Use<XPixmap>(v) ?? throw new XProtocolError(XErrorCode.Pixmap, v);
                     if (clip.Depth != 1)
                     {
                         throw new XProtocolError(XErrorCode.Match);

@@ -5460,7 +5460,7 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
     <value>Trusted (-Y)</value>
   </data>
   <data name="Profile_SshX11TrustedHint" xml:space="preserve">
-    <value>Trusted forwarding gives remote X clients full access to your local display, and all forwarded sessions share it: they can see each other&apos;s windows, read the clipboard and send input. The built-in X Server and most X servers on Windows support only this mode; untrusted mode needs an external X server with the SECURITY extension and xauth installed locally.</value>
+    <value>Trusted forwarding gives remote X clients full access to your local display: they can see the windows of other programs, read the clipboard and the keyboard, and send input. Untrusted forwarding (like ssh -X) limits them to their own windows: they cannot capture other programs, read their keyboard input or fake input. The built-in X Server supports both modes; with an external X server, untrusted mode needs its SECURITY extension and xauth installed locally. A few old programs do not work correctly when untrusted.</value>
   </data>
   <data name="Ssh_X11ForwardOn" xml:space="preserve">
     <value>X11 forwarding on → local display {0}</value>
@@ -5476,9 +5476,6 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   </data>
   <data name="Ssh_X11BadDisplay" xml:space="preserve">
     <value>unrecognized display &quot;{0}&quot; (expected something like localhost:0.0)</value>
-  </data>
-  <data name="Ssh_X11UntrustedBuiltIn" xml:space="preserve">
-    <value>the built-in X Server supports only trusted forwarding (it has no SECURITY extension). Turn on &quot;Trusted (-Y)&quot; for this connection, or use an external X server.</value>
   </data>
   <data name="SshErr_AgentUnavailable" xml:space="preserve">
     <value>Cannot reach the local ssh-agent: {0}</value>
@@ -5664,7 +5661,7 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
     <value>Window mode</value>
   </data>
   <data name="SetXServer_WindowModeDesc" xml:space="preserve">
-    <value>Multiple windows shows each remote program as its own Windows window; the other modes put the whole X screen in one window.</value>
+    <value>Multiple windows shows each remote program as its own window. The other modes put the whole X screen in one window, where a remote window manager manages the programs — use them for a full remote desktop such as Xfce or MATE. With the built-in X Server, Rootless is the same as Multiple windows, and a change takes effect the next time the X Server starts.</value>
   </data>
   <data name="SetXServer_ModeMultiWindow" xml:space="preserve">
     <value>Multiple windows</value>
@@ -5710,6 +5707,51 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   </data>
   <data name="SetXServer_RestrictForwardedDesc" xml:space="preserve">
     <value>Programs forwarded over SSH can&apos;t simulate input (XTEST), listen to every key typed in X windows (raw key events) or change input devices. Turn this on when you connect to servers you don&apos;t fully trust; tools like xdotool on those servers stop working.</value>
+  </data>
+  <data name="SetXServer_DisplayPerSession" xml:space="preserve">
+    <value>One display per SSH session</value>
+  </data>
+  <data name="SetXServer_DisplayPerSessionDesc" xml:space="preserve">
+    <value>X programs from different SSH sessions get separate displays: they cannot see each other&apos;s windows, read each other&apos;s keyboard input or clipboard, or send each other input. X programs on this computer keep using the shared display. Each session costs a little memory and a thread. Takes effect the next time the X Server starts.</value>
+  </data>
+  <data name="SetXServer_HostInputMethod" xml:space="preserve">
+    <value>Use this computer&apos;s input method in X windows</value>
+  </data>
+  <data name="SetXServer_HostInputMethodDesc" xml:space="preserve">
+    <value>Text you compose with the local input method (Chinese, Japanese, Korean…) is typed into X programs directly, so the server doesn&apos;t need fcitx or ibus. Turn it off to send keys as they are and use the server&apos;s own input method instead. Takes effect after restarting the X Server.</value>
+  </data>
+  <data name="SetXServer_CompositingManager" xml:space="preserve">
+    <value>Transparent X windows</value>
+  </data>
+  <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
+    <value>Tells X programs that a compositing manager is running, so GTK rounded corners and translucent Qt or Electron windows become truly transparent. Off by default because translucent windows need extra compositing by the system. Takes effect after restarting the X Server.</value>
+  </data>
+  <data name="SetXServer_ShowSource" xml:space="preserve">
+    <value>Show where X windows come from</value>
+  </data>
+  <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
+    <value>Puts the source (user@host:port) in front of the title of X windows forwarded over SSH, so you can tell hosts apart and a remote program can&apos;t pass itself off as a local window. Programs on this computer aren&apos;t marked. Applies to windows opened afterwards.</value>
+  </data>
+  <data name="SetXServer_ListenTcp" xml:space="preserve">
+    <value>Also listen on a TCP port</value>
+  </data>
+  <data name="SetXServer_ListenTcpDesc" xml:space="preserve">
+    <value>Opens port 6000+N (a cookie is required) besides the Unix socket. Only needed for programs that connect over the network, such as those in containers; SSH forwarding and local programs (DISPLAY=:N) don&apos;t need it. Takes effect after restarting the X Server.</value>
+  </data>
+  <data name="XServer_WindowTitleWithSource" xml:space="preserve">
+    <value>{0} — {1}</value>
+  </data>
+  <data name="XServer_CopyScreenshot" xml:space="preserve">
+    <value>Copy Screenshot</value>
+  </data>
+  <data name="XServer_SaveScreenshot" xml:space="preserve">
+    <value>Save Screenshot…</value>
+  </data>
+  <data name="XServer_SaveScreenshotTitle" xml:space="preserve">
+    <value>Save Screenshot</value>
+  </data>
+  <data name="XServer_ScreenshotDefaultName" xml:space="preserve">
+    <value>X window</value>
   </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>auto - Follow the system layout</value>
@@ -5839,6 +5881,81 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   </data>
   <data name="XServer_Stop" xml:space="preserve">
     <value>Stop</value>
+  </data>
+  <data name="XServer_TipPanel" xml:space="preserve">
+    <value>X Server running on {0} — click to see connected programs</value>
+  </data>
+  <data name="XServer_PanelTitle" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="XServer_PanelEmpty" xml:space="preserve">
+    <value>No X programs are connected yet.</value>
+  </data>
+  <data name="XServer_PanelLocal" xml:space="preserve">
+    <value>This computer</value>
+  </data>
+  <data name="XServer_PanelUnnamed" xml:space="preserve">
+    <value>X program #{0}</value>
+  </data>
+  <data name="XServer_PanelStats" xml:space="preserve">
+    <value>{0} window(s) · {1}</value>
+  </data>
+  <data name="XServer_PanelRetained" xml:space="preserve">
+    <value>Disconnected; its resources are still kept</value>
+  </data>
+  <data name="XServer_PanelGrabbing" xml:space="preserve">
+    <value>Exclusive</value>
+  </data>
+  <data name="XServer_PanelGrabbingTip" xml:space="preserve">
+    <value>It has grabbed the whole X Server; every other X program is waiting for it.</value>
+  </data>
+  <data name="XServer_PanelDisconnectTip" xml:space="preserve">
+    <value>Disconnect this program (all its windows close)</value>
+  </data>
+  <data name="XServer_PanelBreakGrabs" xml:space="preserve">
+    <value>Unstick</value>
+  </data>
+  <data name="XServer_PanelBreakGrabsTip" xml:space="preserve">
+    <value>Release every X program&apos;s mouse and keyboard grabs and its hold on the X Server. Use it when no X window responds to clicks or typing — for example a remote menu was open when the network dropped.</value>
+  </data>
+  <data name="XServer_BreakGrabsDone" xml:space="preserve">
+    <value>Released all X programs&apos; grabs.</value>
+  </data>
+  <data name="XServer_PanelStop" xml:space="preserve">
+    <value>Stop X Server</value>
+  </data>
+  <data name="XServer_DisconnectConfirmTitle" xml:space="preserve">
+    <value>Disconnect X program</value>
+  </data>
+  <data name="XServer_DisconnectConfirmMessage" xml:space="preserve">
+    <value>Disconnecting “{0}” closes all of its windows. Unsaved work in them will be lost.</value>
+  </data>
+  <data name="XServer_Disconnect" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="XServer_GrabStalled" xml:space="preserve">
+    <value>X program “{0}” ({1}) has held the X Server exclusively for {2} s; every other X program is waiting for it.</value>
+  </data>
+  <data name="XServer_GrabStalledDisconnect" xml:space="preserve">
+    <value>Disconnect it</value>
+  </data>
+  <data name="XServer_DropUploading" xml:space="preserve">
+    <value>Uploading {0} item(s) to {1} for the X program…</value>
+  </data>
+  <data name="XServer_DropNoSession" xml:space="preserve">
+    <value>The SSH session {0} is no longer connected; nothing was dropped.</value>
+  </data>
+  <data name="XServer_DropFailed" xml:space="preserve">
+    <value>Could not upload the dropped files: {0}</value>
+  </data>
+  <data name="XServer_TrayClick" xml:space="preserve">
+    <value>Open (click)</value>
+  </data>
+  <data name="XServer_TrayMenu" xml:space="preserve">
+    <value>Menu (right-click)</value>
+  </data>
+  <data name="XServer_ScreenTitle" xml:space="preserve">
+    <value>X Desktop {0}</value>
   </data>
   <data name="Cmd_ToggleXServer" xml:space="preserve">
     <value>Start / Stop X Server</value>

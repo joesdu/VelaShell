@@ -39,9 +39,10 @@ internal static class SshForwardingOptions
     /// 由 <see cref="VelaSshClientWrapper" /> 转成终端里的提示 —— 不必为了 X11 重开一次 shell。
     /// </para>
     /// <para>
-    /// 显示取自本机 X Server、而它是内置引擎(给了 <paramref name="localServerConnector" />)且为受信模式时,
-    /// x11 通道经连接器直接接进服务端,不去连本机端口。内置引擎不实现 SECURITY 扩展,签不出受限 cookie:
-    /// 非受信模式不开转发,终端里说明原因。外部 X 服务器的非受信模式要 <c>xauth</c> 连本机显示签受限 cookie,仍按显示地址走套接字。
+    /// 显示取自本机 X Server、而它是内置引擎(给了 <paramref name="localServerConnector" />)时,x11 通道经连接器直接接进服务端,
+    /// 不去连本机端口。非受信模式同样走连接器:不跑 <c>xauth</c>,连接器带着「非受信」把这条通道交给服务端,服务端按 SECURITY 扩展的
+    /// 非受信语义限制它(原先内置引擎没有 SECURITY 扩展,非受信模式不开转发)。外部 X 服务器的非受信模式要 <c>xauth</c> 连本机显示
+    /// 签受限 cookie,仍按显示地址走套接字。
     /// </para>
     /// </remarks>
     public static X11ForwardOptions? X11(
@@ -69,13 +70,6 @@ internal static class SshForwardingOptions
             notices.Add(new(Strings.Format("Ssh_X11ForwardFailed", Strings.Format("Ssh_X11BadDisplay", text)), true));
             return null;
         }
-        if (fromLocalServer && localServerConnector is not null && !features.X11Trusted)
-        {
-            // 内置 X 服务端不实现 SECURITY 扩展,远端 xauth 签不出受限 cookie:非受信转发必然开不起来。
-            // 原先照样去试,用户只看到 xauth 的报错;现在直说原因和两条出路(勾上受信任、改用外部 X 服务器)。
-            notices.Add(new(Strings.Format("Ssh_X11ForwardFailed", Strings.Get("Ssh_X11UntrustedBuiltIn")), true));
-            return null;
-        }
 
         return new X11ForwardOptions
         {
@@ -83,7 +77,7 @@ internal static class SshForwardingOptions
             IsTrusted = features.X11Trusted,
             Timeout = Timeout.InfiniteTimeSpan,
             FailureMode = ForwardFailureMode.Continue,
-            LocalConnector = fromLocalServer && features.X11Trusted ? localServerConnector : null,
+            LocalConnector = fromLocalServer ? localServerConnector : null,
         };
     }
 

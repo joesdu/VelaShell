@@ -181,6 +181,11 @@ public sealed record XTopLevelSnapshot
     public bool ProgramPosition { get; init; }
 
     /// <summary>
+    /// 尺寸是用户指定的(<c>WM_NORMAL_HINTS</c> 的 USSize,比如 <c>xterm -geometry 120x40</c>):宿主不该拿自己记住的尺寸盖掉它。
+    /// </summary>
+    public bool UserSize { get; init; }
+
+    /// <summary>
     /// 窗口组的组长(<c>WM_HINTS</c> 的 window_group):同一个程序的各个顶层指向同一个组长(组长常常是一个不映射的窗口)。
     /// 没有,或指向的不是顶层窗口时为 null。
     /// </summary>

@@ -5455,7 +5455,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>신뢰(-Y)</value>
   </data>
   <data name="Profile_SshX11TrustedHint" xml:space="preserve">
-    <value>신뢰 전달은 원격 X 클라이언트가 로컬 디스플레이에 완전히 접근하게 하며, 전달 중인 모든 세션이 이 디스플레이를 함께 씁니다. 서로의 창을 보고 클립보드를 읽고 입력을 보낼 수 있습니다. 내장 X Server와 Windows의 대부분의 X 서버는 이 모드만 지원하며, 비신뢰 모드에는 SECURITY 확장을 지원하는 외부 X 서버와 로컬 xauth가 필요합니다.</value>
+    <value>신뢰 전달은 원격 X 클라이언트가 로컬 디스플레이에 완전히 접근하게 하여 다른 프로그램의 창을 보고 클립보드와 키보드를 읽고 입력을 보낼 수 있게 합니다. 비신뢰 전달(ssh -X에 해당)은 자기 창에만 접근할 수 있어 다른 프로그램의 화면을 캡처하거나 키보드 입력을 읽거나 입력을 위조할 수 없습니다. 내장 X Server는 두 모드를 모두 지원하며, 외부 X 서버에서 비신뢰 모드를 쓰려면 SECURITY 확장과 로컬 xauth가 필요합니다. 일부 오래된 프로그램은 비신뢰 모드에서 제대로 동작하지 않을 수 있습니다.</value>
   </data>
   <data name="Ssh_X11ForwardOn" xml:space="preserve">
     <value>X11 전달 사용 중 → 로컬 디스플레이 {0}</value>
@@ -5471,9 +5471,6 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="Ssh_X11BadDisplay" xml:space="preserve">
     <value>디스플레이 &quot;{0}&quot;을(를) 인식할 수 없습니다(localhost:0.0 형식이어야 합니다)</value>
-  </data>
-  <data name="Ssh_X11UntrustedBuiltIn" xml:space="preserve">
-    <value>내장 X Server는 신뢰 전달만 지원합니다(SECURITY 확장이 없습니다). 이 연결에서 「신뢰(-Y)」를 켜거나 외부 X 서버를 사용하세요.</value>
   </data>
   <data name="SshErr_AgentUnavailable" xml:space="preserve">
     <value>로컬 ssh-agent에 연결할 수 없습니다: {0}</value>
@@ -5659,7 +5656,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>창 모드</value>
   </data>
   <data name="SetXServer_WindowModeDesc" xml:space="preserve">
-    <value>다중 창은 원격 프로그램마다 별도의 Windows 창으로 표시하고, 나머지 모드는 X 화면 전체를 하나의 창에 표시합니다.</value>
+    <value>다중 창은 원격 프로그램마다 별도의 창으로 표시합니다. 나머지 모드는 X 화면 전체를 하나의 창에 표시하고, 그 안의 프로그램은 원격 창 관리자가 관리합니다(Xfce, MATE 같은 원격 데스크톱 전체를 쓸 때). 내장 X Server에서 루트리스는 다중 창과 같으며, 변경 사항은 다음에 X Server를 시작할 때 적용됩니다.</value>
   </data>
   <data name="SetXServer_ModeMultiWindow" xml:space="preserve">
     <value>다중 창</value>
@@ -5705,6 +5702,51 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="SetXServer_RestrictForwardedDesc" xml:space="preserve">
     <value>SSH로 전달된 프로그램은 입력 흉내(XTEST), X 창에서 입력한 모든 키 감시(원시 키 이벤트), 입력 장치 변경을 할 수 없습니다. 완전히 신뢰하지 않는 서버에 연결할 때는 켜 두세요. 켜면 그 서버의 xdotool 같은 도구는 동작하지 않습니다.</value>
+  </data>
+  <data name="SetXServer_DisplayPerSession" xml:space="preserve">
+    <value>SSH 세션마다 별도 디스플레이</value>
+  </data>
+  <data name="SetXServer_DisplayPerSessionDesc" xml:space="preserve">
+    <value>SSH 세션마다 X 프로그램이 서로 다른 디스플레이를 씁니다. 서로의 창을 볼 수 없고 키보드 입력과 클립보드를 읽을 수 없으며 입력을 보낼 수도 없습니다. 이 컴퓨터의 X 프로그램은 계속 공용 디스플레이를 씁니다. 세션마다 메모리와 스레드를 조금 더 씁니다. 다음에 X Server를 시작할 때 적용됩니다.</value>
+  </data>
+  <data name="SetXServer_HostInputMethod" xml:space="preserve">
+    <value>X 창에서 이 컴퓨터의 입력기 사용</value>
+  </data>
+  <data name="SetXServer_HostInputMethodDesc" xml:space="preserve">
+    <value>로컬 입력기(중국어·일본어·한국어 등)로 조합한 글자를 X 프로그램에 바로 입력합니다. 서버에 fcitx나 ibus가 필요 없습니다. 끄면 키를 그대로 보내고 서버의 입력기를 사용합니다. X Server를 다시 시작하면 적용됩니다.</value>
+  </data>
+  <data name="SetXServer_CompositingManager" xml:space="preserve">
+    <value>X 창 투명 효과와 둥근 모서리</value>
+  </data>
+  <data name="SetXServer_CompositingManagerDesc" xml:space="preserve">
+    <value>X 프로그램에 컴포지팅 관리자가 있다고 알려 GTK의 둥근 모서리와 Qt·Electron의 반투명 창이 실제로 투명해집니다. 반투명 창은 시스템 합성 부담이 늘어나므로 기본값은 꺼짐입니다. X Server를 다시 시작하면 적용됩니다.</value>
+  </data>
+  <data name="SetXServer_ShowSource" xml:space="preserve">
+    <value>X 창의 출처 표시</value>
+  </data>
+  <data name="SetXServer_ShowSourceDesc" xml:space="preserve">
+    <value>SSH로 전달된 X 창의 제목 앞에 출처(사용자@호스트:포트)를 붙입니다. 여러 호스트의 창을 구분할 수 있고, 원격 프로그램이 로컬 창으로 위장할 수도 없습니다. 이 컴퓨터의 프로그램에는 붙지 않습니다. 이후에 여는 창부터 적용됩니다.</value>
+  </data>
+  <data name="SetXServer_ListenTcp" xml:space="preserve">
+    <value>TCP 포트에서도 수신</value>
+  </data>
+  <data name="SetXServer_ListenTcpDesc" xml:space="preserve">
+    <value>Unix 소켓 외에 6000+N 포트를 엽니다(cookie 필요). 컨테이너 안처럼 네트워크로 연결하는 프로그램에만 필요하며, SSH 전달과 이 컴퓨터의 프로그램(DISPLAY=:N)에는 필요 없습니다. X Server를 다시 시작하면 적용됩니다.</value>
+  </data>
+  <data name="XServer_WindowTitleWithSource" xml:space="preserve">
+    <value>{0} — {1}</value>
+  </data>
+  <data name="XServer_CopyScreenshot" xml:space="preserve">
+    <value>스크린샷 복사</value>
+  </data>
+  <data name="XServer_SaveScreenshot" xml:space="preserve">
+    <value>스크린샷 저장…</value>
+  </data>
+  <data name="XServer_SaveScreenshotTitle" xml:space="preserve">
+    <value>스크린샷 저장</value>
+  </data>
+  <data name="XServer_ScreenshotDefaultName" xml:space="preserve">
+    <value>X 창</value>
   </data>
   <data name="SetXServer_LayoutAuto" xml:space="preserve">
     <value>자동 - 시스템의 현재 레이아웃</value>
@@ -5834,6 +5876,81 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="XServer_Stop" xml:space="preserve">
     <value>중지</value>
+  </data>
+  <data name="XServer_TipPanel" xml:space="preserve">
+    <value>X Server 실행 중({0}) — 클릭하여 연결된 프로그램 보기</value>
+  </data>
+  <data name="XServer_PanelTitle" xml:space="preserve">
+    <value>X Server</value>
+  </data>
+  <data name="XServer_PanelEmpty" xml:space="preserve">
+    <value>아직 연결된 X 프로그램이 없습니다.</value>
+  </data>
+  <data name="XServer_PanelLocal" xml:space="preserve">
+    <value>이 컴퓨터</value>
+  </data>
+  <data name="XServer_PanelUnnamed" xml:space="preserve">
+    <value>X 프로그램 #{0}</value>
+  </data>
+  <data name="XServer_PanelStats" xml:space="preserve">
+    <value>창 {0}개 · {1}</value>
+  </data>
+  <data name="XServer_PanelRetained" xml:space="preserve">
+    <value>연결 끊김, 리소스는 남아 있음</value>
+  </data>
+  <data name="XServer_PanelGrabbing" xml:space="preserve">
+    <value>독점 중</value>
+  </data>
+  <data name="XServer_PanelGrabbingTip" xml:space="preserve">
+    <value>X Server 전체를 독점하고 있어 다른 X 프로그램이 모두 기다리고 있습니다.</value>
+  </data>
+  <data name="XServer_PanelDisconnectTip" xml:space="preserve">
+    <value>이 프로그램 연결 끊기(창이 모두 닫힘)</value>
+  </data>
+  <data name="XServer_PanelBreakGrabs" xml:space="preserve">
+    <value>멈춤 해제</value>
+  </data>
+  <data name="XServer_PanelBreakGrabsTip" xml:space="preserve">
+    <value>모든 X 프로그램의 마우스·키보드 점유와 X Server 독점을 해제합니다. 클릭이나 입력이 먹히지 않을 때(예: 원격 메뉴가 열린 채 네트워크가 끊겼을 때) 사용하세요.</value>
+  </data>
+  <data name="XServer_BreakGrabsDone" xml:space="preserve">
+    <value>모든 X 프로그램의 점유를 해제했습니다.</value>
+  </data>
+  <data name="XServer_PanelStop" xml:space="preserve">
+    <value>X Server 중지</value>
+  </data>
+  <data name="XServer_DisconnectConfirmTitle" xml:space="preserve">
+    <value>X 프로그램 연결 끊기</value>
+  </data>
+  <data name="XServer_DisconnectConfirmMessage" xml:space="preserve">
+    <value>“{0}”의 연결을 끊으면 그 창이 모두 닫힙니다. 저장하지 않은 내용은 사라집니다.</value>
+  </data>
+  <data name="XServer_Disconnect" xml:space="preserve">
+    <value>연결 끊기</value>
+  </data>
+  <data name="XServer_GrabStalled" xml:space="preserve">
+    <value>X 프로그램 “{0}”({1})이(가) {2}초째 X Server를 독점하고 있어 다른 X 프로그램이 모두 기다리고 있습니다.</value>
+  </data>
+  <data name="XServer_GrabStalledDisconnect" xml:space="preserve">
+    <value>연결 끊기</value>
+  </data>
+  <data name="XServer_DropUploading" xml:space="preserve">
+    <value>{0}개 항목을 {1}에 올려 X 프로그램에 넘기는 중…</value>
+  </data>
+  <data name="XServer_DropNoSession" xml:space="preserve">
+    <value>SSH 세션 {0}의 연결이 끊어져 아무것도 놓지 않았습니다.</value>
+  </data>
+  <data name="XServer_DropFailed" xml:space="preserve">
+    <value>끌어 놓은 파일을 올리지 못했습니다: {0}</value>
+  </data>
+  <data name="XServer_TrayClick" xml:space="preserve">
+    <value>열기(클릭)</value>
+  </data>
+  <data name="XServer_TrayMenu" xml:space="preserve">
+    <value>메뉴(오른쪽 클릭)</value>
+  </data>
+  <data name="XServer_ScreenTitle" xml:space="preserve">
+    <value>X 데스크톱 {0}</value>
   </data>
   <data name="Cmd_ToggleXServer" xml:space="preserve">
     <value>X Server 시작 / 중지</value>

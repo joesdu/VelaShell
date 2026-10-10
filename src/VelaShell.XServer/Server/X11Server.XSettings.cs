@@ -28,7 +28,10 @@ public sealed partial class X11Server
     {
         _dpi = _options.Dpi;
         _scale = _options.ScaleFactor;
-        _selections[new SelectionSlot(Intern("_XSETTINGS_S0"), null)] = (SelectionWindow, null, 0);
+        if (!Rootful)   // 单窗口模式:XSETTINGS 归远端桌面的设置守护进程(xfsettingsd、gsd-xsettings)
+        {
+            _selections[new SelectionSlot(Intern("_XSETTINGS_S0"), null)] = (SelectionWindow, null, 0);
+        }
         PublishDisplaySettings();
     }
 

@@ -112,11 +112,12 @@ public class SshSessionFeaturesTests
     }
 
     /// <summary>
-    /// 内置 X 服务端给了连接器:受信模式、且显示正是取自它时,x11 通道经连接器直接接进服务端;
-    /// 配置里自己写了显示地址、或非受信模式(要 xauth 连显示)时照旧走套接字。
+    /// 内置 X 服务端给了连接器、且显示正是取自它时,x11 通道经连接器直接接进服务端 —— 受信与非受信都是:非受信模式不跑 xauth,
+    /// 连接器带着「非受信」交给服务端(它按 SECURITY 的语义限制这条连接;原先内置引擎没有 SECURITY,非受信不开转发)。
+    /// 配置里自己写了显示地址时照旧走套接字。
     /// </summary>
     [TestMethod]
-    public void X11_LocalServerConnector_OnlyForItsOwnDisplayInTrustedMode()
+    public void X11_LocalServerConnector_ForItsOwnDisplay_TrustedOrNot()
     {
         List<ShellStreamNotice> notices = [];
         static ValueTask<Stream> connector(CancellationToken _) => ValueTask.FromResult<Stream>(new MemoryStream());
@@ -129,10 +130,9 @@ public class SshSessionFeaturesTests
             new SshSessionOptions { X11Forwarding = true, X11Trusted = true, X11Display = "localhost:3" }, notices, "localhost:10.0", connector);
 
         Assert.AreSame(connector, trusted?.LocalConnector);
-        Assert.IsNull(untrusted, "内置引擎没有 SECURITY 扩展,签不出受限 cookie:非受信不开转发");
-        Assert.HasCount(1, notices);
-        Assert.IsTrue(notices[0].IsWarning);
-        StringAssert.Contains(notices[0].Text, Strings.Get("Ssh_X11UntrustedBuiltIn"), "直说原因,而不是让 xauth 报错");
+        Assert.AreSame(connector, untrusted?.LocalConnector, "非受信同样经连接器");
+        Assert.IsFalse(untrusted!.IsTrusted);
+        Assert.IsEmpty(notices, "开得起来,不再提示");
         Assert.IsNull(explicitDisplay?.LocalConnector, "用户指定的显示与本机 X Server 无关");
         Assert.AreEqual(3, explicitDisplay?.Display?.Number);
     }

@@ -49,7 +49,7 @@ public sealed partial class X11Server
     }
 
     private XRegionResource RegionRes(uint id) =>
-        Lookup<XRegionResource>(id) ?? throw new XProtocolError((XErrorCode)XFixesErrorBase, id);
+        Use<XRegionResource>(id) ?? throw new XProtocolError((XErrorCode)XFixesErrorBase, id);
 
     private static Region ReadRegionRects(XRequestReader r)
     {
@@ -125,7 +125,7 @@ public sealed partial class X11Server
                 {
                     uint id = r.U32();
                     uint bitmapId = r.U32();
-                    XPixmap bitmap = Lookup<XPixmap>(bitmapId) ?? throw new XProtocolError(XErrorCode.Pixmap, bitmapId);
+                    XPixmap bitmap = Use<XPixmap>(bitmapId) ?? throw new XProtocolError(XErrorCode.Pixmap, bitmapId);
                     if (bitmap.Depth != 1)
                     {
                         throw new XProtocolError(XErrorCode.Match);
@@ -355,7 +355,7 @@ public sealed partial class X11Server
             case 32:  // DestroyPointerBarrier:只认屏障,别的资源一律 BadBarrier(§12.2)
                 {
                     uint id = r.U32();
-                    _ = Lookup<XPointerBarrier>(id) ?? throw new XProtocolError((XErrorCode)(XFixesErrorBase + 1), id);
+                    _ = Use<XPointerBarrier>(id) ?? throw new XProtocolError((XErrorCode)(XFixesErrorBase + 1), id);
                     RemoveResource(id);
                     break;
                 }
@@ -481,7 +481,7 @@ public sealed partial class X11Server
         }
     }
 
-    private XCursorResource CursorRes(uint id) => Lookup<XCursorResource>(id) ?? throw new XProtocolError(XErrorCode.Cursor, id);
+    private XCursorResource CursorRes(uint id) => Use<XCursorResource>(id) ?? throw new XProtocolError(XErrorCode.Cursor, id);
 
     /// <summary>没有图像可给时(隐形指针、太大没烙图像的光标、窗口没设光标):1×1 的透明像素。</summary>
     private static readonly XCursorImage NoCursorImage = new(1, 1, 0, 0, new uint[1]);
