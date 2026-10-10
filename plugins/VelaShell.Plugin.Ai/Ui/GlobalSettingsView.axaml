@@ -34,12 +34,12 @@
                      VerticalContentAlignment="Top" />
 
             <CheckBox x:Name="CompactContextCheck" Theme="{StaticResource AiCheckBoxTheme}"
-                      FontSize="{DynamicResource VelaFontSize13}"
+                      FontSize="{DynamicResource VelaFontSize12}"
                       Foreground="{DynamicResource VelaTextPrimary}" Margin="0,14,0,0" />
             <TextBlock x:Name="CompactContextHintText" Classes="hint" />
 
             <CheckBox x:Name="SuggestFollowUpsCheck" Theme="{StaticResource AiCheckBoxTheme}"
-                      FontSize="{DynamicResource VelaFontSize13}"
+                      FontSize="{DynamicResource VelaFontSize12}"
                       Foreground="{DynamicResource VelaTextPrimary}" Margin="0,14,0,0" />
             <TextBlock x:Name="SuggestFollowUpsHintText" Classes="hint" />
           </StackPanel>
@@ -51,7 +51,7 @@
           <StackPanel Spacing="10">
             <StackPanel>
               <CheckBox x:Name="WebEnabledCheck" Theme="{StaticResource AiCheckBoxTheme}"
-                        FontSize="{DynamicResource VelaFontSize13}"
+                        FontSize="{DynamicResource VelaFontSize12}"
                         Foreground="{DynamicResource VelaTextPrimary}" />
               <TextBlock x:Name="WebEnabledHintText" Classes="hint" />
             </StackPanel>
@@ -75,14 +75,14 @@
 
               <StackPanel>
                 <CheckBox x:Name="WebNativeCheck" Theme="{StaticResource AiCheckBoxTheme}"
-                          FontSize="{DynamicResource VelaFontSize13}"
+                          FontSize="{DynamicResource VelaFontSize12}"
                           Foreground="{DynamicResource VelaTextPrimary}" />
                 <TextBlock x:Name="WebNativeHintText" Classes="hint" />
               </StackPanel>
 
               <StackPanel>
                 <CheckBox x:Name="WebPrivateCheck" Theme="{StaticResource AiCheckBoxTheme}"
-                          FontSize="{DynamicResource VelaFontSize13}"
+                          FontSize="{DynamicResource VelaFontSize12}"
                           Foreground="{DynamicResource VelaTextPrimary}" />
                 <TextBlock x:Name="WebPrivateHintText" Classes="hint" />
               </StackPanel>
@@ -105,7 +105,7 @@
             <!-- 有序列表:行在代码里搭(增删换位即整列重建),Name 是测试与文案刷新的抓手 -->
             <StackPanel x:Name="FailoverRowsHost" Spacing="6" />
             <Grid ColumnDefinitions="*,8,Auto,8,Auto">
-              <ComboBox x:Name="FailoverAddCombo" FontSize="{DynamicResource VelaFontSize13}" />
+              <ComboBox x:Name="FailoverAddCombo" FontSize="{DynamicResource VelaFontSize12}" />
               <Button x:Name="FailoverAddButton" Grid.Column="2" Classes="host">
                 <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                   <Viewbox Width="11" Height="11" VerticalAlignment="Center">
@@ -114,7 +114,7 @@
                           StrokeLineCap="Round" />
                   </Viewbox>
                   <TextBlock x:Name="FailoverAddText" VerticalAlignment="Center"
-                             FontSize="{DynamicResource VelaFontSize12}" />
+                             FontSize="{DynamicResource VelaFontSize11}" />
                 </StackPanel>
               </Button>
               <Button x:Name="FailoverProbeAllButton" Grid.Column="4" Classes="host">
@@ -125,7 +125,7 @@
                           StrokeLineCap="Round" />
                   </Viewbox>
                   <TextBlock x:Name="FailoverProbeAllText" VerticalAlignment="Center"
-                             FontSize="{DynamicResource VelaFontSize12}" />
+                             FontSize="{DynamicResource VelaFontSize11}" />
                 </StackPanel>
               </Button>
             </Grid>
@@ -147,7 +147,7 @@
                         StrokeLineCap="Round" StrokeJoin="Round" />
                 </Viewbox>
                 <TextBlock x:Name="SaveText" VerticalAlignment="Center"
-                           FontSize="{DynamicResource VelaFontSize12}" FontWeight="Medium" />
+                           FontSize="{DynamicResource VelaFontSize11}" FontWeight="Medium" />
               </StackPanel>
             </Button>
           </Grid>

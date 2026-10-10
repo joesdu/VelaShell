@@ -220,11 +220,11 @@ public sealed class ProviderSetupView : UserControl
         };
         monogram[!BackgroundProperty] = new DynamicResourceExtension("VelaBgActive");
         ((TextBlock)monogram.Child)[!ForegroundProperty] = new DynamicResourceExtension("VelaTextSecondary");
-        ((TextBlock)monogram.Child)[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize12");
+        ((TextBlock)monogram.Child)[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize11");
 
         var name = new TextBlock { Text = entry.Name, FontWeight = FontWeight.Medium };
         name[!ForegroundProperty] = new DynamicResourceExtension("VelaTextPrimary");
-        name[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize14");
+        name[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize13");
         // 走非公开接口的那几条挂个小标:哪天"AI 突然不能用了",用户得知道该往哪儿想
         var nameRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { name } };
         if (entry.Experimental)
@@ -778,7 +778,7 @@ public sealed class ProviderSetupView : UserControl
         };
         _deviceCodeText = new TextBlock { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
         _deviceCodeText[!ForegroundProperty] = new DynamicResourceExtension("VelaAccent");
-        _deviceCodeText[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize14");
+        _deviceCodeText[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize13");
         _deviceCodeText[!FontFamilyProperty] = new DynamicResourceExtension("VelaUiMonoFont");
         var copy = new Button { Content = _loc["Copy"], Height = 24, Padding = new Thickness(10, 0) };
         copy[!ThemeProperty] = new DynamicResourceExtension("VelaOutlineButtonTheme");
