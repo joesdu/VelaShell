@@ -40,8 +40,8 @@
 | 部分 | 🔴 P0 | 🟠 P1 | 🟡 P2 | 🟢 P3 | 合计 |
 | --- | :---: | :---: | :---: | :---: | :---: |
 | 一、欠账 | 4 | 2 | 9 | 9 | **24** |
-| 二、路线图 | — | 6 | 18 | 17 | **41** |
-| 三、文档待同步 | — | — | — | — | **36** |
+| 二、路线图 | — | 6 | 16 | 17 | **39** |
+| 三、文档待同步 | — | — | — | — | **37** |
 
 
 ---
@@ -223,18 +223,16 @@
 
 ### H. 内置 X 服务端
 
-> 第二次全库审查(`plan.md` §167,草案 `xs_plan.md`)修完 184 条问题、2026-10-09 补齐只做了一部分的几项(§178)、2026-10-10 对着清单逐条核对并补完最后几项(§185)、同日做完草案第十二节的大部分新功能(§187)之后剩下的。新功能的编号沿用草案第十二节(F1–F30);草案已经删掉(登记的问题都修完了),各项的使用场景、工作量与风险在 git 历史里:`git log -- xs_plan.md` 找到删除它的提交,`git show <提交>^:xs_plan.md`。
+> 第二次全库审查(`plan.md` §167,草案 `xs_plan.md`)修完 184 条问题、2026-10-09 补齐只做了一部分的几项(§178)、2026-10-10 对着清单逐条核对并补完最后几项(§185)、同日做完草案第十二节的大部分新功能(§187),以及本机输入法的 XIM 桥与 X 程序拖出(§189)之后剩下的。新功能的编号沿用草案第十二节(F1–F30);草案已经删掉(登记的问题都修完了),各项的使用场景、工作量与风险在 git 历史里:`git log -- xs_plan.md` 找到删除它的提交,`git show <提交>^:xs_plan.md`。
 
 | 状态 | 优先级 | 项 | 架构落点 |
 | :---: | :---: | --- | --- |
-| 💡 | 🟡 P2 | **本机输入法的 XIM 桥**(F5 第二步,决策 Q1) | 2026-10-10 做了第一步(`plan.md` §187):本机输入法组好的字借键码直接输入给 X 程序。第二步是服务端实现 XIM 协议,远端程序报插入点、候选窗跟着光标走、预编辑画在程序自己的输入框里。工作量 3–5 周;XIM 的规范要先登记进 XServer AGENTS 的清单 |
-| 💡 | 🟡 P2 | **从 X 程序往本机拖出来**(F16 的另一半) | 本机 → X 已经做了(XDND,文件经 SFTP 先传到远端)。反方向要服务端当 XDND 的目标、把远端文件拉回本机再交给系统的拖放,远端路径换本机临时文件,宿主要能在拖动途中启动一次系统拖放 |
 | 💡 | 🟢 P3 | **整数倍放大**(F19 的其余) | 各显示器的 DPI 已经按各自的缩放报给 RANDR。整数放大要全服务端统一的放大倍数 Z(屏幕像素 = Z × 根坐标 + 原点),宿主所有根坐标与屏幕坐标的换算都要改 —— 要在实机多显示器上验,不能只靠无头用例;也可以等「每个 SSH 会话一个显示」(F1)给每个显示各自的倍数。**维护者 2026-10-10 决定先等**,不做全服务端统一倍数的方案 |
 | 💡 | 🟢 P3 | **压感、触摸与手势**(F7) | 压感要主设备的类随 SlaveSwitch 切换,镜像里没有能核对的真实工具包;触摸与手势风险大,XI 2.4 也不在规范清单里 |
 | 💡 | 🟢 P3 | **间接 GL 剩下的部分**(F23 / F24 的其余) | 反馈模式、mipmap LOD、PixelMap、深度 / 模板格式的 DrawPixels / CopyPixels;双线性取样与 GL 光栅化的 SIMD。选择模式、点画、求值器与 RENDER 的 SIMD 快路径 2026-10-10 做了 |
 | 💡 | 🟢 P3 | **WSL 与 MIT-SHM 1.2**(F29 / F30) | WSL 的程序自动用上内置 X Server(要一个装着 WSL 的环境来测);MIT-SHM 1.2 的 fd 传递只有 Linux 的 Unix 套接字上才有,现有的 TCP 容器环境测不了 |
 | 💡 | 🟢 P3 | **新功能各平台补齐与小尾巴** | 指针 Warp / confine 在 macOS 上没做、Wayland 不许(F8);屏保协作只在 Windows 上(macOS 的 IOPMAssertion、Linux 的 org.freedesktop.ScreenSaver 要 D-Bus 客户端,F9);合成管理器默认关,带 alpha 的窗口在 Windows 上的合成开销要实机量过再说(F11;新设置的默认值 —— 输入法开、来源标识开、合成管理器关、Linux / macOS 的 TCP 端口关、每个 SSH 会话一个显示关 —— 维护者 2026-10-10 确认保持);截图只在 Windows 的系统菜单里有入口、录屏没做(F20);Present 只有一个全局帧时钟(F25);托盘的气泡消息收下不显示(F12);单窗口模式下直接画在根窗口上的内容、远端合成器画在叠加窗口上的效果不显示(F13);SECURITY 的 XC-QUERY-SECURITY-1 与 Application Group(只为早已没人用的 X 防火墙代理);「每个 SSH 会话一个显示」要下次启动才生效(F1);macOS 的 LOCAL_PEERPID 没有实机核对(F28) |
-| 💡 | 🟢 P3 | **核对新设置时看到、这一轮没做的**(`plan.md` §188) | **透明窗口(F11,只在打开「X 窗口透明与圆角」时)**:深度 32 的顶层里嵌着深度 24 的子窗口(`--wid` 嵌的 mpv、GtkSocket)时,子窗口写进 32 位缓冲的像素 alpha 是 0,宿主按预乘 ARGB 显示成叠加 —— 要在每条写入路径(光栅化、PutImage / CopyArea、RENDER、背景与边框、GLX、Present、SHM)给深度 24 的窗口补上不透明的 alpha;Windows 上无装饰的透明区域照样接住鼠标(要按 alpha 或输入形状回 `WM_NCHITTEST`),宿主也还没用快照里的 `InputShape` 与 `ClientFrameExtents`。**防冒充**:无装饰与 override-redirect 窗口的不透明度下限只有 0.05;自己画标题栏的窗口没有系统标题栏,来源只在任务栏上看得到(可考虑宿主画的来源条或任务栏角标);新窗口映射时激活的规则要再核一遍(审查说映射即激活,与排障文档写的「不能自己跳到前台」对不上,没核实);不同主机上的同名程序在任务栏归成一组,映射之后改了类名不重算;`_NET_WM_VISIBLE_NAME` 没写。**本机输入法(F5)**:按着 Ctrl / Alt 时上屏的字照样带着修饰位(程序可能当成快捷键);只认核心协议的老客户端在 CapsLock 下仍转大写;宿主「这个键自己打出的字不重复输入」的判断没在 macOS / Linux(IBus、fcitx)的真实输入法上核对(那两个后端组字时是不是一律报 ImeProcessed)。**TCP 端口(F4)**:桥接网络里的容器要的「监听地址」选项没做;macOS 上 `DISPLAY` 指向 XQuartz 的 launchd 套接字而 XQuartz 没在跑时,自动选号可能占了 :0(没法在净室规程下核对 XQuartz 的行为) |
+| 💡 | 🟢 P3 | **核对新设置时看到、这一轮没做的**(`plan.md` §188) | **透明窗口(F11,只在打开「X 窗口透明与圆角」时)**:深度 32 的顶层里嵌着深度 24 的子窗口(`--wid` 嵌的 mpv、GtkSocket)时,子窗口写进 32 位缓冲的像素 alpha 是 0,宿主按预乘 ARGB 显示成叠加 —— 要在每条写入路径(光栅化、PutImage / CopyArea、RENDER、背景与边框、GLX、Present、SHM)给深度 24 的窗口补上不透明的 alpha;Windows 上无装饰的透明区域照样接住鼠标(要按 alpha 或输入形状回 `WM_NCHITTEST`),宿主也还没用快照里的 `InputShape` 与 `ClientFrameExtents`。**防冒充**:无装饰与 override-redirect 窗口的不透明度下限只有 0.05;自己画标题栏的窗口没有系统标题栏,来源只在任务栏上看得到(可考虑宿主画的来源条或任务栏角标);新窗口映射时激活的规则要再核一遍(审查说映射即激活,与排障文档写的「不能自己跳到前台」对不上,没核实);不同主机上的同名程序在任务栏归成一组,映射之后改了类名不重算;`_NET_WM_VISIBLE_NAME` 没写。**本机输入法剩余核对(F5)**:按着 Ctrl / Alt 时上屏的字照样带着修饰位(程序可能当成快捷键);只认核心协议的老客户端在 CapsLock 下仍转大写;宿主「这个键自己打出的字不重复输入」的判断没在 macOS / Linux(IBus、fcitx)的真实输入法上核对(那两个后端组字时是不是一律报 ImeProcessed)。**TCP 端口(F4)**:桥接网络里的容器要的「监听地址」选项没做;macOS 上 `DISPLAY` 指向 XQuartz 的 launchd 套接字而 XQuartz 没在跑时,自动选号可能占了 :0(没法在净室规程下核对 XQuartz 的行为) |
 | ⏳ | 🟢 P3 | **审查留下的部分完成项** | 点本机窗口或桌面就收起 X 的弹出菜单(WN-M7):要全局指针钩子,各平台各写一份。另有 §185 核对时看到的一处:半径小于半个线宽的圆上的一段宽弧,内边界停在圆心、没有穿到对侧(协议对圆要求理想边界,整圆不受影响;椭圆由实现决定,不算) |
 | 💡 | 🟢 P3 | **互操作靶场扩充**(审查的测试缺口 T16) | 真实客户端现在只覆盖 x11-apps、xterm、xdpyinfo、glxgears 与 Swing。现有镜像保持轻量、留在 CI,另建一个 heavy 镜像手动或每晚跑,断言沿用「零 `: Bad` 日志 + 画出了东西」再加专项:GTK3(`gtk-3-examples`、`zenity`、`meld`:拖放、剪贴板、弹出层、自绘标题栏的边缘缩放)、GTK4(`gtk-4-examples`、`gnome-calculator`:`GSK_RENDERER=gl` 与 `cairo` 都零错误)、GTK2(`gimp`)、Qt(`wireshark`)、浏览器(`firefox-esr`、`chromium --disable-gpu`:剪贴板提供哪些格式)、Motif / Xaw / Tk / Emacs(`ddd`、`xfig`、`gnuplot-x11`、`gitk`、`emacs-lucid`:核心字体告警、中文与西里尔文)、桌面会话(`xserver-xephyr`、`openbox`、`xfwm4`、`xfdesktop4`:窗口管理器要以「已有窗口管理器」退出,桌面类窗口不开原生窗口)、托盘(`stalonetray`、`yad --notification`)、中日韩输入(`fcitx5`)、办公(`libreoffice-calc`:富格式剪贴板、启动时恢复最大化) |
 | 💡 | 🟢 P3 | **需要实机核对的** | 分数缩放下最后一列像素可能被裁(API-H13);macOS 上 Command 组合键收不到 KeyUp 时的处理(IN-E19);macOS / FreeBSD 经 `getpeereid` 取对端 uid(CN-S8) |
@@ -248,6 +246,7 @@
 
 | 出处 | 要改什么 | 进度 |
 | --- | --- | --- |
+| `plan.md` §189 本机输入法的 XIM 桥与 X 程序拖出 | `{zh,en}/xserver/design/architecture.md`、`troubleshooting.md`:XIM 协议 / 传输 / 插入点 / 预编辑、XMODIFIERS、XDND 根代理与 Java 拖放捕获器、文件取回与收尾;`{zh,en}/host/交互与界面规格.md`:候选框 / on-the-spot / 拖出文件与临时目录;`{zh,en}/host/settings-audit.md`:本机输入法开关的 XIM 行 | 本地 `feat/xserver-xim-dragout` 分支已改,待开文档 PR;与宿主 PR 互引 |
 | `plan.md` §185 第二次审查清单的最后一轮收尾 | `{zh,en}/xserver/design/architecture.md`:§6 扁弧按线段画满线宽;§7 字体按屏幕分辨率挑 75 / 100 dpi、RENDER 的 alpha-map(只换 alpha 通道、跟着变换、目标上生效,删掉「必须是只有 alpha 的格式」);§2 字体脚本核对摘要;里程碑记下这一轮 | [velashell-docs#105](https://github.com/VelaShellLabs/velashell-docs/pull/105) 已开,与宿主 PR 一起合 |
 | `plan.md` §180 连接导入导出、多选与分组排序（#571） | `{zh,en}/host/会话导入.md` 新增第七节（JSON / CSV 两种格式、导出口令加密、CSV 列与读法、重复与写入规则）、第六节补一条、标题注明；`{zh,en}/host/交互与界面规格.md` §3（「更多」菜单、Ctrl 双选改为 Ctrl / Shift 多选、分组拖动排序）、§6.2 的入口说法、§12（多选菜单、分组菜单、新增 §12.1 批量修改对话框）；`{zh,en}/host/快捷键参考.md` 新增「资源管理器」一节（Ctrl / Shift 单击多选、拖动连接换分组、拖动分组行排序）；`SFTP双栏与WinSCP差距分析.md` 的交叉引用；`host/README.md` 与根 README 的索引 | [velashell-docs#103](https://github.com/VelaShellLabs/velashell-docs/pull/103) 已开，与宿主 PR 一起合 |
 | `plan.md` §118 窗口外框 | `{zh,en}/host/architecture.md` §5「窗口壳」的 ⚠️ 限定为 Win32、新增「各平台的外框」；`交互与界面规格.md` §2 补 macOS 红绿灯与各平台外框；`design-specs.md` 补 macOS 红绿灯；标题栏统一 28 的口径（设置窗口与消息框保持 48 的例外） | [velashell-docs#70](https://github.com/VelaShellLabs/velashell-docs/pull/70) 已开，与宿主 PR 一起合；实机验收后改掉 architecture 里「验收」那一段 |
@@ -299,7 +298,6 @@
 | **VelaDock 浮动窗口** | 产品决策，见上一条 |
 | **Mosh** | 远程通道抽象建立在 SSH 流式通道之上（`ISshClientWrapper` / `IShellStreamWrapper`）。Mosh 是独立的 UDP + SSP 协议栈，.NET 无可用实现，接入等于并行维护第二套传输与终端预测引擎。弱网由自动重连 + keepalive 缓解 |
 | **捆绑第三方 X 服务端** | X11 转发已落地（`plan.md` §92），标题栏 X Server 按钮默认启动内置的 `VelaShell.XServer`（纯托管、随程序分发、各平台可用，`plan.md` §101、§105），「零安装」已经做到；Windows 上仍可改成拉起用户装好的 VcXsrv。**不做**的是把第三方 X 服务端的二进制打进安装包：安装包与维护面整个变一个量级，与「解压即跑」冲突。重度远程图形需求交给 RDP / VNC 插件 |
-| **内置 X 服务端的输入法（XIM）** | 中日韩输入走远端自己的输入法框架（`plan.md` §105）。2026-10-10 部分推翻：本机输入法组好的字已经能直接输入给 X 程序（设置「X 窗口里用本机输入法」，`plan.md` §187）；完整的 XIM 桥挪进 H 节待办 |
 | **SSH 的 CBC 加密模式（`aes*-cbc`）** | 维护者决策（2026-10-06，`ssh_plan.md` Q2）：不实现，「允许老算法」里也不加。CBC 配 Encrypt-and-MAC 有长度预言 / 明文恢复攻击（Albrecht–Paterson–Watson 2009），要做得严谨，长度与 MAC 出错的路径得做到不可区分 —— 那是一条要单独评审、又几乎没人用的错误路径；OpenSSH 6.7（2014）起默认就不开 CBC。代价是只剩 CBC 的老设备（老交换机、嵌入式）连不上：经能谈 CTR / GCM 的跳板去连，或者升级设备固件（`plan.md` §162） |
 | **SSH 裸 `zlib` 压缩** | 只保留 `zlib@openssh.com`（认证后才压缩）。裸 `zlib` 让口令与签名也进压缩流，未认证的连接方能做 CRIME 类旁路（`plan.md` §107） |
 | **键盘复制模式（vi-like）** | 产品决策（2026-09-09）：没见过这种用法，代价却不小 —— 要新起一个**模式态**穿过 `TerminalKeyRouter` 与抢在它前面的 `TerminalTabView.OnPreviewKeyDown` 两层输入路径；进模式必须关 IME、`Ctrl+C` 的三重身份要重定义、还要模式指示器。而主场景已被吃掉：选整条命令输出走 OSC 133 命令块，找文本走 `Ctrl+F`，抢鼠标的程序里走 `Shift+拖拽`。（当初另一条理由「与不做自定义键位冲突，Dvorak / Colemak 上 `hjkl` 的位置是错的」已随 `plan.md` §155 失效；上面几条仍成立） |
