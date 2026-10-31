@@ -131,6 +131,44 @@ public sealed class TransferQueueTests
         Assert.IsNull(rig.Sink.Journal.Snapshot(paused.BatchId));
     });
 
+    /// <summary>
+    /// 暂停到「继续」之间源变了(FTP 这类后端同样核实续传起点,对不上抛 VelaSftpResumeMismatchException):
+    /// 不往那半截后面追加,而是按规划时定下的覆盖整份重传 —— 「询问」策略下也不再弹框(冲突在规划时问过了)。
+    /// </summary>
+    [TestMethod]
+    public Task ResumingAfterThePartialStoppedMatching_RetransfersTheWholeFileInsteadOfAppending() => OnUi(async () =>
+    {
+        using var rig = new Rig();
+        rig.Fails("/srv/b.bin", new RemoteSessionUnavailableException("Session gone"), writtenBeforeFailure: 10);
+        await rig.DownloadAsync("a", "b");
+        PausedTransferBatchViewModel paused = rig.Sink.PausedBatches.Single();
+
+        var second = Guid.NewGuid();
+        rig.Remote(second, "/srv/b.bin", 100);
+        rig.Sftp.DownloadFileAsync(second, "/srv/b.bin", Arg.Any<string>(), Arg.Any<IProgress<TransferProgress>?>(),
+                Arg.Is<long>(offset => offset > 0), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new VelaSftpResumeMismatchException("changed while paused")));
+        FileBrowserViewModel reconnected = rig.Panel(second);
+        reconnected.TransferOptions.ConflictPolicy = "ask";
+        reconnected.ConfirmOverwrite = _ => throw new AssertFailedException("接着传不该再弹同名冲突框。");
+        var done = new TaskCompletionSource<TransferResumeOutcome>();
+        rig.Sink.ResumeHandler = async batch =>
+        {
+            TransferResumeOutcome outcome = await reconnected.ResumeQueuedTransfersAsync(batch)
+                ? new(TransferResumeResult.Started)
+                : new(TransferResumeResult.Failed, reconnected.ErrorMessage);
+            done.SetResult(outcome);
+            return outcome;
+        };
+
+        rig.Sink.ResumePausedBatchCommand.Execute(paused.BatchId).Subscribe();
+        Assert.AreEqual(TransferResumeResult.Started, (await done.Task.WaitAsync(TimeSpan.FromSeconds(10))).Result);
+
+        Assert.AreSequenceEqual([("/srv/b.bin", 10L), ("/srv/b.bin", 0L)], [.. rig.DownloadCalls(second)], "对不上就整份重下,不往半截后面追加");
+        Assert.AreEqual(TransferStatus.Completed, rig.Sink.Transfers.Last(t => t.FileName == "b.bin").Status);
+        Assert.IsEmpty(rig.Sink.PausedBatches);
+    });
+
     /// <summary>配置删了:不去猜它原来连的是哪台,如实说明,只能放弃;放弃之后队列里也没了。</summary>
     [TestMethod]
     public Task WhenTheProfileIsGone_TheBatchCanOnlyBeDiscarded() => OnUi(async () =>

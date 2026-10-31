@@ -12,6 +12,7 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Net;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
+using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Net;
 using CoreDataMode = VelaShell.Core.Models.FtpDataConnectionMode;
 using CoreEncryption = VelaShell.Core.Models.FtpEncryptionMode;
@@ -121,6 +122,13 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     {
         string fileName = Path.GetFileName(localPath);
         long totalBytes = new FileInfo(localPath).Length;
+        // 调用方给的偏移只决定「要不要试着续」(ISftpService 的契约):此刻核实远端那半截确实是本地文件的开头才续,
+        // 远端没有可续的半截就整份重传,对不上抛 VelaSftpResumeMismatchException 交回同名冲突策略。
+        if (resumeOffset > 0)
+        {
+            await using FileStream local = File.OpenRead(localPath);
+            resumeOffset = await ResolveUploadResumeAsync(sessionId, remotePath, local, totalBytes, cancellationToken).ConfigureAwait(false);
+        }
         ReadCountingStream? attempt = null;
         await RunTransferAsync(sessionId, "upload", async client =>
         {
@@ -128,7 +136,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             await using FileStream file = File.OpenRead(localPath);
             // 每一次尝试各数各的:只有这一次真从源里读走过字节,才说明数据已经上了数据连接。
             var source = attempt = new ReadCountingStream(file);
-            // 续传交给 FluentFTP:Resume 模式下它自己 SIZE 远端、再把本地流 Seek 到同一偏移。
+            // 续传交给 FluentFTP:Resume 模式下它自己 SIZE 远端、再把本地流 Seek 到同一偏移(起点上面已经核实过)。
             // 不需要 SFTP 那套「回退一个在途写入窗口」—— FTP 单条数据连接顺序写,没有乱序空洞。
             FtpStatus status = await client.UploadStream(
                 source,
@@ -150,8 +158,9 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     /// 远端流(FTP 的数据流不可 Seek),所以包一层报出已知长度的外壳交给 FluentFTP ——
     /// 它要长度来算进度,又不能去 Seek 一条网络流。时间戳沿用本服务上传的既有口径:不设。
     /// <para>
-    /// 续传与 <see cref="UploadFileAsync" /> 同一口径,交给 FluentFTP 的 Resume 模式:它自己 SIZE 远端、
-    /// 再把源流 Seek 到同一偏移 —— 所以续传时源必须可 Seek,直接交它本身,不包外壳。
+    /// 续传与 <see cref="UploadFileAsync" /> 同一口径:先核实远端那半截的末尾与源流同一段一致,
+    /// 再交给 FluentFTP 的 Resume 模式:它自己 SIZE 远端、再把源流 Seek 到同一偏移 ——
+    /// 所以续传时源必须可 Seek,直接交它本身,不包外壳。
     /// </para>
     /// </remarks>
     public async Task UploadStreamAsync(Guid sessionId,
@@ -173,24 +182,30 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             {
                 throw new ArgumentException("Resuming a streamed upload needs a seekable source.", nameof(source));
             }
-            ReadCountingStream? attempt = null;
-            await RunTransferAsync(sessionId, "upload", async client =>
+            resumeOffset = await ResolveUploadResumeAsync(sessionId, remotePath, source, length, cancellationToken).ConfigureAwait(false);
+            if (resumeOffset > 0)
             {
-                // 不包外壳的理由见上:Resume 要 Seek 源流。计数这层照样把 Seek 交给它。
-                var counted = attempt = new ReadCountingStream(source);
-                FtpStatus resumed = await client.UploadStream(
-                    counted,
-                    NormalizePath(remotePath),
-                    FtpRemoteExists.Resume,
-                    createRemoteDir: false,
-                    progress: MapProgress(progress, fileName, length),
-                    token: cancellationToken).ConfigureAwait(false);
-                if (resumed == FtpStatus.Failed)
+                ReadCountingStream? attempt = null;
+                await RunTransferAsync(sessionId, "upload", async client =>
                 {
-                    throw new VelaFtpOperationException($"FTP upload of {fileName} failed.");
-                }
-            }, () => attempt?.BytesRead > 0, replayable: true, cancellationToken).ConfigureAwait(false);
-            return;
+                    // 不包外壳的理由见上:Resume 要 Seek 源流。计数这层照样把 Seek 交给它。
+                    var counted = attempt = new ReadCountingStream(source);
+                    FtpStatus resumed = await client.UploadStream(
+                        counted,
+                        NormalizePath(remotePath),
+                        FtpRemoteExists.Resume,
+                        createRemoteDir: false,
+                        progress: MapProgress(progress, fileName, length),
+                        token: cancellationToken).ConfigureAwait(false);
+                    if (resumed == FtpStatus.Failed)
+                    {
+                        throw new VelaFtpOperationException($"FTP upload of {fileName} failed.");
+                    }
+                }, () => attempt?.BytesRead > 0, replayable: true, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            // 远端没有可续的半截:整份重传。核实时源流被定位过,从头读。
+            source.Seek(0, SeekOrigin.Begin);
         }
         var input = new KnownLengthStream(source, length);
         await RunTransferAsync(sessionId, "upload", async client =>
@@ -230,6 +245,12 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         CancellationToken cancellationToken = default)
     {
         string fileName = GetRemoteFileName(remotePath);
+        // 以此刻本地那半截的实际长度为准,并核实它的末尾确实是远端文件同一段(理由同上传侧);
+        // 没有可续的就整份重下(覆盖本地残留)。
+        if (resumeOffset > 0)
+        {
+            resumeOffset = await ResolveDownloadResumeAsync(sessionId, remotePath, localPath, cancellationToken).ConfigureAwait(false);
+        }
         long written = 0;
         await RunTransferAsync(sessionId, "download", async client =>
         {
@@ -368,6 +389,155 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             if (current is FtpCommandException { CompletionCode: "426" }) return true;
         }
         return false;
+    }
+
+    /// <summary>续传前比对的尾部字节数:与 SftpService 同一口径 —— 够识别「同名不同文件」,又只值一次往返。</summary>
+    private const int ResumeVerifyBytes = 64 * 1024;
+
+    /// <summary>
+    /// 核实一次上传的续传起点。
+    /// <para>
+    /// 调用方手里那个偏移是更早之前探到的,中间隔着冲突对话框、传输队列,甚至一次重启 ——
+    /// 源或远端完全可能已经变了,照着「远端更短」就追加,落下的是「旧开头 + 新尾巴」,行还显示完成。
+    /// 所以这里以此刻的远端长度为准,读回远端那半截的最后一段,与源的同一段逐字节比对(SFTP 侧同一个做法)。
+    /// FTP 单条数据连接顺序写,没有乱序空洞,不必像 SFTP 那样回退一个在途窗口。
+    /// </para>
+    /// </summary>
+    /// <returns>核实过的续传偏移;0 = 远端没有可续的半截(不在、为空、或已不短于源),应整份重传。</returns>
+    private async Task<long> ResolveUploadResumeAsync(Guid sessionId, string remotePath, Stream source, long sourceLength,
+        CancellationToken cancellationToken)
+    {
+        string path = NormalizePath(remotePath);
+        long remoteLength = await GetRemoteBinarySizeAsync(sessionId, path, cancellationToken).ConfigureAwait(false);
+        if (remoteLength <= 0 || remoteLength >= sourceLength)
+        {
+            return 0;
+        }
+        int window = (int)Math.Min(ResumeVerifyBytes, remoteLength);
+        // 这一段正好读到远端文件末尾:读完照常收 226,连接留着接着传。
+        byte[]? remote = await ReadRemoteWindowAsync(sessionId, path, remoteLength - window, window, remoteLength, cancellationToken)
+            .ConfigureAwait(false);
+        byte[] local = new byte[window];
+        source.Seek(remoteLength - window, SeekOrigin.Begin);
+        int read = await source.ReadAtLeastAsync(local, window, throwOnEndOfStream: false, cancellationToken).ConfigureAwait(false);
+        if (remote is null || read != window || !remote.AsSpan().SequenceEqual(local))
+        {
+            throw new VelaSftpResumeMismatchException(Strings.Format("SftpSvc_ResumeUploadMismatch", remotePath));
+        }
+        return remoteLength;
+    }
+
+    /// <summary>
+    /// 核实一次下载的续传起点,理由同 <see cref="ResolveUploadResumeAsync" />:以此刻本地那半截的实际长度为准,
+    /// 读回远端文件同一段,与本地那半截的最后一段逐字节比对。
+    /// </summary>
+    /// <remarks>
+    /// 这一段在远端文件中间,读够就得放手:那条连接上还欠着没读完的数据和一条完成回复,只能作废,
+    /// 接下来的下载重新登录一次 —— 只在续传时多这一次,换来的是不往一个已经被替换掉的文件后面接尾巴。
+    /// 远端问不出长度(SIZE 不可用)时没有可信的起点,整份重下。
+    /// </remarks>
+    /// <returns>核实过的续传偏移;0 = 应整份重下(覆盖本地残留)。</returns>
+    private async Task<long> ResolveDownloadResumeAsync(Guid sessionId, string remotePath, string localPath,
+        CancellationToken cancellationToken)
+    {
+        var info = new FileInfo(localPath);
+        if (!info.Exists || info.Length <= 0)
+        {
+            return 0;
+        }
+        long localLength = info.Length;
+        string path = NormalizePath(remotePath);
+        long remoteLength = await GetRemoteBinarySizeAsync(sessionId, path, cancellationToken).ConfigureAwait(false);
+        if (localLength >= remoteLength)
+        {
+            return 0;
+        }
+        int window = (int)Math.Min(ResumeVerifyBytes, localLength);
+        byte[]? remote = await ReadRemoteWindowAsync(sessionId, path, localLength - window, window, remoteLength, cancellationToken)
+            .ConfigureAwait(false);
+        byte[] local = new byte[window];
+        int read;
+        await using (var stream = new FileStream(localPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            stream.Seek(localLength - window, SeekOrigin.Begin);
+            read = await stream.ReadAtLeastAsync(local, window, throwOnEndOfStream: false, cancellationToken).ConfigureAwait(false);
+        }
+        if (remote is null || read != window || !remote.AsSpan().SequenceEqual(local))
+        {
+            throw new VelaSftpResumeMismatchException(Strings.Format("SftpSvc_ResumeDownloadMismatch", remotePath));
+        }
+        return localLength;
+    }
+
+    /// <summary>远端文件此刻的二进制长度(SIZE);不在或问不出时为 -1。</summary>
+    private async Task<long> GetRemoteBinarySizeAsync(Guid sessionId, string path, CancellationToken cancellationToken)
+    {
+        using FtpConnectionPool.Lease lease = await RentAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await GetBinaryFileSizeAsync(lease.Client, path, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            throw Fault(sessionId, ex, "resume check");
+        }
+    }
+
+    /// <summary>
+    /// 读远端文件从 <paramref name="start" /> 起的 <paramref name="count" /> 个字节(REST + RETR)。
+    /// 读不满(远端在这期间变短了)返回 null。
+    /// </summary>
+    /// <remarks>
+    /// 收尾交给 <see cref="LeasedStream" />:这一段正好到文件末尾(<paramref name="fileLength" /> = start + count)时
+    /// 它照常收 226、连接回池;否则读够就放手,它把这条连接作废(数据连接上还有没读的字节,不能复用)。
+    /// </remarks>
+    private async Task<byte[]?> ReadRemoteWindowAsync(Guid sessionId, string path, long start, int count, long fileLength,
+        CancellationToken cancellationToken)
+    {
+        FtpConnectionPool.Lease lease = await RentAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        Stream stream;
+        try
+        {
+            Stream inner = await lease.Client
+                .OpenRead(path, FtpDataType.Binary, start, fileLength, token: cancellationToken)
+                .ConfigureAwait(false);
+            // 完成回复由 LeasedStream 自己收(与 OpenReadOnceAsync 同一个做法)。
+            if (inner is FtpDataStream data)
+            {
+                data.ControlConnection = null!;
+            }
+            stream = new LeasedStream(inner, lease, path, fileLength - start, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            lease.Invalidate();
+            try { lease.Dispose(); }
+            catch (Exception cleanup) when (cleanup is not OutOfMemoryException)
+            {
+                // Preserve the original open failure.
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            throw Fault(sessionId, ex, "resume check");
+        }
+        byte[] window = new byte[count];
+        int read;
+        try
+        {
+            await using (stream.ConfigureAwait(false))
+            {
+                read = await stream.ReadAtLeastAsync(window, count, throwOnEndOfStream: false, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (RemoteTransferLengthException)
+        {
+            // 远端在 SIZE 与 RETR 之间变短了:起点不可信。
+            return null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw Fault(sessionId, ex, "resume check");
+        }
+        return read == count ? window : null;
     }
 
     /// <inheritdoc />

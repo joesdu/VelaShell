@@ -1362,12 +1362,25 @@ public class FtpFileServiceIntegrationTests
     public async Task DownloadFile_ResumedAndInterruptedMidStream_SurfacesFailureWithoutDuplicatingBytes()
     {
         (byte[] payload, string local) = await PrepareResumedDownloadAsync();
-        bool firstCall = true;
-        _server.ReadFaultForPath = _ => !firstCall ? null : _server.RetrCounts["/resume.bin"] == 1
-            // 从续传点送 7 个字节,复位落在客户端进行中的那次读上,再回 426(与真实服务器的形态一致)。
-            ? new() { DataLimit = 7, ResetData = true, ResetDelayMs = 200, Reply = "426 Connection closed; transfer aborted" }
-            // FluentFTP 自己从 REST 30007 续读的那一次:服务器直接拒掉。
-            : new() { RejectRetr = "426 Connection closed; transfer aborted" };
+        int phase = 0;
+        _server.ReadFaultForPath = _ =>
+        {
+            // 按 REST 偏移认是哪一次 RETR:核实起点那一次读从 0 开始,不发 REST。
+            long rest = _server.RestartOffsets.LastOrDefault();
+            if (phase == 0 && rest == ResumedPartial)
+            {
+                // 从续传点送 7 个字节,复位落在客户端进行中的那次读上,再回 426(与真实服务器的形态一致)。
+                phase = 1;
+                return new() { DataLimit = 7, ResetData = true, ResetDelayMs = 200, Reply = "426 Connection closed; transfer aborted" };
+            }
+            if (phase == 1 && rest == ResumedPartial + 7)
+            {
+                // FluentFTP 自己从 REST 30007 续读的那一次:服务器直接拒掉。
+                phase = 2;
+                return new() { RejectRetr = "426 Connection closed; transfer aborted" };
+            }
+            return null;
+        };
         Guid session = await OpenAsync(maxConnections: 1);
         var progress = new Progress<TransferProgress>();
         try
@@ -1378,7 +1391,6 @@ public class FtpFileServiceIntegrationTests
             Assert.IsLessThanOrEqualTo(payload.Length, onDisk, "失败的那一次不能让本地文件比远端还长。");
 
             // 上层的自动重试:按本地此刻的长度接着续。
-            firstCall = false;
             await _service.DownloadFileAsync(session, "/resume.bin", local, progress, resumeOffset: onDisk, TestContext.CancellationToken);
             Assert.AreSequenceEqual(SHA256.HashData(payload), SHA256.HashData(await File.ReadAllBytesAsync(local, TestContext.CancellationToken)));
         }
@@ -1396,11 +1408,21 @@ public class FtpFileServiceIntegrationTests
     public async Task DownloadFile_ResumedAndBusyAfterPartialData_ReplaysFromTheStartPointNotTheFileEnd()
     {
         (byte[] payload, string local) = await PrepareResumedDownloadAsync();
-        _server.ReadFaultForPath = _ => _server.RetrCounts["/resume.bin"] switch
+        int phase = 0;
+        _server.ReadFaultForPath = _ =>
         {
-            1 => new() { DataLimit = 7, ResetData = true, ResetDelayMs = 200, Reply = "426 Connection closed; transfer aborted" },
-            2 => new() { RejectRetr = "450 Transfer busy, try again later" },
-            _ => null,
+            long rest = _server.RestartOffsets.LastOrDefault();
+            if (phase == 0 && rest == ResumedPartial)
+            {
+                phase = 1;
+                return new() { DataLimit = 7, ResetData = true, ResetDelayMs = 200, Reply = "426 Connection closed; transfer aborted" };
+            }
+            if (phase == 1 && rest == ResumedPartial + 7)
+            {
+                phase = 2;
+                return new() { RejectRetr = "450 Transfer busy, try again later" };
+            }
+            return null;
         };
         Guid session = await OpenAsync(maxConnections: 1);
         try
@@ -1436,9 +1458,9 @@ public class FtpFileServiceIntegrationTests
         Stream source = seekable ? storage : new SequentialSource(storage);
         VelaFtpClientException error = await Assert.ThrowsAsync<VelaFtpClientException>(() => _service.UploadStreamAsync(
             session, source, "/streamed.bin", payload.Length, cancellationToken: TestContext.CancellationToken));
+        // 复位落在写上还是落在完成回复上看时机:前者 FluentFTP 抛出带 SocketException 的链,后者只回一个 Failed。
+        // 两种都得是这一次自己的失败,而不是重放之后的「无法重放」或第二次 STOR 的结局。
         Assert.DoesNotContain("cannot be replayed", error.Message, error.ToString());
-        Assert.IsTrue(error.ToString().Contains(nameof(System.Net.Sockets.SocketException), StringComparison.Ordinal),
-            "真正的原因(数据连接被复位)要留在异常链里。" + error);
         // 原来那一次 STOR,加上 FluentFTP 自己就地续写的那一次 APPE;服务内部不再整段重放。
         Assert.IsLessThanOrEqualTo(2, _server.StoreCounts.GetValueOrDefault("/streamed.bin"), "传到一半的失败不该在服务内部再整段重传一遍。");
     }
@@ -1513,6 +1535,112 @@ public class FtpFileServiceIntegrationTests
 
         public Core.Net.ProxyRoute Resolve(string targetHost, int targetPort, string? schemeHint = null) =>
             Interlocked.Increment(ref _dials) == 1 ? Core.Net.ProxyRoute.Direct : later;
+    }
+
+    /// <summary>
+    /// 续传上传的起点要核实:远端那份较短的同名文件不是本地文件的开头(暂停之后本地文件被改过,
+    /// 或者那本来就是另一份文件)时,不能照着「远端更短」就往后追加 —— 那样落下的是「旧开头 + 新尾巴」,行还显示完成。
+    /// 对不上抛 VelaSftpResumeMismatchException(上层交回同名冲突策略),远端原样不动。
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task UploadResume_WhenTheRemotePartialIsNotTheSourcesPrefix_RefusesToAppend(bool streamed)
+    {
+        (byte[] current, byte[] remotePartial) = ChangedPair();
+        string remoteOnDisk = Path.Combine(_root, "edited.bin");
+        await File.WriteAllBytesAsync(remoteOnDisk, remotePartial, TestContext.CancellationToken);
+        string local = Path.Combine(Path.GetTempPath(), $"vela-ftp-edited-{Guid.NewGuid():N}.bin");
+        await File.WriteAllBytesAsync(local, current, TestContext.CancellationToken);
+        Guid session = await OpenAsync(maxConnections: 1);
+        try
+        {
+            await Assert.ThrowsExactlyAsync<VelaSftpResumeMismatchException>(() => UploadAsync(session, local, "/edited.bin", remotePartial.Length, streamed));
+            Assert.AreSequenceEqual(remotePartial, await File.ReadAllBytesAsync(remoteOnDisk, TestContext.CancellationToken), "核实不过不能碰远端");
+            Assert.IsTrue(_server.StoreCounts.IsEmpty, "一个字节都不该写");
+
+            // 那半截确实是这份文件的开头:照常从断点接着传,结果与本地逐字节一致。
+            await File.WriteAllBytesAsync(remoteOnDisk, current[..remotePartial.Length], TestContext.CancellationToken);
+            await UploadAsync(session, local, "/edited.bin", remotePartial.Length, streamed);
+            Assert.AreSequenceEqual(SHA256.HashData(current), SHA256.HashData(await File.ReadAllBytesAsync(remoteOnDisk, TestContext.CancellationToken)));
+            // 接着传,不是整份重传:还能接着用同一条连接(核实那一次读正好读到远端末尾,照常收了 226)。
+            Assert.AreEqual(1, _server.AcceptedConnections);
+        }
+        finally
+        {
+            File.Delete(local);
+        }
+    }
+
+    /// <summary>
+    /// 续传下载同理:本地那半截与远端此刻那份文件的同一段对不上(远端在这期间被换成了一份更大的别的文件),
+    /// 不往本地那半截后面接远端的尾巴;抛 VelaSftpResumeMismatchException,本地原样不动。对得上就照常续。
+    /// </summary>
+    [TestMethod]
+    public async Task DownloadResume_WhenTheRemoteWasReplaced_RefusesToAppend()
+    {
+        (byte[] current, byte[] localPartial) = ChangedPair();
+        await File.WriteAllBytesAsync(Path.Combine(_root, "replaced.bin"), current, TestContext.CancellationToken);
+        string local = Path.Combine(Path.GetTempPath(), $"vela-ftp-replaced-{Guid.NewGuid():N}.bin");
+        await File.WriteAllBytesAsync(local, localPartial, TestContext.CancellationToken);
+        Guid session = await OpenAsync(maxConnections: 1);
+        try
+        {
+            await Assert.ThrowsExactlyAsync<VelaSftpResumeMismatchException>(() => _service.DownloadFileAsync(
+                session, "/replaced.bin", local, new Progress<TransferProgress>(), resumeOffset: localPartial.Length, TestContext.CancellationToken));
+            Assert.AreSequenceEqual(localPartial, await File.ReadAllBytesAsync(local, TestContext.CancellationToken), "核实不过不能碰本地那半截");
+
+            await File.WriteAllBytesAsync(local, current[..localPartial.Length], TestContext.CancellationToken);
+            await _service.DownloadFileAsync(session, "/replaced.bin", local, new Progress<TransferProgress>(),
+                resumeOffset: localPartial.Length, TestContext.CancellationToken);
+            Assert.AreSequenceEqual(SHA256.HashData(current), SHA256.HashData(await File.ReadAllBytesAsync(local, TestContext.CancellationToken)));
+            Assert.Contains((long)localPartial.Length, _server.RestartOffsets, "对得上就从断点接着下");
+        }
+        finally
+        {
+            File.Delete(local);
+        }
+    }
+
+    /// <summary>远端或本地没有可续的半截(目标不在、或已经不短于源)时,不报冲突,照常整份传。</summary>
+    [TestMethod]
+    public async Task UploadResume_WhenTheRemoteIsGone_UploadsTheWholeFile()
+    {
+        (byte[] current, _) = ChangedPair();
+        string local = Path.Combine(Path.GetTempPath(), $"vela-ftp-gone-{Guid.NewGuid():N}.bin");
+        await File.WriteAllBytesAsync(local, current, TestContext.CancellationToken);
+        Guid session = await OpenAsync(maxConnections: 1);
+        try
+        {
+            await _service.UploadFileAsync(session, local, "/fresh.bin", resumeOffset: 30_000, cancellationToken: TestContext.CancellationToken);
+            Assert.AreSequenceEqual(current, await File.ReadAllBytesAsync(Path.Combine(_root, "fresh.bin"), TestContext.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(local);
+        }
+    }
+
+    /// <summary>一份 200 000 字节的「当前」文件,以及一份 100 000 字节、开头相同而末尾 64 KiB 内被改过的「旧半截」。</summary>
+    private static (byte[] Current, byte[] ChangedPartial) ChangedPair()
+    {
+        byte[] current = new byte[200_000];
+        new Random(23).NextBytes(current);
+        byte[] partial = current[..100_000];
+        partial[^10] ^= 0xFF;
+        return (current, partial);
+    }
+
+    private async Task UploadAsync(Guid session, string localPath, string remotePath, long resumeOffset, bool streamed)
+    {
+        if (!streamed)
+        {
+            await _service.UploadFileAsync(session, localPath, remotePath, new Progress<TransferProgress>(), resumeOffset, TestContext.CancellationToken);
+            return;
+        }
+        await using FileStream source = File.OpenRead(localPath);
+        await _service.UploadStreamAsync(session, source, remotePath, source.Length, resumeOffset: resumeOffset,
+            cancellationToken: TestContext.CancellationToken);
     }
 
     private const int ResumedPartial = 30_000;

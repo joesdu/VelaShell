@@ -558,6 +558,8 @@ internal sealed class LoopbackFtpServer : IDisposable
         ReadFault? fault = ReadFaultForPath?.Invoke(remote);
         if (fault?.RejectRetr is { } rejection)
         {
+            // REST 只管紧跟着的那一条传输命令:被拒的 RETR 同样把它用掉,不能留给下一条不带 REST 的 RETR。
+            state.RestartOffset = 0;
             state.CloseData();
             await writer.WriteLineAsync(rejection).ConfigureAwait(false);
             return true;
