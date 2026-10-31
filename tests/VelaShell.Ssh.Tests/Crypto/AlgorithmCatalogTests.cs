@@ -56,7 +56,8 @@ public sealed class AlgorithmCatalogTests
         fips.Validate();
 
         string[] all = [.. fips.KeyExchange, .. fips.HostKey, .. fips.EncryptionClientToServer, .. fips.MacClientToServer];
-        string[] forbidden = ["25519", "chacha20", "sntrup", "ssh-rsa", "sha1", "-cbc", "zlib"];
+        // 群交换的群是服务端现给的素数，不是命名的群（spec/00 §6.6）。
+        string[] forbidden = ["25519", "chacha20", "sntrup", "ssh-rsa", "sha1", "-cbc", "zlib", "group-exchange"];
         foreach (string algorithm in all)
         {
             Assert.DoesNotContain(f => algorithm.Contains(f, StringComparison.Ordinal), forbidden, $"不认可的算法混进来了：{algorithm}");
@@ -66,11 +67,11 @@ public sealed class AlgorithmCatalogTests
 
     /// <summary>
     /// 〔spec/00 §6.6〕与 RHEL 10.2 的 FIPS 加密策略给 OpenSSH 的清单（<c>/usr/share/crypto-policies/FIPS/openssh.txt</c>，
-    /// crypto-policies-20260216）比：密钥交换、主机密钥、MAC 是同一组，加密只多一个 <c>aes192-ctr</c>。顺序不比 —— 协商以客户端的为准。
-    /// 曾经少了群交换与 group18，注释却说「一致」。
+    /// crypto-policies-20260216）比：主机密钥、MAC 是同一组；密钥交换只少一个群交换（服务端现给的群不是命名的群，维护者 2026-10-31 定），
+    /// 加密只多一个 <c>aes192-ctr</c>。顺序不比 —— 协商以客户端的为准。曾经少了 group18，注释却说「一致」。
     /// </summary>
     [TestMethod]
-    public void FIPS清单与RHEL的FIPS策略是同一组算法()
+    public void FIPS清单与RHEL的FIPS策略只差群交换与aes192ctr()
     {
         SshAlgorithmSet fips = SshAlgorithmSet.FipsApprovedOnly;
         string[] rhelKex =
@@ -90,12 +91,33 @@ public sealed class AlgorithmCatalogTests
         string[] rhelMac = ["hmac-sha2-256-etm@openssh.com", "hmac-sha2-512-etm@openssh.com", "hmac-sha2-256", "hmac-sha2-512"];
         string[] rhelCipher = ["aes256-gcm@openssh.com", "aes256-ctr", "aes128-gcm@openssh.com", "aes128-ctr"];
 
-        Assert.AreSequenceEqual(rhelKex.Order(StringComparer.Ordinal), fips.KeyExchange.Order(StringComparer.Ordinal));
+        Assert.AreSequenceEqual(
+            rhelKex.Where(static kex => kex != SshAlgorithmNames.DiffieHellmanGroupExchangeSha256).Order(StringComparer.Ordinal),
+            fips.KeyExchange.Order(StringComparer.Ordinal));
         Assert.AreSequenceEqual(rhelHostKey.Order(StringComparer.Ordinal), fips.HostKey.Order(StringComparer.Ordinal));
         Assert.AreSequenceEqual(rhelMac.Order(StringComparer.Ordinal), fips.MacClientToServer.Order(StringComparer.Ordinal));
         Assert.AreSequenceEqual(
             rhelCipher.Append(SshAlgorithmNames.Aes192Ctr).Order(StringComparer.Ordinal),
             fips.EncryptionClientToServer.Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// 〔spec/00 §6.1〕FIPS 清单拿掉群交换不动默认清单：群交换照旧在里面（排在 DH 标准群之前），
+    /// group18 排在 group16 之后、group14 之前（维护者 2026-10-31 确认 §251 的口径）。
+    /// </summary>
+    [TestMethod]
+    public void 默认清单照旧有群交换_group18在group16与group14之间()
+    {
+        List<string> kex = [.. SshAlgorithmSet.Default.KeyExchange];
+        int gex = kex.IndexOf(SshAlgorithmNames.DiffieHellmanGroupExchangeSha256);
+        int group16 = kex.IndexOf(SshAlgorithmNames.DiffieHellmanGroup16Sha512);
+        int group18 = kex.IndexOf(SshAlgorithmNames.DiffieHellmanGroup18Sha512);
+        int group14 = kex.IndexOf(SshAlgorithmNames.DiffieHellmanGroup14Sha256);
+
+        Assert.IsGreaterThanOrEqualTo(0, gex, "默认清单里要有群交换");
+        Assert.IsLessThan(group16, gex);
+        Assert.IsLessThan(group18, group16);
+        Assert.IsLessThan(group14, group18);
     }
 
     [TestMethod]
