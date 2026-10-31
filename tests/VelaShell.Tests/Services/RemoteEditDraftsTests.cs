@@ -60,18 +60,21 @@ public sealed class RemoteEditDraftsTests
         {
             RemoteEditMarker? opened = RemoteEditDrafts.Read(directory);
             Assert.IsNotNull(opened);
+            Assert.AreEqual(RemoteEditDrafts.Clean, opened.State);
             Assert.AreEqual("app.conf", opened.FileName);
             Assert.AreEqual("/etc/app.conf", opened.RemotePath);
             Assert.AreEqual("prod-web", opened.Server);
             Assert.AreEqual(new FileInfo(localPath).Length, opened.Length);
-            // macOS 的 FSEvents 可能在启用 watcher 后才投递初始创建事件;等这批保守回传落地再检查标记。
-            await WaitUntilAsync(() => !session.HasPendingChange && session.State == RemoteEditState.Watching
-                && RemoteEditDrafts.ListDrafts(_root).Count == 0);
+            Assert.IsEmpty(RemoteEditDrafts.ListDrafts(_root), "刚下载下来的副本与远端一致,不是草稿");
+            // macOS 的 FSEvents 会在启用 watcher 之后才补投下载那一下的创建事件:副本没动过,那不是保存,一次都不传
+            // (#676 曾把这里放宽成「等那次多余的回传落地」,复查 build-ci-tests F2 改回来)。
+            await Task.Delay(TimeSpan.FromSeconds(1.5));
+            Assert.AreEqual(0, Volatile.Read(ref uploads), "没动过的副本不回传");
+            Assert.AreEqual(RemoteEditDrafts.Clean, RemoteEditDrafts.Read(directory)?.State);
 
-            int beforeEdit = Volatile.Read(ref uploads);
             await File.WriteAllTextAsync(localPath, "edited once");
             RemoteEditMarker? uploaded = null;
-            await WaitUntilAsync(() => Volatile.Read(ref uploads) > beforeEdit && !session.HasPendingChange
+            await WaitUntilAsync(() => Volatile.Read(ref uploads) == 1 && !session.HasPendingChange
                 && session.State == RemoteEditState.Watching && (uploaded = RemoteEditDrafts.Read(directory))?.State == RemoteEditDrafts.Clean
                 && uploaded.LastWriteUtc == new FileInfo(localPath).LastWriteTimeUtc);
             Assert.AreEqual(RemoteEditDrafts.Clean, uploaded?.State, "传上去之后变回干净");
@@ -92,6 +95,54 @@ public sealed class RemoteEditDraftsTests
         }
         Assert.IsTrue(File.Exists(localPath), "传不上去的改动留着");
         Assert.AreEqual(RemoteEditDrafts.Dirty, RemoteEditDrafts.Read(directory)?.State);
+    }
+
+    /// <summary>
+    /// watcher 报了事件、副本却还是与远端一致的那一份(长度与修改时间都没变):不回传、标记仍是干净。
+    /// macOS 的 FSEvents 补投下载那一下的创建事件就是这样;这里用「改名挪开再挪回来」在各平台上造同样的事件(复查 build-ci-tests F2)。
+    /// </summary>
+    [TestMethod]
+    public async Task WatcherEvent_OnAnUnchangedCopy_UploadsNothing()
+    {
+        string directory = Path.Combine(_root, "0a1b2c3e");
+        Directory.CreateDirectory(directory);
+        string localPath = Path.Combine(directory, "app.conf");
+        await File.WriteAllTextAsync(localPath, "original");
+        int uploads = 0;
+        var session = new RemoteEditSession(new()
+        {
+            SftpService = Substitute.For<ISftpService>(),
+            SessionId = Guid.NewGuid(),
+            RemotePath = "/etc/app.conf",
+            FileName = "app.conf",
+            UploadAsync = (_, _) =>
+            {
+                Interlocked.Increment(ref uploads);
+                return Task.CompletedTask;
+            },
+        }, localPath);
+        try
+        {
+            string aside = localPath + ".moved";
+            File.Move(localPath, aside);
+            File.Move(aside, localPath);
+            // 防抖 600ms 之后才会传;多等一会儿,确认真的一次都没传。
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            await WaitUntilAsync(() => !session.HasPendingChange && session.State == RemoteEditState.Watching);
+
+            Assert.AreEqual(0, Volatile.Read(ref uploads), "副本没动过,事件不是保存");
+            Assert.AreEqual(RemoteEditDrafts.Clean, RemoteEditDrafts.Read(directory)?.State);
+            Assert.IsEmpty(RemoteEditDrafts.ListDrafts(_root));
+
+            // 反证:真改了照样传。
+            await File.WriteAllTextAsync(localPath, "edited");
+            await WaitUntilAsync(() => Volatile.Read(ref uploads) == 1 && !session.HasPendingChange && session.State == RemoteEditState.Watching);
+        }
+        finally
+        {
+            session.Dispose();
+        }
+        Assert.IsFalse(Directory.Exists(directory), "全传上去了,收尾删掉副本");
     }
 
     /// <summary>

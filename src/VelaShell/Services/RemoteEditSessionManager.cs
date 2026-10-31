@@ -390,6 +390,12 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>上一次写进标记的状态,同一个状态不重复写(一次保存会来好几个事件)。</summary>
     private string? _markedState;
 
+    /// <summary>
+    /// 最近一份与远端一致的副本的长度与修改时间(<see cref="MarkClean" /> 记下的,在 <see cref="_markerGate" /> 下读写);
+    /// 副本还是它,就没有可传的东西。
+    /// </summary>
+    private (long Length, DateTime LastWriteUtc)? _clean;
+
     internal RemoteEditSession(RemoteEditRequest request, string localPath)
     {
         _request = request;
@@ -629,6 +635,14 @@ public sealed class RemoteEditSession : IDisposable
         {
             return;
         }
+        // 副本还是最近一份与远端一致的那一份(长度与修改时间都没变):这个事件不是保存。macOS 的 FSEvents 会在 watcher
+        // 启用之后才补投下载那一下的创建事件,一份没动过的副本就被原样传了回去 —— 没有写权限的文件凭空报一次上传失败、
+        // 留成「草稿」,有写权限的则可能盖掉别人这几百毫秒里对远端的改动(复查 build-ci-tests F2)。已经有一次改动在排队时不看,照常排。
+        if (Volatile.Read(ref _pendingSave) == 0 && MatchesClean(Snapshot()))
+        {
+            RemoteEditLog.Write("watch", $"unchanged since last clean, ignored ({RemotePath})");
+            return;
+        }
         // 先记账再排防抖:计时器可能被收尾拆掉,而"有一次改动还没传"这件事必须留下来,
         // 否则改完立刻关编辑器就会把那次保存丢在防抖窗口里。磁盘上的标记同样先变脏:此刻崩溃,这份副本就是草稿。
         Interlocked.Exchange(ref _pendingSave, 1);
@@ -668,6 +682,19 @@ public sealed class RemoteEditSession : IDisposable
                     // 传之前记下这份副本的长度与修改时间:传完写进「干净」标记的是它。传的途中又存了一次,
                     // 副本就对不上这两项,启动时照样按草稿算(下面的循环也会再传一轮)。
                     FileInfo uploaded = Snapshot();
+                    if (MatchesClean(uploaded))
+                    {
+                        // 排队的那几个事件过后,副本又是与远端一致的那一份了(改名挪开再挪回来、保存后又原样还原):不传。
+                        // 远端本来就是这份内容,之前那次失败(如果有)也就没什么要补的了。
+                        _lastUploadFailed = false;
+                        State = RemoteEditState.Watching;
+                        if (Volatile.Read(ref _pendingSave) == 0)
+                        {
+                            MarkClean(uploaded);
+                        }
+                        RemoteEditLog.Write("upload", $"skip, unchanged since last clean {RemotePath}");
+                        continue;
+                    }
                     if (_request.UploadAsync is not null)
                     {
                         await _request.UploadAsync(LocalPath, RemotePath).ConfigureAwait(false);
@@ -682,6 +709,12 @@ public sealed class RemoteEditSession : IDisposable
                     if (Volatile.Read(ref _pendingSave) == 0)
                     {
                         MarkClean(uploaded);
+                    }
+                    else
+                    {
+                        // 传的途中又来了事件:标记先不写干净(启动时照样按草稿算),但远端已经是这一份了 ——
+                        // 下一轮副本若还是它,就不必再传。
+                        RememberClean(uploaded);
                     }
                     RemoteEditLog.Write("upload", $"ok #{_uploadCount} {RemotePath}");
                 }
@@ -713,22 +746,59 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>标记:本地副本(就是 <paramref name="copy" /> 这一份)与远端一致。</summary>
     private void MarkClean(FileInfo copy)
     {
+        if (RememberClean(copy) is { } clean)
+        {
+            WriteMarker(RemoteEditDrafts.Clean, clean.Length, clean.LastWriteUtc);
+        }
+    }
+
+    /// <summary>
+    /// 只在内存里记下「远端此刻就是 <paramref name="copy" /> 这一份」(给 <see cref="MatchesClean" /> 比);读不了时返回 null。
+    /// </summary>
+    /// <remarks>
+    /// 传完一次就该记,哪怕传的途中又来了事件、磁盘上的标记还不能写成干净:不然下一轮拿副本去比的还是更早那一份,
+    /// 一次保存因为事件拖得比上传长,就会被原样再传一遍。
+    /// </remarks>
+    private (long Length, DateTime LastWriteUtc)? RememberClean(FileInfo copy)
+    {
         long length;
         DateTime lastWriteUtc;
         try
         {
             if (!copy.Exists)
             {
-                return;
+                return null;
             }
             length = copy.Length;
             lastWriteUtc = copy.LastWriteTimeUtc;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return;
+            return null;
         }
-        WriteMarker(RemoteEditDrafts.Clean, length, lastWriteUtc);
+        lock (_markerGate)
+        {
+            _clean = (length, lastWriteUtc);
+        }
+        return (length, lastWriteUtc);
+    }
+
+    /// <summary><paramref name="copy" /> 是不是最近一份与远端一致的副本(长度与修改时间都对得上);读不了时当作不是。</summary>
+    private bool MatchesClean(FileInfo copy)
+    {
+        (long Length, DateTime LastWriteUtc)? clean;
+        lock (_markerGate)
+        {
+            clean = _clean;
+        }
+        try
+        {
+            return clean is { } c && copy.Exists && copy.Length == c.Length && copy.LastWriteTimeUtc == c.LastWriteUtc;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>标记:有改动还没落到远端。</summary>
