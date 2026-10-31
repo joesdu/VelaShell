@@ -697,9 +697,10 @@ public sealed class ConnectionProfileTypePickerTests
     /// <summary>
     /// <b>选 PostgreSQL → 切到 SSH → 点回数据库 → 下一步:端口是 5432</b>。
     /// <para>
-    /// 点回数据库时变体信息已经清掉了,端口按页签默认值回到 3306,而下拉照旧是 PostgreSQL。
-    /// 「下一步」写进去的值与原值相同,不会经由字段变化触发变体刷新 ——
-    /// 所以「下一步」必须无论值变没变都显式按变体刷新一次。
+    /// 点回数据库时变体信息已经清掉了,端口原先按页签默认值回到 3306,而下拉照旧是 PostgreSQL;
+    /// 「下一步」写进去的值与原值相同,不会经由字段变化触发变体刷新。
+    /// 现在点回来那一刻就把端口还回切走之前的 5432(编辑态与不出卡片的变体不经「下一步」,只能在那里还),
+    /// 「下一步」之后照样是 5432。
     /// </para>
     /// </summary>
     [TestMethod]
@@ -720,13 +721,90 @@ public sealed class ConnectionProfileTypePickerTests
             Assert.IsTrue(vm.IsPickingType, "点回来、类型未确认:回到卡片。");
             Assert.AreEqual("postgresql", vm.SelectedTypeValue, "预选的是之前填过的那一档。");
             Assert.AreEqual("postgresql", Row(vm, DialectKey).Text);
-            Assert.AreEqual(3306, vm.Port, "前置条件(要钉住的那个窗口):下拉是 PostgreSQL,端口却是 3306。");
+            Assert.AreEqual(5432, vm.Port, "点回来时端口没还回切走之前的 5432:下拉是 PostgreSQL,端口却是页签默认值。");
 
             await vm.NextCommand.Execute().FirstAsync();
 
-            Assert.AreEqual(5432, vm.Port, "值没变的「下一步」没有按变体刷新端口。");
+            Assert.AreEqual(5432, vm.Port, "值没变的「下一步」把端口改走了。");
             Assert.AreEqual("PostgreSQL", vm.CurrentTypeLabel);
         }
+    }
+
+    /// <summary>
+    /// <b>编辑一条 PostgreSQL 配置,点 SSH 再点回数据库:端口是这条配置自己的端口</b>。
+    /// <para>
+    /// 编辑态不经卡片,点回来之后直接是表单,没有「下一步」那一下可以纠正端口 ——
+    /// 原先这里停在页签默认的 3306 上,表头写着 PostgreSQL,保存即落盘一条连不上的配置。
+    /// 3306 那一行:已存的端口恰好是页签默认值(PG 跑在 3306 上),要还回 3306,不能跟去变体的 5432 ——
+    /// 类型没换,端口就不该跟随。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    [DataRow(5432)]
+    [DataRow(3306)]
+    [DataRow(15432)]
+    public async Task TypePicker_EditingProfile_SshThenBack_KeepsTheProfilesPort(int savedPort)
+    {
+        PluginProtocolRegistry registry = Registry(out IDisposable handle);
+        using (handle)
+        {
+            var vm = new ConnectionProfileViewModel(ExistingPostgres(savedPort), protocolRegistry: registry);
+            await vm.PendingPluginLoad;
+            Assert.AreEqual(savedPort, vm.Port, "前置条件:装载不改已存的端口。");
+
+            await vm.SelectConnectionTypeCommand.Execute(ConnectionType.SSH).FirstAsync();
+            await vm.SelectPluginProtocolCommand.Execute(DbId).FirstAsync();
+
+            Assert.AreEqual(ConnectionProfileStep.Form, vm.Step, "编辑态点回来直接是表单。");
+            Assert.AreEqual("PostgreSQL", vm.CurrentTypeLabel);
+            Assert.AreEqual(savedPort, vm.Port, "点一下 SSH 再点回来,已存的端口被换掉了。");
+        }
+    }
+
+    /// <summary>
+    /// <b>不出卡片的变体字段(可手输的下拉),新建时选了哨兵(26379)→ 切到 SSH → 点回来:端口还是 26379</b>。
+    /// <para>这种形态全程没有「下一步」,点回来那一刻不把端口还回去,就停在页签默认的 6379 上。</para>
+    /// </summary>
+    [TestMethod]
+    public async Task NoPickerVariant_SshThenBack_KeepsTheVariantPort()
+    {
+        var registry = new PluginProtocolRegistry();
+        using IDisposable handle = registry.RegisterWorkspace(CacheId, new()
+        {
+            Id = CacheId,
+            DisplayName = "缓存",
+            DefaultPort = 6379,
+            Fields =
+            [
+                new()
+                {
+                    Key = DialectKey,
+                    Label = "部署形态",
+                    Kind = ProtocolSettingKind.Choice,
+                    DefaultValue = "standalone",
+                    AllowsCustomValue = true,
+                    Choices = [new("standalone", "独立"), new("sentinel", "哨兵")]
+                }
+            ],
+            VariantKey = DialectKey,
+            Variants =
+            [
+                new() { Value = "standalone", DefaultPort = 6379 },
+                new() { Value = "sentinel", DefaultPort = 26379 }
+            ]
+        }, new NoopWorkspace());
+        var vm = new ConnectionProfileViewModel(protocolRegistry: registry) { Host = "10.0.0.9" };
+        await vm.SelectPluginProtocolCommand.Execute(CacheId).FirstAsync();
+        Assert.AreEqual(ConnectionProfileStep.Form, vm.Step, "前置条件:可手输的变体字段不出卡片。");
+        Row(vm, DialectKey).Text = "sentinel";
+        Assert.AreEqual(26379, vm.Port, "前置条件:端口跟到哨兵的默认值。");
+
+        await vm.SelectConnectionTypeCommand.Execute(ConnectionType.SSH).FirstAsync();
+        Assert.AreEqual(22, vm.Port, "前置条件:切到 SSH 端口还原成 22。");
+        await vm.SelectPluginProtocolCommand.Execute(CacheId).FirstAsync();
+
+        Assert.AreEqual("sentinel", Row(vm, DialectKey).Text);
+        Assert.AreEqual(26379, vm.Port, "点回来端口停在了页签默认的 6379 上,而部署形态还是哨兵。");
     }
 
     /// <summary>
