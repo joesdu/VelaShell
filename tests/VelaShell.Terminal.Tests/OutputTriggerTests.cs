@@ -395,6 +395,50 @@ public sealed class OutputTriggerTests
     }
 
     [TestMethod]
+    public void Resize_WhileAnAnswerWaitsForTheCooldown_StillAnswersIt()
+    {
+        OnUi(() =>
+        {
+            // 冷却里排着的第二条提示:用户这时开关侧栏、拖分屏、Ctrl+滚轮缩放,改了列宽。
+            // 重排不能把它记成「答过了」—— read -p 这类提示不会重画,错过这一次就再也答不上。
+            var h = new Harness(YesRule(cooldown: 30));
+            h.Remote(HostKeyPrompt);
+            Assert.HasCount(1, h.Hits);
+
+            h.Clock.Advance(TimeSpan.FromSeconds(5));
+            h.Remote("yes\r\n" + HostKeyPrompt);
+            Assert.IsTrue(h.Control.HasPendingTriggerForTest, "前提:约到了冷却结束。");
+
+            h.Control.Resize(60, 30);
+            h.Clock.Advance(TimeSpan.FromSeconds(25));
+            h.Control.FirePendingTriggerForTest();
+            Assert.HasCount(2, h.Hits);
+
+            // 答过的那两条,再改一次列宽也不重答。
+            h.Clock.Advance(TimeSpan.FromMinutes(5));
+            h.Control.Resize(100, 30);
+            h.Remote("");
+            Assert.HasCount(2, h.Hits);
+        });
+    }
+
+    [TestMethod]
+    public void Resize_WhileAnAnswerWaitsForQuiet_StillAnswersIt()
+    {
+        OnUi(() =>
+        {
+            var h = new Harness(YesRule());
+            h.Control.TriggerQuietDelay = TimeSpan.FromMilliseconds(300);
+            h.Remote(HostKeyPrompt);
+            Assert.IsTrue(h.Control.HasPendingTriggerForTest);
+
+            h.Control.Resize(60, 30);
+            h.Control.FirePendingTriggerForTest();
+            Assert.HasCount(1, h.Hits);
+        });
+    }
+
+    [TestMethod]
     public void ClearedAndAskedAgain_IsANewQuestion()
     {
         OnUi(() =>
