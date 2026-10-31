@@ -1479,6 +1479,8 @@ public partial class ChatPanelView : UserControl
         int verifiedVersion = 0; // 每次真实流式请求开始时取配置代际,仅限制旧健康结果写回
         long verifiedObservation = 0; // 每次真实流式请求单独取号,同模型的并发结果按起跑顺序结算
         string replyText = "";
+        // 这一轮的故障转移 / 换 Key:合成一张切换提示卡挂在这条回复里(只给人看,不进 History,见 ChatPanelView.SwitchNotice.cs)
+        List<ChatProviderSwitch> switches = [];
         try
         {
             TurnHistoryStart = History.Count; // 消息准备若失败,不能误删上轮的历史
@@ -2042,6 +2044,9 @@ public partial class ChatPanelView : UserControl
                 catch (Exception ex) when (!AiSettingsStore.IsImageModel(current) && !execution.HasToolCalls && !HasMeaningfulOutput(updates)
                                            && !token.IsCancellationRequested && TransientFailure.IsWorthSwitching(ex))
                 {
+                    // 失败的这一站与它用的那把 Key:换槽 / 换站之后 current 与凭据都会被改写,先记下给切换提示用
+                    ResolvedModel failedStation = current;
+                    ChatKeyLabel? failedKeyLabel = SwitchKeyLabel(current, selectedKeyId, verifiedCredential);
                     bool changedKeyCandidate = false;
                     if (selectedKeyId is { } failedKey && CanPoolApiKeys(current) && TransientFailure.IsApiKeyFailure(ex))
                     {
@@ -2062,6 +2067,8 @@ public partial class ChatPanelView : UserControl
                                 verifiedModel = replacement.ProbedModel;
                                 selectedKeyId = replacement.KeyId;
                                 mustRevalidateProbe = true;
+                                RecordSwitch(bubble, switches, failedStation, failedKeyLabel, current,
+                                    SwitchKeyLabel(current, selectedKeyId, verifiedCredential), ex);
                                 continue; // 同模型换 Key 不消耗换站 hop,也不追加用户消息。
                             }
                         }
@@ -2100,6 +2107,8 @@ public partial class ChatPanelView : UserControl
                     credentialReady = true;
                     mustRevalidateProbe = true;
                     hop++;
+                    RecordSwitch(bubble, switches, failedStation, failedKeyLabel, current,
+                        SwitchKeyLabel(current, selectedKeyId, verifiedCredential), ex);
                     if (selectionIntact)
                     {
                         // 粘住:这一轮以及下次启动默认走这一家,直到它也失败或用户手动切回。
@@ -2151,6 +2160,17 @@ public partial class ChatPanelView : UserControl
                 StatusText.Classes.Remove("retrying");
             }
             SetStatus("");
+            if (switches.Count > 0)
+            {
+                // 答上了,切换就此粘住 —— 选择仍指着答上的这一站(换了模型),或同一模型的这把 Key 已写成当前槽(换了 Key、没开轮流):
+                // 卡上补一句「之后也发到这里」。轮流用 Key 时下一轮本来就换下一把,不这么说
+                ApiKeyTurnState? answeredKeys = keyStates.GetValueOrDefault(current.Provider.Id);
+                bool keyStuck = selectedKeyId is { } answeredKey && answeredKeys is { Balance: false }
+                    && (current.Provider.ActiveApiKeyId ?? current.Provider.Id) == answeredKey;
+                bool sticky = !_detached && _settings.ActiveModelId == current.Id
+                    && (current.Id != originalModelId || keyStuck);
+                bubble.ShowSwitchNotice(new ChatSwitchNotice([.. switches], sticky));
+            }
             DrainUpdates(); // 兜底清空残留批(此处已回到 UI 线程)
 
             var response = updates.ToChatResponse();
@@ -2198,11 +2218,7 @@ public partial class ChatPanelView : UserControl
                 if (partial.Length == 0 && bubble is { HasImages: true }) partial = _loc["GeneratedImage"];
                 History.AddRange(execution.InterruptedHistory(partial));
                 int interruptedSequence = await PersistAsync("assistant", partial);
-                if (interruptedSequence >= 0 && bubble is { HasImages: true })
-                {
-                    await _historyStore.AppendMetaAsync(ConversationId, interruptedSequence,
-                        bubble.Snapshot(modelLabel, TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt)));
-                }
+                await PersistInterruptedMetaAsync(interruptedSequence, bubble, modelLabel, startedAt);
             }
             else
             {
@@ -2238,11 +2254,7 @@ public partial class ChatPanelView : UserControl
                 if (partial.Length == 0 && bubble is { HasImages: true }) partial = _loc["GeneratedImage"];
                 History.AddRange(execution.InterruptedHistory(partial));
                 int interruptedSequence = await PersistAsync("assistant", partial);
-                if (interruptedSequence >= 0 && bubble is { HasImages: true })
-                {
-                    await _historyStore.AppendMetaAsync(ConversationId, interruptedSequence,
-                        bubble.Snapshot(modelLabel, TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt)));
-                }
+                await PersistInterruptedMetaAsync(interruptedSequence, bubble, modelLabel, startedAt);
             }
             else
             {
@@ -2663,12 +2675,36 @@ public partial class ChatPanelView : UserControl
         if (partial.Length > 0)
         {
             History.Add(new ChatMessage(ChatRole.Assistant, partial));
-            await PersistAsync("assistant", partial);
+            int sequence = await PersistAsync("assistant", partial);
+            // 半截回复入库时,这一轮的切换提示跟着它走(附加信息里,不在正文里)
+            if (sequence >= 0 && bubble?.SwitchNotice is { } notice)
+                await _historyStore.AppendMetaAsync(ConversationId, sequence, new ChatTurnMeta(Switch: notice));
             return;
         }
         if (History.Count > TurnHistoryStart && History[^1].Role == ChatRole.User)
         {
             History.RemoveRange(TurnHistoryStart, History.Count - TurnHistoryStart);
+        }
+    }
+
+    /// <summary>
+    /// 工具调用之后被停下 / 出错的那一轮:半截回复已入库(<paramref name="sequence" />),附加信息只在有东西要留时写 ——
+    /// 生成过图片就整份快照(图片引用不能丢),否则只留这一轮的切换提示(没切过就不写)。
+    /// </summary>
+    private async Task PersistInterruptedMetaAsync(int sequence, AssistantBubble? bubble, string modelLabel, long startedAt)
+    {
+        if (sequence < 0 || bubble is null)
+        {
+            return;
+        }
+        if (bubble.HasImages)
+        {
+            await _historyStore.AppendMetaAsync(ConversationId, sequence,
+                bubble.Snapshot(modelLabel, TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt)));
+        }
+        else if (bubble.SwitchNotice is { } notice)
+        {
+            await _historyStore.AppendMetaAsync(ConversationId, sequence, new ChatTurnMeta(Switch: notice));
         }
     }
 
@@ -3365,17 +3401,23 @@ public partial class ChatPanelView : UserControl
             _thinkingText.ToString(),
             (long)(_thinkingElapsed?.TotalMilliseconds ?? 0),
             [.. _toolCards.Values.Select(c => c.Snapshot())],
-            [.. _images]);
+            [.. _images],
+            SwitchNotice);
 
-        /// <summary>从历史回放:先摆思考,再摆工具卡,最后才是正文(与直播时的先后一致)。</summary>
+        /// <summary>从历史回放:先摆切换提示与思考,再摆工具卡,最后才是正文(与直播时的先后一致)。</summary>
         public void Restore(ChatTurnMeta meta)
         {
+            // 只恢复卡片:提示从来不在正文里,载入时 History 照旧只拿正文(见 LoadConversationAsync)
+            if (meta.Switch is { Hops.Count: > 0 } notice)
+            {
+                ShowSwitchNotice(notice);
+            }
             if (meta.Thinking.Length > 0)
             {
                 _thinkingText.Append(meta.Thinking);
                 _thinking = new Collapsible(_owner._loc.F("ThinkingDone",
                     ChatFormatting.Duration(TimeSpan.FromMilliseconds(meta.ThinkingMs))), trailingIconKey: "AiIcon.sparkles");
-                _stack.Children.Insert(1, _thinking.Root);
+                _stack.Children.Insert(ThinkingSlot, _thinking.Root);
                 _thinking.SetBody(meta.Thinking);
                 // 时长已经是存下来的,别让后面的 AppendText 再去按"现在"算一遍
                 _thinkingElapsed = TimeSpan.FromMilliseconds(meta.ThinkingMs);
@@ -3505,7 +3547,7 @@ public partial class ChatPanelView : UserControl
                 // 展开过就一路留着,标题从"正在思考…"变成"已思考 N 秒",正文照样往里灌。
                 _thinkingStartedAt = Environment.TickCount64;
                 _thinking = new Collapsible(_owner._loc["ThinkingActive"], trailingIconKey: "AiIcon.sparkles");
-                _stack.Children.Insert(1, _thinking.Root);
+                _stack.Children.Insert(ThinkingSlot, _thinking.Root);
             }
             // 逐 token 全量刷文本是 O(n²) 的字符串与排版开销,所以节流;但别压太狠 ——
             // 思考经常只有一两秒,200ms 一刷会让人觉得"根本没在流"。

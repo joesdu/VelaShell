@@ -160,6 +160,16 @@ public partial class ChatPanelView
                     }
                     md.AppendLine().AppendLine();
                 }
+                // 切换提示与界面上那张卡同一份文字,写成引用:它是排查记录(换到了谁、为什么),不是模型说的话
+                if (meta.Switch is { Hops.Count: > 0 } notice)
+                {
+                    md.Append("> **").Append(_loc["SwitchNoticeTitle"]).AppendLine("**");
+                    foreach (string line in SwitchNoticeLines(notice))
+                    {
+                        md.Append('>').AppendLine().Append("> ").AppendLine(line);
+                    }
+                    md.AppendLine();
+                }
                 if (meta.Thinking.Length > 0)
                 {
                     md.Append("<details><summary>").Append(_loc["Thinking"]).AppendLine("</summary>").AppendLine();

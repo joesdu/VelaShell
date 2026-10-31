@@ -569,7 +569,22 @@ public sealed class Loc(string locale)
         ["FailoverProbing"] = ["Testing {0}…", "正在检测 {0}…", "正在檢測 {0}…", "{0} をテスト中…", "{0} 테스트 중…"],
         ["FailoverProbeDone"] = ["Done: {0} passed, {1} failed.", "检测完成:{0} 通过,{1} 失败。", "檢測完成:{0} 通過,{1} 失敗。", "完了:{0} 件成功、{1} 件失敗。", "완료: {0}개 통과, {1}개 실패."],
         ["FailoverTo"] = ["Switched to {0} (previous provider unavailable).", "已切换到 {0}(原接入不可用)。", "已切換到 {0}(原接入不可用)。", "{0} に切り替えました(元の接続は利用不可)。", "{0}(으)로 전환했습니다(이전 연결 사용 불가)."],
-        ["FailoverEmpty"] = ["No models left to add.", "暂无可添加的模型。", "暫無可新增的模型。", "追加できるモデルがありません。", "추가할 모델이 없습니다."],
+        // 聊天记录里的切换提示卡(故障转移 / 换 Key):只给人看,不进模型上下文
+        ["SwitchNoticeTitle"] = ["Provider switched", "已切换接入", "已切換接入", "接続を切り替えました", "연결을 전환했습니다"],
+        ["SwitchNoticeTo"] = ["Now using {0}", "改用 {0}", "改用 {0}", "{0} を使用しています", "{0} 사용 중"],
+        ["SwitchNoticeHop"] = ["{0}: {1}", "{0}:{1}", "{0}:{1}", "{0}:{1}", "{0}: {1}"],
+        ["SwitchNoticeMore"] = ["… {0} more switches …", "……中间另有 {0} 次切换……", "……中間另有 {0} 次切換……", "…ほかに {0} 回切り替え…", "… 그 사이 {0}회 더 전환 …"],
+        ["SwitchNoticeSticky"] = ["Later requests also go here, and are billed here, until it fails too or you switch back yourself.", "之后的请求也会发到这里、记在这里的账上,直到它也出错或你手动换回。", "之後的請求也會送到這裡、記在這裡的帳上,直到它也出錯或你手動換回。", "以降のリクエストもここへ送られ、ここに課金されます。ここも失敗するか、手動で戻すまで続きます。", "이후 요청도 여기로 전송되고 여기에 과금됩니다. 여기도 실패하거나 직접 되돌릴 때까지 유지됩니다."],
+        ["SwitchReasonRateLimit"] = ["rate limited", "限流", "限流", "レート制限", "속도 제한"],
+        ["SwitchReasonAuth"] = ["authentication failed or access denied", "认证失败或无权使用", "驗證失敗或無權使用", "認証失敗またはアクセス拒否", "인증 실패 또는 접근 거부"],
+        ["SwitchReasonTimeout"] = ["timed out", "超时", "逾時", "タイムアウト", "시간 초과"],
+        ["SwitchReasonServer"] = ["server error or overloaded", "服务端出错或过载", "伺服器端出錯或過載", "サーバーエラーまたは過負荷", "서버 오류 또는 과부하"],
+        ["SwitchReasonNetwork"] = ["could not connect", "连不上", "連不上", "接続できません", "연결할 수 없음"],
+        ["SwitchReasonEmpty"] = ["empty reply", "空回复", "空回覆", "空の応答", "빈 응답"],
+        ["SwitchReasonConfig"] = ["connection settings changed", "接入配置已变", "接入設定已變更", "接続設定が変更されました", "연결 설정이 변경됨"],
+        ["SwitchReasonOther"] = ["request failed", "请求失败", "請求失敗", "リクエスト失敗", "요청 실패"],
+        ["SwitchReasonWithStatus"] = ["{0} (HTTP {1})", "{0}(HTTP {1})", "{0}(HTTP {1})", "{0}(HTTP {1})", "{0} (HTTP {1})"],
+        ["FailoverEmpty"] =["No models left to add.", "暂无可添加的模型。", "暫無可新增的模型。", "追加できるモデルがありません。", "추가할 모델이 없습니다."],
         // 上下文占用条的悬停说明(条只给量感,数字仍在用量提示里)
         ["MeterTip"] = ["Share of the context window taken by the last turn.", "上一轮占掉了多大比例的上下文窗口。", "上一輪佔掉了多大比例的上下文視窗。", "直近のターンがコンテキスト長のどれだけを占めたか。", "직전 턴이 컨텍스트 창을 얼마나 차지했는지."],
 

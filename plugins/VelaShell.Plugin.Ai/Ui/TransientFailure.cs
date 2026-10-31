@@ -210,6 +210,67 @@ public static class TransientFailure
         return false;
     }
 
+    // 切换提示里的原因代码(会落进会话历史的附加信息,改名就是改存量数据的口径)
+    internal const string SwitchRateLimit = "rate_limit", SwitchAuth = "auth", SwitchTimeout = "timeout",
+        SwitchServer = "server", SwitchNetwork = "network", SwitchEmpty = "empty", SwitchConfig = "config", SwitchOther = "other";
+
+    /// <summary>
+    /// 故障转移 / 换 Key 那一跳<b>因为什么</b>,给聊天记录里的切换提示用 —— 只管怎么说,切不切仍由
+    /// <see cref="IsWorthSwitching" /> / <see cref="IsApiKeyFailure" /> 定。
+    /// </summary>
+    /// <remarks>
+    /// 与上面几个判定同一口径:逐层看 InnerException;带状态码的按码(429 限流、401 / 403 鉴权、408 超时、5xx 服务端);
+    /// Anthropic 流式 <c>event: error</c> 按错误类型;没有状态码的网络层故障算「连不上」(<see cref="ApiErrorText.IsUnreachable" />)。
+    /// 长 Retry-After 的暂停把原始 429 / 503 挂在内层,照样按内层的码说。
+    /// </remarks>
+    /// <returns>原因代码与 HTTP 状态码(没有时为 0)。</returns>
+    internal static (string Reason, int Status) SwitchReason(Exception? exception)
+    {
+        bool network = false;
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            int status = current switch
+            {
+                HttpRequestException { StatusCode: { } code } => (int)code,
+                AnthropicApiException { StatusCode: { } apiCode } when apiCode != 0 => (int)apiCode,
+                System.ClientModel.ClientResultException { Status: > 0 } result => result.Status,
+                _ => 0
+            };
+            if (status > 0)
+            {
+                return (status switch
+                {
+                    429 => SwitchRateLimit,
+                    401 or 403 => SwitchAuth,
+                    408 => SwitchTimeout,
+                    >= 500 and < 600 => SwitchServer,
+                    _ => SwitchOther
+                }, status);
+            }
+            switch (current)
+            {
+                case HealthProbe.EmptyReplyException:
+                    return (SwitchEmpty, 0);
+                case ProviderConfigurationChangedException or AiSettingsStore.ApiKeySlotChangedException:
+                    return (SwitchConfig, 0);
+                // 内置 OAuth 凭据不能发往这个地址:凭据这一侧的问题
+                case AiSettingsStore.BuiltinOAuthHostMismatchException:
+                    return (SwitchAuth, 0);
+                case AnthropicSseException { ErrorType: AnthropicErrorType.RateLimitError }:
+                    return (SwitchRateLimit, 0);
+                case AnthropicSseException { ErrorType: AnthropicErrorType.TimeoutError }:
+                case TimeoutException:
+                    return (SwitchTimeout, 0);
+                case AnthropicSseException { ErrorType: AnthropicErrorType.OverloadedError or AnthropicErrorType.ApiError }:
+                    return (SwitchServer, 0);
+                case IOException:
+                    network = true;
+                    break;
+            }
+        }
+        return (network || ApiErrorText.IsUnreachable(exception) ? SwitchNetwork : SwitchOther, 0);
+    }
+
     /// <summary>
     /// 这个异常值不值得把请求<b>换一家</b>再发。
     /// </summary>
