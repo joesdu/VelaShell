@@ -63,6 +63,18 @@ public sealed class SharedPasswordFillTests
     [DataRow("[sudo: authenticate] Verification code:", false)]
     [DataRow("[sudo: authenticate] Password: typed", false)]
     [DataRow("sudo: Authentication failed, try again.", false)]
+    // passwd 设新口令的提问不是登录密码:英文本来就不认,本地化的「X 的密码」也只认带 sudo 标签的。
+    [DataRow("New password:", false)]
+    [DataRow("Retype new password:", false)]
+    [DataRow("Current password:", false)]
+    [DataRow("新的密码：", false)]
+    [DataRow("重新输入新的密码：", false)]
+    [DataRow("当前密码：", false)]
+    [DataRow("新的密碼：", false)]
+    [DataRow("現在のパスワード: ", false)]
+    [DataRow("新しいパスワード: ", false)]
+    [DataRow("새 암호: ", false)]
+    [DataRow("joe 的密码：", false)]
     public void PromptDetection_IsConservative(string line, bool expected) =>
         Assert.AreEqual(expected, InteractivePromptDetector.IsPasswordFillPrompt(line));
 

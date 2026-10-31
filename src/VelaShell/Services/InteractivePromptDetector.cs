@@ -60,10 +60,17 @@ public static partial class InteractivePromptDetector
     /// <c>[sudo] joe 的密码：</c>、<c>[sudo] joe のパスワード:</c>、<c>[sudo] joe의 암호:</c>。
     /// 标签只认 sudo / su / doas 这几个名字,别的方括号开头(<c>[joe@host ~]</c> 一类的 shell 提示符)照旧不算。
     /// </para>
+    /// <para>
+    /// <b>「X 的密码」这种本地化写法必须带着 sudo 一族的标签</b> —— 它唯一的出处就是本地化的 sudo。
+    /// 不带标签时 X 可以是任何字:Linux-PAM 的中文目录里 <c>passwd</c> 问的「新的密码：」「重新输入新的密码：」
+    /// 正好是这个形状(日文的「現在のパスワード:」同理),列表在设新口令时弹出来,再加上自动回车,
+    /// 一点就把共享密码设成了新口令。英文那边一样只认 <c>password</c> 打头的几种固定说法,
+    /// <c>New password:</c>、<c>Retype new password:</c> 本来就不认。
+    /// </para>
     /// </remarks>
     public static bool IsPasswordFillPrompt(string line) => PasswordFillPromptRegex().IsMatch(line.Trim());
 
-    [GeneratedRegex(@"^(?:\[(?:sudo|su|doas)(?:-rs)?(?::[^\]\r\n]{1,40})?\]\s+)?(?:password|passwd|enter password|请输入密码|密码|パスワード|암호|password for (?:'[^'\r\n]+'|""[^""\r\n]+""|[^:\r\n]+)|[^\s:'\""$>#]+(?:@[^\s:'\""$>#]+)?['’]s password|[^\s:：'\""$>#\[\]]+ ?(?:的密码|のパスワード|의 암호)|doas \([^)\r\n]+\) password)[:：]\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(?:(?:\[(?:sudo|su|doas)(?:-rs)?(?::[^\]\r\n]{1,40})?\]\s+)?(?:password|passwd|enter password|请输入密码|密码|パスワード|암호|password for (?:'[^'\r\n]+'|""[^""\r\n]+""|[^:\r\n]+)|[^\s:'\""$>#]+(?:@[^\s:'\""$>#]+)?['’]s password|doas \([^)\r\n]+\) password)|\[(?:sudo|su|doas)(?:-rs)?(?::[^\]\r\n]{1,40})?\]\s+[^\s:：'\""$>#\[\]]+ ?(?:的密码|のパスワード|의 암호))[:：]\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PasswordFillPromptRegex();
 
     /// <summary>剥掉光标行末尾已回显的输入,只留下程序打印的提示部分。</summary>
