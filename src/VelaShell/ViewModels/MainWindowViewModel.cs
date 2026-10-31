@@ -1472,7 +1472,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         // 命令补全:注入建议提供器;提交(已回显校验)的命令进全局历史。
         terminalTab.SuggestionProvider = _suggestionProvider;
         terminalTab.QuickCommandTextResolver = command =>
-            ResolveQuickCommandTextAsync(command.Id, command.Name, command.CommandText);
+            ResolveQuickCommandTextAsync(command.Id, command.Name, command.CommandText, terminalTab);
         terminalTab.CommandLineSubmitted += CommandHistory.Record;
         if (terminalEmulator is VelaTerminalControl bellSource)
         {
@@ -2674,13 +2674,12 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         }
         FireAndForget.Run(async () =>
         {
-            string? rendered = await AskQuickCommandVariablesAsync(request.CommandId, request.CommandName, template);
-            if (rendered is null)
+            if (await AskQuickCommandVariablesAsync(request.CommandId, request.CommandName, template) is not { } rendered)
             {
                 return;
             }
             // 弹框期间目标可能已经断开:发送时再按当下的标签挑一遍,只发给仍连着的。
-            DeliverQuickCommand(request.TargetIds, rendered);
+            DeliverQuickCommand(request.TargetIds, rendered.Text, rendered.Secrets);
         });
     }
 
@@ -2695,20 +2694,38 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <param name="commandId">快捷命令 id;询问框按它记值,没有时按正文记。</param>
     /// <param name="commandName">命令显示名(弹框标题)。</param>
     /// <param name="commandText">命令正文。</param>
+    /// <param name="target">
+    /// 正文要写进哪个标签的命令行(补全那一路);凭据类占位填进去的值先挡在它的命令历史之外
+    /// (<see cref="TerminalTabViewModel.KeepOutOfCommandHistory" />)。
+    /// </param>
     /// <returns>要发出去的命令正文,或 null(用户取消)。</returns>
-    internal Task<string?> ResolveQuickCommandTextAsync(Guid? commandId, string? commandName, string commandText)
+    internal async Task<string?> ResolveQuickCommandTextAsync(
+        Guid? commandId,
+        string? commandName,
+        string commandText,
+        TerminalTabViewModel? target = null)
     {
         var template = QuickCommandTemplate.Parse(commandText);
-        return template.HasVariables && QuickCommandVariablePrompt is not null
-            ? AskQuickCommandVariablesAsync(commandId, commandName, template)
-            : Task.FromResult<string?>(commandText);
+        if (!template.HasVariables || QuickCommandVariablePrompt is null)
+        {
+            return commandText;
+        }
+        if (await AskQuickCommandVariablesAsync(commandId, commandName, template) is not { } rendered)
+        {
+            return null;
+        }
+        target?.KeepOutOfCommandHistory(rendered.Secrets);
+        return rendered.Text;
     }
 
-    private async Task<string?> AskQuickCommandVariablesAsync(Guid? commandId, string? commandName, QuickCommandTemplate template)
+    /// <summary>替换好的快捷命令:正文,以及其中凭据类占位填进去的值(不进命令历史)。</summary>
+    private readonly record struct RenderedQuickCommand(string Text, IReadOnlyList<string> Secrets);
+
+    private async Task<RenderedQuickCommand?> AskQuickCommandVariablesAsync(Guid? commandId, string? commandName, QuickCommandTemplate template)
     {
         if (QuickCommandVariablePrompt is not { } prompt)
         {
-            return template.Text;
+            return new(template.Text, []);
         }
         IReadOnlyDictionary<string, string> initial = _quickCommandVariables.Prefill(commandId, template.Text, template);
         IReadOnlyDictionary<string, string>? values = await prompt(commandName, template, initial);
@@ -2717,14 +2734,17 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             return null;
         }
         _quickCommandVariables.Remember(commandId, template.Text, template, values);
-        return template.Render(values);
+        return new(template.Render(values), QuickCommandVariableMemory.SensitiveValues(template, values));
     }
 
     /// <summary>
     /// 多行命令要发给没开括号粘贴的终端时先确认(那边会逐行执行),其余情况直接发送。
     /// 确认开关沿用「设置 → 终端 → 粘贴时确认多行内容」:关掉它的人已经表示过不想被这类问题打断。
     /// </summary>
-    private void DeliverQuickCommand(IReadOnlyList<Guid> targetIds, string commandText)
+    /// <param name="targetIds">目标标签。</param>
+    /// <param name="commandText">要发的正文。</param>
+    /// <param name="historySecrets">正文里凭据类占位填进去的值:各目标标签提交含它们的那一行时不进命令历史。</param>
+    private void DeliverQuickCommand(IReadOnlyList<Guid> targetIds, string commandText, IReadOnlyList<string>? historySecrets = null)
     {
         if (
             QuickCommandMultilineConfirmer is { } confirm
@@ -2737,12 +2757,12 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             {
                 if (await confirm(commandText))
                 {
-                    SendQuickCommandText(targetIds, commandText);
+                    SendQuickCommandText(targetIds, commandText, historySecrets);
                 }
             });
             return;
         }
-        SendQuickCommandText(targetIds, commandText);
+        SendQuickCommandText(targetIds, commandText, historySecrets);
     }
 
     private TerminalTabViewModel[] QuickCommandTargets(IReadOnlyList<Guid> targetIds)
@@ -2751,12 +2771,17 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         return [.. TerminalTabs.Where(tab => tab.IsConnected && ids.Contains(tab.Id))];
     }
 
-    private void SendQuickCommandText(IReadOnlyList<Guid> targetIds, string commandText)
+    private void SendQuickCommandText(IReadOnlyList<Guid> targetIds, string commandText, IReadOnlyList<string>? historySecrets)
     {
         TerminalTabViewModel[] targets = QuickCommandTargets(targetIds);
         bool sent = false;
         foreach (TerminalTabViewModel target in targets)
         {
+            if (historySecrets is { Count: > 0 })
+            {
+                // 正文只写进命令行、回车由用户按:先挡住,等那一行提交时它就不进命令历史。
+                target.KeepOutOfCommandHistory(historySecrets);
+            }
             sent |= target.TrySendCommandText(commandText);
         }
         if (sent)
@@ -3073,7 +3098,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         // 命令补全:注入建议提供器;提交(已回显校验)的命令进全局历史。
         terminalTab.SuggestionProvider = _suggestionProvider;
         terminalTab.QuickCommandTextResolver = command =>
-            ResolveQuickCommandTextAsync(command.Id, command.Name, command.CommandText);
+            ResolveQuickCommandTextAsync(command.Id, command.Name, command.CommandText, terminalTab);
         terminalTab.CommandLineSubmitted += CommandHistory.Record;
 
         // 树上的状态圆点与「活跃/连接中/离线」标签不在这里订阅:一条配置可能同时开着

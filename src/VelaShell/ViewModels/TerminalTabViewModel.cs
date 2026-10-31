@@ -273,6 +273,63 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     /// <summary>用户在本标签提交了一条通过回显校验的命令(宿主记入全局命令历史)。</summary>
     public event Action<string>? CommandLineSubmitted;
 
+    /// <summary>最多记多少个不进历史的值(见 <see cref="KeepOutOfCommandHistory" />);再多就丢掉最早的。</summary>
+    private const int MaxHistorySecrets = 16;
+
+    private readonly List<string> _historySecrets = [];
+
+    /// <summary>
+    /// 这些值(快捷命令里凭据类占位填进去的口令、令牌……)出现在本标签之后提交的哪一行里,那一行都不报给命令历史。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 命令历史是落盘的,补全与幽灵文本又会把它原样端出来:询问框连进程内都不记这类值,
+    /// 填好的整行却照样在用户回车时进了历史,下次敲个前缀,口令就出现在建议列表里。
+    /// </para>
+    /// <para>
+    /// 按值认,而不是「下一行不记」:用户可能先改几个字再回车、按方向键编辑过(那一行改从屏幕上取),
+    /// 或者之后用 shell 的 ↑ 把它翻出来再跑一遍 —— 这几种都还含着那个值。只记在这个标签上、只在进程里,
+    /// 标签关掉就没了;值很短时可能连带漏记几行别的历史,宁可漏记不误记。
+    /// </para>
+    /// </remarks>
+    /// <param name="secrets">要挡住的值;空白的忽略。</param>
+    public void KeepOutOfCommandHistory(IEnumerable<string> secrets)
+    {
+        ArgumentNullException.ThrowIfNull(secrets);
+        lock (_historySecrets)
+        {
+            foreach (string secret in secrets)
+            {
+                if (string.IsNullOrWhiteSpace(secret))
+                {
+                    continue;
+                }
+                _historySecrets.Remove(secret);
+                _historySecrets.Add(secret);
+            }
+            if (_historySecrets.Count > MaxHistorySecrets)
+            {
+                _historySecrets.RemoveRange(0, _historySecrets.Count - MaxHistorySecrets);
+            }
+        }
+    }
+
+    /// <summary>把提交的一行报给命令历史,含 <see cref="KeepOutOfCommandHistory" /> 挡住的值时不报。</summary>
+    private void ReportCommandLine(string command)
+    {
+        lock (_historySecrets)
+        {
+            foreach (string secret in _historySecrets)
+            {
+                if (command.Contains(secret, StringComparison.Ordinal))
+                {
+                    return;
+                }
+            }
+        }
+        CommandLineSubmitted?.Invoke(command);
+    }
+
     private void OnUserInputForTracker(byte[] data)
     {
         Interlocked.Increment(ref _userInputs);
@@ -305,7 +362,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         }
         if (CursorLineContains(control, command))
         {
-            CommandLineSubmitted?.Invoke(command);
+            ReportCommandLine(command);
             return;
         }
         DispatcherTimer.RunOnce(
@@ -313,7 +370,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
             {
                 if (!_disposed && ScreenContains(control, command))
                 {
-                    CommandLineSubmitted?.Invoke(command);
+                    ReportCommandLine(command);
                 }
             },
             TimeSpan.FromMilliseconds(200)
@@ -334,7 +391,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
             string? command = ExtractCommandAfterPrompt(control.GetBufferLine(control.CursorRow));
             if (!string.IsNullOrWhiteSpace(command))
             {
-                CommandLineSubmitted?.Invoke(command);
+                ReportCommandLine(command);
             }
         }
         catch
@@ -730,6 +787,11 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         _copyFeedbackReset = null;
         _autoResponseNoticeReset?.Dispose();
         _autoResponseNoticeReset = null;
+        lock (_historySecrets)
+        {
+            // 挡历史用的那几个口令不必比标签活得久。
+            _historySecrets.Clear();
+        }
         TerminalEmulator.OutputTriggerFired -= OnOutputTriggerFired;
         // 立即标记为未连接:同步频道转发(WriteSyncInput)以 IsConnected 为闸门。
         // 频道内其他标签的输入可能与本标签的关闭并发,不复位 IsConnected 的话,
