@@ -5201,19 +5201,19 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>改用 Unix 網域通訊端</value>
   </data>
   <data name="Tunnel_UnixSocketTip" xml:space="preserve">
-    <value>本地轉發兩頭各自可以改用通訊端,填了路徑的那頭不再用上面的連接埠;遠端轉發兩頭必須同時是通訊端。本機的通訊端檔案按檔案權限隔離,這台電腦上別的使用者借不走這條隧道。伺服器要開著 AllowStreamLocalForwarding。</value>
+    <value>本地轉發與遠端轉發的兩頭各自可以改用通訊端,填了路徑的那頭不再用上面的連接埠與主機。本機的通訊端檔案按檔案權限隔離,這台電腦上別的使用者借不走這條隧道。伺服器要開著 AllowStreamLocalForwarding。</value>
   </data>
   <data name="Tunnel_LocalSocketListenLabel" xml:space="preserve">
     <value>本機監聽的通訊端(留空則用本機連接埠)</value>
   </data>
   <data name="Tunnel_LocalSocketTargetLabel" xml:space="preserve">
-    <value>本機要連的通訊端</value>
+    <value>本機要連的通訊端(留空則用本機連接埠)</value>
   </data>
   <data name="Tunnel_RemoteSocketTargetLabel" xml:space="preserve">
     <value>伺服器上的目標通訊端(留空則用目標主機:連接埠)</value>
   </data>
   <data name="Tunnel_RemoteSocketListenLabel" xml:space="preserve">
-    <value>伺服器上監聽的通訊端</value>
+    <value>伺服器上監聽的通訊端(留空則用伺服器監聽位址:連接埠)</value>
   </data>
   <data name="Tunnel_SocketPathRequired" xml:space="preserve">
     <value>要填通訊端路徑。</value>
@@ -5307,9 +5307,6 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="TunnelSvc_TargetNotPermitted" xml:space="preserve">
     <value>遠端要連的目標不在放行名單裡,已拒絕;要放行就把它加進這條隧道的放行名單。</value>
-  </data>
-  <data name="TunnelSvc_RemoteSocketNeedsBothEnds" xml:space="preserve">
-    <value>遠端轉發要嘛兩頭都用連接埠,要嘛兩頭都用 Unix 通訊端:這一條只有一頭填了通訊端路徑。</value>
   </data>
   <data name="TunnelSvc_LocalSocketExists" xml:space="preserve">
     <value>{0} 已經存在 —— 多半是上次沒收拾乾淨,也可能是別的程式的通訊端。確認沒用之後刪掉它再啟動。</value>
@@ -5861,7 +5858,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>Unix 網域通訊端</value>
   </data>
   <data name="TunnelHelp_UnixSocketDesc" xml:space="preserve">
-    <value>本地轉發與遠端轉發都可以用 Unix 網域通訊端代替連接埠。本地轉發可以在本機的通訊端檔案上監聽、轉到伺服器上的通訊端(如 /var/run/docker.sock),或兩頭都是通訊端 —— 本機的工具直接操作遠端的 Docker、資料庫,伺服器不必開任何 TCP 連接埠。遠端轉發是請伺服器在一個通訊端路徑上監聽,回連到本機的通訊端。通訊端檔案按檔案權限隔離;伺服器要開著 AllowStreamLocalForwarding。Windows 從 Windows 10 1803 起支援。</value>
+    <value>本地轉發與遠端轉發的兩頭都可以各自用 Unix 網域通訊端代替連接埠。本地轉發可以在本機的通訊端檔案上監聽、轉到伺服器上的通訊端(如 /var/run/docker.sock),或兩頭都是通訊端 —— 本機的工具直接操作遠端的 Docker、資料庫,伺服器不必開任何 TCP 連接埠。遠端轉發可以請伺服器在一個通訊端路徑上監聽、回連到本機的通訊端,或兩頭都是 —— 比如伺服器上的連接埠回連到本機的 docker.sock,或伺服器上的通訊端回連到本機資料庫的連接埠。通訊端檔案按檔案權限隔離;伺服器要開著 AllowStreamLocalForwarding。Windows 從 Windows 10 1803 起支援。</value>
   </data>
   <data name="TunnelHelp_LoopbackNote" xml:space="preserve">
     <value>127.0.0.1 的含義取決於端點屬於哪台機器：本地轉發的伺服器端目標使用它時，指 SSH 伺服器本身；遠端轉發的本機服務使用它時，指目前電腦；監聽端使用迴環位址時，則只允許從監聽所在機器存取。</value>
@@ -6250,8 +6247,8 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SshCfgImport_NoteForwardPortZero" xml:space="preserve">
     <value>沒有匯入，連接埠 0（連線時才決定的連接埠）在通道裡沒有對應的寫法：{0}</value>
   </data>
-  <data name="SshCfgImport_NoteForwardSocketMix" xml:space="preserve">
-    <value>沒有匯入，遠端轉送要嘛兩頭都是 Unix 通訊端、要嘛都不是：{0}</value>
+  <data name="SshCfgImport_NoteRemoteDynamicSocket" xml:space="preserve">
+    <value>沒有匯入，遠端動態轉送只能在伺服器的連接埠上監聽，不能用 Unix 通訊端：{0}</value>
   </data>
   <data name="SshCfgImport_NoteForwardSocketPath" xml:space="preserve">
     <value>沒有匯入，通訊端路徑在本機用不了（本機通訊端要完整路徑且不能太長，伺服器上的要以 / 開頭）：{0}</value>

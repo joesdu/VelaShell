@@ -4924,19 +4924,19 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>Unix ドメインソケットを使う</value>
   </data>
   <data name="Tunnel_UnixSocketTip" xml:space="preserve">
-    <value>ローカル転送では両端それぞれをソケットにできます。パスを書いた側は上のポートを使いません。リモート転送では両端とも同時にソケットにする必要があります。ローカルのソケットファイルはファイル権限で守られ、このコンピューターの他のユーザーはこのトンネルを使えません。サーバー側で AllowStreamLocalForwarding が有効である必要があります。</value>
+    <value>ローカル転送でもリモート転送でも、両端それぞれをソケットにできます。パスを書いた側は上のポートとホストを使いません。ローカルのソケットファイルはファイル権限で守られ、このコンピューターの他のユーザーはこのトンネルを使えません。サーバー側で AllowStreamLocalForwarding が有効である必要があります。</value>
   </data>
   <data name="Tunnel_LocalSocketListenLabel" xml:space="preserve">
     <value>待ち受けるローカルソケット(空欄ならローカルポート)</value>
   </data>
   <data name="Tunnel_LocalSocketTargetLabel" xml:space="preserve">
-    <value>接続先のローカルソケット</value>
+    <value>接続先のローカルソケット(空欄ならローカルポート)</value>
   </data>
   <data name="Tunnel_RemoteSocketTargetLabel" xml:space="preserve">
     <value>サーバー上の接続先ソケット(空欄ならターゲットホスト:ポート)</value>
   </data>
   <data name="Tunnel_RemoteSocketListenLabel" xml:space="preserve">
-    <value>サーバーで待ち受けるソケット</value>
+    <value>サーバーで待ち受けるソケット(空欄なら待ち受けアドレス:ポート)</value>
   </data>
   <data name="Tunnel_SocketPathRequired" xml:space="preserve">
     <value>ソケットのパスを入力してください。</value>
@@ -5030,9 +5030,6 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="TunnelSvc_TargetNotPermitted" xml:space="preserve">
     <value>リモートが要求した接続先は許可リストにないため拒否しました。許可するには、このトンネルの許可リストに追加してください。</value>
-  </data>
-  <data name="TunnelSvc_RemoteSocketNeedsBothEnds" xml:space="preserve">
-    <value>リモート転送は両端ともポートか、両端とも Unix ソケットのどちらかです。この設定はソケットのパスが片側にしかありません。</value>
   </data>
   <data name="TunnelSvc_LocalSocketExists" xml:space="preserve">
     <value>{0} はすでに存在します。前回の後片付けが残っているか、別のプログラムのソケットかもしれません。使われていないことを確かめてから削除し、もう一度開始してください。</value>
@@ -5600,7 +5597,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>Unix ドメインソケット</value>
   </data>
   <data name="TunnelHelp_UnixSocketDesc" xml:space="preserve">
-    <value>ローカル転送とリモート転送では、ポートの代わりに Unix ドメインソケットを使えます。ローカル転送は、このコンピューターのソケットファイルで待ち受ける、サーバー上のソケット(/var/run/docker.sock など)へ転送する、またはその両方が可能です。ローカルのツールからリモートの Docker やデータベースを直接操作でき、サーバー側で TCP ポートを開く必要はありません。リモート転送はサーバーにソケットのパスで待ち受けてもらい、このコンピューターのソケットへ接続し直します。ソケットファイルはファイル権限で守られます。サーバー側で AllowStreamLocalForwarding が必要です。Windows では Windows 10 1803 以降で使えます。</value>
+    <value>ローカル転送とリモート転送では、両端それぞれでポートの代わりに Unix ドメインソケットを使えます。ローカル転送は、このコンピューターのソケットファイルで待ち受ける、サーバー上のソケット(/var/run/docker.sock など)へ転送する、またはその両方が可能です。ローカルのツールからリモートの Docker やデータベースを直接操作でき、サーバー側で TCP ポートを開く必要はありません。リモート転送は、サーバーにソケットのパスで待ち受けてもらう、このコンピューターのソケットへ接続し直す、またはその両方が可能です(サーバーのポートからローカルの docker.sock へ、サーバーのソケットからローカルのデータベースのポートへ、など)。ソケットファイルはファイル権限で守られます。サーバー側で AllowStreamLocalForwarding が必要です。Windows では Windows 10 1803 以降で使えます。</value>
   </data>
   <data name="TunnelHelp_LoopbackNote" xml:space="preserve">
     <value>127.0.0.1 の意味は、その端点が属するマシンによって変わります。ローカル転送のサーバー側ターゲットでは SSH サーバー自体を、リモート転送のローカルサービスではこのコンピューターを指します。待ち受け端点でループバックを使用すると、その待ち受けを提供するマシンからのみアクセスできます。</value>
@@ -6112,8 +6109,8 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SshCfgImport_NoteForwardPortZero" xml:space="preserve">
     <value>インポートしませんでした。ポート 0（接続時に決まるポート）はトンネルでは表せません：{0}</value>
   </data>
-  <data name="SshCfgImport_NoteForwardSocketMix" xml:space="preserve">
-    <value>インポートしませんでした。リモート転送は両端とも Unix ソケットか、両端ともソケットでないかのどちらかです：{0}</value>
+  <data name="SshCfgImport_NoteRemoteDynamicSocket" xml:space="preserve">
+    <value>インポートしませんでした。リモート動的転送はサーバーのポートでしか待ち受けられず、Unix ソケットは使えません：{0}</value>
   </data>
   <data name="SshCfgImport_NoteForwardSocketPath" xml:space="preserve">
     <value>インポートしませんでした。このマシンでは使えないソケットパスです（ローカルのソケットは長すぎない完全パス、サーバー側は / で始まるパスが必要）：{0}</value>

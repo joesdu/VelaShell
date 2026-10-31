@@ -5201,19 +5201,19 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>改用 Unix 域套接字</value>
   </data>
   <data name="Tunnel_UnixSocketTip" xml:space="preserve">
-    <value>本地转发两头各自可以改用套接字,填了路径的那头不再用上面的端口;远程转发两头必须同时是套接字。本机的套接字文件按文件权限隔离,这台电脑上别的用户借不走这条隧道。服务器要开着 AllowStreamLocalForwarding。</value>
+    <value>本地转发与远程转发的两头各自可以改用套接字,填了路径的那头不再用上面的端口与主机。本机的套接字文件按文件权限隔离,这台电脑上别的用户借不走这条隧道。服务器要开着 AllowStreamLocalForwarding。</value>
   </data>
   <data name="Tunnel_LocalSocketListenLabel" xml:space="preserve">
     <value>本机监听的套接字(留空则用本地端口)</value>
   </data>
   <data name="Tunnel_LocalSocketTargetLabel" xml:space="preserve">
-    <value>本机要连的套接字</value>
+    <value>本机要连的套接字(留空则用本地端口)</value>
   </data>
   <data name="Tunnel_RemoteSocketTargetLabel" xml:space="preserve">
     <value>服务器上的目标套接字(留空则用目标主机:端口)</value>
   </data>
   <data name="Tunnel_RemoteSocketListenLabel" xml:space="preserve">
-    <value>服务器上监听的套接字</value>
+    <value>服务器上监听的套接字(留空则用服务器监听地址:端口)</value>
   </data>
   <data name="Tunnel_SocketPathRequired" xml:space="preserve">
     <value>要填套接字路径。</value>
@@ -5307,9 +5307,6 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="TunnelSvc_TargetNotPermitted" xml:space="preserve">
     <value>远端要连的目标不在放行名单里,已拒绝;要放行就把它加进这条隧道的放行名单。</value>
-  </data>
-  <data name="TunnelSvc_RemoteSocketNeedsBothEnds" xml:space="preserve">
-    <value>远程转发要么两头都用端口,要么两头都用 Unix 套接字:这一条只有一头填了套接字路径。</value>
   </data>
   <data name="TunnelSvc_LocalSocketExists" xml:space="preserve">
     <value>{0} 已经存在 —— 多半是上次没收拾干净,也可能是别的程序的套接字。确认没用之后删掉它再启动。</value>
@@ -5861,7 +5858,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>Unix 域套接字</value>
   </data>
   <data name="TunnelHelp_UnixSocketDesc" xml:space="preserve">
-    <value>本地转发与远程转发都可以用 Unix 域套接字代替端口。本地转发可以在本机的套接字文件上监听、转到服务器上的套接字(如 /var/run/docker.sock),或两头都是套接字 —— 本机的工具直接操作远端的 Docker、数据库,服务器不必开任何 TCP 端口。远程转发是请服务器在一个套接字路径上监听,回连到本机的套接字。套接字文件按文件权限隔离;服务器要开着 AllowStreamLocalForwarding。Windows 从 Windows 10 1803 起支持。</value>
+    <value>本地转发与远程转发的两头都可以各自用 Unix 域套接字代替端口。本地转发可以在本机的套接字文件上监听、转到服务器上的套接字(如 /var/run/docker.sock),或两头都是套接字 —— 本机的工具直接操作远端的 Docker、数据库,服务器不必开任何 TCP 端口。远程转发可以请服务器在一个套接字路径上监听、回连到本机的套接字,或两头都是 —— 比如服务器上的端口回连到本机的 docker.sock,或服务器上的套接字回连到本机数据库的端口。套接字文件按文件权限隔离;服务器要开着 AllowStreamLocalForwarding。Windows 从 Windows 10 1803 起支持。</value>
   </data>
   <data name="TunnelHelp_LoopbackNote" xml:space="preserve">
     <value>127.0.0.1 的含义取决于端点属于哪台机器：本地转发的服务器侧目标使用它时，指 SSH 服务器本身；远程转发的本机服务使用它时，指当前计算机；监听端使用回环地址时，则只允许从监听所在机器访问。</value>
@@ -6250,8 +6247,8 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SshCfgImport_NoteForwardPortZero" xml:space="preserve">
     <value>没有导入，端口 0（连接时才定的端口）在隧道里没有对应的写法：{0}</value>
   </data>
-  <data name="SshCfgImport_NoteForwardSocketMix" xml:space="preserve">
-    <value>没有导入，远程转发要么两头都是 Unix 套接字、要么都不是：{0}</value>
+  <data name="SshCfgImport_NoteRemoteDynamicSocket" xml:space="preserve">
+    <value>没有导入，远程动态转发只能在服务器的端口上监听，不能用 Unix 套接字：{0}</value>
   </data>
   <data name="SshCfgImport_NoteForwardSocketPath" xml:space="preserve">
     <value>没有导入，套接字路径在本机用不了（本机套接字要完整路径且不能太长，服务器上的要以 / 开头）：{0}</value>

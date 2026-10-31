@@ -184,7 +184,8 @@ public static class SshConfigExporter
     }
 
     /// <summary>
-    /// 隧道 → 三种转发关键字。套接字那头写路径(<c>LocalForward /本机/套接字 /服务器/套接字</c>);
+    /// 隧道 → 三种转发关键字。套接字那头写路径(<c>LocalForward /本机/套接字 /服务器/套接字</c>、<c>RemoteForward 2375 /本机/套接字</c>),
+    /// 本地与远程转发的两头各自是端口或路径;
     /// 远程动态写成不给目标的 <c>RemoteForward</c>,放行名单写成这台主机的 <c>PermitRemoteOpen</c>。
     /// </summary>
     /// <remarks>
@@ -195,7 +196,7 @@ public static class SshConfigExporter
     /// <para>
     /// <c>PermitRemoteOpen</c> 在 ssh_config 里是按主机的一条,这台主机的远程动态转发只能共用一份名单:
     /// 第一条的名单写出来,名单不同的那几条改写成注释 —— 合成一份(取并集)会放宽收得更紧的那一条。
-    /// 只有一头是套接字的远程转发(隧道服务不建)、未来新增的隧道类型同样只写注释。
+    /// 未来新增的隧道类型这三个关键字表达不了,不写。
     /// </para>
     /// </remarks>
     private static void WriteForwards(StringBuilder text, IReadOnlyList<TunnelConfig> tunnels)
@@ -214,18 +215,10 @@ public static class SshConfigExporter
                         $"{Socket(tunnel.RemoteSocketPath) ?? Endpoint(tunnel.RemoteHost, tunnel.RemotePort)}");
                     break;
 
-                case TunnelType.RemoteForward when tunnel.LocalSocketPath is not null && tunnel.RemoteSocketPath is not null:
-                    Line("RemoteForward", $"{Socket(tunnel.RemoteSocketPath)} {Socket(tunnel.LocalSocketPath)}");
-                    break;
-
-                case TunnelType.RemoteForward when tunnel.LocalSocketPath is null && tunnel.RemoteSocketPath is null:
-                    Line("RemoteForward", $"{Endpoint(tunnel.RemoteHost, tunnel.RemotePort)} {Endpoint(tunnel.LocalHost, tunnel.LocalPort)}");
-                    break;
-
                 case TunnelType.RemoteForward:
-                    Skipped($"RemoteForward {Socket(tunnel.RemoteSocketPath) ?? Endpoint(tunnel.RemoteHost, tunnel.RemotePort)} " +
-                            $"{Socket(tunnel.LocalSocketPath) ?? Endpoint(tunnel.LocalHost, tunnel.LocalPort)}",
-                        "VelaShell: a remote forward needs Unix sockets on both ends or on neither");
+                    Line("RemoteForward",
+                        $"{Socket(tunnel.RemoteSocketPath) ?? Endpoint(tunnel.RemoteHost, tunnel.RemotePort)} " +
+                        $"{Socket(tunnel.LocalSocketPath) ?? Endpoint(tunnel.LocalHost, tunnel.LocalPort)}");
                     break;
 
                 case TunnelType.DynamicForward:

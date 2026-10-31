@@ -102,12 +102,8 @@ public class TunnelService(
         {
             throw new ArgumentException(@"Config type must be RemoteForward", nameof(config));
         }
-        // SSH 库的远程转发只有「两头都是 TCP」与「两头都是套接字」两种:只给了一头的配置(手改的、导入的)不建,
-        // 说清楚缺哪头,而不是悄悄退回端口。
-        if ((config.LocalSocketPath is null) != (config.RemoteSocketPath is null))
-        {
-            throw new ArgumentException(Strings.Get("TunnelSvc_RemoteSocketNeedsBothEnds"));
-        }
+        // 两头各自可以是端口或套接字(SSH 库的四种组合都有,velashell-docs spec/07 §4.4):
+        // 服务器那头的路径进监听端(库发 streamlocal-forward),本机那头的路径进目的端(回连到本机的套接字)。
         return await CreateForwardAsync(sessionId,
                    config,
                    new(PortForwardKind.Remote, config.RemoteHost, config.RemotePort, config.LocalHost, config.LocalPort)

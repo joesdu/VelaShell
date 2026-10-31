@@ -376,8 +376,8 @@ public sealed class SshConfigInteropTests
     private static string LocalSocket(string name) => Path.Combine(Path.GetTempPath(), name).Replace('\\', '/');
 
     /// <summary>
-    /// 套接字写法 → 两个路径字段:本地转发两头各自可以是套接字;远程转发两头都是套接字才导,只有一头的跳过
-    /// (SSH 库与隧道服务都只认两头 TCP、两头套接字两种)。本机用不了的路径(相对路径)跳过。
+    /// 套接字写法 → 两个路径字段:本地转发与远程转发的两头都各自可以是套接字(SSH 库与隧道服务都支持四种组合);
+    /// 套接字那头的主机与端口不用。本机用不了的路径(相对路径)跳过。
     /// </summary>
     [TestMethod]
     public async Task 套接字转发映射到两个路径字段()
@@ -400,7 +400,7 @@ public sealed class SshConfigInteropTests
         ImportedSession sock = await ScanOneAsync(config, "sock");
         List<TunnelConfig> tunnels = [.. sock.Tunnels!];
 
-        Assert.HasCount(5, tunnels);
+        Assert.HasCount(7, tunnels);
         Assert.AreEqual((TunnelType.LocalForward, listen, "/var/run/docker.sock"), (tunnels[0].Type, tunnels[0].LocalSocketPath, tunnels[0].RemoteSocketPath));
         Assert.AreEqual((2375u, null, "/var/run/docker.sock"), (tunnels[1].LocalPort, tunnels[1].LocalSocketPath, tunnels[1].RemoteSocketPath));
         Assert.AreEqual(("db", 5432u, null), (tunnels[2].RemoteHost, tunnels[2].RemotePort, tunnels[2].RemoteSocketPath));
@@ -409,10 +409,18 @@ public sealed class SshConfigInteropTests
         TunnelConfig remote = tunnels[4];
         Assert.AreEqual((TunnelType.RemoteForward, back, "/tmp/app.sock"), (remote.Type, remote.LocalSocketPath, remote.RemoteSocketPath),
             "远程转发:服务器上监听的套接字进 RemoteSocketPath,本机要连的进 LocalSocketPath");
+        TunnelConfig serverSocket = tunnels[5];
+        Assert.AreEqual((TunnelType.RemoteForward, "/tmp/x.sock", null, "localhost", 80u),
+            (serverSocket.Type, serverSocket.RemoteSocketPath, serverSocket.LocalSocketPath, serverSocket.LocalHost, serverSocket.LocalPort),
+            "服务器套接字 → 本机端口:路径进 RemoteSocketPath,本机目标照旧是主机与端口");
+        Assert.AreEqual((string.Empty, 0u), (serverSocket.RemoteHost, serverSocket.RemotePort), "套接字那头的主机与端口不用");
+        TunnelConfig localSocket = tunnels[6];
+        Assert.AreEqual((TunnelType.RemoteForward, LocalSocket("vs-import-y.sock"), null, "127.0.0.1", 9000u),
+            (localSocket.Type, localSocket.LocalSocketPath, localSocket.RemoteSocketPath, localSocket.RemoteHost, localSocket.RemotePort),
+            "服务器端口 → 本机套接字:路径进 LocalSocketPath,服务器监听照旧是地址与端口(没写地址时环回)");
 
         Assert.Contains(n => n.Contains("sub/relative.sock"), sock.Notes, "相对路径落在哪全看程序的当前目录");
-        Assert.Contains(n => n.Contains("/tmp/x.sock localhost:80"), sock.Notes, "远程转发只有一头是套接字");
-        Assert.Contains(n => n.Contains("RemoteForward 9000"), sock.Notes, "远程转发只有一头是套接字");
+        Assert.DoesNotContain(n => n.Contains("RemoteForward"), sock.Notes, "一头是套接字的远程转发照导,不再跳过");
     }
 
     /// <summary>
@@ -964,7 +972,8 @@ public sealed class SshConfigInteropTests
 
     /// <summary>
     /// 套接字与远程动态的往返:导出的 ssh_config 再经「会话导入」读回来,隧道与原来的一样。
-    /// 远程动态一定连同 <c>PermitRemoteOpen</c> 写出(没写时 OpenSSH 按 any);名单不同的、只有一头是套接字的写成注释,不会被读回来。
+    /// 远程动态一定连同 <c>PermitRemoteOpen</c> 写出(没写时 OpenSSH 按 any);名单不同的写成注释,不会被读回来。
+    /// 远程转发的两头各自可以是套接字,照写(曾经只有一头是套接字的写成注释)。
     /// </summary>
     [TestMethod]
     public async Task 套接字与远程动态导出后读得回来()
@@ -978,6 +987,8 @@ public sealed class SshConfigInteropTests
             Tunnel(TunnelType.LocalForward, localPort: 2375, remoteSocket: "/var/run/docker.sock"),
             Tunnel(TunnelType.LocalForward, localSocket: listen + "2", remoteHost: "db", remotePort: 5432),
             Tunnel(TunnelType.RemoteForward, localSocket: back, remoteSocket: "/tmp/app.sock"),
+            Tunnel(TunnelType.RemoteForward, localHost: "localhost", localPort: 80, remoteSocket: "/tmp/half.sock"),
+            Tunnel(TunnelType.RemoteForward, localSocket: back + "2", remoteHost: "127.0.0.1", remotePort: 2375),
             Tunnel(TunnelType.RemoteDynamicForward, remoteHost: "127.0.0.1", remotePort: 1080, permit: ["localhost:8080", "*.corp.example:443"]),
             Tunnel(TunnelType.RemoteDynamicForward, remoteHost: "0.0.0.0", remotePort: 1081, permit: ["localhost:8080", "*.corp.example:443"]),
         ];
@@ -985,7 +996,6 @@ public sealed class SshConfigInteropTests
         [
             Tunnel(TunnelType.RemoteDynamicForward, remoteHost: "127.0.0.1", remotePort: 1082, permit: ["any"]),
             Tunnel(TunnelType.RemoteDynamicForward, remoteHost: "127.0.0.1", remotePort: 1083),
-            Tunnel(TunnelType.RemoteForward, localHost: "localhost", localPort: 80, remoteSocket: "/tmp/half.sock"),
         ];
         SessionArchive archive = Archive(host);
         archive.Tunnels = new() { [host.Id] = [.. representable, .. commentedOut] };
@@ -996,7 +1006,9 @@ public sealed class SshConfigInteropTests
         Assert.DoesNotContain("PermitRemoteOpen any", export.Content, "名单不同的那条不能把整台主机放宽成全放");
         Assert.Contains("# RemoteForward 127.0.0.1:1082", export.Content);
         Assert.Contains("# RemoteForward 127.0.0.1:1083", export.Content, "没有名单的远程动态:写出来 OpenSSH 就当 any");
-        Assert.Contains("# RemoteForward /tmp/half.sock localhost:80", export.Content);
+        Assert.Contains("    RemoteForward /tmp/half.sock localhost:80\n", export.Content, "服务器套接字 → 本机端口照写");
+        Assert.Contains($"    RemoteForward 127.0.0.1:2375 {back}2\n", export.Content, "服务器端口 → 本机套接字照写");
+        Assert.DoesNotContain("# RemoteForward /tmp/half.sock", export.Content);
 
         string path = WriteConfig(export.Content);
         ImportedSession imported = await ScanOneAsync(path, "fw");

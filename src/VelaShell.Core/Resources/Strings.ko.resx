@@ -4924,19 +4924,19 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>Unix 도메인 소켓 사용</value>
   </data>
   <data name="Tunnel_UnixSocketTip" xml:space="preserve">
-    <value>로컬 포워딩은 양쪽 끝을 각각 소켓으로 바꿀 수 있으며, 경로를 쓴 쪽은 위의 포트를 쓰지 않습니다. 원격 포워딩은 양쪽 모두 소켓이어야 합니다. 로컬 소켓 파일은 파일 권한으로 보호되어 이 컴퓨터의 다른 사용자가 이 터널을 쓸 수 없습니다. 서버에서 AllowStreamLocalForwarding이 켜져 있어야 합니다.</value>
+    <value>로컬 포워딩과 원격 포워딩 모두 양쪽 끝을 각각 소켓으로 바꿀 수 있으며, 경로를 쓴 쪽은 위의 포트와 호스트를 쓰지 않습니다. 로컬 소켓 파일은 파일 권한으로 보호되어 이 컴퓨터의 다른 사용자가 이 터널을 쓸 수 없습니다. 서버에서 AllowStreamLocalForwarding이 켜져 있어야 합니다.</value>
   </data>
   <data name="Tunnel_LocalSocketListenLabel" xml:space="preserve">
     <value>수신 대기할 로컬 소켓 (비우면 로컬 포트)</value>
   </data>
   <data name="Tunnel_LocalSocketTargetLabel" xml:space="preserve">
-    <value>연결할 로컬 소켓</value>
+    <value>연결할 로컬 소켓 (비우면 로컬 포트)</value>
   </data>
   <data name="Tunnel_RemoteSocketTargetLabel" xml:space="preserve">
     <value>서버의 대상 소켓 (비우면 대상 호스트:포트)</value>
   </data>
   <data name="Tunnel_RemoteSocketListenLabel" xml:space="preserve">
-    <value>서버가 수신 대기할 소켓</value>
+    <value>서버가 수신 대기할 소켓 (비우면 수신 대기 주소:포트)</value>
   </data>
   <data name="Tunnel_SocketPathRequired" xml:space="preserve">
     <value>소켓 경로를 입력하세요.</value>
@@ -5030,9 +5030,6 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="TunnelSvc_TargetNotPermitted" xml:space="preserve">
     <value>원격이 요청한 대상이 허용 목록에 없어 거부했습니다. 허용하려면 이 터널의 허용 목록에 추가하세요.</value>
-  </data>
-  <data name="TunnelSvc_RemoteSocketNeedsBothEnds" xml:space="preserve">
-    <value>원격 포워딩은 양쪽 모두 포트이거나 양쪽 모두 Unix 소켓이어야 합니다. 이 설정은 한쪽에만 소켓 경로가 있습니다.</value>
   </data>
   <data name="TunnelSvc_LocalSocketExists" xml:space="preserve">
     <value>{0}이(가) 이미 있습니다. 지난번에 정리되지 않았거나 다른 프로그램의 소켓일 수 있습니다. 쓰이지 않는지 확인한 뒤 삭제하고 다시 시작하세요.</value>
@@ -5600,7 +5597,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>Unix 도메인 소켓</value>
   </data>
   <data name="TunnelHelp_UnixSocketDesc" xml:space="preserve">
-    <value>로컬 포워딩과 원격 포워딩은 포트 대신 Unix 도메인 소켓을 쓸 수 있습니다. 로컬 포워딩은 이 컴퓨터의 소켓 파일에서 수신 대기하거나, 서버의 소켓(/var/run/docker.sock 등)으로 전달하거나, 둘 다 할 수 있어 로컬 도구로 원격 Docker나 데이터베이스를 바로 다루고 서버는 TCP 포트를 열 필요가 없습니다. 원격 포워딩은 서버가 소켓 경로에서 수신 대기하고 이 컴퓨터의 소켓으로 다시 연결합니다. 소켓 파일은 파일 권한으로 보호되며, 서버에서 AllowStreamLocalForwarding이 필요합니다. Windows는 Windows 10 1803부터 지원합니다.</value>
+    <value>로컬 포워딩과 원격 포워딩은 양쪽 끝 각각에서 포트 대신 Unix 도메인 소켓을 쓸 수 있습니다. 로컬 포워딩은 이 컴퓨터의 소켓 파일에서 수신 대기하거나, 서버의 소켓(/var/run/docker.sock 등)으로 전달하거나, 둘 다 할 수 있어 로컬 도구로 원격 Docker나 데이터베이스를 바로 다루고 서버는 TCP 포트를 열 필요가 없습니다. 원격 포워딩은 서버가 소켓 경로에서 수신 대기하거나, 이 컴퓨터의 소켓으로 다시 연결하거나, 둘 다 할 수 있습니다(서버의 포트에서 로컬 docker.sock으로, 서버의 소켓에서 로컬 데이터베이스 포트로 등). 소켓 파일은 파일 권한으로 보호되며, 서버에서 AllowStreamLocalForwarding이 필요합니다. Windows는 Windows 10 1803부터 지원합니다.</value>
   </data>
   <data name="TunnelHelp_LoopbackNote" xml:space="preserve">
     <value>127.0.0.1의 의미는 해당 엔드포인트가 속한 머신에 따라 달라집니다. 로컬 포워딩의 서버 측 대상에서는 SSH 서버 자체를, 원격 포워딩의 로컬 서비스에서는 이 컴퓨터를 가리킵니다. 수신 엔드포인트에 루프백을 사용하면 해당 수신을 제공하는 머신에서만 접근할 수 있습니다.</value>
@@ -6112,8 +6109,8 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SshCfgImport_NoteForwardPortZero" xml:space="preserve">
     <value>가져오지 않았습니다. 포트 0(연결할 때 정해지는 포트)은 터널로 나타낼 수 없습니다: {0}</value>
   </data>
-  <data name="SshCfgImport_NoteForwardSocketMix" xml:space="preserve">
-    <value>가져오지 않았습니다. 원격 포워딩은 양쪽 모두 Unix 소켓이거나 양쪽 모두 아니어야 합니다: {0}</value>
+  <data name="SshCfgImport_NoteRemoteDynamicSocket" xml:space="preserve">
+    <value>가져오지 않았습니다. 원격 동적 포워딩은 서버의 포트에서만 수신 대기할 수 있고 Unix 소켓은 쓸 수 없습니다: {0}</value>
   </data>
   <data name="SshCfgImport_NoteForwardSocketPath" xml:space="preserve">
     <value>가져오지 않았습니다. 이 컴퓨터에서 쓸 수 없는 소켓 경로입니다(로컬 소켓은 너무 길지 않은 전체 경로, 서버 소켓은 /로 시작해야 함): {0}</value>

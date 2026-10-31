@@ -941,10 +941,13 @@ public class TunnelPanelViewModelTests
         Assert.IsFalse(_vm.IsFormValid, "又要本地端口了。");
     }
 
-    /// <summary>远程转发的套接字两头必须同时填(SSH 库只有这一种组合):勾了就两栏都要、端口与主机栏全部置灰。</summary>
+    /// <summary>
+    /// 远程转发的套接字两头各自可以填(SSH 库四种组合都有,与本地转发一个口径):填了路径的那头置灰端口 / 主机栏,
+    /// 只填一头也能建;两栏都空着就是照旧用端口。曾经勾了就两栏都要。
+    /// </summary>
     [TestMethod]
     [TestCategory("TunnelUI")]
-    public void UnixSocket_RemoteForwardNeedsBothEnds()
+    public void UnixSocket_RemoteForwardEitherEnd()
     {
         FillValidLocalForm();
         _vm.NewTunnelType = TunnelType.RemoteForward;
@@ -952,13 +955,32 @@ public class TunnelPanelViewModelTests
 
         Assert.AreEqual(Strings.Get("Tunnel_LocalSocketTargetLabel"), _vm.LocalSocketLabel);
         Assert.AreEqual(Strings.Get("Tunnel_RemoteSocketListenLabel"), _vm.RemoteSocketLabel);
-        Assert.IsFalse(_vm.IsLocalPortEditable);
-        Assert.IsFalse(_vm.IsRemoteEndpointEditable);
-        Assert.IsFalse(_vm.IsFormValid, "两栏都得填。");
+        Assert.IsTrue(_vm.IsLocalPortEditable);
+        Assert.IsTrue(_vm.IsRemoteEndpointEditable);
+        Assert.IsTrue(_vm.IsFormValid, "两栏都空着就是照旧用端口。");
 
-        _vm.NewRemoteSocketPath = "/tmp/app.sock";
+        // 服务器上的套接字 → 本机端口。
+        _vm.NewRemoteSocketPath = "tmp/app.sock";
+        Assert.AreEqual(Strings.Get("Tunnel_RemoteSocketPathNotAbsolute"), _vm.RemoteSocketPathError);
         Assert.IsFalse(_vm.IsFormValid);
+        _vm.NewRemoteSocketPath = "/tmp/app.sock";
+        Assert.IsFalse(_vm.IsRemoteEndpointEditable, "服务器那头改用套接字,监听地址与端口置灰。");
+        Assert.IsTrue(_vm.IsLocalPortEditable, "本机这头没填,还是回连到本地端口。");
+        Assert.IsTrue(_vm.IsFormValid);
+
+        // 服务器端口 → 本机套接字。
+        _vm.NewRemoteSocketPath = string.Empty;
         _vm.NewLocalSocketPath = LocalSocket;
+        Assert.IsTrue(_vm.IsRemoteEndpointEditable);
+        Assert.IsFalse(_vm.IsLocalPortEditable, "本机这头改用套接字,本地端口置灰。");
+        _vm.NewLocalPort = 0;
+        Assert.IsTrue(_vm.IsFormValid, "本机这头改用套接字,本地端口不再要求。");
+        _vm.NewRemotePort = 0;
+        Assert.IsFalse(_vm.IsFormValid, "服务器那头还是端口,端口照样要填。");
+        _vm.NewRemotePort = 2375;
+
+        // 两头都是。
+        _vm.NewRemoteSocketPath = "/tmp/app.sock";
         Assert.IsTrue(_vm.IsFormValid);
     }
 
@@ -996,6 +1018,46 @@ public class TunnelPanelViewModelTests
         Assert.AreEqual(string.Empty, _vm.NewRemoteSocketPath);
     }
 
+    /// <summary>
+    /// 远程转发只有本机这头是套接字时照样建得出来:用上的那头带路径,服务器那头照旧是监听地址与端口;编辑时填回。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("TunnelUI")]
+    public async Task UnixSocket_RemoteForwardWithOneSocketRoundTrips()
+    {
+        List<TunnelConfig> captured = [];
+        _workflowService.CreateTunnelAsync(_sessionId, Arg.Do<TunnelConfig>(captured.Add), Arg.Any<CancellationToken>())
+                        .Returns(callInfo => Task.FromResult(new TunnelInfo
+                        {
+                            Id = Guid.NewGuid(),
+                            Config = callInfo.Arg<TunnelConfig>(),
+                            Status = TunnelStatus.Stopped,
+                            SessionId = _sessionId,
+                            CreatedAt = DateTime.UtcNow
+                        }));
+        FillValidLocalForm();
+        _vm.NewTunnelType = TunnelType.RemoteForward;
+        _vm.ForwardToServerLoopback = true;
+        _vm.NewRemotePort = 2375;
+        _vm.NewUseUnixSocket = true;
+        _vm.NewLocalSocketPath = $" {LocalSocket} ";
+
+        await _vm.CreateTunnelCommand.Execute().FirstAsync();
+
+        Assert.AreEqual(TunnelType.RemoteForward, captured[0].Type);
+        Assert.AreEqual(LocalSocket, captured[0].LocalSocketPath);
+        Assert.IsNull(captured[0].RemoteSocketPath, "服务器那栏空着:照旧在端口上监听。");
+        Assert.AreEqual(("127.0.0.1", 2375u), (captured[0].RemoteHost, captured[0].RemotePort));
+
+        await _vm.EditTunnelCommand.Execute(_vm.Tunnels[0].Id).FirstAsync();
+        Assert.IsTrue(_vm.NewUseUnixSocket);
+        Assert.AreEqual(LocalSocket, _vm.NewLocalSocketPath);
+        Assert.AreEqual(string.Empty, _vm.NewRemoteSocketPath);
+        Assert.IsTrue(_vm.IsRemoteEndpointEditable, "服务器那头还是端口,那两栏照常可改。");
+        Assert.IsFalse(_vm.IsLocalPortEditable);
+        await _vm.ResetFormCommand.Execute().FirstAsync();
+    }
+
     /// <summary>列表里的套接字隧道:路由与端点写的是路径(不再拆成主机与端口)。</summary>
     [TestMethod]
     [TestCategory("TunnelUI")]
@@ -1027,6 +1089,14 @@ public class TunnelPanelViewModelTests
         var back = new TunnelItemViewModel(Info(TunnelType.RemoteForward, LocalSocket, "/tmp/app.sock"));
         Assert.AreEqual(Strings.Format("Tunnel_RouteRemoteSocket", "/tmp/app.sock", LocalSocket), back.DisplayRoute);
         Assert.AreEqual($"/tmp/app.sock → {LocalSocket}", back.EndpointSummary);
+
+        // 远程转发只有一头是套接字:另一头照旧写 主机:端口(服务器的监听端、本机的目标)。
+        var portToSocket = new TunnelItemViewModel(Info(TunnelType.RemoteForward, LocalSocket, null));
+        Assert.AreEqual(Strings.Format("Tunnel_RouteRemoteSocket", "127.0.0.1:2375", LocalSocket), portToSocket.DisplayRoute);
+        Assert.AreEqual($"127.0.0.1:2375 → {LocalSocket}", portToSocket.EndpointSummary);
+        var socketToPort = new TunnelItemViewModel(Info(TunnelType.RemoteForward, null, "/tmp/pg.sock"));
+        Assert.AreEqual(Strings.Format("Tunnel_RouteRemoteSocket", "/tmp/pg.sock", "127.0.0.1:2375"), socketToPort.DisplayRoute);
+        Assert.AreEqual("/tmp/pg.sock → 127.0.0.1:2375", socketToPort.EndpointSummary);
 
         var tcp = new TunnelItemViewModel(Info(TunnelType.LocalForward, null, null));
         Assert.AreEqual(Strings.Format("Tunnel_RouteLocal", "127.0.0.1", 2375u, "127.0.0.1", 2375u), tcp.DisplayRoute, "没用套接字的照旧。");

@@ -229,7 +229,7 @@
                                          Foreground="{DynamicResource VelaTextTertiary}"
                                          FontSize="{DynamicResource VelaFontSize10}"
                                          FontFamily="{DynamicResource VelaUiMonoFont}" />
-                              <!-- 导入说明:转发落成了几条隧道、哪些设置映射不了(端口 0 或只有一头是套接字的转发、没写放行名单的远程动态转发、别的 agent、没实现的算法)。 -->
+                              <!-- 导入说明:转发落成了几条隧道、哪些设置映射不了(端口 0 的转发、在套接字上监听或没写放行名单的远程动态转发、别的 agent、没实现的算法)。 -->
                               <TextBlock Text="{Binding Notes}"
                                          IsVisible="{Binding HasNotes}"
                                          Foreground="{DynamicResource VelaTextMuted}"

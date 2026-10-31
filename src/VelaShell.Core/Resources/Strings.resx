@@ -5095,19 +5095,19 @@ Overwrite it?</value>
     <value>Use Unix domain sockets</value>
   </data>
   <data name="Tunnel_UnixSocketTip" xml:space="preserve">
-    <value>For a local forward, either end can be a socket: the end with a path no longer uses the port above. For a remote forward, both ends must be sockets. A local socket file is protected by file permissions, so other users on this computer cannot borrow the tunnel. The server needs AllowStreamLocalForwarding.</value>
+    <value>Either end of a local or remote forward can be a socket: the end with a path no longer uses the port or host above. A local socket file is protected by file permissions, so other users on this computer cannot borrow the tunnel. The server needs AllowStreamLocalForwarding.</value>
   </data>
   <data name="Tunnel_LocalSocketListenLabel" xml:space="preserve">
     <value>Local socket to listen on (blank = local port)</value>
   </data>
   <data name="Tunnel_LocalSocketTargetLabel" xml:space="preserve">
-    <value>Local socket to connect to</value>
+    <value>Local socket to connect to (blank = local port)</value>
   </data>
   <data name="Tunnel_RemoteSocketTargetLabel" xml:space="preserve">
     <value>Socket on the server (blank = target host:port)</value>
   </data>
   <data name="Tunnel_RemoteSocketListenLabel" xml:space="preserve">
-    <value>Socket the server listens on</value>
+    <value>Socket the server listens on (blank = listen address:port)</value>
   </data>
   <data name="Tunnel_SocketPathRequired" xml:space="preserve">
     <value>Enter a socket path.</value>
@@ -5201,9 +5201,6 @@ Overwrite it?</value>
   </data>
   <data name="TunnelSvc_TargetNotPermitted" xml:space="preserve">
     <value>The remote side asked for a destination that is not on the allow list, and it was refused. Add it to this tunnel's allow list to permit it.</value>
-  </data>
-  <data name="TunnelSvc_RemoteSocketNeedsBothEnds" xml:space="preserve">
-    <value>A remote forward uses either ports on both ends or Unix sockets on both ends; this one has a socket path on only one end.</value>
   </data>
   <data name="TunnelSvc_LocalSocketExists" xml:space="preserve">
     <value>{0} already exists — probably left over from last time, or another program's socket. Delete it once you are sure it is unused, then start again.</value>
@@ -5729,7 +5726,7 @@ Overwrite it?</value>
     <value>Unix Domain Sockets</value>
   </data>
   <data name="TunnelHelp_UnixSocketDesc" xml:space="preserve">
-    <value>Local and remote forwards can use a Unix domain socket instead of a port. A local forward can listen on a socket file on this computer, forward to a socket on the server (such as /var/run/docker.sock), or both — so local tools work with the remote Docker or database directly and the server needs no TCP port. A remote forward has the server listen on a socket path and connects back to a socket on this computer. Socket files are protected by file permissions; the server needs AllowStreamLocalForwarding. Windows supports this from Windows 10 1803.</value>
+    <value>Either end of a local or remote forward can use a Unix domain socket instead of a port. A local forward can listen on a socket file on this computer, forward to a socket on the server (such as /var/run/docker.sock), or both — so local tools work with the remote Docker or database directly and the server needs no TCP port. A remote forward can have the server listen on a socket path, connect back to a socket on this computer, or both — for example a port on the server leading to the local docker.sock, or a socket on the server leading to a local database port. Socket files are protected by file permissions; the server needs AllowStreamLocalForwarding. Windows supports this from Windows 10 1803.</value>
   </data>
   <data name="TunnelHelp_LoopbackNote" xml:space="preserve">
     <value>The meaning of 127.0.0.1 depends on which machine owns that endpoint. For a local forward's server-side target, it means the SSH server itself. For a remote forward's local service, it means this computer. On a listener endpoint, loopback restricts access to the machine hosting that listener.</value>
@@ -6118,8 +6115,8 @@ Overwrite it?</value>
   <data name="SshCfgImport_NoteForwardPortZero" xml:space="preserve">
     <value>Not imported, port 0 (a port picked when connecting) has no tunnel equivalent: {0}</value>
   </data>
-  <data name="SshCfgImport_NoteForwardSocketMix" xml:space="preserve">
-    <value>Not imported, a remote forward needs Unix sockets on both ends or on neither: {0}</value>
+  <data name="SshCfgImport_NoteRemoteDynamicSocket" xml:space="preserve">
+    <value>Not imported, a remote dynamic forward can only listen on a port on the server, not on a Unix socket: {0}</value>
   </data>
   <data name="SshCfgImport_NoteForwardSocketPath" xml:space="preserve">
     <value>Not imported, the socket path cannot be used on this machine (a local socket needs a full, short enough path; a server socket must start with /): {0}</value>
