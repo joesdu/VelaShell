@@ -8,7 +8,7 @@ namespace VelaShell.Core.Sftp;
 /// <param name="NamePattern">文件名模式(<c>find -name</c> 的通配符);空 = 任意名字,不含通配符时按「名字里含有」找。</param>
 /// <param name="ContentText">文件内容里要有的文字(按字面、不按正则);空 = 只按名字找。</param>
 /// <param name="IgnoreCase">名字与内容都不区分大小写。</param>
-/// <param name="MaxResults">最多要多少条;到数就停,远端的 <c>find</c> 也随之停下。</param>
+/// <param name="MaxResults">最多要多少条;到数就停,远端的 <c>find</c> 由服务发 <c>TERM</c> 一并收掉(见 <see cref="RemoteSearchService" />)。</param>
 public sealed record RemoteSearchQuery(
     string Root,
     string? NamePattern,
@@ -63,8 +63,10 @@ public sealed record RemoteSearchHit(string Path, bool IsDirectory);
 /// 这种会话里脚本在 C locale 下跑,<c>find</c> / <c>grep</c> 按字节匹配(理由见 <see cref="DecodeNameArguments" />)。
 /// </para>
 /// <para>
-/// <b>有上限、能停。</b>条数:<c>head -n 上限+1</c> 收满就退出,<c>find</c> 下一次写管道即被 SIGPIPE 收掉,
-/// 不会在远端接着把整棵树走完;多出来的那一条只用来判断「结果不完整」。时间与取消由调用方的令牌管:
+/// <b>有上限、能停。</b>条数:<c>head -n 上限+1</c> 收满就退出;多出来的那一条只用来判断「结果不完整」。
+/// 光靠 <c>head</c> 退出停不下来 —— 往外写的是 <c>-exec</c> 的批处理 sh,它们死于 SIGPIPE,<c>find</c> 本身只看到子进程失败,
+/// 照样把整棵树走完(按内容找时 <c>grep</c> 照样读完剩下的文件),主 sh 又在 <c>wait</c> 里等它们。所以收到第「上限 + 1」条时
+/// 由 <see cref="RemoteSearchService" /> 从这一侧取消,与用户停止走同一条路。时间与取消由调用方的令牌管:
 /// 取消时 SSH 库先给远端发 <c>TERM</c>,脚本的 <c>trap</c> 再把整个进程组(<c>find</c>、<c>grep</c>、<c>head</c>)一起收掉 ——
 /// 只收 sh 的话,一个还没匹配到东西的 <c>find</c> 会在远端一直走下去。管道放在后台再 <c>wait</c>,
 /// 是因为 sh 在前台命令跑完之前不执行 trap。

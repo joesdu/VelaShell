@@ -95,6 +95,45 @@ public sealed class RemoteSearchServiceTests
         Assert.Contains(" '/srv' '*.log' '3' ", sent, "向远端多要一条,用来判断截断");
     }
 
+    /// <summary>
+    /// 收满上限之后远端还在走(find 经 -exec 的批处理往外写,head 退出停不下它;主 sh 在 wait 里等着):
+    /// 第「上限 + 1」条一到服务就自己取消 —— 交给库的令牌被取消(库据此给远端发 TERM),马上报「到了上限」,
+    /// 而不是一直挂着、等到时间上限再报「超时」(复查 file-panes F1)。
+    /// </summary>
+    [TestMethod]
+    public async Task ReachingTheLimit_StopsTheRemoteCommand_AndReportsTruncatedRatherThanTimedOut()
+    {
+        PosixProbe();
+        CancellationToken passed = default;
+        _client.StreamCommandRecordsAsync(Arg.Any<string>(), Arg.Any<byte>(), Arg.Any<Func<ReadOnlyMemory<byte>, ValueTask>>(), Arg.Any<CancellationToken>())
+               .Returns(async call =>
+               {
+                   passed = call.Arg<CancellationToken>();
+                   Func<ReadOnlyMemory<byte>, ValueTask> onRecord = call.Arg<Func<ReadOnlyMemory<byte>, ValueTask>>();
+                   foreach (string path in (string[])["f\t/srv/a.log", "f\t/srv/b.log", "f\t/srv/c.log", "f\t/srv/d.log"])
+                   {
+                       await onRecord(Encoding.UTF8.GetBytes(path));
+                   }
+                   // 远端的 find 还在走那棵大树:不取消就一直不结束。
+                   await Task.Delay(Timeout.Infinite, passed);
+                   return new RemoteCommandStreamResult(0, 4);
+               });
+        var hits = new List<RemoteSearchHit>();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        RemoteSearchOutcome outcome = await new RemoteSearchService(_connections, TimeSpan.FromSeconds(10))
+            .SearchAsync(_session, new("/srv", "*.log", MaxResults: 2), hit =>
+            {
+                hits.Add(hit);
+                return ValueTask.CompletedTask;
+            });
+
+        Assert.AreEqual(new RemoteSearchOutcome(RemoteSearchStatus.Truncated, 2), outcome);
+        Assert.IsTrue(passed.IsCancellationRequested, "交给库的令牌要被取消,库才会给远端发 TERM、关掉通道");
+        Assert.IsLessThan(TimeSpan.FromSeconds(5), watch.Elapsed, "收满就停,不等时间上限");
+        Assert.AreSequenceEqual([new RemoteSearchHit("/srv/a.log", false), new RemoteSearchHit("/srv/b.log", false)], hits);
+    }
+
     [TestMethod]
     public async Task UnderTheLimit_IsCompleted()
     {

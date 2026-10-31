@@ -118,7 +118,11 @@ public sealed class RemoteSearchService(ISshConnectionService connections, TimeS
         string command = RemoteSearch.BuildCommand(query, shell, fileNameEncoding);
         string root = RemoteSearch.NormalizeRoot(query.Root);
         using var timeout = new CancellationTokenSource(_timeLimit);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+        // 收满就停:远端的 head 收满会退出,可 find 是经 -exec 的批处理 sh 往外写的 —— 批处理 sh 死于 SIGPIPE,find 本身照样把整棵树走完、
+        // 按内容找时 grep 照样把剩下的文件读完,主 sh 在 wait 里等着它们,通道一直不到 EOF(复查 file-panes F1)。
+        // 所以第「上限 + 1」条一到就从这一侧取消,与用户点「停止」同一条路:库先给远端发 TERM,脚本的 trap 把整个进程组收掉。
+        using var full = new CancellationTokenSource();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token, full.Token);
         int count = 0;
         bool truncated = false;
         bool toolMissing = false;
@@ -130,6 +134,11 @@ public sealed class RemoteSearchService(ISshConnectionService connections, TimeS
                 (byte)'\n',
                 async bytes =>
                 {
+                    if (truncated)
+                    {
+                        // 已经喊停了,缓冲区里剩下的几条不再看。
+                        return;
+                    }
                     string line = RemoteSearch.DecodeRecord(bytes.Span, fileNameEncoding);
                     if (RemoteSearch.IsToolMissingMarker(line))
                     {
@@ -144,6 +153,7 @@ public sealed class RemoteSearchService(ISshConnectionService connections, TimeS
                     if (count >= query.MaxResults)
                     {
                         truncated = true;
+                        await full.CancelAsync().ConfigureAwait(false);
                         return;
                     }
                     count++;
@@ -164,6 +174,11 @@ public sealed class RemoteSearchService(ISshConnectionService connections, TimeS
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             return new(RemoteSearchStatus.Cancelled, count);
+        }
+        catch (OperationCanceledException) when (truncated)
+        {
+            // 是收满了自己停的:如实说「到了上限」,而不是等两分钟后报「超时」。
+            return new(RemoteSearchStatus.Truncated, count);
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
