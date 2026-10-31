@@ -137,6 +137,44 @@ public sealed class PluginNotificationTests
     }
 
     /// <summary>
+    /// <b>一个插件在消息中心里至多留 <see cref="PluginNotificationService.MaxRetainedPerPlugin" /> 条,超出丢它自己最旧的</b>;
+    /// 别的插件的、宿主自己的都不动。
+    /// <para>
+    /// 限频管不住"攒得多":每分钟换 6 个新 id 地发(不撞限频),原先半小时就把 200 条的消息中心占满,
+    /// 最旧的宿主消息 —— 只发一次的「本机加密密钥找不到」—— 被挤掉就再也不会回来。这里发 250 条、跨四十多分钟。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task Post_KeepsAtMostACapPerPlugin_DroppingItsOwnOldest_AndNeverAHostMessage()
+    {
+        var clock = new ManualClock();
+        var center = new NotificationCenter();
+        var service = new PluginNotificationService(center, time: clock);
+        await center.PublishAsync([new NotificationItem
+        {
+            Id = "master-key:missing:abc", Kind = NotificationKind.System, Title = "找不到本机加密密钥",
+            PublishedAt = clock.Now.UtcDateTime.AddDays(-1)
+        }]);
+        Assert.AreEqual(PluginNotificationOutcome.Posted, await service.PostAsync("acme.quiet", Note("weekly")));
+
+        for (int i = 0; i < 250; i++)
+        {
+            clock.Now += TimeSpan.FromSeconds(11);   // 每分钟不到 6 条:一条都不撞限频
+            Assert.AreEqual(PluginNotificationOutcome.Posted, await service.PostAsync(PluginId, Note($"backup-done:{i}")));
+        }
+
+        string[] chatty = [.. center.Items.Where(item => item.Id.StartsWith("plugin:acme.backup:", StringComparison.Ordinal)).Select(item => item.Id)];
+        Assert.HasCount(PluginNotificationService.MaxRetainedPerPlugin, chatty, "一个插件留下的条数超过了上限。");
+        Assert.AreSequenceEqual(
+            [.. Enumerable.Range(250 - PluginNotificationService.MaxRetainedPerPlugin, PluginNotificationService.MaxRetainedPerPlugin)
+                .Select(i => $"plugin:acme.backup:backup-done:{i}")],
+            chatty, SequenceOrder.InAnyOrder, "留下的应是它自己最新的那些。");
+        Assert.Contains(item => item.Id == "master-key:missing:abc", center.Items, "插件消息挤掉了只发一次的宿主消息。");
+        Assert.Contains(item => item.Id == "plugin:acme.quiet:weekly", center.Items, "一个插件刷屏挤掉了别的插件的消息。");
+        Assert.HasCount(PluginNotificationService.MaxRetainedPerPlugin + 2, center.Items);
+    }
+
+    /// <summary>
     /// 静音:返回 Muted、不进列表、不算频率;静音跨重启保留(落在应用数据里);恢复之后照常发。
     /// 已经发进列表的消息不受静音影响。
     /// </summary>

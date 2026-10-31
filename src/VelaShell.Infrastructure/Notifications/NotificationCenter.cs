@@ -19,7 +19,8 @@ public sealed class NotificationCenter(IAppDataStore? store = null) : INotificat
     private const string DocumentId = "inbox";
 
     /// <summary>
-    /// 保留上限。资讯源可以一直发,而消息中心不是归档系统 —— 超出的按发布时间丢最旧的。
+    /// 保留上限。资讯源可以一直发,而消息中心不是归档系统 —— 超出的按发布时间丢最旧的,
+    /// 插件消息先丢(见 <see cref="Prune" />)。
     /// </summary>
     public const int MaxItems = 200;
 
@@ -181,15 +182,34 @@ public sealed class NotificationCenter(IAppDataStore? store = null) : INotificat
         await SaveAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>丢掉过期条目,按发布时间倒序,并把超出上限的最旧那些截掉。调用方须持锁。</summary>
+    /// <summary>
+    /// 丢掉过期条目,按发布时间倒序,并把超出上限的最旧那些截掉。调用方须持锁。
+    /// <para>
+    /// <b>超出上限时先丢插件消息(最旧的先丢),丢完了才轮到宿主自己的</b>:插件消息再多也挤不掉宿主的。
+    /// 宿主有几条提示只发一次 —— 本机加密密钥找不到 / 已换新(master-key:*)、拉到的设置开着 Webhook 告警却没有地址
+    /// (sync:webhook-url-missing:*,按指纹去重)—— 被挤掉就再也不会回来,而它们恰恰是「密码怎么解不开」
+    /// 「告警怎么不响」的唯一线索。按插件限频(每分钟 6 条)管不住"攒得多":一个插件不停换 id 地发,
+    /// 半小时就能把 200 条占满。每个插件自己留几条另由 <c>PluginNotificationService</c> 管。
+    /// </para>
+    /// </summary>
     private void Prune()
     {
         DateTime now = DateTime.UtcNow;
         _items.RemoveAll(item => item.ExpiresAt is { } expiry && expiry <= now);
         _items.Sort((left, right) => right.PublishedAt.CompareTo(left.PublishedAt));
-        if (_items.Count > MaxItems)
+        int excess = _items.Count - MaxItems;
+        // 从最旧的(列表尾部)往前丢插件消息。
+        for (int i = _items.Count - 1; i >= 0 && excess > 0; i--)
         {
-            _items.RemoveRange(MaxItems, _items.Count - MaxItems);
+            if (_items[i].Kind == NotificationKind.Plugin)
+            {
+                _items.RemoveAt(i);
+                excess--;
+            }
+        }
+        if (excess > 0)
+        {
+            _items.RemoveRange(_items.Count - excess, excess);
         }
     }
 

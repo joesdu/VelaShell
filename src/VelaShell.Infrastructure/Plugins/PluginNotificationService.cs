@@ -17,6 +17,8 @@ namespace VelaShell.Infrastructure.Plugins;
 /// 不取自消息,冒充不了别的插件),再去重(同 id 已在列表里 → <see cref="PluginNotificationOutcome.AlreadyPosted" />,
 /// 不算频率),再看静音(<see cref="PluginNotificationOutcome.Muted" />,同样不算频率),最后限频 ——
 /// 每插件 60 秒滑动窗口里至多 <see cref="MaxPerMinute" /> 条新消息(蓝图 07 §7),超出 <see cref="PluginNotificationOutcome.RateLimited" />,不抛异常。
+/// 进了列表之后,每插件至多留 <see cref="MaxRetainedPerPlugin" /> 条,超出丢它自己最旧的;总上限满了时消息中心也先丢插件消息,
+/// 插件消息挤不掉宿主自己的。
 /// </para>
 /// <para>
 /// 消息中心只收「要留存、可回看」的东西,插件消息也一样:列表里标「插件」徽标和「来自 插件名」,
@@ -36,6 +38,20 @@ public sealed class PluginNotificationService(
 {
     /// <summary>每插件每分钟最多几条<b>新</b>消息(SDK 契约的上限,宿主可以收得更紧,这里取同值)。</summary>
     public const int MaxPerMinute = 6;
+
+    /// <summary>
+    /// 每个插件在消息中心里至多留几条;超出时丢<b>它自己</b>最旧的那条。
+    /// <para>
+    /// 限频只管"发得多快",管不住"攒得多":一个插件每分钟换 6 个新 id 地发,半小时就能把消息中心
+    /// <c>NotificationCenter.MaxItems</c>(200 条)占满,把别的插件的消息全挤掉。宿主自己的消息另由
+    /// 消息中心的淘汰顺序护着(插件消息先丢),这一条管的是插件之间。
+    /// </para>
+    /// <para>
+    /// 取 20:SDK 让插件把同类事件合并成一条摘要、"正常的插件一天也发不了几条",20 条够一个插件把最近几天的
+    /// 几类提醒都留着回看;又只是总上限的十分之一,装十个插件全发满也挤不到总上限。
+    /// </para>
+    /// </summary>
+    public const int MaxRetainedPerPlugin = 20;
 
     /// <summary>「来自 …」那一行的长度上限:清单的显示名本身不限长,列表里一行放不下。</summary>
     private const int MaxSourceLength = 64;
@@ -123,7 +139,25 @@ public sealed class PluginNotificationService(
             Release(pluginId, now);
             return PluginNotificationOutcome.AlreadyPosted;
         }
+        // 这一条已经进了列表:再按每插件的留存上限丢它自己最旧的。不用调用方的令牌 ——
+        // 投递已经成了,半路取消只会留下超额的几条,结果却报成失败。
+        await TrimToRetainedCapAsync(pluginId).ConfigureAwait(false);
         return PluginNotificationOutcome.Posted;
+    }
+
+    /// <summary>这个插件留在消息中心里的消息超过 <see cref="MaxRetainedPerPlugin" /> 条时,从它自己最旧的丢起。</summary>
+    private async Task TrimToRetainedCapAsync(string pluginId)
+    {
+        string prefix = IdPrefix(pluginId);
+        string[] excess = [.. center.Items
+            .Where(item => item.Id.StartsWith(prefix, StringComparison.Ordinal))
+            .OrderByDescending(item => item.PublishedAt)
+            .Skip(MaxRetainedPerPlugin)
+            .Select(item => item.Id)];
+        foreach (string id in excess)
+        {
+            await center.RemoveAsync(id, CancellationToken.None).ConfigureAwait(false);
+        }
     }
 
     /// <summary>这个插件的通知是否被用户静音了。</summary>
