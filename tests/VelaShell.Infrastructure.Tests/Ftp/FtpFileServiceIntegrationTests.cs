@@ -1401,9 +1401,15 @@ public class FtpFileServiceIntegrationTests
     }
 
     /// <summary>
-    /// 同样传到一半,这回 REST 续读被「忙」顶回来:服务内部照常收成单连接再来一次,
-    /// 但再来的那一次必须从这次调用的起点重写,不能接着上一次留下的尾巴再追加同一段。
+    /// 同样传到一半(写了 7 个字节、数据流干净结束、控制连接回 450「忙」),之后的「忙」一路顶到服务这一层:
+    /// 服务内部照常收成单连接再来一次,但再来的那一次必须从这次调用的起点重写,不能接着上一次留下的尾巴再追加同一段。
     /// </summary>
+    /// <remarks>
+    /// 不用「复位数据连接」来造这一半:环回上的复位在 macOS 上常被读成干净的 EOF,在 Windows / Linux 上是 ConnectionReset,
+    /// FluentFTP 走的路因此看平台,用例要钉的「动过字节之后的忙重放」就时有时无(PR #699 的 macOS 作业)。
+    /// 干净的 EOF + 450 之后,FluentFTP 有的平台上会自己在 +7 处 REST 续读一次 —— 那一次也拒(RETR 回 450),
+    /// 「忙」照样顶出来;两条路最后都得由服务从起点重下,所以最后一次 REST 必须落在起点上。
+    /// </remarks>
     [TestMethod]
     public async Task DownloadFile_ResumedAndBusyAfterPartialData_ReplaysFromTheStartPointNotTheFileEnd()
     {
@@ -1415,11 +1421,10 @@ public class FtpFileServiceIntegrationTests
             if (phase == 0 && rest == ResumedPartial)
             {
                 phase = 1;
-                return new() { DataLimit = 7, ResetData = true, ResetDelayMs = 200, Reply = "426 Connection closed; transfer aborted" };
+                return new() { DataLimit = 7, Reply = "450 Transfer busy, try again later" };
             }
             if (phase == 1 && rest == ResumedPartial + 7)
             {
-                phase = 2;
                 return new() { RejectRetr = "450 Transfer busy, try again later" };
             }
             return null;
@@ -1429,6 +1434,8 @@ public class FtpFileServiceIntegrationTests
         {
             await _service.DownloadFileAsync(session, "/resume.bin", local, new Progress<TransferProgress>(),
                 resumeOffset: ResumedPartial, TestContext.CancellationToken);
+            Assert.AreEqual(1, phase, "第一次续读应当先写了 7 个字节、再被「忙」顶回来");
+            Assert.AreEqual(ResumedPartial, _server.RestartOffsets.Last(), "服务的重来必须从这次调用的起点重下");
             Assert.AreSequenceEqual(SHA256.HashData(payload), SHA256.HashData(await File.ReadAllBytesAsync(local, TestContext.CancellationToken)));
         }
         finally
