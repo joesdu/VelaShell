@@ -805,6 +805,35 @@ public sealed class SshConfigInteropTests
         Assert.AreEqual("aes256-ctr", SshConfigExporter.AlgorithmLine(SshAlgorithmKind.Cipher, "aes256-ctr", legacy: true), "整个替换的与默认无关");
     }
 
+    /// <summary>
+    /// 存着的清单带空格、末尾逗号(VelaShell 自己的解析照收)时,写出去的值里没有空白也没有空项:
+    /// OpenSSH 读到 <c>a, b</c> / <c>a,b,</c> 报 bad configuration option,整份配置(连同 Include 它的 ~/.ssh/config)都用不了。
+    /// </summary>
+    [TestMethod]
+    public void 算法清单写成OpenSSH读得了的一条()
+    {
+        Assert.AreEqual("aes256-gcm@openssh.com,aes128-ctr",
+            SshConfigExporter.AlgorithmLine(SshAlgorithmKind.Cipher, "aes256-gcm@openssh.com, aes128-ctr", legacy: false));
+        Assert.AreEqual("hmac-sha2-256", SshConfigExporter.AlgorithmLine(SshAlgorithmKind.Mac, "hmac-sha2-256,", legacy: false));
+        Assert.AreEqual("-chacha20-poly1305@openssh.com,aes128-ctr",
+            SshConfigExporter.AlgorithmLine(SshAlgorithmKind.Cipher, " -chacha20-poly1305@openssh.com ,\taes128-ctr ", legacy: false), "前缀留着");
+        Assert.IsNull(SshConfigExporter.AlgorithmLine(SshAlgorithmKind.Cipher, " , ", legacy: false), "一项都没有就是没写");
+        Assert.AreEqual("+diffie-hellman-group14-sha1,curve25519-sha256",
+            SshConfigExporter.AlgorithmLine(SshAlgorithmKind.KeyExchange, "+ curve25519-sha256,", legacy: true));
+
+        SessionProfile spaced = new()
+        {
+            Name = "spaced",
+            Host = "10.0.0.9",
+            Ssh = new SshSessionOptions { Ciphers = "aes256-gcm@openssh.com, aes128-ctr", Macs = "hmac-sha2-256,hmac-sha2-512," },
+        };
+        SshConfigExport export = SshConfigExporter.Write(Archive(spaced));
+
+        Assert.Contains("    Ciphers aes256-gcm@openssh.com,aes128-ctr\n", export.Content);
+        Assert.Contains("    MACs hmac-sha2-256,hmac-sha2-512\n", export.Content);
+        Assert.AreEqual("aes256-gcm@openssh.com,aes128-ctr", ReadBack(export, "spaced").Ciphers);
+    }
+
     private static TunnelConfig Tunnel(TunnelType type, string localHost = "127.0.0.1", uint localPort = 0, string remoteHost = "",
         uint remotePort = 0, string? localSocket = null, string? remoteSocket = null, IReadOnlyList<string>? permit = null) => new()
         {

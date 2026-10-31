@@ -250,7 +250,7 @@ public static class SshConfigExporter
     /// <summary>一个算法类别写成什么;不用写(默认)时为 <see langword="null" />。规则见类型说明。</summary>
     internal static string? AlgorithmLine(SshAlgorithmKind kind, string? spec, bool legacy)
     {
-        string? written = string.IsNullOrWhiteSpace(spec) ? null : spec.Trim();
+        string? written = NormalizeSpec(spec);
         if (!legacy)
         {
             return written;
@@ -267,12 +267,35 @@ public static class SshConfigExporter
         }
         return written[0] switch
         {
-            '+' => "+" + string.Join(',', additions) + "," + written[1..].Trim(),
+            '+' => "+" + string.Join(',', additions) + "," + written[1..],
             '-' or '^' => SshAlgorithmPreferences.TryApply(kind, written, legacy: true, out IReadOnlyList<string> result, out _)
                 ? string.Join(',', result)
                 : written,
             _ => written,   // 整个替换:与默认清单无关,放不放开老算法都一样
         };
+    }
+
+    /// <summary>
+    /// 一条清单写成 OpenSSH 读得了的样子:各项去掉空白、丢掉空项,用 <c>,</c> 连起来,开头的 <c>+</c> / <c>-</c> / <c>^</c> 留着;
+    /// 一项都不剩时为 <see langword="null" />(当成没写)。
+    /// </summary>
+    /// <remarks>
+    /// VelaShell 自己的解析(<c>SshAlgorithmSpec</c>)把逗号、空格、制表符、换行都当分隔,空项不算,所以存着的
+    /// <c>a, b</c>、<c>a,b,</c> 在 VelaShell 里照样连得上(字段的悬停提示就是用 <c>", "</c> 连的默认清单,照抄过来最常见)。
+    /// 原样写进 ssh_config 的话,OpenSSH 把空格后面那段当成多出来的参数、末尾的逗号当成一个空名字,报「bad configuration option」——
+    /// 这对整份配置是致命的,按手册用 <c>Include</c> 并进 <c>~/.ssh/config</c> 之后,连哪台主机的 ssh 都起不来。
+    /// </remarks>
+    private static string? NormalizeSpec(string? spec)
+    {
+        if (string.IsNullOrWhiteSpace(spec))
+        {
+            return null;
+        }
+        string text = spec.Trim();
+        string prefix = text[0] is '+' or '-' or '^' ? text[..1] : string.Empty;
+        string[] names = text[prefix.Length..]
+            .Split([',', ' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return names.Length == 0 ? null : prefix + string.Join(',', names);
     }
 
     /// <summary>别名:连接名(没有就用主机),空白与 ssh_config 里另有含义的字符换成 <c>-</c>,重名加序号。</summary>
