@@ -237,6 +237,34 @@ public sealed class OpenTerminalHereTests
         }
     }
 
+    /// <summary>
+    /// 非 ASCII 的目录名:C / POSIX 区域设置下 readline 可能把 ≥ 0x80 的字节当 Meta 键(<c>£</c> 的 <c>A3</c> 就是 M-#),
+    /// 改发只含可打印 ASCII 的 <c>cd "$(printf '\ooo…')"</c>;字节按会话字符集(这里是 GBK),不一律当 UTF-8。
+    /// 整行的 shell 语义由 Core 的 <c>ChangeDirectoryCommandTests</c> 逐字节解码核对,这里钉的是宿主真的走了这条路。
+    /// </summary>
+    [TestMethod]
+    public async Task OpenTerminalHere_NonAsciiFolder_IsTypedAsPrintableAsciiOctal_InTheSessionEncoding()
+    {
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+        (MainWindowViewModel vm, SessionProfile profile, List<byte[]> writes, Task<string> marker) =
+            CapturingHost("gbk-box", RemoteShellKind.Unknown, "echo after-cd", System.Text.Encoding.GetEncoding("GBK"));
+
+        TerminalTabViewModel? tab = await vm.OpenTerminalHereAsync(profile, "/data/报表");
+
+        Assert.IsNotNull(tab);
+        await marker.WaitAsync(TimeSpan.FromSeconds(10));
+        byte[] cd;
+        lock (writes)
+        {
+            cd = writes.Single(write => System.Text.Encoding.ASCII.GetString(write).Contains("printf '/data/", StringComparison.Ordinal));
+        }
+        string line = System.Text.Encoding.ASCII.GetString(cd);
+        Assert.Contains(@"cd ""$(printf '/data/\261\250", line, "报 在 GBK 里是 B1 A8,按会话字符集写成八进制");
+        Assert.DoesNotContain(@"\346\212\245", line, "不是 UTF-8 的字节");
+        Assert.AreEqual((byte)'\n', cd[^1]);
+        Assert.IsTrue(cd[..^1].All(static b => b is >= 0x20 and <= 0x7E), "敲进 PTY 的整行除末尾换行外只有可打印 ASCII:" + line);
+    }
+
     // ---- 工具 ----
 
     /// <summary>
@@ -244,7 +272,7 @@ public sealed class OpenTerminalHereTests
     /// 返回的任务在它写出去时完成(用来确定 cd 那一步已经过去了)。
     /// </summary>
     private static (MainWindowViewModel Vm, SessionProfile Profile, List<byte[]> Writes, Task<string> Marker) CapturingHost(
-        string name, RemoteShellKind shell, string postAuthCommand)
+        string name, RemoteShellKind shell, string postAuthCommand, System.Text.Encoding? sessionEncoding = null)
     {
         IConnectionWorkflowService workflow = Substitute.For<IConnectionWorkflowService>();
         ISshConnectionService sshConnectionService = Substitute.For<ISshConnectionService>();
@@ -289,6 +317,10 @@ public sealed class OpenTerminalHereTests
                                          Arg.Any<CancellationToken>())
                  .Returns(shellStream);
         ITerminalEmulator terminal = FakeTerminal.Emulator();
+        if (sessionEncoding is not null)
+        {
+            terminal.SessionEncoding.Returns(sessionEncoding);
+        }
         return (new MainWindowViewModel(workflow, sshConnectionService, () => terminal), profile, writes, marker.Task);
     }
 

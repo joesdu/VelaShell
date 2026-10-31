@@ -4166,6 +4166,13 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 这一行是敲进 PTY 的,引号挡不住行规程与行编辑器 —— 自从「在此处打开终端」把远端列表里的目录名送到这里,
     /// 别人建的一个带 <c>^U</c>、回车的目录就能把整行换成他的命令。
     /// </para>
+    /// <para>
+    /// 目录名按会话字符集编出来有 ≥ 0x80 的字节时(中文目录、带 <c>£</c> 的目录),改发只含可打印 ASCII 的
+    /// <c>cd "$(printf '\ooo…')"</c>(见 <see cref="ChangeDirectoryCommand" />):C / POSIX 区域设置下 readline 可能把这些字节当 Meta 键(视版本与配置),
+    /// <c>£</c> 的 <c>A3</c> 就是 M-#、当场提交整行。配置里的初始目录走的是同一行、同一条规则:它同样敲进 PTY,
+    /// 同样可能来自别处(云同步拉下来的、导入的会话),会拆 Meta 键的那类行编辑器上,照原样敲进去的中文路径本来也会被拆成一串 Meta 键,
+    /// 换成 ASCII 写法反而切得过去。
+    /// </para>
     /// </remarks>
     private void SendStartupDirectory(TerminalTabViewModel tab, SessionProfile profile)
     {
@@ -4188,7 +4195,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             }
             return;
         }
-        tab.SendSilentCommand("cd " + RemoteSearch.QuoteFor(tab.RemoteShellKind, directory));
+        // 按会话字符集编码判断、写八进制:目录名在服务器上就是这套字节(GBK 会话里的中文目录是 GBK 字节,不是 UTF-8)。
+        tab.SendSilentCommand(ChangeDirectoryCommand.Build(tab.RemoteShellKind, directory, tab.TerminalEmulator.SessionEncoding));
     }
 
     /// <summary>
@@ -4651,7 +4659,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <c>cd</c> 走认证后命令那一条路(<see cref="SendStartupDirectory" />,单引号转义),与配置里的「初始目录」、
     /// 跟随终端目录的钩子共用同一套静默注入与防回显 —— 用户屏幕上不会多出一行没敲过的命令,
     /// 带空格、带引号的目录名也不会变成两个参数或一条注入;带控制字符的目录名不 <c>cd</c>、只提示一句(敲进 PTY 的控制字符
-    /// 引号挡不住,见那边)。它压过配置里的初始目录,只挂在这个标签上,不写进配置。
+    /// 引号挡不住,见那边);非 ASCII 的目录名改写成只含可打印 ASCII 的 <c>printf</c> 八进制(<see cref="ChangeDirectoryCommand" />)。
+    /// 它压过配置里的初始目录,只挂在这个标签上,不写进配置。
     /// </para>
     /// <para>
     /// 连接本身就是普通的「打开这条配置」:凭据缺了照样弹登录框,认证失败照样原地重试,与双击资源管理器里那一条一样;
