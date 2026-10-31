@@ -6,6 +6,8 @@ using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Presentation.Services;
 using VelaShell.Presentation.ViewModels;
+using VelaShell.Ssh.Diagnostics;
+using VelaShell.Ssh.Keys;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;
@@ -91,6 +93,28 @@ public sealed class SessionHealthCheckViewModelTests
         Assert.AreEqual(SessionHealthStatus.Failed,
             SessionHealthClassifier.Classify(Report(DiagnosticStepStatus.Failed, failure: new VelaSshAuthenticationException("密码不对"), issue: "认证失败"), 1).Status,
             "密码不对就是连不上,不是待确认。");
+    }
+
+    /// <summary>
+    /// 私钥带口令、配置里没存口令:读私钥那一步就失败(手动连接时会问口令),巡检记「需要凭据」而不是红色的「连不上」。
+    /// 存着的口令不对是存错了,照旧算连不上。
+    /// </summary>
+    [TestMethod]
+    public void Classify_KeyNeedsAPassphraseThatIsNotSaved_NeedsCredentials_NotAFailure()
+    {
+        var missing = new VelaSshAuthenticationException("这把私钥要口令",
+            new SshPrivateKeyException(SshFailureReason.KeyPassphraseRequired, "key is encrypted"));
+        SessionHealthOutcome outcome = SessionHealthClassifier.Classify(
+            Report(DiagnosticStepStatus.Failed, failure: missing, issue: "认证失败"), 10);
+
+        Assert.AreEqual(SessionHealthStatus.NeedsCredentials, outcome.Status);
+        Assert.AreEqual("认证", outcome.Step);
+        Assert.AreEqual("这把私钥要口令", outcome.Detail);
+
+        var wrong = new VelaSshAuthenticationException("口令不对",
+            new SshPrivateKeyException(SshFailureReason.KeyPassphraseIncorrect, "bad passphrase"));
+        Assert.AreEqual(SessionHealthStatus.Failed,
+            SessionHealthClassifier.Classify(Report(DiagnosticStepStatus.Failed, failure: wrong, issue: "认证失败"), 1).Status);
     }
 
     [TestMethod]

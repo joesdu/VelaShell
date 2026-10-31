@@ -72,6 +72,11 @@ public static class SessionHealthClassifier
             {
                 return new(SessionHealthStatus.NeedsAttention, failed?.Name, Join(title, failed?.Detail), elapsedMs);
             }
+            // 私钥带口令、配置里没存口令:手动连接时会问口令,巡检不问 —— 与「没存凭据」同一类,不是机器连不上。
+            if (MissingPassphrase(report.Failure))
+            {
+                return new(SessionHealthStatus.NeedsCredentials, failed?.Name, failed?.Detail ?? title, elapsedMs);
+            }
             // 跳板链本身配错了(被删、成环):四步都无从谈起,卡在配置上。
             return new(SessionHealthStatus.Failed, failed?.Name ?? Strings.Get("Health_StepConfiguration"),
                 Join(title, failed?.Detail ?? report.IssueDescription), elapsedMs);
@@ -93,6 +98,25 @@ public static class SessionHealthClassifier
             if (current is VelaSshHostKeyRejectedException or VelaSshAuthenticationCancelledException
                 or VelaSshTailscaleAuthenticationException { RequiresUserAction: true }
                 or SshException { Reason: SshFailureReason.TwoFactorRequired or SshFailureReason.PasswordExpired })
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 失败链上有「私钥要口令而没给」(<see cref="SshFailureReason.KeyPassphraseRequired" />,库在派生密钥之前就报,不白跑 KDF)。
+    /// </summary>
+    /// <remarks>
+    /// 配置里存着「私钥路径」就算有凭据(诊断那一步因此去登录),可口令没存时读私钥这一步就失败,翻译过的认证异常里面包着它。
+    /// 存着的口令不对(<see cref="SshFailureReason.KeyPassphraseIncorrect" />)不在此列:那是存错了,与存错的密码一样记「连不上」。
+    /// </remarks>
+    private static bool MissingPassphrase(Exception? failure)
+    {
+        for (Exception? current = failure; current is not null; current = current.InnerException)
+        {
+            if (current is SshException { Reason: SshFailureReason.KeyPassphraseRequired })
             {
                 return true;
             }
