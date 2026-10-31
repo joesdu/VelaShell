@@ -47,6 +47,10 @@ public sealed class AesSecretProtector : ISecretProtector, IMasterKeyStatusSourc
     /// <inheritdoc />
     public MasterKeyStatus GetKeyStatus() => _keys.Value.Status;
 
+    /// <inheritdoc />
+    /// <remarks>解析失败(数据目录写不进去)时也一直是 false:那种情况第一次真用到密钥时照样抛出来。</remarks>
+    public bool IsReady => _keys.IsValueCreated;
+
     /// <summary>加密明文并返回带 <c>enc1:</c> 前缀的密文;空值或已加密的输入原样返回。</summary>
     public string? Protect(string? plaintext)
     {

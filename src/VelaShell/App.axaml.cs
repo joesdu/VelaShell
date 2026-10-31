@@ -689,9 +689,11 @@ public class App : Application
         }
         try
         {
+            // 不用 GetSnapshotBlocking:存着代理密码时它要等本机加密密钥(系统密钥链可能在等用户解锁),
+            // 在这里等就是主窗口出不来。启动快照先不带代理密码,密钥好了在后台填上。
             AppSettings settings = _serviceProvider
                 .GetRequiredService<ISettingsService>()
-                .GetSnapshotBlocking();
+                .GetStartupSnapshot();
             _startupSettings = settings;
             // 启动画面读的是保存设置时写的镜像文件;从没保存过设置的老配置还没有它,
             // 这里按刚读出来的设置对齐一次(内容没变时不写盘)。放后台,不占首帧。

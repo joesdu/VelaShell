@@ -69,12 +69,104 @@ public sealed class SonnetDbSettingsService(
     /// <inheritdoc />
     public AppSettings? CurrentSnapshot => _snapshot;
 
+    /// <summary>
+    /// 启动路径先交出了不带代理密码的快照(<see cref="GetStartupSnapshot" />)、密码还在等本机加密密钥时,
+    /// 在后台把它填进缓存与快照的那个任务;填好(或确定解不开)后置回 null。从不以失败告终。
+    /// </summary>
+    private volatile Task? _proxyPasswordFill;
+
+    /// <inheritdoc />
+    public Task SecretsLoaded => _proxyPasswordFill ?? Task.CompletedTask;
+
     /// <summary>设置保存成功后触发,携带刚持久化的设置快照,供订阅方刷新缓存或界面。</summary>
     public event Action<AppSettings>? SettingsSaved;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// 本机加密密钥已经好了(或者库里根本没有代理密码要解)时与 <c>GetSnapshotBlocking()</c> 一样。
+    /// 密钥还在后台解析时(<see cref="ISecretProtector.IsReady" />),只读库里那份、不解密:代理密码先置空,
+    /// 缓存与快照照常发布(快捷键、启动外观这些读快照的地方不受影响),另起一个任务等密钥好了把密码解开,
+    /// 就地填进这份快照(见 <see cref="FillProxyPassword" />)。
+    /// </remarks>
+    public AppSettings GetStartupSnapshot()
+    {
+        if (_snapshot is { } snapshot)
+        {
+            return snapshot;
+        }
+        if (protector is null || protector.IsReady)
+        {
+            return this.GetSnapshotBlocking();
+        }
+        AppSettings? stored = _engine.WithCollectionAsync(SonnetDbEngine.ConfigCollection, store =>
+        {
+            DocumentRow? row = store.Get(SettingsDocId);
+            return row is null ? null : SonnetDbJson.Deserialize<AppSettings>(row.Json);
+        }).GetAwaiter().GetResult();
+        if (stored is null || stored.Proxy.Password.Length == 0)
+        {
+            // 没有要解的代理密码(全新安装、旧文件还没导入也走这里):照常读,用不着密钥。
+            return this.GetSnapshotBlocking();
+        }
+        stored.Normalize();
+        string storedPassword = stored.Proxy.Password;
+        stored.Proxy.Password = string.Empty;
+        string withoutPassword = SonnetDbJson.Serialize(stored);
+        // 先挂上「密码还没填」、再发布缓存:并发的 GetSettingsAsync 看到缓存时一定也看得到它,不会交出缺密码的那份;
+        // 填的那一步在发布之后才开始,不会被这里的发布盖掉。
+        var filled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _proxyPasswordFill = filled.Task;
+        _settingsJsonCache = withoutPassword;
+        _snapshot = stored;
+        _ = Task.Run(() => FillProxyPassword(stored, withoutPassword, storedPassword, filled));
+        return stored;
+    }
+
+    /// <summary>
+    /// 等本机加密密钥解析完(在线程池上等,<see cref="RevealProxyPassword" /> 卡在密钥上),把代理密码解开填回缓存,
+    /// 并就地填进启动时发布的那份快照 <paramref name="published" />。
+    /// </summary>
+    /// <remarks>
+    /// 就地填而不是换一个新快照:拿着那份快照的地方(主窗口关闭时把窗口尺寸写进它再存回来)随之带上密码,
+    /// 不会把一份缺密码的设置存回去、顺手把库里的密码抹掉。保存会先等这里做完(<see cref="SaveSettingsAsync" />)。
+    /// 解不开按 <see cref="RevealProxyPassword" /> 的老规矩:交出空串、记下密文,保存时写回;
+    /// 解析本身出错(数据目录写不进去)也按解不开处理 —— 库里的密文不能因为这一次出错被一次保存抹掉。
+    /// </remarks>
+    private void FillProxyPassword(AppSettings published, string withoutPassword, string storedPassword, TaskCompletionSource filled)
+    {
+        try
+        {
+            AppSettings settings = SonnetDbJson.Deserialize<AppSettings>(withoutPassword)!;
+            settings.Normalize();
+            settings.Proxy.Password = storedPassword;
+            try
+            {
+                RevealProxyPassword(settings);
+            }
+            catch (Exception ex)
+            {
+                settings.Proxy.Password = string.Empty;
+                _unreadableProxyPassword = new(storedPassword, ProxyOwner(settings.Proxy));
+                Trace.WriteLine($"[Settings] The saved proxy password could not be decrypted after startup ({ex.Message}); it is kept as is and treated as empty.");
+            }
+            _settingsJsonCache = SonnetDbJson.Serialize(settings);
+            published.Proxy.Password = settings.Proxy.Password;
+        }
+        finally
+        {
+            _proxyPasswordFill = null;
+            filled.SetResult();
+        }
+    }
 
     /// <summary>读取应用设置:优先命中 JSON 缓存,未命中则从文档集合读取或首次导入并归一化。</summary>
     public async Task<AppSettings> GetSettingsAsync()
     {
+        // 启动时先发布的那份缓存里没有代理密码:等它填好,交出去的这份(调用方可能改了存回来)才带着密码。
+        if (_proxyPasswordFill is { } fill)
+        {
+            await fill.ConfigureAwait(false);
+        }
         if (_settingsJsonCache is { } cached && SonnetDbJson.Deserialize<AppSettings>(cached) is { } fromCache)
         {
             fromCache.Normalize();
@@ -83,7 +175,8 @@ public sealed class SonnetDbSettingsService(
         AppSettings settings = await GetOrImportAsync<AppSettings>(SettingsDocId, "settings.json", ToStoredSettingsJson).ConfigureAwait(false);
         settings.Normalize();
         // 在 Normalize 之后解:记下的「那台代理」要与调用方拿到、之后存回来的那份对得上(规整会迁移代理类型)。
-        // 这里已在引擎锁之外、线程池上(InLockAsync 用 Task.Run),等密钥解析也不压 UI 线程。
+        // 这里已在引擎锁之外、线程池上(InLockAsync 用 Task.Run),异步等着的调用方不压 UI 线程;
+        // 在 UI 线程上同步等的那一处(启动)不走这里,见 GetStartupSnapshot。
         RevealProxyPassword(settings);
         string serialized = SonnetDbJson.Serialize(settings);
         _settingsJsonCache = serialized;
@@ -95,6 +188,12 @@ public sealed class SonnetDbSettingsService(
     public async Task SaveSettingsAsync(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        // 填密码的任务还没完:等它完再存,否则它随后会拿启动时读的那份盖掉这次存进缓存的设置,
+        // 而「解不开的那份写回原密文」也要等它解过一遍才知道。
+        if (_proxyPasswordFill is { } fill)
+        {
+            await fill.ConfigureAwait(false);
+        }
         string json = SonnetDbJson.Serialize(settings);
         await UpsertJsonAsync(SettingsDocId, ToStoredSettingsJson(settings)).ConfigureAwait(false);
         _settingsJsonCache = json;
@@ -177,17 +276,19 @@ public sealed class SonnetDbSettingsService(
             settings.Proxy.Password = plaintext ?? string.Empty;
             return;
         }
-        ProxyOptions owner = new()
-        {
-            Type = settings.Proxy.Type,
-            Host = settings.Proxy.Host,
-            Port = settings.Proxy.Port,
-            Username = settings.Proxy.Username
-        };
-        _unreadableProxyPassword = new(stored, owner);
+        _unreadableProxyPassword = new(stored, ProxyOwner(settings.Proxy));
         settings.Proxy.Password = string.Empty;
         Trace.WriteLine("[Settings] The saved proxy password could not be decrypted with this device's key; it is kept as is and treated as empty.");
     }
+
+    /// <summary>记下「这份密码属于哪台代理」用的副本(只用类型、主机、端口、用户名)。</summary>
+    private static ProxyOptions ProxyOwner(ProxyOptions proxy) => new()
+    {
+        Type = proxy.Type,
+        Host = proxy.Host,
+        Port = proxy.Port,
+        Username = proxy.Username
+    };
 
     /// <summary>读取应用运行状态:从文档集合读取,不存在时首次导入既有 state.json 或返回新实例。</summary>
     public async Task<AppState> GetStateAsync() =>
