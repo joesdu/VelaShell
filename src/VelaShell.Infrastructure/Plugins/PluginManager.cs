@@ -1777,7 +1777,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
 
     /// <summary>
     /// 卸载清理(蓝图 03 §7):插件目录已不存在(≠ 被 .disabled 禁用,禁用者仍在盘上、
-    /// 数据保留)即视为已卸载,其 SonnetDB 命名空间与数据目录整体删除,发进消息中心的消息一并删掉。
+    /// 数据保留)即视为已卸载,其 SonnetDB 命名空间与数据目录整体删除,发进消息中心的消息与它自己的日志一并删掉。
     /// </summary>
     private async Task PurgeUninstalledDataAsync()
     {
@@ -1844,6 +1844,9 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         {
             Log($"Uninstalled-plugin directory sweep failed: {ex.Message}");
         }
+        // 插件自己的日志也算它留下的数据(见 PurgePluginDataAsync):目录是在宿主没运行时删掉的,
+        // 卸载那一路的 LogFiles.Delete 没机会跑,只能在这里按同一份名单清。顺带认领旧版本的轮转件名(不抛)。
+        options.LogFiles?.SweepUninstalled(installed);
     }
 
     /// <summary>

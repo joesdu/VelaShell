@@ -33,7 +33,7 @@
 | `Diagnostics/` | `PingTraceRouteService`（逐跳路由追踪）与 `MmdbIpGeolocationService`（MaxMind 库离线解析 IP 归属地）。 |
 | `Tunnels/TunnelService.cs` | 本地(`-L`)/远程(`-R`)/动态 SOCKS5(`-D`)端口转发统一管理。 |
 | `Sync/GistSyncService.cs` `GistApiClient.cs` | GitHub Gist 云同步：设置/连接/片段同步到私密 Gist，支持版本历史与可选 PBKDF2 + AES-256-GCM 端到端加密。 |
-| `Plugins/` | **插件运行时**（宿主侧）：`PluginManager`（发现 → 装载 → 激活 → 停用/卸载，每插件一个可收集 ALC，单插件异常只把它自己标记为 Failed）、`PluginContext`、`PluginDescriptor`、`PluginManagerOptions`、`PluginPermissionGate`（敏感能力的用户裁决与记忆）、`IPluginDataStore`、`PluginLogFiles`（每插件一份日志 `logs/plugins/<id>.log`，1 MB 轮转一份，插件管理页「查看日志」读它）。 |
+| `Plugins/` | **插件运行时**（宿主侧）：`PluginManager`（发现 → 装载 → 激活 → 停用/卸载，每插件一个可收集 ALC，单插件异常只把它自己标记为 Failed）、`PluginContext`、`PluginDescriptor`、`PluginManagerOptions`、`PluginPermissionGate`（敏感能力的用户裁决与记忆）、`IPluginDataStore`、`PluginLogFiles`（每插件一份日志 `logs/plugins/<id>.log`，1 MB 轮转一份 `<id>.log.1`（不叫 `<id>.1.log`：那是 id 为 `<id>.1` 的插件的当前日志），插件管理页「查看日志」读它；卸载时删，宿主没运行时被删掉的插件由启动清扫删）。 |
 | `Plugins/Capabilities/` | SDK 能力接口的宿主实现：`SessionsCapability`、`RemoteExecCapability`、`RemoteFsCapability`、`ProtectedSecretsCapability`、`HostInfoCapability`、`PluginEventHub`、`TracePluginLogger`，以及无 UI 宿主下的空实现（`NullUiApi`/`NullCommandsApi`）。 |
 | `Plugins/Isolated/` | 隔离模式的宿主侧：`PluginProcessClient`（建管道 + 一次性令牌、拉起 [`VelaShell.PluginHost`](../VelaShell.PluginHost)、握手、观察进程退出）、`PluginCapabilityRouter`（把 RPC 分发到**与进程内插件同一套**能力实现，权限/节流单点生效）、`IPluginEmbedHost`。 |
 | `DependencyInjection/InfrastructureServiceCollectionExtensions.cs` | 本层所有实现的 DI 注册入口；「怎么连上去」已整体搬进 `Ssh/SshConnectionAssembler.cs`（超时/心跳、凭据、主机密钥策略、ProxyJump 链），这里只做注册与转调。 |
