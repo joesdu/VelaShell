@@ -582,6 +582,91 @@ public sealed class GistSyncServiceTests
             s.Proxy.Password == "rotated-on-the-other-device" && s.Security.WebhookUrl == "https://hooks.example.com/new"));
     }
 
+    // ———— 一次性迁移标记:拉到旧版本推的载荷(没有这些字段)不把本机做过的迁移再做一遍 ————
+
+    /// <summary>本机规整过的设置,用户在迁移之后改过几项被迁移的开关。</summary>
+    private static AppSettings LocalChoicesAfterMigrations()
+    {
+        var settings = new AppSettings();
+        settings.Normalize();
+        settings.General.AutoDownloadUpdates = true;
+        settings.Security.ConfirmFirstFingerprint = false;
+        settings.Security.RecordProductionSessions = true;
+        settings.Security.BlockOnFingerprintChange = true;
+        settings.Proxy.Type = "none";
+        return settings;
+    }
+
+    /// <summary>
+    /// 推它的旧版本不认识迁移标记,载荷里没有这些字段(反序列化成 false)。拉下来不能让 Normalize 把迁移再做一遍:
+    /// 用户在本机开的「自动下载更新」、关的「首次连接确认指纹」等保持原样,而不是每同步一轮就被打回迁移后的默认值。
+    /// </summary>
+    [TestMethod]
+    public async Task Pull_PayloadWithoutMigrationFlags_DoesNotRerunTheMigrations()
+    {
+        ISettingsService settings = Substitute.For<ISettingsService>();
+        settings.GetSettingsAsync().Returns(_ => LocalChoicesAfterMigrations());
+        var service = new GistSyncService(settings, Substitute.For<ISessionRepository>(), Substitute.For<IAppDataStore>(),
+            Substitute.For<IQuickCommandRepository>(), Substitute.For<ISecretProtector>());
+        // 旧版本拉过本机推的那份、原样推回来:值都还在,只是少了它不认识的标记字段。
+        var envelope = new SyncEnvelope
+        {
+            Payload = new SyncPayload { DeviceName = "old-client", UpdatedAtUtc = DateTime.UtcNow, Settings = LocalChoicesAfterMigrations() }
+        };
+        System.Text.Json.Nodes.JsonNode node = System.Text.Json.JsonSerializer.SerializeToNode(envelope, System.Text.Json.JsonSerializerOptions.Web)!;
+        foreach ((string block, string field) in SettingsCategories.MigrationFields)
+        {
+            Assert.IsTrue(node["payload"]!["settings"]![block]!.AsObject().Remove(field), $"{block}.{field} 应在载荷里,才拿得掉");
+        }
+
+        SyncResult result = await service.ApplyRemoteAsync(
+            SettingsOnly(), GistSyncService.ParseEnvelope(node.ToJsonString()), remoteVersion: "rev", CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.Message);
+        await settings.Received(1).SaveSettingsAsync(Arg.Is<AppSettings>(s =>
+            s.General.AutoDownloadUpdates
+            && !s.Security.ConfirmFirstFingerprint
+            && s.Security.RecordProductionSessions
+            && s.Security.BlockOnFingerprintChange
+            && s.Proxy.Type == "none"));
+    }
+
+    /// <summary>名单里的每个迁移标记都按设备算 —— 名单加了一个、这里漏了,上面那条迁移就会在拉取时重来。</summary>
+    [TestMethod]
+    public void KeepLocalMigrationFlags_CoversEveryMigrationField()
+    {
+        var local = new AppSettings();
+        local.Normalize();
+        var incoming = new AppSettings();
+
+        GistSyncService.KeepLocalMigrationFlags(incoming, local);
+
+        System.Text.Json.Nodes.JsonNode node = System.Text.Json.JsonSerializer.SerializeToNode(incoming, System.Text.Json.JsonSerializerOptions.Web)!;
+        foreach ((string block, string field) in SettingsCategories.MigrationFields)
+        {
+            Assert.IsTrue(node[block]![field]!.GetValue<bool>(), $"{block}.{field} 没有按本机的保留");
+        }
+    }
+
+    /// <summary>推送方向:本机设置读出来就规整过,迁移标记照带(都是 true)—— 认识某个标记的旧版本拉到不会把它重做一遍。</summary>
+    [TestMethod]
+    public async Task Push_CarriesTheMigrationFlagsAsDone()
+    {
+        ISettingsService settings = Substitute.For<ISettingsService>();
+        settings.GetSettingsAsync().Returns(_ => LocalChoicesAfterMigrations());
+        var service = new GistSyncService(settings, Substitute.For<ISessionRepository>(), Substitute.For<IAppDataStore>(),
+            Substitute.For<IQuickCommandRepository>(), Substitute.For<ISecretProtector>());
+
+        string content = await service.BuildGistContentAsync(SettingsOnly(), CancellationToken.None);
+
+        System.Text.Json.Nodes.JsonNode pushed = System.Text.Json.Nodes.JsonNode.Parse(content)!["payload"]!["settings"]!;
+        foreach ((string block, string field) in SettingsCategories.MigrationFields)
+        {
+            Assert.IsTrue(pushed[block]![field]!.GetValue<bool>(), $"{block}.{field} 推上去应是 true");
+        }
+        Assert.IsTrue(pushed["general"]!["autoDownloadUpdates"]!.GetValue<bool>());
+    }
+
     // ———— 拉到「Webhook 告警开着、却没有地址」的设置:消息中心提示一次(第二轮第 17 条) ————
 
     private static AppSettings WebhookOnWithoutUrl(string theme = "dark")

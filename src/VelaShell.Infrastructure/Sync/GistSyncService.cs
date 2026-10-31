@@ -821,7 +821,10 @@ public sealed partial class GistSyncService(
         return settings;
     }
 
-    /// <summary>拉取应用时同样保留本机的设备本地字段,云端值不覆盖;对方没带的机密也留本机的(<see cref="PreserveLocalSecrets" />)。</summary>
+    /// <summary>
+    /// 拉取应用时同样保留本机的设备本地字段,云端值不覆盖;对方没带的机密也留本机的(<see cref="PreserveLocalSecrets" />),
+    /// 本机做过的一次性迁移不重做(<see cref="KeepLocalMigrationFlags" />)。
+    /// </summary>
     private static void PreserveDeviceLocalFields(AppSettings incoming, AppSettings local)
     {
         PreserveLocalSecrets(incoming, local);
@@ -837,6 +840,26 @@ public sealed partial class GistSyncService(
         incoming.Transfer.DefaultEditorPath = local.Transfer.DefaultEditorPath;
         incoming.Transfer.LogDirectory = local.Transfer.LogDirectory;
         incoming.Keys.DefaultKeyName = local.Keys.DefaultKeyName;
+        KeepLocalMigrationFlags(incoming, local);
+    }
+
+    /// <summary>
+    /// 一次性迁移标记(<see cref="SettingsCategories.MigrationFields" />)按设备算:哪一边做过,这次拉取就不再做。
+    /// </summary>
+    /// <remarks>
+    /// 推这份载荷的若是还不认识某个标记的旧版本,反序列化时把它丢了,推上来就是 false;
+    /// 不留本机的,紧接着的 <see cref="AppSettings.Normalize" /> 会把迁移再做一遍 —— 用户在本机打开的「自动下载更新」
+    /// 又被关掉、关掉的「首次连接确认指纹」又被打开,与旧版本每同步一轮就重来一次。
+    /// 推送不动它们:本机设置读出来就规整过,标记都是 true,认识这个标记的旧版本拉到也不会重做。
+    /// </remarks>
+    internal static void KeepLocalMigrationFlags(AppSettings incoming, AppSettings local)
+    {
+        incoming.General.AutoDownloadUpdatesOptInMigrated |= local.General.AutoDownloadUpdatesOptInMigrated;
+        incoming.Security.RecordingOptInMigrated |= local.Security.RecordingOptInMigrated;
+        incoming.Security.FingerprintChangeDefaultMigrated |= local.Security.FingerprintChangeDefaultMigrated;
+        incoming.Security.FirstFingerprintDefaultMigrated |= local.Security.FirstFingerprintDefaultMigrated;
+        incoming.Proxy.DefaultsMigrated |= local.Proxy.DefaultsMigrated;
+        incoming.TerminalBehavior.FoldGuideLineMigrated |= local.TerminalBehavior.FoldGuideLineMigrated;
     }
 
     // ———— 设置里的机密(代理密码、告警 Webhook 地址) ————
