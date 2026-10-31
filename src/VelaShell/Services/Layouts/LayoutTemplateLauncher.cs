@@ -211,7 +211,7 @@ public sealed class LayoutTemplateLauncher
         }
         finally
         {
-            ticket.Expired = true;
+            ticket.Expire();
             _ticket.Value = null;
             gate.Release();
         }
@@ -219,18 +219,17 @@ public sealed class LayoutTemplateLauncher
 
     private DockPlacement? ResolvePlacement(DockDocument document)
     {
-        if (_ticket.Value is not { Used: false, Expired: false } ticket)
+        if (_ticket.Value is not { Used: false, Expired: false, Session: { } session, Slot: { } slot } ticket)
         {
             return null;
         }
         ticket.Used = true;
-        Slot slot = ticket.Slot;
-        ticket.Session.Placed[document] = slot;
+        session.Placed[document] = slot;
         DockGroup group = slot.Group;
         int index = group.Documents.Count;
         for (int i = 0; i < group.Documents.Count; i++)
         {
-            if (ticket.Session.Placed.TryGetValue(group.Documents[i], out Slot? other)
+            if (session.Placed.TryGetValue(group.Documents[i], out Slot? other)
                 && ReferenceEquals(other.Group, group)
                 && other.Ordinal > slot.Ordinal)
             {
@@ -285,12 +284,28 @@ public sealed class LayoutTemplateLauncher
     /// <summary>一条槽位打开流程的票据:只认第一个建出来的标签,流程结束即作废。</summary>
     private sealed class SlotTicket(RestoreSession session, Slot slot)
     {
-        public RestoreSession Session { get; } = session;
+        /// <summary>这一次还原的记账;作废之后为 null。</summary>
+        public RestoreSession? Session { get; private set; } = session;
 
-        public Slot Slot { get; } = slot;
+        /// <summary>这条流程的槽位;作废之后为 null。</summary>
+        public Slot? Slot { get; private set; } = slot;
 
         public bool Used { get; set; }
 
-        public bool Expired { get; set; }
+        public bool Expired { get; private set; }
+
+        /// <summary>作废,并放掉对这一次还原的引用。</summary>
+        /// <remarks>
+        /// 流程里另起的后台任务(SSH 连接的收包与保活循环、SFTP 的接收循环、通道泵……)捕获了执行上下文,
+        /// 也就一直攥着这张票,长的一攥就是几天。票若还连着记账 —— <see cref="RestoreSession.Placed" /> 里是这次还原放下的
+        /// 每一个标签,标签又连着终端视图模型与回滚缓冲,<see cref="RestoreSession.Slots" /> 里还有连接配置 ——
+        /// 用户关掉的那些标签就一个也回收不了,每打开一次模板还多攒一份。光把标记设上不够,引用得一并放掉。
+        /// </remarks>
+        public void Expire()
+        {
+            Expired = true;
+            Session = null;
+            Slot = null;
+        }
     }
 }

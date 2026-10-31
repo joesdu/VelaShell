@@ -298,22 +298,33 @@ public sealed class DockWorkspace : DockElement
     /// <summary>取当前异步流程里还没用过、没作废的票据所指的那一格(用掉它);没有或那一格已不在树上时为 null。</summary>
     private DockGroup? ClaimTargetTicket()
     {
-        if (_targetTicket.Value is not { Used: false, Expired: false } ticket)
+        if (_targetTicket.Value is not { Used: false, Expired: false, Group: { } group } ticket)
         {
             return null;
         }
         ticket.Used = true;
-        return IsOnTree(ticket.Group) ? ticket.Group : null;
+        return IsOnTree(group) ? group : null;
     }
 
     /// <summary>一张「落进这一格」的票据。</summary>
     private sealed class TargetTicket(DockGroup group)
     {
-        public DockGroup Group { get; } = group;
+        /// <summary>落进哪一格;作废之后为 null。</summary>
+        public DockGroup? Group { get; private set; } = group;
 
         public bool Used { get; set; }
 
-        public bool Expired { get; set; }
+        public bool Expired { get; private set; }
+
+        /// <summary>
+        /// 作废,并放掉那一格:流程里另起的后台任务(SSH 的收包、保活循环……)捕获了执行上下文,会一直攥着这张票,
+        /// 票再攥着组,用户关掉的那个窗格连同它最后的标签就回收不了。
+        /// </summary>
+        public void Expire()
+        {
+            Expired = true;
+            Group = null;
+        }
     }
 
     /// <summary>释放即作废票据,并把上下文退回发票之前的样子。</summary>
@@ -321,7 +332,7 @@ public sealed class DockWorkspace : DockElement
     {
         public void Dispose()
         {
-            ticket.Expired = true;
+            ticket.Expire();
             if (ReferenceEquals(owner._targetTicket.Value, ticket))
             {
                 owner._targetTicket.Value = previous;

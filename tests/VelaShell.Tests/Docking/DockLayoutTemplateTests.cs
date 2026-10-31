@@ -321,6 +321,39 @@ public sealed class DockLayoutTemplateTests
         Assert.IsFalse(extra.IsPinned, "票据只认第一个标签:后来的不该冒充 a 的槽位(否则它也会被固定)");
     }
 
+    /// <summary>
+    /// 槽位流程里另起、迟迟不结束的后台任务(SSH 连接的收包、保活循环)捕获了执行上下文,也就一直攥着那张票。
+    /// 票作废时得放掉这一次还原的记账:记账里有这次放下的每一个标签,不放的话用户关掉的标签一个也回收不了。
+    /// </summary>
+    [TestMethod]
+    public async Task Open_LingeringBackgroundTaskOfOneSlot_DoesNotKeepClosedTabsAlive()
+    {
+        var workspace = new DockWorkspace();
+        var opener = new FakeOpener(workspace);
+        SessionProfile a = opener.Add("a"), b = opener.Add("b");
+        var lingering = new TaskCompletionSource();
+        opener.LateExtras[a.Id] = lingering; // a 的流程里另起的后台任务一直挂着(像一条长连着的 SSH 收包循环)
+        var launcher = new LayoutTemplateLauncher(workspace, opener);
+        await launcher.OpenAsync(Group(Terminal(a), Terminal(b)));
+
+        WeakReference closed = Close(workspace, "b");
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        Assert.IsFalse(closed.IsAlive, "a 的后台任务还挂着,但它攥着的票不该再连着 b 这个已经关掉的标签");
+        lingering.SetResult();
+    }
+
+    /// <summary>关掉一个还原出来的标签;标签只在这个方法里出现过,测试方法自己不攥着它。</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference Close(DockWorkspace workspace, string title)
+    {
+        DockDocument document = workspace.AllDocuments().Single(d => d.Title == title);
+        workspace.RemoveDocument(document);
+        return new WeakReference(document);
+    }
+
     // ---- 缺失与收尾 ----
 
     [TestMethod]

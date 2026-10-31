@@ -625,6 +625,46 @@ public class DockWorkspaceTests
         }
     }
 
+    /// <summary>
+    /// 流程里另起、迟迟不结束的后台任务(SSH 的收包、保活循环)捕获了执行上下文,也就一直攥着这张票:
+    /// 票作废时得放掉那一格,否则用户关掉的窗格回收不了。
+    /// </summary>
+    [TestMethod]
+    public async Task TargetTicket_HeldByALingeringBackgroundTask_LetsGoOfThePaneOnceExpired()
+    {
+        var ws = new DockWorkspace();
+        var release = new TaskCompletionSource();
+
+        (Task lingering, WeakReference pane) = await TicketHeldByALingeringTaskAsync(ws, release.Task);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        Assert.IsFalse(pane.IsAlive, "后台任务还挂着,但作废的票不该再攥着那个已经关掉的窗格");
+        release.SetResult();
+        await lingering;
+    }
+
+    /// <summary>对一格空窗格发票、流程里起一个等 <paramref name="release" /> 的后台任务、流程结束,再把那一格关掉。</summary>
+    /// <remarks>窗格只在这个方法里出现过:测试方法自己的局部变量不能攥着它。</remarks>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static async Task<(Task Lingering, WeakReference Pane)> TicketHeldByALingeringTaskAsync(DockWorkspace ws, Task release)
+    {
+        TestDocument a = NewDoc("a");
+        ws.AddDocument(a);
+        ws.SplitDocument(a, DockOrientation.Horizontal);
+        DockGroup empty = ws.AllGroups().Single(g => g.Documents.Count == 0);
+        Task lingering;
+        using (ws.TargetNewDocumentsAt(empty))
+        {
+            await Task.Yield();
+            lingering = Task.Run(async () => await release);
+        }
+        ws.ClosePane(empty);
+        Assert.DoesNotContain(empty, ws.AllGroups().ToList());
+        return (lingering, new WeakReference(empty));
+    }
+
     // ---- 关闭窗格 / 最大化 / 平分 ----
 
     [TestMethod]
