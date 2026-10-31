@@ -220,12 +220,15 @@ public static class PluginProtocolTerminalConnector
                 $"Protocol '{registration.Descriptor.Id}' does not provide a terminal implementation.",
                 nameof(registration));
         }
+        // 声明了 NoCredentials 的协议(Telnet 之类)没有凭据可交:配置里残留的用户名口令用户看不见,不交给插件
+        // (SDK 对这一位的承诺是「连传都不传」;与 PluginProtocolFileService、PluginWorkspaceLauncher 同一条规矩)。
+        bool noCredentials = registration.Descriptor.Features.HasFlag(ProtocolFeatures.NoCredentials);
         var request = new ProtocolConnectRequest
         {
             Host = profile.Host,
             Port = profile.Port,
-            Username = profile.Username,
-            Password = profile.Password ?? string.Empty,
+            Username = noCredentials ? string.Empty : profile.Username,
+            Password = noCredentials ? string.Empty : profile.Password ?? string.Empty,
             Settings = PluginProtocolFileService.BuildSettings(registration.Descriptor, profile),
             DisplayName = profile.Name
         };

@@ -99,12 +99,15 @@ public sealed class PluginProtocolFileService(PluginProtocolRegistry registry)
 
         var sessionId = Guid.NewGuid();
         string key = sessionId.ToString("N");
+        // 声明了 NoCredentials 的协议没有凭据这回事:配置里还留着的用户名口令(两栏收起之前填的、旧版本存下的)
+        // 用户看不见,不能交给第三方插件 —— SDK 文档对这一位的承诺就是「连传都不传」。与工作台的 PluginWorkspaceLauncher 同一条规矩。
+        bool noCredentials = registration.Descriptor.Features.HasFlag(ProtocolFeatures.NoCredentials);
         var request = new ProtocolConnectRequest
         {
             Host = profile.Host,
             Port = profile.Port,
-            Username = profile.Username,
-            Password = profile.Password ?? string.Empty,
+            Username = noCredentials ? string.Empty : profile.Username,
+            Password = noCredentials ? string.Empty : profile.Password ?? string.Empty,
             Settings = BuildSettings(registration.Descriptor, profile),
             DisplayName = profile.Name
         };

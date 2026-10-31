@@ -140,6 +140,51 @@ public sealed class PluginTerminalProtocolTests
     }
 
     [TestMethod]
+    public async Task Connector_NoCredentialsProtocol_NeverForwardsStoredUsernameOrPassword()
+    {
+        // 声明了 NoCredentials 的协议(Telnet)界面上收起了用户名口令两栏;旧配置里残留的那一份用户看不见,
+        // 交给第三方插件就违背了 SDK 对这一位「连传都不传」的承诺。
+        var terminal = new FakeTerminal();
+        ProtocolDescriptor plain = Descriptor();
+        ProtocolDescriptor descriptor = new()
+        {
+            Id = plain.Id,
+            DisplayName = plain.DisplayName,
+            DefaultPort = plain.DefaultPort,
+            Features = ProtocolFeatures.NoCredentials,
+            Fields = plain.Fields,
+        };
+        var registration = new PluginProtocolRegistration("test", descriptor, FileSystem: null, terminal);
+        SessionProfile profile = Profile();
+        profile.Username = "admin";
+        profile.Password = "hidden-pw";
+
+        await using IShellStreamWrapper stream = await PluginProtocolTerminalConnector.OpenAsync(
+            registration, profile, new("xterm", 80, 24));
+
+        Assert.IsNotNull(terminal.Request);
+        Assert.AreEqual(string.Empty, terminal.Request.Username);
+        Assert.AreEqual(string.Empty, terminal.Request.Password);
+        Assert.AreEqual("s3cret", terminal.Request.GetString("token"), "协议自己的机密字段照交 —— 只有用户名口令两栏不交。");
+    }
+
+    [TestMethod]
+    public async Task Connector_CredentialProtocol_StillForwardsUsernameAndPassword()
+    {
+        var terminal = new FakeTerminal();
+        var registration = new PluginProtocolRegistration("test", Descriptor(), FileSystem: null, terminal);
+        SessionProfile profile = Profile();
+        profile.Username = "admin";
+        profile.Password = "pw";
+
+        await using IShellStreamWrapper stream = await PluginProtocolTerminalConnector.OpenAsync(
+            registration, profile, new("xterm", 80, 24));
+
+        Assert.AreEqual("admin", terminal.Request!.Username);
+        Assert.AreEqual("pw", terminal.Request.Password);
+    }
+
+    [TestMethod]
     public async Task Connector_TranslatesSdkAuthenticationException_IntoTheHostFamily()
     {
         // 宿主的重试/弹框逻辑认的是 Core 的异常族;漏翻的表现是"密码错了却当成网络故障"。
