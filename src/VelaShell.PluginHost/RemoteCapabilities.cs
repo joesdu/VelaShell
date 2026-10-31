@@ -222,10 +222,14 @@ internal sealed class RpcRemoteExec(RpcConnection rpc, bool supportsExecutionOpe
 }
 
 /// <summary>远程文件能力的 RPC 代理。传输走同机文件路径,进度经通知回流。</summary>
-internal sealed class RpcRemoteFs(RpcConnection rpc, bool supportsTransferOperations = false, bool supportsDownloadOperations = false) : IRemoteFsApi
+internal sealed class RpcRemoteFs(RpcConnection rpc, bool supportsTransferOperations = false, bool supportsDownloadOperations = false,
+    bool supportsTransferWithdraw = false) : IRemoteFsApi
 {
     public bool SupportsTransferOperations => supportsTransferOperations;
     public bool SupportsDownloadOperations => supportsDownloadOperations;
+
+    /// <summary>握手宣告了 <see cref="HandshakeResponse.SupportsTransferWithdraw" /> 才支持;缺席即旧宿主。</summary>
+    public bool SupportsTransferWithdraw => supportsTransferWithdraw;
 
     private async Task<RemoteTransferSnapshot> TransferRequestAsync(string method, object request, CancellationToken ct, bool requiresDownload = false)
     {
@@ -233,13 +237,18 @@ internal sealed class RpcRemoteFs(RpcConnection rpc, bool supportsTransferOperat
             ? SupportsTransferOperations || SupportsDownloadOperations
             : requiresDownload ? SupportsDownloadOperations : SupportsTransferOperations;
         if (!supported) throw new NotSupportedException("This host does not implement the requested transfer operation.");
+        return await SendTransferRequestAsync<RemoteTransferSnapshot>(method, request, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Host did not return a transfer snapshot.");
+    }
+
+    private async Task<T?> SendTransferRequestAsync<T>(string method, object request, CancellationToken ct)
+    {
         ct.ThrowIfCancellationRequested();
         // 短请求帧不随等待者取消,避免取消写半帧;回执等待可取消,后台请求有固定超时并观察异常。
-        Task<RemoteTransferSnapshot?> pending = rpc.RequestAsync<RemoteTransferSnapshot>(method, request, TimeSpan.FromSeconds(45), CancellationToken.None);
+        Task<T?> pending = rpc.RequestAsync<T>(method, request, TimeSpan.FromSeconds(45), CancellationToken.None);
         try
         {
-            return await pending.WaitAsync(ct).ConfigureAwait(false)
-                ?? throw new InvalidOperationException("Host did not return a transfer snapshot.");
+            return await pending.WaitAsync(ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -247,6 +256,20 @@ internal sealed class RpcRemoteFs(RpcConnection rpc, bool supportsTransferOperat
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             throw;
         }
+    }
+
+    /// <summary>
+    /// 条件撤回经 <see cref="PluginRpc.FsTransferWithdraw" /> 交给宿主,判定与撤下在宿主那边同一步完成。
+    /// 握手没宣告的宿主上在本进程直接抛不支持、一个请求都不发 —— 不改发无条件的 <see cref="PluginRpc.FsTransferCancel" />。
+    /// 令牌只取消本次等待;宿主已经登记的撤回不回滚,回执丢了就原样再调一次(同一代次的结论不变)。
+    /// </summary>
+    public async Task<RemoteTransferWithdrawResult> WithdrawPendingTransferAsync(string transferId, long expectedGeneration,
+        CancellationToken cancellationToken = default)
+    {
+        if (!SupportsTransferWithdraw) throw new NotSupportedException("This host does not implement conditional transfer withdrawal.");
+        return await SendTransferRequestAsync<RemoteTransferWithdrawResult>(PluginRpc.FsTransferWithdraw,
+                new FsTransferWithdrawRequest(transferId, expectedGeneration), cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Host did not return a transfer withdrawal result.");
     }
 
     public Task<RemoteTransferSnapshot> StartUploadAsync(string sessionId, string localPath, string remotePath,

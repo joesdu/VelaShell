@@ -34,7 +34,7 @@ internal sealed class RemotePluginContext : IPluginContext, IDisposable
         Storage = new RpcStorage(rpc);
         TimeSeries = new RpcTimeSeries(rpc);
         Sessions = new RpcSessions(rpc);
-        RemoteFsProxy = new(rpc, hello.SupportsTransferOperations, hello.SupportsDownloadOperations);
+        RemoteFsProxy = new(rpc, hello.SupportsTransferOperations, hello.SupportsDownloadOperations, hello.SupportsTransferWithdraw);
         // 保留具体类型的引用:流式执行的输出经通知回流,Program 要按 token 路由到它。
         RemoteExecProxy = new(rpc, hello.SupportsExecutionOperations, shutdown);
         RemoteExec = RemoteExecProxy;
