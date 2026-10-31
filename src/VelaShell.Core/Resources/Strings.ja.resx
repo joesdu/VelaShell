@@ -6436,6 +6436,12 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Msg_ProxyConnectFailed" xml:space="preserve">
     <value>プロキシ接続に失敗しました: {0}</value>
   </data>
+  <data name="Msg_ProxyHttpSshPortHint" xml:space="preserve">
+    <value>プロキシがポート 22 への CONNECT を拒否する場合は、プロキシの種類を SOCKS5(例: 127.0.0.1:10808)に、TUN モードを使っているなら「プロキシなし」に切り替えてください。</value>
+  </data>
+  <data name="Msg_ProxyHttpFtpHint" xml:space="preserve">
+    <value>プロキシが CONNECT を拒否する場合は、プロキシの種類を SOCKS5 に、TUN モードを使っているなら「プロキシなし」に切り替えてください。</value>
+  </data>
   <data name="Msg_ProxyUnreachable" xml:space="preserve">
     <value>プロキシ サーバーに接続できません: {0}</value>
   </data>

@@ -6436,6 +6436,12 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Msg_ProxyConnectFailed" xml:space="preserve">
     <value>프록시 연결 실패: {0}</value>
   </data>
+  <data name="Msg_ProxyHttpSshPortHint" xml:space="preserve">
+    <value>프록시가 22번 포트로의 CONNECT를 거부하면 프록시 유형을 SOCKS5(예: 127.0.0.1:10808)로, TUN 모드를 쓰고 있다면 &apos;프록시 없음&apos;으로 바꾸세요.</value>
+  </data>
+  <data name="Msg_ProxyHttpFtpHint" xml:space="preserve">
+    <value>프록시가 CONNECT를 거부하면 프록시 유형을 SOCKS5로, TUN 모드를 쓰고 있다면 &apos;프록시 없음&apos;으로 바꾸세요.</value>
+  </data>
   <data name="Msg_ProxyUnreachable" xml:space="preserve">
     <value>프록시 서버에 연결할 수 없습니다: {0}</value>
   </data>

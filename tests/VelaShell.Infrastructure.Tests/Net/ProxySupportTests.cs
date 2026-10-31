@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -261,11 +262,54 @@ public class ProxySupportTests
         SshConnectException error = await Assert.ThrowsExactlyAsync<SshConnectException>(() =>
             DialThroughAsync(route, "target.example", 22, cts.Token));
         Assert.AreEqual(SshFailureReason.ProxyRefused, error.Reason);
-        Assert.Contains("switch Proxy to socks5", error.Message, "HTTP 代理拒绝 22 端口时要指路");
+        Assert.EndsWith($" {Strings.Get("Msg_ProxyHttpSshPortHint")}", error.Message, "HTTP 代理拒绝 22 端口时要指路");
         Assert.StartsWith(
             Strings.Format("Msg_ProxyConnectFailed", Strings.Format("SshErr_HttpConnectRefused",
                 $"127.0.0.1:{server.Port}", "target.example:22", "HTTP/1.1 502 Bad Gateway")),
             error.Message);
+    }
+
+    /// <summary>
+    /// HTTP 代理 + 22 端口追加的「换 SOCKS5」提示用界面语言说(曾经是写死的英文);别的端口不追加。
+    /// 中文界面下整句里不再有那句英文,也不带库消息里给非宿主调用方看的那句建议。
+    /// </summary>
+    [TestMethod]
+    public async Task HttpConnect_Port22Hint_FollowsTheUiLanguage()
+    {
+        using CancellationTokenSource cts = Deadline();
+        CultureInfo original = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("zh-Hans");
+            foreach (int port in new[] { 22, 2222 })
+            {
+                await using var server = new FakeServer(async s =>
+                {
+                    await ReadHttpHeadAsync(s, cts.Token);
+                    await s.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 403 Forbidden\r\n\r\n"), cts.Token);
+                });
+                var route = new ProxyRoute(ProxyKind.Http, "127.0.0.1", server.Port);
+                SshConnectException error = await Assert.ThrowsExactlyAsync<SshConnectException>(() =>
+                    DialThroughAsync(route, "target.example", port, cts.Token));
+
+                string hint = Strings.Get("Msg_ProxyHttpSshPortHint");
+                Assert.Contains("SOCKS5", hint);
+                Assert.DoesNotContain("switch", hint, "中文界面下不该是英文");
+                if (port == 22)
+                {
+                    Assert.EndsWith($" {hint}", error.Message);
+                }
+                else
+                {
+                    Assert.DoesNotContain(hint, error.Message, "只有 22 端口才追加");
+                }
+                Assert.DoesNotContain("80/443", error.Message, "库消息里的建议不搬进界面文案,免得同一条提示出现两次");
+            }
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = original;
+        }
     }
 
     // ———— SSH 的代理拨号器 ————

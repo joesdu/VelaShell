@@ -1139,9 +1139,10 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     /// 连接层失败的代理语境补全:
     /// 只包隧道层异常(<see cref="VelaFtpConnectionException" />,即代理拨号/握手/Socket/TLS 失败),
     /// 认证/权限/路径等应用层异常原样透出 —— 那些说明隧道本身是通的。
-    /// 后缀是纯技术信息(host:port),不新增本地化键。
+    /// 后缀 <c>(via …)</c> 是纯技术信息(host:port),不本地化;HTTP 代理时追加的「换 SOCKS5」提示用界面语言说
+    /// (<c>Msg_ProxyHttpFtpHint</c>,曾经是写死的英文)。
     /// </summary>
-    private static Exception WithProxyContext(Exception translated, FtpConnectionInfo info, ProxyRoute? route)
+    internal static Exception WithProxyContext(Exception translated, FtpConnectionInfo info, ProxyRoute? route)
     {
         if (translated is not VelaFtpConnectionException
             || route is null
@@ -1152,7 +1153,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         string via = $" (via {(route.Kind == ProxyKind.Socks5 ? "socks5" : "http")} {HostAddress.FormatEndPoint(route.Host, route.Port)} → {HostAddress.FormatEndPoint(info.Host, info.Port)})";
         // FTP :21 经 HTTP CONNECT 同样常被代理软件限制(只放行 80/443),直指换 SOCKS5/直连。
         string hint = route.Kind == ProxyKind.Http
-            ? " If the proxy refuses CONNECT, switch Proxy to socks5 or none for TUN."
+            ? " " + Strings.Get("Msg_ProxyHttpFtpHint")
             : "";
         return new VelaFtpConnectionException(translated.Message + via + hint, translated);
     }

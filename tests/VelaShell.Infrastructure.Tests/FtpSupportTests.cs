@@ -5,6 +5,8 @@ using VelaShell.Core.Data;
 using VelaShell.Core.Ftp;
 using VelaShell.Core.Import;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
+using VelaShell.Core.Net;
 using VelaShell.Core.Protocols;
 using VelaShell.Core.Sftp;
 using VelaShell.Infrastructure.Ftp;
@@ -21,6 +23,26 @@ namespace VelaShell.Infrastructure.Tests;
 [TestCategory("Ftp")]
 public class FtpSupportTests
 {
+    /// <summary>
+    /// 走 HTTP 代理连不上 FTP 时,追加在 <c>(via …)</c> 后面的「换 SOCKS5」提示用界面语言说(曾经是写死的英文);
+    /// SOCKS5 代理不追加,应用层异常(认证、权限)原样透出 —— 那说明隧道本身是通的。
+    /// </summary>
+    [TestMethod]
+    public void WithProxyContext_HttpHintFollowsTheUiLanguage()
+    {
+        FtpConnectionInfo info = new() { Host = "ftp.example.com", Port = 21, Settings = new FtpSettings() };
+        VelaFtpConnectionException failed = new("connect failed");
+
+        Exception http = FtpFileService.WithProxyContext(failed, info, new ProxyRoute(ProxyKind.Http, "127.0.0.1", 7890));
+        Assert.AreEqual($"connect failed (via http 127.0.0.1:7890 → ftp.example.com:21) {Strings.Get("Msg_ProxyHttpFtpHint")}", http.Message);
+        Assert.AreSame(failed, http.InnerException);
+
+        Exception socks = FtpFileService.WithProxyContext(failed, info, new ProxyRoute(ProxyKind.Socks5, "127.0.0.1", 10808));
+        Assert.AreEqual("connect failed (via socks5 127.0.0.1:10808 → ftp.example.com:21)", socks.Message);
+
+        VelaFtpAuthenticationException auth = new("530");
+        Assert.AreSame(auth, FtpFileService.WithProxyContext(auth, info, new ProxyRoute(ProxyKind.Http, "127.0.0.1", 7890)));
+    }
     /// <summary>WinSCP 的 FTP 会话(FSProtocol=5)现在应被判为受支持,并按 Ftps 值带出加密方式。</summary>
     [TestMethod]
     [DataRow(3, FtpEncryptionMode.Explicit, 21)]   // 显式 TLS

@@ -6656,6 +6656,12 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Msg_ProxyConnectFailed" xml:space="preserve">
     <value>代理連線失敗:{0}</value>
   </data>
+  <data name="Msg_ProxyHttpSshPortHint" xml:space="preserve">
+    <value>代理若不肯 CONNECT 到 22 連接埠,把代理類型改成 SOCKS5(如 127.0.0.1:10808);開著 TUN 模式的話改成「無代理」。</value>
+  </data>
+  <data name="Msg_ProxyHttpFtpHint" xml:space="preserve">
+    <value>代理若不肯 CONNECT,把代理類型改成 SOCKS5;開著 TUN 模式的話改成「無代理」。</value>
+  </data>
   <data name="Msg_ProxyUnreachable" xml:space="preserve">
     <value>無法連線到代理伺服器:{0}</value>
   </data>

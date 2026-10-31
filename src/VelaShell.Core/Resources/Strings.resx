@@ -6442,6 +6442,12 @@ Overwrite it?</value>
   <data name="Msg_ProxyConnectFailed" xml:space="preserve">
     <value>Proxy connection failed: {0}</value>
   </data>
+  <data name="Msg_ProxyHttpSshPortHint" xml:space="preserve">
+    <value>If the proxy refuses CONNECT to port 22, switch the proxy type to SOCKS5 (e.g. 127.0.0.1:10808), or to No proxy when using TUN mode.</value>
+  </data>
+  <data name="Msg_ProxyHttpFtpHint" xml:space="preserve">
+    <value>If the proxy refuses CONNECT, switch the proxy type to SOCKS5, or to No proxy when using TUN mode.</value>
+  </data>
   <data name="Msg_ProxyUnreachable" xml:space="preserve">
     <value>Cannot reach the proxy server: {0}</value>
   </data>
