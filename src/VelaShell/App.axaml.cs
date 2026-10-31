@@ -469,7 +469,7 @@ public class App : Application
     /// 防抖 5 秒再推送(应用远端数据触发的保存由服务内部的 IsApplyingRemote 过滤)。
     /// 全部静默执行,失败不打扰用户 —— 下次手动同步时会看到具体错误。
     /// </summary>
-    private void WireAutoSync(
+    internal void WireAutoSync(
         IGistSyncService syncService,
         ISettingsService? settingsService,
         IQuickCommandRepository? quickCommandRepository,
@@ -509,24 +509,33 @@ public class App : Application
         quickCommandRepository?.Changed += (_, _) =>
                 QueueAutoSyncUnlessApplyingRemote(syncService);
         // 布局模板只有本机的增删改报 Changed;同步合并写进来的报的是 SyncApplied,不会又触发一次推送。
-        layoutTemplates?.Changed += (_, _) => QueueAutoSyncUnlessApplyingRemote(syncService);
+        // 只排一次同步,不给主载荷打「本机改过」:模板不在主载荷里,按 Id 逐条合并、与主载荷的「较新者胜」各管各的。
+        // 打了标记,双端都改的那一轮比时间时刚存过模板的这台就成了「较新」,把自己旧的设置与连接整份推上去,
+        // 盖掉别的设备刚改的。不打标记,同步照样走「两边一致 → 核对」或「云端改过 → 拉取」,模板在那两处合并并推上去。
+        layoutTemplates?.Changed += (_, _) => QueueAutoSyncUnlessApplyingRemote(syncService, markLocalChanged: false);
     }
 
-    private void QueueAutoSyncUnlessApplyingRemote(IGistSyncService syncService)
+    private void QueueAutoSyncUnlessApplyingRemote(IGistSyncService syncService, bool markLocalChanged = true)
     {
         if (!syncService.IsApplyingRemote)
         {
-            QueueAutoSync(syncService);
+            QueueAutoSync(syncService, markLocalChanged);
         }
     }
 
-    private void QueueAutoSync(IGistSyncService syncService)
+    /// <summary>防抖 5 秒后同步一次。</summary>
+    /// <param name="syncService">同步服务。</param>
+    /// <param name="markLocalChanged">先给主载荷打「本机改过」标记;只动了布局模板时为 false(见 <see cref="WireAutoSync" />)。</param>
+    private void QueueAutoSync(IGistSyncService syncService, bool markLocalChanged)
     {
         _ = Task.Run(async () =>
         {
             try
             {
-                await syncService.MarkLocalChangedAsync();
+                if (markLocalChanged)
+                {
+                    await syncService.MarkLocalChangedAsync();
+                }
                 SyncSettings config = await syncService.GetSyncSettingsAsync();
                 if (config is not { Enabled: true, AutoSync: true })
                 {
