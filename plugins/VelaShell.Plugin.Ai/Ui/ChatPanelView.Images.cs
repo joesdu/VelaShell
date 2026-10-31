@@ -42,7 +42,8 @@ public partial class ChatPanelView
         var references = new List<ChatGeneratedImage>();
         foreach (DataContent image in message.Contents.OfType<DataContent>().Where(c => c.HasTopLevelMediaType("image")))
         {
-            if (image.MediaType is not ("image/png" or "image/jpeg" or "image/webp" or "image/gif")) continue;
+            // 只登记改图接口收得下的格式:GIF 照样作为视觉输入发给聊天模型,但不落盘、不给 ID(见 IsEditableInput)
+            if (!ImageGenerationService.IsEditableInput(image.MediaType)) continue;
             try
             {
                 ChatGeneratedImage reference = _generatedImages.Save(image);

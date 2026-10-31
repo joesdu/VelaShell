@@ -60,6 +60,56 @@ public sealed partial class ChatPanelViewUiTests
     }
 
     [TestMethod]
+    public void GifAttachment_StaysVisualInputButIsNeverOfferedForEdits()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                byte[] gif = "GIF89a"u8.ToArray();
+                var message = new ChatMessage(ChatRole.User,
+                [
+                    new TextContent("edit both"),
+                    new DataContent(Convert.FromBase64String(GeneratedPng), "image/png"),
+                    new DataContent(gif, "image/gif")
+                ]);
+                var registered = (List<ChatGeneratedImage>)typeof(ChatPanelView)
+                    .GetMethod("RegisterInputImages", flags)!.Invoke(panel, [message])!;
+                Assert.HasCount(1, registered, "/images/edits 收不下 GIF,不该给它图片 ID");
+                Assert.AreEqual("image/png", registered[0].MediaType);
+                Assert.HasCount(2, message.Contents.OfType<DataContent>().ToList(), "GIF 仍作为视觉输入发给聊天模型");
+                string note = message.Contents.OfType<TextContent>().Last().Text;
+                Assert.Contains(registered[0].FileName, note);
+                Assert.DoesNotContain(".gif", note);
+                Assert.IsEmpty(Directory.GetFiles(Path.Combine(context.DataDirectory, "generated-images"), "*.gif"));
+
+                // 旧版把 GIF 附件也登记成了可改的图:恢复这类会话时不再把它交给模型
+                var images = new GeneratedImageStore(context.DataDirectory);
+                ChatGeneratedImage legacyGif = images.Save(new DataContent(gif, "image/gif"));
+                var history = new ChatHistoryStore(context);
+                await history.InitAsync();
+                string id = ChatHistoryStore.NewConversationId();
+                await history.AppendAsync(id, DateTimeOffset.UtcNow, 0, "user", "old gif");
+                await history.AppendMetaAsync(id, 0, new ChatTurnMeta(Images: [legacyGif, registered[0]]));
+                ChatSessionSummary saved = (await history.ListSessionsAsync()).Single(s => s.Id == id);
+                await (Task)typeof(ChatPanelView).GetMethod("LoadConversationAsync", flags)!.Invoke(panel, [saved])!;
+                var restored = (List<ChatMessage>)typeof(ChatPanelView).GetProperty("History", flags)!.GetValue(panel)!;
+                string userText = restored.Single(m => m.Role == ChatRole.User).Text;
+                Assert.Contains(registered[0].FileName, userText);
+                Assert.DoesNotContain(legacyGif.FileName, userText);
+                object conversation = typeof(ChatPanelView).GetProperty("Cur", flags)!.GetValue(panel)!;
+                var known = (ConversationImages)conversation.GetType().GetField("Images")!.GetValue(conversation)!;
+                Assert.DoesNotContain(legacyGif.FileName, known.Describe());
+                Assert.ThrowsExactly<ArgumentException>(() => known.Load(legacyGif.FileName));
+            }
+            finally { panel.Detach(); window.Close(); }
+        });
+    }
+
+    [TestMethod]
     public void ImageGeneration_ServerFailureDoesNotRetryOrFailOver()
     {
         OnUi(async () =>

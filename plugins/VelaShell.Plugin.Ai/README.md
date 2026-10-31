@@ -534,7 +534,9 @@ Base URL(`BaseUrlOverride`)。发请求 / 建客户端 / 算成本的代码只�
 * **拖进面板 / 点工具条左边的 `+`** 是**本机**文件:图片(png/jpg/gif/webp/bmp)作为
   **视觉输入**发给模型,文本文件把内容附在正文之后。单个 5MB、一条消息最多 4 个。
 
-图片原始字节以安全随机文件名保存在插件私有 `generated-images` 目录,时序元数据只存引用;支持后续改图与历史恢复。生成图右下角悬浮查看大图/保存操作,大图原尺寸滚动显示。对话作图由全局 `ImageModelId` 绑定已配置图片模型,`generate_image` / `edit_image` 工具执行,日常聊天模型不切换。
+图片原始字节以安全随机文件名保存在插件私有 `generated-images` 目录,时序元数据只存引用;支持后续改图与历史恢复。
+附件只有 PNG/JPEG/WebP 落盘并拿到图片 ID(`ImageGenerationService.IsEditableInput`,即 `/images/edits` 收得下的格式);
+GIF 照样作为视觉输入发给聊天模型,但不给 ID,免得模型拿它调 `edit_image` 必然失败、还锁死这一轮的图片工具。生成图右下角悬浮查看大图/保存操作,大图原尺寸滚动显示。对话作图由全局 `ImageModelId` 绑定已配置图片模型,`generate_image` / `edit_image` 工具执行,日常聊天模型不切换。
 
 ## 数据存储位置
 

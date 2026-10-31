@@ -208,10 +208,13 @@ public partial class ChatPanelView
                 if (entry.Role == "user")
                 {
                     AddUserBubble(entry.Text);
-                    string imageNote = entry.Meta?.Images is { Count: > 0 } inputImages
+                    // 旧版也把 GIF 附件登记成了可改的图;改图接口收不下它,恢复时不再交给模型
+                    List<ChatGeneratedImage> inputImages =
+                        [.. (entry.Meta?.Images ?? []).Where(image => ImageGenerationService.IsEditableInput(image.MediaType))];
+                    string imageNote = inputImages.Count > 0
                         ? "\nAttached image IDs: " + string.Join(", ", inputImages.Select(image => image.FileName)) : "";
                     History.Add(new(ChatRole.User, entry.Text + imageNote));
-                    foreach (ChatGeneratedImage image in entry.Meta?.Images ?? []) ImagesFor(Cur).Register(image);
+                    foreach (ChatGeneratedImage image in inputImages) ImagesFor(Cur).Register(image);
                 }
                 else
                 {
