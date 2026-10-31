@@ -15,6 +15,11 @@ namespace VelaShell.Terminal.Semantics;
 /// 顺带这也把开销钉死在「每批输出一行」,与输出量无关。
 /// </para>
 /// <para>
+/// <b>带着 shell 提示符标记(OSC 133 的 A / B)的行不应答。</b>文件最后一行没有换行时,bash 的提示符接在同一行上,
+/// 光标并没有离开那段文字 —— 上一条规矩拦不住,只有 shell 集成报的标记说得清这一行是 shell 在等命令。
+/// 没装集成时认不出来,规则写到提示的结尾(<c>\[y/N\] ?$</c>)才不会命中。
+/// </para>
+/// <para>
 /// <b>只在主屏</b>(备用屏是全屏程序,行是界面不是对话),<b>只在远端输出之后判</b>(终端控件的
 /// <c>FeedRemote</c>;本地回显、宿主写进来的提示语、录制回放都不走它)。
 /// </para>
@@ -105,6 +110,13 @@ internal sealed class OutputTriggerScanner
         for (int row = start; row <= end; row++)
         {
             TerminalRow line = screen.ActiveLine(row);
+            // 这一行上有 shell 自己的提示符(OSC 133 的 A / B):在等的是 shell 读命令,不是程序在提问。
+            // cat / printf 的最后一行没有换行时,bash 把 PS1 直接画在那段文字后面(zsh / fish 会先另起一行),
+            // 光标行读出来是 "Continue? [y/N]user@host:~$ " —— 这时应答就是往 shell 里敲一条命令。
+            if (CommandBlocks.CarriesShellPrompt(line))
+            {
+                return null;
+            }
             int written;
             while ((written = line.CopyTextTo(_text.AsSpan(length))) < 0)
             {

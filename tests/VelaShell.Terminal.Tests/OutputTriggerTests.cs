@@ -152,6 +152,82 @@ public sealed class OutputTriggerTests
         });
     }
 
+    private const string A = "\e]133;A\e\\";
+    private const string B = "\e]133;B\e\\";
+    private const string C = "\e]133;C\e\\";
+    private const string D0 = "\e]133;D;0\e\\";
+
+    /// <summary>shell 集成下跑一条命令,对端回显、换行、发 C:之后的输出是这条命令自己的。</summary>
+    private static void RunCommand(Harness h, string command)
+    {
+        h.Remote(A + "user@host:~$ " + B);
+        h.Control.WriteTextInput(command);
+        h.Control.WriteKeyInput(Key.Enter, KeyModifiers.None);
+        h.Remote(command + "\r\n" + C);
+    }
+
+    [TestMethod]
+    public void OutputWithoutATrailingNewline_ThenTheShellPromptOnTheSameRow_IsNotAnswered()
+    {
+        OnUi(() =>
+        {
+            // cat 的文件最后一行没有换行:bash 把提示符直接接在那段文字后面,光标没离开这一行。
+            // 那是 shell 在等命令 —— 应答就成了往 shell 里敲 yes 回车。
+            var h = new Harness(YesRule());
+            RunCommand(h, "cat notes.txt");
+            h.Remote(HostKeyPrompt + D0 + A + "user@host:~$ " + B);
+            Assert.IsEmpty(h.Hits);
+        });
+    }
+
+    [TestMethod]
+    public void ShellPromptArrivingWhileTheAnswerWaitsForQuiet_CancelsIt()
+    {
+        OnUi(() =>
+        {
+            // printf 的提示先到、shell 的提示符在下一批才到:到点重判时这一行已经是 shell 的了。
+            var h = new Harness(YesRule());
+            h.Control.TriggerQuietDelay = TimeSpan.FromMilliseconds(300);
+            RunCommand(h, "printf '…'");
+            h.Remote(HostKeyPrompt);
+            Assert.IsTrue(h.Control.HasPendingTriggerForTest, "前提:先像一次真提问那样约好了。");
+
+            h.Remote(D0 + A + "user@host:~$ " + B);
+            h.Control.FirePendingTriggerForTest();
+            Assert.IsEmpty(h.Hits);
+        });
+    }
+
+    [TestMethod]
+    public void ProgramPrompt_UnderShellIntegration_IsStillAnswered()
+    {
+        OnUi(() =>
+        {
+            // 命令输出首行(C)上的提问照答:标记只排除 shell 自己的提示符行。
+            var h = new Harness(YesRule());
+            RunCommand(h, "ssh host");
+            h.Remote("The authenticity of host 'host' can't be established.\r\n" + HostKeyPrompt);
+            Assert.HasCount(1, h.Hits);
+        });
+    }
+
+    [TestMethod]
+    public void RuleAnchoredAtTheEnd_DoesNotMatchAPromptGluedOnWithoutIntegration()
+    {
+        OnUi(() =>
+        {
+            // 没装 shell 集成时认不出提示符;手册建议把规则写到提示结尾 —— 这条建议得真管用。
+            OutputRule anchored = YesRule();
+            anchored.Pattern = @"\(yes/no/\[fingerprint\]\)\? ?$";
+            var h = new Harness(anchored);
+            h.Remote("\r\n" + HostKeyPrompt + "user@host:~$ ");
+            Assert.IsEmpty(h.Hits);
+
+            h.Remote("\r\n" + HostKeyPrompt);
+            Assert.HasCount(1, h.Hits, "真提问停在行尾,照答。");
+        });
+    }
+
     [TestMethod]
     public void HostWrittenText_AndPlaybackFeeds_DoNotTrigger()
     {

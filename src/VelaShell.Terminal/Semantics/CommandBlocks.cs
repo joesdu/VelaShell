@@ -311,6 +311,16 @@ public static class CommandBlocks
     private static bool IsControl(int rune) => rune is < 0x20 or >= 0x7F and <= 0x9F;
 
     /// <summary>
+    /// 这一行上有 shell 自己的提示符:收到过 <c>OSC 133 ; A</c>(提示符从这里画起)或 <c>B</c>(提示符在这里结束,
+    /// 续行提示符 PS2 末尾的也算)。
+    /// </summary>
+    /// <remarks>
+    /// 输出触发器据此不应答 —— 那一行在等的是 shell 读命令,不是程序在提问。
+    /// 只认 A / B:C 那一行是命令输出的首行,程序的提问正落在那种行上。
+    /// </remarks>
+    internal static bool CarriesShellPrompt(TerminalRow row) => row.Mark == PromptMark.Prompt || row.InputStart >= 0;
+
+    /// <summary>
     /// 对端 shell 此刻是不是停在一条<b>空的</b>新提示符上 —— 「重跑」只在这时才往终端里打字。
     /// </summary>
     /// <remarks>
