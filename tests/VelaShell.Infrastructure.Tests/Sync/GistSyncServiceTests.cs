@@ -64,13 +64,14 @@ public sealed class GistSyncServiceTests
 
     // ———— 共享凭据(#550) ————
 
-    private static (GistSyncService Service, ISessionRepository Sessions, ISharedCredentialRepository Credentials) CreateWithCredentials()
+    private static (GistSyncService Service, ISessionRepository Sessions, ISharedCredentialRepository Credentials) CreateWithCredentials(
+        ISecretProtector? protector = null)
     {
         ISettingsService settings = Substitute.For<ISettingsService>();
         ISessionRepository sessions = Substitute.For<ISessionRepository>();
         IAppDataStore store = Substitute.For<IAppDataStore>();
         IQuickCommandRepository snippets = Substitute.For<IQuickCommandRepository>();
-        ISecretProtector secrets = Substitute.For<ISecretProtector>();
+        ISecretProtector secrets = protector ?? Substitute.For<ISecretProtector>();
         ISharedCredentialRepository credentials = Substitute.For<ISharedCredentialRepository>();
         sessions.GetAllSessionsAsync().Returns([]);
         sessions.GetAllGroupsAsync().Returns([]);
@@ -176,6 +177,123 @@ public sealed class GistSyncServiceTests
         await credentials.Received(1).SaveAsync(Arg.Is<SharedCredential>(c =>
             c.Id == id && c.Name == "renamed" && c.Password == "local-pass" && c.PrivateKeyPassphrase == "local-phrase"));
         Assert.AreSequenceEqual(["credential", "profile"], order);
+    }
+
+    // ———— 这台设备解不开的机密:不当值推上去,拉到了也不顶掉本机的 ————
+
+    /// <summary>仓储对解不开的机密原样交回的密文(<see cref="StoredSecret" /> 的约定;内容是哪把密钥加密的无所谓)。</summary>
+    private const string OtherDeviceCiphertext = StoredSecret.ProtectedPrefix + "b3RoZXItZGV2aWNlLWtleS1jaXBoZXJ0ZXh0";
+
+    /// <summary>同步口令按 TryUnprotect 解开的替身(与 <see cref="Push_WithPassphrase_CarriesThemInsideTheCiphertext" /> 同一配法)。</summary>
+    private static ISecretProtector PassphraseProtector()
+    {
+        ISecretProtector protector = Substitute.For<ISecretProtector>();
+        protector.TryUnprotect("protected-passphrase", out Arg.Any<string?>()).Returns(call =>
+        {
+            call[1] = "correct horse battery staple";
+            return true;
+        });
+        return protector;
+    }
+
+    /// <summary>
+    /// 设了口令的推送带机密,但只带这台设备解得开的:解不开的(仓储原样交回的密文)置空 / 移出插件机密,
+    /// 否则别的设备会把这串它也解不开的密文存成密码,顶掉自己那份好的。解得开的照带。
+    /// </summary>
+    [TestMethod]
+    public async Task Push_WithPassphrase_LeavesOutSecretsThisDeviceCannotDecrypt()
+    {
+        (GistSyncService service, ISessionRepository sessions, ISharedCredentialRepository credentials) =
+            CreateWithCredentials(PassphraseProtector());
+        sessions.GetAllSessionsAsync().Returns([
+            new SessionProfile
+            {
+                Name = "s3",
+                Host = "h",
+                Password = OtherDeviceCiphertext,
+                PrivateKeyPassphrase = "readable-phrase",
+                PluginProtocolId = "s3",
+                PluginSecrets = new() { ["sessionToken"] = OtherDeviceCiphertext, ["secretKey"] = "readable-key" }
+            }
+        ]);
+        credentials.GetAllAsync().Returns([
+            new SharedCredential { Name = "c", Password = "readable-pass", PrivateKeyPassphrase = OtherDeviceCiphertext }
+        ]);
+        SyncSettings config = ProfilesOnly();
+        config.ProtectedPassphrase = "protected-passphrase";
+
+        string content = await service.BuildGistContentAsync(config, CancellationToken.None);
+
+        SyncEnvelope envelope = GistSyncService.ParseEnvelope(content);
+        SyncPayload payload = System.Text.Json.JsonSerializer.Deserialize<SyncPayload>(
+            SyncCrypto.Decrypt(envelope.CipherText!, "correct horse battery staple"), System.Text.Json.JsonSerializerOptions.Web)!;
+        SessionProfile pushed = Assert.ContainsSingle(payload.Profiles!);
+        Assert.IsNull(pushed.Password, "解不开的密码不上传");
+        Assert.AreEqual("readable-phrase", pushed.PrivateKeyPassphrase, "解得开的照带");
+        Assert.AreEqual("readable-key", pushed.PluginSecrets!["secretKey"]);
+        Assert.IsFalse(pushed.PluginSecrets.ContainsKey("sessionToken"), "解不开的插件机密不上传");
+        SharedCredential credential = Assert.ContainsSingle(payload.SharedCredentials!);
+        Assert.AreEqual("readable-pass", credential.Password);
+        Assert.IsNull(credential.PrivateKeyPassphrase);
+        Assert.DoesNotContain(StoredSecret.ProtectedPrefix, SyncCrypto.Decrypt(envelope.CipherText!, "correct horse battery staple"));
+    }
+
+    /// <summary>
+    /// 拉到的载荷里带着密文(旧版本把推送方解不开的那几项原样推了上来)或干脆没带:逐项留本机的;
+    /// 带着明文的照用。插件机密只在同一个插件协议下才留。
+    /// </summary>
+    [TestMethod]
+    public async Task Pull_SecretsTheOtherDeviceCouldNotDecrypt_KeepTheLocalOnes()
+    {
+        (GistSyncService service, ISessionRepository sessions, ISharedCredentialRepository credentials) = CreateWithCredentials();
+        Guid profileId = Guid.NewGuid(), otherProtocolId = Guid.NewGuid(), newId = Guid.NewGuid(), credentialId = Guid.NewGuid();
+        sessions.GetAllSessionsAsync().Returns([
+            new SessionProfile
+            {
+                Id = profileId, Name = "s3", Password = "local-pass", PrivateKeyPassphrase = "local-phrase", PluginProtocolId = "s3",
+                PluginSecrets = new() { ["sessionToken"] = "local-token", ["secretKey"] = "local-key", ["region"] = "local-region" }
+            },
+            new SessionProfile
+            {
+                Id = otherProtocolId, Name = "was-s3", PluginProtocolId = "s3", PluginSecrets = new() { ["sessionToken"] = "s3-token" }
+            }
+        ]);
+        credentials.GetAllAsync().Returns([new SharedCredential { Id = credentialId, Password = "local-cred-pass", PrivateKeyPassphrase = "local-cred-phrase" }]);
+        SessionProfile incoming = new()
+        {
+            Id = profileId, Name = "s3", Password = OtherDeviceCiphertext, PrivateKeyPassphrase = null, PluginProtocolId = "s3",
+            // sessionToken 原样带着密文、region 没带(新版本推送时把解不开的那一项移出去了)、secretKey 换了新值。
+            PluginSecrets = new() { ["sessionToken"] = OtherDeviceCiphertext, ["secretKey"] = "rotated-key" }
+        };
+        SessionProfile switched = new()
+        {
+            Id = otherProtocolId, Name = "was-s3", PluginProtocolId = "webdav", PluginSecrets = new() { ["password"] = OtherDeviceCiphertext }
+        };
+        SessionProfile brandNew = new() { Id = newId, Name = "new", Password = OtherDeviceCiphertext };
+        SharedCredential credential = new() { Id = credentialId, Password = OtherDeviceCiphertext, PrivateKeyPassphrase = "rotated-cred-phrase" };
+
+        SyncResult result = await service.ApplyRemoteAsync(
+            ProfilesOnly(),
+            new SyncEnvelope
+            {
+                SchemaVersion = 3,
+                Payload = new SyncPayload { SchemaVersion = 3, Profiles = [incoming, switched, brandNew], SharedCredentials = [credential] }
+            },
+            remoteVersion: "rev",
+            CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.Message);
+        Assert.AreEqual("local-pass", incoming.Password, "载荷里的密文不顶掉本机的密码");
+        Assert.AreEqual("local-phrase", incoming.PrivateKeyPassphrase, "没带的口令留本机的(与密码各算各的)");
+        Assert.AreEqual("local-token", incoming.PluginSecrets!["sessionToken"]);
+        Assert.AreEqual("local-region", incoming.PluginSecrets["region"], "同一协议下缺的键就是没带");
+        Assert.AreEqual("rotated-key", incoming.PluginSecrets["secretKey"], "带着明文的照用");
+        Assert.IsEmpty(switched.PluginSecrets!, "换了插件协议:上一个插件的机密不留给这一个,密文也不存");
+        Assert.IsNull(brandNew.Password, "本机没有这条:密文也不存成密码");
+        Assert.AreEqual("local-cred-pass", credential.Password);
+        Assert.AreEqual("rotated-cred-phrase", credential.PrivateKeyPassphrase);
+        await sessions.Received(3).ReplaceSessionAsync(Arg.Any<SessionProfile>());
+        await credentials.Received(1).SaveAsync(credential);
     }
 
     /// <summary>
