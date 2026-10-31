@@ -549,6 +549,8 @@ public sealed class FileTransferJobRegistry
     /// 所以这里只撤 <see cref="RemoteTransferPhase.Approval" /> 阶段的:宿主那边排队的确认随取消一起撤下,
     /// 已经弹出来的那个也随之关掉,任务以 Cancelled 收尾、什么都没写。
     /// 之后才拿到回执的(启动请求还在路上)由 <see cref="FileTransferRunScope._cancelUnapprovedRequested" /> 接住。
+    /// 宿主宣告了 <see cref="IRemoteFsApi.SupportsTransferWithdraw" /> 时逐项用条件撤回(判定与撤下在宿主同一步),
+    /// 否则先取最新快照、仍在确认阶段才按代次取消。
     /// 旧宿主的上传不报阶段(Unknown),这里认不出就不撤,退回原来的行为。
     /// </remarks>
     internal async Task CancelUnapprovedAsync(FileTransferRunScope scope)
@@ -568,9 +570,21 @@ public sealed class FileTransferJobRegistry
         lock (_gate) snapshot = job._snapshot;
         try
         {
-            // 手里的快照可能落后一拍:宿主已经批准、观察者还没把 Transfer 阶段发布过来。按旧快照撤,
+            if (_remoteFs.SupportsTransferWithdraw)
+            {
+                // 宿主的条件撤回(SDK 2.1.4):「还在等确认吗」与「撤下」在宿主那边是同一步,和批准生效在同一个串行点上判先后。
+                // 手里的快照落后一拍也不要紧 —— 宿主已经批准的答 PastApproval、什么都不动(那是用户点过头的,照常传);
+                // Withdrawn 是撤下了(返回时可能还是 CancelRequested,观察者照常盯到 Cancelled);AlreadyEnded 是批准之前就因为
+                // 别的原因收尾了(确认框里被拒、断线……)。三种都只是把宿主给的快照发布出去;Unknown(更新的宿主)也不当成撤下了、
+                // 更不改发无条件取消,同样只发布,由观察者盯到终态。
+                RemoteTransferWithdrawResult withdrawal = await _remoteFs.WithdrawPendingTransferAsync(snapshot.TransferId,
+                    snapshot.Generation, _lifetime).ConfigureAwait(false);
+                await PublishAsync(job, withdrawal.Snapshot).ConfigureAwait(false);
+                return;
+            }
+            // 不支持条件撤回的宿主走老路。手里的快照可能落后一拍:宿主已经批准、观察者还没把 Transfer 阶段发布过来。按旧快照撤,
             // 就把用户刚点过头的那一个也撤了 —— 先向宿主取一次最新的,已经过了确认的不撤。
-            // 取与撤之间仍有一个往返的空当;要彻底合上得由宿主提供「只在还等确认时才撤」的取消。
+            // 取与撤之间仍有一个往返的空当(宿主恰在这一拍批准,刚批准的照样被撤);合上它要靠上面的条件撤回。
             RemoteTransferSnapshot current = await _remoteFs.GetTransferAsync(snapshot.TransferId, _lifetime).ConfigureAwait(false);
             if (!AwaitsApproval(current))
             {
