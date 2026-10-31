@@ -351,6 +351,40 @@ public static class CommandBlocks
     internal static bool CarriesShellPrompt(TerminalRow row) => row.Mark == PromptMark.Prompt || row.InputStart >= 0;
 
     /// <summary>
+    /// shell 集成报告对端 shell 此刻停在<b>它自己的</b>提示符上:没有命令在跑,光标所在的逻辑行带着 A / B。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 比 <see cref="IsIdleAtPrompt" /> 宽:命令行上敲没敲字、光标在不在 B 上都不管,只问「现在读输入的是不是 shell」。
+    /// 共享密码填入据此不替用户按回车 —— 那时按下去,密码就成了一条 shell 命令,进历史、进「command not found」的回显。
+    /// </para>
+    /// <para>
+    /// 判断不了的一律 false(没装集成、在备用屏、命令还在跑):sudo / ssh 的口令提示落在命令输出里,
+    /// 那一行没有 A / B,照旧不算。
+    /// </para>
+    /// </remarks>
+    public static bool IsAtShellPrompt(TerminalEmulator emulator)
+    {
+        if (emulator.IsAlternateScreen || emulator.IsCommandRunning || !emulator.HasPromptMarks)
+        {
+            return false;
+        }
+        TerminalScreen screen = emulator.Screen;
+        for (int row = Math.Clamp(screen.CursorY, 0, screen.Rows - 1); row >= 0; row--)
+        {
+            if (CarriesShellPrompt(screen.ActiveLine(row)))
+            {
+                return true;
+            }
+            if (row == 0 || !screen.ActiveLine(row - 1).Wrapped)
+            {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
     /// 对端 shell 此刻是不是停在一条<b>空的</b>新提示符上 —— 「重跑」只在这时才往终端里打字。
     /// </summary>
     /// <remarks>

@@ -1558,6 +1558,12 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>备用屏(DECSET 1047/1049)是否激活。全屏程序(vim/htop)内宿主不启用命令补全。</summary>
     public bool IsAlternateScreenActive => Emulator.IsAlternateScreen;
 
+    /// <summary>
+    /// shell 集成(OSC 133)报告对端 shell 此刻停在它自己的提示符上(没有命令在跑),见 <see cref="CommandBlocks.IsAtShellPrompt" />。
+    /// 宿主的共享密码填入据此不替用户按回车。
+    /// </summary>
+    public bool IsAtShellPrompt => CommandBlocks.IsAtShellPrompt(Emulator);
+
     // ---- 幽灵文本(fish/Warp 式补全叠画)---------------------------------------
     //
     // 纯视觉覆盖层,不进屏幕缓冲;宿主(补全逻辑)只负责设置/清除"完整候选",

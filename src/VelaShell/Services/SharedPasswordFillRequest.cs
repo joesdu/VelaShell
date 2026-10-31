@@ -20,6 +20,7 @@ internal sealed class SharedPasswordFillRequest : IDisposable
     private readonly long _inputGeneration;
     private readonly Func<bool> _isActive;
     private readonly (int Row, int Col, int Screen, int Encoding, string Line) _prompt;
+    private readonly bool _submitsWithEnter;
     private bool _expired;
     private bool _sending;
 
@@ -33,6 +34,7 @@ internal sealed class SharedPasswordFillRequest : IDisposable
         _connectionGeneration = tab.ConnectionGeneration;
         _isActive = isActive;
         _prompt = CapturePrompt();
+        _submitsWithEnter = IsPasswordPromptAtCursor(_control) && !_control.IsAtShellPrompt;
         _control.TypedInput += OnInput;
         _control.OutputUpdated += OnOutput;
         _bridge?.InputQueued += OnInputQueued;
@@ -41,6 +43,32 @@ internal sealed class SharedPasswordFillRequest : IDisposable
     private (int, int, int, int, string) CapturePrompt() =>
         (_control.CursorRow, _control.CursorCol, _control.ScreenGeneration, _control.SessionEncoding.CodePage,
             _control.GetBufferLine(_control.CursorRow));
+
+    /// <summary>
+    /// 填入之后替用户按不按回车 —— 开列表那一刻就定下,列表顶部的提示照它说(提示行一变请求就作废,定了不会过时)。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 只在光标行认得出是一条密码提示时按(与自动弹列表同一判据,<see cref="IsPasswordPromptAtCursor" />)。
+    /// 自动弹出的列表本来就只开在这种行上;命令面板的手动入口却开在光标此刻所在的任何一行 ——
+    /// 普通 shell 提示符、vim 的插入模式、会回显的程序。在那些地方按下回车,密码就成了一条命令:
+    /// 进 ~/.bash_history、被「command not found」原样回显、被会话日志和录制记下(裸词不在遮盖范围里)。
+    /// 只填不按,敲错了地方还能 Ctrl+U 收回。
+    /// </para>
+    /// <para>
+    /// 认得出也不按:shell 集成说对端 shell 正停在它自己的提示符上(<see cref="VelaTerminalControl.IsAtShellPrompt" />)——
+    /// 那时读输入的是 shell,不是要口令的程序。
+    /// </para>
+    /// </remarks>
+    internal bool SubmitsWithEnter => _submitsWithEnter;
+
+    /// <summary>
+    /// 光标所在这一行是不是一条认得出的密码提示:整段逻辑行(窄窗格里折开的 git 提示)或光标行本身认得出都算 ——
+    /// 与 <c>TerminalTabView</c> 自动弹列表用的是同一个判据。
+    /// </summary>
+    private static bool IsPasswordPromptAtCursor(VelaTerminalControl control) =>
+        InteractivePromptDetector.IsPasswordFillPrompt(control.GetLogicalLineEndingAt(control.CursorRow))
+        || InteractivePromptDetector.IsPasswordFillPrompt(control.GetBufferLine(control.CursorRow));
 
     /// <summary>
     /// 键入、别的出站输入或提示行变化让请求作废的那一刻(UI 线程)。宿主据此收起列表 —— 否则空口令上的 Backspace
@@ -149,10 +177,11 @@ internal sealed class SharedPasswordFillRequest : IDisposable
                 var encoding = (Encoding)_control.SessionEncoding.Clone();
                 encoding.EncoderFallback = EncoderFallback.ExceptionFallback;
                 byte[] secret = encoding.GetBytes(password);
-                // 选中即提交:正文后面紧跟一次回车(与此刻按 Enter 发出的字节相同,换行模式下是 CR LF),
+                // 认得出的密码提示上选中即提交:正文后面紧跟一次回车(与此刻按 Enter 发出的字节相同,换行模式下是 CR LF),
                 // 两者拼成一段、同一次入队。分两次发的话,用户选完顺手敲的字符会插在密码与回车之间,
-                // 被当成口令的一部分交上去。
-                byte[] enter = _control.EncodeEnterKey();
+                // 被当成口令的一部分交上去。别处只填不按(见 SubmitsWithEnter);读取期间 shell 集成改口说
+                // 已回到 shell 提示符的,同样不按 —— 宁可少按一次,也不把密码当命令执行。
+                byte[] enter = _submitsWithEnter && !_control.IsAtShellPrompt ? _control.EncodeEnterKey() : [];
                 bytes = new byte[secret.Length + enter.Length];
                 secret.CopyTo(bytes, 0);
                 enter.CopyTo(bytes, secret.Length);

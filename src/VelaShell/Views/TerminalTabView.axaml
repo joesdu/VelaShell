@@ -231,8 +231,9 @@
                 MaxWidth="420"
                 BoxShadow="{DynamicResource VelaShadowWindow}">
           <Grid RowDefinitions="Auto,Auto,*">
-            <!-- 风险说明常驻:确认步骤没了,这句话就是用户唯一看到的告警。 -->
-            <TextBlock Grid.Row="0" Text="{loc:Localize PasswordFill_Warning}"
+            <!-- 风险说明常驻:确认步骤没了,这句话就是用户唯一看到的告警。
+                 按不按回车随请求而定(认得出的密码提示上才按),开列表时由代码后置换成照实的那一句。 -->
+            <TextBlock Grid.Row="0" x:Name="PasswordWarning" Text="{loc:Localize PasswordFill_Warning}"
                        Foreground="{DynamicResource VelaWarning}"
                        FontSize="{DynamicResource VelaFontSize10}"
                        TextWrapping="Wrap" MaxWidth="400" Margin="6,4,6,6" />

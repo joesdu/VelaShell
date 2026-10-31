@@ -10168,6 +10168,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Sudo_Submit" xml:space="preserve"><value>驗證</value></data>
   <data name="PasswordFill_Title" xml:space="preserve"><value>填入共用密碼</value></data>
   <data name="PasswordFill_Warning" xml:space="preserve"><value>向此工作階段填入所選密碼並自動按 Enter 送出。遠端程式可能回顯密碼，使其進入畫面、記錄或錄製。請確認信任目前提示後再填入。</value></data>
+  <data name="PasswordFill_WarningNoEnter" xml:space="preserve"><value>僅向此工作階段填入所選密碼，不送出 Enter。遠端程式可能回顯密碼，使其進入畫面、記錄或錄製。請確認信任目前提示後再填入。</value></data>
   <data name="PasswordFill_Empty" xml:space="preserve"><value>沒有相符的共用密碼認證資料。可在「設定 → 共用認證資料」中新增密碼認證資料。</value></data>
   <data name="PasswordFill_ReadFailed" xml:space="preserve"><value>無法讀取或解密認證資料，未傳送任何內容。</value></data>
   <data name="PasswordFill_Expired" xml:space="preserve"><value>工作階段或輸入內容已變更，未傳送任何內容。請關閉後重新開啟選擇器。</value></data>

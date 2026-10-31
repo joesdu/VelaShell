@@ -10168,6 +10168,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Sudo_Submit" xml:space="preserve"><value>认证</value></data>
   <data name="PasswordFill_Title" xml:space="preserve"><value>填入共享密码</value></data>
   <data name="PasswordFill_Warning" xml:space="preserve"><value>向此会话填入所选密码并自动回车提交。远端程序可能回显密码，使其进入屏幕、日志或录制。请确认信任当前提示后再填入。</value></data>
+  <data name="PasswordFill_WarningNoEnter" xml:space="preserve"><value>仅向此会话填入所选密码，不发送回车。远端程序可能回显密码，使其进入屏幕、日志或录制。请确认信任当前提示后再填入。</value></data>
   <data name="PasswordFill_Empty" xml:space="preserve"><value>没有匹配的共享密码凭据。可在“设置 → 共享凭据”中添加密码凭据。</value></data>
   <data name="PasswordFill_ReadFailed" xml:space="preserve"><value>无法读取或解密凭据，未发送任何内容。</value></data>
   <data name="PasswordFill_Expired" xml:space="preserve"><value>会话或输入上下文已变化，未发送任何内容。请关闭后重新打开选择器。</value></data>

@@ -72,8 +72,9 @@ public sealed class SharedPasswordFillTests
         using var control = new VelaTerminalControl();
         IShellStreamWrapper shell = Shell();
         await using var tab = new TerminalTabViewModel(control, shell) { ConnectionStatus = SessionStatus.Connected };
-        control.SetEncoding(Encoding.Unicode);
+        // 提示先按 UTF-8 画上屏,再换会话字符集:只有认得出的密码提示上才按回车,先换的话 UTF-8 字节被当 UTF-16 解成乱码。
         control.Feed("Password:"u8.ToArray());
+        control.SetEncoding(Encoding.Unicode);
         ISharedCredentialRepository repository = Substitute.For<ISharedCredentialRepository>();
         var id = Guid.NewGuid();
         repository.GetPasswordAsync(id).Returns("口令!42");
@@ -229,6 +230,7 @@ public sealed class SharedPasswordFillTests
             await repository.DidNotReceive().GetPasswordAsync(Arg.Any<Guid>());
             Assert.AreSequenceEqual(
                 ["production", "旧库无口令"], [.. view.PasswordItemsForTest.Select(item => item.Name)]);
+            Assert.AreEqual(Strings.Get("PasswordFill_Warning"), view.PasswordWarningForTest, "告警要说清会替你按回车。");
             // 锚在光标行本身:列表落在提示行下沿之下,不遮住用户可能正在手敲的那一行,也不漂到别处。
             Rect anchor = view.PasswordPlacementRectForTest;
             Rect cursor = control.GetCursorRect();
@@ -610,6 +612,90 @@ public sealed class SharedPasswordFillTests
             Press(window, Key.Down, PhysicalKey.ArrowDown);
             Assert.AreEqual(0, view.PasswordHighlightForTest);
             Press(window, Key.Enter, PhysicalKey.Enter);
+            await view.PasswordFillForTest;
+            await DrainWritesAsync(tab);
+            // 光标行上什么提示都没有:只填不按(见 ManualPicker_OffARecognisedPrompt_FillsWithoutEnter)。
+            Assert.AreEqual("secret", Encoding.UTF8.GetString([.. writes]));
+        }
+        finally
+        {
+            restore.Dispose();
+            window.Close();
+        }
+    });
+
+    private const string A = "\e]133;A\e\\";
+    private const string B = "\e]133;B\e\\";
+    private const string C = "\e]133;C\e\\";
+
+    /// <summary>
+    /// 替用户按回车只在认得出的密码提示上:命令面板的手动入口开在哪一行都行,
+    /// 在普通 shell 提示符、vim 的插入模式上按下去,密码就成了一条命令(进历史、被回显、被日志记下)。
+    /// shell 集成说对端 shell 正停在自己的提示符上时,那一行再像口令提示也不按。
+    /// </summary>
+    [TestMethod]
+    [DataRow("Password:", true)]
+    [DataRow("joe@host:~$ sudo ls\r\n[sudo] password for joe: ", true)]
+    [DataRow("joe@host:~$ ", false)]
+    [DataRow("-- INSERT --", false)]
+    [DataRow(A + "$ " + B + "sudo ls\r\n" + C + "[sudo] password for joe: ", true)]
+    [DataRow(A + "joe@host:~$ " + B, false)]
+    [DataRow(A + "Password: " + B, false)]
+    public Task Fill_PressesEnterOnlyOnARecognisedPasswordPrompt(string screen, bool submits) => Session.RunOnUiAsync(async () =>
+    {
+        using var control = new VelaTerminalControl();
+        IShellStreamWrapper shell = Shell();
+        await using var tab = new TerminalTabViewModel(control, shell) { ConnectionStatus = SessionStatus.Connected };
+        control.Feed(Encoding.UTF8.GetBytes(screen));
+        ISharedCredentialRepository repository = Substitute.For<ISharedCredentialRepository>();
+        repository.GetPasswordAsync(Arg.Any<Guid>()).Returns("secret");
+        List<byte> writes = CaptureWrites(shell);
+        using var request = new SharedPasswordFillRequest(tab, () => true);
+        Assert.AreEqual(submits, request.SubmitsWithEnter);
+        Assert.AreEqual(PasswordFillResult.Queued, await request.FillAsync(repository, Guid.NewGuid()));
+        await DrainWritesAsync(tab);
+        Assert.AreEqual(submits ? "secret\r" : "secret", Encoding.UTF8.GetString([.. writes]));
+    });
+
+    [TestMethod]
+    public Task ManualPicker_OffARecognisedPrompt_FillsWithoutEnter_AndSaysSo() => Session.RunOnUiAsync(async () =>
+    {
+        using var control = new VelaTerminalControl();
+        IShellStreamWrapper shell = Shell();
+        await using var tab = new TerminalTabViewModel(control, shell) { ConnectionStatus = SessionStatus.Connected };
+        var metadata = new SharedCredentialMetadata(Guid.NewGuid(), "prod", "admin", AuthMethod.Password, true);
+        ISharedCredentialRepository repository = Substitute.For<ISharedCredentialRepository>();
+        repository.ListMetadataAsync().Returns([metadata]);
+        repository.GetPasswordAsync(metadata.Id).Returns("secret");
+        List<byte> writes = CaptureWrites(shell);
+        (Window window, TerminalTabView view, IDisposable restore) = ShowTerminal(tab, repository);
+        try
+        {
+            control.Focus();
+            Paint(window);
+            // 装了 shell 集成、停在一条空提示符上:从命令面板打开列表。
+            control.Feed(Encoding.UTF8.GetBytes(A + "joe@host:~$ " + B));
+            Paint(window);
+            Assert.IsFalse(view.PasswordPopupOpenForTest, "前提:shell 提示符上不会自动弹。");
+            view.OpenSharedPasswordPicker();
+            Paint(window);
+            Assert.IsTrue(view.PasswordPopupOpenForTest);
+            Assert.AreEqual(Strings.Get("PasswordFill_WarningNoEnter"), view.PasswordWarningForTest, "告警要照实说不按回车。");
+
+            view.PickPasswordItem(metadata);
+            await view.PasswordFillForTest;
+            await DrainWritesAsync(tab);
+            Assert.AreEqual("secret", Encoding.UTF8.GetString([.. writes]), "密码留在命令行上,用户还能 Ctrl+U 收回。");
+
+            // 同一个手动入口开在认得出的密码提示上:照旧填入并提交,告警换回那一句。
+            writes.Clear();
+            control.Feed(Encoding.UTF8.GetBytes("sudo ls\r\n" + C + "[sudo] password for joe: "));
+            Paint(window);
+            view.OpenSharedPasswordPicker();
+            Paint(window);
+            Assert.IsTrue(view.PasswordPopupOpenForTest);
+            Assert.AreEqual(Strings.Get("PasswordFill_Warning"), view.PasswordWarningForTest);
+            view.PickPasswordItem(metadata);
             await view.PasswordFillForTest;
             await DrainWritesAsync(tab);
             Assert.AreEqual("secret\r", Encoding.UTF8.GetString([.. writes]));

@@ -161,6 +161,8 @@ public partial class TerminalTabView : UserControl
             () => IsAttachedToVisualTree() && PasswordPopup.IsOpen && ReferenceEquals(DataContext, tab));
         request.Expired += () => OnPasswordRequestExpired(request);
         _passwordRequest = request;
+        // 告警照实说这一次按不按回车:命令面板的手动入口开在认不出的行上时只填不按(见 SubmitsWithEnter)。
+        PasswordWarning.Text = Strings.Get(request.SubmitsWithEnter ? "PasswordFill_Warning" : "PasswordFill_WarningNoEnter");
         PasswordPopup.PlacementTarget ??= TerminalHost;
         // 锚在光标行本身:下面放得下就贴着它的下沿往下展开,放不下(最大化后提示符在末行)由定位器
         // 翻到它的上沿之上 —— 两种情况都不挡住提示行。上下各留一道缝,缝做在锚点矩形上而不是
@@ -207,6 +209,7 @@ public partial class TerminalTabView : UserControl
     /// <summary>
     /// 点选一条即读取、填入并提交:正文后面紧跟一次回车,同一次入队(见 <see cref="SharedPasswordFillRequest.FillAsync" />)。
     /// 原先只发正文、要用户再按一次 Enter(#628 第 1 项),选完顺手敲的字符就会混进口令里。
+    /// 只在认得出的密码提示上按回车;手动入口开在别的行上时只填不按(<see cref="SharedPasswordFillRequest.SubmitsWithEnter" />)。
     /// 挂 SelectionChanged 而不是 Tapped:列表项不可聚焦,选中哪一行本来就是这次点击的唯一
     /// 语义,而 Tapped 的路由事件在 headless 测试里造不出来 —— 这条路径就永远测不到。
     /// 键盘 ↑↓ 也借选中态当高亮,那时只移高亮、不填入(<see cref="_highlightingPassword" />)。
@@ -362,9 +365,15 @@ public partial class TerminalTabView : UserControl
 
     /// <summary>没有识别到提示符时(命令面板入口)手动召出,锚在当前光标行。</summary>
     /// <remarks>
+    /// <para>
     /// 先把焦点交回终端:面板收起后没人还焦点,而列表开着时 <see cref="FocusTerminal" /> 刻意不抢 ——
     /// 焦点不在终端上,↑↓/Enter/Esc 到不了隧道键位,键入也进不了终端,下一批输出还会因
     /// 「终端没焦点」把列表收掉。
+    /// </para>
+    /// <para>
+    /// 这个入口开在光标此刻所在的任何一行上,所以光标行认不出是密码提示时只填不按回车,
+    /// 列表顶部的告警也照实换成「不按回车」那一句(<see cref="SharedPasswordFillRequest.SubmitsWithEnter" />)。
+    /// </para>
     /// </remarks>
     internal void OpenSharedPasswordPicker()
     {
@@ -399,6 +408,9 @@ public partial class TerminalTabView : UserControl
 
     /// <summary>弹层状态行的当前文字;未显示时为空串(测试用)。</summary>
     internal string PasswordStatusForTest => PasswordStatus.IsVisible ? PasswordStatus.Text ?? string.Empty : string.Empty;
+
+    /// <summary>列表顶部那句风险告警的当前文字(测试用)。</summary>
+    internal string PasswordWarningForTest => PasswordWarning.Text ?? string.Empty;
 
     /// <summary>收口密码列表(测试用;等价于用户按 Esc 或切走窗口)。</summary>
     internal void ClosePasswordPopupForTest() => ClosePasswordPopup(suppress: true);
