@@ -299,9 +299,14 @@ TFM、`LangVersion`、`Nullable` 由仓库根 `Directory.Build.props` 统一给�
 
 审查查出来的问题里，下面几项**没有**在那一轮改：它们要么是纯重构、该单独开 PR，要么要先补结构化的数据。动到相关代码时优先处理。
 
-- **两个上帝类。** `SshConnection` 约 4,000 行（六个文件，`SshConnection.cs` 自己约 1,970 行），`SshChannel` 约 1,720 行，都远过 4.4 的 800 行（2026-10-06 计）。
-  拆法：`SshChannel` 的收发窗口与 stdin 泵提成 internal 协作者；`SshConnection` 的收包分发、全局请求账本同理。
-  纯重构，不混行为改动，单独开 PR（已记入仓库根 `feature-plan.md`）。
+- **两个上帝类（拆过一轮，还没到线）。** 2026-10-31 按纯重构拆出了 internal 协作者（来龙去脉见仓库根 `plan.md`）：
+  `SshChannel` → `ChannelReceiveWindow`（接收窗口与回补泵）、`ChannelDataReceiver`（投递进 stdout / stderr）、`StandardInputPump`（发送窗口与 stdin 泵）、
+  `ChannelEventQueue`（事件流与退出状态）、`ChannelRequestLedger`（通道请求账本）；
+  `SshConnection` → `InboundDispatcher`（接收循环与收包分发）、`ChannelTable`（通道表，共用连接的状态锁）、`GlobalRequestLedger`（全局请求账本与保活探测）、
+  `KeepAliveMonitor`（保活循环）、`ConnectionFaults`（失败归类）。
+  剩下的：`SshChannel.cs` 仍约 960 行 —— 留下的是状态机、双向 CLOSE、还号、收尾顺序与公开面的 XML 文档，入队锁里的放行判定、
+  预算两本账、`FinishClose` 的顺序都挂在它那一把状态锁上，再拆就是把状态机本身挪走；`SshConnection` 整个类型仍约 2,900 行
+  （六个 partial 各自都在 800 行以内，发送路径 `.Send.cs` 与重协商 `.Rekey.cs` 是下一刀的候选）。
 - **还透传库原文的界面文案。** 宿主已按 `Reason` 翻了连接、超时、保活、私钥口令、agent 拒绝、通道请求被拒、转发被拒、认证失败的主句、SFTP 的状态码 / 中断 / 不可用、协议错误、并发上限与取消几类，代理失败由
   `ProxyTransportDialer` 用界面语言拼；认证的逐条尝试记录（`SshAuthAttempt.Details`）、通道失败（`SshChannelException.FailureKind`）、
   私钥 / 证书问题（`SshKeyProblemKind` 与 `Origin` 等属性）、主机证书问题（`KnownHostLookup.CertificateProblemDetail`）按结构化的出处翻
