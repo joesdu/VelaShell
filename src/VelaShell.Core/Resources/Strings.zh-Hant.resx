@@ -993,6 +993,9 @@
   <data name="Sftp_OpenTerminalHere" xml:space="preserve">
     <value>在此處開啟終端機</value>
   </data>
+  <data name="Sftp_OpenTerminalHereUnsafeDirectory" xml:space="preserve">
+    <value>目錄名稱含有控制字元,無法安全地輸入終端機,終端機停留在登入時的目錄。</value>
+  </data>
   <data name="Sftp_SearchTitle" xml:space="preserve">
     <value>搜尋遠端檔案</value>
   </data>

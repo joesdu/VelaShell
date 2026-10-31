@@ -3936,7 +3936,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 桥还是不是原来那个,不然就是把命令灌进了别人的 shell。
     /// </para>
     /// </remarks>
-    private static void SendSessionInjections(
+    private void SendSessionInjections(
         TerminalTabViewModel tab,
         AppSettings settings,
         RemoteShellKind shellKind,
@@ -4077,7 +4077,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// </summary>
     /// <param name="tab">已挂上传输、状态已置为已连接的终端标签。</param>
     /// <param name="profile">本次连接所用的配置。</param>
-    private static void SendPostAuthCommand(TerminalTabViewModel tab, SessionProfile profile)
+    private void SendPostAuthCommand(TerminalTabViewModel tab, SessionProfile profile)
     {
         // 初始目录(F-06)先走一步:它是"进去之后先站在哪儿",本条命令则是"站好之后干什么",
         // 顺序反了的话一条 `tail -f ./app.log` 会在家目录里找不到文件。
@@ -4134,17 +4134,37 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <para>
     /// 路径用单引号裹住并转义内部的单引号:目录名里带空格是常事(<c>/opt/my app</c>),
     /// 不裹就变成了两个参数;而带引号的路径不转义则会把后面的内容当成新命令 ——
-    /// 那是把用户自己的配置变成了一条注入。
+    /// 那是把用户自己的配置变成了一条注入。引号按登录 shell 的规则加(<see cref="RemoteSearch.QuoteFor" />):
+    /// fish 的单引号里 <c>\'</c> 是转义,POSIX 那种 <c>'\''</c> 碰上以 <c>\</c> 结尾的一段就会提前收引号。
+    /// </para>
+    /// <para>
+    /// 目录名里有控制字符时<b>不发</b>、改为提示一句(见 <see cref="SilentCommand.CanTypeLiterally" />):
+    /// 这一行是敲进 PTY 的,引号挡不住行规程与行编辑器 —— 自从「在此处打开终端」把远端列表里的目录名送到这里,
+    /// 别人建的一个带 <c>^U</c>、回车的目录就能把整行换成他的命令。
     /// </para>
     /// </remarks>
-    private static void SendStartupDirectory(TerminalTabViewModel tab, SessionProfile profile)
+    private void SendStartupDirectory(TerminalTabViewModel tab, SessionProfile profile)
     {
         // 文件栏「在此处打开终端」开出来的标签有自己的目录,压过配置里的初始目录(见 OpenTerminalHereAsync)。
         if ((tab.StartupDirectoryOverride ?? SessionTerminalSettings.StartupDirectory(profile)) is not { } directory)
         {
             return;
         }
-        tab.SendSilentCommand($"cd '{directory.Replace("'", @"'\''", StringComparison.Ordinal)}'");
+        if (!SilentCommand.CanTypeLiterally(directory))
+        {
+            // 注入链跑在对端安静下来之后的线程池线程上(见 SendSessionInjections),浮层提示只能在 UI 线程上推。
+            void Warn() => Toasts.Warning(Strings.Get("Sftp_OpenTerminalHereUnsafeDirectory"));
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                Warn();
+            }
+            else
+            {
+                Dispatcher.UIThread.Post(Warn);
+            }
+            return;
+        }
+        tab.SendSilentCommand("cd " + RemoteSearch.QuoteFor(tab.RemoteShellKind, directory));
     }
 
     /// <summary>
@@ -4606,7 +4626,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <para>
     /// <c>cd</c> 走认证后命令那一条路(<see cref="SendStartupDirectory" />,单引号转义),与配置里的「初始目录」、
     /// 跟随终端目录的钩子共用同一套静默注入与防回显 —— 用户屏幕上不会多出一行没敲过的命令,
-    /// 带空格、带引号的目录名也不会变成两个参数或一条注入。它压过配置里的初始目录,只挂在这个标签上,不写进配置。
+    /// 带空格、带引号的目录名也不会变成两个参数或一条注入;带控制字符的目录名不 <c>cd</c>、只提示一句(敲进 PTY 的控制字符
+    /// 引号挡不住,见那边)。它压过配置里的初始目录,只挂在这个标签上,不写进配置。
     /// </para>
     /// <para>
     /// 连接本身就是普通的「打开这条配置」:凭据缺了照样弹登录框,认证失败照样原地重试,与双击资源管理器里那一条一样;

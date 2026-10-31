@@ -993,6 +993,9 @@
   <data name="Sftp_OpenTerminalHere" xml:space="preserve">
     <value>在此处打开终端</value>
   </data>
+  <data name="Sftp_OpenTerminalHereUnsafeDirectory" xml:space="preserve">
+    <value>目录名里含有控制字符,无法安全地输入终端,终端停留在登录时的目录。</value>
+  </data>
   <data name="Sftp_SearchTitle" xml:space="preserve">
     <value>搜索远端文件</value>
   </data>

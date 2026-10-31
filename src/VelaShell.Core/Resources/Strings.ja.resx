@@ -5734,6 +5734,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Sftp_OpenTerminalHere" xml:space="preserve">
     <value>ここでターミナルを開く</value>
   </data>
+  <data name="Sftp_OpenTerminalHereUnsafeDirectory" xml:space="preserve">
+    <value>フォルダー名に制御文字が含まれているため、ターミナルに安全に入力できません。ターミナルはログイン時のディレクトリのままです。</value>
+  </data>
   <data name="Sftp_SearchTitle" xml:space="preserve">
     <value>リモートファイルの検索</value>
   </data>

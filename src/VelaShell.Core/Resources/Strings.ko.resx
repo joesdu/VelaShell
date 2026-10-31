@@ -5734,6 +5734,9 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Sftp_OpenTerminalHere" xml:space="preserve">
     <value>여기서 터미널 열기</value>
   </data>
+  <data name="Sftp_OpenTerminalHereUnsafeDirectory" xml:space="preserve">
+    <value>폴더 이름에 제어 문자가 있어 터미널에 안전하게 입력할 수 없으므로 터미널은 로그인한 디렉터리에 그대로 있습니다.</value>
+  </data>
   <data name="Sftp_SearchTitle" xml:space="preserve">
     <value>원격 파일 검색</value>
   </data>

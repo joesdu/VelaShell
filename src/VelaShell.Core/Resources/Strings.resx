@@ -940,6 +940,9 @@
   <data name="Sftp_OpenTerminalHere" xml:space="preserve">
     <value>Open terminal here</value>
   </data>
+  <data name="Sftp_OpenTerminalHereUnsafeDirectory" xml:space="preserve">
+    <value>The folder name contains control characters that can't be typed into the terminal safely, so the terminal stays in the login directory.</value>
+  </data>
   <data name="Sftp_SearchTitle" xml:space="preserve">
     <value>Search remote files</value>
   </data>
