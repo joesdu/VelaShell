@@ -477,6 +477,7 @@ public sealed class SessionHealthCheckViewModel : ReactiveObject
                 row.Reset();
             }
             RefreshSummary();
+            await ReloadProfilesAsync().ConfigureAwait(true);
             using var gate = new SemaphoreSlim(Concurrency);
             await Task.WhenAll(Rows.ToList().Select(row => CheckRowAsync(row, gate, verifyLogin, run.Token))).ConfigureAwait(true);
         }
@@ -523,6 +524,49 @@ public sealed class SessionHealthCheckViewModel : ReactiveObject
         {
             _run = null;
             IsRunning = false;
+            RefreshVisibleRows();
+            RefreshSummary();
+        }
+    }
+
+    /// <summary>
+    /// 每一轮开查之前把每行的配置换成库里最新的那份(行还是那一行);库里已经没有的(删掉了)从表上拿掉。
+    /// </summary>
+    /// <remarks>
+    /// 行手里的是开始巡检时交进来的那份对象(资源管理器的树节点、命令面板读出来的一批),库每读一次都给新对象,
+    /// 别处改了配置不会落到它身上:在这一行的「连接诊断」里一键放开了算法、在主窗口里改了配置,
+    /// 「重新巡检」曾经照旧拿老配置去查,同一处又失败一次,要关掉窗口重开才查得到改过的。
+    /// 读不出来时沿用手里那份(与 <see cref="RecheckAsync" /> 同一个口径),不让一次读库失败掀掉整批。
+    /// </remarks>
+    private async Task ReloadProfilesAsync()
+    {
+        if (_repository is null)
+        {
+            return;
+        }
+        bool removed = false;
+        foreach (SessionHealthRowViewModel row in Rows.ToList())
+        {
+            try
+            {
+                if (await _repository.GetSessionAsync(row.Profile.Id).ConfigureAwait(true) is { } latest)
+                {
+                    row.Profile = latest;
+                }
+                else
+                {
+                    Rows.Remove(row);
+                    removed = true;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException)
+            {
+                Trace.WriteLine($"[HealthCheck] 读取配置 {row.Profile.Id} 失败:{ex.Message}");
+            }
+        }
+        if (removed)
+        {
+            this.RaisePropertyChanged(nameof(HasRows));
             RefreshVisibleRows();
             RefreshSummary();
         }

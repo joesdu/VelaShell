@@ -294,6 +294,7 @@ public sealed class SessionHealthCheckViewModelTests
         SessionProfile edited = web.Clone();
         edited.Name = "web (改过)";
         repository.GetSessionAsync(web.Id).Returns(edited);
+        repository.GetSessionAsync(db.Id).Returns(db);
         var vm = new SessionHealthCheckViewModel(diagnostics, repository);
         vm.TryStart([web, db]);
         await WaitUntilAsync(() => !vm.IsRunning);
@@ -304,6 +305,41 @@ public sealed class SessionHealthCheckViewModelTests
         Assert.AreEqual("web (改过)", vm.Rows[0].Name);
         await diagnostics.Received(1).DiagnoseUnattendedAsync(edited, Arg.Any<bool>(), Arg.Any<IProgress<DiagnosticStepUpdate>?>(), Arg.Any<CancellationToken>());
         await diagnostics.DidNotReceive().DiagnoseUnattendedAsync(db, Arg.Any<bool>(), Arg.Any<IProgress<DiagnosticStepUpdate>?>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// 「重新巡检」每一轮先从库里取最新的配置(行还是那几行):在这一行的连接诊断里一键放开了算法、在别处改了配置,
+    /// 下一轮查的就是改过的那份 —— 曾经一直拿开始巡检时交进来的老对象去查,同一处又失败一次。库里删掉了的从表上拿掉。
+    /// </summary>
+    [TestMethod]
+    public async Task Rerun_ReloadsEveryProfileFromTheStore_AndDropsDeletedOnes()
+    {
+        IConnectionDiagnosticsService diagnostics = Passing();
+        SessionProfile web = Ssh("web");
+        SessionProfile gone = Ssh("gone");
+        SessionProfile stored = web.Clone();
+        ISessionRepository repository = Substitute.For<ISessionRepository>();
+        repository.GetSessionAsync(web.Id).Returns(_ => stored.Clone());
+        repository.GetSessionAsync(gone.Id).Returns(gone);
+        var vm = new SessionHealthCheckViewModel(diagnostics, repository);
+        vm.TryStart([web, gone]);
+        await WaitUntilAsync(() => !vm.IsRunning);
+        SessionHealthRowViewModel row = vm.Rows[0];
+
+        stored.Ssh = new SshSessionOptions { KexAlgorithms = "+diffie-hellman-group14-sha1" };
+        repository.GetSessionAsync(gone.Id).Returns(Task.FromResult<SessionProfile?>(null));
+        diagnostics.ClearReceivedCalls();
+
+        await vm.RerunCommand.Execute().FirstAsync();
+
+        Assert.AreSame(row, vm.Rows.Single(), "行还是那一行;删掉了的那条拿掉。");
+        Assert.AreEqual("+diffie-hellman-group14-sha1", row.Profile.Ssh?.KexAlgorithms);
+        await diagnostics.Received(1).DiagnoseUnattendedAsync(
+            Arg.Is<SessionProfile>(p => p.Id == web.Id && p.Ssh != null && p.Ssh.KexAlgorithms == "+diffie-hellman-group14-sha1"),
+            Arg.Any<bool>(), Arg.Any<IProgress<DiagnosticStepUpdate>?>(), Arg.Any<CancellationToken>());
+        await diagnostics.DidNotReceive().DiagnoseUnattendedAsync(
+            Arg.Is<SessionProfile>(p => p.Id == gone.Id), Arg.Any<bool>(), Arg.Any<IProgress<DiagnosticStepUpdate>?>(), Arg.Any<CancellationToken>());
+        Assert.AreEqual(Strings.Format("Health_Summary", 1, 1, 0, 0), vm.Summary);
     }
 
     [TestMethod]
