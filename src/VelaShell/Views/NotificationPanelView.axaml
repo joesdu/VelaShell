@@ -59,6 +59,24 @@
     <Style Selector="Button.row:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="Transparent" />
     </Style>
+    <!-- 第二个动作(外部编辑草稿的「打开所在文件夹」):去处那一行左端的文字按钮,次要色,悬停换强调色。
+         与整行按钮是兄弟而不是嵌在里面 —— 按钮套按钮,读屏与键盘焦点都分不清哪个是哪个。 -->
+    <Style Selector="Button.secondary-link">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.secondary-link:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.secondary-link TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+    </Style>
+    <Style Selector="Button.secondary-link:pointerover TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
+    </Style>
     <!-- 消息标题的读/未读两态。选择器限定在 .msg-title 上:写成裸的
          TextBlock:not(.unread) 会把面板里每一个没显式设色的 TextBlock 都扫进来。 -->
     <Style Selector="TextBlock.msg-title">
@@ -277,6 +295,20 @@
                         </StackPanel>
                       </Grid>
                     </StackPanel>
+                  </Button>
+                  <!-- 第二个动作:叠在去处那一行的左端(那里只有外链才摆主机名,带第二个动作的消息主动作是站内命令,左端空着)。
+                       与整行按钮同格、排在它后面,命中测试先到它;下沿与左沿照整行按钮里那一栏的外边距(左 10、下 10),
+                       字号与右端的动作文案相同,两者同一条基线。MaxWidth 给右端的动作留出位置。 -->
+                  <Button Grid.Column="1" Classes="secondary-link"
+                          HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                          Margin="10,0,0,10" MaxWidth="168"
+                          IsVisible="{Binding HasSecondaryLink}"
+                          Command="{Binding $parent[ItemsControl].((vm:NotificationPanelViewModel)DataContext).ActivateSecondaryCommand}"
+                          CommandParameter="{Binding Id}">
+                    <TextBlock Text="{Binding SecondaryLinkLabel}"
+                               FontFamily="{DynamicResource VelaUiFont}"
+                               FontSize="{DynamicResource VelaFontSize12}"
+                               TextTrimming="CharacterEllipsis" />
                   </Button>
                   <!-- 右留白 16:与标题栏的关闭键同一条竖线,且让开展开后的悬浮滚动条。 -->
                   <Button Grid.Column="2" Classes="row-action" Margin="0,10,16,0"

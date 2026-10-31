@@ -8,9 +8,14 @@ namespace VelaShell.Services;
 /// <param name="FileName">本地副本的文件名(同目录下)。</param>
 /// <param name="RemotePath">远端完整路径。</param>
 /// <param name="Server">哪台服务器(界面上的名字);不知道时为 null。</param>
-/// <param name="ProfileId">连接配置;不知道(快速连接一类)时为 null。留给以后从消息中心直接重传用。</param>
+/// <param name="ProfileId">连接配置;不知道(快速连接一类)时为 null。消息中心的「重新上传」按它找连接。</param>
 /// <param name="Length">干净时:与远端一致的那份副本的长度。</param>
 /// <param name="LastWriteUtc">干净时:那份副本的修改时间。</param>
+/// <param name="RemoteLength">
+/// 本地副本最近一次与远端一致时(下载落地、干净地重新下载、传上去之后)远端文件的长度;查不到、旧版本的标记为 null。
+/// 从消息中心重传草稿时拿它比远端此刻的样子:对不上就是草稿之后被别人改过,要先问。
+/// </param>
+/// <param name="RemoteModifiedUtc">同上,远端文件那时的修改时间(UTC)。</param>
 public sealed record RemoteEditMarker(
     string State,
     string FileName,
@@ -18,7 +23,9 @@ public sealed record RemoteEditMarker(
     string? Server,
     Guid? ProfileId,
     long Length,
-    DateTime LastWriteUtc);
+    DateTime LastWriteUtc,
+    long? RemoteLength = null,
+    DateTime? RemoteModifiedUtc = null);
 
 /// <summary>启动时找到的一份外部编辑草稿:有(或可能有)没传回服务器的改动。</summary>
 /// <param name="Directory">草稿所在的子目录。</param>
@@ -27,13 +34,22 @@ public sealed record RemoteEditMarker(
 /// <param name="RemotePath">远端完整路径;没有标记(旧版本留下的)时为 null。</param>
 /// <param name="Server">哪台服务器;不知道时为 null。</param>
 /// <param name="LastWriteUtc">子目录里最晚的修改时间。</param>
+/// <param name="ProfileId">标记里记着的连接配置;没有标记、快速连接一类不知道时为 null(这种草稿没法从消息中心直接重传)。</param>
 public sealed record RemoteEditDraft(
     string Directory,
     string LocalPath,
     string FileName,
     string? RemotePath,
     string? Server,
-    DateTime LastWriteUtc);
+    DateTime LastWriteUtc,
+    Guid? ProfileId = null)
+{
+    /// <summary>草稿子目录的名字(8 位小写十六进制):消息 id 与「重新上传」的参数都用它。</summary>
+    public string Key => Path.GetFileName(Directory);
+
+    /// <summary>能不能从消息中心直接重传:标记里记着远端路径与连接配置(本地副本是扫描时找到的那个文件)。</summary>
+    public bool CanReupload => RemotePath is { Length: > 0 } && ProfileId is { } profile && profile != Guid.Empty;
+}
 
 /// <summary>
 /// 外部编辑副本(<see cref="RemoteEditSessionManager.TempRoot" />)的崩溃兜底:每个编辑会话在自己的子目录里落一个状态标记,
@@ -139,6 +155,39 @@ public static class RemoteEditDrafts
         [.. Scan(root, activeDirectories).Select(static entry => entry.Draft).OfType<RemoteEditDraft>()
             .OrderByDescending(static draft => draft.LastWriteUtc)];
 
+    /// <summary>
+    /// 按子目录名找一份草稿(消息中心的动作带着这个名字):名字不是本程序起的、子目录不在、是重解析点、正开着、
+    /// 已经不是草稿了(干净或空壳),都返回 null。从不抛。
+    /// </summary>
+    /// <param name="root">外部编辑副本的根目录。</param>
+    /// <param name="key">草稿子目录的名字(<see cref="RemoteEditDraft.Key" />)。</param>
+    /// <param name="activeDirectories">此刻正开着的编辑会话的子目录。</param>
+    public static RemoteEditDraft? FindDraft(string root, string key, IReadOnlyCollection<string>? activeDirectories = null)
+    {
+        if (!IsOwnDirectoryName(key))
+        {
+            return null;
+        }
+        try
+        {
+            var directory = new DirectoryInfo(Path.Combine(root, key));
+            if (!directory.Exists || directory.Attributes.HasFlag(FileAttributes.ReparsePoint)
+                || (activeDirectories ?? []).Any(active => SameDirectory(active, directory.FullName)))
+            {
+                return null;
+            }
+            return Classify(directory)?.Draft;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static bool SameDirectory(string left, string right) =>
+        string.Equals(NormalizeDirectory(left), NormalizeDirectory(right),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
     /// <summary>把一个子目录归类:是草稿就给出草稿,干净就给 null;外加最晚修改时间。</summary>
     private static IEnumerable<(DirectoryInfo Directory, RemoteEditDraft? Draft, DateTime Newest)> Scan(
         string root, IReadOnlyCollection<string>? activeDirectories)
@@ -214,7 +263,9 @@ public static class RemoteEditDrafts
                 marker?.FileName ?? copy?.Name ?? copies[0].Name,
                 marker?.RemotePath,
                 marker?.Server,
-                newest), newest);
+                newest,
+                // 标记说的那个文件不在了(只剩别的文件):说不准这一份对应哪个远端文件,不给重传
+                copy is null ? null : marker?.ProfileId), newest);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -231,7 +282,20 @@ public static class RemoteEditDrafts
     public static bool OpenDraftsFolder(string root)
     {
         IReadOnlyList<RemoteEditDraft> drafts = ListDrafts(root);
-        string target = drafts.Count == 1 ? drafts[0].Directory : root;
+        return OpenFolder(drafts.Count == 1 ? drafts[0].Directory : root);
+    }
+
+    /// <summary>
+    /// 打开一份草稿的子目录(消息中心里那一条「打开所在文件夹」带着子目录名);那份草稿已经不在时退回根目录(根目录也不在就不开)。
+    /// </summary>
+    /// <param name="root">外部编辑副本的根目录。</param>
+    /// <param name="key">草稿子目录的名字。</param>
+    /// <returns>是否打开了。</returns>
+    public static bool OpenDraftFolder(string root, string key) =>
+        OpenFolder(IsOwnDirectoryName(key) && Directory.Exists(Path.Combine(root, key)) ? Path.Combine(root, key) : root);
+
+    private static bool OpenFolder(string target)
+    {
         if (!Directory.Exists(target))
         {
             return false;
@@ -251,6 +315,6 @@ public static class RemoteEditDrafts
     private static string NormalizeDirectory(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
 
     /// <summary>本程序起的子目录名:<c>Guid.ToString("N")</c> 的前 8 位(与 <see cref="BuiltInEditTempFiles" /> 同一规则)。</summary>
-    private static bool IsOwnDirectoryName(string name) =>
+    internal static bool IsOwnDirectoryName(string name) =>
         name.Length == 8 && name.All(static c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
 }

@@ -88,6 +88,15 @@ public sealed class NotificationItem
     public NotificationLink? Link { get; init; }
 
     /// <summary>
+    /// 第二个动作(列表里摆在去处那一行的左端,如外部编辑草稿的「打开所在文件夹」);null 表示没有。
+    /// </summary>
+    /// <remarks>
+    /// 只认站内命令(<see cref="NotificationLink.CommandId" />),外链一律不走:它不像 <see cref="Link" /> 那样有位置把主机名摆出来。
+    /// 只有宿主自己生成的消息会带 —— 资讯源与插件的解析都不读这个字段;后加的字段,落盘的旧消息里没有它,读出来为 null。
+    /// </remarks>
+    public NotificationLink? SecondaryLink { get; init; }
+
+    /// <summary>
     /// 来源(列表里写成「来自 …」);宿主自己的消息为 null。插件消息是发送时那个插件的显示名 ——
     /// 宿主按连接 / 实例绑定的插件身份填,不取自消息本身,插件冒充不了别人,也冒充不了宿主。
     /// </summary>
@@ -108,6 +117,17 @@ public sealed class NotificationLink
     /// 菜单、命令面板、快捷键本就共享它,消息中心跟着用,跳转目标就不会与其它入口跑偏。
     /// </summary>
     public string? CommandId { get; init; }
+
+    /// <summary>
+    /// 交给 <see cref="CommandId" /> 的参数(如外部编辑草稿的子目录名);null = 不带参数,照旧走命令注册表。
+    /// </summary>
+    /// <remarks>
+    /// 带参数的动作不进命令注册表:注册表里的每一条都会出现在命令面板里,而面板给不出参数;它们由宿主另外登记,
+    /// 参数说的是哪一份东西,执行时照旧要自己核对(那份东西可能已经不在了)。
+    /// 只有宿主自己生成的消息会带 —— 资讯源与插件的解析都不读这个字段,远端投来的消息碰不到带参数的动作。
+    /// 后加的字段,落盘的旧消息里没有它,读出来为 null,照不带参数处理。
+    /// </remarks>
+    public string? CommandParameter { get; init; }
 
     /// <summary>
     /// 外部网址。**只接受 https** —— 这个字段的内容来自远端源,

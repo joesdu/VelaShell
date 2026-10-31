@@ -1765,6 +1765,15 @@ public class FileBrowserViewModel : ReactiveObject
     /// 流式进度、完成/失败落状态,随后浮窗按既有规则自动淡出。失败会向上抛,调用方
     /// (编辑器状态栏 / 外部编辑会话)据此提示。必须在 UI 线程调用。
     /// </summary>
+    /// <summary>
+    /// 从消息中心重传外部编辑草稿时用这个面板的连接(见 <see cref="RemoteEditDraftReuploader" />):查远端走它的会话,
+    /// 上传与外部编辑的自动回传同一条路、进传输浮窗。面板没绑会话时为 null。
+    /// </summary>
+    internal IRemoteEditDraftTarget? EditDraftTarget =>
+        _sftpService is null || _sessionId == Guid.Empty
+            ? null
+            : new RemoteFileServiceDraftTarget(_sftpService, _sessionId, UploadEditedFileAsync);
+
     private async Task UploadEditedFileAsync(string localPath, string remotePath)
     {
         if (_sftpService is null)

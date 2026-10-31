@@ -1745,26 +1745,35 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return new(TransferResumeResult.ProfileMissing);
         }
-        FileBrowserViewModel? browser = FindConnectedFileBrowser(profile.Id);
-        if (browser is null)
-        {
-            SftpDocument? document = profile.ConnectionType switch
-            {
-                ConnectionType.SSH or ConnectionType.SFTP => await OpenSftpDocumentForProfileAsync(profile).ConfigureAwait(true),
-                ConnectionType.FTP => await OpenFtpDocumentForProfileAsync(profile).ConfigureAwait(true),
-                ConnectionType.Plugin => await OpenPluginDocumentForProfileAsync(profile).ConfigureAwait(true),
-                _ => null,
-            };
-            // 没连上:失败原因已经由打开路径报过了(浮层 + 失败卡片);用户取消同样原样留着,稍后可以再点。
-            browser = document?.ViewModel.RemoteFiles;
-        }
-        if (browser is null)
+        if (await ResolveFileBrowserForProfileAsync(profile).ConfigureAwait(true) is not { } browser)
         {
             return new(TransferResumeResult.NotConnected);
         }
         return await browser.ResumeQueuedTransfersAsync(batch).ConfigureAwait(true)
             ? new(TransferResumeResult.Started)
             : new(TransferResumeResult.Failed, browser.ErrorMessage);
+    }
+
+    /// <summary>
+    /// 一条连接配置上能拿来传文件的面板:先找已经连着它的(文件标签,或打开过文件面板的终端标签),
+    /// 都没有就照常打开一个文件标签(SSH / SFTP、FTP、插件文件协议各走自己的打开路径,认证弹窗、指纹核对、失败卡片与平时双击连接一模一样)。
+    /// 传输队列的「继续」与外部编辑草稿的「重新上传」共用。
+    /// </summary>
+    /// <returns>面板;没连上(失败原因已经由打开路径报过了,用户取消同样)时为 null。</returns>
+    private async Task<FileBrowserViewModel?> ResolveFileBrowserForProfileAsync(SessionProfile profile)
+    {
+        if (FindConnectedFileBrowser(profile.Id) is { } connected)
+        {
+            return connected;
+        }
+        SftpDocument? document = profile.ConnectionType switch
+        {
+            ConnectionType.SSH or ConnectionType.SFTP => await OpenSftpDocumentForProfileAsync(profile).ConfigureAwait(true),
+            ConnectionType.FTP => await OpenFtpDocumentForProfileAsync(profile).ConfigureAwait(true),
+            ConnectionType.Plugin => await OpenPluginDocumentForProfileAsync(profile).ConfigureAwait(true),
+            _ => null,
+        };
+        return document?.ViewModel.RemoteFiles;
     }
 
     /// <summary>开着的独立文件标签(单栏、双栏远程)里的全部远端栏。终端侧栏的面板不在其中,它们在 <see cref="_fileBrowserCache" /> 里。</summary>
@@ -2081,7 +2090,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             return;
         }
         _notificationCenter = center;
-        var panel = new NotificationPanelViewModel(center, Commands.Execute, OpenExternalUrlAsync, _appDataStore);
+        var panel = new NotificationPanelViewModel(center, Commands.Execute, OpenExternalUrlAsync, _appDataStore,
+            InvokeParameterizedNotificationCommand);
         panel.CloseRequested += (_, _) => IsNotificationPanelOpen = false;
         NotificationPanel = panel;
 
@@ -2191,9 +2201,96 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             await center.RemoveAsync(stale).ConfigureAwait(true);
         }
-        if (drafts.Count > 0)
+        if (drafts.Count == 0)
         {
-            await center.PublishAsync(NotificationSources.BuildRemoteEditDraftNotifications(drafts)).ConfigureAwait(true);
+            return;
+        }
+        IReadOnlyList<NotificationItem> fresh = NotificationSources.BuildRemoteEditDraftNotifications(drafts);
+        // 旧版本投的那几条(只有不带参数的「打开所在文件夹」):草稿还在就换成这一版的,保住已读与第一次发现的时刻。
+        // 投递按 id 去重、保留旧的那一条,不先撤掉的话升级之前就列出来的草稿永远没有「重新上传」。
+        Dictionary<string, NotificationItem> existing = center.Items.ToDictionary(static item => item.Id, StringComparer.Ordinal);
+        List<NotificationItem> upgrades = [];
+        foreach (NotificationItem item in fresh)
+        {
+            if (existing.TryGetValue(item.Id, out NotificationItem? old)
+                && NotificationSources.UpgradeLegacyRemoteEditDraft(old, item) is { } upgraded)
+            {
+                await center.RemoveAsync(old.Id).ConfigureAwait(true);
+                upgrades.Add(upgraded);
+            }
+        }
+        await center.PublishAsync([.. upgrades, .. fresh.Where(item => upgrades.All(u => u.Id != item.Id))]).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 消息中心里带参数的动作(<see cref="NotificationLink.CommandParameter" />,目前只有外部编辑草稿那两条)。不进命令注册表:
+    /// 注册表里的每一条都出现在命令面板里,面板给不出参数;资讯源与插件投来的消息也带不了参数,碰不到这里。
+    /// </summary>
+    /// <returns>认得这个动作、已经开始执行时为 true(面板随之收起)。</returns>
+    internal bool InvokeParameterizedNotificationCommand(string commandId, string parameter)
+    {
+        switch (commandId)
+        {
+            case NotificationSources.OpenRemoteEditDraftsCommandId:
+                return RemoteEditDrafts.OpenDraftFolder(RemoteEditSessionManager.TempRoot, parameter);
+            case NotificationSources.ReuploadRemoteEditDraftCommandId:
+                _ = ReuploadRemoteEditDraftAsync(parameter);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// 窗口注入的确认框(标题、正文、确认键文案),外部编辑草稿重传前远端被改过 / 不在了时问一句。未挂时(headless)一律不覆盖。
+    /// </summary>
+    public Func<string, string, string, Task<bool>>? RemoteEditDraftConfirmer { get; set; }
+
+    private RemoteEditDraftReuploader? _draftReuploader;
+
+    /// <summary>从消息中心重传外部编辑草稿的那一套(按需建,测试可以换掉)。</summary>
+    internal RemoteEditDraftReuploader DraftReuploader
+    {
+        get => _draftReuploader ??= new(
+            RemoteEditSessionManager.TempRoot,
+            async id => _sessionRepository is null ? null : await _sessionRepository.GetSessionAsync(id).ConfigureAwait(true),
+            async profile => (await ResolveFileBrowserForProfileAsync(profile).ConfigureAwait(true))?.EditDraftTarget,
+            (title, body, confirmText) => RemoteEditDraftConfirmer is { } confirm ? confirm(title, body, confirmText) : Task.FromResult(false),
+            _notificationCenter);
+        set => _draftReuploader = value;
+    }
+
+    /// <summary>
+    /// 消息中心里点了一份外部编辑草稿的「重新上传」:连上那台服务器传回去,结果用浮层提示说清楚
+    /// (连接那一路已经报过的失败不再重复说)。
+    /// </summary>
+    internal async Task ReuploadRemoteEditDraftAsync(string key)
+    {
+        RemoteEditDraftReuploadOutcome outcome;
+        try
+        {
+            outcome = await DraftReuploader.ReuploadAsync(key).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error(Strings.Format("RemoteEditDraft_Unexpected", ex.Message));
+            return;
+        }
+        if (outcome.Message is not { } message)
+        {
+            return;
+        }
+        switch (outcome.Result)
+        {
+            case RemoteEditDraftReuploadResult.Uploaded:
+                Toasts.Info(message);
+                break;
+            case RemoteEditDraftReuploadResult.DraftGone or RemoteEditDraftReuploadResult.UploadedButChanged:
+                Toasts.Warning(message);
+                break;
+            default:
+                Toasts.Error(message);
+                break;
         }
     }
 

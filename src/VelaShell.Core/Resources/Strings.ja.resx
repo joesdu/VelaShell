@@ -5479,6 +5479,60 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Notify_RemoteEditDraftAction" xml:space="preserve">
     <value>フォルダーを開く</value>
   </data>
+  <data name="Notify_RemoteEditDraftReupload" xml:space="preserve">
+    <value>再アップロード</value>
+  </data>
+  <data name="Notify_RemoteEditDraftBodyReupload" xml:space="preserve">
+    <value>{0}（{1}）への変更はまだこのコンピューターの {2} にだけあり、サーバーへ送り返されていません。「再アップロード」を押すとそのサーバーに接続してこのコピーを送り返します（その後サーバー側で変更されていた場合は先に確認します）。自分で処理してからこのコピーを削除してもかまいません。下書きは自動では削除されません。</value>
+  </data>
+  <data name="RemoteEditDraft_Uploaded" xml:space="preserve">
+    <value>{0} を {1} へ送り返し、このコンピューターの下書きを削除しました。</value>
+  </data>
+  <data name="RemoteEditDraft_ChangedDuringUpload" xml:space="preserve">
+    <value>{0} を {1} へ送り返しましたが、アップロード中にローカルのコピーが変更されたため、下書きは {2} に残しています。</value>
+  </data>
+  <data name="RemoteEditDraft_Gone" xml:space="preserve">
+    <value>この外部編集の下書きはもうありません。メッセージを取り下げました。</value>
+  </data>
+  <data name="RemoteEditDraft_NoProfile" xml:space="preserve">
+    <value>{0} の下書きにはどの接続設定のものかが記録されていない（クイック接続、または古いバージョンが残したもの）ため、ここからは再アップロードできません。コピーは {1} にあります。</value>
+  </data>
+  <data name="RemoteEditDraft_ProfileMissing" xml:space="preserve">
+    <value>{0} の下書きに記録されている接続設定は削除されているため、ここからは再アップロードできません。コピーは {1} に残っているので、手動でアップロードしてください。</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteDirMissing" xml:space="preserve">
+    <value>リモートのフォルダー {0} がもう存在しないため、{1} はアップロードしていません。下書きは残しています。</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteIsDirectory" xml:space="preserve">
+    <value>サーバー上の {0} は現在フォルダーになっているため、アップロードしていません。下書きは残しています。</value>
+  </data>
+  <data name="RemoteEditDraft_Failed" xml:space="preserve">
+    <value>{0} を {1} へ送り返せませんでした：{2}。下書きは残しています。後でもう一度お試しください。</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictTitle" xml:space="preserve">
+    <value>リモートのファイルが変更されています</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictBody" xml:space="preserve">
+    <value>{0} は、この下書きと最後に一致していた時点より後に変更されています（現在 {1}、更新 {2}）。下書きで上書きするとその変更は失われます。それでも上書きしますか？</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictUnknownBody" xml:space="preserve">
+    <value>{0} がこの下書きの後に変更されたかどうか判断できません（現在 {1}、更新 {2}）。それでも下書きで上書きしますか？</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictNoInfoBody" xml:space="preserve">
+    <value>{0} の現在の状態を取得できないため、この下書きの後に変更されたかどうか判断できません。それでも下書きで上書きしますか？</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingTitle" xml:space="preserve">
+    <value>リモートのファイルがありません</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingBody" xml:space="preserve">
+    <value>サーバー上に {0} はもうありません（削除または名前変更された可能性があります）。下書きから元のパスに作り直しますか？</value>
+  </data>
+  <data name="RemoteEditDraft_Recreate" xml:space="preserve">
+    <value>作り直す</value>
+  </data>
+  <data name="RemoteEditDraft_Unexpected" xml:space="preserve">
+    <value>外部編集の下書きを再アップロード中にエラーが発生しました：{0}</value>
+  </data>
   <data name="Notify_KindSystem" xml:space="preserve">
     <value>システム</value>
   </data>

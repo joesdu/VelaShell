@@ -5740,6 +5740,60 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Notify_RemoteEditDraftAction" xml:space="preserve">
     <value>開啟所在資料夾</value>
   </data>
+  <data name="Notify_RemoteEditDraftReupload" xml:space="preserve">
+    <value>重新上傳</value>
+  </data>
+  <data name="Notify_RemoteEditDraftBodyReupload" xml:space="preserve">
+    <value>{0}（{1}）的變更還留在本機的 {2}，沒有傳回伺服器。點「重新上傳」會連上那台伺服器把這份副本傳回去（遠端在這之後被改過會先問你）；也可以自己處理之後刪掉這份副本。草稿不會被自動刪除。</value>
+  </data>
+  <data name="RemoteEditDraft_Uploaded" xml:space="preserve">
+    <value>{0} 已傳回 {1}，本機的草稿已刪除。</value>
+  </data>
+  <data name="RemoteEditDraft_ChangedDuringUpload" xml:space="preserve">
+    <value>{0} 已傳回 {1}，但上傳期間本機副本又被改過，草稿留在 {2}。</value>
+  </data>
+  <data name="RemoteEditDraft_Gone" xml:space="preserve">
+    <value>這份外部編輯草稿已經不在了，訊息已撤下。</value>
+  </data>
+  <data name="RemoteEditDraft_NoProfile" xml:space="preserve">
+    <value>{0} 的草稿沒記著是哪個連線設定（快速連線或舊版本留下的），沒辦法從這裡重傳；副本在 {1}。</value>
+  </data>
+  <data name="RemoteEditDraft_ProfileMissing" xml:space="preserve">
+    <value>{0} 的草稿記著的連線設定已經刪除了，沒辦法從這裡重傳；副本留在 {1}，請手動上傳。</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteDirMissing" xml:space="preserve">
+    <value>遠端目錄 {0} 已經不在了，{1} 沒有上傳；草稿留著。</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteIsDirectory" xml:space="preserve">
+    <value>伺服器上的 {0} 現在是一個目錄，沒有上傳；草稿留著。</value>
+  </data>
+  <data name="RemoteEditDraft_Failed" xml:space="preserve">
+    <value>{0} 沒能傳回 {1}：{2}。草稿留著，可以稍後再試。</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictTitle" xml:space="preserve">
+    <value>遠端檔案已被改過</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictBody" xml:space="preserve">
+    <value>{0} 在上次與這份草稿一致之後被改過（遠端現在 {1}，修改於 {2}）。用草稿覆寫會丟掉那些變更。仍要覆寫嗎？</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictUnknownBody" xml:space="preserve">
+    <value>說不準 {0} 在這份草稿之後有沒有被改過（遠端現在 {1}，修改於 {2}）。仍要用草稿覆寫嗎？</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictNoInfoBody" xml:space="preserve">
+    <value>查不到 {0} 現在的樣子，說不準它在這份草稿之後有沒有被改過。仍要用草稿覆寫嗎？</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingTitle" xml:space="preserve">
+    <value>遠端檔案已不在</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingBody" xml:space="preserve">
+    <value>伺服器上已經沒有 {0} 了（可能被刪除或改名）。仍要用草稿在原路徑重新建立嗎？</value>
+  </data>
+  <data name="RemoteEditDraft_Recreate" xml:space="preserve">
+    <value>重新建立</value>
+  </data>
+  <data name="RemoteEditDraft_Unexpected" xml:space="preserve">
+    <value>重新上傳外部編輯草稿時發生錯誤：{0}</value>
+  </data>
   <data name="Notify_KindSystem" xml:space="preserve">
     <value>系統</value>
   </data>

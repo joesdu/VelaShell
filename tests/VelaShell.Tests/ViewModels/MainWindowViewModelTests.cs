@@ -52,6 +52,49 @@ public class MainWindowViewModelTests
         Assert.IsNotNull(vm.StatusBar);
     }
 
+    /// <summary>
+    /// 消息中心带参数的动作:「重新上传」交给草稿重传那一套、结果用浮层说清楚(草稿已不在 → 警示,配置已删 → 错误);
+    /// 不认识的 id 不执行(面板据此不收起,也不会拿同名的无参命令顶上)。
+    /// 跑在 headless UI 线程上:正式程序里这一路就在 UI 线程上(浮层的计时器绑在 UI 调度器上),
+    /// 放在线程池上跑会让 <c>Dispatcher.UIThread</c> 绑到一条不泵消息的线程上,拖累后面靠 Post 投浮层的用例。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("UI")]
+    [TestCategory("ExternalEdit")]
+    public Task ParameterizedNotificationCommands_RouteTheDraftReupload_AndReportTheOutcome() =>
+        Avalonia.Headless.HeadlessUnitTestSession.GetOrStartForAssembly(typeof(MainWindowViewModelTests).Assembly).RunOnUiAsync(async () =>
+    {
+        string root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"vela-mw-reupload-{Guid.NewGuid():N}")).FullName;
+        try
+        {
+            string draft = Directory.CreateDirectory(Path.Combine(root, "0a1b2c3d")).FullName;
+            await File.WriteAllTextAsync(Path.Combine(draft, "app.conf"), "edited");
+            RemoteEditDrafts.Write(draft, new RemoteEditMarker(RemoteEditDrafts.Dirty, "app.conf", "/etc/app.conf", "prod-web", Guid.NewGuid(), 0, default));
+            var vm = new MainWindowViewModel
+            {
+                DraftReuploader = new RemoteEditDraftReuploader(root, _ => Task.FromResult<SessionProfile?>(null),
+                    _ => Task.FromResult<IRemoteEditDraftTarget?>(null), null, null, () => [])
+            };
+
+            Assert.IsFalse(vm.InvokeParameterizedNotificationCommand("app.settings.about", "0a1b2c3d"), "不认识的带参动作不执行");
+
+            await vm.ReuploadRemoteEditDraftAsync("0a1b2c3d");
+            ToastViewModel profileMissing = vm.Toasts.Toasts.First();
+            Assert.AreEqual(ToastSeverity.Error, profileMissing.Severity);
+            Assert.AreEqual(Strings.Format("RemoteEditDraft_ProfileMissing", "app.conf", Path.Combine(draft, "app.conf")), profileMissing.Message);
+
+            await vm.ReuploadRemoteEditDraftAsync("deadbeef");
+            ToastViewModel gone = vm.Toasts.Toasts.First();
+            Assert.AreEqual(ToastSeverity.Warning, gone.Severity);
+            Assert.AreEqual(Strings.Get("RemoteEditDraft_Gone"), gone.Message);
+            Assert.IsTrue(Directory.Exists(draft), "配置已删:草稿留着");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    });
+
     [TestMethod]
     [TestCategory("UI")]
     public void OpenTunnelPanel_WithWorkflowService_OpensPanel()

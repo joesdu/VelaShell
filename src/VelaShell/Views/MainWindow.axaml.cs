@@ -518,6 +518,9 @@ public partial class MainWindow : Window
             // 失败覆盖层上的「放开这几个算法并重连」:会降低那条连接的安全性,先点名再问一句。
             vm.AllowAlgorithmsConfirmer = (title, body) => MessageDialog.ConfirmAsync(
                 this, title, body, Strings.Get("SshAlgoFix_ConfirmAction"), kind: MessageDialogKind.Warning);
+            // 消息中心重传外部编辑草稿:远端在这之后被改过、不在了、说不准时先问,不静默覆盖。Esc / 关闭 = 不传。
+            vm.RemoteEditDraftConfirmer = (title, body, confirmText) => MessageDialog.ConfirmAsync(
+                this, title, body, confirmText, kind: MessageDialogKind.Warning);
             vm.ExportBufferRequested += (_, _) => _ = ExportTerminalBufferAsync(vm);
             // 工具菜单“连接诊断”:对当前标签的配置打开诊断中心(设计 RGXg1)。
             vm.DiagnosticsRequested += profile =>

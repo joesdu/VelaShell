@@ -174,11 +174,19 @@ public static class NotificationSources
     /// <summary>外部编辑草稿那几条消息的 id 前缀,后面接草稿子目录的名字。</summary>
     public const string RemoteEditDraftIdPrefix = "remote-edit-draft:";
 
-    /// <summary>「打开外部编辑草稿文件夹」命令。</summary>
+    /// <summary>
+    /// 「打开外部编辑草稿文件夹」命令。不带参数时(命令面板、旧版本落盘的消息)只有一份草稿就开它的子目录,否则开根目录;
+    /// 带参数(草稿子目录名)时开那一份的子目录。
+    /// </summary>
     public const string OpenRemoteEditDraftsCommandId = "files.remoteEditDrafts.open";
 
     /// <summary>
-    /// 每份外部编辑草稿(上次运行留下、带着或可能带着没传回服务器的改动)一条消息,带「打开所在文件夹」。
+    /// 「重新上传这份外部编辑草稿」:只有带参数(草稿子目录名)的这一种,不进命令注册表 —— 命令面板里给不出是哪一份。
+    /// </summary>
+    public const string ReuploadRemoteEditDraftCommandId = "files.remoteEditDrafts.reupload";
+
+    /// <summary>
+    /// 每份外部编辑草稿(上次运行留下、带着或可能带着没传回服务器的改动)一条消息:主动作「重新上传」,旁边留着「打开所在文件夹」。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -187,8 +195,8 @@ public static class NotificationSources
     /// 拿草稿最后被改的时刻会让几个月前的草稿一投进来就沉底甚至被挤掉。
     /// </para>
     /// <para>
-    /// 只能打开文件夹,不能从这里直接重传:消息中心的动作只有一条不带参数的命令,而重传要先连上那台服务器
-    /// (会话随上次运行一起没了)、再按这一份草稿传。标记里记着连接配置,留给以后。
+    /// 两个动作都带着草稿子目录名作参数(<see cref="NotificationLink.CommandParameter" />)。「重新上传」只给标记里记着远端路径与连接配置的草稿
+    /// (<see cref="RemoteEditDraft.CanReupload" />);旧版本留下的(没有标记)、快速连接一类不知道连接配置的,只有「打开所在文件夹」。
     /// </para>
     /// </remarks>
     /// <param name="drafts">启动时找到的草稿(<see cref="RemoteEditDrafts.ListDrafts" />)。</param>
@@ -196,23 +204,70 @@ public static class NotificationSources
     public static IReadOnlyList<NotificationItem> BuildRemoteEditDraftNotifications(IEnumerable<RemoteEditDraft> drafts)
     {
         ArgumentNullException.ThrowIfNull(drafts);
-        return [.. drafts.Select(static draft => new NotificationItem
+        return [.. drafts.Select(static draft =>
         {
-            Id = RemoteEditDraftIdPrefix + Path.GetFileName(draft.Directory),
-            Kind = NotificationKind.System,
-            Severity = NotificationSeverity.Warning,
-            Title = Strings.Get("Notify_RemoteEditDraftTitle"),
-            Body = draft.RemotePath is { Length: > 0 } remotePath
-                ? Strings.Format("Notify_RemoteEditDraftBody", draft.FileName,
-                    draft.Server is { Length: > 0 } server ? $"{server}:{remotePath}" : remotePath, draft.LocalPath)
-                : Strings.Format("Notify_RemoteEditDraftBodyUnknown", draft.FileName, draft.LocalPath),
-            PublishedAt = DateTime.UtcNow,
-            Link = new()
+            NotificationLink openFolder = new()
             {
                 Label = Strings.Get("Notify_RemoteEditDraftAction"),
-                CommandId = OpenRemoteEditDraftsCommandId
-            }
+                CommandId = OpenRemoteEditDraftsCommandId,
+                CommandParameter = draft.Key
+            };
+            NotificationLink? reupload = draft.CanReupload
+                ? new()
+                {
+                    Label = Strings.Get("Notify_RemoteEditDraftReupload"),
+                    CommandId = ReuploadRemoteEditDraftCommandId,
+                    CommandParameter = draft.Key
+                }
+                : null;
+            return new NotificationItem
+            {
+                Id = RemoteEditDraftIdPrefix + draft.Key,
+                Kind = NotificationKind.System,
+                Severity = NotificationSeverity.Warning,
+                Title = Strings.Get("Notify_RemoteEditDraftTitle"),
+                Body = draft.RemotePath is { Length: > 0 } remotePath
+                    ? Strings.Format(reupload is null ? "Notify_RemoteEditDraftBody" : "Notify_RemoteEditDraftBodyReupload", draft.FileName,
+                        draft.Server is { Length: > 0 } server ? $"{server}:{remotePath}" : remotePath, draft.LocalPath)
+                    : Strings.Format("Notify_RemoteEditDraftBodyUnknown", draft.FileName, draft.LocalPath),
+                PublishedAt = DateTime.UtcNow,
+                Link = reupload ?? openFolder,
+                SecondaryLink = reupload is null ? null : openFolder
+            };
         })];
+    }
+
+    /// <summary>
+    /// 旧版本投的草稿消息(动作只有一条不带参数的「打开所在文件夹」):草稿还在时换成这一版的消息,
+    /// 好让它也有「重新上传」。返回替换用的条目 —— 已读状态与第一次发现它的时刻照旧;不是旧消息、或者没有对应的新消息时为 null。
+    /// </summary>
+    /// <remarks>投递按 id 去重、保留旧的那一条,所以不替换的话,升级之前就列出来的草稿永远只有旧动作。</remarks>
+    /// <param name="existing">消息中心里现有的那一条。</param>
+    /// <param name="fresh">这一次按草稿重建的那一条(同一个 id)。</param>
+    public static NotificationItem? UpgradeLegacyRemoteEditDraft(NotificationItem existing, NotificationItem fresh)
+    {
+        ArgumentNullException.ThrowIfNull(existing);
+        ArgumentNullException.ThrowIfNull(fresh);
+        if (!string.Equals(existing.Id, fresh.Id, StringComparison.Ordinal)
+            || !existing.Id.StartsWith(RemoteEditDraftIdPrefix, StringComparison.Ordinal)
+            || existing.Link?.CommandParameter is not null)
+        {
+            return null;
+        }
+        return new()
+        {
+            Id = fresh.Id,
+            Kind = fresh.Kind,
+            Severity = fresh.Severity,
+            Title = fresh.Title,
+            Body = fresh.Body,
+            PublishedAt = existing.PublishedAt,
+            ExpiresAt = fresh.ExpiresAt,
+            IsRead = existing.IsRead,
+            Link = fresh.Link,
+            SecondaryLink = fresh.SecondaryLink,
+            Source = fresh.Source
+        };
     }
 
     /// <summary>消息中心里还挂着、草稿却已经不在了的那几条(用户处理完删掉了草稿):该撤掉。</summary>
@@ -223,7 +278,7 @@ public static class NotificationSources
     {
         ArgumentNullException.ThrowIfNull(existing);
         ArgumentNullException.ThrowIfNull(drafts);
-        var current = drafts.Select(static draft => RemoteEditDraftIdPrefix + Path.GetFileName(draft.Directory)).ToHashSet(StringComparer.Ordinal);
+        var current = drafts.Select(static draft => RemoteEditDraftIdPrefix + draft.Key).ToHashSet(StringComparer.Ordinal);
         return [.. existing.Select(static item => item.Id)
             .Where(id => id.StartsWith(RemoteEditDraftIdPrefix, StringComparison.Ordinal) && !current.Contains(id))];
     }

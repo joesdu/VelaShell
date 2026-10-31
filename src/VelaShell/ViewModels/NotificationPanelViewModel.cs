@@ -30,6 +30,9 @@ public class NotificationPanelViewModel : ReactiveObject, IDisposable, IDraggabl
     /// <summary>执行站内跳转:传命令 id,返回是否跳成功。</summary>
     private readonly Func<string, bool>? _commandInvoker;
 
+    /// <summary>执行带参数的站内动作(<see cref="NotificationLink.CommandParameter" />):传命令 id 与参数,返回是否执行了。</summary>
+    private readonly Func<string, string, bool>? _parameterizedCommandInvoker;
+
     // 可空:无存储的宿主(单元测试)不提供,此时面板位置只在本次运行内保持。
     private readonly IAppDataStore? _dataStore;
 
@@ -41,15 +44,18 @@ public class NotificationPanelViewModel : ReactiveObject, IDisposable, IDraggabl
     /// <summary>
     /// 构造消息中心面板;站内跳转与外链打开均可为空(便于测试)。
     /// <paramref name="dataStore" /> 为空时拖拽位置不跨重启保留。
+    /// <paramref name="parameterizedCommandInvoker" /> 执行带参数的站内动作;为空时带参数的去处一律不执行(不会退回成不带参数的同名命令)。
     /// </summary>
     public NotificationPanelViewModel(
         INotificationCenter center,
         Func<string, bool>? commandInvoker = null,
         Func<string, Task>? urlOpener = null,
-        IAppDataStore? dataStore = null)
+        IAppDataStore? dataStore = null,
+        Func<string, string, bool>? parameterizedCommandInvoker = null)
     {
         _center = center ?? throw new ArgumentNullException(nameof(center));
         _commandInvoker = commandInvoker;
+        _parameterizedCommandInvoker = parameterizedCommandInvoker;
         _urlOpener = urlOpener;
         _dataStore = dataStore;
         RestorePanelPosition();
@@ -58,6 +64,7 @@ public class NotificationPanelViewModel : ReactiveObject, IDisposable, IDraggabl
         ClearCommand = ReactiveCommand.CreateFromTask(async () => await _center.ClearAsync());
         RemoveCommand = ReactiveCommand.CreateFromTask<string>(async id => await _center.RemoveAsync(id));
         ActivateCommand = ReactiveCommand.CreateFromTask<string>(ActivateAsync);
+        ActivateSecondaryCommand = ReactiveCommand.CreateFromTask<string>(ActivateSecondaryAsync);
         CloseCommand = ReactiveCommand.Create(() => CloseRequested?.Invoke(this, EventArgs.Empty));
         _center.Changed += OnCenterChanged;
         Reload();
@@ -112,6 +119,9 @@ public class NotificationPanelViewModel : ReactiveObject, IDisposable, IDraggabl
 
     /// <summary>点开一条消息:标记已读并跳到它的去处。</summary>
     public ReactiveCommand<string, RxVoid> ActivateCommand { get; }
+
+    /// <summary>点一条消息的第二个动作(<see cref="NotificationItem.SecondaryLink" />):标记已读并执行它。</summary>
+    public ReactiveCommand<string, RxVoid> ActivateSecondaryCommand { get; }
 
     /// <summary>收起面板。</summary>
     public ReactiveCommand<RxVoid, RxVoid> CloseCommand { get; }
@@ -214,7 +224,7 @@ public class NotificationPanelViewModel : ReactiveObject, IDisposable, IDraggabl
         {
             return;
         }
-        if (link.CommandId is { Length: > 0 } commandId && _commandInvoker?.Invoke(commandId) == true)
+        if (TryInvokeCommand(link))
         {
             CloseRequested?.Invoke(this, EventArgs.Empty);
             return;
@@ -237,6 +247,36 @@ public class NotificationPanelViewModel : ReactiveObject, IDisposable, IDraggabl
         {
             // 没有浏览器可用/被系统拒绝时静默:面板本身仍然可用。
         }
+    }
+
+    /// <summary>点第二个动作:先标已读,再执行。只走站内命令,执行了就收起面板。</summary>
+    private async Task ActivateSecondaryAsync(string id)
+    {
+        NotificationItemViewModel? item = Items.FirstOrDefault(entry => entry.Id == id);
+        if (item?.SecondaryLink is not { } link)
+        {
+            return;
+        }
+        await _center.MarkReadAsync(id).ConfigureAwait(true);
+        if (TryInvokeCommand(link))
+        {
+            CloseRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
+    /// 执行去处里的站内命令:带参数的交给带参数的那一路,不带的照旧走命令注册表;返回是否执行了。
+    /// 带参数的那一路不认识这个 id 时<b>不</b>退回不带参数的同名命令 —— 参数说的是哪一份东西,丢了参数去做,做的就是另一件事。
+    /// </summary>
+    private bool TryInvokeCommand(NotificationLink link)
+    {
+        if (link.CommandId is not { Length: > 0 } commandId)
+        {
+            return false;
+        }
+        return link.CommandParameter is { } parameter
+            ? _parameterizedCommandInvoker?.Invoke(commandId, parameter) == true
+            : _commandInvoker?.Invoke(commandId) == true;
     }
 
     /// <summary>

@@ -5608,6 +5608,60 @@ Overwrite it?</value>
   <data name="Notify_RemoteEditDraftAction" xml:space="preserve">
     <value>Open folder</value>
   </data>
+  <data name="Notify_RemoteEditDraftReupload" xml:space="preserve">
+    <value>Upload again</value>
+  </data>
+  <data name="Notify_RemoteEditDraftBodyReupload" xml:space="preserve">
+    <value>Changes to {0} ({1}) are still only on this computer at {2} and were not uploaded. Upload again connects to that server and puts this copy back (you are asked first if the file has changed there since); or handle it yourself and delete the copy. Drafts are never deleted automatically.</value>
+  </data>
+  <data name="RemoteEditDraft_Uploaded" xml:space="preserve">
+    <value>{0} was uploaded to {1}; the local draft has been deleted.</value>
+  </data>
+  <data name="RemoteEditDraft_ChangedDuringUpload" xml:space="preserve">
+    <value>{0} was uploaded to {1}, but the local copy changed while it was uploading, so the draft at {2} was kept.</value>
+  </data>
+  <data name="RemoteEditDraft_Gone" xml:space="preserve">
+    <value>That external-edit draft is no longer there; its message has been removed.</value>
+  </data>
+  <data name="RemoteEditDraft_NoProfile" xml:space="preserve">
+    <value>The draft of {0} does not record which saved connection it came from (a quick connection, or left by an older version), so it cannot be uploaded from here. The copy is at {1}.</value>
+  </data>
+  <data name="RemoteEditDraft_ProfileMissing" xml:space="preserve">
+    <value>The saved connection the draft of {0} came from has been deleted, so it cannot be uploaded from here. The copy is kept at {1}; upload it yourself.</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteDirMissing" xml:space="preserve">
+    <value>The remote folder {0} no longer exists, so {1} was not uploaded. The draft is kept.</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteIsDirectory" xml:space="preserve">
+    <value>{0} is now a folder on the server, so nothing was uploaded. The draft is kept.</value>
+  </data>
+  <data name="RemoteEditDraft_Failed" xml:space="preserve">
+    <value>{0} could not be uploaded to {1}: {2}. The draft is kept; try again later.</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictTitle" xml:space="preserve">
+    <value>The remote file has changed</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictBody" xml:space="preserve">
+    <value>{0} has changed since this draft was last in step with it (now {1}, modified {2}). Overwriting it with the draft discards those changes. Overwrite anyway?</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictUnknownBody" xml:space="preserve">
+    <value>It cannot be told whether {0} has changed since this draft (now {1}, modified {2}). Overwrite it with the draft anyway?</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictNoInfoBody" xml:space="preserve">
+    <value>The current state of {0} cannot be read, so it cannot be told whether it has changed since this draft. Overwrite it with the draft anyway?</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingTitle" xml:space="preserve">
+    <value>The remote file is gone</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingBody" xml:space="preserve">
+    <value>{0} is no longer on the server (it may have been deleted or renamed). Recreate it at that path from the draft?</value>
+  </data>
+  <data name="RemoteEditDraft_Recreate" xml:space="preserve">
+    <value>Recreate</value>
+  </data>
+  <data name="RemoteEditDraft_Unexpected" xml:space="preserve">
+    <value>Uploading the external-edit draft failed: {0}</value>
+  </data>
   <data name="Notify_KindSystem" xml:space="preserve">
     <value>System</value>
   </data>
