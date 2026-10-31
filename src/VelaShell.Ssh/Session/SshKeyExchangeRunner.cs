@@ -684,7 +684,7 @@ internal sealed class SshKeyExchangeRunner
             catch (SshFrameFormatException ex) when (ex.PeerClosedMidPacket)
             {
                 // 对端在一个报文中途断开：那是连接断了，不是报文写错了（与会话期间的归类一致，
-                // 见 SshConnection.NormalizeFault）—— 报成协议错误会让调用方以为不值得重连。
+                // 见 ConnectionFaults.NormalizeFault）—— 报成协议错误会让调用方以为不值得重连。
                 throw new SshConnectionClosedException(
                     SshFailureReason.ClosedByPeer, SshPhase.KeyExchange, "对端在密钥交换期间关闭了连接（一个报文只收到一半）。", ex);
             }

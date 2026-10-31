@@ -33,7 +33,7 @@ public sealed partial class SshConnection
     }
 
     /// <summary>认证之后的 <c>EXT_INFO</c>：只看 <c>ping@openssh.com</c>（别的扩展这一层用不上）。</summary>
-    private void OnExtensionInfo(ReadOnlyMemory<byte> payload)
+    internal void OnExtensionInfo(ReadOnlyMemory<byte> payload)
     {
         try
         {
@@ -57,7 +57,7 @@ public sealed partial class SshConnection
     }
 
     /// <summary>对端的 PING：原样回 PONG（<c>string</c> 数据）。</summary>
-    private void OnPing(ReadOnlyMemory<byte> payload)
+    internal void OnPing(ReadOnlyMemory<byte> payload)
     {
         byte[] pong = payload.ToArray();
         pong[0] = (byte)SshMessageNumber.Pong;
@@ -65,7 +65,7 @@ public sealed partial class SshConnection
     }
 
     /// <summary>PONG：数据是我们发的那 8 字节序号就交给等它的测量；别的（对端自己的、过期的）不理。</summary>
-    private void OnPong(ReadOnlyMemory<byte> payload)
+    internal void OnPong(ReadOnlyMemory<byte> payload)
     {
         try
         {

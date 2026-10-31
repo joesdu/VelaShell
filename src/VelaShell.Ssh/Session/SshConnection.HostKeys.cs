@@ -30,7 +30,7 @@ public sealed partial class SshConnection
     /// 〔velashell-docs/zh/ssh/spec/05 §6.4〕服务端宣告了它的全部主机密钥（<c>string</c> 公钥 blob，重复若干个）。
     /// 在接收循环上只解析、记下；证明与写 <c>known_hosts</c> 放到后台 —— 那要发全局请求、等应答。
     /// </summary>
-    private void OnHostKeysAnnounced(ref SshDataReader reader)
+    internal void OnHostKeysAnnounced(ref SshDataReader reader)
     {
         if (RekeyContext?.HostKeyPolicy is not IHostKeyRotationPolicy { AllowHostKeyUpdates: true } rotation
             || Interlocked.Exchange(ref _hostKeysAnnounced, 1) != 0)

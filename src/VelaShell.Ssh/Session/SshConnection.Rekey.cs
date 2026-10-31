@@ -375,7 +375,7 @@ public sealed partial class SshConnection
     /// 放到别的任务上去做，这个顺序就要靠额外的同步来保证，而那是白找麻烦。
     /// </para>
     /// </remarks>
-    private async ValueTask OnPeerKexInitAsync(
+    internal async ValueTask OnPeerKexInitAsync(
         ReadOnlyMemory<byte> payload, CancellationToken cancellationToken)
     {
         if (RekeyContext is not { } context)

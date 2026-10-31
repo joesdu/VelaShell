@@ -309,7 +309,7 @@ public sealed partial class SshConnection
             await DisposeQuietlyAsync(transport, stream).ConfigureAwait(false);
 
             // 拨通之后流上的读写出错，就是连接断了（对端重置、链路掉了）。按会话期间的同一套口径报
-            // （见 SshConnection.NormalizeFault），不让原始的 IOException / SocketException 漏给调用方。
+            // （见 ConnectionFaults.NormalizeFault），不让原始的 IOException / SocketException 漏给调用方。
             // 拨号阶段不在这里管：各个拨号器自己把失败翻成了带原因的 SshConnectException。
             throw new SshConnectionClosedException(
                 SshFailureReason.ClosedByPeer, phase,
@@ -327,7 +327,7 @@ public sealed partial class SshConnection
             await DisposeQuietlyAsync(transport, stream).ConfigureAwait(false);
 
             // 〔velashell-docs/zh/ssh/spec/08 §二〕握手与认证期间对端发来的东西解不开（KEXINIT 的名单被截断、
-            // 收到空载荷的帧……）：与会话期间同一个口径，报协议错误（见 SshConnection.NormalizeFault）。
+            // 收到空载荷的帧……）：与会话期间同一个口径，报协议错误（见 ConnectionFaults.NormalizeFault）。
             // 曾经让这两个 internal 异常原样漏出 ConnectAsync —— 调用方 catch (SshException) 接不住。
             throw new SshProtocolException(phase, $"连 {options.EndPoint} 时对端违反了协议（{phase}）：{ex.Message}", ex);
         }
@@ -347,7 +347,7 @@ public sealed partial class SshConnection
     {
         if (transport is not null
             && phase is SshPhase.KeyExchange or SshPhase.Authenticating
-            && DisconnectReasonFor(failure) is { } reason)
+            && ConnectionFaults.DisconnectReasonFor(failure) is { } reason)
         {
             await TrySendDisconnectAsync(transport, reason, failure).ConfigureAwait(false);
         }
@@ -385,7 +385,7 @@ public sealed partial class SshConnection
             SshDataWriter writer = new(buffer);
             writer.WriteMessageNumber(SshMessageNumber.Disconnect);
             writer.WriteUInt32((uint)reason);
-            writer.WriteUtf8String(DisconnectDescription(reason, failure));
+            writer.WriteUtf8String(ConnectionFaults.DisconnectDescription(reason, failure));
             writer.WriteUtf8String("");
 
             transport.WritePacket(buffer.WrittenSpan);
