@@ -6136,6 +6136,9 @@ Overwrite it?</value>
   <data name="SshCfgImport_NoteAlgoSkipped" xml:space="preserve">
     <value>{0} not imported: {1}</value>
   </data>
+  <data name="SshCfgImport_NoteLegacyFromPubkey" xml:space="preserve">
+    <value>{0}: imported as &quot;Allow legacy algorithms&quot;, the only VelaShell setting that allows SHA-1 RSA signatures. It also appends SHA-1 key exchange, host key and MAC algorithms after the defaults, which this file did not ask for.</value>
+  </data>
   <data name="SshCfgImport_NoteAgentEndpointUnusable" xml:space="preserve">
     <value>{0} not imported: that agent endpoint cannot be used on this computer (a path from another platform, or not a full path).</value>
   </data>

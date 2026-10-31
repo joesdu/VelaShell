@@ -6130,6 +6130,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SshCfgImport_NoteAlgoSkipped" xml:space="preserve">
     <value>{0} はインポートしませんでした：{1}</value>
   </data>
+  <data name="SshCfgImport_NoteLegacyFromPubkey" xml:space="preserve">
+    <value>{0}：「レガシーアルゴリズムを許可」としてインポートしました。VelaShell で SHA-1 の RSA 署名を許可できるのはこの設定だけです。この設定は SHA-1 の鍵交換・ホスト鍵・MAC も既定の後ろに追加しますが、これらはこのファイルには書かれていません。</value>
+  </data>
   <data name="SshCfgImport_NoteAgentEndpointUnusable" xml:space="preserve">
     <value>{0} はインポートしませんでした：この agent エンドポイントはこのコンピューターでは使えません（別のプラットフォームのパス、またはフルパスではありません）。</value>
   </data>

@@ -839,6 +839,84 @@ public sealed class SshConfigInteropTests
     }
 
     /// <summary>
+    /// 「允许老算法」还放开 SHA-1 的 RSA 用户签名:导出写 <c>PubkeyAcceptedAlgorithms +ssh-rsa</c>(证书认证连同 RSA 证书的那个),
+    /// 不写的话 OpenSSH 8.8 起在只认 ssh-rsa 的老设备上公钥登录必然失败。导入回来映射回这个开关,另三个清单的 + 老算法并回开关里。
+    /// </summary>
+    [TestMethod]
+    public async Task 放开老算法连同SHA1的RSA签名导出_导入回来还是这个开关()
+    {
+        string home = Path.Combine(Path.GetTempPath(), "home-for-export");
+        SessionProfile key = new()
+        {
+            Name = "old-switch",
+            Host = "10.0.0.51",
+            AuthMethod = AuthMethod.PrivateKey,
+            PrivateKeyPath = "/keys/id_rsa",
+            Ssh = new SshSessionOptions { LegacyAlgorithms = true, Ciphers = "aes128-ctr" },
+        };
+        SessionProfile certificate = new()
+        {
+            Name = "old-cert",
+            Host = "10.0.0.52",
+            AuthMethod = AuthMethod.Certificate,
+            PrivateKeyPath = "/keys/id_rsa",
+            CertificatePath = "/keys/id_rsa-cert.pub",
+            Ssh = new SshSessionOptions { LegacyAlgorithms = true },
+        };
+        SessionProfile modern = new() { Name = "modern", Host = "10.0.0.53", Ssh = new SshSessionOptions { Compression = true } };
+
+        SshConfigExport export = SshConfigExporter.Write(Archive(key, certificate, modern), home);
+
+        Assert.AreEqual("+ssh-rsa", ReadBack(export, "old-switch").PubkeyAcceptedAlgorithms);
+        Assert.AreEqual("+ssh-rsa,ssh-rsa-cert-v01@openssh.com", ReadBack(export, "old-cert").PubkeyAcceptedAlgorithms);
+        Assert.IsNull(ReadBack(export, "modern").PubkeyAcceptedAlgorithms, "没开老算法就不写");
+
+        string path = WriteConfig(export.Content);
+        foreach (string alias in new[] { "old-switch", "old-cert" })
+        {
+            ImportedSession imported = await ScanOneAsync(path, alias);
+            Assert.IsTrue(imported.Ssh!.LegacyAlgorithms, alias);
+            Assert.IsNull(imported.Ssh.KexAlgorithms, $"{alias}:+老算法并回开关,配置与导出前一样");
+            Assert.IsNull(imported.Ssh.HostKeyAlgorithms, alias);
+            Assert.IsNull(imported.Ssh.Macs, alias);
+            Assert.IsEmpty(imported.Notes, alias);
+        }
+        Assert.AreEqual("aes128-ctr", (await ScanOneAsync(path, "old-switch")).Ssh!.Ciphers);
+        Assert.IsFalse((await ScanOneAsync(path, "modern")).Ssh?.LegacyAlgorithms ?? false);
+
+        // 再导出一次:与第一次写的一样(开关追加的那几个不重复写)。
+        Assert.AreEqual("+diffie-hellman-group14-sha1",
+            SshConfigExporter.AlgorithmLine(SshAlgorithmKind.KeyExchange, "+diffie-hellman-group14-sha1", legacy: true));
+    }
+
+    /// <summary>
+    /// 手写的 <c>PubkeyAcceptedAlgorithms</c>:留着 ssh-rsa(+ / ^ / 整份替换,旧名 PubkeyAcceptedKeyTypes 也认)→ 「允许老算法」,
+    /// 开关放宽了文件没写的类别时说一句;<c>-ssh-rsa</c> 或不含它的不动开关。
+    /// </summary>
+    [TestMethod]
+    public async Task PubkeyAcceptedAlgorithms放开ssh_rsa时映射到允许老算法()
+    {
+        string config = WriteConfig(
+            """
+            Host plus
+                PubkeyAcceptedAlgorithms +ssh-rsa
+            Host oldname
+                PubkeyAcceptedKeyTypes ssh-ed25519,ssh-rsa
+            Host minus
+                PubkeyAcceptedAlgorithms -ssh-rsa
+            Host modern
+                PubkeyAcceptedAlgorithms ssh-ed25519,rsa-sha2-512
+            """);
+
+        ImportedSession plus = await ScanOneAsync(config, "plus");
+        Assert.IsTrue(plus.Ssh!.LegacyAlgorithms);
+        Assert.Contains(n => n.Contains("PubkeyAcceptedAlgorithms +ssh-rsa"), plus.Notes, "开关还放开了文件没写的 SHA-1 KEX / 主机密钥 / MAC:说一句");
+        Assert.IsTrue((await ScanOneAsync(config, "oldname")).Ssh!.LegacyAlgorithms);
+        Assert.IsFalse((await ScanOneAsync(config, "minus")).Ssh?.LegacyAlgorithms ?? false);
+        Assert.IsFalse((await ScanOneAsync(config, "modern")).Ssh?.LegacyAlgorithms ?? false);
+    }
+
+    /// <summary>
     /// 存着的清单带空格、末尾逗号(VelaShell 自己的解析照收)时,写出去的值里没有空白也没有空项:
     /// OpenSSH 读到 <c>a, b</c> / <c>a,b,</c> 报 bad configuration option,整份配置(连同 Include 它的 ~/.ssh/config)都用不了。
     /// </summary>

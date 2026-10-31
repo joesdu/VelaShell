@@ -157,7 +157,7 @@
 
 **步骤：** 打开后等待并行扫描 Xshell、WinSCP 和 `~/.ssh/config`；默认位置没找到时手选来源。核对可导入项和重复项，逐条调整选择后导入。不支持的协议无法勾选，原工具被主密码保护的密码不会被还原，应准备重新输入。
 
-**结果与原理：** 导入的是可识别的连接参数，不是完整模拟另一软件。OpenSSH 只把字面 `Host` 转成连接，`Host *` 作为默认参数来源；没有 `HostName` 时用别名。`IdentityFile` 路径不代表已经核实本机存在；导入后应检查私钥。写了 `CertificateFile`（或私钥旁边有 `-cert.pub`）的按证书认证导入；只写了 `IdentityAgent`（默认的 agent，或这台电脑上用得了的别的端点）的按 SSH Agent 认证导入，端点记进连接的「SSH 选项 → Agent 端点」；`ForwardAgent yes` 转发的是 `IdentityAgent` 指的那个，`ForwardAgent <路径>` 同样记成端点 —— 认证走 agent 而转发又指了另一个 agent 时不导转发（一条连接只用一个 agent），别的平台的路径不导，都在预览里说明。`KexAlgorithms` / `HostKeyAlgorithms` / `Ciphers` / `MACs` 原样进连接的自定义算法清单（本版没实现的名字去掉），`Compression`、`ForwardAgent yes` 照开；`ForwardX11` / `ForwardX11Trusted` / `ObscureKeystrokeTiming` 只认明写的值，没写按 VelaShell 自己的默认（不转发 X11、转发时受信任、不混淆按键时序）—— 只写了 `ForwardX11 yes` 的在 VelaShell 里是受信任（`-Y`），与 OpenSSH 不同，预览里会说明；`LocalForward` / `RemoteForward` / `DynamicForward` 成为这条连接的隧道（停止状态，在隧道面板启动）；含 `/` 的一头是 Unix 套接字（本地转发两头各自可以是，远程转发要两头都是），`RemoteForward` 不给目标是远程动态转发，放行名单取这台主机的 `PermitRemoteOpen` —— **没写 `PermitRemoteOpen` 的远程动态转发不导入**（OpenSSH 这时按全放处理，而隧道的放行名单必须明写，全放写 `any`）。没能照原样导入的设置会在「自定义选择」的预览行里逐条列出。`ProxyJump` 需要本批次有对应跳板，否则保留直连并需手工补设。`ServerAliveInterval` 等其余关键字不导入。
+**结果与原理：** 导入的是可识别的连接参数，不是完整模拟另一软件。OpenSSH 只把字面 `Host` 转成连接，`Host *` 作为默认参数来源；没有 `HostName` 时用别名。`IdentityFile` 路径不代表已经核实本机存在；导入后应检查私钥。写了 `CertificateFile`（或私钥旁边有 `-cert.pub`）的按证书认证导入；只写了 `IdentityAgent`（默认的 agent，或这台电脑上用得了的别的端点）的按 SSH Agent 认证导入，端点记进连接的「SSH 选项 → Agent 端点」；`ForwardAgent yes` 转发的是 `IdentityAgent` 指的那个，`ForwardAgent <路径>` 同样记成端点 —— 认证走 agent 而转发又指了另一个 agent 时不导转发（一条连接只用一个 agent），别的平台的路径不导，都在预览里说明。`KexAlgorithms` / `HostKeyAlgorithms` / `Ciphers` / `MACs` 原样进连接的自定义算法清单（本版没实现的名字去掉），`PubkeyAcceptedAlgorithms` 放开了 `ssh-rsa` 的打开「允许老算法」（VelaShell 只有这个开关能放开 SHA-1 的 RSA 签名；它同时放开 SHA-1 的密钥交换、主机密钥与 MAC，文件没写这几项时预览里会说明），`Compression`、`ForwardAgent yes` 照开；`ForwardX11` / `ForwardX11Trusted` / `ObscureKeystrokeTiming` 只认明写的值，没写按 VelaShell 自己的默认（不转发 X11、转发时受信任、不混淆按键时序）—— 只写了 `ForwardX11 yes` 的在 VelaShell 里是受信任（`-Y`），与 OpenSSH 不同，预览里会说明；`LocalForward` / `RemoteForward` / `DynamicForward` 成为这条连接的隧道（停止状态，在隧道面板启动）；含 `/` 的一头是 Unix 套接字（本地转发两头各自可以是，远程转发要两头都是），`RemoteForward` 不给目标是远程动态转发，放行名单取这台主机的 `PermitRemoteOpen` —— **没写 `PermitRemoteOpen` 的远程动态转发不导入**（OpenSSH 这时按全放处理，而隧道的放行名单必须明写，全放写 `any`）。没能照原样导入的设置会在「自定义选择」的预览行里逐条列出。`ProxyJump` 需要本批次有对应跳板，否则保留直连并需手工补设。`ServerAliveInterval` 等其余关键字不导入。
 
 **注意：** 导入前后都不要关闭指纹校验。Xshell 会话导入与[外部启动兼容登录](#desktop)是两个功能。
 
@@ -169,7 +169,7 @@
 
 **步骤：**
 
-1. 完整备份选 JSON；需要在表格软件整理主机选 CSV，先保存模板再按表头填写，`host` 是必填项；要与命令行 ssh 共用选 OpenSSH config（只写 SSH / SFTP 连接的 `Host` 块：主机、用户、私钥与证书、跳板、压缩、agent 认证（`IdentityAgent`：指定了端点写端点，用系统默认的写 `SSH_AUTH_SOCK`，再导入回来仍是 SSH Agent 认证）与转发、X11 转发（连同信任级别）、按键时序混淆（开着才写）、算法与端口转发，远程动态转发连同 `PermitRemoteOpen` 一起写，从不写密码），把文件内容并进 `~/.ssh/config` 或用 `Include` 引用。
+1. 完整备份选 JSON；需要在表格软件整理主机选 CSV，先保存模板再按表头填写，`host` 是必填项；要与命令行 ssh 共用选 OpenSSH config（只写 SSH / SFTP 连接的 `Host` 块：主机、用户、私钥与证书、跳板、压缩、agent 认证（`IdentityAgent`：指定了端点写端点，用系统默认的写 `SSH_AUTH_SOCK`，再导入回来仍是 SSH Agent 认证）与转发、X11 转发（连同信任级别）、按键时序混淆（开着才写）、算法（「允许老算法」写成各清单的 `+` 老算法，连同 `PubkeyAcceptedAlgorithms +ssh-rsa`）与端口转发，远程动态转发连同 `PermitRemoteOpen` 一起写，从不写密码），把文件内容并进 `~/.ssh/config` 或用 `Include` 引用。
 2. 导出 JSON 默认不含密码；需要包含凭据时显式勾选并设置至少 8 字符的导出口令，凭据部分用口令派生密钥和 AES-GCM 加密，主机、用户名、备注、分组等其余内容仍是明文。**CSV 导出永不包含秘密。**
 3. 导入选文件（上限 16 MB），必要时输入解密口令，在预览中核对目标和分组。
 4. 重复项默认跳过；确需更新再选覆盖，或保留两条。确认后导入，再抽查主机、跳板、认证和路径。

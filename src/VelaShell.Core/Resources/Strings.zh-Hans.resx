@@ -6268,6 +6268,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SshCfgImport_NoteAlgoSkipped" xml:space="preserve">
     <value>{0} 没有导入：{1}</value>
   </data>
+  <data name="SshCfgImport_NoteLegacyFromPubkey" xml:space="preserve">
+    <value>{0}：按「允许老算法」导入 —— VelaShell 里只有这个开关能放开 SHA-1 的 RSA 签名。它还会把 SHA-1 的密钥交换、主机密钥与 MAC 追加在默认之后，这几项这份文件没有写。</value>
+  </data>
   <data name="SshCfgImport_NoteAgentEndpointUnusable" xml:space="preserve">
     <value>{0} 没有导入：这台电脑上用不了这个 agent 端点（别的平台的路径，或者不是完整路径）。</value>
   </data>

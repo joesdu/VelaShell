@@ -29,7 +29,8 @@ public sealed record SshConfigExport(string Content, int Exported, int Skipped);
 /// </para>
 /// <para>
 /// 「放开老算法」在 ssh_config 里没有对应的开关:没写自定义清单的类别写成 <c>+老算法</c>;写了 <c>+</c> 的并成一条;
-/// 写了 <c>-</c> / <c>^</c> 的(OpenSSH 一条里只能有一种前缀)写成算出来的完整清单。主目录下的路径写成 <c>~/…</c>,换台机器也找得到。
+/// 写了 <c>-</c> / <c>^</c> 的(OpenSSH 一条里只能有一种前缀)写成算出来的完整清单;它放开的 SHA-1 RSA 用户签名写成
+/// <c>PubkeyAcceptedAlgorithms +ssh-rsa</c>。主目录下的路径写成 <c>~/…</c>,换台机器也找得到。
 /// </para>
 /// </remarks>
 public static class SshConfigExporter
@@ -162,6 +163,16 @@ public static class SshConfigExporter
                     Line(keyword, value);
                 }
             }
+            if (ssh.LegacyAlgorithms)
+            {
+                // 「允许老算法」在 VelaShell 里还放开 SHA-1 的 RSA 用户签名(SshConnectionAssembler 的 AllowSha1RsaSignatures,
+                // 不论哪种认证方式;用证书时连同 RSA 证书的 SHA-1 签名)。OpenSSH 8.8 起默认不出示它,不写这一行,
+                // 只认 ssh-rsa 的老设备上 KEX 谈得下来、公钥登录却必然失败。开着才写(与 ObscureKeystrokeTiming 同一个考虑:
+                // 这个关键字 OpenSSH 8.5 才有)。导入那边认这一行,映射回这个开关。
+                bool certificateInUse = (auth == AuthMethod.Certificate && certificate is { Length: > 0 })
+                                        || (auth == AuthMethod.KeyStore && session.CertificatePath is { Length: > 0 });
+                Line("PubkeyAcceptedAlgorithms", certificateInUse ? "+ssh-rsa,ssh-rsa-cert-v01@openssh.com" : "+ssh-rsa");
+            }
         }
 
         if (archive.Tunnels?.GetValueOrDefault(session.Id) is { Count: > 0 } tunnels)
@@ -272,7 +283,8 @@ public static class SshConfigExporter
         }
         return written[0] switch
         {
-            '+' => "+" + string.Join(',', additions) + "," + written[1..],
+            // 清单里已经写了开关要追加的那几个(手写的,或者从 ssh_config 导进来的)时不重复写。
+            '+' => "+" + string.Join(',', [.. additions, .. written[1..].Split(',').Where(name => !additions.Contains(name, StringComparer.Ordinal))]),
             '-' or '^' => SshAlgorithmPreferences.TryApply(kind, written, legacy: true, out IReadOnlyList<string> result, out _)
                 ? string.Join(',', result)
                 : written,
