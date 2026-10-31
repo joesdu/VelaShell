@@ -649,6 +649,17 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// </summary>
     public bool ShowCredentialFields => _pluginForm?.ShowsCredentials != false;
 
+    /// <summary>
+    /// 插件按协议或变体把用户名/口令两栏收起来了(Telnet 在带内登录,SQLite 是个文件)。
+    /// <para>
+    /// 这时框里还留着的用户名口令是收起之前填的 —— SSH 页签上顺手填的,或编辑态「更换」之前那一档(MySQL)的,
+    /// 用户已经看不见。照存的话,每次打开都会拿"有用户名、没口令"弹一个填了也没用的登录框,
+    /// 存着口令的还会原样交给插件。与凭据来源那一栏收起时不存引用(#550)同一个理由。
+    /// 插件不可用(表单没装载出来)时两栏照旧显示,这里为 false:不知道这一档要不要凭据,就不动已存的。
+    /// </para>
+    /// </summary>
+    private bool HidesPluginCredentials => ConnectionType == ConnectionType.Plugin && !ShowCredentialFields;
+
     /// <summary>是否显示口令输入框:匿名 FTP 与无凭据协议不需要口令。</summary>
     public bool ShowPasswordField => IsPasswordAuth && ShowCredentialFields && !(IsFtpSelected && FtpAnonymous);
 
@@ -2590,7 +2601,9 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     private SessionProfile BuildProfile()
     {
         // 显示名称留空时用 user@host 兜底,保证列表/标签页有可读名称。
-        string name = string.IsNullOrWhiteSpace(Name) ? $"{Username}@{EffectiveEndpoint().Host}" : Name.Trim();
+        // 收起来的用户名不拿来拼:它不落盘(见 HidesPluginCredentials),也不该换个地方落进名称里。
+        string user = HidesPluginCredentials ? string.Empty : Username;
+        string name = string.IsNullOrWhiteSpace(Name) ? $"{user}@{EffectiveEndpoint().Host}" : Name.Trim();
         string? postAuthCommand = SupportsPostAuthCommand && _postAuthCommand?.Trim() is { Length: > 0 } trimmed
             ? trimmed
             : null;
@@ -2612,6 +2625,8 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     private SessionProfile BuildProfileCore(string name, string? postAuthCommand)
     {
         (string host, int port) = EffectiveEndpoint();
+        // 插件把两栏收起来了:收起之前填的用户名口令一起不存(理由见 HidesPluginCredentials)。
+        bool hidesCredentials = HidesPluginCredentials;
         return new()
         {
             Id = _profileId,
@@ -2619,9 +2634,9 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
             Name = name,
             Host = host,
             Port = port,
-            Username = Username.Trim(),
+            Username = hidesCredentials ? string.Empty : Username.Trim(),
             AuthMethod = AuthMethod,
-            Password = IsTailscaleAuth || IsKeyStoreAuth ? null : SecureStringConvert.ToPlaintext(Password),
+            Password = IsTailscaleAuth || IsKeyStoreAuth || hidesCredentials ? null : SecureStringConvert.ToPlaintext(Password),
             RememberPassword = RememberPassword,
             PrivateKeyPath = PrivateKeyPath,
             PrivateKeyPassphrase = PrivateKeyPassphrase,

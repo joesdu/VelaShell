@@ -5845,6 +5845,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         ui.BeginAttempt();
 
         bool allowsAnonymous = false;
+        // 这一档根本没有凭据(SQLite 是个文件):不弹登录框、认证失败也不重弹、不去取共享凭据 ——
+        // 填什么插件都收不到(启动器对这一档一律交空串)。配置里若还留着一个用户名
+        // (表单收起两栏之前填的、或旧版本存下的),按"有用户名没口令"弹框,用户取消就连不上了。
+        bool noCredentials = false;
         // 描述符要活到建文档那一步 —— 标签页图标也从它身上取(descriptor.Icon)。
         WorkspaceDescriptor? descriptor = null;
         if (_protocolRegistry is { } registry)
@@ -5860,8 +5864,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             // NoCredentials 蕴含匿名,与连接配置页(PluginConnectionForm)同一条判定。
             if (descriptor is not null)
             {
-                allowsAnonymous = WorkspaceVariants.AllowsAnonymous(
-                    WorkspaceVariants.EffectiveFeatures(descriptor, profile.PluginSettings));
+                WorkspaceFeatures features = WorkspaceVariants.EffectiveFeatures(descriptor, profile.PluginSettings);
+                allowsAnonymous = WorkspaceVariants.AllowsAnonymous(features);
+                noCredentials = features.HasFlag(WorkspaceFeatures.NoCredentials);
             }
             if (descriptor is { DisplayName.Length: > 0 })
             {
@@ -5876,7 +5881,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         Exception? lastAuthFailure = null;
         for (int attempt = 0; attempt < 3; attempt++)
         {
-            if (attempt > 0 || RequiresPluginCredentials(current, allowsAnonymous))
+            if (!noCredentials && (attempt > 0 || RequiresPluginCredentials(current, allowsAnonymous)))
             {
                 if (InteractiveAuthenticator is not { } prompt)
                 {
@@ -5901,8 +5906,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 ui.BeginAttempt();
                 // 声明了 SshTunnel 且用户选了跳板机 → 宿主先把 SSH 会话与本地转发建好,
                 // 插件只看到一个已经能连的本地端点(凭据永不出宿主)。
-                // 共享凭据先取:取不到就别白建一条隧道(#550)。
-                SessionProfile resolved = await ResolveCredentialsAsync(current, ui.Token).ConfigureAwait(true);
+                // 共享凭据先取:取不到就别白建一条隧道(#550)。没有凭据的那一档不取(理由见 noCredentials)。
+                SessionProfile resolved = noCredentials
+                    ? current
+                    : await ResolveCredentialsAsync(current, ui.Token).ConfigureAwait(true);
                 (WorkspaceEndpoint? endpoint, Guid tunnelId) =
                     await EstablishWorkspaceTunnelAsync(current, ui.Token).ConfigureAwait(true);
                 PluginWorkspaceSession session;
@@ -5958,6 +5965,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             catch (Exception auth) when (auth is PluginProtocolAuthenticationException or CredentialProviderException)
             {
                 lastAuthFailure = auth;
+                if (noCredentials)
+                {
+                    // 没有凭据可重填:再弹登录框也改变不了什么,原样重试三次只是把同一个失败等三遍。
+                    break;
+                }
                 continue;
             }
             catch (Exception ex)
