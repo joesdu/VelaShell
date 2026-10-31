@@ -865,7 +865,11 @@ MCP 服务器在**自己的窗口**里配(`Ui/McpServersView`),入口是「配�
   相对路径挂在默认目录下,起进程前会把目录建出来(`McpWorkspace`)。以前是"空 = 继承宿主进程的当前目录、
   `~` 原样下传"—— 前者让人不知道 MCP 产出的文件落到了哪儿,后者 `Process.Start` 不认,直接"目录名称无效"起不来。
 - **HTTP(远端)**:端点 URL + 可选 `Name: Value` 请求头(鉴权令牌等);
-  Streamable HTTP / SSE 自动探测。
+  Streamable HTTP / SSE 自动探测(SDK 的 `HttpTransportMode.AutoDetect`)。MCP C# SDK 2.3 起第一步是 2026-07-28 的
+  `server/discover` 探测:说新版 Streamable HTTP 的服务器直接无会话往下走;拒了探测(400 / 404)的按 initialize 握手;
+  对 POST 回 400 / 404 / 405 的老式 HTTP + SSE 服务器(2024-11-05,`GET /sse` + `POST /messages?sessionId=`)回落 SSE,
+  按服务器答的老版本降级。URL 填服务器给的那个地址(老式服务器通常是 `…/sse`,新的通常是 `…/mcp`)。
+  `McpHttpTransportTests` 用 SDK 的服务端传输在进程内起这三种服务器,走插件真实的连接代码列工具、调工具。
 
 行为约定(`Agent/McpManager`):
 
