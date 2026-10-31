@@ -335,15 +335,23 @@ public partial class PluginManagerWindow : Window
         {
             return;
         }
-        if (row.PublisherUnchanged)
+        try
         {
-            // 同一把私钥签的下一版:发布者连续性那一闸自会放行。这里的 allowUntrustedPackage
-            // 补的是另一种情况 —— 这把公钥本就不在全局信任库里(它当初正是这么装进来的),
-            // 不给放行的话,一个从未换过人的插件反而永远升不了级。
-            await vm.InstallFromVpxAsync(package, allowUntrustedPackage: true);
-            return;
+            if (row.PublisherUnchanged)
+            {
+                // 同一把私钥签的下一版:发布者连续性那一闸自会放行。这里的 allowUntrustedPackage
+                // 补的是另一种情况 —— 这把公钥本就不在全局信任库里(它当初正是这么装进来的),
+                // 不给放行的话,一个从未换过人的插件反而永远升不了级。
+                await vm.InstallFromVpxAsync(package, allowUntrustedPackage: true);
+                return;
+            }
+            await InstallWithPromptsAsync(vm, package);
         }
-        await InstallWithPromptsAsync(vm, package);
+        finally
+        {
+            // 包下在数据根里(不是系统临时目录),没人替我们清:装完、没装、取消都删。
+            PluginManagerViewModel.DiscardDownloadedUpdate(package);
+        }
     }
 
     /// <summary>

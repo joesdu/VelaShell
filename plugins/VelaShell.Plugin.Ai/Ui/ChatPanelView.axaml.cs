@@ -477,6 +477,7 @@ public partial class ChatPanelView : UserControl
             {
                 // ↑↓ 历史不挡首屏:面板先能用,这份在后台补齐(用户不可能在几十毫秒内就按 ↑)
                 _ = LoadInputHistoryAsync();
+                _ = SweepOrphanImagesAsync();
             }
         }
         catch (Exception ex)

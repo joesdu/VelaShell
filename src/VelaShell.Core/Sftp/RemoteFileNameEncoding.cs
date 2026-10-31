@@ -34,4 +34,94 @@ public static class RemoteFileNameEncoding
         }
         return encoding.CodePage == Encoding.UTF8.CodePage ? null : encoding;
     }
+
+    /// <summary>
+    /// 远端给的一串名字字节 → 字符串,与 SFTP 库解文件名同一条规则(<c>VelaShell.Ssh.Sftp.SftpNameCodec</c>,
+    /// 规格 velashell-docs <c>zh/ssh/spec/06-sftp.md</c> §4.7)。
+    /// </summary>
+    /// <remarks>
+    /// 给了编码就按它解;<see langword="null" />(UTF-8)时合法的 UTF-8 照常解,解不开的每个字节 <c>b</c> 单独变成落单的低代理
+    /// <c>U+DC00 + b</c> —— 不是 U+FFFD。U+FFFD 编回去是 <c>EF BF BD</c>,拿它去 SFTP 开、定位,到服务器的已经不是那串字节了;
+    /// 同一个名字在远端搜索与文件面板里也就对不上(复查 file-panes F4)。
+    /// </remarks>
+    /// <param name="bytes">名字的原始字节。</param>
+    /// <param name="encoding">会话的文件名编码(<see cref="Resolve" /> 的结果);null = UTF-8。</param>
+    public static string Decode(ReadOnlySpan<byte> bytes, Encoding? encoding)
+    {
+        if (encoding is not null)
+        {
+            return encoding.GetString(bytes);
+        }
+        if (System.Text.Unicode.Utf8.IsValid(bytes))
+        {
+            return Encoding.UTF8.GetString(bytes);
+        }
+        var builder = new StringBuilder(bytes.Length);
+        while (!bytes.IsEmpty)
+        {
+            if (Rune.DecodeFromUtf8(bytes, out Rune rune, out int consumed) == System.Buffers.OperationStatus.Done)
+            {
+                builder.Append(rune);
+                bytes = bytes[consumed..];
+            }
+            else
+            {
+                // 一个字节一个字节地转义,下一个字节重新开始解:合法的部分不会被一起吞掉(与库里那一份同一个做法)。
+                builder.Append((char)(0xDC00 + bytes[0]));
+                bytes = bytes[1..];
+            }
+        }
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// 字符串 → 远端那一串名字字节,与 <see cref="Decode" /> 互逆;编不<b>准</b>时返回 <see langword="null" />,而不是换成「?」或 U+FFFD。
+    /// </summary>
+    /// <remarks>
+    /// 给了编码时按它严格编(编不进去的字符 → null);<see langword="null" />(UTF-8)时落单的 U+DC80–DCFF 还原成那个字节,
+    /// 别的落单代理项编不准(→ null)。
+    /// </remarks>
+    /// <param name="text">名字。</param>
+    /// <param name="encoding">会话的文件名编码;null = UTF-8。</param>
+    public static byte[]? EncodeExact(string text, Encoding? encoding)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (encoding is not null)
+        {
+            var strict = (Encoding)encoding.Clone();
+            strict.EncoderFallback = EncoderFallback.ExceptionFallback;
+            try
+            {
+                return strict.GetBytes(text);
+            }
+            catch (EncoderFallbackException)
+            {
+                return null;
+            }
+        }
+        var output = new List<byte>(text.Length + 8);
+        Span<byte> buffer = stackalloc byte[4];
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+            {
+                int written = new Rune(c, text[++i]).EncodeToUtf8(buffer);
+                output.AddRange(buffer[..written]);
+            }
+            else if (c is >= '\uDC80' and <= '\uDCFF')
+            {
+                output.Add((byte)(c - 0xDC00));
+            }
+            else if (Rune.TryCreate(c, out Rune rune))
+            {
+                output.AddRange(buffer[..rune.EncodeToUtf8(buffer)]);
+            }
+            else
+            {
+                return null;
+            }
+        }
+        return [.. output];
+    }
 }

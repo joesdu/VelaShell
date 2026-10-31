@@ -4671,6 +4671,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Svc_RemoteEditDraftKept" xml:space="preserve">
     <value>{0} をアップロードできませんでした。編集済みのコピーは {1} に残してあります。</value>
   </data>
+  <data name="Svc_RemoteEditEndedByDisconnect" xml:space="preserve">
+    <value>接続が切断されたため、{0} の編集セッションは終了しました。以降の保存はサーバーにアップロードされません。ローカルコピーは {1} に残してあります。</value>
+  </data>
   <data name="Svc_Ungrouped" xml:space="preserve">
     <value>未分類</value>
   </data>
@@ -5734,6 +5737,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Sftp_OpenTerminalHere" xml:space="preserve">
     <value>ここでターミナルを開く</value>
   </data>
+  <data name="Sftp_OpenTerminalHereUnsafeDirectory" xml:space="preserve">
+    <value>フォルダー名に制御文字が含まれているため、ターミナルに安全に入力できません。ターミナルはログイン時のディレクトリのままです。</value>
+  </data>
   <data name="Sftp_SearchTitle" xml:space="preserve">
     <value>リモートファイルの検索</value>
   </data>
@@ -6129,6 +6135,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="SshCfgImport_NoteAlgoSkipped" xml:space="preserve">
     <value>{0} はインポートしませんでした：{1}</value>
+  </data>
+  <data name="SshCfgImport_NoteLegacyFromPubkey" xml:space="preserve">
+    <value>{0}：「レガシーアルゴリズムを許可」としてインポートしました。VelaShell で SHA-1 の RSA 署名を許可できるのはこの設定だけです。この設定は SHA-1 の鍵交換・ホスト鍵・MAC も既定の後ろに追加しますが、これらはこのファイルには書かれていません。</value>
   </data>
   <data name="SshCfgImport_NoteAgentEndpointUnusable" xml:space="preserve">
     <value>{0} はインポートしませんでした：この agent エンドポイントはこのコンピューターでは使えません（別のプラットフォームのパス、またはフルパスではありません）。</value>
@@ -6537,6 +6546,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="SshAlgoFix_HopMissing" xml:space="preserve">
     <value>踏み台 {0} の接続設定が見つかりません。その SSH オプションでアルゴリズム一覧を手動で変更してください。</value>
+  </data>
+  <data name="SshAlgoFix_ProfileMissing" xml:space="preserve">
+    <value>接続設定 {0} が見つかりません(削除された可能性があります)。何も変更していません。</value>
   </data>
   <data name="SshInfo_Menu" xml:space="preserve">
     <value>接続情報…</value>
@@ -9691,6 +9703,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Sudo_Submit" xml:space="preserve"><value>認証</value></data>
   <data name="PasswordFill_Title" xml:space="preserve"><value>共有パスワードを入力</value></data>
   <data name="PasswordFill_Warning" xml:space="preserve"><value>選択したパスワードをこのセッションに入力し、そのまま Enter で送信します。リモート側のエコーにより画面、ログ、録画に残る可能性があります。現在のプロンプトを信頼できる場合のみ入力してください。</value></data>
+  <data name="PasswordFill_WarningNoEnter" xml:space="preserve"><value>選択したパスワードだけをこのセッションに入力し、Enter は送りません。リモート側のエコーにより画面、ログ、録画に残る可能性があります。現在のプロンプトを信頼できる場合のみ入力してください。</value></data>
   <data name="PasswordFill_Empty" xml:space="preserve"><value>一致する共有パスワード資格情報がありません。「設定 → 共有資格情報」で追加できます。</value></data>
   <data name="PasswordFill_ReadFailed" xml:space="preserve"><value>資格情報を読み取りまたは復号できません。何も送信していません。</value></data>
   <data name="PasswordFill_Expired" xml:space="preserve"><value>セッションまたは入力状態が変わりました。何も送信していません。選択画面を開き直してください。</value></data>

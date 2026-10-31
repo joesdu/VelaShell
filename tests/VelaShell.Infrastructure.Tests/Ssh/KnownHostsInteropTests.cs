@@ -116,6 +116,29 @@ public sealed class KnownHostsInteropTests : IDisposable
         Assert.AreEqual("SHA256:someOtherKey", (await KnownAsync("a.example")).Single().Fingerprint);
     }
 
+    /// <summary>
+    /// 换库之前存下的旧记录类型只是 <c>PublicKey</c> 这类占位词(说不清是哪种钥):文件里一把指纹不同的钥同样按冲突处理,
+    /// 不并排记进去 —— 曾经按「类型不同」照加,校验只比指纹,用户确认过的那把与文件里的这把就都受信了。
+    /// 记录里有公钥原文的按原文的类型判;真是别的类型的照旧并排加。
+    /// </summary>
+    [TestMethod]
+    public async Task 类型是占位词的旧记录也算冲突_不并排加()
+    {
+        SshPublicKey ecdsa = Key("hostcert-ecdsa.pub");
+        await _store.TrustHostKeyAsync("legacy.example", 22, "PublicKey", "SHA256:legacyConfirmedKey");
+        await _store.TrustHostKeyAsync("blob.example", 22, "PublicKey", ecdsa.Sha256Fingerprint, Convert.ToBase64String(ecdsa.Blob.Span));
+        await _store.TrustHostKeyAsync("typed.example", 22, "ssh-rsa", "SHA256:someRsaKey");
+
+        KnownHostsImportResult result = await ImportAsync(
+            $"legacy.example {KeyFields("hostcert-key.pub")}\nblob.example {KeyFields("hostcert-key.pub")}\ntyped.example {KeyFields("hostcert-key.pub")}\n");
+
+        Assert.AreEqual(1, result.Conflicts, "只有占位词的那条算冲突");
+        Assert.AreEqual(2, result.Imported, "原文解得出是 ECDSA 的、记着 ssh-rsa 的:文件里的 Ed25519 是另一种钥,照旧并排加");
+        Assert.AreEqual("SHA256:legacyConfirmedKey", (await KnownAsync("legacy.example")).Single().Fingerprint, "不并排加第二把");
+        Assert.HasCount(2, await KnownAsync("blob.example"));
+        Assert.HasCount(2, await KnownAsync("typed.example"));
+    }
+
     [TestMethod]
     public async Task 已经信任的同一把钥只补上公钥原文()
     {

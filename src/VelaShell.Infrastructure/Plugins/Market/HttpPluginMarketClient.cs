@@ -177,7 +177,32 @@ public sealed class HttpPluginMarketClient(string? baseUrl = null, HttpClient? h
         Uri url, string destinationPath, long declaredSize, IProgress<int>? progress, CancellationToken cancellationToken)
     {
         string partial = destinationPath + ".partial";
-        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        string directory = Path.GetDirectoryName(destinationPath)!;
+        // Unix 上新建的目录只给自己(0700;已有的目录不去改它的权限)。包从这里核对摘要、再从这里装,
+        // 别的本机用户能往里写,就能在两步之间把它换掉。
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(directory);
+        }
+        else
+        {
+            Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        // 上次没下完留下的(或别人预先放好的,包括指向别处的符号链接):先删掉这一项本身,再独占新建 ——
+        // FileMode.Create 会顺着符号链接把包写进它指向的文件,还会沿用一个别人建好、别人也能写的文件。
+        File.Delete(partial);
+        var options = new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+            BufferSize = 81920,
+            Options = FileOptions.Asynchronous
+        };
+        if (!OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
         string hash;
         using (HttpResponseMessage response = await _http
                    .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
@@ -186,7 +211,7 @@ public sealed class HttpPluginMarketClient(string? baseUrl = null, HttpClient? h
             long total = response.Content.Headers.ContentLength ?? declaredSize;
             using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             await using Stream source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            await using FileStream target = new(partial, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+            await using FileStream target = new(partial, options);
             byte[] buffer = new byte[81920];
             long copied = 0;
             int lastPercent = -1;

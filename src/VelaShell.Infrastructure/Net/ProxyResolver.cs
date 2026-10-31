@@ -49,7 +49,16 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
 
     private ProxyOptions ReadOptions()
     {
-        try { return settings.GetSnapshotBlocking().Proxy; }
+        try
+        {
+            // 启动时快照先发布、代理密码等本机加密密钥解析完才填进去(ISettingsService.GetStartupSnapshot):
+            // 那之前的出站连接在这里等它填好,第一次用代理就带着对的密码。平常是已完成的任务,不等。
+            if (settings.SecretsLoaded is { IsCompleted: false } loading)
+            {
+                loading.GetAwaiter().GetResult();
+            }
+            return settings.GetSnapshotBlocking().Proxy;
+        }
         catch { return new(); }
     }
 

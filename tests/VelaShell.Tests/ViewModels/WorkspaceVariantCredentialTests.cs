@@ -1,7 +1,10 @@
+using ReactiveUI.Primitives;
 using VelaShell.Core.Models;
+using VelaShell.Docking;
 using VelaShell.Infrastructure.Plugins.Protocols;
 using VelaShell.PluginSdk.Protocols;
 using VelaShell.PluginSdk.Workspaces;
+using VelaShell.Security;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;
@@ -29,7 +32,38 @@ public sealed class WorkspaceVariantCredentialTests
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
-    private static PluginProtocolRegistry Registry(out IDisposable handle)
+    /// <summary>记下插件收到的连接请求,交出一个什么都不做的文档。</summary>
+    private sealed class RecordingWorkspace : IWorkspaceProvider
+    {
+        public WorkspaceConnectRequest? LastRequest { get; private set; }
+
+        public Task<IWorkspaceDocument> OpenAsync(
+            WorkspaceConnectRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            LastRequest = request;
+            return Task.FromResult<IWorkspaceDocument>(new StubDocument());
+        }
+    }
+
+    private sealed class StubDocument : IWorkspaceDocument
+    {
+        public WorkspaceStatus Status { get; } = new(ProtocolSessionState.Connected);
+
+        public event EventHandler<WorkspaceStatus>? StatusChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public object CreateView() => new();
+
+        public Task ReconnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private static PluginProtocolRegistry Registry(out IDisposable handle, IWorkspaceProvider? provider = null)
     {
         var registry = new PluginProtocolRegistry();
         handle = registry.RegisterWorkspace(WorkspaceId, new()
@@ -63,7 +97,7 @@ public sealed class WorkspaceVariantCredentialTests
                     Features = WorkspaceFeatures.NoCredentials
                 }
             ]
-        }, new NoopWorkspace());
+        }, provider ?? new NoopWorkspace());
         return registry;
     }
 
@@ -187,6 +221,152 @@ public sealed class WorkspaceVariantCredentialTests
             await LoadedAsync(vm);
 
             Assert.AreEqual(3306, vm.Port, "装载时端口跟随了变体默认值(5432),已存的 3306 被盖掉了。");
+        }
+    }
+
+    /// <summary>
+    /// <b>编辑一条存着 root / 口令的 MySQL 配置,「更换」成 SQLite 再保存:收起来的用户名口令不落盘。</b>
+    /// <para>
+    /// 两栏随变体收起了,框里却还是 root 和口令。照存的话,这条 SQLite 配置每打开一次都按
+    /// "有用户名没口令"弹登录框(不记口令时),记着口令的还会原样交给插件 —— 一个用户已经看不见的旧凭据。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task EditingMySql_ChangeToSqlite_Save_DropsTheHiddenCredentials()
+    {
+        PluginProtocolRegistry registry = Registry(out IDisposable handle);
+        using (handle)
+        {
+            var existing = new SessionProfile
+            {
+                Name = "订单库",
+                ConnectionType = ConnectionType.Plugin,
+                PluginProtocolId = WorkspaceId,
+                Host = "127.0.0.1",
+                Port = 3306,
+                Username = "root",
+                Password = "s3cret",
+                RememberPassword = true,
+                PluginSettings = new(StringComparer.Ordinal) { [DialectKey] = "mysql" }
+            };
+            var vm = new ConnectionProfileViewModel(existing, protocolRegistry: registry);
+            await LoadedAsync(vm);
+
+            await vm.ChangeTypeCommand.Execute().FirstAsync();
+            await vm.SelectTypeCardCommand.Execute("sqlite").FirstAsync();
+            await vm.NextCommand.Execute().FirstAsync();
+            Assert.IsFalse(vm.ShowCredentialFields, "前置条件:换成 SQLite 后两栏收起。");
+            Assert.AreEqual("root", vm.Username, "前置条件:框里还留着 MySQL 那一档的用户名(换回 MySQL 时还在)。");
+            vm.Host = @"D:\data\app.db";
+
+            SessionProfile? saved = await vm.SaveCommand.Execute().FirstAsync();
+
+            Assert.IsNotNull(saved);
+            Assert.AreEqual("sqlite", saved.PluginSettings![DialectKey]);
+            Assert.AreEqual(string.Empty, saved.Username, "SQLite 没有用户名这回事,收起来的 root 不该存下来。");
+            Assert.IsNull(saved.Password, "收起来的口令不该存下来。");
+        }
+    }
+
+    /// <summary>
+    /// <b>新建时先在 SSH 页签填了用户名口令,再点进数据库选 SQLite:那份 SSH 凭据不落盘,名称兜底也不拿它拼。</b>
+    /// </summary>
+    [TestMethod]
+    public async Task NewProfile_SshCredentialsThenSqlite_Save_DropsThem()
+    {
+        PluginProtocolRegistry registry = Registry(out IDisposable handle);
+        using (handle)
+        {
+            var vm = new ConnectionProfileViewModel(protocolRegistry: registry)
+            {
+                Username = "deploy",
+                Password = SecureStringConvert.FromPlaintext("ssh-pass")
+            };
+            await vm.SelectPluginProtocolCommand.Execute(WorkspaceId).FirstAsync();
+            await vm.SelectTypeCardCommand.Execute("sqlite").FirstAsync();
+            await vm.NextCommand.Execute().FirstAsync();
+            vm.Host = @"D:\data\app.db";
+
+            SessionProfile? saved = await vm.SaveCommand.Execute().FirstAsync();
+
+            Assert.IsNotNull(saved);
+            Assert.AreEqual(string.Empty, saved.Username);
+            Assert.IsNull(saved.Password, "SSH 页签上填的口令换了个地方落了盘,还会交给第三方插件。");
+            Assert.DoesNotContain("deploy", saved.Name, "名称兜底把看不见的用户名拼了进去。");
+        }
+    }
+
+    /// <summary>反面:要凭据的那一档照存 —— 没有这一条,"一律不存"也能让上面两条通过。</summary>
+    [TestMethod]
+    public async Task ExistingMySql_Save_KeepsTheCredentials()
+    {
+        PluginProtocolRegistry registry = Registry(out IDisposable handle);
+        using (handle)
+        {
+            var vm = new ConnectionProfileViewModel(new SessionProfile
+            {
+                Name = "订单库",
+                ConnectionType = ConnectionType.Plugin,
+                PluginProtocolId = WorkspaceId,
+                Host = "127.0.0.1",
+                Port = 3306,
+                Username = "root",
+                Password = "s3cret",
+                PluginSettings = new(StringComparer.Ordinal) { [DialectKey] = "mysql" }
+            }, protocolRegistry: registry);
+            await LoadedAsync(vm);
+
+            SessionProfile? saved = await vm.SaveCommand.Execute().FirstAsync();
+
+            Assert.IsNotNull(saved);
+            Assert.AreEqual("root", saved.Username);
+            Assert.AreEqual("s3cret", saved.Password);
+        }
+    }
+
+    /// <summary>
+    /// <b>打开一条还留着用户名(没存口令)的旧 SQLite 配置:不弹登录框,插件收到的用户名口令是空串。</b>
+    /// <para>
+    /// 这是修之前存下来的那种配置(或别处导入的):用户名还在,两栏却早已收起。按"有用户名没口令"弹框的话,
+    /// 用户对着一个本地文件被要密码,取消就连不上;存着口令的,口令会原样交给第三方插件。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    [DataRow(null)]
+    [DataRow("leftover")]
+    public async Task OpeningASqliteProfileWithLeftoverCredentials_NeitherPromptsNorForwardsThem(string? password)
+    {
+        var provider = new RecordingWorkspace();
+        PluginProtocolRegistry registry = Registry(out IDisposable handle, provider);
+        using (handle)
+        {
+            var vm = new MainWindowViewModel(
+                protocolRegistry: registry,
+                workspaceLauncher: new PluginWorkspaceLauncher(registry));
+            int prompts = 0;
+            vm.InteractiveAuthenticator = candidate =>
+            {
+                prompts++;
+                return Task.FromResult<SessionProfile?>(candidate);
+            };
+
+            PluginWorkspaceDocument? document = await vm.OpenWorkspaceDocumentForProfileAsync(new SessionProfile
+            {
+                Name = "本地库",
+                ConnectionType = ConnectionType.Plugin,
+                PluginProtocolId = WorkspaceId,
+                Host = @"D:\data\app.db",
+                Port = 1,
+                Username = "root",
+                Password = password,
+                PluginSettings = new(StringComparer.Ordinal) { [DialectKey] = "sqlite" }
+            });
+
+            Assert.IsNotNull(document, vm.LastConnectionError);
+            Assert.AreEqual(0, prompts, "SQLite 没有凭据,不该弹登录框。");
+            WorkspaceConnectRequest request = provider.LastRequest!;
+            Assert.AreEqual(string.Empty, request.Username, "看不见的用户名交给了插件。");
+            Assert.AreEqual(string.Empty, request.Password, "看不见的口令交给了插件。");
         }
     }
 

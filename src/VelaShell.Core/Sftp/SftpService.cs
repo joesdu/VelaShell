@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
@@ -415,8 +416,11 @@ public class SftpService : ISftpService
         // 目录树先试一条 rm -rf(#474):SFTP 递归的往返次数与文件数成正比,
         // 一次 exec 则是一次往返。试不成(没有 exec 通道、非 Unix 主机、命令退非零码)
         // 就照旧走下面的 SFTP 递归 —— 回退路径会把真正的失败原因带出来。
+        // 退出码 0 也再 stat 一次:rm -f 删一个不存在的路径同样退 0,路径的字节一旦与 SFTP 看到的不是同一串
+        // (见 CanPassPathToCommand),「删成功」就是一句空话。目录还在就接着走 SFTP 递归,而不是报成功。
         if (isDirectory
-            && await TryDeleteDirectoryByCommandAsync(sessionId, remotePath, progress, cancellationToken).ConfigureAwait(false))
+            && await TryDeleteDirectoryByCommandAsync(sessionId, remotePath, progress, cancellationToken).ConfigureAwait(false)
+            && await client.GetEntryAsync(remotePath, cancellationToken).ConfigureAwait(false) is null)
         {
             return;
         }
@@ -906,10 +910,23 @@ public class SftpService : ISftpService
         }
         ISshClientWrapper client = _connectionService.GetClient(sessionId)
                                    ?? throw new NotSupportedException("This session has no SSH exec channel.");
+        // 字节与 SFTP 看到的不是同一串的路径(非 UTF-8 会话里的中文名、UTF-8 会话里解不开的字节)不进命令行:
+        // 进去了 sha256sum 要么找不到,要么算的是一个 UTF-8 字节的同名文件。它们记「没算出来」(null),由调用方退回读流比对。
+        // 解析仍按全部请求的路径来:没进命令行的那些在输出里不会出现,照样落成 null。
+        List<string> passable = [.. remotePaths.Where(path => CanPassPathToCommand(sessionId, path))];
+        if (passable.Count == 0)
+        {
+            var none = new Dictionary<string, string?>(StringComparer.Ordinal);
+            foreach (string path in remotePaths)
+            {
+                none[path] = null;
+            }
+            return none;
+        }
         RemoteCommandResult result;
         try
         {
-            result = await client.RunCommandDetailedAsync(RemoteSha256.BuildCommand(remotePaths), cancellationToken).ConfigureAwait(false);
+            result = await client.RunCommandDetailedAsync(RemoteSha256.BuildCommand(passable), cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -1268,7 +1285,9 @@ public class SftpService : ISftpService
         IProgress<SftpDeleteProgress>? progress,
         CancellationToken cancellationToken)
     {
-        if (!IsCommandDeletablePath(remotePath) || !await IsRecursiveDeleteCommandEnabledAsync().ConfigureAwait(false))
+        if (!IsCommandDeletablePath(remotePath)
+            || !CanPassPathToCommand(sessionId, remotePath)
+            || !await IsRecursiveDeleteCommandEnabledAsync().ConfigureAwait(false))
         {
             return false;
         }
@@ -1326,6 +1345,38 @@ public class SftpService : ISftpService
     /// </remarks>
     private static bool IsCommandDeletablePath(string remotePath) =>
         remotePath.StartsWith('/') && remotePath.TrimEnd('/').Length > 0;
+
+    /// <summary>exec 命令行固定按 UTF-8 编码;编不出(落单代理项)就抛,不悄悄换成 EF BF BD。</summary>
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    /// <summary>
+    /// 这条 SFTP 路径能不能原样写进 exec 命令:命令行到远端是 UTF-8 字节,只有那串字节与 SFTP 发给服务器的
+    /// (按会话的文件名编码,见 <see cref="RemoteFileNameEncoding" />)一模一样,两条通道指的才是同一个文件。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// GBK / Big5 / Shift_JIS 会话里 SFTP 按会话字符集解名字,<c>/data/报表</c> 在服务器上是 GBK 字节;塞进 UTF-8 的 exec 命令,
+    /// <c>rm -rf</c> 拿到的是另一串字节 —— 多半不存在(<c>rm -f</c> 照样退 0,删除「成功」了个寂寞),迁移过的混编码服务器上
+    /// 还可能正好有一个 UTF-8 字节的同名目录,删掉的是它(复查 file-panes F2)。纯 ASCII 的路径在这几种字符集里字节相同,照走快路径。
+    /// </para>
+    /// <para>
+    /// UTF-8 会话里 SFTP 把解不开的字节记成落单代理项 U+DC80–DCFF,编进 UTF-8 命令行就成了 EF BF BD,同样不是那个文件。
+    /// </para>
+    /// </remarks>
+    private bool CanPassPathToCommand(Guid sessionId, string remotePath)
+    {
+        byte[] utf8;
+        try
+        {
+            utf8 = StrictUtf8.GetBytes(remotePath);
+        }
+        catch (EncoderFallbackException)
+        {
+            return false;
+        }
+        return RemoteFileNameEncoding.Resolve(_connectionService.GetSession(sessionId)?.ConnectionInfo.FileNameEncoding) is not { } names
+               || names.GetBytes(remotePath).AsSpan().SequenceEqual(utf8);
+    }
 
     /// <summary>
     /// 把路径包成一个 POSIX shell 单引号字符串:单引号内除了单引号自身之外一切都是字面量,

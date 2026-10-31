@@ -6,6 +6,8 @@
 > 两份文件的分工是硬的：一件事做完了，就从这里删掉、去 `plan.md` 补一节；
 > 一件事还没做，就不要在 `plan.md` 里留 TODO。
 >
+> **2026-10-31 补记**:复审 #669 – #698(`plan.md` §298)查出、这次没改的六项各补一行(一、欠账:安全与凭据两行、文件传输两行、终端与 SSH 两行),「FIPS 预设的互操作核对」一行补一句,都待维护者定;其余各行这次没有复核。
+>
 > 最近复核:**2026-10-25**(第二次)。维护者 2026-10-25 对 31 项按推荐拍板之后,这一批做完的条目(`plan.md` §250 – §269)逐条对着 `src/` 与各仓库的本地 dev 核过后删掉:
 > 安全与凭据表里的五行(手册三处说法、诊断包、会话日志遮盖、#655 两项、配置审计);文件传输表里的五行(远程编辑口径、续传断线、导入备份清收藏、远端搜索、外部编辑副本);
 > SSH 库限速突发、中文诊断(续)、ssh_config 剩余映射;AI 插件的安全边界、换源清 Key 残留、订阅换源、Anthropic 环境变量;「+」的显式落点;路线图里的输出高亮、触发器、布局模板同步、会话健康巡检与一键放开算法推广(路线图先排的四项全部做完);「三」里 `manual.md` 的去留(维护者定留在本仓库,已写进 AGENTS.md「留在本仓库的文档」,21b49851)。
@@ -52,7 +54,7 @@
 
 | 部分 | 🔴 P0 | 🟠 P1 | 🟡 P2 | 🟢 P3 | 合计 |
 | --- | :---: | :---: | :---: | :---: | :---: |
-| 一、欠账 | 1 | 1 | 11 | 23 | **36** |
+| 一、欠账 | 1 | 1 | 12 | 28 | **42** |
 | 二、路线图 | — | 1 | 8 | 25 | **34** |
 | 三、文档待同步 | — | — | — | — | **3** |
 
@@ -80,6 +82,8 @@
 | ⏳ | 🟢 P3 | **临时连接登录框里的「记住密码」勾了也不落盘** | 外部拉起与「最近连接」重建的临时配置不再落库(`plan.md` §252),这类连接的登录框里照旧显示「记住密码」勾选框,勾了什么都不存 —— 需要长期用的得在连接配置里另存一条 | 待维护者定:临时连接上隐藏这个勾选框,还是改成「另存为连接」 |
 | ⏳ | 🟢 P3 | **会话日志与录制遮盖的剩余误遮与漏遮** | 遮盖改成先剥控制序列再匹配、关键词要成词之后(`plan.md` §258),仍会误遮的:`token_type: Bearer`、`token_endpoint: https://…`(OIDC 发现文档)、`secretName: tls-cert`(Kubernetes)、`token_count: 12`;没覆盖的常见格式:GitLab `glpat-`、Stripe `sk_live_` / `rk_live_`、Google `AIza…`、npm `npm_…`、PyPI `pypi-…`,INI 风格带空格的 `password = my pass phrase`(仍按 `=` 规则到空白为止);口令本身含「词: 词」(`correct horse: battery`)时 `名字: 值` 会停在 `horse:` 前 | 按 §258 同样的口径(每条都有「该遮的」与「不该遮的」用例、逐字节切分对照)逐条评估误报率;误遮那几个要给 token / secret 加一张「非机密后缀」表 |
 | ⏳ | 🟢 P3 | **Xshell / `ssh://` 外部启动不产出证书字段** | `~/.ssh/config` 导入的 `CertificateFile` 与外部启动的 PuTTY `-cert` 已认(`plan.md` §242)。剩下:Xshell 6 起支持 OpenSSH CA(实验性),但 `.xsh` 与命令行的证书字段没有公开文档;`ssh://` 没有标准的证书参数 | 等拿到真实的 `.xsh` / 堡垒机样本再做,不猜字段名;`ssh://` 不做 |
+| ⏳ | 🟡 P2 | **「在此处打开终端」:C 区域设置下的非 ASCII 目录名** | 带控制字符的目录名已不再敲进 PTY(`plan.md` §298),但 C / POSIX 区域设置下 bash 的 readline 把 ≥ 0x80 的字节当 Meta 键(`£` = C2 A3,A3 即 M-#,会提交整行),精心构造的非 ASCII 目录名仍可能注入 | 稳妥做法是只发可打印 ASCII(`cd "$(printf '\ooo…')"`,各 shell 的写法要逐一核),或非 ASCII 目录名一律提示不 cd(会挡掉正常的中文目录);待维护者定 |
+| ⏳ | 🟢 P3 | **钥匙环解锁框被取消时报成「本机没有这把钥」** | Linux Secret Service 上取消解锁框,libsecret 大概率返回 NULL 而不带错误,`SecretServiceMasterKeyStore` 映射成 NotFound:提示不准、多弹一次解锁框,不丢数据(`plan.md` §298) | libsecret 文档没写清锁着的集合与取消的提示各返回什么;在真机钥匙环上确认后再改(可能要 libsecret ≥ 0.19 与新的 GObject 互操作) |
 
 ### 📁 文件传输
 
@@ -91,6 +95,8 @@
 | ⏳ | 🟢 P3 | **插件协议的文件能力补口** | 插件协议上:符号链接如实抛不支持;设不了远端修改时间,双向同步会把刚上传的文件判成远端较新;算不了服务器端摘要(`plan.md` §72、§74、§75)。**SDK 契约已写好(velashell-plugin-sdk 本地 dev),待发版后宿主接**:`RemoteFileEntry.IsSymbolicLink` / `LinkTarget`、可选的 `IProtocolLastWriteTime` 与 `IProtocolChecksum` + `RemoteChecksumAlgorithm`(§260)。插件协议上**创建**符号链接仍没有契约 | SDK 发版、抬包之后:`PluginProtocolFileService` 的 `ToRemoteFileInfo` 映射两个链接字段,`SetLastWriteTimeAsync` 在协议实现了 `IProtocolLastWriteTime` 时把 UTC 转成 `DateTimeOffset` 调它(没实现照旧报不支持),`ComputeSha256Async` 在实现了 `IProtocolChecksum` 时按 Sha256 请求(缺的键补 null,不是 64 位小写十六进制的值丢成 null),`UploadStreamAsync` 里「修改时间不设」的注释改掉;`RemoteFsCapability.Map` 补上两个链接字段(插件经 `IRemoteFsApi` 也看得到链接,进程内与隔离两种模式都生效);velashell-plugins 里的协议插件(S3 等)按能力选实现。创建符号链接要的话以后另加一个可选接口 |
 | ⏳ | 🟢 P3 | **「远程 + 远程」双栏的同步窗口** | 双栏远程文档只有「比较目录」（按大小与修改时间，不做 SHA-256），没有「同步…」与「保持远端最新」（`plan.md` §128） | **暂缓,等有人要**(维护者 2026-10-25 定)。要做时:`DirectorySyncViewModel` / `DirectorySyncRunner` 全是「本地路径 + Upload/Download」的语义，要做成两端对称（两边都用 `DirectoryTreeScanner.ScanRemoteAsync`、动作换成两个方向的 Relay）；「保持远端最新」靠监视本地文件系统，双远程下没有意义，不做 |
 | ⏳ | 🟢 P3 | **消息中心里的外部编辑草稿只能打开文件夹** | 崩溃 / 回传失败留下的外部编辑草稿启动时在消息中心逐份列出(`plan.md` §256),动作只有「打开所在文件夹」(`files.remoteEditDrafts.open`):消息中心的动作是一条不带参数的已注册命令(`NotificationLink.CommandId`),重传要先连上那台服务器(会话随上次运行一起没了)再按这一份传 | 给 `NotificationLink` 加参数(或按条注册临时命令),按标记 `.vela-edit.json` 里的连接配置 Id 找已连着的面板 / 打开文件标签后上传到记着的远端路径(冲突照常询问),成功后删草稿、撤消息 |
+| ⏳ | 🟢 P3 | **非 UTF-8 字符集下 SFTP 名字不能无损往返非法字节** | 会话字符集是 GBK / Big5 / Shift_JIS 时,名字里在该字符集下不合法的字节解不回原样(spec 06-sftp §4.7 明确这样定过),混用编码的服务器上这类文件打开、改名、删除会报「不存在」(`plan.md` §298) | 改成无损(如 U+DCxx 逃逸,与 UTF-8 会话同一条规则)要先改规格;待维护者定 |
+| ⏳ | 🟢 P3 | **FTP 上传传到一半被复位不自动重试** | FluentFTP 把数据连接中途复位包成 `FtpException`,`FluentFtpInterop.Translate` 归为 `VelaFtpOperationException`(永久失败),#687 之前就是如此(`plan.md` §298 只让内部重试不再误判它) | 要自动重试得改 `Translate` / `Fault` 的分类,而那样每次数据复位都会把会话标成 Faulted(灰点);待维护者定 |
 
 ### 🖥️ 终端与 SSH
 
@@ -98,9 +104,11 @@
 | :---: | :---: | --- | --- | --- |
 | ⏳ | 🟡 P2 | **拆 SSH 库的两个上帝类** | `SshConnection` 约 4,900 行（`Session/SshConnection*.cs`，`SshConnection.cs` 自己约 2,010 行）、`SshChannel` 约 1,800 行（2026-10-25 量,10-13 时是 4,850 / 1,980 / 1,760），远过 `src/VelaShell.Ssh/AGENTS.md` 4.4 的 800 行（`plan.md` §117、§161）。**维护者 2026-10-25 定:等这一轮的 SSH 改动合入之后单独一个 PR 做,这一轮不做** —— 这一轮的 SSH 改动(§251、§254、§259)已都在 dev 上 | 拆成 internal 协作者而不是更多 partial：`SshChannel` 的收发窗口与 stdin 泵、`SshConnection` 的收包分发与全局请求账本。**纯重构，单独开 PR**，`VelaShell.Ssh.Tests` 与互操作用例是安全网。⚠️ 拆的时候这几处耦合不能断（2026-10-05 审查的备忘）：①入队锁里的 admit 回调跨两个类 —— `MayStillSend` / `TryCommitClose` / `OnClose` / 账本 `Register` 必须与 `TryWriteFrame` 在同一把 `_enqueueLock` 里，不能拆成「先查后发」，也不能变异步；②锁顺序 `_enqueueLock` → 连接 `_stateLock` → 通道 `_stateLock`，`ReleaseId` 先放通道锁再进连接锁，新协作者不许持通道锁入队；③`FinishClose` 的步骤顺序：锁内改状态 → 事件 → 关账 → 管道 → stdin → 唤醒闸门 → `CancelAsync`；④接收分发会被重入（重协商期间 `RekeyKexTransport.ReadPacketAsync` 回调 `DispatchAsync`），拆出去后仍要能在 KEX 中被调用，且只许投递、不许等发送；⑤预算是两本账：连接的 `_windowBudgetUsed` 归连接锁，通道的 `_budgetCharged` / `_idReleased` 归通道锁，「先申请 → 通道锁里确认 → 失败回滚」三步要保持；⑥`_priority` 只在 `_enqueueLock` 下写、泵每次先读它（回补不越过 CLOSE 与闸门的前提）；交互道 `_interactive` 同样在锁里写，一条通道的帧（含接收循环替它回的 CLOSE 与请求应答）全走开通道时定下的那条道，泵在回补之后让它与普通队列轮流（`plan.md` §162 的 Q7）；⑦`WouldSendNow` 与 `Admit` 必须在泵线程上连续调用 |
 | ⏳ | 🟡 P2 | **SSH 库已有、宿主还没接的能力** | `plan.md` §161 在库里落地、宿主还没接的只剩两样:TLS 拨号器(维护者 2026-10-25 定暂缓)与 agent 加钥的目的地约束(`AllowedHops`,`plan.md` §163)。`AllowedHops` 已核实(§259):Win32-OpenSSH 的 agent 对 `restrict-destination-v00@openssh.com` 约束回 `SSH_AGENT_FAILURE`(PowerShell/openssh-portable#612),Pageant 没有实现(PuTTY wishlist `pageant-forwarding-path` 仍是 low / taxing),Windows 上接了只会加钥失败,照决定不接。(CNG 签名器、报文旁路、按连接的 agent 端点见 §259;转发吞吐 / 远程动态 / Unix 套接字见 §244;转发项导入导出见 §242;按键时序混淆见 §248) | TLS 进代理设置:先定 TLS 包在 HTTP / SOCKS 代理之外还是之内、证书校验与 SNI 的口径(全局代理设置的一整块),待维护者定。`AllowedHops` 要不要做成显式开启的选项、对端 agent 不支持时如实说明(受益者是 Linux / macOS / WSL 上 OpenSSH ≥ 8.9 的 agent;CVE-2023-51384 提示 9.6 之前对 PKCS#11 钥的约束应用不完整),待维护者定;不许去掉约束重试 |
-| ⏳ | 🟢 P3 | **FIPS 预设的互操作核对** | `FipsApprovedOnly` 已补上群交换与 group18、注释改准(`plan.md` §251)。两种 nistp 混合 KEX 只对 AlmaLinux 10.2(RHEL 10.2 下游补丁的 OpenSSH 9.9p1)核对过,还没与 OpenSSH 10.6、Apache MINA SSHD 对照(§164);`scripts/ssh/interop/kex-gex.sh` 没追加 group18,2229 那台默认不开 DH 的 OpenSSH 10 靶机没覆盖到它 | 补两份实现的互操作核对;`kex-gex.sh` 追加 group18 后在 2229 上跑一次。另有两处 §251 自己定的口径待维护者确认:group18 也进了默认清单(排在 group16 之后、group14 之前;只进 FIPS 清单的话算法目录会说它没实现);加密清单留着 `aes192-ctr`(RHEL 没开,要完全一致就删那一行与用例里的 `.Append(Aes192Ctr)`) |
+| ⏳ | 🟢 P3 | **FIPS 预设的互操作核对** | `FipsApprovedOnly` 已补上群交换与 group18、注释改准(`plan.md` §251)。两种 nistp 混合 KEX 只对 AlmaLinux 10.2(RHEL 10.2 下游补丁的 OpenSSH 9.9p1)核对过,还没与 OpenSSH 10.6、Apache MINA SSHD 对照(§164);`scripts/ssh/interop/kex-gex.sh` 没追加 group18,2229 那台默认不开 DH 的 OpenSSH 10 靶机没覆盖到它 | 补两份实现的互操作核对;`kex-gex.sh` 追加 group18 后在 2229 上跑一次。另有两处 §251 自己定的口径待维护者确认:group18 也进了默认清单(排在 group16 之后、group14 之前;只进 FIPS 清单的话算法目录会说它没实现);加密清单留着 `aes192-ctr`(RHEL 没开,要完全一致就删那一行与用例里的 `.Append(Aes192Ctr)`)。复审 #669 – #698 时查出(`plan.md` §298):群交换接受服务端给的任意素数(只核大小与素性),严格说不在 FIPS 认可的命名群之内 —— 预设里拿掉 `diffie-hellman-group-exchange-sha256`,还是预设下只认 RFC 3526 / 7919 的命名群,待维护者定 |
 | ⏳ | 🟢 P3 | **SSH 库剩余的中文诊断(配置不成立、TLS 拨号等)** | 九类透传已按结构化出处出五语文案(`plan.md` §246、§254),`src/VelaShell.Ssh/AGENTS.md` 4.8 列着还剩的:配置不成立(`InvalidConfiguration`:ssh_config 的 ProxyJump 成环 / 跳数超限、ProxyCommand 模板与代入)、`TlsFailed`、`HostKeyStoreFailed`(宿主不走库的 known_hosts)、私钥 / 证书以外的 `Unsupported`、库自带主机密钥策略(`KnownHostsPolicy` / `PinnedFingerprintHostKeyPolicy`)写的拒绝理由 —— 宿主现在都碰不到或很少碰到。另:`ProxyTransportDialer` 在 HTTP 代理 + 22 端口时追加的那句英文提示是写死的;SFTP「流水线已释放」的原因码仍是 `Unsupported`(§254 只加了种类 `SessionClosed`) | 碰到了再照 §246 的做法补(库里补种类与参数,宿主映射);那句英文提示改走 resx;「流水线已释放」的原因码是否改成 `Aborted`(公开构造固定的那个,改了是语义变化),待维护者定 |
 | ⏳ | 🟢 P3 | **远程转发「一头 TCP、一头套接字」** | 隧道的 Unix 域套接字(`plan.md` §244)按库实际公开的组合做:远程转发只有「两头 TCP」「两头套接字」;OpenSSH 的 `-R port:/本机/套接字` 与 `-R /服务器/套接字:host:port` 两种库没公开入口(构造函数已能表达) | 先补 velashell-docs `ssh/spec/07` §4.4,再在库里加入口,宿主表单放开远程转发只填一头路径 |
+| ⏳ | 🟢 P3 | **ssh_config 里 Windows 管道与 UNC 路径的反斜杠** | 导出把 `IdentityAgent` / `IdentityFile` 里的 `\\.\pipe\x`、`\\server\share\…` 原样写出;本库的解析器不处理反斜杠、读回不变,而 Win32-OpenSSH 9.5 的 `ssh -G` 实测读成 `\.\pipe\x`、`\server\share\…`(`plan.md` §298) | 先在 spec/09 §7 定下库的分词器认不认反斜杠转义,再让导出与解析跟上;待维护者定 |
+| ⏳ | 🟢 P3 | **终端标签普通重连用的是标签里的配置副本** | 会话健康巡检已改为每轮从库里重读(`plan.md` §298);终端标签的普通重连仍用 `tab.Profile`,连上之后还把这份副本整份写回库里,别处(云同步、巡检窗口里的「放开算法」)刚改的会被盖掉 | 先定标签副本(可能带着现敲的口令)与库里那份的合并规则;待维护者定 |
 
 ### 🪟 窗口与外观
 

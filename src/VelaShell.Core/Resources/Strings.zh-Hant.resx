@@ -993,6 +993,9 @@
   <data name="Sftp_OpenTerminalHere" xml:space="preserve">
     <value>在此處開啟終端機</value>
   </data>
+  <data name="Sftp_OpenTerminalHereUnsafeDirectory" xml:space="preserve">
+    <value>目錄名稱含有控制字元,無法安全地輸入終端機,終端機停留在登入時的目錄。</value>
+  </data>
   <data name="Sftp_SearchTitle" xml:space="preserve">
     <value>搜尋遠端檔案</value>
   </data>
@@ -4978,6 +4981,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Svc_RemoteEditDraftKept" xml:space="preserve">
     <value>{0} 未能上傳。你改過的副本保留在 {1}。</value>
   </data>
+  <data name="Svc_RemoteEditEndedByDisconnect" xml:space="preserve">
+    <value>連線已中斷,{0} 的編輯工作階段隨之結束:之後的儲存不會再傳回伺服器。本機副本留在 {1}。</value>
+  </data>
   <data name="Svc_Ungrouped" xml:space="preserve">
     <value>未分組</value>
   </data>
@@ -6268,6 +6274,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SshCfgImport_NoteAlgoSkipped" xml:space="preserve">
     <value>{0} 沒有匯入：{1}</value>
   </data>
+  <data name="SshCfgImport_NoteLegacyFromPubkey" xml:space="preserve">
+    <value>{0}：依「允許舊演算法」匯入 —— VelaShell 裡只有這個開關能放開 SHA-1 的 RSA 簽章。它還會把 SHA-1 的金鑰交換、主機金鑰與 MAC 附加在預設之後，這幾項這份檔案沒有寫。</value>
+  </data>
   <data name="SshCfgImport_NoteAgentEndpointUnusable" xml:space="preserve">
     <value>{0} 沒有匯入：這台電腦上用不了這個 agent 端點（其他平台的路徑，或者不是完整路徑）。</value>
   </data>
@@ -6757,6 +6766,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="SshAlgoFix_HopMissing" xml:space="preserve">
     <value>找不到跳板 {0} 的連線設定,請到它的 SSH 選項裡手動修改演算法清單。</value>
+  </data>
+  <data name="SshAlgoFix_ProfileMissing" xml:space="preserve">
+    <value>連線設定 {0} 已經不在了(可能剛被刪除),沒有變更。</value>
   </data>
   <data name="SshInfo_Menu" xml:space="preserve">
     <value>連線資訊…</value>
@@ -10168,6 +10180,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Sudo_Submit" xml:space="preserve"><value>驗證</value></data>
   <data name="PasswordFill_Title" xml:space="preserve"><value>填入共用密碼</value></data>
   <data name="PasswordFill_Warning" xml:space="preserve"><value>向此工作階段填入所選密碼並自動按 Enter 送出。遠端程式可能回顯密碼，使其進入畫面、記錄或錄製。請確認信任目前提示後再填入。</value></data>
+  <data name="PasswordFill_WarningNoEnter" xml:space="preserve"><value>僅向此工作階段填入所選密碼，不送出 Enter。遠端程式可能回顯密碼，使其進入畫面、記錄或錄製。請確認信任目前提示後再填入。</value></data>
   <data name="PasswordFill_Empty" xml:space="preserve"><value>沒有相符的共用密碼認證資料。可在「設定 → 共用認證資料」中新增密碼認證資料。</value></data>
   <data name="PasswordFill_ReadFailed" xml:space="preserve"><value>無法讀取或解密認證資料，未傳送任何內容。</value></data>
   <data name="PasswordFill_Expired" xml:space="preserve"><value>工作階段或輸入內容已變更，未傳送任何內容。請關閉後重新開啟選擇器。</value></data>

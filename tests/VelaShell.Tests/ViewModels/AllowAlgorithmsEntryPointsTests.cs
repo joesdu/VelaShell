@@ -8,6 +8,7 @@ using VelaShell.Docking;
 using VelaShell.Infrastructure.Ssh;
 using VelaShell.Presentation.Services;
 using VelaShell.Security;
+using VelaShell.Services;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.ViewModels;
 
@@ -240,6 +241,71 @@ public sealed class AllowAlgorithmsEntryPointsTests
         await vm.TestConnectionCommand.Execute().FirstAsync();
         Assert.IsFalse(vm.HasAlgorithmRemedy, "按钮是对上一次失败说的:换了失败原因就收掉。");
         Assert.IsFalse(await vm.AllowAlgorithmsCommand.CanExecute.FirstAsync());
+    }
+
+    // ---- 各入口共用的那一段(SshAlgorithmRemedyFlow) ----
+
+    /// <summary>
+    /// 确认框开着时别处存了这条配置(云同步拉下来的、巡检窗口里「编辑配置」存的):确认之后在最新的那份上只补这几个算法,
+    /// 别处的改动不被框前读的那份冲掉。
+    /// </summary>
+    [TestMethod]
+    public async Task Flow_SavesTheRemedyOnTopOfTheProfileAsItIsAfterTheConfirm()
+    {
+        SessionProfile profile = SshProfile();
+        SessionProfile stored = profile.Clone();
+        stored.Password = null;
+        ISessionRepository repository = Substitute.For<ISessionRepository>();
+        repository.GetSessionAsync(profile.Id).Returns(_ => stored.Clone());
+        var saved = new List<SessionProfile>();
+        repository.SaveSessionAsync(Arg.Do<SessionProfile>(saved.Add)).Returns(Task.CompletedTask);
+        var flow = new SshAlgorithmRemedyFlow(repository, workflow: null);
+
+        SshAlgorithmRemedyApplied? applied = await flow.ConfirmAndSaveAsync(
+            profile,
+            new SshAlgorithmRemedy(SshAlgorithmKind.KeyExchange, [Group14Sha1]),
+            SshAlgorithmRemedyFollowUp.Reconnect,
+            confirm: (_, _, _) =>
+            {
+                stored.Name = "OldBox (同步过来的新名字)";
+                stored.Ssh = new SshSessionOptions { Compression = true, Macs = "+hmac-sha1" };
+                return Task.FromResult(true);
+            },
+            reportError: message => throw new AssertFailedException(message));
+
+        SessionProfile written = saved.Single();
+        Assert.AreEqual("OldBox (同步过来的新名字)", written.Name);
+        Assert.IsTrue(written.Ssh!.Compression, "框开着时别处的改动留着");
+        Assert.AreEqual("+hmac-sha1", written.Ssh.Macs);
+        Assert.AreEqual("+" + Group14Sha1, written.Ssh.KexAlgorithms, "只补诊断点名的那几个");
+        Assert.AreSame(written, applied!.Stored, "交回去的是写进库的那份");
+    }
+
+    /// <summary>确认框开着时这条配置被删了:什么都不写(不凭框前那份再建回来),说一句。</summary>
+    [TestMethod]
+    public async Task Flow_ProfileDeletedWhileConfirming_ChangesNothingAndSaysSo()
+    {
+        SessionProfile profile = SshProfile();
+        SessionProfile? stored = profile.Clone();
+        ISessionRepository repository = Substitute.For<ISessionRepository>();
+        repository.GetSessionAsync(profile.Id).Returns(_ => stored?.Clone());
+        var flow = new SshAlgorithmRemedyFlow(repository, workflow: null);
+        string? error = null;
+
+        SshAlgorithmRemedyApplied? applied = await flow.ConfirmAndSaveAsync(
+            profile,
+            new SshAlgorithmRemedy(SshAlgorithmKind.KeyExchange, [Group14Sha1]),
+            SshAlgorithmRemedyFollowUp.Reconnect,
+            confirm: (_, _, _) =>
+            {
+                stored = null;
+                return Task.FromResult(true);
+            },
+            reportError: message => error = message);
+
+        Assert.IsNull(applied);
+        Assert.AreEqual(Strings.Format("SshAlgoFix_ProfileMissing", "OldBox"), error);
+        await repository.DidNotReceive().SaveSessionAsync(Arg.Any<SessionProfile>());
     }
 
     // ---- 辅助 ----

@@ -1472,7 +1472,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         // 命令补全:注入建议提供器;提交(已回显校验)的命令进全局历史。
         terminalTab.SuggestionProvider = _suggestionProvider;
         terminalTab.QuickCommandTextResolver = command =>
-            ResolveQuickCommandTextAsync(command.Id, command.Name, command.CommandText);
+            ResolveQuickCommandTextAsync(command.Id, command.Name, command.CommandText, terminalTab);
         terminalTab.CommandLineSubmitted += CommandHistory.Record;
         if (terminalEmulator is VelaTerminalControl bellSource)
         {
@@ -2674,13 +2674,12 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         }
         FireAndForget.Run(async () =>
         {
-            string? rendered = await AskQuickCommandVariablesAsync(request.CommandId, request.CommandName, template);
-            if (rendered is null)
+            if (await AskQuickCommandVariablesAsync(request.CommandId, request.CommandName, template) is not { } rendered)
             {
                 return;
             }
             // 弹框期间目标可能已经断开:发送时再按当下的标签挑一遍,只发给仍连着的。
-            DeliverQuickCommand(request.TargetIds, rendered);
+            DeliverQuickCommand(request.TargetIds, rendered.Text, rendered.Secrets);
         });
     }
 
@@ -2695,20 +2694,38 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <param name="commandId">快捷命令 id;询问框按它记值,没有时按正文记。</param>
     /// <param name="commandName">命令显示名(弹框标题)。</param>
     /// <param name="commandText">命令正文。</param>
+    /// <param name="target">
+    /// 正文要写进哪个标签的命令行(补全那一路);凭据类占位填进去的值先挡在它的命令历史之外
+    /// (<see cref="TerminalTabViewModel.KeepOutOfCommandHistory" />)。
+    /// </param>
     /// <returns>要发出去的命令正文,或 null(用户取消)。</returns>
-    internal Task<string?> ResolveQuickCommandTextAsync(Guid? commandId, string? commandName, string commandText)
+    internal async Task<string?> ResolveQuickCommandTextAsync(
+        Guid? commandId,
+        string? commandName,
+        string commandText,
+        TerminalTabViewModel? target = null)
     {
         var template = QuickCommandTemplate.Parse(commandText);
-        return template.HasVariables && QuickCommandVariablePrompt is not null
-            ? AskQuickCommandVariablesAsync(commandId, commandName, template)
-            : Task.FromResult<string?>(commandText);
+        if (!template.HasVariables || QuickCommandVariablePrompt is null)
+        {
+            return commandText;
+        }
+        if (await AskQuickCommandVariablesAsync(commandId, commandName, template) is not { } rendered)
+        {
+            return null;
+        }
+        target?.KeepOutOfCommandHistory(rendered.Secrets);
+        return rendered.Text;
     }
 
-    private async Task<string?> AskQuickCommandVariablesAsync(Guid? commandId, string? commandName, QuickCommandTemplate template)
+    /// <summary>替换好的快捷命令:正文,以及其中凭据类占位填进去的值(不进命令历史)。</summary>
+    private readonly record struct RenderedQuickCommand(string Text, IReadOnlyList<string> Secrets);
+
+    private async Task<RenderedQuickCommand?> AskQuickCommandVariablesAsync(Guid? commandId, string? commandName, QuickCommandTemplate template)
     {
         if (QuickCommandVariablePrompt is not { } prompt)
         {
-            return template.Text;
+            return new(template.Text, []);
         }
         IReadOnlyDictionary<string, string> initial = _quickCommandVariables.Prefill(commandId, template.Text, template);
         IReadOnlyDictionary<string, string>? values = await prompt(commandName, template, initial);
@@ -2717,14 +2734,17 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             return null;
         }
         _quickCommandVariables.Remember(commandId, template.Text, template, values);
-        return template.Render(values);
+        return new(template.Render(values), QuickCommandVariableMemory.SensitiveValues(template, values));
     }
 
     /// <summary>
     /// 多行命令要发给没开括号粘贴的终端时先确认(那边会逐行执行),其余情况直接发送。
     /// 确认开关沿用「设置 → 终端 → 粘贴时确认多行内容」:关掉它的人已经表示过不想被这类问题打断。
     /// </summary>
-    private void DeliverQuickCommand(IReadOnlyList<Guid> targetIds, string commandText)
+    /// <param name="targetIds">目标标签。</param>
+    /// <param name="commandText">要发的正文。</param>
+    /// <param name="historySecrets">正文里凭据类占位填进去的值:各目标标签提交含它们的那一行时不进命令历史。</param>
+    private void DeliverQuickCommand(IReadOnlyList<Guid> targetIds, string commandText, IReadOnlyList<string>? historySecrets = null)
     {
         if (
             QuickCommandMultilineConfirmer is { } confirm
@@ -2737,12 +2757,12 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             {
                 if (await confirm(commandText))
                 {
-                    SendQuickCommandText(targetIds, commandText);
+                    SendQuickCommandText(targetIds, commandText, historySecrets);
                 }
             });
             return;
         }
-        SendQuickCommandText(targetIds, commandText);
+        SendQuickCommandText(targetIds, commandText, historySecrets);
     }
 
     private TerminalTabViewModel[] QuickCommandTargets(IReadOnlyList<Guid> targetIds)
@@ -2751,12 +2771,17 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         return [.. TerminalTabs.Where(tab => tab.IsConnected && ids.Contains(tab.Id))];
     }
 
-    private void SendQuickCommandText(IReadOnlyList<Guid> targetIds, string commandText)
+    private void SendQuickCommandText(IReadOnlyList<Guid> targetIds, string commandText, IReadOnlyList<string>? historySecrets)
     {
         TerminalTabViewModel[] targets = QuickCommandTargets(targetIds);
         bool sent = false;
         foreach (TerminalTabViewModel target in targets)
         {
+            if (historySecrets is { Count: > 0 })
+            {
+                // 正文只写进命令行、回车由用户按:先挡住,等那一行提交时它就不进命令历史。
+                target.KeepOutOfCommandHistory(historySecrets);
+            }
             sent |= target.TrySendCommandText(commandText);
         }
         if (sent)
@@ -3073,7 +3098,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         // 命令补全:注入建议提供器;提交(已回显校验)的命令进全局历史。
         terminalTab.SuggestionProvider = _suggestionProvider;
         terminalTab.QuickCommandTextResolver = command =>
-            ResolveQuickCommandTextAsync(command.Id, command.Name, command.CommandText);
+            ResolveQuickCommandTextAsync(command.Id, command.Name, command.CommandText, terminalTab);
         terminalTab.CommandLineSubmitted += CommandHistory.Record;
 
         // 树上的状态圆点与「活跃/连接中/离线」标签不在这里订阅:一条配置可能同时开着
@@ -3724,7 +3749,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
 
         // 会话断开后 SFTP 通道随之失效:驱逐缓存的文件面板、收掉它开出来的外部编辑会话并释放 SFTP 客户端。
         // 重连会拿到新的 SessionId,面板届时按新会话重建(旧会话名下的编辑会话不会跟过去)。
-        _ = CloseSftpForTab(tab);
+        // 编辑器多半还开着那些副本:断线这一路一个副本都不删,每个结束的编辑会话用浮层说一声(见 RemoteEditSession.Detach)。
+        _ = CloseSftpForTab(tab, connectionLost: true);
 
         // 不论主动断开还是远端掉线,都把底层 SSH 客户端一并拆掉;
         // 重连会新建会话,不受影响。
@@ -3911,7 +3937,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 桥还是不是原来那个,不然就是把命令灌进了别人的 shell。
     /// </para>
     /// </remarks>
-    private static void SendSessionInjections(
+    private void SendSessionInjections(
         TerminalTabViewModel tab,
         AppSettings settings,
         RemoteShellKind shellKind,
@@ -4052,7 +4078,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// </summary>
     /// <param name="tab">已挂上传输、状态已置为已连接的终端标签。</param>
     /// <param name="profile">本次连接所用的配置。</param>
-    private static void SendPostAuthCommand(TerminalTabViewModel tab, SessionProfile profile)
+    private void SendPostAuthCommand(TerminalTabViewModel tab, SessionProfile profile)
     {
         // 初始目录(F-06)先走一步:它是"进去之后先站在哪儿",本条命令则是"站好之后干什么",
         // 顺序反了的话一条 `tail -f ./app.log` 会在家目录里找不到文件。
@@ -4109,17 +4135,37 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <para>
     /// 路径用单引号裹住并转义内部的单引号:目录名里带空格是常事(<c>/opt/my app</c>),
     /// 不裹就变成了两个参数;而带引号的路径不转义则会把后面的内容当成新命令 ——
-    /// 那是把用户自己的配置变成了一条注入。
+    /// 那是把用户自己的配置变成了一条注入。引号按登录 shell 的规则加(<see cref="RemoteSearch.QuoteFor" />):
+    /// fish 的单引号里 <c>\'</c> 是转义,POSIX 那种 <c>'\''</c> 碰上以 <c>\</c> 结尾的一段就会提前收引号。
+    /// </para>
+    /// <para>
+    /// 目录名里有控制字符时<b>不发</b>、改为提示一句(见 <see cref="SilentCommand.CanTypeLiterally" />):
+    /// 这一行是敲进 PTY 的,引号挡不住行规程与行编辑器 —— 自从「在此处打开终端」把远端列表里的目录名送到这里,
+    /// 别人建的一个带 <c>^U</c>、回车的目录就能把整行换成他的命令。
     /// </para>
     /// </remarks>
-    private static void SendStartupDirectory(TerminalTabViewModel tab, SessionProfile profile)
+    private void SendStartupDirectory(TerminalTabViewModel tab, SessionProfile profile)
     {
         // 文件栏「在此处打开终端」开出来的标签有自己的目录,压过配置里的初始目录(见 OpenTerminalHereAsync)。
         if ((tab.StartupDirectoryOverride ?? SessionTerminalSettings.StartupDirectory(profile)) is not { } directory)
         {
             return;
         }
-        tab.SendSilentCommand($"cd '{directory.Replace("'", @"'\''", StringComparison.Ordinal)}'");
+        if (!SilentCommand.CanTypeLiterally(directory))
+        {
+            // 注入链跑在对端安静下来之后的线程池线程上(见 SendSessionInjections),浮层提示只能在 UI 线程上推。
+            void Warn() => Toasts.Warning(Strings.Get("Sftp_OpenTerminalHereUnsafeDirectory"));
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                Warn();
+            }
+            else
+            {
+                Dispatcher.UIThread.Post(Warn);
+            }
+            return;
+        }
+        tab.SendSilentCommand("cd " + RemoteSearch.QuoteFor(tab.RemoteShellKind, directory));
     }
 
     /// <summary>
@@ -4581,7 +4627,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <para>
     /// <c>cd</c> 走认证后命令那一条路(<see cref="SendStartupDirectory" />,单引号转义),与配置里的「初始目录」、
     /// 跟随终端目录的钩子共用同一套静默注入与防回显 —— 用户屏幕上不会多出一行没敲过的命令,
-    /// 带空格、带引号的目录名也不会变成两个参数或一条注入。它压过配置里的初始目录,只挂在这个标签上,不写进配置。
+    /// 带空格、带引号的目录名也不会变成两个参数或一条注入;带控制字符的目录名不 <c>cd</c>、只提示一句(敲进 PTY 的控制字符
+    /// 引号挡不住,见那边)。它压过配置里的初始目录,只挂在这个标签上,不写进配置。
     /// </para>
     /// <para>
     /// 连接本身就是普通的「打开这条配置」:凭据缺了照样弹登录框,认证失败照样原地重试,与双击资源管理器里那一条一样;
@@ -5845,6 +5892,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         ui.BeginAttempt();
 
         bool allowsAnonymous = false;
+        // 这一档根本没有凭据(SQLite 是个文件):不弹登录框、认证失败也不重弹、不去取共享凭据 ——
+        // 填什么插件都收不到(启动器对这一档一律交空串)。配置里若还留着一个用户名
+        // (表单收起两栏之前填的、或旧版本存下的),按"有用户名没口令"弹框,用户取消就连不上了。
+        bool noCredentials = false;
         // 描述符要活到建文档那一步 —— 标签页图标也从它身上取(descriptor.Icon)。
         WorkspaceDescriptor? descriptor = null;
         if (_protocolRegistry is { } registry)
@@ -5860,8 +5911,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             // NoCredentials 蕴含匿名,与连接配置页(PluginConnectionForm)同一条判定。
             if (descriptor is not null)
             {
-                allowsAnonymous = WorkspaceVariants.AllowsAnonymous(
-                    WorkspaceVariants.EffectiveFeatures(descriptor, profile.PluginSettings));
+                WorkspaceFeatures features = WorkspaceVariants.EffectiveFeatures(descriptor, profile.PluginSettings);
+                allowsAnonymous = WorkspaceVariants.AllowsAnonymous(features);
+                noCredentials = features.HasFlag(WorkspaceFeatures.NoCredentials);
             }
             if (descriptor is { DisplayName.Length: > 0 })
             {
@@ -5876,7 +5928,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         Exception? lastAuthFailure = null;
         for (int attempt = 0; attempt < 3; attempt++)
         {
-            if (attempt > 0 || RequiresPluginCredentials(current, allowsAnonymous))
+            if (!noCredentials && (attempt > 0 || RequiresPluginCredentials(current, allowsAnonymous)))
             {
                 if (InteractiveAuthenticator is not { } prompt)
                 {
@@ -5901,8 +5953,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 ui.BeginAttempt();
                 // 声明了 SshTunnel 且用户选了跳板机 → 宿主先把 SSH 会话与本地转发建好,
                 // 插件只看到一个已经能连的本地端点(凭据永不出宿主)。
-                // 共享凭据先取:取不到就别白建一条隧道(#550)。
-                SessionProfile resolved = await ResolveCredentialsAsync(current, ui.Token).ConfigureAwait(true);
+                // 共享凭据先取:取不到就别白建一条隧道(#550)。没有凭据的那一档不取(理由见 noCredentials)。
+                SessionProfile resolved = noCredentials
+                    ? current
+                    : await ResolveCredentialsAsync(current, ui.Token).ConfigureAwait(true);
                 (WorkspaceEndpoint? endpoint, Guid tunnelId) =
                     await EstablishWorkspaceTunnelAsync(current, ui.Token).ConfigureAwait(true);
                 PluginWorkspaceSession session;
@@ -5958,6 +6012,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             catch (Exception auth) when (auth is PluginProtocolAuthenticationException or CredentialProviderException)
             {
                 lastAuthFailure = auth;
+                if (noCredentials)
+                {
+                    // 没有凭据可重填:再弹登录框也改变不了什么,原样重试三次只是把同一个失败等三遍。
+                    break;
+                }
                 continue;
             }
             catch (Exception ex)
@@ -7238,7 +7297,12 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 标签关闭时调用方等它收完才断 SSH;断线驱逐时连接已经没了,未传的改动照原口径留成草稿并提示位置。
     /// 任务不会失败(两步各自兜住),不等它的调用方可以直接丢弃。
     /// </remarks>
-    private Task CloseSftpForTab(TerminalTabViewModel tab)
+    /// <param name="tab">关掉或断开的标签。</param>
+    /// <param name="connectionLost">
+    /// 是断线而不是关标签:外部编辑会话结束但副本一个都不删(编辑器多半还开着),每个结束的会话推一条浮层提示 ——
+    /// 面板这时已经被驱逐,它的报错栏没人看得见。
+    /// </param>
+    private Task CloseSftpForTab(TerminalTabViewModel tab, bool connectionLost = false)
     {
         if (_sftpService is null || tab.SessionId == Guid.Empty)
         {
@@ -7249,15 +7313,28 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         // 在拆除 SFTP 通道前先驱逐:使在飞的列举被取消,而非与客户端释放争抢
         // (否则 SSH.NET 会从 ListDirectory 内部抛 NRE)。
         EvictFileBrowser(closedSessionId);
-        return CloseSidebarScopeAsync(_sftpService, closedSessionId);
+        return CloseSidebarScopeAsync(_sftpService, closedSessionId, connectionLost ? PostWarning : null);
+    }
+
+    /// <summary>从任意线程推一条警告浮层(收尾链跑在线程池上,浮层只能在 UI 线程上动)。</summary>
+    private void PostWarning(string message)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            Toasts.Warning(message);
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => Toasts.Warning(message));
+        }
     }
 
     /// <summary>侧栏面板的收尾后半段:外部编辑会话 → SFTP 通道,顺序与 SFTP 文档标签关闭相同。</summary>
-    private static async Task CloseSidebarScopeAsync(ISftpService sftp, Guid sessionId)
+    private static async Task CloseSidebarScopeAsync(ISftpService sftp, Guid sessionId, Action<string>? connectionLost)
     {
         try
         {
-            await RemoteEditSessionManager.CloseScopeAsync(sessionId).ConfigureAwait(false);
+            await RemoteEditSessionManager.CloseScopeAsync(sessionId, connectionLost).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

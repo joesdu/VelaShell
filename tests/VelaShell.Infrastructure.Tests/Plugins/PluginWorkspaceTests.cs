@@ -393,6 +393,49 @@ public sealed class PluginWorkspaceTests
     }
 
     /// <summary>
+    /// <b>没有凭据的那一档(SQLite,变体声明 NoCredentials):用户名口令一律交空串</b>,哪怕配置里还留着。
+    /// 那是连接框把两栏收起之前填的(或旧版本存下的),用户看不见,不能交给第三方插件。
+    /// 要凭据的那一档(MySQL)照旧原样交。
+    /// </summary>
+    [TestMethod]
+    [DataRow("sqlite", "", "")]
+    [DataRow("mysql", "root", "secret")]
+    public async Task Launcher_OpenAsync_NoCredentialVariant_SendsNoCredentials(
+        string dialect, string expectedUsername, string expectedPassword)
+    {
+        var registry = new PluginProtocolRegistry();
+        var provider = new FakeWorkspaceProvider();
+        registry.RegisterWorkspace(PluginId, Descriptor(
+                new ProtocolSettingField
+                {
+                    Key = "dialect",
+                    Label = "Dialect",
+                    Kind = ProtocolSettingKind.Choice,
+                    DefaultValue = "mysql",
+                    Choices = [new("mysql", "MySQL"), new("sqlite", "SQLite")]
+                }) with
+            {
+                Features = WorkspaceFeatures.CertificateTrust,
+                VariantKey = "dialect",
+                Variants =
+                [
+                    new() { Value = "mysql", DefaultPort = 3306 },
+                    new() { Value = "sqlite", Features = WorkspaceFeatures.NoCredentials }
+                ]
+            }, provider);
+        var launcher = new PluginWorkspaceLauncher(registry);
+        SessionProfile profile = Profile();
+        profile.Username = "root";
+        profile.Password = "secret";
+        profile.PluginSettings = new Dictionary<string, string>(StringComparer.Ordinal) { ["dialect"] = dialect };
+
+        await launcher.OpenAsync(profile);
+
+        Assert.AreEqual(expectedUsername, provider.LastRequest!.Username);
+        Assert.AreEqual(expectedPassword, provider.LastRequest.Password);
+    }
+
+    /// <summary>
     /// 启动器按插件清单声明的工作台 id 数开着的文档:插件管理页据此把"已激活但标签全关了"的插件
     /// 显示为后台运行。开、关、被注销三条路都要发变化通知,管理页开着时才能跟着刷新。
     /// </summary>

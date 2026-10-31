@@ -12,6 +12,13 @@ internal sealed class ImageGenerationService(ImageClient client, string model, b
 {
     private const int MaxInputBytes = 20 * 1024 * 1024;
 
+    /// <summary>
+    /// 改图接口(<c>/images/edits</c>)收得下的输入格式。只有这几种才登记成会话里可改的图、发给模型图片 ID;
+    /// GIF 仍可作为视觉附件发给聊天模型,但不给 ID —— 否则模型拿它调 <c>edit_image</c> 必然被下面拒掉,
+    /// 还会把这一轮的图片工具锁死。
+    /// </summary>
+    internal static bool IsEditableInput(string? mediaType) => mediaType is "image/png" or "image/jpeg" or "image/webp";
+
     public async Task<DataContent> GenerateAsync(string prompt, IReadOnlyList<DataContent>? inputs, CancellationToken token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(prompt);

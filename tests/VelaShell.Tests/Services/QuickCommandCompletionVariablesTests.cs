@@ -3,9 +3,12 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Threading;
 using NSubstitute;
+using ReactiveUI.Primitives;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Ssh;
+using VelaShell.Docking;
+using VelaShell.Presentation.ViewModels;
 using VelaShell.Services;
 using VelaShell.Terminal.Rendering;
 using VelaShell.Tests.TestSupport;
@@ -181,6 +184,97 @@ public sealed class QuickCommandCompletionVariablesTests
 
             Assert.IsFalse(asked);
             Assert.AreEqual("kubectl get pods", Encoding.UTF8.GetString([.. writes]));
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    private static readonly QuickCommand Mysql = new()
+    {
+        Id = Guid.NewGuid(),
+        Name = "数据库列表",
+        CommandText = "mysql -uroot -p{{password}} -e 'show databases'"
+    };
+
+    private const string MysqlRendered = "mysql -uroot -pS3cret! -e 'show databases'";
+
+    /// <summary>宿主同一个询问入口:这里填密码 S3cret!。</summary>
+    private static MainWindowViewModel Host()
+    {
+        var vm = new MainWindowViewModel(quickCommands: new QuickCommandsViewModel(Substitute.For<IQuickCommandRepository>()))
+        {
+            QuickCommandVariablePrompt = (_, _, _) =>
+                Task.FromResult<IReadOnlyDictionary<string, string>?>(new Dictionary<string, string> { ["password"] = "S3cret!" }),
+        };
+        return vm;
+    }
+
+    /// <summary>shell 回显这一行(另起一行、带提示符),再按回车。</summary>
+    private static void EchoAndSubmit(VelaTerminalControl control, string line)
+    {
+        control.Feed(Encoding.UTF8.GetBytes("\r\n$ " + line));
+        control.WriteKeyInput(Avalonia.Input.Key.Enter, Avalonia.Input.KeyModifiers.None);
+    }
+
+    [TestMethod]
+    public Task CredentialValues_FilledInFromCompletion_StayOutOfTheCommandHistory() => Session.RunOnUiAsync(async () =>
+    {
+        using var control = new VelaTerminalControl();
+        IShellStreamWrapper shell = Shell(out _);
+        await using var tab = new TerminalTabViewModel(control, shell) { ConnectionStatus = SessionStatus.Connected };
+        var history = new CommandHistoryService(null);
+        tab.CommandLineSubmitted += history.Record;
+        MainWindowViewModel host = Host();
+        // 与宿主建标签时接的是同一个入口(测试里的标签不是宿主建的)。
+        tab.QuickCommandTextResolver = c => host.ResolveQuickCommandTextAsync(c.Id, c.Name, c.CommandText, tab);
+        (Window window, TerminalTabView view) = Show(tab);
+        try
+        {
+            control.WriteTextInput("mys");
+            view.AcceptSuggestionForTest(new CommandSuggestion(Mysql.CommandText, null, "QC", Mysql));
+            await view.QuickCommandAcceptForTest;
+            Assert.AreEqual(MysqlRendered, tab.InputTracker.CurrentInput);
+            EchoAndSubmit(control, MysqlRendered);
+
+            control.WriteTextInput("ls -la");
+            EchoAndSubmit(control, "ls -la");
+
+            Assert.AreSequenceEqual(["ls -la"], history.Entries.ToArray(),
+                "填了密码的那一行不进历史(否则下次敲 mysql 补全就把口令端出来);别的命令照记");
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
+
+    [TestMethod]
+    public Task CredentialValues_SentFromThePanel_StayOutOfTheCommandHistory_EvenWhenRecalled() => Session.RunOnUiAsync(async () =>
+    {
+        using var control = new VelaTerminalControl();
+        IShellStreamWrapper shell = Shell(out _);
+        await using var tab = new TerminalTabViewModel(control, shell) { ConnectionStatus = SessionStatus.Connected };
+        var history = new CommandHistoryService(null);
+        tab.CommandLineSubmitted += history.Record;
+        MainWindowViewModel host = Host();
+        host.Layout.AddDocument(new TerminalDocument(tab));
+        (Window window, TerminalTabView _) = Show(tab);
+        try
+        {
+            host.Sidebar.QuickCommands!.SendCommand.Execute(new QuickCommandViewModel(Mysql)).Subscribe();
+            Assert.AreEqual(MysqlRendered, tab.InputTracker.CurrentInput, "快捷命令区只写正文,回车由用户按");
+            EchoAndSubmit(control, MysqlRendered);
+
+            // 之后用 shell 的 ↑ 把它翻出来再跑一遍:这一行改从屏幕上取,照样认得出口令。
+            control.WriteKeyInput(Avalonia.Input.Key.Up, Avalonia.Input.KeyModifiers.None);
+            EchoAndSubmit(control, MysqlRendered);
+
+            control.WriteTextInput("uptime");
+            EchoAndSubmit(control, "uptime");
+
+            Assert.AreSequenceEqual(["uptime"], history.Entries.ToArray());
         }
         finally
         {

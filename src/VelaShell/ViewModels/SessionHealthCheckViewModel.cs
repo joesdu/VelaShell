@@ -10,6 +10,7 @@ using VelaShell.Core.Net;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Presentation.Services;
+using VelaShell.Ssh.Auth;
 using VelaShell.Ssh.Diagnostics;
 
 namespace VelaShell.ViewModels;
@@ -72,6 +73,12 @@ public static class SessionHealthClassifier
             {
                 return new(SessionHealthStatus.NeedsAttention, failed?.Name, Join(title, failed?.Detail), elapsedMs);
             }
+            // 私钥带口令、配置里没存口令:手动连接时会问口令,巡检不问 —— 与「没存凭据」同一类,不是机器连不上。
+            // 系统密钥库的钥要 PIN / 确认才能用(巡检以「不许弹框」打开它)同理。
+            if (MissingPassphrase(report.Failure) || KeyStoreNeedsUser(report.Failure))
+            {
+                return new(SessionHealthStatus.NeedsCredentials, failed?.Name, failed?.Detail ?? title, elapsedMs);
+            }
             // 跳板链本身配错了(被删、成环):四步都无从谈起,卡在配置上。
             return new(SessionHealthStatus.Failed, failed?.Name ?? Strings.Get("Health_StepConfiguration"),
                 Join(title, failed?.Detail ?? report.IssueDescription), elapsedMs);
@@ -98,6 +105,61 @@ public static class SessionHealthClassifier
             }
         }
         return false;
+    }
+
+    /// <summary>
+    /// 失败链上有「私钥要口令而没给」(<see cref="SshFailureReason.KeyPassphraseRequired" />,库在派生密钥之前就报,不白跑 KDF)。
+    /// </summary>
+    /// <remarks>
+    /// 配置里存着「私钥路径」就算有凭据(诊断那一步因此去登录),可口令没存时读私钥这一步就失败,翻译过的认证异常里面包着它。
+    /// 存着的口令不对(<see cref="SshFailureReason.KeyPassphraseIncorrect" />)不在此列:那是存错了,与存错的密码一样记「连不上」。
+    /// </remarks>
+    private static bool MissingPassphrase(Exception? failure)
+    {
+        for (Exception? current = failure; current is not null; current = current.InnerException)
+        {
+            if (current is SshException { Reason: SshFailureReason.KeyPassphraseRequired })
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>CNG 的 <c>NTE_SILENT_CONTEXT</c>:以「不许弹框」打开的钥,密钥库非得问人(PIN、插卡、确认)才能用。</summary>
+    private const int SilentContextRequired = unchecked((int)0x80090022);
+
+    /// <summary>
+    /// 系统密钥库的钥要人来(<c>NTE_SILENT_CONTEXT</c>):打不开时在失败链上,签名时才要的在认证尝试记录里
+    /// (库把签名器抛的异常记进那条凭据的说明、换下一条,不在 <see cref="Exception.InnerException" /> 链上)。
+    /// </summary>
+    private static bool KeyStoreNeedsUser(Exception? failure)
+    {
+        for (Exception? current = failure; current is not null; current = current.InnerException)
+        {
+            if (current.HResult == SilentContextRequired)
+            {
+                return true;
+            }
+            if (current is SshAuthenticationException auth
+                && auth.Attempts.SelectMany(static attempt => attempt.Details).Any(static detail => IsSilentContext(detail.Error)))
+            {
+                return true;
+            }
+        }
+        return false;
+
+        static bool IsSilentContext(Exception? error)
+        {
+            for (Exception? current = error; current is not null; current = current.InnerException)
+            {
+                if (current.HResult == SilentContextRequired)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     private static string? Join(string head, string? tail) =>
@@ -453,6 +515,7 @@ public sealed class SessionHealthCheckViewModel : ReactiveObject
                 row.Reset();
             }
             RefreshSummary();
+            await ReloadProfilesAsync().ConfigureAwait(true);
             using var gate = new SemaphoreSlim(Concurrency);
             await Task.WhenAll(Rows.ToList().Select(row => CheckRowAsync(row, gate, verifyLogin, run.Token))).ConfigureAwait(true);
         }
@@ -499,6 +562,49 @@ public sealed class SessionHealthCheckViewModel : ReactiveObject
         {
             _run = null;
             IsRunning = false;
+            RefreshVisibleRows();
+            RefreshSummary();
+        }
+    }
+
+    /// <summary>
+    /// 每一轮开查之前把每行的配置换成库里最新的那份(行还是那一行);库里已经没有的(删掉了)从表上拿掉。
+    /// </summary>
+    /// <remarks>
+    /// 行手里的是开始巡检时交进来的那份对象(资源管理器的树节点、命令面板读出来的一批),库每读一次都给新对象,
+    /// 别处改了配置不会落到它身上:在这一行的「连接诊断」里一键放开了算法、在主窗口里改了配置,
+    /// 「重新巡检」曾经照旧拿老配置去查,同一处又失败一次,要关掉窗口重开才查得到改过的。
+    /// 读不出来时沿用手里那份(与 <see cref="RecheckAsync" /> 同一个口径),不让一次读库失败掀掉整批。
+    /// </remarks>
+    private async Task ReloadProfilesAsync()
+    {
+        if (_repository is null)
+        {
+            return;
+        }
+        bool removed = false;
+        foreach (SessionHealthRowViewModel row in Rows.ToList())
+        {
+            try
+            {
+                if (await _repository.GetSessionAsync(row.Profile.Id).ConfigureAwait(true) is { } latest)
+                {
+                    row.Profile = latest;
+                }
+                else
+                {
+                    Rows.Remove(row);
+                    removed = true;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or InvalidOperationException)
+            {
+                Trace.WriteLine($"[HealthCheck] 读取配置 {row.Profile.Id} 失败:{ex.Message}");
+            }
+        }
+        if (removed)
+        {
+            this.RaisePropertyChanged(nameof(HasRows));
             RefreshVisibleRows();
             RefreshSummary();
         }

@@ -152,6 +152,82 @@ public sealed class OutputTriggerTests
         });
     }
 
+    private const string A = "\e]133;A\e\\";
+    private const string B = "\e]133;B\e\\";
+    private const string C = "\e]133;C\e\\";
+    private const string D0 = "\e]133;D;0\e\\";
+
+    /// <summary>shell 集成下跑一条命令,对端回显、换行、发 C:之后的输出是这条命令自己的。</summary>
+    private static void RunCommand(Harness h, string command)
+    {
+        h.Remote(A + "user@host:~$ " + B);
+        h.Control.WriteTextInput(command);
+        h.Control.WriteKeyInput(Key.Enter, KeyModifiers.None);
+        h.Remote(command + "\r\n" + C);
+    }
+
+    [TestMethod]
+    public void OutputWithoutATrailingNewline_ThenTheShellPromptOnTheSameRow_IsNotAnswered()
+    {
+        OnUi(() =>
+        {
+            // cat 的文件最后一行没有换行:bash 把提示符直接接在那段文字后面,光标没离开这一行。
+            // 那是 shell 在等命令 —— 应答就成了往 shell 里敲 yes 回车。
+            var h = new Harness(YesRule());
+            RunCommand(h, "cat notes.txt");
+            h.Remote(HostKeyPrompt + D0 + A + "user@host:~$ " + B);
+            Assert.IsEmpty(h.Hits);
+        });
+    }
+
+    [TestMethod]
+    public void ShellPromptArrivingWhileTheAnswerWaitsForQuiet_CancelsIt()
+    {
+        OnUi(() =>
+        {
+            // printf 的提示先到、shell 的提示符在下一批才到:到点重判时这一行已经是 shell 的了。
+            var h = new Harness(YesRule());
+            h.Control.TriggerQuietDelay = TimeSpan.FromMilliseconds(300);
+            RunCommand(h, "printf '…'");
+            h.Remote(HostKeyPrompt);
+            Assert.IsTrue(h.Control.HasPendingTriggerForTest, "前提:先像一次真提问那样约好了。");
+
+            h.Remote(D0 + A + "user@host:~$ " + B);
+            h.Control.FirePendingTriggerForTest();
+            Assert.IsEmpty(h.Hits);
+        });
+    }
+
+    [TestMethod]
+    public void ProgramPrompt_UnderShellIntegration_IsStillAnswered()
+    {
+        OnUi(() =>
+        {
+            // 命令输出首行(C)上的提问照答:标记只排除 shell 自己的提示符行。
+            var h = new Harness(YesRule());
+            RunCommand(h, "ssh host");
+            h.Remote("The authenticity of host 'host' can't be established.\r\n" + HostKeyPrompt);
+            Assert.HasCount(1, h.Hits);
+        });
+    }
+
+    [TestMethod]
+    public void RuleAnchoredAtTheEnd_DoesNotMatchAPromptGluedOnWithoutIntegration()
+    {
+        OnUi(() =>
+        {
+            // 没装 shell 集成时认不出提示符;手册建议把规则写到提示结尾 —— 这条建议得真管用。
+            OutputRule anchored = YesRule();
+            anchored.Pattern = @"\(yes/no/\[fingerprint\]\)\? ?$";
+            var h = new Harness(anchored);
+            h.Remote("\r\n" + HostKeyPrompt + "user@host:~$ ");
+            Assert.IsEmpty(h.Hits);
+
+            h.Remote("\r\n" + HostKeyPrompt);
+            Assert.HasCount(1, h.Hits, "真提问停在行尾,照答。");
+        });
+    }
+
     [TestMethod]
     public void HostWrittenText_AndPlaybackFeeds_DoNotTrigger()
     {
@@ -319,6 +395,50 @@ public sealed class OutputTriggerTests
     }
 
     [TestMethod]
+    public void Resize_WhileAnAnswerWaitsForTheCooldown_StillAnswersIt()
+    {
+        OnUi(() =>
+        {
+            // 冷却里排着的第二条提示:用户这时开关侧栏、拖分屏、Ctrl+滚轮缩放,改了列宽。
+            // 重排不能把它记成「答过了」—— read -p 这类提示不会重画,错过这一次就再也答不上。
+            var h = new Harness(YesRule(cooldown: 30));
+            h.Remote(HostKeyPrompt);
+            Assert.HasCount(1, h.Hits);
+
+            h.Clock.Advance(TimeSpan.FromSeconds(5));
+            h.Remote("yes\r\n" + HostKeyPrompt);
+            Assert.IsTrue(h.Control.HasPendingTriggerForTest, "前提:约到了冷却结束。");
+
+            h.Control.Resize(60, 30);
+            h.Clock.Advance(TimeSpan.FromSeconds(25));
+            h.Control.FirePendingTriggerForTest();
+            Assert.HasCount(2, h.Hits);
+
+            // 答过的那两条,再改一次列宽也不重答。
+            h.Clock.Advance(TimeSpan.FromMinutes(5));
+            h.Control.Resize(100, 30);
+            h.Remote("");
+            Assert.HasCount(2, h.Hits);
+        });
+    }
+
+    [TestMethod]
+    public void Resize_WhileAnAnswerWaitsForQuiet_StillAnswersIt()
+    {
+        OnUi(() =>
+        {
+            var h = new Harness(YesRule());
+            h.Control.TriggerQuietDelay = TimeSpan.FromMilliseconds(300);
+            h.Remote(HostKeyPrompt);
+            Assert.IsTrue(h.Control.HasPendingTriggerForTest);
+
+            h.Control.Resize(60, 30);
+            h.Control.FirePendingTriggerForTest();
+            Assert.HasCount(1, h.Hits);
+        });
+    }
+
+    [TestMethod]
     public void ClearedAndAskedAgain_IsANewQuestion()
     {
         OnUi(() =>
@@ -340,6 +460,39 @@ public sealed class OutputTriggerTests
             h.Control.Resize(30, 10); // 提示比屏宽长,自动换行折成两三行
             h.Remote(HostKeyPrompt);
             Assert.HasCount(1, h.Hits);
+        });
+    }
+
+    [TestMethod]
+    public void BackgroundInput_KeepsTheSelectionAndTheScrolledBackView()
+    {
+        OnUi(() =>
+        {
+            // 自动应答在提示出现 0.3 秒或冷却之后才发,那时用户可能正往回翻、选着一段日志。
+            // 它照常经键入出口发出去(行跟踪、同步转发、共享密码列表的作废都要看见它),但不是用户的键入:
+            // 不该把选区清掉、把视图拉回底部。
+            var control = new VelaTerminalControl { CursorBlink = false };
+            var typed = new List<byte>();
+            var sent = new List<byte>();
+            control.TypedInput += typed.AddRange;
+            control.UserInput += sent.AddRange;
+            control.Feed(Encoding.UTF8.GetBytes(string.Concat(Enumerable.Range(0, 100).Select(i => $"log line {i}\r\n"))));
+            control.ShowHit(new BufferSearchHit(10, 0, 10));
+            int offset = control.ScrollOffset;
+            Assert.IsGreaterThan(0, offset, "前提:视图在回滚里。");
+            Assert.AreEqual("log line 1", control.GetSelectedText());
+
+            control.WriteBackgroundInput("yes"u8.ToArray(), submit: true);
+
+            Assert.AreEqual(offset, control.ScrollOffset);
+            Assert.AreEqual("log line 1", control.GetSelectedText());
+            Assert.AreEqual("yes\r", Encoding.ASCII.GetString([.. typed]));
+            Assert.AreEqual("yes\r", Encoding.ASCII.GetString([.. sent]));
+
+            // 对照:用户自己键入照旧回到底部、清掉选区。
+            control.WriteTextInput("x");
+            Assert.AreEqual(0, control.ScrollOffset);
+            Assert.AreEqual("", control.GetSelectedText());
         });
     }
 

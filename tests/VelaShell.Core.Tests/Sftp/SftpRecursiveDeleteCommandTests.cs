@@ -63,9 +63,29 @@ public class SftpRecursiveDeleteCommandTests
         return new(_connectionService, _ => _sftpClient, settings);
     }
 
-    private void StubExit(int exitCode) =>
+    /// <summary>命令退 <paramref name="exitCode" />;退 0 时那个目录随之不在了(之后再 stat 拿到 null),除非 <paramref name="removes" /> 为 false。</summary>
+    private void StubExit(int exitCode, bool removes = true) =>
         _ssh.RunCommandDetailedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new RemoteCommandResult(string.Empty, string.Empty, exitCode));
+            .Returns(_ =>
+            {
+                if (exitCode == 0 && removes)
+                {
+                    _sftpClient.GetEntryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((SftpEntry?)null);
+                }
+                return new RemoteCommandResult(string.Empty, string.Empty, exitCode);
+            });
+
+    /// <summary>会话的字符集(终端与 SFTP 文件名同一个口径)。</summary>
+    private void SessionCharset(string charset)
+    {
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+        _connectionService.GetSession(_sessionId).Returns(new SshSession
+        {
+            SessionId = _sessionId,
+            ConnectionInfo = new() { Host = "h", Port = 22, Username = "u", AuthMethod = AuthMethod.Password, FileNameEncoding = charset },
+            Status = SessionStatus.Connected
+        });
+    }
 
     [TestMethod]
     public async Task DirectoryOnSshSession_IsDeletedByOneCommand_NotByWalkingTheTree()
@@ -181,6 +201,102 @@ public class SftpRecursiveDeleteCommandTests
 
         await _ssh.Received(1).RunCommandDetailedAsync(
             @"rm -rf -- '/home/user/it'\''s a $HOME; rm'", Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// GBK / Big5 / Shift_JIS 会话:SFTP 按会话字符集解名字,<c>/data/报表</c> 在服务器上是 GBK 字节,而 exec 命令行是 UTF-8 ——
+    /// <c>rm -rf</c> 拿到的是另一串字节(不存在照样退 0,或者正好删掉一个 UTF-8 字节的同名目录)。中文路径不走命令,走 SFTP 递归
+    /// (复查 file-panes F2)。
+    /// </summary>
+    [TestMethod]
+    [DataRow("GBK", "/data/报表")]
+    [DataRow("Big5", "/data/功能")]
+    [DataRow("shift_jis", "/data/表")]
+    public async Task LegacyCharsetSession_NonAsciiPath_IsNotPassedToTheCommand(string charset, string dir)
+    {
+        SessionCharset(charset);
+        StubTree(dir);
+        StubExit(0);
+
+        await CreateService().DeleteAsync(_sessionId, dir);
+
+        await _ssh.DidNotReceive().RunCommandDetailedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _sftpClient.Received(1).DeleteFileAsync($"{dir}/a.txt", Arg.Any<CancellationToken>());
+        await _sftpClient.Received(1).DeleteDirectoryAsync(dir, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>纯 ASCII 的路径在这几种字符集里与 UTF-8 是同一串字节:照走快路径。</summary>
+    [TestMethod]
+    public async Task LegacyCharsetSession_AsciiPath_StillUsesTheCommand()
+    {
+        SessionCharset("GBK");
+        StubTree();
+        StubExit(0);
+
+        await CreateService().DeleteAsync(_sessionId, Dir);
+
+        await _ssh.Received(1).RunCommandDetailedAsync($"rm -rf -- '{Dir}'", Arg.Any<CancellationToken>());
+        await _sftpClient.DidNotReceive().DeleteDirectoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>UTF-8 会话里 SFTP 把解不开的字节记成 U+DC80–DCFF,编进 UTF-8 命令行成了 EF BF BD:同样不走命令。</summary>
+    [TestMethod]
+    public async Task Utf8Session_PathWithRawByteEscapes_IsNotPassedToTheCommand()
+    {
+        string dir = "/data/" + (char)0xDCD6 + (char)0xDCD0;
+        StubTree(dir);
+        StubExit(0);
+
+        await CreateService().DeleteAsync(_sessionId, dir);
+
+        await _ssh.DidNotReceive().RunCommandDetailedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _sftpClient.Received(1).DeleteDirectoryAsync(dir, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// 命令退 0 而目录还在(<c>rm -f</c> 删一个不存在的路径同样退 0):不报成功,接着走 SFTP 递归把它删掉。
+    /// </summary>
+    [TestMethod]
+    public async Task ZeroExit_ButTheDirectoryIsStillThere_FallsBackToTheSftpWalk()
+    {
+        StubTree();
+        StubExit(0, removes: false);
+
+        await CreateService().DeleteAsync(_sessionId, Dir);
+
+        await _ssh.Received(1).RunCommandDetailedAsync($"rm -rf -- '{Dir}'", Arg.Any<CancellationToken>());
+        await _sftpClient.Received(1).DeleteDirectoryAsync(Dir, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// 算摘要同理:GBK 会话里的中文路径不进 <c>sha256sum</c> 的命令行(进去了要么找不到、要么算的是 UTF-8 字节的同名文件),
+    /// 记「没算出来」;同一批里的 ASCII 路径照算。
+    /// </summary>
+    [TestMethod]
+    public async Task Sha256_LegacyCharsetSession_SkipsPathsWhoseBytesDiffer()
+    {
+        SessionCharset("GBK");
+        const string Ascii = "/data/a.txt";
+        const string Chinese = "/data/报表.txt";
+        string? sent = null;
+        _ssh.RunCommandDetailedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                sent = call.ArgAt<string>(0);
+                return new RemoteCommandResult(new string('a', 64) + "  " + Ascii + "\n", string.Empty, 0);
+            });
+
+        IReadOnlyDictionary<string, string?> hashes = await CreateService().ComputeSha256Async(_sessionId, [Ascii, Chinese]);
+
+        Assert.AreEqual(new string('a', 64), hashes[Ascii]);
+        Assert.IsNull(hashes[Chinese]);
+        Assert.IsNotNull(sent);
+        Assert.DoesNotContain("报表", sent);
+
+        sent = null;
+        IReadOnlyDictionary<string, string?> none = await CreateService().ComputeSha256Async(_sessionId, [Chinese]);
+        Assert.IsNull(none[Chinese]);
+        Assert.IsNull(sent, "一条都传不过去时连命令都不发");
     }
 
     /// <summary>根目录不交给 <c>rm -rf</c>:那一刀下去没有回头路。</summary>

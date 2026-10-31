@@ -17,7 +17,8 @@ namespace VelaShell.Infrastructure.Import;
 /// OpenSSH <c>~/.ssh/config</c> 的 <see cref="ISessionImportService" /> 实现:定位配置文件、
 /// 按 OpenSSH 的取值规则解析每个主机别名(<c>HostName</c> / <c>Port</c> / <c>User</c> /
 /// <c>IdentityFile</c> / <c>CertificateFile</c> / <c>IdentityAgent</c> / <c>ProxyJump</c>、
-/// <c>KexAlgorithms</c> / <c>HostKeyAlgorithms</c> / <c>Ciphers</c> / <c>MACs</c> / <c>Compression</c> / <c>ForwardAgent</c> /
+/// <c>KexAlgorithms</c> / <c>HostKeyAlgorithms</c> / <c>Ciphers</c> / <c>MACs</c> / <c>PubkeyAcceptedAlgorithms</c>(放开 SHA-1 RSA 签名的 → 允许老算法)/
+/// <c>Compression</c> / <c>ForwardAgent</c> /
 /// <c>ForwardX11</c> / <c>ForwardX11Trusted</c> / <c>ObscureKeystrokeTiming</c>、
 /// <c>LocalForward</c> / <c>RemoteForward</c> / <c>DynamicForward</c>),把选中的会话写入 <see cref="ISessionRepository" />。
 /// </summary>
@@ -273,6 +274,7 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
             Ciphers = Algorithms(SshAlgorithmKind.Cipher, "Ciphers", options.Ciphers, notes),
             Macs = Algorithms(SshAlgorithmKind.Mac, "MACs", options.Macs, notes),
         };
+        MapLegacyAlgorithms(options, ssh, notes);
 
         MapAgent(options, ssh, auth, identityAgent, notes);
 
@@ -449,6 +451,73 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
         }
         notes.Add(Strings.Format("SshCfgImport_NoteValueInvalid", $"{keyword} {value}"));
         return null;
+    }
+
+    /// <summary>
+    /// <c>PubkeyAcceptedAlgorithms</c>(旧名 <c>PubkeyAcceptedKeyTypes</c>)里留着 SHA-1 的 RSA 签名(<c>ssh-rsa</c>,
+    /// 或证书的 <c>ssh-rsa-cert-v01@openssh.com</c>)→ 打开「允许老算法」。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// VelaShell 没有单独放开 SHA-1 用户签名的开关,它是「允许老算法」的一部分(<c>SshConnectionAssembler</c> 的
+    /// <c>AllowSha1RsaSignatures</c>),导出时写的也正是这一行(<see cref="SshConfigExporter" />)。不映射的话
+    /// 只认 ssh-rsa 的老设备导进来就登不上。「留着」的口径与 SSH 库连接时一样(spec/09 §7):<c>-</c> 开头的是从默认里删
+    /// (默认本来没有 <c>ssh-rsa</c>),其余写法看名字在不在。
+    /// </para>
+    /// <para>
+    /// 这个开关同时把 SHA-1 的密钥交换、主机密钥、MAC 追加到默认清单之后:另三个清单里 <c>+</c> 写着的那几项并回开关
+    /// (VelaShell 自己导出的就是这样写的,往返之后配置与原来一样);文件里没放开它们的,如实说一句,不悄悄放宽。
+    /// </para>
+    /// </remarks>
+    private static void MapLegacyAlgorithms(SshHostConfig options, SshSessionOptions ssh, List<string> notes)
+    {
+        if (Value(options.PubkeyAcceptedAlgorithms) is not { } accepted || accepted[0] == '-')
+        {
+            return;
+        }
+        string[] names = accepted.TrimStart('+', '^')
+            .Split([',', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (!names.Any(static name => name is "ssh-rsa" or "ssh-rsa-cert-v01@openssh.com"))
+        {
+            return;
+        }
+
+        ssh.LegacyAlgorithms = true;
+        bool widened = false;
+        ssh.KexAlgorithms = AbsorbLegacy(SshAlgorithmKind.KeyExchange, ssh.KexAlgorithms, ref widened);
+        ssh.HostKeyAlgorithms = AbsorbLegacy(SshAlgorithmKind.HostKey, ssh.HostKeyAlgorithms, ref widened);
+        ssh.Ciphers = AbsorbLegacy(SshAlgorithmKind.Cipher, ssh.Ciphers, ref widened);
+        ssh.Macs = AbsorbLegacy(SshAlgorithmKind.Mac, ssh.Macs, ref widened);
+        if (widened)
+        {
+            notes.Add(Strings.Format("SshCfgImport_NoteLegacyFromPubkey", $"PubkeyAcceptedAlgorithms {accepted}"));
+        }
+    }
+
+    /// <summary>
+    /// 一类清单在打开「允许老算法」之后怎么存:<c>+</c> 清单里开关本来就会追加的那几项去掉(剩下的照留,一个不剩就是不写);
+    /// 文件的清单里没有那几项时 <paramref name="widened" /> 置真(打开开关放宽了这一类)。
+    /// </summary>
+    private static string? AbsorbLegacy(SshAlgorithmKind kind, string? spec, ref bool widened)
+    {
+        IReadOnlyList<string> plain = SshAlgorithmPreferences.Defaults(kind, legacy: false);
+        string[] additions = [.. SshAlgorithmPreferences.Defaults(kind, legacy: true).Where(name => !plain.Contains(name, StringComparer.Ordinal))];
+        if (additions.Length == 0)
+        {
+            return spec;
+        }
+        SshAlgorithmPreferences.TryApply(kind, spec, legacy: false, out IReadOnlyList<string> effective, out _);
+        if (!additions.All(name => effective.Contains(name, StringComparer.Ordinal)))
+        {
+            widened = true;
+        }
+        if (spec is not ['+', ..])
+        {
+            return spec;
+        }
+        string[] kept = [.. spec[1..].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(name => !additions.Contains(name, StringComparer.Ordinal))];
+        return kept.Length == 0 ? null : "+" + string.Join(',', kept);
     }
 
     private static string? Algorithms(SshAlgorithmKind kind, string keyword, string? spec, List<string> notes)

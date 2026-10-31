@@ -348,7 +348,8 @@ public sealed class LayoutTemplatesViewModel : ReactiveObject
     /// <para>
     /// 「替换」沿用原来那一条的 Id 与创建时间(同「存为模板」撞名时的替换),换上文件里的名字与布局;
     /// 「另存」给新 Id,名字后面补序号(<c>名字 (2)</c>)。冲突只按导入之前本机已有的那些判断 ——
-    /// 文件里自己重名的几条照样都收下,与同步「重名照存」同一口径。
+    /// 文件里自己重名的几条照样都收下,与同步「重名照存」同一口径。「替换」时本机的一条只替换一次:
+    /// 文件里有两条都对上它(一条同 Id、一条同名),同 Id 的替换它,另一条照「另存」收下(<see cref="ClaimReplacements" />)。
     /// </para>
     /// <para>
     /// 写进来的一律把修改时间刷成现在:导入是用户刚做的决定,随后的同步里它要胜过云端那份(包括本机删过它留下的墓碑)。
@@ -409,10 +410,12 @@ public sealed class LayoutTemplatesViewModel : ReactiveObject
             }
             keepBoth = answer == 1;
         }
+        Dictionary<Guid, LayoutTemplate> replaces = keepBoth ? [] : ClaimReplacements(incoming, conflicts);
 
         DateTimeOffset now = _now();
         var imported = new List<LayoutTemplate>();
-        foreach (LayoutTemplate template in incoming)
+        // 替换的先存:被替换的那条换上文件里的名字之后,原来的名字多半就空出来了,没认领到的那条不必再补序号。
+        foreach (LayoutTemplate template in incoming.OrderBy(t => replaces.ContainsKey(t.Id) ? 0 : 1))
         {
             LayoutTemplate copy = Copy(template);
             copy.UpdatedAt = now;
@@ -420,18 +423,24 @@ public sealed class LayoutTemplatesViewModel : ReactiveObject
             {
                 copy.CreatedAt = now;
             }
-            if (conflicts[template.Id] is { } existing)
+            if (conflicts[template.Id] is not null)
             {
-                if (keepBoth)
+                if (replaces.TryGetValue(template.Id, out LayoutTemplate? replaced))
+                {
+                    copy.Id = replaced.Id;
+                    copy.CreatedAt = replaced.CreatedAt;
+                }
+                else if (keepBoth)
                 {
                     copy.Id = Guid.NewGuid();
                     copy.Name = UniqueCopyName(template.Name);
                     copy.CreatedAt = now;
                 }
-                else
+                else if (FindByName(copy.Name, except: null) is not null)
                 {
-                    copy.Id = existing.Id;
-                    copy.CreatedAt = existing.CreatedAt;
+                    // 要替换的那条已经被别的认领了,这一条照「另存」收下:自己的 Id 本机没有(有的话冲突就按 Id 算了),留着 ——
+                    // 别的设备同步过来的同一个模板还认得出它;名字仍被占着才补序号。
+                    copy.Name = UniqueCopyName(template.Name);
                 }
             }
             if (!await TrySaveAsync(copy).ConfigureAwait(true))
@@ -660,6 +669,38 @@ public sealed class LayoutTemplatesViewModel : ReactiveObject
         local.FirstOrDefault(template => template.Id == incoming.Id)
         ?? local.FirstOrDefault(template =>
             string.Equals(template.Name, incoming.Name, StringComparison.CurrentCultureIgnoreCase));
+
+    /// <summary>
+    /// 「替换」时谁替换本机的哪一条(导入项 Id → 本机那一条):本机的一条只能被替换一次。
+    /// </summary>
+    /// <remarks>
+    /// 冲突是逐条对着导入前的本机列表算的,文件里同 Id 的那条与同名的另一条可能都指向本机同一条
+    /// (在别的设备上把它改了名、又新建了一个同名的,一起导出)。都换成它的 Id,后存的就把先存的盖掉:丢一条,
+    /// 提示里却说导入了两条。同 Id 的先认领(它就是本机这一条,只是改过名);同名的按文件顺序认领剩下的。
+    /// 没认领到的不在结果里,照「另存」收下。
+    /// </remarks>
+    private static Dictionary<Guid, LayoutTemplate> ClaimReplacements(
+        List<LayoutTemplate> incoming,
+        Dictionary<Guid, LayoutTemplate?> conflicts)
+    {
+        var replaces = new Dictionary<Guid, LayoutTemplate>();
+        var claimed = new HashSet<Guid>();
+        foreach (LayoutTemplate template in incoming)
+        {
+            if (conflicts[template.Id] is { } local && local.Id == template.Id && claimed.Add(local.Id))
+            {
+                replaces[template.Id] = local;
+            }
+        }
+        foreach (LayoutTemplate template in incoming)
+        {
+            if (conflicts[template.Id] is { } local && local.Id != template.Id && claimed.Add(local.Id))
+            {
+                replaces[template.Id] = local;
+            }
+        }
+        return replaces;
+    }
 
     /// <summary>另存时的名字:「名字 (2)」「名字 (3)」…取第一个没被占用的;超长时截短原名、保住序号。</summary>
     private string UniqueCopyName(string name)

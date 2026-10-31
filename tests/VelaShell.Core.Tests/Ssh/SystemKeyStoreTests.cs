@@ -174,6 +174,37 @@ public sealed class SystemKeyStoreTests
         }
     }
 
+    /// <summary>
+    /// 没人看着的探测(会话健康巡检)以「不许弹框」打开密钥库里的钥(<see cref="CngKeyOpenOptions.Silent" />):
+    /// 用不着问人的钥照样登得上;要 PIN / 确认的钥打开或签名时直接失败,而不是一台一个系统框。
+    /// </summary>
+    [TestMethod]
+    [Timeout(60_000)]
+    public async Task 巡检以不弹框的方式打开密钥库里的钥_用不着问人的照样登得上()
+    {
+        SystemKeyReference reference = new() { Provider = SystemKeyReference.SoftwareProvider, KeyName = "k", MachineKey = true };
+        Assert.AreEqual(CngKeyOpenOptions.MachineKey | CngKeyOpenOptions.Silent, SshConnectionAssembler.CngOpenOptions(reference, silent: true));
+        Assert.AreEqual(CngKeyOpenOptions.MachineKey, SshConnectionAssembler.CngOpenOptions(reference, silent: false), "有人看着时照旧,PIN 框由 Windows 在签名那一刻问");
+        if (!WindowsOrSkip())
+        {
+            return;
+        }
+        using var key = TestKey.Create();
+        await using LoopbackSshHost host = new()
+        {
+            AuthPolicy = new TestAuthPolicy
+            {
+                RequiredMethods = ["publickey"],
+                AcceptedPublicKeys = [Convert.FromBase64String(key.PublicKeyBlob)],
+            },
+        };
+
+        ConnectionInfo info = KeyStoreInfo(host.Port, key.Name, unattended: true);
+        await using VelaSshClientWrapper ssh = await ConnectAsync(info);
+
+        Assert.IsTrue(ssh.IsConnected);
+    }
+
     /// <summary>引用的钥在这台电脑上不在(别的电脑上建的、卡没插):如实说「打不开系统密钥库里的这把钥」,不去连服务器。</summary>
     [TestMethod]
     [Timeout(60_000)]
@@ -221,7 +252,7 @@ public sealed class SystemKeyStoreTests
 
     // ------------------------------------------------------------ 辅助
 
-    private static ConnectionInfo KeyStoreInfo(int port, string keyName, string? certificatePath = null) => new()
+    private static ConnectionInfo KeyStoreInfo(int port, string keyName, string? certificatePath = null, bool unattended = false) => new()
     {
         Host = "127.0.0.1",
         Port = port,
@@ -229,6 +260,7 @@ public sealed class SystemKeyStoreTests
         AuthMethod = AuthMethod.KeyStore,
         KeyStoreKey = new SystemKeyReference { Provider = SystemKeyReference.SoftwareProvider, KeyName = keyName },
         CertificatePath = certificatePath,
+        IsUnattended = unattended,
     };
 
     private static async Task<VelaSshClientWrapper> ConnectAsync(ConnectionInfo info)

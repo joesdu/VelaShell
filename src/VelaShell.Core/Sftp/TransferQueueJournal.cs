@@ -23,6 +23,7 @@ namespace VelaShell.Core.Sftp;
 /// <b>写得多勤</b>:改动先记在内存里,攒 <see cref="FlushDelay" /> 再落盘一次,只重写变过的段
 /// (见 <see cref="TransferQueueChunk" />)。最坏情况是进程在这段时间里被杀掉:刚传完的几个文件下次还在队里,
 /// 恢复时目标已经完整,按续传探测不会当成半截,整份重传一遍 —— 多花点流量,不会写坏。
+/// 刚登记的一批在第一次落盘写全之前就被杀掉,下次启动这一批不出现(而不是缺几段地出现,见 <see cref="LoadAsync" />)。
 /// </para>
 /// <para>
 /// 没有存储(单元测试、无数据库的宿主)时只在内存里记账:本次运行内的暂停 / 继续照常可用。
@@ -43,6 +44,8 @@ public sealed class TransferQueueJournal
     private readonly Lock _gate = new();
     private readonly Dictionary<Guid, BatchState> _batches = [];
     private readonly HashSet<(Guid Batch, int Chunk)> _dirty = [];
+    // 读不出来、Id 也认不出是哪一批哪一段的文档:下次落盘时按 Id 删掉。
+    private readonly HashSet<string> _orphans = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _flushLock = new(1, 1);
     private bool _flushScheduled;
 
@@ -104,7 +107,18 @@ public sealed class TransferQueueJournal
             }
             state.Items[index] = null;
             state.Remaining--;
-            _dirty.Add((batchId, index / ChunkSize));
+            if (state.Remaining == 0)
+            {
+                // 整批落定:各段(包括早先已经落定、留作占位的空段)一并删掉。
+                for (int chunk = 0; chunk < state.ChunkCount; chunk++)
+                {
+                    _dirty.Add((batchId, chunk));
+                }
+            }
+            else
+            {
+                _dirty.Add((batchId, index / ChunkSize));
+            }
         }
         ScheduleFlush();
     }
@@ -140,7 +154,17 @@ public sealed class TransferQueueJournal
     /// <summary>
     /// 读出上次运行留下的批次(启动时调一次),登记进本次的账里,好让「继续」与「放弃」照常作用于它们。
     /// </summary>
-    /// <remarks>读不出的文档(坏 JSON、认不出的方向、空路径)跳过;一项都不剩的批次顺手删掉。</remarks>
+    /// <remarks>
+    /// 读不出的文档(坏 JSON、字段类型对不上、认不出的方向、空路径)跳过,其余批次照常还原;
+    /// 整份读不出来的文档下次落盘时删掉(记一笔日志),一项都不剩的批次顺手删掉。
+    /// 逐行容错要存储支持(<see cref="ITolerantAppDataStore" />,SonnetDB 实现了);不支持的存储里有一行坏的,整次读取照旧失败。
+    /// <para>
+    /// 少了段的批次不还原(记一笔日志,剩下的段下次落盘时删掉):每一段都带着这一批一共几段,落定的段留空占位,
+    /// 所以缺一段只能是「没写全」(登记后第一次落盘写到一半崩了、或者写失败了)或「删到一半」(取消、放弃、交接撤旧) ——
+    /// 前者还原出来是一批悄悄少了几百个文件的「已暂停」,后者是用户已经不要的批次又挂了回来。
+    /// 旧版本写的文档不带段数,缺的段照旧按「已经落定」算,并在这次落盘时按新格式整批重写一遍。
+    /// </para>
+    /// </remarks>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>按开始时间排的批次。</returns>
     public async Task<IReadOnlyList<PausedTransferBatch>> LoadAsync(CancellationToken cancellationToken = default)
@@ -149,15 +173,61 @@ public sealed class TransferQueueJournal
         {
             return [];
         }
-        List<TransferQueueChunk>? chunks = await _store.GetAllAsync<TransferQueueChunk>(Collection, cancellationToken).ConfigureAwait(false);
+        List<TransferQueueChunk>? chunks;
+        List<string> unreadable = [];
+        if (_store is ITolerantAppDataStore tolerant)
+        {
+            // 一行坏的(崩溃时写了一半、或者以后的版本改了字段类型)不能让所有暂停的批次都还原不出来 —— 而且每次启动都这样。
+            (chunks, unreadable) = await tolerant.GetAllReadableAsync<TransferQueueChunk>(Collection, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            chunks = await _store.GetAllAsync<TransferQueueChunk>(Collection, cancellationToken).ConfigureAwait(false);
+        }
         var restored = new List<PausedTransferBatch>();
         lock (_gate)
         {
+            // 写过、只是坏了的段:数完整性时算它「在」—— 一行坏的不该把整批判成没写全(它那几项照样丢了,上面记了日志)。
+            var damaged = new HashSet<(Guid Batch, int Chunk)>();
+            foreach (string id in unreadable)
+            {
+                Trace.WriteLine($"[VelaShell] Transfer queue document {id} is unreadable; discarding it.");
+                // 认得出是哪一批哪一段的,交给那一段的落盘逻辑(批次还原了就按现状重写,没还原就删);认不出的按 Id 删。
+                if (TryParseDocumentId(id, out Guid batch, out int chunk))
+                {
+                    _dirty.Add((batch, chunk));
+                    damaged.Add((batch, chunk));
+                }
+                else
+                {
+                    _orphans.Add(id);
+                }
+            }
             foreach (IGrouping<Guid, TransferQueueChunk> group in (chunks ?? []).Where(c => c.BatchId != Guid.Empty).GroupBy(c => c.BatchId))
             {
                 if (_batches.ContainsKey(group.Key))
                 {
                     continue;
+                }
+                // 旧版本写的文档不带段数:那时落定一段就删一段,缺的段只能按「已经落定」算。
+                bool legacy = group.Any(c => c.ChunkCount <= 0);
+                int expected = legacy ? 0 : group.Max(c => c.ChunkCount);
+                if (!legacy)
+                {
+                    int present = group.Select(c => c.Chunk)
+                        .Concat(damaged.Where(d => d.Batch == group.Key).Select(d => d.Chunk))
+                        .Where(c => c >= 0 && c < expected)
+                        .Distinct()
+                        .Count();
+                    if (present < expected)
+                    {
+                        Trace.WriteLine($"[VelaShell] Transfer queue batch {group.Key:N} is incomplete ({present}/{expected} chunks); discarding it.");
+                        foreach (TransferQueueChunk chunk in group)
+                        {
+                            _dirty.Add((group.Key, chunk.Chunk));
+                        }
+                        continue;
+                    }
                 }
                 TransferQueueChunk head = group.First();
                 var entries = new SortedDictionary<int, TransferQueueItem>();
@@ -170,7 +240,7 @@ public sealed class TransferQueueJournal
                 }
                 int length = Math.Max(
                     entries.Count == 0 ? 0 : entries.Keys.Max() + 1,
-                    (group.Max(c => c.Chunk) + 1) * ChunkSize);
+                    (legacy ? group.Max(c => c.Chunk) + 1 : expected) * ChunkSize);
                 var slots = new TransferQueueItem?[length];
                 foreach ((int index, TransferQueueItem item) in entries)
                 {
@@ -190,6 +260,14 @@ public sealed class TransferQueueJournal
                 {
                     _dirty.Add((group.Key, chunk.Chunk));
                 }
+                if (legacy)
+                {
+                    // 按新格式整批重写一遍(已经落定的段写成空段占位),之后再读就认得出没写全的情形。
+                    for (int chunk = 0; chunk < state.ChunkCount; chunk++)
+                    {
+                        _dirty.Add((group.Key, chunk));
+                    }
+                }
                 _batches[group.Key] = state;
                 restored.Add(state.ToPaused(group.Key));
             }
@@ -198,7 +276,9 @@ public sealed class TransferQueueJournal
         return [.. restored.OrderBy(b => b.CreatedUtc)];
     }
 
-    /// <summary>把攒着的改动落盘。写失败只记一笔日志 —— 队列写不进去不能连累传输本身。</summary>
+    /// <summary>
+    /// 把攒着的改动落盘。写失败只记一笔日志 —— 队列写不进去不能连累传输本身 —— 但那一段记回去,下一次落盘再写。
+    /// </summary>
     public async Task FlushAsync()
     {
         if (_store is null)
@@ -206,6 +286,7 @@ public sealed class TransferQueueJournal
             lock (_gate)
             {
                 _dirty.Clear();
+                _orphans.Clear();
                 _flushScheduled = false;
             }
             return;
@@ -213,14 +294,19 @@ public sealed class TransferQueueJournal
         await _flushLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            List<(string Id, TransferQueueChunk? Document)> work;
+            List<(string Id, (Guid Batch, int Chunk)? Key, TransferQueueChunk? Document)> work;
             lock (_gate)
             {
                 _flushScheduled = false;
-                work = [.. _dirty.Select(key => (DocumentId(key.Batch, key.Chunk), BuildChunk(key.Batch, key.Chunk)))];
+                work = [.. _dirty.Select(key => (DocumentId(key.Batch, key.Chunk), ((Guid, int)?)key, BuildChunk(key.Batch, key.Chunk)))];
+                work.AddRange(_orphans.Select(static id => (id, ((Guid, int)?)null, (TransferQueueChunk?)null)));
                 _dirty.Clear();
+                _orphans.Clear();
             }
-            foreach ((string id, TransferQueueChunk? document) in work)
+            bool failed = false;
+            // 先写后删:交接(新的一批登记、旧的一批撤掉)落在同一次落盘里时,新的一批写全之前旧的一段都不删 ——
+            // 中途崩掉最多是两份都在,而不是新的没写全(读回时整批不认)、旧的又删了一半。
+            foreach ((string id, (Guid Batch, int Chunk)? key, TransferQueueChunk? document) in work.OrderBy(static w => w.Document is null))
             {
                 try
                 {
@@ -236,7 +322,24 @@ public sealed class TransferQueueJournal
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
                     Trace.WriteLine($"[VelaShell] Transfer queue write failed for {id}: {ex.Message}");
+                    // 记回去,下一次落盘照现状再写:不然登记时没写上的那一段就一直缺着、作废时没删掉的那一段就一直留着。
+                    lock (_gate)
+                    {
+                        if (key is { } dirty)
+                        {
+                            _dirty.Add(dirty);
+                        }
+                        else
+                        {
+                            _orphans.Add(id);
+                        }
+                    }
+                    failed = true;
                 }
+            }
+            if (failed)
+            {
+                ScheduleFlush();
             }
         }
         finally
@@ -247,6 +350,19 @@ public sealed class TransferQueueJournal
 
     /// <summary>文档 Id:批次 + 段号。</summary>
     public static string DocumentId(Guid batchId, int chunk) => $"{batchId:N}-{chunk:D4}";
+
+    /// <summary><see cref="DocumentId" /> 的反解;不是这个格式的 Id 返回 false。</summary>
+    private static bool TryParseDocumentId(string id, out Guid batchId, out int chunk)
+    {
+        int dash = id.LastIndexOf('-');
+        chunk = 0;
+        batchId = Guid.Empty;
+        // 段号再大也得乘得出起始序号(BuildChunk 按 chunk * ChunkSize 取段),乘不出的当认不出。
+        return dash > 0
+               && Guid.TryParseExact(id.AsSpan(0, dash), "N", out batchId)
+               && int.TryParse(id.AsSpan(dash + 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out chunk)
+               && chunk < int.MaxValue / ChunkSize;
+    }
 
     private void ScheduleFlush()
     {
@@ -276,10 +392,13 @@ public sealed class TransferQueueJournal
         });
     }
 
-    /// <summary>某一段此刻该写成什么;批次不在或这一段已经全部落定时返回 null(删掉这份文档)。</summary>
+    /// <summary>
+    /// 某一段此刻该写成什么;批次不在、整批都已落定、或段号不在这一批的范围里时返回 null(删掉这份文档)。
+    /// 批次还活着而这一段已经全部落定时写成空段占位:读回时据此分得清「这一段都传完了」与「这一段根本没写上」。
+    /// </summary>
     private TransferQueueChunk? BuildChunk(Guid batchId, int chunk)
     {
-        if (!_batches.TryGetValue(batchId, out BatchState? state))
+        if (!_batches.TryGetValue(batchId, out BatchState? state) || state.Remaining == 0 || (uint)chunk >= (uint)state.ChunkCount)
         {
             return null;
         }
@@ -298,17 +417,16 @@ public sealed class TransferQueueJournal
                 });
             }
         }
-        return items.Count == 0
-            ? null
-            : new()
-            {
-                BatchId = batchId,
-                Chunk = chunk,
-                ProfileId = state.Origin.ProfileId,
-                ServerName = state.Origin.ServerName,
-                CreatedUtc = state.CreatedUtc,
-                Items = items,
-            };
+        return new()
+        {
+            BatchId = batchId,
+            Chunk = chunk,
+            ChunkCount = state.ChunkCount,
+            ProfileId = state.Origin.ProfileId,
+            ServerName = state.Origin.ServerName,
+            CreatedUtc = state.CreatedUtc,
+            Items = items,
+        };
     }
 
     private static bool TryParse(TransferQueueChunkEntry entry, out TransferQueueItem item)

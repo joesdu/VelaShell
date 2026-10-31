@@ -87,6 +87,31 @@ public class DirectoryComparerTests
         Assert.IsNull(SyncTime.CalendarOffsetFor(utc, TimeSpan.FromHours(8)));
     }
 
+    /// <summary>
+    /// FTP 给不出时间的条目(MLSD 不给目录的 modify、认不出的 LIST 行)记成 MinValue:服务器在东八区时按偏移一减就越过下界,
+    /// 「比较目录」整个抛 ArgumentOutOfRangeException(复查 file-panes F6)。不挪、夹住,比较时按「时间未知」看大小。
+    /// </summary>
+    [TestMethod]
+    public void ToUtc_EntryWithoutATime_EastOfUtc_DoesNotThrow_AndComparesAsUnknownTime()
+    {
+        var east = TimeSpan.FromHours(8);
+
+        Assert.AreEqual(DateTime.MinValue, SyncTime.ToUtc(DateTime.MinValue, east));
+        Assert.AreEqual(DateTimeKind.Utc, SyncTime.ToUtc(DateTime.MinValue, east).Kind);
+        Assert.AreEqual(DateTime.MinValue, SyncTime.ToUtc(DateTime.MinValue.AddHours(3), east), "挪到头的夹在下界");
+        Assert.AreEqual(DateTime.MaxValue, SyncTime.ToUtc(DateTime.MaxValue, TimeSpan.FromHours(-5)), "西边同理夹在上界");
+
+        // 与文件栏「比较目录」同样的拼法(SftpDocumentViewModel.CompareDirectoriesAsync)。
+        SyncItem remote = File("conf", 10, SyncTime.ToUtc(DateTime.MinValue, east)) with
+        {
+            Precision = SyncTime.InferPrecision(DateTime.MinValue),
+            CalendarOffset = SyncTime.CalendarOffsetFor(DateTime.MinValue, east),
+        };
+        Assert.AreEqual(SyncTimePrecision.Unknown, remote.Precision);
+        Assert.AreEqual(SyncComparisonState.Same, DirectoryComparer.CompareFiles(File("conf", 10, T0), remote, Options()));
+        Assert.AreEqual(SyncComparisonState.Differs, DirectoryComparer.CompareFiles(File("conf", 11, T0), remote, Options()));
+    }
+
     /// <summary>只有 FTP 才有服务器时区;其余协议即便带着一块 FTP 设置也不认。</summary>
     [TestMethod]
     public void ServerClockOffset_OnlyAppliesToFtpProfiles()

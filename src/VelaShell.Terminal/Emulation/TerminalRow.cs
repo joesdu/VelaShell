@@ -109,12 +109,13 @@ public sealed class TerminalRow(int columns)
     public int InputEnd { get; set; } = -1;
 
     /// <summary>
-    /// 以本行开头的逻辑行已经被输出触发器应答过(或者改列宽之前就在屏上):同一行不再应答第二次。
+    /// 以本行开头的逻辑行已经被输出触发器应答过(或到了每分钟上限、不再答):同一行不再应答第二次。
     /// </summary>
     /// <remarks>
     /// 记在行上而不是另建一张按行对象索引的表,理由同 <see cref="Mark" />:行对象在滚动、清屏擦空、
     /// 改列宽重排时会被复用,挂在行上的东西才能跟着「这一行没了」一起作废(<see cref="ClearMark" />)——
-    /// clear 之后同一个行对象上画出来的新提示,是新的一次提问。
+    /// clear 之后同一个行对象上画出来的新提示,是新的一次提问。改列宽时由 <c>TerminalScreen.ReflowResize</c>
+    /// 按逻辑行搬到新的首行上,没答过的提示重排之后照样能答。
     /// </remarks>
     internal bool TriggerSettled { get; set; }
 

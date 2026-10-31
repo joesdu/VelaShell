@@ -175,6 +175,12 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     private string? _loadedProtocolId;
 
     /// <summary>
+    /// 从插件页签切去内建协议那一刻的端口(连同那个插件协议的 id)。点回**同一个**页签时还回去,
+    /// 而不是落到页签默认值上 —— 理由见 <see cref="SelectPluginProtocolAsync" /> 里那段注释。
+    /// </summary>
+    private (string ProtocolId, int Port)? _portBeforeBuiltInTab;
+
+    /// <summary>
     /// 「已保存的 SSH 配置」下拉的候选,随跳板机候选一起加载。
     /// 空列表也要有第一项("不经跳板机"),否则那个下拉在没有任何 SSH 配置时是空的,
     /// 用户分不清"没得选"与"还没加载"。
@@ -648,6 +654,17 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// 只会让用户以为填上就能自动登录。
     /// </summary>
     public bool ShowCredentialFields => _pluginForm?.ShowsCredentials != false;
+
+    /// <summary>
+    /// 插件按协议或变体把用户名/口令两栏收起来了(Telnet 在带内登录,SQLite 是个文件)。
+    /// <para>
+    /// 这时框里还留着的用户名口令是收起之前填的 —— SSH 页签上顺手填的,或编辑态「更换」之前那一档(MySQL)的,
+    /// 用户已经看不见。照存的话,每次打开都会拿"有用户名、没口令"弹一个填了也没用的登录框,
+    /// 存着口令的还会原样交给插件。与凭据来源那一栏收起时不存引用(#550)同一个理由。
+    /// 插件不可用(表单没装载出来)时两栏照旧显示,这里为 false:不知道这一档要不要凭据,就不动已存的。
+    /// </para>
+    /// </summary>
+    private bool HidesPluginCredentials => ConnectionType == ConnectionType.Plugin && !ShowCredentialFields;
 
     /// <summary>是否显示口令输入框:匿名 FTP 与无凭据协议不需要口令。</summary>
     public bool ShowPasswordField => IsPasswordAuth && ShowCredentialFields && !(IsFtpSelected && FtpAnonymous);
@@ -2590,7 +2607,9 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     private SessionProfile BuildProfile()
     {
         // 显示名称留空时用 user@host 兜底,保证列表/标签页有可读名称。
-        string name = string.IsNullOrWhiteSpace(Name) ? $"{Username}@{EffectiveEndpoint().Host}" : Name.Trim();
+        // 收起来的用户名不拿来拼:它不落盘(见 HidesPluginCredentials),也不该换个地方落进名称里。
+        string user = HidesPluginCredentials ? string.Empty : Username;
+        string name = string.IsNullOrWhiteSpace(Name) ? $"{user}@{EffectiveEndpoint().Host}" : Name.Trim();
         string? postAuthCommand = SupportsPostAuthCommand && _postAuthCommand?.Trim() is { Length: > 0 } trimmed
             ? trimmed
             : null;
@@ -2612,6 +2631,8 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     private SessionProfile BuildProfileCore(string name, string? postAuthCommand)
     {
         (string host, int port) = EffectiveEndpoint();
+        // 插件把两栏收起来了:收起之前填的用户名口令一起不存(理由见 HidesPluginCredentials)。
+        bool hidesCredentials = HidesPluginCredentials;
         return new()
         {
             Id = _profileId,
@@ -2619,9 +2640,9 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
             Name = name,
             Host = host,
             Port = port,
-            Username = Username.Trim(),
+            Username = hidesCredentials ? string.Empty : Username.Trim(),
             AuthMethod = AuthMethod,
-            Password = IsTailscaleAuth || IsKeyStoreAuth ? null : SecureStringConvert.ToPlaintext(Password),
+            Password = IsTailscaleAuth || IsKeyStoreAuth || hidesCredentials ? null : SecureStringConvert.ToPlaintext(Password),
             RememberPassword = RememberPassword,
             PrivateKeyPath = PrivateKeyPath,
             PrivateKeyPassphrase = PrivateKeyPassphrase,
@@ -2901,9 +2922,22 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
         // 然后从下面的早退处返回 —— 下拉仍是 PostgreSQL,端口框却成了 3306。
         // 换了协议时 _pluginBaseForm 还是上一个协议的,它的变体表与这个页签无关,不能拿来算。
         PluginProtocolTabViewModel? tab = PluginProtocols.FirstOrDefault(p => p.Id == protocolId);
+        // **从内建协议点回同一个页签:端口还回切走之前的那个值**,而不是页签默认值。
+        // 切去 SSH 时变体信息(_pluginBaseForm)已经清掉了,CurrentVariantDefaultPort() 取不到,
+        // 只能落到页签默认的 3306;装载那一路又是 followPort: false(护住已存端口)。
+        // 编辑态不经卡片、不出卡片的变体字段也不经卡片,没有哪一步再把它纠正回来:
+        // 一条 PostgreSQL@5432 的配置点一下 SSH 再点回来,表头写着 PostgreSQL,端口却是 3306,保存即落盘。
+        // 还回去的是**这条配置自己的端口**(PG 跑在 3306 上的就还 3306),不是变体默认值 —— 类型没换,端口就不该跟随。
+        // 切去 SSH 后用户自己改过端口(不再是任何默认值)的,下面的判定本来就不动它。
+        int? portBeforeBuiltIn = !switchedProtocol
+                                 && _portBeforeBuiltInTab is { } kept
+                                 && string.Equals(kept.ProtocolId, protocolId, StringComparison.Ordinal)
+            ? kept.Port
+            : null;
+        _portBeforeBuiltInTab = null;
         if (tab is not null && IsProtocolDefaultPort(Port))
         {
-            Port = (switchedProtocol ? null : CurrentVariantDefaultPort()) ?? tab.DefaultPort;
+            Port = portBeforeBuiltIn ?? (switchedProtocol ? null : CurrentVariantDefaultPort()) ?? tab.DefaultPort;
         }
         if (switchedProtocol)
         {
@@ -3237,6 +3271,11 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
         ConnectionType = connectionType;
         if (connectionType != ConnectionType.Plugin)
         {
+            // 记下离开插件页签时的端口(下面会被改成 22),点回同一个页签时还回去(见 SelectPluginProtocolAsync)。
+            if (PluginProtocolId is { Length: > 0 } leaving)
+            {
+                _portBeforeBuiltInTab = (leaving, Port);
+            }
             // 切回内建协议:插件页签的高亮要跟着灭,否则会同时亮两个。
             PluginProtocolId = null;
             foreach (PluginProtocolTabViewModel tabViewModel in PluginProtocols)

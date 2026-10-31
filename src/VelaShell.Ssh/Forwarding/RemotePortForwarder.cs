@@ -756,6 +756,8 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
             try
             {
                 // 域名在本机解析 —— 远端要的正是本机能到的地方。
+                // 拨的就是上面 Permits 比过的那个字符串，原样：中间不许再改写（去末尾的点、把简写的 IP 换成规范写法、转 Punycode……），
+                // 否则名单比的和本机连的就不是同一个东西。
                 await outbound.ConnectAsync(parsed.Host, parsed.Port, cancellationToken).ConfigureAwait(false);
             }
             catch (SocketException ex)

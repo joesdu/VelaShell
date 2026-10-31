@@ -531,6 +531,15 @@ public sealed partial class GistSyncService(
                 {
                     profile.Password = null;
                     profile.PrivateKeyPassphrase = null;
+                    // 插件协议的机密字段(S3 的会话令牌之类)同一条规矩;拉取时同一协议下留本机的。
+                    profile.PluginSecrets = null;
+                }
+            }
+            else
+            {
+                foreach (SessionProfile profile in profiles)
+                {
+                    DropUnreadableSecrets(profile);
                 }
             }
             payload.Profiles = profiles;
@@ -545,6 +554,14 @@ public sealed partial class GistSyncService(
                     {
                         credential.Password = null;
                         credential.PrivateKeyPassphrase = null;
+                    }
+                }
+                else
+                {
+                    foreach (SharedCredential credential in credentials)
+                    {
+                        credential.Password = Readable(credential.Password);
+                        credential.PrivateKeyPassphrase = Readable(credential.PrivateKeyPassphrase);
                     }
                 }
                 payload.SharedCredentials = credentials.Count > 0 ? credentials : null;
@@ -696,14 +713,10 @@ public sealed partial class GistSyncService(
                     ).ToDictionary(c => c.Id);
                     foreach (SharedCredential incoming in incomingCredentials)
                     {
-                        if (
-                            incoming.Password is null
-                            && localCredentials.TryGetValue(incoming.Id, out SharedCredential? existing)
-                        )
-                        {
-                            incoming.Password = existing.Password;
-                            incoming.PrivateKeyPassphrase ??= existing.PrivateKeyPassphrase;
-                        }
+                        // 没带的(含推送方解不开、原样推上来的密文)逐项留本机的,口径同下面的连接配置。
+                        localCredentials.TryGetValue(incoming.Id, out SharedCredential? existing);
+                        incoming.Password = Readable(incoming.Password) ?? existing?.Password;
+                        incoming.PrivateKeyPassphrase = Readable(incoming.PrivateKeyPassphrase) ?? existing?.PrivateKeyPassphrase;
                         await sharedCredentials.SaveAsync(incoming).ConfigureAwait(false);
                     }
                 }
@@ -715,14 +728,8 @@ public sealed partial class GistSyncService(
                     foreach (SessionProfile incoming in profiles)
                     {
                         // 非加密载荷不带凭据:保留本机已存的密码/私钥口令,避免拉取把凭据抹掉。
-                        if (
-                            incoming.Password is null
-                            && localProfiles.TryGetValue(incoming.Id, out SessionProfile? existing)
-                        )
-                        {
-                            incoming.Password = existing.Password;
-                            incoming.PrivateKeyPassphrase ??= existing.PrivateKeyPassphrase;
-                        }
+                        localProfiles.TryGetValue(incoming.Id, out SessionProfile? existing);
+                        KeepLocalSecretsNotCarried(incoming, existing);
                         if (incoming.DirectoryBookmarks is null)
                         {
                             // 载荷里压根没有收藏字段:推它的是不认识收藏的旧版本,不是对方清空了收藏。
@@ -814,7 +821,10 @@ public sealed partial class GistSyncService(
         return settings;
     }
 
-    /// <summary>拉取应用时同样保留本机的设备本地字段,云端值不覆盖;对方没带的机密也留本机的(<see cref="PreserveLocalSecrets" />)。</summary>
+    /// <summary>
+    /// 拉取应用时同样保留本机的设备本地字段,云端值不覆盖;对方没带的机密也留本机的(<see cref="PreserveLocalSecrets" />),
+    /// 本机做过的一次性迁移不重做(<see cref="KeepLocalMigrationFlags" />)。
+    /// </summary>
     private static void PreserveDeviceLocalFields(AppSettings incoming, AppSettings local)
     {
         PreserveLocalSecrets(incoming, local);
@@ -830,6 +840,26 @@ public sealed partial class GistSyncService(
         incoming.Transfer.DefaultEditorPath = local.Transfer.DefaultEditorPath;
         incoming.Transfer.LogDirectory = local.Transfer.LogDirectory;
         incoming.Keys.DefaultKeyName = local.Keys.DefaultKeyName;
+        KeepLocalMigrationFlags(incoming, local);
+    }
+
+    /// <summary>
+    /// 一次性迁移标记(<see cref="SettingsCategories.MigrationFields" />)按设备算:哪一边做过,这次拉取就不再做。
+    /// </summary>
+    /// <remarks>
+    /// 推这份载荷的若是还不认识某个标记的旧版本,反序列化时把它丢了,推上来就是 false;
+    /// 不留本机的,紧接着的 <see cref="AppSettings.Normalize" /> 会把迁移再做一遍 —— 用户在本机打开的「自动下载更新」
+    /// 又被关掉、关掉的「首次连接确认指纹」又被打开,与旧版本每同步一轮就重来一次。
+    /// 推送不动它们:本机设置读出来就规整过,标记都是 true,认识这个标记的旧版本拉到也不会重做。
+    /// </remarks>
+    internal static void KeepLocalMigrationFlags(AppSettings incoming, AppSettings local)
+    {
+        incoming.General.AutoDownloadUpdatesOptInMigrated |= local.General.AutoDownloadUpdatesOptInMigrated;
+        incoming.Security.RecordingOptInMigrated |= local.Security.RecordingOptInMigrated;
+        incoming.Security.FingerprintChangeDefaultMigrated |= local.Security.FingerprintChangeDefaultMigrated;
+        incoming.Security.FirstFingerprintDefaultMigrated |= local.Security.FirstFingerprintDefaultMigrated;
+        incoming.Proxy.DefaultsMigrated |= local.Proxy.DefaultsMigrated;
+        incoming.TerminalBehavior.FoldGuideLineMigrated |= local.TerminalBehavior.FoldGuideLineMigrated;
     }
 
     // ———— 设置里的机密(代理密码、告警 Webhook 地址) ————
@@ -864,6 +894,72 @@ public sealed partial class GistSyncService(
     /// </summary>
     private static void PreserveLocalSecrets(AppSettings incoming, AppSettings local) =>
         SettingsTransfer.KeepLocalSecrets(incoming, local);
+
+    // ———— 连接配置与共享凭据里的机密(这台设备解不开的那几项) ————
+
+    /// <summary>
+    /// 一项机密能不能随同步走:载入之后仍是密文的(<see cref="StoredSecret" />:本机加密密钥换过、系统密钥链这次没打开、
+    /// 数据目录从别的设备拷来)当作「没带」,交回 null。
+    /// </summary>
+    /// <remarks>
+    /// 推送时:仓储把解不开的密文原样交回,照带上去,别的设备就会把这串它也解不开的密文存成密码,顶掉它自己那份好的 ——
+    /// 与同步口令、代理密码「解不开就不当值用」同一条规矩。拉取时同样认这个:载荷里还带着密文前缀的,
+    /// 只可能是推送方解不开、原样推上来的(解得开的一律以明文进加密载荷),旧版本推过这种载荷。
+    /// </remarks>
+    private static string? Readable(string? secret) => StoredSecret.IsUnreadable(secret) ? null : secret;
+
+    /// <summary>加密载荷推送前:这条配置里这台设备解不开的机密不带(置空 / 移出插件机密字典),对方留它自己的。</summary>
+    private static void DropUnreadableSecrets(SessionProfile profile)
+    {
+        profile.Password = Readable(profile.Password);
+        profile.PrivateKeyPassphrase = Readable(profile.PrivateKeyPassphrase);
+        if (profile.PluginSecrets is { } secrets)
+        {
+            foreach (string key in UnreadableKeys(secrets))
+            {
+                secrets.Remove(key);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 拉取时:载荷没带的机密(未加密载荷剥掉的、推送方解不开而没带或原样推上来的密文)逐项留本机的,而不是把本机的抹掉。
+    /// </summary>
+    /// <remarks>
+    /// 插件机密只在两边是同一个插件协议时才留:插件机密字典整本交给插件(<c>PluginWorkspaceLauncher.BuildSettings</c>),
+    /// 换了协议还留着,等于把上一个插件的密钥交给下一个插件。同一协议下字典里缺的键就是没带 ——
+    /// 编辑配置时表单以已存的那份为底(<c>CollectPluginValues</c>),清空的字段是空串,不会缺键。
+    /// </remarks>
+    private static void KeepLocalSecretsNotCarried(SessionProfile incoming, SessionProfile? local)
+    {
+        incoming.Password = Readable(incoming.Password) ?? local?.Password;
+        incoming.PrivateKeyPassphrase = Readable(incoming.PrivateKeyPassphrase) ?? local?.PrivateKeyPassphrase;
+        bool sameProtocol = local is not null
+                            && string.Equals(local.PluginProtocolId, incoming.PluginProtocolId, StringComparison.Ordinal);
+        if (incoming.PluginSecrets is not { } secrets)
+        {
+            // 整本没带(未加密载荷):同一协议下整本留本机的。
+            if (sameProtocol)
+            {
+                incoming.PluginSecrets = local!.PluginSecrets;
+            }
+            return;
+        }
+        foreach (string key in UnreadableKeys(secrets))
+        {
+            secrets.Remove(key);
+        }
+        if (sameProtocol && local!.PluginSecrets is { } kept)
+        {
+            foreach ((string key, string value) in kept)
+            {
+                secrets.TryAdd(key, value);
+            }
+        }
+    }
+
+    private static string[] UnreadableKeys(Dictionary<string, string> secrets) =>
+        [.. secrets.Where(static entry => StoredSecret.IsUnreadable(entry.Value)).Select(static entry => entry.Key)];
 
     // ———— 小工具 ————
 

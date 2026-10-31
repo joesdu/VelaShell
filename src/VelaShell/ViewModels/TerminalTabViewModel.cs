@@ -273,6 +273,63 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     /// <summary>用户在本标签提交了一条通过回显校验的命令(宿主记入全局命令历史)。</summary>
     public event Action<string>? CommandLineSubmitted;
 
+    /// <summary>最多记多少个不进历史的值(见 <see cref="KeepOutOfCommandHistory" />);再多就丢掉最早的。</summary>
+    private const int MaxHistorySecrets = 16;
+
+    private readonly List<string> _historySecrets = [];
+
+    /// <summary>
+    /// 这些值(快捷命令里凭据类占位填进去的口令、令牌……)出现在本标签之后提交的哪一行里,那一行都不报给命令历史。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 命令历史是落盘的,补全与幽灵文本又会把它原样端出来:询问框连进程内都不记这类值,
+    /// 填好的整行却照样在用户回车时进了历史,下次敲个前缀,口令就出现在建议列表里。
+    /// </para>
+    /// <para>
+    /// 按值认,而不是「下一行不记」:用户可能先改几个字再回车、按方向键编辑过(那一行改从屏幕上取),
+    /// 或者之后用 shell 的 ↑ 把它翻出来再跑一遍 —— 这几种都还含着那个值。只记在这个标签上、只在进程里,
+    /// 标签关掉就没了;值很短时可能连带漏记几行别的历史,宁可漏记不误记。
+    /// </para>
+    /// </remarks>
+    /// <param name="secrets">要挡住的值;空白的忽略。</param>
+    public void KeepOutOfCommandHistory(IEnumerable<string> secrets)
+    {
+        ArgumentNullException.ThrowIfNull(secrets);
+        lock (_historySecrets)
+        {
+            foreach (string secret in secrets)
+            {
+                if (string.IsNullOrWhiteSpace(secret))
+                {
+                    continue;
+                }
+                _historySecrets.Remove(secret);
+                _historySecrets.Add(secret);
+            }
+            if (_historySecrets.Count > MaxHistorySecrets)
+            {
+                _historySecrets.RemoveRange(0, _historySecrets.Count - MaxHistorySecrets);
+            }
+        }
+    }
+
+    /// <summary>把提交的一行报给命令历史,含 <see cref="KeepOutOfCommandHistory" /> 挡住的值时不报。</summary>
+    private void ReportCommandLine(string command)
+    {
+        lock (_historySecrets)
+        {
+            foreach (string secret in _historySecrets)
+            {
+                if (command.Contains(secret, StringComparison.Ordinal))
+                {
+                    return;
+                }
+            }
+        }
+        CommandLineSubmitted?.Invoke(command);
+    }
+
     private void OnUserInputForTracker(byte[] data)
     {
         Interlocked.Increment(ref _userInputs);
@@ -305,7 +362,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         }
         if (CursorLineContains(control, command))
         {
-            CommandLineSubmitted?.Invoke(command);
+            ReportCommandLine(command);
             return;
         }
         DispatcherTimer.RunOnce(
@@ -313,7 +370,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
             {
                 if (!_disposed && ScreenContains(control, command))
                 {
-                    CommandLineSubmitted?.Invoke(command);
+                    ReportCommandLine(command);
                 }
             },
             TimeSpan.FromMilliseconds(200)
@@ -334,7 +391,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
             string? command = ExtractCommandAfterPrompt(control.GetBufferLine(control.CursorRow));
             if (!string.IsNullOrWhiteSpace(command))
             {
-                CommandLineSubmitted?.Invoke(command);
+                ReportCommandLine(command);
             }
         }
         catch
@@ -730,6 +787,11 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         _copyFeedbackReset = null;
         _autoResponseNoticeReset?.Dispose();
         _autoResponseNoticeReset = null;
+        lock (_historySecrets)
+        {
+            // 挡历史用的那几个口令不必比标签活得久。
+            _historySecrets.Clear();
+        }
         TerminalEmulator.OutputTriggerFired -= OnOutputTriggerFired;
         // 立即标记为未连接:同步频道转发(WriteSyncInput)以 IsConnected 为闸门。
         // 频道内其他标签的输入可能与本标签的关闭并发,不复位 IsConnected 的话,
@@ -836,7 +898,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         {
             return false;
         }
-        SendProgrammatic(command.TrimEnd('\r', '\n'), submit, forwardToSyncChannel: false);
+        SendProgrammatic(command.TrimEnd('\r', '\n'), submit, forwardToSyncChannel: false, background: false);
         return true;
     }
 
@@ -850,7 +912,12 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     /// 是否经同步输入频道转发。快捷命令与重跑一律不转(前者自带多目标分发,后者只属于这一个终端);
     /// 自动应答只有规则明确选了才转。
     /// </param>
-    private void SendProgrammatic(string payload, bool submit, bool forwardToSyncChannel)
+    /// <param name="background">
+    /// 不是用户此刻发起的(自动应答):走 <see cref="ITerminalEmulator.WriteBackgroundInput" />,不把回滚中的视图
+    /// 拉回底部、不清选区。快捷命令与重跑是用户点出来的,照键入的口径收尾。应答文字不含控制字符
+    /// (<c>OutputRuleCompiler</c> 拦下),不会是多行。
+    /// </param>
+    private void SendProgrammatic(string payload, bool submit, bool forwardToSyncChannel, bool background)
     {
         bool multiline = QuickCommandText.IsMultiline(payload);
 
@@ -862,6 +929,14 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         IsProgrammaticInput = true;
         try
         {
+            if (background && !multiline)
+            {
+                // 与下面同样按会话字符集编正文、回车按终端模式编,同样经键入出口(补全跟踪、同步转发、
+                // 桥的输入代次、共享密码列表的作废都照旧),只是不做键入后的视图收尾。
+                TerminalEmulator.WriteBackgroundInput(
+                    payload.Length > 0 ? TerminalEmulator.SessionEncoding.GetBytes(payload) : [], submit);
+                return;
+            }
             if (multiline)
             {
                 // 括号粘贴由终端按会话字符集编正文、按 ASCII 编标记,换行也由它统一成回车。
@@ -910,6 +985,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     /// <remarks>
     /// 与快捷命令同一条程序注入路径(<see cref="SendProgrammatic" />):按会话字符集编码、回车按终端模式编、
     /// 补全弹层不弹;同步输入频道默认不转,规则选了「转发」才转。没连着(断线、重连中)时什么都不发、也不提示。
+    /// 与快捷命令不同的只有一处:这不是用户的动作,不清选区、不把回滚中的视图拉回底部(<c>background</c>)。
     /// </remarks>
     private void OnOutputTriggerFired(OutputTriggerHit hit)
     {
@@ -927,7 +1003,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         {
             return;
         }
-        SendProgrammatic(payload, hit.SendEnter, hit.ForwardToSyncChannel);
+        SendProgrammatic(payload, hit.SendEnter, hit.ForwardToSyncChannel, background: true);
         ShowAutoResponseNotice(Strings.Format("OutRule_NoticeResponded", hit.RuleName));
     }
 

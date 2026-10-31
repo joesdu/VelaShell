@@ -234,6 +234,55 @@ public sealed class PluginProtocolTests
     }
 
     /// <summary>
+    /// 声明了 NoCredentials 的协议没有用户名口令可交:配置里残留的那一份(两栏收起之前填的、旧版本存下的)
+    /// 用户看不见,不交给插件;没声明的协议照交。
+    /// </summary>
+    [TestMethod]
+    public async Task FileService_NoCredentialsProtocol_NeverForwardsStoredUsernameOrPassword()
+    {
+        var registry = new PluginProtocolRegistry();
+        using var fileSystem = new FakeProtocolFileSystem();
+        ProtocolDescriptor descriptor = Descriptor();
+        descriptor = new()
+        {
+            Id = descriptor.Id,
+            DisplayName = descriptor.DisplayName,
+            DefaultPort = descriptor.DefaultPort,
+            Features = ProtocolFeatures.NoCredentials,
+            Fields = descriptor.Fields,
+        };
+        registry.Register(PluginId, descriptor, fileSystem);
+        var service = new PluginProtocolFileService(registry);
+        SessionProfile profile = Profile();
+        profile.Username = "admin";
+        profile.Password = "hidden-pw";
+
+        Guid sessionId = await service.OpenSessionAsync(profile);
+
+        Assert.AreEqual(string.Empty, fileSystem.LastRequest!.Username);
+        Assert.AreEqual(string.Empty, fileSystem.LastRequest.Password);
+        await service.CloseSessionAsync(sessionId);
+    }
+
+    [TestMethod]
+    public async Task FileService_CredentialProtocol_StillForwardsUsernameAndPassword()
+    {
+        var registry = new PluginProtocolRegistry();
+        using var fileSystem = new FakeProtocolFileSystem();
+        registry.Register(PluginId, Descriptor(), fileSystem);
+        var service = new PluginProtocolFileService(registry);
+        SessionProfile profile = Profile();
+        profile.Username = "admin";
+        profile.Password = "pw";
+
+        Guid sessionId = await service.OpenSessionAsync(profile);
+
+        Assert.AreEqual("admin", fileSystem.LastRequest!.Username);
+        Assert.AreEqual("pw", fileSystem.LastRequest.Password);
+        await service.CloseSessionAsync(sessionId);
+    }
+
+    /// <summary>
     /// 协议不可用要与"连接失败"分开:前者提示去装插件,后者才是重试。
     /// 配置本身完好无损 —— 卸载一个插件绝不该毁掉用户的连接配置。
     /// </summary>

@@ -124,14 +124,19 @@ public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry) : I
                     ? "This session profile does not name a plugin connection type."
                     : $"Connection type '{typeId}' is not available. Install or enable the plugin that provides it.");
         var sessionId = Guid.NewGuid();
+        // 这一档没有凭据(SQLite 是个文件,WorkspaceFeatures.NoCredentials):用户名口令一律交空串。
+        // 按变体取能力位,与连接配置页收起两栏、打开前不弹登录框是同一条判定(WorkspaceVariants)。
+        // 配置里还留着的那份是两栏收起之前填的(或旧版本存下的),用户看不见,不能交给第三方插件。
+        bool noCredentials = WorkspaceVariants.EffectiveFeatures(registration.Descriptor, profile.PluginSettings)
+            .HasFlag(WorkspaceFeatures.NoCredentials);
         var request = new WorkspaceConnectRequest
         {
             SessionId = sessionId.ToString("N"),
             // 走隧道时递给插件的是**本地转发端点**;真实目标只进 Tunnel 供界面显示来路。
             Host = endpoint?.Host ?? profile.Host,
             Port = endpoint?.Port ?? profile.Port,
-            Username = profile.Username,
-            Password = profile.Password ?? string.Empty,
+            Username = noCredentials ? string.Empty : profile.Username,
+            Password = noCredentials ? string.Empty : profile.Password ?? string.Empty,
             Settings = BuildSettings(registration.Descriptor, profile),
             DisplayName = profile.Name,
             Tunnel = endpoint is null

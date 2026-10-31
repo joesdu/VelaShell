@@ -27,4 +27,13 @@ public interface ISecretProtector
         plaintext = Unprotect(ciphertext);
         return true;
     }
+
+    /// <summary>
+    /// 这会儿加解密会不会卡住:本机加密密钥还没解析完(启动时在后台问系统密钥链,keyring 锁着时要等用户解锁)为 false。
+    /// </summary>
+    /// <remarks>
+    /// 只给不能在这里干等的调用方用来绕开(UI 线程上的启动路径,见 <c>ISettingsService.GetStartupSnapshot</c>);
+    /// 不查询、不触发解析。不需要解析密钥的实现恒为 true。
+    /// </remarks>
+    bool IsReady => true;
 }

@@ -67,6 +67,12 @@ internal sealed class LoopbackFtpServer : IDisposable
     public int RejectedConnections;
 
     /// <summary>
+    /// 新来的控制连接一律当场复位(欢迎语都不给):复刻「主机还在、端口那头的服务已经没了」,
+    /// 客户端拨号看到的是 ConnectionReset。已经连着的会话不受影响。
+    /// </summary>
+    public bool ResetNewSessions { get; set; }
+
+    /// <summary>
     /// 同一时刻允许的上传数上限;超出的 <c>STOR</c> 以 <c>450 Transfer busy</c> 顶回去。
     /// 复刻另一类服务器:控制连接随便开,但一次只让传一个文件。0 = 不限(默认)。
     /// </summary>
@@ -112,6 +118,12 @@ internal sealed class LoopbackFtpServer : IDisposable
     /// <summary>按远端路径控制 RETR 的数据和最终回复;默认不注入故障。</summary>
     public Func<string, ReadFault?>? ReadFaultForPath { get; set; }
 
+    /// <summary>
+    /// 按远端路径控制 STOR / APPE:返回 N 时收满 N 个字节就复位数据连接并回 <c>426</c>(上传传到一半被掐断);
+    /// null = 照常收完。默认不注入故障。
+    /// </summary>
+    public Func<string, int?>? ResetStoreAfterBytes { get; set; }
+
     /// <summary>按路径与当前 TYPE I 状态控制 SIZE 回复;null 使用磁盘长度。</summary>
     public Func<string, bool, string?>? SizeReplyForPath { get; set; }
 
@@ -119,6 +131,7 @@ internal sealed class LoopbackFtpServer : IDisposable
     public Func<string, long, long>? ListingSizeForPath { get; set; }
 
     public ConcurrentDictionary<string, int> RetrCounts { get; } = new(StringComparer.Ordinal);
+    public ConcurrentDictionary<string, int> StoreCounts { get; } = new(StringComparer.Ordinal);
     public ConcurrentDictionary<string, int> SizeCounts { get; } = new(StringComparer.Ordinal);
     public ConcurrentQueue<(string Path, bool Binary)> SizeRequests { get; } = new();
     public int TypeCommands;
@@ -135,6 +148,11 @@ internal sealed class LoopbackFtpServer : IDisposable
         public bool CloseControl { get; init; }
         public int? DataLimit { get; init; }
         public bool ResetData { get; init; }
+        /// <summary>
+        /// 发完数据之后先等这么久再复位:客户端已经把收到的字节读走、正阻塞在下一次读上,
+        /// 复位落在一次进行中的读上,客户端看到的就是 <c>ConnectionReset</c>(而不是一个干净的 EOF)。
+        /// </summary>
+        public int ResetDelayMs { get; init; }
         /// <summary>
         /// 发完 <see cref="DataLimit" /> 个字节后**不复位、也不给 226**,直接让数据流正常结束
         /// (纯短读);置 true 与 <see cref="ResetData" /> 互斥。
@@ -180,6 +198,12 @@ internal sealed class LoopbackFtpServer : IDisposable
     {
         using (client)
         {
+            if (ResetNewSessions)
+            {
+                client.Client.LingerState = new LingerOption(true, 0);
+                client.Close();
+                return;
+            }
             // Preliminary and completion replies are separate small writes. Do not let
             // Nagle wait for Linux's delayed ACK between them on the control connection.
             client.NoDelay = true;
@@ -534,6 +558,8 @@ internal sealed class LoopbackFtpServer : IDisposable
         ReadFault? fault = ReadFaultForPath?.Invoke(remote);
         if (fault?.RejectRetr is { } rejection)
         {
+            // REST 只管紧跟着的那一条传输命令:被拒的 RETR 同样把它用掉,不能留给下一条不带 REST 的 RETR。
+            state.RestartOffset = 0;
             state.CloseData();
             await writer.WriteLineAsync(rejection).ConfigureAwait(false);
             return true;
@@ -589,7 +615,15 @@ internal sealed class LoopbackFtpServer : IDisposable
             {
                 await source.CopyToAsync(data, _cts.Token).ConfigureAwait(false);
             }
-            if (fault is { ResetData: true }) ((DataStream)data).Reset();
+            if (fault is { ResetData: true })
+            {
+                if (fault.ResetDelayMs > 0)
+                {
+                    await data.FlushAsync(_cts.Token).ConfigureAwait(false);
+                    await Task.Delay(fault.ResetDelayMs, _cts.Token).ConfigureAwait(false);
+                }
+                ((DataStream)data).Reset();
+            }
         }
         state.RestartOffset = 0;
         state.CloseData();
@@ -614,6 +648,7 @@ internal sealed class LoopbackFtpServer : IDisposable
     {
         string path = Local(Normalize(state, argument));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        StoreCounts.AddOrUpdate(Normalize(state, argument), 1, static (_, count) => count + 1);
 
         // "一次只让传一个文件"的服务器:控制连接开几条都行,但第二个传输直接 450 顶回去。
         int live = Interlocked.Increment(ref _liveTransfers);
@@ -626,7 +661,8 @@ internal sealed class LoopbackFtpServer : IDisposable
         }
         try
         {
-            await ReceiveFileCoreAsync(state, path, writer, append).ConfigureAwait(false);
+            int? resetAfter = ResetStoreAfterBytes?.Invoke(Normalize(state, argument));
+            await ReceiveFileCoreAsync(state, path, writer, append, resetAfter).ConfigureAwait(false);
         }
         finally
         {
@@ -634,7 +670,7 @@ internal sealed class LoopbackFtpServer : IDisposable
         }
     }
 
-    private static async Task ReceiveFileCoreAsync(SessionState state, string path, StreamWriter writer, bool append)
+    private static async Task ReceiveFileCoreAsync(SessionState state, string path, StreamWriter writer, bool append, int? resetAfter)
     {
         await writer.WriteLineAsync("150 Opening data connection").ConfigureAwait(false);
         await using (Stream data = await state.AcceptDataAsync().ConfigureAwait(false))
@@ -642,6 +678,24 @@ internal sealed class LoopbackFtpServer : IDisposable
                          ? new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.None)
                          : new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
         {
+            if (resetAfter is int limit)
+            {
+                // 收满 limit 个字节就掐断:客户端还在往数据连接里写,看到的是一次进行中的写被复位。
+                byte[] buffer = new byte[Math.Max(1, limit)];
+                int received = 0;
+                while (received < limit)
+                {
+                    int read = await data.ReadAsync(buffer.AsMemory(received, limit - received)).ConfigureAwait(false);
+                    if (read == 0) break;
+                    received += read;
+                }
+                await target.WriteAsync(buffer.AsMemory(0, received)).ConfigureAwait(false);
+                ((DataStream)data).Reset();
+                state.RestartOffset = 0;
+                state.CloseData();
+                await writer.WriteLineAsync("426 Connection closed; transfer aborted").ConfigureAwait(false);
+                return;
+            }
             await data.CopyToAsync(target).ConfigureAwait(false);
         }
         state.RestartOffset = 0;

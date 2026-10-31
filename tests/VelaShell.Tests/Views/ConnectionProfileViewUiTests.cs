@@ -932,6 +932,61 @@ public sealed class ConnectionProfileViewUiTests
         }
     });
 
+    /// <summary>
+    /// <b>编辑一条 PostgreSQL@5432 的连接,在协议栏点 SSH、再点回数据库:端口框里还是 5432</b>。
+    /// <para>
+    /// 编辑态点回来直接是表单(没有卡片,也就没有「下一步」那一下可以纠正端口)。原先端口框停在页签默认的 3306 上,
+    /// 表头却写着 PostgreSQL —— 点保存就落盘一条连不上的配置。断言落在界面上那个端口框,不只看视图模型。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public Task TypePicker_EditMode_SshTabThenBack_KeepsThePortInThePortBox() => _session.RunOnUiAsync(async () =>
+    {
+        PluginProtocolRegistry registry = DbRegistry(out IDisposable handle);
+        using (handle)
+        {
+            var vm = new ConnectionProfileViewModel(new SessionProfile
+            {
+                Name = "orders",
+                ConnectionType = ConnectionType.Plugin,
+                PluginProtocolId = DbId,
+                Host = "db.internal",
+                Port = 5432,
+                Username = "app",
+                PluginSettings = new(StringComparer.Ordinal) { [DialectKey] = "postgresql" }
+            }, protocolRegistry: registry);
+            await vm.PendingPluginLoad;
+            var window = new ConnectionProfileView { DataContext = vm };
+            window.Show();
+            try
+            {
+                Layout(window);
+                Assert.AreEqual(5432m, PortBox(window).Value, "前提:端口框里是已存的 5432。");
+
+                Click(window, window.FindControl<Button>("SshTab")!);
+                Assert.IsTrue(vm.IsSshSelected, "前提:点到了 SSH。");
+                Assert.AreEqual(22m, PortBox(window).Value, "前提:切到 SSH 端口跟到 22。");
+
+                Click(window, window.GetVisualDescendants().OfType<Button>()
+                    .Single(button => button.Classes.Contains("plugin-proto") && Equals(button.Tag, DbId)));
+                Assert.IsFalse(vm.IsPluginLoading, "前提:表单装载完了。");
+                Assert.IsFalse(vm.IsPickingType, "编辑态点回来直接是表单。");
+                Assert.AreEqual("PostgreSQL", window.FindControl<TextBlock>("TypeHeaderValue")!.Text);
+                Assert.AreEqual(5432m, PortBox(window).Value, "点一下 SSH 再点回来,端口框成了页签默认值,表头却还是 PostgreSQL。");
+                Assert.AreEqual(5432, vm.Port);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+    });
+
+    /// <summary>「常规」页上绑着端口的那个数字框(1–65535;其余几个数字框在别的分页上)。</summary>
+    private static NumericUpDown PortBox(Window window) =>
+        window.GetVisualDescendants().OfType<NumericUpDown>()
+            .Single(box => box.IsEffectivelyVisible && box is { Minimum: 1, Maximum: 65535 });
+
     /// <summary>打开新建对话框、点进数据库页签,停在卡片那一屏;把键盘焦点放到第 <paramref name="index" /> 张卡片上。</summary>
     private static async Task<(ConnectionProfileViewModel Vm, ConnectionProfileView Window)> OpenCardsWithFocusOnAsync(
         PluginProtocolRegistry registry, int index)

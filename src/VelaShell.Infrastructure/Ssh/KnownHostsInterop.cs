@@ -3,6 +3,7 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Net;
 using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Persistence;
+using VelaShell.Ssh.Crypto;
 using VelaShell.Ssh.HostKeys;
 
 namespace VelaShell.Infrastructure.Ssh;
@@ -10,7 +11,7 @@ namespace VelaShell.Infrastructure.Ssh;
 /// <summary>导入一份 <c>known_hosts</c> 的结果(各项是条数)。</summary>
 /// <param name="Imported">新记进信任库的主机密钥。</param>
 /// <param name="AlreadyTrusted">信任库里已经有同一把钥(只补上公钥原文)。</param>
-/// <param name="Conflicts">这台主机已经信任了同一类型的另一把钥:不覆盖。</param>
+/// <param name="Conflicts">这台主机已经信任了同一类型(或类型说不清的旧记录)的另一把钥:不覆盖、不并排加。</param>
 /// <param name="Authorities">新加的受信主机 CA(<c>@cert-authority</c>)。</param>
 /// <param name="Revocations">新加的吊销记录(<c>@revoked</c>)。</param>
 /// <param name="MarkersAlreadyPresent">信任库里已经有的 CA / 吊销记录。</param>
@@ -49,7 +50,8 @@ public sealed record KnownHostsExport(string Content, int HostKeys, int Markers,
 /// </para>
 /// <para>
 /// <b>导入只加不改</b>:这台主机已经信任了同一类型的另一把钥时不覆盖 —— 一份文件里写着的钥不比用户亲手确认过的更可信,
-/// 悄悄换掉等于把「密钥变了」的检查绕过去。<c>@revoked</c> 照收(连接时先看它,吊销压过信任),
+/// 悄悄换掉等于把「密钥变了」的检查绕过去。换库之前存下、类型只记了 <c>PublicKey</c> 这类占位词的旧记录说不清是哪种钥,
+/// 同样按冲突处理,不把文件里的钥并排加进去(否则两把都受信)。<c>@revoked</c> 照收(连接时先看它,吊销压过信任),
 /// 同一份文件里被它吊销的普通行也不导入。
 /// </para>
 /// </remarks>
@@ -297,12 +299,31 @@ public static class KnownHostsInterop
             }
             return TrustOutcome.AlreadyTrusted;
         }
-        if (known.Any(k => string.Equals(k.KeyType, key.PlainKeyType, StringComparison.Ordinal)))
+        // 记录的真实类型说不清(换库之前存的 PublicKey 这类占位词)时同样算冲突:那条可能正是这个类型的另一把钥,
+        // 把文件里的这把并排记进去,两把就都受信了(校验只比指纹)。
+        if (known.Any(k => RecordedKeyType(k) is not { } type || string.Equals(type, key.PlainKeyType, StringComparison.Ordinal)))
         {
             return TrustOutcome.Conflict;
         }
         await store.TrustHostKeyAsync(host, port, key.PlainKeyType, key.Sha256Fingerprint, blob, cancellationToken).ConfigureAwait(false);
         return TrustOutcome.Imported;
+    }
+
+    /// <summary>
+    /// 一条记录记的是哪种钥:公钥原文解得出来就按原文(<see cref="SshPublicKey.PlainKeyType" />);否则记着的类型是认得的主机密钥算法名
+    /// 就用它;都不是(<c>PublicKey</c> 这类占位词、空的)时为 <see langword="null" />。
+    /// </summary>
+    private static string? RecordedKeyType(KnownHost host)
+    {
+        if (TryDecodeRecorded(host, out SshPublicKey? decoded))
+        {
+            return decoded.PlainKeyType;
+        }
+        return host.KeyType is { Length: > 0 } type
+               && (SshAlgorithmCatalog.Implemented(SshAlgorithmCategory.HostKey).Contains(type, StringComparer.Ordinal)
+                   || SshAlgorithmCatalog.KnownUnimplemented(SshAlgorithmCategory.HostKey).Contains(type, StringComparer.Ordinal))
+            ? type
+            : null;
     }
 
     /// <summary>记录里的公钥原文解得出来、而且就是记着的那把指纹。</summary>

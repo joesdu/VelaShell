@@ -35,6 +35,12 @@ public sealed class AuditedSettingsService(ISettingsService inner, IAuditLogServ
     public AppSettings? CurrentSnapshot => _inner.CurrentSnapshot;
 
     /// <inheritdoc />
+    public AppSettings GetStartupSnapshot() => _inner.GetStartupSnapshot();
+
+    /// <inheritdoc />
+    public Task SecretsLoaded => _inner.SecretsLoaded;
+
+    /// <inheritdoc />
     public Task<AppSettings> GetSettingsAsync() => _inner.GetSettingsAsync();
 
     /// <inheritdoc />

@@ -129,6 +129,18 @@ public interface ITerminalEmulator : IDisposable
     void WritePasteInput(string text);
 
     /// <summary>
+    /// 发送一段<b>不是用户此刻动手</b>的输入(输出规则的自动应答):正文字节之后按需再按一次 Enter(按终端当前模式编)。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="WriteInput" /> / <see cref="WriteKeyInput" /> 走同一个出口 —— 键入事件、命令补全的行跟踪、
+    /// 同步输入转发、桥的输入代次都照常看见它(开着的共享密码列表照样因此作废);只是不做键入之后的视图收尾:
+    /// 不把回滚中的视图拉回底部、不清选区。应答在提示出现 0.3 秒或冷却之后才发,那时用户可能正往回翻、选着日志。
+    /// </remarks>
+    /// <param name="data">正文字节(已按会话字符集编码;可以为空 = 只按回车)。</param>
+    /// <param name="submit">正文之后按一次 Enter。</param>
+    void WriteBackgroundInput(byte[] data, bool submit);
+
+    /// <summary>
     /// 远端是否开着括号粘贴(DECSET 2004)。开着时 <see cref="WritePasteInput" /> 送去的多行文本
     /// 由 shell 整段放进命令行,不会逐行执行;关着时文本里的每个换行都等于按一次回车。
     /// </summary>

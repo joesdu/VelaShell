@@ -184,7 +184,11 @@ public static class RemoteEditSessionManager
     /// 用户之后的保存只会换来一串上传失败。
     /// </remarks>
     /// <param name="sessionId">远程会话标识。</param>
-    public static async Task CloseScopeAsync(Guid sessionId)
+    /// <param name="connectionLost">
+    /// 不是关标签,而是连接断了(掉线、等着自动重连):给了就<b>一个本地副本都不删</b>,每个结束的会话经它说一声
+    /// (见 <see cref="RemoteEditSession.Detach" />);null = 关标签,照旧收尾。
+    /// </param>
+    public static async Task CloseScopeAsync(Guid sessionId, Action<string>? connectionLost = null)
     {
         RemoteEditSession[] owned;
         lock (Gate)
@@ -200,7 +204,14 @@ public static class RemoteEditSessionManager
         {
             await session.ShutdownAsync(RemoteEditSession.ShutdownUploadTimeout).ConfigureAwait(false);
             Remove(session);
-            session.Dispose();
+            if (connectionLost is null)
+            {
+                session.Dispose();
+            }
+            else
+            {
+                session.Detach(connectionLost);
+            }
         }
     }
 
@@ -390,6 +401,12 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>上一次写进标记的状态,同一个状态不重复写(一次保存会来好几个事件)。</summary>
     private string? _markedState;
 
+    /// <summary>
+    /// 最近一份与远端一致的副本的长度与修改时间(<see cref="MarkClean" /> 记下的,在 <see cref="_markerGate" /> 下读写);
+    /// 副本还是它,就没有可传的东西。
+    /// </summary>
+    private (long Length, DateTime LastWriteUtc)? _clean;
+
     internal RemoteEditSession(RemoteEditRequest request, string localPath)
     {
         _request = request;
@@ -444,26 +461,73 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>拆除会话。上传没能落地时<b>保留</b>本地副本,不删临时目录。</summary>
     public void Dispose()
     {
-        if (_disposed)
+        if (!StopWatching())
         {
             return;
+        }
+        if (KeepDraft(_onError))
+        {
+            return;
+        }
+        RemoteEditLog.Write("close", $"done {RemotePath} (uploads={_uploadCount})");
+        RemoteEditSessionManager.TryDeleteDirectory(Path.GetDirectoryName(LocalPath)!);
+    }
+
+    /// <summary>
+    /// 所属连接断了(掉线、等着自动重连)时拆会话:与 <see cref="Dispose" /> 一样停掉监视,但本地副本<b>一律不删</b>,
+    /// 并经 <paramref name="notify" /> 把这件事说出来。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 断线时外部编辑器多半还开着这份副本。以前干净的会话照 <see cref="Dispose" /> 删目录、一声不吭:用户接着存,
+    /// 要么存不进去,要么编辑器把文件和目录重新建出来(VS Code)—— 从此没人监视、一个字节也传不回去,
+    /// 直到下次启动才以「草稿」露面(复查 file-panes F8)。重连拿到的是新会话,这些编辑会话跟不过去(回传绑的是旧面板),
+    /// 所以只能结束它们,但得留着副本、把话说清楚。
+    /// </para>
+    /// <para>
+    /// 干净的副本标记仍是「干净」(记着长度与修改时间):之后没再动过,启动时与别的干净副本一样到点清掉;
+    /// 断线后又存过,对不上标记,启动时按草稿在消息中心列出来(见 <see cref="RemoteEditDrafts" />)。
+    /// </para>
+    /// </remarks>
+    /// <param name="notify">把话说给用户听的通道(断线时文件面板已经被拆掉,它的报错栏没人看得见)。</param>
+    internal void Detach(Action<string> notify)
+    {
+        if (!StopWatching() || KeepDraft(notify))
+        {
+            return;
+        }
+        RemoteEditLog.Write("close", $"connection lost, copy kept {RemotePath} -> {LocalPath} (uploads={_uploadCount})");
+        notify(Strings.Format("Svc_RemoteEditEndedByDisconnect", FileName, LocalPath));
+    }
+
+    /// <summary>停掉监视与防抖;已经拆过时返回 false。</summary>
+    private bool StopWatching()
+    {
+        if (_disposed)
+        {
+            return false;
         }
         _disposed = true;
         _closing = true;
         _watcher.EnableRaisingEvents = false;
         Interlocked.Exchange(ref _debounce, null)?.Dispose();
         _watcher.Dispose();
-        if (_lastUploadFailed || Volatile.Read(ref _pendingSave) == 1)
+        return true;
+    }
+
+    /// <summary>有改动没落到远端时保留副本、标成草稿并说一声;返回是否保留了。</summary>
+    private bool KeepDraft(Action<string>? notify)
+    {
+        if (!_lastUploadFailed && Volatile.Read(ref _pendingSave) == 0)
         {
-            // 远端没拿到这份内容 —— 本地副本是它唯一的存身之处,删了就真没了。
-            // 标记照实写成「有未传改动」:下次启动在消息中心列出来,永不按时间删(见 RemoteEditDrafts)。
-            MarkDirty();
-            RemoteEditLog.Write("close", $"draft kept {RemotePath} -> {LocalPath}");
-            _onError?.Invoke(Strings.Format("Svc_RemoteEditDraftKept", FileName, LocalPath));
-            return;
+            return false;
         }
-        RemoteEditLog.Write("close", $"done {RemotePath} (uploads={_uploadCount})");
-        RemoteEditSessionManager.TryDeleteDirectory(Path.GetDirectoryName(LocalPath)!);
+        // 远端没拿到这份内容 —— 本地副本是它唯一的存身之处,删了就真没了。
+        // 标记照实写成「有未传改动」:下次启动在消息中心列出来,永不按时间删(见 RemoteEditDrafts)。
+        MarkDirty();
+        RemoteEditLog.Write("close", $"draft kept {RemotePath} -> {LocalPath}");
+        notify?.Invoke(Strings.Format("Svc_RemoteEditDraftKept", FileName, LocalPath));
+        return true;
     }
 
     /// <summary>
@@ -629,6 +693,14 @@ public sealed class RemoteEditSession : IDisposable
         {
             return;
         }
+        // 副本还是最近一份与远端一致的那一份(长度与修改时间都没变):这个事件不是保存。macOS 的 FSEvents 会在 watcher
+        // 启用之后才补投下载那一下的创建事件,一份没动过的副本就被原样传了回去 —— 没有写权限的文件凭空报一次上传失败、
+        // 留成「草稿」,有写权限的则可能盖掉别人这几百毫秒里对远端的改动(复查 build-ci-tests F2)。已经有一次改动在排队时不看,照常排。
+        if (Volatile.Read(ref _pendingSave) == 0 && MatchesClean(Snapshot()))
+        {
+            RemoteEditLog.Write("watch", $"unchanged since last clean, ignored ({RemotePath})");
+            return;
+        }
         // 先记账再排防抖:计时器可能被收尾拆掉,而"有一次改动还没传"这件事必须留下来,
         // 否则改完立刻关编辑器就会把那次保存丢在防抖窗口里。磁盘上的标记同样先变脏:此刻崩溃,这份副本就是草稿。
         Interlocked.Exchange(ref _pendingSave, 1);
@@ -668,6 +740,19 @@ public sealed class RemoteEditSession : IDisposable
                     // 传之前记下这份副本的长度与修改时间:传完写进「干净」标记的是它。传的途中又存了一次,
                     // 副本就对不上这两项,启动时照样按草稿算(下面的循环也会再传一轮)。
                     FileInfo uploaded = Snapshot();
+                    if (MatchesClean(uploaded))
+                    {
+                        // 排队的那几个事件过后,副本又是与远端一致的那一份了(改名挪开再挪回来、保存后又原样还原):不传。
+                        // 远端本来就是这份内容,之前那次失败(如果有)也就没什么要补的了。
+                        _lastUploadFailed = false;
+                        State = RemoteEditState.Watching;
+                        if (Volatile.Read(ref _pendingSave) == 0)
+                        {
+                            MarkClean(uploaded);
+                        }
+                        RemoteEditLog.Write("upload", $"skip, unchanged since last clean {RemotePath}");
+                        continue;
+                    }
                     if (_request.UploadAsync is not null)
                     {
                         await _request.UploadAsync(LocalPath, RemotePath).ConfigureAwait(false);
@@ -682,6 +767,12 @@ public sealed class RemoteEditSession : IDisposable
                     if (Volatile.Read(ref _pendingSave) == 0)
                     {
                         MarkClean(uploaded);
+                    }
+                    else
+                    {
+                        // 传的途中又来了事件:标记先不写干净(启动时照样按草稿算),但远端已经是这一份了 ——
+                        // 下一轮副本若还是它,就不必再传。
+                        RememberClean(uploaded);
                     }
                     RemoteEditLog.Write("upload", $"ok #{_uploadCount} {RemotePath}");
                 }
@@ -713,22 +804,59 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>标记:本地副本(就是 <paramref name="copy" /> 这一份)与远端一致。</summary>
     private void MarkClean(FileInfo copy)
     {
+        if (RememberClean(copy) is { } clean)
+        {
+            WriteMarker(RemoteEditDrafts.Clean, clean.Length, clean.LastWriteUtc);
+        }
+    }
+
+    /// <summary>
+    /// 只在内存里记下「远端此刻就是 <paramref name="copy" /> 这一份」(给 <see cref="MatchesClean" /> 比);读不了时返回 null。
+    /// </summary>
+    /// <remarks>
+    /// 传完一次就该记,哪怕传的途中又来了事件、磁盘上的标记还不能写成干净:不然下一轮拿副本去比的还是更早那一份,
+    /// 一次保存因为事件拖得比上传长,就会被原样再传一遍。
+    /// </remarks>
+    private (long Length, DateTime LastWriteUtc)? RememberClean(FileInfo copy)
+    {
         long length;
         DateTime lastWriteUtc;
         try
         {
             if (!copy.Exists)
             {
-                return;
+                return null;
             }
             length = copy.Length;
             lastWriteUtc = copy.LastWriteTimeUtc;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return;
+            return null;
         }
-        WriteMarker(RemoteEditDrafts.Clean, length, lastWriteUtc);
+        lock (_markerGate)
+        {
+            _clean = (length, lastWriteUtc);
+        }
+        return (length, lastWriteUtc);
+    }
+
+    /// <summary><paramref name="copy" /> 是不是最近一份与远端一致的副本(长度与修改时间都对得上);读不了时当作不是。</summary>
+    private bool MatchesClean(FileInfo copy)
+    {
+        (long Length, DateTime LastWriteUtc)? clean;
+        lock (_markerGate)
+        {
+            clean = _clean;
+        }
+        try
+        {
+            return clean is { } c && copy.Exists && copy.Length == c.Length && copy.LastWriteTimeUtc == c.LastWriteUtc;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>标记:有改动还没落到远端。</summary>

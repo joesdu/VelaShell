@@ -132,6 +132,86 @@ public class PluginMarketClientTests : IDisposable
         Assert.IsFalse(File.Exists(destination + ".partial"), "下完不该留半成品。");
     }
 
+    /// <summary>
+    /// 半成品的位置上预先放着一个链接(别的本机用户能写这个目录时就能这么干):不顺着它写,
+    /// 它指向的文件一字不动,包落在自己新建的文件里;上次没下完的半成品同样先删再独占新建。
+    /// </summary>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task DownloadAsync_DoesNotWriteThroughAPlantedLink(bool symbolic)
+    {
+        byte[] payload = Encoding.ASCII.GetBytes("pretend-this-is-a-vpx");
+        string digest = Convert.ToHexStringLower(SHA256.HashData(payload));
+        HttpPluginMarketClient client = new("https://market.test", new(TicketThen(payload, digest)));
+        string destination = Path.Combine(_dir, "updates", "acme.foo-1.3.0.vpx");
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        string victim = Path.Combine(_dir, "victim.txt");
+        await File.WriteAllTextAsync(victim, "do-not-touch");
+        if (symbolic)
+        {
+            try
+            {
+                File.CreateSymbolicLink(destination + ".partial", victim);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Windows 上建符号链接要开发者模式或管理员;这个场景本来就出在 Linux 的共用 /tmp 上,CI 的 Linux / macOS 作业会跑到。
+                Assert.Inconclusive($"[SKIP] cannot create a symbolic link here: {ex.Message}");
+            }
+        }
+        else
+        {
+            await CreateHardLinkAsync(destination + ".partial", victim);
+        }
+
+        await client.DownloadAsync("acme.foo", "1.3.0", destination);
+
+        Assert.AreEqual("do-not-touch", await File.ReadAllTextAsync(victim), "不能顺着链接把包写进别处");
+        Assert.IsNull(new FileInfo(destination).LinkTarget, "落地的是自己新建的文件,不是那个链接");
+        Assert.AreEqual("pretend-this-is-a-vpx", await File.ReadAllTextAsync(destination));
+    }
+
+    private static async Task CreateHardLinkAsync(string link, string target)
+    {
+        var start = new System.Diagnostics.ProcessStartInfo(OperatingSystem.IsWindows() ? "cmd.exe" : "ln")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        foreach (string argument in OperatingSystem.IsWindows() ? ["/c", "mklink", "/H", link, target] : new[] { target, link })
+        {
+            start.ArgumentList.Add(argument);
+        }
+        using System.Diagnostics.Process process = System.Diagnostics.Process.Start(start)!;
+        Task<string> output = process.StandardOutput.ReadToEndAsync(), error = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        await Task.WhenAll(output, error);
+        Assert.AreEqual(0, process.ExitCode, $"硬链接没建出来:{await error}");
+    }
+
+    /// <summary>Unix 上新建的下载目录只给自己(0700)、包只给自己读写(0600)。</summary>
+    [TestMethod]
+    public async Task DownloadAsync_OnUnix_CreatesAPrivateDirectoryAndFile()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("[SKIP] Unix file modes only");
+            return;
+        }
+        byte[] payload = Encoding.ASCII.GetBytes("pretend-this-is-a-vpx");
+        string digest = Convert.ToHexStringLower(SHA256.HashData(payload));
+        HttpPluginMarketClient client = new("https://market.test", new(TicketThen(payload, digest)));
+        string directory = Path.Combine(_dir, "fresh-updates");
+        string destination = Path.Combine(directory, "acme.foo-1.3.0.vpx");
+
+        await client.DownloadAsync("acme.foo", "1.3.0", destination);
+
+        Assert.AreEqual(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(directory));
+        Assert.AreEqual(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(destination));
+    }
+
     [TestMethod]
     public async Task DownloadAsync_WhenTheDigestDoesNotMatch_RejectsAndLeavesNothingBehind()
     {

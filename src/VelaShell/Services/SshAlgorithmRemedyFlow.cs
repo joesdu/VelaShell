@@ -59,8 +59,9 @@ public sealed class SshAlgorithmRemedyFlow(ISessionRepository? repository, IConn
 
     /// <summary>
     /// 找到要改的那条配置、点名确认、写回库里。返回 <see langword="null" /> = 什么都没改
-    /// (用户取消、跳板配置找不到、写失败 —— 后两种已经经 <paramref name="reportError" /> 说过了)。
+    /// (用户取消、跳板配置找不到、确认期间配置被删、写失败 —— 后三种已经经 <paramref name="reportError" /> 说过了)。
     /// </summary>
+    /// <remarks>写回的是确认之后重读的那份,只在上面补这几个算法:确认框开着时别处对这条配置的改动不会被框前读的那份冲掉。</remarks>
     /// <param name="profile">这次连接用的那份配置(终点那一跳)。</param>
     /// <param name="remedy">诊断点名的补救。</param>
     /// <param name="followUp">确认之后做什么(只影响说法)。</param>
@@ -139,6 +140,26 @@ public sealed class SshAlgorithmRemedyFlow(ISessionRepository? repository, IConn
         if (stored is null)
         {
             return new(null);
+        }
+        // 确认框可以开着任意久:这期间云同步拉下来的、巡检窗口「编辑配置」存的、别的标签重连成功写回的都可能改了这条配置。
+        // 存的是整份文档,拿框前读的那份去存就把它们冲掉 —— 确认之后重读一次,只在最新的那份上补这几个算法。
+        try
+        {
+            // stored 读自库里,repository 一定在。
+            stored = await repository!.GetSessionAsync(stored.Id).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            reportError(Strings.Format("SshAlgoFix_SaveFailed", ex.Message));
+            return null;
+        }
+        if (stored is null)
+        {
+            // 看框的这段时间里配置被删了:不凭框前那份再建回来。
+            reportError(remedy.HopDepth > 0
+                ? Strings.Format("SshAlgoFix_HopMissing", remedy.HopTarget ?? string.Empty)
+                : Strings.Format("SshAlgoFix_ProfileMissing", name));
+            return null;
         }
         stored.Ssh = remedy.ApplyTo(stored.Ssh);
         try

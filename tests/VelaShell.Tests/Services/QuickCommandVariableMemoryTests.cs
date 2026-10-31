@@ -76,6 +76,61 @@ public class QuickCommandVariableMemoryTests
     }
 
     [TestMethod]
+    [DataRow("pw")]
+    [DataRow("db_pw")]
+    [DataRow("pin")]
+    [DataRow("sim_pin")]
+    [DataRow("PIN")]
+    [DataRow("dbPin")]
+    [DataRow("key")]
+    [DataRow("sshKey")]
+    [DataRow("access_key")]
+    [DataRow("auth")]
+    [DataRow("OAuth")]
+    [DataRow("mfa_code")]
+    [DataRow("user_2fa")]
+    [DataRow("jwt")]
+    [DataRow("bearer")]
+    [DataRow("session_cookie")]
+    [DataRow("凭据")]
+    [DataRow("登录凭证")]
+    [DataRow("秘钥")]
+    [DataRow("憑證")]
+    [DataRow("暗証番号")]
+    [DataRow("パスコード")]
+    [DataRow("암호")]
+    public void CommonCredentialNames_AreSensitive(string name) =>
+        Assert.IsTrue(QuickCommandVariableMemory.IsSensitive(name), name);
+
+    [TestMethod]
+    [DataRow("pod")]
+    [DataRow("ping_host")]
+    [DataRow("mapping")]
+    [DataRow("keyspace")]
+    [DataRow("monkey")]
+    [DataRow("author")]
+    [DataRow("namespace")]
+    [DataRow("目录")]
+    public void ShortWords_OnlyCountAsWholeWords(string name) =>
+        Assert.IsFalse(QuickCommandVariableMemory.IsSensitive(name), name);
+
+    [TestMethod]
+    public void SensitiveValues_AreWhatEndsUpInTheCommand_ForCredentialVariablesOnly()
+    {
+        var template = QuickCommandTemplate.Parse("login {{user}} -p {{password=changeme}} --pin={{pin}} --otp={{otp}}");
+
+        IReadOnlyList<string> secrets = QuickCommandVariableMemory.SensitiveValues(template, new Dictionary<string, string>
+        {
+            ["user"] = "app",
+            ["pin"] = "12\n34",
+            ["otp"] = "  ",
+        });
+
+        Assert.AreSequenceEqual(["changeme", "12", "34"], secrets.ToArray(),
+            "没给的用默认值(与替换同一口径);值里的换行替换时成了空格,按段认;空白的不算;普通变量不算");
+    }
+
+    [TestMethod]
     public void BlankAnswer_ForgetsTheOldValue_SoTheDefaultComesBack()
     {
         var memory = new QuickCommandVariableMemory();

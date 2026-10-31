@@ -217,6 +217,32 @@ public sealed class RemoteSearchDockerTests
         Assert.DoesNotContain(Directory, utf8[0].Path, "UTF-8 会话照旧按 UTF-8 解:GBK 字节显示不出中文");
     }
 
+    /// <summary>
+    /// Big5 会话:「功」是 A5 5C,后一个字节恰好是 <c>\</c>。按名字找「功能」要找得到 <c>功能.txt</c>(那个字节在模式里得转义),
+    /// 而不是把下一个字节转义掉、报「完成,0 项」(复查 file-panes F5)。
+    /// </summary>
+    [TestMethod]
+    [Timeout(60_000)]
+    public async Task Big5Session_FindsNamesWhoseTrailByteIsABackslash()
+    {
+        RequireContainer();
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+        var big5 = System.Text.Encoding.GetEncoding("Big5");
+        const string File = "功能.txt";
+        await using VelaSshClientWrapper ssh = await ConnectAsync("vela-bash", TestContext.CancellationToken);
+        string root = $"{Root}/big5";
+        RemoteCommandResult created = await ssh.RunCommandDetailedAsync(
+            "sh -c 'f=$(printf \"$2_\"); f=${f%_}; mkdir -p \"$1\" && printf \"x\\n\" > \"$1/$f\" && printf \"x\\n\" > \"$1/other.txt\"' fixture " +
+            RemoteSha256.Quote(root) + " " + RemoteSha256.Quote(Octal(big5, File)),
+            TestContext.CancellationToken);
+        Assert.AreEqual(0, created.ExitCode, created.StandardError);
+
+        RemoteSearchService service = Service(ssh, "vela-bash", out Guid session, fileNameEncoding: "Big5");
+        (RemoteSearchOutcome outcome, List<RemoteSearchHit> hits) = await SearchAsync(service, session, new(root, "功能"));
+        Assert.AreEqual(RemoteSearchStatus.Completed, outcome.Status, outcome.Detail);
+        Assert.AreSequenceEqual([new RemoteSearchHit($"{root}/{File}", false)], hits);
+    }
+
     private static string Octal(System.Text.Encoding encoding, string value) =>
         string.Concat(encoding.GetBytes(value).Select(static b => "\\" + Convert.ToString(b, 8).PadLeft(3, '0')));
 

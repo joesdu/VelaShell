@@ -12,11 +12,12 @@ namespace VelaShell.Infrastructure.Tests.Notifications;
 [TestCategory("Notifications")]
 public class NotificationCenterTests
 {
-    private static NotificationItem Item(string id, DateTime? published = null, DateTime? expires = null) =>
+    private static NotificationItem Item(string id, DateTime? published = null, DateTime? expires = null,
+        NotificationKind kind = NotificationKind.News) =>
         new()
         {
             Id = id,
-            Kind = NotificationKind.News,
+            Kind = kind,
             Title = $"消息 {id}",
             PublishedAt = published ?? DateTime.UtcNow,
             ExpiresAt = expires
@@ -99,6 +100,36 @@ public class NotificationCenterTests
         Assert.HasCount(NotificationCenter.MaxItems, center.Items);
         Assert.DoesNotContain(item => item.Id == "n0", center.Items, "最旧的那条应被截掉。");
         Assert.Contains(item => item.Id == $"n{NotificationCenter.MaxItems + 19}", center.Items, "最新的那条应留下。");
+    }
+
+    /// <summary>
+    /// <b>超出上限时先丢插件消息,插件消息挤不掉宿主自己的</b>:一条最旧的「本机加密密钥找不到」只发一次,
+    /// 被挤掉就再也不会回来。列表被宿主消息占满时,新来的插件消息自己出局;
+    /// 插件消息丢完之前,宿主的一条都不丢。
+    /// </summary>
+    [TestMethod]
+    public async Task Publish_OverTheCap_DropsPluginMessagesBeforeHostOnes()
+    {
+        var center = new NotificationCenter();
+        DateTime baseline = DateTime.UtcNow.AddDays(-1);
+        await center.PublishAsync([Item("master-key:missing:x", baseline, kind: NotificationKind.System)]);
+
+        await center.PublishAsync(Enumerable.Range(0, NotificationCenter.MaxItems + 50)
+            .Select(i => Item($"plugin:acme.chatty:n{i}", baseline.AddMinutes(1 + i), kind: NotificationKind.Plugin)));
+
+        Assert.HasCount(NotificationCenter.MaxItems, center.Items);
+        Assert.Contains(item => item.Id == "master-key:missing:x", center.Items, "插件消息把最旧的宿主消息挤掉了。");
+        Assert.DoesNotContain(item => item.Id == "plugin:acme.chatty:n50", center.Items, "插件消息里最旧的那些先丢。");
+        Assert.Contains(item => item.Id == $"plugin:acme.chatty:n{NotificationCenter.MaxItems + 49}", center.Items);
+
+        // 宿主消息占满之后再来一条插件消息:它自己出局,宿主的一条不丢。
+        await center.PublishAsync(Enumerable.Range(0, NotificationCenter.MaxItems)
+            .Select(i => Item($"news:{i}", baseline.AddDays(1).AddMinutes(i))));
+        Assert.IsTrue(center.Items.All(item => item.Kind != NotificationKind.Plugin), "宿主消息该把插件消息先挤掉。");
+        await center.PublishAsync([Item("plugin:acme.chatty:late", baseline.AddDays(2), kind: NotificationKind.Plugin)]);
+        Assert.HasCount(NotificationCenter.MaxItems, center.Items);
+        Assert.DoesNotContain(item => item.Id == "plugin:acme.chatty:late", center.Items, "列表被宿主消息占满时,插件消息不该挤进来。");
+        Assert.Contains(item => item.Id == "news:0", center.Items, "插件消息挤掉了宿主消息。");
     }
 
     /// <summary>全部已读把未读清零;删除与清空按预期收缩列表。</summary>

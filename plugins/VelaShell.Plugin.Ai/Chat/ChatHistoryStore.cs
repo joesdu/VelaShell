@@ -497,7 +497,10 @@ public sealed class ChatHistoryStore(IPluginContext context)
 
     private sealed record StoredSummary(string? Summary, int Through);
 
-    /// <summary>删除一个历史会话(消息与摘要一并清除)。</summary>
+    /// <summary>
+    /// 删除一个历史会话(消息与摘要一并清除)。图片文件不在这里删:调用方先取 <see cref="ImageFilesAsync" />,
+    /// 删完交给 <see cref="ReleaseImagesAsync" />(它要知道哪些还活在界面上,这一层不知道)。
+    /// </summary>
     public async Task DeleteAsync(string conversationId, CancellationToken cancellationToken = default)
     {
         if (_messages is not { } messages || _sessions is not { } sessions || string.IsNullOrEmpty(conversationId))
@@ -521,7 +524,7 @@ public sealed class ChatHistoryStore(IPluginContext context)
         }
     }
 
-    /// <summary>清空全部历史会话。</summary>
+    /// <summary>清空全部历史会话。图片文件随后由调用方经 <see cref="ReleaseImagesAsync" /> 回收。</summary>
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         if (_messages is not { } messages || _sessions is not { } sessions)
@@ -543,6 +546,127 @@ public sealed class ChatHistoryStore(IPluginContext context)
             context.Log.Warn($"Clearing chat history failed: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// 一个会话的附加信息里引用过的图片文件名。删会话<b>之前</b>取 —— 行一删就查不到了;
+    /// 删完再交给 <see cref="ReleaseImagesAsync" /> 回收。
+    /// </summary>
+    public async Task<IReadOnlyList<string>> ImageFilesAsync(string conversationId, CancellationToken cancellationToken = default)
+    {
+        if (_meta is not { } series || string.IsNullOrEmpty(conversationId))
+        {
+            return [];
+        }
+        try
+        {
+            // 读不全也无妨:漏掉的只是留在盘上成了孤儿,启动时的回收会再扫到
+            return [.. (await ScanImageFilesAsync(series, conversationId, cancellationToken).ConfigureAwait(false)).Files];
+        }
+        catch (Exception ex)
+        {
+            context.Log.Warn($"Loading conversation images failed: {ex.Message}");
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// 回收图片文件:<paramref name="candidates" />(为 null = 目录里全部)当中,最后写入早于
+    /// <paramref name="writtenBeforeUtc" />、不在 <paramref name="keep" /> 里、且已经<b>没有任何存档会话引用</b>的那些。
+    /// 返回删掉的张数。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 引用得扫全部会话的 <c>chat_meta</c> 才知道:同一个文件名可能不止一个会话引用,只看被删的那个会误删。
+    /// 候选为空就不扫库 —— 没用过作图的用户一次查询都不多花。
+    /// </para>
+    /// <para>
+    /// 读不全(时序不可用、查询出错、某个会话的附加信息撞上查询上限)就<b>一张都不删</b>:
+    /// 多留几张图只是占点盘,删错一张,历史里那张图就再也找不回来了。
+    /// </para>
+    /// </remarks>
+    public async Task<int> ReleaseImagesAsync(GeneratedImageStore images, IReadOnlyCollection<string>? candidates,
+        IReadOnlySet<string> keep, DateTime writtenBeforeUtc, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(images);
+        ArgumentNullException.ThrowIfNull(keep);
+        if (_meta is not { } series)
+        {
+            return 0;
+        }
+        try
+        {
+            IEnumerable<string> files = images.ListFiles(writtenBeforeUtc);
+            if (candidates is not null)
+            {
+                files = files.Intersect(candidates, StringComparer.Ordinal);
+            }
+            List<string> doomed = [.. files.Where(file => !keep.Contains(file))];
+            if (doomed.Count == 0)
+            {
+                return 0;
+            }
+            var referenced = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string conversationId in await series.DistinctTagValuesAsync(ConversationTag, cancellationToken)
+                         .ConfigureAwait(false))
+            {
+                (HashSet<string> Files, bool Complete) scan =
+                    await ScanImageFilesAsync(series, conversationId, cancellationToken).ConfigureAwait(false);
+                if (!scan.Complete)
+                {
+                    context.Log.Warn("Skipped releasing generated images: conversation metadata exceeds the query limit.");
+                    return 0;
+                }
+                referenced.UnionWith(scan.Files);
+            }
+            return images.Delete(doomed.Where(file => !referenced.Contains(file)));
+        }
+        catch (Exception ex)
+        {
+            context.Log.Warn($"Releasing generated images failed: {ex.Message}");
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// 某个会话 <c>chat_meta</c> 里出现过的图片文件名(含已被编辑截断、不再显示的那几轮 —— 宁多勿漏)。
+    /// 条数撞上查询上限时 <c>Complete</c> 为 false:后面可能还有没读到的。
+    /// </summary>
+    private static async Task<(HashSet<string> Files, bool Complete)> ScanImageFilesAsync(ITimeSeries series,
+        string conversationId, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<TimeSeriesPoint> points = await series.QueryAsync(new()
+        {
+            Tags = new Dictionary<string, string> { [ConversationTag] = conversationId },
+            Limit = TimeSeriesLimits.MaxQueryLimit
+        }, cancellationToken).ConfigureAwait(false);
+        var files = new HashSet<string>(StringComparer.Ordinal);
+        foreach (TimeSeriesPoint point in points)
+        {
+            string payload = point.Text("payload");
+            // 负序号是上下文摘要那一行;坏掉的那条载入时本来也读不出图,跳过它不影响别的
+            if (point.Integer("seq", 0) < 0 || payload.Length == 0)
+            {
+                continue;
+            }
+            try
+            {
+                foreach (ChatGeneratedImage? image in JsonSerializer.Deserialize<StoredImages>(payload)?.Images ?? [])
+                {
+                    if (image?.FileName is { Length: > 0 } name)
+                    {
+                        files.Add(name);
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+        return (files, points.Count < TimeSeriesLimits.MaxQueryLimit);
+    }
+
+    /// <summary>只读 <see cref="StoredMeta" /> 里的图片引用(思考与工具记录不必反序列化)。</summary>
+    private sealed record StoredImages(ChatGeneratedImage?[]? Images);
 
     /// <summary>
     /// 最近发过的用户消息(去重、最新在前),供输入框 ↑↓ 调取。

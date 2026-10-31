@@ -515,6 +515,75 @@ public sealed class LayoutTemplatesViewModelTests
         }
     }
 
+    private static LayoutTemplate ShellTemplate(string name, int tabs, Guid? id = null) => new()
+    {
+        Id = id ?? Guid.NewGuid(),
+        Name = name,
+        Root = new() { Documents = [.. Enumerable.Range(0, tabs).Select(i => new LayoutDocument { Kind = LayoutDocumentKind.LocalShell, ShellId = "pwsh", Title = $"t{i}" })] },
+    };
+
+    /// <summary>
+    /// 别的设备上把「prod」改名成「prod-old」、又新建了一个「prod」,一起导出:文件里一条与本机同 Id、一条与本机同名,
+    /// 两条都对上本机同一条。「替换」时同 Id 的那条替换它,同名的那条另存 —— 两条都在,提示的数目也对。
+    /// </summary>
+    [TestMethod]
+    [DataRow(false, DisplayName = "同 Id 的在前")]
+    [DataRow(true, DisplayName = "同名的在前")]
+    public async Task Import_Replace_WhenTwoIncomingTemplatesHitTheSameLocalOne_KeepsBoth(bool sameNameFirst)
+    {
+        Scene scene = NewScene();
+        LayoutTemplateItemViewModel prod = await SaveAsync(scene, "prod", "web");
+        LayoutTemplate renamed = ShellTemplate("prod-old", 2, prod.Template.Id);
+        LayoutTemplate newProd = ShellTemplate("prod", 3);
+        string path = await WriteFileAsync(LayoutTemplateFile.Export(sameNameFirst ? [newProd, renamed] : [renamed, newProd], DateTime.UtcNow));
+        scene.Dialogs.FilePath = path;
+        scene.Dialogs.ChooseAnswer = 0; // 替换
+        try
+        {
+            Assert.AreEqual(2, await scene.ViewModel.ImportAsync());
+
+            Assert.AreSequenceEqual(["prod", "prod-old"], scene.ViewModel.Templates.Select(t => t.Name).ToArray());
+            LayoutTemplate old = scene.ViewModel.Templates.Single(t => t.Name == "prod-old").Template;
+            Assert.AreEqual((prod.Template.Id, prod.Template.CreatedAt, 2), (old.Id, old.CreatedAt, LayoutTree.Documents(old.Root).Count()),
+                "同 Id 的替换本机那一条");
+            LayoutTemplate added = scene.ViewModel.Templates.Single(t => t.Name == "prod").Template;
+            Assert.AreEqual((newProd.Id, 3), (added.Id, LayoutTree.Documents(added.Root).Count()),
+                "同名的那条没被盖掉:留着自己的 Id 另存,本机原来的名字已经空出来了,不补序号");
+            Assert.HasCount(2, await scene.TemplateStore.LoadAllAsync());
+            Assert.AreEqual(Core.Resources.Strings.Format("LayoutTemplate_Imported", 2), LastToast(scene));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public async Task Import_Replace_WhenTwoIncomingTemplatesShareTheLocalName_TheSecondIsSavedAsACopy()
+    {
+        Scene scene = NewScene();
+        LayoutTemplateItemViewModel prod = await SaveAsync(scene, "prod", "web");
+        LayoutTemplate first = ShellTemplate("prod", 2);
+        LayoutTemplate second = ShellTemplate("PROD", 3);
+        string path = await WriteFileAsync(LayoutTemplateFile.Export([first, second], DateTime.UtcNow));
+        scene.Dialogs.FilePath = path;
+        scene.Dialogs.ChooseAnswer = 0; // 替换
+        try
+        {
+            Assert.AreEqual(2, await scene.ViewModel.ImportAsync());
+
+            LayoutTemplate replaced = scene.ViewModel.Templates.Single(t => t.Template.Id == prod.Template.Id).Template;
+            Assert.AreEqual(("prod", 2), (replaced.Name, LayoutTree.Documents(replaced.Root).Count()), "文件里靠前的那条替换本机那一条");
+            LayoutTemplate copy = scene.ViewModel.Templates.Single(t => t.Template.Id == second.Id).Template;
+            Assert.AreEqual(("PROD (2)", 3), (copy.Name, LayoutTree.Documents(copy.Root).Count()), "另一条名字还被占着,补序号另存");
+            Assert.HasCount(2, await scene.TemplateStore.LoadAllAsync());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [TestMethod]
     public async Task Import_OfADeletedTemplate_LiftsItsTombstone()
     {

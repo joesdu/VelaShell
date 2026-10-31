@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using NSubstitute;
 using VelaShell.Core.Data;
 using VelaShell.Core.Layouts;
+using VelaShell.Core.Models;
 using VelaShell.Core.Sync;
 using VelaShell.Infrastructure.Sync;
 
@@ -335,6 +336,129 @@ public sealed class GistSyncLayoutTemplatesTests
         Assert.AreSequenceEqual(["prod"], await desktop.NamesAsync());
         Assert.AreEqual("prod", desktop.Sync.ReadLayoutTemplatesFile(desktop.Config, pushed).State!.Templates.Single().Name,
             "恢复之后的推送胜过云端那块墓碑");
+    }
+
+    /// <summary>
+    /// 假的 GitHub Gist 接口:读交回全部文件与最新 revision;改只动请求里列出的文件(「更新 Gist」的约定),revision 加一。
+    /// </summary>
+    private sealed class FakeGistApi : HttpMessageHandler
+    {
+        public Dictionary<string, string> Files { get; } = new(StringComparer.Ordinal);
+
+        public int Revision { get; set; } = 1;
+
+        public string Version => $"v{Revision}";
+
+        /// <summary>每次改写了哪几个文件。</summary>
+        public List<string[]> Patches { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Method == HttpMethod.Patch)
+            {
+                using JsonDocument body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+                var written = new List<string>();
+                foreach (JsonProperty file in body.RootElement.GetProperty("files").EnumerateObject())
+                {
+                    Files[file.Name] = file.Value.GetProperty("content").GetString()!;
+                    written.Add(file.Name);
+                }
+                Patches.Add([.. written]);
+                Revision++;
+            }
+            var files = new System.Text.Json.Nodes.JsonObject();
+            foreach ((string name, string content) in Files)
+            {
+                files[name] = new System.Text.Json.Nodes.JsonObject { ["content"] = content };
+            }
+            var gist = new System.Text.Json.Nodes.JsonObject
+            {
+                ["id"] = "gist-1",
+                ["history"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject { ["version"] = Version }),
+                ["files"] = files,
+            };
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(gist.ToJsonString()) };
+        }
+    }
+
+    /// <summary>一份会记住保存结果的设置服务替身(拉取写进去的,下一次推送读得到)。</summary>
+    private static ISettingsService Settings(AppSettings initial)
+    {
+        AppSettings current = initial;
+        ISettingsService settings = Substitute.For<ISettingsService>();
+        settings.GetSettingsAsync().Returns(_ => Task.FromResult(JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(current))!));
+        settings.SaveSettingsAsync(Arg.Any<AppSettings>()).Returns(call =>
+        {
+            current = call.Arg<AppSettings>();
+            return Task.CompletedTask;
+        });
+        return settings;
+    }
+
+    /// <summary>
+    /// 只存了一个模板(主载荷没打「本机改过」)、而别的设备刚推过新的设置:这一轮同步要先把那份设置拉下来,
+    /// 再把模板合并推上去 —— 推上去的主载荷是拉下来之后的,别的设备的改动不丢。
+    /// </summary>
+    /// <remarks>
+    /// 存模板曾经给主载荷打标记(App.WireAutoSync),于是这一轮走「双端都改、较新者胜」,刚存模板的这台以为自己更新,
+    /// 把旧设置整份推上去盖掉了别的设备的改动。现在接线不打标记;这一条守的是不打标记时模板照样上得去。
+    /// </remarks>
+    [TestMethod]
+    public async Task SyncNow_AfterOnlyATemplateChanged_PullsTheNewerSettings_AndStillUploadsTheTemplate()
+    {
+        var api = new FakeGistApi();
+        GistApiClient.UseHttpClientForTests(new HttpClient(api));
+        try
+        {
+            // 另一台设备把字号改成了 18 并推了上去(云端 revision 从本机上次看到的 v1 走到了 v2)。
+            var otherConfig = new SyncSettings { DeviceName = "laptop", SyncProfiles = false, SyncSnippets = false };
+            var other = new GistSyncService(Settings(new AppSettings { TerminalFontSize = 18 }), Substitute.For<ISessionRepository>(),
+                new MemoryStore(), Substitute.For<IQuickCommandRepository>(), Substitute.For<ISecretProtector>());
+            api.Files[SyncFile] = await other.BuildGistContentAsync(otherConfig, CancellationToken.None);
+            api.Revision = 2;
+
+            // 本机还停在字号 14、云端 v1,自那以后只存了一个模板。
+            var store = new MemoryStore();
+            var templates = new LayoutTemplateStore(store, new FixedTime(Now));
+            ISettingsService settings = Settings(new AppSettings { TerminalFontSize = 14 });
+            ISecretProtector protector = Substitute.For<ISecretProtector>();
+            protector.TryUnprotect("protected-token", out Arg.Any<string?>()).Returns(call =>
+            {
+                call[1] = "ghp_test";
+                return true;
+            });
+            var desktop = new GistSyncService(settings, Substitute.For<ISessionRepository>(), store,
+                Substitute.For<IQuickCommandRepository>(), protector, layoutTemplates: templates);
+            await desktop.SaveSyncSettingsAsync(new SyncSettings
+            {
+                Enabled = true,
+                ProtectedToken = "protected-token",
+                GistId = "gist-1",
+                DeviceName = "desktop",
+                SyncProfiles = false,
+                SyncSnippets = false,
+                LastRemoteVersion = "v1",
+                LastSyncAtUtc = DateTime.UtcNow.AddHours(-1),
+            });
+            await templates.SaveAsync(Template("rack-A"));
+
+            SyncResult result = await desktop.SyncNowAsync();
+
+            Assert.IsTrue(result.Success, result.Message);
+            Assert.AreEqual(SyncAction.Pulled, result.Action, result.Message);
+            Assert.AreEqual(18, (await settings.GetSettingsAsync()).TerminalFontSize, "云端那份较新的设置拉下来了");
+            Assert.AreEqual(18, GistSyncService.ParseEnvelope(api.Files[SyncFile]).Payload!.Settings!.TerminalFontSize,
+                "随模板一起推上去的主载荷是拉下来之后的那份,另一台设备的改动没被盖掉");
+            Assert.Contains("rack-A", api.Files[GistSyncService.LayoutTemplatesFileName], "模板照样推上去了");
+            Assert.HasCount(1, api.Patches);
+            SyncSettings after = await desktop.GetSyncSettingsAsync();
+            Assert.AreEqual(api.Version, after.LastRemoteVersion);
+            Assert.IsNull(after.LastLocalChangeAtUtc);
+        }
+        finally
+        {
+            GistApiClient.UseHttpClientForTests(null);
+        }
     }
 
     [TestMethod]

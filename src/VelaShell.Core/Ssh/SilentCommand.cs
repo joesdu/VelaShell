@@ -84,6 +84,40 @@ public static class SilentCommand
         kind is RemoteShellKind.Bash or RemoteShellKind.Zsh or RemoteShellKind.Fish or RemoteShellKind.PosixSh;
 
     /// <summary>
+    /// 一段要<b>当击键</b>拼进注入行的文字(目录名之类)能不能原样写进 PTY。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 注入行不是交给 shell 解析的字符串,而是<b>敲进终端</b>的字节:单引号挡得住 shell 的展开,挡不住行规程与行编辑器。
+    /// C0 控制字符里 <c>^U</c> 清掉前面敲的整行、<c>^C</c> 废掉这一行、<c>CR</c> 当场提交、<c>ESC</c> 起一段编辑键序列、
+    /// <c>Tab</c> 触发补全 —— 远端目录名里可以有除 <c>/</c> 与 NUL 以外的任何字节,一个 <c>x^Ucurl …|sh\r</c> 的目录
+    /// 就能把 <c>cd '…</c> 抹掉、换成别人的命令执行(PR #669–#698 复查 file-panes F3)。DEL 是退格;
+    /// C1 控制字符(U+0080–U+009F)在八位字符集的会话里就是 CSI 一类的单字节控制码。
+    /// </para>
+    /// <para>
+    /// 落单的代理项一并拒掉:SFTP 用 U+DC80–DCFF 记下解不出来的原始字节,编回会话字符集时成了别的字节,
+    /// 敲进去的已经不是那个目录了。
+    /// </para>
+    /// </remarks>
+    /// <param name="text">要原样敲进去的文字。</param>
+    /// <returns>没有上面任何一种字符时为 true。</returns>
+    public static bool CanTypeLiterally(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ReadOnlySpan<char> rest = text;
+        while (!rest.IsEmpty)
+        {
+            if (System.Text.Rune.DecodeFromUtf16(rest, out System.Text.Rune rune, out int consumed) != System.Buffers.OperationStatus.Done
+                || System.Text.Rune.IsControl(rune))
+            {
+                return false;
+            }
+            rest = rest[consumed..];
+        }
+        return true;
+    }
+
+    /// <summary>
     /// 组装一条静默注入。
     /// </summary>
     /// <param name="kind">对端 shell 种类;决定接哪一段摘历史前缀、以及能不能用哨兵。</param>

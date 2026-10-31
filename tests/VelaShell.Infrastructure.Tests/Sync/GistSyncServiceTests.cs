@@ -64,13 +64,14 @@ public sealed class GistSyncServiceTests
 
     // ———— 共享凭据(#550) ————
 
-    private static (GistSyncService Service, ISessionRepository Sessions, ISharedCredentialRepository Credentials) CreateWithCredentials()
+    private static (GistSyncService Service, ISessionRepository Sessions, ISharedCredentialRepository Credentials) CreateWithCredentials(
+        ISecretProtector? protector = null)
     {
         ISettingsService settings = Substitute.For<ISettingsService>();
         ISessionRepository sessions = Substitute.For<ISessionRepository>();
         IAppDataStore store = Substitute.For<IAppDataStore>();
         IQuickCommandRepository snippets = Substitute.For<IQuickCommandRepository>();
-        ISecretProtector secrets = Substitute.For<ISecretProtector>();
+        ISecretProtector secrets = protector ?? Substitute.For<ISecretProtector>();
         ISharedCredentialRepository credentials = Substitute.For<ISharedCredentialRepository>();
         sessions.GetAllSessionsAsync().Returns([]);
         sessions.GetAllGroupsAsync().Returns([]);
@@ -176,6 +177,168 @@ public sealed class GistSyncServiceTests
         await credentials.Received(1).SaveAsync(Arg.Is<SharedCredential>(c =>
             c.Id == id && c.Name == "renamed" && c.Password == "local-pass" && c.PrivateKeyPassphrase == "local-phrase"));
         Assert.AreSequenceEqual(["credential", "profile"], order);
+    }
+
+    /// <summary>没设端到端口令:插件协议的机密字段(S3 的会话令牌之类)与连接密码同一条规矩,不上传;非机密的插件设置照带。</summary>
+    [TestMethod]
+    public async Task Push_WithoutPassphrase_LeavesOutPluginSecrets()
+    {
+        (GistSyncService service, ISessionRepository sessions, _) = CreateWithCredentials();
+        sessions.GetAllSessionsAsync().Returns([
+            new SessionProfile
+            {
+                Name = "bucket",
+                Host = "s3.example.com",
+                PluginProtocolId = "s3",
+                PluginSettings = new() { ["region"] = "eu-west-1" },
+                PluginSecrets = new() { ["sessionToken"] = "plaintext-session-token" }
+            }
+        ]);
+
+        string content = await service.BuildGistContentAsync(ProfilesOnly(), CancellationToken.None);
+
+        Assert.DoesNotContain("plaintext-session-token", content, "未加密载荷不得带插件机密的明文");
+        Assert.Contains("eu-west-1", content, "非机密的插件设置照常同步");
+    }
+
+    /// <summary>拉到不带插件机密的连接配置(未加密载荷):同一插件协议下留本机的;换了协议不留(不把上一个插件的密钥交给下一个)。</summary>
+    [TestMethod]
+    [DataRow("s3", true)]
+    [DataRow("webdav", false)]
+    public async Task Pull_ProfileWithoutPluginSecrets_KeepsTheLocalOnesForTheSameProtocol(string incomingProtocol, bool kept)
+    {
+        (GistSyncService service, ISessionRepository sessions, _) = CreateWithCredentials();
+        var id = Guid.NewGuid();
+        sessions.GetAllSessionsAsync().Returns([
+            new SessionProfile { Id = id, Name = "bucket", PluginProtocolId = "s3", PluginSecrets = new() { ["sessionToken"] = "local-token" } }
+        ]);
+        var incoming = new SessionProfile { Id = id, Name = "bucket", PluginProtocolId = incomingProtocol, PluginSecrets = null };
+
+        SyncResult result = await service.ApplyRemoteAsync(
+            ProfilesOnly(),
+            new SyncEnvelope { Payload = new SyncPayload { Profiles = [incoming] } },
+            remoteVersion: "rev",
+            CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.Message);
+        Assert.AreEqual(kept ? "local-token" : null, incoming.PluginSecrets?["sessionToken"]);
+    }
+
+    // ———— 这台设备解不开的机密:不当值推上去,拉到了也不顶掉本机的 ————
+
+    /// <summary>仓储对解不开的机密原样交回的密文(<see cref="StoredSecret" /> 的约定;内容是哪把密钥加密的无所谓)。</summary>
+    private const string OtherDeviceCiphertext = StoredSecret.ProtectedPrefix + "b3RoZXItZGV2aWNlLWtleS1jaXBoZXJ0ZXh0";
+
+    /// <summary>同步口令按 TryUnprotect 解开的替身(与 <see cref="Push_WithPassphrase_CarriesThemInsideTheCiphertext" /> 同一配法)。</summary>
+    private static ISecretProtector PassphraseProtector()
+    {
+        ISecretProtector protector = Substitute.For<ISecretProtector>();
+        protector.TryUnprotect("protected-passphrase", out Arg.Any<string?>()).Returns(call =>
+        {
+            call[1] = "correct horse battery staple";
+            return true;
+        });
+        return protector;
+    }
+
+    /// <summary>
+    /// 设了口令的推送带机密,但只带这台设备解得开的:解不开的(仓储原样交回的密文)置空 / 移出插件机密,
+    /// 否则别的设备会把这串它也解不开的密文存成密码,顶掉自己那份好的。解得开的照带。
+    /// </summary>
+    [TestMethod]
+    public async Task Push_WithPassphrase_LeavesOutSecretsThisDeviceCannotDecrypt()
+    {
+        (GistSyncService service, ISessionRepository sessions, ISharedCredentialRepository credentials) =
+            CreateWithCredentials(PassphraseProtector());
+        sessions.GetAllSessionsAsync().Returns([
+            new SessionProfile
+            {
+                Name = "s3",
+                Host = "h",
+                Password = OtherDeviceCiphertext,
+                PrivateKeyPassphrase = "readable-phrase",
+                PluginProtocolId = "s3",
+                PluginSecrets = new() { ["sessionToken"] = OtherDeviceCiphertext, ["secretKey"] = "readable-key" }
+            }
+        ]);
+        credentials.GetAllAsync().Returns([
+            new SharedCredential { Name = "c", Password = "readable-pass", PrivateKeyPassphrase = OtherDeviceCiphertext }
+        ]);
+        SyncSettings config = ProfilesOnly();
+        config.ProtectedPassphrase = "protected-passphrase";
+
+        string content = await service.BuildGistContentAsync(config, CancellationToken.None);
+
+        SyncEnvelope envelope = GistSyncService.ParseEnvelope(content);
+        SyncPayload payload = System.Text.Json.JsonSerializer.Deserialize<SyncPayload>(
+            SyncCrypto.Decrypt(envelope.CipherText!, "correct horse battery staple"), System.Text.Json.JsonSerializerOptions.Web)!;
+        SessionProfile pushed = Assert.ContainsSingle(payload.Profiles!);
+        Assert.IsNull(pushed.Password, "解不开的密码不上传");
+        Assert.AreEqual("readable-phrase", pushed.PrivateKeyPassphrase, "解得开的照带");
+        Assert.AreEqual("readable-key", pushed.PluginSecrets!["secretKey"]);
+        Assert.IsFalse(pushed.PluginSecrets.ContainsKey("sessionToken"), "解不开的插件机密不上传");
+        SharedCredential credential = Assert.ContainsSingle(payload.SharedCredentials!);
+        Assert.AreEqual("readable-pass", credential.Password);
+        Assert.IsNull(credential.PrivateKeyPassphrase);
+        Assert.DoesNotContain(StoredSecret.ProtectedPrefix, SyncCrypto.Decrypt(envelope.CipherText!, "correct horse battery staple"));
+    }
+
+    /// <summary>
+    /// 拉到的载荷里带着密文(旧版本把推送方解不开的那几项原样推了上来)或干脆没带:逐项留本机的;
+    /// 带着明文的照用。插件机密只在同一个插件协议下才留。
+    /// </summary>
+    [TestMethod]
+    public async Task Pull_SecretsTheOtherDeviceCouldNotDecrypt_KeepTheLocalOnes()
+    {
+        (GistSyncService service, ISessionRepository sessions, ISharedCredentialRepository credentials) = CreateWithCredentials();
+        Guid profileId = Guid.NewGuid(), otherProtocolId = Guid.NewGuid(), newId = Guid.NewGuid(), credentialId = Guid.NewGuid();
+        sessions.GetAllSessionsAsync().Returns([
+            new SessionProfile
+            {
+                Id = profileId, Name = "s3", Password = "local-pass", PrivateKeyPassphrase = "local-phrase", PluginProtocolId = "s3",
+                PluginSecrets = new() { ["sessionToken"] = "local-token", ["secretKey"] = "local-key", ["region"] = "local-region" }
+            },
+            new SessionProfile
+            {
+                Id = otherProtocolId, Name = "was-s3", PluginProtocolId = "s3", PluginSecrets = new() { ["sessionToken"] = "s3-token" }
+            }
+        ]);
+        credentials.GetAllAsync().Returns([new SharedCredential { Id = credentialId, Password = "local-cred-pass", PrivateKeyPassphrase = "local-cred-phrase" }]);
+        SessionProfile incoming = new()
+        {
+            Id = profileId, Name = "s3", Password = OtherDeviceCiphertext, PrivateKeyPassphrase = null, PluginProtocolId = "s3",
+            // sessionToken 原样带着密文、region 没带(新版本推送时把解不开的那一项移出去了)、secretKey 换了新值。
+            PluginSecrets = new() { ["sessionToken"] = OtherDeviceCiphertext, ["secretKey"] = "rotated-key" }
+        };
+        SessionProfile switched = new()
+        {
+            Id = otherProtocolId, Name = "was-s3", PluginProtocolId = "webdav", PluginSecrets = new() { ["password"] = OtherDeviceCiphertext }
+        };
+        SessionProfile brandNew = new() { Id = newId, Name = "new", Password = OtherDeviceCiphertext };
+        SharedCredential credential = new() { Id = credentialId, Password = OtherDeviceCiphertext, PrivateKeyPassphrase = "rotated-cred-phrase" };
+
+        SyncResult result = await service.ApplyRemoteAsync(
+            ProfilesOnly(),
+            new SyncEnvelope
+            {
+                SchemaVersion = 3,
+                Payload = new SyncPayload { SchemaVersion = 3, Profiles = [incoming, switched, brandNew], SharedCredentials = [credential] }
+            },
+            remoteVersion: "rev",
+            CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.Message);
+        Assert.AreEqual("local-pass", incoming.Password, "载荷里的密文不顶掉本机的密码");
+        Assert.AreEqual("local-phrase", incoming.PrivateKeyPassphrase, "没带的口令留本机的(与密码各算各的)");
+        Assert.AreEqual("local-token", incoming.PluginSecrets!["sessionToken"]);
+        Assert.AreEqual("local-region", incoming.PluginSecrets["region"], "同一协议下缺的键就是没带");
+        Assert.AreEqual("rotated-key", incoming.PluginSecrets["secretKey"], "带着明文的照用");
+        Assert.IsEmpty(switched.PluginSecrets!, "换了插件协议:上一个插件的机密不留给这一个,密文也不存");
+        Assert.IsNull(brandNew.Password, "本机没有这条:密文也不存成密码");
+        Assert.AreEqual("local-cred-pass", credential.Password);
+        Assert.AreEqual("rotated-cred-phrase", credential.PrivateKeyPassphrase);
+        await sessions.Received(3).ReplaceSessionAsync(Arg.Any<SessionProfile>());
+        await credentials.Received(1).SaveAsync(credential);
     }
 
     /// <summary>
@@ -417,6 +580,91 @@ public sealed class GistSyncServiceTests
         Assert.IsTrue(result.Success, result.Message);
         await settings.Received(1).SaveSettingsAsync(Arg.Is<AppSettings>(s =>
             s.Proxy.Password == "rotated-on-the-other-device" && s.Security.WebhookUrl == "https://hooks.example.com/new"));
+    }
+
+    // ———— 一次性迁移标记:拉到旧版本推的载荷(没有这些字段)不把本机做过的迁移再做一遍 ————
+
+    /// <summary>本机规整过的设置,用户在迁移之后改过几项被迁移的开关。</summary>
+    private static AppSettings LocalChoicesAfterMigrations()
+    {
+        var settings = new AppSettings();
+        settings.Normalize();
+        settings.General.AutoDownloadUpdates = true;
+        settings.Security.ConfirmFirstFingerprint = false;
+        settings.Security.RecordProductionSessions = true;
+        settings.Security.BlockOnFingerprintChange = true;
+        settings.Proxy.Type = "none";
+        return settings;
+    }
+
+    /// <summary>
+    /// 推它的旧版本不认识迁移标记,载荷里没有这些字段(反序列化成 false)。拉下来不能让 Normalize 把迁移再做一遍:
+    /// 用户在本机开的「自动下载更新」、关的「首次连接确认指纹」等保持原样,而不是每同步一轮就被打回迁移后的默认值。
+    /// </summary>
+    [TestMethod]
+    public async Task Pull_PayloadWithoutMigrationFlags_DoesNotRerunTheMigrations()
+    {
+        ISettingsService settings = Substitute.For<ISettingsService>();
+        settings.GetSettingsAsync().Returns(_ => LocalChoicesAfterMigrations());
+        var service = new GistSyncService(settings, Substitute.For<ISessionRepository>(), Substitute.For<IAppDataStore>(),
+            Substitute.For<IQuickCommandRepository>(), Substitute.For<ISecretProtector>());
+        // 旧版本拉过本机推的那份、原样推回来:值都还在,只是少了它不认识的标记字段。
+        var envelope = new SyncEnvelope
+        {
+            Payload = new SyncPayload { DeviceName = "old-client", UpdatedAtUtc = DateTime.UtcNow, Settings = LocalChoicesAfterMigrations() }
+        };
+        System.Text.Json.Nodes.JsonNode node = System.Text.Json.JsonSerializer.SerializeToNode(envelope, System.Text.Json.JsonSerializerOptions.Web)!;
+        foreach ((string block, string field) in SettingsCategories.MigrationFields)
+        {
+            Assert.IsTrue(node["payload"]!["settings"]![block]!.AsObject().Remove(field), $"{block}.{field} 应在载荷里,才拿得掉");
+        }
+
+        SyncResult result = await service.ApplyRemoteAsync(
+            SettingsOnly(), GistSyncService.ParseEnvelope(node.ToJsonString()), remoteVersion: "rev", CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.Message);
+        await settings.Received(1).SaveSettingsAsync(Arg.Is<AppSettings>(s =>
+            s.General.AutoDownloadUpdates
+            && !s.Security.ConfirmFirstFingerprint
+            && s.Security.RecordProductionSessions
+            && s.Security.BlockOnFingerprintChange
+            && s.Proxy.Type == "none"));
+    }
+
+    /// <summary>名单里的每个迁移标记都按设备算 —— 名单加了一个、这里漏了,上面那条迁移就会在拉取时重来。</summary>
+    [TestMethod]
+    public void KeepLocalMigrationFlags_CoversEveryMigrationField()
+    {
+        var local = new AppSettings();
+        local.Normalize();
+        var incoming = new AppSettings();
+
+        GistSyncService.KeepLocalMigrationFlags(incoming, local);
+
+        System.Text.Json.Nodes.JsonNode node = System.Text.Json.JsonSerializer.SerializeToNode(incoming, System.Text.Json.JsonSerializerOptions.Web)!;
+        foreach ((string block, string field) in SettingsCategories.MigrationFields)
+        {
+            Assert.IsTrue(node[block]![field]!.GetValue<bool>(), $"{block}.{field} 没有按本机的保留");
+        }
+    }
+
+    /// <summary>推送方向:本机设置读出来就规整过,迁移标记照带(都是 true)—— 认识某个标记的旧版本拉到不会把它重做一遍。</summary>
+    [TestMethod]
+    public async Task Push_CarriesTheMigrationFlagsAsDone()
+    {
+        ISettingsService settings = Substitute.For<ISettingsService>();
+        settings.GetSettingsAsync().Returns(_ => LocalChoicesAfterMigrations());
+        var service = new GistSyncService(settings, Substitute.For<ISessionRepository>(), Substitute.For<IAppDataStore>(),
+            Substitute.For<IQuickCommandRepository>(), Substitute.For<ISecretProtector>());
+
+        string content = await service.BuildGistContentAsync(SettingsOnly(), CancellationToken.None);
+
+        System.Text.Json.Nodes.JsonNode pushed = System.Text.Json.Nodes.JsonNode.Parse(content)!["payload"]!["settings"]!;
+        foreach ((string block, string field) in SettingsCategories.MigrationFields)
+        {
+            Assert.IsTrue(pushed[block]![field]!.GetValue<bool>(), $"{block}.{field} 推上去应是 true");
+        }
+        Assert.IsTrue(pushed["general"]!["autoDownloadUpdates"]!.GetValue<bool>());
     }
 
     // ———— 拉到「Webhook 告警开着、却没有地址」的设置:消息中心提示一次(第二轮第 17 条) ————

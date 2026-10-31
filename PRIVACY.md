@@ -130,7 +130,8 @@ VelaShell connects to the network only in these situations:
    account, never to us. You may additionally set an end-to-end encryption passphrase, in which
    case the payload is encrypted with AES-GCM on your device before upload and GitHub stores
    only ciphertext. Without that passphrase, saved passwords and private-key passphrases are
-   never uploaded — neither those on connection profiles nor those of shared credentials; a
+   never uploaded — neither those on connection profiles nor those of shared credentials, nor
+   the secret fields of plugin connections (such as an S3 session token); a
    shared credential travels only as its name, username, notes and key / certificate file
    paths, and the proxy password and alert webhook URL in your settings are left out as
    well. Layout templates never contain passwords either: only the profile Id each tab points
@@ -331,7 +332,7 @@ VelaShell 仅在以下情形联网:
    把设置、连接配置、代码片段与布局模板保存到**你自己 GitHub 账户下的一个 secret Gist** 中。数据进入
    的是你的 GitHub 账户,而非我们。你还可以额外设置端到端加密口令,此时载荷会在你的设备上
    用 AES-GCM 加密后再上传,GitHub 只能拿到密文。没设这个口令时,已保存的密码与私钥口令一律
-   不上传 —— 连接配置上的与共享凭据里的都一样;共享凭据只带名称、用户名、备注与私钥 / 证书
+   不上传 —— 连接配置上的与共享凭据里的都一样,插件连接的机密字段(如 S3 的会话令牌)也不带;共享凭据只带名称、用户名、备注与私钥 / 证书
    文件路径;设置里的代理密码与告警 Webhook 地址同样不上传。布局模板本来就不含密码,只有每个
    标签指向的连接配置 Id、打开方式与保存时的标签标题(常常就是 `用户@主机`)。同步范围由你勾选,
    可随时关闭或删除该 Gist。

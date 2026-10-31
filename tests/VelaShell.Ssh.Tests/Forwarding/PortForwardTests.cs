@@ -1510,6 +1510,130 @@ SshProtocolNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
         Assert.ThrowsExactly<ArgumentException>(() => RemoteOpenPolicy.Allow("[::1]22"));
     }
 
+    /// <summary>
+    /// 写成 IP 的规则只配规范写法的 IP 字面量：<c>*</c> 不能吃过点去配一个以这几段数字开头的域名（它解析到哪由对方的 DNS 说了算），
+    /// 简写的 IPv4 也配不上；名字规则不配 IP 字面量；单独的 <c>*</c> 照旧是任何主机。
+    /// </summary>
+    [TestMethod]
+    public void 放行名单_写成IP的规则不配域名也不配简写的地址()
+    {
+        var subnet = RemoteOpenPolicy.Allow("10.0.0.*:*", "192.168.1.*:22", "127.0.0.1:*");
+        Assert.IsTrue(subnet.Permits("10.0.0.7", 22));
+        Assert.IsTrue(subnet.Permits("192.168.1.10", 22));
+        Assert.IsTrue(subnet.Permits("127.0.0.1", 8080));
+        foreach (string name in (string[])["10.0.0.1.attacker.example", "10.0.0.evil.example", "192.168.1.1.attacker.example", "127.0.0.1.nip.example"])
+        {
+            Assert.IsFalse(subnet.Permits(name, 22), name);
+        }
+        Assert.IsFalse(RemoteOpenPolicy.Allow("10.0.0.?:*").Permits("10.0.0.7.evil.example", 22));
+
+        // .NET 把这些都当地址连（2130706433 / 0177.0.0.1 / 127.1 / 0x7f.0.0.1 都是 127.0.0.1，010.0.0.1 是 8.0.0.1），文字上和规则对不齐。
+        foreach (string shorthand in (string[])["2130706433", "0177.0.0.1", "127.1", "0x7f.0.0.1", "0x7f000001", "10.1", "010.0.0.1"])
+        {
+            Assert.IsFalse(subnet.Permits(shorthand, 22), shorthand);
+        }
+
+        // IPv4 规则不配 IPv4 映射的 IPv6 —— 那要写 IPv6 规则。
+        Assert.IsFalse(subnet.Permits("::ffff:127.0.0.1", 22));
+
+        // 名字规则只配域名：碰巧在文字上配得上地址也不算。
+        var named = RemoteOpenPolicy.Allow("fe80*:*", "localhost:*");
+        Assert.IsTrue(named.Permits("fe80-gw.example", 22));
+        Assert.IsFalse(named.Permits("fe80::1", 22));
+        Assert.IsTrue(named.Permits("localhost", 22));
+        Assert.IsFalse(named.Permits("127.0.0.1", 22), "按名字比、不先解析");
+
+        // 单独的 *：任何主机，IP 字面量（连简写）也算；写法不对的照样不放。
+        var star = RemoteOpenPolicy.Allow("*:443");
+        foreach (string host in (string[])["intranet.example", "10.0.0.7", "::1", "2130706433"])
+        {
+            Assert.IsTrue(star.Permits(host, 443), host);
+        }
+        Assert.IsFalse(star.Permits("intranet.example", 80));
+    }
+
+    /// <summary>IPv6 规则两边都换成规范写法再比；只配 IPv6 字面量。</summary>
+    [TestMethod]
+    public void 放行名单_IPv6按规范写法比()
+    {
+        Assert.IsTrue(RemoteOpenPolicy.Allow("[0:0:0:0:0:0:0:1]:22").Permits("::1", 22));
+        Assert.IsTrue(RemoteOpenPolicy.Allow("[::1]:22").Permits("0:0:0:0:0:0:0:1", 22));
+        Assert.IsTrue(RemoteOpenPolicy.Allow("[::ffff:127.0.0.1]:*").Permits("::FFFF:7f00:1", 22));
+        Assert.IsTrue(RemoteOpenPolicy.Allow("[2001:db8::*]:*").Permits("2001:0db8:0:0:0:0:0:5", 22), "带通配的拿规范写法去配");
+        Assert.IsFalse(RemoteOpenPolicy.Allow("[2001:db8::*]:*").Permits("2001:db9::5", 22));
+        Assert.IsTrue(RemoteOpenPolicy.Allow("[10.0.0.1]:22").Permits("10.0.0.1", 22), "方括号只是语法，里面是 IPv4 就是 IPv4 规则");
+    }
+
+    /// <summary>
+    /// 远端给的主机先过写法检查，<see cref="RemoteOpenPolicy.Any"/> 也不例外：NUL、控制字符、空白、% / 通配符、
+    /// 方括号与 %scope、最后一段是数字的非地址、超长的名字一律不放。
+    /// </summary>
+    [TestMethod]
+    public void 放行名单_写法不对的主机一律不放()
+    {
+        var corp = RemoteOpenPolicy.Allow("*.corp.example:443");
+        Assert.IsTrue(corp.Permits("git.corp.example", 443));
+        Assert.IsTrue(corp.Permits("_svc.git.corp.example", 443), "下划线是合法的");
+
+        string[] malformed =
+        [
+            "127.0.0.1\0.corp.example", "a\u0001.corp.example", "a\t.corp.example", "a b.corp.example", "a\r\n.corp.example",
+            "a%2e.corp.example", "a/b.corp.example", "*.corp.example", "?.corp.example", "a..corp.example", ".corp.example",
+            "git.corp.example\0", "ä.corp.example",
+            string.Concat(Enumerable.Repeat("a", 64)) + ".corp.example",
+            string.Join('.', Enumerable.Repeat(new string('a', 63), 4)) + ".corp.example",
+        ];
+        foreach (string host in malformed)
+        {
+            Assert.IsFalse(corp.Permits(host, 443), host);
+            Assert.IsFalse(RemoteOpenPolicy.Any.Permits(host, 443), host);
+        }
+
+        foreach (string host in (string[])["", "[::1]", "fe80::1%eth0", "fe80::1%12", "::1.evil", "10.0.0.256", "1.2.3.4.5", "10.0.0.1.", "a.0x7f"])
+        {
+            Assert.IsFalse(RemoteOpenPolicy.Any.Permits(host, 22), host);
+            Assert.IsFalse(RemoteOpenPolicy.Allow("*:*").Permits(host, 22), host);
+        }
+
+        // 合法的照旧：绝对名字的末尾点、IDN 转出来的 Punycode。
+        Assert.IsTrue(RemoteOpenPolicy.Any.Permits("intranet.example.", 22));
+        Assert.IsTrue(RemoteOpenPolicy.Any.Permits("xn--bcher-kva.example", 22));
+    }
+
+    /// <summary>
+    /// 端到端：远端在 SOCKS 握手里给一个带 NUL 的域名（名字规则在文字上配得上），本机不去拨、回「规则不允许」；
+    /// 给一个以名单里那几段数字开头的域名同样回 0x02 —— 而不是拿去本机解析。
+    /// </summary>
+    [TestMethod]
+    public async Task 远程动态转发_绕名单的主机名回规则不允许()
+    {
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript { GrantRemoteForwardPort = 34583 });
+        using Socket echo = new(SocketType.Stream, ProtocolType.Tcp);
+        echo.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        echo.Listen(4);
+        int echoPort = ((IPEndPoint)echo.LocalEndPoint!).Port;
+
+        await using RemotePortForwarder forwarder = await RemotePortForwarder.StartDynamicAsync(
+            harness.Connection, RemoteOpenPolicy.Allow($"*.corp.example:{echoPort}", $"127.0.0.*:{echoPort}"),
+            new RemotePortForwardOptions { BindPort = 0 }, harness.Token);
+        List<ForwardErrorReason> errors = [];
+        forwarder.Error += (_, e) => { lock (errors) { errors.Add(e.Reason); } };
+        int opened = 0;
+        forwarder.ConnectionOpened += (_, _) => Interlocked.Increment(ref opened);
+
+        Stream nul = await OpenDynamicCallbackAsync(harness, forwarder.BoundPort);
+        Assert.AreEqual(0x02, await SocksConnectAsync(nul, "127.0.0.1\0.corp.example", echoPort, harness.Token));
+
+        Stream dotted = await OpenDynamicCallbackAsync(harness, forwarder.BoundPort);
+        Assert.AreEqual(0x02, await SocksConnectAsync(dotted, "127.0.0.1.attacker.invalid", echoPort, harness.Token));
+
+        lock (errors)
+        {
+            Assert.AreSequenceEqual([ForwardErrorReason.TargetNotPermitted, ForwardErrorReason.TargetNotPermitted], [.. errors]);
+        }
+        Assert.AreEqual(0, Volatile.Read(ref opened));
+    }
+
     // ------------------------------------------------------------ Unix 域套接字的本地转发
 
     /// <summary>回显的隧道处理器：记下目标，收到什么回什么。</summary>

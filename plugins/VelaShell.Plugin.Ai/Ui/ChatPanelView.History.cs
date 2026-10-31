@@ -121,11 +121,18 @@ public partial class ChatPanelView
         delete.Click += async (_, e) =>
         {
             e.Handled = true;
+            // 先记下它引用的图片:行一删就查不到了
+            IReadOnlyList<string> images = await _historyStore.ImageFilesAsync(session.Id);
             await _historyStore.DeleteAsync(session.Id);
             if (session.Id == ConversationId)
             {
                 StartNewChat();
                 SetActiveView(PanelView.History);
+            }
+            // 放在换新会话之后:删的正是当前会话时,它登记的图此刻已不算"还活着"
+            if (images.Count > 0)
+            {
+                await _historyStore.ReleaseImagesAsync(_generatedImages, images, LiveImageFiles(), DateTime.UtcNow);
             }
             await RefreshHistoryListAsync();
         };
@@ -161,11 +168,40 @@ public partial class ChatPanelView
             return;
         }
         ResetClearHistoryButton();
+        // 清空开始之后才写下的图属于此刻还在跑的那几轮,不在这次回收之列
+        DateTime clearedAt = DateTime.UtcNow;
         await _historyStore.ClearAsync();
         _inputHistory.Clear();
         StartNewChat();
         SetActiveView(PanelView.History);
+        await _historyStore.ReleaseImagesAsync(_generatedImages, null, LiveImageFiles(), clearedAt);
         await RefreshHistoryListAsync();
+    }
+
+    /// <summary>
+    /// 本面板里还活着的对话登记过的图片。历史删了,别的会话页的气泡还在屏上,复制/另存/改图仍要读得到;
+    /// 等那段对话也换掉,它们就成了孤儿,由 <see cref="SweepOrphanImagesAsync" /> 回收。
+    /// </summary>
+    private HashSet<string> LiveImageFiles()
+        => [with(StringComparer.Ordinal), .. _conversations.Values.SelectMany(conversation => conversation.Images?.Files ?? [])];
+
+    /// <summary>孤儿图片至少放这么久才回收:一轮在途时图先落盘、元数据最后才写,这段时间里它看着就像孤儿。</summary>
+    private static readonly TimeSpan OrphanImageGrace = TimeSpan.FromDays(1);
+
+    /// <summary>
+    /// 面板起来时回收一次孤儿图片:没有任何存档会话引用、且一天前就写下的那些 ——
+    /// 取消或失败的那一轮存下的图、写元数据失败的附件、以及旧版删除/清空历史时留下的文件。
+    /// 目录里没有够老的图就不扫库;在后台跑,不挡首屏。
+    /// </summary>
+    private async Task SweepOrphanImagesAsync()
+    {
+        HashSet<string> live = LiveImageFiles();
+        DateTime cutoff = DateTime.UtcNow - OrphanImageGrace;
+        int removed = await Task.Run(() => _historyStore.ReleaseImagesAsync(_generatedImages, null, live, cutoff));
+        if (removed > 0)
+        {
+            _context.Log.Info($"Removed {removed} orphaned generated image file(s).");
+        }
     }
 
     private void ResetClearHistoryButton()
@@ -208,10 +244,13 @@ public partial class ChatPanelView
                 if (entry.Role == "user")
                 {
                     AddUserBubble(entry.Text);
-                    string imageNote = entry.Meta?.Images is { Count: > 0 } inputImages
+                    // 旧版也把 GIF 附件登记成了可改的图;改图接口收不下它,恢复时不再交给模型
+                    List<ChatGeneratedImage> inputImages =
+                        [.. (entry.Meta?.Images ?? []).Where(image => ImageGenerationService.IsEditableInput(image.MediaType))];
+                    string imageNote = inputImages.Count > 0
                         ? "\nAttached image IDs: " + string.Join(", ", inputImages.Select(image => image.FileName)) : "";
                     History.Add(new(ChatRole.User, entry.Text + imageNote));
-                    foreach (ChatGeneratedImage image in entry.Meta?.Images ?? []) ImagesFor(Cur).Register(image);
+                    foreach (ChatGeneratedImage image in inputImages) ImagesFor(Cur).Register(image);
                 }
                 else
                 {

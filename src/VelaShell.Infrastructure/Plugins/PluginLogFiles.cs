@@ -11,9 +11,15 @@ public sealed record PluginLogTail(string Text, string? FilePath, bool Truncated
 
 /// <summary>
 /// 每个插件一份日志文件:<c>&lt;日志目录&gt;/plugins/&lt;插件 id&gt;.log</c>,写满 <see cref="MaxBytes" /> 就轮转成
-/// <c>&lt;插件 id&gt;.1.log</c>(只留这一份旧的),每个插件最多占约两倍上限。
+/// <c>&lt;插件 id&gt;.log.1</c>(只留这一份旧的),每个插件最多占约两倍上限。
 /// </summary>
 /// <remarks>
+/// <para>
+/// 轮转名不能是 <c>&lt;插件 id&gt;.1.log</c>(旧版本就是这么叫的):插件 id 可以以 <c>.1</c> 结尾,
+/// <c>acme.tool</c> 的轮转件就是 <c>acme.tool.1</c> 的当前日志 —— 轮转会盖掉别人的日志,卸载会删掉它,
+/// 「查看日志」还会把别人的行当成自己的前文显示出来(一个插件就能往另一个插件的日志里塞几行假的 <c>[Host]</c>)。
+/// 当前日志总以 <c>.log</c> 结尾,<c>.log.1</c> 不会是任何插件的当前日志。旧名字留下的文件由 <see cref="SweepUninstalled" /> 认领。
+/// </para>
 /// <para>
 /// 插件的日志原先只进宿主的 Trace(<c>velashell-yyyyMMdd.log</c>,带 <c>[Plugin:id]</c> / <c>[PluginHost:id]</c> 前缀),
 /// 与宿主自己的几十种诊断输出混在一起;异常堆栈的续行没有前缀,按前缀筛会丢掉;一天的文件能到 64 MB,
@@ -45,13 +51,22 @@ public sealed class PluginLogFiles(string directory, long maxBytes = PluginLogFi
     /// <summary>单个文件的上限(字节)。</summary>
     public long MaxBytes { get; } = maxBytes;
 
+    /// <summary>当前日志的后缀。</summary>
+    public const string CurrentSuffix = ".log";
+
+    /// <summary>轮转下来那一份的后缀(为什么不是 <c>.1.log</c> 见类型说明)。</summary>
+    public const string RotatedSuffix = ".log.1";
+
+    /// <summary>旧版本的轮转后缀:与 id 以 <c>.1</c> 结尾的插件的当前日志撞名,只在 <see cref="SweepUninstalled" /> 里认。</summary>
+    private const string LegacyRotatedSuffix = ".1" + CurrentSuffix;
+
     /// <summary>当前在写的那份日志;插件 id 不能当文件名时为 null。</summary>
     /// <param name="pluginId">插件 id。</param>
-    public string? PathFor(string pluginId) => IsSafeFileName(pluginId) ? Path.Combine(Directory, pluginId + ".log") : null;
+    public string? PathFor(string pluginId) => IsSafeFileName(pluginId) ? Path.Combine(Directory, pluginId + CurrentSuffix) : null;
 
     /// <summary>轮转下来的上一份日志;插件 id 不能当文件名时为 null。</summary>
     /// <param name="pluginId">插件 id。</param>
-    public string? RotatedPathFor(string pluginId) => IsSafeFileName(pluginId) ? Path.Combine(Directory, pluginId + ".1.log") : null;
+    public string? RotatedPathFor(string pluginId) => IsSafeFileName(pluginId) ? Path.Combine(Directory, pluginId + RotatedSuffix) : null;
 
     /// <summary>追加一行(自动加时间戳;文本里自带的换行原样保留,异常堆栈因此是完整的)。</summary>
     /// <param name="pluginId">插件 id。</param>
@@ -93,7 +108,97 @@ public sealed class PluginLogFiles(string directory, long maxBytes = PluginLogFi
         }
     }
 
+    /// <summary>
+    /// 启动清扫:删掉不在 <paramref name="installed" /> 里的插件留下的日志 —— 插件目录在宿主没运行时被删掉
+    /// (手动删、换机器拷数据)也算卸载,卸载那一路的 <see cref="Delete" /> 没机会跑,与插件数据、消息中心的卸载清扫同一口径。
+    /// 顺带把旧版本留下的轮转件 <c>&lt;id&gt;.1.log</c> 改名成 <c>&lt;id&gt;.log.1</c>,免得升级后「查看日志」的前文丢了。
+    /// 失败静默忽略(删不掉的下次启动再试)。
+    /// </summary>
+    /// <remarks>
+    /// 旧轮转名只在这里认,因为单看文件名分不出它是谁的:<c>x.1.log</c> 既可能是 <c>x</c> 的旧轮转件,
+    /// 也可能是插件 <c>x.1</c> 的当前日志。有了"装着哪些插件"这份名单才分得清 ——
+    /// <c>x.1</c> 装着,它就是 <c>x.1</c> 的当前日志,不动;只有 <c>x</c> 装着,才是 <c>x</c> 的旧轮转件,改名接上
+    /// (<c>x.log.1</c> 已经有了就删掉旧的,那份更新);两个都没装,就是孤儿。日志目录里不像插件日志的文件一律不碰。
+    /// </remarks>
+    /// <param name="installed">仍在盘上的插件 id(含被禁用、清单无效的 —— 修好或重新启用后日志应仍在)。</param>
+    public void SweepUninstalled(IReadOnlySet<string> installed)
+    {
+        ArgumentNullException.ThrowIfNull(installed);
+        lock (_gate)
+        {
+            string[] names;
+            try
+            {
+                if (!System.IO.Directory.Exists(Directory))
+                {
+                    return;
+                }
+                names = [.. System.IO.Directory.EnumerateFiles(Directory).Select(Path.GetFileName).OfType<string>()];
+            }
+            catch
+            {
+                return;
+            }
+            foreach (string name in names)
+            {
+                try
+                {
+                    SweepOne(name, installed);
+                }
+                catch
+                {
+                    // 删不掉(被占用)就留着:有大小上限,下次启动再试。
+                }
+            }
+        }
+    }
+
+    /// <summary>清扫一个文件(规则见 <see cref="SweepUninstalled" />)。调用方须持锁。</summary>
+    private void SweepOne(string name, IReadOnlySet<string> installed)
+    {
+        string path = Path.Combine(Directory, name);
+        if (name.EndsWith(RotatedSuffix, StringComparison.Ordinal))
+        {
+            string id = name[..^RotatedSuffix.Length];
+            if (IsSafeFileName(id) && !installed.Contains(id))
+            {
+                File.Delete(path);
+            }
+            return;
+        }
+        if (!name.EndsWith(CurrentSuffix, StringComparison.Ordinal))
+        {
+            return;
+        }
+        string stem = name[..^CurrentSuffix.Length];
+        if (!IsSafeFileName(stem) || installed.Contains(stem))
+        {
+            return;
+        }
+        if (name.EndsWith(LegacyRotatedSuffix, StringComparison.Ordinal)
+            && name[..^LegacyRotatedSuffix.Length] is { } owner
+            && installed.Contains(owner)
+            && RotatedPathFor(owner) is { } rotated)
+        {
+            if (File.Exists(rotated))
+            {
+                File.Delete(path);
+            }
+            else
+            {
+                File.Move(path, rotated);
+            }
+            return;
+        }
+        File.Delete(path);
+        _sizes.Remove(stem);
+    }
+
     /// <summary>删掉这个插件的日志(卸载时随插件数据一起清)。失败静默忽略。</summary>
+    /// <remarks>
+    /// 不删旧名字的 <c>&lt;id&gt;.1.log</c>:它可能是插件 <c>&lt;id&gt;.1</c> 的当前日志。真是这个插件的旧轮转件的话,
+    /// 下次启动的 <see cref="SweepUninstalled" /> 会把它当孤儿清掉。
+    /// </remarks>
     /// <param name="pluginId">插件 id。</param>
     public void Delete(string pluginId)
     {

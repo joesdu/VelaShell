@@ -8,7 +8,7 @@ namespace VelaShell.Core.Sftp;
 /// <param name="NamePattern">文件名模式(<c>find -name</c> 的通配符);空 = 任意名字,不含通配符时按「名字里含有」找。</param>
 /// <param name="ContentText">文件内容里要有的文字(按字面、不按正则);空 = 只按名字找。</param>
 /// <param name="IgnoreCase">名字与内容都不区分大小写。</param>
-/// <param name="MaxResults">最多要多少条;到数就停,远端的 <c>find</c> 也随之停下。</param>
+/// <param name="MaxResults">最多要多少条;到数就停,远端的 <c>find</c> 由服务发 <c>TERM</c> 一并收掉(见 <see cref="RemoteSearchService" />)。</param>
 public sealed record RemoteSearchQuery(
     string Root,
     string? NamePattern,
@@ -63,8 +63,10 @@ public sealed record RemoteSearchHit(string Path, bool IsDirectory);
 /// 这种会话里脚本在 C locale 下跑,<c>find</c> / <c>grep</c> 按字节匹配(理由见 <see cref="DecodeNameArguments" />)。
 /// </para>
 /// <para>
-/// <b>有上限、能停。</b>条数:<c>head -n 上限+1</c> 收满就退出,<c>find</c> 下一次写管道即被 SIGPIPE 收掉,
-/// 不会在远端接着把整棵树走完;多出来的那一条只用来判断「结果不完整」。时间与取消由调用方的令牌管:
+/// <b>有上限、能停。</b>条数:<c>head -n 上限+1</c> 收满就退出;多出来的那一条只用来判断「结果不完整」。
+/// 光靠 <c>head</c> 退出停不下来 —— 往外写的是 <c>-exec</c> 的批处理 sh,它们死于 SIGPIPE,<c>find</c> 本身只看到子进程失败,
+/// 照样把整棵树走完(按内容找时 <c>grep</c> 照样读完剩下的文件),主 sh 又在 <c>wait</c> 里等它们。所以收到第「上限 + 1」条时
+/// 由 <see cref="RemoteSearchService" /> 从这一侧取消,与用户停止走同一条路。时间与取消由调用方的令牌管:
 /// 取消时 SSH 库先给远端发 <c>TERM</c>,脚本的 <c>trap</c> 再把整个进程组(<c>find</c>、<c>grep</c>、<c>head</c>)一起收掉 ——
 /// 只收 sh 的话,一个还没匹配到东西的 <c>find</c> 会在远端一直走下去。管道放在后台再 <c>wait</c>,
 /// 是因为 sh 在前台命令跑完之前不执行 trap。
@@ -167,7 +169,8 @@ public static class RemoteSearch
     /// <param name="query">查询;<see cref="RemoteSearchQuery.Root" /> 必须是绝对路径。</param>
     /// <param name="shell">远端登录 shell 的种类(决定命令行上参数怎么加引号)。</param>
     /// <param name="fileNameEncoding">
-    /// 会话的文件名编码(<see cref="RemoteFileNameEncoding.Resolve" />);null = UTF-8,参数原样传。
+    /// 会话的文件名编码(<see cref="RemoteFileNameEncoding.Resolve" />);null = UTF-8,参数原样传(带着 SFTP 记原始字节的
+    /// U+DC80–DCFF 时照下面那样转义,还原成那几个字节)。
     /// 给了就把目录、模式、文字编成这种编码的字节、写成八进制转义(见类型说明);有编不进去的字符时整次退回原样传。
     /// </param>
     /// <exception cref="ArgumentException">根目录不是绝对路径,或条数上限不是正数。</exception>
@@ -188,7 +191,11 @@ public static class RemoteSearch
 
         string pattern = EffectiveNamePattern(query.NamePattern);
         string? text = query.IsContentSearch ? query.ContentText : null;
-        string[]? escaped = fileNameEncoding is null ? null : EscapeAll(fileNameEncoding, root, pattern, text);
+        // UTF-8 会话照旧原样传;名字里带着 SFTP 记原始字节的 U+DC80–DCFF(从一个不是 UTF-8 名字的目录起找)时也得转义 ——
+        // exec 命令行是 UTF-8 字符串,落单的代理项写进去就成了 EF BF BD,find 找的已经不是那个目录。
+        string?[]? escaped = fileNameEncoding is null && IsWellFormed(root) && IsWellFormed(pattern) && (text is null || IsWellFormed(text))
+            ? null
+            : EscapeAll(fileNameEncoding, root, pattern, text);
 
         var script = new StringBuilder(Prologue);
         if (query.IsContentSearch)
@@ -252,44 +259,93 @@ public static class RemoteSearch
     /// </summary>
     /// <param name="record">一条记录(不含末尾的换行)。</param>
     /// <param name="fileNameEncoding">会话的文件名编码;null = UTF-8。</param>
+    /// <remarks>
+    /// 解码与 SFTP 文件名同一条规则(<see cref="RemoteFileNameEncoding.Decode" />):UTF-8 会话里解不开的字节记成 U+DC00+b 而不是 U+FFFD,
+    /// 双击结果定位过去时 SFTP 才编得回原来那串字节。
+    /// </remarks>
     public static string DecodeRecord(ReadOnlySpan<byte> record, Encoding? fileNameEncoding)
     {
-        string text = (fileNameEncoding ?? Encoding.UTF8).GetString(record);
+        string text = RemoteFileNameEncoding.Decode(record, fileNameEncoding);
         return text.Contains('\0', StringComparison.Ordinal) ? text.Replace('\0', '\n') : text;
     }
 
     /// <summary>
-    /// 把几项参数都编成 <paramref name="encoding" /> 的字节、写成 <c>\ddd</c> 八进制转义;有一项编不进去就整体放弃(返回 null)。
+    /// 把目录、模式、文字编成会话编码(<paramref name="encoding" />;null = UTF-8,U+DC80–DCFF 还原成原始字节)的字节、写成 <c>\ddd</c>
+    /// 八进制转义;有一项编不准就整体放弃(返回 null)。名字模式另有一层转义,见 <see cref="PatternBytes" />。
     /// </summary>
-    private static string[]? EscapeAll(Encoding encoding, params string?[] values)
+    private static string?[]? EscapeAll(Encoding? encoding, string root, string pattern, string? text)
     {
-        var strict = (Encoding)encoding.Clone();
-        strict.EncoderFallback = EncoderFallback.ExceptionFallback;
-        string[] escaped = new string[values.Length];
-        for (int i = 0; i < values.Length; i++)
+        byte[]? rootBytes = RemoteFileNameEncoding.EncodeExact(root, encoding);
+        byte[]? patternBytes = PatternBytes(pattern, encoding);
+        byte[]? textBytes = text is null ? [] : RemoteFileNameEncoding.EncodeExact(text, encoding);
+        if (rootBytes is null || patternBytes is null || textBytes is null)
         {
-            if (values[i] is not { } value)
-            {
-                continue;
-            }
-            byte[] bytes;
-            try
-            {
-                bytes = strict.GetBytes(value);
-            }
-            catch (EncoderFallbackException)
+            return null;
+        }
+        return [Octal(rootBytes), Octal(patternBytes), text is null ? null : Octal(textBytes)];
+    }
+
+    /// <summary>
+    /// 名字模式编成会话字节。原样编出单个同值字节的 ASCII 字符照旧(<c>* ? [ ] \</c> 仍是通配符与转义);
+    /// 别的字符编出来的字节里若有 <c>\ * ? [ ]</c>,前面补一个 <c>\</c>,让 <c>find -name</c> 的 fnmatch 当字面量。
+    /// </summary>
+    /// <remarks>
+    /// 这几种字符集的双字节字符,后一个字节可以落在 0x40–0x7E:Big5 的「功」是 <c>A5 5C</c>、「許」是 <c>B3 5C</c>,
+    /// Shift_JIS 的「表」是 <c>95 5C</c>、「ソ」是 <c>83 5C</c>,GBK 扩展区同样有。脚本在 C locale 下按字节匹配,
+    /// 那个 <c>\</c> 会把下一个字节转义掉、<c>[</c> 会开一个方括号表达式 —— 搜「功能」就一个都找不到(复查 file-panes F5)。
+    /// 「含不含通配符」是在 .NET 字符串上判的(<see cref="EffectiveNamePattern" />),看不见这些字节,所以只能在编完之后按字节补。
+    /// </remarks>
+    private static byte[]? PatternBytes(string pattern, Encoding? encoding)
+    {
+        var bytes = new List<byte>(pattern.Length * 2);
+        for (int i = 0; i < pattern.Length; i++)
+        {
+            int length = char.IsHighSurrogate(pattern[i]) && i + 1 < pattern.Length && char.IsLowSurrogate(pattern[i + 1]) ? 2 : 1;
+            if (RemoteFileNameEncoding.EncodeExact(pattern.Substring(i, length), encoding) is not { } encoded)
             {
                 return null;
             }
-            var builder = new StringBuilder(bytes.Length * 4);
-            foreach (byte b in bytes)
+            bool literalAscii = length == 1 && char.IsAscii(pattern[i]) && encoded is [var single] && single == pattern[i];
+            i += length - 1;
+            foreach (byte b in encoded)
             {
-                // 一律三位:「\0」后面紧跟数字时,短写会把下一个字节的数字并进来。
-                builder.Append('\\').Append((char)('0' + (b >> 6))).Append((char)('0' + ((b >> 3) & 7))).Append((char)('0' + (b & 7)));
+                if (!literalAscii && b is (byte)'\\' or (byte)'*' or (byte)'?' or (byte)'[' or (byte)']')
+                {
+                    bytes.Add((byte)'\\');
+                }
+                bytes.Add(b);
             }
-            escaped[i] = builder.ToString();
         }
-        return escaped;
+        return [.. bytes];
+    }
+
+    /// <summary>一串字节写成全八进制转义(纯 ASCII,拿它当 <c>printf</c> 的格式串只会还原字节)。</summary>
+    private static string Octal(byte[] bytes)
+    {
+        var builder = new StringBuilder(bytes.Length * 4);
+        foreach (byte b in bytes)
+        {
+            // 一律三位:「\0」后面紧跟数字时,短写会把下一个字节的数字并进来。
+            builder.Append('\\').Append((char)('0' + (b >> 6))).Append((char)('0' + ((b >> 3) & 7))).Append((char)('0' + (b & 7)));
+        }
+        return builder.ToString();
+    }
+
+    /// <summary>有没有落单的代理项(编进 UTF-8 命令行会变成 <c>EF BF BD</c>)。</summary>
+    private static bool IsWellFormed(string value)
+    {
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (char.IsHighSurrogate(value[i]) && i + 1 < value.Length && char.IsLowSurrogate(value[i + 1]))
+            {
+                i++;
+            }
+            else if (char.IsSurrogate(value[i]))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>按登录 shell 的单引号规则把一个参数原样引起来。</summary>

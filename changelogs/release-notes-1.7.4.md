@@ -44,7 +44,7 @@
 
 - **增强 `ssh_config` 导入 / 导出**：补充算法清单、压缩、Agent、Agent 转发、X11 转发、按键时序混淆、证书、Unix 套接字和远程动态转发等配置的互通。
   - 对未明确写出的 OpenSSH 选项，按 VelaShell 自身默认值处理并在导入时保持清晰提示。
-  - 变更：`3f96d453`、`5bc890e7`、`100b79e1`、`e3ed8da9` · [PR #670](https://github.com/joesdu/VelaShell/pull/670)
+  - 变更：`3f96d453`、`5bc890e7`、`100b79e1`、`e3ed8da9` · [PR #670](https://github.com/joesdu/VelaShell/pull/670)、[PR #672](https://github.com/joesdu/VelaShell/pull/672)
 
 - **按连接指定 Agent 端点**：SSH 连接可以指定命名管道或 Unix 套接字形式的 Agent 端点，Agent 认证、转发和自动加载密钥使用同一配置。
   - 留空时继续使用系统默认 Agent；连接失败时会明确指出无法连接的端点。
@@ -70,7 +70,7 @@
   - `F5` 刷新、`F2` 重命名、`Delete` 删除并确认。
   - 远端栏「上一级」按钮。
   - 列宽、分栏比例和文件栏布局跨重启记忆。
-  - 变更：`8cf6ff9f`、`30d2ac94`、`026e9a62`、`545b0e37`、`d9393cc8` · [PR #674](https://github.com/joesdu/VelaShell/pull/674)
+  - 变更：`8cf6ff9f`、`30d2ac94`、`026e9a62`、`545b0e37`、`d9393cc8` · [PR #672](https://github.com/joesdu/VelaShell/pull/672)、[PR #674](https://github.com/joesdu/VelaShell/pull/674)
 
 - **下载为指定名称**：远端普通文件右键菜单新增「下载为…」。
   - 仅对单个普通文件显示；目录、`..` 和多选不会显示该入口。
@@ -92,7 +92,7 @@
 - **传输失败自动重试**：断线和超时支持按 `TransferMaxRetries` 次数进行退避重试。
   - 权限不足、磁盘空间不足、路径不存在等确定性错误会直接失败，不会盲目重复操作。
   - 续传下载也纳入带宽限制，避免启用限速后续传分支绕过限制。
-  - 变更：`3176d48f`、`47c6fed7` · [PR #670](https://github.com/joesdu/VelaShell/pull/670)
+  - 变更：`3176d48f`、`47c6fed7` · [PR #670](https://github.com/joesdu/VelaShell/pull/670)、[PR #672](https://github.com/joesdu/VelaShell/pull/672)
 
 - **插件下载授权信息更完整**：插件文件下载确认框现在显示远端文件大小，帮助用户在批准前判断传输范围。
   - 上传和下载确认框使用一致的大小展示方式；大小取审批前读取到的远端文件信息。
@@ -123,12 +123,12 @@
 - **OSC 133 命令块操作**：终端识别命令块后支持复制当前命令和重新执行。
   - 命令块会在调整终端列宽后保持正确布局；同时修正了 zsh 初始化片段。
   - 已安装旧版 zsh 片段的用户需要重新复制一次片段，才能使用新的命令块能力。
-  - 变更：`a2069034` · [PR #672](https://github.com/joesdu/VelaShell/pull/672)
+  - 变更：`a2069034` · [PR #670](https://github.com/joesdu/VelaShell/pull/670)
 
 - **共享密码填入体验**：从共享密码列表选择密码后会自动回车提交。
   - 密码正文和回车会在同一次出站输入中发送，避免用户在选中密码后顺手输入的字符被拼接到密码末尾。
   - 会根据当前终端换行模式发送正确的回车序列。
-  - 变更：`646595ed`、`ce16f897`、`8ca7eb9c` · [PR #669](https://github.com/joesdu/VelaShell/pull/669)、[PR #671](https://github.com/joesdu/VelaShell/pull/671)
+  - 变更：`646595ed`、`ce16f897`、`8ca7eb9c` · [PR #669](https://github.com/joesdu/VelaShell/pull/669)、[PR #670](https://github.com/joesdu/VelaShell/pull/670)、[PR #671](https://github.com/joesdu/VelaShell/pull/671)
 
 - **快捷命令与会话管理改进**：命令补全选中带 `{{变量}}` 的快捷命令时会先询问变量值；资源管理器会话树支持按名称、主机、标签、备注和分组过滤。
   - 支持为会话设置标签页图标，以及将多个会话打开并同步输入到终端频道。
@@ -179,7 +179,7 @@
 - **云同步敏感信息保护**：未设置端到端同步口令时，不再上传设置中的代理密码和 Webhook 地址。
   - 拉取不包含这些字段的载荷时，会按照设置导入规则保留本机已有值；使用端到端加密载荷时保持原有加密同步行为。
   - 当同步拉到「Webhook 告警已开启但本机没有地址」的设置时，消息中心会提示一次，并提供前往安全审计设置的入口。
-  - 变更：`f2f7b285`、`847e8a2b` · [PR #672](https://github.com/joesdu/VelaShell/pull/672)
+  - 变更：`f2f7b285`、`847e8a2b` · [PR #672](https://github.com/joesdu/VelaShell/pull/672)、[PR #674](https://github.com/joesdu/VelaShell/pull/674)
 
 ## 🛡️ 安全与隐私
 
@@ -231,9 +231,9 @@
 ## 📚 文档与生态
 
 - 同步更新 SSH、SFTP、文件传输、隧道、插件通知、插件权限、系统密钥链和安全审计相关的中英文使用手册。
-  - 变更：`62a4e480`、`9c974187`、`2f638121`、`0aad9336` · [PR #674](https://github.com/joesdu/VelaShell/pull/674)
+  - 变更：`62a4e480`、`9c974187`、`2f638121`、`0aad9336` · [PR #672](https://github.com/joesdu/VelaShell/pull/672)、[PR #674](https://github.com/joesdu/VelaShell/pull/674)
 - 宿主插件 SDK 依赖升级至当前发布基线，并对齐插件清单和传输拒绝契约。
-  - 变更：`be025d75`、`013907b4`、`cc60955c` · [PR #674](https://github.com/joesdu/VelaShell/pull/674)、[PR #676](https://github.com/joesdu/VelaShell/pull/676)
+  - 变更：`be025d75`、`013907b4`、`cc60955c` · [PR #672](https://github.com/joesdu/VelaShell/pull/672)、[PR #674](https://github.com/joesdu/VelaShell/pull/674)、[PR #676](https://github.com/joesdu/VelaShell/pull/676)
 
 ## ✅ 验证
 
@@ -249,9 +249,10 @@
 - [PR #671：共享密码提示与输入框体验改进](https://github.com/joesdu/VelaShell/pull/671)
 - [PR #670：标签栏、布局、传输、SSH、隧道与文件管理增强](https://github.com/joesdu/VelaShell/pull/670)
 - [PR #669：共享密码填入体验改进](https://github.com/joesdu/VelaShell/pull/669)
-- [PR #668：AI 传输、遮盖、更新流程与 CI 稳定性修复](https://github.com/VelaShellLabs/VelaShell/pull/668)
-- [PR #666：依赖升级](https://github.com/VelaShellLabs/VelaShell/pull/666)
-- [PR #665：依赖更新](https://github.com/VelaShellLabs/VelaShell/pull/665)
+- [PR #668：AI 传输、遮盖、更新流程与 CI 稳定性修复](https://github.com/joesdu/VelaShell/pull/668)
+- [PR #666：依赖升级](https://github.com/joesdu/VelaShell/pull/666)
+- [PR #665：依赖更新](https://github.com/joesdu/VelaShell/pull/665)
 - [PR #675：替换测试数据中的伪 Google API Key](https://github.com/joesdu/VelaShell/pull/675)
 - [PR #676：合并 SDK 与 SFTP 功能的 CI 修复](https://github.com/joesdu/VelaShell/pull/676)
 
+**Full Changelog**: https://github.com/joesdu/VelaShell/compare/1.7.3...1.7.4

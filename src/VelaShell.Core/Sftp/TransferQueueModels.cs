@@ -30,7 +30,8 @@ public sealed record PausedTransferBatch(
 /// </summary>
 /// <remarks>
 /// 分段存,是因为一批可能有几万个文件:整批一份文档的话,每传完一个文件就要把几 MB 的 JSON 整份重写一遍;
-/// 分段之后只重写正在传的那一两段。落定的项从段里拿掉,整段都落定了就删掉这份文档。
+/// 分段之后只重写正在传的那一两段。落定的项从段里拿掉;整段都落定了留一份空段占位,整批落定或作废时各段一起删掉 ——
+/// 分段写不是一次原子写,读回时靠「每一段都在」认出写到一半(或删到一半)的批次(见 <see cref="ChunkCount" />)。
 /// </remarks>
 public sealed class TransferQueueChunk
 {
@@ -39,6 +40,12 @@ public sealed class TransferQueueChunk
 
     /// <summary>第几段(从 0 起)。</summary>
     public int Chunk { get; set; }
+
+    /// <summary>
+    /// 这一批一共几段(登记时定下,每一段都带着)。读回时少了哪一段,就是这一批没写全或删到一半,整批不还原。
+    /// 0 = 旧版本写的文档(没有这一项),缺的段照旧按「已经落定」算。
+    /// </summary>
+    public int ChunkCount { get; set; }
 
     /// <summary>发起这一批的连接配置。</summary>
     public Guid ProfileId { get; set; }

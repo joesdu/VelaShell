@@ -482,16 +482,6 @@ public sealed class TerminalScreen
         if (columns != Columns && MaxScrollback > 0)
         {
             ReflowResize(columns, rows, blank);
-            // 重排换了行对象,「这一行触发器答过了」的记号跟着丢了(见 TerminalRow.TriggerSettled):
-            // 屏上现有内容的行一律记成处理过,否则拖一下窗口边,那条已经答过的提示会被当成新的再答一遍。
-            // 空行不记 —— 启动时布局那一下重排的正是一整屏空行,记上了,之后写在这些行上的提示就永远答不上了。
-            foreach (TerminalRow line in _lines)
-            {
-                if (line.LastNonBlank() >= 0)
-                {
-                    line.TriggerSettled = true;
-                }
-            }
             return;
         }
 
@@ -633,9 +623,14 @@ public sealed class TerminalScreen
             // 一条逻辑行被换行拆成几段时,边界只在头一段上。
             PromptMark lineMark = PromptMark.None;
             int? lineExit = null;
+            // 「这一行触发器答过了」(TerminalRow.TriggerSettled)同样按逻辑行搬:答过的不再答第二次,
+            // 还没答的(等对端安静、等冷却)照样等着答。曾经重排之后把屏上有字的行一律记成答过 ——
+            // 冷却里排着的第二条提示,开关一下侧栏、拖一下分屏就再也答不上了。
+            bool lineSettled = false;
             for (int r = i; r <= j; r++)
             {
                 TerminalRow row = physical[r];
+                lineSettled |= row.TriggerSettled;
                 // 行时间戳(时间/行号侧栏)必须穿过 reflow —— 否则改列宽(含开关侧栏导致的列变化)
                 // 会把历史行的时间戳清空。取该逻辑行各物理段中最后一个非空时间戳(= 最后收到输出的时间)。
                 if (row.Timestamp is { } t)
@@ -718,6 +713,11 @@ public sealed class TerminalScreen
             {
                 rebuilt[emittedStart].Mark = lineMark;
                 rebuilt[emittedStart].ExitCode = lineExit;
+            }
+            // 与标记同理只落头一行:触发器按逻辑行的首行判。
+            if (lineSettled && emittedStart < rebuilt.Count)
+            {
+                rebuilt[emittedStart].TriggerSettled = true;
             }
             i = j + 1;
         }

@@ -293,10 +293,31 @@ public sealed class DiagnosticBundleTests : IDisposable
         Assert.AreEqual(DiagnosticLogKind.Plugin, ai.Kind);
         Assert.AreEqual("velashell.ai", ai.PluginId);
         Assert.AreSequenceEqual(
-            [Path.Combine(Logs, "plugins", "velashell.ai.log"), Path.Combine(Logs, "plugins", "velashell.ai.1.log")], [.. ai.Files], SequenceOrder.InAnyOrder, "轮转下来的那份归同一个插件");
+            [Path.Combine(Logs, "plugins", "velashell.ai.log"), Path.Combine(Logs, "plugins", "velashell.ai.log.1")], [.. ai.Files], SequenceOrder.InAnyOrder, "轮转下来的那份归同一个插件");
         Assert.AreEqual(ai.Files.Sum(file => new FileInfo(file).Length), ai.Bytes);
 
         Assert.IsEmpty(DiagnosticBundle.FindOptionalLogs(Path.Combine(_root, "missing"), null), "目录不在就一类都没有");
+    }
+
+    /// <summary>
+    /// id 只差一个 <c>.1</c> 的两个插件是两项:<c>acme.tool.1.log</c> 是插件 <c>acme.tool.1</c> 的当前日志,
+    /// 不是 <c>acme.tool</c> 的轮转件(那个叫 <c>acme.tool.log.1</c>)。勾 <c>acme.tool</c> 不该把别人的日志一起收进包。
+    /// </summary>
+    [TestMethod]
+    public async Task FindOptionalLogs_IdsOneDotOneApartAreTwoPlugins()
+    {
+        Directory.CreateDirectory(Path.Combine(Logs, "plugins"));
+        await File.WriteAllTextAsync(Path.Combine(Logs, "plugins", "acme.tool.log"), "tool\n");
+        await File.WriteAllTextAsync(Path.Combine(Logs, "plugins", "acme.tool.log.1"), "tool older\n");
+        await File.WriteAllTextAsync(Path.Combine(Logs, "plugins", "acme.tool.1.log"), "tool.1\n");
+
+        IReadOnlyList<DiagnosticLogOption> options = DiagnosticBundle.FindOptionalLogs(Logs, null);
+
+        Assert.AreSequenceEqual(["plugin:acme.tool", "plugin:acme.tool.1"], [.. options.Select(option => option.Id)]);
+        Assert.AreSequenceEqual(
+            [Path.Combine(Logs, "plugins", "acme.tool.log"), Path.Combine(Logs, "plugins", "acme.tool.log.1")],
+            [.. options[0].Files], SequenceOrder.InAnyOrder);
+        Assert.AreSequenceEqual([Path.Combine(Logs, "plugins", "acme.tool.1.log")], [.. options[1].Files]);
     }
 
     [TestMethod]
@@ -315,7 +336,7 @@ public sealed class DiagnosticBundleTests : IDisposable
         Assert.AreSequenceEqual(
             [
                 "logs/velashell-20261019.log", "logs/crash-20261019-101010-000.txt", "logs/transfer-20261019.log",
-                "logs/plugins/velashell.ai.log", "logs/plugins/velashell.ai.1.log", "summary.txt", "README.txt"
+                "logs/plugins/velashell.ai.log", "logs/plugins/velashell.ai.log.1", "summary.txt", "README.txt"
             ], [.. zip.Entries.Select(entry => entry.FullName)], SequenceOrder.InAnyOrder, "没勾的外部编辑日志、vcxsrv.log 与另一个插件的日志不进包");
         string transfer = Read(zip.GetEntry("logs/transfer-20261019.log")!);
         Assert.AreEqual("2026-10-19 10:10:10\tUPLOAD\tC:\\Users\\<user-1>\\Desktop\\app.tar.gz\t/home/<user-2>/app.tar.gz\tCOMPLETED\n", transfer,
@@ -341,7 +362,7 @@ public sealed class DiagnosticBundleTests : IDisposable
         Directory.CreateDirectory(Path.Combine(Logs, "plugins"));
         await File.WriteAllTextAsync(Path.Combine(Logs, "plugins", "velashell.ai.log"),
             "[Plugin:velashell.ai] calling https://llm.corp.example.com/v1 from 10.1.2.3\n");
-        await File.WriteAllTextAsync(Path.Combine(Logs, "plugins", "velashell.ai.1.log"), "[Plugin:velashell.ai] older\n");
+        await File.WriteAllTextAsync(Path.Combine(Logs, "plugins", "velashell.ai.log.1"), "[Plugin:velashell.ai] older\n");
         await File.WriteAllTextAsync(Path.Combine(Logs, "plugins", "velashell.redis.log"), "[Plugin:velashell.redis] ping\n");
     }
 

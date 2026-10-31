@@ -14,10 +14,22 @@ namespace VelaShell.Infrastructure.Sync;
 /// </summary>
 public sealed class GistApiClient
 {
-    private static readonly HttpClient Http = new()
+    private static readonly HttpClient SharedHttp = new()
     {
         Timeout = TimeSpan.FromSeconds(30)
     };
+
+    /// <summary>测试替身:只在设下它的那条异步流程里替掉 <see cref="SharedHttp" />,别的流程(并行的别的用例)看不到。</summary>
+    private static readonly AsyncLocal<HttpClient?> TestHttp = new();
+
+    private static HttpClient Http => TestHttp.Value ?? SharedHttp;
+
+    /// <summary>
+    /// 测试用:让当前异步流程里的 Gist 请求改走 <paramref name="client" />(一个假的 GitHub),
+    /// 好把 <see cref="GistSyncService.SyncNowAsync" /> 的推拉方向整条跑一遍;传 null 退回真的那个。
+    /// </summary>
+    /// <param name="client">替身客户端。</param>
+    internal static void UseHttpClientForTests(HttpClient? client) => TestHttp.Value = client;
 
     /// <summary>创建 secret Gist,返回 (gistId, 初始 revision)。</summary>
     public static Task<(string GistId, string Version)> CreateGistAsync(string token,

@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Text;
 using VelaShell.Core.Resources;
+using VelaShell.Infrastructure.Plugins;
 
 namespace VelaShell.Infrastructure.Diagnostics;
 
@@ -21,7 +22,7 @@ public enum DiagnosticLogKind
     /// <summary>VcXsrv 的输出 <c>vcxsrv.log</c>(Windows 上用外部 X 服务器时)。</summary>
     VcXsrv,
 
-    /// <summary>某个插件自己的日志 <c>logs/plugins/&lt;id&gt;.log</c>(连同轮转下来的 <c>&lt;id&gt;.1.log</c>)。</summary>
+    /// <summary>某个插件自己的日志 <c>logs/plugins/&lt;id&gt;.log</c>(连同轮转下来的 <c>&lt;id&gt;.log.1</c>)。</summary>
     Plugin
 }
 
@@ -90,7 +91,8 @@ public static class DiagnosticBundle
         AddIfAny("remote-edit", DiagnosticLogKind.RemoteEdit, null, Files(logsDirectory, "remote-edit.log"));
         AddIfAny("vcxsrv", DiagnosticLogKind.VcXsrv, null, Files(logsDirectory, "vcxsrv.log"));
         string? pluginLogs = string.IsNullOrWhiteSpace(logsDirectory) ? null : Path.Combine(logsDirectory, PluginLogsFolder);
-        foreach (IGrouping<string, FileInfo> plugin in Files(pluginLogs, "*.log")
+        foreach (IGrouping<string, FileInfo> plugin in Files(pluginLogs, "*" + PluginLogFiles.CurrentSuffix)
+                     .Concat(Files(pluginLogs, "*" + PluginLogFiles.RotatedSuffix))
                      .GroupBy(file => PluginIdOf(file.Name), StringComparer.Ordinal)
                      .OrderBy(group => group.Key, StringComparer.Ordinal))
         {
@@ -106,12 +108,14 @@ public static class DiagnosticBundle
         }
     }
 
-    /// <summary><c>velashell.ai.1.log</c>(轮转下来的那份)与 <c>velashell.ai.log</c> 都归插件 <c>velashell.ai</c>。</summary>
-    private static string PluginIdOf(string fileName)
-    {
-        string stem = fileName[..^".log".Length];
-        return stem.EndsWith(".1", StringComparison.Ordinal) ? stem[..^2] : stem;
-    }
+    /// <summary>
+    /// <c>velashell.ai.log.1</c>(轮转下来的那份)与 <c>velashell.ai.log</c> 都归插件 <c>velashell.ai</c>。
+    /// <c>x.1.log</c> 归插件 <c>x.1</c>:那是它的当前日志(旧版本的轮转名与它撞名,见 <see cref="PluginLogFiles" />)。
+    /// </summary>
+    private static string PluginIdOf(string fileName) =>
+        fileName.EndsWith(PluginLogFiles.RotatedSuffix, StringComparison.Ordinal)
+            ? fileName[..^PluginLogFiles.RotatedSuffix.Length]
+            : fileName[..^PluginLogFiles.CurrentSuffix.Length];
 
     /// <summary>写诊断包。已有同名文件时覆盖。</summary>
     /// <param name="zipPath">包的落盘位置。</param>

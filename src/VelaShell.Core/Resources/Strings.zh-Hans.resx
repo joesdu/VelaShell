@@ -993,6 +993,9 @@
   <data name="Sftp_OpenTerminalHere" xml:space="preserve">
     <value>在此处打开终端</value>
   </data>
+  <data name="Sftp_OpenTerminalHereUnsafeDirectory" xml:space="preserve">
+    <value>目录名里含有控制字符,无法安全地输入终端,终端停留在登录时的目录。</value>
+  </data>
   <data name="Sftp_SearchTitle" xml:space="preserve">
     <value>搜索远端文件</value>
   </data>
@@ -4978,6 +4981,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Svc_RemoteEditDraftKept" xml:space="preserve">
     <value>{0} 未能上传。你改过的副本保留在 {1}。</value>
   </data>
+  <data name="Svc_RemoteEditEndedByDisconnect" xml:space="preserve">
+    <value>连接已断开,{0} 的编辑会话随之结束:之后的保存不会再传回服务器。本地副本留在 {1}。</value>
+  </data>
   <data name="Svc_Ungrouped" xml:space="preserve">
     <value>未分组</value>
   </data>
@@ -6268,6 +6274,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SshCfgImport_NoteAlgoSkipped" xml:space="preserve">
     <value>{0} 没有导入：{1}</value>
   </data>
+  <data name="SshCfgImport_NoteLegacyFromPubkey" xml:space="preserve">
+    <value>{0}：按「允许老算法」导入 —— VelaShell 里只有这个开关能放开 SHA-1 的 RSA 签名。它还会把 SHA-1 的密钥交换、主机密钥与 MAC 追加在默认之后，这几项这份文件没有写。</value>
+  </data>
   <data name="SshCfgImport_NoteAgentEndpointUnusable" xml:space="preserve">
     <value>{0} 没有导入：这台电脑上用不了这个 agent 端点（别的平台的路径，或者不是完整路径）。</value>
   </data>
@@ -6757,6 +6766,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="SshAlgoFix_HopMissing" xml:space="preserve">
     <value>找不到跳板 {0} 的连接配置,请到它的 SSH 选项里手动修改算法清单。</value>
+  </data>
+  <data name="SshAlgoFix_ProfileMissing" xml:space="preserve">
+    <value>连接配置 {0} 已经不在了(可能刚被删除),没有改动。</value>
   </data>
   <data name="SshInfo_Menu" xml:space="preserve">
     <value>连接信息…</value>
@@ -10168,6 +10180,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Sudo_Submit" xml:space="preserve"><value>认证</value></data>
   <data name="PasswordFill_Title" xml:space="preserve"><value>填入共享密码</value></data>
   <data name="PasswordFill_Warning" xml:space="preserve"><value>向此会话填入所选密码并自动回车提交。远端程序可能回显密码，使其进入屏幕、日志或录制。请确认信任当前提示后再填入。</value></data>
+  <data name="PasswordFill_WarningNoEnter" xml:space="preserve"><value>仅向此会话填入所选密码，不发送回车。远端程序可能回显密码，使其进入屏幕、日志或录制。请确认信任当前提示后再填入。</value></data>
   <data name="PasswordFill_Empty" xml:space="preserve"><value>没有匹配的共享密码凭据。可在“设置 → 共享凭据”中添加密码凭据。</value></data>
   <data name="PasswordFill_ReadFailed" xml:space="preserve"><value>无法读取或解密凭据，未发送任何内容。</value></data>
   <data name="PasswordFill_Expired" xml:space="preserve"><value>会话或输入上下文已变化，未发送任何内容。请关闭后重新打开选择器。</value></data>
