@@ -184,7 +184,11 @@ public static class RemoteEditSessionManager
     /// 用户之后的保存只会换来一串上传失败。
     /// </remarks>
     /// <param name="sessionId">远程会话标识。</param>
-    public static async Task CloseScopeAsync(Guid sessionId)
+    /// <param name="connectionLost">
+    /// 不是关标签,而是连接断了(掉线、等着自动重连):给了就<b>一个本地副本都不删</b>,每个结束的会话经它说一声
+    /// (见 <see cref="RemoteEditSession.Detach" />);null = 关标签,照旧收尾。
+    /// </param>
+    public static async Task CloseScopeAsync(Guid sessionId, Action<string>? connectionLost = null)
     {
         RemoteEditSession[] owned;
         lock (Gate)
@@ -200,7 +204,14 @@ public static class RemoteEditSessionManager
         {
             await session.ShutdownAsync(RemoteEditSession.ShutdownUploadTimeout).ConfigureAwait(false);
             Remove(session);
-            session.Dispose();
+            if (connectionLost is null)
+            {
+                session.Dispose();
+            }
+            else
+            {
+                session.Detach(connectionLost);
+            }
         }
     }
 
@@ -450,26 +461,73 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>拆除会话。上传没能落地时<b>保留</b>本地副本,不删临时目录。</summary>
     public void Dispose()
     {
-        if (_disposed)
+        if (!StopWatching())
         {
             return;
+        }
+        if (KeepDraft(_onError))
+        {
+            return;
+        }
+        RemoteEditLog.Write("close", $"done {RemotePath} (uploads={_uploadCount})");
+        RemoteEditSessionManager.TryDeleteDirectory(Path.GetDirectoryName(LocalPath)!);
+    }
+
+    /// <summary>
+    /// 所属连接断了(掉线、等着自动重连)时拆会话:与 <see cref="Dispose" /> 一样停掉监视,但本地副本<b>一律不删</b>,
+    /// 并经 <paramref name="notify" /> 把这件事说出来。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 断线时外部编辑器多半还开着这份副本。以前干净的会话照 <see cref="Dispose" /> 删目录、一声不吭:用户接着存,
+    /// 要么存不进去,要么编辑器把文件和目录重新建出来(VS Code)—— 从此没人监视、一个字节也传不回去,
+    /// 直到下次启动才以「草稿」露面(复查 file-panes F8)。重连拿到的是新会话,这些编辑会话跟不过去(回传绑的是旧面板),
+    /// 所以只能结束它们,但得留着副本、把话说清楚。
+    /// </para>
+    /// <para>
+    /// 干净的副本标记仍是「干净」(记着长度与修改时间):之后没再动过,启动时与别的干净副本一样到点清掉;
+    /// 断线后又存过,对不上标记,启动时按草稿在消息中心列出来(见 <see cref="RemoteEditDrafts" />)。
+    /// </para>
+    /// </remarks>
+    /// <param name="notify">把话说给用户听的通道(断线时文件面板已经被拆掉,它的报错栏没人看得见)。</param>
+    internal void Detach(Action<string> notify)
+    {
+        if (!StopWatching() || KeepDraft(notify))
+        {
+            return;
+        }
+        RemoteEditLog.Write("close", $"connection lost, copy kept {RemotePath} -> {LocalPath} (uploads={_uploadCount})");
+        notify(Strings.Format("Svc_RemoteEditEndedByDisconnect", FileName, LocalPath));
+    }
+
+    /// <summary>停掉监视与防抖;已经拆过时返回 false。</summary>
+    private bool StopWatching()
+    {
+        if (_disposed)
+        {
+            return false;
         }
         _disposed = true;
         _closing = true;
         _watcher.EnableRaisingEvents = false;
         Interlocked.Exchange(ref _debounce, null)?.Dispose();
         _watcher.Dispose();
-        if (_lastUploadFailed || Volatile.Read(ref _pendingSave) == 1)
+        return true;
+    }
+
+    /// <summary>有改动没落到远端时保留副本、标成草稿并说一声;返回是否保留了。</summary>
+    private bool KeepDraft(Action<string>? notify)
+    {
+        if (!_lastUploadFailed && Volatile.Read(ref _pendingSave) == 0)
         {
-            // 远端没拿到这份内容 —— 本地副本是它唯一的存身之处,删了就真没了。
-            // 标记照实写成「有未传改动」:下次启动在消息中心列出来,永不按时间删(见 RemoteEditDrafts)。
-            MarkDirty();
-            RemoteEditLog.Write("close", $"draft kept {RemotePath} -> {LocalPath}");
-            _onError?.Invoke(Strings.Format("Svc_RemoteEditDraftKept", FileName, LocalPath));
-            return;
+            return false;
         }
-        RemoteEditLog.Write("close", $"done {RemotePath} (uploads={_uploadCount})");
-        RemoteEditSessionManager.TryDeleteDirectory(Path.GetDirectoryName(LocalPath)!);
+        // 远端没拿到这份内容 —— 本地副本是它唯一的存身之处,删了就真没了。
+        // 标记照实写成「有未传改动」:下次启动在消息中心列出来,永不按时间删(见 RemoteEditDrafts)。
+        MarkDirty();
+        RemoteEditLog.Write("close", $"draft kept {RemotePath} -> {LocalPath}");
+        notify?.Invoke(Strings.Format("Svc_RemoteEditDraftKept", FileName, LocalPath));
+        return true;
     }
 
     /// <summary>

@@ -3749,7 +3749,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
 
         // 会话断开后 SFTP 通道随之失效:驱逐缓存的文件面板、收掉它开出来的外部编辑会话并释放 SFTP 客户端。
         // 重连会拿到新的 SessionId,面板届时按新会话重建(旧会话名下的编辑会话不会跟过去)。
-        _ = CloseSftpForTab(tab);
+        // 编辑器多半还开着那些副本:断线这一路一个副本都不删,每个结束的编辑会话用浮层说一声(见 RemoteEditSession.Detach)。
+        _ = CloseSftpForTab(tab, connectionLost: true);
 
         // 不论主动断开还是远端掉线,都把底层 SSH 客户端一并拆掉;
         // 重连会新建会话,不受影响。
@@ -7296,7 +7297,12 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 标签关闭时调用方等它收完才断 SSH;断线驱逐时连接已经没了,未传的改动照原口径留成草稿并提示位置。
     /// 任务不会失败(两步各自兜住),不等它的调用方可以直接丢弃。
     /// </remarks>
-    private Task CloseSftpForTab(TerminalTabViewModel tab)
+    /// <param name="tab">关掉或断开的标签。</param>
+    /// <param name="connectionLost">
+    /// 是断线而不是关标签:外部编辑会话结束但副本一个都不删(编辑器多半还开着),每个结束的会话推一条浮层提示 ——
+    /// 面板这时已经被驱逐,它的报错栏没人看得见。
+    /// </param>
+    private Task CloseSftpForTab(TerminalTabViewModel tab, bool connectionLost = false)
     {
         if (_sftpService is null || tab.SessionId == Guid.Empty)
         {
@@ -7307,15 +7313,28 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         // 在拆除 SFTP 通道前先驱逐:使在飞的列举被取消,而非与客户端释放争抢
         // (否则 SSH.NET 会从 ListDirectory 内部抛 NRE)。
         EvictFileBrowser(closedSessionId);
-        return CloseSidebarScopeAsync(_sftpService, closedSessionId);
+        return CloseSidebarScopeAsync(_sftpService, closedSessionId, connectionLost ? PostWarning : null);
+    }
+
+    /// <summary>从任意线程推一条警告浮层(收尾链跑在线程池上,浮层只能在 UI 线程上动)。</summary>
+    private void PostWarning(string message)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            Toasts.Warning(message);
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => Toasts.Warning(message));
+        }
     }
 
     /// <summary>侧栏面板的收尾后半段:外部编辑会话 → SFTP 通道,顺序与 SFTP 文档标签关闭相同。</summary>
-    private static async Task CloseSidebarScopeAsync(ISftpService sftp, Guid sessionId)
+    private static async Task CloseSidebarScopeAsync(ISftpService sftp, Guid sessionId, Action<string>? connectionLost)
     {
         try
         {
-            await RemoteEditSessionManager.CloseScopeAsync(sessionId).ConfigureAwait(false);
+            await RemoteEditSessionManager.CloseScopeAsync(sessionId, connectionLost).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

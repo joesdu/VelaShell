@@ -4875,6 +4875,9 @@ Overwrite it?</value>
   <data name="Svc_RemoteEditDraftKept" xml:space="preserve">
     <value>{0} was not uploaded. Your edited copy is kept at {1}.</value>
   </data>
+  <data name="Svc_RemoteEditEndedByDisconnect" xml:space="preserve">
+    <value>The connection dropped, so editing {0} has ended: later saves will not be uploaded. The local copy stays at {1}.</value>
+  </data>
   <data name="Svc_Ungrouped" xml:space="preserve">
     <value>Ungrouped</value>
   </data>

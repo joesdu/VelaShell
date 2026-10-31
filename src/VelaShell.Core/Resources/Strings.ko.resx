@@ -4671,6 +4671,9 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Svc_RemoteEditDraftKept" xml:space="preserve">
     <value>{0}을(를) 업로드하지 못했습니다. 편집한 사본은 {1}에 남겨 두었습니다.</value>
   </data>
+  <data name="Svc_RemoteEditEndedByDisconnect" xml:space="preserve">
+    <value>연결이 끊겨 {0} 편집 세션이 종료되었습니다. 이후 저장한 내용은 서버로 업로드되지 않습니다. 로컬 사본은 {1}에 남아 있습니다.</value>
+  </data>
   <data name="Svc_Ungrouped" xml:space="preserve">
     <value>그룹 없음</value>
   </data>

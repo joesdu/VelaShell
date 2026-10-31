@@ -4671,6 +4671,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Svc_RemoteEditDraftKept" xml:space="preserve">
     <value>{0} をアップロードできませんでした。編集済みのコピーは {1} に残してあります。</value>
   </data>
+  <data name="Svc_RemoteEditEndedByDisconnect" xml:space="preserve">
+    <value>接続が切断されたため、{0} の編集セッションは終了しました。以降の保存はサーバーにアップロードされません。ローカルコピーは {1} に残してあります。</value>
+  </data>
   <data name="Svc_Ungrouped" xml:space="preserve">
     <value>未分類</value>
   </data>

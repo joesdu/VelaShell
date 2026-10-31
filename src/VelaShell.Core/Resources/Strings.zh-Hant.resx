@@ -4981,6 +4981,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Svc_RemoteEditDraftKept" xml:space="preserve">
     <value>{0} 未能上傳。你改過的副本保留在 {1}。</value>
   </data>
+  <data name="Svc_RemoteEditEndedByDisconnect" xml:space="preserve">
+    <value>連線已中斷,{0} 的編輯工作階段隨之結束:之後的儲存不會再傳回伺服器。本機副本留在 {1}。</value>
+  </data>
   <data name="Svc_Ungrouped" xml:space="preserve">
     <value>未分組</value>
   </data>
