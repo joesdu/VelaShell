@@ -57,4 +57,42 @@ public sealed class TransferQueuePersistenceTests : IDisposable
             Assert.IsEmpty(await new SonnetDbAppDataStore(reopened).GetAllAsync<TransferQueueChunk>(TransferQueueJournal.Collection));
         }
     }
+
+    /// <summary>
+    /// 库里有一行读不出来(写了一半的 JSON、字段类型对不上):其余的批次照常还原,坏的那几行在下次落盘时删掉 ——
+    /// 以前 GetAllAsync 碰到第一行坏的就整次抛出,所有暂停的批次每次启动都还原不出来。
+    /// </summary>
+    [TestMethod]
+    public async Task AnUnreadableRow_DoesNotBlockRestoringTheOthers_AndIsCleanedUp()
+    {
+        var origin = new TransferQueueOrigin(Guid.NewGuid(), "备份机");
+        string halfWritten = TransferQueueJournal.DocumentId(Guid.NewGuid(), 0);
+        Guid id;
+        using (var engine = new SonnetDbEngine(Path.Combine(_directory, "sonnetdb")))
+        {
+            var journal = new TransferQueueJournal(new SonnetDbAppDataStore(engine), TimeSpan.FromHours(1));
+            id = journal.Begin(origin, [new TransferQueueItem(TransferType.Upload, Path.Combine(_directory, "a.bin"), "/srv/a.bin")]);
+            await journal.FlushAsync();
+            await engine.WithCollectionAsync<object?>(SonnetDbEngine.TransferQueueCollection, store =>
+            {
+                store.Upsert(halfWritten, "{\"batchId\":\"" + Guid.NewGuid() + "\",\"chunk\":\"zero\"}");
+                store.Upsert("leftover", "{\"items\":42}");
+                return null;
+            });
+        }
+
+        using (var reopened = new SonnetDbEngine(Path.Combine(_directory, "sonnetdb")))
+        {
+            var data = new SonnetDbAppDataStore(reopened);
+            var journal = new TransferQueueJournal(data, TimeSpan.FromHours(1));
+            PausedTransferBatch batch = (await journal.LoadAsync()).Single();
+            await journal.FlushAsync();
+
+            Assert.AreEqual(id, batch.BatchId);
+            Assert.AreEqual("/srv/a.bin", batch.Items.Single().RemotePath);
+            (List<TransferQueueChunk> left, List<string> unreadable) = await data.GetAllReadableAsync<TransferQueueChunk>(TransferQueueJournal.Collection);
+            Assert.IsEmpty(unreadable, "坏的那几行删掉了");
+            Assert.AreEqual(id, left.Single().BatchId);
+        }
+    }
 }

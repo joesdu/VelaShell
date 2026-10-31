@@ -43,6 +43,8 @@ public sealed class TransferQueueJournal
     private readonly Lock _gate = new();
     private readonly Dictionary<Guid, BatchState> _batches = [];
     private readonly HashSet<(Guid Batch, int Chunk)> _dirty = [];
+    // 读不出来、Id 也认不出是哪一批哪一段的文档:下次落盘时按 Id 删掉。
+    private readonly HashSet<string> _orphans = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _flushLock = new(1, 1);
     private bool _flushScheduled;
 
@@ -140,7 +142,11 @@ public sealed class TransferQueueJournal
     /// <summary>
     /// 读出上次运行留下的批次(启动时调一次),登记进本次的账里,好让「继续」与「放弃」照常作用于它们。
     /// </summary>
-    /// <remarks>读不出的文档(坏 JSON、认不出的方向、空路径)跳过;一项都不剩的批次顺手删掉。</remarks>
+    /// <remarks>
+    /// 读不出的文档(坏 JSON、字段类型对不上、认不出的方向、空路径)跳过,其余批次照常还原;
+    /// 整份读不出来的文档下次落盘时删掉(记一笔日志),一项都不剩的批次顺手删掉。
+    /// 逐行容错要存储支持(<see cref="ITolerantAppDataStore" />,SonnetDB 实现了);不支持的存储里有一行坏的,整次读取照旧失败。
+    /// </remarks>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>按开始时间排的批次。</returns>
     public async Task<IReadOnlyList<PausedTransferBatch>> LoadAsync(CancellationToken cancellationToken = default)
@@ -149,10 +155,33 @@ public sealed class TransferQueueJournal
         {
             return [];
         }
-        List<TransferQueueChunk>? chunks = await _store.GetAllAsync<TransferQueueChunk>(Collection, cancellationToken).ConfigureAwait(false);
+        List<TransferQueueChunk>? chunks;
+        List<string> unreadable = [];
+        if (_store is ITolerantAppDataStore tolerant)
+        {
+            // 一行坏的(崩溃时写了一半、或者以后的版本改了字段类型)不能让所有暂停的批次都还原不出来 —— 而且每次启动都这样。
+            (chunks, unreadable) = await tolerant.GetAllReadableAsync<TransferQueueChunk>(Collection, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            chunks = await _store.GetAllAsync<TransferQueueChunk>(Collection, cancellationToken).ConfigureAwait(false);
+        }
         var restored = new List<PausedTransferBatch>();
         lock (_gate)
         {
+            foreach (string id in unreadable)
+            {
+                Trace.WriteLine($"[VelaShell] Transfer queue document {id} is unreadable; discarding it.");
+                // 认得出是哪一批哪一段的,交给那一段的落盘逻辑(批次还原了就按现状重写,没还原就删);认不出的按 Id 删。
+                if (TryParseDocumentId(id, out Guid batch, out int chunk))
+                {
+                    _dirty.Add((batch, chunk));
+                }
+                else
+                {
+                    _orphans.Add(id);
+                }
+            }
             foreach (IGrouping<Guid, TransferQueueChunk> group in (chunks ?? []).Where(c => c.BatchId != Guid.Empty).GroupBy(c => c.BatchId))
             {
                 if (_batches.ContainsKey(group.Key))
@@ -206,6 +235,7 @@ public sealed class TransferQueueJournal
             lock (_gate)
             {
                 _dirty.Clear();
+                _orphans.Clear();
                 _flushScheduled = false;
             }
             return;
@@ -218,7 +248,9 @@ public sealed class TransferQueueJournal
             {
                 _flushScheduled = false;
                 work = [.. _dirty.Select(key => (DocumentId(key.Batch, key.Chunk), BuildChunk(key.Batch, key.Chunk)))];
+                work.AddRange(_orphans.Select(static id => (id, (TransferQueueChunk?)null)));
                 _dirty.Clear();
+                _orphans.Clear();
             }
             foreach ((string id, TransferQueueChunk? document) in work)
             {
@@ -247,6 +279,19 @@ public sealed class TransferQueueJournal
 
     /// <summary>文档 Id:批次 + 段号。</summary>
     public static string DocumentId(Guid batchId, int chunk) => $"{batchId:N}-{chunk:D4}";
+
+    /// <summary><see cref="DocumentId" /> 的反解;不是这个格式的 Id 返回 false。</summary>
+    private static bool TryParseDocumentId(string id, out Guid batchId, out int chunk)
+    {
+        int dash = id.LastIndexOf('-');
+        chunk = 0;
+        batchId = Guid.Empty;
+        // 段号再大也得乘得出起始序号(BuildChunk 按 chunk * ChunkSize 取段),乘不出的当认不出。
+        return dash > 0
+               && Guid.TryParseExact(id.AsSpan(0, dash), "N", out batchId)
+               && int.TryParse(id.AsSpan(dash + 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out chunk)
+               && chunk < int.MaxValue / ChunkSize;
+    }
 
     private void ScheduleFlush()
     {

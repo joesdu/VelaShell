@@ -140,6 +140,33 @@ public sealed class TransferQueueJournalTests
         Assert.IsFalse(store.Contains(TransferQueueJournal.DocumentId(hollow, 0)), "一项都读不出的批次顺手删掉");
     }
 
+    /// <summary>
+    /// 一份整个读不出来的文档(崩溃时写了一半的 JSON,或者以后的版本改了字段类型)不能让其余暂停的批次都还原不出来 ——
+    /// 以前整次读取直接抛出,什么都不还原,坏的那行与好的那些永远留在库里,每次启动都一样。
+    /// 现在跳过它、照常还原其余的,并在下次落盘时把它删掉。
+    /// </summary>
+    [TestMethod]
+    public async Task AnUndeserialisableDocument_DoesNotBlockTheOtherBatches_AndIsDeleted()
+    {
+        var store = new JsonStore();
+        var before = new TransferQueueJournal(store, TimeSpan.FromHours(1));
+        Guid good = before.Begin(Origin, Items(2));
+        await before.FlushAsync();
+        string halfWritten = TransferQueueJournal.DocumentId(Guid.NewGuid(), 0);
+        store.PutRaw(TransferQueueJournal.Collection, halfWritten, "{\"batchId\":\"");
+        store.PutRaw(TransferQueueJournal.Collection, "not-a-queue-id", "{\"chunk\":\"zero\",\"items\":[]}");
+
+        var after = new TransferQueueJournal(store, TimeSpan.FromHours(1));
+        IReadOnlyList<PausedTransferBatch> restored = await after.LoadAsync();
+        await after.FlushAsync();
+
+        Assert.AreEqual(good, restored.Single().BatchId);
+        Assert.HasCount(2, restored.Single().Items);
+        Assert.IsFalse(store.Contains(halfWritten), "读不出来的那份删掉,不再每次启动都撞上它");
+        Assert.IsFalse(store.Contains("not-a-queue-id"));
+        Assert.IsTrue(store.Contains(TransferQueueJournal.DocumentId(good, 0)), "好的那一批原样留着");
+    }
+
     [TestMethod]
     public void OnlyUploadsAndDownloadsArePersisted()
     {
@@ -192,8 +219,11 @@ public sealed class TransferQueueJournalTests
         Assert.AreEqual(1, store.Count, "不调 FlushAsync 也会在攒够延迟之后自己落盘");
     }
 
-    /// <summary>按 JSON 存取的内存文档库(与 SonnetDB 一样经过一次序列化,不会把对象引用原样交回)。</summary>
-    private sealed class JsonStore : IAppDataStore
+    /// <summary>
+    /// 按 JSON 存取的内存文档库(与 SonnetDB 一样经过一次序列化,不会把对象引用原样交回;
+    /// 读不出来的行在 <see cref="GetAllAsync{T}" /> 里同样整次抛出,在逐行容错的那一面里只交回 Id)。
+    /// </summary>
+    private sealed class JsonStore : IAppDataStore, ITolerantAppDataStore
     {
         private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
         private readonly ConcurrentDictionary<(string Collection, string Id), string> _docs = new();
@@ -216,6 +246,28 @@ public sealed class TransferQueueJournalTests
             Task.FromResult(_docs.Where(d => d.Key.Collection == collection)
                 .Select(d => JsonSerializer.Deserialize<T>(d.Value, Json)!)
                 .ToList());
+
+        public Task<(List<T> Items, List<string> UnreadableIds)> GetAllReadableAsync<T>(string collection,
+            CancellationToken cancellationToken = default) where T : class
+        {
+            var items = new List<T>();
+            var unreadable = new List<string>();
+            foreach (KeyValuePair<(string Collection, string Id), string> doc in _docs.Where(d => d.Key.Collection == collection))
+            {
+                try
+                {
+                    items.Add(JsonSerializer.Deserialize<T>(doc.Value, Json)!);
+                }
+                catch (JsonException)
+                {
+                    unreadable.Add(doc.Key.Id);
+                }
+            }
+            return Task.FromResult((items, unreadable));
+        }
+
+        /// <summary>原样塞一份 JSON 进去(可以是坏的),模拟崩溃时写了一半、或者别的版本写下的文档。</summary>
+        public void PutRaw(string collection, string id, string json) => _docs[(collection, id)] = json;
 
         public Task UpsertAsync<T>(string collection, string id, T value, CancellationToken cancellationToken = default) where T : class
         {

@@ -1,10 +1,11 @@
+using System.Text.Json;
 using SonnetDB.Documents;
 using VelaShell.Core.Data;
 
 namespace VelaShell.Infrastructure.Persistence;
 
 /// <summary>基于 SonnetDB 文档集合的通用文档存储(UI 配置、快捷命令等业务数据)。</summary>
-public sealed class SonnetDbAppDataStore(SonnetDbEngine engine) : IAppDataStore
+public sealed class SonnetDbAppDataStore(SonnetDbEngine engine) : IAppDataStore, ITolerantAppDataStore
 {
     private readonly SonnetDbEngine _engine = engine ?? throw new ArgumentNullException(nameof(engine));
 
@@ -16,7 +17,10 @@ public sealed class SonnetDbAppDataStore(SonnetDbEngine engine) : IAppDataStore
             return row is null ? null : SonnetDbJson.Deserialize<T>(row.Json);
         }, cancellationToken).ConfigureAwait(false);
 
-    /// <summary>扫描指定集合的全部文档并反序列化,跳过反序列化失败的行。</summary>
+    /// <summary>
+    /// 扫描指定集合的全部文档并反序列化,跳过内容为 JSON <c>null</c> 的行;
+    /// 任何一行反序列化失败都会让整次读取抛出(要逐行容错走 <see cref="GetAllReadableAsync{T}" />)。
+    /// </summary>
     public async Task<List<T>> GetAllAsync<T>(string collection, CancellationToken cancellationToken = default) where T : class
     {
         List<T?> items = await _engine.WithCollectionAsync(collection, store =>
@@ -24,6 +28,36 @@ public sealed class SonnetDbAppDataStore(SonnetDbEngine engine) : IAppDataStore
                              cancellationToken).ConfigureAwait(false);
         return [.. items.Where(i => i is not null).Cast<T>()];
     }
+
+    /// <inheritdoc />
+    public async Task<(List<T> Items, List<string> UnreadableIds)> GetAllReadableAsync<T>(string collection,
+        CancellationToken cancellationToken = default) where T : class =>
+        await _engine.WithCollectionAsync(collection, store =>
+        {
+            var items = new List<T>();
+            var unreadable = new List<string>();
+            foreach (DocumentRow row in store.Scan())
+            {
+                T? value;
+                try
+                {
+                    value = SonnetDbJson.Deserialize<T>(row.Json);
+                }
+                catch (Exception ex) when (ex is JsonException or NotSupportedException)
+                {
+                    value = null;
+                }
+                if (value is null)
+                {
+                    unreadable.Add(row.Id);
+                }
+                else
+                {
+                    items.Add(value);
+                }
+            }
+            return (items, unreadable);
+        }, cancellationToken).ConfigureAwait(false);
 
     /// <summary>将文档序列化后按主键写入指定集合(存在则覆盖,不存在则插入)。</summary>
     public async Task UpsertAsync<T>(string collection, string id, T value, CancellationToken cancellationToken = default) where T : class

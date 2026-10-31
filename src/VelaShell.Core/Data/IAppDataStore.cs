@@ -18,3 +18,19 @@ public interface IAppDataStore
     /// <summary>按集合名与文档 Id 删除文档。</summary>
     Task DeleteAsync(string collection, string id, CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// <see cref="IAppDataStore" /> 的可选能力:逐行读一个集合,读不出来的行(坏 JSON、字段类型对不上)
+/// 不让整次读取失败,而是把它们的 Id 交给调用方处理。
+/// </summary>
+/// <remarks>
+/// 单独一面,而不是改 <see cref="IAppDataStore.GetAllAsync{T}" /> 的语义:设置、布局模板这类集合里读不出来的行
+/// 多半是新版本写下的,旧版本把它们当坏数据跳过、再整份写回,丢的就是用户的数据 —— 那些集合宁可整次读失败。
+/// 只有「坏一行就该丢一行」的账(传输队列)才走这一面。
+/// </remarks>
+public interface ITolerantAppDataStore
+{
+    /// <summary>读出指定集合里能读出来的全部文档;读不出来的那些行只交回 Id。</summary>
+    Task<(List<T> Items, List<string> UnreadableIds)> GetAllReadableAsync<T>(string collection, CancellationToken cancellationToken = default)
+        where T : class;
+}
