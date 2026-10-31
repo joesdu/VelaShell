@@ -209,9 +209,13 @@ public static class RemoteRelay
             progress, writing, resumeOffset, requireFullConsumption, createMode, piped, cancellationToken).ConfigureAwait(false);
     }
     /// <summary>
-    /// 源端在交出任何字节之前就被掐断时,中转会重开一次源流。重开之前需要先让后端「排队等前一个传输结束」,
-    /// 否则新连接照样会撞上同一个并发上限 —— 由后端实现这个接口。
+    /// 让后端把一个会话的连接上限收成 1(「排队等前一个传输结束」)。本意是源端在交出任何字节之前就被掐断时,
+    /// 中转先调它再重开一次源流,免得新连接撞上同一个并发上限。
     /// </summary>
+    /// <remarks>
+    /// 眼下<b>没接上</b>:中转从不调用它,也不会因此重开源流;FtpFileService 实现了它,但没有调用方。
+    /// 源流在交出之前就被拒(425/450、数据连接一开就复位),由 FtpFileService.OpenReadAsync 自己收紧后有限重试。
+    /// </remarks>
     public interface IFtpSourceRejectionSignal
     {
         /// <summary>把这个会话的连接上限收成 1(已经是 1 时是空操作)。</summary>
@@ -651,7 +655,7 @@ public sealed class RemoteRelayCommitException(Exception innerException)
 /// <param name="actualBytes">实际读取(或交给目标)的字节数。</param>
 /// <param name="rejectedByServer">
 /// 一个字节都没读到就结束:数据连接在 RETR 之后被服务器掐断(并发被拒时不少服务器直接复位,
-/// 不给 425/450)。这类失败与「文件内容变了」无关,重开一次源流往往就能过去。
+/// 不给 425/450),与「文件内容变了」无关。眼下没有地方读它,也没有据此重开源流的逻辑(见 <see cref="RejectedByServer" />)。
 /// </param>
 /// <param name="message">
 /// 可选的完整消息。字段与消息分开,是为了让只种了部分本地化资源的调用方(或一条尚未取走全部内容的源流)
@@ -668,7 +672,11 @@ public sealed class RemoteTransferLengthException(
 
     /// <summary>
     /// 一个字节都没读到就结束:数据连接在 RETR 之后被服务器掐断(并发被拒时不少服务器直接复位,
-    /// 不给 425/450)。这类失败与「文件内容变了」无关,重开一次源流往往就能过去。
+    /// 不给 425/450)。这类失败与「文件内容变了」无关。
     /// </summary>
+    /// <remarks>
+    /// 眼下恒为 false:唯一置 true 的地方(FTP 读流 LeasedStream 的长度核对)走不到 —— 读失败时流先被关掉,
+    /// 不会再带着失败标记进到那里。也没有任何代码读它;重试分类不看它(本异常一律按永久失败算,见 TransferRetryPolicy)。
+    /// </remarks>
     public bool RejectedByServer { get; } = rejectedByServer;
 }

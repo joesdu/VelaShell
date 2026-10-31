@@ -860,8 +860,8 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             }
             catch (RejectedDataConnectionException) when (attempt < MaxBusyRetries && LimitSessionToSingleConnection(sessionId))
             {
-                // 数据连接一个字节都没给就被关掉:服务器大概在拒绝并发。收成单连接再开一次,
-                // 这一次会排队等前一个传输结束,而不是立刻又撞上同一个上限。
+                // 走不到:眼下没有任何代码抛 RejectedDataConnectionException(见它的说明)。
+                // 「数据连接一个字节都没给就被关掉」由下面那条 catch 里的 LooksLikeRejectedDataConnection 认。
                 lease.Invalidate();
                 try { lease.Dispose(); }
                 catch (Exception cleanup) when (cleanup is not OutOfMemoryException)
@@ -1368,9 +1368,12 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
 
     /// <summary>
     /// 数据连接在 RETR 之后、任何字节到达之前就被关闭。并发被拒时不少服务器就是这种形态
-    /// (直接复位,不给 425/450),所以这不是「文件坏了」,而是「这次没轮到」——
-    /// 上层据此把会话收成单连接后重试,而不是判成内容不符。
+    /// (直接复位,不给 425/450),所以这不是「文件坏了」,而是「这次没轮到」。
     /// </summary>
+    /// <remarks>
+    /// 眼下<b>没有任何代码抛它</b>:<see cref="OpenReadOnceAsync" /> 里接它的那条 catch 走不到,
+    /// 这种形态由 <c>FluentFtpInterop.LooksLikeRejectedDataConnection</c> 按异常链认(见 <see cref="RunTransferAsync" />)。
+    /// </remarks>
     public sealed class RejectedDataConnectionException(string message, Exception? innerException = null)
         : VelaFtpConnectionException(message, innerException);
     /// <summary>未通过校验的证书信息。</summary>
@@ -1415,16 +1418,16 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                 {
                     // 一个字节都没抓到就结束。两种可能:数据连接被服务器掐掉(并发被拒时不少服务器
                     // 直接复位、不给 425/450),或者服务器正常结束了数据流但文件确实比元数据短。
-                    // 只有「读取过程中真的出现过错误」才判为前者并允许重开;正常 EOF 仍是长度不符。
+                    // 本意是「读取过程中真的出现过错误」才判为前者。但这一支走不到:读失败时下面的 catch
+                    // 先置 _readFailed 再把流关掉,之后的读一律 ObjectDisposedException,不会再带着 _readFailed 进到这里;
+                    // RejectedByServer 也没有任何地方读,更没有据此重开源流的逻辑。
                     if (_bytesRead == 0 && _readFailed)
                     {
-                        // 根本没有数据到达,而且读取过程本身就失败了:数据连接被服务器掐掉
-                        // (并发被拒时不少服务器直接复位,不给 425/450),不是文件内容不符。
                         throw new RemoteTransferLengthException(_remotePath, _length, 0, rejectedByServer: true);
                     }
                     if (_bytesRead == 0)
                     {
-                        // 没有失败、也没有数据:服务器正常结束了数据流。文件确实比元数据短,重开无益。
+                        // 没有失败、也没有数据:服务器正常结束了数据流。文件确实比元数据短。
                         throw new RemoteTransferLengthException(_remotePath, _length, 0, rejectedByServer: false);
                     }
                     throw LengthMismatch();

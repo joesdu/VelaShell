@@ -16,6 +16,10 @@ namespace VelaShell.ViewModels;
 /// <para>
 /// 只缓存<b>成功</b>的 stat:失败(源不在了、权限、临时网络错误)照旧每一轮都再试,免得一次瞬时失败被当成定论。
 /// </para>
+/// <para>
+/// 眼下<b>没接上</b>:没有任何代码构造它或 <see cref="StreamedRelaySource" />,中转的每一次尝试照旧在源端 stat 一次
+/// (RemoteRelay 的 <c>knownSource</c> 参数也只有测试在传)。上面说的是设计意图,不是现状。
+/// </para>
 /// </remarks>
 public sealed class RelaySourceCache
 {
