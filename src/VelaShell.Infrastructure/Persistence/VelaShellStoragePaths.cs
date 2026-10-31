@@ -40,6 +40,7 @@ public sealed class VelaShellStoragePaths
         StartupAppearanceFile = Path.Combine(root, "startup.appearance");
         GeoIpDirectory = Path.Combine(root, "geoip");
         UserPluginDirectory = Path.Combine(root, "plugins");
+        PluginUpdateDirectory = Path.Combine(root, "plugin-updates");
         LegacyLocalAppDataDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "VelaShell"
@@ -119,6 +120,15 @@ public sealed class VelaShellStoragePaths
 
     /// <summary>用户安装插件目录(<c>~/.velashell/plugins</c>)。</summary>
     public string UserPluginDirectory { get; }
+
+    /// <summary>
+    /// 插件商店下的新版包(<c>~/.velashell/plugin-updates</c>):下载、核对摘要、安装都在这里,装完即删。
+    /// </summary>
+    /// <remarks>
+    /// 不放系统临时目录:Linux 上那是所有用户共用的 <c>/tmp</c>,别的本机用户可以抢先建好同名目录,
+    /// 在核对摘要之后、安装之前把包换掉(或放一个符号链接让下载写到别处)。数据根在用户自己的主目录下。
+    /// </remarks>
+    public string PluginUpdateDirectory { get; }
 
     /// <summary>旧版应用数据根目录(仅供首次迁移读取并在成功后删除)。</summary>
     public string LegacyLocalAppDataDirectory { get; }

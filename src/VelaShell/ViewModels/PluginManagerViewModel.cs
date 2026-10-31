@@ -445,10 +445,11 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         }
     }
 
-    /// <summary>把某一行对应的新版包下到临时目录并返回路径;失败时返回 <see langword="null" />。</summary>
+    /// <summary>把某一行对应的新版包下到数据根的 <c>plugin-updates</c> 目录并返回路径;失败时返回 <see langword="null" />。</summary>
     /// <remarks>
     /// **只下载,不安装。** 装不装、要不要先问一句,由窗口按发布者变没变来决定 ——
-    /// 那一问要摆两个指纹给用户看,只有界面问得出口。
+    /// 那一问要摆两个指纹给用户看,只有界面问得出口。用完由窗口交给 <see cref="DiscardDownloadedUpdate" /> 删掉。
+    /// 不下到系统临时目录的原因见 <see cref="Infrastructure.Persistence.VelaShellStoragePaths.PluginUpdateDirectory" />。
     /// </remarks>
     /// <param name="row">要更新的那一行。</param>
     public async Task<string?> DownloadUpdateAsync(PluginRowViewModel row)
@@ -459,7 +460,7 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
             return null;
         }
         string destination = Path.Combine(
-            Path.GetTempPath(), "velashell-plugin-updates", $"{row.Id}-{version}.vpx");
+            new Infrastructure.Persistence.VelaShellStoragePaths().PluginUpdateDirectory, $"{row.Id}-{version}.vpx");
         SetNotice(Strings.Format("PluginManager_Updating", row.DisplayName));
         try
         {
@@ -470,6 +471,20 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         {
             SetNotice(Strings.Format("PluginManager_UpdateFailed", ex.Message));
             return null;
+        }
+    }
+
+    /// <summary>删掉 <see cref="DownloadUpdateAsync" /> 下的那个包(装上了、没装、用户取消都删);删不掉只记一行。</summary>
+    /// <param name="path">包路径。</param>
+    public static void DiscardDownloadedUpdate(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"[VelaShell] The downloaded plugin update could not be deleted ({path}): {ex.Message}");
         }
     }
 

@@ -823,6 +823,7 @@ FTP 源的目标不支持原子提交（例如当前 FTP/FTPS、插件目标或�
 | 凭据解密密钥 | macOS：登录钥匙串，服务名 `com.velashell.master-key`（「钥匙串访问」里搜 VelaShell）；Linux：Secret Service，schema `com.velashell.MasterKey`（Seahorse「密码和密钥」里搜 VelaShell，或 `secret-tool search --all xdg:schema com.velashell.MasterKey`，输出里含密钥本身，别外传）；数据根里的 `~/.velashell/secret.key.ref` 只是条目清单。Windows 与回落时：`~/.velashell/secret.key` | 恢复加密凭据所需；删掉钥匙串条目或 `secret.key.ref`，已存的密码就解不开。卸载应用不会删钥匙串里的条目，要彻底清掉就在上述两处搜 VelaShell 删除。`secret.key` 的备份须加密保管（回落时它是明文）；Windows 还受原用户 DPAPI 条件限制 |
 | 会话、传输及应用诊断日志 | `~/.velashell/logs` | 可含输出和路径等敏感资料；具体传输日志目录可在设置中另指定 |
 | 用户安装的插件 | `~/.velashell/plugins` | 与程序目录随包提供的 `plugins/` 不同；迁移后核对兼容性与权限 |
+| 插件更新包 | `~/.velashell/plugin-updates` | 插件管理里「更新到 …」「全部更新」下载的新版包在这里核对摘要、安装，装完（没装、取消也一样）即删；不必备份 |
 | 离线地理数据库 | `~/.velashell/geoip` | 可选资料，不是主机连接凭据 |
 | SSH 私钥、公钥和证书 | 常见为 `~/.ssh`，以连接实际路径为准 | 不在连接配置文件内；需另外安全备份实际文件 |
 

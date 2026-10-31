@@ -19,6 +19,8 @@ public sealed class VelaShellStoragePathsTests
         Assert.AreEqual(
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".velashell", "plugins"),
             paths.UserPluginDirectory);
+        // 插件更新包在用户自己的数据根里核对、安装,不放所有用户共用的系统临时目录。
+        Assert.AreEqual(Path.Combine(paths.RootDirectory, "plugin-updates"), paths.PluginUpdateDirectory);
         Assert.AreEqual(
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VelaShell"),
             paths.LegacyLocalAppDataDirectory);
