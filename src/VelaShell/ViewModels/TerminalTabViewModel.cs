@@ -836,7 +836,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         {
             return false;
         }
-        SendProgrammatic(command.TrimEnd('\r', '\n'), submit, forwardToSyncChannel: false);
+        SendProgrammatic(command.TrimEnd('\r', '\n'), submit, forwardToSyncChannel: false, background: false);
         return true;
     }
 
@@ -850,7 +850,12 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     /// 是否经同步输入频道转发。快捷命令与重跑一律不转(前者自带多目标分发,后者只属于这一个终端);
     /// 自动应答只有规则明确选了才转。
     /// </param>
-    private void SendProgrammatic(string payload, bool submit, bool forwardToSyncChannel)
+    /// <param name="background">
+    /// 不是用户此刻发起的(自动应答):走 <see cref="ITerminalEmulator.WriteBackgroundInput" />,不把回滚中的视图
+    /// 拉回底部、不清选区。快捷命令与重跑是用户点出来的,照键入的口径收尾。应答文字不含控制字符
+    /// (<c>OutputRuleCompiler</c> 拦下),不会是多行。
+    /// </param>
+    private void SendProgrammatic(string payload, bool submit, bool forwardToSyncChannel, bool background)
     {
         bool multiline = QuickCommandText.IsMultiline(payload);
 
@@ -862,6 +867,14 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         IsProgrammaticInput = true;
         try
         {
+            if (background && !multiline)
+            {
+                // 与下面同样按会话字符集编正文、回车按终端模式编,同样经键入出口(补全跟踪、同步转发、
+                // 桥的输入代次、共享密码列表的作废都照旧),只是不做键入后的视图收尾。
+                TerminalEmulator.WriteBackgroundInput(
+                    payload.Length > 0 ? TerminalEmulator.SessionEncoding.GetBytes(payload) : [], submit);
+                return;
+            }
             if (multiline)
             {
                 // 括号粘贴由终端按会话字符集编正文、按 ASCII 编标记,换行也由它统一成回车。
@@ -910,6 +923,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     /// <remarks>
     /// 与快捷命令同一条程序注入路径(<see cref="SendProgrammatic" />):按会话字符集编码、回车按终端模式编、
     /// 补全弹层不弹;同步输入频道默认不转,规则选了「转发」才转。没连着(断线、重连中)时什么都不发、也不提示。
+    /// 与快捷命令不同的只有一处:这不是用户的动作,不清选区、不把回滚中的视图拉回底部(<c>background</c>)。
     /// </remarks>
     private void OnOutputTriggerFired(OutputTriggerHit hit)
     {
@@ -927,7 +941,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         {
             return;
         }
-        SendProgrammatic(payload, hit.SendEnter, hit.ForwardToSyncChannel);
+        SendProgrammatic(payload, hit.SendEnter, hit.ForwardToSyncChannel, background: true);
         ShowAutoResponseNotice(Strings.Format("OutRule_NoticeResponded", hit.RuleName));
     }
 

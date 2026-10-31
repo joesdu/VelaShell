@@ -1014,6 +1014,21 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     }
 
     /// <inheritdoc />
+    public void WriteBackgroundInput(byte[] data, bool submit)
+    {
+        // 与 WriteInput + WriteKeyInput 同样分两次过 SendTypedInput(行跟踪先看见正文、再看见回车),
+        // 唯独不跟 AfterProgrammaticInput:这不是用户的键入,不该替他把视图拉回底部、把选区清掉。
+        if (data.Length > 0)
+        {
+            SendTypedInput(data);
+        }
+        if (submit && InputEncoder.Encode(Key.Enter, KeyModifiers.None, Emulator.Modes, Emulator.Type) is { Length: > 0 } enter)
+        {
+            SendTypedInput(enter);
+        }
+    }
+
+    /// <inheritdoc />
     public bool IsBracketedPasteEnabled => Emulator.Modes.BracketedPaste;
 
     /// <summary>用户产生的输入字节(不含协议自动应答),供命令补全等跟踪键入。</summary>

@@ -28,23 +28,20 @@ public sealed class TerminalTabOutputTriggerTests
         new(Guid.NewGuid(), "host key", response, enter, forward, limited);
 
     [TestMethod]
-    public void Hit_TypesTheResponseThenPressesEnter_OnTheQuickCommandPath()
+    public void Hit_TypesTheResponseThenPressesEnter_WithoutTheKeystrokeViewReset()
     {
+        // 正文与回车一起交给终端的后台输入口:照样经键入出口发出,但不清选区、不把回滚中的视图拉回底部 ——
+        // 快捷命令那条路(WriteInput / WriteKeyInput)是给用户自己点出来的输入用的。
         _vm.ConnectionStatus = SessionStatus.Connected;
         var flags = new List<(bool Suppressed, bool Programmatic)>();
-        _terminal.When(t => t.WriteInput(Arg.Any<byte[]>()))
-            .Do(_ => flags.Add((_vm.IsSyncForwardSuppressed, _vm.IsProgrammaticInput)));
-        _terminal.When(t => t.WriteKeyInput(Arg.Any<Key>(), Arg.Any<KeyModifiers>()))
+        _terminal.When(t => t.WriteBackgroundInput(Arg.Any<byte[]>(), Arg.Any<bool>()))
             .Do(_ => flags.Add((_vm.IsSyncForwardSuppressed, _vm.IsProgrammaticInput)));
 
         Fire(Hit());
 
-        Received.InOrder(() =>
-        {
-            _terminal.WriteInput(Arg.Is<byte[]>(b => b.SequenceEqual(Encoding.UTF8.GetBytes("yes"))));
-            _terminal.WriteKeyInput(Key.Enter, KeyModifiers.None);
-        });
-        Assert.AreSequenceEqual([(true, true), (true, true)], flags, "默认不进同步输入频道;整段标成程序注入,补全弹层不弹。");
+        _terminal.Received(1).WriteBackgroundInput(Arg.Is<byte[]>(b => b.SequenceEqual(Encoding.UTF8.GetBytes("yes"))), true);
+        AssertNoKeystrokePath();
+        Assert.AreSequenceEqual([(true, true)], flags, "默认不进同步输入频道;整段标成程序注入,补全弹层不弹。");
         Assert.IsFalse(_vm.IsSyncForwardSuppressed);
         Assert.IsFalse(_vm.IsProgrammaticInput);
         Assert.Contains("host key", _vm.AutoResponseNotice, "终端上方要说一声是哪条规则答的。");
@@ -55,7 +52,8 @@ public sealed class TerminalTabOutputTriggerTests
     {
         _vm.ConnectionStatus = SessionStatus.Connected;
         bool? suppressed = null;
-        _terminal.When(t => t.WriteInput(Arg.Any<byte[]>())).Do(_ => suppressed = _vm.IsSyncForwardSuppressed);
+        _terminal.When(t => t.WriteBackgroundInput(Arg.Any<byte[]>(), Arg.Any<bool>()))
+            .Do(_ => suppressed = _vm.IsSyncForwardSuppressed);
 
         Fire(Hit(forward: true));
 
@@ -69,8 +67,8 @@ public sealed class TerminalTabOutputTriggerTests
 
         Fire(Hit(response: ""));
 
-        _terminal.DidNotReceive().WriteInput(Arg.Any<byte[]>());
-        _terminal.Received(1).WriteKeyInput(Key.Enter, KeyModifiers.None);
+        _terminal.Received(1).WriteBackgroundInput(Arg.Is<byte[]>(b => b.Length == 0), true);
+        AssertNoKeystrokePath();
     }
 
     [TestMethod]
@@ -82,8 +80,8 @@ public sealed class TerminalTabOutputTriggerTests
 
         Fire(Hit(response: "是", enter: false));
 
-        _terminal.Received(1).WriteInput(Arg.Is<byte[]>(b => b.SequenceEqual(gbk.GetBytes("是"))));
-        _terminal.DidNotReceive().WriteKeyInput(Arg.Any<Key>(), Arg.Any<KeyModifiers>());
+        _terminal.Received(1).WriteBackgroundInput(Arg.Is<byte[]>(b => b.SequenceEqual(gbk.GetBytes("是"))), false);
+        AssertNoKeystrokePath();
     }
 
     [TestMethod]
@@ -93,8 +91,8 @@ public sealed class TerminalTabOutputTriggerTests
 
         Fire(Hit(limited: true));
 
-        _terminal.DidNotReceive().WriteInput(Arg.Any<byte[]>());
-        _terminal.DidNotReceive().WriteKeyInput(Arg.Any<Key>(), Arg.Any<KeyModifiers>());
+        _terminal.DidNotReceive().WriteBackgroundInput(Arg.Any<byte[]>(), Arg.Any<bool>());
+        AssertNoKeystrokePath();
         Assert.Contains("host key", _vm.AutoResponseNotice);
     }
 
@@ -103,8 +101,8 @@ public sealed class TerminalTabOutputTriggerTests
     {
         Fire(Hit());
 
-        _terminal.DidNotReceive().WriteInput(Arg.Any<byte[]>());
-        _terminal.DidNotReceive().WriteKeyInput(Arg.Any<Key>(), Arg.Any<KeyModifiers>());
+        _terminal.DidNotReceive().WriteBackgroundInput(Arg.Any<byte[]>(), Arg.Any<bool>());
+        AssertNoKeystrokePath();
         Assert.IsNull(_vm.AutoResponseNotice);
     }
 
@@ -116,7 +114,29 @@ public sealed class TerminalTabOutputTriggerTests
 
         Fire(Hit());
 
+        _terminal.DidNotReceive().WriteBackgroundInput(Arg.Any<byte[]>(), Arg.Any<bool>());
+    }
+
+    [TestMethod]
+    public void QuickCommand_StillGoesThroughTheKeystrokePath()
+    {
+        // 对照:用户点的快捷命令 / 重跑照键入的口径收尾,别被应答的改动带走。
+        _vm.ConnectionStatus = SessionStatus.Connected;
+
+        Assert.IsTrue(_vm.TryRerunCommand("ls"));
+
+        _terminal.Received(1).WriteInput(Arg.Any<byte[]>());
+        _terminal.Received(1).WriteKeyInput(Key.Enter, KeyModifiers.None);
+        _terminal.DidNotReceive().WriteBackgroundInput(Arg.Any<byte[]>(), Arg.Any<bool>());
+    }
+
+    /// <summary>应答没走用户键入那条会把视图拉回底部、清掉选区的路。</summary>
+    private void AssertNoKeystrokePath()
+    {
         _terminal.DidNotReceive().WriteInput(Arg.Any<byte[]>());
+        _terminal.DidNotReceive().WriteTextInput(Arg.Any<string>());
+        _terminal.DidNotReceive().WriteKeyInput(Arg.Any<Key>(), Arg.Any<KeyModifiers>());
+        _terminal.DidNotReceive().WritePasteInput(Arg.Any<string>());
     }
 
     private static Encoding CodePagesEncoding()

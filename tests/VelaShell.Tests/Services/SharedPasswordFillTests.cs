@@ -555,6 +555,33 @@ public sealed class SharedPasswordFillTests
         }
     });
 
+    /// <summary>
+    /// 输出规则的自动应答走终端的后台输入口(不清选区、不拉回视图),但它照样是一次出站输入:
+    /// 开着的请求要作废、桥的输入代次要前进 —— 否则应答之后点一项,密码就跟在 yes 后面交出去了。
+    /// </summary>
+    [TestMethod]
+    public Task AutoResponse_ExpiresAnOpenRequest_LikeAnyOtherOutboundInput() => Session.RunOnUiAsync(async () =>
+    {
+        using var control = new VelaTerminalControl();
+        IShellStreamWrapper shell = Shell();
+        await using var tab = new TerminalTabViewModel(control, shell) { ConnectionStatus = SessionStatus.Connected };
+        control.Feed("Password:"u8.ToArray());
+        using var request = new SharedPasswordFillRequest(tab, () => true);
+        int expired = 0;
+        request.Expired += () => expired++;
+        long generation = tab.Bridge!.InputGeneration;
+        Assert.IsTrue(request.IsValid, "前提:请求此刻有效。");
+
+        control.WriteBackgroundInput("yes"u8.ToArray(), submit: true);
+
+        Assert.AreEqual(1, expired);
+        Assert.IsFalse(request.IsValid);
+        Assert.IsGreaterThan(generation, tab.Bridge.InputGeneration);
+        ISharedCredentialRepository repository = Substitute.For<ISharedCredentialRepository>();
+        repository.GetPasswordAsync(Arg.Any<Guid>()).Returns("secret");
+        Assert.AreEqual(PasswordFillResult.Expired, await request.FillAsync(repository, Guid.NewGuid()));
+    });
+
     [TestMethod]
     public Task PalettePicker_TakesTerminalFocus_SoKeysReachTheList() => Session.RunOnUiAsync(async () =>
     {

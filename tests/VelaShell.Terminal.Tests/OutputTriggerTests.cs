@@ -464,6 +464,39 @@ public sealed class OutputTriggerTests
     }
 
     [TestMethod]
+    public void BackgroundInput_KeepsTheSelectionAndTheScrolledBackView()
+    {
+        OnUi(() =>
+        {
+            // 自动应答在提示出现 0.3 秒或冷却之后才发,那时用户可能正往回翻、选着一段日志。
+            // 它照常经键入出口发出去(行跟踪、同步转发、共享密码列表的作废都要看见它),但不是用户的键入:
+            // 不该把选区清掉、把视图拉回底部。
+            var control = new VelaTerminalControl { CursorBlink = false };
+            var typed = new List<byte>();
+            var sent = new List<byte>();
+            control.TypedInput += typed.AddRange;
+            control.UserInput += sent.AddRange;
+            control.Feed(Encoding.UTF8.GetBytes(string.Concat(Enumerable.Range(0, 100).Select(i => $"log line {i}\r\n"))));
+            control.ShowHit(new BufferSearchHit(10, 0, 10));
+            int offset = control.ScrollOffset;
+            Assert.IsGreaterThan(0, offset, "前提:视图在回滚里。");
+            Assert.AreEqual("log line 1", control.GetSelectedText());
+
+            control.WriteBackgroundInput("yes"u8.ToArray(), submit: true);
+
+            Assert.AreEqual(offset, control.ScrollOffset);
+            Assert.AreEqual("log line 1", control.GetSelectedText());
+            Assert.AreEqual("yes\r", Encoding.ASCII.GetString([.. typed]));
+            Assert.AreEqual("yes\r", Encoding.ASCII.GetString([.. sent]));
+
+            // 对照:用户自己键入照旧回到底部、清掉选区。
+            control.WriteTextInput("x");
+            Assert.AreEqual(0, control.ScrollOffset);
+            Assert.AreEqual("", control.GetSelectedText());
+        });
+    }
+
+    [TestMethod]
     public void UnchangedRuleSet_KeepsTheBudget()
     {
         OnUi(() =>
