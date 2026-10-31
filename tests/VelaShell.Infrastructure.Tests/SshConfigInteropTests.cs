@@ -1032,4 +1032,170 @@ public sealed class SshConfigInteropTests
             Assert.AreSequenceEqual([.. expected.PermitRemoteOpen ?? []], [.. actual.PermitRemoteOpen ?? []], $"#{i}");
         }
     }
+
+    // ------------------------------------------------------------ 反斜杠与引号(velashell-docs spec/09 §7.4)
+
+    /// <summary>
+    /// 命名管道与 UNC 路径的反斜杠照 ssh_config 的转义写(<c>\\.\pipe\x</c> 写成 <c>\\\\.\pipe\x</c>),普通的 Windows 路径原样,带空格的加引号,
+    /// 引号前加 <c>\</c>:SSH 库读回来是原值(ssh 读回来也是 —— 库的 SshConfigQuotingTests 拿本机 ssh -G 核对过同一套写法)。
+    /// 〔历史〕曾经原样写出:ssh 把 <c>\\.\pipe\x</c> 读成 <c>\.\pipe\x</c>,用不了那个 agent;本库读回来又不变,看不出错。
+    /// </summary>
+    [TestMethod]
+    public async Task 管道与UNC路径的反斜杠照ssh_config的转义写_读回来是原值()
+    {
+        const string Pipe = @"\\.\pipe\vela-pinned-agent";
+        const string Unc = @"\\fileserver\keys\id_ed25519";
+        const string Windows = @"C:\Keys\id_ed25519";
+        const string Spaced = @"C:\Program Files\Keys\my id";
+        SessionProfile pipe = new()
+        {
+            Name = "pipe",
+            Host = "10.0.0.51",
+            AuthMethod = AuthMethod.Agent,
+            Ssh = new SshSessionOptions { AgentEndpoint = Pipe, AgentForwarding = true },
+        };
+        SessionProfile unc = new() { Name = "unc", Host = "10.0.0.52", AuthMethod = AuthMethod.PrivateKey, PrivateKeyPath = Unc };
+        SessionProfile windows = new() { Name = "windows", Host = "10.0.0.53", AuthMethod = AuthMethod.PrivateKey, PrivateKeyPath = Windows };
+        SessionProfile spaced = new()
+        {
+            Name = "spaced",
+            Host = "10.0.0.54",
+            Username = "o'brien",
+            AuthMethod = AuthMethod.PrivateKey,
+            PrivateKeyPath = Spaced,
+        };
+
+        SshConfigExport export = SshConfigExporter.Write(Archive(pipe, unc, windows, spaced), NewDirectory());
+
+        Assert.Contains(@"    IdentityAgent \\\\.\pipe\vela-pinned-agent" + "\n", export.Content);
+        Assert.Contains(@"    ForwardAgent \\\\.\pipe\vela-pinned-agent" + "\n", export.Content);
+        Assert.Contains(@"    IdentityFile \\\\fileserver\keys\id_ed25519" + "\n", export.Content);
+        Assert.Contains(@"    IdentityFile C:\Keys\id_ed25519" + "\n", export.Content, "普通的 Windows 路径原样写");
+        Assert.Contains(@"    IdentityFile ""C:\Program Files\Keys\my id""" + "\n", export.Content);
+        Assert.Contains(@"    User o\'brien" + "\n", export.Content, "单引号要转义,否则 ssh 报引号没配对、整份配置不读");
+
+        Assert.AreEqual(Pipe, ReadBack(export, "pipe").First("IdentityAgent"));
+        Assert.AreEqual(Pipe, ReadBack(export, "pipe").First("ForwardAgent"));
+        Assert.AreSequenceEqual([Unc], [.. ReadBack(export, "unc").IdentityFiles]);
+        Assert.AreSequenceEqual([Windows], [.. ReadBack(export, "windows").IdentityFiles]);
+        Assert.AreSequenceEqual([Spaced], [.. ReadBack(export, "spaced").IdentityFiles]);
+        Assert.AreEqual("o'brien", ReadBack(export, "spaced").User);
+
+        if (OperatingSystem.IsWindows())
+        {
+            // 再导入:管道是这台电脑上用得了的端点,路径是完整路径 —— 与导出前一样,没什么要说明的。
+            string path = WriteConfig(export.Content);
+            ImportedSession readPipe = await ScanOneAsync(path, "pipe");
+            Assert.AreEqual(AuthMethod.Agent, readPipe.AuthMethod);
+            Assert.AreEqual(Pipe, readPipe.Ssh?.AgentEndpoint);
+            Assert.IsTrue(readPipe.Ssh!.AgentForwarding);
+            Assert.IsEmpty(readPipe.Notes);
+            ImportedSession readUnc = await ScanOneAsync(path, "unc");
+            Assert.AreEqual(Unc, readUnc.PrivateKeyPath);
+            Assert.IsEmpty(readUnc.Notes);
+            Assert.AreEqual(Spaced, (await ScanOneAsync(path, "spaced")).PrivateKeyPath);
+        }
+    }
+
+    /// <summary>
+    /// 值里有换行的写不进 ssh_config(一行装不下,硬写的话下一行就成了另一条设置):改写成一行不带值的说明注释。
+    /// 曾经只加了引号 —— 带换行的用户名能在导出的文件里写出一行 <c>ProxyCommand</c>。
+    /// </summary>
+    [TestMethod]
+    public void 带换行的值不写进ssh_config_改写成说明注释()
+    {
+        SessionProfile session = new() { Name = "multi", Host = "10.0.0.55", Username = "joe\nProxyCommand calc" };
+
+        SshConfigExport export = SshConfigExporter.Write(Archive(session));
+
+        Assert.DoesNotContain("ProxyCommand calc", export.Content.Replace("# User", string.Empty));
+        Assert.Contains("    # User  (VelaShell: the value contains a line break; ssh_config cannot hold it)\n", export.Content);
+        SshHostConfig host = ReadBack(export, "multi");
+        Assert.IsNull(host.User);
+        Assert.IsNull(host.ProxyCommand);
+    }
+
+    /// <summary>别名里的单引号与反斜杠换成 <c>-</c>:<c>Host it's</c> 在 ssh 里是引号没配对,整份配置报错。</summary>
+    [TestMethod]
+    public void 别名里的引号与反斜杠换成短横()
+    {
+        SessionProfile session = new() { Name = @"it's a\b", Host = "10.0.0.56" };
+
+        SshConfigExport export = SshConfigExporter.Write(Archive(session));
+
+        Assert.Contains("Host it-s-a-b\n", export.Content);
+        Assert.AreEqual("10.0.0.56", ReadBack(export, "it-s-a-b").HostName);
+    }
+
+    /// <summary>
+    /// 手写配置里的反斜杠照 ssh 的读法(spec/09 §7.4):普通的 Windows 路径(<c>\</c> 后跟字母、数字或 <c>.</c>)原样;
+    /// 写成单个 <c>\\</c> 开头的 UNC 路径与命名管道,ssh 读成一个 <c>\</c> 开头 —— VelaShell 也这样读,并在预览里说一句该怎么写;
+    /// 写成 <c>\\\\</c> 的读成 <c>\\</c>。
+    /// </summary>
+    [TestMethod]
+    public async Task 手写的单个双反斜杠开头的路径照ssh的读法并说明一句()
+    {
+        string config = WriteConfig(
+            """
+            Host unc
+                IdentityFile \\fileserver\keys\id
+            Host win
+                IdentityFile C:\Users\me\.ssh\id_ed25519
+            Host pipe
+                IdentityAgent \\.\pipe\openssh-ssh-agent
+            Host fixed
+                IdentityAgent \\\\.\pipe\vela-test-agent
+            """);
+
+        ImportedSession readUnc = await ScanOneAsync(config, "unc");
+        Assert.Contains(n => n.Contains(@"IdentityFile \fileserver\keys\id"), readUnc.Notes, "读成了一个反斜杠开头:说清读成了什么");
+
+        ImportedSession readWin = await ScanOneAsync(config, "win");
+        Assert.IsEmpty(readWin.Notes, "普通的 Windows 路径与 ssh 读得一样,没什么要说的");
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.AreEqual(@"C:\Users\me\.ssh\id_ed25519", readWin.PrivateKeyPath);
+        }
+
+        ImportedSession readPipe = await ScanOneAsync(config, "pipe");
+        Assert.Contains(n => n.Contains(@"IdentityAgent \.\pipe\openssh-ssh-agent"), readPipe.Notes);
+
+        ImportedSession readFixed = await ScanOneAsync(config, "fixed");
+        Assert.DoesNotContain(n => n.Contains(@"\.\pipe"), readFixed.Notes);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.AreEqual(AuthMethod.Agent, readFixed.AuthMethod);
+            Assert.AreEqual(@"\\.\pipe\vela-test-agent", readFixed.Ssh?.AgentEndpoint);
+        }
+    }
+
+    /// <summary>转发的一头是带空格的套接字路径:导出加引号,导入照 §7.4 读成一头(曾经按空格切成三段,说写错了)。</summary>
+    [TestMethod]
+    public async Task 带空格的套接字路径导出再导入是一头()
+    {
+        SessionProfile session = new() { Name = "sock", Host = "10.0.0.57" };
+        SessionArchive archive = Archive(session);
+        TunnelConfig tunnel = new()
+        {
+            Type = TunnelType.LocalForward,
+            Name = "",
+            LocalHost = "127.0.0.1",
+            LocalPort = 0,
+            LocalSocketPath = LocalSocket("vs my socket.sock"),   // 含 / 的一头才是套接字(与 ssh 的判断一致),Windows 上也写正斜杠
+            RemoteSocketPath = "/var/run/my app.sock",
+        };
+        archive.Tunnels = new() { [session.Id] = [tunnel] };
+
+        SshConfigExport export = SshConfigExporter.Write(archive);
+        Assert.Contains(@"""/var/run/my app.sock""", export.Content);
+
+        SshConfigForward forward = ReadBack(export, "sock").GetForwards().Single();
+        Assert.AreEqual(tunnel.LocalSocketPath, forward.ListenSocketPath);
+        Assert.AreEqual(tunnel.RemoteSocketPath, forward.TargetSocketPath);
+
+        ImportedSession imported = await ScanOneAsync(WriteConfig(export.Content), "sock");
+        TunnelConfig readBack = imported.Tunnels!.Single();
+        Assert.AreEqual(tunnel.LocalSocketPath, readBack.LocalSocketPath);
+        Assert.AreEqual(tunnel.RemoteSocketPath, readBack.RemoteSocketPath);
+    }
 }

@@ -19,7 +19,13 @@ public sealed class SshHostConfig
     // ⚠️ IDE0028 会建议把它简化成 []。**不能听** —— 那会把
     //    OrdinalIgnoreCase 丢掉，而 ssh_config 的键是不区分大小写的
     //    （`HostName` 与 `hostname` 是同一个键）。
-    private readonly Dictionary<string, List<string>> _settings = [with(StringComparer.OrdinalIgnoreCase)];
+    private readonly Dictionary<string, List<Entry>> _settings = [with(StringComparer.OrdinalIgnoreCase)];
+
+    /// <summary>一个键的一次出现。</summary>
+    /// <param name="Raw">关键字之后的原文（注释已去掉，引号与转义还在）。</param>
+    /// <param name="Text"><see cref="First"/> / <see cref="All"/> 交出的值：参数之间以一个空格连接；命令键是原文。</param>
+    /// <param name="Arguments">按 spec/09 §7.4 解开的参数；命令键只有一个（原文）。</param>
+    private readonly record struct Entry(string Raw, string Text, IReadOnlyList<string> Arguments);
 
     /// <param name="host">查的是哪个名字。</param>
     /// <param name="originalHost">使用者输入的那个名字（<c>HostName</c> 里的 <c>%h</c> 换成它）；缺省就是 <paramref name="host"/>。</param>
@@ -94,8 +100,8 @@ public sealed class SshHostConfig
     public IReadOnlyList<string> ExpandIdentityFiles(string? remoteUser = null) =>
     [
         .. IdentityFiles
-            .Where(static raw => !string.Equals(raw.Trim().Trim('"'), "none", StringComparison.OrdinalIgnoreCase))
-            .Select(raw => Expand(raw, remoteUser))
+            .Where(static value => !string.Equals(value, "none", StringComparison.OrdinalIgnoreCase))
+            .Select(value => Expand(value, remoteUser))
             .OfType<string>(),
     ];
 
@@ -104,8 +110,8 @@ public sealed class SshHostConfig
     public IReadOnlyList<string> ExpandCertificateFiles(string? remoteUser = null) =>
     [
         .. All("CertificateFile")
-            .Where(static raw => !string.Equals(raw.Trim().Trim('"'), "none", StringComparison.OrdinalIgnoreCase))
-            .Select(raw => Expand(raw, remoteUser))
+            .Where(static value => !string.Equals(value, "none", StringComparison.OrdinalIgnoreCase))
+            .Select(value => Expand(value, remoteUser))
             .OfType<string>(),
     ];
 
@@ -120,24 +126,22 @@ public sealed class SshHostConfig
     /// <remarks>
     /// 服务端的 <c>AcceptEnv</c> 只放行少数变量，被拒是常态（velashell-docs/zh/ssh/spec/05 §5.2）。
     /// <c>SendEnv -模式</c>（去掉之前的模式）这里不处理：一律只增不减。
+    /// 每一对是一个参数（spec/09 §7.4）：<c>SetEnv A="x y"</c> 设的是 <c>A=x y</c>。〔历史〕曾经按空白切开再去掉引号，值里的空格把它切断。
     /// </remarks>
     public IReadOnlyDictionary<string, string> SessionEnvironment()
     {
         Dictionary<string, string> result = [with(StringComparer.Ordinal)];
-        foreach (string line in All("SetEnv"))
+        foreach (string pair in Entries("SetEnv").SelectMany(static e => e.Arguments))
         {
-            foreach (string pair in line.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries))
+            int equals = pair.IndexOf('=', StringComparison.Ordinal);
+            if (equals > 0)
             {
-                int equals = pair.IndexOf('=', StringComparison.Ordinal);
-                if (equals > 0)
-                {
-                    result.TryAdd(pair[..equals], pair[(equals + 1)..].Trim('"'));
-                }
+                result.TryAdd(pair[..equals], pair[(equals + 1)..]);
             }
         }
 
-        string[] patterns = [.. All("SendEnv").SelectMany(static l => l.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries))
-            .Where(static p => !p.StartsWith('-'))];
+        string[] patterns = [.. Entries("SendEnv").SelectMany(static e => e.Arguments)
+            .Where(static p => p.Length > 0 && !p.StartsWith('-'))];
         if (patterns.Length > 0)
         {
             foreach (System.Collections.DictionaryEntry variable in Environment.GetEnvironmentVariables())
@@ -257,18 +261,19 @@ public sealed class SshHostConfig
     /// <summary><c>StrictHostKeyChecking</c> 的原文（<c>yes</c> / <c>no</c> / <c>ask</c> / <c>accept-new</c>）。</summary>
     public string? StrictHostKeyChecking => First("StrictHostKeyChecking");
 
-    /// <summary><c>UserKnownHostsFile</c>。</summary>
+    /// <summary><c>UserKnownHostsFile</c>（写了几个路径时以空格连接；连接时只用第一个）。</summary>
     public string? UserKnownHostsFile => First("UserKnownHostsFile");
 
     /// <summary>
     /// <c>GlobalKnownHostsFile</c>：只读的全局 known_hosts（可以几个、空格分隔，展开记号）；没写或写 <c>none</c> 时为空。
     /// </summary>
-    /// <remarks>写了才读 —— 不去找系统目录里默认的那一份。</remarks>
+    /// <remarks>
+    /// 写了才读 —— 不去找系统目录里默认的那一份。带空格的路径加引号写（spec/09 §7.4），是一个路径。
+    /// </remarks>
     public IReadOnlyList<string> GlobalKnownHostsFiles =>
-        First("GlobalKnownHostsFile") is { } value && !string.Equals(value.Trim(), "none", StringComparison.OrdinalIgnoreCase)
-            ? [.. value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(path => Expand(path.Trim('"')))
-                .OfType<string>()]
+        Arguments("GlobalKnownHostsFile") is { Count: > 0 } paths
+        && !(paths is [var only] && string.Equals(only, "none", StringComparison.OrdinalIgnoreCase))
+            ? [.. paths.Where(static path => path.Length > 0).Select(path => Expand(path)).OfType<string>()]
             : [];
 
     /// <summary><c>HostKeyAlias</c>：查、记主机密钥时代替主机名的别名；没写为 <see langword="null"/>。</summary>
@@ -301,7 +306,7 @@ public sealed class SshHostConfig
     public bool TryGetIdentityAgent(out string? endpoint)
     {
         endpoint = null;
-        string? value = First("IdentityAgent")?.Trim().Trim('"');
+        string? value = First("IdentityAgent");
         if (string.IsNullOrEmpty(value) || string.Equals(value, "SSH_AUTH_SOCK", StringComparison.Ordinal))
         {
             return true;
@@ -341,7 +346,7 @@ public sealed class SshHostConfig
     internal bool TryGetForwardedAgent(out string? endpoint)
     {
         endpoint = null;
-        string? value = First("ForwardAgent")?.Trim();
+        string? value = First("ForwardAgent");
 
         if (string.IsNullOrEmpty(value) || string.Equals(value, "no", StringComparison.OrdinalIgnoreCase))
         {
@@ -395,17 +400,45 @@ public sealed class SshHostConfig
     /// 配置里的转发（<c>LocalForward</c> / <c>RemoteForward</c> / <c>DynamicForward</c>，按种类、各自按出现顺序），解析成结构化的两头。
     /// <c>ClearAllForwardings yes</c> 时为空。
     /// </summary>
-    /// <exception cref="Diagnostics.SshConnectException">某一条写法不对（<see cref="Diagnostics.SshFailureReason.InvalidConfiguration"/>）。</exception>
-    /// <remarks>与其它键不同，这三个键是<b>累加</b>的：每一行都是一条转发（ssh_config(5)）。</remarks>
-    public IReadOnlyList<SshConfigForward> GetForwards() =>
-        ClearAllForwardings
-            ? []
-            :
-            [
-                .. All("LocalForward").Select(v => SshConfigForward.Parse(SshConfigForwardKind.Local, v)),
-                .. All("RemoteForward").Select(v => SshConfigForward.Parse(SshConfigForwardKind.Remote, v)),
-                .. All("DynamicForward").Select(v => SshConfigForward.Parse(SshConfigForwardKind.Dynamic, v)),
-            ];
+    /// <param name="onInvalid">
+    /// 写法不对的那一行交给它（那一行的原文、异常），跳过这一行、其余照解 —— 导入这类「一行写错不连累别的行」的场合用；
+    /// <see langword="null"/>（默认）时写错一条就抛 —— 起转发前先把写法全部查一遍（spec/09 §7.3）。
+    /// </param>
+    /// <exception cref="Diagnostics.SshConnectException">某一条写法不对（<see cref="Diagnostics.SshFailureReason.InvalidConfiguration"/>），且没给 <paramref name="onInvalid"/>。</exception>
+    /// <remarks>
+    /// 与其它键不同，这三个键是<b>累加</b>的：每一行都是一条转发（ssh_config(5)）。两头照 spec/09 §7.4 分词 —— 带空格的套接字路径加引号写，是一头。
+    /// </remarks>
+    public IReadOnlyList<SshConfigForward> GetForwards(Action<string, Diagnostics.SshConnectException>? onInvalid = null)
+    {
+        if (ClearAllForwardings)
+        {
+            return [];
+        }
+
+        List<SshConfigForward> forwards = [];
+        foreach ((SshConfigForwardKind kind, string keyword) in ForwardKeywords)
+        {
+            foreach (Entry entry in Entries(keyword))
+            {
+                try
+                {
+                    forwards.Add(SshConfigForward.Parse(kind, entry.Arguments, entry.Raw));
+                }
+                catch (Diagnostics.SshConnectException ex) when (onInvalid is not null)
+                {
+                    onInvalid($"{keyword} {entry.Raw}", ex);
+                }
+            }
+        }
+        return forwards;
+    }
+
+    private static readonly (SshConfigForwardKind Kind, string Keyword)[] ForwardKeywords =
+    [
+        (SshConfigForwardKind.Local, "LocalForward"),
+        (SshConfigForwardKind.Remote, "RemoteForward"),
+        (SshConfigForwardKind.Dynamic, "DynamicForward"),
+    ];
 
     /// <summary>
     /// <c>PermitRemoteOpen</c>：远程动态转发的放行名单。没写时是 <see cref="RemoteOpenPolicy.Any"/>（OpenSSH 的默认）——
@@ -425,7 +458,7 @@ public sealed class SshHostConfig
         }
         try
         {
-            return RemoteOpenPolicy.Allow(value.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries));
+            return RemoteOpenPolicy.Allow([.. Arguments("PermitRemoteOpen").Where(static rule => rule.Length > 0)]);
         }
         catch (ArgumentException ex)
         {
@@ -450,25 +483,50 @@ public sealed class SshHostConfig
 
     /// <summary>取某个键的第一个值。</summary>
     /// <remarks>
+    /// <para>
     /// <b>「第一个」是对的，不是「最后一个」。</b>
     /// <c>ssh_config</c> 的规则是<b>先出现的赢</b> —— 与大多数配置格式相反。
     /// 这也是为什么 OpenSSH 的样例里 <c>Host *</c> 总是放在文件末尾。
+    /// </para>
+    /// <para>
+    /// 值是照 velashell-docs/zh/ssh/spec/09 §7.4 分好词、去掉引号与反斜杠转义之后的，与 <c>ssh -G</c> 读出来的一样
+    /// （<c>IdentityAgent \\\\.\pipe\x</c> 交出 <c>\\.\pipe\x</c>）；写了几个参数时以一个空格连接。
+    /// <c>ProxyCommand</c> / <c>RemoteCommand</c> / <c>LocalCommand</c> / <c>KnownHostsCommand</c> 是到行尾的原文。
+    /// </para>
     /// </remarks>
     public string? First(string key) =>
-        _settings.TryGetValue(key, out List<string>? values) && values.Count > 0 ? values[0] : null;
+        _settings.TryGetValue(key, out List<Entry>? entries) && entries.Count > 0 ? entries[0].Text : null;
 
-    /// <summary>取某个键的全部值，按出现顺序。</summary>
+    /// <summary>取某个键的全部值，按出现顺序（每个值的样子同 <see cref="First"/>）。</summary>
     public IReadOnlyList<string> All(string key) =>
-        _settings.TryGetValue(key, out List<string>? values) ? values : [];
+        _settings.TryGetValue(key, out List<Entry>? entries) ? [.. entries.Select(static e => e.Text)] : [];
 
-    internal void Add(string key, string value)
+    /// <summary>某个键第一次出现时的各个参数（引号与转义已解开）；没有时为空。</summary>
+    internal IReadOnlyList<string> Arguments(string key) =>
+        _settings.TryGetValue(key, out List<Entry>? entries) && entries.Count > 0 ? entries[0].Arguments : [];
+
+    private List<Entry> Entries(string key) =>
+        _settings.TryGetValue(key, out List<Entry>? entries) ? entries : [];
+
+    /// <param name="key">关键字。</param>
+    /// <param name="raw">关键字之后的原文（<see cref="SshConfigBlock.Settings"/> 里存的那样）。</param>
+    internal void Add(string key, string raw)
     {
-        if (!_settings.TryGetValue(key, out List<string>? values))
+        if (!_settings.TryGetValue(key, out List<Entry>? entries))
         {
-            values = [];
-            _settings[key] = values;
+            entries = [];
+            _settings[key] = entries;
         }
-        values.Add(value);
+
+        if (SshConfigSyntax.TakesRestOfLine(key))
+        {
+            entries.Add(new Entry(raw, raw, [raw]));
+            return;
+        }
+
+        // 引号没配对的行解析时已经丢掉了（spec/09 §7.4），这里配不上只会是调用方直接塞进来的原文 —— 当成一个参数。
+        IReadOnlyList<string> arguments = SshConfigSyntax.TrySplit(raw, out List<string>? words) ? words : [raw];
+        entries.Add(new Entry(raw, string.Join(' ', arguments), arguments));
     }
 
     private static bool IsYes(string? value) =>

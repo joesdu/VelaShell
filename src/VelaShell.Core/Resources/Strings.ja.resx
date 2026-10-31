@@ -6187,6 +6187,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SshCfgImport_NoteForwardInvalid" xml:space="preserve">
     <value>インポートしませんでした。転送の書き方が正しくありません：{0}</value>
   </data>
+  <data name="SshCfgImport_NoteSingleBackslash" xml:space="preserve">
+    <value>{0}：先頭がバックスラッシュ 1 つのパスとして読まれます。ssh_config では \\ はエスケープで \ 1 つになり、ssh も同じように読みます。UNC パスや名前付きパイプを指定するには、設定に \\\\server\share、\\\\.\pipe\名前 と書いてください。</value>
+  </data>
   <data name="SshCfgImport_NoteAlgoDropped" xml:space="preserve">
     <value>{0}：{1} を除外しました（このバージョンでは未実装で、書いてあってもネゴシエーションできません）</value>
   </data>

@@ -46,19 +46,32 @@ public sealed record SshConfigForward(
     public bool IsRemoteDynamic => Kind == SshConfigForwardKind.Remote && TargetHost is null && TargetSocketPath is null;
 
     /// <summary>
-    /// 解析一条转发的值（<c>ssh_config</c> 里关键字之后的部分）。
+    /// 解析一条转发的值（<c>ssh_config</c> 里关键字之后的部分，写法照原文）。
+    /// 调用方用 <see cref="SshHostConfig.GetForwards"/>；〔历史〕曾经公开，宿主导入时逐行调它，2026-10-31 改由 <c>GetForwards(onInvalid)</c> 逐行报错。
     /// </summary>
     /// <param name="kind">哪一种。</param>
     /// <param name="value">值，如 <c>8080 db.internal:5432</c>、<c>127.0.0.1:1080</c>、<c>/tmp/d.sock /var/run/docker.sock</c>。</param>
     /// <exception cref="SshConnectException">写法不对（<see cref="SshFailureReason.InvalidConfiguration"/>）。</exception>
     /// <remarks>
+    /// 两头照 velashell-docs/zh/ssh/spec/09 §7.4 分词（带空格的套接字路径加引号写，是一头）；
     /// 含 <c>/</c> 的一头是 Unix 套接字路径（与 ssh 的判断一致）；IPv6 地址写在方括号里（<c>[::1]:8080</c>）；
     /// 监听地址写 <c>*</c> 或空（<c>:8080</c>）表示全部网卡。
     /// </remarks>
-    public static SshConfigForward Parse(SshConfigForwardKind kind, string value)
+    internal static SshConfigForward Parse(SshConfigForwardKind kind, string value)
     {
         ArgumentNullException.ThrowIfNull(value);
-        string[] parts = value.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+        return SshConfigSyntax.TrySplit(value, out List<string>? parts)
+            ? Parse(kind, parts, value)
+            : throw Invalid(kind, value, "引号没配对");
+    }
+
+    /// <summary>解析一条已经分好词的转发（<see cref="SshHostConfig.GetForwards"/> 用）。</summary>
+    /// <param name="kind">哪一种。</param>
+    /// <param name="arguments">分好词的两头（引号与转义已解开）。</param>
+    /// <param name="value">配置里的原文（进 <see cref="Line"/> 与报错）。</param>
+    internal static SshConfigForward Parse(SshConfigForwardKind kind, IReadOnlyList<string> arguments, string value)
+    {
+        string[] parts = [.. arguments.Where(static part => part.Length > 0)];
         int expected = kind == SshConfigForwardKind.Dynamic ? 1 : 2;
         if (parts.Length == 0 || parts.Length > expected || (kind == SshConfigForwardKind.Local && parts.Length != 2))
         {

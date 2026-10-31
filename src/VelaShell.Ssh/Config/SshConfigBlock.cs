@@ -8,8 +8,11 @@
 namespace VelaShell.Ssh.Config;
 
 /// <summary><c>ssh_config</c> 里的一个 <c>Host</c> 块。</summary>
-/// <param name="Patterns">这个块管哪些主机（支持 <c>*</c>、<c>?</c>、<c>!</c>）。</param>
-/// <param name="Settings">块里的设置，键不区分大小写。</param>
+/// <param name="Patterns">这个块管哪些主机（支持 <c>*</c>、<c>?</c>、<c>!</c>；引号与转义已去掉）。</param>
+/// <param name="Settings">
+/// 块里的设置，键不区分大小写。值是配置里关键字之后的<b>原文</b>：注释已去掉，引号与反斜杠转义还在
+/// （velashell-docs/zh/ssh/spec/09 §7.4）—— 取值走 <see cref="SshConfigFile.Resolve(IReadOnlyList{SshConfigBlock}, string)"/> 得到的 <see cref="SshHostConfig"/>，那里按词解开。
+/// </param>
 /// <param name="Match">
 /// <c>Match</c> 块的条件；<see langword="null"/> 表示这是普通的 <c>Host</c> 块。
 /// </param>

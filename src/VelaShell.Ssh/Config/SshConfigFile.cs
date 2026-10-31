@@ -4,6 +4,7 @@
 // 规范依据(AGENTS.md §2 纪律 1):
 //   OpenSSH ssh_config(5)
 //   行为规格: velashell-docs/zh/ssh/design/architecture.md §8 第 12 项
+//             velashell-docs/zh/ssh/spec/09-dialing.md §7.1(Include / Match)、§7.4(分词:引号、反斜杠与注释)
 
 using System.Diagnostics;
 using VelaShell.Ssh.Protocol;
@@ -57,6 +58,20 @@ public static partial class SshConfigFile
         state.Flush(blocks);
         return blocks;
     }
+
+    /// <summary>
+    /// 把一个参数写成 <c>ssh_config</c> 里读得回原值的样子 —— 本库（<see cref="Parse"/>）与 OpenSSH 的 <c>ssh</c> 读回来都是 <paramref name="value"/>。
+    /// </summary>
+    /// <param name="value">参数的值（一个路径、一个用户名……）。</param>
+    /// <param name="text">写进配置的样子，接在关键字与一个空格之后。</param>
+    /// <returns>值里有换行（<c>\r</c> / <c>\n</c>）或 NUL 时为 <see langword="false"/>：ssh_config 的一行装不下它。</returns>
+    /// <remarks>
+    /// 〔velashell-docs/zh/ssh/spec/09 §7.4〕能不改的地方不改：普通的 Windows 路径（<c>C:\Users\me\.ssh\id_ed25519</c>）原样写；
+    /// 两个以上连着的反斜杠每个写成两个（命名管道 <c>\\.\pipe\x</c> 写成 <c>\\\\.\pipe\x</c>，UNC 路径同理）；引号前加 <c>\</c>；
+    /// 有空白或 <c>#</c>、以 <c>=</c> 开头、或者是空串时整个加双引号。
+    /// </remarks>
+    public static bool TryFormatArgument(string value, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? text) =>
+        SshConfigSyntax.TryFormat(value, out text);
 
     /// <summary>解析器在块之间要带着走的东西。</summary>
     private sealed class ParserState
@@ -117,13 +132,9 @@ public static partial class SshConfigFile
     {
         foreach (string raw in content.Split('\n'))
         {
-            string line = StripComment(raw);
-            if (line.Length == 0)
-            {
-                continue;
-            }
-
-            (string key, string value) = SplitKeyValue(line);
+            // 〔velashell-docs/zh/ssh/spec/09 §7.4〕分词照 OpenSSH 的读法：两种引号、\\ \" \' 三种转义、落在词开头的 # 才是注释。
+            SshConfigLine line = SshConfigSyntax.ReadLine(raw);
+            string key = line.Key;
             if (key.Length == 0)
             {
                 continue;
@@ -131,9 +142,11 @@ public static partial class SshConfigFile
 
             if (string.Equals(key, "Host", StringComparison.OrdinalIgnoreCase))
             {
+                // 引号没配对的 Host 行开一个哪台主机都配不上的块：只跳过这一行的话，
+                // 它下面的设置会落进上一个块（常常是 Host *），对所有主机生效。
                 state.StartBlock(
                     blocks,
-                    [.. value.Split(' ', StringSplitOptions.RemoveEmptyEntries)],
+                    line.QuotesBalanced && SshConfigSyntax.TrySplit(line.Value, out List<string>? patterns) ? patterns : [],
                     match: null);
                 continue;
             }
@@ -142,7 +155,8 @@ public static partial class SshConfigFile
             {
                 // Match 块的 Patterns 用 ["*"]：主机名那一维由条件里的
                 // host / originalhost 管，Patterns 在这里不再承担筛选。
-                state.StartBlock(blocks, ["*"], ParseMatch(value));
+                // 引号没配对时同上：一个条件都没有的 Match 不生效。
+                state.StartBlock(blocks, ["*"], line.QuotesBalanced ? ParseMatch(line.Value) : new SshConfigMatchCriteria([]));
                 continue;
             }
 
@@ -153,12 +167,18 @@ public static partial class SshConfigFile
                 continue;
             }
 
+            if (!line.QuotesBalanced)
+            {
+                // 引号没配对：OpenSSH 整份配置不读，我们只是这一行不算 —— 不因一行写错让整份配置不可用，也不猜半截的值。
+                continue;
+            }
+
             if (!state.Current.TryGetValue(key, out List<string>? values))
             {
                 values = [];
                 state.Current[key] = values;
             }
-            values.Add(value);
+            values.Add(line.Value);
         }
     }
 
@@ -170,7 +190,10 @@ public static partial class SshConfigFile
     internal static SshConfigMatchCriteria ParseMatch(string value)
     {
         List<SshConfigMatchCondition> conditions = [];
-        List<string> tokens = TokenizeRespectingQuotes(value);
+
+        // 引号与转义照 spec/09 §7.4：Match exec "test -f /etc/special" 里那条命令是一个参数。
+        // 不认引号的话它会被切成三段，后两段变成两个不认识的条件 —— 而不认识的条件判不了，于是整个块静默失效。
+        List<string> tokens = SshConfigSyntax.TrySplit(value, out List<string>? words) ? words : [];
 
         for (int i = 0; i < tokens.Count; i++)
         {
@@ -206,46 +229,6 @@ public static partial class SshConfigFile
         return new SshConfigMatchCriteria(conditions);
     }
 
-    /// <summary>按空白切词，但引号里的空白不算分隔。</summary>
-    /// <remarks>
-    /// <c>Match exec "test -f /etc/special"</c> 里那条命令是<b>一个</b>参数。
-    /// 不认引号的话它会被切成三段，然后后两段变成两个不认识的条件 ——
-    /// 而不认识的条件不匹配，于是整个块静默失效。
-    /// </remarks>
-    private static List<string> TokenizeRespectingQuotes(string value)
-    {
-        List<string> tokens = [];
-        System.Text.StringBuilder current = new();
-        bool quoted = false;
-
-        foreach (char c in value)
-        {
-            if (c == '"')
-            {
-                quoted = !quoted;
-                continue;
-            }
-
-            if (!quoted && (c == ' ' || c == '\t'))
-            {
-                if (current.Length > 0)
-                {
-                    tokens.Add(current.ToString());
-                    current.Clear();
-                }
-                continue;
-            }
-
-            current.Append(c);
-        }
-
-        if (current.Length > 0)
-        {
-            tokens.Add(current.ToString());
-        }
-
-        return tokens;
-    }
 
     /// <summary><c>Include</c> 的最大嵌套深度。</summary>
     /// <remarks>
@@ -350,12 +333,10 @@ public static partial class SshConfigFile
             System.Text.StringBuilder chunk = new();
             foreach (string raw in content.Split('\n'))
             {
-                string line = StripComment(raw);
+                // Include 的参数照 spec/09 §7.4 分词（带空格的路径写成 "~/my dir/x"）。
+                SshConfigLine line = SshConfigSyntax.ReadLine(raw);
 
-                // 引号留着：Include 的参数要按引号切词（带空格的路径写成 "~/my dir/x"）。
-                (string key, string value) = line.Length == 0 ? ("", "") : SplitKeyValue(line, unquote: false);
-
-                if (!string.Equals(key, "Include", StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(line.Key, "Include", StringComparison.OrdinalIgnoreCase))
                 {
                     chunk.Append(raw).Append('\n');
                     continue;
@@ -364,9 +345,9 @@ public static partial class SshConfigFile
                 ParseInto(chunk.ToString(), blocks, state);
                 chunk.Clear();
 
-                if (depth >= MaxIncludeDepth)
+                if (depth >= MaxIncludeDepth || !line.QuotesBalanced)
                 {
-                    continue;   // 太深了，不再往下。不报错 —— 配置文件的其余部分仍然可用。
+                    continue;   // 太深了（或者引号没配对），不再往下。不报错 —— 配置文件的其余部分仍然可用。
                 }
 
                 // 带条件的包含：被包含文件里新开的 Host / Match 块，也只在 Include 所在的块生效时才生效；
@@ -377,7 +358,7 @@ public static partial class SshConfigFile
                     (state.Patterns, state.Match, state.Enclosing, state.IncludeScope);
                 state.IncludeScope = state.CurrentCondition();
 
-                foreach (string included in ExpandIncludePaths(value, baseDirectory))
+                foreach (string included in ExpandIncludePaths(line.Value, baseDirectory))
                 {
                     await LoadIntoAsync(included, includeDirectory, blocks, state, visited, budget, depth + 1, cancellationToken)
                         .ConfigureAwait(false);
@@ -463,7 +444,7 @@ public static partial class SshConfigFile
 
     /// <summary>把一条 <c>Include</c> 的参数展开成实际的文件列表。</summary>
     /// <remarks>
-    /// 支持三件事：一行里写多个路径（空格分隔，引号里的空格不算 —— <c>"~/my dir/x"</c> 是一个路径）、<c>~</c> 展开、
+    /// 支持三件事：一行里写多个路径（照 spec/09 §7.4 分词，引号里的空格不算 —— <c>"~/my dir/x"</c> 是一个路径）、<c>~</c> 展开、
     /// 以及最后一段里的 <c>*</c> / <c>?</c> 通配。
     /// 相对路径按<b>包含它的那个文件所在的目录</b>解析。
     /// 〔FW-E15〕曾经先去掉整行的引号再按空格切：带空格的路径被切成了两个。
@@ -472,7 +453,7 @@ public static partial class SshConfigFile
     {
         List<string> result = [];
 
-        foreach (string one in TokenizeRespectingQuotes(spec))
+        foreach (string one in SshConfigSyntax.TrySplit(spec, out List<string>? words) ? words : [])
         {
             string candidate = one;
 
@@ -725,51 +706,5 @@ public static partial class SshConfigFile
             result.Append(value);
         }
         return result.ToString();
-    }
-
-    /// <summary>去掉注释：<c>#</c> 在行首、或者前面是空白且不在引号里，才开始一段注释。</summary>
-    /// <remarks>
-    /// 〔FW-E15〕曾经一行里任何位置的 <c>#</c> 都当注释：<c>IdentityFile ~/.ssh/id_#work</c> 被截成 <c>~/.ssh/id_</c>。
-    /// 词中间的 <c>#</c> 是值的一部分；<c>Port 22 # 说明</c> 这种行尾注释照旧去掉。
-    /// </remarks>
-    private static string StripComment(string line)
-    {
-        bool quoted = false;
-        for (int i = 0; i < line.Length; i++)
-        {
-            char c = line[i];
-            if (c == '"')
-            {
-                quoted = !quoted;
-            }
-            else if (c == '#' && !quoted && (i == 0 || char.IsWhiteSpace(line[i - 1])))
-            {
-                return line[..i].Trim();
-            }
-        }
-        return line.Trim();
-    }
-
-    /// <param name="line">去掉注释之后的一行。</param>
-    /// <param name="unquote">值整个用引号括着时去掉引号。<c>Include</c> 要留着，自己按引号切词。</param>
-    private static (string Key, string Value) SplitKeyValue(string line, bool unquote = true)
-    {
-        // ssh_config 允许 `Key Value`、`Key=Value`、以及 `Key = Value`。
-        int separator = line.IndexOfAny([' ', '\t', '=']);
-        if (separator < 0)
-        {
-            return (line, "");
-        }
-
-        string key = line[..separator];
-        string value = line[(separator + 1)..].TrimStart(' ', '\t', '=').Trim();
-
-        // 带引号的值去掉引号（路径里有空格时会这么写）。
-        if (unquote && value.Length >= 2 && value[0] == '"' && value[^1] == '"')
-        {
-            value = value[1..^1];
-        }
-
-        return (key, value);
     }
 }
