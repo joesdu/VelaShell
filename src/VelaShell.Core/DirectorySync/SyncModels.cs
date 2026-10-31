@@ -248,13 +248,29 @@ public static class SyncTime
     /// <b>只挪 <see cref="DateTimeKind.Unspecified" /> 的时间</b>:那是 FTP LIST 给的服务器墙上时间。
     /// MLSD / MLST 的 <c>modify</c> 按 RFC 3659 恒为 UTC,FluentFTP 交出来时就标着 <see cref="DateTimeKind.Utc" />,
     /// 再按偏移挪一遍就错了 —— 同一台服务器上 LIST 与 MLSD 两条路径因此都对得上。
+    /// <para>
+    /// <b>没有时间的条目不挪,挪到头的夹住。</b>LIST / MLSD 给不出时间的条目(MLSD 不给目录的 <c>modify</c>、认不出的 LIST 行)
+    /// 由 <c>FtpFileService</c> 记成 <see cref="DateTime.MinValue" />;东八区按偏移一减就越过下界,
+    /// <see cref="ArgumentOutOfRangeException" /> 直接打断「比较目录」(复查 file-panes F6)。<see cref="ToUtc(DateTime)" /> 的
+    /// <c>ToUniversalTime</c> 本来就会夹住,这里同样夹在 <see cref="DateTime.MinValue" /> / <see cref="DateTime.MaxValue" /> 上;
+    /// 那种时间按 <see cref="InferPrecision" /> 本来就是「时间未知」,不参与比较。
+    /// </para>
     /// </remarks>
     /// <param name="value">后端给的原始时间。</param>
     /// <param name="serverClockOffset">服务器时钟的 UTC 偏移;null = 与本机同一时区。</param>
-    public static DateTime ToUtc(DateTime value, TimeSpan? serverClockOffset) =>
-        value.Kind == DateTimeKind.Unspecified && serverClockOffset is { } offset
-            ? DateTime.SpecifyKind(value - offset, DateTimeKind.Utc)
-            : ToUtc(value);
+    public static DateTime ToUtc(DateTime value, TimeSpan? serverClockOffset)
+    {
+        if (value.Kind != DateTimeKind.Unspecified || serverClockOffset is not { } offset)
+        {
+            return ToUtc(value);
+        }
+        if (value == DateTime.MinValue)
+        {
+            return DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
+        }
+        long ticks = value.Ticks - offset.Ticks;
+        return new DateTime(Math.Clamp(ticks, DateTime.MinValue.Ticks, DateTime.MaxValue.Ticks), DateTimeKind.Utc);
+    }
 
     /// <summary>
     /// 远端条目的这条时间要不要记日历偏移(见 <see cref="SyncItem.CalendarOffset" />):不带时区的原始时间、且配了偏移才记。
