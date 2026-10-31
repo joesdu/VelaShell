@@ -819,6 +819,67 @@ public sealed class ConnectionProfileViewUiTests
     });
 
     /// <summary>
+    /// <b>没有端点的类型收起「跳板主机」那一行,有端点的照常显示</b>:选 SQLite 进表单,绑着跳板列表的那个下拉
+    /// 连同它的标签都看不见;回卡片换 MySQL,整行回来。
+    /// <para>
+    /// 断言落在真正绑定 <see cref="ConnectionProfileViewModel.JumpHostOptions" /> 的下拉与它所在的那一行上,
+    /// 不只看视图模型属性 —— AXAML 那一行漏了 IsVisible 绑定时,视图模型用例照样绿,这条要红。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public Task JumpHostRow_CollapsesForTheTypeWithoutEndpoint_AndReturnsForMySql() => _session.RunOnUiAsync(async () =>
+    {
+        PluginProtocolRegistry registry = DbRegistry(out IDisposable handle);
+        using (handle)
+        {
+            var vm = new ConnectionProfileViewModel(protocolRegistry: registry) { Host = "10.0.0.9" };
+            var window = new ConnectionProfileView { DataContext = vm };
+            window.Show();
+            try
+            {
+                await vm.SelectPluginProtocolCommand.Execute(DbId).FirstAsync();
+                Layout(window);
+                Click(window, TypeTiles(window)[2]);
+                Click(window, window.FindControl<Button>("NextButton")!);
+                Assert.IsFalse(vm.IsPickingType, "前提:点了「下一步」应进表单。");
+                Assert.AreEqual("SQLite", window.FindControl<TextBlock>("TypeHeaderValue")!.Text, "前提:选的是 SQLite。");
+                Assert.IsTrue(window.GetVisualDescendants().OfType<TextBox>()
+                        .Any(box => box.Text == "10.0.0.9" && box.IsEffectivelyVisible),
+                    "前提:「常规」页在显示,主机那一栏看得见 —— 否则跳板行看不见可能只是整页没显示。");
+
+                ComboBox jumpHost = JumpHostBox(window, vm);
+                StackPanel row = jumpHost.GetVisualParent<StackPanel>()!;
+                Assert.IsFalse(row.IsVisible, "SQLite 没有端点,「跳板主机」那一行该收起。");
+                Assert.IsFalse(jumpHost.IsEffectivelyVisible, "SQLite 下跳板下拉还看得见。");
+                Assert.IsFalse(JumpHostLabelVisible(row), "SQLite 下「跳板主机」标签还看得见。");
+
+                Click(window, window.FindControl<Button>("BackButton")!);
+                Click(window, TypeTiles(window)[0], twice: true);
+                Assert.AreEqual("MySQL", window.FindControl<TextBlock>("TypeHeaderValue")!.Text, "前提:换成了 MySQL。");
+
+                jumpHost = JumpHostBox(window, vm);
+                row = jumpHost.GetVisualParent<StackPanel>()!;
+                Assert.IsTrue(row.IsVisible, "MySQL 有端点,「跳板主机」那一行要回来。");
+                Assert.IsTrue(jumpHost.IsEffectivelyVisible, "MySQL 下跳板下拉看不见。");
+                Assert.IsTrue(JumpHostLabelVisible(row), "MySQL 下「跳板主机」标签看不见。");
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+    });
+
+    /// <summary>绑着跳板列表的那个下拉(连接对话框里只有它一个)。</summary>
+    private static ComboBox JumpHostBox(Window window, ConnectionProfileViewModel vm) =>
+        window.GetVisualDescendants().OfType<ComboBox>().Single(box => ReferenceEquals(box.ItemsSource, vm.JumpHostOptions));
+
+    /// <summary>「跳板主机」那一行里的标签此刻看不看得见。</summary>
+    private static bool JumpHostLabelVisible(StackPanel row) =>
+        row.GetVisualDescendants().OfType<TextBlock>()
+            .Any(text => text.Text == Strings.Get("Profile_JumpHost") && text.IsEffectivelyVisible);
+
+    /// <summary>
     /// <b>编辑已存的连接:直接是表单,表头「类型 PostgreSQL · 更换」,页脚没有「上一步」</b>(附录 A 第三行)。
     /// <para>点「更换」回到卡片,高亮在当前类型上;编辑态的卡片那一屏同样是 [取消][下一步]。</para>
     /// </summary>

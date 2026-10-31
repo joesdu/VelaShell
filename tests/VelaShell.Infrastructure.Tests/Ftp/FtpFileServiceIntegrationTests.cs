@@ -895,7 +895,8 @@ public class FtpFileServiceIntegrationTests
         Assert.IsFalse(writing, "正长度小顺序源必须先通过完整预读和长度验证,才允许触碰目标。");
         await client.DidNotReceiveWithAnyArgs().UploadAsync(null!, null!, null!, null, default);
         Assert.AreEqual(1, _server.RetrCounts["/a.bin"]);
-        Assert.AreEqual(payload.LongLength, error.ExpectedBytes);
+        long expectedBytes = payload.LongLength;
+        Assert.AreEqual(expectedBytes, error.ExpectedBytes);
         Assert.AreEqual(delivered, error.ActualBytes);
         Assert.AreEqual(Core.Resources.Strings.Format(
             "SftpSvc_RelayLengthMismatch", "/a.bin", payload.Length, delivered), error.Message);
@@ -1072,7 +1073,8 @@ public class FtpFileServiceIntegrationTests
         using var destination = new MemoryStream();
         RemoteTransferLengthException error = await Assert.ThrowsExactlyAsync<RemoteTransferLengthException>(
             () => _service.DownloadStreamAsync(session, "/producer.bin", destination));
-        Assert.AreEqual(Payload(42).Length, error.ExpectedBytes);
+        long expectedBytes = Payload(42).Length;
+        Assert.AreEqual(expectedBytes, error.ExpectedBytes);
         Assert.AreEqual(delivered, error.ActualBytes);
         Assert.IsTrue(destination.CanWrite);
         _server.ReadFaultForPath = null;
@@ -1155,16 +1157,16 @@ public class FtpFileServiceIntegrationTests
     [TestMethod]
     [DataRow(0)]
     [DataRow(7)]
-    public async Task DownloadStream_UnderreportedSize_RejectsExcessData(int reported)
+    public async Task DownloadStream_UnderreportedSize_RejectsExcessData(int expectedBytes)
     {
         byte[] payload = Payload(42);
         await File.WriteAllBytesAsync(Path.Combine(_root, "producer.bin"), payload);
-        _server.SizeReplyForPath = (_, _) => $"213 {reported}";
+        _server.SizeReplyForPath = (_, _) => $"213 {expectedBytes}";
         Guid session = await OpenAsync(maxConnections: 1);
         using var destination = new MemoryStream();
         RemoteTransferLengthException error = await Assert.ThrowsExactlyAsync<RemoteTransferLengthException>(() => _service
             .DownloadStreamAsync(session, "/producer.bin", destination));
-        Assert.AreEqual(reported, error.ExpectedBytes);
+        Assert.AreEqual(expectedBytes, error.ExpectedBytes);
         Assert.AreEqual(payload.Length, error.ActualBytes);
     }
 
@@ -1184,7 +1186,8 @@ public class FtpFileServiceIntegrationTests
         Task download = _service.DownloadStreamAsync(session, "/producer.bin", destination);
         if (nonSeekable) await Assert.ThrowsAsync<VelaFtpClientException>(() => download);
         else await download;
-        Assert.AreSequenceEqual([11, 22, 33, .. payload], storage.ToArray());
+        byte[] expected = [11, 22, 33, .. payload];
+        Assert.AreSequenceEqual(expected, storage.ToArray());
         Assert.AreEqual(nonSeekable ? 1 : 2, _server.RetrCounts["/producer.bin"]);
         Assert.IsTrue(destination.CanWrite);
     }
@@ -1214,7 +1217,8 @@ public class FtpFileServiceIntegrationTests
         using var storage = new MemoryStream();
         RemoteTransferLengthException error = await Assert.ThrowsExactlyAsync<RemoteTransferLengthException>(() => _service
             .DownloadStreamAsync(session, "/producer.bin", new SequentialDestination(storage)));
-        Assert.AreEqual(payload.Length, error.ExpectedBytes);
+        long expectedBytes = payload.Length;
+        Assert.AreEqual(expectedBytes, error.ExpectedBytes);
         Assert.AreEqual(7L, error.ActualBytes);
         Assert.IsTrue(storage.CanWrite, "A remote failure must not close the caller-owned destination.");
         Assert.AreEqual(1, _server.RetrCounts["/producer.bin"]);

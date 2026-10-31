@@ -873,8 +873,10 @@
                     </StackPanel>
                   </Grid>
 
-                  <!-- 跳板主机:决定连不连得上,留在「常规」页而不是藏进哪一页。长说明收进 ⓘ。 -->
-                  <StackPanel>
+                  <!-- 跳板主机:决定连不连得上,留在「常规」页而不是藏进哪一页。长说明收进 ⓘ。
+                       没有端点的类型(SQLite 是一个文件、串口是一根线)与端口栏一起收起:不是 host:port,
+                       就谈不上经跳板连过去。只收显示,选过的跳板照旧随配置保存。 -->
+                  <StackPanel IsVisible="{Binding ShowJumpHostField}">
                     <StackPanel Orientation="Horizontal" Spacing="5" Margin="0,0,0,5">
                       <TextBlock Classes="field-label" Margin="0" Text="{loc:Localize Profile_JumpHost}" />
                       <Border Classes="help" ToolTip.Tip="{loc:Localize Profile_JumpHostHint}">

@@ -541,6 +541,18 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// </summary>
     public bool ShowPortField => _pluginForm?.ShowsPort != false;
 
+    /// <summary>
+    /// 是否显示「跳板主机」那一行。没有端点的表单(<see cref="ShowPortField" /> 为 false,即变体或描述符声明了
+    /// <c>NoEndpoint</c>:SQLite 是一个本地文件、串口是一根线)收起它 —— 目标不是 <c>host:port</c>,
+    /// 就谈不上经跳板连过去。
+    /// <para>
+    /// 只收显示,不清值:选过的跳板照旧随配置保存,切回有端点的类型时原样回来。
+    /// 工作台连接时建不建 SSH 隧道也不看这一行,而是按变体生效的能力位判定
+    /// (<c>WorkspaceVariants.EffectiveFeatures</c>,见 <c>MainWindowViewModel.EstablishWorkspaceTunnelAsync</c>)。
+    /// </para>
+    /// </summary>
+    public bool ShowJumpHostField => ShowPortField;
+
     /// <summary>「主机」那一栏是否渲染成**只读**下拉。</summary>
     public bool HostIsChoice => _pluginForm is { HostIsChoice: true, HostAllowsCustomValue: false };
 
@@ -814,9 +826,19 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
 
     /// <summary>主机为空、或方括号写法不成立时的提示;没问题为 null。</summary>
     public string? HostError =>
-        string.IsNullOrWhiteSpace(Host) ? Strings.Get("Profile_ErrHostRequired")
+        string.IsNullOrWhiteSpace(Host) ? HostRequiredMessage()
         : !IsHostWellFormed(Host) ? Strings.Get("Profile_ErrHostBrackets")
         : null;
+
+    /// <summary>
+    /// 主机留空时的提示。当前变体改写了主机标签时跟着标签说(SQLite:「请填写数据库文件」)——
+    /// 标签写着「数据库文件」、提示却说「请填写主机」,用户要愣一下该填什么。
+    /// 没有变体、或变体没给 <see cref="WorkspaceVariant.HostLabel" /> 时与原来一样。
+    /// </summary>
+    private string HostRequiredMessage() =>
+        CurrentVariant()?.HostLabel is { } label && !string.IsNullOrWhiteSpace(label)
+            ? Strings.Format("Profile_ErrHostRequiredFormat", label)
+            : Strings.Get("Profile_ErrHostRequired");
 
     /// <summary>主机栏能不能用:非空;以 <c>[</c> 开头的必须是完整的 <c>[IPv6]</c> 或 <c>[IPv6]:端口</c>。</summary>
     private static bool IsHostWellFormed(string? host)
@@ -3295,7 +3317,13 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// 变体的 <see cref="WorkspaceVariant.DefaultPort" />;没有变体、一个都对不上、
     /// 或对上的那一档没声明端口时为 <see langword="null" />(沿用页签的默认端口)。
     /// </returns>
-    private int? CurrentVariantDefaultPort()
+    private int? CurrentVariantDefaultPort() => CurrentVariant()?.DefaultPort;
+
+    /// <summary>
+    /// 按"选变体的那个字段"的当前取值对上的那一档变体。
+    /// </summary>
+    /// <returns>没有变体或一个都对不上时为 <see langword="null" />。</returns>
+    private WorkspaceVariant? CurrentVariant()
     {
         if (_pluginBaseForm is not { VariantKey: { Length: > 0 } key, Variants: { Count: > 0 } variants })
         {
@@ -3306,7 +3334,7 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
         {
             if (string.Equals(variant.Value, current, StringComparison.Ordinal))
             {
-                return variant.DefaultPort;
+                return variant;
             }
         }
         return null;
@@ -3329,6 +3357,9 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
         // 主机那一栏的形态与端口栏的显隐同样只看描述符 —— 漏发的表现是
         // 「已经切回 SSH,主机那格还是个串口下拉」。
         this.RaisePropertyChanged(nameof(ShowPortField));
+        this.RaisePropertyChanged(nameof(ShowJumpHostField));
+        // 主机留空的提示跟着变体的主机标签说,标签一换它也得重算。
+        this.RaisePropertyChanged(nameof(HostError));
         this.RaisePropertyChanged(nameof(HostIsText));
         this.RaisePropertyChanged(nameof(HostIsChoice));
         this.RaisePropertyChanged(nameof(HostIsEditableChoice));

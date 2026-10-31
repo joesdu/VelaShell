@@ -2905,6 +2905,9 @@
   <data name="Profile_ErrHostRequired" xml:space="preserve">
     <value>请填写主机</value>
   </data>
+  <data name="Profile_ErrHostRequiredFormat" xml:space="preserve">
+    <value>请填写{0}</value>
+  </data>
   <data name="Profile_ErrHostBrackets" xml:space="preserve">
     <value>方括号写法不对：应写成 [2001:db8::1] 或 [2001:db8::1]:2222</value>
   </data>

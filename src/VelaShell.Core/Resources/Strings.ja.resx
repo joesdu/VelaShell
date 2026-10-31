@@ -2492,6 +2492,9 @@
   <data name="Profile_ErrHostRequired" xml:space="preserve">
     <value>ホストを入力してください</value>
   </data>
+  <data name="Profile_ErrHostRequiredFormat" xml:space="preserve">
+    <value>{0}を入力してください</value>
+  </data>
   <data name="Profile_ErrHostBrackets" xml:space="preserve">
     <value>角かっこの書き方が正しくありません。[2001:db8::1] または [2001:db8::1]:2222 の形で入力してください</value>
   </data>

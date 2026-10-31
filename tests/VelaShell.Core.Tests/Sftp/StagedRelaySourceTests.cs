@@ -69,9 +69,9 @@ public class StagedRelaySourceTests
     [DataRow(10, 11)]
     [DataRow(4 * 1024 * 1024 + 1, 4)]
     [DataRow(4 * 1024 * 1024 + 1, 4 * 1024 * 1024 + 2)]
-    public async Task Prepare_LengthMismatchNeverBecomesReady(int stat, int payloadLength)
+    public async Task Prepare_LengthMismatchNeverBecomesReady(int expectedBytes, int payloadLength)
     {
-        ISftpService source = Source(stat, []);
+        ISftpService source = Source(expectedBytes, []);
         FileStream? file = null;
         source.DownloadStreamAsync(default, null!, null!).ReturnsForAnyArgs(async call =>
         {
@@ -81,7 +81,7 @@ public class StagedRelaySourceTests
         });
         RemoteTransferLengthException error = await Assert.ThrowsExactlyAsync<RemoteTransferLengthException>(() =>
             StagedRelaySource.PrepareAsync(source, SourceSession, "/source"));
-        Assert.AreEqual(stat, error.ExpectedBytes);
+        Assert.AreEqual(expectedBytes, error.ExpectedBytes);
         Assert.AreEqual(payloadLength, error.ActualBytes);
         Assert.IsNotNull(file);
         Assert.IsFalse(File.Exists(file.Name));

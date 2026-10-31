@@ -256,12 +256,15 @@ public sealed class SudoExecutorStateTests
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(host.Token);
         prompt._answer = async ct =>
         {
-            await using CancellationTokenRegistration revoked = ct.Register(() =>
+            TaskCompletionSource revoked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await using CancellationTokenRegistration registration = ct.Register(() =>
             {
                 lock (events) { runningBeforeRevocation = events.Any(entry => entry.State == SudoExecutionState.Running); }
                 deadline.Cancel();
+                revoked.TrySetResult();
             });
-            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            // 等探针自己完成；同一令牌的 Delay 可能先恢复并释放尚未执行的探针注册。
+            await revoked.Task;
             return null;
         };
 

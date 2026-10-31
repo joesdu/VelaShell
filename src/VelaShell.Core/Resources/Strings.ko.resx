@@ -2492,6 +2492,9 @@
   <data name="Profile_ErrHostRequired" xml:space="preserve">
     <value>호스트를 입력하세요</value>
   </data>
+  <data name="Profile_ErrHostRequiredFormat" xml:space="preserve">
+    <value>{0}을(를) 입력하세요</value>
+  </data>
   <data name="Profile_ErrHostBrackets" xml:space="preserve">
     <value>대괄호 형식이 올바르지 않습니다. [2001:db8::1] 또는 [2001:db8::1]:2222 형식으로 입력하세요</value>
   </data>

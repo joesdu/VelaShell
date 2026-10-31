@@ -1,5 +1,6 @@
 using ReactiveUI.Primitives;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Infrastructure.Plugins.Protocols;
 using VelaShell.PluginSdk;
 using VelaShell.PluginSdk.Protocols;
@@ -212,6 +213,110 @@ public sealed class ConnectionProfileTypePickerTests
             Assert.IsFalse(vm.ShowPortField, "SQLite 没有端点。");
             Assert.IsTrue(vm.AllowsAnonymous, "NoCredentials 蕴含匿名,否则按钮永远灰着。");
             Assert.AreEqual("SQLite", vm.CurrentTypeLabel);
+        }
+    }
+
+    /// <summary>
+    /// <b>主机留空的提示跟着变体的主机标签说</b>:SQLite 那一栏标的是「数据库文件」,提示就不能还是「请填写主机」;
+    /// 切回 MySQL(变体没改写标签)提示回到原来那句。
+    /// <para>
+    /// HostError 是计算属性:换类型时不补发通知,字段下面那行字会停在上一档的说法上 —— 所以连通知一起验。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task EmptyHost_HintFollowsTheVariantHostLabel()
+    {
+        PluginProtocolRegistry registry = Registry(out IDisposable handle);
+        using (handle)
+        {
+            ConnectionProfileViewModel vm = await NewOnDbTabAsync(registry);
+            vm.Host = string.Empty;
+            Assert.AreEqual(Strings.Get("Profile_ErrHostRequired"), vm.HostError,
+                "前置条件:默认那一档(MySQL)没改写主机标签,提示用宿主原来那句。");
+
+            List<string?> changed = [];
+            ((System.ComponentModel.INotifyPropertyChanged)vm).PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+            await vm.ConfirmTypeCardCommand.Execute("sqlite").FirstAsync();
+
+            Assert.AreEqual("数据库文件", vm.HostLabel, "前置条件:SQLite 把主机那一栏改标成「数据库文件」。");
+            Assert.IsNotNull(vm.HostError, "主机还空着,提示不该消失。");
+            Assert.Contains("数据库文件", vm.HostError, StringComparison.Ordinal,
+                "标签写着「数据库文件」,留空的提示却还在说「主机」。");
+            Assert.AreEqual(Strings.Format("Profile_ErrHostRequiredFormat", "数据库文件"), vm.HostError);
+            Assert.Contains(nameof(vm.HostError), changed,
+                "换类型时没给 HostError 补发通知,字段下面那行字不会跟着刷新。");
+
+            changed.Clear();
+            await vm.BackCommand.Execute().FirstAsync();
+            await vm.ConfirmTypeCardCommand.Execute("mysql").FirstAsync();
+
+            Assert.AreEqual(Strings.Get("Profile_ErrHostRequired"), vm.HostError,
+                "切回 MySQL(变体没给主机标签),提示要回到「请填写主机」。");
+            Assert.Contains(nameof(vm.HostError), changed, "切回去时同样要补发通知。");
+        }
+    }
+
+    /// <summary>
+    /// <b>没有端点的类型收起「跳板主机」那一行,有端点的照常显示</b>:SQLite 是一个文件而不是 <c>host:port</c>,
+    /// 谈不上经跳板连过去。
+    /// <para>
+    /// 只收显示,不清值:选过的跳板在 SQLite 下照旧留着,切回 MySQL 原样还在(保存时照旧带上)。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task JumpHostRow_HiddenForTheVariantWithoutEndpoint_AndTheChoiceIsKept()
+    {
+        PluginProtocolRegistry registry = Registry(out IDisposable handle);
+        using (handle)
+        {
+            ConnectionProfileViewModel vm = await NewOnDbTabAsync(registry);
+            await vm.ConfirmTypeCardCommand.Execute("mysql").FirstAsync();
+            Assert.IsTrue(vm.ShowJumpHostField, "MySQL 有端点,跳板那一行要在。");
+            var bastion = new GroupOption(Guid.NewGuid(), "堡垒机");
+            vm.JumpHostOptions.Add(bastion);
+            vm.SelectedJumpHost = bastion;
+
+            List<string?> changed = [];
+            ((System.ComponentModel.INotifyPropertyChanged)vm).PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+            await vm.BackCommand.Execute().FirstAsync();
+            await vm.ConfirmTypeCardCommand.Execute("sqlite").FirstAsync();
+
+            Assert.IsFalse(vm.ShowPortField, "前置条件:SQLite 没有端点。");
+            Assert.IsFalse(vm.ShowJumpHostField, "SQLite 没有端点,跳板那一行该收起。");
+            Assert.Contains(nameof(vm.ShowJumpHostField), changed,
+                "换类型时没给 ShowJumpHostField 补发通知,绑在它上面的那一行不会跟着收。");
+            Assert.AreSame(bastion, vm.SelectedJumpHost, "收起只是不显示,选过的跳板不该被清掉。");
+
+            await vm.BackCommand.Execute().FirstAsync();
+            await vm.ConfirmTypeCardCommand.Execute("mysql").FirstAsync();
+
+            Assert.IsTrue(vm.ShowJumpHostField, "切回有端点的类型,跳板那一行要回来。");
+            Assert.AreSame(bastion, vm.SelectedJumpHost, "切回来时选过的跳板原样还在。");
+        }
+    }
+
+    /// <summary>
+    /// <b>没有变体的工作台(Redis 形态)两样都不变</b>:主机留空仍是「请填写主机」,跳板那一行照常显示。
+    /// <para>
+    /// 从 SQLite 那一档切过来,顺带守住"上一个页签的变体不粘过来"。
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task WorkspaceWithoutVariants_KeepsTheHostHintAndTheJumpHostRow()
+    {
+        PluginProtocolRegistry registry = Registry(out IDisposable handle);
+        using (handle)
+        {
+            ConnectionProfileViewModel vm = await NewOnDbTabAsync(registry);
+            vm.Host = string.Empty;
+            await vm.ConfirmTypeCardCommand.Execute("sqlite").FirstAsync();
+            Assert.IsFalse(vm.ShowJumpHostField, "前置条件:SQLite 下跳板那一行收起。");
+
+            await vm.SelectPluginProtocolCommand.Execute(CacheId).FirstAsync();
+
+            Assert.AreEqual(CacheId, vm.PluginProtocolId, "前置条件:已经在缓存页签上。");
+            Assert.AreEqual(Strings.Get("Profile_ErrHostRequired"), vm.HostError, "没有变体:主机留空的提示与原来一样。");
+            Assert.IsTrue(vm.ShowJumpHostField, "有端点的工作台,跳板那一行照常显示。");
         }
     }
 

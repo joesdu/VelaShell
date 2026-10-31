@@ -2796,6 +2796,10 @@ Paste anyway?</value>
   <data name="Profile_ErrHostRequired" xml:space="preserve">
     <value>Host is required</value>
   </data>
+  <data name="Profile_ErrHostRequiredFormat" xml:space="preserve">
+    <value>{0} is required</value>
+    <comment>{0} = the host field's label as rewritten by the selected connection type, e.g. "Database file"</comment>
+  </data>
   <data name="Profile_ErrHostBrackets" xml:space="preserve">
     <value>Malformed brackets: write [2001:db8::1] or [2001:db8::1]:2222</value>
   </data>
