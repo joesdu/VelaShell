@@ -13,6 +13,11 @@ internal sealed class ConversationImages(GeneratedImageStore images)
 
     internal void Clear() { lock (_gate) _known.Clear(); }
     internal void Register(ChatGeneratedImage image) { lock (_gate) _known[image.FileName] = image; }
+    /// <summary>这段对话登记过的图片文件名 —— 回收历史图片时,还活在界面上的对话要用的这些得留着。</summary>
+    internal IReadOnlyList<string> Files
+    {
+        get { lock (_gate) return [.. _known.Keys]; }
+    }
     internal string Describe()
     {
         lock (_gate) return string.Join("\n", _known.Keys.Select(id => $"Image reference: {id}"));

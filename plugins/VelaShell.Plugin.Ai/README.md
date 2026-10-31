@@ -536,7 +536,12 @@ Base URL(`BaseUrlOverride`)。发请求 / 建客户端 / 算成本的代码只�
 
 图片原始字节以安全随机文件名保存在插件私有 `generated-images` 目录,时序元数据只存引用;支持后续改图与历史恢复。
 附件只有 PNG/JPEG/WebP 落盘并拿到图片 ID(`ImageGenerationService.IsEditableInput`,即 `/images/edits` 收得下的格式);
-GIF 照样作为视觉输入发给聊天模型,但不给 ID,免得模型拿它调 `edit_image` 必然失败、还锁死这一轮的图片工具。生成图右下角悬浮查看大图/保存操作,大图原尺寸滚动显示。对话作图由全局 `ImageModelId` 绑定已配置图片模型,`generate_image` / `edit_image` 工具执行,日常聊天模型不切换。
+GIF 照样作为视觉输入发给聊天模型,但不给 ID,免得模型拿它调 `edit_image` 必然失败、还锁死这一轮的图片工具。
+文件随历史回收(`ChatHistoryStore.ReleaseImagesAsync`):删一个会话时删掉只有它引用的图(删前先 `ImageFilesAsync` 记下),
+清空历史时删掉不再被任何会话引用的;引用要扫全部会话的 `chat_meta` 才算数,读不全就一张不删。
+面板里其他还活着的对话登记过的图留着(气泡还在屏上,复制/另存/改图要读得到),清空开始之后才写下的也留着;
+取消、失败的那一轮存下的图之类的孤儿,写入满一天后在面板下次打开时由后台回收。只认本插件的文件名规则、不进子目录、跳过链接,
+被占用或没权限的文件跳过,下次再说。生成图右下角悬浮查看大图/保存操作,大图原尺寸滚动显示。对话作图由全局 `ImageModelId` 绑定已配置图片模型,`generate_image` / `edit_image` 工具执行,日常聊天模型不切换。
 
 ## 数据存储位置
 

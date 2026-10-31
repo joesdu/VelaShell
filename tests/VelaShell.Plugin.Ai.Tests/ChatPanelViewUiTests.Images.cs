@@ -1,6 +1,7 @@
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
+using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
 using AvaloniaEdit;
@@ -104,6 +105,52 @@ public sealed partial class ChatPanelViewUiTests
                 var known = (ConversationImages)conversation.GetType().GetField("Images")!.GetValue(conversation)!;
                 Assert.DoesNotContain(legacyGif.FileName, known.Describe());
                 Assert.ThrowsExactly<ArgumentException>(() => known.Load(legacyGif.FileName));
+            }
+            finally { panel.Detach(); window.Close(); }
+        });
+    }
+
+    [TestMethod]
+    public void DeletingAndClearingHistory_RemoveTheirImageFiles()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            var images = new GeneratedImageStore(context.DataDirectory);
+            ChatGeneratedImage first = images.Save(new DataContent(Convert.FromBase64String(GeneratedPng), "image/png"));
+            ChatGeneratedImage second = images.Save(new DataContent(Convert.FromBase64String(GeneratedPng), "image/png"));
+            ChatGeneratedImage orphan = images.Save(new DataContent(Convert.FromBase64String(GeneratedPng), "image/png"));
+            var history = new ChatHistoryStore(context);
+            await history.InitAsync();
+            string doomed = ChatHistoryStore.NewConversationId(), kept = ChatHistoryStore.NewConversationId();
+            DateTimeOffset created = DateTimeOffset.UtcNow;
+            foreach ((string id, ChatGeneratedImage image) in new[] { (doomed, first), (kept, second) })
+            {
+                await history.AppendAsync(id, created, 0, "user", "draw");
+                await history.AppendAsync(id, created, 1, "assistant", "done");
+                await history.AppendMetaAsync(id, 1, new ChatTurnMeta(Images: [image]));
+            }
+            string FileOf(ChatGeneratedImage image) => Path.Combine(context.DataDirectory, "generated-images", image.FileName);
+            // 旧版删历史留下的孤儿:面板起来时在后台回收(只动一天前写下的)
+            File.SetLastWriteTimeUtc(FileOf(orphan), DateTime.UtcNow.AddDays(-2));
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                Assert.IsTrue(await WaitForAsync(() => !File.Exists(FileOf(orphan))), "启动回收应删掉没有会话引用的旧图");
+                Assert.IsTrue(File.Exists(FileOf(first)) && File.Exists(FileOf(second)));
+                const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                ChatSessionSummary session = (await history.ListSessionsAsync()).Single(s => s.Id == doomed);
+                var row = (Border)typeof(ChatPanelView).GetMethod("BuildHistoryRow", flags)!.Invoke(panel, [session])!;
+                var tools = (StackPanel)((Grid)row.Child!).Children[1];
+                ((Button)tools.Children[2]).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.IsTrue(await WaitForAsync(() => !File.Exists(FileOf(first))), "删掉会话应回收只有它引用的图");
+                Assert.IsTrue(File.Exists(FileOf(second)), "别的会话的图不动");
+
+                MethodInfo clear = typeof(ChatPanelView).GetMethod("OnClearHistoryClickedAsync", flags)!;
+                await (Task)clear.Invoke(panel, [])!; // 第一次只是"确认吗"
+                Assert.IsTrue(File.Exists(FileOf(second)));
+                await (Task)clear.Invoke(panel, [])!;
+                Assert.IsFalse(File.Exists(FileOf(second)), "清空历史应回收不再被任何会话引用的图");
             }
             finally { panel.Detach(); window.Close(); }
         });

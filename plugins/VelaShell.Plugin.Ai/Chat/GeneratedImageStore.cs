@@ -7,6 +7,7 @@ namespace VelaShell.Plugin.Ai.Chat;
 public sealed class GeneratedImageStore(string dataDirectory)
 {
     private static readonly SearchValues<char> MyChars = SearchValues.Create("0123456789abcdef");
+    private static readonly string[] StoredExtensions = [".png", ".jpg", ".webp", ".gif"];
 
     /// <summary>每张图片允许保存的最大字节数。</summary>
     public const int MaxImageBytes = 20 * 1024 * 1024;
@@ -66,6 +67,69 @@ public sealed class GeneratedImageStore(string dataDirectory)
         }
         return name.AsSpan(0, 32).IndexOfAnyExcept(MyChars) < 0;
     }
+
+    /// <summary>
+    /// 目录里由 <see cref="Save" /> 写下的图片文件名(只认「32 位十六进制 + 已知扩展名」,不进子目录、跳过链接)。
+    /// </summary>
+    /// <param name="writtenBeforeUtc">
+    /// 只列最后写入早于此刻的 —— 刚存下、还没来得及写进历史元数据的那几张(在途的一轮)不在其列。
+    /// </param>
+    internal IReadOnlyList<string> ListFiles(DateTime writtenBeforeUtc)
+    {
+        try
+        {
+            if (!Directory.Exists(_directory)) return [];
+            RejectLink(_directory);
+            return
+            [
+                .. new DirectoryInfo(_directory).EnumerateFiles()
+                    .Where(file => IsStoredName(file.Name) && (file.Attributes & FileAttributes.ReparsePoint) == 0
+                        && file.LastWriteTimeUtc < writtenBeforeUtc)
+                    .Select(file => file.Name)
+            ];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// 删掉这些图片文件,返回实际删掉的张数。目录本身是链接就一张不动(删下去删的是目录外的东西);
+    /// 非法文件名、链接、已经不在、正被占用或没权限的逐个跳过 —— 删不掉只是多占点盘,下次回收再说。
+    /// </summary>
+    internal int Delete(IEnumerable<string> fileNames)
+    {
+        ArgumentNullException.ThrowIfNull(fileNames);
+        try
+        {
+            if (!Directory.Exists(_directory)) return 0;
+            RejectLink(_directory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+        int deleted = 0;
+        foreach (string name in fileNames)
+        {
+            if (!IsStoredName(name)) continue;
+            try
+            {
+                var file = new FileInfo(Path.Combine(_directory, name));
+                if (!file.Exists || (file.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                file.Delete();
+                deleted++;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+        return deleted;
+    }
+
+    private static bool IsStoredName(string? name)
+        => name is not null && StoredExtensions.Any(extension => name.Length == 32 + extension.Length
+            && name.EndsWith(extension, StringComparison.Ordinal))
+            && name.AsSpan(0, 32).IndexOfAnyExcept(MyChars) < 0;
 
     private static string? Extension(string? mediaType) => mediaType switch
     {
