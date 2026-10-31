@@ -718,6 +718,39 @@ public sealed class SshConfigInteropTests
         Assert.IsEmpty(imported.Notes);
     }
 
+    /// <summary>
+    /// 「SSH Agent」认证、用系统默认的 agent(没指定端点,最常见的那种):写成 <c>IdentityAgent SSH_AUTH_SOCK</c>
+    /// (ssh_config(5) 里这个字面量就是「环境变量指的那个」),导入回来仍是 agent 认证、端点留空 —— 曾经什么都不写,再导入就成了密码认证。
+    /// </summary>
+    [TestMethod]
+    public async Task 默认agent认证导出再导入仍是Agent认证()
+    {
+        SessionProfile forwarding = new()
+        {
+            Name = "default-agent",
+            Host = "10.0.0.36",
+            AuthMethod = AuthMethod.Agent,
+            Ssh = new SshSessionOptions { AgentForwarding = true },
+        };
+        SessionProfile bare = new() { Name = "bare-agent", Host = "10.0.0.37", AuthMethod = AuthMethod.Agent };
+
+        SshConfigExport export = SshConfigExporter.Write(Archive(forwarding, bare));
+
+        Assert.AreEqual("SSH_AUTH_SOCK", ReadBack(export, "default-agent").First("IdentityAgent"));
+        Assert.AreEqual("yes", ReadBack(export, "default-agent").First("ForwardAgent"), "默认的 agent 转发照旧写 yes");
+        Assert.AreEqual("SSH_AUTH_SOCK", ReadBack(export, "bare-agent").First("IdentityAgent"), "没有 SSH 选项的也写");
+
+        string path = WriteConfig(export.Content);
+        foreach (string alias in new[] { "default-agent", "bare-agent" })
+        {
+            ImportedSession imported = await ScanOneAsync(path, alias);
+            Assert.AreEqual(AuthMethod.Agent, imported.AuthMethod, alias);
+            Assert.IsNull(imported.Ssh?.AgentEndpoint, $"{alias}:还是系统默认的那个");
+            Assert.IsEmpty(imported.Notes, alias);
+        }
+        Assert.IsTrue((await ScanOneAsync(path, "default-agent")).Ssh!.AgentForwarding);
+    }
+
     /// <summary>系统密钥库的钥 OpenSSH 用不了(没有文件):不写 IdentityFile,写成一行注释说明原来用的是哪把钥;再导入时注释不被读回。</summary>
     [TestMethod]
     public void 系统密钥库的钥写成注释()
