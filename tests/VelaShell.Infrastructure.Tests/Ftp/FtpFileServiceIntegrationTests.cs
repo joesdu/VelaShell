@@ -1352,6 +1352,182 @@ public class FtpFileServiceIntegrationTests
         Assert.AreEqual(shortRead ? 7 : Payload(42).Length, destination.Length);
     }
 
+    /// <summary>
+    /// 续传下载传到一半断掉,FluentFTP 自己的 REST 续读又被服务器拒了(<c>426</c>):这一次尝试已经往本地写了字节,
+    /// 不能当成「数据连接一开就被拒」在服务内部把整段再跑一遍 —— 以前按 Append 打开、又从同一个 REST 偏移重下,
+    /// 同一段字节写两遍,文件比远端长、内容是坏的,行还显示完成。失败要原样交给上层的重试策略;
+    /// 上层按本地此刻的长度再续,最终内容与远端逐字节一致。
+    /// </summary>
+    [TestMethod]
+    public async Task DownloadFile_ResumedAndInterruptedMidStream_SurfacesFailureWithoutDuplicatingBytes()
+    {
+        (byte[] payload, string local) = await PrepareResumedDownloadAsync();
+        bool firstCall = true;
+        _server.ReadFaultForPath = _ => !firstCall ? null : _server.RetrCounts["/resume.bin"] == 1
+            // 从续传点送 7 个字节,复位落在客户端进行中的那次读上,再回 426(与真实服务器的形态一致)。
+            ? new() { DataLimit = 7, ResetData = true, ResetDelayMs = 200, Reply = "426 Connection closed; transfer aborted" }
+            // FluentFTP 自己从 REST 30007 续读的那一次:服务器直接拒掉。
+            : new() { RejectRetr = "426 Connection closed; transfer aborted" };
+        Guid session = await OpenAsync(maxConnections: 1);
+        var progress = new Progress<TransferProgress>();
+        try
+        {
+            await Assert.ThrowsAsync<VelaFtpClientException>(() => _service.DownloadFileAsync(
+                session, "/resume.bin", local, progress, resumeOffset: ResumedPartial, TestContext.CancellationToken));
+            long onDisk = new FileInfo(local).Length;
+            Assert.IsLessThanOrEqualTo(payload.Length, onDisk, "失败的那一次不能让本地文件比远端还长。");
+
+            // 上层的自动重试:按本地此刻的长度接着续。
+            firstCall = false;
+            await _service.DownloadFileAsync(session, "/resume.bin", local, progress, resumeOffset: onDisk, TestContext.CancellationToken);
+            Assert.AreSequenceEqual(SHA256.HashData(payload), SHA256.HashData(await File.ReadAllBytesAsync(local, TestContext.CancellationToken)));
+        }
+        finally
+        {
+            File.Delete(local);
+        }
+    }
+
+    /// <summary>
+    /// 同样传到一半,这回 REST 续读被「忙」顶回来:服务内部照常收成单连接再来一次,
+    /// 但再来的那一次必须从这次调用的起点重写,不能接着上一次留下的尾巴再追加同一段。
+    /// </summary>
+    [TestMethod]
+    public async Task DownloadFile_ResumedAndBusyAfterPartialData_ReplaysFromTheStartPointNotTheFileEnd()
+    {
+        (byte[] payload, string local) = await PrepareResumedDownloadAsync();
+        _server.ReadFaultForPath = _ => _server.RetrCounts["/resume.bin"] switch
+        {
+            1 => new() { DataLimit = 7, ResetData = true, ResetDelayMs = 200, Reply = "426 Connection closed; transfer aborted" },
+            2 => new() { RejectRetr = "450 Transfer busy, try again later" },
+            _ => null,
+        };
+        Guid session = await OpenAsync(maxConnections: 1);
+        try
+        {
+            await _service.DownloadFileAsync(session, "/resume.bin", local, new Progress<TransferProgress>(),
+                resumeOffset: ResumedPartial, TestContext.CancellationToken);
+            Assert.AreSequenceEqual(SHA256.HashData(payload), SHA256.HashData(await File.ReadAllBytesAsync(local, TestContext.CancellationToken)));
+        }
+        finally
+        {
+            File.Delete(local);
+        }
+    }
+
+    /// <summary>
+    /// 从一条只能顺序读的源(插件源中转到 FTP 目标)上传,传到一半数据连接被掐断:这是一次断线,不是「数据连接一开就被拒」。
+    /// 以前服务内部照「被拒」去重放,重放不了又改报一个「源流不能重放」,真正的原因(连接被复位)丢了;
+    /// 现在原样交给上层的重试策略,也不在服务内部再发一次 STOR。
+    /// </summary>
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task UploadStream_ResetMidStream_SurfacesTheOriginalFailureWithoutReplaying(bool seekable)
+    {
+        byte[] payload = new byte[4 * 1024 * 1024];
+        new Random(11).NextBytes(payload);
+        int armed = 1;
+        _server.ResetStoreAfterBytes = _ => Interlocked.Exchange(ref armed, 0) == 1 ? 64 * 1024 : null;
+        Guid session = await OpenAsync(maxConnections: 1);
+        // FluentFTP 自己的 ResumeUploadAsync 失败后还要等一轮控制连接读超时;压短它,别让用例空等 30 秒。
+        await SetProducerTimeoutAsync(session);
+        using var storage = new MemoryStream(payload);
+        Stream source = seekable ? storage : new SequentialSource(storage);
+        VelaFtpClientException error = await Assert.ThrowsAsync<VelaFtpClientException>(() => _service.UploadStreamAsync(
+            session, source, "/streamed.bin", payload.Length, cancellationToken: TestContext.CancellationToken));
+        Assert.DoesNotContain("cannot be replayed", error.Message, error.ToString());
+        Assert.IsTrue(error.ToString().Contains(nameof(System.Net.Sockets.SocketException), StringComparison.Ordinal),
+            "真正的原因(数据连接被复位)要留在异常链里。" + error);
+        // 原来那一次 STOR,加上 FluentFTP 自己就地续写的那一次 APPE;服务内部不再整段重放。
+        Assert.IsLessThanOrEqualTo(2, _server.StoreCounts.GetValueOrDefault("/streamed.bin"), "传到一半的失败不该在服务内部再整段重传一遍。");
+    }
+
+    private sealed class SequentialSource(Stream inner) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            inner.ReadAsync(buffer, cancellationToken);
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    /// <summary>
+    /// 连接本身就开不出来(服务没了,拨号被复位):数据连接还没开过,谈不上「数据连接被拒」。
+    /// 以前异常链里带着 SocketException 就被当成被拒、在服务内部再拨两回,上层每一次重试都白等三轮连接。
+    /// </summary>
+    [TestMethod]
+    public async Task Download_WhenTheConnectionCannotBeOpened_DialsOncePerCall()
+    {
+        await File.WriteAllBytesAsync(Path.Combine(_root, "gone.bin"), [1, 2, 3], TestContext.CancellationToken);
+        // 第一次拨号(打开会话)直连;之后的拨号都走一个没人监听的 SOCKS5 端口 —— 拨号被拒,异常链里是 SocketException。
+        var dead = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        dead.Start();
+        int deadPort = ((System.Net.IPEndPoint)dead.LocalEndpoint).Port;
+        dead.Stop();
+        var resolver = new DialCountingResolver(new(Core.Net.ProxyKind.Socks5, "127.0.0.1", deadPort));
+        await using var service = new FtpFileService(resolver);
+        Guid session = await service.OpenSessionAsync(new FtpConnectionInfo
+        {
+            Host = "127.0.0.1",
+            Port = _server.Port,
+            Username = "deploy",
+            Password = "secret123",
+            Settings = new FtpSettings { EncryptionMode = FtpEncryptionMode.None },
+        });
+        // 把池里那条已登录的连接作废,下一次租借只能重新拨号。
+        var pools = (ConcurrentDictionary<Guid, FtpConnectionPool>)typeof(FtpFileService)
+            .GetField("_sessions", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(service)!;
+        using (FtpConnectionPool.Lease lease = await pools[session].RentAsync(TestContext.CancellationToken))
+        {
+            lease.Invalidate();
+        }
+        int before = resolver.Dials;
+        string local = Path.Combine(Path.GetTempPath(), $"vela-ftp-gone-{Guid.NewGuid():N}.bin");
+        try
+        {
+            await Assert.ThrowsAsync<VelaFtpConnectionException>(() => service.DownloadFileAsync(
+                session, "/gone.bin", local, cancellationToken: TestContext.CancellationToken));
+            Assert.AreEqual(1, resolver.Dials - before, "连不上就如实报,由上层的重试决定要不要再拨。");
+        }
+        finally
+        {
+            File.Delete(local);
+        }
+    }
+
+    /// <summary>头一回给直连,之后都给 <paramref name="later" />;顺带数一共拨了几次号。</summary>
+    private sealed class DialCountingResolver(Core.Net.ProxyRoute later) : Core.Net.IProxyResolver
+    {
+        private int _dials;
+
+        public int Dials => Volatile.Read(ref _dials);
+
+        public Core.Net.ProxyRoute Resolve(string targetHost, int targetPort, string? schemeHint = null) =>
+            Interlocked.Increment(ref _dials) == 1 ? Core.Net.ProxyRoute.Direct : later;
+    }
+
+    private const int ResumedPartial = 30_000;
+
+    /// <summary>远端放一份 100 000 字节的文件,本地留它的前 <see cref="ResumedPartial" /> 字节作半截。</summary>
+    private async Task<(byte[] Payload, string LocalPath)> PrepareResumedDownloadAsync()
+    {
+        byte[] payload = new byte[100_000];
+        new Random(7).NextBytes(payload);
+        await File.WriteAllBytesAsync(Path.Combine(_root, "resume.bin"), payload, TestContext.CancellationToken);
+        string local = Path.Combine(Path.GetTempPath(), $"vela-ftp-resume-{Guid.NewGuid():N}.bin");
+        await File.WriteAllBytesAsync(local, payload[..ResumedPartial], TestContext.CancellationToken);
+        return (payload, local);
+    }
+
     private sealed class FailedDestination(IOException failure) : MemoryStream
     {
         public int Writes { get; private set; }
