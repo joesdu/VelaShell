@@ -531,6 +531,8 @@ public sealed partial class GistSyncService(
                 {
                     profile.Password = null;
                     profile.PrivateKeyPassphrase = null;
+                    // 插件协议的机密字段(S3 的会话令牌之类)同一条规矩;拉取时同一协议下留本机的。
+                    profile.PluginSecrets = null;
                 }
             }
             else
@@ -909,16 +911,22 @@ public sealed partial class GistSyncService(
     {
         incoming.Password = Readable(incoming.Password) ?? local?.Password;
         incoming.PrivateKeyPassphrase = Readable(incoming.PrivateKeyPassphrase) ?? local?.PrivateKeyPassphrase;
+        bool sameProtocol = local is not null
+                            && string.Equals(local.PluginProtocolId, incoming.PluginProtocolId, StringComparison.Ordinal);
         if (incoming.PluginSecrets is not { } secrets)
         {
+            // 整本没带(未加密载荷):同一协议下整本留本机的。
+            if (sameProtocol)
+            {
+                incoming.PluginSecrets = local!.PluginSecrets;
+            }
             return;
         }
         foreach (string key in UnreadableKeys(secrets))
         {
             secrets.Remove(key);
         }
-        if (local is { PluginSecrets: { } kept }
-            && string.Equals(local.PluginProtocolId, incoming.PluginProtocolId, StringComparison.Ordinal))
+        if (sameProtocol && local!.PluginSecrets is { } kept)
         {
             foreach ((string key, string value) in kept)
             {

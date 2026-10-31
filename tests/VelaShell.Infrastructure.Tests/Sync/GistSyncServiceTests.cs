@@ -179,6 +179,51 @@ public sealed class GistSyncServiceTests
         Assert.AreSequenceEqual(["credential", "profile"], order);
     }
 
+    /// <summary>没设端到端口令:插件协议的机密字段(S3 的会话令牌之类)与连接密码同一条规矩,不上传;非机密的插件设置照带。</summary>
+    [TestMethod]
+    public async Task Push_WithoutPassphrase_LeavesOutPluginSecrets()
+    {
+        (GistSyncService service, ISessionRepository sessions, _) = CreateWithCredentials();
+        sessions.GetAllSessionsAsync().Returns([
+            new SessionProfile
+            {
+                Name = "bucket",
+                Host = "s3.example.com",
+                PluginProtocolId = "s3",
+                PluginSettings = new() { ["region"] = "eu-west-1" },
+                PluginSecrets = new() { ["sessionToken"] = "plaintext-session-token" }
+            }
+        ]);
+
+        string content = await service.BuildGistContentAsync(ProfilesOnly(), CancellationToken.None);
+
+        Assert.DoesNotContain("plaintext-session-token", content, "未加密载荷不得带插件机密的明文");
+        Assert.Contains("eu-west-1", content, "非机密的插件设置照常同步");
+    }
+
+    /// <summary>拉到不带插件机密的连接配置(未加密载荷):同一插件协议下留本机的;换了协议不留(不把上一个插件的密钥交给下一个)。</summary>
+    [TestMethod]
+    [DataRow("s3", true)]
+    [DataRow("webdav", false)]
+    public async Task Pull_ProfileWithoutPluginSecrets_KeepsTheLocalOnesForTheSameProtocol(string incomingProtocol, bool kept)
+    {
+        (GistSyncService service, ISessionRepository sessions, _) = CreateWithCredentials();
+        var id = Guid.NewGuid();
+        sessions.GetAllSessionsAsync().Returns([
+            new SessionProfile { Id = id, Name = "bucket", PluginProtocolId = "s3", PluginSecrets = new() { ["sessionToken"] = "local-token" } }
+        ]);
+        var incoming = new SessionProfile { Id = id, Name = "bucket", PluginProtocolId = incomingProtocol, PluginSecrets = null };
+
+        SyncResult result = await service.ApplyRemoteAsync(
+            ProfilesOnly(),
+            new SyncEnvelope { Payload = new SyncPayload { Profiles = [incoming] } },
+            remoteVersion: "rev",
+            CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.Message);
+        Assert.AreEqual(kept ? "local-token" : null, incoming.PluginSecrets?["sessionToken"]);
+    }
+
     // ———— 这台设备解不开的机密:不当值推上去,拉到了也不顶掉本机的 ————
 
     /// <summary>仓储对解不开的机密原样交回的密文(<see cref="StoredSecret" /> 的约定;内容是哪把密钥加密的无所谓)。</summary>
