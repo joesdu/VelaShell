@@ -6541,6 +6541,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SshAlgoFix_HopMissing" xml:space="preserve">
     <value>踏み台 {0} の接続設定が見つかりません。その SSH オプションでアルゴリズム一覧を手動で変更してください。</value>
   </data>
+  <data name="SshAlgoFix_ProfileMissing" xml:space="preserve">
+    <value>接続設定 {0} が見つかりません(削除された可能性があります)。何も変更していません。</value>
+  </data>
   <data name="SshInfo_Menu" xml:space="preserve">
     <value>接続情報…</value>
   </data>

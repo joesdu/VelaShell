@@ -6761,6 +6761,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SshAlgoFix_HopMissing" xml:space="preserve">
     <value>找不到跳板 {0} 的連線設定,請到它的 SSH 選項裡手動修改演算法清單。</value>
   </data>
+  <data name="SshAlgoFix_ProfileMissing" xml:space="preserve">
+    <value>連線設定 {0} 已經不在了(可能剛被刪除),沒有變更。</value>
+  </data>
   <data name="SshInfo_Menu" xml:space="preserve">
     <value>連線資訊…</value>
   </data>

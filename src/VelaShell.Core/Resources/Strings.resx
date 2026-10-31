@@ -6547,6 +6547,9 @@ Only these are added; the other legacy algorithms stay off. They are weaker than
   <data name="SshAlgoFix_HopMissing" xml:space="preserve">
     <value>The saved connection for jump host {0} could not be found; change the algorithm lists in its SSH options by hand.</value>
   </data>
+  <data name="SshAlgoFix_ProfileMissing" xml:space="preserve">
+    <value>The saved connection {0} is no longer there (it may have just been deleted); nothing was changed.</value>
+  </data>
   <data name="SshInfo_Menu" xml:space="preserve">
     <value>Connection info…</value>
   </data>
