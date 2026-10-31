@@ -10,6 +10,7 @@ using VelaShell.Core.Net;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Presentation.Services;
+using VelaShell.Ssh.Auth;
 using VelaShell.Ssh.Diagnostics;
 
 namespace VelaShell.ViewModels;
@@ -73,7 +74,8 @@ public static class SessionHealthClassifier
                 return new(SessionHealthStatus.NeedsAttention, failed?.Name, Join(title, failed?.Detail), elapsedMs);
             }
             // 私钥带口令、配置里没存口令:手动连接时会问口令,巡检不问 —— 与「没存凭据」同一类,不是机器连不上。
-            if (MissingPassphrase(report.Failure))
+            // 系统密钥库的钥要 PIN / 确认才能用(巡检以「不许弹框」打开它)同理。
+            if (MissingPassphrase(report.Failure) || KeyStoreNeedsUser(report.Failure))
             {
                 return new(SessionHealthStatus.NeedsCredentials, failed?.Name, failed?.Detail ?? title, elapsedMs);
             }
@@ -122,6 +124,42 @@ public static class SessionHealthClassifier
             }
         }
         return false;
+    }
+
+    /// <summary>CNG 的 <c>NTE_SILENT_CONTEXT</c>:以「不许弹框」打开的钥,密钥库非得问人(PIN、插卡、确认)才能用。</summary>
+    private const int SilentContextRequired = unchecked((int)0x80090022);
+
+    /// <summary>
+    /// 系统密钥库的钥要人来(<c>NTE_SILENT_CONTEXT</c>):打不开时在失败链上,签名时才要的在认证尝试记录里
+    /// (库把签名器抛的异常记进那条凭据的说明、换下一条,不在 <see cref="Exception.InnerException" /> 链上)。
+    /// </summary>
+    private static bool KeyStoreNeedsUser(Exception? failure)
+    {
+        for (Exception? current = failure; current is not null; current = current.InnerException)
+        {
+            if (current.HResult == SilentContextRequired)
+            {
+                return true;
+            }
+            if (current is SshAuthenticationException auth
+                && auth.Attempts.SelectMany(static attempt => attempt.Details).Any(static detail => IsSilentContext(detail.Error)))
+            {
+                return true;
+            }
+        }
+        return false;
+
+        static bool IsSilentContext(Exception? error)
+        {
+            for (Exception? current = error; current is not null; current = current.InnerException)
+            {
+                if (current.HResult == SilentContextRequired)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     private static string? Join(string head, string? tail) =>

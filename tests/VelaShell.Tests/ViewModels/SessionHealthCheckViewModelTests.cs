@@ -6,6 +6,7 @@ using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Presentation.Services;
 using VelaShell.Presentation.ViewModels;
+using VelaShell.Ssh.Auth;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Keys;
 using VelaShell.ViewModels;
@@ -115,6 +116,40 @@ public sealed class SessionHealthCheckViewModelTests
             new SshPrivateKeyException(SshFailureReason.KeyPassphraseIncorrect, "bad passphrase"));
         Assert.AreEqual(SessionHealthStatus.Failed,
             SessionHealthClassifier.Classify(Report(DiagnosticStepStatus.Failed, failure: wrong, issue: "认证失败"), 1).Status);
+    }
+
+    /// <summary>
+    /// 巡检以「不许弹框」打开系统密钥库的钥:密钥库非得问人(PIN、插卡、确认)时报 NTE_SILENT_CONTEXT ——
+    /// 打开时报的在失败链上,签名时才报的在认证尝试记录里。两种都记「需要凭据」,不是机器连不上。
+    /// </summary>
+    [TestMethod]
+    public void Classify_KeyStoreKeyThatWouldPromptForAPin_NeedsCredentials()
+    {
+        var silent = new System.Security.Cryptography.CryptographicException("UI required") { HResult = unchecked((int)0x80090022) };
+        var atOpen = new VelaSshAuthenticationException("打不开密钥库里的钥",
+            new SshPrivateKeyException(SshFailureReason.KeyFileUnreadable, "cannot open", silent));
+        var atSign = new VelaSshAuthenticationException("认证失败",
+            new SshAuthenticationException(SshFailureReason.AuthenticationMethodExhausted, "all credentials failed",
+                [
+                    new SshAuthAttempt("publickey", "vela-key", SshAuthOutcome.SkippedNoMaterial, ["publickey"])
+                    {
+                        Details = [new SshAuthDetail(SshAuthDetailKind.CredentialFailed) { Error = silent }],
+                    },
+                ],
+                ["publickey"]));
+
+        foreach (Exception failure in new Exception[] { atOpen, atSign })
+        {
+            Assert.AreEqual(SessionHealthStatus.NeedsCredentials,
+                SessionHealthClassifier.Classify(Report(DiagnosticStepStatus.Failed, failure: failure, issue: "认证失败"), 1).Status,
+                failure.Message);
+        }
+        var otherCngError = new VelaSshAuthenticationException("打不开密钥库里的钥",
+            new SshPrivateKeyException(SshFailureReason.KeyFileUnreadable, "not found",
+                new System.Security.Cryptography.CryptographicException("Keyset does not exist") { HResult = unchecked((int)0x80090016) }));
+        Assert.AreEqual(SessionHealthStatus.Failed,
+            SessionHealthClassifier.Classify(Report(DiagnosticStepStatus.Failed, failure: otherCngError, issue: "认证失败"), 1).Status,
+            "钥不在(别的 CNG 错误)照旧是连不上。");
     }
 
     [TestMethod]

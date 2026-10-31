@@ -712,6 +712,11 @@ internal static class SshConnectionAssembler
     /// 放到线程池上打开:智能卡的密钥库打开一把钥可能要跟读卡器来回几趟。
     /// </para>
     /// <para>
+    /// 没人看着的探测(会话健康巡检,<see cref="VelaConnectionInfo.IsUnattended" />)以「不许弹框」打开(<see cref="CngKeyOpenOptions.Silent" />):
+    /// 一次最多六台同时查,每台弹一个 PIN / 插卡 / 确认框就是一摞没人点的系统框,手册与 spec §11C 都说巡检不弹框。
+    /// 密钥库非得问人才能用这把钥时,打开或签名直接失败(CNG 约定的错误码 <c>NTE_SILENT_CONTEXT</c>),巡检把它归到「需要凭据」。
+    /// </para>
+    /// <para>
     /// 别的平台没有 CNG:配置可能是从 Windows 同步过来的,如实说「这台电脑上用不了」,而不是一句不知所云的认证失败。
     /// 打不开(钥被删了、在别的电脑上、卡没插)由库报成 <see cref="SshPrivateKeyException" />(<see cref="SshKeyProblemKind.KeyStoreUnavailable" />),
     /// 宿主按种类本地化(<c>SshErr_KeyStoreUnavailable</c>)。
@@ -725,17 +730,22 @@ internal static class SshConnectionAssembler
         }
         return await Task.Run<ISshSigner>(
             () => OperatingSystem.IsWindows()
-                ? OpenCng(key)
+                ? OpenCng(key, silent: info.IsUnattended)
                 : throw new VelaSshAuthenticationException(Strings.Format("SshErr_KeyStoreNotOnThisPlatform", key.KeyName)),
             cancellationToken).ConfigureAwait(false);
     }
 
     [SupportedOSPlatform("windows")]
-    private static CngSshSigner OpenCng(SystemKeyReference key) =>
+    private static CngSshSigner OpenCng(SystemKeyReference key, bool silent) =>
         CngSshSigner.Open(
             key.KeyName,
             new CngProvider(key.Provider),
-            key.MachineKey ? CngKeyOpenOptions.MachineKey : CngKeyOpenOptions.None);
+            CngOpenOptions(key, silent));
+
+    /// <summary>打开密钥库里那把钥的选项:机器级的钥带 <see cref="CngKeyOpenOptions.MachineKey" />,没人看着时带 <see cref="CngKeyOpenOptions.Silent" />。</summary>
+    internal static CngKeyOpenOptions CngOpenOptions(SystemKeyReference key, bool silent) =>
+        (key.MachineKey ? CngKeyOpenOptions.MachineKey : CngKeyOpenOptions.None)
+        | (silent ? CngKeyOpenOptions.Silent : CngKeyOpenOptions.None);
 
     /// <summary>
     /// 给已经打开的签名器配上证书(<c>*-cert.pub</c>):「私钥 + 证书」与「系统密钥库 + 证书」共用这一段。
