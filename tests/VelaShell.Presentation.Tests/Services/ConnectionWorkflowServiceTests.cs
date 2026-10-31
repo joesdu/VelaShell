@@ -77,6 +77,74 @@ public sealed class ConnectionWorkflowServiceTests
         await audit.Received(2).WriteAsync(Arg.Is<AuditEntry>(e => e.Action == "connect" && e.ProfileId == temporary.Id));
     }
 
+    /// <summary>
+    /// 连上之后只改库里那份的最近连接时间,不把调用方手里的副本整份写回(§298 的欠账):终端标签的副本开着的这段时间里,
+    /// 别处(云同步、编辑框、巡检窗口的「放开这几个算法」)刚改的名字、算法、认证后命令不会被它盖掉,现敲却没让记住的密码也落不了库。
+    /// </summary>
+    [TestMethod]
+    public async Task ConnectProfileAsync_WritesOnlyTheConnectionTime_OntoTheStoredCopy()
+    {
+        ConnectionWorkflowService service = CreateService();
+        SessionProfile stored = CreateProfile("renamed-elsewhere");
+        stored.Password = null;
+        stored.RememberPassword = false;
+        stored.Ssh = new SshSessionOptions { KexAlgorithms = "+diffie-hellman-group14-sha1" };
+        stored.PostAuthCommand = "tmux attach";
+        SessionProfile copy = stored.Clone();
+        copy.Name = "old-name";
+        copy.Ssh = null;
+        copy.PostAuthCommand = "echo old";
+        copy.Password = "typed-now";
+        _sessionRepository.GetSessionAsync(stored.Id).Returns(_ => stored.Clone());
+        _sshConnectionService.ConnectAsync(Arg.Any<ConnectionInfo>(), Arg.Any<CancellationToken>())
+                             .Returns(call => new SshSession { ConnectionInfo = (ConnectionInfo)call[0], Status = SessionStatus.Connected });
+
+        await service.ConnectProfileAsync(copy);
+
+        Assert.IsNotNull(copy.LastConnectedAt, "调用方那份照样记上这次的时间");
+        await _sessionRepository.Received(1).SaveSessionAsync(Arg.Is<SessionProfile>(p =>
+            p.Id == stored.Id && p.Name == "renamed-elsewhere" && p.Ssh!.KexAlgorithms == "+diffie-hellman-group14-sha1"
+            && p.PostAuthCommand == "tmux attach" && p.Password == null && p.LastConnectedAt == copy.LastConnectedAt));
+    }
+
+    /// <summary>登录框交回的那份:只把登录那几项写进库里那份,别的字段以库里为准;勾了记住密码才落密码。</summary>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task SaveLoginChangesAsync_WritesTheLoginFieldsOntoTheStoredCopy(bool remember)
+    {
+        ConnectionWorkflowService service = CreateService();
+        SessionProfile stored = CreateProfile("renamed-elsewhere");
+        stored.Username = string.Empty;
+        stored.Password = null;
+        stored.PostAuthCommand = "tmux attach";
+        SessionProfile prompted = stored.Clone();
+        prompted.Name = "old-name";
+        prompted.PostAuthCommand = null;
+        prompted.Username = "deploy";
+        prompted.Password = "typed-now";
+        prompted.RememberPassword = remember;
+        _sessionRepository.GetSessionAsync(stored.Id).Returns(_ => stored.Clone());
+
+        await service.SaveLoginChangesAsync(prompted);
+
+        await _sessionRepository.Received(1).SaveSessionAsync(Arg.Is<SessionProfile>(p =>
+            p.Id == stored.Id && p.Name == "renamed-elsewhere" && p.PostAuthCommand == "tmux attach"
+            && p.Username == "deploy" && p.RememberPassword == remember && p.Password == (remember ? "typed-now" : null)));
+        Assert.AreEqual("typed-now", prompted.Password, "交进来的那份不动:标签还要用它");
+    }
+
+    /// <summary>不在库里的临时配置(§252):登录框交回的那份同样不落库。</summary>
+    [TestMethod]
+    public async Task SaveLoginChangesAsync_TemporaryProfile_IsNotSaved()
+    {
+        ConnectionWorkflowService service = CreateService();
+
+        await service.SaveLoginChangesAsync(CreateProfile("tester@localhost:22"));
+
+        await _sessionRepository.DidNotReceiveWithAnyArgs().SaveSessionAsync(default!);
+    }
+
     [TestMethod]
     public async Task TestConnectionAsync_WhenConnectFails_ReturnsFailureResult()
     {

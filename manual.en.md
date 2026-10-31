@@ -269,6 +269,8 @@ Tailscale mode requires Tailscale installed and signed in locally, a MagicDNS na
 
 **Result and how it works:** Automatic reconnection defaults to on, with at most 3 attempts and a 5-second interval cap; unexpected disconnections use backoff such as 1/2/4 seconds. Initial handshake failure, intentional disconnect, remote `exit`, local shell exit, fingerprint rejection, and authentication requiring intervention are not retried indefinitely. Reconnection creates a new session; it does not restore unsaved state in the previous shell process. Use appropriate server-side session-persistence tools for important long-running work.
 
+**Reconnection uses the latest profile:** Before a terminal tab reconnects (manually or automatically), it reloads the connection's latest saved profile, so changes made elsewhere while the tab was open (edits in the profile dialog, cloud sync, algorithms allowed from connection diagnostics or the health check window) take effect on that reconnect. A password typed in the login dialog during this session without remembering it is still used — unless the profile now points at a different host, port, user name, or authentication method, in which case open the connection again and enter it. Reconnecting only updates the connection's last-connected time; it never writes the tab's older copy back. If the profile was deleted while the tab was open, the tab reconnects with the copy it kept and shows a notice, without saving it back to the Explorer; temporary connections such as external launches behave as before (see 20.3). A tab opened with **Open terminal here** still returns to its folder after reconnecting.
+
 <a id="terminal"></a>
 ## 7. Working with the Terminal
 

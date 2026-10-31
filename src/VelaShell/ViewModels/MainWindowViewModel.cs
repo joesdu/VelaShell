@@ -2262,6 +2262,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         SshSession session = automaticReconnect
             ? await _connectionWorkflowService.ReconnectProfileAutomaticallyAsync(current, cancellationToken)
             : await _connectionWorkflowService.ConnectProfileAsync(current, cancellationToken);
+        if (!ReferenceEquals(current, profile))
+        {
+            await SaveLoginPromptAsync(current).ConfigureAwait(true);
+        }
         return session.SessionId;
     }
 
@@ -3139,11 +3143,19 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 在一个已存在的“连接中”标签上完成 SSH 握手并挂上传输;失败时向上抛,由调用方
     /// 决定撤标签(直接入口)还是保留标签显示覆盖层(交互入口)。
     /// </summary>
+    /// <param name="terminalTab">连接中的标签。</param>
+    /// <param name="profile">这次连接用的配置。</param>
+    /// <param name="settings">设置快照。</param>
+    /// <param name="cancellationToken">取消令牌(关标签即取消)。</param>
+    /// <param name="loginPrompted">
+    /// <paramref name="profile" /> 是这一轮登录框交回的那份:连上之后把它改过的登录字段写进库里那份(<see cref="SaveLoginPromptAsync" />)。
+    /// </param>
     private async Task RunHandshakeAsync(
         TerminalTabViewModel terminalTab,
         SessionProfile profile,
         AppSettings settings,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        bool loginPrompted = false
     )
     {
         TerminalType terminalType = TerminalTypeExtensions.FromTermName(SessionTerminalSettings.TerminalType(profile, settings));
@@ -3157,6 +3169,13 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         );
         try
         {
+            // 认证一过就记下登录框里的改动(与以前工作流在这一刻整份写回同一个时机:开 shell 失败也不影响已经验证过的凭据)。
+            if (loginPrompted)
+            {
+                await SaveLoginPromptAsync(profile).ConfigureAwait(true);
+            }
+            // 重连时库里读不到这条配置,要靠这一笔分清「被删了」与「本来就是临时配置」(见 ResolveReconnectProfileAsync)。
+            terminalTab.ProfileSeenInLibrary = await IsInLibraryAsync(profile.Id).ConfigureAwait(true);
             await CompleteHandshakeAsync(terminalTab, profile, settings, session, terminalType, cancellationToken);
         }
         catch (Exception) when (cancellationToken.IsCancellationRequested)
@@ -3256,8 +3275,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// </para>
     /// <para>
     /// 跳板上谈不成时改的是那台跳板自己的配置(顺着「跳板主机」往上数到那一跳),不是终点的。
-    /// 库里有这条配置就改库里那份并落盘(不经标签手里那份:登录框交回来的副本可能带着用户没让记住的密码);
-    /// 终点那一跳还要同步改标签手里的副本,重连用的是它。「最近连接」重建的临时配置不在库里,只改这一次。
+    /// 库里有这条配置就改库里那份并落盘(不经标签手里那份:登录框交回来的副本可能带着用户没让记住的密码),
+    /// 重连时从库里重读、用的就是改过的那份;终点那一跳还要同步改标签手里的副本 —— 库里读不到时(「最近连接」重建的临时配置、
+    /// 开着的时候被删了)重连用的是它,这时只改这一次。
     /// </para>
     /// </remarks>
     public async Task AllowAlgorithmsAndReconnectAsync(TerminalTabViewModel tab)
@@ -3375,6 +3395,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             return;
         }
         tab.ConnectionStatus = SessionStatus.Connecting;
+        // 先按 Id 从库里重读最新的那份,只叠上这次会话现敲的凭据(见 ResolveReconnectProfileAsync);换到标签上,
+        // 这一次的连接、注入(认证后命令、初始目录)与之后的文件面板都用它。连上之后工作流只改库里那份的最近连接时间。
+        tab.Profile = await ResolveReconnectProfileAsync(tab, tab.Profile).ConfigureAwait(true);
         await tab.DetachTransportAsync().ConfigureAwait(true);
         UpdateStatusBarForActiveTab();
         // 重连与首连同等对待:右下角圆环也要转起来 —— 自动重连尤其是在后台发生的,
@@ -4753,7 +4776,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             CancellationToken connectToken = BeginTabConnect(tab, cancellationToken);
             try
             {
-                await RunHandshakeAsync(tab, current, settings, connectToken);
+                // 登录框交回的是副本(不改传进来的那份):是它,就说明这一轮弹过框,连上之后要把框里的改动记下。
+                await RunHandshakeAsync(tab, current, settings, connectToken, loginPrompted: !ReferenceEquals(current, profile));
                 return tab;
             }
             catch (Exception) when (connectToken.IsCancellationRequested)
@@ -5114,6 +5138,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             {
                 ui.BeginAttempt();
                 session = await workflow.ConnectProfileAsync(current, ui.Token).ConfigureAwait(true);
+                if (session is not null && !ReferenceEquals(current, profile))
+                {
+                    // 这一轮用的是登录框交回的那份:把框里改过的登录字段记下(终端标签同一条规矩)。
+                    await SaveLoginPromptAsync(current).ConfigureAwait(true);
+                }
                 return session is null
                     ? (null, new(current, null))
                     : (new(current, session.SessionId, session, workflow.DisconnectAsync), default);
@@ -6422,6 +6451,98 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             // 信任指纹没落盘不影响本次连接,下次会再问一遍。
             return false;
         }
+    }
+
+    /// <summary>
+    /// 登录框交回的那份刚连上:把框里改得到的几项(用户名、认证方式、记住密码与认证材料)写进库里那份,其余字段以库里为准
+    /// (<see cref="IConnectionWorkflowService.SaveLoginChangesAsync" />;密码照「记住密码」与总开关,临时配置不落库)。
+    /// </summary>
+    /// <remarks>
+    /// 以前这件事夹在工作流「连上就把调用方那份整份写回」里顺带完成;整份写回改成只写最近连接时间之后(§298 的欠账),
+    /// 弹过登录框的三条 SSH 路径(终端标签、隧道、文件标签)各自在连上之后调这里。审计里记成「登录框」。
+    /// 没写进去不影响这一次连接(下次连接时照样会再问),只留一条诊断日志。
+    /// </remarks>
+    private async Task SaveLoginPromptAsync(SessionProfile prompted)
+    {
+        if (_connectionWorkflowService is not { } workflow)
+        {
+            return;
+        }
+        try
+        {
+            using IDisposable source = AuditSourceScope.Enter(AuditSources.LoginPrompt);
+            await workflow.SaveLoginChangesAsync(prompted).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Connect] Saving the login prompt result for {prompted.Id} failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>这条配置此刻在不在库里;没有仓储(无界面单测)或读不出来时按不在算。</summary>
+    private async Task<bool> IsInLibraryAsync(Guid profileId)
+    {
+        if (_sessionRepository is null)
+        {
+            return false;
+        }
+        try
+        {
+            return await _sessionRepository.GetSessionAsync(profileId).ConfigureAwait(true) is not null;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 终端标签重连要用的那份配置:按 Id 从库里重读最新的,叠上标签副本里这次会话现敲、库里没有的凭据
+    /// (<see cref="SessionProfileMerge.ForReconnect" />);库里读不到时退回标签副本。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 维护者 2026-10-31 定(§298 记下的欠账,与会话健康巡检每轮重读同一个口径):标签开着的这段时间里,别处(云同步、编辑框、
+    /// 巡检窗口里的「放开这几个算法」)可能已经改过这条配置,拿标签里那份旧副本去连,用的就是旧算法、旧地址、旧的认证后命令。
+    /// 标签上按标签存的东西(「在此处打开终端」的 <see cref="TerminalTabViewModel.StartupDirectoryOverride" /> 等)不在配置里,不受影响。
+    /// </para>
+    /// <para>
+    /// 库里读不到:这个标签连上时查到过它(<see cref="TerminalTabViewModel.ProfileSeenInLibrary" />)= 开着的这段时间里被删了 ——
+    /// 照标签副本连,浮层提示一句(每个标签一次),工作流也不会把它写回库里;从没查到过 = 外部拉起、「最近连接」重建的临时配置(§252),
+    /// 照旧不声不响。读库出错时同样退回标签副本,不让这件事挡住重连。
+    /// </para>
+    /// <para>
+    /// 库里那份换成了别的连接类型(从 SSH 改成了 SFTP 之类)时也用标签副本:这个标签是 SSH 终端,照库里那份去连就不是它了。
+    /// </para>
+    /// </remarks>
+    private async Task<SessionProfile> ResolveReconnectProfileAsync(TerminalTabViewModel tab, SessionProfile copy)
+    {
+        if (_sessionRepository is null)
+        {
+            return copy;
+        }
+        SessionProfile? stored;
+        try
+        {
+            stored = await _sessionRepository.GetSessionAsync(copy.Id).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Reconnect] Reading profile {copy.Id} failed, reconnecting with the tab's copy: {ex.Message}");
+            return copy;
+        }
+        if (stored is null)
+        {
+            if (tab.ProfileSeenInLibrary && !tab.ProfileDeletedNoticeShown)
+            {
+                tab.ProfileDeletedNoticeShown = true;
+                Toasts.Info(Strings.Format("Msg_ReconnectProfileDeleted", ProfileDisplayName(copy)));
+            }
+            return copy;
+        }
+        tab.ProfileSeenInLibrary = true;
+        tab.ProfileDeletedNoticeShown = false;
+        return stored.ConnectionType == copy.ConnectionType ? SessionProfileMerge.ForReconnect(stored, copy) : copy;
     }
 
     /// <summary>

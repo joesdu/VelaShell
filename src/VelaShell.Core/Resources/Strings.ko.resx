@@ -1868,6 +1868,9 @@
   <data name="Msg_AutoReconnectCountdown" xml:space="preserve">
     <value>{0} 연결 끊김, {1}초 후 자동 재연결({2}/{3})…</value>
   </data>
+  <data name="Msg_ReconnectProfileDeleted" xml:space="preserve">
+    <value>'{0}' 연결 설정이 삭제되었습니다. 이 탭에 남아 있는 설정으로 다시 연결하며, 다시 저장하지는 않습니다.</value>
+  </data>
   <data name="Msg_AutoRecordDisabledHint" xml:space="preserve">
     <value>자동 녹화가 꺼졌습니다.</value>
   </data>

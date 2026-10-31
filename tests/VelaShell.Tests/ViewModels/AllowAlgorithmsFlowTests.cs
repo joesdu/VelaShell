@@ -191,7 +191,16 @@ public sealed class AllowAlgorithmsFlowTests
                 repository.GetSessionAsync(jumpHost.Id).Returns(_ => jumpHost.Clone());
             }
             workflow.SaveProfileAsync(Arg.Any<SessionProfile>(), Arg.Any<CancellationToken>())
-                    .Returns(call => call.Arg<SessionProfile>());
+                    .Returns(call =>
+                    {
+                        // 替身的保存也要真的「落库」:重连先从库里重读这条配置(§298 的欠账),读回来的得是改过的那份。
+                        SessionProfile saved = call.Arg<SessionProfile>();
+                        if (saved.Id == profile.Id)
+                        {
+                            stored = saved.Clone();
+                        }
+                        return saved;
+                    });
             SshSession session = new()
             {
                 SessionId = Guid.NewGuid(),

@@ -1868,6 +1868,9 @@
   <data name="Msg_AutoReconnectCountdown" xml:space="preserve">
     <value>{0} が切断されました。{1} 秒後に自動再接続します({2}/{3})…</value>
   </data>
+  <data name="Msg_ReconnectProfileDeleted" xml:space="preserve">
+    <value>「{0}」の接続設定は削除されています。このタブに残っている設定で再接続します(保存し直すことはありません)。</value>
+  </data>
   <data name="Msg_AutoRecordDisabledHint" xml:space="preserve">
     <value>自動録画を無効にしました。</value>
   </data>

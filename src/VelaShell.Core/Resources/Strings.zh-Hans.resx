@@ -2335,6 +2335,9 @@
   <data name="Msg_AutoReconnectCountdown" xml:space="preserve">
     <value>{0} 已断开,{1} 秒后自动重连({2}/{3})…</value>
   </data>
+  <data name="Msg_ReconnectProfileDeleted" xml:space="preserve">
+    <value>「{0}」的连接配置已经删除,这次按标签里留着的那份重连,不会再存回库里。</value>
+  </data>
   <data name="Msg_AutoRecordDisabledHint" xml:space="preserve">
     <value>自动录制已关闭。</value>
   </data>

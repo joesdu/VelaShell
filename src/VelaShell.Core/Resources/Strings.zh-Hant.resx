@@ -2335,6 +2335,9 @@
   <data name="Msg_AutoReconnectCountdown" xml:space="preserve">
     <value>{0} 已中斷連線,{1} 秒後自動重新連線({2}/{3})…</value>
   </data>
+  <data name="Msg_ReconnectProfileDeleted" xml:space="preserve">
+    <value>「{0}」的連線設定已經刪除,這次依分頁裡留著的那份重新連線,不會再存回去。</value>
+  </data>
   <data name="Msg_AutoRecordDisabledHint" xml:space="preserve">
     <value>自動錄製已關閉。</value>
   </data>

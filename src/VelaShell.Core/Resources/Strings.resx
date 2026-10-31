@@ -2226,6 +2226,9 @@ Paste anyway?</value>
   <data name="Msg_AutoReconnectCountdown" xml:space="preserve">
     <value>{0} disconnected; auto-reconnecting in {1}s ({2}/{3})…</value>
   </data>
+  <data name="Msg_ReconnectProfileDeleted" xml:space="preserve">
+    <value>The profile "{0}" has been deleted. Reconnecting with the copy this tab kept; it will not be saved back.</value>
+  </data>
   <data name="Msg_AutoRecordDisabledHint" xml:space="preserve">
     <value>Auto recording disabled.</value>
   </data>

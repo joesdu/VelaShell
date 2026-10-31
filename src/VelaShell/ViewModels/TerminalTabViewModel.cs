@@ -142,6 +142,18 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     public string? StartupDirectoryOverride { get; set; }
 
     /// <summary>
+    /// <see cref="Profile" /> 这条配置在库里出现过(连上时、或某次重连时查到过)。
+    /// </summary>
+    /// <remarks>
+    /// 重连先按 Id 从库里重读最新的那份;读不到时靠它分清两种情形:出现过 = 开着的这段时间里被删了(照标签手里那份连、
+    /// 提示一句、不写回库里);没出现过 = 本来就是不在库里的临时配置(外部拉起、「最近连接」重建的,§252),照旧不声不响。
+    /// </remarks>
+    internal bool ProfileSeenInLibrary { get; set; }
+
+    /// <summary>「配置已删,按标签里的那份重连」的提示这个标签上已经给过了:自动重连一次次来,不一次次提示。</summary>
+    internal bool ProfileDeletedNoticeShown { get; set; }
+
+    /// <summary>
     /// 本标签页的资源面板数据(悬停 > 400ms 时显示,§11)。
     /// 握手完成后才赋值,而标签 ToolTip.Tip 在标签创建时就已绑定到它,
     /// 必须发变更通知,否则 Tip 停留在 null,悬浮面板永远不弹。
