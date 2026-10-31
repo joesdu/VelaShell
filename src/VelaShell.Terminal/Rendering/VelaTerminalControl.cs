@@ -3225,6 +3225,8 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>
     /// 命令块的两项:「复制这条命令」「重跑」。命令切不出来时两项都在、只是灰掉 ——
     /// 让人知道有这回事,也看得出是这一块不行(还在敲、按 Ctrl+C 取消了、老集成脚本不发 B)。
+    /// 命令里夹着屏幕上看不见的字(SGR 8 隐藏、控制字符)时两项同样灰掉:多半是输出里伪造的标记,
+    /// 用户看见的和要复制 / 重跑的不是同一条(<see cref="CommandInput.CanCopy" />)。
     /// </summary>
     /// <remarks>
     /// 菜单弹出时就把命令文本切好、把「能不能重跑」判定一次:用户点的是他此刻在菜单里看见的那一条。
@@ -3233,10 +3235,10 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// </remarks>
     private void AddCommandBlockItems(ContextMenu menu, GutterMenuLabels labels, CommandInput? input)
     {
-        var copy = new MenuItem { Header = labels.CopyCommand, IsEnabled = input is not null };
+        var copy = new MenuItem { Header = labels.CopyCommand, IsEnabled = input is { CanCopy: true } };
         copy.Click += (_, _) =>
         {
-            if (input is not null)
+            if (input is { CanCopy: true })
             {
                 _ = CopyCommandAsync(input.Text);
             }
@@ -3274,12 +3276,12 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <b>只在对端停在一条空的新提示符上时才发</b>(<see cref="CommandBlocks.IsIdleAtPrompt" />):
     /// 上一条命令还在跑(没收到 D)、在全屏程序里、命令行上已经敲了半截,都不发 ——
     /// 那时打进去的字会变成别的程序的输入,或者和半截命令拼成一条谁也没想执行过的命令。
-    /// 续行没带 B 的多行命令也不发(<see cref="CommandInput.CanRerun" />)。
+    /// 续行没带 B 的多行命令、夹着屏幕上看不见的字的命令也不发(<see cref="CommandInput.CanRerun" />)。
     /// </para>
     /// <para>
     /// <b>多行命令照快捷命令的口径</b>:整段走括号粘贴,shell 收齐了再执行;对端没开括号粘贴时
     /// 每一行都会当场执行(前一行要是 sudo / ssh,后面的行就成了它的输入),先问一句,
-    /// 开关沿用「粘贴时确认多行内容」。命令文本里的控制字符在切出来时已经剔掉了。
+    /// 开关沿用「粘贴时确认多行内容」。命令文本里有控制字符的,切出来时就已判为不能重跑。
     /// </para>
     /// </remarks>
     internal async Task<bool> RerunCommandAsync(CommandInput input)

