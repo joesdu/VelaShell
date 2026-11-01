@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text;
 using NSubstitute;
 using VelaShell.Core.Credentials;
 using VelaShell.Core.Data;
@@ -17,6 +19,8 @@ namespace VelaShell.Infrastructure.Tests;
 public sealed class SshConfigInteropTests
 {
     private readonly List<string> _temp = [];
+
+    public TestContext TestContext { get; set; } = null!;
 
     [TestCleanup]
     public void Cleanup()
@@ -1197,5 +1201,129 @@ public sealed class SshConfigInteropTests
         TunnelConfig readBack = imported.Tunnels!.Single();
         Assert.AreEqual(tunnel.LocalSocketPath, readBack.LocalSocketPath);
         Assert.AreEqual(tunnel.RemoteSocketPath, readBack.RemoteSocketPath);
+    }
+
+    /// <summary>
+    /// 一份 Windows 本机套接字转发的隧道:反斜杠写的、正斜杠写的、带空格的,远程转发的本机目标,含 <c>:</c> 的服务器路径,
+    /// 以及写不出来的(方括号里不能再有 <c>]</c>)。
+    /// </summary>
+    private static SessionArchive WindowsSocketArchive(out TunnelConfig[] representable)
+    {
+        SessionProfile session = new() { Name = "winsock", Host = "10.0.0.58" };
+        representable =
+        [
+            Tunnel(TunnelType.LocalForward, localSocket: @"C:\Users\Public\vs a.sock", remoteSocket: "/var/run/docker.sock"),
+            Tunnel(TunnelType.LocalForward, localSocket: "C:/Users/Public/vs-b.sock", remoteHost: "db", remotePort: 5432),
+            Tunnel(TunnelType.RemoteForward, localSocket: "C:/Users/Public/app.sock", remoteSocket: "/run/a:b.sock"),
+            Tunnel(TunnelType.LocalForward, localSocket: "/tmp/plain.sock", remoteSocket: "/var/run/x.sock"),
+        ];
+        SessionArchive archive = Archive(session);
+        archive.Tunnels = new()
+        {
+            [session.Id] = [.. representable, Tunnel(TunnelType.LocalForward, localSocket: "C:/odd]dir/x.sock", remoteSocket: "/var/run/y.sock")],
+        };
+        return archive;
+    }
+
+    /// <summary>
+    /// Windows 上的本机套接字整个放进方括号写(<c>[C:/…]</c>,反斜杠换成正斜杠):Win32-OpenSSH 只认这种写法 ——
+    /// 原样写 <c>C:/x.sock</c> 加不加引号都报 Bad forwarding specification,整份配置不读(velashell-docs spec/09 §7.4 的观察)。
+    /// 含 <c>:</c> 的服务器路径同样放进方括号;没有 <c>:</c> / <c>\</c> 的照旧;方括号写不出来的(路径里还有 <c>]</c>)改写成说明注释。
+    /// SSH 库读回来是方括号里的路径,再导入就是那条隧道。
+    /// </summary>
+    [TestMethod]
+    public async Task Windows本机套接字写成方括号_读回来是那个路径()
+    {
+        SshConfigExport export = SshConfigExporter.Write(WindowsSocketArchive(out TunnelConfig[] representable));
+
+        Assert.Contains("    LocalForward \"[C:/Users/Public/vs a.sock]\" /var/run/docker.sock\n", export.Content);
+        Assert.Contains("    LocalForward [C:/Users/Public/vs-b.sock] db:5432\n", export.Content);
+        Assert.Contains("    RemoteForward [/run/a:b.sock] [C:/Users/Public/app.sock]\n", export.Content);
+        Assert.Contains("    LocalForward /tmp/plain.sock /var/run/x.sock\n", export.Content, "没有 : 与 \\ 的照旧");
+        Assert.Contains("    # LocalForward  (VelaShell: a socket path contains ']' as well as ':' or '\\'; ssh_config cannot write it)\n", export.Content);
+        Assert.DoesNotContain("odd]dir", export.Content, "写不出来的那条不留半截路径");
+
+        List<SshConfigForward> forwards = [.. ReadBack(export, "winsock").GetForwards()];
+        Assert.HasCount(4, forwards);
+        Assert.AreEqual(("C:/Users/Public/vs a.sock", "/var/run/docker.sock"), (forwards[0].ListenSocketPath, forwards[0].TargetSocketPath), "反斜杠换成了正斜杠:Windows 上是同一个文件");
+        Assert.AreEqual(("C:/Users/Public/vs-b.sock", "db", 5432), (forwards[1].ListenSocketPath, forwards[1].TargetHost, forwards[1].TargetPort));
+        Assert.AreEqual(("/tmp/plain.sock", "/var/run/x.sock"), (forwards[2].ListenSocketPath, forwards[2].TargetSocketPath));
+        Assert.AreEqual(("/run/a:b.sock", "C:/Users/Public/app.sock"), (forwards[3].ListenSocketPath, forwards[3].TargetSocketPath));
+
+        if (OperatingSystem.IsWindows())
+        {
+            List<TunnelConfig> tunnels = [.. (await ScanOneAsync(WriteConfig(export.Content), "winsock")).Tunnels!];
+            Assert.HasCount(3, tunnels, "/tmp/plain.sock 在 Windows 上不是完整路径,照旧跳过");
+            Assert.AreEqual("C:/Users/Public/vs a.sock", tunnels[0].LocalSocketPath);
+            Assert.AreEqual("C:/Users/Public/vs-b.sock", tunnels[1].LocalSocketPath);
+            Assert.AreEqual(("C:/Users/Public/app.sock", "/run/a:b.sock"), (tunnels[2].LocalSocketPath, tunnels[2].RemoteSocketPath));
+            Assert.AreEqual(representable[2].Type, tunnels[2].Type);
+        }
+    }
+
+    /// <summary>
+    /// 〔互操作〕上面那份导出交给本机 OpenSSH 的 <c>ssh -G</c>:整份配置读得了(没有 Bad forwarding specification),
+    /// 每条转发读出来是原来的路径(Windows 路径的反斜杠换成了正斜杠)。本机没有 ssh 时判不了。
+    /// </summary>
+    [TestMethod]
+    [TestCategory("Interop")]
+    public async Task Windows本机套接字的导出ssh读得了()
+    {
+        if (FindSsh() is not { } ssh)
+        {
+            TestContext.WriteLine("[SKIP] 本机没有 ssh,判不了。");
+            Assert.Inconclusive("本机没有 ssh。");
+            return;
+        }
+
+        SshConfigExport export = SshConfigExporter.Write(WindowsSocketArchive(out _));
+        string path = WriteConfig(export.Content);
+        TestContext.WriteLine($"ssh -V:{await RunAsync(ssh, ["-V"])}");
+        string output = await RunAsync(ssh, ["-G", "-F", path, "winsock"]);
+
+        Assert.DoesNotContain("Bad forwarding", output, output);
+        string[] lines = [.. output.Split('\n').Select(static line => line.TrimEnd('\r'))];
+        Assert.Contains("localforward C:/Users/Public/vs a.sock /var/run/docker.sock", lines, output);
+        Assert.Contains("localforward /tmp/plain.sock /var/run/x.sock", lines, output);
+        Assert.Contains("remoteforward /run/a:b.sock C:/Users/Public/app.sock", lines, output);
+        Assert.Contains(l => l.StartsWith("localforward C:/Users/Public/vs-b.sock ", StringComparison.Ordinal) && l.EndsWith(":5432", StringComparison.Ordinal), lines, output);
+    }
+
+    private static string? FindSsh()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            string system = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "OpenSSH", "ssh.exe");
+            if (File.Exists(system))
+            {
+                return system;
+            }
+        }
+        string name = OperatingSystem.IsWindows() ? "ssh.exe" : "ssh";
+        return (Environment.GetEnvironmentVariable("PATH") ?? "")
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Select(directory => Path.Combine(directory, name))
+            .FirstOrDefault(File.Exists);
+    }
+
+    private async Task<string> RunAsync(string program, string[] arguments)
+    {
+        ProcessStartInfo start = new(program)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            StandardOutputEncoding = Encoding.UTF8,
+        };
+        foreach (string argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using Process process = Process.Start(start)!;
+        Task<string> stdout = process.StandardOutput.ReadToEndAsync(TestContext.CancellationToken);
+        Task<string> stderr = process.StandardError.ReadToEndAsync(TestContext.CancellationToken);
+        await process.WaitForExitAsync(TestContext.CancellationToken);
+        return await stdout + await stderr;
     }
 }

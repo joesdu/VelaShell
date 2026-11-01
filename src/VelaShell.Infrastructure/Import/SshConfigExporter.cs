@@ -207,6 +207,10 @@ public static class SshConfigExporter
     /// 第一条的名单写出来,名单不同的那几条改写成注释 —— 合成一份(取并集)会放宽收得更紧的那一条。
     /// 未来新增的隧道类型这三个关键字表达不了,不写。
     /// </para>
+    /// <para>
+    /// 套接字那一头照 ssh 认的样子写(<see cref="SocketSide" />):本机的 Windows 路径写成 <c>[C:/…]</c>。
+    /// 〔历史〕曾经原样写 <c>C:/…</c> / <c>C:\…</c>:Win32-OpenSSH 报 Bad forwarding specification,整份配置都不读。
+    /// </para>
     /// </remarks>
     private static void WriteForwards(StringBuilder text, IReadOnlyList<TunnelConfig> tunnels)
     {
@@ -216,21 +220,37 @@ public static class SshConfigExporter
             text.Append("    # ").Append(keyword).Append(' ').Append(Comment(string.Join(' ', arguments.Select(Printable))))
                 .Append("  (").Append(why).Append(")\n");
 
+        // 一头:套接字(照 SocketSide 写;写不出来时为 null)或 主机:端口。
+        string? Side(string? socket, bool local, string host, uint port) =>
+            string.IsNullOrWhiteSpace(socket) ? Endpoint(host, port) : SocketSide(socket.Trim(), local);
+
+        // 有一头的套接字路径写不出来(方括号里不能再有 ]),整条改写成说明注释 —— 写出去的话 ssh 整份配置不读。
+        void Forward(string keyword, params string?[] sides)
+        {
+            if (sides.Any(static side => side is null))
+            {
+                text.Append("    # ").Append(keyword)
+                    .Append("  (VelaShell: a socket path contains ']' as well as ':' or '\\'; ssh_config cannot write it)\n");
+                return;
+            }
+            WriteArguments(text, keyword, [.. sides.Select(static side => side!)]);
+        }
+
         IReadOnlyList<string>? permit = null;
         foreach (TunnelConfig tunnel in tunnels)
         {
             switch (tunnel.Type)
             {
                 case TunnelType.LocalForward:
-                    Line("LocalForward",
-                        Socket(tunnel.LocalSocketPath) ?? Endpoint(tunnel.LocalHost, tunnel.LocalPort),
-                        Socket(tunnel.RemoteSocketPath) ?? Endpoint(tunnel.RemoteHost, tunnel.RemotePort));
+                    Forward("LocalForward",
+                        Side(tunnel.LocalSocketPath, local: true, tunnel.LocalHost, tunnel.LocalPort),
+                        Side(tunnel.RemoteSocketPath, local: false, tunnel.RemoteHost, tunnel.RemotePort));
                     break;
 
                 case TunnelType.RemoteForward:
-                    Line("RemoteForward",
-                        Socket(tunnel.RemoteSocketPath) ?? Endpoint(tunnel.RemoteHost, tunnel.RemotePort),
-                        Socket(tunnel.LocalSocketPath) ?? Endpoint(tunnel.LocalHost, tunnel.LocalPort));
+                    Forward("RemoteForward",
+                        Side(tunnel.RemoteSocketPath, local: false, tunnel.RemoteHost, tunnel.RemotePort),
+                        Side(tunnel.LocalSocketPath, local: true, tunnel.LocalHost, tunnel.LocalPort));
                     break;
 
                 case TunnelType.DynamicForward:
@@ -294,8 +314,35 @@ public static class SshConfigExporter
     /// <summary>注释里的原文:换行与 NUL 换成空格,免得注释后面接出一行设置。</summary>
     private static string Comment(string line) => line.Replace('\r', ' ').Replace('\n', ' ').Replace('\0', ' ');
 
-    /// <summary>套接字路径;不是套接字时为 <see langword="null" />。</summary>
-    private static string? Socket(string? path) => string.IsNullOrWhiteSpace(path) ? null : path.Trim();
+    /// <summary>
+    /// 转发里套接字那一头写成 ssh 认的样子(velashell-docs spec/09 §7.4 对 Win32-OpenSSH 9.5 的观察);写不出来时为 <see langword="null" />。
+    /// </summary>
+    /// <param name="path">套接字路径。</param>
+    /// <param name="local">本机这一头(<see cref="TunnelConfig.LocalSocketPath" />);服务器那一头(Unix 路径)不换分隔符。</param>
+    /// <remarks>
+    /// <para>
+    /// ssh 只把含 <c>/</c> 的一头当套接字,而路径里有 <c>:</c> 时它把 <c>:</c> 当主机与端口的分隔(<c>C:/x.sock</c> 加不加引号都报
+    /// Bad forwarding specification,整份配置不读),不在方括号里的 <c>\</c> 又被它当转义去掉。整个放进方括号(<c>[C:/x.sock]</c>)时
+    /// 方括号里的原样是路径 —— 所以本机的 Windows 路径先把 <c>\</c> 换成 <c>/</c>(<c>C:\Users\me\a.sock</c> 与 <c>C:/Users/me/a.sock</c>
+    /// 在 Windows 上是同一个文件),再连同别的含 <c>:</c> 或 <c>\</c> 的路径一起放进方括号;别的原样。
+    /// </para>
+    /// <para>
+    /// 方括号里不能再有 <c>]</c>(ssh 不认),这样的路径写不出来。SSH 库读 <c>[…]</c> 的规则相同(<c>SshConfigForward</c>)。
+    /// </para>
+    /// </remarks>
+    internal static string? SocketSide(string path, bool local)
+    {
+        string value = local && IsWindowsDrivePath(path) ? path.Replace('\\', '/') : path;
+        if (value.AsSpan().IndexOfAny(':', '\\') < 0)
+        {
+            return value;
+        }
+        return value.Contains(']', StringComparison.Ordinal) ? null : $"[{value}]";
+    }
+
+    /// <summary><c>C:\…</c> / <c>C:/…</c> 这样带盘符的完整路径。</summary>
+    private static bool IsWindowsDrivePath(string path) =>
+        path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/';
 
     /// <summary>一个算法类别写成什么;不用写(默认)时为 <see langword="null" />。规则见类型说明。</summary>
     internal static string? AlgorithmLine(SshAlgorithmKind kind, string? spec, bool legacy)

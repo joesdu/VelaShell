@@ -224,6 +224,35 @@ public sealed class SshConfigQuotingTests
     }
 
     /// <summary>
+    /// 转发里套接字那一头可以整个放进方括号，方括号里的原样是路径（spec/09 §7.4 的观察：路径里有 <c>:</c> 时 ssh 只认这种写法）；
+    /// 方括号里没有 <c>/</c> 的照旧（IPv6 的 <c>[::1]:8080</c>）。
+    /// </summary>
+    [TestMethod]
+    public void 转发的一头整个放进方括号是方括号里的路径()
+    {
+        SshHostConfig config = Resolve(
+            """
+            Host t
+                LocalForward [C:/x.sock] /var/run/r.sock
+                LocalForward "[C:/my dir/x.sock]" [/run/a:b.sock]
+                LocalForward [::1]:8080 db:5432
+                RemoteForward [/run/r:x.sock] [C:/Users/me/app.sock]
+            """);
+
+        IReadOnlyList<SshConfigForward> forwards = config.GetForwards();
+        Assert.HasCount(4, forwards);
+        Assert.AreEqual("C:/x.sock", forwards[0].ListenSocketPath);
+        Assert.AreEqual("/var/run/r.sock", forwards[0].TargetSocketPath);
+        Assert.AreEqual("C:/my dir/x.sock", forwards[1].ListenSocketPath);
+        Assert.AreEqual("/run/a:b.sock", forwards[1].TargetSocketPath);
+        Assert.AreEqual(("::1", 8080), (forwards[2].ListenAddress, forwards[2].ListenPort));
+        Assert.IsNull(forwards[2].ListenSocketPath, "方括号里没有 / 的照旧是 IPv6");
+        Assert.AreEqual("/run/r:x.sock", forwards[3].ListenSocketPath);
+        Assert.AreEqual("C:/Users/me/app.sock", forwards[3].TargetSocketPath);
+        Assert.AreEqual("[C:/x.sock] /var/run/r.sock", forwards[0].Line, "Line 还是原文");
+    }
+
+    /// <summary>
     /// 写出（<see cref="SshConfigFile.TryFormatArgument"/>）：能不改的地方不改；本库读回来与原值一致。
     /// 与 <c>ssh -G</c> 的核对在 <see cref="写出的参数ssh读回来也是原值"/>。
     /// </summary>
