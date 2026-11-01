@@ -3450,6 +3450,46 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
     internal Task AutoReconnectTabAsync(TerminalTabViewModel tab) =>
         ReconnectTabCoreAsync(tab, automatic: true, CancellationToken.None);
 
+    /// <summary>正在为重连读库、过主密码闸口的标签(这段时间标签还是断开的)。</summary>
+    private readonly HashSet<TerminalTabViewModel> _reconnectPreparing = [];
+
+    /// <summary>
+    /// 重连的准备阶段:从库里重读、过主密码的闸口(<see cref="ResolveUnlockedReconnectProfileAsync" />),过了就把标签标成「连接中」。
+    /// </summary>
+    /// <remarks>
+    /// 同一标签同一时刻只许一个重连在这一段里:读库要等一下,闸口可能停在解锁框上,这段时间标签还是断开的,
+    /// <see cref="ReconnectTabCoreAsync" /> 开头「连接中 / 已连接就不理」那一道拦不住第二个请求(连按回车、自动重连计时器到点、
+    /// 解锁后的重试)—— 放进来就会并行连两次,多出来的那条会话没人收拾。第二个请求直接并入正在进行的这一个(什么也不做)。
+    /// 「连接中」在放开之前就标上,之后来的请求由开头那一道拦下,中间不留空档。
+    /// </remarks>
+    /// <returns>要连的那份;已经有一个在准备、或锁着没解开(标签已说明原因)时为 null。</returns>
+    private async Task<SessionProfile?> PrepareReconnectAsync(TerminalTabViewModel tab, SessionProfile copy, bool automatic)
+    {
+        lock (_reconnectPreparing)
+        {
+            if (!_reconnectPreparing.Add(tab))
+            {
+                return null;
+            }
+        }
+        try
+        {
+            SessionProfile? resolved = await ResolveUnlockedReconnectProfileAsync(tab, copy, automatic).ConfigureAwait(true);
+            if (resolved is not null)
+            {
+                tab.ConnectionStatus = SessionStatus.Connecting;
+            }
+            return resolved;
+        }
+        finally
+        {
+            lock (_reconnectPreparing)
+            {
+                _reconnectPreparing.Remove(tab);
+            }
+        }
+    }
+
     private async Task ReconnectTabCoreAsync(
         TerminalTabViewModel tab,
         bool automatic,
@@ -3477,7 +3517,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
         if (tab.Profile is { ConnectionType: ConnectionType.Plugin } pluginProfile)
         {
             // 同下面的 SSH:先从库里重读,再对重读后的那份过主密码的闸口 —— 锁着时库里那份的机密还是密文,绝不交给插件。
-            if (await ResolveUnlockedReconnectProfileAsync(tab, pluginProfile, automatic).ConfigureAwait(true) is not { } resolvedPlugin)
+            if (await PrepareReconnectAsync(tab, pluginProfile, automatic).ConfigureAwait(true) is not { } resolvedPlugin)
             {
                 return;
             }
@@ -3504,12 +3544,11 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
         // (MasterPassword 分部):手动重连锁着时弹解锁框;自动重连不弹,记下来等解锁后重试。闸口看的必须是重读之后的那份 ——
         // 标签开着时库里那份可能刚被改成存着密码,只看标签副本会把它放过去、拿密文去连。
         // 过了闸口才换到标签上:这一次的连接、注入(认证后命令、初始目录)与之后的文件面板都用它。连上之后工作流只改库里那份的最近连接时间。
-        // 「连接中」也在过了闸口之后才标:锁着被拦下时标签本来就是断开的,不再走一遍断开(那会排上下一轮自动重连)。
-        if (await ResolveUnlockedReconnectProfileAsync(tab, tab.Profile, automatic).ConfigureAwait(true) is not { } resolved)
+        // 「连接中」也在过了闸口之后才标(PrepareReconnectAsync):锁着被拦下时标签本来就是断开的,不再走一遍断开(那会排上下一轮自动重连)。
+        if (await PrepareReconnectAsync(tab, tab.Profile, automatic).ConfigureAwait(true) is not { } resolved)
         {
             return;
         }
-        tab.ConnectionStatus = SessionStatus.Connecting;
         tab.Profile = resolved;
         await tab.DetachTransportAsync().ConfigureAwait(true);
         UpdateStatusBarForActiveTab();
