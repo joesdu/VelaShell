@@ -85,12 +85,19 @@ public sealed class SessionProfileMergeTests
     [DataRow("user")]
     [DataRow("auth")]
     [DataRow("credential")]
+    [DataRow("protocol")]
     public void Reconnect_LoginIdentityChanged_DropsTheTypedPassword(string change)
     {
         SessionProfile stored = Stored();
         SessionProfile tab = TabCopyOf(stored);
         switch (change)
         {
+            case "protocol":
+                // 插件终端协议(Telnet → 串口之类):为原来那个协议的登录敲的口令不跟过去。
+                stored.ConnectionType = tab.ConnectionType = ConnectionType.Plugin;
+                stored.PluginProtocolId = "test.serial";
+                tab.PluginProtocolId = "test.telnet";
+                break;
             case "host":
                 stored.Host = "elsewhere.example.com";
                 break;

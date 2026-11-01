@@ -28,7 +28,7 @@ public static class SessionProfileMerge
     /// 库里存着的凭据也压过标签上的(那是更新的,或者本来就是同一份)。
     /// </para>
     /// <para>
-    /// <b>只叠库里没有的</b>,而且只在<b>登录身份没变</b>时叠(连接类型、主机、端口、用户名、认证方式、凭据引用都相同):
+    /// <b>只叠库里没有的</b>,而且只在<b>登录身份没变</b>时叠(连接类型与插件协议、主机、端口、用户名、认证方式、凭据引用都相同):
     /// 别处把这条配置指向了另一台主机、另一个账号,这次会话里为原来那个账号敲的口令就不该跟过去 ——
     /// 尤其是指向另一台主机时,那等于把口令交给了别人。
     /// </para>
@@ -104,9 +104,12 @@ public static class SessionProfileMerge
         CredentialMaterial.ClearTailscaleCredentials(target);
     }
 
-    /// <summary>登录身份没变:同一种连接、同一台主机的同一个端口、同一个账号、同一种认证、同一条凭据引用。</summary>
+    /// <summary>
+    /// 登录身份没变:同一种连接(插件协议还得是同一个协议)、同一台主机的同一个端口、同一个账号、同一种认证、同一条凭据引用。
+    /// </summary>
     private static bool SameLogin(SessionProfile stored, SessionProfile session) =>
         stored.ConnectionType == session.ConnectionType
+        && string.Equals(stored.PluginProtocolId, session.PluginProtocolId, StringComparison.Ordinal)
         && string.Equals(stored.Host, session.Host, StringComparison.OrdinalIgnoreCase)
         && stored.Port == session.Port
         && string.Equals(stored.Username, session.Username, StringComparison.Ordinal)

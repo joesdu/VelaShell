@@ -5475,7 +5475,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     await trustPrompt(current, certificate).ConfigureAwait(true))
                 {
                     current = WithTrustedCertificate(current, certificate.Thumbprint);
-                    await PersistProfileIfSavedAsync(current).ConfigureAwait(true);
+                    await PersistTrustedCertificateAsync(current.Id, stored => WithTrustedCertificate(stored, certificate.Thumbprint))
+                        .ConfigureAwait(true);
                     attempt--; // 信任后的这次重连不算认证重试
                     continue;
                 }
@@ -5783,7 +5784,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     await trustPrompt(current, certificate).ConfigureAwait(true))
                 {
                     current = WithTrustedPluginCertificate(current, certificate);
-                    await PersistProfileIfSavedAsync(current).ConfigureAwait(true);
+                    if (certificate.SettingKey is { Length: > 0 })
+                    {
+                        await PersistTrustedCertificateAsync(current.Id, stored => WithTrustedPluginCertificate(stored, certificate))
+                            .ConfigureAwait(true);
+                    }
                     if (certificate.SettingKey is { Length: > 0 } && ++certPrompts <= 2)
                     {
                         // 指纹确实记下了,下次重连不会再撞同一张证书 —— 这一次不算认证重试。
@@ -5888,6 +5893,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             await AttachPluginTerminalAsync(tab, profile, registration, settings, connectToken)
                 .ConfigureAwait(true);
+            // 重连时库里读不到这条配置,靠这一笔分清「被删了」与「本来就是临时配置」(同 SSH 标签,见 ResolveReconnectProfileAsync)。
+            tab.ProfileSeenInLibrary = await IsInLibraryAsync(profile.Id).ConfigureAwait(true);
             await Sidebar.RecentConnections.RefreshAsync().ConfigureAwait(true);
             return tab;
         }
@@ -5948,12 +5955,18 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     }
 
     /// <summary>重连一条插件终端会话:复用同一标签与回滚缓冲,RIS 复位后重建传输。</summary>
+    /// <remarks>
+    /// 与 SSH 标签同一个口径(<see cref="ResolveReconnectProfileAsync" />):先按 Id 从库里重读最新的那份(协议设置、机密字段、地址
+    /// 别处刚改的这次就用上),只在登录身份没变时叠上标签副本里库里没有的口令;配置被删了照标签副本连、提示一次;临时配置照旧。
+    /// 插件终端本来就不经连接工作流、连上之后不往库里写任何东西,这里也不写。
+    /// </remarks>
     private async Task ReconnectPluginTerminalAsync(
         TerminalTabViewModel tab,
-        SessionProfile profile,
+        SessionProfile copy,
         CancellationToken cancellationToken)
     {
         tab.ConnectionStatus = SessionStatus.Connecting;
+        SessionProfile profile = tab.Profile = await ResolveReconnectProfileAsync(tab, copy).ConfigureAwait(true);
         await tab.DetachTransportAsync().ConfigureAwait(true);
         UpdateStatusBarForActiveTab();
         try
@@ -6131,7 +6144,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     await trustPrompt(current, certificate).ConfigureAwait(true))
                 {
                     current = WithTrustedPluginCertificate(current, certificate);
-                    await PersistProfileIfSavedAsync(current).ConfigureAwait(true);
+                    if (certificate.SettingKey is { Length: > 0 })
+                    {
+                        await PersistTrustedCertificateAsync(current.Id, stored => WithTrustedPluginCertificate(stored, certificate))
+                            .ConfigureAwait(true);
+                    }
                     if (certificate.SettingKey is { Length: > 0 } && ++certPrompts <= 2)
                     {
                         attempt--;
@@ -6525,37 +6542,49 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     }
 
     /// <summary>
-    /// 把配置写回仓储(仅对**已保存**的配置;「最近连接」重建的临时配置只在本次连接内有效)。
-    /// 目前的用途是记住用户刚刚信任的服务器证书指纹,FTPS 与插件协议共用。
+    /// 记住用户刚刚信任的服务器证书指纹(FTPS、插件协议的文件标签与工作台共用):按 Id 取库里那份,只改证书信任那一项再存,
+    /// 其余字段以库里为准;不在库里的临时配置(外部拉起、「最近连接」重建的,§252)只在本次连接内信任,不写。
     /// </summary>
-    private async Task<bool> PersistProfileIfSavedAsync(SessionProfile profile)
+    /// <remarks>
+    /// <para>
+    /// 以前这里把连接手里那份整份写回(§298 的同类欠账,维护者 2026-10-31 定与终端标签重连同一口径):那份是打开文档时从会话树缓存、
+    /// 失败卡片「重新连接」留着的副本里来的,别处(云同步、编辑框)这段时间里改过的字段被一并冲掉;登录框交回的副本里
+    /// 这次手输的用户名、认证方式也跟着落了盘 —— 而没撞上证书提示时它们从来不落盘,同一个登录框两种结局。
+    /// </para>
+    /// <para>
+    /// 改的是哪一项由调用方给(<paramref name="trust" />,与改连接手里那份用的是同一个函数):FTPS 是
+    /// <see cref="FtpSettings.TrustedCertificateThumbprint" />,插件协议是它自己声明的那个隐藏设置字段。
+    /// 仍经工作流保存:库里存着的密码照旧按「记住密码」与常规页的总开关过一遍,与其它保存点一致。
+    /// 指纹没落盘不影响本次连接(重连用的是改过的那份),下次会再问一遍。
+    /// </para>
+    /// </remarks>
+    /// <param name="profileId">配置的 Id。</param>
+    /// <param name="trust">在库里那份上记下信任(就地修改)。</param>
+    private async Task PersistTrustedCertificateAsync(Guid profileId, Action<SessionProfile> trust)
     {
         if (_sessionRepository is null)
         {
-            return true;
+            return;
         }
         try
         {
-            if (await _sessionRepository.GetSessionAsync(profile.Id).ConfigureAwait(true) is null)
+            if (await _sessionRepository.GetSessionAsync(profileId).ConfigureAwait(true) is not { } stored)
             {
-                return true;
+                return;
             }
-            // 经工作流保存:登录框交回来的副本可能带着用户这次手输、却没让记住的密码,
-            // 工作流会按「记住密码」把它剥掉 —— 直接落仓储等于替用户记住了他明确不让记的东西。
+            trust(stored);
             if (_connectionWorkflowService is { } workflow)
             {
-                await workflow.SaveProfileAsync(profile).ConfigureAwait(true);
+                await workflow.SaveProfileAsync(stored).ConfigureAwait(true);
             }
             else
             {
-                await _sessionRepository.SaveSessionAsync(profile).ConfigureAwait(true);
+                await _sessionRepository.SaveSessionAsync(stored).ConfigureAwait(true);
             }
-            return true;
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException)
         {
-            // 信任指纹没落盘不影响本次连接,下次会再问一遍。
-            return false;
+            System.Diagnostics.Trace.WriteLine($"[Connect] Saving the trusted certificate for {profileId} failed: {ex.Message}");
         }
     }
 
@@ -6618,7 +6647,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 照旧不声不响。读库出错时同样退回标签副本,不让这件事挡住重连。
     /// </para>
     /// <para>
-    /// 库里那份换成了别的连接类型(从 SSH 改成了 SFTP 之类)时也用标签副本:这个标签是 SSH 终端,照库里那份去连就不是它了。
+    /// 库里那份换成了别的连接类型(从 SSH 改成了 SFTP 之类)、或插件配置换了协议时也用标签副本:这个标签是那种终端,
+    /// 照库里那份去连就不是它了。SSH 标签与插件终端协议(Telnet、串口…)的重连都经这里。
     /// </para>
     /// </remarks>
     private async Task<SessionProfile> ResolveReconnectProfileAsync(TerminalTabViewModel tab, SessionProfile copy)
@@ -6648,12 +6678,15 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         }
         tab.ProfileSeenInLibrary = true;
         tab.ProfileDeletedNoticeShown = false;
-        return stored.ConnectionType == copy.ConnectionType ? SessionProfileMerge.ForReconnect(stored, copy) : copy;
+        return stored.ConnectionType == copy.ConnectionType
+               && string.Equals(stored.PluginProtocolId, copy.PluginProtocolId, StringComparison.Ordinal)
+            ? SessionProfileMerge.ForReconnect(stored, copy)
+            : copy;
     }
 
     /// <summary>
     /// 目录收藏的落盘入口(#621):只改库里那一条配置的收藏,其余字段不碰。
-    /// 不走 <see cref="PersistProfileIfSavedAsync" /> 的整条写回 —— 文档手里那份配置可能早就过时了
+    /// 不把文档手里那份整条写回(证书信任那一路同样只改那一项,见 <see cref="PersistTrustedCertificateAsync" />)—— 文档手里那份配置可能早就过时了
     /// (编辑框改过端口或名字、另一个文档加过收藏),整条写回会把那些改动悄悄回滚。
     /// </summary>
     /// <returns>改后的收藏;配置没保存过(「最近连接」重建的临时配置)时为 null,收藏只在本文档内有效。</returns>
