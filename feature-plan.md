@@ -54,7 +54,7 @@
 
 1. **跨平台实机验收**(🟠 P1,一、窗口与外观)—— 只经 CI 编译的平台代码又多了一块,而且都在已存密码的解密路径上:主密码在 macOS 钥匙串 / Linux Secret Service 上的包裹与解包(`plan.md` §309,Secret Service 的值改成了可变长),加上 §253 的密钥链迁移,真机一次都没跑过;趁着跑一遍窗口外框,把 `VELASHELL_KEYCHAIN_TESTS=1` 的往返用例、升级迁移与主密码开启 / 解锁 / 关闭一起做掉。
 2. **开 Docker 跑一遍互操作**(🟢 P3,一、终端与 SSH「SSH 互操作靶机上没跑过的核对」)—— 这一轮 SSH 库改得最多(拆两个上帝类、远程转发混合端、FIPS 预设、ssh_config 分词,§300 – §302),而互操作用例全部早退;成本低,跑一遍就能确认对真 OpenSSH 没有回归。
-3. **发一版 SDK,接上「机密已锁定」契约**(🟡 P2,一、插件生态)—— §309 的 `SecretsLockedException` / `SupportsLockedState` / 握手 `SupportsSecretsLocked` 与 §306 的 TBD 注释都在 velashell-plugin-sdk 本地分支上;版本号由维护者定,发版时顺手跑 `Set-Version.ps1 -DocsRoot …`(仓库与 docs 横幅还停在 2.1.3),发完抬 `src/` 与 `tests/` 的 `Directory.Packages.props`,宿主的插件机密闸口改成锁着时按能力位抛 `SecretsLockedException`(AGENTS.md 的版本纪律:不造本地包、不猜版本号)。
+3. **宿主接上「机密已锁定」契约**(🟡 P2,一、插件生态)—— SDK 2.1.6 已发版、宿主已抬包(4d2253f3);插件机密闸口对声明支持的插件锁着时直接抛 `SecretsLockedException`、非交互式不再弹框,隔离模式由 `PluginCapabilityRouter` 映射 `secrets-locked`、握手置 `SupportsSecretsLocked = true`,docs 同步(「三」)。下次发 SDK 时顺手跑 `Set-Version.ps1 -DocsRoot …`(仓库源码与 docs 横幅还停在 2.1.3)。
 
 ## 📊 待办分布
 
@@ -120,8 +120,8 @@
 | ⏳ | 🟡 P2 | **AI 插件:Anthropic SDK 13 之后的思考配置(#657 复审跟进)** | SDK 13.x(#657 / #665 / #666)把 `anthropic-version` 换成 `2026-10-21`、API Key 改发 Bearer、去掉了采样参数;§233 已把 Key 改回 `x-api-key`,Anthropic 协议上不再发温度 / Top-P;模型清单那条请求已与聊天请求对齐(§264)。没动、也没用真 Key 验过的:插件经 `RawRepresentationFactory` 一律手拼 `thinking: {type: "enabled", budget_tokens}`,13.x 的适配器自己也会按 `ChatOptions.Reasoning` 生成思考配置(调用方给了就不覆盖);较新的模型可能不再接受 `budget_tokens`(复审时的说法,没核实),插件 README 里「12.40.0 的适配器不读 Reasoning」也已过时 | 维护者 2026-10-25 定:思考档位交给后续用真 Key 实测 —— 用官方 Key 与一两家中转站各测一轮思考档位,再定是交给适配器的 `Reasoning` 还是保留手拼 |
 | ⏳ | 🟡 P2 | **对外 MCP 的带外审批** | 对外 MCP 走 `AgentToolbox` 产出工具，那条路上没有审批界面，「询问」模式等于一律拒绝写操作 —— 这是刻意的（`plan.md` §33-四） | **暂缓**(维护者 2026-10-25 定):「询问」一律拒绝写操作是刻意的安全默认,带外审批只是可选增强,等有真实需求再排。要做时:审批推到 IM 渠道或桌面通知,用户放行后再执行 |
 | ⏳ | 🟢 P3 | **隔离模式下 `fs/transfer/*` 的 `FileNotFoundException` 跨不过管道** | 无效或不属于本插件的 transferId 进程内抛 `FileNotFoundException`,隔离模式下 SDK 的 `RpcErrorCodes.FromException` 不认它,插件进程收到的是 `RpcRemoteException("error")`(所有 `fs/transfer/*` 方法早就如此,`plan.md` §306 核对时查出) | 要 SDK 改动(在 velashell-plugin-sdk 写好、不动版本号,发版由维护者定):给 `FileNotFoundException` 一个错误码并在插件侧还原;宿主随抬包生效 |
-| ⏳ | 🟡 P2 | **插件机密「已锁定」的 SDK 契约(待发版)** | 主密码锁着时宿主对插件 `ISecretsApi` 先按「等待交互式解锁」处理,取消抛 `PluginPermissionDeniedException`、绝不交回 null(`plan.md` §309)。**SDK 契约已写好(velashell-plugin-sdk 本地分支,版本号没动)**:`SecretsLockedException`、`ISecretsApi.SupportsLockedState`、握手 `SupportsSecretsLocked`、线上码 `secrets-locked`、`FakeSecrets.IsLocked`,可用版本 TBD | 维护者定版本号发版后:抬 `src/` 与 `tests/` 的 `Directory.Packages.props`;插件机密闸口对声明支持的插件锁着时直接抛 `SecretsLockedException`、非交互式不再弹框,隔离模式由 `PluginCapabilityRouter` 映射 `secrets-locked`、握手置 `SupportsSecretsLocked = true`;velashell-docs 同步(见「三」) |
-| ⏳ | 🟢 P3 | **SDK 仓库的版本号与 docs 横幅停在 2.1.3** | ①–④ 已改(`plan.md` §308)。剩下 ⑤:SDK 仓库 dev 与 tag 2.1.5 上 `VelaSdkVersion` / `VelaPluginApi.SdkVersion` 仍是 2.1.3(Release 工作流打包前按 tag 重跑 `Set-Version.ps1`,发出的 2.1.5 DLL 里是 2.1.5,已发的包不受影响),velashell-docs `zh|en/sdk/sdk-reference.md` 的横幅也写着 2.1.3 | 下次发 SDK 时本地跑一次 `Set-Version.ps1 <版本> -DocsRoot …`,仓库版本号与横幅一起补上(横幅由脚本维护,不手改) |
+| ⏳ | 🟡 P2 | **宿主接上插件机密「已锁定」的 SDK 契约** | 主密码锁着时宿主对插件 `ISecretsApi` 先按「等待交互式解锁」处理,取消抛 `PluginPermissionDeniedException`、绝不交回 null(`plan.md` §309)。**SDK 2.1.6 已发版(velashell-plugin-sdk#48),宿主已抬包(4d2253f3),宿主侧还没接**:`SecretsLockedException`、`ISecretsApi.SupportsLockedState`、握手 `SupportsSecretsLocked`、线上码 `secrets-locked`、`FakeSecrets.IsLocked`;宿主 `Core.Data.SecretsLockedException` 与它同名,同时引用两个命名空间的文件用 using 别名区分 | 插件机密闸口对声明支持的插件锁着时直接抛 `SecretsLockedException`、非交互式不再弹框,隔离模式由 `PluginCapabilityRouter` 映射 `secrets-locked`、握手置 `SupportsSecretsLocked = true`;velashell-docs 同步(见「三」) |
+| ⏳ | 🟢 P3 | **SDK 仓库的版本号与 docs 横幅停在 2.1.3** | ①–④ 已改(`plan.md` §308)。剩下 ⑤:SDK 仓库 dev 与 tag 2.1.6 上 `VelaSdkVersion` / `VelaPluginApi.SdkVersion` 仍是 2.1.3(Release 工作流打包前按 tag 重跑 `Set-Version.ps1`,发出的 2.1.5 DLL 里是 2.1.5,已发的包不受影响),velashell-docs `zh|en/sdk/sdk-reference.md` 的横幅也写着 2.1.3 | 下次发 SDK 时本地跑一次 `Set-Version.ps1 <版本> -DocsRoot …`,仓库版本号与横幅一起补上(横幅由脚本维护,不手改) |
 | 💡 | 🟢 P3 | **插件更新检查的响应缓存** | 市场没装 OutputCache，`/api/plugins/latest` 每次都真查库；目前只在打开插件管理页时问一次，量很小 | 装 OutputCache + `ETag`，按 ids 组合缓存几分钟。**等真有量了再做**，别为不存在的负载先加一层缓存 |
 
 ### 🧪 测试与本机环境
@@ -259,7 +259,7 @@
 | 出处 | 要改什么 | 进度 |
 | --- | --- | --- |
 | `plan.md` §118 窗口外框 | 平台外框的文档已随 velashell-docs#70 合入；剩下的是**实机验收之后**把 `{zh,en}/host/architecture.md` 里「验收」那一段改成实测结论 | 等「跨平台实机验收」（一、窗口与外观） |
-| `plan.md` §309 SDK「机密已锁定」契约(velashell-plugin-sdk 本地分支,未发版) | 随发版一起改:`sdk/sdk-reference`(Secrets 一节的 `SupportsLockedState` 与 `SecretsLockedException`、版本表一行、`FakeSecrets.IsLocked`)、`plugins/05-ipc-protocol`(错误码 `secrets-locked` 与握手 `SupportsSecretsLocked`)、`plugins/07-capability-apis`(secrets 锁着时的语义)(zh / en;横幅由脚本维护,不手改) | 等 SDK 发版 |
+| `plan.md` §309 SDK「机密已锁定」契约(SDK 2.1.6 已发版) | 随宿主接上一起改:`sdk/sdk-reference`(Secrets 一节的 `SupportsLockedState` 与 `SecretsLockedException`、版本表一行、`FakeSecrets.IsLocked`)、`plugins/05-ipc-protocol`(错误码 `secrets-locked` 与握手 `SupportsSecretsLocked`)、`plugins/07-capability-apis`(secrets 锁着时的语义)(zh / en;横幅由脚本维护,不手改) | 等宿主接上(一、插件生态) |
 
 ---
 
