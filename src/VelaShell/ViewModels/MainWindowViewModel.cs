@@ -5461,6 +5461,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 Guid sessionId = await ftp
                     .OpenSessionAsync(FtpConnectionInfo.FromProfile(resolved), ui.Token)
                     .ConfigureAwait(true);
+                if (!ReferenceEquals(current, profile))
+                {
+                    // 这一轮用的是登录框交回的那份:与 SSH 同一条规矩,把框里改过的登录字段记下(照「记住密码」与总开关)。
+                    await SaveLoginPromptAsync(current).ConfigureAwait(true);
+                }
                 return (new(current, sessionId, null, ftp.CloseSessionAsync), default);
             }
             catch (OperationCanceledException)
@@ -5770,6 +5775,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 // 共享凭据只进交给插件的那一份;文档拿的仍是不带明文的 current(#550)。
                 SessionProfile resolved = await ResolveCredentialsAsync(current, ui.Token).ConfigureAwait(true);
                 Guid sessionId = await plugins.OpenSessionAsync(resolved, ui.Token).ConfigureAwait(true);
+                if (!ReferenceEquals(current, profile))
+                {
+                    // 同 FTP:登录框交回的那份连上了,记下框里改过的登录字段。
+                    await SaveLoginPromptAsync(current).ConfigureAwait(true);
+                }
                 return (new(current, sessionId, null, plugins.CloseSessionAsync), default);
             }
             catch (OperationCanceledException)
@@ -6118,6 +6128,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     // 连接失败就把刚建的隧道拆掉 —— 留着它等于占着一个本地端口和一条 SSH 通道。
                     await RemoveWorkspaceTunnelAsync(tunnelId).ConfigureAwait(true);
                     throw;
+                }
+                if (!ReferenceEquals(current, profile))
+                {
+                    // 同 FTP / 插件文件协议:登录框交回的那份连上了,记下框里改过的登录字段。
+                    await SaveLoginPromptAsync(current).ConfigureAwait(true);
                 }
                 var document = new PluginWorkspaceDocument(
                     current, session.SessionId, session.TypeName, session.Document, descriptor?.Icon);
@@ -6594,7 +6609,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// </summary>
     /// <remarks>
     /// 以前这件事夹在工作流「连上就把调用方那份整份写回」里顺带完成;整份写回改成只写最近连接时间之后(§298 的欠账),
-    /// 弹过登录框的三条 SSH 路径(终端标签、隧道、文件标签)各自在连上之后调这里。审计里记成「登录框」。
+    /// 弹过登录框的各条路径在认证通过之后调这里:SSH 的终端标签、隧道、文件标签,以及 FTP / FTPS、插件协议文件标签与工作台
+    /// (后三条以前从不落库,登录框上勾了「记住密码」下次照样再问 —— 只在恰好撞上证书提示时随整份写回顺带存过)。
+    /// 后三条的登录框只认密码、只交回用户名、口令与「记住密码」,私钥 / 证书那几栏原样不动(插件声明的其它字段不在登录框里,也不写)。审计里记成「登录框」。
     /// 没写进去不影响这一次连接(下次连接时照样会再问),只留一条诊断日志。
     /// </remarks>
     private async Task SaveLoginPromptAsync(SessionProfile prompted)
