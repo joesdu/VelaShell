@@ -3550,3 +3550,12 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 **测试**:`McpEndpointTests` 新增三组 —— 三档审批下提权都到宿主、普通写命令在「询问」/「只读放行」下仍拒;弹窗未答时 `run_command` 先回 `AwaitingUser`、答完 `task_wait` 拿到 `Succeeded`;Agent 档的 instructions 讲 elevated、计划档不讲。原「拒绝按次计」用例里提权 DENIED 的断言换成 `write_remote_file`。`CommandJobRegistryTests` 新增 `ElevationConfirmedByHost` 只放提权、普通命令照问;`AgentToolboxTests` 新增 sudo 提示的五条正例与五条反例。
 
 **验证**:`dotnet build tests/VelaShell.Plugin.Ai.Tests -c Debug -warnaserror` 0 警告;AI 插件测试全量 2076 / 2076 通过。没有在真实 SSH 主机上用外部 Claude Code 端到端点一遍;宿主 sudo 链路这次没改,由 `SudoInteropTests`(`ssh-sudo` 靶机)覆盖。
+
+## 312. 2026-11-01 PR #705 的 CI 修复:macOS 上上传选择框的图标视图用例偶发丢选中
+
+**起因**:#705 的 CI(run 41322823900)在 macOS 上红了一条与本 PR 无关的用例 `LocalPathPickerIconViewUiTests.ClickingTheSwitcher_LaysEntriesOutInAGrid_AndBack_KeepingTheSelection`:切到图标视图之后 `SelectedEntries` 是空的(「切视图不该丢掉选中」)。同一次运行的 Windows / Linux 通过。
+
+- **根因在测试环境,产品行为没错**:用例在临时目录里建好 96 个文件就开选择器,视图模型给这个目录挂的是真的 `FileSystemWatcher`。macOS 的 FSEvents 会在开启监视之后补投建文件那几下的创建事件(`RemoteEditDraftsTests` 里记过同一现象),300 ms 防抖后 `RefreshFromWatcher` 经 `RxSchedulers.MainThreadScheduler` 回 UI 线程 —— 而本测试程序集在 `ModuleInit` 里把它换成了 `CurrentThreadSequencer`,刷新于是就地跑在计时器的线程池线程上:重建 `Entries` 时 ListBox 抛 `The calling thread cannot access this object because a different thread owns it.`,此时选中集已被清掉,`RestoreSelection` 走不到。产品里那是 Avalonia 的调度器,刷新在 UI 线程上跑,选中按路径恢复。在 Windows 上用临时探针复现:选中两项后往目录里写一个文件,刷新落在线程池线程上(UI 线程 11,刷新在 16)、`ErrorMessage` 即上面那句、选中 2 → 0;在 UI 线程上直接调 `RefreshAsync`(列表视图 / 图标视图、切视图前后)选中都保得住。
+- **改法**:新增 `TestSupport/UnwatchedLocalFileSystem` —— 读写真实磁盘,`Watch` 返回 null(即「监视不了」,视图模型本来就会退化为不自动刷新)。在真实临时目录上开本地栏 / 上传选择框的四处 UI 用例(`LocalPathPickerIconViewUiTests`、`LocalPathPickerKeyboardUiTests`、`LocalPathPickerMarqueeUiTests`、`FilePaneKeyboardUiTests`)都改用它:后三处有同样的隐患,而迟到的线程池刷新还会把 `Dispatcher.UIThread` 绑走、坑下一条用例(见 Marquee 用例关窗处的注释)。自动刷新本身由 `LocalFilePaneViewModelTests` 用假文件系统盯着,不受影响。产品代码没动。
+
+**验证**:`dotnet build tests/VelaShell.Tests -c Debug -warnaserror` 0 警告;上述四个类加 `LocalFilePaneViewModelTests`、`HeadlessDispatchUsageTests` 共 82 通过、1 跳过(`Destination_RejectsExistingSymlinkChild`:这台 Windows 上没有建符号链接的权限,与本次无关)。macOS 上的效果只能靠 CI 验证。

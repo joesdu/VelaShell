@@ -5,8 +5,8 @@ using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using VelaShell.Core.Localization;
-using VelaShell.Core.Models;
 using VelaShell.Localization;
+using VelaShell.Tests.TestSupport;
 using VelaShell.ViewModels;
 using VelaShell.Views;
 
@@ -172,7 +172,7 @@ public sealed class LocalPathPickerMarqueeUiTests
                 File.WriteAllText(Path.Combine(tempRoot, $"a{i}.txt"), new string('x', i + 1));
             }
 
-            var vm = new LocalFilePaneViewModel(new TransferOptions());
+            var vm = UnwatchedLocalFileSystem.NewPane();
             PumpUntil(vm.NavigateToAsync(tempRoot));
 
             var dialog = new LocalPathPickerDialog(vm, loadInitial: false);
@@ -194,7 +194,8 @@ public sealed class LocalPathPickerMarqueeUiTests
                 // 不关窗整个 headless 套件会永久卡死。
                 dialog.Close();
                 Dispatcher.UIThread.RunJobs();
-                // 必须先于删目录:视图模型给 tempRoot 挂了 FileSystemWatcher。删目录会触发它,
+                // 视图模型现在不监视 tempRoot(UnwatchedLocalFileSystem);换回真监视时这一步仍须先于删目录:
+                // 删目录会触发 FileSystemWatcher,
                 // 回调落在线程池线程上,再等 300ms 防抖才真的刷新 —— 那时本次 dispatch 早已结束,
                 // 会话也已把这个测试的 Application 连同进程级的 Dispatcher.UIThread 一起拆掉。
                 // 迟到的刷新一碰 Dispatcher.UIThread,就把它重新绑到那条线程池线程上,
