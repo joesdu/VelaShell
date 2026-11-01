@@ -36,4 +36,14 @@ public interface ISecretProtector
     /// 不查询、不触发解析。不需要解析密钥的实现恒为 true。
     /// </remarks>
     bool IsReady => true;
+
+    /// <summary>
+    /// 主密码开着、此刻还没解锁:<see cref="Protect" /> 对新的明文抛 <see cref="SecretsLockedException" />,
+    /// <see cref="TryUnprotect" /> 对密文一律为 false(<see cref="Unprotect" /> 原样交回密文)。
+    /// </summary>
+    /// <remarks>
+    /// 仓储据此在锁着时把机密字段冻在库里那一份上:新的存不进去,旧的也不会被一份空值或明文顶掉。
+    /// 首次访问会触发密钥解析(可能阻塞,别在 UI 线程上第一个调);没有主密码的实现恒为 false。
+    /// </remarks>
+    bool IsLocked => false;
 }

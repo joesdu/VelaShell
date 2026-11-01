@@ -1,7 +1,8 @@
 namespace VelaShell.Core.Data;
 
 /// <summary>
-/// 系统密钥链里的一个存放位置:按条目编号存取 <see cref="ISecretProtector" /> 用的 32 字节本机加密密钥。
+/// 系统密钥链里的一个存放位置:按条目编号存取 <see cref="ISecretProtector" /> 用的本机加密密钥 ——
+/// 32 字节的密钥本身,或者开了主密码时包裹过的那一份(<c>VSMP1</c> ‖ 记录,几百字节以内)。实现不解释内容,原样存取。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -38,7 +39,7 @@ public interface IMasterKeyStore
 
     /// <summary>以条目编号存入(已有同编号条目时覆盖)。</summary>
     /// <param name="keyId">条目编号。</param>
-    /// <param name="key">32 字节密钥。</param>
+    /// <param name="key">要存的值(32 字节密钥,或包裹过的那一份)。</param>
     /// <returns>存好时 <see cref="MasterKeyStoreStatus.Ok" />,否则 <see cref="MasterKeyStoreStatus.Unavailable" /> 并带原因。</returns>
     MasterKeyStoreResult Save(string keyId, ReadOnlySpan<byte> key);
 }

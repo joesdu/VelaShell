@@ -23,10 +23,13 @@
          我们配的是 DB-IP Lite City(CC BY 4.0),同一格式。 -->
     <PackageVersion Include="MaxMind.Db" Version="5.2.0" />
     <PackageVersion Include="SonnetDB.Core" Version="4.5.0-preview.ef266.5" />
-    <!-- BouncyCastle(MIT 改写版许可,与商业授权不冲突)。只有 VelaShell.Ssh 一个使用者:
-         BCL 缺失的密码学原语(raw ChaCha20、Poly1305、Ed25519、X25519、sntrup761、Argon2id…),
+    <!-- BouncyCastle(MIT 改写版许可,与商业授权不冲突)。两个使用者:
+         ①VelaShell.Ssh:BCL 缺失的密码学原语(raw ChaCha20、Poly1305、Ed25519、X25519、sntrup761、Argon2id…),
          是那个库唯一的运行时依赖。宿主的密钥生成(SshKeyService)曾经直接拿它现造 Ed25519,
-         现在交给 SSH 库的 InMemorySshSigner.Generate*,宿主不再直接引用。 -->
+         现在交给 SSH 库的 InMemorySshSigner.Generate*。
+         ②VelaShell.Infrastructure(2026-10-31 起):可选主密码用它的 Argon2id 派生包裹本机加密密钥的 KEK
+         (MasterPasswordKdf;BCL 没有 Argon2)。显式引用同一个包,不新增依赖;
+         VelaShell.Ssh/README 里「没有第二种用途」说的是那个库内部。 -->
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.7.0" />
     <!-- FTP / FTPS 客户端(MIT,零依赖)。截至 54.2.0 最高只出到 net9.0 资产,
          本仓库 net11.0 会解析到那一份 —— 纯托管 DLL,且发布不裁剪、非单文件,无打包风险。

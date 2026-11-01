@@ -24,6 +24,8 @@
     <PackageReference Include="FluentFTP" />
     <PackageReference Include="MaxMind.Db" />
     <PackageReference Include="SonnetDB.Core" />
+    <!-- 可选主密码的 Argon2id(MasterPasswordKdf)。与 VelaShell.Ssh 同一个包、同一个版本(见 Directory.Packages.props 的登记)。 -->
+    <PackageReference Include="BouncyCastle.Cryptography" />
     <!-- DPAPI(CurrentUser)包裹本地 AES 密钥文件;仅 Windows 运行时可用,其余平台已代码守卫。 -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>

@@ -179,7 +179,7 @@ internal sealed unsafe partial class MacKeychainMasterKeyStore : IMasterKeyStore
             }
             if (status == ErrSecDuplicateItem)
             {
-                // 同编号的条目已在(编号由密钥派生,内容本应一样):只换数据,访问控制保持原样。
+                // 同编号的条目已在(编号由密钥派生;开启 / 关闭主密码时就是要把明文换成包裹、或者换回来):只换数据,访问控制保持原样。
                 query = CfDictionary([s.Class, s.AttrService, s.AttrAccount], [s.ClassGenericPassword, service, account]);
                 update = CfDictionary([s.ValueData], [data]);
                 status = SecItemUpdate(query, update);

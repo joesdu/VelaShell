@@ -55,9 +55,43 @@ public sealed class MasterKeyStatus
     /// <summary>这次启动把数据目录里的明文密钥文件迁进了系统密钥链。</summary>
     public bool Migrated { get; init; }
 
+    /// <summary>
+    /// 主密码保护开着:本机加密密钥以主密码包裹过的形式存着(事实来源是包裹格式本身,不是设置里的开关)。
+    /// </summary>
+    public bool MasterPasswordEnabled { get; init; }
+
+    /// <summary>主密码开着、却解不了锁的原因;没有问题时为 <see cref="MasterPasswordProblem.None" />。</summary>
+    public MasterPasswordProblem MasterPasswordProblem { get; init; }
+
+    /// <summary>
+    /// 主密码的 KDF 头在、却找不到任何一把它包裹过的密钥时,头被原样改名保留成的文件名;没有这回事时为 null。
+    /// </summary>
+    public string? RetiredMasterPasswordHeader { get; init; }
+
     /// <summary>有已存的密码这次可能解不开(某把密钥没取到,或者密钥文件被换过)。</summary>
     public bool HasUnreadableSecrets =>
         UnavailableKeyIds.Count > 0 || MissingKeyIds.Count > 0 || ReplacedKeyFile is not null;
+}
+
+/// <summary>主密码开着、却没法解锁的原因。</summary>
+public enum MasterPasswordProblem
+{
+    /// <summary>没有问题(输对主密码就能解锁)。</summary>
+    None,
+
+    /// <summary>
+    /// 有包裹过的密钥,KDF 头(<c>secret.key.mp</c>)却不在:盐与参数没了,主密码与恢复码都解不开。
+    /// 只能「忘记主密码」另起新密钥(旧的照样留着)。
+    /// </summary>
+    HeaderMissing,
+
+    /// <summary>KDF 头在、却读不出来(被截断、被改坏);原样留着,不覆盖。</summary>
+    HeaderUnreadable,
+
+    /// <summary>
+    /// 头好好的,但这次一把包裹过的密钥都没取到(系统密钥链这次没打开):密钥没丢,密钥链恢复后重启即可解锁。
+    /// </summary>
+    KeysUnavailable
 }
 
 /// <summary>交出本机加密密钥的解析结果(首次调用时完成解析,可能阻塞,别在 UI 线程上调)。</summary>
