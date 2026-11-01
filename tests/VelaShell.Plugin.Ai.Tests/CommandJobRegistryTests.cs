@@ -678,6 +678,45 @@ public sealed class CommandJobRegistryTests
         }
     }
 
+    /// <summary>
+    /// 对外 MCP 那条路没有审批卡:提权交给宿主的 root 确认框(<see cref="AgentToolbox.ElevationConfirmedByHost" />),
+    /// 插件这一层不再替用户拒掉。放开的<b>只有</b>提权 —— 同一个工具箱里不带 elevated 的命令照旧按挡位问、照旧被拒。
+    /// </summary>
+    [TestMethod]
+    [DataRow(ApprovalMode.Ask)]
+    [DataRow(ApprovalMode.ReadOnlyAuto)]
+    public async Task Elevated_ConfirmedByHost_SkipsOnlyThePluginApproval(ApprovalMode mode)
+    {
+        var exec = new ControlledExec();
+        using var context = new TestPluginContext { RemoteExec = exec };
+        string session = context.FakeSessions.AddConnected().SessionId;
+        var asked = new List<string>();
+        await using var toolbox = new AgentToolbox(context)
+        {
+            SessionIdProvider = () => session,
+            Approval = mode,
+            ElevationConfirmedByHost = true,
+            ApprovalHandler = value => { asked.Add(value.Kind); return Task.FromResult(false); }
+        };
+        AIFunction command = toolbox.CreateTools(ChatMode.Agent).OfType<AIFunction>().Single(f => f.Name == "run_command");
+
+        string elevated = (await command.InvokeAsync(new AIFunctionArguments
+        {
+            ["command"] = "systemctl restart nginx",
+            ["elevated"] = true
+        }, CancellationToken.None))?.ToString() ?? "";
+        string plain = (await command.InvokeAsync(new AIFunctionArguments
+        {
+            ["command"] = "systemctl restart nginx"
+        }, CancellationToken.None))?.ToString() ?? "";
+
+        Assert.DoesNotContain("DENIED", elevated);
+        Assert.AreEqual(1, exec.SudoCalls, "提权直接交给宿主的确认框");
+        Assert.Contains("DENIED", plain);
+        Assert.AreEqual(0, exec.Calls, "普通写命令照旧要插件审批");
+        Assert.AreSequenceEqual(["run_command"], asked, "插件只为普通命令问了一次,没替提权弹卡");
+    }
+
     [TestMethod]
     [DataRow(SudoExecOutcome.Exited, 0, CommandJobState.Succeeded, false)]
     [DataRow(SudoExecOutcome.Exited, 13, CommandJobState.Failed, false)]

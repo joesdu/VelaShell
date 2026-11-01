@@ -733,11 +733,11 @@ public sealed class Loc(string locale)
         ],
         ["McpServerPort"] = ["Port", "端口", "連接埠", "ポート", "포트"],
         ["McpServerApprovalHint"] = [
-            "An external agent has no window to show an approval card in, so \"ask every time\" refuses writes outright. Pick read-only auto or bypass to let it change things.",
-            "外部 agent 那边没有能弹审批卡的界面,所以「每次询问」在这条路上等于直接拒绝写操作。要让它能改东西,得选只读放行或绕过审批。",
-            "外部 agent 那邊沒有能彈審批卡的介面,所以「每次詢問」在這條路上等於直接拒絕寫操作。要讓它能改東西,得選唯讀放行或繞過審批。",
-            "外部エージェント側に承認カードを出す画面がないため、「毎回確認」は書き込みを即拒否します。変更を許すには読み取り自動許可かバイパスを選んでください。",
-            "외부 에이전트에는 승인 카드를 띄울 화면이 없어 \"매번 확인\"은 쓰기를 즉시 거부합니다. 변경을 허용하려면 읽기 전용 자동 또는 우회를 선택하세요."
+            "An external agent has no window to show an approval card in, so \"ask every time\" refuses writes outright. Pick read-only auto or bypass to let it change things. Root commands are the exception: in Agent mode VelaShell itself asks you on this desktop to confirm and enter the sudo password, whichever option is picked here.",
+            "外部 agent 那边没有能弹审批卡的界面,所以「每次询问」在这条路上等于直接拒绝写操作。要让它能改东西,得选只读放行或绕过审批。要 root 的命令例外:Agent 挡位下,不管这里选哪一项,VelaShell 都会在本机弹窗请你确认并输入 sudo 密码。",
+            "外部 agent 那邊沒有能彈審批卡的介面,所以「每次詢問」在這條路上等於直接拒絕寫操作。要讓它能改東西,得選唯讀放行或繞過審批。要 root 的命令例外:Agent 檔位下,不管這裡選哪一項,VelaShell 都會在本機彈窗請你確認並輸入 sudo 密碼。",
+            "外部エージェント側に承認カードを出す画面がないため、「毎回確認」は書き込みを即拒否します。変更を許すには読み取り自動許可かバイパスを選んでください。root が必要なコマンドは例外で、Agent モードではここの選択にかかわらず、VelaShell がこの端末で確認と sudo パスワードの入力を求めます。",
+            "외부 에이전트에는 승인 카드를 띄울 화면이 없어 \"매번 확인\"은 쓰기를 즉시 거부합니다. 변경을 허용하려면 읽기 전용 자동 또는 우회를 선택하세요. root가 필요한 명령은 예외로, Agent 모드에서는 여기서 무엇을 고르든 VelaShell이 이 컴퓨터에서 확인과 sudo 비밀번호 입력을 요청합니다."
         ],
         ["McpServerTargets"] = ["Machines the external agent can operate", "外部 agent 能操作的机器", "外部 agent 能操作的機器", "外部エージェントが操作できるマシン", "외부 에이전트가 조작할 수 있는 머신"],
         ["McpServerTargetsHint"] = ["Ticked machines come from your session tree, and the limit applies to every tool call — not just to picking a session. A session you opened by typing ssh yourself is not in the tree, so a limited scope will not reach it.", "勾选项来自会话树,而且这个限制作用在每一次工具调用上,不只是\"选哪台\"。在终端里手敲 ssh 连出去的会话不在会话树里,受限时碰不到它。", "勾選項來自工作階段樹,而且這個限制作用在每一次工具呼叫上,不只是\"選哪台\"。在終端機裡手敲 ssh 連出去的工作階段不在樹裡,受限時碰不到它。", "チェック項目はセッションツリーから来ており、この制限は「どれを選ぶか」だけでなくすべてのツール呼び出しに効きます。端末で自分で ssh を打って開いたセッションはツリーにないため、範囲を絞ると届きません。", "선택 항목은 세션 트리에서 가져오며, 이 제한은 세션 선택뿐 아니라 모든 도구 호출에 적용됩니다. 터미널에서 직접 ssh로 연 세션은 트리에 없으므로 범위를 제한하면 닿지 않습니다."],

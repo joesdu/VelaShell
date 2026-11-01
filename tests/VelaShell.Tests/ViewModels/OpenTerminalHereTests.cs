@@ -256,7 +256,10 @@ public sealed class OpenTerminalHereTests
         byte[] cd;
         lock (writes)
         {
-            cd = writes.Single(write => System.Text.Encoding.ASCII.GetString(write).Contains("printf '/data/", StringComparison.Ordinal));
+            // 写循环会把上一段写出期间积压的几段并成一次写出(SshTerminalBridge.WriteLoopAsync):
+            // cd 与紧跟其后的登录后命令可能落在同一次 WriteAsync 里(macOS CI 上碰到过)。按字节流切行再找 cd 那一行。
+            cd = Lines([.. writes.SelectMany(static write => write)])
+                .Single(line => System.Text.Encoding.ASCII.GetString(line).Contains("printf '/data/", StringComparison.Ordinal));
         }
         string line = System.Text.Encoding.ASCII.GetString(cd);
         Assert.Contains(@"cd ""$(printf '/data/\261\250", line, "报 在 GBK 里是 B1 A8,按会话字符集写成八进制");
@@ -266,6 +269,26 @@ public sealed class OpenTerminalHereTests
     }
 
     // ---- 工具 ----
+
+    /// <summary>把写进 shell 流的字节按 <c>\n</c> 切成行,每行带着自己的换行;末尾没有换行的残段原样留作最后一行。</summary>
+    private static List<byte[]> Lines(byte[] stream)
+    {
+        List<byte[]> lines = [];
+        int start = 0;
+        for (int i = 0; i < stream.Length; i++)
+        {
+            if (stream[i] == (byte)'\n')
+            {
+                lines.Add(stream[start..(i + 1)]);
+                start = i + 1;
+            }
+        }
+        if (start < stream.Length)
+        {
+            lines.Add(stream[start..]);
+        }
+        return lines;
+    }
 
     /// <summary>
     /// 连一个替身 SSH 会话并记下写进 shell 流的每一段字节;<paramref name="postAuthCommand" /> 排在 cd 之后发,

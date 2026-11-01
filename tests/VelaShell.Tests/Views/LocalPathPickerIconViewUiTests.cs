@@ -5,8 +5,8 @@ using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using VelaShell.Core.Localization;
-using VelaShell.Core.Models;
 using VelaShell.Localization;
+using VelaShell.Tests.TestSupport;
 using VelaShell.ViewModels;
 using VelaShell.Views;
 
@@ -285,7 +285,7 @@ public sealed class LocalPathPickerIconViewUiTests
                 File.WriteAllText(Path.Combine(tempRoot, name), "x");
             }
 
-            var vm = new LocalFilePaneViewModel(new TransferOptions());
+            var vm = UnwatchedLocalFileSystem.NewPane();
             PumpUntil(vm.NavigateToAsync(tempRoot));
 
             var dialog = new LocalPathPickerDialog(vm, loadInitial: false);
