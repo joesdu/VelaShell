@@ -3472,20 +3472,19 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
             return;
         }
 
-        // 主密码锁着:手动重连先弹解锁框;自动重连不弹,记下来等解锁后重试(MasterPassword 分部)。
-        if (!await UnlockForReconnectAsync(tab, automatic).ConfigureAwait(true))
-        {
-            return;
-        }
-
         // 插件终端协议(Telnet…):它们没有 SSH 会话,落进下面的 SSH 重连路径会
         // 拿 Telnet 的主机端口去做 SSH 握手 —— 表现为"重连一次就报认证失败"。
         if (tab.Profile is { ConnectionType: ConnectionType.Plugin } pluginProfile)
         {
+            // 同下面的 SSH:先从库里重读,再对重读后的那份过主密码的闸口 —— 锁着时库里那份的机密还是密文,绝不交给插件。
+            if (await ResolveUnlockedReconnectProfileAsync(tab, pluginProfile, automatic).ConfigureAwait(true) is not { } resolvedPlugin)
+            {
+                return;
+            }
             CancellationToken pluginToken = BeginTabConnect(tab, cancellationToken);
             try
             {
-                await ReconnectPluginTerminalAsync(tab, pluginProfile, pluginToken).ConfigureAwait(true);
+                await ReconnectPluginTerminalAsync(tab, resolvedPlugin, pluginToken).ConfigureAwait(true);
             }
             finally
             {
@@ -3501,10 +3500,17 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
         {
             return;
         }
+        // 先按 Id 从库里重读最新的那份,只叠上这次会话现敲的凭据(见 ResolveReconnectProfileAsync),再对重读后的那份过主密码的闸口
+        // (MasterPassword 分部):手动重连锁着时弹解锁框;自动重连不弹,记下来等解锁后重试。闸口看的必须是重读之后的那份 ——
+        // 标签开着时库里那份可能刚被改成存着密码,只看标签副本会把它放过去、拿密文去连。
+        // 过了闸口才换到标签上:这一次的连接、注入(认证后命令、初始目录)与之后的文件面板都用它。连上之后工作流只改库里那份的最近连接时间。
+        // 「连接中」也在过了闸口之后才标:锁着被拦下时标签本来就是断开的,不再走一遍断开(那会排上下一轮自动重连)。
+        if (await ResolveUnlockedReconnectProfileAsync(tab, tab.Profile, automatic).ConfigureAwait(true) is not { } resolved)
+        {
+            return;
+        }
         tab.ConnectionStatus = SessionStatus.Connecting;
-        // 先按 Id 从库里重读最新的那份,只叠上这次会话现敲的凭据(见 ResolveReconnectProfileAsync);换到标签上,
-        // 这一次的连接、注入(认证后命令、初始目录)与之后的文件面板都用它。连上之后工作流只改库里那份的最近连接时间。
-        tab.Profile = await ResolveReconnectProfileAsync(tab, tab.Profile).ConfigureAwait(true);
+        tab.Profile = resolved;
         await tab.DetachTransportAsync().ConfigureAwait(true);
         UpdateStatusBarForActiveTab();
         // 重连与首连同等对待:右下角圆环也要转起来 —— 自动重连尤其是在后台发生的,
@@ -5982,15 +5988,16 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
     /// <remarks>
     /// 与 SSH 标签同一个口径(<see cref="ResolveReconnectProfileAsync" />):先按 Id 从库里重读最新的那份(协议设置、机密字段、地址
     /// 别处刚改的这次就用上),只在登录身份没变时叠上标签副本里库里没有的口令;配置被删了照标签副本连、提示一次;临时配置照旧。
+    /// 重读与主密码的闸口都在调用方(<see cref="ResolveUnlockedReconnectProfileAsync" />),传进来的就是过了闸口、要连的那份。
     /// 插件终端本来就不经连接工作流、连上之后不往库里写任何东西,这里也不写。
     /// </remarks>
     private async Task ReconnectPluginTerminalAsync(
         TerminalTabViewModel tab,
-        SessionProfile copy,
+        SessionProfile profile,
         CancellationToken cancellationToken)
     {
         tab.ConnectionStatus = SessionStatus.Connecting;
-        SessionProfile profile = tab.Profile = await ResolveReconnectProfileAsync(tab, copy).ConfigureAwait(true);
+        tab.Profile = profile;
         await tab.DetachTransportAsync().ConfigureAwait(true);
         UpdateStatusBarForActiveTab();
         try

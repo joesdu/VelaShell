@@ -23,7 +23,8 @@ namespace VelaShell.ViewModels;
 /// 解锁成功后对这些挂起的标签各重试一次。理由见 velashell-docs《主密码保护设计》§6。
 /// </para>
 /// <para>
-/// 闸口都插在既有构建点的最前面一行,不改构建点本身。
+/// 入口的闸口都插在既有构建点的最前面一行,不改构建点本身。重连例外:它先按 Id 从库里重读,闸口看重读之后的那份
+/// (<see cref="ResolveUnlockedReconnectProfileAsync" />)。
 /// </para>
 /// </remarks>
 public partial class MainWindowViewModel
@@ -151,19 +152,35 @@ public partial class MainWindowViewModel
     }
 
     /// <summary>
-    /// 重连(Ctrl+R / 回车 / 「重连」、自动重连)的闸口:手动重连锁着时弹框;自动重连不弹,标签记下来等解锁后重试。
+    /// 重连(Ctrl+R / 回车 / 「重连」、自动重连)要用的那份配置,过了主密码的闸口:先按 Id 从库里重读
+    /// (<see cref="ResolveReconnectProfileAsync" />),再看<b>重读之后</b>的那份用不用得到已存的机密 ——
+    /// 标签开着时库里那份可能刚被改成存着密码(编辑框、云同步),只看标签副本就会把它放过去,锁着时拿密文去连
+    /// (SSH 误报「解不开」,插件终端则是把密文原样交给插件)。手动重连锁着时弹框;自动重连不弹,标签记下来等解锁后重试。
     /// </summary>
-    /// <returns>可以接着重连为 true;锁着没解开为 false(标签已经标成断开并说明原因)。</returns>
-    private async Task<bool> UnlockForReconnectAsync(TerminalTabViewModel tab, bool automatic)
+    /// <param name="tab">要重连的标签。</param>
+    /// <param name="copy">标签手里那份(不改动)。</param>
+    /// <param name="automatic">自动重连(不弹框)。</param>
+    /// <returns>
+    /// 可以接着重连:要连的那份(这一次刚解开的话按库里重读过一遍,锁着时载入的密文换成了明文);
+    /// 锁着没解开为 null(标签已经标成断开并说明原因,标签上那份不动)。
+    /// </returns>
+    private async Task<SessionProfile?> ResolveUnlockedReconnectProfileAsync(TerminalTabViewModel tab, SessionProfile copy, bool automatic)
     {
-        if (_masterPassword is not { } gate || tab.Profile is not { } profile || !MasterPasswordGuard.UsesSavedSecrets(profile))
+        SessionProfile profile = await ResolveReconnectProfileAsync(tab, copy).ConfigureAwait(true);
+        if (_masterPassword is not { } gate || !MasterPasswordGuard.UsesSavedSecrets(profile))
         {
-            return true;
+            return profile;
         }
+        bool wasLocked = await gate.IsLockedAsync().ConfigureAwait(true);
         if (await gate.EnsureUnlockedAsync(interactive: !automatic).ConfigureAwait(true))
         {
-            await RefreshUnreadableSecretsAsync(profile).ConfigureAwait(true);
-            return true;
+            if (wasLocked)
+            {
+                // 这一次才解开:上面那份是锁着时读的,库里的机密还是密文,ForReconnect 也就让标签上的现敲值顶了上来。
+                // 现在库里那份解得开了,以库里为准再读一遍(与没锁时重连拿到的一样)。
+                profile = await ResolveReconnectProfileAsync(tab, copy).ConfigureAwait(true);
+            }
+            return await RefreshUnreadableSecretsAsync(profile).ConfigureAwait(true);
         }
         if (automatic)
         {
@@ -172,7 +189,7 @@ public partial class MainWindowViewModel
         LastConnectionError = Strings.Get(automatic ? "MasterPassword_AutoReconnectLocked" : "MasterPassword_ReconnectLocked");
         tab.MarkDisconnected(LastConnectionError);
         UpdateStatusBarForActiveTab();
-        return false;
+        return null;
     }
 
     /// <summary>
