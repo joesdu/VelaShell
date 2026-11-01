@@ -10343,4 +10343,82 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>未解鎖,這次的密碼沒有儲存。</value></data>
   <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>外掛信任庫被主密碼鎖著:解鎖(狀態列的鎖形圖示)後才能安裝外掛或信任發行者;已安裝的使用者外掛解鎖後自動載入。</value></data>
   <data name="SyncSvc_Locked" xml:space="preserve"><value>已儲存的權杖與通關密語被主密碼鎖著:先解鎖(狀態列的鎖形圖示)再同步。自動同步這一輪已略過。</value></data>
+  <data name="MasterPassword_UnlockTitle" xml:space="preserve"><value>解鎖已儲存的密碼</value></data>
+  <data name="MasterPassword_EnableTitle" xml:space="preserve"><value>開啟主密碼</value></data>
+  <data name="MasterPassword_ChangeTitle" xml:space="preserve"><value>修改主密碼</value></data>
+  <data name="MasterPassword_DisableTitle" xml:space="preserve"><value>關閉主密碼</value></data>
+  <data name="MasterPassword_RecoveryTitle" xml:space="preserve"><value>復原碼</value></data>
+  <data name="MasterPassword_AfterRecoveryTitle" xml:space="preserve"><value>設定新的主密碼</value></data>
+  <data name="MasterPassword_ForgetTitle" xml:space="preserve"><value>忘了主密碼</value></data>
+  <data name="MasterPassword_UnlockDesc" xml:space="preserve"><value>已儲存的密碼、共用憑證、雲端同步權杖與外掛機密被主密碼鎖著。輸入主密碼解鎖;取消也能照常使用,只是這些機密讀不出來,隨時可以點狀態列的鎖形圖示再解鎖。</value></data>
+  <data name="MasterPassword_EnableDesc" xml:space="preserve"><value>開啟後,本機加密金鑰用主密碼再包一層:系統金鑰鏈裡的項目(Windows 上是 DPAPI 金鑰檔)和主密碼兩樣都在才解得開。每次啟動要輸一次主密碼;已儲存的密碼不用重新輸入。</value></data>
+  <data name="MasterPassword_ChangeDesc" xml:space="preserve"><value>已儲存的密碼一字不改,只重新包一層本機加密金鑰。復原碼照樣有效。</value></data>
+  <data name="MasterPassword_DisableDesc" xml:space="preserve"><value>關閉後回到不用主密碼的樣子:本機加密金鑰仍由系統金鑰鏈(Windows 上是 DPAPI 金鑰檔)保管,復原碼隨之作廢。</value></data>
+  <data name="MasterPassword_RecoveryDesc" xml:space="preserve"><value>復原碼只顯示這一次。把它抄在紙上或存進別的密碼管理器,和這台電腦分開放:忘了主密碼時用它解鎖(同樣要在這台電腦上)。</value></data>
+  <data name="MasterPassword_AfterRecoveryDesc" xml:space="preserve"><value>已用復原碼解開。請設定一個新的主密碼(復原碼照樣有效);也可以先跳過,下次啟動仍可用復原碼。</value></data>
+  <data name="MasterPassword_ForgetDesc" xml:space="preserve"><value>不知道主密碼、也沒有復原碼時:另起一把新的本機加密金鑰,主密碼隨之關閉。已儲存的密碼、共用憑證的密碼、雲端同步權杖、外掛機密與外掛信任庫在這台電腦上從此解不開,要重新輸入(沒有後門)。舊的金鑰與標頭檔改名保留(.forgotten-時間),想起主密碼時還能找回。</value></data>
+  <data name="MasterPassword_UnlockButton" xml:space="preserve"><value>解鎖</value></data>
+  <data name="MasterPassword_EnableButton" xml:space="preserve"><value>開啟</value></data>
+  <data name="MasterPassword_ChangeButton" xml:space="preserve"><value>修改</value></data>
+  <data name="MasterPassword_DisableButton" xml:space="preserve"><value>關閉主密碼</value></data>
+  <data name="MasterPassword_RecoveryWritten" xml:space="preserve"><value>我已抄下</value></data>
+  <data name="MasterPassword_SetNewButton" xml:space="preserve"><value>設為新主密碼</value></data>
+  <data name="MasterPassword_ForgetButton" xml:space="preserve"><value>另起新金鑰</value></data>
+  <data name="MasterPassword_Skip" xml:space="preserve"><value>以後再說</value></data>
+  <data name="MasterPassword_PasswordLabel" xml:space="preserve"><value>主密碼</value></data>
+  <data name="MasterPassword_CurrentPasswordLabel" xml:space="preserve"><value>目前的主密碼</value></data>
+  <data name="MasterPassword_NewPasswordLabel" xml:space="preserve"><value>新主密碼</value></data>
+  <data name="MasterPassword_ConfirmPasswordLabel" xml:space="preserve"><value>再輸入一次</value></data>
+  <data name="MasterPassword_RecoveryCodeLabel" xml:space="preserve"><value>復原碼</value></data>
+  <data name="MasterPassword_UseRecoveryCode" xml:space="preserve"><value>用復原碼解鎖</value></data>
+  <data name="MasterPassword_UsePassword" xml:space="preserve"><value>用主密碼解鎖</value></data>
+  <data name="MasterPassword_Forgot" xml:space="preserve"><value>忘了主密碼?</value></data>
+  <data name="MasterPassword_EnableWarning" xml:space="preserve"><value>忘了主密碼,已儲存的密碼就無法找回 —— 沒有後門。可以同時產生一份復原碼,抄下來放在別處。</value></data>
+  <data name="MasterPassword_CreateRecoveryLabel" xml:space="preserve"><value>同時產生復原碼(建議)</value></data>
+  <data name="MasterPassword_AcknowledgeLabel" xml:space="preserve"><value>我明白:忘了主密碼(又沒有復原碼)時,已儲存的密碼無法找回</value></data>
+  <data name="MasterPassword_StrengthHint" xml:space="preserve"><value>建議至少 12 個字元,或者用一句不常見的通關短語(幾個詞連起來)。離線猜測只能靠長度擋住。</value></data>
+  <data name="MasterPassword_AsciiNote" xml:space="preserve"><value>只接受可列印的英文字元(與其他密碼框一致)。</value></data>
+  <data name="MasterPassword_Busy" xml:space="preserve"><value>正在衍生金鑰…</value></data>
+  <data name="MasterPassword_WrongPassword" xml:space="preserve"><value>主密碼不對。</value></data>
+  <data name="MasterPassword_WrongRecoveryCode" xml:space="preserve"><value>復原碼不對。</value></data>
+  <data name="MasterPassword_MalformedRecoveryCode" xml:space="preserve"><value>復原碼寫錯了:應是 28 個字母或數字(每 4 個一組),請核對一遍。</value></data>
+  <data name="MasterPassword_RetryIn" xml:space="preserve"><value>請 {0} 秒後再試。</value></data>
+  <data name="MasterPassword_NoRecoveryCode" xml:space="preserve"><value>開啟主密碼時略過了復原碼。</value></data>
+  <data name="MasterPassword_NothingToUnlock" xml:space="preserve"><value>這會兒沒有可以解開的金鑰。</value></data>
+  <data name="MasterPassword_Empty" xml:space="preserve"><value>主密碼不能為空。</value></data>
+  <data name="MasterPassword_Mismatch" xml:space="preserve"><value>兩次輸入的不一致。</value></data>
+  <data name="MasterPassword_AcknowledgeRequired" xml:space="preserve"><value>請先勾選確認:忘了主密碼,已儲存的密碼無法找回。</value></data>
+  <data name="MasterPassword_KeysUnavailable" xml:space="preserve"><value>有金鑰這會兒取不到(系統金鑰鏈沒打開),什麼都沒改。等它恢復後再試。</value></data>
+  <data name="MasterPassword_StorageFailed" xml:space="preserve"><value>沒能寫進去({0}),已整體撤回,什麼都沒改。</value></data>
+  <data name="MasterPassword_StorageFailedPartially" xml:space="preserve"><value>寫到一半失敗、也沒能完全撤回({0}):主密碼現在是開著的,請用剛輸入的那個主密碼解鎖。</value></data>
+  <data name="MasterPassword_Enabled" xml:space="preserve"><value>主密碼已開啟。</value></data>
+  <data name="MasterPassword_Disabled" xml:space="preserve"><value>主密碼已關閉。</value></data>
+  <data name="MasterPassword_Changed" xml:space="preserve"><value>主密碼已修改。</value></data>
+  <data name="MasterPassword_Forgotten" xml:space="preserve"><value>已另起新的本機加密金鑰,主密碼已關閉。舊的金鑰與標頭檔改名保留:{0}。已儲存的密碼需要重新輸入。</value></data>
+  <data name="MasterPassword_LockedNow" xml:space="preserve"><value>已鎖定:記憶體裡的本機加密金鑰已清除。</value></data>
+  <data name="MasterPassword_ProblemHeaderMissing" xml:space="preserve"><value>找到了被主密碼包裹過的金鑰,但主密碼的標頭檔(secret.key.mp)不在:主密碼與復原碼都解不開。只能「忘了主密碼?」另起新金鑰(舊的照樣留著)。</value></data>
+  <data name="MasterPassword_ProblemHeaderUnreadable" xml:space="preserve"><value>主密碼的標頭檔(secret.key.mp)讀不出來(被截斷或改壞),原樣留著、不會覆蓋。可以從備份裡找回這個檔案,或者「忘了主密碼?」另起新金鑰。</value></data>
+  <data name="MasterPassword_ProblemKeysUnavailable" xml:space="preserve"><value>{0} 這次沒打開({1}),包裹過的金鑰一把都沒取到。金鑰沒丟:{0} 解鎖或恢復後重新啟動 VelaShell 再解鎖即可。</value></data>
+  <data name="SetGeneral_MasterPassword" xml:space="preserve"><value>主密碼</value></data>
+  <data name="SetGeneral_MasterPasswordDesc" xml:space="preserve"><value>// 給已儲存的密碼再加一把鎖:系統金鑰鏈裡的項目和主密碼兩樣都在才解得開。預設關閉;忘了就無法找回(除非留了復原碼)</value></data>
+  <data name="SetGeneral_MasterPasswordStatusOff" xml:space="preserve"><value>未開啟</value></data>
+  <data name="SetGeneral_MasterPasswordStatusUnlocked" xml:space="preserve"><value>已開啟 · 已解鎖</value></data>
+  <data name="SetGeneral_MasterPasswordStatusLocked" xml:space="preserve"><value>已開啟 · 鎖著</value></data>
+  <data name="SetGeneral_MasterPasswordRecovery" xml:space="preserve"><value>有復原碼</value></data>
+  <data name="SetGeneral_MasterPasswordNoRecovery" xml:space="preserve"><value>沒有復原碼</value></data>
+  <data name="SetGeneral_MasterPasswordEnable" xml:space="preserve"><value>開啟…</value></data>
+  <data name="SetGeneral_MasterPasswordUnlock" xml:space="preserve"><value>解鎖…</value></data>
+  <data name="SetGeneral_MasterPasswordLockNow" xml:space="preserve"><value>立即鎖定</value></data>
+  <data name="SetGeneral_MasterPasswordChange" xml:space="preserve"><value>修改…</value></data>
+  <data name="SetGeneral_MasterPasswordDisable" xml:space="preserve"><value>關閉…</value></data>
+  <data name="SetGeneral_AutoLock" xml:space="preserve"><value>閒置後自動鎖定(分鐘)</value></data>
+  <data name="SetGeneral_AutoLockDesc" xml:space="preserve"><value>// VelaShell 的視窗這麼多分鐘沒有鍵盤、滑鼠操作就鎖定;0 = 不自動鎖。只在開了主密碼時起作用</value></data>
+  <data name="SetGeneral_LockOnSystemLock" xml:space="preserve"><value>系統鎖定畫面時鎖定</value></data>
+  <data name="SetGeneral_LockOnSystemLockDesc" xml:space="preserve"><value>// 按 Win+L、螢幕保護程式要求登入時一併鎖定。只在開了主密碼時起作用</value></data>
+  <data name="StatusBar_MasterPasswordLocked" xml:space="preserve"><value>已儲存的密碼鎖著 —— 點擊解鎖</value></data>
+  <data name="StatusBar_MasterPasswordUnlocked" xml:space="preserve"><value>主密碼已解鎖 —— 點擊立即鎖定</value></data>
+  <data name="Auth_UnreadableSecretLocked" xml:space="preserve"><value>{0}被主密碼鎖著,這次沒有解鎖。可以先在這裡輸入登入;解鎖(狀態列的鎖形圖示)後照常讀取。</value></data>
+  <data name="Notify_MasterPasswordProblemTitle" xml:space="preserve"><value>主密碼解不了鎖</value></data>
+  <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>主密碼的標頭檔已停用</value></data>
+  <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>資料目錄裡的主密碼標頭檔找不到它包裹過的任何金鑰(多半是降級到舊版本時舊版本把包裹過的金鑰檔挪開了),已改名保留為 {0};主密碼現在是關著的。降級之前存的密碼在這台電腦上解不開,需要重新輸入。</value></data>
 </root>

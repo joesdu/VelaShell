@@ -142,6 +142,11 @@ public class App : Application
             // keyboard-interactive(2FA / OTP):服务端要动态码时弹框问。
             .AddSingleton<IKeyboardInteractivePrompt, KeyboardInteractivePromptDialogService>()
             .AddSingleton<ISudoPrompt, SudoPromptDialogService>()
+            // 主密码的交互式解锁框(启动时、主动连接、手动重连、插件读机密…):模态于此刻活动的窗口。
+            // 「忘了主密码」之后的那句说明投成主窗口的浮层提示。
+            .AddSingleton<IMasterPasswordPrompt>(sp => new VelaShell.Services.MasterPassword.MasterPasswordPromptDialogService(
+                () => sp.GetService<IMasterPasswordService>(),
+                notice => sp.GetService<MainWindowViewModel>()?.Toasts.Info(notice)))
             .AddSingleton(_ => new TailscaleSshCheckDialogService(() =>
                 (Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow))
             .AddSingleton<Func<TailscaleSshCheckNotification, Task>>(sp =>

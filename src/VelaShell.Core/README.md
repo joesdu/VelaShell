@@ -15,7 +15,7 @@
 | 目录 | 职责 |
 |------|------|
 | `Models/` | 领域模型与枚举：`ConnectionInfo`、`ConnectionType`、`ServerGroup`、`SessionProfile`、`SshSession`、`AppSettings`/`AppState`、`FtpSettings`、`KnownHost`、`QuickCommand`、`TunnelConfig`、`TransferTask`、`RemoteFileInfo`、`AuditEntry`、`TerminalColorScheme` 等，多为 `ReactiveObject` 或不可变记录。另有两个纯逻辑件：`UserPathResolver`（设置里路径取值的唯一权威解析器 —— **相对路径以用户主目录为基准，绝不落到进程工作目录上**）与 `CommonUsageCatalog`（命令补全的静态用法表）。 |
-| `Data/` | 持久化契约（**纯接口**，实现全在 Infrastructure）：`IAppDataStore`、`ISessionRepository`、`ISettingsService`、`IRecentConnectionService`、`IAuditLogService`、`IQuickCommandRepository`、`ISecretProtector`（凭据加密）。 |
+| `Data/` | 持久化契约（**纯接口**，实现全在 Infrastructure）：`IAppDataStore`、`ISessionRepository`、`ISettingsService`、`IRecentConnectionService`、`IAuditLogService`、`IQuickCommandRepository`、`ISecretProtector`（凭据加密）、`IMasterPasswordGate` / `IMasterPasswordService`（可选主密码的闸口与管理入口）。 |
 | `Ssh/` | SSH/SFTP 中立抽象层：客户端/Shell/SFTP 包装接口（`ISshClientWrapper`/`IShellStreamWrapper`/`ISftpClientWrapper`）、`ISshConnectionService`、`ISshKeyService`、`IHostKeyService`/`IHostKeyPrompt`、`HostKeyVerification`（主机指纹 TOFU 校验）、`PortForwarding`、`TerminalMode`、`SftpEntry`、`SecurityAlertService`、`VelaSshClientException` 异常族。 |
 | `Sftp/` | 文件传输领域逻辑：`ISftpService`、`SerializedSftpService`（通道串行化）、`RemoteIdentityResolver`、`DragDropFormats`、`ThrottledStream`（限速流）、`RemoteRelay`（两个远程会话之间经内存流式中转，不落盘）。`ISftpService` 的每个成员都以 `Guid sessionId` 为键、返回协议无关的 `RemoteFileInfo`，因此文件浏览器与传输浮窗对「后端是 SFTP 还是 FTP」完全无感（路由实现在 Infrastructure）。 |
 | `Ftp/` | FTP/FTPS 会话契约：`IFtpSessionService`、`FtpConnectionInfo`、`VelaFtpException`。与 SSH 并列为一等协议，共用上面那套远程文件抽象。 |

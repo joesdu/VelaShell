@@ -44,11 +44,71 @@ public partial class MainWindowViewModel
         }
         gate.Unlocked += (_, _) => RxSchedulers.MainThreadScheduler.Schedule(OnSecretsUnlocked);
         gate.Locked += (_, _) => RxSchedulers.MainThreadScheduler.Schedule(OnSecretsLocked);
+        if (gate is IMasterPasswordService service)
+        {
+            service.StateChanged += (_, _) => RxSchedulers.MainThreadScheduler.Schedule(() => _ = RefreshMasterPasswordStatusAsync());
+        }
+    }
+
+    /// <summary>
+    /// 主窗口出现之后弹一次解锁框(维护者 2026-10-31 定:可取消;取消后状态栏留着锁形入口,点它再解锁)。
+    /// 启动时恢复的那几个会话同时也在等解锁 —— 它们与这里共用同一个框。
+    /// </summary>
+    internal async Task PromptUnlockAtStartupAsync()
+    {
+        if (_masterPassword is not { } gate)
+        {
+            return;
+        }
+        try
+        {
+            await RefreshMasterPasswordStatusAsync().ConfigureAwait(true);
+            if (await gate.IsLockedAsync().ConfigureAwait(true))
+            {
+                await gate.EnsureUnlockedAsync(interactive: true).ConfigureAwait(true);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Secrets] The startup unlock prompt failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>状态栏的锁形入口:开没开、锁没锁(问状态可能要等密钥解析,放到线程池上问)。</summary>
+    internal async Task RefreshMasterPasswordStatusAsync()
+    {
+        if (_masterPassword is not { } gate)
+        {
+            return;
+        }
+        (bool enabled, bool locked) = await Task.Run(() => (gate.IsEnabled, gate.IsLocked)).ConfigureAwait(true);
+        StatusBar.MasterPasswordCommand ??= ReactiveCommand.CreateFromTask(ToggleMasterPasswordLockAsync);
+        StatusBar.IsMasterPasswordEnabled = enabled;
+        StatusBar.IsMasterPasswordLocked = locked;
+    }
+
+    /// <summary>点锁形入口:锁着 → 弹解锁框;解着 → 立即锁定。</summary>
+    private async Task ToggleMasterPasswordLockAsync()
+    {
+        if (_masterPassword is not { } gate)
+        {
+            return;
+        }
+        if (await gate.IsLockedAsync().ConfigureAwait(true))
+        {
+            await gate.EnsureUnlockedAsync(interactive: true).ConfigureAwait(true);
+        }
+        else if (gate is IMasterPasswordService service && service.LockNow())
+        {
+            Toasts.Info(Strings.Get("MasterPassword_LockedNow"));
+        }
+        await RefreshMasterPasswordStatusAsync().ConfigureAwait(true);
     }
 
     /// <summary>解锁之后:重读会话树(锁着时载入的是密文),挂起的自动重连各重试一次。</summary>
     internal void OnSecretsUnlocked()
     {
+        _ = RefreshMasterPasswordStatusAsync();
         _ = RefreshSessionTreeAsync();
         TerminalTabViewModel[] pending = [.. _reconnectAfterUnlock];
         _reconnectAfterUnlock.Clear();
@@ -63,7 +123,11 @@ public partial class MainWindowViewModel
     }
 
     /// <summary>锁定之后:重读会话树,树上不再留着锁定前解开的明文(锁着时仓储交回的是密文)。</summary>
-    internal void OnSecretsLocked() => _ = RefreshSessionTreeAsync();
+    internal void OnSecretsLocked()
+    {
+        _ = RefreshMasterPasswordStatusAsync();
+        _ = RefreshSessionTreeAsync();
+    }
 
     /// <summary>
     /// 交互式连接入口的闸口:这条连接要用已存的机密、主密码又锁着时先弹解锁框。

@@ -9872,4 +9872,82 @@ Send anyway?</value>
   <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>Not unlocked: the password was not saved this time.</value></data>
   <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>The plugin trust store is locked by the master password. Unlock (the lock icon in the status bar) before installing plugins or trusting a publisher; installed user plugins load automatically once unlocked.</value></data>
   <data name="SyncSvc_Locked" xml:space="preserve"><value>The saved token and passphrase are locked by the master password. Unlock (the lock icon in the status bar) before syncing; automatic sync skipped this round.</value></data>
+  <data name="MasterPassword_UnlockTitle" xml:space="preserve"><value>Unlock saved passwords</value></data>
+  <data name="MasterPassword_EnableTitle" xml:space="preserve"><value>Turn on the master password</value></data>
+  <data name="MasterPassword_ChangeTitle" xml:space="preserve"><value>Change the master password</value></data>
+  <data name="MasterPassword_DisableTitle" xml:space="preserve"><value>Turn off the master password</value></data>
+  <data name="MasterPassword_RecoveryTitle" xml:space="preserve"><value>Recovery code</value></data>
+  <data name="MasterPassword_AfterRecoveryTitle" xml:space="preserve"><value>Set a new master password</value></data>
+  <data name="MasterPassword_ForgetTitle" xml:space="preserve"><value>Forgot the master password</value></data>
+  <data name="MasterPassword_UnlockDesc" xml:space="preserve"><value>Saved passwords, shared credentials, the sync token and plugin secrets are locked by the master password. Enter it to unlock. You can also cancel and keep working; those secrets just cannot be read until you unlock (the lock icon in the status bar).</value></data>
+  <data name="MasterPassword_EnableDesc" xml:space="preserve"><value>The local encryption key gets one more wrap from the master password: the system keychain entry (the DPAPI key file on Windows) and the master password are both needed to open it. You enter the master password once per start; saved passwords do not need to be entered again.</value></data>
+  <data name="MasterPassword_ChangeDesc" xml:space="preserve"><value>Saved passwords are left exactly as they are; only the wrap around the local encryption key is renewed. The recovery code keeps working.</value></data>
+  <data name="MasterPassword_DisableDesc" xml:space="preserve"><value>Back to no master password: the local encryption key stays in the system keychain (the DPAPI key file on Windows), and the recovery code stops working.</value></data>
+  <data name="MasterPassword_RecoveryDesc" xml:space="preserve"><value>This code is shown only once. Write it on paper or keep it in another password manager, away from this computer. If you forget the master password it unlocks instead (on this computer too).</value></data>
+  <data name="MasterPassword_AfterRecoveryDesc" xml:space="preserve"><value>Unlocked with the recovery code. Set a new master password now (the recovery code keeps working), or skip it for now and use the recovery code again next time.</value></data>
+  <data name="MasterPassword_ForgetDesc" xml:space="preserve"><value>If you know neither the master password nor the recovery code: start a new local encryption key and turn the master password off. Saved passwords, shared-credential passwords, the sync token, plugin secrets and the plugin trust store can no longer be read on this computer and must be entered again (there is no back door). The old key and header files are kept under a .forgotten-&lt;time&gt; name, so they can still be restored if you remember the master password.</value></data>
+  <data name="MasterPassword_UnlockButton" xml:space="preserve"><value>Unlock</value></data>
+  <data name="MasterPassword_EnableButton" xml:space="preserve"><value>Turn on</value></data>
+  <data name="MasterPassword_ChangeButton" xml:space="preserve"><value>Change</value></data>
+  <data name="MasterPassword_DisableButton" xml:space="preserve"><value>Turn off the master password</value></data>
+  <data name="MasterPassword_RecoveryWritten" xml:space="preserve"><value>I have written it down</value></data>
+  <data name="MasterPassword_SetNewButton" xml:space="preserve"><value>Set as the new master password</value></data>
+  <data name="MasterPassword_ForgetButton" xml:space="preserve"><value>Start a new key</value></data>
+  <data name="MasterPassword_Skip" xml:space="preserve"><value>Later</value></data>
+  <data name="MasterPassword_PasswordLabel" xml:space="preserve"><value>Master password</value></data>
+  <data name="MasterPassword_CurrentPasswordLabel" xml:space="preserve"><value>Current master password</value></data>
+  <data name="MasterPassword_NewPasswordLabel" xml:space="preserve"><value>New master password</value></data>
+  <data name="MasterPassword_ConfirmPasswordLabel" xml:space="preserve"><value>Type it again</value></data>
+  <data name="MasterPassword_RecoveryCodeLabel" xml:space="preserve"><value>Recovery code</value></data>
+  <data name="MasterPassword_UseRecoveryCode" xml:space="preserve"><value>Unlock with the recovery code</value></data>
+  <data name="MasterPassword_UsePassword" xml:space="preserve"><value>Unlock with the master password</value></data>
+  <data name="MasterPassword_Forgot" xml:space="preserve"><value>Forgot the master password?</value></data>
+  <data name="MasterPassword_EnableWarning" xml:space="preserve"><value>If you forget the master password, saved passwords cannot be recovered: there is no back door. You can create a recovery code at the same time and keep it somewhere else.</value></data>
+  <data name="MasterPassword_CreateRecoveryLabel" xml:space="preserve"><value>Also create a recovery code (recommended)</value></data>
+  <data name="MasterPassword_AcknowledgeLabel" xml:space="preserve"><value>I understand: if I forget the master password (and have no recovery code), saved passwords cannot be recovered</value></data>
+  <data name="MasterPassword_StrengthHint" xml:space="preserve"><value>Use at least 12 characters, or an uncommon passphrase of several words. Only length stops offline guessing.</value></data>
+  <data name="MasterPassword_AsciiNote" xml:space="preserve"><value>Printable English characters only (same as the other password boxes).</value></data>
+  <data name="MasterPassword_Busy" xml:space="preserve"><value>Deriving the key…</value></data>
+  <data name="MasterPassword_WrongPassword" xml:space="preserve"><value>That master password is not correct.</value></data>
+  <data name="MasterPassword_WrongRecoveryCode" xml:space="preserve"><value>That recovery code is not correct.</value></data>
+  <data name="MasterPassword_MalformedRecoveryCode" xml:space="preserve"><value>The recovery code looks mistyped: it is 28 letters or digits in groups of 4. Please check it.</value></data>
+  <data name="MasterPassword_RetryIn" xml:space="preserve"><value>Try again in {0} s.</value></data>
+  <data name="MasterPassword_NoRecoveryCode" xml:space="preserve"><value>No recovery code was created when the master password was turned on.</value></data>
+  <data name="MasterPassword_NothingToUnlock" xml:space="preserve"><value>No wrapped key is available to unlock right now.</value></data>
+  <data name="MasterPassword_Empty" xml:space="preserve"><value>The master password cannot be empty.</value></data>
+  <data name="MasterPassword_Mismatch" xml:space="preserve"><value>The two entries do not match.</value></data>
+  <data name="MasterPassword_AcknowledgeRequired" xml:space="preserve"><value>Please confirm that you understand saved passwords cannot be recovered without the master password.</value></data>
+  <data name="MasterPassword_KeysUnavailable" xml:space="preserve"><value>A key cannot be reached right now (the system keychain did not open), so nothing was changed. Try again once it is available.</value></data>
+  <data name="MasterPassword_StorageFailed" xml:space="preserve"><value>Could not write it ({0}); everything was rolled back and nothing changed.</value></data>
+  <data name="MasterPassword_StorageFailedPartially" xml:space="preserve"><value>Writing failed halfway and could not be fully rolled back ({0}): the master password is now ON. Unlock with the master password you just entered.</value></data>
+  <data name="MasterPassword_Enabled" xml:space="preserve"><value>The master password is on.</value></data>
+  <data name="MasterPassword_Disabled" xml:space="preserve"><value>The master password is off.</value></data>
+  <data name="MasterPassword_Changed" xml:space="preserve"><value>The master password was changed.</value></data>
+  <data name="MasterPassword_Forgotten" xml:space="preserve"><value>Started a new local encryption key and turned the master password off. The old key and header files were kept: {0}. Saved passwords need to be entered again.</value></data>
+  <data name="MasterPassword_LockedNow" xml:space="preserve"><value>Locked: the local encryption keys were cleared from memory.</value></data>
+  <data name="MasterPassword_ProblemHeaderMissing" xml:space="preserve"><value>Wrapped keys were found, but the master password header (secret.key.mp) is missing, so neither the master password nor the recovery code can open them. The only way on is “Forgot the master password?” to start a new key (the old ones are kept).</value></data>
+  <data name="MasterPassword_ProblemHeaderUnreadable" xml:space="preserve"><value>The master password header (secret.key.mp) cannot be read (truncated or damaged). It is kept as is and never overwritten. Either restore the file from a backup, or use “Forgot the master password?” to start a new key.</value></data>
+  <data name="MasterPassword_ProblemKeysUnavailable" xml:space="preserve"><value>{0} did not open this time ({1}), so none of the wrapped keys could be read. They are not lost: once {0} is unlocked or available, restart VelaShell and unlock.</value></data>
+  <data name="SetGeneral_MasterPassword" xml:space="preserve"><value>Master password</value></data>
+  <data name="SetGeneral_MasterPasswordDesc" xml:space="preserve"><value>// One more lock on saved passwords: the system keychain entry and the master password are both needed. Off by default; there is no way back if you forget it (unless you keep a recovery code)</value></data>
+  <data name="SetGeneral_MasterPasswordStatusOff" xml:space="preserve"><value>Off</value></data>
+  <data name="SetGeneral_MasterPasswordStatusUnlocked" xml:space="preserve"><value>On · unlocked</value></data>
+  <data name="SetGeneral_MasterPasswordStatusLocked" xml:space="preserve"><value>On · locked</value></data>
+  <data name="SetGeneral_MasterPasswordRecovery" xml:space="preserve"><value>recovery code created</value></data>
+  <data name="SetGeneral_MasterPasswordNoRecovery" xml:space="preserve"><value>no recovery code</value></data>
+  <data name="SetGeneral_MasterPasswordEnable" xml:space="preserve"><value>Turn on…</value></data>
+  <data name="SetGeneral_MasterPasswordUnlock" xml:space="preserve"><value>Unlock…</value></data>
+  <data name="SetGeneral_MasterPasswordLockNow" xml:space="preserve"><value>Lock now</value></data>
+  <data name="SetGeneral_MasterPasswordChange" xml:space="preserve"><value>Change…</value></data>
+  <data name="SetGeneral_MasterPasswordDisable" xml:space="preserve"><value>Turn off…</value></data>
+  <data name="SetGeneral_AutoLock" xml:space="preserve"><value>Lock after idle (minutes)</value></data>
+  <data name="SetGeneral_AutoLockDesc" xml:space="preserve"><value>// Lock when VelaShell&apos;s windows get no keyboard or mouse input for this many minutes; 0 = never. Only takes effect with a master password</value></data>
+  <data name="SetGeneral_LockOnSystemLock" xml:space="preserve"><value>Lock when the system locks</value></data>
+  <data name="SetGeneral_LockOnSystemLockDesc" xml:space="preserve"><value>// Lock together with Win+L or a screen saver that asks for sign-in. Only takes effect with a master password</value></data>
+  <data name="StatusBar_MasterPasswordLocked" xml:space="preserve"><value>Saved passwords are locked — click to unlock</value></data>
+  <data name="StatusBar_MasterPasswordUnlocked" xml:space="preserve"><value>Master password unlocked — click to lock now</value></data>
+  <data name="Auth_UnreadableSecretLocked" xml:space="preserve"><value>{0} is locked by the master password, which was not unlocked this time. You can type it here to sign in now; once you unlock (the lock icon in the status bar) it is read as usual.</value></data>
+  <data name="Notify_MasterPasswordProblemTitle" xml:space="preserve"><value>The master password cannot unlock</value></data>
+  <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>Master password header set aside</value></data>
+  <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>The master password header in the data folder no longer matches any wrapped key (most likely an older version moved the wrapped key file aside after a downgrade). It was kept as {0} and the master password is now off. Passwords saved before the downgrade cannot be read on this computer and need to be entered again.</value></data>
 </root>

@@ -358,6 +358,20 @@ public static class NotificationSources
             notices.Add(Notice("master-key:file-fallback", NotificationSeverity.Info,
                 "Notify_MasterKeyFileFallbackTitle", Strings.Format("Notify_MasterKeyFileFallbackBody", keychain, error), nowUtc));
         }
+        // 主密码开着却解不了锁(头不在 / 读不出来):只能「忘了主密码」另起新密钥。密钥链这次没打开那一种上面那条已经说了。
+        if (status.MasterPasswordProblem is MasterPasswordProblem.HeaderMissing or MasterPasswordProblem.HeaderUnreadable
+            && ViewModels.MasterPasswordDialogViewModel.DescribeProblem(status) is { } problem)
+        {
+            notices.Add(Notice($"master-password:problem:{status.MasterPasswordProblem}", NotificationSeverity.Warning,
+                "Notify_MasterPasswordProblemTitle", problem, nowUtc));
+        }
+        // 头找不到它包裹的任何密钥(多半是降级到旧版本时旧版本把包裹过的密钥文件挪开了):头改名保留,主密码按关着继续。
+        if (status.RetiredMasterPasswordHeader is { } retired)
+        {
+            string fileName = Path.GetFileName(retired);
+            notices.Add(Notice($"master-password:retired:{fileName}", NotificationSeverity.Warning,
+                "Notify_MasterPasswordRetiredTitle", Strings.Format("Notify_MasterPasswordRetiredBody", fileName), nowUtc));
+        }
         return notices;
 
         static NotificationItem Notice(string id, NotificationSeverity severity, string titleKey, string body, DateTime publishedAt) =>

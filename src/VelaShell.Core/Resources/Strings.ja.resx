@@ -9866,4 +9866,82 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>ロックが解除されていないため、今回のパスワードは保存されていません。</value></data>
   <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>プラグインの信頼ストアはマスターパスワードでロックされています。プラグインのインストールや発行元の信頼にはロック解除(ステータスバーの錠前アイコン)が必要です。インストール済みのユーザープラグインはロック解除後に自動で読み込まれます。</value></data>
   <data name="SyncSvc_Locked" xml:space="preserve"><value>保存済みのトークンとパスフレーズはマスターパスワードでロックされています。同期する前にロックを解除(ステータスバーの錠前アイコン)してください。今回の自動同期はスキップしました。</value></data>
+  <data name="MasterPassword_UnlockTitle" xml:space="preserve"><value>保存済みパスワードのロック解除</value></data>
+  <data name="MasterPassword_EnableTitle" xml:space="preserve"><value>マスターパスワードを有効にする</value></data>
+  <data name="MasterPassword_ChangeTitle" xml:space="preserve"><value>マスターパスワードを変更</value></data>
+  <data name="MasterPassword_DisableTitle" xml:space="preserve"><value>マスターパスワードを無効にする</value></data>
+  <data name="MasterPassword_RecoveryTitle" xml:space="preserve"><value>回復コード</value></data>
+  <data name="MasterPassword_AfterRecoveryTitle" xml:space="preserve"><value>新しいマスターパスワードを設定</value></data>
+  <data name="MasterPassword_ForgetTitle" xml:space="preserve"><value>マスターパスワードを忘れた</value></data>
+  <data name="MasterPassword_UnlockDesc" xml:space="preserve"><value>保存済みのパスワード、共有資格情報、同期トークン、プラグインの機密はマスターパスワードでロックされています。入力するとロックを解除します。キャンセルしてもそのまま使えますが、これらの機密は読み出せません(ステータスバーの錠前アイコンからいつでも解除できます)。</value></data>
+  <data name="MasterPassword_EnableDesc" xml:space="preserve"><value>有効にすると、ローカルの暗号化キーをマスターパスワードでもう一重包みます。システムキーチェーンの項目(Windows では DPAPI のキーファイル)とマスターパスワードの両方がそろって初めて開けます。起動ごとに一度マスターパスワードを入力します。保存済みのパスワードを入れ直す必要はありません。</value></data>
+  <data name="MasterPassword_ChangeDesc" xml:space="preserve"><value>保存済みのパスワードは一切変わりません。ローカル暗号化キーの包み直しだけを行います。回復コードは引き続き使えます。</value></data>
+  <data name="MasterPassword_DisableDesc" xml:space="preserve"><value>無効にするとマスターパスワードなしの状態に戻ります。ローカル暗号化キーは引き続きシステムキーチェーン(Windows では DPAPI のキーファイル)が保管し、回復コードは無効になります。</value></data>
+  <data name="MasterPassword_RecoveryDesc" xml:space="preserve"><value>このコードは今回だけ表示されます。紙に書くか別のパスワードマネージャーに保存し、このコンピューターとは別の場所に置いてください。マスターパスワードを忘れたときに代わりにロックを解除できます(同じくこのコンピューター上で)。</value></data>
+  <data name="MasterPassword_AfterRecoveryDesc" xml:space="preserve"><value>回復コードでロックを解除しました。新しいマスターパスワードを設定してください(回復コードは引き続き使えます)。今はスキップして、次回も回復コードを使うこともできます。</value></data>
+  <data name="MasterPassword_ForgetDesc" xml:space="preserve"><value>マスターパスワードも回復コードも分からない場合:新しいローカル暗号化キーを作り、マスターパスワードを無効にします。保存済みのパスワード、共有資格情報のパスワード、同期トークン、プラグインの機密とプラグインの信頼ストアは、このコンピューターでは読めなくなり、入力し直しが必要です(裏口はありません)。古いキーとヘッダーファイルは .forgotten-&lt;時刻&gt; の名前で残すので、マスターパスワードを思い出せば元に戻せます。</value></data>
+  <data name="MasterPassword_UnlockButton" xml:space="preserve"><value>ロック解除</value></data>
+  <data name="MasterPassword_EnableButton" xml:space="preserve"><value>有効にする</value></data>
+  <data name="MasterPassword_ChangeButton" xml:space="preserve"><value>変更</value></data>
+  <data name="MasterPassword_DisableButton" xml:space="preserve"><value>マスターパスワードを無効にする</value></data>
+  <data name="MasterPassword_RecoveryWritten" xml:space="preserve"><value>書き留めました</value></data>
+  <data name="MasterPassword_SetNewButton" xml:space="preserve"><value>新しいマスターパスワードにする</value></data>
+  <data name="MasterPassword_ForgetButton" xml:space="preserve"><value>新しいキーを作る</value></data>
+  <data name="MasterPassword_Skip" xml:space="preserve"><value>後で</value></data>
+  <data name="MasterPassword_PasswordLabel" xml:space="preserve"><value>マスターパスワード</value></data>
+  <data name="MasterPassword_CurrentPasswordLabel" xml:space="preserve"><value>現在のマスターパスワード</value></data>
+  <data name="MasterPassword_NewPasswordLabel" xml:space="preserve"><value>新しいマスターパスワード</value></data>
+  <data name="MasterPassword_ConfirmPasswordLabel" xml:space="preserve"><value>もう一度入力</value></data>
+  <data name="MasterPassword_RecoveryCodeLabel" xml:space="preserve"><value>回復コード</value></data>
+  <data name="MasterPassword_UseRecoveryCode" xml:space="preserve"><value>回復コードで解除</value></data>
+  <data name="MasterPassword_UsePassword" xml:space="preserve"><value>マスターパスワードで解除</value></data>
+  <data name="MasterPassword_Forgot" xml:space="preserve"><value>マスターパスワードを忘れた場合</value></data>
+  <data name="MasterPassword_EnableWarning" xml:space="preserve"><value>マスターパスワードを忘れると保存済みのパスワードは取り戻せません(裏口はありません)。同時に回復コードを作って別の場所に保管できます。</value></data>
+  <data name="MasterPassword_CreateRecoveryLabel" xml:space="preserve"><value>回復コードも作成する(推奨)</value></data>
+  <data name="MasterPassword_AcknowledgeLabel" xml:space="preserve"><value>マスターパスワードを忘れた場合(回復コードもない場合)、保存済みのパスワードは取り戻せないことを理解しました</value></data>
+  <data name="MasterPassword_StrengthHint" xml:space="preserve"><value>12 文字以上、または複数の単語からなるありふれていないパスフレーズにしてください。オフラインでの推測を防げるのは長さだけです。</value></data>
+  <data name="MasterPassword_AsciiNote" xml:space="preserve"><value>使えるのは印字可能な英字のみです(ほかのパスワード欄と同じ)。</value></data>
+  <data name="MasterPassword_Busy" xml:space="preserve"><value>キーを導出しています…</value></data>
+  <data name="MasterPassword_WrongPassword" xml:space="preserve"><value>マスターパスワードが違います。</value></data>
+  <data name="MasterPassword_WrongRecoveryCode" xml:space="preserve"><value>回復コードが違います。</value></data>
+  <data name="MasterPassword_MalformedRecoveryCode" xml:space="preserve"><value>回復コードの入力に誤りがあるようです。英数字 28 文字(4 文字ずつ)です。確認してください。</value></data>
+  <data name="MasterPassword_RetryIn" xml:space="preserve"><value>{0} 秒後に再試行してください。</value></data>
+  <data name="MasterPassword_NoRecoveryCode" xml:space="preserve"><value>マスターパスワードを有効にしたときに回復コードを作成していません。</value></data>
+  <data name="MasterPassword_NothingToUnlock" xml:space="preserve"><value>今はロック解除できるキーがありません。</value></data>
+  <data name="MasterPassword_Empty" xml:space="preserve"><value>マスターパスワードを空にはできません。</value></data>
+  <data name="MasterPassword_Mismatch" xml:space="preserve"><value>2 回の入力が一致しません。</value></data>
+  <data name="MasterPassword_AcknowledgeRequired" xml:space="preserve"><value>マスターパスワードがないと保存済みのパスワードを取り戻せないことを確認してください。</value></data>
+  <data name="MasterPassword_KeysUnavailable" xml:space="preserve"><value>今は取得できないキーがあるため(システムキーチェーンが開けません)、何も変更していません。利用できるようになってから再試行してください。</value></data>
+  <data name="MasterPassword_StorageFailed" xml:space="preserve"><value>書き込めませんでした({0})。すべて元に戻し、何も変更していません。</value></data>
+  <data name="MasterPassword_StorageFailedPartially" xml:space="preserve"><value>書き込みが途中で失敗し、完全には元に戻せませんでした({0})。マスターパスワードは現在有効です。今入力したマスターパスワードでロックを解除してください。</value></data>
+  <data name="MasterPassword_Enabled" xml:space="preserve"><value>マスターパスワードを有効にしました。</value></data>
+  <data name="MasterPassword_Disabled" xml:space="preserve"><value>マスターパスワードを無効にしました。</value></data>
+  <data name="MasterPassword_Changed" xml:space="preserve"><value>マスターパスワードを変更しました。</value></data>
+  <data name="MasterPassword_Forgotten" xml:space="preserve"><value>新しいローカル暗号化キーを作り、マスターパスワードを無効にしました。古いキーとヘッダーファイルは残してあります:{0}。保存済みのパスワードは入力し直してください。</value></data>
+  <data name="MasterPassword_LockedNow" xml:space="preserve"><value>ロックしました。メモリ上のローカル暗号化キーを消去しました。</value></data>
+  <data name="MasterPassword_ProblemHeaderMissing" xml:space="preserve"><value>マスターパスワードで包まれたキーは見つかりましたが、マスターパスワードのヘッダーファイル(secret.key.mp)がないため、マスターパスワードでも回復コードでも開けません。「マスターパスワードを忘れた場合」から新しいキーを作るしかありません(古いキーは残します)。</value></data>
+  <data name="MasterPassword_ProblemHeaderUnreadable" xml:space="preserve"><value>マスターパスワードのヘッダーファイル(secret.key.mp)を読み取れません(切り詰められたか破損しています)。そのまま残し、上書きはしません。バックアップから復元するか、「マスターパスワードを忘れた場合」から新しいキーを作ってください。</value></data>
+  <data name="MasterPassword_ProblemKeysUnavailable" xml:space="preserve"><value>今回は {0} を開けなかったため({1})、包まれたキーを 1 つも読み出せませんでした。キーは失われていません。{0} のロックを解除するか利用できるようになったら、VelaShell を再起動してロックを解除してください。</value></data>
+  <data name="SetGeneral_MasterPassword" xml:space="preserve"><value>マスターパスワード</value></data>
+  <data name="SetGeneral_MasterPasswordDesc" xml:space="preserve"><value>// 保存済みのパスワードにもう一つ鍵をかけます。システムキーチェーンの項目とマスターパスワードの両方が必要です。既定はオフ。忘れると取り戻せません(回復コードを残した場合を除く)</value></data>
+  <data name="SetGeneral_MasterPasswordStatusOff" xml:space="preserve"><value>無効</value></data>
+  <data name="SetGeneral_MasterPasswordStatusUnlocked" xml:space="preserve"><value>有効 · ロック解除中</value></data>
+  <data name="SetGeneral_MasterPasswordStatusLocked" xml:space="preserve"><value>有効 · ロック中</value></data>
+  <data name="SetGeneral_MasterPasswordRecovery" xml:space="preserve"><value>回復コードあり</value></data>
+  <data name="SetGeneral_MasterPasswordNoRecovery" xml:space="preserve"><value>回復コードなし</value></data>
+  <data name="SetGeneral_MasterPasswordEnable" xml:space="preserve"><value>有効にする…</value></data>
+  <data name="SetGeneral_MasterPasswordUnlock" xml:space="preserve"><value>ロック解除…</value></data>
+  <data name="SetGeneral_MasterPasswordLockNow" xml:space="preserve"><value>今すぐロック</value></data>
+  <data name="SetGeneral_MasterPasswordChange" xml:space="preserve"><value>変更…</value></data>
+  <data name="SetGeneral_MasterPasswordDisable" xml:space="preserve"><value>無効にする…</value></data>
+  <data name="SetGeneral_AutoLock" xml:space="preserve"><value>無操作で自動ロック(分)</value></data>
+  <data name="SetGeneral_AutoLockDesc" xml:space="preserve"><value>// VelaShell のウィンドウでこの分数キーボード・マウス操作がないとロックします。0 = 自動ロックしない。マスターパスワード有効時のみ働きます</value></data>
+  <data name="SetGeneral_LockOnSystemLock" xml:space="preserve"><value>システムのロック時にロック</value></data>
+  <data name="SetGeneral_LockOnSystemLockDesc" xml:space="preserve"><value>// Win+L やサインインを求めるスクリーンセーバーと同時にロックします。マスターパスワード有効時のみ働きます</value></data>
+  <data name="StatusBar_MasterPasswordLocked" xml:space="preserve"><value>保存済みのパスワードはロック中 — クリックで解除</value></data>
+  <data name="StatusBar_MasterPasswordUnlocked" xml:space="preserve"><value>マスターパスワードはロック解除中 — クリックで今すぐロック</value></data>
+  <data name="Auth_UnreadableSecretLocked" xml:space="preserve"><value>{0}はマスターパスワードでロックされており、今回はロック解除されていません。ここで入力してサインインできます。ロックを解除(ステータスバーの錠前アイコン)すれば通常どおり読み込みます。</value></data>
+  <data name="Notify_MasterPasswordProblemTitle" xml:space="preserve"><value>マスターパスワードでロック解除できません</value></data>
+  <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>マスターパスワードのヘッダーを退避しました</value></data>
+  <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>データフォルダーのマスターパスワードのヘッダーが、包んだキーのどれとも一致しません(多くはダウングレード時に旧バージョンが包まれたキーファイルを退避したため)。{0} として残し、マスターパスワードは現在無効です。ダウングレード前に保存したパスワードはこのコンピューターでは読めないため、入力し直してください。</value></data>
 </root>

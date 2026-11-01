@@ -42,12 +42,17 @@ public static class UnreadableSecretPrompt
     /// <summary>说明文字。</summary>
     /// <param name="sharedCredentialName">解不开的是共享凭据里那份时为凭据名;连接自己存的为 null。</param>
     /// <param name="status">本机加密密钥的解析结果;拿不到时为 null(按说不出原因的那种说)。</param>
+    /// <param name="masterPasswordLocked">主密码开着、此刻锁着(这时解不开就是因为锁着,先说这个)。</param>
     /// <returns>一段完整的说明。</returns>
-    public static string Describe(string? sharedCredentialName, MasterKeyStatus? status)
+    public static string Describe(string? sharedCredentialName, MasterKeyStatus? status, bool masterPasswordLocked = false)
     {
         string subject = sharedCredentialName is null
             ? Strings.Get("Auth_UnreadableSecretOwn")
             : Strings.Format("Auth_UnreadableSecretShared", sharedCredentialName);
+        if (masterPasswordLocked)
+        {
+            return Strings.Format("Auth_UnreadableSecretLocked", subject);
+        }
         if (status is { UnavailableKeyIds.Count: > 0 })
         {
             return Strings.Format("Auth_UnreadableSecretKeychainUnavailable", subject,

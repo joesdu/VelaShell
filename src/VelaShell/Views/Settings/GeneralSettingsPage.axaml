@@ -259,9 +259,48 @@
 
     <!-- 隐私与安全 -->
     <TextBlock Classes="section-title" Text="{loc:Localize SetGeneral_PrivacySection}" />
-    <!-- 主密码保护:密钥派生/解锁/凭据迁移未实现,暂不展示(设置审计 R-04);
-         当前凭据已用本机加密密钥(AES)加密存储,密钥交给系统密钥链保管(第一步已做,见 plan.md;
-         Windows 上是 DPAPI 包裹的密钥文件,密钥链用不了时回落到文件)。主密码是第二步,见设计文档。 -->
+    <!-- 主密码(设置审计 R-04):可选的第二层,默认关。开着时本机加密密钥用主密码再包一层(系统密钥链 / DPAPI 密钥文件里的条目
+         与主密码两样都在才解得开);状态现问主密码服务(事实来源是包裹格式,不是设置里的开关)。按钮按状态出现:
+         没开 → 开启…;开着 → 解锁… / 立即锁定、修改…、关闭…(红框,DESIGN.md §5.1)。 -->
+    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding MasterPasswordSettings.IsAvailable}">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetGeneral_MasterPassword}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetGeneral_MasterPasswordDesc}" />
+        <TextBlock x:Name="MasterPasswordStatus" Classes="row-desc" Text="{Binding MasterPasswordSettings.StatusText}" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <Button x:Name="MasterPasswordEnableButton" Classes="dlg-primary" Content="{loc:Localize SetGeneral_MasterPasswordEnable}"
+                IsVisible="{Binding !MasterPasswordSettings.IsEnabled}" Click="MasterPasswordEnable_Click" />
+        <Button Classes="dlg-outline" Content="{loc:Localize SetGeneral_MasterPasswordUnlock}"
+                IsVisible="{Binding MasterPasswordSettings.IsLocked}" Click="MasterPasswordUnlock_Click" />
+        <Button Classes="dlg-outline" Content="{loc:Localize SetGeneral_MasterPasswordLockNow}"
+                IsVisible="{Binding MasterPasswordSettings.IsUnlocked}" Click="MasterPasswordLockNow_Click" />
+        <Button Classes="dlg-outline" Content="{loc:Localize SetGeneral_MasterPasswordChange}"
+                IsVisible="{Binding MasterPasswordSettings.IsEnabled}" Click="MasterPasswordChange_Click" />
+        <Button Classes="dlg-danger" Content="{loc:Localize SetGeneral_MasterPasswordDisable}"
+                IsVisible="{Binding MasterPasswordSettings.IsEnabled}" Click="MasterPasswordDisable_Click" />
+      </StackPanel>
+    </Grid>
+    <TextBlock Classes="row-desc"
+               Text="{Binding MasterPasswordSettings.Notice}"
+               IsVisible="{Binding MasterPasswordSettings.Notice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    <!-- 自动锁定:新设置项当场接线(MasterPasswordAutoLock)。主密码没开时不起作用,照样可以先设好。 -->
+    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding MasterPasswordSettings.IsAvailable}">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetGeneral_AutoLock}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetGeneral_AutoLockDesc}" />
+      </StackPanel>
+      <NumericUpDown Grid.Column="1" Width="80" Value="{Binding General.MasterPasswordAutoLockMinutes}"
+                     Minimum="0" Maximum="1440" Increment="5" FormatString="0" VerticalAlignment="Center" />
+    </Grid>
+    <!-- 系统锁屏时锁定:只在读得到锁屏状态的平台上显示(目前是 Windows),免得开了却不起作用。 -->
+    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding MasterPasswordSettings.SystemLockSupported}">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetGeneral_LockOnSystemLock}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetGeneral_LockOnSystemLockDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.MasterPasswordLockOnSystemLock}" VerticalAlignment="Center" />
+    </Grid>
     <Grid ColumnDefinitions="*,Auto">
       <StackPanel Spacing="2">
         <TextBlock Classes="row-label" Text="{loc:Localize SetGeneral_RememberPasswords}" />

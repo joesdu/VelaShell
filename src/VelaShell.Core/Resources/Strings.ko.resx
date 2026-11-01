@@ -9866,4 +9866,82 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>잠금을 해제하지 않아 이번 비밀번호는 저장되지 않았습니다.</value></data>
   <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>플러그인 신뢰 저장소가 마스터 비밀번호로 잠겨 있습니다. 플러그인을 설치하거나 게시자를 신뢰하려면 먼저 잠금을 해제(상태 표시줄의 자물쇠 아이콘)하세요. 설치된 사용자 플러그인은 잠금을 해제하면 자동으로 로드됩니다.</value></data>
   <data name="SyncSvc_Locked" xml:space="preserve"><value>저장된 토큰과 암호 문구가 마스터 비밀번호로 잠겨 있습니다. 동기화하기 전에 잠금을 해제(상태 표시줄의 자물쇠 아이콘)하세요. 이번 자동 동기화는 건너뛰었습니다.</value></data>
+  <data name="MasterPassword_UnlockTitle" xml:space="preserve"><value>저장된 비밀번호 잠금 해제</value></data>
+  <data name="MasterPassword_EnableTitle" xml:space="preserve"><value>마스터 비밀번호 켜기</value></data>
+  <data name="MasterPassword_ChangeTitle" xml:space="preserve"><value>마스터 비밀번호 변경</value></data>
+  <data name="MasterPassword_DisableTitle" xml:space="preserve"><value>마스터 비밀번호 끄기</value></data>
+  <data name="MasterPassword_RecoveryTitle" xml:space="preserve"><value>복구 코드</value></data>
+  <data name="MasterPassword_AfterRecoveryTitle" xml:space="preserve"><value>새 마스터 비밀번호 설정</value></data>
+  <data name="MasterPassword_ForgetTitle" xml:space="preserve"><value>마스터 비밀번호를 잊음</value></data>
+  <data name="MasterPassword_UnlockDesc" xml:space="preserve"><value>저장된 비밀번호, 공유 자격 증명, 동기화 토큰, 플러그인 비밀이 마스터 비밀번호로 잠겨 있습니다. 입력하면 잠금이 해제됩니다. 취소해도 계속 사용할 수 있지만 이 비밀들은 읽을 수 없습니다(상태 표시줄의 자물쇠 아이콘으로 언제든 다시 해제할 수 있습니다).</value></data>
+  <data name="MasterPassword_EnableDesc" xml:space="preserve"><value>켜면 로컬 암호화 키를 마스터 비밀번호로 한 번 더 감쌉니다. 시스템 키체인 항목(Windows에서는 DPAPI 키 파일)과 마스터 비밀번호가 모두 있어야 열 수 있습니다. 시작할 때마다 마스터 비밀번호를 한 번 입력하며, 저장된 비밀번호를 다시 입력할 필요는 없습니다.</value></data>
+  <data name="MasterPassword_ChangeDesc" xml:space="preserve"><value>저장된 비밀번호는 그대로 두고 로컬 암호화 키를 감싼 부분만 새로 만듭니다. 복구 코드는 계속 사용할 수 있습니다.</value></data>
+  <data name="MasterPassword_DisableDesc" xml:space="preserve"><value>끄면 마스터 비밀번호가 없는 상태로 돌아갑니다. 로컬 암호화 키는 계속 시스템 키체인(Windows에서는 DPAPI 키 파일)이 보관하고, 복구 코드는 무효가 됩니다.</value></data>
+  <data name="MasterPassword_RecoveryDesc" xml:space="preserve"><value>이 코드는 이번 한 번만 표시됩니다. 종이에 적거나 다른 비밀번호 관리자에 보관해 이 컴퓨터와 따로 두세요. 마스터 비밀번호를 잊었을 때 대신 잠금을 해제할 수 있습니다(역시 이 컴퓨터에서).</value></data>
+  <data name="MasterPassword_AfterRecoveryDesc" xml:space="preserve"><value>복구 코드로 잠금을 해제했습니다. 새 마스터 비밀번호를 설정하세요(복구 코드는 계속 사용할 수 있습니다). 지금은 건너뛰고 다음에도 복구 코드를 써도 됩니다.</value></data>
+  <data name="MasterPassword_ForgetDesc" xml:space="preserve"><value>마스터 비밀번호도 복구 코드도 모를 때: 새 로컬 암호화 키를 만들고 마스터 비밀번호를 끕니다. 저장된 비밀번호, 공유 자격 증명의 비밀번호, 동기화 토큰, 플러그인 비밀과 플러그인 신뢰 저장소는 이 컴퓨터에서 더 이상 읽을 수 없어 다시 입력해야 합니다(뒷문은 없습니다). 이전 키와 헤더 파일은 .forgotten-&lt;시각&gt; 이름으로 남겨 두므로 마스터 비밀번호가 생각나면 되살릴 수 있습니다.</value></data>
+  <data name="MasterPassword_UnlockButton" xml:space="preserve"><value>잠금 해제</value></data>
+  <data name="MasterPassword_EnableButton" xml:space="preserve"><value>켜기</value></data>
+  <data name="MasterPassword_ChangeButton" xml:space="preserve"><value>변경</value></data>
+  <data name="MasterPassword_DisableButton" xml:space="preserve"><value>마스터 비밀번호 끄기</value></data>
+  <data name="MasterPassword_RecoveryWritten" xml:space="preserve"><value>적어 두었습니다</value></data>
+  <data name="MasterPassword_SetNewButton" xml:space="preserve"><value>새 마스터 비밀번호로 설정</value></data>
+  <data name="MasterPassword_ForgetButton" xml:space="preserve"><value>새 키 만들기</value></data>
+  <data name="MasterPassword_Skip" xml:space="preserve"><value>나중에</value></data>
+  <data name="MasterPassword_PasswordLabel" xml:space="preserve"><value>마스터 비밀번호</value></data>
+  <data name="MasterPassword_CurrentPasswordLabel" xml:space="preserve"><value>현재 마스터 비밀번호</value></data>
+  <data name="MasterPassword_NewPasswordLabel" xml:space="preserve"><value>새 마스터 비밀번호</value></data>
+  <data name="MasterPassword_ConfirmPasswordLabel" xml:space="preserve"><value>한 번 더 입력</value></data>
+  <data name="MasterPassword_RecoveryCodeLabel" xml:space="preserve"><value>복구 코드</value></data>
+  <data name="MasterPassword_UseRecoveryCode" xml:space="preserve"><value>복구 코드로 잠금 해제</value></data>
+  <data name="MasterPassword_UsePassword" xml:space="preserve"><value>마스터 비밀번호로 잠금 해제</value></data>
+  <data name="MasterPassword_Forgot" xml:space="preserve"><value>마스터 비밀번호를 잊으셨나요?</value></data>
+  <data name="MasterPassword_EnableWarning" xml:space="preserve"><value>마스터 비밀번호를 잊으면 저장된 비밀번호를 되찾을 수 없습니다(뒷문은 없습니다). 복구 코드를 함께 만들어 다른 곳에 보관할 수 있습니다.</value></data>
+  <data name="MasterPassword_CreateRecoveryLabel" xml:space="preserve"><value>복구 코드도 만들기(권장)</value></data>
+  <data name="MasterPassword_AcknowledgeLabel" xml:space="preserve"><value>마스터 비밀번호를 잊으면(복구 코드도 없으면) 저장된 비밀번호를 되찾을 수 없다는 것을 이해했습니다</value></data>
+  <data name="MasterPassword_StrengthHint" xml:space="preserve"><value>12자 이상이나 여러 단어로 된 흔하지 않은 암호 문구를 쓰세요. 오프라인 추측은 길이로만 막을 수 있습니다.</value></data>
+  <data name="MasterPassword_AsciiNote" xml:space="preserve"><value>인쇄 가능한 영문 문자만 입력할 수 있습니다(다른 비밀번호 칸과 같음).</value></data>
+  <data name="MasterPassword_Busy" xml:space="preserve"><value>키를 생성하는 중…</value></data>
+  <data name="MasterPassword_WrongPassword" xml:space="preserve"><value>마스터 비밀번호가 맞지 않습니다.</value></data>
+  <data name="MasterPassword_WrongRecoveryCode" xml:space="preserve"><value>복구 코드가 맞지 않습니다.</value></data>
+  <data name="MasterPassword_MalformedRecoveryCode" xml:space="preserve"><value>복구 코드를 잘못 입력한 것 같습니다. 4자씩 묶인 영문자·숫자 28자입니다. 다시 확인하세요.</value></data>
+  <data name="MasterPassword_RetryIn" xml:space="preserve"><value>{0}초 후에 다시 시도하세요.</value></data>
+  <data name="MasterPassword_NoRecoveryCode" xml:space="preserve"><value>마스터 비밀번호를 켤 때 복구 코드를 만들지 않았습니다.</value></data>
+  <data name="MasterPassword_NothingToUnlock" xml:space="preserve"><value>지금은 잠금 해제할 수 있는 키가 없습니다.</value></data>
+  <data name="MasterPassword_Empty" xml:space="preserve"><value>마스터 비밀번호는 비워 둘 수 없습니다.</value></data>
+  <data name="MasterPassword_Mismatch" xml:space="preserve"><value>두 번 입력한 내용이 다릅니다.</value></data>
+  <data name="MasterPassword_AcknowledgeRequired" xml:space="preserve"><value>마스터 비밀번호 없이는 저장된 비밀번호를 되찾을 수 없다는 점을 먼저 확인해 주세요.</value></data>
+  <data name="MasterPassword_KeysUnavailable" xml:space="preserve"><value>지금 가져올 수 없는 키가 있어(시스템 키체인이 열리지 않음) 아무것도 바꾸지 않았습니다. 사용할 수 있게 되면 다시 시도하세요.</value></data>
+  <data name="MasterPassword_StorageFailed" xml:space="preserve"><value>쓰지 못했습니다({0}). 모두 되돌렸으며 아무것도 바뀌지 않았습니다.</value></data>
+  <data name="MasterPassword_StorageFailedPartially" xml:space="preserve"><value>쓰기가 도중에 실패했고 완전히 되돌리지 못했습니다({0}). 마스터 비밀번호는 지금 켜져 있습니다. 방금 입력한 마스터 비밀번호로 잠금을 해제하세요.</value></data>
+  <data name="MasterPassword_Enabled" xml:space="preserve"><value>마스터 비밀번호를 켰습니다.</value></data>
+  <data name="MasterPassword_Disabled" xml:space="preserve"><value>마스터 비밀번호를 껐습니다.</value></data>
+  <data name="MasterPassword_Changed" xml:space="preserve"><value>마스터 비밀번호를 변경했습니다.</value></data>
+  <data name="MasterPassword_Forgotten" xml:space="preserve"><value>새 로컬 암호화 키를 만들고 마스터 비밀번호를 껐습니다. 이전 키와 헤더 파일은 남겨 두었습니다: {0}. 저장된 비밀번호는 다시 입력해야 합니다.</value></data>
+  <data name="MasterPassword_LockedNow" xml:space="preserve"><value>잠갔습니다. 메모리의 로컬 암호화 키를 지웠습니다.</value></data>
+  <data name="MasterPassword_ProblemHeaderMissing" xml:space="preserve"><value>마스터 비밀번호로 감싼 키는 찾았지만 마스터 비밀번호 헤더 파일(secret.key.mp)이 없어 마스터 비밀번호로도 복구 코드로도 열 수 없습니다. ‘마스터 비밀번호를 잊으셨나요?’로 새 키를 만드는 수밖에 없습니다(이전 키는 남겨 둡니다).</value></data>
+  <data name="MasterPassword_ProblemHeaderUnreadable" xml:space="preserve"><value>마스터 비밀번호 헤더 파일(secret.key.mp)을 읽을 수 없습니다(잘렸거나 손상됨). 그대로 두며 덮어쓰지 않습니다. 백업에서 이 파일을 되살리거나 ‘마스터 비밀번호를 잊으셨나요?’로 새 키를 만드세요.</value></data>
+  <data name="MasterPassword_ProblemKeysUnavailable" xml:space="preserve"><value>이번에는 {0}을(를) 열지 못해({1}) 감싼 키를 하나도 읽지 못했습니다. 키는 사라지지 않았습니다. {0}의 잠금을 풀거나 사용할 수 있게 되면 VelaShell을 다시 시작해 잠금을 해제하세요.</value></data>
+  <data name="SetGeneral_MasterPassword" xml:space="preserve"><value>마스터 비밀번호</value></data>
+  <data name="SetGeneral_MasterPasswordDesc" xml:space="preserve"><value>// 저장된 비밀번호에 자물쇠를 하나 더 겁니다. 시스템 키체인 항목과 마스터 비밀번호가 모두 있어야 열립니다. 기본은 꺼짐이며, 잊으면 되찾을 수 없습니다(복구 코드를 남긴 경우 제외)</value></data>
+  <data name="SetGeneral_MasterPasswordStatusOff" xml:space="preserve"><value>꺼짐</value></data>
+  <data name="SetGeneral_MasterPasswordStatusUnlocked" xml:space="preserve"><value>켜짐 · 잠금 해제됨</value></data>
+  <data name="SetGeneral_MasterPasswordStatusLocked" xml:space="preserve"><value>켜짐 · 잠김</value></data>
+  <data name="SetGeneral_MasterPasswordRecovery" xml:space="preserve"><value>복구 코드 있음</value></data>
+  <data name="SetGeneral_MasterPasswordNoRecovery" xml:space="preserve"><value>복구 코드 없음</value></data>
+  <data name="SetGeneral_MasterPasswordEnable" xml:space="preserve"><value>켜기…</value></data>
+  <data name="SetGeneral_MasterPasswordUnlock" xml:space="preserve"><value>잠금 해제…</value></data>
+  <data name="SetGeneral_MasterPasswordLockNow" xml:space="preserve"><value>지금 잠그기</value></data>
+  <data name="SetGeneral_MasterPasswordChange" xml:space="preserve"><value>변경…</value></data>
+  <data name="SetGeneral_MasterPasswordDisable" xml:space="preserve"><value>끄기…</value></data>
+  <data name="SetGeneral_AutoLock" xml:space="preserve"><value>유휴 시 자동 잠금(분)</value></data>
+  <data name="SetGeneral_AutoLockDesc" xml:space="preserve"><value>// VelaShell 창에서 이 시간(분) 동안 키보드·마우스 조작이 없으면 잠급니다. 0 = 자동으로 잠그지 않음. 마스터 비밀번호가 켜져 있을 때만 동작합니다</value></data>
+  <data name="SetGeneral_LockOnSystemLock" xml:space="preserve"><value>시스템 잠금 시 잠그기</value></data>
+  <data name="SetGeneral_LockOnSystemLockDesc" xml:space="preserve"><value>// Win+L이나 로그인을 요구하는 화면 보호기와 함께 잠급니다. 마스터 비밀번호가 켜져 있을 때만 동작합니다</value></data>
+  <data name="StatusBar_MasterPasswordLocked" xml:space="preserve"><value>저장된 비밀번호가 잠겨 있음 — 클릭해 잠금 해제</value></data>
+  <data name="StatusBar_MasterPasswordUnlocked" xml:space="preserve"><value>마스터 비밀번호 잠금 해제됨 — 클릭해 지금 잠그기</value></data>
+  <data name="Auth_UnreadableSecretLocked" xml:space="preserve"><value>{0}이(가) 마스터 비밀번호로 잠겨 있고 이번에는 잠금을 해제하지 않았습니다. 여기에서 입력해 로그인할 수 있으며, 잠금을 해제(상태 표시줄의 자물쇠 아이콘)하면 평소처럼 읽습니다.</value></data>
+  <data name="Notify_MasterPasswordProblemTitle" xml:space="preserve"><value>마스터 비밀번호로 잠금을 해제할 수 없음</value></data>
+  <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>마스터 비밀번호 헤더를 보관 처리함</value></data>
+  <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>데이터 폴더의 마스터 비밀번호 헤더가 감싼 키 중 어느 것과도 맞지 않습니다(대개 다운그레이드 때 이전 버전이 감싼 키 파일을 옮겨 두었기 때문입니다). {0}(으)로 남겨 두었고 마스터 비밀번호는 지금 꺼져 있습니다. 다운그레이드 전에 저장한 비밀번호는 이 컴퓨터에서 읽을 수 없어 다시 입력해야 합니다.</value></data>
 </root>
