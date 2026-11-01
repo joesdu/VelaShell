@@ -15,8 +15,8 @@ namespace VelaShell.Infrastructure.Plugins.Capabilities;
 /// 隔离插件经 RPC 照样还原成同一个类型),插件对它的既有处理是放弃这一次操作、不改已存的东西。
 /// </para>
 /// <para>
-/// SDK 里另写好了专门的「已锁定」契约(<c>SecretsLockedException</c> + 能力位,velashell-plugin-sdk,未发版);
-/// 宿主这一轮按维护者 2026-10-31 的定法先「等待交互式解锁」,不接它。隔离插件的 RPC 有自己的超时:用户在解锁框前
+/// SDK 2.1.6 起有专门的「已锁定」契约(<c>VelaShell.PluginSdk.SecretsLockedException</c> + 能力位 <c>SupportsLockedState</c>);
+/// 宿主还没接它,照维护者 2026-10-31 的定法先「等待交互式解锁」。隔离插件的 RPC 有自己的超时:用户在解锁框前
 /// 停太久,插件那一侧先收到超时(同样不是 null)。
 /// </para>
 /// </remarks>

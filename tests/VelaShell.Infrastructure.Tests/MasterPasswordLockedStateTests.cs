@@ -12,6 +12,7 @@ using VelaShell.Infrastructure.Sync;
 using VelaShell.PluginSdk;
 using VelaShell.PluginSdk.Testing;
 using static VelaShell.Infrastructure.Tests.MasterPasswordTestKit;
+using SecretsLockedException = VelaShell.Core.Data.SecretsLockedException;
 
 namespace VelaShell.Infrastructure.Tests;
 

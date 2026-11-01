@@ -19,6 +19,7 @@ using VelaShell.PluginSdk.RemoteFs;
 using VelaShell.PluginSdk.RemoteTunnel;
 using VelaShell.PluginSdk.Sessions;
 using VelaShell.PluginSdk.Versioning;
+using SecretsLockedException = VelaShell.Core.Data.SecretsLockedException;
 
 namespace VelaShell.Infrastructure.Plugins;
 
