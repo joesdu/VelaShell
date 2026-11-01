@@ -1011,7 +1011,8 @@ public sealed class SshConfigInteropTests
         Assert.Contains("# RemoteForward 127.0.0.1:1082", export.Content);
         Assert.Contains("# RemoteForward 127.0.0.1:1083", export.Content, "没有名单的远程动态:写出来 OpenSSH 就当 any");
         Assert.Contains("    RemoteForward /tmp/half.sock localhost:80\n", export.Content, "服务器套接字 → 本机端口照写");
-        Assert.Contains($"    RemoteForward 127.0.0.1:2375 {back}2\n", export.Content, "服务器端口 → 本机套接字照写");
+        Assert.Contains($"    RemoteForward 127.0.0.1:2375 {SshConfigExporter.SocketSide(back + "2", local: true)}\n", export.Content,
+            "服务器端口 → 本机套接字照写(Windows 盘符路径写成方括号)");
         Assert.DoesNotContain("# RemoteForward /tmp/half.sock", export.Content);
 
         string path = WriteConfig(export.Content);
