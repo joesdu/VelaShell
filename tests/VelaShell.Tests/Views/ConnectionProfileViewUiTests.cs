@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Avalonia.Logging;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
@@ -14,6 +15,7 @@ using VelaShell.Behaviors;
 using VelaShell.Controls.Controls;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
+using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Plugins.Protocols;
 using VelaShell.PluginSdk.Protocols;
 using VelaShell.PluginSdk.Workspaces;
@@ -1206,6 +1208,120 @@ public sealed class ConnectionProfileViewUiTests
             }
         }
     });
+
+    /// <summary>
+    /// 系统密钥库:还没选钥时,钥详情那一行静默 —— 不往调试输出里刷
+    /// <c>SelectedSystemKey.Detail</c> / <c>.IsMissing</c> 的 "Value is null"(FallbackValue 只给值、不压日志);
+    /// 选了钥就显示那一把的详情,存过却找不到的那一把带 <c>missing</c> 样式,没选时收起。
+    /// </summary>
+    [TestMethod]
+    public Task SystemKeyDetail_IsSilentWithoutASelection_AndFollowsTheSelectedKey() => _session.RunOnUiAsync(async () =>
+    {
+        var sink = new BindingErrorSink();
+        ILogSink? previous = Logger.Sink;
+        Logger.Sink = sink;
+        var windows = new List<Window>();
+        try
+        {
+            // 新建连接:选了「系统密钥库」、还没选钥 —— 报错的正是这个状态。
+            var vm = new ConnectionProfileViewModel(systemKeyStore: KeyStoreWith("here")) { Host = "10.0.0.10", Username = "ops" };
+            vm.SelectAuthMethodCommand.Execute(AuthMethod.KeyStore).Subscribe();
+            await vm.LoadSystemKeysAsync();
+            windows.Add(ShowProfile(vm));
+            Assert.IsTrue(vm.ShowKeyStoreFields, "前提:系统密钥库那一段在显示");
+            Assert.IsNull(vm.SelectedSystemKey, "前提:还没选钥");
+
+            TextBlock detail = SystemKeyDetail(windows[0], null);
+            Assert.IsFalse(detail.IsVisible, "没选钥,详情那一行收起");
+
+            // 选了钥就显示它的详情(视图模型不会再回到 null:ComboBox 重建时回写的 null 被它挡掉)。
+            vm.SelectedSystemKey = vm.SystemKeyChoices[0];
+            Dispatcher.UIThread.RunJobs();
+            Assert.AreSame(detail, SystemKeyDetail(windows[0], vm.SelectedSystemKey));
+            Assert.AreEqual(vm.SelectedSystemKey.Detail, detail.Text);
+            Assert.IsTrue(detail.IsVisible);
+            Assert.IsFalse(detail.Classes.Contains("missing"));
+
+            // 存过的那一把这台电脑上找不到:照样选中,详情带 missing。
+            var existing = new SessionProfile
+            {
+                Name = "card",
+                Host = "10.0.0.8",
+                Username = "ops",
+                AuthMethod = AuthMethod.KeyStore,
+                KeyStoreKey = new SystemKeyReference { Provider = SystemKeyReference.SmartCardProvider, KeyName = "card-key", PublicKey = "ssh-rsa AAAA card" },
+            };
+            var missingVm = new ConnectionProfileViewModel(existing, systemKeyStore: KeyStoreWith("other"));
+            await missingVm.LoadSystemKeysAsync();
+            windows.Add(ShowProfile(missingVm));
+            Assert.IsTrue(missingVm.SelectedSystemKey?.IsMissing, "前提:选中的是找不到的那一把");
+            TextBlock missing = SystemKeyDetail(windows[1], missingVm.SelectedSystemKey);
+            Assert.IsTrue(missing.Classes.Contains("missing"));
+            Assert.AreEqual(missingVm.SelectedSystemKey.Detail, missing.Text);
+        }
+        finally
+        {
+            foreach (Window window in windows)
+            {
+                window.Close();
+            }
+
+            Logger.Sink = previous;
+        }
+
+        string[] keyErrors = [.. sink.Errors.Where(error => error.Contains("SystemKey", StringComparison.Ordinal)).Distinct()];
+        Assert.IsEmpty(keyErrors, $"系统密钥那几行有绑定错误:{Environment.NewLine}{string.Join(Environment.NewLine, keyErrors)}");
+    });
+
+    private static ISystemKeyStore KeyStoreWith(string name)
+    {
+        ISystemKeyStore store = Substitute.For<ISystemKeyStore>();
+        store.IsSupported.Returns(true);
+        var key = new SystemKeyInfo(
+            new SystemKeyReference { Provider = SystemKeyReference.SoftwareProvider, KeyName = name, PublicKey = $"ecdsa-sha2-nistp256 AAAA{name} {name}" },
+            "ecdsa-sha2-nistp256", 256, "SHA256:" + name, null);
+        store.ListKeysAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SystemKeyInfo>>([key]));
+        return store;
+    }
+
+    private static ConnectionProfileView ShowProfile(ConnectionProfileViewModel vm)
+    {
+        var window = new ConnectionProfileView { DataContext = vm };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        return window;
+    }
+
+    /// <summary>系统密钥下拉下面那一行详情:DataContext 收窄到选中的那把钥(没选时为 null)。</summary>
+    private static TextBlock SystemKeyDetail(Window window, SystemKeyChoice? key) =>
+        window.GetVisualDescendants().OfType<TextBlock>()
+            .Single(text => text.Classes.Contains("field-detail") && ReferenceEquals(text.DataContext, key));
+
+    /// <summary>只收集绑定相关的告警/错误(同 SettingsBindingErrorTests)。</summary>
+    private sealed class BindingErrorSink : ILogSink
+    {
+        public List<string> Errors { get; } = [];
+
+        public bool IsEnabled(LogEventLevel level, string area) =>
+            level >= LogEventLevel.Warning && area == LogArea.Binding;
+
+        public void Log(LogEventLevel level, string area, object? source, string messageTemplate)
+        {
+            if (IsEnabled(level, area))
+            {
+                Errors.Add(messageTemplate);
+            }
+        }
+
+        public void Log(LogEventLevel level, string area, object? source, string messageTemplate, params object?[] propertyValues)
+        {
+            if (IsEnabled(level, area))
+            {
+                Errors.Add(messageTemplate + " | " + string.Join(", ", propertyValues));
+            }
+        }
+    }
 
     private static void AssertIndicatorAligned(Border indicator, Button tab)
     {

@@ -1141,10 +1141,15 @@
                         </StackPanel>
                       </Button>
                     </Grid>
+                    <!-- DataContext 收窄到 SelectedSystemKey:没选钥时它为 null,直接绑 SelectedSystemKey.Detail /
+                         .IsMissing 会在调试输出里刷 "Value is null"(FallbackValue 只给值、不压日志;见 DockTabItem)。
+                         DataContext 为 null 时绑定静默不取值,可见性看 $self.DataContext。 -->
                     <TextBlock Classes="field-detail" Margin="0,4,0,0"
-                               Classes.missing="{Binding SelectedSystemKey.IsMissing, FallbackValue=False}"
-                               Text="{Binding SelectedSystemKey.Detail, FallbackValue={x:Null}}"
-                               IsVisible="{Binding SelectedSystemKey, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                               DataContext="{Binding SelectedSystemKey}"
+                               x:DataType="vm:SystemKeyChoice"
+                               Classes.missing="{Binding IsMissing}"
+                               Text="{Binding Detail}"
+                               IsVisible="{Binding $self.DataContext, Converter={x:Static ObjectConverters.IsNotNull}}" />
                     <TextBlock Classes="field-hint" Margin="0,6,0,0" IsVisible="{Binding HasNoSystemKeys}"
                                Text="{loc:Localize Profile_KeyStoreNoKeys}" />
                     <TextBlock Classes="field-hint" Margin="0,6,0,0" Text="{loc:Localize Profile_KeyStoreHint}" />
