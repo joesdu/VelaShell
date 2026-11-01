@@ -22,6 +22,11 @@ namespace VelaShell.Plugin.Ai.Interop;
 /// <c>ApprovalHandler</c> 为 null 时就是这个行为),用户要放开就得显式选
 /// 只读放行或绕过审批 —— 这是一个明摆着的选择,而不是一个悄悄的默认。</para>
 ///
+/// <para><b>提权命令是例外。</b><c>run_command</c> 带 <c>elevated=true</c> 时宿主自己会在桌面上弹 root 确认框
+/// 与 sudo 密码框,那是这条路上现成的、插件伪造不了的人工确认,所以工具箱这一层不再替它拒绝
+/// (<see cref="AgentToolbox.ElevationConfirmedByHost" />)。以前它在 Ask 与只读放行下一律被拒,
+/// 外部 agent 遇到要 sudo 的命令只能失败,用户连密码框都见不到。</para>
+///
 /// <para><b><see cref="McpServerSettings.Scope" /> 挡在每一次工具调用上。</b>
 /// 从前那份 <c>user@host:port</c> 清单只挡 <c>use_session</c>,而工具箱里九个工具都收可选的
 /// <c>session_id</c> —— 外部 agent <c>list_sessions</c> 拿到 id 直接传就绕过去了。现在它是一个
@@ -63,6 +68,8 @@ internal sealed class McpToolHost : IAsyncDisposable
             SessionIdProvider = () => _sessionId,
             Scope = _scope,
             Approval = settings.Approval,
+            // 提权的人工确认交给宿主的 root 确认框与密码框(见类型注释)
+            ElevationConfirmedByHost = true,
             DisabledTools = new HashSet<string>(
                 settings.DisabledTools.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
                 StringComparer.OrdinalIgnoreCase)
@@ -199,8 +206,20 @@ internal sealed class McpToolHost : IAsyncDisposable
 
     /// <summary>给 <c>initialize</c> 的服务端说明里带一句"现在对着哪台机器"。</summary>
     public string Describe()
-        => DescribeTarget() + " Background tasks can be queried, waited on, or cancelled with task tools. "
+        => DescribeTarget() + Elevation + " Background tasks can be queried, waited on, or cancelled with task tools. "
             + "This server does not wake external models; continuation is the MCP client's responsibility.";
+
+    /// <summary>
+    /// 要 root 的命令怎么跑。外部 agent 的习惯是把 <c>sudo …</c> 直接写进命令,
+    /// 而独立 exec 通道没有终端,sudo 一要密码就报错退出 —— 得一上来就告诉它走 <c>elevated</c>。
+    /// </summary>
+    private string Elevation
+        => Tools.Any(t => string.Equals(t.Name, "run_command", StringComparison.Ordinal))
+            ? " Commands that need root: call run_command with elevated=true and the command WITHOUT sudo"
+              + " (a plain sudo has no terminal here and fails as soon as it wants a password)."
+              + " VelaShell then shows the user its own root confirmation and sudo password dialog on their desktop;"
+              + " until they answer the task reports AwaitingUser, so tell the user to switch to VelaShell and use task_wait."
+            : "";
 
     private string DescribeTarget()
         => _target.Length > 0

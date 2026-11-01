@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Agent.Web;
 using VelaShell.Plugin.Ai.Configuration;
@@ -112,6 +113,24 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
     /// <summary>审批方式(见 <see cref="ApprovalMode" />)。</summary>
     public ApprovalMode Approval { get; set; } = ApprovalMode.Ask;
+
+    /// <summary>
+    /// 提权命令(<c>run_command</c> 带 <c>elevated=true</c>)不过插件这一层审批,直接交给宿主的 root 确认框。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>只有对外 MCP 那条路打开它。</b>那里没有审批卡(<see cref="ApprovalHandler" /> 为 null),
+    /// <see cref="ApprovalMode.Ask" /> 与只读放行于是把提权一律拒掉,外部 agent 的 sudo 命令永远走不到
+    /// 宿主的确认框与密码框 —— 用户看到的是「命令没权限、也没人问我」。
+    /// </para>
+    /// <para>
+    /// 放给宿主不等于放行:宿主对<b>每一条</b>提权命令都弹自己的确认框(NOPASSWD 也弹),框里的来源插件、
+    /// 真实目标与完整命令都由宿主自己填,插件伪造不了、也跳不过;批准键还先灰着一会儿,默认焦点在取消上。
+    /// 它本来就是比审批卡更严的一道人工确认,只是这条路上剩下的唯一一道。
+    /// 聊天面板与 IM 照旧两关都过 —— 它们的审批卡就在用户眼前,没必要拆掉一关。
+    /// </para>
+    /// </remarks>
+    public bool ElevationConfirmedByHost { get; init; }
 
     /// <summary>用户在"配置工具"里取消勾选的内置工具名(不暴露给模型)。</summary>
     public IReadOnlySet<string> DisabledTools { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -253,7 +272,8 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 + "Requires approval. Returns a final result or a running taskId after a short wait. No default execution deadline. "
                 + "Keep the command in the foreground: detached processes (nohup, &, daemonize) are NOT monitored and parent exit does not prove their completion. "
                 + "Set elevated=true only when root is needed, passing the actual command without sudo; the ENTIRE command including pipes/redirections runs as root "
-                + "after trusted host approval/authentication. Never automatically retry a failed/unknown operation or reinterpret ordinary sudo commands."), false),
+                + "after trusted host approval/authentication. A plain `sudo` inside command has no terminal on this channel and fails whenever sudo wants a password. "
+                + "Never automatically retry a failed/unknown operation or reinterpret ordinary sudo commands."), false),
 
             ("task_status", AIFunctionFactory.Create(TaskStatusAsync, "task_status",
                 "Read a task created by this run. Returns state, exit code and bounded stdout/stderr since cursor; advance using nextCursor. "
@@ -747,7 +767,57 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     }
 
     /// <summary>为工具回执和独立完成通知生成相同的无秘密任务表示。</summary>
-    public static string FormatJob(CommandJobSnapshot snapshot) => JsonSerializer.Serialize(new
+    /// <remarks>
+    /// 普通命令里的 <c>sudo</c> 要密码失败时多带一个 <c>hint</c>,指给模型 <c>elevated=true</c> 那条路
+    /// (见 <see cref="IsSudoPasswordFailure" />);其余回执与从前逐字相同。
+    /// </remarks>
+    public static string FormatJob(CommandJobSnapshot snapshot)
+    {
+        string json = FormatJobCore(snapshot);
+        // 只认普通通道的 stderr:提权任务的输出是 combined,认证阶段的内容宿主根本不交出来
+        if (!snapshot.Output.Any(o => o.Stream == "stderr" && IsSudoPasswordFailure(o.Text)))
+        {
+            return json;
+        }
+        JsonObject node = JsonNode.Parse(json)!.AsObject();
+        node["hint"] = SudoPasswordHint;
+        return node.ToJsonString();
+    }
+
+    /// <summary>普通 exec 通道上 sudo 要密码失败时给模型的提示。</summary>
+    internal const string SudoPasswordHint =
+        "sudo could not ask for a password: this exec channel has no terminal, so the sudo part did not run. "
+        + "If root is really needed, call run_command again with elevated=true and the command WITHOUT the sudo prefix; "
+        + "VelaShell then asks the user on their desktop to confirm and enter the sudo password. "
+        + "elevated runs the ENTIRE command as root, so if only part of it needs root, run that part separately.";
+
+    private static readonly string[] SudoPasswordWords = ["password", "terminal", "tty", "askpass", "密码", "密碼", "终端", "終端"];
+
+    /// <summary>
+    /// 普通 exec 通道上 <c>sudo</c> 要密码时说的那几句:没有终端可问,报一句就退出。
+    /// </summary>
+    /// <remarks>
+    /// 只认以 <c>sudo:</c> 开头、又提到密码 / 终端 / tty / askpass 的行(中文 locale 下 sudo 用全角冒号)。
+    /// <c>sudo: unable to resolve host</c>、<c>Sorry, user x may not run sudo</c> 这类改走 elevated 也救不了,不给提示。
+    /// </remarks>
+    internal static bool IsSudoPasswordFailure(string line)
+    {
+        ReadOnlySpan<char> text = line.AsSpan().TrimStart();
+        if (!text.StartsWith("sudo:", StringComparison.OrdinalIgnoreCase) && !text.StartsWith("sudo：", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        foreach (string word in SudoPasswordWords)
+        {
+            if (text.Contains(word, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static string FormatJobCore(CommandJobSnapshot snapshot) => JsonSerializer.Serialize(new
     {
         taskId = snapshot.TaskId,
         sessionId = snapshot.SessionId,
@@ -1849,6 +1919,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     private async Task<bool> ApproveAsync(ApprovalRequest request, CancellationToken cancellationToken)
     {
         if (Approval == ApprovalMode.Bypass)
+        {
+            return true;
+        }
+        // 提权的人工确认整个交给宿主(见 ElevationConfirmedByHost):宿主的 root 确认框照弹,一关不少
+        if (ElevationConfirmedByHost && request.Kind == "run_command_elevated")
         {
             return true;
         }

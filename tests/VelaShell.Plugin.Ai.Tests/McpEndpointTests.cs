@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text.Json;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.Plugin.Ai.Interop;
+using VelaShell.PluginSdk.RemoteExec;
 using VelaShell.PluginSdk.RemoteFs;
 using VelaShell.PluginSdk.Testing;
 
@@ -46,11 +47,11 @@ public sealed class McpEndpointTests
     }
 
     private static async Task<(McpEndpoint Endpoint, int Port, string Token)> StartAsync(
-        TestPluginContext context, ChatMode mode = ChatMode.Plan)
+        TestPluginContext context, ChatMode mode = ChatMode.Plan, ApprovalMode approval = ApprovalMode.ReadOnlyAuto)
     {
         var store = new McpServerSettingsStore(context);
         int port = FreePort();
-        await store.SaveAsync(new McpServerSettings { Enabled = true, Port = port, Mode = mode });
+        await store.SaveAsync(new McpServerSettings { Enabled = true, Port = port, Mode = mode, Approval = approval });
         string token = await store.TokenAsync();
         var endpoint = new McpEndpoint(context, store);
         await endpoint.ReloadAsync();
@@ -289,8 +290,8 @@ public sealed class McpEndpointTests
 
             (_, string denied) = await CallAsync("run_command", new { command = "systemctl restart nginx" });
             Assert.Contains("DENIED", denied);
-            (_, string elevated) = await CallAsync("run_command", new { command = "cat /etc/hosts", elevated = true });
-            Assert.Contains("DENIED", elevated);
+            (_, string deniedAgain) = await CallAsync("write_remote_file", new { path = "/etc/motd", content = "x" });
+            Assert.Contains("DENIED", deniedAgain);
 
             (bool listFailed, string list) = await CallAsync("list_sessions", new { });
             Assert.IsFalse(listFailed, list);
@@ -302,6 +303,127 @@ public sealed class McpEndpointTests
                 Assert.IsFalse(failed, text);
                 Assert.Contains("\"state\":\"Succeeded\"", text, $"第 {i + 1} 条命令:{text}");
             }
+        }
+    }
+
+    /// <summary>
+    /// 要 root 的命令不再被插件这一层替用户拒掉:审批选哪一项都走到宿主的 root 确认框与密码框
+    /// (这里由 <c>FakeRemoteExec.SudoHandler</c> 扮演宿主)。以前 Ask 与只读放行下一律 DENIED,
+    /// 外部 agent 遇到要 sudo 的命令只能失败,用户连密码框都见不到。
+    /// 同一条命令不带 elevated 时照旧按审批挡位走 —— 放开的只有提权这一种。
+    /// </summary>
+    [TestMethod]
+    [DataRow(ApprovalMode.Ask)]
+    [DataRow(ApprovalMode.ReadOnlyAuto)]
+    [DataRow(ApprovalMode.Bypass)]
+    public async Task ToolsCall_ElevatedCommand_ReachesTheHostsRootConfirmation_InEveryApprovalMode(ApprovalMode approval)
+    {
+        using var context = new TestPluginContext();
+        context.FakeSessions.AddConnected(host: "prod-1", username: "deploy");
+        context.FakeRemoteExec.SudoHandler = (_, _, _, progress, _) =>
+        {
+            progress.Report(new(SudoExecEventKind.State, SudoExecState.AwaitingApproval));
+            progress.Report(new(SudoExecEventKind.State, SudoExecState.AwaitingAuthentication));
+            progress.Report(new(SudoExecEventKind.State, SudoExecState.Running));
+            progress.Report(new(SudoExecEventKind.Output, Text: "restarted"));
+            return Task.FromResult(new SudoExecResult(SudoExecOutcome.Exited, 0, 1));
+        };
+        (McpEndpoint endpoint, int port, string token) = await StartAsync(context, ChatMode.Agent, approval);
+        await using (endpoint)
+        {
+            using HttpClient client = CreateClient(port, token);
+            string sessionId = await InitializeAsync(client);
+
+            string elevated = await CallTextAsync(client, sessionId, "run_command",
+                new { command = "systemctl restart nginx", elevated = true, waitSeconds = 10 });
+
+            Assert.DoesNotContain("DENIED", elevated);
+            Assert.Contains("\"state\":\"Succeeded\"", elevated);
+            Assert.Contains("restarted", elevated);
+            Assert.AreEqual("systemctl restart nginx", context.FakeRemoteExec.SudoStreamed.Single().Command);
+            Assert.IsEmpty(context.FakeRemoteExec.Streamed, "提权绝不退化成普通 exec");
+
+            string plain = await CallTextAsync(client, sessionId, "run_command", new { command = "systemctl restart nginx" });
+            if (approval == ApprovalMode.Bypass)
+            {
+                Assert.DoesNotContain("DENIED", plain);
+            }
+            else
+            {
+                Assert.Contains("DENIED", plain, "不带 elevated 的写命令照旧没有审批界面可问");
+                Assert.IsEmpty(context.FakeRemoteExec.Streamed);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 密码框开着时 tools/call 不能跟着干等(请求有时限,用户这会儿多半还在外部 agent 的窗口里):
+    /// 先回一个 AwaitingUser 的任务,用户在 VelaShell 里答完,再由 task_wait 取结果。
+    /// </summary>
+    [TestMethod]
+    public async Task ToolsCall_ElevatedCommand_ReturnsAwaitingUserWhileTheHostDialogIsOpen()
+    {
+        using var context = new TestPluginContext();
+        context.FakeSessions.AddConnected(host: "prod-1", username: "deploy");
+        var asking = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.FakeRemoteExec.SudoHandler = async (_, _, _, progress, cancellationToken) =>
+        {
+            progress.Report(new(SudoExecEventKind.State, SudoExecState.AwaitingAuthentication));
+            asking.TrySetResult();
+            await answered.Task.WaitAsync(cancellationToken);
+            progress.Report(new(SudoExecEventKind.State, SudoExecState.Running));
+            progress.Report(new(SudoExecEventKind.Output, Text: "updated"));
+            return new SudoExecResult(SudoExecOutcome.Exited, 0, 1);
+        };
+        (McpEndpoint endpoint, int port, string token) = await StartAsync(context, ChatMode.Agent);
+        await using (endpoint)
+        {
+            using HttpClient client = CreateClient(port, token);
+            string sessionId = await InitializeAsync(client);
+
+            string pending = await CallTextAsync(client, sessionId, "run_command",
+                new { command = "apt-get update", elevated = true, waitSeconds = 0 });
+            Assert.DoesNotContain("Succeeded", pending, "密码框还开着,不能先报完成");
+            string taskId;
+            using (JsonDocument receipt = JsonDocument.Parse(pending))
+            {
+                taskId = receipt.RootElement.GetProperty("taskId").GetString()!;
+            }
+            await asking.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Contains("\"state\":\"AwaitingUser\"",
+                await CallTextAsync(client, sessionId, "task_status", new { taskId }));
+
+            answered.SetResult();
+            string done = await CallTextAsync(client, sessionId, "task_wait", new { taskId, waitSeconds = 30 });
+            Assert.Contains("\"state\":\"Succeeded\"", done);
+            Assert.Contains("updated", done);
+        }
+    }
+
+    /// <summary>
+    /// 外部 agent 的习惯是把 <c>sudo …</c> 直接写进命令 —— 独立 exec 通道没有终端,sudo 一要密码就失败。
+    /// 有 run_command 的挡位一上来就得告诉它走 elevated;计划档没有 run_command,提了只会让它去找一个不存在的参数。
+    /// </summary>
+    [TestMethod]
+    [DataRow(ChatMode.Agent, true)]
+    [DataRow(ChatMode.Plan, false)]
+    public async Task Initialize_TellsClientsWithRunCommandHowToRunRootCommands(ChatMode mode, bool expected)
+    {
+        using var context = new TestPluginContext();
+        (McpEndpoint endpoint, int port, string token) = await StartAsync(context, mode);
+        await using (endpoint)
+        {
+            using HttpClient client = CreateClient(port, token);
+            using JsonDocument initialize = await RpcAsync(client, new
+            {
+                jsonrpc = "2.0",
+                id = 1,
+                method = "initialize",
+                @params = new { protocolVersion = "2025-06-18", clientInfo = new { name = "test", version = "1" } }
+            });
+            string instructions = initialize.RootElement.GetProperty("result").GetProperty("instructions").GetString()!;
+            Assert.AreEqual(expected, instructions.Contains("elevated=true", StringComparison.Ordinal), instructions);
         }
     }
 
@@ -603,6 +725,21 @@ public sealed class McpEndpointTests
             Assert.IsTrue(sessions.ContainsKey(running), "仍在运行的上传继续保护会话");
         }
         finally { File.Delete(local); }
+    }
+
+    private static int _nextCallId = 1000;
+
+    /// <summary>调一个工具,取回给模型看的那段文本。</summary>
+    private static async Task<string> CallTextAsync(HttpClient client, string sessionId, string name, object arguments)
+    {
+        using JsonDocument document = await RpcAsync(client, new
+        {
+            jsonrpc = "2.0",
+            id = Interlocked.Increment(ref _nextCallId),
+            method = "tools/call",
+            @params = new { name, arguments }
+        }, sessionId);
+        return document.RootElement.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString()!;
     }
 
     private static async Task<string> InitializeAsync(HttpClient client)

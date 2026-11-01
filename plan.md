@@ -3536,3 +3536,17 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **ssh_config 断言(a54367f3,Linux / macOS)**:产品行为没错。「写成 `\\\\.\pipe\…` 的那台主机没有单反斜杠说明」按子串 `\.\pipe` 找,而 Linux / macOS 上命名管道另有一句 `SshCfgImport_NoteAgentEndpointUnusable`,带着读回的正确管道名 `\\.\pipe\vela-test-agent`,子串命中。单反斜杠说明只在值以一个 `\` 开头时出(`value is ['\\', not '\\', ..]`),断言改为找那一句的写法 `IdentityAgent \.\pipe`;两句说明按 resx 的 `{0}` 写法逐字核过。⚠️ **更正**:a54367f3 的提交说明是经 shell 写入的,两个连着的反斜杠都被吞成了一个 —— 说明里的「写成 `\\.\pipe\…` 的那台主机」应为 `\\\\.\pipe\…`,「正确管道名 `\.\pipe\vela-test-agent`」应为 `\\.\pipe\vela-test-agent`;代码与用例本身没受影响(按字节核过),提交已在 main 上,以这里为准。之后带反斜杠的提交说明一律写进文件再 `git commit -F`。
 
 **验证**:Windows 全量(CI 过滤)11343 通过,1 条代理测试失败 —— 当时 WSL 上同时跑着 Infrastructure,假代理在共用的 localhost 端口上应答,单跑 6 / 6 通过;WSL Debian 上 Infrastructure 除内置 X 服务端 8 条外全过(WSLg 自己占着 `:0` 的套接字、另有进程听 6020,选号环境与 CI 不同,这次没碰 X 服务端代码,CI 的 Linux 上照常通过)。#700 的 CI 三个平台的「构建与测试」与 CodeQL 全部通过(run 41284074506)。⚠️ 这次在 WSL 的 `~/.dotnet-vela` 装了一份 .NET 11 RC3 SDK、`~/vela-src` 放了一份工作区拷贝,只在 WSL 用户目录里,不用时可以删掉。
+
+## 311. 2026-11-01 对外 MCP:提权命令走宿主的 root 确认框与 sudo 密码框,不再被插件层一律拒掉
+
+**起因**:用户经对外 MCP 用 Claude Code / Codex / OpenCode 执行要 sudo 的命令,VelaShell 不弹密码框,命令因没权限失败;内置 AI 助手里同样的命令是审批卡 → 宿主 root 确认框 → sudo 密码框。
+
+- **根因有两层**:① 插件层:`McpToolHost` 刻意不设 `ApprovalHandler`(§33-四),`AgentToolbox.ApproveAsync` 在「询问」与「只读放行」下把 `run_command_elevated` 一律拒掉(只读放行只认 `run_command` 这一种 Kind),只有「绕过审批」才走得到 `StreamSudoAsync`。宿主那一段(`SudoCommandExecutor` → `ISudoPrompt` → `SudoPromptDialogService`)本身完好,只是请求根本没到;`McpEndpointTests` 里还有一条断言钉着「提权 DENIED」。② 模型层:外部 agent 习惯把 `sudo …` 直接写进普通 `run_command`,独立 exec 通道不分配 PTY,sudo 一要密码就报 `a terminal is required to read the password` 退出,模型只看到一行 stderr。
+- **`AgentToolbox.ElevationConfirmedByHost`**(init,默认 false):打开后 `run_command_elevated` 不过插件审批,直接交给宿主 —— 宿主对每一条提权命令都弹自己的确认框(NOPASSWD 也弹;来源插件、真实目标与完整命令由宿主填,批准键延迟约 0.6 s、默认焦点在取消),再按需弹密码框,插件伪造不了也跳不过。只有 `McpToolHost` 打开它,聊天面板与 IM 照旧两关都过。放开的只有提权:MCP 上不带 elevated 的写命令、写文件、开会话照旧按挡位(「询问」= 拒绝);计划 / 对话挡位不注册 `run_command`,不受影响。
+- **告诉外部 agent 怎么跑 root 命令**:`McpToolHost.Instructions` 在有 `run_command` 时说明走 `elevated=true`、去掉 sudo 前缀,弹窗期间任务报 `AwaitingUser`,让用户切回 VelaShell、用 `task_wait` 取结果(`run_command` 的短等最多 10 s,tools/call 不会卡在弹窗上)。`run_command` 的描述补一句「普通命令里的 sudo 没有终端,一要密码就失败」。
+- **失败回执里的提示**:`AgentToolbox.FormatJob` 在普通通道的 stderr 里认出以 `sudo:` / `sudo：`(全角冒号)开头、又提到 password / terminal / tty / askpass / 密码 / 终端的行时,回执多一个 `hint`,指向 elevated,并说明整条命令都会以 root 跑、只有一部分要 root 就拆开;其余回执逐字不变,`sudo: unable to resolve host`、`Sorry, user x may not run sudo` 这类改走 elevated 也救不了的不给提示。**不自动改写成提权**:`make && sudo make install`、`sudo -u postgres …` 整条换成 root,语义就变了。内置助手共用这份回执,一样受益。
+- 设置页「对外 MCP」的审批说明(五语)补上提权例外;`manual.md` / `manual.en.md` §19.6 加「需要 root 的命令」一段。`feature-plan.md`「对外 MCP 的带外审批」一行改为只剩不提权的写操作。
+
+**测试**:`McpEndpointTests` 新增三组 —— 三档审批下提权都到宿主、普通写命令在「询问」/「只读放行」下仍拒;弹窗未答时 `run_command` 先回 `AwaitingUser`、答完 `task_wait` 拿到 `Succeeded`;Agent 档的 instructions 讲 elevated、计划档不讲。原「拒绝按次计」用例里提权 DENIED 的断言换成 `write_remote_file`。`CommandJobRegistryTests` 新增 `ElevationConfirmedByHost` 只放提权、普通命令照问;`AgentToolboxTests` 新增 sudo 提示的五条正例与五条反例。
+
+**验证**:`dotnet build tests/VelaShell.Plugin.Ai.Tests -c Debug -warnaserror` 0 警告;AI 插件测试全量 2076 / 2076 通过。没有在真实 SSH 主机上用外部 Claude Code 端到端点一遍;宿主 sudo 链路这次没改,由 `SudoInteropTests`(`ssh-sudo` 靶机)覆盖。

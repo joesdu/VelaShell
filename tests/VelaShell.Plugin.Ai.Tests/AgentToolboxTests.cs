@@ -479,6 +479,60 @@ public sealed class AgentToolboxTests
         Assert.IsFalse(handlerCalled);
     }
 
+    /// <summary>
+    /// 普通通道上的 <c>sudo</c> 要密码时没有终端可问,报一句就退出。回执里要指给模型 elevated 那条路 ——
+    /// 否则它只会看到一条看不懂的 stderr,而用户压根没见到密码框。
+    /// </summary>
+    [TestMethod]
+    [DataRow("sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper")]
+    [DataRow("sudo: a password is required")]
+    [DataRow("sudo: no tty present and no askpass program specified")]
+    [DataRow("sudo: sorry, you must have a tty to run sudo")]
+    [DataRow("sudo：需要一个终端来读取密码；要么使用 -S 选项从标准输入读取，要么配置一个 askpass 辅助程序")]
+    public async Task RunCommand_PlainSudoThatWantsAPassword_PointsTheModelAtElevated(string stderr)
+    {
+        using var context = new TestPluginContext();
+        SessionInfo session = context.FakeSessions.AddConnected();
+        context.FakeRemoteExec.ResultHandler = (_, _) => new("") { Error = stderr, ExitCode = 1 };
+        var toolbox = new AgentToolbox(context)
+        {
+            SessionIdProvider = () => session.SessionId,
+            ApprovalHandler = _ => Task.FromResult(true)
+        };
+
+        string result = await InvokeAsync(toolbox, "run_command", new() { ["command"] = "sudo systemctl restart nginx" });
+
+        using var json = System.Text.Json.JsonDocument.Parse(result);
+        Assert.IsTrue(json.RootElement.TryGetProperty("hint", out System.Text.Json.JsonElement hint), result);
+        Assert.Contains("elevated=true", hint.GetString()!);
+        Assert.Contains(stderr, json.RootElement.GetProperty("output")[0].GetProperty("Text").GetString()!,
+            "原始 stderr 照旧交给模型,提示只是附加");
+    }
+
+    /// <summary>其它失败(包括 sudo 自己的非密码类报错)不带提示:改走 elevated 救不了它们,只会把模型带偏。</summary>
+    [TestMethod]
+    [DataRow("sudo: unable to resolve host prod-1: Name or service not known")]
+    [DataRow("Sorry, user deploy may not run sudo on prod-1.")]
+    [DataRow("sudo: apt-gte: command not found")]
+    [DataRow("cat: /etc/shadow: Permission denied")]
+    [DataRow("passwd: Authentication token manipulation error")]
+    public async Task RunCommand_OtherFailures_CarryNoSudoHint(string stderr)
+    {
+        using var context = new TestPluginContext();
+        SessionInfo session = context.FakeSessions.AddConnected();
+        context.FakeRemoteExec.ResultHandler = (_, _) => new("") { Error = stderr, ExitCode = 1 };
+        var toolbox = new AgentToolbox(context)
+        {
+            SessionIdProvider = () => session.SessionId,
+            ApprovalHandler = _ => Task.FromResult(true)
+        };
+
+        string result = await InvokeAsync(toolbox, "run_command", new() { ["command"] = "do-something" });
+
+        using var json = System.Text.Json.JsonDocument.Parse(result);
+        Assert.IsFalse(json.RootElement.TryGetProperty("hint", out _), result);
+    }
+
     [TestMethod]
     public async Task ReadRemoteFile_ReturnsUtf8Content()
     {
