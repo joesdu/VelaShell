@@ -1,3 +1,4 @@
+using Avalonia.Headless;
 using NSubstitute;
 using ReactiveUI.Builder;
 using ReactiveUI.Primitives.Concurrency;
@@ -8,6 +9,7 @@ using VelaShell.Core.Ssh;
 using VelaShell.Docking;
 using VelaShell.Presentation.Services;
 using VelaShell.Services;
+using VelaShell.Tests.TestSupport;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Tests.ViewModels;
@@ -93,42 +95,42 @@ public sealed class TerminalSidebarRemoteEditTests
     /// 之后的保存再也传不回去(复查 file-panes F8)。
     /// </summary>
     [TestMethod]
-    public async Task ConnectionLoss_EndsTheEditSessions_ButKeepsTheCopies_AndSaysSo()
-    {
-        ISftpService sftp = Substitute.For<ISftpService>();
-        sftp.GetWorkingDirectoryAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns("/home/u");
-        sftp.ListDirectoryAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult(new List<RemoteFileInfo>()));
-        (MainWindowViewModel vm, TerminalTabViewModel tab) = await ConnectViaHostAsync(sftp);
-        var events = new List<string>();
-        RemoteEditSession session = await OpenAsync(sftp, tab.SessionId, events);
-        string directory = Path.GetDirectoryName(session.LocalPath)!;
-        try
+    public Task ConnectionLoss_EndsTheEditSessions_ButKeepsTheCopies_AndSaysSo() =>
+        // 整段跑在 headless 会话的 UI 线程上:提示是从收尾链所在的线程池线程 Post 回 UI 线程推的(MainWindowViewModel.PostWarning),
+        // 测试线程不是调度器那条线程时没人处理这个 Post —— 前面哪条用例先在线程池上碰了 Dispatcher.UIThread,它就绑到一条不泵消息的线程上,
+        // 这里等满 10 秒也看不到提示(与 355fea71 修的「在此处打开终端」用例同一类)。
+        HeadlessUnitTestSession.GetOrStartForAssembly(typeof(TerminalSidebarRemoteEditTests).Assembly).RunOnUiAsync(async () =>
         {
-            tab.MarkDisconnected();
-            await WaitUntilAsync(() => !RemoteEditSessionManager.ActiveSessions.Contains(session));
-
-            Assert.IsTrue(File.Exists(session.LocalPath), "编辑器还开着这份副本:断线不删");
-            Assert.AreEqual(RemoteEditDrafts.Clean, RemoteEditDrafts.Read(directory)?.State,
-                "标记仍是干净:之后没动过,启动时到点清掉;断线后又存过,启动时按草稿列出来");
-            string expected = Strings.Format("Svc_RemoteEditEndedByDisconnect", session.FileName, session.LocalPath);
-            // 收尾链在线程池上跑,提示编组回 UI 线程推。
-            for (int i = 0; i < 200 && !vm.Toasts.Toasts.Any(t => t.Message == expected); i++)
+            ISftpService sftp = Substitute.For<ISftpService>();
+            sftp.GetWorkingDirectoryAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns("/home/u");
+            sftp.ListDirectoryAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                .Returns(_ => Task.FromResult(new List<RemoteFileInfo>()));
+            (MainWindowViewModel vm, TerminalTabViewModel tab) = await ConnectViaHostAsync(sftp);
+            var events = new List<string>();
+            RemoteEditSession session = await OpenAsync(sftp, tab.SessionId, events);
+            string directory = Path.GetDirectoryName(session.LocalPath)!;
+            try
             {
-                if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+                tab.MarkDisconnected();
+                await WaitUntilAsync(() => !RemoteEditSessionManager.ActiveSessions.Contains(session));
+
+                Assert.IsTrue(File.Exists(session.LocalPath), "编辑器还开着这份副本:断线不删");
+                Assert.AreEqual(RemoteEditDrafts.Clean, RemoteEditDrafts.Read(directory)?.State,
+                    "标记仍是干净:之后没动过,启动时到点清掉;断线后又存过,启动时按草稿列出来");
+                string expected = Strings.Format("Svc_RemoteEditEndedByDisconnect", session.FileName, session.LocalPath);
+                // 在 UI 线程上等:每次 await 让出时调度器处理那个 Post。
+                for (int i = 0; i < 200 && !vm.Toasts.Toasts.Any(t => t.Message == expected); i++)
                 {
-                    Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                    await Task.Delay(50);
                 }
-                await Task.Delay(50);
+                Assert.Contains(t => t.Message == expected, vm.Toasts.Toasts);
+                Assert.IsEmpty(Snapshot(events), "干净的副本没有可传的");
             }
-            Assert.Contains(t => t.Message == expected, vm.Toasts.Toasts);
-            Assert.IsEmpty(Snapshot(events), "干净的副本没有可传的");
-        }
-        finally
-        {
-            RemoteEditSessionManager.TryDeleteDirectory(directory);
-        }
-    }
+            finally
+            {
+                RemoteEditSessionManager.TryDeleteDirectory(directory);
+            }
+        });
 
     /// <summary>经宿主真正的连接流程连上一个替身 SSH 会话(断线事件只对这样开出来的标签有订阅)。</summary>
     private static async Task<(MainWindowViewModel Vm, TerminalTabViewModel Tab)> ConnectViaHostAsync(ISftpService sftp)
