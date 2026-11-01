@@ -70,7 +70,10 @@ public sealed partial class MasterPasswordService : IMasterPasswordService
     /// <inheritdoc />
     public async Task<bool> EnsureUnlockedAsync(bool interactive, CancellationToken cancellationToken = default)
     {
-        if (!await this.IsLockedAsync().ConfigureAwait(false))
+        // 密钥已经解析过时就地判断(只是在锁里读一个字段):同一拍发出的几个请求因此都在框弹出之前挂到同一个 _pendingPrompt 上。
+        // 还没解析时才到线程池上问(解析可能要等系统密钥链)—— 那样各请求进锁的先后看调度,取消之后才进来的会另弹一次,本来就该如此。
+        bool locked = _protector.IsReady ? IsLocked : await this.IsLockedAsync().ConfigureAwait(false);
+        if (!locked)
         {
             return true;
         }
@@ -93,8 +96,9 @@ public sealed partial class MasterPasswordService : IMasterPasswordService
 
     private async Task<bool> RunPromptAsync()
     {
-        // 让出一次:调用方先把这个任务挂到 _pendingPrompt 上,别的请求再进来时看得见它。
-        await Task.Yield();
+        // 让出一次、落到线程池上(不捕获调用方的上下文,与走 IsLockedAsync 那条路时一样):
+        // 调用方先把这个任务挂到 _pendingPrompt 上,别的请求再进来时看得见它。
+        await Task.CompletedTask.ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
         if (_prompt() is not { } prompt)
         {
             return false;
