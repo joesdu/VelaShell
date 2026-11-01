@@ -213,6 +213,7 @@ internal sealed class SessionTreeActions(Window owner, MainWindowViewModel viewM
             return;
         }
 
+        await WarnIfImportingWhileLockedAsync(services, viewModel);
         var importer = new SessionFileImportViewModel(archive, document, targetGroupId);
         var dialog = new SessionFileImportView { DataContext = importer };
         SessionFileImportOutcome? outcome = await dialog.ShowDialog<SessionFileImportOutcome?>(owner);
@@ -273,4 +274,16 @@ internal sealed class SessionTreeActions(Window owner, MainWindowViewModel viewM
 
     private Task ShowImportProblemAsync(string message) =>
         MessageDialog.ShowMessageAsync(owner, Strings.Get("SessImport_Title"), message, MessageDialogKind.Error);
+
+    /// <summary>
+    /// 主密码锁着:导入的密码加不了密(仓储锁着时不存新的机密)。先弹解锁框;取消照样导入,只是这次的密码不保存 —— 导入之前先说一声。
+    /// </summary>
+    internal static async Task WarnIfImportingWhileLockedAsync(IServiceProvider services, MainWindowViewModel viewModel)
+    {
+        if (services.GetService<IMasterPasswordGate>() is { } masterPassword && await masterPassword.IsLockedAsync()
+            && !await masterPassword.EnsureUnlockedAsync(interactive: true))
+        {
+            viewModel.Toasts.Warning(Strings.Get("MasterPassword_ImportWhileLocked"));
+        }
+    }
 }

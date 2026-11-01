@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Buffers.Text;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using VelaShell.Core.Data;
 
 namespace VelaShell.Infrastructure.Persistence;
@@ -36,7 +37,7 @@ internal sealed unsafe partial class SecretServiceMasterKeyStore : IMasterKeySto
     private const string LibGlib = "libglib-2.0.so.0";
     private const string KeyIdAttribute = "key-id";
     private const int SchemaAttributeString = 0; // SECRET_SCHEMA_ATTRIBUTE_STRING
-    private const int Base64KeyLength = 44; // 32 字节 → 44 个 base64 字符
+    private const int MaxBase64ValueLength = 4096; // 32 字节的密钥是 44 个字符,包裹过的那份也只有几百个
 
     private static readonly Lazy<nint> Schema = new(BuildSchema, LazyThreadSafetyMode.ExecutionAndPublication);
     private static readonly Lazy<(nint Hash, nint Equal)> StringFunctions = new(LoadStringFunctions, LazyThreadSafetyMode.ExecutionAndPublication);
@@ -150,12 +151,21 @@ internal sealed unsafe partial class SecretServiceMasterKeyStore : IMasterKeySto
             try
             {
                 // 直接在原生的 UTF-8 缓冲上解 base64:密钥不经过托管字符串(那份没法清零)。
+                // 值可能是 32 字节的密钥,也可能是主密码包裹过的那一份(VSMP1 ‖ 记录,几百字节以内):长度交给上层判断。
                 ReadOnlySpan<byte> text = MemoryMarshal.CreateReadOnlySpanFromNullTerminated((byte*)password);
-                byte[] key = new byte[MasterKeyResolver.KeySize];
-                return Base64.DecodeFromUtf8(text, key, out _, out int written) == OperationStatus.Done
-                       && written == MasterKeyResolver.KeySize
-                    ? MasterKeyStoreResult.Found(key)
-                    : MasterKeyStoreResult.Found([]); // 内容不是一把密钥:交给上层按「对不上编号」处理
+                if (text.Length > MaxBase64ValueLength)
+                {
+                    return MasterKeyStoreResult.Found([]); // 不是我们写的东西:交给上层按「对不上编号」处理
+                }
+                byte[] decoded = new byte[Base64.GetMaxDecodedFromUtf8Length(text.Length)];
+                if (Base64.DecodeFromUtf8(text, decoded, out _, out int written) != OperationStatus.Done)
+                {
+                    CryptographicOperations.ZeroMemory(decoded);
+                    return MasterKeyStoreResult.Found([]); // 内容不是一把密钥:交给上层按「对不上编号」处理
+                }
+                byte[] key = decoded[..written];
+                CryptographicOperations.ZeroMemory(decoded);
+                return MasterKeyStoreResult.Found(key);
             }
             finally
             {
@@ -178,11 +188,12 @@ internal sealed unsafe partial class SecretServiceMasterKeyStore : IMasterKeySto
     {
         nint attributes = NewAttributes(keyId, out nint name, out nint value);
         nint label = Marshal.StringToCoTaskMemUTF8(_label);
-        byte* secret = (byte*)NativeMemory.AllocZeroed(Base64KeyLength + 1);
+        int encodedLength = Base64.GetMaxEncodedToUtf8Length(key.Length);
+        byte* secret = (byte*)NativeMemory.AllocZeroed((nuint)encodedLength + 1);
         nint error = 0;
         try
         {
-            if (Base64.EncodeToUtf8(key, new Span<byte>(secret, Base64KeyLength), out _, out int written) != OperationStatus.Done)
+            if (Base64.EncodeToUtf8(key, new Span<byte>(secret, encodedLength), out _, out int written) != OperationStatus.Done)
             {
                 return MasterKeyStoreResult.Unavailable("key could not be encoded");
             }
@@ -197,7 +208,7 @@ internal sealed unsafe partial class SecretServiceMasterKeyStore : IMasterKeySto
         }
         finally
         {
-            NativeMemory.Clear(secret, Base64KeyLength + 1);
+            NativeMemory.Clear(secret, (nuint)encodedLength + 1);
             NativeMemory.Free(secret);
             if (error != 0)
             {

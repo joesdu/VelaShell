@@ -223,6 +223,8 @@ public static class PluginProtocolTerminalConnector
         // 声明了 NoCredentials 的协议(Telnet 之类)没有凭据可交:配置里残留的用户名口令用户看不见,不交给插件
         // (SDK 对这一位的承诺是「连传都不传」;与 PluginProtocolFileService、PluginWorkspaceLauncher 同一条规矩)。
         bool noCredentials = registration.Descriptor.Features.HasFlag(ProtocolFeatures.NoCredentials);
+        // 存着的机密在这台设备上解不开:不把密文、也不把空串交给插件(PluginStoredSecrets)。
+        PluginStoredSecrets.ThrowIfUnreadable(profile, registration.Descriptor.Fields, includePassword: !noCredentials);
         var request = new ProtocolConnectRequest
         {
             Host = profile.Host,

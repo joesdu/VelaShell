@@ -140,23 +140,39 @@ public sealed class HandshakeTests
         }
     }
 
-    /// <summary>〔spec/00 §6.6〕FIPS 清单补上了群交换与 group18（与 RHEL 的 FIPS 策略一致）：只给其中一种的服务端也谈得成。</summary>
+    /// <summary>〔spec/00 §6.6〕FIPS 清单里有 group18（与 RHEL 的 FIPS 策略一致）：只给它的服务端谈得成。</summary>
     [TestMethod]
-    public async Task FIPS清单与只给群交换或group18的服务端谈得成()
+    public async Task FIPS清单与只给group18的服务端谈得成()
     {
-        foreach (string kex in new[] { SshAlgorithmNames.DiffieHellmanGroupExchangeSha256, SshAlgorithmNames.DiffieHellmanGroup18Sha512 })
-        {
-            (SshKeyExchangeResult client, TestSshServerHandshake server) = await HandshakeAsync(
-                SshAlgorithmSet.FipsApprovedOnly,
-                new TestSshServerOptions
-                {
-                    HostKeyType = SshAlgorithmNames.EcdsaSha2Nistp256,
-                    Algorithms = SshAlgorithmSet.FipsApprovedOnly with { KeyExchange = [kex] },
-                });
+        (SshKeyExchangeResult client, TestSshServerHandshake server) = await HandshakeAsync(
+            SshAlgorithmSet.FipsApprovedOnly,
+            new TestSshServerOptions
+            {
+                HostKeyType = SshAlgorithmNames.EcdsaSha2Nistp256,
+                Algorithms = SshAlgorithmSet.FipsApprovedOnly with { KeyExchange = [SshAlgorithmNames.DiffieHellmanGroup18Sha512] },
+            });
 
-            Assert.AreEqual(kex, client.Algorithms.KeyExchange, kex);
-            Assert.AreSequenceEqual(server.ExchangeHash, client.ExchangeHash, $"{kex}：交换哈希不一致");
-        }
+        Assert.AreEqual(SshAlgorithmNames.DiffieHellmanGroup18Sha512, client.Algorithms.KeyExchange);
+        Assert.AreSequenceEqual(server.ExchangeHash, client.ExchangeHash, "group18：交换哈希不一致");
+    }
+
+    /// <summary>
+    /// 〔spec/00 §6.6〕FIPS 清单不含群交换（服务端现给的群不是命名的群，维护者 2026-10-31 定）：只给群交换的服务端
+    /// 当场协商失败，异常说清是密钥交换这一类、我们没有报群交换。默认清单照旧谈成它。
+    /// </summary>
+    [TestMethod]
+    public async Task FIPS清单与只给群交换的服务端协商失败_默认清单照旧谈成()
+    {
+        SshAlgorithmSet gexOnly = SshAlgorithmSet.Default with { KeyExchange = [SshAlgorithmNames.DiffieHellmanGroupExchangeSha256] };
+        TestSshServerOptions server = new() { HostKeyType = SshAlgorithmNames.EcdsaSha2Nistp256, Algorithms = gexOnly };
+
+        SshNegotiationException ex = await Assert.ThrowsExactlyAsync<SshNegotiationException>(
+            async () => await HandshakeAsync(SshAlgorithmSet.FipsApprovedOnly, server));
+        Assert.AreEqual(SshNegotiationCategory.KeyExchange, ex.Category);
+        Assert.DoesNotContain(SshAlgorithmNames.DiffieHellmanGroupExchangeSha256, ex.OfferedByUs);
+
+        (SshKeyExchangeResult viaDefault, _) = await HandshakeAsync(SshAlgorithmSet.Default, server);
+        Assert.AreEqual(SshAlgorithmNames.DiffieHellmanGroupExchangeSha256, viaDefault.Algorithms.KeyExchange);
     }
 
     [TestMethod]

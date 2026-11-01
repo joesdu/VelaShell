@@ -135,6 +135,10 @@ public sealed class ConnectionWorkflowService(
     /// <summary>
     /// 连接指定配置:成功后更新最近连接时间(只对库里已有的配置落盘;现搭的临时配置不落库),同时记录连接历史与审计。
     /// </summary>
+    /// <remarks>
+    /// 落盘的只有最近连接时间这一项,改的是库里最新的那份 —— 不把调用方手里的副本整份写回(见 <see cref="TouchLastConnectedAsync" />)。
+    /// 登录框交回的凭据另由 <see cref="SaveLoginChangesAsync" /> 写。
+    /// </remarks>
     public Task<SshSession> ConnectProfileAsync(SessionProfile profile, CancellationToken cancellationToken = default) =>
         ConnectProfileCoreAsync(profile, automaticReconnect: false, cancellationToken);
 
@@ -162,17 +166,64 @@ public sealed class ConnectionWorkflowService(
             throw;
         }
         profile.LastConnectedAt = DateTime.UtcNow;
-        // 只回写库里已有的配置。不在库里的是现搭的临时配置 —— 外部拉起(Xshell 兼容登录)、「最近连接」里那条配置已删掉时重建的 ——
-        // 只活在本次运行:标签照常开、照常重连,但不进会话树,也就不随云同步上传。以前这里无条件保存,
-        // 一次性连接就这样落了库、跟着同步上了云;连着的标签所属的配置被删掉之后,一次重连也会把它写回来。
-        if (await _sessionRepository.GetSessionAsync(profile.Id).ConfigureAwait(false) is not null)
+        try
         {
-            // 存回去的是调用方那一份,不是解析出凭据的副本:凭据的明文到不了仓储(#550)。
-            await _sessionRepository.SaveSessionAsync(await WithPersistablePasswordAsync(profile).ConfigureAwait(false)).ConfigureAwait(false);
+            await TouchLastConnectedAsync(profile.Id, profile.LastConnectedAt.Value).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // 会话已经建好了:记一个时间没写进库(库读写出错、保存途中主密码恰好锁上……)不该让这次连接报失败 ——
+            // 那样调用方拿不到会话,建好的连接也就没人收拾。
+            System.Diagnostics.Trace.WriteLine($"[Connect] Recording the last connected time of {profile.Id} failed: {ex.Message}");
         }
         // 历史里记实际登录的用户名 —— 引用共享凭据的配置自己可以不填用户名。
         await RecordHistoryAsync(profile, session.ConnectionInfo.Username, startedAt, true).ConfigureAwait(false);
         return session;
+    }
+
+    /// <summary>
+    /// 连上之后把库里那份的最近连接时间改掉,其余字段以库里为准。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>只回写库里已有的配置。</b>不在库里的是现搭的临时配置 —— 外部拉起(Xshell 兼容登录)、「最近连接」里那条配置已删掉时重建的 ——
+    /// 只活在本次运行:标签照常开、照常重连,但不进会话树,也就不随云同步上传(§252)。连着的标签所属的配置被删掉之后,
+    /// 重连同样不会把它写回来。
+    /// </para>
+    /// <para>
+    /// <b>改的是库里最新的那份,不是调用方手里的副本。</b>以前这里把调用方那份整份存回去:终端标签重连拿的是标签里的副本,
+    /// 开着的这段时间里别处(云同步、编辑框、巡检窗口的「放开这几个算法」)刚改的,一次重连就被旧副本盖掉了(§298 的欠账)。
+    /// 连接流程本身该落盘的只有两样:这个时间,与登录框交回的凭据(<see cref="SaveLoginChangesAsync" />,只在弹过登录框时由调用方写);
+    /// 主机指纹记在已知主机里、不在配置上,算法补救、证书信任各有各的写法。
+    /// </para>
+    /// <para>
+    /// 存之前照旧按「记住密码」与常规页的总开关过一遍(<see cref="WithPersistablePasswordAsync" />):以前每次连上都这样做,
+    /// 关掉总开关之后连一次,库里存着的密码随之清掉。
+    /// </para>
+    /// </remarks>
+    private async Task TouchLastConnectedAsync(Guid profileId, DateTime connectedAt)
+    {
+        if (await _sessionRepository.GetSessionAsync(profileId).ConfigureAwait(false) is not { } stored)
+        {
+            return;
+        }
+        stored.LastConnectedAt = connectedAt;
+        await _sessionRepository.SaveSessionAsync(await WithPersistablePasswordAsync(stored).ConfigureAwait(false)).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task SaveLoginChangesAsync(SessionProfile profile, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (await _sessionRepository.GetSessionAsync(profile.Id).ConfigureAwait(false) is not { } stored)
+        {
+            // 临时配置:登录框上本来就不给「记住密码」(存不下,§252),这里同样不落库。
+            return;
+        }
+        SessionProfileMerge.CopyLoginFields(profile, stored);
+        // 存回去的是库里那份改了这几项之后的样子,不是解析出凭据的副本:凭据的明文到不了仓储(#550)。
+        await _sessionRepository.SaveSessionAsync(await WithPersistablePasswordAsync(stored).ConfigureAwait(false)).ConfigureAwait(false);
     }
 
     /// <summary>断开指定会话 Id 对应的 SSH 连接。</summary>

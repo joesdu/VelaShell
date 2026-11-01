@@ -135,6 +135,9 @@ public sealed class SharedCredentialsViewModel : ReactiveObject
         return new(existing?.Clone(), profiles);
     }
 
+    /// <summary>主密码闸口:锁着时填了新密码先弹解锁框;没有时不过闸。</summary>
+    public IMasterPasswordGate? MasterPassword { get; init; }
+
     /// <summary>保存编辑框的结果(凭据 + 谁在用它)。</summary>
     /// <param name="result">编辑框结果。</param>
     public async Task SaveAsync(SharedCredentialEditResult result)
@@ -144,10 +147,14 @@ public sealed class SharedCredentialsViewModel : ReactiveObject
         {
             return;
         }
+        // 主密码锁着而这次填了新的密码 / 口令:加不了密。先弹解锁框;取消就照存别的字段、密码这次不存(仓储冻在库里那一份上),明说。
+        bool typedSecret = IsTypedSecret(result.Credential.Password) || IsTypedSecret(result.Credential.PrivateKeyPassphrase);
+        bool secretNotSaved = typedSecret && MasterPassword is { } gate && !await gate.EnsureUnlockedAsync(interactive: true);
         try
         {
             await _service.SaveAsync(result.Credential, result.Users);
-            StatusMessage = Strings.Format("SharedCred_Saved", result.Credential.Name, result.Users.Count);
+            StatusMessage = Strings.Format("SharedCred_Saved", result.Credential.Name, result.Users.Count)
+                            + (secretNotSaved ? " " + Strings.Get("MasterPassword_SecretNotSaved") : string.Empty);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
@@ -155,6 +162,8 @@ public sealed class SharedCredentialsViewModel : ReactiveObject
         }
         await RefreshAsync();
     }
+
+    private static bool IsTypedSecret(string? value) => !string.IsNullOrEmpty(value) && !StoredSecret.IsUnreadable(value);
 
     /// <summary>删除确认框的正文:有连接在用时说清楚它们会怎样。</summary>
     /// <param name="row">要删的那一行。</param>

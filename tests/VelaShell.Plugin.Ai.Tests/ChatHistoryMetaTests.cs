@@ -45,6 +45,44 @@ public sealed class ChatHistoryMetaTests
         Assert.Contains("98%", meta.Tools[0].Result);
     }
 
+    /// <summary>
+    /// 切换提示记在附加信息里、与正文分开:只有它一样也值得存一行,读回来逐字段不变(Key 只存序号与末四位)。
+    /// </summary>
+    [TestMethod]
+    public async Task SwitchNotice_RoundTripsInTheMetaAndNeverInTheText()
+    {
+        using var context = new TestPluginContext();
+        (ChatHistoryStore store, string id, DateTimeOffset created) = await NewStoreAsync(context);
+        var notice = new ChatSwitchNotice(
+        [
+            new ChatProviderSwitch("pool·m", "pool·m", "rate_limit", 429, new ChatKeyLabel(1, "1111"), new ChatKeyLabel(2, "2222")),
+            new ChatProviderSwitch("pool·m", "beta·m", "network", 0, new ChatKeyLabel(2, "2222"))
+        ], Sticky: true);
+        Assert.IsTrue(new ChatTurnMeta(Switch: notice).HasContent, "只有切换提示也要存");
+
+        await store.AppendAsync(id, created, 0, "user", "问题");
+        await store.AppendAsync(id, created, 1, "assistant", "回答");
+        await store.AppendMetaAsync(id, 1, new ChatTurnMeta(Switch: notice));
+
+        ChatEntry answer = (await store.LoadAsync(id))[1];
+        Assert.AreEqual("回答", answer.Text, "正文还是那句回答");
+        ChatSwitchNotice restored = answer.Meta!.Switch!;
+        Assert.IsTrue(restored.Sticky);
+        Assert.AreSequenceEqual(notice.Hops.ToArray(), restored.Hops.ToArray());
+    }
+
+    /// <summary>升级前存下的附加信息没有切换记录:读回来是 null,不是一张空卡。</summary>
+    [TestMethod]
+    public async Task SwitchNotice_IsAbsentInOlderMeta()
+    {
+        using var context = new TestPluginContext();
+        (ChatHistoryStore store, string id, DateTimeOffset created) = await NewStoreAsync(context);
+        await store.AppendAsync(id, created, 0, "assistant", "回答");
+        await store.AppendMetaAsync(id, 0, new ChatTurnMeta("m", 10));
+
+        Assert.IsNull((await store.LoadAsync(id))[0].Meta!.Switch);
+    }
+
     /// <summary>老会话(那时还没有 chat_meta)照样能读出来,只是没有附加信息。</summary>
     [TestMethod]
     public async Task Load_WithoutAnyMeta_StillReturnsMessages()

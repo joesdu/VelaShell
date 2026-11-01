@@ -213,6 +213,34 @@ public sealed class TransientFailureTests
     }
 
     /// <summary>
+    /// 切换提示里的「因为什么」:与重试 / 换站判定同一口径逐层看,带状态码的按码、流式 error 事件按类型、没连上算连不上。
+    /// </summary>
+    [TestMethod]
+    public void SwitchReason_FollowsTheSameClassification()
+    {
+        Assert.AreEqual((TransientFailure.SwitchRateLimit, 429), TransientFailure.SwitchReason(new ClientResultException("slow down", Response(429))));
+        Assert.AreEqual((TransientFailure.SwitchAuth, 401), TransientFailure.SwitchReason(
+            new HttpRequestException("unauthorized", null, System.Net.HttpStatusCode.Unauthorized)));
+        Assert.AreEqual((TransientFailure.SwitchAuth, 403), TransientFailure.SwitchReason(Api(403)));
+        Assert.AreEqual((TransientFailure.SwitchTimeout, 408), TransientFailure.SwitchReason(new ClientResultException("timeout", Response(408))));
+        Assert.AreEqual((TransientFailure.SwitchServer, 503), TransientFailure.SwitchReason(Api(503)));
+        // 外层只是包装、真码在里面那层;长 Retry-After 暂停同样把原始 429 挂在内层
+        Assert.AreEqual((TransientFailure.SwitchRateLimit, 429), TransientFailure.SwitchReason(
+            new InvalidOperationException("wrapped", new ClientResultException("slow down", Response(429)))));
+        Assert.AreEqual((TransientFailure.SwitchServer, 0), TransientFailure.SwitchReason(
+            new Anthropic.Exceptions.AnthropicSseException("stream error", null) { ErrorType = Anthropic.Models.ErrorType.OverloadedError }));
+        Assert.AreEqual((TransientFailure.SwitchRateLimit, 0), TransientFailure.SwitchReason(
+            new Anthropic.Exceptions.AnthropicSseException("stream error", null) { ErrorType = Anthropic.Models.ErrorType.RateLimitError }));
+        Assert.AreEqual((TransientFailure.SwitchNetwork, 0), TransientFailure.SwitchReason(
+            new HttpRequestException("offline", new System.Net.Sockets.SocketException(10061))));
+        Assert.AreEqual((TransientFailure.SwitchNetwork, 0), TransientFailure.SwitchReason(new IOException("reset")));
+        Assert.AreEqual((TransientFailure.SwitchTimeout, 0), TransientFailure.SwitchReason(new TaskCanceledException("timeout", new TimeoutException())));
+        Assert.AreEqual((TransientFailure.SwitchEmpty, 0), TransientFailure.SwitchReason(new HealthProbe.EmptyReplyException()));
+        Assert.AreEqual((TransientFailure.SwitchConfig, 0), TransientFailure.SwitchReason(new AiSettingsStore.ApiKeySlotChangedException()));
+        Assert.AreEqual((TransientFailure.SwitchOther, 0), TransientFailure.SwitchReason(new InvalidOperationException("odd")));
+    }
+
+    /// <summary>
     /// Anthropic SDK 自己的 <c>AnthropicApiException</c> 也得按状态码判(review⑥#1):
     /// 只认 <c>HttpRequestException</c> 时,这家 401 鉴权失败既不瞬时、也不值得换一家,
     /// 整条链原地不动;5xx 则被判成永久失败,白白不重试。

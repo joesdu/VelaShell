@@ -717,6 +717,9 @@
   <data name="FtpSvc_ReadCompletionTimeout" xml:space="preserve">
     <value>Timed out waiting for the FTP server to confirm that the transfer completed.</value>
   </data>
+  <data name="FtpSvc_TransferInterrupted" xml:space="preserve">
+    <value>The FTP data connection was interrupted while transferring {0}; the control connection is still available.</value>
+  </data>
   <data name="SftpSvc_RelayLengthMismatch" xml:space="preserve">
     <value>Transfer incomplete: {0}. Expected {1} bytes, but read {2} bytes. The source may have changed or the connection ended early.</value>
   </data>
@@ -2222,6 +2225,9 @@ Paste anyway?</value>
   </data>
   <data name="Msg_AutoReconnectCountdown" xml:space="preserve">
     <value>{0} disconnected; auto-reconnecting in {1}s ({2}/{3})…</value>
+  </data>
+  <data name="Msg_ReconnectProfileDeleted" xml:space="preserve">
+    <value>The profile "{0}" has been deleted. Reconnecting with the copy this tab kept; it will not be saved back.</value>
   </data>
   <data name="Msg_AutoRecordDisabledHint" xml:space="preserve">
     <value>Auto recording disabled.</value>
@@ -5095,19 +5101,19 @@ Overwrite it?</value>
     <value>Use Unix domain sockets</value>
   </data>
   <data name="Tunnel_UnixSocketTip" xml:space="preserve">
-    <value>For a local forward, either end can be a socket: the end with a path no longer uses the port above. For a remote forward, both ends must be sockets. A local socket file is protected by file permissions, so other users on this computer cannot borrow the tunnel. The server needs AllowStreamLocalForwarding.</value>
+    <value>Either end of a local or remote forward can be a socket: the end with a path no longer uses the port or host above. A local socket file is protected by file permissions, so other users on this computer cannot borrow the tunnel. The server needs AllowStreamLocalForwarding.</value>
   </data>
   <data name="Tunnel_LocalSocketListenLabel" xml:space="preserve">
     <value>Local socket to listen on (blank = local port)</value>
   </data>
   <data name="Tunnel_LocalSocketTargetLabel" xml:space="preserve">
-    <value>Local socket to connect to</value>
+    <value>Local socket to connect to (blank = local port)</value>
   </data>
   <data name="Tunnel_RemoteSocketTargetLabel" xml:space="preserve">
     <value>Socket on the server (blank = target host:port)</value>
   </data>
   <data name="Tunnel_RemoteSocketListenLabel" xml:space="preserve">
-    <value>Socket the server listens on</value>
+    <value>Socket the server listens on (blank = listen address:port)</value>
   </data>
   <data name="Tunnel_SocketPathRequired" xml:space="preserve">
     <value>Enter a socket path.</value>
@@ -5201,9 +5207,6 @@ Overwrite it?</value>
   </data>
   <data name="TunnelSvc_TargetNotPermitted" xml:space="preserve">
     <value>The remote side asked for a destination that is not on the allow list, and it was refused. Add it to this tunnel's allow list to permit it.</value>
-  </data>
-  <data name="TunnelSvc_RemoteSocketNeedsBothEnds" xml:space="preserve">
-    <value>A remote forward uses either ports on both ends or Unix sockets on both ends; this one has a socket path on only one end.</value>
   </data>
   <data name="TunnelSvc_LocalSocketExists" xml:space="preserve">
     <value>{0} already exists — probably left over from last time, or another program's socket. Delete it once you are sure it is unused, then start again.</value>
@@ -5605,6 +5608,60 @@ Overwrite it?</value>
   <data name="Notify_RemoteEditDraftAction" xml:space="preserve">
     <value>Open folder</value>
   </data>
+  <data name="Notify_RemoteEditDraftReupload" xml:space="preserve">
+    <value>Upload again</value>
+  </data>
+  <data name="Notify_RemoteEditDraftBodyReupload" xml:space="preserve">
+    <value>Changes to {0} ({1}) are still only on this computer at {2} and were not uploaded. Upload again connects to that server and puts this copy back (you are asked first if the file has changed there since); or handle it yourself and delete the copy. Drafts are never deleted automatically.</value>
+  </data>
+  <data name="RemoteEditDraft_Uploaded" xml:space="preserve">
+    <value>{0} was uploaded to {1}; the local draft has been deleted.</value>
+  </data>
+  <data name="RemoteEditDraft_ChangedDuringUpload" xml:space="preserve">
+    <value>{0} was uploaded to {1}, but the local copy changed while it was uploading, so the draft at {2} was kept.</value>
+  </data>
+  <data name="RemoteEditDraft_Gone" xml:space="preserve">
+    <value>That external-edit draft is no longer there; its message has been removed.</value>
+  </data>
+  <data name="RemoteEditDraft_NoProfile" xml:space="preserve">
+    <value>The draft of {0} does not record which saved connection it came from (a quick connection, or left by an older version), so it cannot be uploaded from here. The copy is at {1}.</value>
+  </data>
+  <data name="RemoteEditDraft_ProfileMissing" xml:space="preserve">
+    <value>The saved connection the draft of {0} came from has been deleted, so it cannot be uploaded from here. The copy is kept at {1}; upload it yourself.</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteDirMissing" xml:space="preserve">
+    <value>The remote folder {0} no longer exists, so {1} was not uploaded. The draft is kept.</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteIsDirectory" xml:space="preserve">
+    <value>{0} is now a folder on the server, so nothing was uploaded. The draft is kept.</value>
+  </data>
+  <data name="RemoteEditDraft_Failed" xml:space="preserve">
+    <value>{0} could not be uploaded to {1}: {2}. The draft is kept; try again later.</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictTitle" xml:space="preserve">
+    <value>The remote file has changed</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictBody" xml:space="preserve">
+    <value>{0} has changed since this draft was last in step with it (now {1}, modified {2}). Overwriting it with the draft discards those changes. Overwrite anyway?</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictUnknownBody" xml:space="preserve">
+    <value>It cannot be told whether {0} has changed since this draft (now {1}, modified {2}). Overwrite it with the draft anyway?</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictNoInfoBody" xml:space="preserve">
+    <value>The current state of {0} cannot be read, so it cannot be told whether it has changed since this draft. Overwrite it with the draft anyway?</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingTitle" xml:space="preserve">
+    <value>The remote file is gone</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingBody" xml:space="preserve">
+    <value>{0} is no longer on the server (it may have been deleted or renamed). Recreate it at that path from the draft?</value>
+  </data>
+  <data name="RemoteEditDraft_Recreate" xml:space="preserve">
+    <value>Recreate</value>
+  </data>
+  <data name="RemoteEditDraft_Unexpected" xml:space="preserve">
+    <value>Uploading the external-edit draft failed: {0}</value>
+  </data>
   <data name="Notify_KindSystem" xml:space="preserve">
     <value>System</value>
   </data>
@@ -5729,7 +5786,7 @@ Overwrite it?</value>
     <value>Unix Domain Sockets</value>
   </data>
   <data name="TunnelHelp_UnixSocketDesc" xml:space="preserve">
-    <value>Local and remote forwards can use a Unix domain socket instead of a port. A local forward can listen on a socket file on this computer, forward to a socket on the server (such as /var/run/docker.sock), or both — so local tools work with the remote Docker or database directly and the server needs no TCP port. A remote forward has the server listen on a socket path and connects back to a socket on this computer. Socket files are protected by file permissions; the server needs AllowStreamLocalForwarding. Windows supports this from Windows 10 1803.</value>
+    <value>Either end of a local or remote forward can use a Unix domain socket instead of a port. A local forward can listen on a socket file on this computer, forward to a socket on the server (such as /var/run/docker.sock), or both — so local tools work with the remote Docker or database directly and the server needs no TCP port. A remote forward can have the server listen on a socket path, connect back to a socket on this computer, or both — for example a port on the server leading to the local docker.sock, or a socket on the server leading to a local database port. Socket files are protected by file permissions; the server needs AllowStreamLocalForwarding. Windows supports this from Windows 10 1803.</value>
   </data>
   <data name="TunnelHelp_LoopbackNote" xml:space="preserve">
     <value>The meaning of 127.0.0.1 depends on which machine owns that endpoint. For a local forward's server-side target, it means the SSH server itself. For a remote forward's local service, it means this computer. On a listener endpoint, loopback restricts access to the machine hosting that listener.</value>
@@ -6118,8 +6175,8 @@ Overwrite it?</value>
   <data name="SshCfgImport_NoteForwardPortZero" xml:space="preserve">
     <value>Not imported, port 0 (a port picked when connecting) has no tunnel equivalent: {0}</value>
   </data>
-  <data name="SshCfgImport_NoteForwardSocketMix" xml:space="preserve">
-    <value>Not imported, a remote forward needs Unix sockets on both ends or on neither: {0}</value>
+  <data name="SshCfgImport_NoteRemoteDynamicSocket" xml:space="preserve">
+    <value>Not imported, a remote dynamic forward can only listen on a port on the server, not on a Unix socket: {0}</value>
   </data>
   <data name="SshCfgImport_NoteForwardSocketPath" xml:space="preserve">
     <value>Not imported, the socket path cannot be used on this machine (a local socket needs a full, short enough path; a server socket must start with /): {0}</value>
@@ -6135,6 +6192,12 @@ Overwrite it?</value>
   </data>
   <data name="SshCfgImport_NoteForwardInvalid" xml:space="preserve">
     <value>Not imported, malformed forward: {0}</value>
+  </data>
+  <data name="SshCfgImport_NoteSingleBackslash" xml:space="preserve">
+    <value>{0}: this reads as a path that starts with a single backslash. In ssh_config &quot;\\&quot; is an escape for one &quot;\&quot;, and ssh reads it the same way; for a UNC path or a named pipe, write \\\\server\share or \\\\.\pipe\name in the config.</value>
+  </data>
+  <data name="SshCfgImport_NoteUnbalancedQuotes" xml:space="preserve">
+    <value>{0} line {1}: the quotes are unbalanced, so VelaShell skipped this line; ssh refuses the whole config file because of such a line (invalid quotes): {2}</value>
   </data>
   <data name="SshCfgImport_NoteAlgoDropped" xml:space="preserve">
     <value>{0}: dropped {1} (not implemented in this version, it could never be negotiated)</value>
@@ -6444,6 +6507,12 @@ Overwrite it?</value>
   </data>
   <data name="Msg_ProxyConnectFailed" xml:space="preserve">
     <value>Proxy connection failed: {0}</value>
+  </data>
+  <data name="Msg_ProxyHttpSshPortHint" xml:space="preserve">
+    <value>If the proxy refuses CONNECT to port 22, switch the proxy type to SOCKS5 (e.g. 127.0.0.1:10808), or to No proxy when using TUN mode.</value>
+  </data>
+  <data name="Msg_ProxyHttpFtpHint" xml:space="preserve">
+    <value>If the proxy refuses CONNECT, switch the proxy type to SOCKS5, or to No proxy when using TUN mode.</value>
   </data>
   <data name="Msg_ProxyUnreachable" xml:space="preserve">
     <value>Cannot reach the proxy server: {0}</value>
@@ -9796,4 +9865,99 @@ Send anyway?</value>
   <data name="AiRegion_Pin" xml:space="preserve"><value>Pin / auto-hide AI assistant</value></data>
   <data name="AiRegion_Collapse" xml:space="preserve"><value>Collapse AI assistant (keep conversation)</value></data>
   <data name="AiRegion_Hide" xml:space="preserve"><value>Hide AI assistant</value></data>
+  <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>Saved passwords are locked by the master password and were not unlocked this time. Enter the credentials in the sign-in dialog; what you type this time will not be saved.</value></data>
+  <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>Saved passwords are locked by the master password, so this tab was not reconnected. Unlock (the lock icon in the status bar), then reconnect.</value></data>
+  <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>Locked: automatic reconnects never show the unlock dialog. Once you unlock (the lock icon in the status bar) this tab is retried once; you can also reconnect with Enter or Ctrl+R.</value></data>
+  <data name="MasterPassword_TunnelLocked" xml:space="preserve"><value>Saved passwords are locked by the master password: the tunnel will be rebuilt automatically after you unlock (the lock icon in the status bar).</value></data>
+  <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>Not unlocked: the password was not saved this time.</value></data>
+  <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>The plugin trust store is locked by the master password. Unlock (the lock icon in the status bar) before installing plugins or trusting a publisher; installed user plugins load automatically once unlocked.</value></data>
+  <data name="SyncSvc_Locked" xml:space="preserve"><value>The saved token and passphrase are locked by the master password. Unlock (the lock icon in the status bar) before syncing; automatic sync skipped this round.</value></data>
+  <data name="MasterPassword_UnlockTitle" xml:space="preserve"><value>Unlock saved passwords</value></data>
+  <data name="MasterPassword_EnableTitle" xml:space="preserve"><value>Turn on the master password</value></data>
+  <data name="MasterPassword_ChangeTitle" xml:space="preserve"><value>Change the master password</value></data>
+  <data name="MasterPassword_DisableTitle" xml:space="preserve"><value>Turn off the master password</value></data>
+  <data name="MasterPassword_RecoveryTitle" xml:space="preserve"><value>Recovery code</value></data>
+  <data name="MasterPassword_AfterRecoveryTitle" xml:space="preserve"><value>Set a new master password</value></data>
+  <data name="MasterPassword_ForgetTitle" xml:space="preserve"><value>Forgot the master password</value></data>
+  <data name="MasterPassword_UnlockDesc" xml:space="preserve"><value>Saved passwords, shared credentials, the sync token and plugin secrets are locked by the master password. Enter it to unlock. You can also cancel and keep working; those secrets just cannot be read until you unlock (the lock icon in the status bar).</value></data>
+  <data name="MasterPassword_EnableDesc" xml:space="preserve"><value>The local encryption key gets one more wrap from the master password: the system keychain entry (the DPAPI key file on Windows) and the master password are both needed to open it. You enter the master password once per start; saved passwords do not need to be entered again.</value></data>
+  <data name="MasterPassword_ChangeDesc" xml:space="preserve"><value>Saved passwords are left exactly as they are; only the wrap around the local encryption key is renewed. The recovery code keeps working.</value></data>
+  <data name="MasterPassword_DisableDesc" xml:space="preserve"><value>Back to no master password: the local encryption key stays in the system keychain (the DPAPI key file on Windows), and the recovery code stops working.</value></data>
+  <data name="MasterPassword_RecoveryDesc" xml:space="preserve"><value>This code is shown only once. Write it on paper or keep it in another password manager, away from this computer. If you forget the master password it unlocks instead (on this computer too).</value></data>
+  <data name="MasterPassword_AfterRecoveryDesc" xml:space="preserve"><value>Unlocked with the recovery code. Set a new master password now (the recovery code keeps working), or skip it for now and use the recovery code again next time.</value></data>
+  <data name="MasterPassword_ForgetDesc" xml:space="preserve"><value>If you know neither the master password nor the recovery code: start a new local encryption key and turn the master password off. Saved passwords, shared-credential passwords, the sync token, plugin secrets and the plugin trust store can no longer be read on this computer and must be entered again (there is no back door). The old key and header files are kept under a .forgotten-&lt;time&gt; name, so they can still be restored if you remember the master password.</value></data>
+  <data name="MasterPassword_UnlockButton" xml:space="preserve"><value>Unlock</value></data>
+  <data name="MasterPassword_EnableButton" xml:space="preserve"><value>Turn on</value></data>
+  <data name="MasterPassword_ChangeButton" xml:space="preserve"><value>Change</value></data>
+  <data name="MasterPassword_DisableButton" xml:space="preserve"><value>Turn off the master password</value></data>
+  <data name="MasterPassword_RecoveryWritten" xml:space="preserve"><value>I have written it down</value></data>
+  <data name="MasterPassword_SetNewButton" xml:space="preserve"><value>Set as the new master password</value></data>
+  <data name="MasterPassword_ForgetButton" xml:space="preserve"><value>Start a new key</value></data>
+  <data name="MasterPassword_Skip" xml:space="preserve"><value>Later</value></data>
+  <data name="MasterPassword_PasswordLabel" xml:space="preserve"><value>Master password</value></data>
+  <data name="MasterPassword_CurrentPasswordLabel" xml:space="preserve"><value>Current master password</value></data>
+  <data name="MasterPassword_NewPasswordLabel" xml:space="preserve"><value>New master password</value></data>
+  <data name="MasterPassword_ConfirmPasswordLabel" xml:space="preserve"><value>Type it again</value></data>
+  <data name="MasterPassword_RecoveryCodeLabel" xml:space="preserve"><value>Recovery code</value></data>
+  <data name="MasterPassword_UseRecoveryCode" xml:space="preserve"><value>Unlock with the recovery code</value></data>
+  <data name="MasterPassword_UsePassword" xml:space="preserve"><value>Unlock with the master password</value></data>
+  <data name="MasterPassword_Forgot" xml:space="preserve"><value>Forgot the master password?</value></data>
+  <data name="MasterPassword_EnableWarning" xml:space="preserve"><value>If you forget the master password, saved passwords cannot be recovered: there is no back door. You can create a recovery code at the same time and keep it somewhere else.</value></data>
+  <data name="MasterPassword_CreateRecoveryLabel" xml:space="preserve"><value>Also create a recovery code (recommended)</value></data>
+  <data name="MasterPassword_AcknowledgeLabel" xml:space="preserve"><value>I understand: if I forget the master password (and have no recovery code), saved passwords cannot be recovered</value></data>
+  <data name="MasterPassword_StrengthHint" xml:space="preserve"><value>Use at least 12 characters, or an uncommon passphrase of several words. Only length stops offline guessing.</value></data>
+  <data name="MasterPassword_AsciiNote" xml:space="preserve"><value>Printable English characters only (same as the other password boxes).</value></data>
+  <data name="MasterPassword_Busy" xml:space="preserve"><value>Deriving the key…</value></data>
+  <data name="MasterPassword_WrongPassword" xml:space="preserve"><value>That master password is not correct.</value></data>
+  <data name="MasterPassword_WrongRecoveryCode" xml:space="preserve"><value>That recovery code is not correct.</value></data>
+  <data name="MasterPassword_MalformedRecoveryCode" xml:space="preserve"><value>The recovery code looks mistyped: it is 28 letters or digits in groups of 4. Please check it.</value></data>
+  <data name="MasterPassword_RetryIn" xml:space="preserve"><value>Try again in {0} s.</value></data>
+  <data name="MasterPassword_NoRecoveryCode" xml:space="preserve"><value>No recovery code was created when the master password was turned on.</value></data>
+  <data name="MasterPassword_NothingToUnlock" xml:space="preserve"><value>No wrapped key is available to unlock right now.</value></data>
+  <data name="MasterPassword_Empty" xml:space="preserve"><value>The master password cannot be empty.</value></data>
+  <data name="MasterPassword_Mismatch" xml:space="preserve"><value>The two entries do not match.</value></data>
+  <data name="MasterPassword_AcknowledgeRequired" xml:space="preserve"><value>Please confirm that you understand saved passwords cannot be recovered without the master password.</value></data>
+  <data name="MasterPassword_KeysUnavailable" xml:space="preserve"><value>A key cannot be reached right now (the system keychain did not open), so nothing was changed. Try again once it is available.</value></data>
+  <data name="MasterPassword_StorageFailed" xml:space="preserve"><value>Could not write it ({0}); everything was rolled back and nothing changed.</value></data>
+  <data name="MasterPassword_StorageFailedPartially" xml:space="preserve"><value>Writing failed halfway and could not be fully rolled back ({0}): the master password is now ON. Unlock with the master password you just entered.</value></data>
+  <data name="MasterPassword_Enabled" xml:space="preserve"><value>The master password is on.</value></data>
+  <data name="MasterPassword_Disabled" xml:space="preserve"><value>The master password is off.</value></data>
+  <data name="MasterPassword_Changed" xml:space="preserve"><value>The master password was changed.</value></data>
+  <data name="MasterPassword_Forgotten" xml:space="preserve"><value>Started a new local encryption key and turned the master password off. The old key and header files were kept: {0}. Saved passwords need to be entered again.</value></data>
+  <data name="MasterPassword_LockedNow" xml:space="preserve"><value>Locked: the local encryption keys were cleared from memory.</value></data>
+  <data name="MasterPassword_ProblemHeaderMissing" xml:space="preserve"><value>Wrapped keys were found, but the master password header (secret.key.mp) is missing, so neither the master password nor the recovery code can open them. The only way on is “Forgot the master password?” to start a new key (the old ones are kept).</value></data>
+  <data name="MasterPassword_ProblemHeaderUnreadable" xml:space="preserve"><value>The master password header (secret.key.mp) cannot be read (truncated or damaged). It is kept as is and never overwritten. Either restore the file from a backup, or use “Forgot the master password?” to start a new key.</value></data>
+  <data name="MasterPassword_ProblemKeysUnavailable" xml:space="preserve"><value>{0} did not open this time ({1}), so none of the wrapped keys could be read. They are not lost: once {0} is unlocked or available, restart VelaShell and unlock.</value></data>
+  <data name="SetGeneral_MasterPassword" xml:space="preserve"><value>Master password</value></data>
+  <data name="SetGeneral_MasterPasswordDesc" xml:space="preserve"><value>// One more lock on saved passwords: the system keychain entry and the master password are both needed. Off by default; there is no way back if you forget it (unless you keep a recovery code)</value></data>
+  <data name="SetGeneral_MasterPasswordStatusOff" xml:space="preserve"><value>Off</value></data>
+  <data name="SetGeneral_MasterPasswordStatusUnlocked" xml:space="preserve"><value>On · unlocked</value></data>
+  <data name="SetGeneral_MasterPasswordStatusLocked" xml:space="preserve"><value>On · locked</value></data>
+  <data name="SetGeneral_MasterPasswordRecovery" xml:space="preserve"><value>recovery code created</value></data>
+  <data name="SetGeneral_MasterPasswordNoRecovery" xml:space="preserve"><value>no recovery code</value></data>
+  <data name="SetGeneral_MasterPasswordEnable" xml:space="preserve"><value>Turn on…</value></data>
+  <data name="SetGeneral_MasterPasswordUnlock" xml:space="preserve"><value>Unlock…</value></data>
+  <data name="SetGeneral_MasterPasswordLockNow" xml:space="preserve"><value>Lock now</value></data>
+  <data name="SetGeneral_MasterPasswordChange" xml:space="preserve"><value>Change…</value></data>
+  <data name="SetGeneral_MasterPasswordDisable" xml:space="preserve"><value>Turn off…</value></data>
+  <data name="SetGeneral_AutoLock" xml:space="preserve"><value>Lock after idle (minutes)</value></data>
+  <data name="SetGeneral_AutoLockDesc" xml:space="preserve"><value>// Lock when VelaShell&apos;s windows get no keyboard or mouse input for this many minutes; 0 = never. Only takes effect with a master password</value></data>
+  <data name="SetGeneral_LockOnSystemLock" xml:space="preserve"><value>Lock when the system locks</value></data>
+  <data name="SetGeneral_LockOnSystemLockDesc" xml:space="preserve"><value>// Lock together with Win+L or a screen saver that asks for sign-in. Only takes effect with a master password</value></data>
+  <data name="StatusBar_MasterPasswordLocked" xml:space="preserve"><value>Saved passwords are locked — click to unlock</value></data>
+  <data name="StatusBar_MasterPasswordUnlocked" xml:space="preserve"><value>Master password unlocked — click to lock now</value></data>
+  <data name="Auth_UnreadableSecretLocked" xml:space="preserve"><value>{0} is locked by the master password, which was not unlocked this time. You can type it here to sign in now; once you unlock (the lock icon in the status bar) it is read as usual.</value></data>
+  <data name="Notify_MasterPasswordProblemTitle" xml:space="preserve"><value>The master password cannot unlock</value></data>
+  <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>Master password header set aside</value></data>
+  <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>The master password header in the data folder no longer matches any wrapped key (most likely an older version moved the wrapped key file aside after a downgrade). It was kept as {0} and the master password is now off. Passwords saved before the downgrade cannot be read on this computer and need to be entered again.</value></data>
+  <data name="MasterPassword_ImportWhileLocked" xml:space="preserve"><value>Saved passwords are locked by the master password and were not unlocked: the connections are imported, but their passwords are not saved this time.</value></data>
+  <data name="Plugin_SecretLabelPassword" xml:space="preserve"><value>password</value></data>
+  <data name="Plugin_SecretLabelQuoted" xml:space="preserve"><value>“{0}”</value></data>
+  <data name="Plugin_SecretListSeparator" xml:space="preserve"><value>, </value></data>
+  <data name="Plugin_StoredSecretUnreadable" xml:space="preserve"><value>The saved {0} of this connection cannot be decrypted on this device, so it was not handed to the plugin (ciphertext is never passed on, and an empty value is not passed as “not set” either). If the master password is locked, unlock it (the lock icon in the status bar) and connect again; otherwise enter it again in the connection settings and save.</value></data>
+  <data name="Plugin_UnreadableSecretSubject" xml:space="preserve"><value>The {0} saved for this connection</value></data>
+  <data name="Plugin_UnreadableSecretKeychainUnavailable" xml:space="preserve"><value>{0} cannot be decrypted this time: {1} could not be opened ({2}), so it was not handed to the plugin. It is not lost: unlock {1} and restart VelaShell to read it as usual.</value></data>
+  <data name="Plugin_UnreadableSecretKeyMissing" xml:space="preserve"><value>{0} cannot be decrypted on this device: the local encryption key it was saved with is not here (the data folder was copied from another computer or account, or the keychain entry was deleted or the key file replaced; the message center explains which), so it was not handed to the plugin. Enter it again in the connection settings and save it, so the saved copy is one this device can decrypt.</value></data>
+  <data name="Plugin_UnreadableSecretUnknown" xml:space="preserve"><value>{0} cannot be decrypted on this device (it may have been synced or copied from another device, or it is damaged), so it was not handed to the plugin. Enter it again in the connection settings and save it, so the saved copy is one this device can decrypt.</value></data>
+  <data name="Plugin_UnreadableSecretLocked" xml:space="preserve"><value>{0} is locked by the master password, which was not unlocked this time, so it was not handed to the plugin. Unlock (the lock icon in the status bar), then connect again.</value></data>
 </root>

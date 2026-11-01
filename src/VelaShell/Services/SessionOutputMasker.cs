@@ -30,7 +30,7 @@ namespace VelaShell.Services;
 /// token 与 secret 后面跟着 type / endpoint / name / count 一类非机密后缀的也不算,<c>token_type</c>、<c>secretName</c>,见 <see cref="KeyValue" />)的
 /// <c>名字=值</c>、<c>名字: 值</c>(含 JSON 与 YAML 的写法、JSON 里转义过的 <c>\"名字\":</c>)只换值,双引号串认反斜杠转义,
 /// 到行尾都没收尾的引号串从引号之后遮到行尾,转义过的 JSON 串被外层的裸引号截断时遮到那个引号之前,
-/// 冒号后面跟空白、不加引号的值遮到行尾(停在同一行的下一个键之前,判据见 <see cref="KeyValue" />);
+/// 冒号后面跟空白、不加引号的值遮到行尾(INI 写法 <c>名字 = 值</c> 名字在行首、等号两边都有空白的同样如此;停在同一行的下一个键之前,判据见 <see cref="KeyValue" />);
 /// 几个不带口令字样的键:<c>tls.key</c> 一类、kubeconfig 的 <c>client-key-data</c>、<c>.dockerconfigjson</c>、Docker <c>config.json</c> 的 <c>"auth"</c>;
 /// <c>.netrc</c> 的 <c>password</c>(<c>machine … password …</c> 一行写完的,或分行写时单独一行的);
 /// <c>Bearer</c> / <c>Basic</c> 后面的凭据(Basic 只认解得开、带冒号的 base64,Bearer 不认纯字母又不够长的英文单词,见 <see cref="LooksLikeCredential" />);PEM 私钥块(含 OpenPGP 的 <c>PGP PRIVATE KEY BLOCK</c>)的正文(写在一行里的,BEGIN 与 END 之间那段;
@@ -147,7 +147,7 @@ public sealed partial class SessionOutputMasker
         /// <summary>不加引号的值:到空白、引号、逗号、分号或控制字符为止。</summary>
         Plain,
 
-        /// <summary><c>名字: 值</c> 里不加引号的值:到行尾、控制字符,或者空白之后跟着的下一个键、YAML 注释为止。</summary>
+        /// <summary><c>名字: 值</c> 与 INI 写法 <c>名字 = 值</c> 里不加引号的值:到行尾、控制字符,或者空白之后跟着的下一个键、YAML 注释为止。</summary>
         LineValue,
 
         /// <summary><c>.netrc</c> 的口令:到空白或控制字符为止(引号、逗号都可能是口令的一部分)。</summary>
@@ -532,8 +532,9 @@ public sealed partial class SessionOutputMasker
             Add(found, view, from, complete, value.Index, value.Index + value.Length, ValueKind.Credential, string.Empty, closed: false);
         }
         // 名字=值从上下文的第一个可见字符扫起,而且看不见截断点前的那个字符(只给 Bearer 与令牌看):
-        // 截断点落在一串标识符中间时,后半截照样当名字认(值是同一个)
-        for (Match match = KeyValue().Match(text, origin, text.Length - origin); match.Success; match = match.NextMatch())
+        // 截断点落在一串标识符中间时,后半截照样当名字认(值是同一个)。上下文从行首起时多认 INI 的 名字 = 值(要看得见行首)
+        Regex keyValue = _contextAtLineStart ? KeyValueAtLineStart() : KeyValue();
+        for (Match match = keyValue.Match(text, origin, text.Length - origin); match.Success; match = match.NextMatch())
         {
             matches.Add(view.RawRange(match.Index, match.Index + match.Length));
             Group value = match.Groups["value"];
@@ -673,7 +674,7 @@ public sealed partial class SessionOutputMasker
     }
 
     /// <summary>
-    /// <c>名字: 值</c> 里到行尾的值(<see cref="ValueKind.LineValue" />):尾随的空白不遮;停在下一个键前面的,紧挨着的逗号、分号留给那个键。
+    /// <c>名字: 值</c> 与 <c>名字 = 值</c>(INI)里到行尾的值(<see cref="ValueKind.LineValue" />):尾随的空白不遮;停在下一个键前面的,紧挨着的逗号、分号留给那个键。
     /// 值后面到已收到内容的末尾都是空白时还不算完 —— 下一段可能接着是值的下一个词,也可能是下一个键。
     /// </summary>
     private static void AddLineValue(List<Secret> found, Projection view, int from, bool complete, int start, int end)
@@ -964,6 +965,14 @@ public sealed partial class SessionOutputMasker
     private const string WordEnd = "(?-i:(?<=[a-z])(?![a-z])|(?<=[A-Z])(?![A-Za-z]))";
 
     /// <summary>
+    /// <see cref="KeyValue" /> 的 <c>rest</c> 一支:不加引号、可以带空格的值,一直到行尾 —— 停在控制字符、YAML 注释的 <c>#</c>,
+    /// 或者一段空白之后紧跟着的下一个键(标识符可带引号,紧跟 <c>=</c>,或紧跟 <c>:</c> 而冒号后面是空白或行尾)之前。
+    /// 与 <see cref="LineValueEnd" />(扣满上限之后吞剩下的部分)同一个判据。按「词 + 空白」一段段吃,词与空白都是原子的,线性。
+    /// </summary>
+    private const string LineValueRest =
+        """(?!\\?["'])(?>[^ \t\r\n\x00-\x1f\x7f]+)(?:(?>[ \t]+)(?!\#|["']?[A-Za-z_](?>[A-Za-z0-9_.\-]*)["']?[ \t]*(?::(?=[ \t\r\n])|=))(?>[^ \t\r\n\x00-\x1f\x7f]+))*""";
+
+    /// <summary>
     /// token / secret 后面紧跟着这些词之一(分隔符 <c>_ - .</c> 之后,或驼峰的下一个词;可带复数 <c>s</c>,要成词)的,这一处不算关键词:
     /// 名字说的是令牌或机密的某个属性,值不是它本身。只收公认不装机密的:
     /// <list type="bullet">
@@ -1000,6 +1009,8 @@ public sealed partial class SessionOutputMasker
     /// 空白之后紧跟着一个「键」—— 标识符(可带引号)紧跟 <c>=</c>,或紧跟 <c>:</c> 而冒号后面是空白或行尾 —— 或者 YAML 注释的 <c>#</c>,
     /// 值就停在那段空白之前(紧挨着的逗号、分号留给下一个键)。<c>10:30</c>、<c>C:\x</c>、<c>http://</c> 不算键:
     /// 前者不是标识符开头,后两者冒号后面不是空白。冒号后面没有空白的(<c>host:~$</c> 这类提示符)仍按到空白为止。
+    /// INI / conf 的写法 —— 名字在行首、<c>=</c> 两边都有空白(<c>password = my pass phrase</c>)—— 同样遮到行尾,
+    /// 只在上下文从行首起时由 <see cref="KeyValueAtLineStart" /> 认(理由与判据见那里);别处的 <c>名字 = 值</c> 照旧到空白为止。
     /// </para>
     /// <para>
     /// 名字也认几个不带口令字样、但值必是机密的键:<c>tls.key</c> 一类以 <c>.key</c> 结尾的(Kubernetes TLS Secret 的私钥)、
@@ -1026,11 +1037,49 @@ public sealed partial class SessionOutputMasker
     /// 关键词后面看一眼后缀表也只看十几个字符,不改变线性。
     /// 转义过的 JSON 串里,<c>\\\"</c> 与 <c>\\\\</c> 是里层的转义,不算收尾。
     /// <c>rest</c> 一支按「词 + 空白」一段段吃,每段空白只在后面那个词的开头看一眼是不是键,词与空白都是原子的,也是线性的。
+    /// 这一条在上下文从行首起时换成 <see cref="KeyValueAtLineStart" />(多认一种 INI 写法),其余完全相同。
     /// </remarks>
-    [GeneratedRegex("""(?:(?<![A-Za-z0-9_.\-@])(?>[A-Za-z0-9_.\-]*?(?:(?:password|passwd|passphrase|api[_\-]?key|access[_\-]?key|private[_\-]?key|credential|key[_\-]data|\.key|dockerconfigjson|dockercfg)s?"""
-        + WordEnd + "|(?:secrets?|token)" + WordEnd + "(?!" + NonSecretSuffix + "))" + """)(?>[A-Za-z0-9_.\-]*)|(?<exact>(?<=")auth(?=\\?")))(?:\\?["'])?(?>[ \t]*)(?:(?<colon>:)|=)(?>(?<ws>[ \t]+)?)(?<value>"(?:[^"\\\r\n]|\\[^\r\n])+"|'[^'\r\n]+'|\\"(?:[^"\\\r\n]|\\[^"\\\r\n]|\\\\(?:[^"\\\r\n]|\\[^\r\n]))*(?:\\"|(?<bare>(?=")))|(?<open>"(?:[^"\\\r\n]|\\[^\r\n])*\\?|'[^'\r\n]*|\\"(?:[^"\\\r\n]|\\[^"\\\r\n]|\\\\(?:[^"\\\r\n]|\\[^\r\n]))*\\{0,3})(?:\z|(?=[\r\n]))|(?(exact)(?!)|(?(colon)(?(ws)(?<rest>(?!\\?["'])(?>[^ \t\r\n\x00-\x1f\x7f]+)(?:(?>[ \t]+)(?!\#|["']?[A-Za-z_](?>[A-Za-z0-9_.\-]*)["']?[ \t]*(?::(?=[ \t\r\n])|=))(?>[^ \t\r\n\x00-\x1f\x7f]+))*)|(?![~/])[^ "',;\x00-\x1f\x7f]+)|[^ "',;\x00-\x1f\x7f]+)))""",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(KeyValueHead + PlainValue + ")))", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex KeyValue();
+
+    /// <summary>
+    /// 上下文从行首起时用的 <see cref="KeyValue" />:多认 INI / conf 的写法 —— 名字在行首(缩进之后,或者 <c>grep -n</c> / <c>grep -r</c> /
+    /// <c>cat -n</c> 加的文件名与行号之后),<c>=</c> 两边都有空白(<c>password = my pass phrase</c>),不加引号的值像 <c>名字: 值</c> 一样遮到行尾
+    /// (同一个判据:停在下一个键或 YAML 注释的 <c>#</c> 之前,见 <see cref="LineValueRest" />)。INI 的值本来就是等号之后的一整行。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 只认行首,是为了不碰命令行与代码:<c>[ $password = $expected ] &amp;&amp; …</c>、<c>grep password = …</c>、
+    /// <c>$Password = Read-Host …</c>、SQL 的 <c>WHERE password = $1 AND …</c> 里等号两边同样有空白,值却只是一个词,后面是别的东西 ——
+    /// 这些照旧只遮等号后面的第一个词。shell 的赋值不许等号两边有空格,<c>.env</c> 与 <c>k=v k=v</c> 日志里的 <c>名字=值</c> 不受影响;
+    /// 只有一边有空白的(<c>password= x</c>、<c>password =x</c>)、等号后面紧跟等号的(<c>password == x</c>)也照旧。
+    /// 上下文截断过、或在行中间重新起时(<see cref="_contextAtLineStart" /> 为假)看不见行首,用 <see cref="KeyValue" />,
+    /// 与一次写进来的结果一致(那时名字本来就不在行首)。
+    /// </para>
+    /// <para>
+    /// 行首的判断写在等号那一支的条件里(<see cref="IniLineStart" />,逆向的后顾):只在名字已经配上、等号两边都有空白时才看,
+    /// 名字在后顾里是原子的,前缀的几支各自至多扫到前一个空白 —— 不改变线性。
+    /// </para>
+    /// </remarks>
+    [GeneratedRegex(KeyValueHead + "(?(?<=" + IniLineStart + ")(?<rest>" + LineValueRest + ")|" + PlainValue + ")" + ")))",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex KeyValueAtLineStart();
+
+    /// <summary><see cref="KeyValue" /> 与 <see cref="KeyValueAtLineStart" /> 共用的部分:名字、分隔符、值的各支,直到 <c>名字=值</c> 那一支不加引号的值之前。</summary>
+    private const string KeyValueHead =
+        """(?:(?<![A-Za-z0-9_.\-@])(?>[A-Za-z0-9_.\-]*?(?:(?:password|passwd|passphrase|api[_\-]?key|access[_\-]?key|private[_\-]?key|credential|key[_\-]data|\.key|dockerconfigjson|dockercfg)s?"""
+        + WordEnd + "|(?:secrets?|token)" + WordEnd + "(?!" + NonSecretSuffix + "))" + """)(?>[A-Za-z0-9_.\-]*)|(?<exact>(?<=")auth(?=\\?")))(?:\\?["'])?(?>[ \t]*)(?:(?<colon>:)|=)(?>(?<ws>[ \t]+)?)(?<value>"(?:[^"\\\r\n]|\\[^\r\n])+"|'[^'\r\n]+'|\\"(?:[^"\\\r\n]|\\[^"\\\r\n]|\\\\(?:[^"\\\r\n]|\\[^\r\n]))*(?:\\"|(?<bare>(?=")))|(?<open>"(?:[^"\\\r\n]|\\[^\r\n])*\\?|'[^'\r\n]*|\\"(?:[^"\\\r\n]|\\[^"\\\r\n]|\\\\(?:[^"\\\r\n]|\\[^\r\n]))*\\{0,3})(?:\z|(?=[\r\n]))|(?(exact)(?!)|(?(colon)(?(ws)(?<rest>"""
+        + LineValueRest + """)|(?![~/])[^ "',;\x00-\x1f\x7f]+)|""";
+
+    /// <summary><c>名字=值</c> 不加引号的值:到空白、引号、逗号、分号、控制字符为止(与 <see cref="PlainValueEnds" /> 同一组字符)。</summary>
+    private const string PlainValue = """[^ "',;\x00-\x1f\x7f]+""";
+
+    /// <summary>
+    /// INI 写法的行首(用在值开头处的后顾里):<c>名字 = </c> 前面只有缩进,或者 <c>grep -n</c> 的 <c>文件:行号:</c> / <c>行号:</c>、
+    /// 上下文行的 <c>行号-</c>、<c>grep -r</c> 的 <c>文件:</c>、<c>cat -n</c> 的 <c>行号 + 制表符</c>(与 <see cref="KeyLineNumber" /> 同一套前缀)。
+    /// </summary>
+    private const string IniLineStart =
+        """\A[ \t]*(?:\d+[ \t]+|(?:[^ \t:]+[:\-])?\d+[:\-]|[^ \t:]+[:\-])?(?>[A-Za-z0-9_.\-]+)[ \t]+=[ \t]+""";
 
     /// <summary>
     /// <c>.netrc</c> 写在一行里的条目:<c>machine 主机 login 用户 password 口令</c>(或以 <c>default</c> 起头),
@@ -1047,8 +1096,9 @@ public sealed partial class SessionOutputMasker
     /// <c>.netrc</c> 分行写的条目里单独的一行 <c>password 口令</c>:只认行首(缩进之后)的小写 <c>password</c>、后面恰好一个词就到行尾。
     /// 后面还有别的词的(帮助文本里的 <c>password  Set the password</c>)不算;行还没完、停在这个词上或它后面的空白上时,调用方扣下等行尾。
     /// 只在上下文从行首起的时候用(见 <see cref="_contextAtLineStart" />)。
+    /// 那个词恰好是一个 <c>=</c> 的不算:那是 INI 里空着的 <c>password = </c>(模板、示例配置),不是 netrc 的口令。
     /// </summary>
-    [GeneratedRegex(@"\A[ \t]*password[ \t]+(?<value>[^ \t\r\n\x00-\x1f\x7f]+)[ \t]*(?:\r?\n|\r?\z)", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\A[ \t]*password[ \t]+(?<value>(?!=(?:[ \t\r\n]|\z))[^ \t\r\n\x00-\x1f\x7f]+)[ \t]*(?:\r?\n|\r?\z)", RegexOptions.CultureInvariant)]
     private static partial Regex NetrcLine();
 
     /// <summary>

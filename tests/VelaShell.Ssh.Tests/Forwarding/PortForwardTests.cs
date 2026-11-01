@@ -1219,11 +1219,11 @@ public sealed class PortForwardTests
 
         const string remotePath = "/tmp/velashell-remote.sock";
 
-        await using RemotePortForwarder forwarder = await RemotePortForwarder.StartUnixSocketAsync(
+        await using RemotePortForwarder forwarder = await RemotePortForwarder.StartToUnixSocketAsync(
             harness.Connection,
-            targetSocketPath: "/tmp/velashell-local.sock",
-            remoteSocketPath: remotePath,
-            cancellationToken: harness.Token);
+            "/tmp/velashell-local.sock",
+            new RemotePortForwardOptions { ListenSocketPath = remotePath },
+            harness.Token);
 
         // 套接字路径没有「端口 0 换实际端口」那一套 —— 它是请求方给的，
         // 所以原样留着就行。
@@ -1245,9 +1245,9 @@ SshProtocolNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
         });
 
         SshForwardException error = await Assert.ThrowsExactlyAsync<SshForwardException>(
-            async () => await RemotePortForwarder.StartUnixSocketAsync(
-                harness.Connection, "/tmp/a.sock", "/tmp/b.sock",
-                cancellationToken: harness.Token));
+            async () => await RemotePortForwarder.StartToUnixSocketAsync(
+                harness.Connection, "/tmp/a.sock", new RemotePortForwardOptions { ListenSocketPath = "/tmp/b.sock" },
+                harness.Token));
 
         // 失败消息要能指向下一步 —— sshd_config 的开关、路径已存在、目录不可写。
         Assert.Contains("AllowStreamLocalForwarding", error.Message);
@@ -1295,8 +1295,8 @@ SshProtocolNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
         try
         {
             const string remotePath = "/tmp/velashell-remote.sock";
-            await using RemotePortForwarder forwarder = await RemotePortForwarder.StartUnixSocketAsync(
-                harness.Connection, localPath, remotePath, cancellationToken: harness.Token);
+            await using RemotePortForwarder forwarder = await RemotePortForwarder.StartToUnixSocketAsync(
+                harness.Connection, localPath, new RemotePortForwardOptions { ListenSocketPath = remotePath }, harness.Token);
 
             // 服务端发起回连。载荷是 socket_path ‖ reserved。
             ArrayBufferWriter<byte> typeSpecific = new();
@@ -1337,9 +1337,9 @@ SshProtocolNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
             GrantStreamLocalForward = true,
         });
 
-        await using RemotePortForwarder forwarder = await RemotePortForwarder.StartUnixSocketAsync(
-            harness.Connection, "/tmp/local.sock", "/tmp/remote.sock",
-            cancellationToken: harness.Token);
+        await using RemotePortForwarder forwarder = await RemotePortForwarder.StartToUnixSocketAsync(
+            harness.Connection, "/tmp/local.sock", new RemotePortForwardOptions { ListenSocketPath = "/tmp/remote.sock" },
+            harness.Token);
 
         ArrayBufferWriter<byte> typeSpecific = new();
         SshDataWriter writer = new(typeSpecific);
@@ -1353,6 +1353,267 @@ SshProtocolNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
         // 路由不上就明确拒绝 —— 沉默地接下来再搬到一个不相干的套接字
         // 才是真正危险的。
         Assert.IsNull(remote, "路径对不上的回连必须被拒绝");
+    }
+
+    // ------------------------------------------------------------ 远程转发：一头端口、一头套接字（spec/07 §4.4）
+
+    /// <summary>服务端开一条 <c>forwarded-tcpip</c> 回连（绑定地址与端口、来源 10.9.8.7:5555），被拒时是 null。</summary>
+    private static async Task<Stream?> OpenForwardedTcpIpAsync(Harness harness, string bindAddress, int bindPort)
+    {
+        ArrayBufferWriter<byte> header = new();
+        SshDataWriter writer = new(header);
+        writer.WriteUtf8String(bindAddress);
+        writer.WriteUInt32((uint)bindPort);
+        writer.WriteUtf8String("10.9.8.7");
+        writer.WriteUInt32(5555);
+        return await harness.ChannelServer.OpenChannelToClientAsync(
+            SshProtocolNames.ChannelForwardedTcpIp, header.WrittenMemory, harness.Token);
+    }
+
+    /// <summary>服务端开一条 <c>forwarded-streamlocal@openssh.com</c> 回连（<c>socket_path ‖ reserved</c>），被拒时是 null。</summary>
+    private static async Task<Stream?> OpenForwardedStreamLocalAsync(Harness harness, string socketPath)
+    {
+        ArrayBufferWriter<byte> header = new();
+        SshDataWriter writer = new(header);
+        writer.WriteUtf8String(socketPath);
+        writer.WriteUtf8String("");
+        return await harness.ChannelServer.OpenChannelToClientAsync(
+            SshProtocolNames.ChannelForwardedStreamLocal, header.WrittenMemory, harness.Token);
+    }
+
+    /// <summary>本机目标：收到 4 个字节就回「PONG」并关写端，交回收到的那几个字节。</summary>
+    private static Task<byte[]> ServePongAsync(Socket listener, CancellationToken cancellationToken) => Task.Run(async () =>
+    {
+        using Socket accepted = await listener.AcceptAsync(cancellationToken);
+        byte[] buffer = new byte[4];
+        int read = 0;
+        while (read < buffer.Length)
+        {
+            int got = await accepted.ReceiveAsync(buffer.AsMemory(read), cancellationToken);
+            if (got == 0)
+            {
+                break;
+            }
+            read += got;
+        }
+        await accepted.SendAsync(Encoding.UTF8.GetBytes("PONG"), cancellationToken);
+        accepted.Shutdown(SocketShutdown.Send);
+        return buffer[..read];
+    }, cancellationToken);
+
+    /// <summary>远端那头发「PING」、读回「PONG」。</summary>
+    private static async Task PingPongAsync(Stream remote, Task<byte[]> served, CancellationToken cancellationToken)
+    {
+        await remote.WriteAsync(Encoding.UTF8.GetBytes("PING"), cancellationToken);
+        await remote.FlushAsync(cancellationToken);
+        Assert.AreEqual("PING", Encoding.UTF8.GetString(await served.WaitAsync(cancellationToken)), "远端发来的要原样到本机目标");
+
+        byte[] back = new byte[4];
+        await remote.ReadExactlyAsync(back, cancellationToken);
+        Assert.AreEqual("PONG", Encoding.UTF8.GetString(back), "本机目标的回应要原样送回远端");
+    }
+
+    /// <summary>
+    /// 〔spec/07 §4.4〕服务端在端口上监听、回连到本机的 Unix 套接字（<c>-R port:/本机/路径</c>）：请求是 <c>tcpip-forward</c>、不是 streamlocal，
+    /// 回连走 <c>forwarded-tcpip</c>、按绑定地址 + 端口认领，数据原样到本机套接字；事件的来源是回连里的 originator，目标是那个路径；
+    /// 释放时取消的也是 <c>tcpip-forward</c>。
+    /// </summary>
+    [TestMethod]
+    public async Task 远程转发_服务端端口回连到本机套接字()
+    {
+        if (!Socket.OSSupportsUnixDomainSockets)
+        {
+            Assert.Inconclusive("这个平台不支持 Unix 域套接字。");
+        }
+
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript { GrantRemoteForwardPort = 34600 });
+        string localPath = Path.Combine(Path.GetTempPath(), $"velashell-{Guid.NewGuid():N}.sock");
+        using Socket listener = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        listener.Bind(new UnixDomainSocketEndPoint(localPath));
+        listener.Listen(4);
+        Task<byte[]> served = ServePongAsync(listener, harness.Token);
+
+        try
+        {
+            RemotePortForwarder forwarder = await RemotePortForwarder.StartToUnixSocketAsync(
+                harness.Connection, localPath, new RemotePortForwardOptions { BindPort = 34600 }, harness.Token);
+            TaskCompletionSource<ForwardConnectionEventArgs> opened = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            forwarder.ConnectionOpened += (_, e) => opened.TrySetResult(e);
+            try
+            {
+                Assert.AreEqual(ForwardKind.Remote, forwarder.Kind);
+                Assert.IsNull(forwarder.RemoteSocketPath, "服务端在端口上监听");
+                Assert.AreEqual(34600, forwarder.BoundPort);
+                Assert.AreEqual("localhost:34600", forwarder.RemoteEndpointName);
+                Assert.AreSequenceEqual([("localhost", 34600)], harness.Observed.RemoteForwardBinds);
+                Assert.IsEmpty(harness.Observed.StreamLocalForwardBinds, "服务端那头是端口，不该发 streamlocal-forward");
+
+                Assert.IsNull(await OpenForwardedTcpIpAsync(harness, "localhost", 34599), "端口对不上的回连照样拒绝");
+                Stream? remote = await OpenForwardedTcpIpAsync(harness, "localhost", 34600);
+                Assert.IsNotNull(remote, "绑定地址与端口对得上的回连应当被接下");
+                await PingPongAsync(remote, served, harness.Token);
+
+                ForwardConnectionEventArgs connection = await opened.Task.WaitAsync(harness.Token);
+                Assert.AreEqual(new IPEndPoint(IPAddress.Parse("10.9.8.7"), 5555), connection.Source, "来源只看服务端那头：forwarded-tcpip 里的 originator");
+                Assert.AreEqual(localPath, connection.Target, "目标是本机套接字的路径本身");
+                await remote.DisposeAsync();
+            }
+            finally
+            {
+                await forwarder.DisposeAsync();
+            }
+
+            Assert.Contains(SshProtocolNames.RequestCancelTcpIpForward, harness.Observed.GlobalRequests);
+            Assert.DoesNotContain(SshProtocolNames.RequestCancelStreamLocalForward, harness.Observed.GlobalRequests);
+        }
+        finally
+        {
+            listener.Dispose();
+            try { File.Delete(localPath); } catch (IOException) { }
+        }
+    }
+
+    /// <summary>
+    /// 〔spec/07 §4.4〕服务端在套接字上监听、回连到本机的 TCP 端口（<c>-R /服务器/路径:host:hostport</c>）：请求是 streamlocal、不是 <c>tcpip-forward</c>
+    /// （参数里的 <c>BindPort</c> 不再起作用），<c>forwarded-tcpip</c> 不归它，<c>forwarded-streamlocal</c> 按路径认领；
+    /// 事件没有来源（那种回连没有 originator），目标是本机的 <c>host:port</c>；释放时取消的是 streamlocal。
+    /// </summary>
+    [TestMethod]
+    public async Task 远程转发_服务端套接字回连到本机端口()
+    {
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript { GrantStreamLocalForward = true });
+        using Socket target = new(SocketType.Stream, ProtocolType.Tcp);
+        target.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        target.Listen(4);
+        int targetPort = ((IPEndPoint)target.LocalEndPoint!).Port;
+        Task<byte[]> served = ServePongAsync(target, harness.Token);
+
+        const string remotePath = "/run/user/1000/velashell-pg.sock";
+        RemotePortForwarder forwarder = await RemotePortForwarder.StartAsync(
+            harness.Connection, "127.0.0.1", targetPort,
+            new RemotePortForwardOptions { ListenSocketPath = remotePath, BindPort = 34601 }, harness.Token);
+        TaskCompletionSource<ForwardConnectionEventArgs> opened = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        forwarder.ConnectionOpened += (_, e) => opened.TrySetResult(e);
+        try
+        {
+            Assert.AreEqual(remotePath, forwarder.RemoteSocketPath);
+            Assert.AreEqual(0, forwarder.BoundPort, "服务端在套接字上监听，没有端口");
+            Assert.AreEqual(remotePath, forwarder.RemoteEndpointName);
+            Assert.AreSequenceEqual([remotePath], harness.Observed.StreamLocalForwardBinds);
+            Assert.DoesNotContain(SshProtocolNames.RequestTcpIpForward, harness.Observed.GlobalRequests, "BindPort 设了也不该发 tcpip-forward");
+
+            Assert.IsNull(await OpenForwardedTcpIpAsync(harness, "localhost", 34601), "forwarded-tcpip 不归套接字上的监听");
+            Assert.IsNull(await OpenForwardedStreamLocalAsync(harness, "/run/user/1000//velashell-pg.sock"), "路径逐字节认领，不规范化");
+            Stream? remote = await OpenForwardedStreamLocalAsync(harness, remotePath);
+            Assert.IsNotNull(remote, "路径对得上的回连应当被接下");
+            await PingPongAsync(remote, served, harness.Token);
+
+            ForwardConnectionEventArgs connection = await opened.Task.WaitAsync(harness.Token);
+            Assert.IsNull(connection.Source, "forwarded-streamlocal 没有 originator");
+            Assert.AreEqual($"127.0.0.1:{targetPort}", connection.Target);
+            Assert.AreEqual(1, forwarder.TotalConnections);
+            await remote.DisposeAsync();
+        }
+        finally
+        {
+            await forwarder.DisposeAsync();
+        }
+
+        Assert.Contains(SshProtocolNames.RequestCancelStreamLocalForward, harness.Observed.GlobalRequests);
+        Assert.DoesNotContain(SshProtocolNames.RequestCancelTcpIpForward, harness.Observed.GlobalRequests);
+    }
+
+    /// <summary>〔spec/07 §4.4〕服务端拒绝监听时，种类只看服务端那头（端口还是套接字），与本机目标是什么无关。</summary>
+    [TestMethod]
+    public async Task 一头套接字的远程转发被拒时按服务端那头报种类()
+    {
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript());
+
+        SshForwardException onPort = await Assert.ThrowsExactlyAsync<SshForwardException>(
+            async () => await RemotePortForwarder.StartToUnixSocketAsync(
+                harness.Connection, "/tmp/velashell-local.sock", new RemotePortForwardOptions { BindPort = 2375 }, harness.Token));
+        Assert.AreEqual(SshFailureReason.ForwardRejected, onPort.Reason);
+        Assert.AreEqual(SshForwardFailureKind.RemoteListenRejected, onPort.FailureKind);
+        Assert.AreEqual("localhost:2375", onPort.Endpoint);
+        Assert.AreEqual(2375, onPort.Port);
+        Assert.AreEqual(
+            "服务端拒绝在 localhost:2375 上开监听。常见原因是 sshd_config 里 AllowTcpForwarding no，或者要绑非环回地址而 GatewayPorts 没打开，又或者端口已被占用。",
+            onPort.Message);
+
+        SshForwardException onSocket = await Assert.ThrowsExactlyAsync<SshForwardException>(
+            async () => await RemotePortForwarder.StartAsync(
+                harness.Connection, "127.0.0.1", 5432, new RemotePortForwardOptions { ListenSocketPath = "/tmp/pg.sock" }, harness.Token));
+        Assert.AreEqual(SshForwardFailureKind.RemoteSocketListenRejected, onSocket.FailureKind);
+        Assert.AreEqual("/tmp/pg.sock", onSocket.Endpoint);
+        Assert.Contains("AllowStreamLocalForwarding", onSocket.Message);
+    }
+
+    /// <summary>
+    /// 〔spec/07 §4.4、§4.1〕本机套接字连不上：回 connect failed（不确认通道），本地报 <c>TargetConnect</c>，目标是那个路径；槽位还回去。
+    /// </summary>
+    [TestMethod]
+    public async Task 远程转发到本机套接字连不上时回connect_failed并报出路径()
+    {
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript { GrantRemoteForwardPort = 34602 });
+        string missing = Path.Combine(Path.GetTempPath(), $"velashell-{Guid.NewGuid():N}.sock");
+
+        await using RemotePortForwarder forwarder = await RemotePortForwarder.StartToUnixSocketAsync(
+            harness.Connection, missing, new RemotePortForwardOptions { BindPort = 34602 }, harness.Token);
+        List<ForwardErrorEventArgs> errors = [];
+        forwarder.Error += (_, e) => errors.Add(e);
+
+        Assert.IsNull(await OpenForwardedTcpIpAsync(harness, "localhost", 34602), "连不上本机目标时不该确认通道");
+        Assert.AreEqual(SshChannelOpenFailureReason.ConnectFailed, harness.Observed.LastClientOpenFailure);
+        await WaitUntilAsync(() => errors.Count > 0, harness.Token);
+        Assert.AreEqual(ForwardErrorReason.TargetConnect, errors[0].Reason);
+        Assert.AreEqual(missing, errors[0].Target);
+        Assert.AreEqual(0, forwarder.ActiveConnections, "槽位要还回去");
+    }
+
+    /// <summary>
+    /// 〔spec/07 §4.4〕本机套接字路径太长：起转发时就报（<c>ForwardSetupFailed</c> / <c>SocketPathTooLong</c>），监听请求一个都不发。
+    /// 曾经不查：要等回连来了才在连之前失败，每一条都被拒却不报事件。
+    /// </summary>
+    [TestMethod]
+    public async Task 本机套接字路径太长时起远程转发就报_什么都不发()
+    {
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript { GrantRemoteForwardPort = 34603, GrantStreamLocalForward = true });
+        string tooLong = "/tmp/" + new string('a', 200) + ".sock";
+
+        SshForwardException error = await Assert.ThrowsExactlyAsync<SshForwardException>(
+            async () => await RemotePortForwarder.StartToUnixSocketAsync(
+                harness.Connection, tooLong, new RemotePortForwardOptions { BindPort = 34603 }, harness.Token));
+        Assert.AreEqual(SshFailureReason.ForwardSetupFailed, error.Reason);
+        Assert.AreEqual(SshForwardFailureKind.SocketPathTooLong, error.FailureKind);
+        Assert.AreEqual(tooLong, error.Endpoint);
+
+        await Assert.ThrowsExactlyAsync<SshForwardException>(
+            async () => await RemotePortForwarder.StartToUnixSocketAsync(
+                harness.Connection, tooLong, new RemotePortForwardOptions { ListenSocketPath = "/tmp/remote.sock" }, harness.Token));
+
+        Assert.DoesNotContain(SshProtocolNames.RequestTcpIpForward, harness.Observed.GlobalRequests);
+        Assert.DoesNotContain(SshProtocolNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
+    }
+
+    /// <summary>
+    /// 〔spec/07 §4.4〕参数：服务端套接字路径是空串在设值时就抛；本机套接字路径是空串抛；远程动态转发不接受 <c>ListenSocketPath</c>（不发请求）。
+    /// </summary>
+    [TestMethod]
+    public async Task 远程转发套接字参数不成立时当场抛()
+    {
+        Assert.ThrowsExactly<ArgumentException>(() => new RemotePortForwardOptions { ListenSocketPath = "" });
+        Assert.IsNull(new RemotePortForwardOptions { ListenSocketPath = null }.ListenSocketPath);
+
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript { GrantRemoteForwardPort = 34604, GrantStreamLocalForward = true });
+        await Assert.ThrowsExactlyAsync<ArgumentException>(
+            async () => await RemotePortForwarder.StartToUnixSocketAsync(harness.Connection, "", cancellationToken: harness.Token));
+
+        ArgumentException dynamic = await Assert.ThrowsExactlyAsync<ArgumentException>(
+            async () => await RemotePortForwarder.StartDynamicAsync(
+                harness.Connection, RemoteOpenPolicy.Any, new RemotePortForwardOptions { ListenSocketPath = "/tmp/socks.sock" }, harness.Token));
+        Assert.AreEqual("options", dynamic.ParamName);
+        Assert.DoesNotContain(SshProtocolNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
+        Assert.DoesNotContain(SshProtocolNames.RequestTcpIpForward, harness.Observed.GlobalRequests);
     }
 
     // ------------------------------------------------------------ 远程动态转发（-R 不给目标）
@@ -1876,5 +2137,46 @@ SshProtocolNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
         Assert.Contains("0 localhost:22", failure.Message);
         Assert.AreEqual(SshForwardFailureKind.ConfigForwardFailed, failure.FailureKind);
         Assert.Contains("0 localhost:22", failure.ConfigLine!);
+    }
+
+    /// <summary>
+    /// 〔spec/09 §7.3、spec/07 §4.4〕<c>RemoteForward</c> 两头各自可以是端口或套接字：服务端端口 → 本机套接字、服务端套接字 → 本机端口都起得来；
+    /// 只有在套接字上监听的远程动态转发照「这一条没起来」处理（报给回调，其余照起）。
+    /// </summary>
+    [TestMethod]
+    public async Task 配置里一头套接字的远程转发也起得来()
+    {
+        await using Harness harness = await Harness.StartAsync(new TestChannelScript { GrantRemoteForwardPort = 34605, GrantStreamLocalForward = true });
+        SshHostConfig config = SshConfigFile.Resolve(SshConfigFile.Parse("""
+            Host h
+                RemoteForward 0 /tmp/velashell-local.sock
+                RemoteForward /tmp/velashell-remote.sock localhost:22
+                RemoteForward /tmp/velashell-socks.sock
+            """), "h");
+
+        List<(string Line, Exception Error)> failed = [];
+        IReadOnlyList<PortForwarder> started = await SshConfigFile.StartForwardsAsync(
+            harness.Connection, config, (forward, error) => failed.Add((forward.Line, error)), harness.Token);
+        try
+        {
+            Assert.HasCount(2, started);
+            RemotePortForwarder toLocalSocket = (RemotePortForwarder)started[0];
+            Assert.IsNull(toLocalSocket.RemoteSocketPath, "服务端在端口上监听");
+            Assert.AreEqual(34605, toLocalSocket.BoundPort);
+            RemotePortForwarder fromServerSocket = (RemotePortForwarder)started[1];
+            Assert.AreEqual("/tmp/velashell-remote.sock", fromServerSocket.RemoteSocketPath);
+            Assert.AreSequenceEqual(["/tmp/velashell-remote.sock"], harness.Observed.StreamLocalForwardBinds);
+
+            Assert.HasCount(1, failed);
+            Assert.AreEqual("/tmp/velashell-socks.sock", failed[0].Line);
+            Assert.AreEqual(SshFailureReason.Unsupported, ((SshException)failed[0].Error).Reason);
+        }
+        finally
+        {
+            foreach (PortForwarder forwarder in started)
+            {
+                await forwarder.DisposeAsync();
+            }
+        }
     }
 }

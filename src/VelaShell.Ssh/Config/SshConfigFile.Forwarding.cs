@@ -33,7 +33,8 @@ public static partial class SshConfigFile
     /// 远程转发不给目标是远程动态转发，放行名单取 <see cref="SshHostConfig.GetPermitRemoteOpen"/>。
     /// </para>
     /// <para>
-    /// 本库还不支持的组合（服务端在套接字上监听、本机目标是 TCP，或者反过来）照「这一条没起来」处理。
+    /// 远程转发两头各自可以是端口或套接字（spec/07 §4.4）。只有不给目标、却在套接字上监听的 <c>RemoteForward /路径</c>
+    /// （远程动态转发只有端口一种写法）照「这一条没起来」处理。
     /// </para>
     /// </remarks>
     public static async Task<IReadOnlyList<PortForwarder>> StartForwardsAsync(
@@ -93,26 +94,24 @@ public static partial class SshConfigFile
                         : LocalPortForwarder.Start(connection, forward.TargetHost!, forward.TargetPort, local);
 
             default:
+                if (forward.IsRemoteDynamic && forward.ListenSocketPath is not null)
+                {
+                    // 远程动态转发只有端口一种写法（spec/07 §4.4）。
+                    throw Unsupported(forward, "服务端在套接字上监听的远程动态转发");
+                }
+
+                // 〔spec/07 §4.4〕两头各自是端口或套接字：服务端那头写进参数（含 / 的进 ListenSocketPath），本机那头决定起法。
                 RemotePortForwardOptions remote = new()
                 {
                     BindAddress = forward.ListenAddress ?? "localhost",
                     BindPort = forward.ListenPort,
+                    ListenSocketPath = forward.ListenSocketPath,
                 };
-                if (forward.IsRemoteDynamic)
-                {
-                    return forward.ListenSocketPath is null
-                        ? await RemotePortForwarder.StartDynamicAsync(connection, permit!, remote, cancellationToken).ConfigureAwait(false)
-                        : throw Unsupported(forward, "服务端在套接字上监听的远程动态转发");
-                }
-                if (forward.ListenSocketPath is { } remoteListen)
-                {
-                    return forward.TargetSocketPath is { } localSocket
-                        ? await RemotePortForwarder.StartUnixSocketAsync(connection, localSocket, remoteListen, remote, cancellationToken).ConfigureAwait(false)
-                        : throw Unsupported(forward, "服务端在套接字上监听、本机目标是 TCP");
-                }
-                return forward.TargetSocketPath is null
-                    ? await RemotePortForwarder.StartAsync(connection, forward.TargetHost!, forward.TargetPort, remote, cancellationToken).ConfigureAwait(false)
-                    : throw Unsupported(forward, "服务端在端口上监听、本机目标是套接字");
+                return forward.IsRemoteDynamic
+                    ? await RemotePortForwarder.StartDynamicAsync(connection, permit!, remote, cancellationToken).ConfigureAwait(false)
+                    : forward.TargetSocketPath is { } localSocket
+                        ? await RemotePortForwarder.StartToUnixSocketAsync(connection, localSocket, remote, cancellationToken).ConfigureAwait(false)
+                        : await RemotePortForwarder.StartAsync(connection, forward.TargetHost!, forward.TargetPort, remote, cancellationToken).ConfigureAwait(false);
         }
     }
 

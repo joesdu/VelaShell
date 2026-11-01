@@ -518,6 +518,9 @@ public partial class MainWindow : Window
             // 失败覆盖层上的「放开这几个算法并重连」:会降低那条连接的安全性,先点名再问一句。
             vm.AllowAlgorithmsConfirmer = (title, body) => MessageDialog.ConfirmAsync(
                 this, title, body, Strings.Get("SshAlgoFix_ConfirmAction"), kind: MessageDialogKind.Warning);
+            // 消息中心重传外部编辑草稿:远端在这之后被改过、不在了、说不准时先问,不静默覆盖。Esc / 关闭 = 不传。
+            vm.RemoteEditDraftConfirmer = (title, body, confirmText) => MessageDialog.ConfirmAsync(
+                this, title, body, confirmText, kind: MessageDialogKind.Warning);
             vm.ExportBufferRequested += (_, _) => _ = ExportTerminalBufferAsync(vm);
             // 工具菜单“连接诊断”:对当前标签的配置打开诊断中心(设计 RGXg1)。
             vm.DiagnosticsRequested += profile =>
@@ -603,6 +606,8 @@ public partial class MainWindow : Window
                 }
             }
             await vm.InitializeAsync();
+            // 主密码开着、锁着:主窗口出现之后弹一次解锁框(可取消;下面恢复的会话与它共用同一个框)。不等它。
+            _ = vm.PromptUnlockAtStartupAsync();
         }
 
         // 外观/行为设置:启动时应用一次,设置保存后热更新。
@@ -1265,6 +1270,7 @@ public partial class MainWindow : Window
         {
             return;
         }
+        await SessionTreeActions.WarnIfImportingWhileLockedAsync(services, mainWindowViewModel);
         var dialog = new SessionImportView { DataContext = new SessionImportViewModel(importServices) };
         SessionImportOutcome? outcome = await dialog.ShowDialog<SessionImportOutcome?>(this);
         if (outcome is { Imported: > 0 })
@@ -1323,6 +1329,9 @@ public partial class MainWindow : Window
     /// <param name="owner">编辑框的主人窗口。</param>
     internal Task EditProfileAsync(SessionProfile profile, Window owner) => OpenProfileDialogAsync(profile, owner);
 
+    /// <summary>编辑框交回的这一份是这次填的明文(不是空的、也不是载入时原样的密文)。</summary>
+    private static bool IsTypedSecret(string? value) => !string.IsNullOrEmpty(value) && !StoredSecret.IsUnreadable(value);
+
     /// <summary>打开“新建连接”弹窗;传入 existing 时为编辑既有配置。<paramref name="owner" /> 为空时以主窗口为主人。</summary>
     /// <returns>用户按了「保存」或「连接」(配置落了库)时为 true。</returns>
     private async Task<bool> OpenProfileDialogAsync(SessionProfile? existing, Window? owner = null)
@@ -1334,6 +1343,18 @@ public partial class MainWindow : Window
         if (Application.Current is not App app || app.Services is null)
         {
             return false;
+        }
+
+        // 主密码锁着:编辑一条存着机密的配置之前先弹解锁框,解开了就编辑库里现在解得开的那一份(锁着时载入的是密文)。
+        // 取消照样能改别的字段 —— 锁着时保存不动已存的机密(仓储冻在库里那一份上),关框后说一声。
+        IMasterPasswordGate? masterPassword = app.Services.GetService<IMasterPasswordGate>();
+        if (existing is not null && masterPassword is not null && MasterPasswordGuard.UsesSavedSecrets(existing)
+            && await masterPassword.IsLockedAsync()
+            && await masterPassword.EnsureUnlockedAsync(interactive: true)
+            && app.Services.GetService<ISessionRepository>() is { } sessions
+            && await sessions.GetSessionAsync(existing.Id) is { } unlocked)
+        {
+            existing = unlocked;
         }
 
         // 新建连接的默认端口与默认密钥(设置 → 常规 / 密钥管理)。
@@ -1381,6 +1402,12 @@ public partial class MainWindow : Window
 
         // 保存/连接均已持久化配置 —— 资源管理器树同步刷新。
         await mainWindowViewModel.RefreshSessionTreeAsync();
+        // 锁着时填了新的密码 / 口令:加不了密,这次没存(连接照样用这一份)。
+        if (masterPassword is not null && await masterPassword.IsLockedAsync()
+            && (IsTypedSecret(profile.Password) || IsTypedSecret(profile.PrivateKeyPassphrase)))
+        {
+            mainWindowViewModel.Toasts.Warning(Strings.Get("MasterPassword_SecretNotSaved"));
+        }
 
         // 仅“连接”按钮触发实际连接;“保存”只落库。
         if (!connectionProfileViewModel.ConnectAfterClose)
@@ -1872,7 +1899,9 @@ public partial class MainWindow : Window
                     Trace.WriteLine($"[Secrets] Master key status unavailable for the login prompt: {ex.Message}");
                 }
             }
-            unreadableNotice = UnreadableSecretPrompt.Describe(profile.CredentialSource is null ? null : credential!.Name, keyStatus);
+            // 主密码锁着:说的是「锁着」,不是「密钥不在」。
+            bool locked = services?.GetService<IMasterPasswordGate>() is { } gate && await gate.IsLockedAsync();
+            unreadableNotice = UnreadableSecretPrompt.Describe(profile.CredentialSource is null ? null : credential!.Name, keyStatus, locked);
         }
         AuthenticationDialogViewModel viewModel = SharedCredentialPrompt.CreateDialog(
             profile, credential, knownFingerprint, sharedContext, temporary, unreadableNotice);

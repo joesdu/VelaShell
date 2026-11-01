@@ -87,19 +87,67 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
     {
         ArgumentNullException.ThrowIfNull(session);
         await EnsureMigratedAsync().ConfigureAwait(false);
-        SessionProfile copy = Protect(session);
+        // 主密码锁着:新的明文加不了密(也不许另起密钥),机密字段冻在库里那一份上 —— 新的存不进去,
+        // 旧的也不会被一份空值顶掉(「记住密码」没勾的副本、解锁取消后剥掉机密的副本都是空的)。其余字段照常存。
+        bool locked = _protector.IsLocked;
+        SessionProfile copy;
+        try
+        {
+            copy = Protect(session, locked);
+        }
+        catch (SecretsLockedException)
+        {
+            // 上面问的时候还解着,加密之前恰好锁上了(自动锁定、系统锁屏):照锁着那条路存,不让这次保存失败。
+            locked = true;
+            copy = Protect(session, locked);
+        }
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.ProfilesCollection, store =>
         {
             string key = session.Id.ToString("D");
             // 读现存收藏与写回在同一次集合锁内:中间插进来的收藏修改不会被这次写回盖掉。
-            if (keepStoredBookmarks && store.Get(key) is { } row
-                && SonnetDbJson.Deserialize<SessionProfile>(row.Json) is { } stored)
+            SessionProfile? stored = (keepStoredBookmarks || locked) && store.Get(key) is { } row
+                ? SonnetDbJson.Deserialize<SessionProfile>(row.Json)
+                : null;
+            if (keepStoredBookmarks && stored is not null)
             {
                 copy.DirectoryBookmarks = stored.DirectoryBookmarks ?? [];
+            }
+            if (locked)
+            {
+                KeepStoredSecrets(copy, stored);
             }
             store.Upsert(key, SonnetDbJson.Serialize(copy));
             return null;
         }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 锁着时的机密字段:传进来的已经是密文就照存(与解锁时 <see cref="ISecretProtector.Protect" /> 的幂等同一口径),
+    /// 否则一律取库里现存的那一份(没有就是空)。插件机密逐项同样处理,库里有、这次没带的那几项也留着。
+    /// </summary>
+    private static void KeepStoredSecrets(SessionProfile copy, SessionProfile? stored)
+    {
+        copy.Password = StoredSecret.IsUnreadable(copy.Password) ? copy.Password : stored?.Password;
+        copy.PrivateKeyPassphrase = StoredSecret.IsUnreadable(copy.PrivateKeyPassphrase) ? copy.PrivateKeyPassphrase : stored?.PrivateKeyPassphrase;
+        Dictionary<string, string>? secrets = stored?.PluginSecrets is { } kept ? new(kept, StringComparer.Ordinal) : null;
+        if (copy.PluginSecrets is { } incoming)
+        {
+            foreach ((string name, string value) in incoming)
+            {
+                if (StoredSecret.IsUnreadable(value))
+                {
+                    (secrets ??= new(StringComparer.Ordinal))[name] = value;
+                }
+            }
+        }
+        copy.PluginSecrets = secrets;
+        // 换回来的是库里那份的密文,认证材料的两条不变量要再守一遍(同 Protect):Tailscale 不存任何认证材料
+        // (库里那份可能是切到 Tailscale 之前存的密码),引用了共享凭据的不存认证材料。
+        CredentialMaterial.ClearTailscaleCredentials(copy);
+        if (copy.CredentialSource is not null)
+        {
+            CredentialMaterial.ClearInline(copy);
+        }
     }
 
     /// <summary>删除指定会话配置,并从各分组的会话列表中移除对它的引用。</summary>
@@ -167,7 +215,9 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
     }
 
     /// <summary>返回加密副本 —— 不得修改调用方持有的实例(其明文密码仍用于活动连接)。</summary>
-    private SessionProfile Protect(SessionProfile profile)
+    /// <param name="profile">要存的配置。</param>
+    /// <param name="locked">主密码锁着:不加密(加不了),机密字段随后由 <see cref="KeepStoredSecrets" /> 换成库里那一份。</param>
+    private SessionProfile Protect(SessionProfile profile, bool locked = false)
     {
         // Clone 已经把全部字段深拷贝了(它是唯一的拷贝口径,加字段只改那一处);
         // 这里只覆盖需要加密的三项。原先这里是逐字段手写的,每加一个字段就得记得回来补一行。
@@ -180,6 +230,10 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
             // 这条不变量还撑着「内存里有材料 = 本次手输过」那条判断(CredentialMaterial.HasInline)——
             // 一旦有材料混进库里,这条配置就会永远用那份旧材料,引用形同虚设。
             CredentialMaterial.ClearInline(copy);
+        }
+        if (locked)
+        {
+            return copy;
         }
         copy.Password = _protector.Protect(copy.Password);
         copy.PrivateKeyPassphrase = _protector.Protect(copy.PrivateKeyPassphrase);
@@ -240,6 +294,11 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
                                    store => store.Count() == 0).ConfigureAwait(false) &&
                                await _engine.WithCollectionAsync(SonnetDbEngine.GroupsCollection,
                                    store => store.Count() == 0).ConfigureAwait(false);
+                if (isEmpty && _protector.IsLocked)
+                {
+                    // 主密码锁着:旧文件里的明文密码加不了密,这会儿导入只会把它们丢掉。解锁之后的下一次读写再导。
+                    return;
+                }
                 if (isEmpty)
                 {
                     await ImportLegacyAsync(legacySessionsFile).ConfigureAwait(false);

@@ -112,3 +112,15 @@ public class VelaSftpPathNotFoundException(string message, Exception? innerExcep
 /// 因此中止并交由用户决定是否整份重传。
 /// </summary>
 public class VelaSftpResumeMismatchException(string message, Exception? innerException = null) : VelaSftpOperationException(message, innerException);
+
+/// <summary>
+/// 目标服务器根本续不了:不支持按偏移读写(FTP 服务器对 <c>REST</c> / <c>APPE</c> 回 500 / 502 / 504,命令不认识或没实现)。
+/// 目标没有被这次调用碰过。
+/// </summary>
+/// <remarks>
+/// 派生自 <see cref="VelaSftpResumeMismatchException" />:同样核实不了「目标上那半截是不是这个文件的开头」,
+/// 只按它接的调用方照旧把它交回同名冲突策略 —— 悄悄整份重传会不经询问覆盖一个可能与此无关的文件。
+/// 只有调用方确知那半截是这一次传输自己刚写下的(传输失败重试在动过字节之后续传)时,才可以直接从头整份重传。
+/// </remarks>
+public class VelaSftpResumeUnsupportedException(string message, Exception? innerException = null)
+    : VelaSftpResumeMismatchException(message, innerException);

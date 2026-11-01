@@ -9,7 +9,6 @@ using VelaShell.Core.Ssh;
 using VelaShell.Core.Tunnels;
 using VelaShell.Infrastructure.Ssh;
 using VelaShell.Ssh.Config;
-using VelaShell.Ssh.Diagnostics;
 
 namespace VelaShell.Infrastructure.Import;
 
@@ -33,7 +32,7 @@ namespace VelaShell.Infrastructure.Import;
 /// 本身不是一台可连的机器;它们的选项会通过取值规则渗到具名别名上,这正是 OpenSSH 的语义。
 /// </para>
 /// <para>
-/// 映射不了的设置(端口 0 的转发、只有一头是套接字的远程转发、没写放行名单的远程动态转发、这台电脑上用不了的 agent 端点、
+/// 映射不了的设置(端口 0 的转发、在套接字上监听的远程动态转发、没写放行名单的远程动态转发、这台电脑上用不了的 agent 端点、
 /// 与认证用的不是同一个的转发 agent、本版没实现的算法)
 /// 不悄悄丢掉:写进 <see cref="ImportedSession.Notes" />,预览行里列给用户看。
 /// </para>
@@ -73,8 +72,15 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
         // 用户手动指定了别处的配置文件时,里面的 `Include conf.d/*` 仍指向 ~/.ssh/conf.d。
         // 解析、Include 展开、Match 判定都用 SSH 库的 SshConfigFile,宿主不另写一份。
         string baseDirectory = SshPathResolver.SshDirectory;
+
+        // 引号没配对的行:SSH 库只跳过那一行,ssh 却整份配置不读(spec/09 §7.4)—— 每条预览都说一句,
+        // 这份配置在 ssh 里哪台主机都连不上,而 VelaShell 这边少了那一行的设置。
+        List<string> skippedLines = [];
         IReadOnlyList<SshConfigBlock> blocks = await SshConfigFile
-            .LoadAsync(path, includeDirectory: baseDirectory, cancellationToken).ConfigureAwait(false);
+            .LoadAsync(path, includeDirectory: baseDirectory,
+                onSkippedLine: skipped => skippedLines.Add(Strings.Format("SshCfgImport_NoteUnbalancedQuotes",
+                    Path.GetFileName(skipped.Path), skipped.LineNumber.ToString(CultureInfo.InvariantCulture), skipped.Text)),
+                cancellationToken).ConfigureAwait(false);
 
         List<SessionProfile> existing = await _repository.GetAllSessionsAsync().ConfigureAwait(false);
         var existingKeys = existing
@@ -100,7 +106,8 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
 
             int port = options.Port;   // SSH 库已经把配得不对的端口换成 22
             string user = Value(options.User) ?? string.Empty;
-            List<string> notes = [];
+            List<string> notes = [.. skippedLines];
+            NoteSingleBackslashPaths(options, notes);
             // ~ 与 %d %u %h %r 由 SSH 库展开(与连接时读私钥同一套),宿主只把相对路径落到 ~/.ssh 下。
             List<string> identities = [.. options.ExpandIdentityFiles(user)
                 .Select(file => ResolveIdentityFile(file, baseDirectory)).OfType<string>()];
@@ -145,6 +152,29 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
     /// <inheritdoc />
     public async Task<SessionImportOutcome> ImportAsync(IReadOnlyList<ImportedSession> items, string groupName, CancellationToken cancellationToken = default) =>
         await SessionImportWriter.WriteAsync(_repository, items, groupName, Tag, cancellationToken, dataStore).ConfigureAwait(false);
+
+    /// <summary>
+    /// 读出来以<b>单个</b>反斜杠开头的路径(<c>\server\share\k</c>、<c>\.\pipe\x</c>)说明一句:多半是配置里写了 <c>\\server\share</c> /
+    /// <c>\\.\pipe\x</c>,而 ssh_config 里 <c>\\</c> 是转义、读成一个 <c>\</c>(spec/09 §7.4,ssh 也这么读)。
+    /// </summary>
+    /// <remarks>
+    /// 〔决策〕与 ssh 读得一样,不替用户把它「修」回两个反斜杠 —— 修了,同一份配置在 VelaShell 里能用、在 ssh 里不能用,看不出错的正是那样;
+    /// 只说清读成了什么、该怎么写。照原样带进连接(私钥路径不核实存在;agent 端点用不了的另有一句说明)。
+    /// 早先的 VelaShell 导出的命名管道就是这种写法(当时原样写出),再导入时会看到这一句。
+    /// </remarks>
+    private static void NoteSingleBackslashPaths(SshHostConfig options, List<string> notes)
+    {
+        foreach (string keyword in new[] { "IdentityFile", "CertificateFile", "IdentityAgent", "ForwardAgent" })
+        {
+            foreach (string value in options.All(keyword))
+            {
+                if (value is ['\\', not '\\', ..])
+                {
+                    notes.Add(Strings.Format("SshCfgImport_NoteSingleBackslash", $"{keyword} {value}"));
+                }
+            }
+        }
+    }
 
     /// <summary>去掉首尾空白;空串当作没有。</summary>
     private static string? Value(string? value) => value?.Trim() is { Length: > 0 } trimmed ? trimmed : null;
@@ -545,9 +575,9 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
     /// <c>*</c> 是全部网卡。<c>ClearAllForwardings yes</c> 时一条都不导。逐行解析:一行写错不连累别的行。
     /// </para>
     /// <para>
-    /// 隧道装不下、或者装进去会改变意思的如实跳过,进预览:端口 0(连接时才定的端口);远程转发只有一头是套接字
-    /// (SSH 库只给了两头 TCP、两头套接字两种组合,隧道服务同样拒绝);本机用不了的套接字路径;
-    /// 没写 <c>PermitRemoteOpen</c>、写了 <c>none</c> 或写错了的远程动态转发。
+    /// 隧道装不下、或者装进去会改变意思的如实跳过,进预览:端口 0(连接时才定的端口);在套接字上监听的远程动态转发
+    /// (远程动态转发只有端口一种写法);本机用不了的套接字路径;
+    /// 没写 <c>PermitRemoteOpen</c>、写了 <c>none</c> 或写错了的远程动态转发。本地与远程转发的两头各自可以是端口或套接字。
     /// </para>
     /// <para>
     /// 〔决策〕<b>远程动态转发没写 <c>PermitRemoteOpen</c> 时不导入</b>。OpenSSH 在这时按 <c>any</c> 处理(库的 <c>GetPermitRemoteOpen</c> 也是),
@@ -564,50 +594,35 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
         }
 
         string localDefault = options.GatewayPorts ? "0.0.0.0" : "127.0.0.1";
-        foreach ((SshConfigForwardKind kind, string keyword) in new[]
-                 {
-                     (SshConfigForwardKind.Local, "LocalForward"),
-                     (SshConfigForwardKind.Remote, "RemoteForward"),
-                     (SshConfigForwardKind.Dynamic, "DynamicForward"),
-                 })
+
+        // 两头的分词(引号、反斜杠)由 SSH 库照 spec/09 §7.4 做;写错的那一行交回来说明一句,其余照导。
+        IReadOnlyList<SshConfigForward> forwards = options.GetForwards(
+            onInvalid: (line, _) => notes.Add(Strings.Format("SshCfgImport_NoteForwardInvalid", line)));
+        foreach (SshConfigForward forward in forwards)
         {
-            foreach (string value in options.All(keyword))
+            string line = $"{forward.Kind}Forward {forward.Line}";
+            if (forward.ListenSocketPath is null && forward.ListenPort == 0)
             {
-                string line = $"{keyword} {value}";
-                SshConfigForward forward;
-                try
-                {
-                    forward = SshConfigForward.Parse(kind, value);
-                }
-                catch (SshConnectException)
-                {
-                    notes.Add(Strings.Format("SshCfgImport_NoteForwardInvalid", line));
-                    continue;
-                }
+                notes.Add(Strings.Format("SshCfgImport_NoteForwardPortZero", line));
+                continue;
+            }
 
-                if (forward.ListenSocketPath is null && forward.ListenPort == 0)
+            TunnelConfig? tunnel = forward.Kind switch
+            {
+                SshConfigForwardKind.Local => MapLocalForward(forward, localDefault, line, notes),
+                SshConfigForwardKind.Remote when forward.IsRemoteDynamic => MapRemoteDynamicForward(options, forward, line, notes),
+                SshConfigForwardKind.Remote => MapRemoteForward(forward, line, notes),
+                _ => new TunnelConfig
                 {
-                    notes.Add(Strings.Format("SshCfgImport_NoteForwardPortZero", line));
-                    continue;
-                }
-
-                TunnelConfig? tunnel = kind switch
-                {
-                    SshConfigForwardKind.Local => MapLocalForward(forward, localDefault, line, notes),
-                    SshConfigForwardKind.Remote when forward.IsRemoteDynamic => MapRemoteDynamicForward(options, forward, line, notes),
-                    SshConfigForwardKind.Remote => MapRemoteForward(forward, line, notes),
-                    _ => new TunnelConfig
-                    {
-                        Type = TunnelType.DynamicForward,
-                        Name = string.Empty,
-                        LocalHost = ListenHost(forward.ListenAddress, localDefault),
-                        LocalPort = (uint)forward.ListenPort,
-                    },
-                };
-                if (tunnel is not null)
-                {
-                    tunnels.Add(tunnel);
-                }
+                    Type = TunnelType.DynamicForward,
+                    Name = string.Empty,
+                    LocalHost = ListenHost(forward.ListenAddress, localDefault),
+                    LocalPort = (uint)forward.ListenPort,
+                },
+            };
+            if (tunnel is not null)
+            {
+                tunnels.Add(tunnel);
             }
         }
 
@@ -643,43 +658,32 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
         };
     }
 
-    /// <summary><c>RemoteForward 监听 目标</c>:两头 TCP,或两头都是套接字;只有一头是套接字的跳过。</summary>
+    /// <summary>
+    /// <c>RemoteForward 监听 目标</c>:两头各自可以是端口或套接字(隧道与 SSH 库都支持四种组合,velashell-docs spec/07 §4.4)——
+    /// 服务器上的监听路径进 <c>RemoteSocketPath</c>,本机目标的路径进 <c>LocalSocketPath</c>。
+    /// </summary>
+    /// <remarks>曾经只导两头 TCP 与两头套接字,只有一头是套接字的跳过(SSH 库当时没有那两种的入口)。</remarks>
     private static TunnelConfig? MapRemoteForward(SshConfigForward forward, string line, List<string> notes)
     {
-        if ((forward.ListenSocketPath is null) != (forward.TargetSocketPath is null))
+        string? serverSocket = null;
+        string? localSocket = null;
+        if ((forward.ListenSocketPath is { } listen && (serverSocket = RemoteSocketPath(listen)) is null)
+            || (forward.TargetSocketPath is { } target && (localSocket = LocalSocketPath(target)) is null))
         {
-            notes.Add(Strings.Format("SshCfgImport_NoteForwardSocketMix", line));
+            notes.Add(Strings.Format("SshCfgImport_NoteForwardSocketPath", line));
             return null;
-        }
-        if (forward.ListenSocketPath is { } listen)
-        {
-            string? serverSocket = RemoteSocketPath(listen);
-            string? localSocket = LocalSocketPath(forward.TargetSocketPath!);
-            if (serverSocket is null || localSocket is null)
-            {
-                notes.Add(Strings.Format("SshCfgImport_NoteForwardSocketPath", line));
-                return null;
-            }
-            return new TunnelConfig
-            {
-                Type = TunnelType.RemoteForward,
-                Name = string.Empty,
-                LocalHost = "127.0.0.1",
-                LocalPort = 0,
-                RemoteHost = string.Empty,
-                RemotePort = 0,
-                LocalSocketPath = localSocket,
-                RemoteSocketPath = serverSocket,
-            };
         }
         return new TunnelConfig
         {
             Type = TunnelType.RemoteForward,
             Name = string.Empty,
-            LocalHost = HostAddress.Normalize(forward.TargetHost!),
-            LocalPort = (uint)forward.TargetPort,
-            RemoteHost = ListenHost(forward.ListenAddress, "127.0.0.1"),
-            RemotePort = (uint)forward.ListenPort,
+            // 套接字那头的主机与端口不用(TunnelConfig 的约定:路径非空就以路径为准),照表单的样子留个环回 / 空与 0。
+            LocalHost = localSocket is null ? HostAddress.Normalize(forward.TargetHost!) : "127.0.0.1",
+            LocalPort = localSocket is null ? (uint)forward.TargetPort : 0,
+            RemoteHost = serverSocket is null ? ListenHost(forward.ListenAddress, "127.0.0.1") : string.Empty,
+            RemotePort = serverSocket is null ? (uint)forward.ListenPort : 0,
+            LocalSocketPath = localSocket,
+            RemoteSocketPath = serverSocket,
         };
     }
 
@@ -691,8 +695,8 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
     {
         if (forward.ListenSocketPath is not null)
         {
-            // 套接字上的远程动态转发:SSH 库与隧道都没有这一种。
-            notes.Add(Strings.Format("SshCfgImport_NoteForwardSocketMix", line));
+            // 套接字上的远程动态转发:SSH 库与隧道都没有这一种(ssh 不给目标的 -R 只有端口一种写法)。
+            notes.Add(Strings.Format("SshCfgImport_NoteRemoteDynamicSocket", line));
             return null;
         }
 
@@ -734,7 +738,8 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
     /// <remarks>别的机器上写的配置(Windows 上导入 Linux 的 <c>/run/user/…</c>)在这里就会被拦下:那条路径在本机本来就用不了。</remarks>
     private static string? LocalSocketPath(string path)
     {
-        string value = path.Trim().Trim('"');
+        // 引号与转义 SSH 库分词时已经去掉(spec/09 §7.4),这里不再剥引号。
+        string value = path.Trim();
         if (value == "~" || value.StartsWith("~/", StringComparison.Ordinal))
         {
             value = Path.Combine(SshPathResolver.HomeDirectory, value.Length > 2 ? value[2..] : string.Empty);
@@ -746,7 +751,7 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
     /// <summary>服务器套接字路径:要是 <c>/</c> 开头的绝对路径(服务器上的 sshd 按它自己的文件系统解析)。用不了时为 <see langword="null" />。</summary>
     private static string? RemoteSocketPath(string path)
     {
-        string value = path.Trim().Trim('"');
+        string value = path.Trim();
         return value.StartsWith('/') ? value : null;
     }
 

@@ -52,6 +52,34 @@ public sealed class StatusBarViewModel(ISequencer scheduler) : ReactiveObject, I
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = Strings.Ready;
 
+    /// <summary>主密码开着:状态栏左侧显示锁形入口(锁着时点它解锁,解着时点它立即锁定)。</summary>
+    public bool IsMasterPasswordEnabled
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>主密码此刻锁着(锁形图标是合上的)。</summary>
+    public bool IsMasterPasswordLocked
+    {
+        get;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref field, value);
+            this.RaisePropertyChanged(nameof(MasterPasswordTooltip));
+        }
+    }
+
+    /// <summary>锁形入口的悬停提示。</summary>
+    public string MasterPasswordTooltip =>
+        Strings.Get(IsMasterPasswordLocked ? "StatusBar_MasterPasswordLocked" : "StatusBar_MasterPasswordUnlocked");
+
+    /// <summary>点锁形入口:由主窗口视图模型接上(锁着 → 弹解锁框,解着 → 立即锁定)。</summary>
+    public ICommand? MasterPasswordCommand
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    }
     /// <summary>连接信息文本(如主机名/用户名),未连接时为空。</summary>
     public string ConnectionInfo
     {

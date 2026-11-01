@@ -114,6 +114,8 @@ public static class SettingsCategories
     public static IReadOnlyList<(string Block, string Field)> StateFields { get; } =
     [
         ("general", "lastOpenProfileIds"),
+        // 主密码开没开的镜像:事实来源是包裹格式本身,这个字段只给界面看 —— 不随导出走、导入与同步不改本机的。
+        ("general", "masterPasswordProtection"),
         ("appearance", "lastWindowWidth"),
         ("appearance", "lastWindowHeight"),
         ("appearance", "lastWindowMaximized"),

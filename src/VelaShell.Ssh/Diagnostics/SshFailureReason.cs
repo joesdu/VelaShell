@@ -196,7 +196,7 @@ public enum SshFailureReason
     /// <summary>本机的监听端口开不了（被占用、没有权限）。</summary>
     ForwardBindFailed,
 
-    /// <summary>本机一侧准备转发失败：拿不到 X 显示、<c>xauth</c> 跑不起来或失败。</summary>
+    /// <summary>本机一侧准备转发失败：拿不到 X 显示、<c>xauth</c> 跑不起来或失败，远程转发回连的本机套接字路径太长。</summary>
     ForwardSetupFailed,
 
     /// <summary>本端的某个上限到了（并发通道数、会话接收窗口总预算、转发连接数、agent / X11 通道数）。</summary>

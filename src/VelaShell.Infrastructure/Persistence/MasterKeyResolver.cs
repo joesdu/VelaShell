@@ -17,29 +17,98 @@ internal sealed class MasterKeyRing(IReadOnlyList<byte[]> keys, MasterKeyStatus 
 
     /// <summary>给界面看的解析结果。</summary>
     public MasterKeyStatus Status { get; } = status;
+
+    /// <summary>就地清零全部密钥(锁定时用;之后这个对象不能再用)。</summary>
+    public void Zero()
+    {
+        foreach (byte[] key in Keys)
+        {
+            CryptographicOperations.ZeroMemory(key);
+        }
+    }
+}
+
+/// <summary>本机加密密钥的一个存放位置:系统密钥链里的一个条目(按编号),或者数据目录里的本地密钥文件。</summary>
+/// <param name="KeychainId">密钥链条目编号;null = 本地密钥文件 <c>secret.key</c>。</param>
+internal readonly record struct KeySlot(string? KeychainId)
+{
+    /// <summary>本地密钥文件。</summary>
+    public static KeySlot KeyFile => default;
+
+    /// <summary>是本地密钥文件。</summary>
+    public bool IsKeyFile => KeychainId is null;
+
+    /// <inheritdoc />
+    public override string ToString() => KeychainId ?? "key file";
+}
+
+/// <summary>一个位置上存着的原样字节(本地密钥文件在 Windows 上是 DPAPI 解开之后的那份)。</summary>
+internal sealed record StoredKeySlot(KeySlot Slot, byte[] Value);
+
+/// <summary>以明文形式存着的一把本机加密密钥。</summary>
+internal sealed record PlainKey(KeySlot Slot, string Id, byte[] Key);
+
+/// <summary>以主密码包裹过的形式存着的一把本机加密密钥(解锁前不知道它是哪一把)。</summary>
+internal sealed record WrappedKey(KeySlot Slot, MasterKeyEnvelope Envelope, byte[] Stored);
+
+/// <summary>主密码开着时的解析结果:解锁要用的全部材料。</summary>
+internal sealed class SealedKeys
+{
+    /// <summary>KDF 头;不在或读不出来时为 null(见 <see cref="Problem" />)。</summary>
+    public MasterPasswordHeader? Header { get; init; }
+
+    /// <summary>解不了锁的原因。</summary>
+    public MasterPasswordProblem Problem { get; init; }
+
+    /// <summary>包裹过的密钥。</summary>
+    public IReadOnlyList<WrappedKey> Wrapped { get; init; } = [];
+
+    /// <summary>
+    /// 主密码开着却以明文存着的密钥:降级到不认主密码的旧版本时它另起的那把、开启 / 关闭中途被打断的那几把。
+    /// 锁着时不用;解锁成功后包裹起来写回去。
+    /// </summary>
+    public IReadOnlyList<PlainKey> Plain { get; init; } = [];
+}
+
+/// <summary><see cref="MasterKeyResolver.Resolve" /> 的结果:要么是一串能直接用的密钥,要么是等着主密码解开的一组包裹。</summary>
+internal sealed class MasterKeyResolution
+{
+    /// <summary>主密码没开:能直接用的密钥。</summary>
+    public MasterKeyRing? Ring { get; init; }
+
+    /// <summary>主密码开着:解锁要用的材料。</summary>
+    public SealedKeys? Sealed { get; init; }
+
+    /// <summary>给界面看的状态。</summary>
+    public required MasterKeyStatus Status { get; init; }
 }
 
 /// <summary>
 /// 决定本机加密密钥从哪来:系统密钥链优先,用不了回落到数据目录里的密钥文件;
-/// 顺带把存量的明文密钥文件迁进密钥链。
+/// 顺带把存量的明文密钥文件迁进密钥链;主密码开着时只认出包裹过的密钥,交给 <see cref="MasterKeyVault" /> 去解。
 /// </summary>
 /// <remarks>
-/// <para><b>数据目录里有两样东西</b>:</para>
+/// <para><b>数据目录里有三样东西</b>:</para>
 /// <list type="bullet">
 /// <item><c>secret.key</c> —— 本地密钥文件:Windows 上是 DPAPI(当前用户)包裹的密文(Windows 的保管方式就是它),
-/// 其余平台是 32 字节明文 + 0600,只作存量与回落。</item>
+/// 其余平台是 32 字节明文 + 0600,只作存量与回落。主密码开着时里面是包裹过的那份(<c>VSMP1</c> ‖ 记录)。</item>
 /// <item><c>secret.key.ref</c> —— 密钥链条目清单:每行一个条目编号,不含密钥材料。拷走数据目录只带走编号,
 /// 在别的电脑 / 账户上取不回密钥 —— 这正是把密钥交给密钥链的目的。</item>
+/// <item><c>secret.key.mp</c> —— 主密码的 KDF 头(盐与参数,不是机密),只在开了主密码时存在。</item>
 /// </list>
 /// <para>
 /// <b>条目编号由密钥本身派生</b>(<see cref="KeyIdOf" />):同一把密钥无论迁移被打断几次都落在同一个条目上,
-/// 迁移天然幂等、不留孤儿条目;读回来的密钥还能对着编号自证没被换过。
+/// 迁移天然幂等、不留孤儿条目;读回来的密钥还能对着编号自证没被换过。包裹过的条目沿用同一个编号,解开之后同样自证。
 /// </para>
 /// <para>
 /// <b>多把密钥并存,而且从不自动丢弃任何一把</b>。密钥链偶尔用不了(Linux 上没起 keyring、用户点了拒绝),
 /// 这一轮就另起一把放在本地文件里给新密码用,清单里的旧编号原样留着;密钥链回来的那次启动,
 /// 把本地那把也并进密钥链。于是「密钥链暂时不可用」永远不会让已存的密码变成永远解不开的密文。
 /// 回滚到不认密钥链的旧版本、旧版本另生成了一把 <c>secret.key</c>,升回来时也走同一条路并进来。
+/// </para>
+/// <para>
+/// <b>主密码开着时不生成、不迁移任何密钥</b>:另起一把主密码管不到的新密钥,等于悄悄把保护关掉。
+/// 这时解析只把能找到的包裹与明文密钥交出去,加密要等解锁(<see cref="MasterKeyVault" />)。
 /// </para>
 /// <para>
 /// <b>任何一步失败都停在「照旧能用」的状态</b>:写进密钥链要读回核对,核对过、清单落盘了才删本地文件;
@@ -53,6 +122,9 @@ public sealed class MasterKeyResolver
 
     /// <summary>清单文件相对密钥文件的后缀(<c>secret.key</c> → <c>secret.key.ref</c>)。</summary>
     public const string ReferenceSuffix = ".ref";
+
+    /// <summary>主密码 KDF 头相对密钥文件的后缀(<c>secret.key</c> → <c>secret.key.mp</c>)。</summary>
+    public const string HeaderSuffix = ".mp";
 
     /// <summary>迁移后删除本地密钥文件时的中转名:先改名再清零删除,中途断掉也不会把清零的文件当成密钥读回来。</summary>
     private const string DeletingSuffix = ".deleting";
@@ -75,11 +147,21 @@ public sealed class MasterKeyResolver
         }
         _keyFilePath = keyFilePath;
         ReferenceFilePath = keyFilePath + ReferenceSuffix;
+        HeaderFilePath = keyFilePath + HeaderSuffix;
         _store = store;
     }
 
     /// <summary>密钥链条目清单的路径。</summary>
     public string ReferenceFilePath { get; }
+
+    /// <summary>主密码 KDF 头的路径。</summary>
+    public string HeaderFilePath { get; }
+
+    /// <summary>本地密钥文件的路径。</summary>
+    internal string KeyFilePath => _keyFilePath;
+
+    /// <summary>这个平台的系统密钥链;没有时为 null。</summary>
+    internal IMasterKeyStore? Store => _store;
 
     /// <summary>
     /// 由密钥派生它在密钥链里的条目编号:加了域分隔的 SHA-256 取前 128 位,小写十六进制。
@@ -107,17 +189,18 @@ public sealed class MasterKeyResolver
     }
 
     /// <summary>解析一次本机加密密钥(可能阻塞:密钥链解锁要等用户)。除了本地文件也写不进去,不抛异常。</summary>
-    internal MasterKeyRing Resolve()
+    internal MasterKeyResolution Resolve()
     {
         Session session = new(this);
         session.Run();
-        return session.ToRing();
+        return session.ToResolution();
     }
 
     /// <summary>一次解析的过程状态(只活在 <see cref="Resolve" /> 里)。</summary>
     private sealed class Session(MasterKeyResolver owner)
     {
         private readonly List<(string Id, byte[] Key, bool InKeychain)> _keys = [];
+        private readonly List<WrappedKey> _wrapped = [];
         private readonly List<string> _unavailable = [];
         private readonly List<string> _missing = [];
         private List<string> _referenced = [];
@@ -135,37 +218,109 @@ public sealed class MasterKeyResolver
         private string? _replacedKeyFile;
         private bool _migrated;
 
+        private byte[]? _fileKey;
+        private HeaderRead _headerRead;
+        private MasterPasswordHeader? _header;
+        private bool _protected;
+        private MasterPasswordProblem _problem;
+        private string? _retiredHeader;
+
+        private enum HeaderRead { Absent, Ok, Unreadable }
+
         public void Run()
         {
             owner.FinishPendingDelete();
+            LoadHeader();
             LoadReferencedKeys();
-            AdoptKeyFile();
-            if (_keys.Count == 0)
+            LoadLocalKeyFile();
+            DecideProtection();
+            if (!_protected)
             {
-                CreateKey();
+                AdoptKeyFile();
+                if (_keys.Count == 0)
+                {
+                    CreateKey();
+                }
             }
-            Trace.WriteLine(
-                $"[Secrets] Master key: {(_keys[0].InKeychain ? owner._store!.Name : OperatingSystem.IsWindows() ? "DPAPI-wrapped key file" : "plain key file")}"
-                + $", {_keys.Count} key(s)"
-                + (_migrated ? ", migrated the key file into the keychain" : "")
-                + (_unavailable.Count > 0 ? $", unavailable: {string.Join(',', _unavailable)}" : "")
-                + (_missing.Count > 0 ? $", missing: {string.Join(',', _missing)}" : "")
-                + (_storeError is null ? "" : $", keychain error: {_storeError}"));
+            Trace.WriteLine(_protected
+                ? $"[Secrets] Master key: protected by the master password, {_wrapped.Count} wrapped key(s), {_keys.Count} plain"
+                  + (_problem == MasterPasswordProblem.None ? "" : $", problem: {_problem}")
+                  + (_unavailable.Count > 0 ? $", unavailable: {string.Join(',', _unavailable)}" : "")
+                  + (_missing.Count > 0 ? $", missing: {string.Join(',', _missing)}" : "")
+                  + (_storeError is null ? "" : $", keychain error: {_storeError}")
+                : $"[Secrets] Master key: {(_keys[0].InKeychain ? owner._store!.Name : OperatingSystem.IsWindows() ? "DPAPI-wrapped key file" : "plain key file")}"
+                  + $", {_keys.Count} key(s)"
+                  + (_migrated ? ", migrated the key file into the keychain" : "")
+                  + (_unavailable.Count > 0 ? $", unavailable: {string.Join(',', _unavailable)}" : "")
+                  + (_missing.Count > 0 ? $", missing: {string.Join(',', _missing)}" : "")
+                  + (_storeError is null ? "" : $", keychain error: {_storeError}")
+                  + (_retiredHeader is null ? "" : $", retired master password header as '{_retiredHeader}'"));
         }
 
-        public MasterKeyRing ToRing() =>
-            new([.. _keys.Select(static k => k.Key)], new()
+        public MasterKeyResolution ToResolution()
+        {
+            MasterKeyStatus status = new()
             {
-                Protection = _keys[0].InKeychain ? MasterKeyProtection.SystemKeychain
-                    : OperatingSystem.IsWindows() ? MasterKeyProtection.UserBoundFile
-                    : MasterKeyProtection.PlainFile,
+                Protection = ProtectionOfCurrentKey(),
                 KeychainName = owner._store?.Name,
                 KeychainError = _storeError,
                 UnavailableKeyIds = _unavailable,
                 MissingKeyIds = _missing,
                 ReplacedKeyFile = _replacedKeyFile,
-                Migrated = _migrated
-            });
+                Migrated = _migrated,
+                MasterPasswordEnabled = _protected,
+                MasterPasswordProblem = _problem,
+                RetiredMasterPasswordHeader = _retiredHeader
+            };
+            if (!_protected)
+            {
+                return new() { Ring = new([.. _keys.Select(static k => k.Key)], status), Status = status };
+            }
+            return new()
+            {
+                Sealed = new()
+                {
+                    Header = _header,
+                    Problem = _problem,
+                    Wrapped = _wrapped,
+                    Plain = [.. _keys.Select(static k => new PlainKey(k.InKeychain ? new KeySlot(k.Id) : KeySlot.KeyFile, k.Id, k.Key))]
+                },
+                Status = status
+            };
+        }
+
+        private MasterKeyProtection ProtectionOfCurrentKey()
+        {
+            bool inKeychain = _protected
+                ? _wrapped.Count > 0 ? !_wrapped[0].Slot.IsKeyFile : _keys.Count > 0 && _keys[0].InKeychain
+                : _keys[0].InKeychain;
+            return inKeychain ? MasterKeyProtection.SystemKeychain
+                : OperatingSystem.IsWindows() ? MasterKeyProtection.UserBoundFile
+                : MasterKeyProtection.PlainFile;
+        }
+
+        /// <summary>主密码的 KDF 头(没开主密码时不存在)。</summary>
+        private void LoadHeader()
+        {
+            string text;
+            try
+            {
+                if (!File.Exists(owner.HeaderFilePath))
+                {
+                    _headerRead = HeaderRead.Absent;
+                    return;
+                }
+                text = File.ReadAllText(owner.HeaderFilePath, Encoding.UTF8);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Trace.WriteLine($"[Secrets] {owner.HeaderFilePath} could not be read ({ex.Message})");
+                _headerRead = HeaderRead.Unreadable;
+                return;
+            }
+            _header = MasterPasswordHeader.Parse(text);
+            _headerRead = _header is null ? HeaderRead.Unreadable : HeaderRead.Ok;
+        }
 
         /// <summary>第一步:清单里记着的密钥逐个去密钥链里取。</summary>
         private void LoadReferencedKeys()
@@ -190,6 +345,10 @@ public sealed class MasterKeyResolver
                     case MasterKeyStoreStatus.Ok when result.Key is { Length: KeySize } key && KeyIdOf(key) == id:
                         _keys.Add((id, key, true));
                         break;
+                    case MasterKeyStoreStatus.Ok when result.Key is { } stored && MasterKeyEnvelope.TryParse(stored, out MasterKeyEnvelope? envelope):
+                        // 主密码包裹过的那一份:解开之前不知道是哪一把,解开之后对着编号自证(MasterKeyVault)。
+                        _wrapped.Add(new(new KeySlot(id), envelope!, stored));
+                        break;
                     case MasterKeyStoreStatus.Ok:
                         // 条目在,内容却对不上编号:不用它,也不动它。
                         Trace.WriteLine($"[Secrets] Keychain entry {id} does not hold the key it is named after; ignoring it");
@@ -206,13 +365,94 @@ public sealed class MasterKeyResolver
             }
         }
 
+        /// <summary>第二步:读数据目录里的本地密钥文件(明文的一把、包裹过的一份,或者没有)。</summary>
+        private void LoadLocalKeyFile()
+        {
+            switch (LoadKeyFile(owner._keyFilePath, out _replacedKeyFile))
+            {
+                case { Length: KeySize } key:
+                    _fileKey = key;
+                    break;
+                case { } stored when MasterKeyEnvelope.TryParse(stored, out MasterKeyEnvelope? envelope):
+                    _wrapped.Add(new(KeySlot.KeyFile, envelope!, stored));
+                    break;
+            }
+        }
+
         /// <summary>
-        /// 第二步:数据目录里的本地密钥文件(存量的、上一轮回落时生成的、旧版本生成的)。
+        /// 主密码开没开:看包裹本身,不看设置。头与包裹对不上时,只在确定没有任何一把密钥依赖它的情况下才把头挪开。
+        /// </summary>
+        private void DecideProtection()
+        {
+            bool wrappedFound = _wrapped.Count > 0;
+            // 有条目这次没问成(密钥链用不了):它是不是包裹过的说不准,宁可当成开着。
+            bool undetermined = _unavailable.Count > 0;
+            switch (_headerRead)
+            {
+                case HeaderRead.Absent:
+                    _protected = wrappedFound;
+                    _problem = wrappedFound ? MasterPasswordProblem.HeaderMissing : MasterPasswordProblem.None;
+                    break;
+                case HeaderRead.Unreadable when wrappedFound || undetermined:
+                    // 读不出来的头原样留着:那可能是解开这些包裹的唯一一份盐。
+                    _protected = true;
+                    _problem = MasterPasswordProblem.HeaderUnreadable;
+                    break;
+                case HeaderRead.Unreadable:
+                    RetireHeader("unreadable");
+                    break;
+                case HeaderRead.Ok when wrappedFound:
+                    _protected = true;
+                    break;
+                case HeaderRead.Ok when undetermined:
+                    _protected = true;
+                    _problem = MasterPasswordProblem.KeysUnavailable;
+                    break;
+                default:
+                    // 头好好的,却一把包裹过的密钥都没有,而且每一把都问到了:没有任何东西依赖这份头。
+                    if (_header!.State is MasterPasswordHeaderState.Enabling or MasterPasswordHeaderState.Disabling)
+                    {
+                        // 开启还没包裹任何一把就断了 / 关闭已经全部写回明文:这份头没用了,删掉它就是收尾。
+                        owner.TryDeleteHeader();
+                    }
+                    else
+                    {
+                        // 开着的头找不到它包裹的密钥(旧版本把包裹过的密钥文件挪开了、条目被删了):改名保留,照第一步的规矩继续。
+                        RetireHeader("orphaned");
+                    }
+                    break;
+            }
+            if (_protected && _fileKey is { } fileKey)
+            {
+                // 主密码开着时本地文件里的明文密钥(降级到旧版本时它另起的):解锁后包裹,锁着时不用。
+                string id = KeyIdOf(fileKey);
+                if (!_keys.Exists(k => k.Id == id))
+                {
+                    _keys.Add((id, fileKey, false));
+                }
+            }
+        }
+
+        private void RetireHeader(string reason)
+        {
+            try
+            {
+                _retiredHeader = MoveAside(owner.HeaderFilePath, reason);
+                Trace.WriteLine($"[Secrets] {owner.HeaderFilePath} has nothing to unwrap ({reason}); kept it as '{_retiredHeader}'");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Trace.WriteLine($"[Secrets] {owner.HeaderFilePath} has nothing to unwrap ({reason}) and could not be moved aside ({ex.Message})");
+            }
+        }
+
+        /// <summary>
+        /// 第三步(主密码没开时):数据目录里的本地密钥文件(存量的、上一轮回落时生成的、旧版本生成的)。
         /// 密钥链能用就迁进去、核对过再删文件;用不了就照旧从文件里用。
         /// </summary>
         private void AdoptKeyFile()
         {
-            if (LoadKeyFile(owner._keyFilePath, out _replacedKeyFile) is not { } fileKey)
+            if (_fileKey is not { } fileKey)
             {
                 return;
             }
@@ -249,7 +489,7 @@ public sealed class MasterKeyResolver
             }
         }
 
-        /// <summary>第三步:一把能用的都没有(全新安装,或旧密钥这次都取不到)——生成一把新的。</summary>
+        /// <summary>第四步:一把能用的都没有(全新安装,或旧密钥这次都取不到)——生成一把新的。</summary>
         private void CreateKey()
         {
             byte[] key = RandomNumberGenerator.GetBytes(KeySize);
@@ -320,6 +560,172 @@ public sealed class MasterKeyResolver
         }
     }
 
+    // ———— 给主密码那一层用的存取(开启 / 关闭 / 修改 / 解锁后的收尾) ————
+
+    /// <summary>
+    /// 现读一遍每个位置上存着的东西(清单里的每个条目 + 本地密钥文件),不做任何迁移、不挪任何文件。
+    /// </summary>
+    /// <param name="complete">每个位置都问到了为 true;有条目这次没问成(密钥链用不了)、密钥文件读不出来为 false。</param>
+    internal List<StoredKeySlot> ScanSlots(out bool complete)
+    {
+        complete = true;
+        List<StoredKeySlot> slots = [];
+        List<string> ids;
+        try
+        {
+            ids = File.Exists(ReferenceFilePath) ? ParseReference(File.ReadAllLines(ReferenceFilePath)) : [];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"[Secrets] {ReferenceFilePath} could not be read ({ex.Message})");
+            complete = false;
+            ids = [];
+        }
+        foreach (string id in ids)
+        {
+            if (_store is null)
+            {
+                continue; // 这台机器上没有密钥链:清单里的条目本来就取不到,不算没问成
+            }
+            MasterKeyStoreResult result = _store.Load(id);
+            switch (result.Status)
+            {
+                case MasterKeyStoreStatus.Ok when result.Key is { Length: > 0 } value:
+                    slots.Add(new(new KeySlot(id), value));
+                    break;
+                case MasterKeyStoreStatus.Unavailable:
+                    complete = false;
+                    break;
+            }
+        }
+        if (File.Exists(_keyFilePath))
+        {
+            if (TryReadKeyFile(out byte[]? value))
+            {
+                slots.Add(new(KeySlot.KeyFile, value!));
+            }
+            else
+            {
+                complete = false;
+            }
+        }
+        return slots;
+    }
+
+    /// <summary>读一个位置上存着的东西;没有或读不出来为 null。</summary>
+    internal byte[]? ReadSlot(KeySlot slot)
+    {
+        if (slot.IsKeyFile)
+        {
+            return File.Exists(_keyFilePath) && TryReadKeyFile(out byte[]? value) ? value : null;
+        }
+        if (_store is null)
+        {
+            return null;
+        }
+        MasterKeyStoreResult result = _store.Load(slot.KeychainId!);
+        return result.Status == MasterKeyStoreStatus.Ok ? result.Key : null;
+    }
+
+    /// <summary>
+    /// 把一个位置上的内容换成 <paramref name="value" />,读回逐字节核对过才算数。密钥文件先写临时文件、落盘、再改名覆盖,
+    /// 中途断掉不会留下半份。
+    /// </summary>
+    /// <returns>写进去并核对过为 true;写不进、读不回、读回来不一样为 false(原内容在写不进时保持不变)。</returns>
+    internal bool TryWriteSlot(KeySlot slot, byte[] value)
+    {
+        try
+        {
+            if (slot.IsKeyFile)
+            {
+                WriteKeyFileAtomically(_keyFilePath, value);
+            }
+            else if (_store is null || _store.Save(slot.KeychainId!, value).Status != MasterKeyStoreStatus.Ok)
+            {
+                return false;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException)
+        {
+            Trace.WriteLine($"[Secrets] {slot} could not be written ({ex.Message})");
+            return false;
+        }
+        byte[]? readBack = ReadSlot(slot);
+        bool same = readBack is not null && CryptographicOperations.FixedTimeEquals(readBack, value);
+        if (!same)
+        {
+            Trace.WriteLine($"[Secrets] {slot} did not read back what was written");
+        }
+        return same;
+    }
+
+    /// <summary>原子地写 KDF 头(临时文件 + 落盘 + 改名)。写不进返回 false,原来那份不动。</summary>
+    internal bool TryWriteHeader(MasterPasswordHeader header)
+    {
+        string temp = HeaderFilePath + ".tmp";
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(HeaderFilePath)!);
+            WriteDurably(temp, Encoding.UTF8.GetBytes(header.Serialize()));
+            File.Move(temp, HeaderFilePath, overwrite: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"[Secrets] {HeaderFilePath} could not be written ({ex.Message})");
+            return false;
+        }
+    }
+
+    /// <summary>读 KDF 头;不在或读不出来为 null。</summary>
+    internal MasterPasswordHeader? ReadHeader()
+    {
+        try
+        {
+            return File.Exists(HeaderFilePath) ? MasterPasswordHeader.Parse(File.ReadAllText(HeaderFilePath, Encoding.UTF8)) : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>删掉 KDF 头(关闭主密码的最后一步);不在也算成功。</summary>
+    internal bool TryDeleteHeader()
+    {
+        try
+        {
+            File.Delete(HeaderFilePath);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.WriteLine($"[Secrets] {HeaderFilePath} could not be removed ({ex.Message})");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 「忘记主密码」:头、清单、本地密钥文件都改名保留(<c>名字.forgotten-时间戳</c>),密钥链里的条目原样不动。
+    /// 之后再解析就是一个全新的开始(另起新密钥)。想起主密码时把这几个文件改回原名即可恢复。
+    /// </summary>
+    /// <returns>改名保留成的文件名;任何一个改不了名时抛出(已改的不回滚 —— 再做一次会接着改剩下的)。</returns>
+    internal IReadOnlyList<string> SetAsideForForgottenPassword()
+    {
+        string stamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        List<string> kept = [];
+        foreach (string path in new[] { HeaderFilePath, ReferenceFilePath, _keyFilePath })
+        {
+            if (File.Exists(path))
+            {
+                string aside = $"{path}.forgotten-{stamp}";
+                File.Move(path, aside, overwrite: false);
+                kept.Add(aside);
+            }
+        }
+        return kept;
+    }
+
     // ———— 清单文件 ————
 
     /// <summary>读清单;不存在为空。读不出来时 <paramref name="writable" /> 为 false(这一轮不许覆盖它)。</summary>
@@ -341,18 +747,7 @@ public sealed class MasterKeyResolver
             writable = false;
             return [];
         }
-        List<string> ids = [];
-        foreach (string raw in lines)
-        {
-            string line = raw.Trim();
-            if (line.StartsWith(KeyLinePrefix, StringComparison.Ordinal)
-                && line[KeyLinePrefix.Length..] is { Length: KeyIdLength } id
-                && id.All(static c => char.IsAsciiHexDigitLower(c) || char.IsAsciiDigit(c))
-                && !ids.Contains(id))
-            {
-                ids.Add(id);
-            }
-        }
+        List<string> ids = ParseReference(lines);
         if (ids.Count == 0)
         {
             // 文件在、却一个编号也认不出(被截断、被改坏):原样挪开保留,别让之后写的新清单把它盖掉。
@@ -365,6 +760,23 @@ public sealed class MasterKeyResolver
             {
                 Trace.WriteLine($"[Secrets] {ReferenceFilePath} lists no usable entry and could not be moved aside ({ex.Message})");
                 writable = false;
+            }
+        }
+        return ids;
+    }
+
+    private static List<string> ParseReference(string[] lines)
+    {
+        List<string> ids = [];
+        foreach (string raw in lines)
+        {
+            string line = raw.Trim();
+            if (line.StartsWith(KeyLinePrefix, StringComparison.Ordinal)
+                && line[KeyLinePrefix.Length..] is { Length: KeyIdLength } id
+                && id.All(static c => char.IsAsciiHexDigitLower(c) || char.IsAsciiDigit(c))
+                && !ids.Contains(id))
+            {
+                ids.Add(id);
             }
         }
         return ids;
@@ -403,7 +815,8 @@ public sealed class MasterKeyResolver
     // ———— 本地密钥文件 ————
 
     /// <summary>
-    /// 读本地密钥文件;不存在为 null。文件在、却用不了(换了 Windows 账户 / 重装系统后 DPAPI 解不开,或者被截断)时
+    /// 读本地密钥文件;不存在为 null。返回 32 字节的明文密钥,或者主密码包裹过的那一份(<c>VSMP1</c> ‖ 记录)。
+    /// 文件在、却用不了(换了 Windows 账户 / 重装系统后 DPAPI 解不开,或者被截断)时
     /// 先原样挪开再返回 null,<paramref name="replacedWith" /> 给出挪去的文件名。
     /// </summary>
     private static byte[]? LoadKeyFile(string keyFilePath, out string? replacedWith)
@@ -419,7 +832,8 @@ public sealed class MasterKeyResolver
         // 解包失败时回退按明文处理,并顺带升级为 DPAPI 密文。
         if (OperatingSystem.IsWindows())
         {
-            if (TryDpapiUnprotect(stored, out byte[] unwrapped) && unwrapped.Length == KeySize)
+            if (TryDpapiUnprotect(stored, out byte[] unwrapped)
+                && (unwrapped.Length == KeySize || MasterKeyEnvelope.TryParse(unwrapped, out _)))
             {
                 return unwrapped;
             }
@@ -429,7 +843,7 @@ public sealed class MasterKeyResolver
                 return stored;
             }
         }
-        else if (stored.Length == KeySize)
+        else if (stored.Length == KeySize || MasterKeyEnvelope.TryParse(stored, out _))
         {
             return stored;
         }
@@ -439,6 +853,36 @@ public sealed class MasterKeyResolver
         replacedWith = MoveAside(keyFilePath);
         Trace.WriteLine($"[Secrets] {keyFilePath} could not be used; kept it as '{replacedWith}'");
         return null;
+    }
+
+    /// <summary>读本地密钥文件的内容(Windows 上解开 DPAPI);读不出来为 false。不挪任何文件。</summary>
+    private bool TryReadKeyFile(out byte[]? value)
+    {
+        value = null;
+        try
+        {
+            byte[] stored = File.ReadAllBytes(_keyFilePath);
+            if (!OperatingSystem.IsWindows())
+            {
+                value = stored;
+                return true;
+            }
+            if (TryDpapiUnprotect(stored, out byte[] unwrapped))
+            {
+                value = unwrapped;
+                return true;
+            }
+            if (stored.Length == KeySize)
+            {
+                value = stored; // 历史版本的明文,下次解析时改包 DPAPI
+                return true;
+            }
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>写入密钥:Windows 用 DPAPI(CurrentUser)包裹,其余平台明文 + 0600 权限(创建时即 0600,不留窗口)。</summary>
@@ -452,6 +896,18 @@ public sealed class MasterKeyResolver
         }
         WriteDurably(keyFilePath, key);
         File.SetUnixFileMode(keyFilePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
+    /// <summary>同 <see cref="WriteKeyFile" />,但先写临时文件、落盘、再改名覆盖:替换一份已有的密钥文件时不留下半份。</summary>
+    private static void WriteKeyFileAtomically(string keyFilePath, byte[] value)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(keyFilePath)!);
+        string temp = keyFilePath + ".tmp";
+        byte[] content = OperatingSystem.IsWindows()
+            ? ProtectedData.Protect(value, null, DataProtectionScope.CurrentUser)
+            : value;
+        WriteDurably(temp, content);
+        File.Move(temp, keyFilePath, overwrite: true);
     }
 
     /// <summary>
@@ -518,10 +974,10 @@ public sealed class MasterKeyResolver
         stream.Flush(flushToDisk: true);
     }
 
-    /// <summary>把一个用不了的文件原样改名保留(<c>名字.unreadable-时间戳</c>),返回新文件名。</summary>
-    private static string MoveAside(string path)
+    /// <summary>把一个用不了的文件原样改名保留(<c>名字.原因-时间戳</c>),返回新文件名。</summary>
+    private static string MoveAside(string path, string reason = "unreadable")
     {
-        string aside = $"{path}.unreadable-{DateTime.UtcNow:yyyyMMddHHmmss}";
+        string aside = $"{path}.{reason}-{DateTime.UtcNow:yyyyMMddHHmmss}";
         File.Move(path, aside, overwrite: true);
         return aside;
     }

@@ -940,7 +940,7 @@ internal sealed class SshAuthenticator(SshPacketTransport transport, string user
             }
             catch (Crypto.SshFrameFormatException ex) when (ex.PeerClosedMidPacket)
             {
-                // 报文中途断开是连接断了，不是协议错误（同 SshKeyExchangeRunner 与 SshConnection.NormalizeFault）。
+                // 报文中途断开是连接断了，不是协议错误（同 SshKeyExchangeRunner 与 ConnectionFaults.NormalizeFault）。
                 throw new SshConnectionClosedException(
                     SshFailureReason.ClosedByPeer, SshPhase.Authenticating, "对端在认证期间关闭了连接（一个报文只收到一半）。", ex);
             }

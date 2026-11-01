@@ -92,6 +92,29 @@ public sealed class PortForwardAddressTests
     }
 
     /// <summary>
+    /// 远程转发里服务器那头是套接字时,路径交给库的 <see cref="RemotePortForwardOptions.ListenSocketPath" />(库据此发 streamlocal-forward、不看地址与端口);
+    /// 服务器那头是端口时不设,本机那头是什么都不影响它。
+    /// </summary>
+    [TestMethod]
+    public void RemoteOptions_CarryTheServerSocketPath()
+    {
+        PortForwardRequest serverSocket = new(PortForwardKind.Remote, string.Empty, 0, "127.0.0.1", 5432)
+        {
+            BoundSocketPath = "/run/user/1000/pg.sock"
+        };
+        PortForwardRequest serverPort = new(PortForwardKind.Remote, "localhost", 2375)
+        {
+            TargetSocketPath = "/var/run/docker.sock"
+        };
+
+        Assert.AreEqual("/run/user/1000/pg.sock", LibraryPortForwardHandle.RemoteOptions(serverSocket, serverSocket.BoundHost).ListenSocketPath);
+        RemotePortForwardOptions port = LibraryPortForwardHandle.RemoteOptions(serverPort, serverPort.BoundHost);
+        Assert.IsNull(port.ListenSocketPath);
+        Assert.AreEqual("localhost", port.BindAddress);
+        Assert.AreEqual(2375, port.BindPort);
+    }
+
+    /// <summary>
     /// 放行名单交给库:单独一条 any 是全放;别的逐条按 主机:端口 比(通配、端口 *);空名单是全拒,不悄悄变成全放。
     /// </summary>
     [TestMethod]

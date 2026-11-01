@@ -46,6 +46,12 @@ public sealed class SonnetDbSettingsService(
     /// </summary>
     private volatile UnreadableProxyPassword? _unreadableProxyPassword;
 
+    /// <summary>
+    /// 库里此刻存着的那份代理密码(密文)与它所属的代理:读出来时、存进去时各记一次。主密码锁着时保存照旧写回它 ——
+    /// 锁定前已经解开的那份在内存里是明文,锁着时加不了密,不能因此存成空的。
+    /// </summary>
+    private volatile UnreadableProxyPassword? _storedProxyPassword;
+
     /// <param name="Ciphertext">库里存着的密文。</param>
     /// <param name="Proxy">它所属的代理(只用类型、主机、端口、用户名)。</param>
     private sealed record UnreadableProxyPassword(string Ciphertext, ProxyOptions Proxy);
@@ -147,6 +153,7 @@ public sealed class SonnetDbSettingsService(
             {
                 settings.Proxy.Password = string.Empty;
                 _unreadableProxyPassword = new(storedPassword, ProxyOwner(settings.Proxy));
+                _storedProxyPassword = _unreadableProxyPassword;
                 Trace.WriteLine($"[Settings] The saved proxy password could not be decrypted after startup ({ex.Message}); it is kept as is and treated as empty.");
             }
             _settingsJsonCache = SonnetDbJson.Serialize(settings);
@@ -241,22 +248,82 @@ public sealed class SonnetDbSettingsService(
     /// <summary>代理密码在库里该存成什么:填着的加密;空着的,若是这次没解开的那一份(同一台代理)就写回原密文,否则就是空。</summary>
     private string StoredProxyPassword(ProxyOptions proxy)
     {
+        if (protector!.IsLocked)
+        {
+            return FrozenProxyPassword(proxy);
+        }
+        string result;
         if (proxy.Password.Length > 0)
         {
+            string? encrypted;
+            try
+            {
+                encrypted = protector.Protect(proxy.Password);
+            }
+            catch (SecretsLockedException)
+            {
+                // 上面问的时候还解着,加密之前恰好锁上了(自动锁定、系统锁屏):照锁着那条路存,不让这次保存失败。
+                return FrozenProxyPassword(proxy);
+            }
             // 重填了密码:解不开的那份作废,存这一份(用当前的本机密钥,这台设备解得开)。
             _unreadableProxyPassword = null;
-            return protector!.Protect(proxy.Password) ?? string.Empty;
+            result = encrypted ?? string.Empty;
         }
-        if (_unreadableProxyPassword is { } kept)
+        else if (_unreadableProxyPassword is { } kept && SettingsTransfer.SameProxy(kept.Proxy, proxy))
         {
-            if (SettingsTransfer.SameProxy(kept.Proxy, proxy))
-            {
-                return kept.Ciphertext;
-            }
+            result = kept.Ciphertext;
+        }
+        else
+        {
             // 换了一台代理:旧密码不属于它,与导入、同步拉取「换了代理不留密码」同一口径。
             _unreadableProxyPassword = null;
+            result = string.Empty;
         }
-        return string.Empty;
+        _storedProxyPassword = result.Length > 0 ? new(result, ProxyOwner(proxy)) : null;
+        return result;
+    }
+
+    /// <summary>
+    /// 主密码锁着时代理密码存成什么:新填的密码加不了密(也不许另起密钥),清空也不算数 —— 代理密码冻在库里那一份上,
+    /// 同一台代理就照旧写回原密文,别的设置照常保存。锁定前解开过、内存里还是明文的那份同样写回原密文,
+    /// 不会因为锁着时的一次保存(关窗口时存窗口尺寸)被抹掉。解锁后重填即可。
+    /// </summary>
+    private string FrozenProxyPassword(ProxyOptions proxy)
+    {
+        if (proxy.Password.Length > 0)
+        {
+            Trace.WriteLine("[Settings] The proxy password was not re-saved: saved secrets are locked by the master password.");
+        }
+        return (_storedProxyPassword ?? _unreadableProxyPassword) is { } frozen && SettingsTransfer.SameProxy(frozen.Proxy, proxy)
+            ? frozen.Ciphertext
+            : string.Empty;
+    }
+
+    /// <summary>
+    /// 主密码解锁之后:启动时(或锁着时)没解开的那份代理密码现在解开,填回缓存与快照 —— 代理解析下一次就带对密码,
+    /// 不用等重启。用户这期间换了代理或重填了密码就不动。
+    /// </summary>
+    internal void RevealProxyPasswordAfterUnlock()
+    {
+        if (protector is null || _unreadableProxyPassword is not { } kept
+            || !protector.TryUnprotect(kept.Ciphertext, out string? plaintext) || string.IsNullOrEmpty(plaintext))
+        {
+            return;
+        }
+        if (_settingsJsonCache is { } cached && DeserializeNormalized(cached) is { } settings
+            && settings.Proxy.Password.Length == 0 && SettingsTransfer.SameProxy(kept.Proxy, settings.Proxy))
+        {
+            settings.Proxy.Password = plaintext;
+            _settingsJsonCache = SonnetDbJson.Serialize(settings);
+            if (_snapshot is { } snapshot && snapshot.Proxy.Password.Length == 0 && SettingsTransfer.SameProxy(kept.Proxy, snapshot.Proxy))
+            {
+                // 就地填:与启动时 FillProxyPassword 同一口径,拿着这份快照的地方随之带上密码。
+                snapshot.Proxy.Password = plaintext;
+            }
+            _storedProxyPassword = kept;
+            _unreadableProxyPassword = null;
+            Trace.WriteLine("[Settings] The saved proxy password was decrypted after the master password was entered.");
+        }
     }
 
     /// <summary>
@@ -266,11 +333,13 @@ public sealed class SonnetDbSettingsService(
     private void RevealProxyPassword(AppSettings settings)
     {
         _unreadableProxyPassword = null;
+        _storedProxyPassword = null;
         if (protector is null || settings.Proxy.Password.Length == 0)
         {
             return;
         }
         string stored = settings.Proxy.Password;
+        _storedProxyPassword = new(stored, ProxyOwner(settings.Proxy));
         if (protector.TryUnprotect(stored, out string? plaintext))
         {
             settings.Proxy.Password = plaintext ?? string.Empty;

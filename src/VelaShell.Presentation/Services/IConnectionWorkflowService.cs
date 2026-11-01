@@ -52,8 +52,20 @@ public interface IConnectionWorkflowService
     /// </summary>
     Task<ConnectionTestResult> TestConnectionUnattendedAsync(SessionProfile profile, CancellationToken cancellationToken = default);
 
-    /// <summary>按指定配置建立 SSH 连接,返回已连接的会话。</summary>
+    /// <summary>
+    /// 按指定配置建立 SSH 连接,返回已连接的会话。连上之后只把库里那份的最近连接时间改掉(库里没有的临时配置不落库),
+    /// 不把 <paramref name="profile" /> 整份写回 —— 调用方手里的副本可能早就过时了。
+    /// </summary>
     Task<SshSession> ConnectProfileAsync(SessionProfile profile, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 登录框交回的那份连上之后调用:把登录框改得到的几项(用户名、认证方式、记住密码与认证材料,见
+    /// <see cref="SessionProfileMerge.CopyLoginFields" />)写进库里那份,其余字段以库里为准。密码落不落盘照「记住密码」与常规页的总开关;
+    /// 库里没有这条配置(临时配置)时什么都不写。
+    /// </summary>
+    /// <param name="profile">登录框交回、刚用它连上的那份。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task SaveLoginChangesAsync(SessionProfile profile, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 断线后的自动重连:同 <see cref="ConnectProfileAsync" />,但主机指纹要人裁决时直接拒绝、不弹窗

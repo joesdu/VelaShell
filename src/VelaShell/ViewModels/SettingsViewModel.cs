@@ -141,6 +141,13 @@ public partial class SettingsViewModel : ReactiveObject
     private readonly ISessionRepository? _sessionRepository;
     private readonly ISharedCredentialRepository? _sharedCredentialRepository;
     private readonly Infrastructure.Plugins.PluginManager? _pluginManager;
+    private readonly IMasterPasswordService? _masterPassword;
+
+    /// <summary>主密码的状态与解锁 / 锁定(设置 → 常规 → 隐私与安全);没有时为 null。</summary>
+    internal IMasterPasswordService? MasterPasswordService => _masterPassword;
+
+    /// <summary>设置 → 常规 → 隐私与安全里的主密码那几行。</summary>
+    public MasterPasswordSettingsViewModel MasterPasswordSettings { get; }
     // ———— 外观即时预览(改动立即可见,保存才落盘,取消/关窗回滚) ————
     /// <summary>打开设置时的基线快照:未保存关闭时用它恢复主题与外观。</summary>
     private AppSettings _baseline = new();
@@ -172,10 +179,12 @@ public partial class SettingsViewModel : ReactiveObject
         ISharedCredentialRepository? sharedCredentials = null,
         SharedCredentialService? sharedCredentialService = null,
         ISessionRepository? sessionRepository = null,
-        Infrastructure.Plugins.PluginManager? pluginManager = null
+        Infrastructure.Plugins.PluginManager? pluginManager = null,
+        IMasterPasswordService? masterPassword = null
     )
     {
-        SharedCredentials = new(sharedCredentials, sharedCredentialService, sessionRepository);
+        _masterPassword = masterPassword;
+        SharedCredentials = new(sharedCredentials, sharedCredentialService, sessionRepository) { MasterPassword = masterPassword };
         // 输出规则页:色块与测试预览取当前配色方案的 16 色(随外观页的方案切换现取,见 RebuildPalette 的两处调用)。
         OutputRules = new(sessionRepository, () => TerminalSchemeSwatches);
         _sessionRepository = sessionRepository;
@@ -254,7 +263,9 @@ public partial class SettingsViewModel : ReactiveObject
                     ? null
                     : new QuickCommandsViewModel(quickCommandRepository)
             );
-        Sync = gistSyncService is null ? null : new SyncViewModel(gistSyncService);
+        Sync = gistSyncService is null ? null : new SyncViewModel(gistSyncService, masterPassword);
+        // 常规 → 隐私与安全的主密码那几行(设置审计 R-04);镜像字段 General.MasterPasswordProtection 照实际状态回写。
+        MasterPasswordSettings = new(masterPassword, () => General, Services.MasterPassword.SystemSessionLockProbes.ForCurrentPlatform());
         RemoveKnownHostCommand = ReactiveCommand.CreateFromTask<KnownHost>(RemoveKnownHostAsync);
         HostTrust = new(hostKeyService, sessionRepository, RefreshKnownHostsAsync);
         ClearTrustedLaunchTargetsCommand = ReactiveCommand.Create(() =>
@@ -2039,6 +2050,7 @@ public partial class SettingsViewModel : ReactiveObject
     private async Task LoadAsync()
     {
         _loaded = await _settingsService.GetSettingsAsync();
+        _ = MasterPasswordSettings.RefreshAsync();
 
         // 外观即时预览的基线:未保存关闭时回滚到这份快照。
         _baseline = JsonClone(_loaded);

@@ -372,8 +372,8 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable, IDraggablePanel
     // ---- Unix 域套接字 ----
 
     /// <summary>
-    /// 「改用 Unix 域套接字」只对本地 / 远程转发有:SSH 库的本地转发两头各自可以是套接字(四种组合),
-    /// 远程转发只有两头都是套接字这一种;动态与远程动态转发没有套接字的写法。
+    /// 「改用 Unix 域套接字」只对本地 / 远程转发有:SSH 库的本地转发与远程转发两头都各自可以是套接字(各四种组合);
+    /// 动态与远程动态转发没有套接字的写法。
     /// </summary>
     public bool IsUnixSocketOptionVisible => NewTunnelType is TunnelType.LocalForward or TunnelType.RemoteForward;
 
@@ -389,7 +389,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable, IDraggablePanel
     }
 
     /// <summary>
-    /// 表单中本机这头的套接字路径:本地转发是在它上面监听(留空则仍用本地端口),远程转发是回连到它(必填)。
+    /// 表单中本机这头的套接字路径:本地转发是在它上面监听,远程转发是回连到它;留空则仍用本地端口。
     /// </summary>
     public string NewLocalSocketPath
     {
@@ -402,7 +402,8 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable, IDraggablePanel
     } = string.Empty;
 
     /// <summary>
-    /// 表单中服务器那头的套接字路径:本地转发是转到它(留空则仍用目标主机:端口),远程转发是请服务器在它上面监听(必填)。
+    /// 表单中服务器那头的套接字路径:本地转发是转到它(留空则仍用目标主机:端口),
+    /// 远程转发是请服务器在它上面监听(留空则仍用服务器监听地址:端口)。
     /// </summary>
     public string NewRemoteSocketPath
     {
@@ -417,20 +418,19 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable, IDraggablePanel
     /// <summary>套接字那两栏要不要显示:勾了「改用 Unix 域套接字」。</summary>
     public bool IsUnixSocketFormVisible => IsUnixSocketOptionVisible && NewUseUnixSocket;
 
-    /// <summary>本机这头用不用套接字:远程转发勾了就用(两头必须同时),本地转发要填了路径才用。</summary>
-    private bool UsesLocalSocket =>
-        IsUnixSocketFormVisible
-        && (NewTunnelType == TunnelType.RemoteForward || !string.IsNullOrWhiteSpace(NewLocalSocketPath));
+    /// <summary>
+    /// 本机这头用不用套接字:勾了「改用 Unix 域套接字」、填了路径才用,本地与远程转发一个口径。
+    /// 曾经远程转发勾了就两头都要(SSH 库当时只有两头都是套接字一种组合),只填一头点不了「创建」。
+    /// </summary>
+    private bool UsesLocalSocket => IsUnixSocketFormVisible && !string.IsNullOrWhiteSpace(NewLocalSocketPath);
 
     /// <summary>服务器那头用不用套接字;口径同 <see cref="UsesLocalSocket" />。</summary>
-    private bool UsesRemoteSocket =>
-        IsUnixSocketFormVisible
-        && (NewTunnelType == TunnelType.RemoteForward || !string.IsNullOrWhiteSpace(NewRemoteSocketPath));
+    private bool UsesRemoteSocket => IsUnixSocketFormVisible && !string.IsNullOrWhiteSpace(NewRemoteSocketPath);
 
-    /// <summary>本机套接字那一栏的标签:本地转发是「监听」(可留空),远程转发是「回连到」。</summary>
+    /// <summary>本机套接字那一栏的标签:本地转发是「监听」,远程转发是「回连到」;都可留空(留空用本地端口)。</summary>
     public string LocalSocketLabel => Strings.Get(NewTunnelType == TunnelType.RemoteForward ? "Tunnel_LocalSocketTargetLabel" : "Tunnel_LocalSocketListenLabel");
 
-    /// <summary>服务器套接字那一栏的标签:本地转发是「目标」(可留空),远程转发是「监听」。</summary>
+    /// <summary>服务器套接字那一栏的标签:本地转发是「目标」,远程转发是「监听」;都可留空(留空用主机与端口那两栏)。</summary>
     public string RemoteSocketLabel => Strings.Get(NewTunnelType == TunnelType.RemoteForward ? "Tunnel_RemoteSocketListenLabel" : "Tunnel_RemoteSocketTargetLabel");
 
     /// <summary>
@@ -1218,6 +1218,11 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable, IDraggablePanel
             {
                 continue;
             }
+            // 主密码锁着时拦下的:等解锁(RetryAfterUnlock),不每 5 秒再撞一次。
+            if (_lockedProfiles.Contains(profileId))
+            {
+                continue;
+            }
             if (!items.Any(IsAutoReconnectCandidate))
             {
                 continue;
@@ -1301,6 +1306,15 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable, IDraggablePanel
                 ErrorMessage = FriendlyError(ex);
             }
         }
+        catch (Core.Data.SecretsLockedException ex)
+        {
+            // 主密码锁着:自动重建不弹解锁框,也不进退避 —— 解锁后由 RetryAfterUnlock 各重试一次。
+            _lockedProfiles.Add(profile.Id);
+            if (isSelected)
+            {
+                ErrorMessage = ex.Message;
+            }
+        }
         catch (Exception ex)
         {
             int failures = _autoReconnectFailures.GetValueOrDefault(profile.Id) + 1;
@@ -1324,6 +1338,20 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable, IDraggablePanel
                 RefreshServerStatus();
             }
         }
+    }
+
+    /// <summary>主密码锁着时被拦下自动重建的服务器。</summary>
+    private readonly HashSet<Guid> _lockedProfiles = [];
+
+    /// <summary>主密码解锁之后:锁着时被拦下的自动重建各重试一次。</summary>
+    internal void RetryAfterUnlock()
+    {
+        if (_lockedProfiles.Count == 0)
+        {
+            return;
+        }
+        _lockedProfiles.Clear();
+        ScheduleAutoReconnect();
     }
 
     /// <summary>失败重试的退避间隔:10s → 30s → 1min → 2min → 5min 封顶。</summary>

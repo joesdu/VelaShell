@@ -215,20 +215,26 @@ public sealed record SshAlgorithmSet
     }
 
     /// <summary>
-    /// 只含 FIPS 认可算法的清单：密钥交换、主机密钥与 MAC 和 RHEL 10.2 的 FIPS 加密策略给 OpenSSH 放行的是同一组。
+    /// 只含 FIPS 认可算法的清单：密钥交换只用命名的曲线与群，主机密钥与 MAC 和 RHEL 10.2 的 FIPS 加密策略给 OpenSSH 放行的是同一组。
     /// </summary>
     /// <remarks>
     /// <para>
     /// 〔velashell-docs/zh/ssh/spec/00 §6.6〕合规环境要求客户端也只谈认可的算法时用它：密钥交换先是两种面向 FIPS 的后量子混合
-    /// （<c>mlkem768nistp256-sha256</c>、<c>mlkem1024nistp384-sha384</c>），再是 NIST 曲线的 ECDH、群交换（RFC 4419）与 DH 标准群
-    /// （group 14 / 16 / 18）；主机密钥只用 ECDSA 与 SHA-2 的 RSA（含对应的证书），加密只用 AES（GCM 与 CTR），MAC 只用 HMAC-SHA2。
+    /// （<c>mlkem768nistp256-sha256</c>、<c>mlkem1024nistp384-sha384</c>），再是 NIST 曲线的 ECDH 与 DH 标准群
+    /// （group 16 / 18 / 14，RFC 3526 的 MODP 群）；主机密钥只用 ECDSA 与 SHA-2 的 RSA（含对应的证书），加密只用 AES（GCM 与 CTR），MAC 只用 HMAC-SHA2。
     /// 不含 X25519、Ed25519、ChaCha20-Poly1305，也不含带 X25519 或 sntrup761 的后量子混合。
     /// </para>
     /// <para>
-    /// 与 RHEL 10.2 的 FIPS 策略（crypto-policies 给 OpenSSH 客户端、服务端的两份清单）比：算法是同一组，
-    /// 只有加密多一个 <c>aes192-ctr</c>（AES-192 同样是 FIPS 197 认可的，RHEL 的策略没开它）；
-    /// 顺序按本库的偏好排（与默认清单同一套规则：GCM 在 CTR 前、群交换在 DH 标准群前、group16 在 group18 前），
-    /// 协商以客户端的顺序为准，所以不照抄策略的顺序。〔历史〕曾经少了群交换与 group18，注释却说「与 RHEL 一致」。
+    /// 〔决策〕<b>不含群交换</b>（<c>diffie-hellman-group-exchange-sha256</c>，RFC 4419）：群是服务端现给的素数，
+    /// 本库只核它的位数、<c>g</c> 的范围与素性（spec/03 §3.5），认不出它是不是某个命名的群 —— 严格说它不在 FIPS 认可的命名群之内。
+    /// 只给群交换的服务端用这份清单连不上，报协商失败；要连就自己组清单把它加回去。维护者 2026-10-31 定。
+    /// 〔历史〕§251 曾为与 RHEL 一致把它补进来（RHEL 10.2 的 FIPS 策略开着它）。
+    /// </para>
+    /// <para>
+    /// 与 RHEL 10.2 的 FIPS 策略（crypto-policies 给 OpenSSH 客户端、服务端的两份清单）比：密钥交换少一个群交换（上一条），
+    /// 加密多一个 <c>aes192-ctr</c>（AES-192 同样是 FIPS 197 认可的，RHEL 的策略没开它），其余是同一组；
+    /// 顺序按本库的偏好排（与默认清单同一套规则：GCM 在 CTR 前、group16 在 group18 前、group14 最后），
+    /// 协商以客户端的顺序为准，所以不照抄策略的顺序。〔历史〕曾经少了 group18，注释却说「与 RHEL 一致」。
     /// </para>
     /// <para>
     /// 两种混合排最前：它们只用 FIPS 认可的原语（ML-KEM、P-256 / P-384 上的 ECDH、SHA-2），不给 X25519 的服务端上，
@@ -269,7 +275,8 @@ public sealed record SshAlgorithmSet
                 SshAlgorithmNames.EcdhSha2Nistp256,
                 SshAlgorithmNames.EcdhSha2Nistp384,
                 SshAlgorithmNames.EcdhSha2Nistp521,
-                SshAlgorithmNames.DiffieHellmanGroupExchangeSha256,
+
+                // 不含群交换：见属性上的说明。
                 SshAlgorithmNames.DiffieHellmanGroup16Sha512,
                 SshAlgorithmNames.DiffieHellmanGroup18Sha512,
                 SshAlgorithmNames.DiffieHellmanGroup14Sha256,

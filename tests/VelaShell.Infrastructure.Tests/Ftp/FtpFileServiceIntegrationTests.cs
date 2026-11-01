@@ -1205,18 +1205,27 @@ public class FtpFileServiceIntegrationTests
         Assert.AreEqual(0, storage.Length);
     }
 
+    /// <summary>
+    /// 读到 7 个字节数据流就结束(干净的 EOF 或复位),控制连接回 <c>426</c>:服务器明说中止了这次传输,
+    /// 这是一次可以重试的数据连接中断,不是「源文件变了」—— 会话不标失效;短了多少照样挂在里面(§278 的诊断)。
+    /// 两种形态殊途同归:复位在 macOS 上读成干净的 EOF,Windows / Linux 上是 ConnectionReset。
+    /// </summary>
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public async Task DownloadStream_DataResetOrEof_RemainsAnIntegrityFailure(bool reset)
+    public async Task DownloadStream_DataResetOrEofWith426_IsARetryableInterruptionThatKeepsTheShortReadDiagnosis(bool reset)
     {
         byte[] payload = Payload(42);
         await File.WriteAllBytesAsync(Path.Combine(_root, "producer.bin"), payload);
         _server.ReadFaultForPath = _ => new() { DataLimit = 7, ResetData = reset, Reply = "426 Interrupted" };
         Guid session = await OpenAsync(maxConnections: 1);
+        bool faulted = false;
+        _service.SessionStateChanged += (_, change) => faulted |= change.State == FtpSessionState.Faulted;
         using var storage = new MemoryStream();
-        RemoteTransferLengthException error = await Assert.ThrowsExactlyAsync<RemoteTransferLengthException>(() => _service
+        VelaFtpTransferInterruptedException interrupted = await Assert.ThrowsExactlyAsync<VelaFtpTransferInterruptedException>(() => _service
             .DownloadStreamAsync(session, "/producer.bin", new SequentialDestination(storage)));
+        Assert.AreEqual(TransferFailureKind.Transient, TransferRetryPolicy.Classify(interrupted));
+        RemoteTransferLengthException error = Assert.IsInstanceOfType<RemoteTransferLengthException>(interrupted.InnerException);
         long expectedBytes = payload.Length;
         Assert.AreEqual(expectedBytes, error.ExpectedBytes);
         Assert.AreEqual(7L, error.ActualBytes);
@@ -1224,9 +1233,28 @@ public class FtpFileServiceIntegrationTests
         Assert.AreEqual(1, _server.RetrCounts["/producer.bin"]);
         Assert.AreEqual(7, storage.Length);
         Assert.IsEmpty(_server.RestartOffsets);
+        Assert.IsFalse(faulted, "数据连接中途断开不是会话掉线。");
         _server.ReadFaultForPath = null;
         await AssertReadableAsync(session, "/producer.bin", payload);
         Assert.AreEqual(2, _server.AcceptedConnections);
+    }
+
+    /// <summary>
+    /// 服务器正常结束数据流、回 <c>226</c>,字节却比 SIZE 少:这才是长度 / 完整性问题,照旧报
+    /// <see cref="RemoteTransferLengthException" />(永久失败),不因为「短」就当成数据连接中断去重试。
+    /// </summary>
+    [TestMethod]
+    public async Task DownloadStream_ShortReadConfirmedBy226_RemainsAnIntegrityFailure()
+    {
+        byte[] payload = Payload(42);
+        await File.WriteAllBytesAsync(Path.Combine(_root, "producer.bin"), payload);
+        _server.ReadFaultForPath = _ => new() { DataLimit = 7 };
+        Guid session = await OpenAsync(maxConnections: 1);
+        using var storage = new MemoryStream();
+        RemoteTransferLengthException error = await Assert.ThrowsExactlyAsync<RemoteTransferLengthException>(() => _service
+            .DownloadStreamAsync(session, "/producer.bin", new SequentialDestination(storage)));
+        Assert.AreEqual(7L, error.ActualBytes);
+        Assert.AreEqual(TransferFailureKind.Permanent, TransferRetryPolicy.Classify(error));
     }
 
     [TestMethod]
@@ -1468,8 +1496,297 @@ public class FtpFileServiceIntegrationTests
         // 复位落在写上还是落在完成回复上看时机:前者 FluentFTP 抛出带 SocketException 的链,后者只回一个 Failed。
         // 两种都得是这一次自己的失败,而不是重放之后的「无法重放」或第二次 STOR 的结局。
         Assert.DoesNotContain("cannot be replayed", error.Message, error.ToString());
-        // 原来那一次 STOR,加上 FluentFTP 自己就地续写的那一次 APPE;服务内部不再整段重放。
-        Assert.IsLessThanOrEqualTo(2, _server.StoreCounts.GetValueOrDefault("/streamed.bin"), "传到一半的失败不该在服务内部再整段重传一遍。");
+        // 只有原来那一次 STOR:服务内部不整段重放,FluentFTP 自己的「续写」(不带 REST 再发一次 STOR,先把远端截成 0)
+        // 也在发出命令之前就被拒掉 —— 服务器实际收下的那半截原样留着,由上层核实之后再决定续还是重传。
+        Assert.AreEqual(1, _server.StoreCounts.GetValueOrDefault("/streamed.bin"), "传到一半的失败不该在服务内部或库内部再发一次 STOR。");
+        Assert.AreEqual(64 * 1024, new FileInfo(Path.Combine(_root, "streamed.bin")).Length, "远端那半截不能被库的续写截掉。");
+    }
+
+    /// <summary>
+    /// 上传传到一半数据连接被中止(服务器只落下前 64 KiB、回 <c>426</c>),控制连接好好的:报可以重试的数据连接中断,
+    /// 会话不标失效、控制连接接着用(不重新登录);上层按远端此刻的长度续传(续传关着就整份重传),落下的文件与源逐字节一致。
+    /// </summary>
+    /// <remarks>
+    /// 用「干净的数据流 + 426」造半截而不是复位:客户端每一次写都成功、中断只在最终回复里,三个平台走同一条路
+    /// (见 <see cref="LoopbackFtpServer.AbortStoreAfterBytes" />)。
+    /// </remarks>
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(false, true)]
+    [DataRow(true, false)]
+    [DataRow(true, true)]
+    public async Task Upload_DataConnectionAbortedMidTransfer_IsARetryableInterruptionAndKeepsTheSession(bool streamed, bool resume)
+    {
+        byte[] payload = new byte[1024 * 1024];
+        new Random(23).NextBytes(payload);
+        string local = Path.Combine(Path.GetTempPath(), $"vela-ftp-abort-{Guid.NewGuid():N}.bin");
+        await File.WriteAllBytesAsync(local, payload, TestContext.CancellationToken);
+        int armed = 1;
+        _server.AbortStoreAfterBytes = _ => Interlocked.Exchange(ref armed, 0) == 1 ? 64 * 1024 : null;
+        Guid session = await OpenAsync(maxConnections: 1);
+        bool faulted = false;
+        _service.SessionStateChanged += (_, change) => faulted |= change.State == FtpSessionState.Faulted;
+        string landed = Path.Combine(_root, "aborted.bin");
+        try
+        {
+            VelaFtpTransferInterruptedException error = await Assert.ThrowsExactlyAsync<VelaFtpTransferInterruptedException>(
+                () => UploadAsync(session, local, "/aborted.bin", resumeOffset: 0, streamed));
+            Assert.AreEqual(TransferFailureKind.Transient, TransferRetryPolicy.Classify(error));
+            Assert.AreEqual(64 * 1024, new FileInfo(landed).Length, "服务器实际收下的那半截原样留着");
+            Assert.HasCount(1, await _service.ListDirectoryAsync(session, "/", TestContext.CancellationToken));
+            Assert.AreEqual(1, _server.AcceptedConnections, "控制连接照常用,不重新登录");
+
+            // 上层的自动重试:续传开着就按远端此刻的长度接着传(起点由服务核实),关着整份重传。
+            long next = resume ? (await _service.GetFileInfoAsync(session, "/aborted.bin", TestContext.CancellationToken)).Size : 0;
+            await UploadAsync(session, local, "/aborted.bin", next, streamed);
+
+            Assert.AreSequenceEqual(SHA256.HashData(payload), SHA256.HashData(await File.ReadAllBytesAsync(landed, TestContext.CancellationToken)));
+            Assert.AreEqual(2, _server.StoreCounts["/aborted.bin"]);
+            Assert.IsFalse(faulted, "数据连接中途断开不是会话掉线,树上的圆点不能变灰。");
+        }
+        finally
+        {
+            File.Delete(local);
+        }
+    }
+
+    /// <summary>
+    /// 服务器一边复位数据连接一边回 <c>452</c>(磁盘满):客户端那边先看到的是写被复位,但控制连接上欠着的那句答复才是原因 ——
+    /// 按答复算,照旧是一次永久的操作失败,不当成数据连接中断去重试;会话也不标失效。
+    /// </summary>
+    [TestMethod]
+    public async Task Upload_ResetWhileTheServerRefusesTheWrite_StaysAPermanentOperationFailure()
+    {
+        byte[] payload = new byte[4 * 1024 * 1024];
+        new Random(29).NextBytes(payload);
+        _server.StoreFaultReply = "452 Insufficient storage space";
+        _server.ResetStoreAfterBytes = _ => 64 * 1024;
+        Guid session = await OpenAsync(maxConnections: 1);
+        await SetProducerTimeoutAsync(session);
+        bool faulted = false;
+        _service.SessionStateChanged += (_, change) => faulted |= change.State == FtpSessionState.Faulted;
+        using var source = new MemoryStream(payload);
+
+        VelaFtpOperationException error = await Assert.ThrowsExactlyAsync<VelaFtpOperationException>(() => _service.UploadStreamAsync(
+            session, source, "/full.bin", payload.Length, cancellationToken: TestContext.CancellationToken));
+
+        Assert.AreEqual(TransferFailureKind.Permanent, TransferRetryPolicy.Classify(error));
+        Assert.IsFalse(faulted);
+        Assert.AreEqual(1, _server.StoreCounts["/full.bin"]);
+    }
+
+    /// <summary>
+    /// 上传传到一半数据连接复位、控制连接也被关掉:这是会话掉线,照旧报连接类错误并把会话标成失效
+    /// (重试分类仍是临时失败:下一次在新登录的连接上再试)。
+    /// </summary>
+    [TestMethod]
+    public async Task Upload_ControlConnectionDroppedMidTransfer_StillFaultsTheSession()
+    {
+        byte[] payload = new byte[16 * 1024 * 1024];
+        new Random(31).NextBytes(payload);
+        int armed = 1;
+        _server.DropControlDuringStoreAfterBytes = _ => Interlocked.Exchange(ref armed, 0) == 1 ? 64 * 1024 : null;
+        Guid session = await OpenAsync(maxConnections: 1);
+        await SetProducerTimeoutAsync(session);
+        bool faulted = false;
+        _service.SessionStateChanged += (_, change) => faulted |= change.State == FtpSessionState.Faulted;
+        using var source = new MemoryStream(payload);
+
+        VelaFtpConnectionException error = await Assert.ThrowsExactlyAsync<VelaFtpConnectionException>(() => _service.UploadStreamAsync(
+            session, source, "/dropped.bin", payload.Length, cancellationToken: TestContext.CancellationToken));
+
+        Assert.AreEqual(TransferFailureKind.Transient, TransferRetryPolicy.Classify(error));
+        Assert.IsTrue(faulted, "控制连接断了才是会话掉线,圆点照旧变灰。");
+        // 会话还在:下一次操作重新登录一条连接。
+        Assert.HasCount(1, await _service.ListDirectoryAsync(session, "/", TestContext.CancellationToken));
+        Assert.AreEqual(2, _server.AcceptedConnections);
+    }
+
+    /// <summary>
+    /// 上传的数据全部写完、数据流干净结束,服务器却不回最终答复就关掉了控制连接:同样是会话掉线,不是服务器拒写。
+    /// 与上面那条对照:上面靠数据连接复位造断线,Linux / macOS 上 FluentFTP 把写失败吞掉、只回 Failed、最后一条回复停在
+    /// <c>150</c>(曾被报成永久的「上传失败」,钉住那次修复的是上面那条);这一条不复位,客户端每次写都成功,
+    /// 断线只体现在读不到最终回复上,三个平台都报连接类错误、会话标成失效。
+    /// </summary>
+    [TestMethod]
+    public async Task Upload_ControlConnectionClosedWithoutFinalReply_FaultsTheSession()
+    {
+        byte[] payload = new byte[256 * 1024];
+        new Random(37).NextBytes(payload);
+        int armed = 1;
+        _server.DropControlAfterCleanStore = _ => Interlocked.Exchange(ref armed, 0) == 1;
+        Guid session = await OpenAsync(maxConnections: 1);
+        await SetProducerTimeoutAsync(session);
+        bool faulted = false;
+        _service.SessionStateChanged += (_, change) => faulted |= change.State == FtpSessionState.Faulted;
+        using var source = new MemoryStream(payload);
+
+        VelaFtpConnectionException error = await Assert.ThrowsExactlyAsync<VelaFtpConnectionException>(() => _service.UploadStreamAsync(
+            session, source, "/unconfirmed.bin", payload.Length, cancellationToken: TestContext.CancellationToken));
+
+        Assert.AreEqual(TransferFailureKind.Transient, TransferRetryPolicy.Classify(error));
+        Assert.IsTrue(faulted, "控制连接断了才是会话掉线,圆点照旧变灰。");
+        Assert.HasCount(1, await _service.ListDirectoryAsync(session, "/", TestContext.CancellationToken));
+        Assert.AreEqual(2, _server.AcceptedConnections);
+    }
+
+    /// <summary>
+    /// 下载读到一半数据流干净结束、控制连接回 <c>426</c>(FluentFTP 若在别的平台上自己 REST 续读,那一次也回 426):
+    /// 可以重试的数据连接中断,会话不标失效;上层按本地此刻的长度续传,最终与远端逐字节一致。
+    /// </summary>
+    [TestMethod]
+    public async Task DownloadFile_CleanEofWith426_IsARetryableInterruptionAndResumesCorrectly()
+    {
+        byte[] payload = new byte[100_000];
+        new Random(37).NextBytes(payload);
+        await File.WriteAllBytesAsync(Path.Combine(_root, "eof.bin"), payload, TestContext.CancellationToken);
+        int retrieves = 0;
+        _server.ReadFaultForPath = _ => Interlocked.Increment(ref retrieves) == 1
+            ? new() { DataLimit = 7_000, Reply = "426 Connection closed; transfer aborted" }
+            : new() { RejectRetr = "426 Connection closed; transfer aborted" };
+        Guid session = await OpenAsync(maxConnections: 1);
+        bool faulted = false;
+        _service.SessionStateChanged += (_, change) => faulted |= change.State == FtpSessionState.Faulted;
+        string local = Path.Combine(Path.GetTempPath(), $"vela-ftp-eof-{Guid.NewGuid():N}.bin");
+        try
+        {
+            VelaFtpTransferInterruptedException error = await Assert.ThrowsExactlyAsync<VelaFtpTransferInterruptedException>(
+                () => _service.DownloadFileAsync(session, "/eof.bin", local, new Progress<TransferProgress>(), 0, TestContext.CancellationToken));
+            Assert.AreEqual(TransferFailureKind.Transient, TransferRetryPolicy.Classify(error));
+            _server.ReadFaultForPath = null;
+            long partial = new FileInfo(local).Length;
+            Assert.IsLessThanOrEqualTo(payload.Length, partial);
+
+            await _service.DownloadFileAsync(session, "/eof.bin", local, new Progress<TransferProgress>(), partial, TestContext.CancellationToken);
+
+            Assert.AreSequenceEqual(SHA256.HashData(payload), SHA256.HashData(await File.ReadAllBytesAsync(local, TestContext.CancellationToken)));
+            Assert.IsFalse(faulted, "数据连接中途断开不是会话掉线。");
+        }
+        finally
+        {
+            File.Delete(local);
+        }
+    }
+
+    /// <summary>
+    /// 读流读完了全部字节,最终回复却是 <c>426</c>:服务器中止了这次传输,报可以重试的数据连接中断(会话不标失效);
+    /// 连接照旧不复用。
+    /// </summary>
+    [TestMethod]
+    public async Task OpenRead_CompletionReply426_IsARetryableInterruption()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_root, "a.txt"), "payload", TestContext.CancellationToken);
+        _server.ReadFaultForPath = _ => new() { Reply = "426 Connection closed; transfer aborted" };
+        Guid session = await OpenAsync(maxConnections: 1);
+        bool faulted = false;
+        _service.SessionStateChanged += (_, change) => faulted |= change.State == FtpSessionState.Faulted;
+        Stream stream = await _service.OpenReadAsync(session, "/a.txt", TestContext.CancellationToken);
+        await stream.CopyToAsync(Stream.Null, TestContext.CancellationToken);
+
+        VelaFtpTransferInterruptedException error = await Assert.ThrowsExactlyAsync<VelaFtpTransferInterruptedException>(
+            () => stream.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10), TestContext.CancellationToken));
+
+        Assert.AreEqual(TransferFailureKind.Transient, TransferRetryPolicy.Classify(error));
+        Assert.IsFalse(faulted);
+        _server.ReadFaultForPath = null;
+        await AssertReadableAsync(session, "/a.txt", Encoding.UTF8.GetBytes("payload"));
+        Assert.AreEqual(2, _server.AcceptedConnections);
+    }
+
+    /// <summary>
+    /// 服务器不认续传要用的命令(REST 回 502 / APPE 回 502):不报永久的「操作失败」,而报「这台服务器续不了」——
+    /// 它派生自起点核实失败的那个异常,规划时探到的半截照旧交回同名冲突策略;目标一个字节都没被碰,
+    /// 会话不标失效。之后从头整份传(重试层对自己写下的半截就是这么做的)照常传完、内容一致。
+    /// </summary>
+    /// <param name="direction">上传 / 下载。</param>
+    /// <param name="refused">服务器不认的命令:REST 或 APPE。</param>
+    /// <param name="partial">目标上那半截的长度:不超过 64 KiB 时起点核实从 0 读、不发 REST,超过时核实要 REST。</param>
+    /// <param name="length">源文件长度。</param>
+    /// <param name="streamed">上传走流式接口。</param>
+    [TestMethod]
+    [DataRow("upload", "APPE", 30_000, 100_000, false, DisplayName = "上传:APPE 不认(核实不用 REST)")]
+    [DataRow("upload", "APPE", 30_000, 100_000, true, DisplayName = "流式上传:APPE 不认")]
+    [DataRow("upload", "REST", 100_000, 300_000, false, DisplayName = "上传:核实起点的 REST 不认")]
+    [DataRow("download", "REST", 30_000, 100_000, false, DisplayName = "下载:续读的 REST 不认")]
+    [DataRow("download", "REST", 100_000, 300_000, false, DisplayName = "下载:核实起点的 REST 不认")]
+    public async Task Resume_WhenTheServerDoesNotImplementRestOrAppe_ReportsResumeUnsupportedAndLeavesTheTargetAlone(
+        string direction, string refused, int partial, int length, bool streamed)
+    {
+        byte[] payload = new byte[length];
+        new Random(47).NextBytes(payload);
+        _server.SupportsRest = refused != "REST";
+        _server.SupportsAppe = refused != "APPE";
+        Guid session = await OpenAsync(maxConnections: 1);
+        bool faulted = false;
+        _service.SessionStateChanged += (_, change) => faulted |= change.State == FtpSessionState.Faulted;
+        string local = Path.Combine(Path.GetTempPath(), $"vela-ftp-norest-{Guid.NewGuid():N}.bin");
+        string remote = Path.Combine(_root, "partial.bin");
+        bool upload = direction == "upload";
+        // 目标上那半截:上传时在服务器上,下载时在本地。
+        await File.WriteAllBytesAsync(upload ? local : remote, payload, TestContext.CancellationToken);
+        await File.WriteAllBytesAsync(upload ? remote : local, payload[..partial], TestContext.CancellationToken);
+        try
+        {
+            VelaSftpResumeUnsupportedException error = await Assert.ThrowsExactlyAsync<VelaSftpResumeUnsupportedException>(() => upload
+                ? UploadAsync(session, local, "/partial.bin", partial, streamed)
+                : _service.DownloadFileAsync(session, "/partial.bin", local, new Progress<TransferProgress>(), partial, TestContext.CancellationToken));
+
+            Assert.IsInstanceOfType<VelaSftpResumeMismatchException>(error, "规划时探到的半截照旧交回同名冲突策略,不悄悄整份覆盖");
+            Assert.IsGreaterThanOrEqualTo(1, _server.UnsupportedResumeCommands, "确实撞上了服务器的「不支持」");
+            byte[] target = await File.ReadAllBytesAsync(upload ? remote : local, TestContext.CancellationToken);
+            Assert.AreSequenceEqual(payload[..partial], target, "目标上那半截一个字节都没被碰");
+            Assert.IsFalse(faulted, "服务器答的是「不支持」,不是掉线");
+
+            if (upload)
+            {
+                await UploadAsync(session, local, "/partial.bin", resumeOffset: 0, streamed);
+            }
+            else
+            {
+                await _service.DownloadFileAsync(session, "/partial.bin", local, new Progress<TransferProgress>(), 0, TestContext.CancellationToken);
+            }
+            Assert.AreSequenceEqual(SHA256.HashData(payload),
+                SHA256.HashData(await File.ReadAllBytesAsync(upload ? remote : local, TestContext.CancellationToken)));
+        }
+        finally
+        {
+            File.Delete(local);
+        }
+    }
+
+    /// <summary>
+    /// 不支持 REST 的服务器上下载读到一半被 426 中止:FluentFTP 发现数据流断了想自己 REST 续读(有的平台上),
+    /// 服务器回 502 —— 那条 502 是续读的结局,不是对这个文件的答复,照样是一次可以重试的数据连接中断,会话不标失效。
+    /// </summary>
+    [TestMethod]
+    public async Task DownloadFile_InterruptedOnAServerWithoutRest_IsStillARetryableInterruption()
+    {
+        byte[] payload = new byte[100_000];
+        new Random(53).NextBytes(payload);
+        await File.WriteAllBytesAsync(Path.Combine(_root, "norest.bin"), payload, TestContext.CancellationToken);
+        _server.SupportsRest = false;
+        int retrieves = 0;
+        _server.ReadFaultForPath = _ => Interlocked.Increment(ref retrieves) == 1
+            ? new() { DataLimit = 7_000, Reply = "426 Connection closed; transfer aborted" }
+            : null;
+        Guid session = await OpenAsync(maxConnections: 1);
+        bool faulted = false;
+        _service.SessionStateChanged += (_, change) => faulted |= change.State == FtpSessionState.Faulted;
+        string local = Path.Combine(Path.GetTempPath(), $"vela-ftp-norest-dl-{Guid.NewGuid():N}.bin");
+        try
+        {
+            VelaFtpTransferInterruptedException error = await Assert.ThrowsExactlyAsync<VelaFtpTransferInterruptedException>(
+                () => _service.DownloadFileAsync(session, "/norest.bin", local, new Progress<TransferProgress>(), 0, TestContext.CancellationToken));
+            Assert.AreEqual(TransferFailureKind.Transient, TransferRetryPolicy.Classify(error));
+            Assert.IsFalse(faulted);
+
+            await _service.DownloadFileAsync(session, "/norest.bin", local, new Progress<TransferProgress>(), 0, TestContext.CancellationToken);
+            Assert.AreSequenceEqual(SHA256.HashData(payload), SHA256.HashData(await File.ReadAllBytesAsync(local, TestContext.CancellationToken)));
+        }
+        finally
+        {
+            File.Delete(local);
+        }
     }
 
     private sealed class SequentialSource(Stream inner) : Stream

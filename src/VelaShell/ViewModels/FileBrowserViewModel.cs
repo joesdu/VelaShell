@@ -1765,6 +1765,15 @@ public class FileBrowserViewModel : ReactiveObject
     /// 流式进度、完成/失败落状态,随后浮窗按既有规则自动淡出。失败会向上抛,调用方
     /// (编辑器状态栏 / 外部编辑会话)据此提示。必须在 UI 线程调用。
     /// </summary>
+    /// <summary>
+    /// 从消息中心重传外部编辑草稿时用这个面板的连接(见 <see cref="RemoteEditDraftReuploader" />):查远端走它的会话,
+    /// 上传与外部编辑的自动回传同一条路、进传输浮窗。面板没绑会话时为 null。
+    /// </summary>
+    internal IRemoteEditDraftTarget? EditDraftTarget =>
+        _sftpService is null || _sessionId == Guid.Empty
+            ? null
+            : new RemoteFileServiceDraftTarget(_sftpService, _sessionId, UploadEditedFileAsync);
+
     private async Task UploadEditedFileAsync(string localPath, string remotePath)
     {
         if (_sftpService is null)
@@ -3259,6 +3268,8 @@ public class FileBrowserViewModel : ReactiveObject
         // 一次运行内复用已确认完成的源;手动重试/改名另起运行,不跨运行保留缓存。
         StagedRelaySource? stagedSource = null;
         bool remoteCommitRelay = false;
+        // 这一次的起点 offset 是不是自动重试在动过字节之后、按目标上「这次传输自己写下的半截」探出来的。
+        bool resumingOwnPartial = false;
         try
         {
             while (true)
@@ -3270,6 +3281,17 @@ public class FileBrowserViewModel : ReactiveObject
                     item?.Status = TransferStatus.Completed;
                     finalStatus = TransferStatus.Completed;
                     break;
+                }
+
+                // 服务器续不了(FTP 不认 REST / APPE),而目标上那半截正是这一次传输自己刚写下的(重试在动过字节之后续传):
+                // 从头整份重传就是了。不经冲突策略 —— 目标是这一次传输早已选定的、半截也是它自己的;也不算一次重试,
+                // 服务器是当场答的「不支持」,不是链路出了问题。规划时就要续一个已有半截、却续不了的,不走这里:
+                // 那半截不是这次写的,落到下面与「起点对不上」同一条路,按冲突策略处理(异常类型派生自核实失败那一个)。
+                catch (VelaSftpResumeUnsupportedException) when (offset > 0 && resumingOwnPartial)
+                {
+                    offset = 0;
+                    resumingOwnPartial = false;
+                    item?.Status = TransferStatus.InProgress;
                 }
 
                 // 续传起点核实失败 = 目标那半截并不是源文件的开头 —— 文件变了,这是冲突,不是续传。
@@ -3299,6 +3321,7 @@ public class FileBrowserViewModel : ReactiveObject
                     }
                     // 覆盖:整份重传。
                     offset = 0;
+                    resumingOwnPartial = false;
                     item?.Status = TransferStatus.InProgress;
                 }
 
@@ -3331,6 +3354,8 @@ public class FileBrowserViewModel : ReactiveObject
                             ? 0
                             : await NextRetryOffsetAsync(type, localPath, remotePath, source, attemptStart, movedBytes, itemCt,
                                 hasStagedSource: stagedSource is not null);
+                    // 动过字节之后探出来的起点:目标上那半截是这一次传输自己写的(见上面「服务器续不了」那一支)。
+                    resumingOwnPartial = movedBytes && offset > 0;
                 }
             }
         }

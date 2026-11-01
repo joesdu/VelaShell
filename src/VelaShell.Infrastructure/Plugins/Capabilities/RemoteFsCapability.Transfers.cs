@@ -71,6 +71,18 @@ internal sealed partial class RemoteFsCapability
         internal UploadPermissionLease? _permission;
         internal DownloadPermissionLease? _downloadPermission;
         internal bool PermissionRevoked => _permission?.IsRevoked == true || _downloadPermission?.IsRevoked == true;
+
+        /// <summary>
+        /// 这一代的宿主批准已经生效:与阶段移出 <see cref="RemoteTransferPhase.Approval" /> 在同一步登记(见 <see cref="EnterTransferPhase" />)。
+        /// 由 <see cref="_gate" /> 保护;一旦为 true 就不会变回去。
+        /// </summary>
+        internal bool _approvalEffective;
+
+        /// <summary>
+        /// 批准生效之前、收尾之前登记过取消意图(条件撤回,或批准前的 <see cref="RemoteFsCapability.CancelTransferAsync" />)。
+        /// 由 <see cref="_gate" /> 保护。与 <see cref="_approvalEffective" /> 互斥:登记它时一并登记取消意图,批准随后就推进不了。
+        /// </summary>
+        internal bool _cancelledBeforeApproval;
     }
 
     internal int ActiveTransfers
@@ -267,12 +279,81 @@ internal sealed partial class RemoteFsCapability
             if ((!op._snapshot.IsTerminal || !op._snapshot.RemoteStopConfirmed && !op._worker.IsCompleted)
                 && !op._snapshot.CancellationRequested)
             {
+                // 批准还没生效就取消的,与条件撤回同一口径(SDK:批准前的 CancelTransferAsync 也算撤下):这一代不会再被批准,以 Cancelled 收尾。
+                if (!op._snapshot.IsTerminal && !op._approvalEffective) op._cancelledBeforeApproval = true;
                 Update(op, s => s with { State = s.IsTerminal ? s.State : RemoteTransferState.CancelRequested, CancellationRequested = true });
                 RequestStop(op, StopReason.User);
             }
-            // 撤权后只交还清理所需的状态:路径、会话与失败说明(其中可能带着路径)一律不给。
-            return Task.FromResult(op.PermissionRevoked ? op._snapshot with { LocalPath = "", RemotePath = "", SessionId = "", ErrorMessage = null } : op._snapshot);
+            return Task.FromResult(CleanupView(op));
         }
+    }
+
+    /// <summary>宿主实现了条件撤回(<see cref="WithdrawPendingTransferAsync" />),上传与下载同一口径。</summary>
+    public bool SupportsTransferWithdraw => true;
+
+    /// <summary>
+    /// 条件撤回:只在这一代的批准还没生效时撤下。判定与撤下都在任务锁里一步完成 —— 批准生效(<see cref="EnterTransferPhase" />)
+    /// 也在同一把锁里推进阶段,两边谁先拿到锁谁赢,没有「插件读快照、再发取消」之间那一个往返的空当。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 只取任务锁,不碰授权闸:批准生效的那一步是「闸 → 任务」的嵌套(闸里登记批准,经 onApproved 回调在任务锁里推进阶段),
+    /// 任务锁就是两边共同的串行点,这里不引入新的锁序。
+    /// </para>
+    /// <para>
+    /// 结论按 SDK 的判定顺序:批准已生效 → PastApproval(什么都不改);否则批准之前登记过取消 → Withdrawn;否则已经收尾 → AlreadyEnded;
+    /// 否则本次登记取消意图并停下这一代 → Withdrawn。撤下的这一代:排在确认闸后面的等闸随停止令牌取消、不再弹框,已经弹出的确认框随令牌关掉,
+    /// 随后到达的批准在闸里看到令牌已取消、或在任务锁里看到取消意图而作废(<see cref="ConfirmApprovedOrCancelled" />);
+    /// 一个字节都不读写,以 Cancelled 收尾、RemoteStopConfirmed 为 true(收尾分类见 <see cref="FailUpload" />)。
+    /// </para>
+    /// <para>
+    /// 两个标志都只在任务锁里改,且互斥,所以同一代重复调用总得到同一结论(回执丢了原样再调一次即可)。
+    /// 无效或不属于本插件的 id 抛 <see cref="FileNotFoundException" />(能力实例按插件独立);撤权之后与取消一样仍可用于清理,快照按撤权口径脱敏。
+    /// </para>
+    /// </remarks>
+    public Task<RemoteTransferWithdrawResult> WithdrawPendingTransferAsync(string transferId, long expectedGeneration,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        UploadOperation op = FindTransfer(transferId, allowRevokedCleanup: true);
+        lock (op._gate)
+        {
+            if (expectedGeneration <= 0 || expectedGeneration != op._snapshot.Generation)
+                throw new InvalidOperationException("Transfer generation does not match.");
+            RemoteTransferWithdrawOutcome outcome;
+            if (op._approvalEffective)
+            {
+                outcome = RemoteTransferWithdrawOutcome.PastApproval;
+            }
+            else if (op._cancelledBeforeApproval)
+            {
+                outcome = RemoteTransferWithdrawOutcome.Withdrawn;
+            }
+            else if (op._snapshot.IsTerminal)
+            {
+                outcome = RemoteTransferWithdrawOutcome.AlreadyEnded;
+            }
+            else
+            {
+                op._cancelledBeforeApproval = true;
+                Update(op, s => s with { State = RemoteTransferState.CancelRequested, CancellationRequested = true });
+                RequestStop(op, StopReason.User);
+                outcome = RemoteTransferWithdrawOutcome.Withdrawn;
+            }
+            return Task.FromResult(new RemoteTransferWithdrawResult { Outcome = outcome, Snapshot = CleanupView(op) });
+        }
+    }
+
+    /// <summary>
+    /// 取消与条件撤回交还的快照:撤权后只交还清理所需的状态,路径、会话与失败说明(其中可能带着路径)一律不给。调用方须持有任务锁。
+    /// </summary>
+    private static RemoteTransferSnapshot CleanupView(UploadOperation op)
+        => op.PermissionRevoked ? op._snapshot with { LocalPath = "", RemotePath = "", SessionId = "", ErrorMessage = null } : op._snapshot;
+
+    /// <summary>这一代是在批准生效之前被撤下的(条件撤回或批准前的取消)。</summary>
+    private static bool WithdrawnBeforeApproval(UploadOperation op)
+    {
+        lock (op._gate) return op._cancelledBeforeApproval;
     }
 
     public Task<RemoteTransferSnapshot> ResumeTransferAsync(string transferId, RemoteTransferResumeOptions options,
@@ -531,10 +612,12 @@ internal sealed partial class RemoteFsCapability
         try
         {
             // 阶段与下载同一口径:等宿主确认时是 Approval,批准之后才进 Transfer。插件靠它分辨"还没批准"的任务 ——
-            // 用户停止或拒绝时撤掉的只是这些,排队的确认框不再一个个弹(已批准的照常传完)
-            Update(op, s => s with { State = RemoteTransferState.Starting, Phase = RemoteTransferPhase.Approval });
+            // 用户停止或拒绝时撤掉的只是这些,排队的确认框不再一个个弹(已批准的照常传完)。
+            // 回执刚发出、后台流程还没跑到这里就被撤回或取消的,不把 CancelRequested 改回 Starting,也不再往下走。
+            Update(op, s => s with { State = s.CancellationRequested ? s.State : RemoteTransferState.Starting, Phase = RemoteTransferPhase.Approval });
             if (uploadPermissions is null || op._permission is null || string.IsNullOrWhiteSpace(pluginId))
                 throw new PluginPermissionDeniedException("A trusted upload approval is required.");
+            ct.ThrowIfCancellationRequested();
             SshSession target = connections.GetSession(session) ?? throw new PluginSessionNotFoundException(Read(op).SessionId);
             string label = $"{target.ConnectionInfo.Username}@{target.ConnectionInfo.Host}:{target.ConnectionInfo.Port}";
             bool approved = await uploadPermissions.CheckUploadAsync(op._permission, pluginId, label, Read(op).LocalPath,
@@ -703,8 +786,13 @@ internal sealed partial class RemoteFsCapability
     /// </summary>
     private void FailUpload(UploadOperation op, Exception ex, Exception cause, bool writeStopped, bool commitUnknown, bool commitRejected)
     {
+        // 批准生效之前就撤下的(条件撤回、批准前的取消)一律按用户取消收尾 —— 撤回回执已经告诉插件「撤下了、以 Cancelled 收尾」。
+        // 同一拍里先一步定下、还没来得及发布的拒绝、断线、到期或撤权让位给它:那一代同样什么都没传,结论只能有一个。
+        bool withdrawn = WithdrawnBeforeApproval(op);
+        bool revoked = op.PermissionRevoked && !withdrawn;
+        bool denied = ex is PluginPermissionDeniedException && !withdrawn;
         // 撤权优先于其它停止原因,与此前的口径一致:撤权后的到期不再记成到期。
-        StopReason reason = op.PermissionRevoked ? StopReason.None : ReadStopReason(op);
+        StopReason reason = withdrawn ? StopReason.User : revoked ? StopReason.None : ReadStopReason(op);
         bool stopped = writeStopped && !commitUnknown;
         // 断线记 Failed / session-disconnected,不记 Cancelled(#656 之前记的是取消):Cancelled 是「有人不要这次传输了」,
         // 插件与模型按约定不会再发起;断线不是谁的意愿。走到这一分支说明写入已确认停下、提交没发出或被明确拒绝,
@@ -712,18 +800,18 @@ internal sealed partial class RemoteFsCapability
         // 由它决定要不要重试是安全的。提交发出后没等到应答的断线不在这里:那是 commit-unknown / Unknown,不得自动重传。
         RemoteTransferState state = reason == StopReason.Timeout ? RemoteTransferState.TimedOut
             : !stopped ? RemoteTransferState.Unknown
-            : op.PermissionRevoked || ex is PluginPermissionDeniedException ? RemoteTransferState.Failed
+            : revoked || denied ? RemoteTransferState.Failed
             : reason is StopReason.User or StopReason.Disposed ? RemoteTransferState.Cancelled
             : RemoteTransferState.Failed;
-        string code = op.PermissionRevoked ? "permission-revoked"
-            : ex is PluginPermissionDeniedException ? "permission-denied"
+        string code = revoked ? "permission-revoked"
+            : denied ? "permission-denied"
             : commitUnknown ? "commit-unknown"
             : StopCode(reason)
               ?? (commitRejected ? cause is NotSupportedException ? "not-supported" : "commit-rejected"
                   : ex is SourceChangedException ? "source-changed"
                   : ex is InsufficientSnapshotSpaceException ? "insufficient-space" : "upload-failed");
-        string message = op.PermissionRevoked ? "Upload authorization was revoked."
-            : ex is PluginPermissionDeniedException ? "A trusted host upload approval was not granted."
+        string message = revoked ? "Upload authorization was revoked."
+            : denied ? "A trusted host upload approval was not granted."
             : commitUnknown ? "The destination commit could not be confirmed; do not retry automatically."
             : !stopped ? "The remote write did not confirm it stopped; do not retry automatically."
             : StopText(reason) is { } stop ? stop + "; the destination was not committed."
@@ -868,12 +956,14 @@ internal sealed partial class RemoteFsCapability
     /// AI 插件按「Approval 才撤」的口径在停止时撤掉等确认的任务,读到旧阶段就把用户刚批准的那个也撤了
     /// (插件已改为撤前先 GetTransferAsync,但取到的还是 Approval,挡不住)。取消已经登记的不推进:
     /// 那一项随后在 <see cref="ConfirmApprovedOrCancelled" /> 里以 Cancelled 收尾。
+    /// 这一步同时记下「这一代的批准已经生效」,条件撤回(<see cref="WithdrawPendingTransferAsync" />)在同一把锁里按它判 PastApproval。
     /// </remarks>
     private static void EnterTransferPhase(UploadOperation op)
     {
         lock (op._gate)
         {
             if (op._snapshot.IsTerminal || op._snapshot.CancellationRequested || op._snapshot.Phase != RemoteTransferPhase.Approval) return;
+            op._approvalEffective = true;
             Update(op, s => s with { State = RemoteTransferState.Queued, Phase = RemoteTransferPhase.Transfer });
         }
     }
@@ -881,9 +971,9 @@ internal sealed partial class RemoteFsCapability
     /// <summary>
     /// 批准之后、碰源文件与传输槽之前,在任务自己的锁里定下「传还是不传」:已经要求取消的(取消与批准几乎同时到)
     /// 以 Cancelled 收尾、一个字节都不传;否则确保阶段已是 Transfer(授权闸没替我们推进时补上)。
-    /// 取消请求(<see cref="CancelTransferAsync" />)在同一把锁里登记意图并发出停止,所以两边只会有一个先后:
-    /// 取消先到就一个字节都不传(不会「撤了还在传」);批准先到,插件此后读到的就已经是 Transfer 阶段,
-    /// 不会再按「还在等确认」把它撤掉。插件读快照与发取消之间那一个往返的空当这里合不上,要 SDK 提供条件取消。
+    /// 取消请求(<see cref="CancelTransferAsync" />)与条件撤回(<see cref="WithdrawPendingTransferAsync" />)在同一把锁里登记意图并发出停止,
+    /// 所以两边只会有一个先后:取消先到就一个字节都不传(不会「撤了还在传」);批准先到,插件此后读到的就已经是 Transfer 阶段,
+    /// 条件撤回也只会答 PastApproval、什么都不改。插件「先读快照、再按代次取消」的老路仍有一个往返的空当,条件撤回没有。
     /// </summary>
     private static void ConfirmApprovedOrCancelled(UploadOperation op, CancellationToken ct)
     {

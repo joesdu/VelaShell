@@ -15,7 +15,7 @@ public enum TransferFailureKind
     Permanent,
 
     /// <summary>
-    /// 链路上的临时问题:断线、超时、通道被关、FTP 数据连接掉了。等一会儿在原会话上再试往往就过去了。
+    /// 链路上的临时问题:断线、超时、通道被关、FTP 数据连接传到一半断了(控制连接还在)。等一会儿在原会话上再试往往就过去了。
     /// </summary>
     Transient,
 
@@ -117,6 +117,8 @@ public static class TransferRetryPolicy
         // —— FTP。证书没被信任是连接异常的子类,但要人来点「信任」才过得去。
         VelaFtpCertificateException or VelaFtpAuthenticationException => TransferFailureKind.Permanent,
         VelaFtpConnectionException => TransferFailureKind.Transient,
+        // 传输中途数据连接断了、控制连接还应答:会话没掉线,这一个文件值得再试(续传与否照常由续传探测与起点核实定)。
+        VelaFtpTransferInterruptedException => TransferFailureKind.Transient,
         VelaFtpClientException => TransferFailureKind.Permanent,
 
         // —— 插件的文件协议(S3 之类)。

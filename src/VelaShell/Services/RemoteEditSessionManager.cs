@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
 using VelaShell.ViewModels;
@@ -77,7 +78,7 @@ public sealed class RemoteEditRequest
     /// <summary>哪台服务器(界面上的名字),写进状态标记,崩溃后在消息中心说清草稿是哪儿的;不知道时为 null。</summary>
     public string? Server { get; init; }
 
-    /// <summary>连接配置;不知道时为 null。写进状态标记,留给以后从消息中心直接重传用。</summary>
+    /// <summary>连接配置;不知道时为 null。写进状态标记:崩溃或回传失败留下草稿时,消息中心的「重新上传」按它找连接。</summary>
     public Guid? ProfileId { get; init; }
 }
 
@@ -172,6 +173,8 @@ public static class RemoteEditSessionManager
         }
         RemoteEditLog.Write("open",
                             $"new {request.RemotePath} -> {localPath} (openWith={request.OpenWith}, autoUpload={request.AutoUpload})");
+        // 记下远端此刻的样子(长度与修改时间):崩溃之后从消息中心重传草稿时,拿它看远端在这之后有没有被别人改过。
+        await session.CaptureRemoteBaselineAsync();
         await session.LaunchAsync();
         return session;
     }
@@ -401,6 +404,15 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>上一次写进标记的状态,同一个状态不重复写(一次保存会来好几个事件)。</summary>
     private string? _markedState;
 
+    /// <summary>上一次写下的标记(在 <see cref="_markerGate" /> 下读写):补远端样子时照它重写一遍。</summary>
+    private RemoteEditMarker? _marker;
+
+    /// <summary>
+    /// 本地副本最近一次与远端一致时,远端文件的长度与修改时间(<see cref="CaptureRemoteBaselineAsync" /> 查的,在 <see cref="_markerGate" /> 下读写);
+    /// 查不到为 null。每次写标记都带上它。
+    /// </summary>
+    private (long Length, DateTime ModifiedUtc)? _remoteBaseline;
+
     /// <summary>
     /// 最近一份与远端一致的副本的长度与修改时间(<see cref="MarkClean" /> 记下的,在 <see cref="_markerGate" /> 下读写);
     /// 副本还是它,就没有可传的东西。
@@ -588,6 +600,7 @@ public sealed class RemoteEditSession : IDisposable
             if (await RemoteEditSessionManager.FetchAsync(_request, LocalPath, cancellationToken))
             {
                 MarkClean(Snapshot());
+                await CaptureRemoteBaselineAsync();
             }
         }
         catch (Exception ex)
@@ -763,6 +776,8 @@ public sealed class RemoteEditSession : IDisposable
                     }
                     _lastUploadFailed = false;
                     _uploadCount++;
+                    // 远端现在就是这一份:记下它的长度与修改时间,之后的标记(干净或又变脏)都带着
+                    await CaptureRemoteBaselineAsync().ConfigureAwait(false);
                     State = RemoteEditState.Watching;
                     if (Volatile.Read(ref _pendingSave) == 0)
                     {
@@ -870,9 +885,45 @@ public sealed class RemoteEditSession : IDisposable
             {
                 return;
             }
-            RemoteEditDrafts.Write(Path.GetDirectoryName(LocalPath)!, new RemoteEditMarker(
-                state, Path.GetFileName(LocalPath), RemotePath, _request.Server, _request.ProfileId, length, lastWriteUtc));
+            _marker = new RemoteEditMarker(state, Path.GetFileName(LocalPath), RemotePath, _request.Server, _request.ProfileId, length,
+                lastWriteUtc, _remoteBaseline?.Length, _remoteBaseline?.ModifiedUtc);
+            RemoteEditDrafts.Write(Path.GetDirectoryName(LocalPath)!, _marker);
             _markedState = state;
+        }
+    }
+
+    /// <summary>
+    /// 查一次远端文件此刻的长度与修改时间,记成「本地与远端最近一次一致时远端的样子」,并把它补进已经写下的标记。
+    /// 只在本地副本刚与远端一致时调(下载落地、干净地重新下载、传上去之后)。尽力而为,从不抛:查不到就记成不知道 ——
+    /// 从消息中心重传这份草稿时,不知道就一律先问。
+    /// </summary>
+    /// <remarks>
+    /// 传上去与查之间若恰好有别人改了远端,记下的就是别人的那一份,之后重传草稿不会问 —— 这一下只有一次往返那么长,不另外防。
+    /// 反过来的乱序(早先那次查询的结果比后来的晚到)只会让记下的比远端旧,重传时多问一次,不会少问。
+    /// </remarks>
+    internal async Task CaptureRemoteBaselineAsync()
+    {
+        (long Length, DateTime ModifiedUtc)? baseline = null;
+        try
+        {
+            RemoteFileInfo? info = await _request.SftpService.GetFileInfoAsync(SessionId, RemotePath).ConfigureAwait(false);
+            if (info is { IsDirectory: false })
+            {
+                baseline = (info.Size, info.LastModified.ToUniversalTime());
+            }
+        }
+        catch (Exception ex)
+        {
+            RemoteEditLog.Write("baseline", $"stat failed {RemotePath}: {ex.Message}");
+        }
+        lock (_markerGate)
+        {
+            _remoteBaseline = baseline;
+            if (_marker is { } marker)
+            {
+                _marker = marker with { RemoteLength = baseline?.Length, RemoteModifiedUtc = baseline?.ModifiedUtc };
+                RemoteEditDrafts.Write(Path.GetDirectoryName(LocalPath)!, _marker);
+            }
         }
     }
 

@@ -6,6 +6,7 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Net;
 using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Ssh;
+using VelaShell.Ssh.Config;
 
 namespace VelaShell.Infrastructure.Import;
 
@@ -31,6 +32,12 @@ public sealed record SshConfigExport(string Content, int Exported, int Skipped);
 /// 「放开老算法」在 ssh_config 里没有对应的开关:没写自定义清单的类别写成 <c>+老算法</c>;写了 <c>+</c> 的并成一条;
 /// 写了 <c>-</c> / <c>^</c> 的(OpenSSH 一条里只能有一种前缀)写成算出来的完整清单;它放开的 SHA-1 RSA 用户签名写成
 /// <c>PubkeyAcceptedKeyTypes +ssh-rsa</c>(OpenSSH 8.5 改名为 <c>PubkeyAcceptedAlgorithms</c>、旧名留作别名:写旧名新旧版本都认)。主目录下的路径写成 <c>~/…</c>,换台机器也找得到。
+/// </para>
+/// <para>
+/// 值(路径、用户名、agent 端点、转发的两头)一律经 SSH 库的 <see cref="SshConfigFile.TryFormatArgument" /> 写:ssh 与 VelaShell 读回来都是原值
+/// (velashell-docs spec/09 §7.4)—— 命名管道 <c>\\.\pipe\x</c> 写成 <c>\\\\.\pipe\x</c>,UNC 路径同理,普通的 Windows 路径原样,带空白或 <c>#</c> 的加双引号。
+/// 〔历史〕曾经只在带空白或 <c>#</c> 时加引号、反斜杠原样写:ssh 把 <c>\\.\pipe\x</c> 读成 <c>\.\pipe\x</c>,用不了那个 agent。
+/// 值里有换行(ssh_config 一行装不下,硬写的话下一行就成了另一条设置)的不写,改写一行说明注释。
 /// </para>
 /// </remarks>
 public static class SshConfigExporter
@@ -68,9 +75,10 @@ public static class SshConfigExporter
     private static void WriteHost(StringBuilder text, SessionProfile session, Dictionary<Guid, string> aliases, SessionArchive archive, string home)
     {
         void Line(string keyword, string value) => text.Append("    ").Append(keyword).Append(' ').Append(value).Append('\n');
+        void Setting(string keyword, string value) => WriteSetting(text, keyword, value);
 
         text.Append("Host ").Append(aliases[session.Id]).Append('\n');
-        Line("HostName", HostAddress.Normalize(session.Host));
+        Setting("HostName", HostAddress.Normalize(session.Host));
         if (session.Port != 22)
         {
             Line("Port", session.Port.ToString(CultureInfo.InvariantCulture));
@@ -83,7 +91,7 @@ public static class SshConfigExporter
         string user = session.Username.Length > 0 ? session.Username : shared?.Username ?? string.Empty;
         if (user.Length > 0)
         {
-            Line("User", Quote(user));
+            Setting("User", user);
         }
 
         AuthMethod auth = shared?.AuthMethod ?? session.AuthMethod;
@@ -91,11 +99,11 @@ public static class SshConfigExporter
         string? certificate = shared is null ? session.CertificatePath : shared.CertificatePath;
         if (auth is AuthMethod.PrivateKey or AuthMethod.Certificate && key is { Length: > 0 })
         {
-            Line("IdentityFile", Quote(Portable(key, home)));
+            Setting("IdentityFile", Portable(key, home));
         }
         if (auth == AuthMethod.Certificate && certificate is { Length: > 0 })
         {
-            Line("CertificateFile", Quote(Portable(certificate, home)));
+            Setting("CertificateFile", Portable(certificate, home));
         }
         if (auth == AuthMethod.KeyStore && session.KeyStoreKey is { } keyStoreKey)
         {
@@ -106,7 +114,7 @@ public static class SshConfigExporter
             // 拿不到那把钥时 ssh 不出示它。
             if (session.CertificatePath is { Length: > 0 } keyStoreCertificate)
             {
-                Line("CertificateFile", Quote(Portable(keyStoreCertificate, home)));
+                Setting("CertificateFile", Portable(keyStoreCertificate, home));
             }
         }
 
@@ -117,15 +125,16 @@ public static class SshConfigExporter
 
         // 按连接指定的 agent 端点:认证走 agent 时写成 IdentityAgent;转发时 ForwardAgent 直接写端点而不是 yes ——
         // 两处都明写,读这份配置的人(与老版本的 ssh)不必去推「yes 转发的是哪个 agent」。端点只对 agent 认证与转发有意义,别的情形不写。
+        // 命名管道原样交给 Setting:\\.\pipe\x 由它写成 \\\\.\pipe\x(ssh_config 里 \\ 是转义,原样写出去 ssh 读成 \.\pipe\x)。
         string? agentEndpoint = SshAgentEndpoints.Normalize(session.Ssh?.AgentEndpoint) is { } endpoint
-            ? Quote(SshAgentEndpoints.IsPipe(endpoint) ? endpoint : Portable(SshAgentEndpoints.Resolve(endpoint, home)!, home))
+            ? SshAgentEndpoints.IsPipe(endpoint) ? endpoint : Portable(SshAgentEndpoints.Resolve(endpoint, home)!, home)
             : null;
         if (auth == AuthMethod.Agent)
         {
             // 系统默认的 agent 也明写成 `IdentityAgent SSH_AUTH_SOCK`(ssh_config(5):这个字面量就是「环境变量 SSH_AUTH_SOCK 指的那个」,
             // 与不写同义,ssh 照旧):不写的话这个块里既没有 IdentityFile 也没有 IdentityAgent,再导入回来就成了密码认证。
             // 导入那边认这个字面量,与环境变量设没设无关(Windows 上通常没设)。
-            Line("IdentityAgent", agentEndpoint ?? "SSH_AUTH_SOCK");
+            Setting("IdentityAgent", agentEndpoint ?? "SSH_AUTH_SOCK");
         }
 
         if (session.Ssh is { } ssh)
@@ -136,7 +145,7 @@ public static class SshConfigExporter
             }
             if (ssh.AgentForwarding)
             {
-                Line("ForwardAgent", agentEndpoint ?? "yes");
+                Setting("ForwardAgent", agentEndpoint ?? "yes");
             }
             if (ssh.X11Forwarding)
             {
@@ -184,7 +193,8 @@ public static class SshConfigExporter
     }
 
     /// <summary>
-    /// 隧道 → 三种转发关键字。套接字那头写路径(<c>LocalForward /本机/套接字 /服务器/套接字</c>);
+    /// 隧道 → 三种转发关键字。套接字那头写路径(<c>LocalForward /本机/套接字 /服务器/套接字</c>、<c>RemoteForward 2375 /本机/套接字</c>),
+    /// 本地与远程转发的两头各自是端口或路径;
     /// 远程动态写成不给目标的 <c>RemoteForward</c>,放行名单写成这台主机的 <c>PermitRemoteOpen</c>。
     /// </summary>
     /// <remarks>
@@ -195,13 +205,36 @@ public static class SshConfigExporter
     /// <para>
     /// <c>PermitRemoteOpen</c> 在 ssh_config 里是按主机的一条,这台主机的远程动态转发只能共用一份名单:
     /// 第一条的名单写出来,名单不同的那几条改写成注释 —— 合成一份(取并集)会放宽收得更紧的那一条。
-    /// 只有一头是套接字的远程转发(隧道服务不建)、未来新增的隧道类型同样只写注释。
+    /// 未来新增的隧道类型这三个关键字表达不了,不写。
+    /// </para>
+    /// <para>
+    /// 套接字那一头照 ssh 认的样子写(<see cref="SocketSide" />):本机的 Windows 路径写成 <c>[C:/…]</c>。
+    /// 〔历史〕曾经原样写 <c>C:/…</c> / <c>C:\…</c>:Win32-OpenSSH 报 Bad forwarding specification,整份配置都不读。
     /// </para>
     /// </remarks>
     private static void WriteForwards(StringBuilder text, IReadOnlyList<TunnelConfig> tunnels)
     {
-        void Line(string keyword, string value) => text.Append("    ").Append(keyword).Append(' ').Append(value).Append('\n');
-        void Skipped(string line, string why) => text.Append("    # ").Append(line).Append("  (").Append(why).Append(")\n");
+        // 转发的每一头都是一个参数(套接字路径可能带空格):逐个经 TryFormatArgument 写;有一头写不出来(带换行)的整条改写成说明注释。
+        void Line(string keyword, params string[] arguments) => WriteArguments(text, keyword, arguments);
+        void Skipped(string keyword, string[] arguments, string why) =>
+            text.Append("    # ").Append(keyword).Append(' ').Append(Comment(string.Join(' ', arguments.Select(Printable))))
+                .Append("  (").Append(why).Append(")\n");
+
+        // 一头:套接字(照 SocketSide 写;写不出来时为 null)或 主机:端口。
+        string? Side(string? socket, bool local, string host, uint port) =>
+            string.IsNullOrWhiteSpace(socket) ? Endpoint(host, port) : SocketSide(socket.Trim(), local);
+
+        // 有一头的套接字路径写不出来(方括号里不能再有 ]),整条改写成说明注释 —— 写出去的话 ssh 整份配置不读。
+        void Forward(string keyword, params string?[] sides)
+        {
+            if (sides.Any(static side => side is null))
+            {
+                text.Append("    # ").Append(keyword)
+                    .Append("  (VelaShell: a socket path contains ']' as well as ':' or '\\'; ssh_config cannot write it)\n");
+                return;
+            }
+            WriteArguments(text, keyword, [.. sides.Select(static side => side!)]);
+        }
 
         IReadOnlyList<string>? permit = null;
         foreach (TunnelConfig tunnel in tunnels)
@@ -209,23 +242,15 @@ public static class SshConfigExporter
             switch (tunnel.Type)
             {
                 case TunnelType.LocalForward:
-                    Line("LocalForward",
-                        $"{Socket(tunnel.LocalSocketPath) ?? Endpoint(tunnel.LocalHost, tunnel.LocalPort)} " +
-                        $"{Socket(tunnel.RemoteSocketPath) ?? Endpoint(tunnel.RemoteHost, tunnel.RemotePort)}");
-                    break;
-
-                case TunnelType.RemoteForward when tunnel.LocalSocketPath is not null && tunnel.RemoteSocketPath is not null:
-                    Line("RemoteForward", $"{Socket(tunnel.RemoteSocketPath)} {Socket(tunnel.LocalSocketPath)}");
-                    break;
-
-                case TunnelType.RemoteForward when tunnel.LocalSocketPath is null && tunnel.RemoteSocketPath is null:
-                    Line("RemoteForward", $"{Endpoint(tunnel.RemoteHost, tunnel.RemotePort)} {Endpoint(tunnel.LocalHost, tunnel.LocalPort)}");
+                    Forward("LocalForward",
+                        Side(tunnel.LocalSocketPath, local: true, tunnel.LocalHost, tunnel.LocalPort),
+                        Side(tunnel.RemoteSocketPath, local: false, tunnel.RemoteHost, tunnel.RemotePort));
                     break;
 
                 case TunnelType.RemoteForward:
-                    Skipped($"RemoteForward {Socket(tunnel.RemoteSocketPath) ?? Endpoint(tunnel.RemoteHost, tunnel.RemotePort)} " +
-                            $"{Socket(tunnel.LocalSocketPath) ?? Endpoint(tunnel.LocalHost, tunnel.LocalPort)}",
-                        "VelaShell: a remote forward needs Unix sockets on both ends or on neither");
+                    Forward("RemoteForward",
+                        Side(tunnel.RemoteSocketPath, local: false, tunnel.RemoteHost, tunnel.RemotePort),
+                        Side(tunnel.LocalSocketPath, local: true, tunnel.LocalHost, tunnel.LocalPort));
                     break;
 
                 case TunnelType.DynamicForward:
@@ -237,7 +262,7 @@ public static class SshConfigExporter
                         string forward = Endpoint(tunnel.RemoteHost, tunnel.RemotePort);
                         if (tunnel.PermitRemoteOpen is not { Count: > 0 } rules)
                         {
-                            Skipped($"RemoteForward {forward}", "VelaShell: no PermitRemoteOpen allow list");
+                            Skipped("RemoteForward", [forward], "VelaShell: no PermitRemoteOpen allow list");
                         }
                         else if (permit is null || permit.SequenceEqual(rules, StringComparer.OrdinalIgnoreCase))
                         {
@@ -246,8 +271,8 @@ public static class SshConfigExporter
                         }
                         else
                         {
-                            Skipped($"RemoteForward {forward}",
-                                $"VelaShell: its PermitRemoteOpen ({string.Join(' ', rules)}) differs; ssh_config allows one list per host");
+                            Skipped("RemoteForward", [forward],
+                                $"VelaShell: its PermitRemoteOpen ({Comment(string.Join(' ', rules))}) differs; ssh_config allows one list per host");
                         }
                         break;
                     }
@@ -258,12 +283,66 @@ public static class SshConfigExporter
 
         if (permit is not null)
         {
-            Line("PermitRemoteOpen", string.Join(' ', permit));
+            WriteArguments(text, "PermitRemoteOpen", permit);
         }
     }
 
-    /// <summary>套接字路径(带空白的加引号);不是套接字时为 <see langword="null" />。</summary>
-    private static string? Socket(string? path) => string.IsNullOrWhiteSpace(path) ? null : Quote(path.Trim());
+    /// <summary>
+    /// 一行设置,值经 <see cref="SshConfigFile.TryFormatArgument" /> 写;值里有换行的写不进 ssh_config,改写成一行不带值的说明注释。
+    /// </summary>
+    private static void WriteSetting(StringBuilder text, string keyword, string value) => WriteArguments(text, keyword, [value]);
+
+    /// <summary>一行设置,每个参数各经 <see cref="SshConfigFile.TryFormatArgument" /> 写,以一个空格分隔;有一个写不出来就整行改写成说明注释。</summary>
+    private static void WriteArguments(StringBuilder text, string keyword, IReadOnlyList<string> arguments)
+    {
+        List<string> formatted = [];
+        foreach (string argument in arguments)
+        {
+            if (!SshConfigFile.TryFormatArgument(argument, out string? one))
+            {
+                text.Append("    # ").Append(keyword).Append("  (VelaShell: the value contains a line break; ssh_config cannot hold it)\n");
+                return;
+            }
+            formatted.Add(one);
+        }
+        text.Append("    ").Append(keyword).Append(' ').Append(string.Join(' ', formatted)).Append('\n');
+    }
+
+    /// <summary>写进注释的一个参数:写得出来就写成取消注释即可用的样子,写不出来的照原文(换行由 <see cref="Comment" /> 去掉)。</summary>
+    private static string Printable(string argument) => SshConfigFile.TryFormatArgument(argument, out string? text) ? text : argument;
+
+    /// <summary>注释里的原文:换行与 NUL 换成空格,免得注释后面接出一行设置。</summary>
+    private static string Comment(string line) => line.Replace('\r', ' ').Replace('\n', ' ').Replace('\0', ' ');
+
+    /// <summary>
+    /// 转发里套接字那一头写成 ssh 认的样子(velashell-docs spec/09 §7.4 对 Win32-OpenSSH 9.5 的观察);写不出来时为 <see langword="null" />。
+    /// </summary>
+    /// <param name="path">套接字路径。</param>
+    /// <param name="local">本机这一头(<see cref="TunnelConfig.LocalSocketPath" />);服务器那一头(Unix 路径)不换分隔符。</param>
+    /// <remarks>
+    /// <para>
+    /// ssh 只把含 <c>/</c> 的一头当套接字,而路径里有 <c>:</c> 时它把 <c>:</c> 当主机与端口的分隔(<c>C:/x.sock</c> 加不加引号都报
+    /// Bad forwarding specification,整份配置不读),不在方括号里的 <c>\</c> 又被它当转义去掉。整个放进方括号(<c>[C:/x.sock]</c>)时
+    /// 方括号里的原样是路径 —— 所以本机的 Windows 路径先把 <c>\</c> 换成 <c>/</c>(<c>C:\Users\me\a.sock</c> 与 <c>C:/Users/me/a.sock</c>
+    /// 在 Windows 上是同一个文件),再连同别的含 <c>:</c> 或 <c>\</c> 的路径一起放进方括号;别的原样。
+    /// </para>
+    /// <para>
+    /// 方括号里不能再有 <c>]</c>(ssh 不认),这样的路径写不出来。SSH 库读 <c>[…]</c> 的规则相同(<c>SshConfigForward</c>)。
+    /// </para>
+    /// </remarks>
+    internal static string? SocketSide(string path, bool local)
+    {
+        string value = local && IsWindowsDrivePath(path) ? path.Replace('\\', '/') : path;
+        if (value.AsSpan().IndexOfAny(':', '\\') < 0)
+        {
+            return value;
+        }
+        return value.Contains(']', StringComparison.Ordinal) ? null : $"[{value}]";
+    }
+
+    /// <summary><c>C:\…</c> / <c>C:/…</c> 这样带盘符的完整路径。</summary>
+    private static bool IsWindowsDrivePath(string path) =>
+        path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/';
 
     /// <summary>一个算法类别写成什么;不用写(默认)时为 <see langword="null" />。规则见类型说明。</summary>
     internal static string? AlgorithmLine(SshAlgorithmKind kind, string? spec, bool legacy)
@@ -317,7 +396,10 @@ public static class SshConfigExporter
         return names.Length == 0 ? null : prefix + string.Join(',', names);
     }
 
-    /// <summary>别名:连接名(没有就用主机),空白与 ssh_config 里另有含义的字符换成 <c>-</c>,重名加序号。</summary>
+    /// <summary>
+    /// 别名:连接名(没有就用主机),空白与 ssh_config 里另有含义的字符换成 <c>-</c>,重名加序号。
+    /// 〔历史〕单引号与反斜杠曾经留着:<c>Host it's</c> 在 ssh 里是引号没配对,整份配置报错(spec/09 §7.4);别名带反斜杠时 <c>Host</c> 与 <c>ProxyJump</c> 读出来的也不是这个名字。
+    /// </summary>
     private static string UniqueAlias(SessionProfile session, HashSet<string> used)
     {
         string baseName = Sanitize(session.Name) is { Length: > 0 } name ? name
@@ -333,7 +415,7 @@ public static class SshConfigExporter
 
     private static string Sanitize(string value) =>
         new string([.. value.Trim().Select(static c =>
-            char.IsWhiteSpace(c) || char.IsControl(c) || c is '*' or '?' or '!' or ',' or '#' or '"' or '=' or '%' ? '-' : c)])
+            char.IsWhiteSpace(c) || char.IsControl(c) || c is '*' or '?' or '!' or ',' or '#' or '"' or '\'' or '\\' or '=' or '%' ? '-' : c)])
             .Trim('-');
 
     /// <summary>主目录下的路径写成 <c>~/…</c>(正斜杠),换台机器、换个系统也找得到;别处的原样。</summary>
@@ -350,9 +432,6 @@ public static class SshConfigExporter
         return path;
     }
 
-    /// <summary>带空白或 <c>#</c> 的值加双引号(ssh_config 认引号)。</summary>
-    private static string Quote(string value) =>
-        value.Any(static c => char.IsWhiteSpace(c) || c == '#') ? $"\"{value}\"" : value;
 
     /// <summary><c>主机:端口</c>(IPv6 加方括号);主机为空时只写端口。</summary>
     private static string Endpoint(string host, uint port) =>

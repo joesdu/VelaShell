@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using ReactiveUI;
 using ReactiveUI.Primitives;
+using VelaShell.Core.Data;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Sync;
 
@@ -14,12 +15,16 @@ namespace VelaShell.ViewModels;
 public class SyncViewModel : ReactiveObject
 {
     private readonly IGistSyncService _syncService;
+    private readonly IMasterPasswordGate? _masterPassword;
     private SyncSettings _config = new();
 
     /// <summary>注入同步服务并构建各同步/配置命令(仅在非忙碌状态下可执行)。</summary>
-    public SyncViewModel(IGistSyncService syncService)
+    /// <param name="syncService">同步服务。</param>
+    /// <param name="masterPassword">主密码闸口:锁着时手动同步、存令牌 / 口令先弹解锁框;没有时不过闸。</param>
+    public SyncViewModel(IGistSyncService syncService, IMasterPasswordGate? masterPassword = null)
     {
         _syncService = syncService ?? throw new ArgumentNullException(nameof(syncService));
+        _masterPassword = masterPassword;
         IObservable<bool> notBusy = this.WhenAnyValue(x => x.IsBusy, busy => !busy);
         SaveConfigCommand = ReactiveCommand.CreateFromTask(SaveConfigAsync, notBusy);
         SyncNowCommand = ReactiveCommand.CreateFromTask(() => RunAsync(_syncService.SyncNowAsync), notBusy);
@@ -226,6 +231,12 @@ public class SyncViewModel : ReactiveObject
         _config.SyncProfiles = SyncProfiles;
         _config.SyncSnippets = SyncSnippets;
         _config.SyncLayoutTemplates = SyncLayoutTemplates;
+        // 主密码锁着时新的令牌 / 口令加不了密:先弹解锁框,取消就这次不存、明说(别的配置也不存,免得半份)。
+        if ((!string.IsNullOrWhiteSpace(TokenInput) || !string.IsNullOrEmpty(PassphraseInput))
+            && _masterPassword is { } gate && !await gate.EnsureUnlockedAsync(interactive: true))
+        {
+            throw new SecretsLockedException(Strings.Get("MasterPassword_SecretNotSaved"));
+        }
         _syncService.ApplyToken(_config, TokenInput);
 
         // 口令:输入了新值才更新;留空保持已保存值不变。
@@ -249,6 +260,12 @@ public class SyncViewModel : ReactiveObject
             // 同步前先把界面当前配置落盘:防止“在输入框填了令牌/口令,
             // 没点保存就直接点立即同步”导致输入被静默丢弃(用户实际踩过的坑)。
             await SaveConfigCoreAsync();
+            // 手动同步是交互式的:锁着就弹解锁框;取消则这次不同步(服务那边也会如实报「已锁定」)。
+            if (_masterPassword is { } gate && !await gate.EnsureUnlockedAsync(interactive: true))
+            {
+                Status = Strings.Get("SyncSvc_Locked");
+                return;
+            }
             SyncResult result = await Task.Run(() => operation(CancellationToken.None));
             Status = result.Message;
             _config = await _syncService.GetSyncSettingsAsync();

@@ -55,7 +55,8 @@ public interface ISftpService : IAsyncDisposable
     /// <para>
     /// <paramref name="resumeOffset" /> &gt; 0 表示断点续传,语义与 <see cref="UploadFileAsync" /> 相同:
     /// 那个数只决定「要不要试着续」,真正的起点由实现按目标此刻的状态重新核实(可能回退、可能整份重传),
-    /// 核实不通过抛 <c>VelaSftpResumeMismatchException</c>。续传要能在源里来回定位,
+    /// 核实不通过抛 <c>VelaSftpResumeMismatchException</c>;服务器根本续不了(FTP 不认 REST / APPE)抛它的派生类
+    /// <c>VelaSftpResumeUnsupportedException</c>,下载续传同样如此,两种情形目标都还没被碰过。续传要能在源里来回定位,
     /// 所以此时 <paramref name="source" /> <b>必须可 Seek</b>,否则抛 <see cref="ArgumentException" />;
     /// 实现返回时源的位置不做保证。
     /// </para>

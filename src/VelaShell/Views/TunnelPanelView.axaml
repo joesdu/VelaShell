@@ -457,8 +457,8 @@
                      FontSize="{DynamicResource VelaFontSize11}" Margin="6,0,0,0" />
         </CheckBox>
 
-        <!-- Unix 域套接字(只有本地 / 远程转发有):本地转发两头各自可以是套接字,填了路径的那头就不再用上面的端口 / 主机,
-             那几栏随之置灰;远程转发两头必须同时是套接字(SSH 库只给了这一种组合)。
+        <!-- Unix 域套接字(只有本地 / 远程转发有):两头各自可以是套接字,填了路径的那头就不再用上面的端口 / 主机,
+             那几栏随之置灰;远程转发也一样(服务器的端口回连到本机套接字,或服务器的套接字回连到本机端口)。
              用途:直接操作远端的 docker.sock、数据库套接字,远端不必开任何 TCP 端口;本机这头按文件权限隔离。 -->
         <CheckBox Name="UnixSocketOption"
                   IsChecked="{Binding NewUseUnixSocket}"

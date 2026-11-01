@@ -93,6 +93,8 @@ public static class PluginServiceCollectionExtensions
                 SystemPrefersDark = sp.GetService<SystemDarkModeProbe>(),
                 DataStore = sp.GetService<IPluginDataStore>(),
                 SecretProtector = sp.GetService<Core.Data.ISecretProtector>(),
+                // 主密码锁着:插件机密先等交互式解锁;信任库等解锁后才读(见 PluginManagerOptions.MasterPassword)。
+                MasterPassword = sp.GetService<Core.Data.IMasterPasswordGate>(),
                 Clipboard = sp.GetService<PluginSdk.Clipboard.IClipboardApi>(),
                 EmbedHost = sp.GetService<Plugins.Isolated.IPluginEmbedHost>(),
                 TerminalFactory = sp.GetService<Func<string, IPluginLogger, PluginSdk.Terminal.ITerminalApi>>(),

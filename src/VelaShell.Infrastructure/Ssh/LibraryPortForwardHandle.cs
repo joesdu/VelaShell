@@ -124,10 +124,10 @@ internal sealed class LibraryPortForwardHandle : IPortForwardHandle
 
             PortForwardKind.Dynamic => LocalPortForwarder.StartDynamic(connection, LocalOptions(request, boundHost)),
 
-            // 两头都是套接字(-R /服务器/路径:/本机/路径):SSH 库的远程转发只有这一种套接字组合。
-            PortForwardKind.Remote when request is { BoundSocketPath: { } serverSocket, TargetSocketPath: { } localSocket } =>
-                await RemotePortForwarder.StartUnixSocketAsync(
-                    connection, localSocket, serverSocket, RemoteOptions(request, boundHost), cancellationToken).ConfigureAwait(false),
+            // 本机这头是套接字(-R 端口或服务器套接字:/本机/路径);服务器那头是端口还是套接字由参数里的 ListenSocketPath 定。
+            PortForwardKind.Remote when request.TargetSocketPath is { } localSocket =>
+                await RemotePortForwarder.StartToUnixSocketAsync(
+                    connection, localSocket, RemoteOptions(request, boundHost), cancellationToken).ConfigureAwait(false),
 
             PortForwardKind.Remote => await RemotePortForwarder.StartAsync(
                 connection, ResolveOutboundHost(targetHost), (int)request.TargetPort!,
@@ -155,11 +155,13 @@ internal sealed class LibraryPortForwardHandle : IPortForwardHandle
         MaxBytesPerSecond = request.MaxBytesPerSecond,
     };
 
-    /// <summary>远程转发的参数:服务端的绑定地址与端口(原样)、限速。</summary>
+    /// <summary>远程转发的参数:服务端的绑定地址与端口(原样),或服务端监听的套接字路径;限速。</summary>
+    /// <remarks>设了套接字路径时库不再看地址与端口,端口照样带上(那一栏可能是用户没再管的旧值,库不用它)。</remarks>
     internal static RemotePortForwardOptions RemoteOptions(PortForwardRequest request, string boundHost) => new()
     {
         BindAddress = boundHost,
         BindPort = (int)request.BoundPort,
+        ListenSocketPath = request.BoundSocketPath,
         MaxBytesPerSecond = request.MaxBytesPerSecond,
     };
 

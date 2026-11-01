@@ -1513,6 +1513,9 @@
   <data name="FtpSvc_ReadCompletionTimeout" xml:space="preserve">
     <value>FTP サーバーによる転送完了の確認を待機中にタイムアウトしました。</value>
   </data>
+  <data name="FtpSvc_TransferInterrupted" xml:space="preserve">
+    <value>{0} の転送中に FTP データ接続が途中で切断されました。制御接続は引き続き使用できます。</value>
+  </data>
   <data name="SftpSvc_RelayLengthMismatch" xml:space="preserve">
     <value>転送が不完全です：{0}。想定は {1} バイト、実際の読み取りは {2} バイトです。転送元が変更されたか、接続が途中で終了した可能性があります。</value>
   </data>
@@ -1864,6 +1867,9 @@
   </data>
   <data name="Msg_AutoReconnectCountdown" xml:space="preserve">
     <value>{0} が切断されました。{1} 秒後に自動再接続します({2}/{3})…</value>
+  </data>
+  <data name="Msg_ReconnectProfileDeleted" xml:space="preserve">
+    <value>「{0}」の接続設定は削除されています。このタブに残っている設定で再接続します(保存し直すことはありません)。</value>
   </data>
   <data name="Msg_AutoRecordDisabledHint" xml:space="preserve">
     <value>自動録画を無効にしました。</value>
@@ -4924,19 +4930,19 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>Unix ドメインソケットを使う</value>
   </data>
   <data name="Tunnel_UnixSocketTip" xml:space="preserve">
-    <value>ローカル転送では両端それぞれをソケットにできます。パスを書いた側は上のポートを使いません。リモート転送では両端とも同時にソケットにする必要があります。ローカルのソケットファイルはファイル権限で守られ、このコンピューターの他のユーザーはこのトンネルを使えません。サーバー側で AllowStreamLocalForwarding が有効である必要があります。</value>
+    <value>ローカル転送でもリモート転送でも、両端それぞれをソケットにできます。パスを書いた側は上のポートとホストを使いません。ローカルのソケットファイルはファイル権限で守られ、このコンピューターの他のユーザーはこのトンネルを使えません。サーバー側で AllowStreamLocalForwarding が有効である必要があります。</value>
   </data>
   <data name="Tunnel_LocalSocketListenLabel" xml:space="preserve">
     <value>待ち受けるローカルソケット(空欄ならローカルポート)</value>
   </data>
   <data name="Tunnel_LocalSocketTargetLabel" xml:space="preserve">
-    <value>接続先のローカルソケット</value>
+    <value>接続先のローカルソケット(空欄ならローカルポート)</value>
   </data>
   <data name="Tunnel_RemoteSocketTargetLabel" xml:space="preserve">
     <value>サーバー上の接続先ソケット(空欄ならターゲットホスト:ポート)</value>
   </data>
   <data name="Tunnel_RemoteSocketListenLabel" xml:space="preserve">
-    <value>サーバーで待ち受けるソケット</value>
+    <value>サーバーで待ち受けるソケット(空欄なら待ち受けアドレス:ポート)</value>
   </data>
   <data name="Tunnel_SocketPathRequired" xml:space="preserve">
     <value>ソケットのパスを入力してください。</value>
@@ -5030,9 +5036,6 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="TunnelSvc_TargetNotPermitted" xml:space="preserve">
     <value>リモートが要求した接続先は許可リストにないため拒否しました。許可するには、このトンネルの許可リストに追加してください。</value>
-  </data>
-  <data name="TunnelSvc_RemoteSocketNeedsBothEnds" xml:space="preserve">
-    <value>リモート転送は両端ともポートか、両端とも Unix ソケットのどちらかです。この設定はソケットのパスが片側にしかありません。</value>
   </data>
   <data name="TunnelSvc_LocalSocketExists" xml:space="preserve">
     <value>{0} はすでに存在します。前回の後片付けが残っているか、別のプログラムのソケットかもしれません。使われていないことを確かめてから削除し、もう一度開始してください。</value>
@@ -5476,6 +5479,60 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Notify_RemoteEditDraftAction" xml:space="preserve">
     <value>フォルダーを開く</value>
   </data>
+  <data name="Notify_RemoteEditDraftReupload" xml:space="preserve">
+    <value>再アップロード</value>
+  </data>
+  <data name="Notify_RemoteEditDraftBodyReupload" xml:space="preserve">
+    <value>{0}（{1}）への変更はまだこのコンピューターの {2} にだけあり、サーバーへ送り返されていません。「再アップロード」を押すとそのサーバーに接続してこのコピーを送り返します（その後サーバー側で変更されていた場合は先に確認します）。自分で処理してからこのコピーを削除してもかまいません。下書きは自動では削除されません。</value>
+  </data>
+  <data name="RemoteEditDraft_Uploaded" xml:space="preserve">
+    <value>{0} を {1} へ送り返し、このコンピューターの下書きを削除しました。</value>
+  </data>
+  <data name="RemoteEditDraft_ChangedDuringUpload" xml:space="preserve">
+    <value>{0} を {1} へ送り返しましたが、アップロード中にローカルのコピーが変更されたため、下書きは {2} に残しています。</value>
+  </data>
+  <data name="RemoteEditDraft_Gone" xml:space="preserve">
+    <value>この外部編集の下書きはもうありません。メッセージを取り下げました。</value>
+  </data>
+  <data name="RemoteEditDraft_NoProfile" xml:space="preserve">
+    <value>{0} の下書きにはどの接続設定のものかが記録されていない（クイック接続、または古いバージョンが残したもの）ため、ここからは再アップロードできません。コピーは {1} にあります。</value>
+  </data>
+  <data name="RemoteEditDraft_ProfileMissing" xml:space="preserve">
+    <value>{0} の下書きに記録されている接続設定は削除されているため、ここからは再アップロードできません。コピーは {1} に残っているので、手動でアップロードしてください。</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteDirMissing" xml:space="preserve">
+    <value>リモートのフォルダー {0} がもう存在しないため、{1} はアップロードしていません。下書きは残しています。</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteIsDirectory" xml:space="preserve">
+    <value>サーバー上の {0} は現在フォルダーになっているため、アップロードしていません。下書きは残しています。</value>
+  </data>
+  <data name="RemoteEditDraft_Failed" xml:space="preserve">
+    <value>{0} を {1} へ送り返せませんでした：{2}。下書きは残しています。後でもう一度お試しください。</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictTitle" xml:space="preserve">
+    <value>リモートのファイルが変更されています</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictBody" xml:space="preserve">
+    <value>{0} は、この下書きと最後に一致していた時点より後に変更されています（現在 {1}、更新 {2}）。下書きで上書きするとその変更は失われます。それでも上書きしますか？</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictUnknownBody" xml:space="preserve">
+    <value>{0} がこの下書きの後に変更されたかどうか判断できません（現在 {1}、更新 {2}）。それでも下書きで上書きしますか？</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictNoInfoBody" xml:space="preserve">
+    <value>{0} の現在の状態を取得できないため、この下書きの後に変更されたかどうか判断できません。それでも下書きで上書きしますか？</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingTitle" xml:space="preserve">
+    <value>リモートのファイルがありません</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingBody" xml:space="preserve">
+    <value>サーバー上に {0} はもうありません（削除または名前変更された可能性があります）。下書きから元のパスに作り直しますか？</value>
+  </data>
+  <data name="RemoteEditDraft_Recreate" xml:space="preserve">
+    <value>作り直す</value>
+  </data>
+  <data name="RemoteEditDraft_Unexpected" xml:space="preserve">
+    <value>外部編集の下書きを再アップロード中にエラーが発生しました：{0}</value>
+  </data>
   <data name="Notify_KindSystem" xml:space="preserve">
     <value>システム</value>
   </data>
@@ -5600,7 +5657,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>Unix ドメインソケット</value>
   </data>
   <data name="TunnelHelp_UnixSocketDesc" xml:space="preserve">
-    <value>ローカル転送とリモート転送では、ポートの代わりに Unix ドメインソケットを使えます。ローカル転送は、このコンピューターのソケットファイルで待ち受ける、サーバー上のソケット(/var/run/docker.sock など)へ転送する、またはその両方が可能です。ローカルのツールからリモートの Docker やデータベースを直接操作でき、サーバー側で TCP ポートを開く必要はありません。リモート転送はサーバーにソケットのパスで待ち受けてもらい、このコンピューターのソケットへ接続し直します。ソケットファイルはファイル権限で守られます。サーバー側で AllowStreamLocalForwarding が必要です。Windows では Windows 10 1803 以降で使えます。</value>
+    <value>ローカル転送とリモート転送では、両端それぞれでポートの代わりに Unix ドメインソケットを使えます。ローカル転送は、このコンピューターのソケットファイルで待ち受ける、サーバー上のソケット(/var/run/docker.sock など)へ転送する、またはその両方が可能です。ローカルのツールからリモートの Docker やデータベースを直接操作でき、サーバー側で TCP ポートを開く必要はありません。リモート転送は、サーバーにソケットのパスで待ち受けてもらう、このコンピューターのソケットへ接続し直す、またはその両方が可能です(サーバーのポートからローカルの docker.sock へ、サーバーのソケットからローカルのデータベースのポートへ、など)。ソケットファイルはファイル権限で守られます。サーバー側で AllowStreamLocalForwarding が必要です。Windows では Windows 10 1803 以降で使えます。</value>
   </data>
   <data name="TunnelHelp_LoopbackNote" xml:space="preserve">
     <value>127.0.0.1 の意味は、その端点が属するマシンによって変わります。ローカル転送のサーバー側ターゲットでは SSH サーバー自体を、リモート転送のローカルサービスではこのコンピューターを指します。待ち受け端点でループバックを使用すると、その待ち受けを提供するマシンからのみアクセスできます。</value>
@@ -6112,8 +6169,8 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SshCfgImport_NoteForwardPortZero" xml:space="preserve">
     <value>インポートしませんでした。ポート 0（接続時に決まるポート）はトンネルでは表せません：{0}</value>
   </data>
-  <data name="SshCfgImport_NoteForwardSocketMix" xml:space="preserve">
-    <value>インポートしませんでした。リモート転送は両端とも Unix ソケットか、両端ともソケットでないかのどちらかです：{0}</value>
+  <data name="SshCfgImport_NoteRemoteDynamicSocket" xml:space="preserve">
+    <value>インポートしませんでした。リモート動的転送はサーバーのポートでしか待ち受けられず、Unix ソケットは使えません：{0}</value>
   </data>
   <data name="SshCfgImport_NoteForwardSocketPath" xml:space="preserve">
     <value>インポートしませんでした。このマシンでは使えないソケットパスです（ローカルのソケットは長すぎない完全パス、サーバー側は / で始まるパスが必要）：{0}</value>
@@ -6129,6 +6186,12 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="SshCfgImport_NoteForwardInvalid" xml:space="preserve">
     <value>インポートしませんでした。転送の書き方が正しくありません：{0}</value>
+  </data>
+  <data name="SshCfgImport_NoteSingleBackslash" xml:space="preserve">
+    <value>{0}：先頭がバックスラッシュ 1 つのパスとして読まれます。ssh_config では \\ はエスケープで \ 1 つになり、ssh も同じように読みます。UNC パスや名前付きパイプを指定するには、設定に \\\\server\share、\\\\.\pipe\名前 と書いてください。</value>
+  </data>
+  <data name="SshCfgImport_NoteUnbalancedQuotes" xml:space="preserve">
+    <value>{0} の {1} 行目は引用符の対応が取れていないため、VelaShell はこの行を読み飛ばしました。ssh はこのような行があると設定ファイル全体を読み込みません（invalid quotes）：{2}</value>
   </data>
   <data name="SshCfgImport_NoteAlgoDropped" xml:space="preserve">
     <value>{0}：{1} を除外しました（このバージョンでは未実装で、書いてあってもネゴシエーションできません）</value>
@@ -6438,6 +6501,12 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="Msg_ProxyConnectFailed" xml:space="preserve">
     <value>プロキシ接続に失敗しました: {0}</value>
+  </data>
+  <data name="Msg_ProxyHttpSshPortHint" xml:space="preserve">
+    <value>プロキシがポート 22 への CONNECT を拒否する場合は、プロキシの種類を SOCKS5(例: 127.0.0.1:10808)に、TUN モードを使っているなら「プロキシなし」に切り替えてください。</value>
+  </data>
+  <data name="Msg_ProxyHttpFtpHint" xml:space="preserve">
+    <value>プロキシが CONNECT を拒否する場合は、プロキシの種類を SOCKS5 に、TUN モードを使っているなら「プロキシなし」に切り替えてください。</value>
   </data>
   <data name="Msg_ProxyUnreachable" xml:space="preserve">
     <value>プロキシ サーバーに接続できません: {0}</value>
@@ -9790,4 +9859,99 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="AiRegion_Pin" xml:space="preserve"><value>AI アシスタントを固定 / 自動的に隠す</value></data>
   <data name="AiRegion_Collapse" xml:space="preserve"><value>AI アシスタントを折りたたむ（会話を保持）</value></data>
   <data name="AiRegion_Hide" xml:space="preserve"><value>AI アシスタントを非表示</value></data>
+  <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>保存済みのパスワードはマスターパスワードでロックされており、今回はロック解除されませんでした。サインイン画面で手動入力してください。今回入力した内容は保存されません。</value></data>
+  <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>保存済みのパスワードがマスターパスワードでロックされているため、再接続しませんでした。ロックを解除(ステータスバーの錠前アイコン)してから再接続してください。</value></data>
+  <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>ロック中:自動再接続ではロック解除画面を表示しません。ロックを解除(ステータスバーの錠前アイコン)すると一度だけ再試行します。Enter または Ctrl+R で手動再接続もできます。</value></data>
+  <data name="MasterPassword_TunnelLocked" xml:space="preserve"><value>保存済みのパスワードがマスターパスワードでロックされています。ロックを解除(ステータスバーの錠前アイコン)するとトンネルを自動で再構築します。</value></data>
+  <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>ロックが解除されていないため、今回のパスワードは保存されていません。</value></data>
+  <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>プラグインの信頼ストアはマスターパスワードでロックされています。プラグインのインストールや発行元の信頼にはロック解除(ステータスバーの錠前アイコン)が必要です。インストール済みのユーザープラグインはロック解除後に自動で読み込まれます。</value></data>
+  <data name="SyncSvc_Locked" xml:space="preserve"><value>保存済みのトークンとパスフレーズはマスターパスワードでロックされています。同期する前にロックを解除(ステータスバーの錠前アイコン)してください。今回の自動同期はスキップしました。</value></data>
+  <data name="MasterPassword_UnlockTitle" xml:space="preserve"><value>保存済みパスワードのロック解除</value></data>
+  <data name="MasterPassword_EnableTitle" xml:space="preserve"><value>マスターパスワードを有効にする</value></data>
+  <data name="MasterPassword_ChangeTitle" xml:space="preserve"><value>マスターパスワードを変更</value></data>
+  <data name="MasterPassword_DisableTitle" xml:space="preserve"><value>マスターパスワードを無効にする</value></data>
+  <data name="MasterPassword_RecoveryTitle" xml:space="preserve"><value>回復コード</value></data>
+  <data name="MasterPassword_AfterRecoveryTitle" xml:space="preserve"><value>新しいマスターパスワードを設定</value></data>
+  <data name="MasterPassword_ForgetTitle" xml:space="preserve"><value>マスターパスワードを忘れた</value></data>
+  <data name="MasterPassword_UnlockDesc" xml:space="preserve"><value>保存済みのパスワード、共有資格情報、同期トークン、プラグインの機密はマスターパスワードでロックされています。入力するとロックを解除します。キャンセルしてもそのまま使えますが、これらの機密は読み出せません(ステータスバーの錠前アイコンからいつでも解除できます)。</value></data>
+  <data name="MasterPassword_EnableDesc" xml:space="preserve"><value>有効にすると、ローカルの暗号化キーをマスターパスワードでもう一重包みます。システムキーチェーンの項目(Windows では DPAPI のキーファイル)とマスターパスワードの両方がそろって初めて開けます。起動ごとに一度マスターパスワードを入力します。保存済みのパスワードを入れ直す必要はありません。</value></data>
+  <data name="MasterPassword_ChangeDesc" xml:space="preserve"><value>保存済みのパスワードは一切変わりません。ローカル暗号化キーの包み直しだけを行います。回復コードは引き続き使えます。</value></data>
+  <data name="MasterPassword_DisableDesc" xml:space="preserve"><value>無効にするとマスターパスワードなしの状態に戻ります。ローカル暗号化キーは引き続きシステムキーチェーン(Windows では DPAPI のキーファイル)が保管し、回復コードは無効になります。</value></data>
+  <data name="MasterPassword_RecoveryDesc" xml:space="preserve"><value>このコードは今回だけ表示されます。紙に書くか別のパスワードマネージャーに保存し、このコンピューターとは別の場所に置いてください。マスターパスワードを忘れたときに代わりにロックを解除できます(同じくこのコンピューター上で)。</value></data>
+  <data name="MasterPassword_AfterRecoveryDesc" xml:space="preserve"><value>回復コードでロックを解除しました。新しいマスターパスワードを設定してください(回復コードは引き続き使えます)。今はスキップして、次回も回復コードを使うこともできます。</value></data>
+  <data name="MasterPassword_ForgetDesc" xml:space="preserve"><value>マスターパスワードも回復コードも分からない場合:新しいローカル暗号化キーを作り、マスターパスワードを無効にします。保存済みのパスワード、共有資格情報のパスワード、同期トークン、プラグインの機密とプラグインの信頼ストアは、このコンピューターでは読めなくなり、入力し直しが必要です(裏口はありません)。古いキーとヘッダーファイルは .forgotten-&lt;時刻&gt; の名前で残すので、マスターパスワードを思い出せば元に戻せます。</value></data>
+  <data name="MasterPassword_UnlockButton" xml:space="preserve"><value>ロック解除</value></data>
+  <data name="MasterPassword_EnableButton" xml:space="preserve"><value>有効にする</value></data>
+  <data name="MasterPassword_ChangeButton" xml:space="preserve"><value>変更</value></data>
+  <data name="MasterPassword_DisableButton" xml:space="preserve"><value>マスターパスワードを無効にする</value></data>
+  <data name="MasterPassword_RecoveryWritten" xml:space="preserve"><value>書き留めました</value></data>
+  <data name="MasterPassword_SetNewButton" xml:space="preserve"><value>新しいマスターパスワードにする</value></data>
+  <data name="MasterPassword_ForgetButton" xml:space="preserve"><value>新しいキーを作る</value></data>
+  <data name="MasterPassword_Skip" xml:space="preserve"><value>後で</value></data>
+  <data name="MasterPassword_PasswordLabel" xml:space="preserve"><value>マスターパスワード</value></data>
+  <data name="MasterPassword_CurrentPasswordLabel" xml:space="preserve"><value>現在のマスターパスワード</value></data>
+  <data name="MasterPassword_NewPasswordLabel" xml:space="preserve"><value>新しいマスターパスワード</value></data>
+  <data name="MasterPassword_ConfirmPasswordLabel" xml:space="preserve"><value>もう一度入力</value></data>
+  <data name="MasterPassword_RecoveryCodeLabel" xml:space="preserve"><value>回復コード</value></data>
+  <data name="MasterPassword_UseRecoveryCode" xml:space="preserve"><value>回復コードで解除</value></data>
+  <data name="MasterPassword_UsePassword" xml:space="preserve"><value>マスターパスワードで解除</value></data>
+  <data name="MasterPassword_Forgot" xml:space="preserve"><value>マスターパスワードを忘れた場合</value></data>
+  <data name="MasterPassword_EnableWarning" xml:space="preserve"><value>マスターパスワードを忘れると保存済みのパスワードは取り戻せません(裏口はありません)。同時に回復コードを作って別の場所に保管できます。</value></data>
+  <data name="MasterPassword_CreateRecoveryLabel" xml:space="preserve"><value>回復コードも作成する(推奨)</value></data>
+  <data name="MasterPassword_AcknowledgeLabel" xml:space="preserve"><value>マスターパスワードを忘れた場合(回復コードもない場合)、保存済みのパスワードは取り戻せないことを理解しました</value></data>
+  <data name="MasterPassword_StrengthHint" xml:space="preserve"><value>12 文字以上、または複数の単語からなるありふれていないパスフレーズにしてください。オフラインでの推測を防げるのは長さだけです。</value></data>
+  <data name="MasterPassword_AsciiNote" xml:space="preserve"><value>使えるのは印字可能な英字のみです(ほかのパスワード欄と同じ)。</value></data>
+  <data name="MasterPassword_Busy" xml:space="preserve"><value>キーを導出しています…</value></data>
+  <data name="MasterPassword_WrongPassword" xml:space="preserve"><value>マスターパスワードが違います。</value></data>
+  <data name="MasterPassword_WrongRecoveryCode" xml:space="preserve"><value>回復コードが違います。</value></data>
+  <data name="MasterPassword_MalformedRecoveryCode" xml:space="preserve"><value>回復コードの入力に誤りがあるようです。英数字 28 文字(4 文字ずつ)です。確認してください。</value></data>
+  <data name="MasterPassword_RetryIn" xml:space="preserve"><value>{0} 秒後に再試行してください。</value></data>
+  <data name="MasterPassword_NoRecoveryCode" xml:space="preserve"><value>マスターパスワードを有効にしたときに回復コードを作成していません。</value></data>
+  <data name="MasterPassword_NothingToUnlock" xml:space="preserve"><value>今はロック解除できるキーがありません。</value></data>
+  <data name="MasterPassword_Empty" xml:space="preserve"><value>マスターパスワードを空にはできません。</value></data>
+  <data name="MasterPassword_Mismatch" xml:space="preserve"><value>2 回の入力が一致しません。</value></data>
+  <data name="MasterPassword_AcknowledgeRequired" xml:space="preserve"><value>マスターパスワードがないと保存済みのパスワードを取り戻せないことを確認してください。</value></data>
+  <data name="MasterPassword_KeysUnavailable" xml:space="preserve"><value>今は取得できないキーがあるため(システムキーチェーンが開けません)、何も変更していません。利用できるようになってから再試行してください。</value></data>
+  <data name="MasterPassword_StorageFailed" xml:space="preserve"><value>書き込めませんでした({0})。すべて元に戻し、何も変更していません。</value></data>
+  <data name="MasterPassword_StorageFailedPartially" xml:space="preserve"><value>書き込みが途中で失敗し、完全には元に戻せませんでした({0})。マスターパスワードは現在有効です。今入力したマスターパスワードでロックを解除してください。</value></data>
+  <data name="MasterPassword_Enabled" xml:space="preserve"><value>マスターパスワードを有効にしました。</value></data>
+  <data name="MasterPassword_Disabled" xml:space="preserve"><value>マスターパスワードを無効にしました。</value></data>
+  <data name="MasterPassword_Changed" xml:space="preserve"><value>マスターパスワードを変更しました。</value></data>
+  <data name="MasterPassword_Forgotten" xml:space="preserve"><value>新しいローカル暗号化キーを作り、マスターパスワードを無効にしました。古いキーとヘッダーファイルは残してあります:{0}。保存済みのパスワードは入力し直してください。</value></data>
+  <data name="MasterPassword_LockedNow" xml:space="preserve"><value>ロックしました。メモリ上のローカル暗号化キーを消去しました。</value></data>
+  <data name="MasterPassword_ProblemHeaderMissing" xml:space="preserve"><value>マスターパスワードで包まれたキーは見つかりましたが、マスターパスワードのヘッダーファイル(secret.key.mp)がないため、マスターパスワードでも回復コードでも開けません。「マスターパスワードを忘れた場合」から新しいキーを作るしかありません(古いキーは残します)。</value></data>
+  <data name="MasterPassword_ProblemHeaderUnreadable" xml:space="preserve"><value>マスターパスワードのヘッダーファイル(secret.key.mp)を読み取れません(切り詰められたか破損しています)。そのまま残し、上書きはしません。バックアップから復元するか、「マスターパスワードを忘れた場合」から新しいキーを作ってください。</value></data>
+  <data name="MasterPassword_ProblemKeysUnavailable" xml:space="preserve"><value>今回は {0} を開けなかったため({1})、包まれたキーを 1 つも読み出せませんでした。キーは失われていません。{0} のロックを解除するか利用できるようになったら、VelaShell を再起動してロックを解除してください。</value></data>
+  <data name="SetGeneral_MasterPassword" xml:space="preserve"><value>マスターパスワード</value></data>
+  <data name="SetGeneral_MasterPasswordDesc" xml:space="preserve"><value>// 保存済みのパスワードにもう一つ鍵をかけます。システムキーチェーンの項目とマスターパスワードの両方が必要です。既定はオフ。忘れると取り戻せません(回復コードを残した場合を除く)</value></data>
+  <data name="SetGeneral_MasterPasswordStatusOff" xml:space="preserve"><value>無効</value></data>
+  <data name="SetGeneral_MasterPasswordStatusUnlocked" xml:space="preserve"><value>有効 · ロック解除中</value></data>
+  <data name="SetGeneral_MasterPasswordStatusLocked" xml:space="preserve"><value>有効 · ロック中</value></data>
+  <data name="SetGeneral_MasterPasswordRecovery" xml:space="preserve"><value>回復コードあり</value></data>
+  <data name="SetGeneral_MasterPasswordNoRecovery" xml:space="preserve"><value>回復コードなし</value></data>
+  <data name="SetGeneral_MasterPasswordEnable" xml:space="preserve"><value>有効にする…</value></data>
+  <data name="SetGeneral_MasterPasswordUnlock" xml:space="preserve"><value>ロック解除…</value></data>
+  <data name="SetGeneral_MasterPasswordLockNow" xml:space="preserve"><value>今すぐロック</value></data>
+  <data name="SetGeneral_MasterPasswordChange" xml:space="preserve"><value>変更…</value></data>
+  <data name="SetGeneral_MasterPasswordDisable" xml:space="preserve"><value>無効にする…</value></data>
+  <data name="SetGeneral_AutoLock" xml:space="preserve"><value>無操作で自動ロック(分)</value></data>
+  <data name="SetGeneral_AutoLockDesc" xml:space="preserve"><value>// VelaShell のウィンドウでこの分数キーボード・マウス操作がないとロックします。0 = 自動ロックしない。マスターパスワード有効時のみ働きます</value></data>
+  <data name="SetGeneral_LockOnSystemLock" xml:space="preserve"><value>システムのロック時にロック</value></data>
+  <data name="SetGeneral_LockOnSystemLockDesc" xml:space="preserve"><value>// Win+L やサインインを求めるスクリーンセーバーと同時にロックします。マスターパスワード有効時のみ働きます</value></data>
+  <data name="StatusBar_MasterPasswordLocked" xml:space="preserve"><value>保存済みのパスワードはロック中 — クリックで解除</value></data>
+  <data name="StatusBar_MasterPasswordUnlocked" xml:space="preserve"><value>マスターパスワードはロック解除中 — クリックで今すぐロック</value></data>
+  <data name="Auth_UnreadableSecretLocked" xml:space="preserve"><value>{0}はマスターパスワードでロックされており、今回はロック解除されていません。ここで入力してサインインできます。ロックを解除(ステータスバーの錠前アイコン)すれば通常どおり読み込みます。</value></data>
+  <data name="Notify_MasterPasswordProblemTitle" xml:space="preserve"><value>マスターパスワードでロック解除できません</value></data>
+  <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>マスターパスワードのヘッダーを退避しました</value></data>
+  <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>データフォルダーのマスターパスワードのヘッダーが、包んだキーのどれとも一致しません(多くはダウングレード時に旧バージョンが包まれたキーファイルを退避したため)。{0} として残し、マスターパスワードは現在無効です。ダウングレード前に保存したパスワードはこのコンピューターでは読めないため、入力し直してください。</value></data>
+  <data name="MasterPassword_ImportWhileLocked" xml:space="preserve"><value>保存済みのパスワードはマスターパスワードでロックされ、今回はロック解除されませんでした。接続はインポートしますが、今回インポートするパスワードは保存されません。</value></data>
+  <data name="Plugin_SecretLabelPassword" xml:space="preserve"><value>パスワード</value></data>
+  <data name="Plugin_SecretLabelQuoted" xml:space="preserve"><value>「{0}」</value></data>
+  <data name="Plugin_SecretListSeparator" xml:space="preserve"><value>、</value></data>
+  <data name="Plugin_StoredSecretUnreadable" xml:space="preserve"><value>この接続に保存された{0}はこのデバイスでは復号できないため、プラグインに渡していません(暗号文は渡さず、空の値を「未設定」として渡すこともしません)。マスターパスワードでロックされている場合はロックを解除(ステータスバーの錠前アイコン)してから接続し直してください。そうでなければ接続設定でもう一度入力して保存してください。</value></data>
+  <data name="Plugin_UnreadableSecretSubject" xml:space="preserve"><value>この接続に保存された{0}</value></data>
+  <data name="Plugin_UnreadableSecretKeychainUnavailable" xml:space="preserve"><value>{0}は今回復号できません: {1} を開けませんでした({2})。そのためプラグインには渡していません。失われてはいません。{1} のロックを解除して VelaShell を再起動すれば通常どおり読み込めます。</value></data>
+  <data name="Plugin_UnreadableSecretKeyMissing" xml:space="preserve"><value>{0}はこのデバイスでは復号できません: 保存時に使ったローカルの暗号化キーがここにありません(データフォルダーを別の PC やアカウントからコピーした、キーチェーンの項目が削除された、またはキーファイルが置き換えられた可能性があります。メッセージセンターに説明があります)。そのためプラグインには渡していません。接続設定でもう一度入力して保存すれば、このデバイスで復号できる形で保存されます。</value></data>
+  <data name="Plugin_UnreadableSecretUnknown" xml:space="preserve"><value>{0}はこのデバイスでは復号できません(別のデバイスから同期またはコピーされたものか、壊れている可能性があります)。そのためプラグインには渡していません。接続設定でもう一度入力して保存すれば、このデバイスで復号できる形で保存されます。</value></data>
+  <data name="Plugin_UnreadableSecretLocked" xml:space="preserve"><value>{0}はマスターパスワードでロックされており、今回はロック解除されていないため、プラグインには渡していません。ロックを解除(ステータスバーの錠前アイコン)してから接続し直してください。</value></data>
 </root>

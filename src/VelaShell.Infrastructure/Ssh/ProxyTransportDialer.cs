@@ -126,9 +126,13 @@ internal sealed class ProxyTransportDialer(IProxyResolver? proxyResolver, SshRou
     /// </para>
     /// <para>
     /// SSH 的 22 端口经 HTTP CONNECT 常被代理软件限制(只放行 80/443),
-    /// 这时直指「换 SOCKS5」,免得用户对着通用报错干瞪眼。
-    /// 后缀是纯技术信息,不新增本地化键。
+    /// 这时直指「换 SOCKS5」,免得用户对着通用报错干瞪眼。这句提示用界面语言说(<c>Msg_ProxyHttpSshPortHint</c>):
+    /// 要不要追加只看两样宿主自己手里的事实 —— 走的是 HTTP 代理、目标端口是 22 —— 不解析库的句子;
+    /// 库按种类交出的应答(<see cref="SshConnectFailureKind.HttpConnectRefused" /> 与状态码)由前半句说。
+    /// 库消息里 403 / 405 / 501 的「只放行 80/443」建议是给不经宿主的调用方看的默认文本,这里不再重复。
+    /// 曾经这句提示是写死的英文,中 / 日 / 韩界面上整句英文挂在本地化的报错后面。
     /// </para>
+    /// <para>后缀 <c>(via …)</c> 是纯技术信息(代理与目标的地址),不本地化。</para>
     /// </remarks>
     private static string DescribeProxyFailure(ProxyRoute route, string host, int port, Exception error)
     {
@@ -144,7 +148,7 @@ internal sealed class ProxyTransportDialer(IProxyResolver? proxyResolver, SshRou
             return Strings.Format("Msg_ProxyUnreachable", cause) + via;
         }
         string hint = route.Kind == ProxyKind.Http && port == 22
-            ? " If the proxy refuses CONNECT to port 22, switch Proxy to socks5 (e.g. 127.0.0.1:10808) or none for TUN."
+            ? " " + Strings.Get("Msg_ProxyHttpSshPortHint")
             : "";
         // 后半句:库按种类交出了代理回的是什么(SOCKS5 应答码、HTTP 状态行、握手超时 / 中途断开),用界面语言说;
         // 没归类的(非本库的异常)才用它自己的消息。曾经一律拼库的中文原文。

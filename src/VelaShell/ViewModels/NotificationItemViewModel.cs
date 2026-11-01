@@ -91,6 +91,24 @@ public class NotificationItemViewModel(NotificationItem item) : ReactiveObject
     /// <summary>底层的去处(由面板执行跳转)。</summary>
     public NotificationLink? Link => _item.Link;
 
+    /// <summary>
+    /// 第二个动作(摆在去处那一行的左端)。只认站内命令,且要有主动作、主动作不是外链:
+    /// 外链那一行的左端摆着它的主机名,两样挤在一处会叠在一起。
+    /// </summary>
+    public NotificationLink? SecondaryLink =>
+        _item.SecondaryLink is { CommandId.Length: > 0 } secondary && HasLink && !HasLinkHost ? secondary : null;
+
+    /// <summary>有没有第二个动作。</summary>
+    public bool HasSecondaryLink => SecondaryLink is not null;
+
+    /// <summary>第二个动作的文案;没给就兜底成「查看」。</summary>
+    public string SecondaryLinkLabel =>
+        SecondaryLink is not { } secondary
+            ? string.Empty
+            : !string.IsNullOrWhiteSpace(secondary.Label)
+                ? secondary.Label
+                : Strings.Get("Notify_LinkOpen");
+
     /// <summary>相对时间(刚刚 / 5 分钟前 / 3 小时前 / 2 天前)。</summary>
     public string RelativeTime => FormatRelative(DateTime.UtcNow - _item.PublishedAt);
 
@@ -103,6 +121,7 @@ public class NotificationItemViewModel(NotificationItem item) : ReactiveObject
         this.RaisePropertyChanged(nameof(KindBadge));
         this.RaisePropertyChanged(nameof(SourceText));
         this.RaisePropertyChanged(nameof(LinkLabel));
+        this.RaisePropertyChanged(nameof(SecondaryLinkLabel));
         RefreshRelativeTime();
     }
 

@@ -332,6 +332,33 @@ public sealed class NotificationSourcesTests
             new() { Protection = MasterKeyProtection.UserBoundFile }, Now), "Windows 上 DPAPI 包裹的密钥文件就是常态");
     }
 
+    /// <summary>主密码开着却解不了锁(头不在):要说清只能「忘了主密码」另起新密钥;开着、锁着这一常态不打扰。</summary>
+    [TestMethod]
+    public void MasterPassword_HeaderMissing_IsAWarning_ButBeingLockedIsNot()
+    {
+        NotificationItem notice = Assert.ContainsSingle(NotificationSources.BuildMasterKeyNotifications(new()
+        {
+            Protection = MasterKeyProtection.SystemKeychain,
+            MasterPasswordEnabled = true,
+            MasterPasswordProblem = MasterPasswordProblem.HeaderMissing
+        }, Now));
+        Assert.AreEqual(NotificationSeverity.Warning, notice.Severity);
+        Assert.AreEqual(Strings.Get("MasterPassword_ProblemHeaderMissing"), notice.Body);
+        Assert.IsEmpty(NotificationSources.BuildMasterKeyNotifications(
+            new() { Protection = MasterKeyProtection.SystemKeychain, MasterPasswordEnabled = true }, Now), "开着、锁着是常态");
+    }
+
+    /// <summary>头找不到它包裹的密钥、被改名保留(降级到旧版本之后):点名保留成的文件,说明主密码现在是关着的。</summary>
+    [TestMethod]
+    public void MasterPassword_RetiredHeader_NamesTheKeptFile()
+    {
+        NotificationItem notice = Assert.ContainsSingle(NotificationSources.BuildMasterKeyNotifications(new()
+        {
+            Protection = MasterKeyProtection.UserBoundFile,
+            RetiredMasterPasswordHeader = Path.Combine("data", "secret.key.mp.orphaned-20261031120000")
+        }, Now));
+        Assert.AreEqual(Strings.Format("Notify_MasterPasswordRetiredBody", "secret.key.mp.orphaned-20261031120000"), notice.Body);
+    }
     /// <summary>密钥链暂时用不了:要说清已存的密码这次解不开、但没有丢,以及原因。</summary>
     [TestMethod]
     public void MasterKey_KeychainUnavailable_SaysTheSecretsAreNotLostAndWhy()

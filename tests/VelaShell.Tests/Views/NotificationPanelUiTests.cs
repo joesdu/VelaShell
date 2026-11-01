@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -240,6 +241,80 @@ public sealed class NotificationPanelUiTests
                 Point? corner = target.TranslatePoint(new(target.Bounds.Width, 0), window);
                 return Math.Round(corner?.X ?? throw new InvalidOperationException("控件未参与布局。"), 2);
             };
+        });
+    }
+
+    /// <summary>
+    /// 第二个动作(外部编辑草稿的「打开所在文件夹」)摆在去处那一行的左端:与右端的主动作同一行(竖直居中对齐)、
+    /// 左沿与正文同一条竖线、两者不重叠;点它只跑它自己(带着参数),不触发整行的主动作。没有第二个动作的行不显示它。
+    /// </summary>
+    [TestMethod]
+    public void SecondaryAction_SitsOnTheDestinationLine_AndClickingItRunsOnlyItself()
+    {
+        OnUi(() =>
+        {
+            var center = new NotificationCenter();
+            center.PublishAsync([
+                new NotificationItem
+                {
+                    Id = "remote-edit-draft:0a1b2c3d",
+                    Kind = NotificationKind.System,
+                    Severity = NotificationSeverity.Warning,
+                    Title = "外部编辑的改动没传回服务器",
+                    Body = "app.conf(prod-web:/etc/app.conf)的改动还留在本机,没有传回服务器。",
+                    PublishedAt = DateTime.UtcNow,
+                    Link = new() { Label = "重新上传", CommandId = "files.remoteEditDrafts.reupload", CommandParameter = "0a1b2c3d" },
+                    SecondaryLink = new() { Label = "打开所在文件夹", CommandId = "files.remoteEditDrafts.open", CommandParameter = "0a1b2c3d" }
+                },
+                new NotificationItem
+                {
+                    Id = "update:1.4.2",
+                    Kind = NotificationKind.Update,
+                    Title = "VelaShell 1.4.2 已发布",
+                    PublishedAt = DateTime.UtcNow.AddMinutes(-5),
+                    Link = new() { Label = "前往关于页", CommandId = "app.settings.about" }
+                }
+            ]).GetAwaiter().GetResult();
+            var plain = new List<string>();
+            var parameterized = new List<(string Id, string Parameter)>();
+            var vm = new NotificationPanelViewModel(center, id => { plain.Add(id); return true; },
+                parameterizedCommandInvoker: (id, parameter) => { parameterized.Add((id, parameter)); return true; });
+            var view = new NotificationPanelView { DataContext = vm };
+            var window = new Window { Width = 400, Height = 420, Content = view };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+
+            List<Border> rows = [.. view.GetVisualDescendants().OfType<Border>().Where(border => border.Classes.Contains("msg-row"))];
+            Assert.HasCount(2, rows);
+            Border draftRow = rows.Single(row => row.DataContext is NotificationItemViewModel { Id: "remote-edit-draft:0a1b2c3d" });
+            Button secondary = draftRow.GetVisualDescendants().OfType<Button>().Single(button => button.Classes.Contains("secondary-link"));
+            Assert.IsTrue(secondary.IsEffectivelyVisible);
+            Border otherRow = rows.Single(row => row != draftRow);
+            Assert.IsFalse(otherRow.GetVisualDescendants().OfType<Button>()
+                                   .Single(button => button.Classes.Contains("secondary-link")).IsVisible, "没有第二个动作的行不显示它");
+
+            Rect action = BoundsInWindow(draftRow.GetVisualDescendants().OfType<Control>().Single(control => control.Classes.Contains("link-action")));
+            Rect secondaryBounds = BoundsInWindow(secondary);
+            Rect title = BoundsInWindow(draftRow.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Classes.Contains("msg-title")));
+            Assert.AreEqual(action.Center.Y, secondaryBounds.Center.Y, 0.5, "第二个动作与主动作同一行");
+            Assert.AreEqual(title.Left, secondaryBounds.Left, 0.5, "左沿与正文同一条竖线");
+            Assert.IsLessThan(action.Left, secondaryBounds.Right, "两个动作不重叠");
+
+            window.MouseDown(secondaryBounds.Center, MouseButton.Left);
+            window.MouseUp(secondaryBounds.Center, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.AreSequenceEqual([("files.remoteEditDrafts.open", "0a1b2c3d")], parameterized, "点第二个动作只跑它自己,不触发整行的主动作");
+            Assert.IsEmpty(plain);
+            SaveFrame(window, "notification-panel-secondary-action.png");
+            window.Close();
+
+            Rect BoundsInWindow(Visual visual)
+            {
+                Point topLeft = visual.TranslatePoint(new(0, 0), window) ?? throw new InvalidOperationException("控件未参与布局。");
+                return new(topLeft, visual.Bounds.Size);
+            }
         });
     }
 

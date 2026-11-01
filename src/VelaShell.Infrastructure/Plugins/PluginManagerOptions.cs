@@ -184,6 +184,12 @@ public sealed class PluginManagerOptions
     /// <summary>机密保护器(<see cref="DataStore" /> 缺席时文件路径机密能力的加密后端);缺席时机密能力报不可用,绝不明文兜底。</summary>
     public Core.Data.ISecretProtector? SecretProtector { get; init; }
 
+    /// <summary>
+    /// 可选主密码的闸口:锁着时插件读写机密先等交互式解锁(取消则报权限被拒,绝不交回 null);
+    /// 信任库要等解锁才读得出来 —— 启动时不弹框、等用户在主窗口的解锁框里解开。缺席时(测试、没有主密码的宿主)不过闸。
+    /// </summary>
+    public Core.Data.IMasterPasswordGate? MasterPassword { get; init; }
+
     /// <summary>剪贴板能力实现(由 UI 层提供);缺席时报不可用。</summary>
     public PluginSdk.Clipboard.IClipboardApi? Clipboard { get; init; }
 

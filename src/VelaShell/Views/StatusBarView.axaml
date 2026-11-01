@@ -46,7 +46,28 @@
                        Foreground="{DynamicResource VelaStatusConnected}"
                        VerticalAlignment="Center"
                        IsVisible="{Binding IsConnected}" />
-        <ctl:CapCenteredTextBlock Text="{Binding ConnectionInfo}"
+        <!-- 主密码的锁形入口(只在开了主密码时出现):锁着时点它弹解锁框,解着时点它立即锁定。排在左组的连接信息之前,
+             右侧那几块定宽字段不受它影响。 -->
+        <Button x:Name="MasterPasswordButton" Classes="monitor" Padding="4,0" Height="21" VerticalAlignment="Center"
+                Background="Transparent" BorderThickness="0" CornerRadius="4" Cursor="Hand"
+                IsVisible="{Binding IsMasterPasswordEnabled}"
+                Command="{Binding MasterPasswordCommand}"
+                AutomationProperties.Name="{Binding MasterPasswordTooltip}"
+                ToolTip.Tip="{Binding MasterPasswordTooltip}" ToolTip.Placement="Top">
+          <Button.Styles>
+            <Style Selector="Button.monitor:pointerover /template/ ContentPresenter">
+              <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+            </Style>
+          </Button.Styles>
+          <Panel>
+            <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.lock}"
+                           Foreground="{DynamicResource VelaWarning}" VerticalAlignment="Center"
+                           IsVisible="{Binding IsMasterPasswordLocked}" />
+            <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.lock-open}"
+                           Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center"
+                           IsVisible="{Binding !IsMasterPasswordLocked}" />
+          </Panel>
+        </Button>        <ctl:CapCenteredTextBlock Text="{Binding ConnectionInfo}"
                                   Foreground="{DynamicResource VelaTextSecondary}"
                                   IsVisible="{Binding ConnectionInfo, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <Border Classes="divider"

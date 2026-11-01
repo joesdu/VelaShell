@@ -179,7 +179,7 @@ public sealed partial class SshConnection
     /// 那时再取消只会让调用方误以为它没发。
     /// </para>
     /// </remarks>
-    private ValueTask SendAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken) =>
+    internal ValueTask SendAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken) =>
         EnqueueAsync(packet, applyBackpressure: true, admit: null, cancellationToken);
 
     /// <summary>发一个报文；<paramref name="onEnqueued"/> 与入队<b>原子地</b>执行。</summary>
@@ -189,7 +189,7 @@ public sealed partial class SshConnection
     /// 应答就会被安到对方头上 —— 而那是静默的错误答案；
     /// 登记之后在背压上被取消，账本里又会留下一个永远等不到应答的空位。
     /// </remarks>
-    private ValueTask SendAsync(
+    internal ValueTask SendAsync(
         ReadOnlyMemory<byte> packet, Action onEnqueued, CancellationToken cancellationToken) =>
         EnqueueAsync(
             packet,
@@ -206,7 +206,7 @@ public sealed partial class SshConnection
     /// 接收循环回复通道报文用（它不能在背压上等）。理由同 <see cref="Channels.ISshChannelHost.SendIfAsync"/>。
     /// <paramref name="isInteractive"/> 是那条通道的道（<see cref="Channels.SshChannel.IsInteractive"/>）：回给它的 <c>CLOSE</c> 要排在它自己的数据后面。
     /// </remarks>
-    private void PostIf(ReadOnlyMemory<byte> packet, Func<bool> admit, bool isInteractive)
+    internal void PostIf(ReadOnlyMemory<byte> packet, Func<bool> admit, bool isInteractive)
     {
         lock (_enqueueLock)
         {
@@ -345,7 +345,7 @@ public sealed partial class SshConnection
     /// <c>OPEN_CONFIRMATION</c>…）走这里：发送泵保证它们按投递顺序上线，
     /// 发送失败则由发送泵把整条会话判死 —— 接收循环不需要、也不应该等。
     /// </remarks>
-    private void Post(ReadOnlyMemory<byte> packet, bool isInteractive = false)
+    internal void Post(ReadOnlyMemory<byte> packet, bool isInteractive = false)
     {
         if (Volatile.Read(ref _fault) is not null)
         {
@@ -382,7 +382,7 @@ public sealed partial class SshConnection
     /// <returns>入队了为 <see langword="true"/>；连接已经判死或收尾时为 <see langword="false"/>。</returns>
     /// <remarks>
     /// <para>
-    /// 给保活探测用（见 <c>ProbeAsync</c>）：探测要对付的正是「发送泵卡在一次写上」的死链，
+    /// 给保活探测用（见 <c>GlobalRequestLedger.ProbeAsync</c>）：探测要对付的正是「发送泵卡在一次写上」的死链，
     /// 它自己不能也卡在那里。
     /// </para>
     /// <para>
@@ -390,7 +390,7 @@ public sealed partial class SshConnection
     /// 字节照样计入背压，数据面的发送方看得到它。
     /// </para>
     /// </remarks>
-    private bool PostRegistered(ReadOnlyMemory<byte> packet, Action onEnqueued)
+    internal bool PostRegistered(ReadOnlyMemory<byte> packet, Action onEnqueued)
     {
         if (Volatile.Read(ref _fault) is not null)
         {

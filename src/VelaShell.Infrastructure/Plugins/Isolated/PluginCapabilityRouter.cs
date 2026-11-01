@@ -253,6 +253,12 @@ internal sealed class PluginCapabilityRouter : IDisposable
                     FsTransferCancelRequest request = Get<FsTransferCancelRequest>(payload);
                     return await _context.RemoteFs.CancelTransferAsync(request.TransferId, request.ExpectedGeneration, cancellationToken).ConfigureAwait(false);
                 }
+            case PluginRpc.FsTransferWithdraw:
+                {
+                    // 判定与撤下都在宿主那一步完成;不支持的能力(旧实现、不可用的替身)照原样抛不支持,绝不改走无条件取消。
+                    FsTransferWithdrawRequest request = Get<FsTransferWithdrawRequest>(payload);
+                    return await _context.RemoteFs.WithdrawPendingTransferAsync(request.TransferId, request.ExpectedGeneration, cancellationToken).ConfigureAwait(false);
+                }
             case PluginRpc.FsTransferResume:
                 {
                     FsTransferResumeRequest request = Get<FsTransferResumeRequest>(payload);
@@ -571,6 +577,8 @@ internal sealed class PluginCapabilityRouter : IDisposable
             SupportsExecutionOperations = true,
             SupportsTransferOperations = _context.RemoteFs.SupportsTransferOperations,
             SupportsDownloadOperations = _context.RemoteFs.SupportsDownloadOperations,
+            // 条件撤回按实际能力宣告:插件进程据此决定发 fs/transfer/withdraw 还是在本地直接抛不支持。
+            SupportsTransferWithdraw = _context.RemoteFs.SupportsTransferWithdraw,
             SupportsNotifications = _context.Ui.SupportsNotifications
         };
     }

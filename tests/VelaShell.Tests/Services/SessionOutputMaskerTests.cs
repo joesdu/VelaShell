@@ -111,6 +111,14 @@ public sealed class SessionOutputMaskerTests
         ["yaml-passphrase-to-eol", "passphrase: correct horse battery staple\r\n", "passphrase: ***\r\n", "correct horse battery staple"],
         ["yaml-value-before-next-key", "password: abc def, user: bob\n", "password: ***, user: bob\n", "abc def"],
         ["yaml-value-before-comment", "  password: abc def  # rotated monthly\n", "  password: ***  # rotated monthly\n", "abc def"],
+        // INI 写法:名字在行首(缩进、grep -n、cat -n 的前缀之后),等号两边都有空白 —— 值遮到行尾,同样停在注释与下一个键之前
+        ["ini-value-with-spaces", "password = correct horse battery staple\r\n", "password = ***\r\n", "correct horse battery staple"],
+        ["ini-indented-with-comment", "  db_password = s3cret value 42   # rotated\n", "  db_password = ***   # rotated\n", "s3cret value 42"],
+        ["ini-in-grep-output", "app.ini:12:passphrase = open sesame now\n", "app.ini:12:passphrase = ***\n", "open sesame now"],
+        ["ini-in-cat-n", "     7\tsecret_key = AbC dEf 123\n", "     7\tsecret_key = ***\n", "AbC dEf 123"],
+        ["ini-coloured", "\u001b[34mpassword\u001b[0m = \u001b[32mcorrect horse battery\u001b[0m\n",
+            "\u001b[34mpassword\u001b[0m = \u001b[32m***\u001b[0m\n", "correct horse battery"],
+        ["ini-before-next-key", "password = a b c, user = ops\n", "password = ***, user = ops\n", "a b c"],
         // 不带口令字样、值却必是机密的键
         ["k8s-tls-key", "  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t\n", "  tls.key: ***\n", "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t"],
         ["kubeconfig-client-key-data",
@@ -549,6 +557,88 @@ public sealed class SessionOutputMaskerTests
         Assert.AreEqual("password: *** \u001b[1muser: bob\n", Written);
     }
 
+    /// <summary>
+    /// INI 写法(名字在行首、等号两边都有空白)的值遮到行尾;不在行首的、等号只有一边有空白的、等号后面紧跟等号的照旧只遮第一个词 ——
+    /// 命令行(<c>[ $password = … ]</c>、<c>grep password = …</c>)、代码(PowerShell、SQL)里等号两边同样有空白,后面却是别的东西。
+    /// YAML 里引用环境变量的 <c>password: ${…}</c> 与改动前一样遮(冒号后面跟空白的值本来就遮到行尾)。
+    /// </summary>
+    [TestMethod]
+    public void IniValues_AreMaskedToTheEndOfTheLine_OnlyAtTheStartOfALine()
+    {
+        SessionOutputMasker masker = NewMasker();
+        masker.Write(Bytes("password = my pass phrase\n"));
+        masker.Write(Bytes("./conf/app.ini:password = my pass phrase\n"));
+        masker.Write(Bytes("12-password = my pass phrase\n"));
+        masker.Write(Bytes("password\t=\tmy pass phrase\n"));
+        masker.Write(Bytes("$ grep password = /etc/app.ini extra\n"));
+        masker.Write(Bytes("[ $password = $expected ] && echo ok\n"));
+        masker.Write(Bytes("SELECT * FROM users WHERE password = $1 AND user = $2\n"));
+        masker.Write(Bytes("$Password = Read-Host -AsSecureString \"Enter\"\n"));
+        masker.Write(Bytes("echo password = my pass\n"));
+        masker.Write(Bytes("password= my pass\n"));
+        masker.Write(Bytes("password =my pass\n"));
+        masker.Write(Bytes("password: ${DB_PASSWORD}\n"));
+        Assert.AreEqual(
+            "password = ***\n"
+            + "./conf/app.ini:password = ***\n"
+            + "12-password = ***\n"
+            + "password\t=\t***\n"
+            + "$ grep password = *** extra\n"
+            + "[ $password = *** ] && echo ok\n"
+            + "SELECT * FROM users WHERE password = *** AND user = $2\n"
+            + "$Password = *** -AsSecureString \"Enter\"\n"
+            + "echo password = *** pass\n"
+            + "password= *** pass\n"
+            + "password =*** pass\n"
+            + "password: ***\n",
+            Written);
+    }
+
+    /// <summary>
+    /// INI 规则「不该遮的」:名字里没有口令字样、不成词、带非机密后缀的照旧原样;INI 里空着的 <c>password = </c>(模板)
+    /// 不再被 netrc 的单行规则当成口令 <c>=</c> 遮掉;shell 的 <c>test</c> 比较空串原样。逐字节原样、当场放出。
+    /// </summary>
+    [TestMethod]
+    [DataRow("key = value with spaces\n")]
+    [DataRow("max_tokens = 4096 # limit\n")]
+    [DataRow("token_type = Bearer access token\n")]
+    [DataRow("  secretName = tls cert\n")]
+    [DataRow("passwordless = true for this host\n")]
+    [DataRow("password = \n")]
+    [DataRow("password =\r\n")]
+    [DataRow("  password =   \n")]
+    [DataRow("if [ \"$token\" = \"\" ]; then exit 1; fi\n")]
+    public void IniRule_LeavesLookalikesAlone(string text)
+    {
+        SessionOutputMasker masker = NewMasker();
+        masker.Write(Bytes(text));
+        Assert.AreEqual(text, Written, "原样、当场放出");
+    }
+
+    /// <summary>INI 的值在行还没完时扣着(后面可能还有词);上下文截断过、看不见行首时(超长的行)照旧只遮第一个词,与一次写进来的结果一致。</summary>
+    [TestMethod]
+    public void IniValue_IsHeldUntilTheLineEnds_AndNeedsToSeeTheLineStart()
+    {
+        SessionOutputMasker masker = NewMasker();
+        masker.Write(Bytes("password = correct "));
+        Assert.AreEqual("password = ", Written, "值后面的空白之后可能还有词:扣着");
+        masker.Write(Bytes("horse battery"));
+        Assert.AreEqual("password = ", Written);
+        masker.Write(Bytes(" staple\r\n"));
+        Assert.AreEqual("password = ***\r\n", Written);
+        _written.Clear();
+
+        string longLine = new string('Z', 600) + " password = my pass\n";
+        Assert.AreEqual(new string('Z', 600) + " password = *** pass\n", Run([Bytes(longLine)]), "不在行首");
+        byte[] bytes = Bytes(longLine);
+        Assert.AreEqual(Run([bytes]), Run(bytes.Select(b => new[] { b })), "逐字节回显与一次写入相同");
+
+        // 前面一个超过扣下上限的值吞完之后,上下文在行中间重新起:那里不是行首,照旧只遮第一个词
+        string swallowed = "token: " + new string('Q', 5000);
+        Assert.AreEqual("token: *** password = *** pass\n", Run([Bytes(swallowed), Bytes(" password = my pass\n")]), "先扣满、吞完再接着处理");
+        Assert.AreEqual("token: *** password = *** pass\n", Run([Bytes(swallowed + " password = my pass\n")]), "一次写进来同样");
+    }
+
     /// <summary><c>.netrc</c> 分行写的 <c>password</c> 只认行首的单独一行;后面再来一个词就不算(扣着的那一点原样放出)。</summary>
     [TestMethod]
     public void NetrcPasswordLine_OnlyCountsWhenItIsTheWholeLine()
@@ -959,6 +1049,12 @@ public sealed class SessionOutputMaskerTests
             ("到行尾的值后一长串空白", "password: a" + Repeat(" ") + "b\r\n"),
             ("到行尾的值连串", Repeat("token: a ")),
             ("扣着的到行尾的值", "passphrase: " + Repeat("ab ")[..4000]),
+            ("INI 值里满是像键的词", "password = " + Repeat("user = x ") + "\r\n"),
+            ("INI 候选连串", Repeat("x password = ")),
+            ("INI 长前缀", Repeat("a") + ":password = x y\r\n"),
+            ("INI 长名字", Repeat("a-") + "password = x y\r\n"),
+            ("INI 行号前缀连串", Repeat("1:") + "password = x y\r\n"),
+            ("INI 前缀里满是空白", Repeat(" \t") + "password = x y\r\n"),
             ("netrc 连串", Repeat("machine a login b ") + "\r\n"),
             ("netrc 口令行", "password " + Repeat("a")),
             ("只有颜色序列", Repeat("\u001b[1m")),

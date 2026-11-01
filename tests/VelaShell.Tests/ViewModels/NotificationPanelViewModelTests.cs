@@ -77,6 +77,113 @@ public class NotificationPanelViewModelTests
         Assert.AreSequenceEqual(["https://example.com/post"], openedUrls);
     }
 
+    /// <summary>
+    /// 带参数的去处交给带参数的那一路,不走命令注册表;那一路不认识(返回 false)或者没挂时,不退回不带参数的同名命令 ——
+    /// 丢了参数去做,做的就是另一件事。不带参数的(旧版本落盘的消息)照旧走注册表。
+    /// </summary>
+    [TestMethod]
+    public async Task Activate_RoutesParameterizedLinksToTheirOwnInvoker_AndNeverDropsTheParameter()
+    {
+        NotificationCenter center = await SeededCenterAsync(
+            Item("with-parameter", new() { Label = "重新上传", CommandId = "files.remoteEditDrafts.reupload", CommandParameter = "0a1b2c3d" }),
+            Item("legacy", new() { Label = "打开所在文件夹", CommandId = "files.remoteEditDrafts.open" }));
+        var plain = new List<string>();
+        var parameterized = new List<(string Id, string Parameter)>();
+        int closed = 0;
+        var vm = new NotificationPanelViewModel(center,
+            id => { plain.Add(id); return true; },
+            parameterizedCommandInvoker: (id, parameter) => { parameterized.Add((id, parameter)); return true; });
+        vm.CloseRequested += (_, _) => closed++;
+
+        await vm.ActivateCommand.Execute("with-parameter").FirstAsync();
+        await vm.ActivateCommand.Execute("legacy").FirstAsync();
+
+        Assert.AreSequenceEqual([("files.remoteEditDrafts.reupload", "0a1b2c3d")], parameterized);
+        Assert.AreSequenceEqual(["files.remoteEditDrafts.open"], plain, "不带参数的旧消息照旧走命令注册表");
+        Assert.AreEqual(2, closed);
+
+        // 带参数的那一路没挂:什么都不做,也不拿同名命令顶上
+        plain.Clear();
+        var withoutParameterized = new NotificationPanelViewModel(center, id => { plain.Add(id); return true; });
+        await withoutParameterized.ActivateCommand.Execute("with-parameter").FirstAsync();
+        Assert.IsEmpty(plain);
+    }
+
+    /// <summary>
+    /// 第二个动作:点了标已读、带着参数执行、收起面板;只认站内命令(外链一律不开),
+    /// 主动作是外链(那一行左端摆着主机名)或者没有主动作时不显示。
+    /// </summary>
+    [TestMethod]
+    public async Task ActivateSecondary_RunsTheSecondCommandWithItsParameter_AndOnlyInAppOnes()
+    {
+        NotificationItem draft = new()
+        {
+            Id = "remote-edit-draft:0a1b2c3d",
+            Kind = NotificationKind.System,
+            Title = "草稿",
+            PublishedAt = DateTime.UtcNow,
+            Link = new() { Label = "重新上传", CommandId = "files.remoteEditDrafts.reupload", CommandParameter = "0a1b2c3d" },
+            SecondaryLink = new() { Label = "打开所在文件夹", CommandId = "files.remoteEditDrafts.open", CommandParameter = "0a1b2c3d" }
+        };
+        NotificationItem urlSecondary = new()
+        {
+            Id = "url-secondary",
+            Kind = NotificationKind.News,
+            Title = "外链不能当第二个动作",
+            PublishedAt = DateTime.UtcNow,
+            Link = new() { Label = "查看", CommandId = "app.settings.about" },
+            SecondaryLink = new() { Label = "阅读", Url = "https://example.com" }
+        };
+        NotificationItem externalPrimary = new()
+        {
+            Id = "external-primary",
+            Kind = NotificationKind.News,
+            Title = "主动作是外链",
+            PublishedAt = DateTime.UtcNow,
+            Link = new() { Label = "阅读全文", Url = "https://example.com/post" },
+            SecondaryLink = new() { Label = "查看", CommandId = "app.settings.about" }
+        };
+        NotificationItem noPrimary = new()
+        {
+            Id = "no-primary",
+            Kind = NotificationKind.News,
+            Title = "没有主动作",
+            PublishedAt = DateTime.UtcNow,
+            SecondaryLink = new() { Label = "查看", CommandId = "app.settings.about" }
+        };
+        NotificationCenter center = await SeededCenterAsync(draft, urlSecondary, externalPrimary, noPrimary);
+        var parameterized = new List<(string Id, string Parameter)>();
+        var plain = new List<string>();
+        var urls = new List<string>();
+        int closed = 0;
+        var vm = new NotificationPanelViewModel(center,
+            id => { plain.Add(id); return true; },
+            url => { urls.Add(url); return Task.CompletedTask; },
+            parameterizedCommandInvoker: (id, parameter) => { parameterized.Add((id, parameter)); return true; });
+        vm.CloseRequested += (_, _) => closed++;
+
+        NotificationItemViewModel row = vm.Items.Single(item => item.Id == draft.Id);
+        Assert.IsTrue(row.HasSecondaryLink);
+        Assert.AreEqual("打开所在文件夹", row.SecondaryLinkLabel);
+        Assert.IsFalse(vm.Items.Single(item => item.Id == "url-secondary").HasSecondaryLink, "第二个动作只认站内命令");
+        Assert.IsFalse(vm.Items.Single(item => item.Id == "external-primary").HasSecondaryLink, "主动作是外链时左端是主机名");
+        Assert.IsFalse(vm.Items.Single(item => item.Id == "no-primary").HasSecondaryLink);
+
+        await vm.ActivateSecondaryCommand.Execute(draft.Id).FirstAsync();
+
+        Assert.AreSequenceEqual([("files.remoteEditDrafts.open", "0a1b2c3d")], parameterized, "点第二个动作,不跑主动作");
+        Assert.IsTrue(center.Items.Single(item => item.Id == draft.Id).IsRead);
+        Assert.AreEqual(1, closed);
+
+        foreach (string id in new[] { "url-secondary", "external-primary", "no-primary" })
+        {
+            await vm.ActivateSecondaryCommand.Execute(id).FirstAsync();
+        }
+        Assert.IsEmpty(plain);
+        Assert.IsEmpty(urls);
+        Assert.AreEqual(1, closed);
+    }
+
     /// <summary>非 https 的外链一律不开 —— 这是远端来的地址落地前的最后一道闸。</summary>
     [TestMethod]
     public async Task Activate_RefusesNonHttpsUrl()

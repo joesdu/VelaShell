@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using VelaShell.Core.Data;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Services;
 using VelaShell.Infrastructure.Plugins.Capabilities;
@@ -18,6 +19,7 @@ using VelaShell.PluginSdk.RemoteFs;
 using VelaShell.PluginSdk.RemoteTunnel;
 using VelaShell.PluginSdk.Sessions;
 using VelaShell.PluginSdk.Versioning;
+using SecretsLockedException = VelaShell.Core.Data.SecretsLockedException;
 
 namespace VelaShell.Infrastructure.Plugins;
 
@@ -363,7 +365,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             Strings.Get("Msg_PluginInstalling"), Path.GetFileName(vpxPath), progress: 0);
         try
         {
-            await EnsureTrustInitializedAsync(cancellationToken).ConfigureAwait(false);
+            await EnsureTrustInitializedAsync(cancellationToken, TrustUnlock.Prompt).ConfigureAwait(false);
             activity?.Report(0.1);
             VpxPackageInfo packageInfo = ExtractPackage(vpxPath, staging, allowUntrustedPackage);
             activity?.Report(0.5);
@@ -585,7 +587,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     public async Task<string?> GetPinnedPublisherFingerprintAsync(
         string pluginId, CancellationToken cancellationToken = default)
     {
-        await EnsureTrustInitializedAsync(cancellationToken).ConfigureAwait(false);
+        await EnsureTrustInitializedAsync(cancellationToken, TrustUnlock.DontWait).ConfigureAwait(false);
         if (_trustState is null)
         {
             return null;
@@ -611,7 +613,13 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// <param name="cancellationToken">取消令牌。</param>
     public async Task<string?> GetTrustStoreErrorAsync(CancellationToken cancellationToken = default)
     {
-        await EnsureTrustInitializedAsync(cancellationToken).ConfigureAwait(false);
+        // 主密码锁着:信任库此刻读不出来,但它没坏 —— 不能报成「无法读取」,那条提示会劝人去重置。
+        if (!_trustInitialized && options.TrustRepository is not null && options.MasterPassword is { } gate
+            && await gate.IsLockedAsync().ConfigureAwait(false))
+        {
+            return Strings.Get("MasterPassword_PluginTrustLocked");
+        }
+        await EnsureTrustInitializedAsync(cancellationToken, TrustUnlock.DontWait).ConfigureAwait(false);
         return _trustLoadError;
     }
 
@@ -670,7 +678,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// </summary>
     public async Task<string> TrustPackagePublisherAsync(string packagePath, CancellationToken cancellationToken = default)
     {
-        await EnsureTrustInitializedAsync(cancellationToken).ConfigureAwait(false);
+        await EnsureTrustInitializedAsync(cancellationToken, TrustUnlock.Prompt).ConfigureAwait(false);
         if (options.TrustRepository is not null && _trustState is null)
         {
             throw new InvalidOperationException($"Plugin trust store is unavailable: {_trustLoadError ?? "unknown error"}");
@@ -748,11 +756,44 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
     }
 
-    private async Task EnsureTrustInitializedAsync(CancellationToken cancellationToken)
+    /// <summary>信任库要等主密码解锁才读得出来时怎么等。</summary>
+    private enum TrustUnlock
+    {
+        /// <summary>不弹框,一直等到用户在主窗口的解锁框里解开(启动、插件校验)。</summary>
+        Wait,
+
+        /// <summary>用户主动的操作(安装、信任发布者):锁着就弹解锁框,取消则报已锁定。</summary>
+        Prompt,
+
+        /// <summary>只是查询(管理页):锁着就不初始化,当作此刻没有信任状态。</summary>
+        DontWait
+    }
+
+    private async Task EnsureTrustInitializedAsync(CancellationToken cancellationToken, TrustUnlock unlock = TrustUnlock.Wait)
     {
         if (_trustInitialized)
         {
             return;
+        }
+        // 信任库经同一个机密保护器认证加密:主密码锁着时读出来只会是「认证失败」,被当成坏了、用户插件一律拒载。
+        // 先等解锁(在信号量之外等,查询类的调用不被堵在后面);没解开就这一轮不初始化,解开之后的下一次调用再读。
+        if (options.TrustRepository is not null && options.MasterPassword is { } gate && await gate.IsLockedAsync().ConfigureAwait(false))
+        {
+            switch (unlock)
+            {
+                case TrustUnlock.DontWait:
+                    return;
+                case TrustUnlock.Prompt:
+                    if (!await gate.EnsureUnlockedAsync(interactive: true, cancellationToken).ConfigureAwait(false))
+                    {
+                        throw new SecretsLockedException(Strings.Get("MasterPassword_PluginTrustLocked"));
+                    }
+                    break;
+                default:
+                    Log("Plugin trust store is waiting for the master password to be entered.");
+                    await gate.WaitUntilUnlockedAsync(cancellationToken).ConfigureAwait(false);
+                    break;
+            }
         }
         await _trustStateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -1264,7 +1305,8 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         {
             source.SurfacesChanged += RaiseChanged;
         }
-        await EnsureTrustInitializedAsync(cancellationToken).ConfigureAwait(false);
+        // 主密码锁着时不在这里等:发现、应用自带插件照常;用户目录里的插件要校验收据,校验那一步自己等解锁(EnsureVerifiedAsync)。
+        await EnsureTrustInitializedAsync(cancellationToken, TrustUnlock.DontWait).ConfigureAwait(false);
         Discover();
         List<PluginRuntime> discovered;
         lock (_gate)
@@ -2511,11 +2553,12 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                 ? new StaticHostTheme()
                 : new HostThemeCapability(log, _themeSource.Value),
             Ui = CreateUi(manifest.Id, log),
-            Secrets = options.DataStore is { } dataStore
+            // 主密码锁着时先等交互式解锁(取消报权限被拒,绝不交回 null —— 见 MasterPasswordGatedSecrets)。
+            Secrets = MasterPasswordGatedSecrets.Wrap(options.DataStore is { } dataStore
                 ? dataStore.CreateSecrets(manifest.Id)
                 : options.SecretProtector is { } protector
                     ? new ProtectedSecretsCapability(dataDirectory, protector)
-                    : new UnavailableSecrets(),
+                    : new UnavailableSecrets(), options.MasterPassword),
             Clipboard = options.Clipboard ?? new UnavailableClipboard(),
             Terminal = options.TerminalFactory?.Invoke(manifest.Id, log) ?? new UnavailableTerminal(),
             TerminalView = options.TerminalView ?? new UnavailableTerminalView(),

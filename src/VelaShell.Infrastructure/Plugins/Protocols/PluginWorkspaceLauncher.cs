@@ -129,6 +129,8 @@ public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry) : I
         // 配置里还留着的那份是两栏收起之前填的(或旧版本存下的),用户看不见,不能交给第三方插件。
         bool noCredentials = WorkspaceVariants.EffectiveFeatures(registration.Descriptor, profile.PluginSettings)
             .HasFlag(WorkspaceFeatures.NoCredentials);
+        // 存着的机密在这台设备上解不开:不把密文、也不把空串交给插件(PluginStoredSecrets)。
+        PluginStoredSecrets.ThrowIfUnreadable(profile, registration.Descriptor.Fields, includePassword: !noCredentials);
         var request = new WorkspaceConnectRequest
         {
             SessionId = sessionId.ToString("N"),
@@ -226,7 +228,8 @@ public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry) : I
         }
         if (profile.PluginSecrets is { } secrets)
         {
-            foreach (KeyValuePair<string, string> entry in secrets)
+            // 解不开的密文一律不交(声明过的字段在这之前已经报错,见 PluginStoredSecrets;没声明的旧键插件也不认识)。
+            foreach (KeyValuePair<string, string> entry in secrets.Where(static entry => PluginStoredSecrets.IsReadable(entry.Value)))
             {
                 settings[entry.Key] = entry.Value;
             }

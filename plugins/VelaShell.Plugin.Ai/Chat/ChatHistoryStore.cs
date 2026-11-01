@@ -38,17 +38,49 @@ public sealed record ChatGeneratedImage(string FileName, string MediaType);
 /// <param name="ThinkingMs">思考耗时(毫秒);0 表示没记。</param>
 /// <param name="Tools">这一轮调用过的工具。</param>
 /// <param name="Images">这一轮生成的图片引用。</param>
+/// <param name="Switch">这一轮的故障转移 / 换 Key 记录(界面上那张切换提示卡);没切过为 null。</param>
 public sealed record ChatTurnMeta(
     string Model = "",
     long ElapsedMs = 0,
     string Thinking = "",
     long ThinkingMs = 0,
     IReadOnlyList<ChatToolCall>? Tools = null,
-    IReadOnlyList<ChatGeneratedImage>? Images = null)
+    IReadOnlyList<ChatGeneratedImage>? Images = null,
+    ChatSwitchNotice? Switch = null)
 {
     /// <summary>这一轮有没有值得存的东西 —— 全空就别白占一行。</summary>
-    public bool HasContent => Model.Length > 0 || ElapsedMs > 0 || Thinking.Length > 0 || Tools is { Count: > 0 } || Images is { Count: > 0 };
+    public bool HasContent => Model.Length > 0 || ElapsedMs > 0 || Thinking.Length > 0 || Tools is { Count: > 0 } || Images is { Count: > 0 }
+                              || Switch is { Hops.Count: > 0 };
 }
+
+/// <summary>切换提示里点名的那一把 Key:与设置页 Key 行同一种写法(「第 N 把 Key · ●●●●末四位」),不存 Key 本身。</summary>
+/// <param name="Ordinal">这把 Key 在供应商 Key 列表里的序号(从 1 起,切换那一刻的位置)。</param>
+/// <param name="Tail">Key 的末四位;Key 不足五位时为空(界面只画遮罩,与设置页一致)。</param>
+public sealed record ChatKeyLabel(int Ordinal, string Tail);
+
+/// <summary>
+/// 一轮里的一跳故障转移或换 Key:哪一站因为什么失败、换到了哪一站。只给人看,不进模型上下文。
+/// </summary>
+/// <param name="From">失败的那一站(「供应商·模型」显示名)。</param>
+/// <param name="To">换去的那一站。</param>
+/// <param name="Reason">原因代码(<c>TransientFailure.SwitchReason</c> 给出:rate_limit / auth / timeout / server / network / empty / config / other)。</param>
+/// <param name="Status">服务端回的 HTTP 状态码;没有(没连上、空回复、流式 error 事件)时为 0。</param>
+/// <param name="FromKey">失败那一站用的那把 Key;供应商只有一把 Key、或不是填 Key 的接入时为 null。</param>
+/// <param name="ToKey">换去的那一站用的那把 Key,口径同上。</param>
+public sealed record ChatProviderSwitch(
+    string From,
+    string To,
+    string Reason,
+    int Status = 0,
+    ChatKeyLabel? FromKey = null,
+    ChatKeyLabel? ToKey = null);
+
+/// <summary>
+/// 一轮的切换记录:同一轮里连着换几次也只合成一张提示卡(最后一跳是「现在用的是谁」,前面几跳是一路为什么换)。
+/// </summary>
+/// <param name="Hops">按发生顺序的各跳。</param>
+/// <param name="Sticky">这一轮答完、切换粘住了 —— 之后的请求也发往最后那一站(卡上多一句说明)。</param>
+public sealed record ChatSwitchNotice(IReadOnlyList<ChatProviderSwitch> Hops, bool Sticky);
 
 /// <summary>
 /// AI 会话的持久化:落在插件私有的时序库里。
@@ -216,7 +248,8 @@ public sealed class ChatHistoryStore(IPluginContext context)
                        .Select(t => new StoredTool(t.Name, Truncate(t.Arguments, MaxToolResultChars),
                            Truncate(t.Result, MaxToolResultChars)))
                 ],
-                [.. (meta.Images ?? []).Where(GeneratedImageStore.IsValidReference).Take(GeneratedImageStore.MaxImagesPerTurn)]);
+                [.. (meta.Images ?? []).Where(GeneratedImageStore.IsValidReference).Take(GeneratedImageStore.MaxImagesPerTurn)],
+                StoredSwitch.From(meta.Switch));
             await series.WriteAsync(new(_clock.Next(),
                 new Dictionary<string, string> { [ConversationTag] = conversationId },
                 new Dictionary<string, TimeSeriesValue>
@@ -478,7 +511,8 @@ public sealed class ChatHistoryStore(IPluginContext context)
                 result[(int)point.Integer("seq")] = new ChatTurnMeta(
                     stored.Model ?? "", stored.ElapsedMs, stored.Thinking ?? "", stored.ThinkingMs,
                     [.. (stored.Tools ?? []).Select(t => new ChatToolCall(t.Name ?? "", t.Arguments ?? "", t.Result ?? ""))],
-                    stored.Images is null ? null : [.. stored.Images.Where(GeneratedImageStore.IsValidReference).Take(GeneratedImageStore.MaxImagesPerTurn)]);
+                    stored.Images is null ? null : [.. stored.Images.Where(GeneratedImageStore.IsValidReference).Take(GeneratedImageStore.MaxImagesPerTurn)],
+                    stored.Switch?.ToNotice());
             }
         }
         catch (Exception ex)
@@ -491,9 +525,39 @@ public sealed class ChatHistoryStore(IPluginContext context)
 
     // 落盘用的形状(与对外的记录分开:对外那套将来可以改,存量 JSON 不受影响)
     private sealed record StoredMeta(string? Model, long ElapsedMs, string? Thinking, long ThinkingMs, StoredTool[]? Tools,
-        ChatGeneratedImage[]? Images = null);
+        ChatGeneratedImage[]? Images = null, StoredSwitch? Switch = null);
 
     private sealed record StoredTool(string? Name, string? Arguments, string? Result);
+
+    /// <summary>切换提示的落盘形状。站名截短、跳数封顶:历史是给人翻的,一整个 Key 池挨个限流也不该撑出一大行。</summary>
+    private sealed record StoredSwitch(StoredHop[]? Hops, bool Sticky)
+    {
+        private const int MaxHops = 16, MaxName = 200;
+
+        public static StoredSwitch? From(ChatSwitchNotice? notice)
+            => notice is not { Hops.Count: > 0 } ? null : new StoredSwitch(
+            [
+                // 留最后几跳:最后一跳是「现在用的是谁」,丢不得
+                .. notice.Hops.Skip(Math.Max(0, notice.Hops.Count - MaxHops)).Select(hop => new StoredHop(
+                    Truncate(hop.From, MaxName), Truncate(hop.To, MaxName), hop.Reason, hop.Status,
+                    hop.FromKey?.Ordinal ?? 0, hop.FromKey?.Tail, hop.ToKey?.Ordinal ?? 0, hop.ToKey?.Tail))
+            ], notice.Sticky);
+
+        public ChatSwitchNotice? ToNotice()
+        {
+            List<ChatProviderSwitch> hops =
+            [
+                .. (Hops ?? []).Where(hop => hop is not null).Select(hop => new ChatProviderSwitch(hop.From ?? "", hop.To ?? "",
+                    hop.Reason ?? "other", hop.Status,
+                    hop.FromKey > 0 ? new ChatKeyLabel(hop.FromKey, hop.FromTail ?? "") : null,
+                    hop.ToKey > 0 ? new ChatKeyLabel(hop.ToKey, hop.ToTail ?? "") : null))
+            ];
+            return hops.Count == 0 ? null : new ChatSwitchNotice(hops, Sticky);
+        }
+    }
+
+    private sealed record StoredHop(string? From, string? To, string? Reason, int Status,
+        int FromKey, string? FromTail, int ToKey, string? ToTail);
 
     private sealed record StoredSummary(string? Summary, int Through);
 

@@ -493,10 +493,11 @@ public class TunnelServiceTests
     }
 
     /// <summary>
-    /// 远程转发的套接字两头必须同时给:服务器那头进监听端、本机那头进目的端;只给一头的不建,也不悄悄退回端口。
+    /// 远程转发的套接字两头各自可以给(SSH 库四种组合都有):服务器那头进监听端、本机那头进目的端,没给的那头照旧用主机与端口。
+    /// 曾经只给一头的不建(TunnelSvc_RemoteSocketNeedsBothEnds)。
     /// </summary>
     [TestMethod]
-    public async Task CreateRemoteForwardAsync_UnixSocketsNeedBothEnds()
+    public async Task CreateRemoteForwardAsync_UnixSocketsOnEitherEnd()
     {
         List<PortForwardRequest> requests = [];
         _mockClientWrapper.StartPortForwardAsync(Arg.Do<PortForwardRequest>(requests.Add), Arg.Any<CancellationToken>())
@@ -515,16 +516,19 @@ public class TunnelServiceTests
         };
 
         await service.CreateRemoteForwardAsync(_sessionId, Config(@"C:\Users\me\app.sock", "/tmp/app.sock"));
-        Assert.AreEqual("/tmp/app.sock", requests.Single().BoundSocketPath);
-        Assert.AreEqual(@"C:\Users\me\app.sock", requests.Single().TargetSocketPath);
+        await service.CreateRemoteForwardAsync(_sessionId, Config("/home/me/app.sock", null));
+        await service.CreateRemoteForwardAsync(_sessionId, Config(null, "/tmp/app.sock"));
 
-        foreach (TunnelConfig half in new[] { Config("/home/me/app.sock", null), Config(null, "/tmp/app.sock") })
-        {
-            ArgumentException ex = await Assert.ThrowsExactlyAsync<ArgumentException>(
-                () => service.CreateRemoteForwardAsync(_sessionId, half));
-            Assert.AreEqual(Strings.Get("TunnelSvc_RemoteSocketNeedsBothEnds"), ex.Message);
-        }
-        Assert.HasCount(1, requests);
+        Assert.HasCount(3, requests);
+        Assert.AreEqual(("/tmp/app.sock", @"C:\Users\me\app.sock"), (requests[0].BoundSocketPath, requests[0].TargetSocketPath));
+
+        // 服务器的端口回连到本机的套接字:监听端是服务器上的地址与端口。
+        Assert.AreEqual((PortForwardKind.Remote, null, "/home/me/app.sock"), (requests[1].Kind, requests[1].BoundSocketPath, requests[1].TargetSocketPath));
+        Assert.AreEqual(("127.0.0.1", 8080u), (requests[1].BoundHost, requests[1].BoundPort));
+
+        // 服务器上的套接字回连到本机的端口:目的端是本机的主机与端口。
+        Assert.AreEqual((PortForwardKind.Remote, "/tmp/app.sock", null), (requests[2].Kind, requests[2].BoundSocketPath, requests[2].TargetSocketPath));
+        Assert.AreEqual(("127.0.0.1", (uint?)8080u), (requests[2].TargetHost, requests[2].TargetPort));
     }
 
     private static TunnelConfig LocalConfig(uint port) =>

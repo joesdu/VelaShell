@@ -1,6 +1,7 @@
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Infrastructure.Notifications;
+using VelaShell.Infrastructure.Persistence;
 
 namespace VelaShell.Infrastructure.Tests.Notifications;
 
@@ -256,6 +257,65 @@ public class NotificationCenterTests
         Assert.HasCount(3, reloaded.Items, "删掉的不在落盘里");
     }
 
+    /// <summary>
+    /// 落盘的旧消息(去处只有 <c>label</c> / <c>commandId</c>,没有参数、没有第二个动作)照常读出来;
+    /// 新加的 <see cref="NotificationLink.CommandParameter" /> 与 <see cref="NotificationItem.SecondaryLink" /> 经真的 SonnetDB 往返不丢。
+    /// </summary>
+    [TestMethod]
+    public async Task Load_ReadsLegacyLinksWithoutParameters_AndRoundTripsTheNewFields()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), $"vela-inbox-{Guid.NewGuid():N}");
+        try
+        {
+            using (var engine = new SonnetDbEngine(Path.Combine(directory, "sonnetdb")))
+            {
+                await engine.WithCollectionAsync<object?>("notifications", store =>
+                {
+                    store.Upsert("inbox", """
+                        [{"id":"remote-edit-draft:0a1b2c3d","kind":4,"severity":1,"title":"old","body":"old body",
+                          "publishedAt":"2026-10-25T12:00:00Z","isRead":true,
+                          "link":{"label":"Open folder","commandId":"files.remoteEditDrafts.open"}}]
+                        """);
+                    return null;
+                });
+                var center = new NotificationCenter(new SonnetDbAppDataStore(engine));
+                await center.LoadAsync();
+                NotificationItem legacy = center.Items.Single();
+                Assert.AreEqual("files.remoteEditDrafts.open", legacy.Link?.CommandId);
+                Assert.IsNull(legacy.Link?.CommandParameter, "旧消息没有参数");
+                Assert.IsNull(legacy.SecondaryLink, "旧消息没有第二个动作");
+                Assert.IsTrue(legacy.IsRead);
+
+                await center.RemoveAsync(legacy.Id);
+                await center.PublishAsync([new NotificationItem
+                {
+                    Id = legacy.Id,
+                    Kind = NotificationKind.System,
+                    Title = "new",
+                    PublishedAt = legacy.PublishedAt,
+                    Link = new() { Label = "Upload again", CommandId = "files.remoteEditDrafts.reupload", CommandParameter = "0a1b2c3d" },
+                    SecondaryLink = new() { Label = "Open folder", CommandId = "files.remoteEditDrafts.open", CommandParameter = "0a1b2c3d" }
+                }]);
+            }
+            using (var reopened = new SonnetDbEngine(Path.Combine(directory, "sonnetdb")))
+            {
+                var center = new NotificationCenter(new SonnetDbAppDataStore(reopened));
+                await center.LoadAsync();
+                NotificationItem item = center.Items.Single();
+                Assert.AreEqual("0a1b2c3d", item.Link?.CommandParameter);
+                Assert.AreEqual("files.remoteEditDrafts.open", item.SecondaryLink?.CommandId);
+                Assert.AreEqual("0a1b2c3d", item.SecondaryLink?.CommandParameter);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
     /// <summary>把文档留在内存里的最小存储,用来验证"跨进程"的往返。</summary>
     private sealed class InMemoryDataStore : IAppDataStore
     {
@@ -297,6 +357,7 @@ public class NotificationCenterTests
                 ExpiresAt = item.ExpiresAt,
                 IsRead = item.IsRead,
                 Link = item.Link,
+                SecondaryLink = item.SecondaryLink,
                 Source = item.Source
             };
     }

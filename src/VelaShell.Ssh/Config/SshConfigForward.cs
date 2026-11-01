@@ -46,19 +46,32 @@ public sealed record SshConfigForward(
     public bool IsRemoteDynamic => Kind == SshConfigForwardKind.Remote && TargetHost is null && TargetSocketPath is null;
 
     /// <summary>
-    /// 解析一条转发的值（<c>ssh_config</c> 里关键字之后的部分）。
+    /// 解析一条转发的值（<c>ssh_config</c> 里关键字之后的部分，写法照原文）。
+    /// 调用方用 <see cref="SshHostConfig.GetForwards"/>；〔历史〕曾经公开，宿主导入时逐行调它，2026-10-31 改由 <c>GetForwards(onInvalid)</c> 逐行报错。
     /// </summary>
     /// <param name="kind">哪一种。</param>
     /// <param name="value">值，如 <c>8080 db.internal:5432</c>、<c>127.0.0.1:1080</c>、<c>/tmp/d.sock /var/run/docker.sock</c>。</param>
     /// <exception cref="SshConnectException">写法不对（<see cref="SshFailureReason.InvalidConfiguration"/>）。</exception>
     /// <remarks>
-    /// 含 <c>/</c> 的一头是 Unix 套接字路径（与 ssh 的判断一致）；IPv6 地址写在方括号里（<c>[::1]:8080</c>）；
+    /// 两头照 velashell-docs/zh/ssh/spec/09 §7.4 分词（带空格的套接字路径加引号写，是一头）；
+    /// 含 <c>/</c> 的一头是 Unix 套接字路径（与 ssh 的判断一致；整个放进方括号的 <c>[C:/x.sock]</c> 是方括号里的那个路径）；IPv6 地址写在方括号里（<c>[::1]:8080</c>）；
     /// 监听地址写 <c>*</c> 或空（<c>:8080</c>）表示全部网卡。
     /// </remarks>
-    public static SshConfigForward Parse(SshConfigForwardKind kind, string value)
+    internal static SshConfigForward Parse(SshConfigForwardKind kind, string value)
     {
         ArgumentNullException.ThrowIfNull(value);
-        string[] parts = value.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+        return SshConfigSyntax.TrySplit(value, out List<string>? parts)
+            ? Parse(kind, parts, value)
+            : throw Invalid(kind, value, "引号没配对");
+    }
+
+    /// <summary>解析一条已经分好词的转发（<see cref="SshHostConfig.GetForwards"/> 用）。</summary>
+    /// <param name="kind">哪一种。</param>
+    /// <param name="arguments">分好词的两头（引号与转义已解开）。</param>
+    /// <param name="value">配置里的原文（进 <see cref="Line"/> 与报错）。</param>
+    internal static SshConfigForward Parse(SshConfigForwardKind kind, IReadOnlyList<string> arguments, string value)
+    {
+        string[] parts = [.. arguments.Where(static part => part.Length > 0).Select(Unbracket)];
         int expected = kind == SshConfigForwardKind.Dynamic ? 1 : 2;
         if (parts.Length == 0 || parts.Length > expected || (kind == SshConfigForwardKind.Local && parts.Length != 2))
         {
@@ -146,6 +159,14 @@ public sealed record SshConfigForward(
             ? (host, number)
             : (host, null);
     }
+
+    /// <summary>
+    /// 套接字那一头可以整个放进方括号（<c>[C:/x.sock]</c>、<c>[/run/a:b.sock]</c>），里面的原样是路径 —— 与 ssh 一样（spec/09 §7.4 的观察）：
+    /// 路径里有 <c>:</c> 时 ssh 只认这种写法（不加的话把 <c>:</c> 当主机与端口的分隔，报 Bad forwarding specification、整份配置不读），
+    /// 宿主导出 Windows 上的本机套接字就这样写。方括号里没有 <c>/</c> 的不动（<c>[::1]:8080</c> 这类 IPv6 写法后面还跟着端口，也不动）。
+    /// </summary>
+    private static string Unbracket(string part) =>
+        part is ['[', .. var inner, ']'] && inner.Contains('/', StringComparison.Ordinal) ? inner : part;
 
     private static SshConnectException Invalid(SshConfigForwardKind kind, string value, string why) =>
         new(SshFailureReason.InvalidConfiguration, SshPhase.Dialing,

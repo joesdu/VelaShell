@@ -102,9 +102,11 @@ internal sealed partial class RemoteFsCapability
         Task heartbeat = TransferHeartbeatAsync(op, heartbeatStop.Token);
         try
         {
-            Update(op, s => s with { State = RemoteTransferState.Starting, Phase = RemoteTransferPhase.Approval });
+            // 与上传同理:后台流程还没跑到这里就被撤回或取消的,保留 CancelRequested,连远端源也不去 stat。
+            Update(op, s => s with { State = s.CancellationRequested ? s.State : RemoteTransferState.Starting, Phase = RemoteTransferPhase.Approval });
             if (uploadPermissions is null || op._downloadPermission is null || string.IsNullOrWhiteSpace(pluginId))
                 throw new PluginPermissionDeniedException("A trusted download approval is required.");
+            ct.ThrowIfCancellationRequested();
             // Pin and verify the whole local directory chain before approval, without creating content.
             target = DownloadTargetFactory?.Invoke(Read(op).LocalPath, options.Overwrite)
                 ?? (OperatingSystem.IsWindows() ? WindowsDownloadTarget.Open(Read(op).LocalPath, options.Overwrite) : OpenPosixDownloadTarget(op, options.Overwrite));
@@ -114,7 +116,7 @@ internal sealed partial class RemoteFsCapability
             SshSession connection = connections.GetSession(session) ?? throw new PluginSessionNotFoundException(Read(op).SessionId);
             string label = $"{connection.ConnectionInfo.Username}@{connection.ConnectionInfo.Host}:{connection.ConnectionInfo.Port}";
             // 批准生效与阶段推进在授权闸的同一把锁里(见 EnterTransferPhase):已批准、在等传输槽的下载报 Transfer,
-            // 插件停止时按「Approval 才撤」的口径不会再把它当成还在等确认的撤掉。
+            // 插件停止时按「Approval 才撤」的口径不会再把它当成还在等确认的撤掉;条件撤回在同一把任务锁里判先后。
             if (!await uploadPermissions.CheckDownloadAsync(op._downloadPermission, pluginId, label, Read(op).RemotePath,
                 Read(op).LocalPath, options.Overwrite, source.Size, ct, () => EnterTransferPhase(op)).ConfigureAwait(false))
             {
@@ -198,11 +200,15 @@ internal sealed partial class RemoteFsCapability
             Exception cause = downloadWrite is { IsFaulted: true } ? downloadWrite.Exception!.InnerException ?? ex : ex;
             // 撤权优先于其它停止原因;断线、停用不再被推断成到期或用户取消。确认停写、临时文件清掉了的断线记
             // Failed / session-disconnected 而不是 Cancelled:本地目标确认没被提交,重连后重新下载是安全的(与上传同一口径,见 FailUpload)。
-            StopReason reason = op.PermissionRevoked ? StopReason.None : ReadStopReason(op);
+            // 批准生效之前就撤下的一律按用户取消收尾(理由同 FailUpload)。
+            bool withdrawn = WithdrawnBeforeApproval(op);
+            bool revoked = op.PermissionRevoked && !withdrawn;
+            bool denied = ex is PluginPermissionDeniedException && !withdrawn;
+            StopReason reason = withdrawn ? StopReason.User : revoked ? StopReason.None : ReadStopReason(op);
             RemoteTransferState state = committed ? RemoteTransferState.Unknown : reason == StopReason.Timeout ? RemoteTransferState.TimedOut
-                : !cleaned ? RemoteTransferState.Unknown : op.PermissionRevoked || ex is PluginPermissionDeniedException ? RemoteTransferState.Failed
+                : !cleaned ? RemoteTransferState.Unknown : revoked || denied ? RemoteTransferState.Failed
                 : reason is StopReason.User or StopReason.Disposed ? RemoteTransferState.Cancelled : RemoteTransferState.Failed;
-            string code = op.PermissionRevoked ? "permission-revoked" : ex is PluginPermissionDeniedException ? "permission-denied"
+            string code = revoked ? "permission-revoked" : denied ? "permission-denied"
                 : committed ? "commit-unknown" : !cleaned ? "cleanup-unknown"
                 : StopCode(reason) ?? (ex is SourceChangedException ? "source-changed" : ex is NotSupportedException ? "not-supported" : "download-failed");
             Update(op, s => s with
@@ -216,8 +222,8 @@ internal sealed partial class RemoteFsCapability
                 EstimatedTimeRemaining = null,
                 ErrorCode = code,
                 ErrorMessage = committed ? "The destination was committed but final completion could not be confirmed; do not retry automatically."
-                    : op.PermissionRevoked ? "Download authorization was revoked."
-                    : ex is PluginPermissionDeniedException ? "A trusted host download approval was not granted."
+                    : revoked ? "Download authorization was revoked."
+                    : denied ? "A trusted host download approval was not granted."
                     : !cleaned ? "The download did not confirm it stopped and cleaned up; the destination was not committed; do not retry automatically."
                     : StopText(reason) is { } stop ? stop + "; the destination was not committed."
                     : ex is SourceChangedException ? "The remote source changed; the destination was not committed."

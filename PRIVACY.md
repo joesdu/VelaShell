@@ -45,7 +45,7 @@ computer unless you explicitly enable the optional sync feature described below.
 | --- | --- |
 | Connection profiles (host, port, username), groups, and settings | `~/.velashell` |
 | Passwords and private-key passphrases you choose to save, including those of shared credentials (one username and password / key reused by many connections) and the network proxy password in your settings | Same folder, encrypted with AES-256 |
-| The encryption key protecting the above | Generated on your device. On macOS it is kept in the login keychain and on Linux in the Secret Service (gnome-keyring, KWallet and the like); the data folder only holds entry ids. If the system keychain is unavailable it is kept in the data folder (plain, readable only by you). On Windows it is kept in the data folder, bound to your Windows account with DPAPI |
+| The encryption key protecting the above | Generated on your device. On macOS it is kept in the login keychain and on Linux in the Secret Service (gnome-keyring, KWallet and the like); the data folder only holds entry ids. If the system keychain is unavailable it is kept in the data folder (plain, readable only by you). On Windows it is kept in the data folder, bound to your Windows account with DPAPI. If you turn on the optional master password, the key is additionally wrapped with a key derived from it (Argon2id); the data folder then also holds `secret.key.mp` (salt and parameters only) |
 | Known SSH host keys | Same folder |
 | Saved commands and snippets | Same folder |
 | Window sizes and positions, plus the file panes' column widths and split ratio (one copy for all connections, not part of the settings) | Same folder |
@@ -177,8 +177,12 @@ The only third parties that can receive anything are those you direct it to:
 Saved passwords and passphrases are encrypted with AES-256 using a key generated on and stored
 on your device. On macOS and Linux the key is held by the system keychain, so copying or backing up
 the data folder does not carry it along (unless the keychain was unavailable and the key stayed in
-the folder); on Windows it is bound to your account with DPAPI. Optional sync payloads can
-additionally be end-to-end encrypted with AES-GCM using a passphrase only you know.
+the folder); on Windows it is bound to your account with DPAPI. An optional master password
+(off by default) wraps that key once more: the keychain entry (or the DPAPI key file) and the master
+password are both needed to read saved secrets, and VelaShell asks for it once per start. It is never
+stored or sent anywhere, and there is no way to recover saved secrets without it (other than the
+optional recovery code you write down yourself). Optional sync payloads can additionally be
+end-to-end encrypted with AES-GCM using a passphrase only you know.
 
 Please note that session logging, when you turn it on, records **raw terminal output**,
 which may include anything displayed on screen during a session. These logs are plain files on
@@ -264,7 +268,7 @@ VelaShell 发起的每一个网络连接,都完整列在下方。
 | --- | --- |
 | 连接配置(主机、端口、用户名)、分组与应用设置 | `~/.velashell` |
 | 你选择保存的密码与私钥口令,包括共享凭据(多条连接共用的一套用户名与密码 / 密钥)里的,以及设置里的网络代理密码 | 同上,以 AES-256 加密 |
-| 保护上述内容的加密密钥 | 在你的设备上生成。macOS 上存进登录钥匙串,Linux 上存进 Secret Service(gnome-keyring、KWallet 等),数据目录里只留条目编号;系统密钥链用不了时存在数据目录里(明文,仅本人可读)。Windows 上存在数据目录里,以 DPAPI 绑定当前 Windows 用户 |
+| 保护上述内容的加密密钥 | 在你的设备上生成。macOS 上存进登录钥匙串,Linux 上存进 Secret Service(gnome-keyring、KWallet 等),数据目录里只留条目编号;系统密钥链用不了时存在数据目录里(明文,仅本人可读)。Windows 上存在数据目录里,以 DPAPI 绑定当前 Windows 用户。开了可选的主密码时,这把密钥另用主密码派生的密钥(Argon2id)包一层,数据目录里多一个 `secret.key.mp`(只有盐与参数) |
 | 已知的 SSH 主机密钥 | 同上 |
 | 快捷命令与代码片段 | 同上 |
 | 窗口的尺寸与位置,以及文件栏的列宽与分栏比例(所有连接共用一份,不在设置里) | 同上 |
@@ -368,7 +372,9 @@ VelaShell 不含任何第三方 SDK、追踪器或广告库。
 
 已保存的密码与口令使用 AES-256 加密,密钥在你的设备上生成并保存在本地。macOS / Linux 上这把密钥
 由系统密钥链保管,复制或备份数据目录不会带走它(密钥链用不了、密钥留在数据目录里时除外);
-Windows 上它以 DPAPI 绑定当前用户。可选的同步载荷还可使用只有你知道的口令做 AES-GCM 端到端加密。
+Windows 上它以 DPAPI 绑定当前用户。可选的主密码(默认关)再把这把密钥包一层:密钥链条目(或 DPAPI 密钥文件)
+与主密码两样都在才读得出已存的机密,每次启动输一次;主密码不落盘、不外传,忘了就无法找回已存的机密
+(除非你自己抄下了可选的恢复码)。可选的同步载荷还可使用只有你知道的口令做 AES-GCM 端到端加密。
 
 请注意:会话日志功能一旦开启,会记录**终端原始输出**,其中可能包含会话期间显示在屏幕上的
 任何内容。这些日志是磁盘上的普通文件。在共用计算机上启用该功能前请考虑这一点。默认情况下,会话日志与录制

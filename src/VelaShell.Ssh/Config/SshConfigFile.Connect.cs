@@ -413,9 +413,8 @@ public static partial class SshConfigFile
     private static IHostKeyPolicy MapKnownHostsPolicy(SshHostConfig config, string user, SshConfigConnectOptions settings)
     {
         string? strict = config.StrictHostKeyChecking?.ToLowerInvariant();
-        string? knownHosts = config.UserKnownHostsFile?
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .FirstOrDefault();
+        // 写了几个路径时只用第一个；带空格的路径加了引号就是一个（spec/09 §7.4）。〔历史〕曾经按空格切原文，"C:\a b\kh" 只剩 C:\a。
+        string? knownHosts = config.Arguments("UserKnownHostsFile").FirstOrDefault(static path => path.Length > 0);
 
         // ask 与缺省是「交互式」的那一种 —— 调用方给了自己的策略（带着它自己的信任库与询问界面）就用它，
         // 曾经只要配置里写了 UserKnownHostsFile 就另起一个策略，把调用方的那一个丢掉。
@@ -602,8 +601,9 @@ public static partial class SshConfigFile
             return null;
         }
 
+        // 引号与转义在分词时已经去掉（spec/09 §7.4）—— 这里不再剥引号：解开之后还在的引号是路径的一部分。
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        string value = raw.Trim().Trim('"');
+        string value = raw;
 
         if (value == "~" || value.StartsWith("~/", StringComparison.Ordinal) || value.StartsWith("~\\", StringComparison.Ordinal))
         {

@@ -771,6 +771,9 @@
   <data name="FtpSvc_ReadCompletionTimeout" xml:space="preserve">
     <value>等待 FTP 伺服器確認傳輸完成時逾時。</value>
   </data>
+  <data name="FtpSvc_TransferInterrupted" xml:space="preserve">
+    <value>傳輸 {0} 時 FTP 資料連線中途中斷；控制連線仍然可用。</value>
+  </data>
   <data name="SftpSvc_RelayLengthMismatch" xml:space="preserve">
     <value>傳輸不完整：{0}。預期 {1} 位元組，實際讀取 {2} 位元組。來源檔案可能已變更，或連線提前結束。</value>
   </data>
@@ -2331,6 +2334,9 @@
   </data>
   <data name="Msg_AutoReconnectCountdown" xml:space="preserve">
     <value>{0} 已中斷連線,{1} 秒後自動重新連線({2}/{3})…</value>
+  </data>
+  <data name="Msg_ReconnectProfileDeleted" xml:space="preserve">
+    <value>「{0}」的連線設定已經刪除,這次依分頁裡留著的那份重新連線,不會再存回去。</value>
   </data>
   <data name="Msg_AutoRecordDisabledHint" xml:space="preserve">
     <value>自動錄製已關閉。</value>
@@ -5201,19 +5207,19 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>改用 Unix 網域通訊端</value>
   </data>
   <data name="Tunnel_UnixSocketTip" xml:space="preserve">
-    <value>本地轉發兩頭各自可以改用通訊端,填了路徑的那頭不再用上面的連接埠;遠端轉發兩頭必須同時是通訊端。本機的通訊端檔案按檔案權限隔離,這台電腦上別的使用者借不走這條隧道。伺服器要開著 AllowStreamLocalForwarding。</value>
+    <value>本地轉發與遠端轉發的兩頭各自可以改用通訊端,填了路徑的那頭不再用上面的連接埠與主機。本機的通訊端檔案按檔案權限隔離,這台電腦上別的使用者借不走這條隧道。伺服器要開著 AllowStreamLocalForwarding。</value>
   </data>
   <data name="Tunnel_LocalSocketListenLabel" xml:space="preserve">
     <value>本機監聽的通訊端(留空則用本機連接埠)</value>
   </data>
   <data name="Tunnel_LocalSocketTargetLabel" xml:space="preserve">
-    <value>本機要連的通訊端</value>
+    <value>本機要連的通訊端(留空則用本機連接埠)</value>
   </data>
   <data name="Tunnel_RemoteSocketTargetLabel" xml:space="preserve">
     <value>伺服器上的目標通訊端(留空則用目標主機:連接埠)</value>
   </data>
   <data name="Tunnel_RemoteSocketListenLabel" xml:space="preserve">
-    <value>伺服器上監聽的通訊端</value>
+    <value>伺服器上監聽的通訊端(留空則用伺服器監聽位址:連接埠)</value>
   </data>
   <data name="Tunnel_SocketPathRequired" xml:space="preserve">
     <value>要填通訊端路徑。</value>
@@ -5307,9 +5313,6 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="TunnelSvc_TargetNotPermitted" xml:space="preserve">
     <value>遠端要連的目標不在放行名單裡,已拒絕;要放行就把它加進這條隧道的放行名單。</value>
-  </data>
-  <data name="TunnelSvc_RemoteSocketNeedsBothEnds" xml:space="preserve">
-    <value>遠端轉發要嘛兩頭都用連接埠,要嘛兩頭都用 Unix 通訊端:這一條只有一頭填了通訊端路徑。</value>
   </data>
   <data name="TunnelSvc_LocalSocketExists" xml:space="preserve">
     <value>{0} 已經存在 —— 多半是上次沒收拾乾淨,也可能是別的程式的通訊端。確認沒用之後刪掉它再啟動。</value>
@@ -5737,6 +5740,60 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Notify_RemoteEditDraftAction" xml:space="preserve">
     <value>開啟所在資料夾</value>
   </data>
+  <data name="Notify_RemoteEditDraftReupload" xml:space="preserve">
+    <value>重新上傳</value>
+  </data>
+  <data name="Notify_RemoteEditDraftBodyReupload" xml:space="preserve">
+    <value>{0}（{1}）的變更還留在本機的 {2}，沒有傳回伺服器。點「重新上傳」會連上那台伺服器把這份副本傳回去（遠端在這之後被改過會先問你）；也可以自己處理之後刪掉這份副本。草稿不會被自動刪除。</value>
+  </data>
+  <data name="RemoteEditDraft_Uploaded" xml:space="preserve">
+    <value>{0} 已傳回 {1}，本機的草稿已刪除。</value>
+  </data>
+  <data name="RemoteEditDraft_ChangedDuringUpload" xml:space="preserve">
+    <value>{0} 已傳回 {1}，但上傳期間本機副本又被改過，草稿留在 {2}。</value>
+  </data>
+  <data name="RemoteEditDraft_Gone" xml:space="preserve">
+    <value>這份外部編輯草稿已經不在了，訊息已撤下。</value>
+  </data>
+  <data name="RemoteEditDraft_NoProfile" xml:space="preserve">
+    <value>{0} 的草稿沒記著是哪個連線設定（快速連線或舊版本留下的），沒辦法從這裡重傳；副本在 {1}。</value>
+  </data>
+  <data name="RemoteEditDraft_ProfileMissing" xml:space="preserve">
+    <value>{0} 的草稿記著的連線設定已經刪除了，沒辦法從這裡重傳；副本留在 {1}，請手動上傳。</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteDirMissing" xml:space="preserve">
+    <value>遠端目錄 {0} 已經不在了，{1} 沒有上傳；草稿留著。</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteIsDirectory" xml:space="preserve">
+    <value>伺服器上的 {0} 現在是一個目錄，沒有上傳；草稿留著。</value>
+  </data>
+  <data name="RemoteEditDraft_Failed" xml:space="preserve">
+    <value>{0} 沒能傳回 {1}：{2}。草稿留著，可以稍後再試。</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictTitle" xml:space="preserve">
+    <value>遠端檔案已被改過</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictBody" xml:space="preserve">
+    <value>{0} 在上次與這份草稿一致之後被改過（遠端現在 {1}，修改於 {2}）。用草稿覆寫會丟掉那些變更。仍要覆寫嗎？</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictUnknownBody" xml:space="preserve">
+    <value>說不準 {0} 在這份草稿之後有沒有被改過（遠端現在 {1}，修改於 {2}）。仍要用草稿覆寫嗎？</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictNoInfoBody" xml:space="preserve">
+    <value>查不到 {0} 現在的樣子，說不準它在這份草稿之後有沒有被改過。仍要用草稿覆寫嗎？</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingTitle" xml:space="preserve">
+    <value>遠端檔案已不在</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingBody" xml:space="preserve">
+    <value>伺服器上已經沒有 {0} 了（可能被刪除或改名）。仍要用草稿在原路徑重新建立嗎？</value>
+  </data>
+  <data name="RemoteEditDraft_Recreate" xml:space="preserve">
+    <value>重新建立</value>
+  </data>
+  <data name="RemoteEditDraft_Unexpected" xml:space="preserve">
+    <value>重新上傳外部編輯草稿時發生錯誤：{0}</value>
+  </data>
   <data name="Notify_KindSystem" xml:space="preserve">
     <value>系統</value>
   </data>
@@ -5861,7 +5918,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>Unix 網域通訊端</value>
   </data>
   <data name="TunnelHelp_UnixSocketDesc" xml:space="preserve">
-    <value>本地轉發與遠端轉發都可以用 Unix 網域通訊端代替連接埠。本地轉發可以在本機的通訊端檔案上監聽、轉到伺服器上的通訊端(如 /var/run/docker.sock),或兩頭都是通訊端 —— 本機的工具直接操作遠端的 Docker、資料庫,伺服器不必開任何 TCP 連接埠。遠端轉發是請伺服器在一個通訊端路徑上監聽,回連到本機的通訊端。通訊端檔案按檔案權限隔離;伺服器要開著 AllowStreamLocalForwarding。Windows 從 Windows 10 1803 起支援。</value>
+    <value>本地轉發與遠端轉發的兩頭都可以各自用 Unix 網域通訊端代替連接埠。本地轉發可以在本機的通訊端檔案上監聽、轉到伺服器上的通訊端(如 /var/run/docker.sock),或兩頭都是通訊端 —— 本機的工具直接操作遠端的 Docker、資料庫,伺服器不必開任何 TCP 連接埠。遠端轉發可以請伺服器在一個通訊端路徑上監聽、回連到本機的通訊端,或兩頭都是 —— 比如伺服器上的連接埠回連到本機的 docker.sock,或伺服器上的通訊端回連到本機資料庫的連接埠。通訊端檔案按檔案權限隔離;伺服器要開著 AllowStreamLocalForwarding。Windows 從 Windows 10 1803 起支援。</value>
   </data>
   <data name="TunnelHelp_LoopbackNote" xml:space="preserve">
     <value>127.0.0.1 的含義取決於端點屬於哪台機器：本地轉發的伺服器端目標使用它時，指 SSH 伺服器本身；遠端轉發的本機服務使用它時，指目前電腦；監聽端使用迴環位址時，則只允許從監聽所在機器存取。</value>
@@ -6250,8 +6307,8 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SshCfgImport_NoteForwardPortZero" xml:space="preserve">
     <value>沒有匯入，連接埠 0（連線時才決定的連接埠）在通道裡沒有對應的寫法：{0}</value>
   </data>
-  <data name="SshCfgImport_NoteForwardSocketMix" xml:space="preserve">
-    <value>沒有匯入，遠端轉送要嘛兩頭都是 Unix 通訊端、要嘛都不是：{0}</value>
+  <data name="SshCfgImport_NoteRemoteDynamicSocket" xml:space="preserve">
+    <value>沒有匯入，遠端動態轉送只能在伺服器的連接埠上監聽，不能用 Unix 通訊端：{0}</value>
   </data>
   <data name="SshCfgImport_NoteForwardSocketPath" xml:space="preserve">
     <value>沒有匯入，通訊端路徑在本機用不了（本機通訊端要完整路徑且不能太長，伺服器上的要以 / 開頭）：{0}</value>
@@ -6267,6 +6324,12 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="SshCfgImport_NoteForwardInvalid" xml:space="preserve">
     <value>沒有匯入，轉送寫得不對：{0}</value>
+  </data>
+  <data name="SshCfgImport_NoteSingleBackslash" xml:space="preserve">
+    <value>{0}：讀出來是以單個反斜線開頭的路徑 —— ssh_config 裡 \\ 是跳脫，讀成一個 \，ssh 也這麼讀。要寫 UNC 路徑或具名管道，在設定裡寫成 \\\\server\share、\\\\.\pipe\名稱。</value>
+  </data>
+  <data name="SshCfgImport_NoteUnbalancedQuotes" xml:space="preserve">
+    <value>{0} 第 {1} 行引號沒配對，VelaShell 略過了這一行；ssh 讀到這樣的行整份設定都不讀（invalid quotes）：{2}</value>
   </data>
   <data name="SshCfgImport_NoteAlgoDropped" xml:space="preserve">
     <value>{0}：去掉了 {1}（本版沒有實作，寫著也談不成）</value>
@@ -6658,6 +6721,12 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="Msg_ProxyConnectFailed" xml:space="preserve">
     <value>代理連線失敗:{0}</value>
+  </data>
+  <data name="Msg_ProxyHttpSshPortHint" xml:space="preserve">
+    <value>代理若不肯 CONNECT 到 22 連接埠,把代理類型改成 SOCKS5(如 127.0.0.1:10808);開著 TUN 模式的話改成「無代理」。</value>
+  </data>
+  <data name="Msg_ProxyHttpFtpHint" xml:space="preserve">
+    <value>代理若不肯 CONNECT,把代理類型改成 SOCKS5;開著 TUN 模式的話改成「無代理」。</value>
   </data>
   <data name="Msg_ProxyUnreachable" xml:space="preserve">
     <value>無法連線到代理伺服器:{0}</value>
@@ -10267,4 +10336,99 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="AiRegion_Pin" xml:space="preserve"><value>固定 / 自動隱藏 AI 助手</value></data>
   <data name="AiRegion_Collapse" xml:space="preserve"><value>摺疊 AI 助手（保留對話）</value></data>
   <data name="AiRegion_Hide" xml:space="preserve"><value>隱藏 AI 助手</value></data>
+  <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>已儲存的密碼被主密碼鎖著,這次沒有解鎖:請在登入框裡手動輸入,這次輸入的密碼不會儲存。</value></data>
+  <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>已儲存的密碼被主密碼鎖著,沒有重新連線。解鎖(狀態列的鎖形圖示)後再重新連線。</value></data>
+  <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>已鎖定:自動重新連線不會彈出解鎖框。解鎖(狀態列的鎖形圖示)後會自動重試一次,也可以按 Enter 或 Ctrl+R 重新連線。</value></data>
+  <data name="MasterPassword_TunnelLocked" xml:space="preserve"><value>已儲存的密碼被主密碼鎖著:解鎖(狀態列的鎖形圖示)後通道會自動重建。</value></data>
+  <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>未解鎖,這次的密碼沒有儲存。</value></data>
+  <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>外掛信任庫被主密碼鎖著:解鎖(狀態列的鎖形圖示)後才能安裝外掛或信任發行者;已安裝的使用者外掛解鎖後自動載入。</value></data>
+  <data name="SyncSvc_Locked" xml:space="preserve"><value>已儲存的權杖與通關密語被主密碼鎖著:先解鎖(狀態列的鎖形圖示)再同步。自動同步這一輪已略過。</value></data>
+  <data name="MasterPassword_UnlockTitle" xml:space="preserve"><value>解鎖已儲存的密碼</value></data>
+  <data name="MasterPassword_EnableTitle" xml:space="preserve"><value>開啟主密碼</value></data>
+  <data name="MasterPassword_ChangeTitle" xml:space="preserve"><value>修改主密碼</value></data>
+  <data name="MasterPassword_DisableTitle" xml:space="preserve"><value>關閉主密碼</value></data>
+  <data name="MasterPassword_RecoveryTitle" xml:space="preserve"><value>復原碼</value></data>
+  <data name="MasterPassword_AfterRecoveryTitle" xml:space="preserve"><value>設定新的主密碼</value></data>
+  <data name="MasterPassword_ForgetTitle" xml:space="preserve"><value>忘了主密碼</value></data>
+  <data name="MasterPassword_UnlockDesc" xml:space="preserve"><value>已儲存的密碼、共用憑證、雲端同步權杖與外掛機密被主密碼鎖著。輸入主密碼解鎖;取消也能照常使用,只是這些機密讀不出來,隨時可以點狀態列的鎖形圖示再解鎖。</value></data>
+  <data name="MasterPassword_EnableDesc" xml:space="preserve"><value>開啟後,本機加密金鑰用主密碼再包一層:系統金鑰鏈裡的項目(Windows 上是 DPAPI 金鑰檔)和主密碼兩樣都在才解得開。每次啟動要輸一次主密碼;已儲存的密碼不用重新輸入。</value></data>
+  <data name="MasterPassword_ChangeDesc" xml:space="preserve"><value>已儲存的密碼一字不改,只重新包一層本機加密金鑰。復原碼照樣有效。</value></data>
+  <data name="MasterPassword_DisableDesc" xml:space="preserve"><value>關閉後回到不用主密碼的樣子:本機加密金鑰仍由系統金鑰鏈(Windows 上是 DPAPI 金鑰檔)保管,復原碼隨之作廢。</value></data>
+  <data name="MasterPassword_RecoveryDesc" xml:space="preserve"><value>復原碼只顯示這一次。把它抄在紙上或存進別的密碼管理器,和這台電腦分開放:忘了主密碼時用它解鎖(同樣要在這台電腦上)。</value></data>
+  <data name="MasterPassword_AfterRecoveryDesc" xml:space="preserve"><value>已用復原碼解開。請設定一個新的主密碼(復原碼照樣有效);也可以先跳過,下次啟動仍可用復原碼。</value></data>
+  <data name="MasterPassword_ForgetDesc" xml:space="preserve"><value>不知道主密碼、也沒有復原碼時:另起一把新的本機加密金鑰,主密碼隨之關閉。已儲存的密碼、共用憑證的密碼、雲端同步權杖、外掛機密與外掛信任庫在這台電腦上從此解不開,要重新輸入(沒有後門)。舊的金鑰與標頭檔改名保留(.forgotten-時間),想起主密碼時還能找回。</value></data>
+  <data name="MasterPassword_UnlockButton" xml:space="preserve"><value>解鎖</value></data>
+  <data name="MasterPassword_EnableButton" xml:space="preserve"><value>開啟</value></data>
+  <data name="MasterPassword_ChangeButton" xml:space="preserve"><value>修改</value></data>
+  <data name="MasterPassword_DisableButton" xml:space="preserve"><value>關閉主密碼</value></data>
+  <data name="MasterPassword_RecoveryWritten" xml:space="preserve"><value>我已抄下</value></data>
+  <data name="MasterPassword_SetNewButton" xml:space="preserve"><value>設為新主密碼</value></data>
+  <data name="MasterPassword_ForgetButton" xml:space="preserve"><value>另起新金鑰</value></data>
+  <data name="MasterPassword_Skip" xml:space="preserve"><value>以後再說</value></data>
+  <data name="MasterPassword_PasswordLabel" xml:space="preserve"><value>主密碼</value></data>
+  <data name="MasterPassword_CurrentPasswordLabel" xml:space="preserve"><value>目前的主密碼</value></data>
+  <data name="MasterPassword_NewPasswordLabel" xml:space="preserve"><value>新主密碼</value></data>
+  <data name="MasterPassword_ConfirmPasswordLabel" xml:space="preserve"><value>再輸入一次</value></data>
+  <data name="MasterPassword_RecoveryCodeLabel" xml:space="preserve"><value>復原碼</value></data>
+  <data name="MasterPassword_UseRecoveryCode" xml:space="preserve"><value>用復原碼解鎖</value></data>
+  <data name="MasterPassword_UsePassword" xml:space="preserve"><value>用主密碼解鎖</value></data>
+  <data name="MasterPassword_Forgot" xml:space="preserve"><value>忘了主密碼?</value></data>
+  <data name="MasterPassword_EnableWarning" xml:space="preserve"><value>忘了主密碼,已儲存的密碼就無法找回 —— 沒有後門。可以同時產生一份復原碼,抄下來放在別處。</value></data>
+  <data name="MasterPassword_CreateRecoveryLabel" xml:space="preserve"><value>同時產生復原碼(建議)</value></data>
+  <data name="MasterPassword_AcknowledgeLabel" xml:space="preserve"><value>我明白:忘了主密碼(又沒有復原碼)時,已儲存的密碼無法找回</value></data>
+  <data name="MasterPassword_StrengthHint" xml:space="preserve"><value>建議至少 12 個字元,或者用一句不常見的通關短語(幾個詞連起來)。離線猜測只能靠長度擋住。</value></data>
+  <data name="MasterPassword_AsciiNote" xml:space="preserve"><value>只接受可列印的英文字元(與其他密碼框一致)。</value></data>
+  <data name="MasterPassword_Busy" xml:space="preserve"><value>正在衍生金鑰…</value></data>
+  <data name="MasterPassword_WrongPassword" xml:space="preserve"><value>主密碼不對。</value></data>
+  <data name="MasterPassword_WrongRecoveryCode" xml:space="preserve"><value>復原碼不對。</value></data>
+  <data name="MasterPassword_MalformedRecoveryCode" xml:space="preserve"><value>復原碼寫錯了:應是 28 個字母或數字(每 4 個一組),請核對一遍。</value></data>
+  <data name="MasterPassword_RetryIn" xml:space="preserve"><value>請 {0} 秒後再試。</value></data>
+  <data name="MasterPassword_NoRecoveryCode" xml:space="preserve"><value>開啟主密碼時略過了復原碼。</value></data>
+  <data name="MasterPassword_NothingToUnlock" xml:space="preserve"><value>這會兒沒有可以解開的金鑰。</value></data>
+  <data name="MasterPassword_Empty" xml:space="preserve"><value>主密碼不能為空。</value></data>
+  <data name="MasterPassword_Mismatch" xml:space="preserve"><value>兩次輸入的不一致。</value></data>
+  <data name="MasterPassword_AcknowledgeRequired" xml:space="preserve"><value>請先勾選確認:忘了主密碼,已儲存的密碼無法找回。</value></data>
+  <data name="MasterPassword_KeysUnavailable" xml:space="preserve"><value>有金鑰這會兒取不到(系統金鑰鏈沒打開),什麼都沒改。等它恢復後再試。</value></data>
+  <data name="MasterPassword_StorageFailed" xml:space="preserve"><value>沒能寫進去({0}),已整體撤回,什麼都沒改。</value></data>
+  <data name="MasterPassword_StorageFailedPartially" xml:space="preserve"><value>寫到一半失敗、也沒能完全撤回({0}):主密碼現在是開著的,請用剛輸入的那個主密碼解鎖。</value></data>
+  <data name="MasterPassword_Enabled" xml:space="preserve"><value>主密碼已開啟。</value></data>
+  <data name="MasterPassword_Disabled" xml:space="preserve"><value>主密碼已關閉。</value></data>
+  <data name="MasterPassword_Changed" xml:space="preserve"><value>主密碼已修改。</value></data>
+  <data name="MasterPassword_Forgotten" xml:space="preserve"><value>已另起新的本機加密金鑰,主密碼已關閉。舊的金鑰與標頭檔改名保留:{0}。已儲存的密碼需要重新輸入。</value></data>
+  <data name="MasterPassword_LockedNow" xml:space="preserve"><value>已鎖定:記憶體裡的本機加密金鑰已清除。</value></data>
+  <data name="MasterPassword_ProblemHeaderMissing" xml:space="preserve"><value>找到了被主密碼包裹過的金鑰,但主密碼的標頭檔(secret.key.mp)不在:主密碼與復原碼都解不開。只能「忘了主密碼?」另起新金鑰(舊的照樣留著)。</value></data>
+  <data name="MasterPassword_ProblemHeaderUnreadable" xml:space="preserve"><value>主密碼的標頭檔(secret.key.mp)讀不出來(被截斷或改壞),原樣留著、不會覆蓋。可以從備份裡找回這個檔案,或者「忘了主密碼?」另起新金鑰。</value></data>
+  <data name="MasterPassword_ProblemKeysUnavailable" xml:space="preserve"><value>{0} 這次沒打開({1}),包裹過的金鑰一把都沒取到。金鑰沒丟:{0} 解鎖或恢復後重新啟動 VelaShell 再解鎖即可。</value></data>
+  <data name="SetGeneral_MasterPassword" xml:space="preserve"><value>主密碼</value></data>
+  <data name="SetGeneral_MasterPasswordDesc" xml:space="preserve"><value>// 給已儲存的密碼再加一把鎖:系統金鑰鏈裡的項目和主密碼兩樣都在才解得開。預設關閉;忘了就無法找回(除非留了復原碼)</value></data>
+  <data name="SetGeneral_MasterPasswordStatusOff" xml:space="preserve"><value>未開啟</value></data>
+  <data name="SetGeneral_MasterPasswordStatusUnlocked" xml:space="preserve"><value>已開啟 · 已解鎖</value></data>
+  <data name="SetGeneral_MasterPasswordStatusLocked" xml:space="preserve"><value>已開啟 · 鎖著</value></data>
+  <data name="SetGeneral_MasterPasswordRecovery" xml:space="preserve"><value>有復原碼</value></data>
+  <data name="SetGeneral_MasterPasswordNoRecovery" xml:space="preserve"><value>沒有復原碼</value></data>
+  <data name="SetGeneral_MasterPasswordEnable" xml:space="preserve"><value>開啟…</value></data>
+  <data name="SetGeneral_MasterPasswordUnlock" xml:space="preserve"><value>解鎖…</value></data>
+  <data name="SetGeneral_MasterPasswordLockNow" xml:space="preserve"><value>立即鎖定</value></data>
+  <data name="SetGeneral_MasterPasswordChange" xml:space="preserve"><value>修改…</value></data>
+  <data name="SetGeneral_MasterPasswordDisable" xml:space="preserve"><value>關閉…</value></data>
+  <data name="SetGeneral_AutoLock" xml:space="preserve"><value>閒置後自動鎖定(分鐘)</value></data>
+  <data name="SetGeneral_AutoLockDesc" xml:space="preserve"><value>// VelaShell 的視窗這麼多分鐘沒有鍵盤、滑鼠操作就鎖定;0 = 不自動鎖。只在開了主密碼時起作用</value></data>
+  <data name="SetGeneral_LockOnSystemLock" xml:space="preserve"><value>系統鎖定畫面時鎖定</value></data>
+  <data name="SetGeneral_LockOnSystemLockDesc" xml:space="preserve"><value>// 按 Win+L、螢幕保護程式要求登入時一併鎖定。只在開了主密碼時起作用</value></data>
+  <data name="StatusBar_MasterPasswordLocked" xml:space="preserve"><value>已儲存的密碼鎖著 —— 點擊解鎖</value></data>
+  <data name="StatusBar_MasterPasswordUnlocked" xml:space="preserve"><value>主密碼已解鎖 —— 點擊立即鎖定</value></data>
+  <data name="Auth_UnreadableSecretLocked" xml:space="preserve"><value>{0}被主密碼鎖著,這次沒有解鎖。可以先在這裡輸入登入;解鎖(狀態列的鎖形圖示)後照常讀取。</value></data>
+  <data name="Notify_MasterPasswordProblemTitle" xml:space="preserve"><value>主密碼解不了鎖</value></data>
+  <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>主密碼的標頭檔已停用</value></data>
+  <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>資料目錄裡的主密碼標頭檔找不到它包裹過的任何金鑰(多半是降級到舊版本時舊版本把包裹過的金鑰檔挪開了),已改名保留為 {0};主密碼現在是關著的。降級之前存的密碼在這台電腦上解不開,需要重新輸入。</value></data>
+  <data name="MasterPassword_ImportWhileLocked" xml:space="preserve"><value>已儲存的密碼被主密碼鎖著、這次沒有解鎖:連線照樣匯入,但這次匯入的密碼不會儲存。</value></data>
+  <data name="Plugin_SecretLabelPassword" xml:space="preserve"><value>密碼</value></data>
+  <data name="Plugin_SecretLabelQuoted" xml:space="preserve"><value>「{0}」</value></data>
+  <data name="Plugin_SecretListSeparator" xml:space="preserve"><value>、</value></data>
+  <data name="Plugin_StoredSecretUnreadable" xml:space="preserve"><value>這條連線存著的{0}在這台裝置上解不開,沒有交給外掛(不交密文,也不拿空值冒充沒填)。被主密碼鎖著時解鎖(狀態列的鎖形圖示)後再連;否則請在連線設定裡重新填寫並儲存。</value></data>
+  <data name="Plugin_UnreadableSecretSubject" xml:space="preserve"><value>這條連線存著的{0}</value></data>
+  <data name="Plugin_UnreadableSecretKeychainUnavailable" xml:space="preserve"><value>{0}這次解不開:{1} 沒能開啟({2}),沒有交給外掛。它沒有遺失 —— 解鎖 {1} 之後重新啟動 VelaShell 就能照常讀取。</value></data>
+  <data name="Plugin_UnreadableSecretKeyMissing" xml:space="preserve"><value>{0}在這台裝置上解不開:加密它的本機金鑰不在這裡(資料目錄是從別的電腦或帳戶複製來的,或者金鑰項目被刪、金鑰檔被換過,訊息中心裡有說明),沒有交給外掛。請在連線設定裡重新填寫並儲存,存的就是這台裝置解得開的一份。</value></data>
+  <data name="Plugin_UnreadableSecretUnknown" xml:space="preserve"><value>{0}在這台裝置上解不開(可能是從別的裝置同步或複製來的,也可能已經損壞),沒有交給外掛。請在連線設定裡重新填寫並儲存,存的就是這台裝置解得開的一份。</value></data>
+  <data name="Plugin_UnreadableSecretLocked" xml:space="preserve"><value>{0}被主密碼鎖著,這次沒有解鎖,沒有交給外掛。解鎖(狀態列的鎖形圖示)後再連。</value></data>
 </root>

@@ -211,6 +211,195 @@ public sealed class RemoteEditDraftsTests
             "草稿处理完删掉了,那一条撤掉;别的消息不动");
     }
 
+    /// <summary>
+    /// 标记里记着远端路径与连接配置的草稿:主动作「重新上传」、旁边留着「打开所在文件夹」,两者都带着草稿子目录名;
+    /// 不知道连接配置的(快速连接、旧版本没有标记的)只有「打开所在文件夹」,同样带着子目录名(开的就是那一份)。
+    /// </summary>
+    [TestMethod]
+    public void Notifications_DraftsThatKnowTheirConnection_OfferReupload_AndKeepOpenFolder()
+    {
+        var profile = Guid.NewGuid();
+        var known = new RemoteEditDraft(Path.Combine(_root, "0000000a"), Path.Combine(_root, "0000000a", "app.conf"), "app.conf",
+            "/etc/app.conf", "prod-web", Old, profile);
+        var quick = new RemoteEditDraft(Path.Combine(_root, "0000000b"), Path.Combine(_root, "0000000b", "app.conf"), "app.conf",
+            "/etc/app.conf", "10.0.0.5", Old, ProfileId: null);
+        var emptyProfile = known with { Directory = Path.Combine(_root, "0000000c"), ProfileId = Guid.Empty };
+
+        IReadOnlyList<NotificationItem> items = NotificationSources.BuildRemoteEditDraftNotifications([known, quick, emptyProfile]);
+
+        NotificationItem first = items[0];
+        Assert.AreEqual(NotificationSources.ReuploadRemoteEditDraftCommandId, first.Link?.CommandId);
+        Assert.AreEqual("0000000a", first.Link?.CommandParameter);
+        Assert.AreEqual(NotificationSources.OpenRemoteEditDraftsCommandId, first.SecondaryLink?.CommandId);
+        Assert.AreEqual("0000000a", first.SecondaryLink?.CommandParameter);
+        Assert.AreEqual(VelaShell.Core.Resources.Strings.Format("Notify_RemoteEditDraftBodyReupload", "app.conf", "prod-web:/etc/app.conf", known.LocalPath),
+            first.Body, "能重传的草稿正文说的是「重新上传」");
+        foreach (NotificationItem item in items.Skip(1))
+        {
+            Assert.AreEqual(NotificationSources.OpenRemoteEditDraftsCommandId, item.Link?.CommandId, item.Id);
+            Assert.AreEqual(item.Id[NotificationSources.RemoteEditDraftIdPrefix.Length..], item.Link?.CommandParameter, item.Id);
+            Assert.IsNull(item.SecondaryLink, item.Id);
+            Assert.AreEqual(VelaShell.Core.Resources.Strings.Format("Notify_RemoteEditDraftBody", "app.conf",
+                item == items[1] ? "10.0.0.5:/etc/app.conf" : "prod-web:/etc/app.conf", item == items[1] ? quick.LocalPath : emptyProfile.LocalPath), item.Body);
+        }
+    }
+
+    /// <summary>
+    /// 旧版本投的那一条(只有不带参数的「打开所在文件夹」)在启动时换成这一版的:已读状态、第一次发现它的时刻照旧,多了「重新上传」。
+    /// 已经是这一版的不动(投递按 id 去重,不重写)。
+    /// </summary>
+    [TestMethod]
+    public async Task Startup_UpgradesLegacyDraftMessages_KeepingReadStateAndDiscoveryTime()
+    {
+        string directory = Copy("00000003", Old, RemoteEditDrafts.Dirty);
+        RemoteEditDrafts.Write(directory, new RemoteEditMarker(RemoteEditDrafts.Dirty, "app.conf", "/etc/app.conf", "prod-web", Guid.NewGuid(), 0, default));
+        var center = new VelaShell.Infrastructure.Notifications.NotificationCenter();
+        string id = NotificationSources.RemoteEditDraftIdPrefix + "00000003";
+        await center.PublishAsync([new NotificationItem
+        {
+            Id = id,
+            Kind = NotificationKind.System,
+            Severity = NotificationSeverity.Warning,
+            Title = "old title",
+            Body = "old body",
+            PublishedAt = Old,
+            IsRead = true,
+            Link = new() { Label = "Open folder", CommandId = NotificationSources.OpenRemoteEditDraftsCommandId }
+        }]);
+
+        await VelaShell.ViewModels.MainWindowViewModel.PublishRemoteEditDraftsAsync(center, _root);
+
+        NotificationItem upgraded = center.Items.Single();
+        Assert.AreEqual(id, upgraded.Id);
+        Assert.IsTrue(upgraded.IsRead, "已读状态照旧");
+        Assert.AreEqual(Old, upgraded.PublishedAt, "第一次发现的时刻照旧");
+        Assert.AreEqual(NotificationSources.ReuploadRemoteEditDraftCommandId, upgraded.Link?.CommandId);
+        Assert.AreEqual("00000003", upgraded.Link?.CommandParameter);
+        Assert.AreEqual(NotificationSources.OpenRemoteEditDraftsCommandId, upgraded.SecondaryLink?.CommandId);
+
+        // 再启动一次:已经是这一版的,不再替换
+        await VelaShell.ViewModels.MainWindowViewModel.PublishRemoteEditDraftsAsync(center, _root);
+        Assert.AreSame(upgraded, center.Items.Single());
+        Assert.IsNull(NotificationSources.UpgradeLegacyRemoteEditDraft(upgraded, upgraded));
+        NotificationItem unrelated = new() { Id = "update:2.0", Kind = NotificationKind.Update, Title = "u", PublishedAt = Now };
+        Assert.IsNull(NotificationSources.UpgradeLegacyRemoteEditDraft(unrelated, unrelated), "别的消息不动");
+    }
+
+    /// <summary>按子目录名找草稿:名字不是本程序起的(含路径穿越)、不在、干净、正开着的都找不到;找到的带着标记里的连接配置。</summary>
+    [TestMethod]
+    public void FindDraft_OnlyFindsOwnDraftDirectories()
+    {
+        var profile = Guid.NewGuid();
+        string dirty = Copy("00000003", Old, RemoteEditDrafts.Dirty);
+        RemoteEditDrafts.Write(dirty, new RemoteEditMarker(RemoteEditDrafts.Dirty, "app.conf", "/etc/app.conf", "prod-web", profile, 0, default));
+        _ = CleanCopy("00000002", Recent);
+        string active = Copy("00000006", Old, RemoteEditDrafts.Dirty);
+
+        RemoteEditDraft? found = RemoteEditDrafts.FindDraft(_root, "00000003");
+        Assert.IsNotNull(found);
+        Assert.AreEqual(profile, found.ProfileId);
+        Assert.AreEqual("/etc/app.conf", found.RemotePath);
+        Assert.IsTrue(found.CanReupload);
+        Assert.AreEqual("00000003", found.Key);
+
+        foreach (string key in new[] { "00000002", "00000099", "../0000000f", "0000000F", "0000003", "not-ours" })
+        {
+            Assert.IsNull(RemoteEditDrafts.FindDraft(_root, key), key);
+        }
+        Assert.IsNull(RemoteEditDrafts.FindDraft(_root, "00000006", [active]), "正开着的会话不是草稿");
+        Assert.IsNotNull(RemoteEditDrafts.FindDraft(_root, "00000006"));
+    }
+
+    /// <summary>
+    /// 标记带着「本地与远端最近一次一致时远端的样子」:查到就记下长度与修改时间,传上去之后换成新的,
+    /// 传不上去时脏标记里留着上一次的(重传草稿时拿它比);查不到(后端出错)记成不知道。旧版本的标记没有这两项,读出来为 null。
+    /// </summary>
+    [TestMethod]
+    public async Task Marker_CarriesTheRemoteBaseline_FromTheLastTimeLocalAndRemoteAgreed()
+    {
+        string directory = Path.Combine(_root, "0a1b2c3f");
+        Directory.CreateDirectory(directory);
+        string localPath = Path.Combine(directory, "app.conf");
+        await File.WriteAllTextAsync(localPath, "original");
+        ISftpService sftp = Substitute.For<ISftpService>();
+        var sessionId = Guid.NewGuid();
+        DateTime downloaded = new(2026, 10, 30, 8, 0, 0, DateTimeKind.Utc);
+        DateTime afterUpload = downloaded.AddHours(1);
+        RemoteFileInfo current = Remote(8, downloaded);
+        sftp.GetFileInfoAsync(sessionId, "/etc/app.conf", Arg.Any<CancellationToken>()).Returns(_ => current);
+        bool fail = false;
+        var session = new RemoteEditSession(new()
+        {
+            SftpService = sftp,
+            SessionId = sessionId,
+            RemotePath = "/etc/app.conf",
+            FileName = "app.conf",
+            ProfileId = Guid.NewGuid(),
+            UploadAsync = (_, _) =>
+            {
+                if (fail)
+                {
+                    return Task.FromException(new IOException("link down"));
+                }
+                current = Remote(11, afterUpload);
+                return Task.CompletedTask;
+            },
+        }, localPath);
+        try
+        {
+            Assert.IsNull(RemoteEditDrafts.Read(directory)?.RemoteLength, "还没查过远端:不知道");
+            await session.CaptureRemoteBaselineAsync();
+            RemoteEditMarker? opened = RemoteEditDrafts.Read(directory);
+            Assert.AreEqual(RemoteEditDrafts.Clean, opened?.State);
+            Assert.AreEqual(8L, opened?.RemoteLength);
+            Assert.AreEqual(downloaded, opened?.RemoteModifiedUtc);
+
+            await File.WriteAllTextAsync(localPath, "edited once");
+            await WaitUntilAsync(() => RemoteEditDrafts.Read(directory) is { State: RemoteEditDrafts.Clean, RemoteLength: 11 } && !session.HasPendingChange);
+            Assert.AreEqual(afterUpload, RemoteEditDrafts.Read(directory)?.RemoteModifiedUtc, "传上去之后记的是远端新的样子");
+
+            fail = true;
+            await File.WriteAllTextAsync(localPath, "edited twice, not uploaded");
+            await WaitUntilAsync(() => session.State == RemoteEditState.Failed);
+            RemoteEditMarker? draft = RemoteEditDrafts.Read(directory);
+            Assert.AreEqual(RemoteEditDrafts.Dirty, draft?.State);
+            Assert.AreEqual(11L, draft?.RemoteLength, "传不上去:脏标记里留着上一次一致时远端的样子");
+            Assert.AreEqual(afterUpload, draft?.RemoteModifiedUtc);
+
+            sftp.GetFileInfoAsync(sessionId, "/etc/app.conf", Arg.Any<CancellationToken>())
+                .Returns<RemoteFileInfo>(_ => throw new IOException("stat failed"));
+            await session.CaptureRemoteBaselineAsync();
+            Assert.IsNull(RemoteEditDrafts.Read(directory)?.RemoteLength, "查不到就记成不知道,不留旧的");
+            Assert.AreEqual(RemoteEditDrafts.Dirty, RemoteEditDrafts.Read(directory)?.State, "补远端样子不改状态");
+        }
+        finally
+        {
+            session.Dispose();
+        }
+
+        // 旧版本写的标记没有这两项
+        string legacy = Path.Combine(_root, "0a1b2c40");
+        Directory.CreateDirectory(legacy);
+        await File.WriteAllTextAsync(Path.Combine(legacy, RemoteEditDrafts.MarkerFileName),
+            """{"state":"dirty","fileName":"app.conf","remotePath":"/etc/app.conf","server":"prod-web","profileId":null,"length":0,"lastWriteUtc":"0001-01-01T00:00:00"}""");
+        RemoteEditMarker? old = RemoteEditDrafts.Read(legacy);
+        Assert.IsNotNull(old);
+        Assert.IsNull(old.RemoteLength);
+        Assert.IsNull(old.RemoteModifiedUtc);
+    }
+
+    private static RemoteFileInfo Remote(long size, DateTime modifiedUtc) => new()
+    {
+        Name = "app.conf",
+        FullPath = "/etc/app.conf",
+        Size = size,
+        Permissions = "rw-r--r--",
+        IsDirectory = false,
+        LastModified = modifiedUtc,
+        Owner = "root",
+        Group = "root"
+    };
+
     /// <summary>启动时:每份草稿投一条;消息中心里还挂着、草稿却已经删掉的那一条撤掉。</summary>
     [TestMethod]
     public async Task Startup_PublishesTheDrafts_AndWithdrawsNotificationsWhoseDraftIsGone()

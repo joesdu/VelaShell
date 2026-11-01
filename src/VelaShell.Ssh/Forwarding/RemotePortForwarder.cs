@@ -5,13 +5,15 @@
 //   RFC 4254 §7.1  tcpip-forward / cancel-tcpip-forward
 //   RFC 4254 §7.2  forwarded-tcpip
 //   OpenSSH PROTOCOL §2.4  streamlocal-forward@openssh.com / forwarded-streamlocal@openssh.com
-//   行为规格:      velashell-docs/zh/ssh/spec/07-forwarding.md §四、§五、§八
+//   ssh(1)         -R 的四种写法(两头各自是端口或套接字,只取行为描述)
+//   行为规格:      velashell-docs/zh/ssh/spec/07-forwarding.md §四(两头的组合见 §4.4)、§五、§八
 
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using VelaShell.Ssh.Channels;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Protocol;
@@ -45,6 +47,30 @@ public sealed record RemotePortForwardOptions
     {
         get;
         init => field = value is >= 0 and <= 65535 ? value : throw new ArgumentOutOfRangeException(nameof(BindPort), value, "监听端口要在 0–65535 之间（0 由服务端分配）。");
+    }
+
+    /// <summary>
+    /// 设了就请服务端<b>在这个 Unix 域套接字路径上</b>监听（<c>-R /服务器/路径:…</c>，<c>streamlocal-forward@openssh.com</c>），
+    /// <see cref="BindAddress"/> 与 <see cref="BindPort"/> 不再起作用。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 〔velashell-docs/zh/ssh/spec/07 §4.4〕与 <see cref="LocalPortForwardOptions.ListenSocketPath"/> 对称：监听的那一头写在参数里，
+    /// 回连连到哪由起法决定 —— <see cref="RemotePortForwarder.StartAsync"/> 连本机 TCP，<see cref="RemotePortForwarder.StartToUnixSocketAsync"/> 连本机套接字。
+    /// </para>
+    /// <para>
+    /// 路径在服务端的文件系统上：长度上限、目录在不在、能不能写都由服务端说了算，这里只拦空串。
+    /// 路径已经存在时 OpenSSH 会拒绝（服务端配了 <c>StreamLocalBindUnlink yes</c> 除外），失败多半是「上一次没清干净」。
+    /// 远程动态转发不接受它：ssh 不给目标的 <c>-R</c> 只有端口一种写法。
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException">空串。</exception>
+    public string? ListenSocketPath
+    {
+        get;
+        init => field = value is null || value.Length > 0
+            ? value
+            : throw new ArgumentException("服务端监听的套接字路径不能是空串；不在套接字上监听就给 null。", nameof(ListenSocketPath));
     }
 
     /// <summary>并发连接数上限。</summary>
@@ -99,7 +125,7 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
     private readonly string _targetHost;
     private readonly int _targetPort;
 
-    /// <summary>Unix 套接字变体：本机要连过去的那个套接字路径。</summary>
+    /// <summary>本机那头是 Unix 套接字时要连过去的那个路径；本机目标是 TCP 时为 <see langword="null"/>。</summary>
     private readonly string? _targetSocketPath;
     private readonly SemaphoreSlim _connectionSlots;
 
@@ -134,13 +160,15 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
     /// <summary>宽限期过了，处理器已摘掉。</summary>
     private bool _disposed;
 
+    /// <remarks>
+    /// 服务端那头（端口还是套接字）取自 <see cref="RemotePortForwardOptions.ListenSocketPath"/>，本机那头（TCP 还是套接字）看
+    /// <paramref name="targetSocketPath"/> —— 两头互不牵连（velashell-docs/zh/ssh/spec/07 §4.4）。
+    /// </remarks>
     private RemotePortForwarder(
         SshConnection connection,
         RemotePortForwardOptions options,
         string targetHost,
         int targetPort,
-        int boundPort,
-        string? remoteSocketPath = null,
         string? targetSocketPath = null,
         RemoteOpenPolicy? permitRemoteOpen = null)
         : base(permitRemoteOpen is null ? ForwardKind.Remote : ForwardKind.RemoteDynamic)
@@ -149,19 +177,20 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
         _options = options;
         _targetHost = targetHost;
         _targetPort = targetPort;
-        RemoteSocketPath = remoteSocketPath;
+        RemoteSocketPath = options.ListenSocketPath;
         _targetSocketPath = targetSocketPath;
         PermitRemoteOpen = permitRemoteOpen;
         ConfigureRateLimit(options.MaxBytesPerSecond);
-        _boundPort = boundPort;
+        _boundPort = IsStreamLocal ? 0 : options.BindPort;
         _connectionSlots = new SemaphoreSlim(options.MaxConnections, options.MaxConnections);
     }
 
-    /// <summary><c>tcpip-forward</c> 的应答到了（在接收循环上，见 <see cref="StartAsync"/>）。</summary>
+    /// <summary>监听请求的应答到了（在接收循环上，见 <see cref="RequestAsync"/>）。</summary>
     private void OnForwardReply(SshGlobalRequestReply reply)
     {
-        // 端口给 0 时，实际端口在应答载荷里。取不到就留着 0 —— StartAsync 会据此报错。
-        if (reply.Success && _options.BindPort == 0 && reply.Payload.Length >= 4)
+        // 端口给 0 时，实际端口在 tcpip-forward 应答的载荷里。取不到就留着 0 —— StartListeningAsync 会据此报错。
+        // 套接字上的监听没有「实际路径」要回，应答带了什么也不读（spec/07 §4.4）。
+        if (reply.Success && !IsStreamLocal && _options.BindPort == 0 && reply.Payload.Length >= 4)
         {
             Volatile.Write(ref _boundPort, (int)BinaryPrimitives.ReadUInt32BigEndian(reply.Payload.Span));
         }
@@ -225,7 +254,7 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
         return (SshProtocolNames.RequestCancelTcpIpForward, payload.WrittenMemory);
     }
 
-    /// <summary>这是不是 Unix 套接字变体。</summary>
+    /// <summary>服务端是不是在 Unix 套接字上监听（决定全局请求、回连的通道类型与认领方式）。</summary>
     private bool IsStreamLocal => RemoteSocketPath is not null;
 
     /// <summary>本机目标的名字（进日志与事件）。动态转发的目标要等 SOCKS 握手才知道。</summary>
@@ -235,7 +264,7 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
     public RemoteOpenPolicy? PermitRemoteOpen { get; }
 
     /// <summary>
-    /// Unix 套接字变体里，服务端监听的那个套接字路径；TCP 变体下是
+    /// 服务端在 Unix 套接字上监听时是那个路径（即 <see cref="RemotePortForwardOptions.ListenSocketPath"/>）；在端口上监听时是
     /// <see langword="null"/>。
     /// </summary>
     /// <remarks>
@@ -244,13 +273,13 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
     /// 把 <c>addr ‖ port</c> 换成一个 <c>string socket_path</c>、
     /// 以及回连走 <c>forwarded-streamlocal@openssh.com</c>。
     /// <b>计量、并发槽、搬运、事件、收尾全都一模一样</b> ——
-    /// 所以这里用「这个属性是不是 null」分流，而不是再抄一份三百行。
+    /// 所以这里用「这个属性是不是 null」分流，而不是再抄一份三百行。本机那头连 TCP 还是套接字与它无关。
     /// </remarks>
     public string? RemoteSocketPath { get; }
 
     /// <summary>这条转发在服务端那头的位置，给人看的。</summary>
     /// <remarks>
-    /// TCP 变体是 <c>bind:port</c>，Unix 套接字变体是路径 ——
+    /// 服务端在端口上监听是 <c>bind:port</c>，在套接字上监听是路径 ——
     /// 隧道面板要显示「这条转发开在哪」，两种形态得有一个统一的说法，
     /// 否则调用方就得自己写这个三目运算（架构原则 4）。
     /// </remarks>
@@ -267,13 +296,19 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
     public override bool IsActive =>
         Volatile.Read(ref _draining) == 0 && !_disposed && !_connection.Disconnected.IsCancellationRequested;
 
-    /// <summary>请服务端开一个监听，把回连送到本机的某个目标。</summary>
+    /// <summary>请服务端开一个监听，把回连送到本机的某个 TCP 目标（<c>-R [bind:]port:host:hostport</c>）。</summary>
     /// <param name="connection">会话。</param>
     /// <param name="targetHost">本机目标主机。</param>
     /// <param name="targetPort">本机目标端口。</param>
-    /// <param name="options">参数。</param>
+    /// <param name="options">
+    /// 参数；要服务端在 Unix 套接字上监听（<c>-R /服务器/路径:host:hostport</c>）就设 <see cref="RemotePortForwardOptions.ListenSocketPath"/>。
+    /// </param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <exception cref="SshForwardException">服务端拒绝了这个请求。</exception>
+    /// <remarks>
+    /// 〔velashell-docs/zh/ssh/spec/07 §4.4〕服务端那头决定协议上的一切（全局请求、回连的通道类型、按什么认领、取消发什么），
+    /// 本机那头只决定回连来了怎么连目标。服务端在套接字上监听而本机目标是 TCP 的用途：远端的工具只认套接字，本机的服务只开端口。
+    /// </remarks>
     public static async ValueTask<RemotePortForwarder> StartAsync(
         SshConnection connection,
         string targetHost,
@@ -287,50 +322,43 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
         ArgumentOutOfRangeException.ThrowIfGreaterThan(targetPort, 65535);
 
         RemotePortForwardOptions effective = options ?? RemotePortForwardOptions.Default;
+        return await StartListeningAsync(new(connection, effective, targetHost, targetPort), cancellationToken).ConfigureAwait(false);
+    }
 
-        ArrayBufferWriter<byte> payload = new();
-        SshDataWriter writer = new(payload);
-        writer.WriteUtf8String(effective.BindAddress);
-        writer.WriteUInt32((uint)effective.BindPort);
+    /// <summary>请服务端开一个监听，把回连送到本机的某个 <b>Unix 套接字</b>（<c>-R [bind:]port:/本机/路径</c>）。</summary>
+    /// <param name="connection">会话。</param>
+    /// <param name="targetSocketPath">本机要连过去的套接字路径。</param>
+    /// <param name="options">
+    /// 参数；要服务端也在 Unix 套接字上监听（<c>-R /服务器/路径:/本机/路径</c>）就设 <see cref="RemotePortForwardOptions.ListenSocketPath"/>。
+    /// </param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <exception cref="SshForwardException">
+    /// 服务端拒绝了监听请求；或者 <paramref name="targetSocketPath"/> 太长（<see cref="SshForwardFailureKind.SocketPathTooLong"/>，这时什么都没发）。
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// 典型用途是把本机的 <c>docker.sock</c>、数据库套接字之类交到远端；服务端也在套接字上监听时，
+    /// 远端机器上的其它用户就<b>看不到也连不上</b>（文件权限说了算），端口则是同机所有人都能连的。
+    /// </para>
+    /// <para>
+    /// 〔velashell-docs/zh/ssh/spec/07 §4.4〕本机路径在起转发时就查：曾经不查，太长的路径要等回连来了、在连之前才失败，
+    /// 每一条回连都被拒却不报 <see cref="PortForwarder.Error"/>，看起来像是服务端那头的问题。路径上有没有人在听，
+    /// 与 TCP 目标一样要等回连来了才知道。
+    /// </para>
+    /// </remarks>
+    public static async ValueTask<RemotePortForwarder> StartToUnixSocketAsync(
+        SshConnection connection,
+        string targetSocketPath,
+        RemotePortForwardOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentException.ThrowIfNullOrEmpty(targetSocketPath);
+        ThrowIfLocalSocketPathTooLong(targetSocketPath);
 
-        // 端口给 0 时，实际端口由 OnForwardReply 在应答到达的当场记下。
-        RemotePortForwarder forwarder = new(connection, effective, targetHost, targetPort, effective.BindPort);
-
-        // want_reply 必须为 true。端口给 0 时，服务端分配的实际端口
-        // 就在 REQUEST_SUCCESS 的载荷里 —— 不要应答就永远拿不到它。
-        SshGlobalRequestReply reply = await forwarder
-            .RequestAsync(SshProtocolNames.RequestTcpIpForward, payload.WrittenMemory, cancellationToken).ConfigureAwait(false);
-
-        if (!reply.Success)
-        {
-            // 不留半挂的转发器。
-            throw new SshForwardException(SshFailureReason.ForwardRejected,
-                $"服务端拒绝在 {effective.BindAddress}:{effective.BindPort} 上开监听。" +
-                "常见原因是 sshd_config 里 AllowTcpForwarding no，" +
-                "或者要绑非环回地址而 GatewayPorts 没打开，" +
-                (effective.BindPort is > 0 and < 1024 ? "又或者那是个特权端口。" : "又或者端口已被占用。"))
-            {
-                FailureKind = SshForwardFailureKind.RemoteListenRejected,
-                Endpoint = $"{effective.BindAddress}:{effective.BindPort}",
-                Port = effective.BindPort,
-            };
-        }
-
-        if (forwarder.BoundPort == 0)
-        {
-            // 端口给 0 时必须从应答载荷里取实际端口。
-            // 取不到就按 (bind_addr, 0) 去路由回连 —— 一条都对不上，
-            // 而症状是「转发看起来建好了，但连过来的全被拒」。
-            forwarder.Unregister();
-            throw new SshForwardException(SshFailureReason.ProtocolError,
-                "请求了动态端口，但服务端的 REQUEST_SUCCESS 里没有带回实际端口号。")
-            {
-                FailureKind = SshForwardFailureKind.NoBoundPortInReply,
-            };
-        }
-
-        forwarder.TrackConnection(connection);
-        return forwarder;
+        RemotePortForwardOptions effective = options ?? RemotePortForwardOptions.Default;
+        return await StartListeningAsync(
+            new(connection, effective, targetHost: "", targetPort: 0, targetSocketPath: targetSocketPath), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -345,6 +373,9 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
     /// <param name="options">参数（绑定地址与端口、并发上限、SOCKS 握手时限）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <exception cref="SshForwardException">服务端拒绝了监听请求。</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="options"/> 设了 <see cref="RemotePortForwardOptions.ListenSocketPath"/>：远程动态转发只在端口上监听（spec/07 §4.4）。
+    /// </exception>
     /// <remarks>
     /// <para>
     /// 〔velashell-docs/zh/ssh/spec/07 §4.6〕回连先确认，再在通道上跑 SOCKS5（与本地动态转发同一个子集：只有 <c>CONNECT</c>、
@@ -363,32 +394,38 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
         ArgumentNullException.ThrowIfNull(permitRemoteOpen);
 
         RemotePortForwardOptions effective = options ?? RemotePortForwardOptions.Default;
-
-        ArrayBufferWriter<byte> payload = new();
-        SshDataWriter writer = new(payload);
-        writer.WriteUtf8String(effective.BindAddress);
-        writer.WriteUInt32((uint)effective.BindPort);
-
-        RemotePortForwarder forwarder = new(
-            connection, effective, targetHost: "", targetPort: 0, effective.BindPort, permitRemoteOpen: permitRemoteOpen);
-
-        SshGlobalRequestReply reply = await forwarder
-            .RequestAsync(SshProtocolNames.RequestTcpIpForward, payload.WrittenMemory, cancellationToken).ConfigureAwait(false);
-
-        if (!reply.Success)
+        if (effective.ListenSocketPath is not null)
         {
-            throw new SshForwardException(SshFailureReason.ForwardRejected,
-                $"服务端拒绝在 {effective.BindAddress}:{effective.BindPort} 上开监听（远程动态转发）。" +
-                "常见原因是 sshd_config 里 AllowTcpForwarding no，或者要绑非环回地址而 GatewayPorts 没打开，又或者端口已被占用。")
-            {
-                FailureKind = SshForwardFailureKind.RemoteListenRejected,
-                Endpoint = $"{effective.BindAddress}:{effective.BindPort}",
-                Port = effective.BindPort,
-            };
+            // ssh 不给目标的 -R 只有 [bind:]port 一种写法；不悄悄改成在端口上监听，也不发请求。
+            throw new ArgumentException(
+                "远程动态转发只在服务端的端口上监听（ssh 不给目标的 -R 只有 [bind:]port 一种写法），不能设 ListenSocketPath。", nameof(options));
         }
 
-        if (forwarder.BoundPort == 0)
+        return await StartListeningAsync(
+            new(connection, effective, targetHost: "", targetPort: 0, permitRemoteOpen: permitRemoteOpen), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 发监听请求、等应答：拒绝时不留半挂的转发器（处理器已经摘掉）；请求端口 0 却没带回实际端口时摘掉处理器并抛。
+    /// </summary>
+    /// <remarks>
+    /// <c>want_reply</c> 必须为 true。端口给 0 时，服务端分配的实际端口就在 <c>REQUEST_SUCCESS</c> 的载荷里 ——
+    /// 不要应答就永远拿不到它；它由 <see cref="OnForwardReply"/> 在应答到达的当场记下。
+    /// </remarks>
+    private static async ValueTask<RemotePortForwarder> StartListeningAsync(RemotePortForwarder forwarder, CancellationToken cancellationToken)
+    {
+        (string request, ReadOnlyMemory<byte> payload) = forwarder.EncodeListenRequest();
+        SshGlobalRequestReply reply = await forwarder.RequestAsync(request, payload, cancellationToken).ConfigureAwait(false);
+        if (!reply.Success)
         {
+            throw forwarder.ListenRejected();
+        }
+
+        if (!forwarder.IsStreamLocal && forwarder.BoundPort == 0)
+        {
+            // 端口给 0 时必须从应答载荷里取实际端口。
+            // 取不到就按 (bind_addr, 0) 去路由回连 —— 一条都对不上，
+            // 而症状是「转发看起来建好了，但连过来的全被拒」。
             forwarder.Unregister();
             throw new SshForwardException(SshFailureReason.ProtocolError,
                 "请求了动态端口，但服务端的 REQUEST_SUCCESS 里没有带回实际端口号。")
@@ -397,69 +434,73 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
             };
         }
 
-        forwarder.TrackConnection(connection);
+        forwarder.TrackConnection(forwarder._connection);
         return forwarder;
     }
 
-    /// <summary>在服务端开一个 <b>Unix 套接字</b>监听，回连到本机的另一个套接字。</summary>
-    /// <param name="connection">会话。</param>
-    /// <param name="targetSocketPath">本机要连过去的套接字路径。</param>
-    /// <param name="remoteSocketPath">服务端要监听的套接字路径。</param>
-    /// <param name="options">选项；<see cref="RemotePortForwardOptions.BindAddress"/>
-    /// 与 <see cref="RemotePortForwardOptions.BindPort"/> 在这里用不上。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <exception cref="SshForwardException">服务端拒绝了监听请求。</exception>
-    /// <remarks>
-    /// <para>
-    /// 对应 <c>ssh -R /远端/路径:/本机/路径</c>。典型用途是把本机的
-    /// <c>docker.sock</c>、数据库套接字之类交到远端 —— 走套接字而不是端口，
-    /// 远端机器上的其它用户就<b>看不到也连不上</b>（文件权限说了算）。
-    /// </para>
-    /// <para>
-    /// <b>服务端会在自己的文件系统上创建那个套接字文件。</b>
-    /// 路径已存在时 OpenSSH 会拒绝，所以这里的失败多半是「上一次没清干净」。
-    /// </para>
-    /// </remarks>
-    public static async ValueTask<RemotePortForwarder> StartUnixSocketAsync(
-        SshConnection connection,
-        string targetSocketPath,
-        string remoteSocketPath,
-        RemotePortForwardOptions? options = null,
-        CancellationToken cancellationToken = default)
+    /// <summary>监听的全局请求：名字与载荷（RFC 4254 §7.1；OpenSSH PROTOCOL 的 streamlocal 一节）。</summary>
+    private (string Request, ReadOnlyMemory<byte> Payload) EncodeListenRequest()
     {
-        ArgumentNullException.ThrowIfNull(connection);
-        ArgumentException.ThrowIfNullOrEmpty(targetSocketPath);
-        ArgumentException.ThrowIfNullOrEmpty(remoteSocketPath);
-
-        RemotePortForwardOptions effective = options ?? RemotePortForwardOptions.Default;
-
         ArrayBufferWriter<byte> payload = new();
         SshDataWriter writer = new(payload);
-        writer.WriteUtf8String(remoteSocketPath);
-
-        RemotePortForwarder forwarder = new(
-            connection, effective, targetHost: "", targetPort: 0, boundPort: 0,
-            remoteSocketPath: remoteSocketPath, targetSocketPath: targetSocketPath);
-
-        SshGlobalRequestReply reply = await forwarder
-            .RequestAsync(SshProtocolNames.RequestStreamLocalForward, payload.WrittenMemory, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!reply.Success)
+        if (IsStreamLocal)
         {
-            // 不留半挂的转发器。
-            throw new SshForwardException(SshFailureReason.ForwardRejected,
-                $"服务端拒绝在 {remoteSocketPath} 上开套接字监听。" +
+            writer.WriteUtf8String(RemoteSocketPath!);
+            return (SshProtocolNames.RequestStreamLocalForward, payload.WrittenMemory);
+        }
+
+        writer.WriteUtf8String(_options.BindAddress);
+        writer.WriteUInt32((uint)_options.BindPort);
+        return (SshProtocolNames.RequestTcpIpForward, payload.WrittenMemory);
+    }
+
+    /// <summary>服务端拒绝了监听请求：种类只看服务端那头（端口还是套接字），与本机目标是什么无关（spec/07 §4.4）。</summary>
+    private SshForwardException ListenRejected()
+    {
+        if (IsStreamLocal)
+        {
+            return new SshForwardException(SshFailureReason.ForwardRejected,
+                $"服务端拒绝在 {RemoteSocketPath} 上开套接字监听。" +
                 "常见原因是 sshd_config 里 AllowStreamLocalForwarding no、" +
                 "那个路径已经存在，或者所在目录不可写。")
             {
                 FailureKind = SshForwardFailureKind.RemoteSocketListenRejected,
-                Endpoint = remoteSocketPath,
+                Endpoint = RemoteSocketPath,
             };
         }
 
-        forwarder.TrackConnection(connection);
-        return forwarder;
+        string endpoint = $"{_options.BindAddress}:{_options.BindPort}";
+        string message = PermitRemoteOpen is null
+            ? $"服务端拒绝在 {endpoint} 上开监听。" +
+              "常见原因是 sshd_config 里 AllowTcpForwarding no，" +
+              "或者要绑非环回地址而 GatewayPorts 没打开，" +
+              (_options.BindPort is > 0 and < 1024 ? "又或者那是个特权端口。" : "又或者端口已被占用。")
+            : $"服务端拒绝在 {endpoint} 上开监听（远程动态转发）。" +
+              "常见原因是 sshd_config 里 AllowTcpForwarding no，或者要绑非环回地址而 GatewayPorts 没打开，又或者端口已被占用。";
+        return new SshForwardException(SshFailureReason.ForwardRejected, message)
+        {
+            FailureKind = SshForwardFailureKind.RemoteListenRejected,
+            Endpoint = endpoint,
+            Port = _options.BindPort,
+        };
+    }
+
+    /// <summary>本机套接字路径放不进 <c>sun_path</c>（Linux / Windows 108 字节、macOS 104 字节，含结尾的 0）时当场报，不发监听请求。</summary>
+    private static void ThrowIfLocalSocketPathTooLong(string path)
+    {
+        try
+        {
+            _ = new UnixDomainSocketEndPoint(path);
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            throw new SshForwardException(SshFailureReason.ForwardSetupFailed,
+                $"本机套接字路径太长（{Encoding.UTF8.GetByteCount(path)} 字节；Linux / Windows 上限 107、macOS 103）：{path}", ex)
+            {
+                FailureKind = SshForwardFailureKind.SocketPathTooLong,
+                Endpoint = path,
+            };
+        }
     }
 
     /// <summary>这个转发器的回连走哪种通道类型。</summary>
@@ -816,7 +857,7 @@ public sealed class RemotePortForwarder : PortForwarder, IIncomingChannelHandler
     /// <summary>
     /// 是谁连上了服务端那个暴露出来的端口：<c>forwarded-tcpip</c> 载荷里的 originator 地址与端口（RFC 4254 §7.2）。
     /// </summary>
-    /// <returns>Unix 套接字转发（没有这一段）或者读不出来时为 <see langword="null"/>。</returns>
+    /// <returns>服务端在套接字上监听（<c>forwarded-streamlocal</c> 没有这一段）或者读不出来时为 <see langword="null"/>。</returns>
     /// <remarks>
     /// 〔FW-D3〕曾经整个丢掉，<see cref="ForwardConnectionEventArgs.Source"/> 永远是 null —— 面板上本可以显示是谁连进来的。
     /// 这是对端给的文本：认得出是 IP 地址就给 <see cref="IPEndPoint"/>，否则按主机名给 <see cref="DnsEndPoint"/>（不去解析）。

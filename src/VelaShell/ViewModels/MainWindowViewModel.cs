@@ -53,7 +53,7 @@ namespace VelaShell.ViewModels;
 /// 主窗口视图模型:应用外壳的中枢,统筹终端标签、SSH/本地会话生命周期、停靠工作区、
 /// 侧边栏、状态栏、命令面板、SFTP 文件面板与隧道面板,并串联设置、连接工作流与各项服务。
 /// </summary>
-public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalResolver
+public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalResolver
 {
     /// <summary>RIS(ESC c)完全重置序列:重开会话前清掉旧进程的残留缓冲。</summary>
     private static readonly byte[] RisResetSequence = [0x1B, (byte)'c']; // ESC c
@@ -258,10 +258,14 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         ISharedCredentialRepository? sharedCredentials = null,
         BackgroundUpdateDownload? backgroundUpdateDownload = null,
         IMasterKeyStatusSource? masterKeyStatus = null,
-        LayoutTemplateStore? layoutTemplateStore = null
+        LayoutTemplateStore? layoutTemplateStore = null,
+        IMasterPasswordGate? masterPassword = null
     )
     {
         _credentialResolver = credentialResolver;
+        // 可选主密码:连接的构建点之前过闸口、解锁 / 锁定时重读会话树、锁着时挂起的自动重连解锁后重试(MasterPassword 分部)。
+        _masterPassword = masterPassword;
+        WireMasterPassword(masterPassword);
         _backgroundUpdateDownload = backgroundUpdateDownload;
         _masterKeyStatus = masterKeyStatus;
         // 共享凭据被改名、删除(删除会把凭据拷回引用它的连接)之后,树上缓存的配置就旧了:
@@ -1745,26 +1749,35 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return new(TransferResumeResult.ProfileMissing);
         }
-        FileBrowserViewModel? browser = FindConnectedFileBrowser(profile.Id);
-        if (browser is null)
-        {
-            SftpDocument? document = profile.ConnectionType switch
-            {
-                ConnectionType.SSH or ConnectionType.SFTP => await OpenSftpDocumentForProfileAsync(profile).ConfigureAwait(true),
-                ConnectionType.FTP => await OpenFtpDocumentForProfileAsync(profile).ConfigureAwait(true),
-                ConnectionType.Plugin => await OpenPluginDocumentForProfileAsync(profile).ConfigureAwait(true),
-                _ => null,
-            };
-            // 没连上:失败原因已经由打开路径报过了(浮层 + 失败卡片);用户取消同样原样留着,稍后可以再点。
-            browser = document?.ViewModel.RemoteFiles;
-        }
-        if (browser is null)
+        if (await ResolveFileBrowserForProfileAsync(profile).ConfigureAwait(true) is not { } browser)
         {
             return new(TransferResumeResult.NotConnected);
         }
         return await browser.ResumeQueuedTransfersAsync(batch).ConfigureAwait(true)
             ? new(TransferResumeResult.Started)
             : new(TransferResumeResult.Failed, browser.ErrorMessage);
+    }
+
+    /// <summary>
+    /// 一条连接配置上能拿来传文件的面板:先找已经连着它的(文件标签,或打开过文件面板的终端标签),
+    /// 都没有就照常打开一个文件标签(SSH / SFTP、FTP、插件文件协议各走自己的打开路径,认证弹窗、指纹核对、失败卡片与平时双击连接一模一样)。
+    /// 传输队列的「继续」与外部编辑草稿的「重新上传」共用。
+    /// </summary>
+    /// <returns>面板;没连上(失败原因已经由打开路径报过了,用户取消同样)时为 null。</returns>
+    private async Task<FileBrowserViewModel?> ResolveFileBrowserForProfileAsync(SessionProfile profile)
+    {
+        if (FindConnectedFileBrowser(profile.Id) is { } connected)
+        {
+            return connected;
+        }
+        SftpDocument? document = profile.ConnectionType switch
+        {
+            ConnectionType.SSH or ConnectionType.SFTP => await OpenSftpDocumentForProfileAsync(profile).ConfigureAwait(true),
+            ConnectionType.FTP => await OpenFtpDocumentForProfileAsync(profile).ConfigureAwait(true),
+            ConnectionType.Plugin => await OpenPluginDocumentForProfileAsync(profile).ConfigureAwait(true),
+            _ => null,
+        };
+        return document?.ViewModel.RemoteFiles;
     }
 
     /// <summary>开着的独立文件标签(单栏、双栏远程)里的全部远端栏。终端侧栏的面板不在其中,它们在 <see cref="_fileBrowserCache" /> 里。</summary>
@@ -2081,7 +2094,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             return;
         }
         _notificationCenter = center;
-        var panel = new NotificationPanelViewModel(center, Commands.Execute, OpenExternalUrlAsync, _appDataStore);
+        var panel = new NotificationPanelViewModel(center, Commands.Execute, OpenExternalUrlAsync, _appDataStore,
+            InvokeParameterizedNotificationCommand);
         panel.CloseRequested += (_, _) => IsNotificationPanelOpen = false;
         NotificationPanel = panel;
 
@@ -2191,9 +2205,96 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             await center.RemoveAsync(stale).ConfigureAwait(true);
         }
-        if (drafts.Count > 0)
+        if (drafts.Count == 0)
         {
-            await center.PublishAsync(NotificationSources.BuildRemoteEditDraftNotifications(drafts)).ConfigureAwait(true);
+            return;
+        }
+        IReadOnlyList<NotificationItem> fresh = NotificationSources.BuildRemoteEditDraftNotifications(drafts);
+        // 旧版本投的那几条(只有不带参数的「打开所在文件夹」):草稿还在就换成这一版的,保住已读与第一次发现的时刻。
+        // 投递按 id 去重、保留旧的那一条,不先撤掉的话升级之前就列出来的草稿永远没有「重新上传」。
+        Dictionary<string, NotificationItem> existing = center.Items.ToDictionary(static item => item.Id, StringComparer.Ordinal);
+        List<NotificationItem> upgrades = [];
+        foreach (NotificationItem item in fresh)
+        {
+            if (existing.TryGetValue(item.Id, out NotificationItem? old)
+                && NotificationSources.UpgradeLegacyRemoteEditDraft(old, item) is { } upgraded)
+            {
+                await center.RemoveAsync(old.Id).ConfigureAwait(true);
+                upgrades.Add(upgraded);
+            }
+        }
+        await center.PublishAsync([.. upgrades, .. fresh.Where(item => upgrades.All(u => u.Id != item.Id))]).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 消息中心里带参数的动作(<see cref="NotificationLink.CommandParameter" />,目前只有外部编辑草稿那两条)。不进命令注册表:
+    /// 注册表里的每一条都出现在命令面板里,面板给不出参数;资讯源与插件投来的消息也带不了参数,碰不到这里。
+    /// </summary>
+    /// <returns>认得这个动作、已经开始执行时为 true(面板随之收起)。</returns>
+    internal bool InvokeParameterizedNotificationCommand(string commandId, string parameter)
+    {
+        switch (commandId)
+        {
+            case NotificationSources.OpenRemoteEditDraftsCommandId:
+                return RemoteEditDrafts.OpenDraftFolder(RemoteEditSessionManager.TempRoot, parameter);
+            case NotificationSources.ReuploadRemoteEditDraftCommandId:
+                _ = ReuploadRemoteEditDraftAsync(parameter);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// 窗口注入的确认框(标题、正文、确认键文案),外部编辑草稿重传前远端被改过 / 不在了时问一句。未挂时(headless)一律不覆盖。
+    /// </summary>
+    public Func<string, string, string, Task<bool>>? RemoteEditDraftConfirmer { get; set; }
+
+    private RemoteEditDraftReuploader? _draftReuploader;
+
+    /// <summary>从消息中心重传外部编辑草稿的那一套(按需建,测试可以换掉)。</summary>
+    internal RemoteEditDraftReuploader DraftReuploader
+    {
+        get => _draftReuploader ??= new(
+            RemoteEditSessionManager.TempRoot,
+            async id => _sessionRepository is null ? null : await _sessionRepository.GetSessionAsync(id).ConfigureAwait(true),
+            async profile => (await ResolveFileBrowserForProfileAsync(profile).ConfigureAwait(true))?.EditDraftTarget,
+            (title, body, confirmText) => RemoteEditDraftConfirmer is { } confirm ? confirm(title, body, confirmText) : Task.FromResult(false),
+            _notificationCenter);
+        set => _draftReuploader = value;
+    }
+
+    /// <summary>
+    /// 消息中心里点了一份外部编辑草稿的「重新上传」:连上那台服务器传回去,结果用浮层提示说清楚
+    /// (连接那一路已经报过的失败不再重复说)。
+    /// </summary>
+    internal async Task ReuploadRemoteEditDraftAsync(string key)
+    {
+        RemoteEditDraftReuploadOutcome outcome;
+        try
+        {
+            outcome = await DraftReuploader.ReuploadAsync(key).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error(Strings.Format("RemoteEditDraft_Unexpected", ex.Message));
+            return;
+        }
+        if (outcome.Message is not { } message)
+        {
+            return;
+        }
+        switch (outcome.Result)
+        {
+            case RemoteEditDraftReuploadResult.Uploaded:
+                Toasts.Info(message);
+                break;
+            case RemoteEditDraftReuploadResult.DraftGone or RemoteEditDraftReuploadResult.UploadedButChanged:
+                Toasts.Warning(message);
+                break;
+            default:
+                Toasts.Error(message);
+                break;
         }
     }
 
@@ -2249,7 +2350,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             throw new InvalidOperationException(Strings.Get("Msg_SshServiceNotConfigured"));
         }
-        SessionProfile current = profile;
+        SessionProfile current = await UnlockForTunnelAsync(profile, automaticReconnect).ConfigureAwait(true);
         if (RequiresCredentials(current))
         {
             SessionProfile? updated = InteractiveAuthenticator is { } prompt
@@ -2262,6 +2363,10 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         SshSession session = automaticReconnect
             ? await _connectionWorkflowService.ReconnectProfileAutomaticallyAsync(current, cancellationToken)
             : await _connectionWorkflowService.ConnectProfileAsync(current, cancellationToken);
+        if (!ReferenceEquals(current, profile))
+        {
+            await SaveLoginPromptAsync(current).ConfigureAwait(true);
+        }
         return session.SessionId;
     }
 
@@ -3139,11 +3244,19 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 在一个已存在的“连接中”标签上完成 SSH 握手并挂上传输;失败时向上抛,由调用方
     /// 决定撤标签(直接入口)还是保留标签显示覆盖层(交互入口)。
     /// </summary>
+    /// <param name="terminalTab">连接中的标签。</param>
+    /// <param name="profile">这次连接用的配置。</param>
+    /// <param name="settings">设置快照。</param>
+    /// <param name="cancellationToken">取消令牌(关标签即取消)。</param>
+    /// <param name="loginPrompted">
+    /// <paramref name="profile" /> 是这一轮登录框交回的那份:连上之后把它改过的登录字段写进库里那份(<see cref="SaveLoginPromptAsync" />)。
+    /// </param>
     private async Task RunHandshakeAsync(
         TerminalTabViewModel terminalTab,
         SessionProfile profile,
         AppSettings settings,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        bool loginPrompted = false
     )
     {
         TerminalType terminalType = TerminalTypeExtensions.FromTermName(SessionTerminalSettings.TerminalType(profile, settings));
@@ -3157,6 +3270,13 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         );
         try
         {
+            // 认证一过就记下登录框里的改动(与以前工作流在这一刻整份写回同一个时机:开 shell 失败也不影响已经验证过的凭据)。
+            if (loginPrompted)
+            {
+                await SaveLoginPromptAsync(profile).ConfigureAwait(true);
+            }
+            // 重连时库里读不到这条配置,要靠这一笔分清「被删了」与「本来就是临时配置」(见 ResolveReconnectProfileAsync)。
+            terminalTab.ProfileSeenInLibrary = await IsInLibraryAsync(profile.Id).ConfigureAwait(true);
             await CompleteHandshakeAsync(terminalTab, profile, settings, session, terminalType, cancellationToken);
         }
         catch (Exception) when (cancellationToken.IsCancellationRequested)
@@ -3256,8 +3376,9 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// </para>
     /// <para>
     /// 跳板上谈不成时改的是那台跳板自己的配置(顺着「跳板主机」往上数到那一跳),不是终点的。
-    /// 库里有这条配置就改库里那份并落盘(不经标签手里那份:登录框交回来的副本可能带着用户没让记住的密码);
-    /// 终点那一跳还要同步改标签手里的副本,重连用的是它。「最近连接」重建的临时配置不在库里,只改这一次。
+    /// 库里有这条配置就改库里那份并落盘(不经标签手里那份:登录框交回来的副本可能带着用户没让记住的密码),
+    /// 重连时从库里重读、用的就是改过的那份;终点那一跳还要同步改标签手里的副本 —— 库里读不到时(「最近连接」重建的临时配置、
+    /// 开着的时候被删了)重连用的是它,这时只改这一次。
     /// </para>
     /// </remarks>
     public async Task AllowAlgorithmsAndReconnectAsync(TerminalTabViewModel tab)
@@ -3326,8 +3447,48 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 但主机指纹要人裁决时直接拒绝、不弹窗(<see cref="ConnectionInfo.IsAutomaticReconnect" />)——
     /// 这时多半没有人在屏幕前,唤醒后一起重连的几个标签还会叠出一摞没人点的模态框。
     /// </summary>
-    private Task AutoReconnectTabAsync(TerminalTabViewModel tab) =>
+    internal Task AutoReconnectTabAsync(TerminalTabViewModel tab) =>
         ReconnectTabCoreAsync(tab, automatic: true, CancellationToken.None);
+
+    /// <summary>正在为重连读库、过主密码闸口的标签(这段时间标签还是断开的)。</summary>
+    private readonly HashSet<TerminalTabViewModel> _reconnectPreparing = [];
+
+    /// <summary>
+    /// 重连的准备阶段:从库里重读、过主密码的闸口(<see cref="ResolveUnlockedReconnectProfileAsync" />),过了就把标签标成「连接中」。
+    /// </summary>
+    /// <remarks>
+    /// 同一标签同一时刻只许一个重连在这一段里:读库要等一下,闸口可能停在解锁框上,这段时间标签还是断开的,
+    /// <see cref="ReconnectTabCoreAsync" /> 开头「连接中 / 已连接就不理」那一道拦不住第二个请求(连按回车、自动重连计时器到点、
+    /// 解锁后的重试)—— 放进来就会并行连两次,多出来的那条会话没人收拾。第二个请求直接并入正在进行的这一个(什么也不做)。
+    /// 「连接中」在放开之前就标上,之后来的请求由开头那一道拦下,中间不留空档。
+    /// </remarks>
+    /// <returns>要连的那份;已经有一个在准备、或锁着没解开(标签已说明原因)时为 null。</returns>
+    private async Task<SessionProfile?> PrepareReconnectAsync(TerminalTabViewModel tab, SessionProfile copy, bool automatic)
+    {
+        lock (_reconnectPreparing)
+        {
+            if (!_reconnectPreparing.Add(tab))
+            {
+                return null;
+            }
+        }
+        try
+        {
+            SessionProfile? resolved = await ResolveUnlockedReconnectProfileAsync(tab, copy, automatic).ConfigureAwait(true);
+            if (resolved is not null)
+            {
+                tab.ConnectionStatus = SessionStatus.Connecting;
+            }
+            return resolved;
+        }
+        finally
+        {
+            lock (_reconnectPreparing)
+            {
+                _reconnectPreparing.Remove(tab);
+            }
+        }
+    }
 
     private async Task ReconnectTabCoreAsync(
         TerminalTabViewModel tab,
@@ -3355,10 +3516,15 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         // 拿 Telnet 的主机端口去做 SSH 握手 —— 表现为"重连一次就报认证失败"。
         if (tab.Profile is { ConnectionType: ConnectionType.Plugin } pluginProfile)
         {
+            // 同下面的 SSH:先从库里重读,再对重读后的那份过主密码的闸口 —— 锁着时库里那份的机密还是密文,绝不交给插件。
+            if (await PrepareReconnectAsync(tab, pluginProfile, automatic).ConfigureAwait(true) is not { } resolvedPlugin)
+            {
+                return;
+            }
             CancellationToken pluginToken = BeginTabConnect(tab, cancellationToken);
             try
             {
-                await ReconnectPluginTerminalAsync(tab, pluginProfile, pluginToken).ConfigureAwait(true);
+                await ReconnectPluginTerminalAsync(tab, resolvedPlugin, pluginToken).ConfigureAwait(true);
             }
             finally
             {
@@ -3374,7 +3540,16 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return;
         }
-        tab.ConnectionStatus = SessionStatus.Connecting;
+        // 先按 Id 从库里重读最新的那份,只叠上这次会话现敲的凭据(见 ResolveReconnectProfileAsync),再对重读后的那份过主密码的闸口
+        // (MasterPassword 分部):手动重连锁着时弹解锁框;自动重连不弹,记下来等解锁后重试。闸口看的必须是重读之后的那份 ——
+        // 标签开着时库里那份可能刚被改成存着密码,只看标签副本会把它放过去、拿密文去连。
+        // 过了闸口才换到标签上:这一次的连接、注入(认证后命令、初始目录)与之后的文件面板都用它。连上之后工作流只改库里那份的最近连接时间。
+        // 「连接中」也在过了闸口之后才标(PrepareReconnectAsync):锁着被拦下时标签本来就是断开的,不再走一遍断开(那会排上下一轮自动重连)。
+        if (await PrepareReconnectAsync(tab, tab.Profile, automatic).ConfigureAwait(true) is not { } resolved)
+        {
+            return;
+        }
+        tab.Profile = resolved;
         await tab.DetachTransportAsync().ConfigureAwait(true);
         UpdateStatusBarForActiveTab();
         // 重连与首连同等对待:右下角圆环也要转起来 —— 自动重连尤其是在后台发生的,
@@ -4143,6 +4318,13 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 这一行是敲进 PTY 的,引号挡不住行规程与行编辑器 —— 自从「在此处打开终端」把远端列表里的目录名送到这里,
     /// 别人建的一个带 <c>^U</c>、回车的目录就能把整行换成他的命令。
     /// </para>
+    /// <para>
+    /// 目录名按会话字符集编出来有 ≥ 0x80 的字节时(中文目录、带 <c>£</c> 的目录),改发只含可打印 ASCII 的
+    /// <c>cd "$(printf '\ooo…')"</c>(见 <see cref="ChangeDirectoryCommand" />):C / POSIX 区域设置下 readline 可能把这些字节当 Meta 键(视版本与配置),
+    /// <c>£</c> 的 <c>A3</c> 就是 M-#、当场提交整行。配置里的初始目录走的是同一行、同一条规则:它同样敲进 PTY,
+    /// 同样可能来自别处(云同步拉下来的、导入的会话),会拆 Meta 键的那类行编辑器上,照原样敲进去的中文路径本来也会被拆成一串 Meta 键,
+    /// 换成 ASCII 写法反而切得过去。
+    /// </para>
     /// </remarks>
     private void SendStartupDirectory(TerminalTabViewModel tab, SessionProfile profile)
     {
@@ -4165,7 +4347,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             }
             return;
         }
-        tab.SendSilentCommand("cd " + RemoteSearch.QuoteFor(tab.RemoteShellKind, directory));
+        // 按会话字符集编码判断、写八进制:目录名在服务器上就是这套字节(GBK 会话里的中文目录是 GBK 字节,不是 UTF-8)。
+        tab.SendSilentCommand(ChangeDirectoryCommand.Build(tab.RemoteShellKind, directory, tab.TerminalEmulator.SessionEncoding));
     }
 
     /// <summary>
@@ -4628,7 +4811,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// <c>cd</c> 走认证后命令那一条路(<see cref="SendStartupDirectory" />,单引号转义),与配置里的「初始目录」、
     /// 跟随终端目录的钩子共用同一套静默注入与防回显 —— 用户屏幕上不会多出一行没敲过的命令,
     /// 带空格、带引号的目录名也不会变成两个参数或一条注入;带控制字符的目录名不 <c>cd</c>、只提示一句(敲进 PTY 的控制字符
-    /// 引号挡不住,见那边)。它压过配置里的初始目录,只挂在这个标签上,不写进配置。
+    /// 引号挡不住,见那边);非 ASCII 的目录名改写成只含可打印 ASCII 的 <c>printf</c> 八进制(<see cref="ChangeDirectoryCommand" />)。
+    /// 它压过配置里的初始目录,只挂在这个标签上,不写进配置。
     /// </para>
     /// <para>
     /// 连接本身就是普通的「打开这条配置」:凭据缺了照样弹登录框,认证失败照样原地重试,与双击资源管理器里那一条一样;
@@ -4695,7 +4879,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return null;
         }
-        SessionProfile current = profile;
+        SessionProfile current = await UnlockForConnectAsync(profile).ConfigureAwait(true);
         AppSettings settings = await LoadSettingsSnapshotAsync().ConfigureAwait(true);
 
         // 标签只创建一次:连接中→(失败则)标签页内覆盖层→(认证重试)复用同一标签,
@@ -4753,7 +4937,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             CancellationToken connectToken = BeginTabConnect(tab, cancellationToken);
             try
             {
-                await RunHandshakeAsync(tab, current, settings, connectToken);
+                // 登录框交回的是副本(不改传进来的那份):是它,就说明这一轮弹过框,连上之后要把框里的改动记下。
+                await RunHandshakeAsync(tab, current, settings, connectToken, loginPrompted: !ReferenceEquals(current, profile));
                 return tab;
             }
             catch (Exception) when (connectToken.IsCancellationRequested)
@@ -4981,6 +5166,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return null;
         }
+        profile = await UnlockForConnectAsync(profile).ConfigureAwait(true);
 
         // 失败卡片上的「重新连接」用最近一次尝试的配置:登录框交回的是副本、不改调用方那一份,
         // 用户刚输过却没让记住的密码只在副本里 —— 拿最初那份重试,就得把密码再输一遍。
@@ -5114,6 +5300,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             {
                 ui.BeginAttempt();
                 session = await workflow.ConnectProfileAsync(current, ui.Token).ConfigureAwait(true);
+                if (session is not null && !ReferenceEquals(current, profile))
+                {
+                    // 这一轮用的是登录框交回的那份:把框里改过的登录字段记下(终端标签同一条规矩)。
+                    await SaveLoginPromptAsync(current).ConfigureAwait(true);
+                }
                 return session is null
                     ? (null, new(current, null))
                     : (new(current, session.SessionId, session, workflow.DisconnectAsync), default);
@@ -5247,6 +5438,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return null;
         }
+        profile = await UnlockForConnectAsync(profile).ConfigureAwait(true);
 
         // 失败卡片上的「重新连接」用最近一次尝试的配置(理由同 SFTP 那条路径)。
         SessionProfile latest = profile;
@@ -5326,6 +5518,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 Guid sessionId = await ftp
                     .OpenSessionAsync(FtpConnectionInfo.FromProfile(resolved), ui.Token)
                     .ConfigureAwait(true);
+                if (!ReferenceEquals(current, profile))
+                {
+                    // 这一轮用的是登录框交回的那份:与 SSH 同一条规矩,把框里改过的登录字段记下(照「记住密码」与总开关)。
+                    await SaveLoginPromptAsync(current).ConfigureAwait(true);
+                }
                 return (new(current, sessionId, null, ftp.CloseSessionAsync), default);
             }
             catch (OperationCanceledException)
@@ -5340,7 +5537,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     await trustPrompt(current, certificate).ConfigureAwait(true))
                 {
                     current = WithTrustedCertificate(current, certificate.Thumbprint);
-                    await PersistProfileIfSavedAsync(current).ConfigureAwait(true);
+                    await PersistTrustedCertificateAsync(current.Id, stored => WithTrustedCertificate(stored, certificate.Thumbprint))
+                        .ConfigureAwait(true);
                     attempt--; // 信任后的这次重连不算认证重试
                     continue;
                 }
@@ -5524,6 +5722,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return null;
         }
+        profile = await UnlockForConnectAsync(profile).ConfigureAwait(true);
 
         // 占位标签建在解析协议之前:解析可能触发插件的惰性激活(装配、启动进程),
         // 那往往就是这条路上最慢的一步 —— 等它完再建标签,慢的那段照样没有任何回执。
@@ -5601,6 +5800,13 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             return (null, new(profile, null));
         }
         bool allowsAnonymous = descriptor?.Features.HasFlag(ProtocolFeatures.AnonymousAccess) == true;
+        // 插件声明的机密字段没有登录框可问:存着的那几项在这台设备上解不开就说清是哪一项、为什么,这次不连 ——
+        // 不拿密文、也不拿空值去连。密码另由下面的登录框问(框上说明它为什么解不开)。插件还没解析出来时由协议服务那一道兜住。
+        if (descriptor is not null
+            && await UnreadablePluginSecretsAsync(profile, descriptor.Fields, includePassword: false).ConfigureAwait(true) is { } unreadable)
+        {
+            return (null, new(profile, unreadable));
+        }
 
         SessionProfile current = profile;
         // 证书提示单独计数:attempt-- 会与 attempt++ 相抵,把 3 次上限彻底架空。
@@ -5634,6 +5840,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                 // 共享凭据只进交给插件的那一份;文档拿的仍是不带明文的 current(#550)。
                 SessionProfile resolved = await ResolveCredentialsAsync(current, ui.Token).ConfigureAwait(true);
                 Guid sessionId = await plugins.OpenSessionAsync(resolved, ui.Token).ConfigureAwait(true);
+                if (!ReferenceEquals(current, profile))
+                {
+                    // 同 FTP:登录框交回的那份连上了,记下框里改过的登录字段。
+                    await SaveLoginPromptAsync(current).ConfigureAwait(true);
+                }
                 return (new(current, sessionId, null, plugins.CloseSessionAsync), default);
             }
             catch (OperationCanceledException)
@@ -5648,7 +5859,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     await trustPrompt(current, certificate).ConfigureAwait(true))
                 {
                     current = WithTrustedPluginCertificate(current, certificate);
-                    await PersistProfileIfSavedAsync(current).ConfigureAwait(true);
+                    if (certificate.SettingKey is { Length: > 0 })
+                    {
+                        await PersistTrustedCertificateAsync(current.Id, stored => WithTrustedPluginCertificate(stored, certificate))
+                            .ConfigureAwait(true);
+                    }
                     if (certificate.SettingKey is { Length: > 0 } && ++certPrompts <= 2)
                     {
                         // 指纹确实记下了,下次重连不会再撞同一张证书 —— 这一次不算认证重试。
@@ -5744,6 +5959,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(registration);
+        profile = await UnlockForConnectAsync(profile).ConfigureAwait(true);
         AppSettings settings = await LoadSettingsSnapshotAsync().ConfigureAwait(true);
         (TerminalTabViewModel tab, TerminalDocument document) =
             CreateConnectingTab(profile, settings, registration.Descriptor.DisplayName);
@@ -5753,6 +5969,8 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             await AttachPluginTerminalAsync(tab, profile, registration, settings, connectToken)
                 .ConfigureAwait(true);
+            // 重连时库里读不到这条配置,靠这一笔分清「被删了」与「本来就是临时配置」(同 SSH 标签,见 ResolveReconnectProfileAsync)。
+            tab.ProfileSeenInLibrary = await IsInLibraryAsync(profile.Id).ConfigureAwait(true);
             await Sidebar.RecentConnections.RefreshAsync().ConfigureAwait(true);
             return tab;
         }
@@ -5799,6 +6017,14 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             _backgroundActivity?.Begin(Strings.Connecting, ProfileDisplayName(profile));
         // 共享凭据在这一刻才取(打开与重连都经过这里,重连自然用上凭据的新值,#550)。
         SessionProfile resolved = await ResolveCredentialsAsync(profile, cancellationToken).ConfigureAwait(true);
+        // 存着的机密(插件终端没有登录框,密码也算上)在这台设备上解不开:说清是哪一项、为什么,这次就不连 ——
+        // 不把密文、也不把空值交给插件。打开与重连都经过这里。
+        bool noCredentials = registration.Descriptor.Features.HasFlag(ProtocolFeatures.NoCredentials);
+        if (await UnreadablePluginSecretsAsync(resolved, registration.Descriptor.Fields, includePassword: !noCredentials)
+                .ConfigureAwait(true) is { } unreadable)
+        {
+            throw unreadable;
+        }
         IShellStreamWrapper stream = await PluginProtocolTerminalConnector
             .OpenAsync(registration, resolved, options, cancellationToken)
             .ConfigureAwait(true);
@@ -5813,12 +6039,19 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     }
 
     /// <summary>重连一条插件终端会话:复用同一标签与回滚缓冲,RIS 复位后重建传输。</summary>
+    /// <remarks>
+    /// 与 SSH 标签同一个口径(<see cref="ResolveReconnectProfileAsync" />):先按 Id 从库里重读最新的那份(协议设置、机密字段、地址
+    /// 别处刚改的这次就用上),只在登录身份没变时叠上标签副本里库里没有的口令;配置被删了照标签副本连、提示一次;临时配置照旧。
+    /// 重读与主密码的闸口都在调用方(<see cref="ResolveUnlockedReconnectProfileAsync" />),传进来的就是过了闸口、要连的那份。
+    /// 插件终端本来就不经连接工作流、连上之后不往库里写任何东西,这里也不写。
+    /// </remarks>
     private async Task ReconnectPluginTerminalAsync(
         TerminalTabViewModel tab,
         SessionProfile profile,
         CancellationToken cancellationToken)
     {
         tab.ConnectionStatus = SessionStatus.Connecting;
+        tab.Profile = profile;
         await tab.DetachTransportAsync().ConfigureAwait(true);
         UpdateStatusBarForActiveTab();
         try
@@ -5881,6 +6114,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return null;
         }
+        profile = await UnlockForConnectAsync(profile).ConfigureAwait(true);
 
         // 同插件协议那条路径:占位标签建在解析之前 —— 惰性激活插件往往是最慢的一步。
         // 失败卡片上的「重新连接」用最近一次尝试的配置(理由同 SFTP 那条路径)。
@@ -5919,6 +6153,13 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             {
                 ui.Document.TypeLabel = descriptor.DisplayName;
             }
+        }
+        // 同插件文件协议那条路径:插件声明的机密字段解不开就说清是哪一项、为什么,这次不连(密码另由登录框问)。
+        if (descriptor is not null
+            && await UnreadablePluginSecretsAsync(profile, descriptor.Fields, includePassword: false).ConfigureAwait(true) is { } unreadable)
+        {
+            ReportDocumentConnectFailure(ui, profile, unreadable);
+            return null;
         }
 
         SessionProfile current = profile;
@@ -5971,6 +6212,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     await RemoveWorkspaceTunnelAsync(tunnelId).ConfigureAwait(true);
                     throw;
                 }
+                if (!ReferenceEquals(current, profile))
+                {
+                    // 同 FTP / 插件文件协议:登录框交回的那份连上了,记下框里改过的登录字段。
+                    await SaveLoginPromptAsync(current).ConfigureAwait(true);
+                }
                 var document = new PluginWorkspaceDocument(
                     current, session.SessionId, session.TypeName, session.Document, descriptor?.Icon);
                 if (tunnelId != Guid.Empty)
@@ -5996,7 +6242,11 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
                     await trustPrompt(current, certificate).ConfigureAwait(true))
                 {
                     current = WithTrustedPluginCertificate(current, certificate);
-                    await PersistProfileIfSavedAsync(current).ConfigureAwait(true);
+                    if (certificate.SettingKey is { Length: > 0 })
+                    {
+                        await PersistTrustedCertificateAsync(current.Id, stored => WithTrustedPluginCertificate(stored, certificate))
+                            .ConfigureAwait(true);
+                    }
                     if (certificate.SettingKey is { Length: > 0 } && ++certPrompts <= 2)
                     {
                         attempt--;
@@ -6316,6 +6566,44 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
             ? !string.IsNullOrWhiteSpace(profile.Username) && MissingPassword(profile)
             : string.IsNullOrWhiteSpace(profile.Username) || MissingPassword(profile));
 
+    /// <summary>
+    /// 插件连接存着的机密在这台设备上解不开(载入时仍是密文原样):是哪几项、为什么(按本机加密密钥的解析结果、主密码锁没锁)、
+    /// 怎么办,作为这次连接的失败原因交给调用方 —— 不把密文、也不把空值交给插件(协议服务、工作台启动器里的 PluginStoredSecrets 是最后一道)。
+    /// </summary>
+    /// <param name="profile">要交给插件的那份配置。</param>
+    /// <param name="fields">插件声明的设置字段。</param>
+    /// <param name="includePassword">把密码也算上(插件终端没有登录框可问;文件协议与工作台的密码由登录框问)。</param>
+    /// <returns>有解不开的时为要报的失败(<see cref="CredentialFailure.UnreadableSecret" />);都解得开时为 null。</returns>
+    private async Task<CredentialProviderException?> UnreadablePluginSecretsAsync(
+        SessionProfile profile, IEnumerable<ProtocolSettingField> fields, bool includePassword)
+    {
+        IReadOnlyList<string> labels = PluginStoredSecrets.UnreadableLabels(profile, fields, includePassword);
+        if (labels.Count == 0)
+        {
+            return null;
+        }
+        MasterKeyStatus? status = null;
+        if (_masterKeyStatus is { } keys)
+        {
+            try
+            {
+                // 启动时已在后台解析好,这里只是取结果;取的时候仍可能要等系统密钥链,放到线程池上。
+                status = await Task.Run(keys.GetKeyStatus).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                // 说不出原因就按「解不开」说,不影响这次的结论。
+                System.Diagnostics.Trace.WriteLine($"[Secrets] Master key status unavailable for a plugin connection: {ex.Message}");
+            }
+        }
+        // 主密码锁着:说的是「锁着」,不是「密钥不在」。
+        bool locked = _masterPassword is { } gate && await gate.IsLockedAsync().ConfigureAwait(true);
+        return new CredentialProviderException(
+            CredentialFailure.UnreadableSecret,
+            profile.CredentialSource?.ProviderId ?? string.Empty,
+            UnreadableSecretPrompt.DescribePluginSecrets(PluginStoredSecrets.FormatLabels(labels), status, locked));
+    }
+
     /// <summary>没有能用的密码:空着,或者存着的那份在这台设备上解不开(FTP 与插件协议只认密码)。</summary>
     private static bool MissingPassword(SessionProfile profile) =>
         string.IsNullOrEmpty(profile.Password) || StoredSecret.IsUnreadable(profile.Password);
@@ -6390,43 +6678,153 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     }
 
     /// <summary>
-    /// 把配置写回仓储(仅对**已保存**的配置;「最近连接」重建的临时配置只在本次连接内有效)。
-    /// 目前的用途是记住用户刚刚信任的服务器证书指纹,FTPS 与插件协议共用。
+    /// 记住用户刚刚信任的服务器证书指纹(FTPS、插件协议的文件标签与工作台共用):按 Id 取库里那份,只改证书信任那一项再存,
+    /// 其余字段以库里为准;不在库里的临时配置(外部拉起、「最近连接」重建的,§252)只在本次连接内信任,不写。
     /// </summary>
-    private async Task<bool> PersistProfileIfSavedAsync(SessionProfile profile)
+    /// <remarks>
+    /// <para>
+    /// 以前这里把连接手里那份整份写回(§298 的同类欠账,维护者 2026-10-31 定与终端标签重连同一口径):那份是打开文档时从会话树缓存、
+    /// 失败卡片「重新连接」留着的副本里来的,别处(云同步、编辑框)这段时间里改过的字段被一并冲掉;登录框交回的副本里
+    /// 这次手输的用户名、认证方式也跟着落了盘 —— 而没撞上证书提示时它们从来不落盘,同一个登录框两种结局。
+    /// </para>
+    /// <para>
+    /// 改的是哪一项由调用方给(<paramref name="trust" />,与改连接手里那份用的是同一个函数):FTPS 是
+    /// <see cref="FtpSettings.TrustedCertificateThumbprint" />,插件协议是它自己声明的那个隐藏设置字段。
+    /// 仍经工作流保存:库里存着的密码照旧按「记住密码」与常规页的总开关过一遍,与其它保存点一致。
+    /// 指纹没落盘不影响本次连接(重连用的是改过的那份),下次会再问一遍。
+    /// </para>
+    /// </remarks>
+    /// <param name="profileId">配置的 Id。</param>
+    /// <param name="trust">在库里那份上记下信任(就地修改)。</param>
+    private async Task PersistTrustedCertificateAsync(Guid profileId, Action<SessionProfile> trust)
     {
         if (_sessionRepository is null)
         {
-            return true;
+            return;
         }
         try
         {
-            if (await _sessionRepository.GetSessionAsync(profile.Id).ConfigureAwait(true) is null)
+            if (await _sessionRepository.GetSessionAsync(profileId).ConfigureAwait(true) is not { } stored)
             {
-                return true;
+                return;
             }
-            // 经工作流保存:登录框交回来的副本可能带着用户这次手输、却没让记住的密码,
-            // 工作流会按「记住密码」把它剥掉 —— 直接落仓储等于替用户记住了他明确不让记的东西。
+            trust(stored);
             if (_connectionWorkflowService is { } workflow)
             {
-                await workflow.SaveProfileAsync(profile).ConfigureAwait(true);
+                await workflow.SaveProfileAsync(stored).ConfigureAwait(true);
             }
             else
             {
-                await _sessionRepository.SaveSessionAsync(profile).ConfigureAwait(true);
+                await _sessionRepository.SaveSessionAsync(stored).ConfigureAwait(true);
             }
-            return true;
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException)
         {
-            // 信任指纹没落盘不影响本次连接,下次会再问一遍。
+            System.Diagnostics.Trace.WriteLine($"[Connect] Saving the trusted certificate for {profileId} failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 登录框交回的那份刚连上:把框里改得到的几项(用户名、认证方式、记住密码与认证材料)写进库里那份,其余字段以库里为准
+    /// (<see cref="IConnectionWorkflowService.SaveLoginChangesAsync" />;密码照「记住密码」与总开关,临时配置不落库)。
+    /// </summary>
+    /// <remarks>
+    /// 以前这件事夹在工作流「连上就把调用方那份整份写回」里顺带完成;整份写回改成只写最近连接时间之后(§298 的欠账),
+    /// 弹过登录框的各条路径在认证通过之后调这里:SSH 的终端标签、隧道、文件标签,以及 FTP / FTPS、插件协议文件标签与工作台
+    /// (后三条以前从不落库,登录框上勾了「记住密码」下次照样再问 —— 只在恰好撞上证书提示时随整份写回顺带存过)。
+    /// 后三条的登录框只认密码、只交回用户名、口令与「记住密码」,私钥 / 证书那几栏原样不动(插件声明的其它字段不在登录框里,也不写)。审计里记成「登录框」。
+    /// 没写进去不影响这一次连接(下次连接时照样会再问),只留一条诊断日志。
+    /// </remarks>
+    private async Task SaveLoginPromptAsync(SessionProfile prompted)
+    {
+        if (_connectionWorkflowService is not { } workflow)
+        {
+            return;
+        }
+        try
+        {
+            using IDisposable source = AuditSourceScope.Enter(AuditSources.LoginPrompt);
+            await workflow.SaveLoginChangesAsync(prompted).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Connect] Saving the login prompt result for {prompted.Id} failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>这条配置此刻在不在库里;没有仓储(无界面单测)或读不出来时按不在算。</summary>
+    private async Task<bool> IsInLibraryAsync(Guid profileId)
+    {
+        if (_sessionRepository is null)
+        {
+            return false;
+        }
+        try
+        {
+            return await _sessionRepository.GetSessionAsync(profileId).ConfigureAwait(true) is not null;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
             return false;
         }
     }
 
     /// <summary>
+    /// 终端标签重连要用的那份配置:按 Id 从库里重读最新的,叠上标签副本里这次会话现敲、库里没有的凭据
+    /// (<see cref="SessionProfileMerge.ForReconnect" />);库里读不到时退回标签副本。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 维护者 2026-10-31 定(§298 记下的欠账,与会话健康巡检每轮重读同一个口径):标签开着的这段时间里,别处(云同步、编辑框、
+    /// 巡检窗口里的「放开这几个算法」)可能已经改过这条配置,拿标签里那份旧副本去连,用的就是旧算法、旧地址、旧的认证后命令。
+    /// 标签上按标签存的东西(「在此处打开终端」的 <see cref="TerminalTabViewModel.StartupDirectoryOverride" /> 等)不在配置里,不受影响。
+    /// </para>
+    /// <para>
+    /// 库里读不到:这个标签连上时查到过它(<see cref="TerminalTabViewModel.ProfileSeenInLibrary" />)= 开着的这段时间里被删了 ——
+    /// 照标签副本连,浮层提示一句(每个标签一次),工作流也不会把它写回库里;从没查到过 = 外部拉起、「最近连接」重建的临时配置(§252),
+    /// 照旧不声不响。读库出错时同样退回标签副本,不让这件事挡住重连。
+    /// </para>
+    /// <para>
+    /// 库里那份换成了别的连接类型(从 SSH 改成了 SFTP 之类)、或插件配置换了协议时也用标签副本:这个标签是那种终端,
+    /// 照库里那份去连就不是它了。SSH 标签与插件终端协议(Telnet、串口…)的重连都经这里。
+    /// </para>
+    /// </remarks>
+    private async Task<SessionProfile> ResolveReconnectProfileAsync(TerminalTabViewModel tab, SessionProfile copy)
+    {
+        if (_sessionRepository is null)
+        {
+            return copy;
+        }
+        SessionProfile? stored;
+        try
+        {
+            stored = await _sessionRepository.GetSessionAsync(copy.Id).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Reconnect] Reading profile {copy.Id} failed, reconnecting with the tab's copy: {ex.Message}");
+            return copy;
+        }
+        if (stored is null)
+        {
+            if (tab.ProfileSeenInLibrary && !tab.ProfileDeletedNoticeShown)
+            {
+                tab.ProfileDeletedNoticeShown = true;
+                Toasts.Info(Strings.Format("Msg_ReconnectProfileDeleted", ProfileDisplayName(copy)));
+            }
+            return copy;
+        }
+        tab.ProfileSeenInLibrary = true;
+        tab.ProfileDeletedNoticeShown = false;
+        return stored.ConnectionType == copy.ConnectionType
+               && string.Equals(stored.PluginProtocolId, copy.PluginProtocolId, StringComparison.Ordinal)
+            ? SessionProfileMerge.ForReconnect(stored, copy)
+            : copy;
+    }
+
+    /// <summary>
     /// 目录收藏的落盘入口(#621):只改库里那一条配置的收藏,其余字段不碰。
-    /// 不走 <see cref="PersistProfileIfSavedAsync" /> 的整条写回 —— 文档手里那份配置可能早就过时了
+    /// 不把文档手里那份整条写回(证书信任那一路同样只改那一项,见 <see cref="PersistTrustedCertificateAsync" />)—— 文档手里那份配置可能早就过时了
     /// (编辑框改过端口或名字、另一个文档加过收藏),整条写回会把那些改动悄悄回滚。
     /// </summary>
     /// <returns>改后的收藏;配置没保存过(「最近连接」重建的临时配置)时为 null,收藏只在本文档内有效。</returns>

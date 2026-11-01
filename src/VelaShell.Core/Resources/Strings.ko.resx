@@ -1513,6 +1513,9 @@
   <data name="FtpSvc_ReadCompletionTimeout" xml:space="preserve">
     <value>FTP 서버의 전송 완료 확인을 기다리는 중 시간이 초과되었습니다.</value>
   </data>
+  <data name="FtpSvc_TransferInterrupted" xml:space="preserve">
+    <value>{0} 전송 중 FTP 데이터 연결이 끊어졌습니다. 제어 연결은 계속 사용할 수 있습니다.</value>
+  </data>
   <data name="SftpSvc_RelayLengthMismatch" xml:space="preserve">
     <value>전송이 불완전합니다: {0}. 예상 크기는 {1}바이트지만 실제로 {2}바이트를 읽었습니다. 원본 파일이 변경되었거나 연결이 일찍 종료되었을 수 있습니다.</value>
   </data>
@@ -1864,6 +1867,9 @@
   </data>
   <data name="Msg_AutoReconnectCountdown" xml:space="preserve">
     <value>{0} 연결 끊김, {1}초 후 자동 재연결({2}/{3})…</value>
+  </data>
+  <data name="Msg_ReconnectProfileDeleted" xml:space="preserve">
+    <value>'{0}' 연결 설정이 삭제되었습니다. 이 탭에 남아 있는 설정으로 다시 연결하며, 다시 저장하지는 않습니다.</value>
   </data>
   <data name="Msg_AutoRecordDisabledHint" xml:space="preserve">
     <value>자동 녹화가 꺼졌습니다.</value>
@@ -4924,19 +4930,19 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>Unix 도메인 소켓 사용</value>
   </data>
   <data name="Tunnel_UnixSocketTip" xml:space="preserve">
-    <value>로컬 포워딩은 양쪽 끝을 각각 소켓으로 바꿀 수 있으며, 경로를 쓴 쪽은 위의 포트를 쓰지 않습니다. 원격 포워딩은 양쪽 모두 소켓이어야 합니다. 로컬 소켓 파일은 파일 권한으로 보호되어 이 컴퓨터의 다른 사용자가 이 터널을 쓸 수 없습니다. 서버에서 AllowStreamLocalForwarding이 켜져 있어야 합니다.</value>
+    <value>로컬 포워딩과 원격 포워딩 모두 양쪽 끝을 각각 소켓으로 바꿀 수 있으며, 경로를 쓴 쪽은 위의 포트와 호스트를 쓰지 않습니다. 로컬 소켓 파일은 파일 권한으로 보호되어 이 컴퓨터의 다른 사용자가 이 터널을 쓸 수 없습니다. 서버에서 AllowStreamLocalForwarding이 켜져 있어야 합니다.</value>
   </data>
   <data name="Tunnel_LocalSocketListenLabel" xml:space="preserve">
     <value>수신 대기할 로컬 소켓 (비우면 로컬 포트)</value>
   </data>
   <data name="Tunnel_LocalSocketTargetLabel" xml:space="preserve">
-    <value>연결할 로컬 소켓</value>
+    <value>연결할 로컬 소켓 (비우면 로컬 포트)</value>
   </data>
   <data name="Tunnel_RemoteSocketTargetLabel" xml:space="preserve">
     <value>서버의 대상 소켓 (비우면 대상 호스트:포트)</value>
   </data>
   <data name="Tunnel_RemoteSocketListenLabel" xml:space="preserve">
-    <value>서버가 수신 대기할 소켓</value>
+    <value>서버가 수신 대기할 소켓 (비우면 수신 대기 주소:포트)</value>
   </data>
   <data name="Tunnel_SocketPathRequired" xml:space="preserve">
     <value>소켓 경로를 입력하세요.</value>
@@ -5030,9 +5036,6 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="TunnelSvc_TargetNotPermitted" xml:space="preserve">
     <value>원격이 요청한 대상이 허용 목록에 없어 거부했습니다. 허용하려면 이 터널의 허용 목록에 추가하세요.</value>
-  </data>
-  <data name="TunnelSvc_RemoteSocketNeedsBothEnds" xml:space="preserve">
-    <value>원격 포워딩은 양쪽 모두 포트이거나 양쪽 모두 Unix 소켓이어야 합니다. 이 설정은 한쪽에만 소켓 경로가 있습니다.</value>
   </data>
   <data name="TunnelSvc_LocalSocketExists" xml:space="preserve">
     <value>{0}이(가) 이미 있습니다. 지난번에 정리되지 않았거나 다른 프로그램의 소켓일 수 있습니다. 쓰이지 않는지 확인한 뒤 삭제하고 다시 시작하세요.</value>
@@ -5476,6 +5479,60 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Notify_RemoteEditDraftAction" xml:space="preserve">
     <value>폴더 열기</value>
   </data>
+  <data name="Notify_RemoteEditDraftReupload" xml:space="preserve">
+    <value>다시 업로드</value>
+  </data>
+  <data name="Notify_RemoteEditDraftBodyReupload" xml:space="preserve">
+    <value>{0}({1})의 변경 사항이 아직 이 컴퓨터의 {2}에만 있고 서버로 전송되지 않았습니다. '다시 업로드'를 누르면 그 서버에 연결해 이 사본을 다시 보냅니다(그 뒤 서버에서 파일이 바뀌었으면 먼저 묻습니다). 직접 처리한 뒤 이 사본을 삭제해도 됩니다. 초안은 자동으로 삭제되지 않습니다.</value>
+  </data>
+  <data name="RemoteEditDraft_Uploaded" xml:space="preserve">
+    <value>{0}을(를) {1}(으)로 다시 보냈고 이 컴퓨터의 초안을 삭제했습니다.</value>
+  </data>
+  <data name="RemoteEditDraft_ChangedDuringUpload" xml:space="preserve">
+    <value>{0}을(를) {1}(으)로 보냈지만 업로드 중에 로컬 사본이 바뀌어 초안을 {2}에 남겨 두었습니다.</value>
+  </data>
+  <data name="RemoteEditDraft_Gone" xml:space="preserve">
+    <value>이 외부 편집 초안은 더 이상 없습니다. 메시지를 내렸습니다.</value>
+  </data>
+  <data name="RemoteEditDraft_NoProfile" xml:space="preserve">
+    <value>{0} 초안에는 어느 연결 설정에서 왔는지 기록되어 있지 않아(빠른 연결 또는 이전 버전이 남긴 것) 여기서 다시 업로드할 수 없습니다. 사본은 {1}에 있습니다.</value>
+  </data>
+  <data name="RemoteEditDraft_ProfileMissing" xml:space="preserve">
+    <value>{0} 초안에 기록된 연결 설정이 삭제되어 여기서 다시 업로드할 수 없습니다. 사본은 {1}에 남아 있으니 직접 업로드하세요.</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteDirMissing" xml:space="preserve">
+    <value>원격 폴더 {0}이(가) 더 이상 없어 {1}을(를) 업로드하지 않았습니다. 초안은 남겨 두었습니다.</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteIsDirectory" xml:space="preserve">
+    <value>서버의 {0}은(는) 이제 폴더여서 업로드하지 않았습니다. 초안은 남겨 두었습니다.</value>
+  </data>
+  <data name="RemoteEditDraft_Failed" xml:space="preserve">
+    <value>{0}을(를) {1}(으)로 보내지 못했습니다: {2}. 초안은 남겨 두었으니 나중에 다시 시도하세요.</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictTitle" xml:space="preserve">
+    <value>원격 파일이 바뀌었습니다</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictBody" xml:space="preserve">
+    <value>{0}은(는) 이 초안과 마지막으로 일치한 뒤에 바뀌었습니다(현재 {1}, 수정 {2}). 초안으로 덮어쓰면 그 변경 사항이 사라집니다. 그래도 덮어쓸까요?</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictUnknownBody" xml:space="preserve">
+    <value>{0}이(가) 이 초안 이후에 바뀌었는지 알 수 없습니다(현재 {1}, 수정 {2}). 그래도 초안으로 덮어쓸까요?</value>
+  </data>
+  <data name="RemoteEditDraft_ConflictNoInfoBody" xml:space="preserve">
+    <value>{0}의 현재 상태를 읽을 수 없어 이 초안 이후에 바뀌었는지 알 수 없습니다. 그래도 초안으로 덮어쓸까요?</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingTitle" xml:space="preserve">
+    <value>원격 파일이 없습니다</value>
+  </data>
+  <data name="RemoteEditDraft_RemoteMissingBody" xml:space="preserve">
+    <value>서버에 {0}이(가) 더 이상 없습니다(삭제되었거나 이름이 바뀌었을 수 있습니다). 초안으로 원래 경로에 다시 만들까요?</value>
+  </data>
+  <data name="RemoteEditDraft_Recreate" xml:space="preserve">
+    <value>다시 만들기</value>
+  </data>
+  <data name="RemoteEditDraft_Unexpected" xml:space="preserve">
+    <value>외부 편집 초안을 다시 업로드하는 중 오류가 발생했습니다: {0}</value>
+  </data>
   <data name="Notify_KindSystem" xml:space="preserve">
     <value>시스템</value>
   </data>
@@ -5600,7 +5657,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>Unix 도메인 소켓</value>
   </data>
   <data name="TunnelHelp_UnixSocketDesc" xml:space="preserve">
-    <value>로컬 포워딩과 원격 포워딩은 포트 대신 Unix 도메인 소켓을 쓸 수 있습니다. 로컬 포워딩은 이 컴퓨터의 소켓 파일에서 수신 대기하거나, 서버의 소켓(/var/run/docker.sock 등)으로 전달하거나, 둘 다 할 수 있어 로컬 도구로 원격 Docker나 데이터베이스를 바로 다루고 서버는 TCP 포트를 열 필요가 없습니다. 원격 포워딩은 서버가 소켓 경로에서 수신 대기하고 이 컴퓨터의 소켓으로 다시 연결합니다. 소켓 파일은 파일 권한으로 보호되며, 서버에서 AllowStreamLocalForwarding이 필요합니다. Windows는 Windows 10 1803부터 지원합니다.</value>
+    <value>로컬 포워딩과 원격 포워딩은 양쪽 끝 각각에서 포트 대신 Unix 도메인 소켓을 쓸 수 있습니다. 로컬 포워딩은 이 컴퓨터의 소켓 파일에서 수신 대기하거나, 서버의 소켓(/var/run/docker.sock 등)으로 전달하거나, 둘 다 할 수 있어 로컬 도구로 원격 Docker나 데이터베이스를 바로 다루고 서버는 TCP 포트를 열 필요가 없습니다. 원격 포워딩은 서버가 소켓 경로에서 수신 대기하거나, 이 컴퓨터의 소켓으로 다시 연결하거나, 둘 다 할 수 있습니다(서버의 포트에서 로컬 docker.sock으로, 서버의 소켓에서 로컬 데이터베이스 포트로 등). 소켓 파일은 파일 권한으로 보호되며, 서버에서 AllowStreamLocalForwarding이 필요합니다. Windows는 Windows 10 1803부터 지원합니다.</value>
   </data>
   <data name="TunnelHelp_LoopbackNote" xml:space="preserve">
     <value>127.0.0.1의 의미는 해당 엔드포인트가 속한 머신에 따라 달라집니다. 로컬 포워딩의 서버 측 대상에서는 SSH 서버 자체를, 원격 포워딩의 로컬 서비스에서는 이 컴퓨터를 가리킵니다. 수신 엔드포인트에 루프백을 사용하면 해당 수신을 제공하는 머신에서만 접근할 수 있습니다.</value>
@@ -6112,8 +6169,8 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SshCfgImport_NoteForwardPortZero" xml:space="preserve">
     <value>가져오지 않았습니다. 포트 0(연결할 때 정해지는 포트)은 터널로 나타낼 수 없습니다: {0}</value>
   </data>
-  <data name="SshCfgImport_NoteForwardSocketMix" xml:space="preserve">
-    <value>가져오지 않았습니다. 원격 포워딩은 양쪽 모두 Unix 소켓이거나 양쪽 모두 아니어야 합니다: {0}</value>
+  <data name="SshCfgImport_NoteRemoteDynamicSocket" xml:space="preserve">
+    <value>가져오지 않았습니다. 원격 동적 포워딩은 서버의 포트에서만 수신 대기할 수 있고 Unix 소켓은 쓸 수 없습니다: {0}</value>
   </data>
   <data name="SshCfgImport_NoteForwardSocketPath" xml:space="preserve">
     <value>가져오지 않았습니다. 이 컴퓨터에서 쓸 수 없는 소켓 경로입니다(로컬 소켓은 너무 길지 않은 전체 경로, 서버 소켓은 /로 시작해야 함): {0}</value>
@@ -6129,6 +6186,12 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="SshCfgImport_NoteForwardInvalid" xml:space="preserve">
     <value>가져오지 않았습니다. 포워딩 형식이 잘못되었습니다: {0}</value>
+  </data>
+  <data name="SshCfgImport_NoteSingleBackslash" xml:space="preserve">
+    <value>{0}: 백슬래시 하나로 시작하는 경로로 읽힙니다. ssh_config에서 \\는 이스케이프라 \ 하나가 되며, ssh도 같은 방식으로 읽습니다. UNC 경로나 명명된 파이프를 쓰려면 설정에 \\\\server\share, \\\\.\pipe\이름처럼 적으세요.</value>
+  </data>
+  <data name="SshCfgImport_NoteUnbalancedQuotes" xml:space="preserve">
+    <value>{0}의 {1}번째 줄은 따옴표 짝이 맞지 않아 VelaShell이 이 줄을 건너뛰었습니다. ssh는 이런 줄이 있으면 설정 파일 전체를 읽지 않습니다(invalid quotes): {2}</value>
   </data>
   <data name="SshCfgImport_NoteAlgoDropped" xml:space="preserve">
     <value>{0}: {1}을(를) 뺐습니다(이 버전에서 구현되지 않아 적어 두어도 협상되지 않음)</value>
@@ -6438,6 +6501,12 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="Msg_ProxyConnectFailed" xml:space="preserve">
     <value>프록시 연결 실패: {0}</value>
+  </data>
+  <data name="Msg_ProxyHttpSshPortHint" xml:space="preserve">
+    <value>프록시가 22번 포트로의 CONNECT를 거부하면 프록시 유형을 SOCKS5(예: 127.0.0.1:10808)로, TUN 모드를 쓰고 있다면 &apos;프록시 없음&apos;으로 바꾸세요.</value>
+  </data>
+  <data name="Msg_ProxyHttpFtpHint" xml:space="preserve">
+    <value>프록시가 CONNECT를 거부하면 프록시 유형을 SOCKS5로, TUN 모드를 쓰고 있다면 &apos;프록시 없음&apos;으로 바꾸세요.</value>
   </data>
   <data name="Msg_ProxyUnreachable" xml:space="preserve">
     <value>프록시 서버에 연결할 수 없습니다: {0}</value>
@@ -9790,4 +9859,99 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="AiRegion_Pin" xml:space="preserve"><value>AI 도우미 고정 / 자동 숨기기</value></data>
   <data name="AiRegion_Collapse" xml:space="preserve"><value>AI 도우미 접기 (대화 유지)</value></data>
   <data name="AiRegion_Hide" xml:space="preserve"><value>AI 도우미 숨기기</value></data>
+  <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>저장된 비밀번호가 마스터 비밀번호로 잠겨 있고 이번에는 잠금을 해제하지 않았습니다. 로그인 창에서 직접 입력하세요. 이번에 입력한 비밀번호는 저장되지 않습니다.</value></data>
+  <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>저장된 비밀번호가 마스터 비밀번호로 잠겨 있어 다시 연결하지 않았습니다. 잠금을 해제(상태 표시줄의 자물쇠 아이콘)한 뒤 다시 연결하세요.</value></data>
+  <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>잠김: 자동 재연결은 잠금 해제 창을 띄우지 않습니다. 잠금을 해제(상태 표시줄의 자물쇠 아이콘)하면 한 번 다시 시도하며, Enter 또는 Ctrl+R로 직접 다시 연결할 수도 있습니다.</value></data>
+  <data name="MasterPassword_TunnelLocked" xml:space="preserve"><value>저장된 비밀번호가 마스터 비밀번호로 잠겨 있습니다. 잠금을 해제(상태 표시줄의 자물쇠 아이콘)하면 터널을 자동으로 다시 만듭니다.</value></data>
+  <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>잠금을 해제하지 않아 이번 비밀번호는 저장되지 않았습니다.</value></data>
+  <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>플러그인 신뢰 저장소가 마스터 비밀번호로 잠겨 있습니다. 플러그인을 설치하거나 게시자를 신뢰하려면 먼저 잠금을 해제(상태 표시줄의 자물쇠 아이콘)하세요. 설치된 사용자 플러그인은 잠금을 해제하면 자동으로 로드됩니다.</value></data>
+  <data name="SyncSvc_Locked" xml:space="preserve"><value>저장된 토큰과 암호 문구가 마스터 비밀번호로 잠겨 있습니다. 동기화하기 전에 잠금을 해제(상태 표시줄의 자물쇠 아이콘)하세요. 이번 자동 동기화는 건너뛰었습니다.</value></data>
+  <data name="MasterPassword_UnlockTitle" xml:space="preserve"><value>저장된 비밀번호 잠금 해제</value></data>
+  <data name="MasterPassword_EnableTitle" xml:space="preserve"><value>마스터 비밀번호 켜기</value></data>
+  <data name="MasterPassword_ChangeTitle" xml:space="preserve"><value>마스터 비밀번호 변경</value></data>
+  <data name="MasterPassword_DisableTitle" xml:space="preserve"><value>마스터 비밀번호 끄기</value></data>
+  <data name="MasterPassword_RecoveryTitle" xml:space="preserve"><value>복구 코드</value></data>
+  <data name="MasterPassword_AfterRecoveryTitle" xml:space="preserve"><value>새 마스터 비밀번호 설정</value></data>
+  <data name="MasterPassword_ForgetTitle" xml:space="preserve"><value>마스터 비밀번호를 잊음</value></data>
+  <data name="MasterPassword_UnlockDesc" xml:space="preserve"><value>저장된 비밀번호, 공유 자격 증명, 동기화 토큰, 플러그인 비밀이 마스터 비밀번호로 잠겨 있습니다. 입력하면 잠금이 해제됩니다. 취소해도 계속 사용할 수 있지만 이 비밀들은 읽을 수 없습니다(상태 표시줄의 자물쇠 아이콘으로 언제든 다시 해제할 수 있습니다).</value></data>
+  <data name="MasterPassword_EnableDesc" xml:space="preserve"><value>켜면 로컬 암호화 키를 마스터 비밀번호로 한 번 더 감쌉니다. 시스템 키체인 항목(Windows에서는 DPAPI 키 파일)과 마스터 비밀번호가 모두 있어야 열 수 있습니다. 시작할 때마다 마스터 비밀번호를 한 번 입력하며, 저장된 비밀번호를 다시 입력할 필요는 없습니다.</value></data>
+  <data name="MasterPassword_ChangeDesc" xml:space="preserve"><value>저장된 비밀번호는 그대로 두고 로컬 암호화 키를 감싼 부분만 새로 만듭니다. 복구 코드는 계속 사용할 수 있습니다.</value></data>
+  <data name="MasterPassword_DisableDesc" xml:space="preserve"><value>끄면 마스터 비밀번호가 없는 상태로 돌아갑니다. 로컬 암호화 키는 계속 시스템 키체인(Windows에서는 DPAPI 키 파일)이 보관하고, 복구 코드는 무효가 됩니다.</value></data>
+  <data name="MasterPassword_RecoveryDesc" xml:space="preserve"><value>이 코드는 이번 한 번만 표시됩니다. 종이에 적거나 다른 비밀번호 관리자에 보관해 이 컴퓨터와 따로 두세요. 마스터 비밀번호를 잊었을 때 대신 잠금을 해제할 수 있습니다(역시 이 컴퓨터에서).</value></data>
+  <data name="MasterPassword_AfterRecoveryDesc" xml:space="preserve"><value>복구 코드로 잠금을 해제했습니다. 새 마스터 비밀번호를 설정하세요(복구 코드는 계속 사용할 수 있습니다). 지금은 건너뛰고 다음에도 복구 코드를 써도 됩니다.</value></data>
+  <data name="MasterPassword_ForgetDesc" xml:space="preserve"><value>마스터 비밀번호도 복구 코드도 모를 때: 새 로컬 암호화 키를 만들고 마스터 비밀번호를 끕니다. 저장된 비밀번호, 공유 자격 증명의 비밀번호, 동기화 토큰, 플러그인 비밀과 플러그인 신뢰 저장소는 이 컴퓨터에서 더 이상 읽을 수 없어 다시 입력해야 합니다(뒷문은 없습니다). 이전 키와 헤더 파일은 .forgotten-&lt;시각&gt; 이름으로 남겨 두므로 마스터 비밀번호가 생각나면 되살릴 수 있습니다.</value></data>
+  <data name="MasterPassword_UnlockButton" xml:space="preserve"><value>잠금 해제</value></data>
+  <data name="MasterPassword_EnableButton" xml:space="preserve"><value>켜기</value></data>
+  <data name="MasterPassword_ChangeButton" xml:space="preserve"><value>변경</value></data>
+  <data name="MasterPassword_DisableButton" xml:space="preserve"><value>마스터 비밀번호 끄기</value></data>
+  <data name="MasterPassword_RecoveryWritten" xml:space="preserve"><value>적어 두었습니다</value></data>
+  <data name="MasterPassword_SetNewButton" xml:space="preserve"><value>새 마스터 비밀번호로 설정</value></data>
+  <data name="MasterPassword_ForgetButton" xml:space="preserve"><value>새 키 만들기</value></data>
+  <data name="MasterPassword_Skip" xml:space="preserve"><value>나중에</value></data>
+  <data name="MasterPassword_PasswordLabel" xml:space="preserve"><value>마스터 비밀번호</value></data>
+  <data name="MasterPassword_CurrentPasswordLabel" xml:space="preserve"><value>현재 마스터 비밀번호</value></data>
+  <data name="MasterPassword_NewPasswordLabel" xml:space="preserve"><value>새 마스터 비밀번호</value></data>
+  <data name="MasterPassword_ConfirmPasswordLabel" xml:space="preserve"><value>한 번 더 입력</value></data>
+  <data name="MasterPassword_RecoveryCodeLabel" xml:space="preserve"><value>복구 코드</value></data>
+  <data name="MasterPassword_UseRecoveryCode" xml:space="preserve"><value>복구 코드로 잠금 해제</value></data>
+  <data name="MasterPassword_UsePassword" xml:space="preserve"><value>마스터 비밀번호로 잠금 해제</value></data>
+  <data name="MasterPassword_Forgot" xml:space="preserve"><value>마스터 비밀번호를 잊으셨나요?</value></data>
+  <data name="MasterPassword_EnableWarning" xml:space="preserve"><value>마스터 비밀번호를 잊으면 저장된 비밀번호를 되찾을 수 없습니다(뒷문은 없습니다). 복구 코드를 함께 만들어 다른 곳에 보관할 수 있습니다.</value></data>
+  <data name="MasterPassword_CreateRecoveryLabel" xml:space="preserve"><value>복구 코드도 만들기(권장)</value></data>
+  <data name="MasterPassword_AcknowledgeLabel" xml:space="preserve"><value>마스터 비밀번호를 잊으면(복구 코드도 없으면) 저장된 비밀번호를 되찾을 수 없다는 것을 이해했습니다</value></data>
+  <data name="MasterPassword_StrengthHint" xml:space="preserve"><value>12자 이상이나 여러 단어로 된 흔하지 않은 암호 문구를 쓰세요. 오프라인 추측은 길이로만 막을 수 있습니다.</value></data>
+  <data name="MasterPassword_AsciiNote" xml:space="preserve"><value>인쇄 가능한 영문 문자만 입력할 수 있습니다(다른 비밀번호 칸과 같음).</value></data>
+  <data name="MasterPassword_Busy" xml:space="preserve"><value>키를 생성하는 중…</value></data>
+  <data name="MasterPassword_WrongPassword" xml:space="preserve"><value>마스터 비밀번호가 맞지 않습니다.</value></data>
+  <data name="MasterPassword_WrongRecoveryCode" xml:space="preserve"><value>복구 코드가 맞지 않습니다.</value></data>
+  <data name="MasterPassword_MalformedRecoveryCode" xml:space="preserve"><value>복구 코드를 잘못 입력한 것 같습니다. 4자씩 묶인 영문자·숫자 28자입니다. 다시 확인하세요.</value></data>
+  <data name="MasterPassword_RetryIn" xml:space="preserve"><value>{0}초 후에 다시 시도하세요.</value></data>
+  <data name="MasterPassword_NoRecoveryCode" xml:space="preserve"><value>마스터 비밀번호를 켤 때 복구 코드를 만들지 않았습니다.</value></data>
+  <data name="MasterPassword_NothingToUnlock" xml:space="preserve"><value>지금은 잠금 해제할 수 있는 키가 없습니다.</value></data>
+  <data name="MasterPassword_Empty" xml:space="preserve"><value>마스터 비밀번호는 비워 둘 수 없습니다.</value></data>
+  <data name="MasterPassword_Mismatch" xml:space="preserve"><value>두 번 입력한 내용이 다릅니다.</value></data>
+  <data name="MasterPassword_AcknowledgeRequired" xml:space="preserve"><value>마스터 비밀번호 없이는 저장된 비밀번호를 되찾을 수 없다는 점을 먼저 확인해 주세요.</value></data>
+  <data name="MasterPassword_KeysUnavailable" xml:space="preserve"><value>지금 가져올 수 없는 키가 있어(시스템 키체인이 열리지 않음) 아무것도 바꾸지 않았습니다. 사용할 수 있게 되면 다시 시도하세요.</value></data>
+  <data name="MasterPassword_StorageFailed" xml:space="preserve"><value>쓰지 못했습니다({0}). 모두 되돌렸으며 아무것도 바뀌지 않았습니다.</value></data>
+  <data name="MasterPassword_StorageFailedPartially" xml:space="preserve"><value>쓰기가 도중에 실패했고 완전히 되돌리지 못했습니다({0}). 마스터 비밀번호는 지금 켜져 있습니다. 방금 입력한 마스터 비밀번호로 잠금을 해제하세요.</value></data>
+  <data name="MasterPassword_Enabled" xml:space="preserve"><value>마스터 비밀번호를 켰습니다.</value></data>
+  <data name="MasterPassword_Disabled" xml:space="preserve"><value>마스터 비밀번호를 껐습니다.</value></data>
+  <data name="MasterPassword_Changed" xml:space="preserve"><value>마스터 비밀번호를 변경했습니다.</value></data>
+  <data name="MasterPassword_Forgotten" xml:space="preserve"><value>새 로컬 암호화 키를 만들고 마스터 비밀번호를 껐습니다. 이전 키와 헤더 파일은 남겨 두었습니다: {0}. 저장된 비밀번호는 다시 입력해야 합니다.</value></data>
+  <data name="MasterPassword_LockedNow" xml:space="preserve"><value>잠갔습니다. 메모리의 로컬 암호화 키를 지웠습니다.</value></data>
+  <data name="MasterPassword_ProblemHeaderMissing" xml:space="preserve"><value>마스터 비밀번호로 감싼 키는 찾았지만 마스터 비밀번호 헤더 파일(secret.key.mp)이 없어 마스터 비밀번호로도 복구 코드로도 열 수 없습니다. ‘마스터 비밀번호를 잊으셨나요?’로 새 키를 만드는 수밖에 없습니다(이전 키는 남겨 둡니다).</value></data>
+  <data name="MasterPassword_ProblemHeaderUnreadable" xml:space="preserve"><value>마스터 비밀번호 헤더 파일(secret.key.mp)을 읽을 수 없습니다(잘렸거나 손상됨). 그대로 두며 덮어쓰지 않습니다. 백업에서 이 파일을 되살리거나 ‘마스터 비밀번호를 잊으셨나요?’로 새 키를 만드세요.</value></data>
+  <data name="MasterPassword_ProblemKeysUnavailable" xml:space="preserve"><value>이번에는 {0}을(를) 열지 못해({1}) 감싼 키를 하나도 읽지 못했습니다. 키는 사라지지 않았습니다. {0}의 잠금을 풀거나 사용할 수 있게 되면 VelaShell을 다시 시작해 잠금을 해제하세요.</value></data>
+  <data name="SetGeneral_MasterPassword" xml:space="preserve"><value>마스터 비밀번호</value></data>
+  <data name="SetGeneral_MasterPasswordDesc" xml:space="preserve"><value>// 저장된 비밀번호에 자물쇠를 하나 더 겁니다. 시스템 키체인 항목과 마스터 비밀번호가 모두 있어야 열립니다. 기본은 꺼짐이며, 잊으면 되찾을 수 없습니다(복구 코드를 남긴 경우 제외)</value></data>
+  <data name="SetGeneral_MasterPasswordStatusOff" xml:space="preserve"><value>꺼짐</value></data>
+  <data name="SetGeneral_MasterPasswordStatusUnlocked" xml:space="preserve"><value>켜짐 · 잠금 해제됨</value></data>
+  <data name="SetGeneral_MasterPasswordStatusLocked" xml:space="preserve"><value>켜짐 · 잠김</value></data>
+  <data name="SetGeneral_MasterPasswordRecovery" xml:space="preserve"><value>복구 코드 있음</value></data>
+  <data name="SetGeneral_MasterPasswordNoRecovery" xml:space="preserve"><value>복구 코드 없음</value></data>
+  <data name="SetGeneral_MasterPasswordEnable" xml:space="preserve"><value>켜기…</value></data>
+  <data name="SetGeneral_MasterPasswordUnlock" xml:space="preserve"><value>잠금 해제…</value></data>
+  <data name="SetGeneral_MasterPasswordLockNow" xml:space="preserve"><value>지금 잠그기</value></data>
+  <data name="SetGeneral_MasterPasswordChange" xml:space="preserve"><value>변경…</value></data>
+  <data name="SetGeneral_MasterPasswordDisable" xml:space="preserve"><value>끄기…</value></data>
+  <data name="SetGeneral_AutoLock" xml:space="preserve"><value>유휴 시 자동 잠금(분)</value></data>
+  <data name="SetGeneral_AutoLockDesc" xml:space="preserve"><value>// VelaShell 창에서 이 시간(분) 동안 키보드·마우스 조작이 없으면 잠급니다. 0 = 자동으로 잠그지 않음. 마스터 비밀번호가 켜져 있을 때만 동작합니다</value></data>
+  <data name="SetGeneral_LockOnSystemLock" xml:space="preserve"><value>시스템 잠금 시 잠그기</value></data>
+  <data name="SetGeneral_LockOnSystemLockDesc" xml:space="preserve"><value>// Win+L이나 로그인을 요구하는 화면 보호기와 함께 잠급니다. 마스터 비밀번호가 켜져 있을 때만 동작합니다</value></data>
+  <data name="StatusBar_MasterPasswordLocked" xml:space="preserve"><value>저장된 비밀번호가 잠겨 있음 — 클릭해 잠금 해제</value></data>
+  <data name="StatusBar_MasterPasswordUnlocked" xml:space="preserve"><value>마스터 비밀번호 잠금 해제됨 — 클릭해 지금 잠그기</value></data>
+  <data name="Auth_UnreadableSecretLocked" xml:space="preserve"><value>{0}이(가) 마스터 비밀번호로 잠겨 있고 이번에는 잠금을 해제하지 않았습니다. 여기에서 입력해 로그인할 수 있으며, 잠금을 해제(상태 표시줄의 자물쇠 아이콘)하면 평소처럼 읽습니다.</value></data>
+  <data name="Notify_MasterPasswordProblemTitle" xml:space="preserve"><value>마스터 비밀번호로 잠금을 해제할 수 없음</value></data>
+  <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>마스터 비밀번호 헤더를 보관 처리함</value></data>
+  <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>데이터 폴더의 마스터 비밀번호 헤더가 감싼 키 중 어느 것과도 맞지 않습니다(대개 다운그레이드 때 이전 버전이 감싼 키 파일을 옮겨 두었기 때문입니다). {0}(으)로 남겨 두었고 마스터 비밀번호는 지금 꺼져 있습니다. 다운그레이드 전에 저장한 비밀번호는 이 컴퓨터에서 읽을 수 없어 다시 입력해야 합니다.</value></data>
+  <data name="MasterPassword_ImportWhileLocked" xml:space="preserve"><value>저장된 비밀번호가 마스터 비밀번호로 잠겨 있고 이번에는 잠금을 해제하지 않았습니다. 연결은 가져오지만 이번에 가져온 비밀번호는 저장되지 않습니다.</value></data>
+  <data name="Plugin_SecretLabelPassword" xml:space="preserve"><value>비밀번호</value></data>
+  <data name="Plugin_SecretLabelQuoted" xml:space="preserve"><value>‘{0}’</value></data>
+  <data name="Plugin_SecretListSeparator" xml:space="preserve"><value>, </value></data>
+  <data name="Plugin_StoredSecretUnreadable" xml:space="preserve"><value>이 연결에 저장된 {0}을(를) 이 기기에서 복호화할 수 없어 플러그인에 넘기지 않았습니다(암호문은 넘기지 않으며, 빈 값을 &apos;설정 안 됨&apos;으로 넘기지도 않습니다). 마스터 비밀번호로 잠겨 있다면 잠금을 해제(상태 표시줄의 자물쇠 아이콘)한 뒤 다시 연결하고, 그렇지 않다면 연결 설정에서 다시 입력해 저장하세요.</value></data>
+  <data name="Plugin_UnreadableSecretSubject" xml:space="preserve"><value>이 연결에 저장된 {0}</value></data>
+  <data name="Plugin_UnreadableSecretKeychainUnavailable" xml:space="preserve"><value>{0}: 이번에는 복호화할 수 없습니다. {1} 을(를) 열지 못해({2}) 플러그인에 넘기지 않았습니다. 사라진 것은 아닙니다. {1} 의 잠금을 해제하고 VelaShell을 다시 시작하면 평소처럼 읽습니다.</value></data>
+  <data name="Plugin_UnreadableSecretKeyMissing" xml:space="preserve"><value>{0}: 이 기기에서 복호화할 수 없습니다. 저장할 때 쓴 로컬 암호화 키가 여기에 없어(데이터 폴더를 다른 컴퓨터나 계정에서 복사해 왔거나, 키체인 항목이 삭제되었거나, 키 파일이 바뀌었을 수 있습니다. 메시지 센터에 설명이 있습니다) 플러그인에 넘기지 않았습니다. 연결 설정에서 다시 입력해 저장하면 이 기기에서 복호화할 수 있는 형태로 저장됩니다.</value></data>
+  <data name="Plugin_UnreadableSecretUnknown" xml:space="preserve"><value>{0}: 이 기기에서 복호화할 수 없어(다른 기기에서 동기화했거나 복사해 왔거나, 손상되었을 수 있습니다) 플러그인에 넘기지 않았습니다. 연결 설정에서 다시 입력해 저장하면 이 기기에서 복호화할 수 있는 형태로 저장됩니다.</value></data>
+  <data name="Plugin_UnreadableSecretLocked" xml:space="preserve"><value>{0}이(가) 마스터 비밀번호로 잠겨 있고 이번에는 잠금을 해제하지 않아 플러그인에 넘기지 않았습니다. 잠금을 해제(상태 표시줄의 자물쇠 아이콘)한 뒤 다시 연결하세요.</value></data>
 </root>

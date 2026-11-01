@@ -32,7 +32,10 @@ public enum SshForwardFailureKind
     /// <summary>要监听的 Unix 套接字路径 <see cref="SshForwardException.Endpoint"/> 已经存在，而没有要求替换。</summary>
     SocketPathExists,
 
-    /// <summary>Unix 套接字路径 <see cref="SshForwardException.Endpoint"/> 太长（Linux 上限 107 字节、macOS 103）。</summary>
+    /// <summary>
+    /// Unix 套接字路径 <see cref="SshForwardException.Endpoint"/> 太长（Linux 上限 107 字节、macOS 103）：本地转发要监听的那个（<see cref="Diagnostics.SshFailureReason.ForwardBindFailed"/>），
+    /// 或者远程转发回连要连的本机那个（<see cref="Diagnostics.SshFailureReason.ForwardSetupFailed"/>，起转发时就报、什么都没发）。
+    /// </summary>
     SocketPathTooLong,
 
     // ---- 服务端拒绝或答非所问 ----

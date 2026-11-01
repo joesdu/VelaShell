@@ -72,10 +72,29 @@ public sealed class SonnetDbSharedCredentialRepository(SonnetDbEngine engine, IS
     public async Task SaveAsync(SharedCredential credential)
     {
         ArgumentNullException.ThrowIfNull(credential);
-        string json = SonnetDbJson.Serialize(Protect(credential));
+        // 主密码锁着:密码与私钥口令冻在库里那一份上(新的加不了密,旧的也不被空值顶掉),其余字段照常存。
+        bool locked = _protector.IsLocked;
+        SharedCredential copy;
+        try
+        {
+            copy = locked ? credential.Clone() : Protect(credential);
+        }
+        catch (SecretsLockedException)
+        {
+            // 上面问的时候还解着,加密之前恰好锁上了(自动锁定、系统锁屏):照锁着那条路存,不让这次保存失败。
+            locked = true;
+            copy = credential.Clone();
+        }
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.SharedCredentialsCollection, store =>
         {
-            store.Upsert(credential.Id.ToString("D"), json);
+            string key = credential.Id.ToString("D");
+            if (locked)
+            {
+                SharedCredential? stored = store.Get(key) is { } row ? SonnetDbJson.Deserialize<SharedCredential>(row.Json) : null;
+                copy.Password = StoredSecret.IsUnreadable(copy.Password) ? copy.Password : stored?.Password;
+                copy.PrivateKeyPassphrase = StoredSecret.IsUnreadable(copy.PrivateKeyPassphrase) ? copy.PrivateKeyPassphrase : stored?.PrivateKeyPassphrase;
+            }
+            store.Upsert(key, SonnetDbJson.Serialize(copy));
             return null;
         }).ConfigureAwait(false);
         Changed?.Invoke(this, EventArgs.Empty);

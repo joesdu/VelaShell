@@ -33,6 +33,11 @@ public sealed class TransferSdkVersionTests
         Assert.IsNotNull(typeof(IRemoteFsApi).GetMethod(nameof(IRemoteFsApi.StartUploadAsync)));
         Assert.IsNotNull(typeof(IRemoteFsApi).GetMethod(nameof(IRemoteFsApi.CancelTransferAsync),
             [typeof(string), typeof(long), typeof(CancellationToken)]));
+        // 停止时撤待确认传输用到条件撤回(SDK 2.1.4 起):契约程序集里没有这个成员的宿主,插件必须靠 minSdkVersion 拒载。
+        Assert.IsGreaterThanOrEqualTo(new Version(2, 1, 4), Version.Parse(host), "条件撤回需要正式 SDK 2.1.4 或更新版本。");
+        Assert.IsNotNull(typeof(IRemoteFsApi).GetMethod(nameof(IRemoteFsApi.WithdrawPendingTransferAsync),
+            [typeof(string), typeof(long), typeof(CancellationToken)]));
+        Assert.IsNotNull(typeof(IRemoteFsApi).GetProperty(nameof(IRemoteFsApi.SupportsTransferWithdraw)));
     }
 
     private static string ReadVersion(string path, string element, string packageId) =>

@@ -134,4 +134,41 @@ public partial class GeneralSettingsPage : UserControl
             viewModel.ClearHistoryCommand.Execute().Subscribe();
         }
     });
+
+    // ———— 主密码(隐私与安全) ————
+
+    private void MasterPasswordEnable_Click(object? sender, RoutedEventArgs e) => OpenMasterPasswordDialog(MasterPasswordDialogMode.Enable);
+
+    private void MasterPasswordChange_Click(object? sender, RoutedEventArgs e) => OpenMasterPasswordDialog(MasterPasswordDialogMode.Change);
+
+    private void MasterPasswordDisable_Click(object? sender, RoutedEventArgs e) => OpenMasterPasswordDialog(MasterPasswordDialogMode.Disable);
+
+    private void MasterPasswordUnlock_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    {
+        if (DataContext is SettingsViewModel viewModel)
+        {
+            await viewModel.MasterPasswordSettings.UnlockAsync();
+        }
+    });
+
+    private void MasterPasswordLockNow_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    {
+        if (DataContext is SettingsViewModel viewModel)
+        {
+            await viewModel.MasterPasswordSettings.LockNowAsync();
+        }
+    });
+
+    /// <summary>开启 / 修改 / 关闭:模态于设置窗口弹主密码对话框,关了之后刷新这几行并显示结果。</summary>
+    private void OpenMasterPasswordDialog(MasterPasswordDialogMode mode) => FireAndForget.Run(async () =>
+    {
+        if (DataContext is not SettingsViewModel viewModel || TopLevel.GetTopLevel(this) is not Window owner
+            || viewModel.MasterPasswordSettings.CreateDialog(mode) is not { } dialogViewModel)
+        {
+            return;
+        }
+        var dialog = new MasterPasswordDialogView { DataContext = dialogViewModel };
+        await dialog.ShowDialog<bool>(owner);
+        await viewModel.MasterPasswordSettings.AfterDialogAsync(dialogViewModel);
+    });
 }
