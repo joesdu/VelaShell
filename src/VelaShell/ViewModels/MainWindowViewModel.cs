@@ -53,7 +53,7 @@ namespace VelaShell.ViewModels;
 /// 主窗口视图模型:应用外壳的中枢,统筹终端标签、SSH/本地会话生命周期、停靠工作区、
 /// 侧边栏、状态栏、命令面板、SFTP 文件面板与隧道面板,并串联设置、连接工作流与各项服务。
 /// </summary>
-public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalResolver
+public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalResolver
 {
     /// <summary>RIS(ESC c)完全重置序列:重开会话前清掉旧进程的残留缓冲。</summary>
     private static readonly byte[] RisResetSequence = [0x1B, (byte)'c']; // ESC c
@@ -258,10 +258,14 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         ISharedCredentialRepository? sharedCredentials = null,
         BackgroundUpdateDownload? backgroundUpdateDownload = null,
         IMasterKeyStatusSource? masterKeyStatus = null,
-        LayoutTemplateStore? layoutTemplateStore = null
+        LayoutTemplateStore? layoutTemplateStore = null,
+        IMasterPasswordGate? masterPassword = null
     )
     {
         _credentialResolver = credentialResolver;
+        // 可选主密码:连接的构建点之前过闸口、解锁 / 锁定时重读会话树、锁着时挂起的自动重连解锁后重试(MasterPassword 分部)。
+        _masterPassword = masterPassword;
+        WireMasterPassword(masterPassword);
         _backgroundUpdateDownload = backgroundUpdateDownload;
         _masterKeyStatus = masterKeyStatus;
         // 共享凭据被改名、删除(删除会把凭据拷回引用它的连接)之后,树上缓存的配置就旧了:
@@ -2346,7 +2350,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             throw new InvalidOperationException(Strings.Get("Msg_SshServiceNotConfigured"));
         }
-        SessionProfile current = profile;
+        SessionProfile current = await UnlockForTunnelAsync(profile, automaticReconnect).ConfigureAwait(true);
         if (RequiresCredentials(current))
         {
             SessionProfile? updated = InteractiveAuthenticator is { } prompt
@@ -3443,7 +3447,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     /// 但主机指纹要人裁决时直接拒绝、不弹窗(<see cref="ConnectionInfo.IsAutomaticReconnect" />)——
     /// 这时多半没有人在屏幕前,唤醒后一起重连的几个标签还会叠出一摞没人点的模态框。
     /// </summary>
-    private Task AutoReconnectTabAsync(TerminalTabViewModel tab) =>
+    internal Task AutoReconnectTabAsync(TerminalTabViewModel tab) =>
         ReconnectTabCoreAsync(tab, automatic: true, CancellationToken.None);
 
     private async Task ReconnectTabCoreAsync(
@@ -3465,6 +3469,12 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         if (tab.LocalShell is { } localShell)
         {
             await ReopenLocalShellAsync(tab, localShell).ConfigureAwait(true);
+            return;
+        }
+
+        // 主密码锁着:手动重连先弹解锁框;自动重连不弹,记下来等解锁后重试(MasterPassword 分部)。
+        if (!await UnlockForReconnectAsync(tab, automatic).ConfigureAwait(true))
+        {
             return;
         }
 
@@ -4824,7 +4834,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return null;
         }
-        SessionProfile current = profile;
+        SessionProfile current = await UnlockForConnectAsync(profile).ConfigureAwait(true);
         AppSettings settings = await LoadSettingsSnapshotAsync().ConfigureAwait(true);
 
         // 标签只创建一次:连接中→(失败则)标签页内覆盖层→(认证重试)复用同一标签,
@@ -5111,6 +5121,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return null;
         }
+        profile = await UnlockForConnectAsync(profile).ConfigureAwait(true);
 
         // 失败卡片上的「重新连接」用最近一次尝试的配置:登录框交回的是副本、不改调用方那一份,
         // 用户刚输过却没让记住的密码只在副本里 —— 拿最初那份重试,就得把密码再输一遍。
@@ -5382,6 +5393,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return null;
         }
+        profile = await UnlockForConnectAsync(profile).ConfigureAwait(true);
 
         // 失败卡片上的「重新连接」用最近一次尝试的配置(理由同 SFTP 那条路径)。
         SessionProfile latest = profile;
@@ -5665,6 +5677,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return null;
         }
+        profile = await UnlockForConnectAsync(profile).ConfigureAwait(true);
 
         // 占位标签建在解析协议之前:解析可能触发插件的惰性激活(装配、启动进程),
         // 那往往就是这条路上最慢的一步 —— 等它完再建标签,慢的那段照样没有任何回执。
@@ -5894,6 +5907,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(registration);
+        profile = await UnlockForConnectAsync(profile).ConfigureAwait(true);
         AppSettings settings = await LoadSettingsSnapshotAsync().ConfigureAwait(true);
         (TerminalTabViewModel tab, TerminalDocument document) =
             CreateConnectingTab(profile, settings, registration.Descriptor.DisplayName);
@@ -6039,6 +6053,7 @@ public class MainWindowViewModel : ReactiveObject, Services.Plugins.ITerminalRes
         {
             return null;
         }
+        profile = await UnlockForConnectAsync(profile).ConfigureAwait(true);
 
         // 同插件协议那条路径:占位标签建在解析之前 —— 惰性激活插件往往是最慢的一步。
         // 失败卡片上的「重新连接」用最近一次尝试的配置(理由同 SFTP 那条路径)。

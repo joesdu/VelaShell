@@ -141,6 +141,10 @@ public partial class SettingsViewModel : ReactiveObject
     private readonly ISessionRepository? _sessionRepository;
     private readonly ISharedCredentialRepository? _sharedCredentialRepository;
     private readonly Infrastructure.Plugins.PluginManager? _pluginManager;
+    private readonly IMasterPasswordService? _masterPassword;
+
+    /// <summary>主密码的状态与解锁 / 锁定(设置 → 常规 → 隐私与安全);没有时为 null。</summary>
+    internal IMasterPasswordService? MasterPasswordService => _masterPassword;
     // ———— 外观即时预览(改动立即可见,保存才落盘,取消/关窗回滚) ————
     /// <summary>打开设置时的基线快照:未保存关闭时用它恢复主题与外观。</summary>
     private AppSettings _baseline = new();
@@ -172,9 +176,11 @@ public partial class SettingsViewModel : ReactiveObject
         ISharedCredentialRepository? sharedCredentials = null,
         SharedCredentialService? sharedCredentialService = null,
         ISessionRepository? sessionRepository = null,
-        Infrastructure.Plugins.PluginManager? pluginManager = null
+        Infrastructure.Plugins.PluginManager? pluginManager = null,
+        IMasterPasswordService? masterPassword = null
     )
     {
+        _masterPassword = masterPassword;
         SharedCredentials = new(sharedCredentials, sharedCredentialService, sessionRepository);
         // 输出规则页:色块与测试预览取当前配色方案的 16 色(随外观页的方案切换现取,见 RebuildPalette 的两处调用)。
         OutputRules = new(sessionRepository, () => TerminalSchemeSwatches);
@@ -254,7 +260,7 @@ public partial class SettingsViewModel : ReactiveObject
                     ? null
                     : new QuickCommandsViewModel(quickCommandRepository)
             );
-        Sync = gistSyncService is null ? null : new SyncViewModel(gistSyncService);
+        Sync = gistSyncService is null ? null : new SyncViewModel(gistSyncService, masterPassword);
         RemoveKnownHostCommand = ReactiveCommand.CreateFromTask<KnownHost>(RemoveKnownHostAsync);
         HostTrust = new(hostKeyService, sessionRepository, RefreshKnownHostsAsync);
         ClearTrustedLaunchTargetsCommand = ReactiveCommand.Create(() =>

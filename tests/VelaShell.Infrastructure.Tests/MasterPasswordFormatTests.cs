@@ -152,7 +152,7 @@ public sealed class MasterPasswordFormatTests
         Assert.IsTrue(protector.IsLocked);
         Assert.AreEqual(MasterPasswordProblem.KeysUnavailable, protector.GetKeyStatus().MasterPasswordProblem);
         Assert.IsFalse(File.Exists(_keyFile), "第一步在密钥链用不了时会另起一把本地密钥;主密码开着时不许");
-        Assert.AreEqual(VaultUnlockStatus.NothingToUnlock, protector.Vault.Unlock(Utf8(Password)).Status, "密钥没取到:不算输错");
+        Assert.AreEqual(MasterPasswordUnlockStatus.NothingToUnlock, protector.Vault.Unlock(Utf8(Password)).Status, "密钥没取到:不算输错");
         Assert.AreEqual(TimeSpan.Zero, protector.Vault.RetryAfter);
     }
 
@@ -169,7 +169,7 @@ public sealed class MasterPasswordFormatTests
 
         Assert.IsTrue(protector.IsLocked);
         Assert.AreEqual(MasterPasswordProblem.HeaderMissing, protector.GetKeyStatus().MasterPasswordProblem);
-        Assert.AreEqual(VaultUnlockStatus.NothingToUnlock, protector.Vault.Unlock(Utf8(Password)).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.NothingToUnlock, protector.Vault.Unlock(Utf8(Password)).Status);
         Assert.ThrowsExactly<SecretsLockedException>(() => protector.Protect("x"));
         Assert.AreEqual(before.Count, store.Entries.Count);
         foreach ((string id, byte[] value) in before)
@@ -188,14 +188,14 @@ public sealed class MasterPasswordFormatTests
         WrapEverything(Resolver(store), Password, withRecovery: false);
         AesSecretProtector protector = Protector(store);
 
-        VaultUnlockOutcome outcome = protector.Vault.Unlock(Utf8(Password));
+        MasterPasswordUnlockResult outcome = protector.Vault.Unlock(Utf8(Password));
 
-        Assert.AreEqual(VaultUnlockStatus.Unlocked, outcome.Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, outcome.Status);
         Assert.IsFalse(protector.IsLocked);
         Assert.AreEqual("hunter2", protector.Unprotect(cipher), "已存的 enc1: 密文一字不改,解锁后照常解开");
         string fresh = protector.Protect("new")!;
         Assert.AreEqual("new", protector.Unprotect(fresh));
-        Assert.AreEqual(VaultUnlockStatus.AlreadyUnlocked, protector.Vault.Unlock(Utf8(Password)).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.AlreadyUnlocked, protector.Vault.Unlock(Utf8(Password)).Status);
         Assert.IsTrue(store.Entries.Values.All(static v => MasterKeyEnvelope.IsEnvelope(v)), "解锁不把包裹写回明文");
     }
 
@@ -211,15 +211,15 @@ public sealed class MasterPasswordFormatTests
         List<double> waits = [];
         for (int i = 0; i < 7; i++)
         {
-            VaultUnlockOutcome wrong = protector.Vault.Unlock(Utf8("wrong " + i));
-            Assert.AreEqual(VaultUnlockStatus.WrongSecret, wrong.Status);
+            MasterPasswordUnlockResult wrong = protector.Vault.Unlock(Utf8("wrong " + i));
+            Assert.AreEqual(MasterPasswordUnlockStatus.WrongSecret, wrong.Status);
             waits.Add(wrong.RetryAfter.TotalSeconds);
-            Assert.AreEqual(VaultUnlockStatus.Throttled, protector.Vault.Unlock(Utf8(Password)).Status, "等待没过之前,连对的也不试");
+            Assert.AreEqual(MasterPasswordUnlockStatus.Throttled, protector.Vault.Unlock(Utf8(Password)).Status, "等待没过之前,连对的也不试");
             clock.Advance(wrong.RetryAfter);
         }
 
         Assert.AreSequenceEqual(new double[] { 1, 2, 4, 8, 16, 30, 30 }, waits.ToArray());
-        Assert.AreEqual(VaultUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status, "不锁死:等过之后输对照常解开");
+        Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status, "不锁死:等过之后输对照常解开");
         Assert.AreEqual("hunter2", protector.Unprotect(cipher));
         Assert.AreEqual(TimeSpan.Zero, protector.Vault.RetryAfter, "解开之后计数清零");
     }
@@ -233,11 +233,11 @@ public sealed class MasterPasswordFormatTests
         AesSecretProtector protector = Protector(store);
 
         Assert.IsTrue(protector.Vault.HasRecoveryCode);
-        Assert.AreEqual(VaultUnlockStatus.MalformedRecoveryCode, protector.Vault.UnlockWithRecoveryCode(code[..^1] + "?").Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.MalformedRecoveryCode, protector.Vault.UnlockWithRecoveryCode(code[..^1] + "?").Status);
         Assert.AreEqual(TimeSpan.Zero, protector.Vault.RetryAfter, "抄错的恢复码不算一次输错");
         (string other, _) = RecoveryCode.Generate();
-        Assert.AreEqual(VaultUnlockStatus.WrongSecret, protector.Vault.UnlockWithRecoveryCode(other).Status);
-        Assert.AreEqual(VaultUnlockStatus.Throttled, protector.Vault.UnlockWithRecoveryCode(code).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.WrongSecret, protector.Vault.UnlockWithRecoveryCode(other).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.Throttled, protector.Vault.UnlockWithRecoveryCode(code).Status);
     }
 
     [TestMethod]
@@ -248,7 +248,7 @@ public sealed class MasterPasswordFormatTests
         string code = WrapEverything(Resolver(store), Password, withRecovery: true)!;
         AesSecretProtector protector = Protector(store);
 
-        Assert.AreEqual(VaultUnlockStatus.Unlocked, protector.Vault.UnlockWithRecoveryCode(code.ToLowerInvariant()).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, protector.Vault.UnlockWithRecoveryCode(code.ToLowerInvariant()).Status);
 
         Assert.AreEqual("hunter2", protector.Unprotect(cipher));
         Assert.IsTrue(protector.Vault.UnlockedWithRecoveryCode, "界面据此要求设新的主密码");
@@ -264,7 +264,7 @@ public sealed class MasterPasswordFormatTests
         (string code, _) = RecoveryCode.Generate();
 
         Assert.IsFalse(protector.Vault.HasRecoveryCode);
-        Assert.AreEqual(VaultUnlockStatus.NoRecoveryCode, protector.Vault.UnlockWithRecoveryCode(code).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.NoRecoveryCode, protector.Vault.UnlockWithRecoveryCode(code).Status);
     }
 
     [TestMethod]
@@ -274,7 +274,7 @@ public sealed class MasterPasswordFormatTests
         string cipher = Protector(store).Protect("hunter2")!;
         WrapEverything(Resolver(store), Password, withRecovery: false);
         AesSecretProtector protector = Protector(store);
-        Assert.AreEqual(VaultUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status);
         byte[] held = protector.Vault.UseKeys(static ring => ring!.Current);
 
         Assert.IsTrue(protector.Vault.Lock());
@@ -284,7 +284,7 @@ public sealed class MasterPasswordFormatTests
         Assert.IsFalse(protector.TryUnprotect(cipher, out _));
         Assert.ThrowsExactly<SecretsLockedException>(() => protector.Protect("x"));
         Assert.IsFalse(protector.Vault.Lock(), "本来就锁着");
-        Assert.AreEqual(VaultUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status);
         Assert.AreEqual("hunter2", protector.Unprotect(cipher));
     }
 
@@ -299,7 +299,7 @@ public sealed class MasterPasswordFormatTests
         Assert.IsFalse(protector.GetKeyStatus().MasterPasswordEnabled);
         Assert.IsFalse(protector.Vault.Lock(), "没开主密码时锁定什么都不做");
         Assert.AreEqual("hunter2", protector.Unprotect(cipher));
-        Assert.AreEqual(VaultUnlockStatus.NotEnabled, protector.Vault.Unlock(Utf8(Password)).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.NotEnabled, protector.Vault.Unlock(Utf8(Password)).Status);
         Assert.IsFalse(File.Exists(HeaderFile));
     }
 
@@ -317,7 +317,7 @@ public sealed class MasterPasswordFormatTests
 
         AesSecretProtector protector = Protector(store);
 
-        Assert.AreEqual(VaultUnlockStatus.WrongSecret, protector.Vault.Unlock(Utf8(Password)).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.WrongSecret, protector.Vault.Unlock(Utf8(Password)).Status);
         Assert.IsTrue(protector.IsLocked);
     }
 
@@ -358,7 +358,7 @@ public sealed class MasterPasswordFormatTests
 
         AesSecretProtector protector = Protector(store);
         Assert.IsTrue(protector.IsLocked, "有一把已经包上了:按开着处理(明文那把锁着时也不用)");
-        Assert.AreEqual(VaultUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status);
 
         Assert.AreEqual("from the stop-gap key", protector.Unprotect(stopGap));
         Assert.AreEqual("from the keychain", protector.Unprotect(inKeychain));
@@ -375,7 +375,7 @@ public sealed class MasterPasswordFormatTests
 
         AesSecretProtector protector = Protector(store);
         Assert.IsTrue(protector.IsLocked);
-        Assert.AreEqual(VaultUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status);
 
         Assert.IsFalse(protector.GetKeyStatus().MasterPasswordEnabled, "关闭做到一半:解开之后接着关完");
         Assert.IsFalse(File.Exists(HeaderFile));
@@ -407,7 +407,7 @@ public sealed class MasterPasswordFormatTests
         AesSecretProtector protector = Protector(store);
         Assert.IsTrue(protector.IsLocked);
         Assert.IsFalse(protector.TryUnprotect(duringDowngrade, out _), "锁着时明文存着的那把也不用");
-        Assert.AreEqual(VaultUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status);
+        Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status);
         Assert.AreEqual("saved before the downgrade", protector.Unprotect(before));
         Assert.AreEqual("saved while downgraded", protector.Unprotect(duringDowngrade));
         Assert.IsTrue(store.Entries.Values.All(static v => MasterKeyEnvelope.IsEnvelope(v)), "旧版本另起的那把也包上了");

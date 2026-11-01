@@ -10336,4 +10336,11 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="AiRegion_Pin" xml:space="preserve"><value>固定 / 自動隱藏 AI 助手</value></data>
   <data name="AiRegion_Collapse" xml:space="preserve"><value>摺疊 AI 助手（保留對話）</value></data>
   <data name="AiRegion_Hide" xml:space="preserve"><value>隱藏 AI 助手</value></data>
+  <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>已儲存的密碼被主密碼鎖著,這次沒有解鎖:請在登入框裡手動輸入,這次輸入的密碼不會儲存。</value></data>
+  <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>已儲存的密碼被主密碼鎖著,沒有重新連線。解鎖(狀態列的鎖形圖示)後再重新連線。</value></data>
+  <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>已鎖定:自動重新連線不會彈出解鎖框。解鎖(狀態列的鎖形圖示)後會自動重試一次,也可以按 Enter 或 Ctrl+R 重新連線。</value></data>
+  <data name="MasterPassword_TunnelLocked" xml:space="preserve"><value>已儲存的密碼被主密碼鎖著:解鎖(狀態列的鎖形圖示)後通道會自動重建。</value></data>
+  <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>未解鎖,這次的密碼沒有儲存。</value></data>
+  <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>外掛信任庫被主密碼鎖著:解鎖(狀態列的鎖形圖示)後才能安裝外掛或信任發行者;已安裝的使用者外掛解鎖後自動載入。</value></data>
+  <data name="SyncSvc_Locked" xml:space="preserve"><value>已儲存的權杖與通關密語被主密碼鎖著:先解鎖(狀態列的鎖形圖示)再同步。自動同步這一輪已略過。</value></data>
 </root>

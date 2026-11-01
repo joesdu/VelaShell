@@ -9859,4 +9859,11 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="AiRegion_Pin" xml:space="preserve"><value>AI 도우미 고정 / 자동 숨기기</value></data>
   <data name="AiRegion_Collapse" xml:space="preserve"><value>AI 도우미 접기 (대화 유지)</value></data>
   <data name="AiRegion_Hide" xml:space="preserve"><value>AI 도우미 숨기기</value></data>
+  <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>저장된 비밀번호가 마스터 비밀번호로 잠겨 있고 이번에는 잠금을 해제하지 않았습니다. 로그인 창에서 직접 입력하세요. 이번에 입력한 비밀번호는 저장되지 않습니다.</value></data>
+  <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>저장된 비밀번호가 마스터 비밀번호로 잠겨 있어 다시 연결하지 않았습니다. 잠금을 해제(상태 표시줄의 자물쇠 아이콘)한 뒤 다시 연결하세요.</value></data>
+  <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>잠김: 자동 재연결은 잠금 해제 창을 띄우지 않습니다. 잠금을 해제(상태 표시줄의 자물쇠 아이콘)하면 한 번 다시 시도하며, Enter 또는 Ctrl+R로 직접 다시 연결할 수도 있습니다.</value></data>
+  <data name="MasterPassword_TunnelLocked" xml:space="preserve"><value>저장된 비밀번호가 마스터 비밀번호로 잠겨 있습니다. 잠금을 해제(상태 표시줄의 자물쇠 아이콘)하면 터널을 자동으로 다시 만듭니다.</value></data>
+  <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>잠금을 해제하지 않아 이번 비밀번호는 저장되지 않았습니다.</value></data>
+  <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>플러그인 신뢰 저장소가 마스터 비밀번호로 잠겨 있습니다. 플러그인을 설치하거나 게시자를 신뢰하려면 먼저 잠금을 해제(상태 표시줄의 자물쇠 아이콘)하세요. 설치된 사용자 플러그인은 잠금을 해제하면 자동으로 로드됩니다.</value></data>
+  <data name="SyncSvc_Locked" xml:space="preserve"><value>저장된 토큰과 암호 문구가 마스터 비밀번호로 잠겨 있습니다. 동기화하기 전에 잠금을 해제(상태 표시줄의 자물쇠 아이콘)하세요. 이번 자동 동기화는 건너뛰었습니다.</value></data>
 </root>

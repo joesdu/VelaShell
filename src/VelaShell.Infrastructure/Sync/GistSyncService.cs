@@ -969,7 +969,18 @@ public sealed partial class GistSyncService(
         {
             return Strings.Get("SyncSvc_NotEnabled");
         }
-        return HasToken(config) ? null : Strings.Get("SyncSvc_NoToken");
+        if (!HasToken(config))
+        {
+            return Strings.Get("SyncSvc_NoToken");
+        }
+        // 主密码锁着:令牌与口令解不开,载荷里的机密也加不了密。跳过这一轮(不报成「请重新填写令牌」那种误导的错),
+        // 记一行;自动同步静默跳过,手动同步在界面上先弹解锁框。
+        if (secretProtector.IsLocked)
+        {
+            System.Diagnostics.Trace.WriteLine("[Sync] Skipped: saved secrets are locked by the master password.");
+            return Strings.Get("SyncSvc_Locked");
+        }
+        return null;
     }
 
     // 解不开(本机加密密钥这次没取到、数据目录从别的电脑拷来)时必须停下,不能把密文本身当令牌 / 口令用:

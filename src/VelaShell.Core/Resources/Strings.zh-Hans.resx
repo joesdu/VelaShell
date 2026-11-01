@@ -10336,4 +10336,11 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="AiRegion_Pin" xml:space="preserve"><value>固定 / 自动隐藏 AI 助手</value></data>
   <data name="AiRegion_Collapse" xml:space="preserve"><value>折叠 AI 助手（保留对话）</value></data>
   <data name="AiRegion_Hide" xml:space="preserve"><value>隐藏 AI 助手</value></data>
+  <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>已存的密码被主密码锁着,这次没有解锁:请在登录框里手动输入,这次输入的密码不会保存。</value></data>
+  <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>已存的密码被主密码锁着,没有重连。解锁(状态栏的锁形图标)后再重连。</value></data>
+  <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>已锁定:自动重连不会弹出解锁框。解锁(状态栏的锁形图标)后会自动重试一次,也可以按回车或 Ctrl+R 重连。</value></data>
+  <data name="MasterPassword_TunnelLocked" xml:space="preserve"><value>已存的密码被主密码锁着:解锁(状态栏的锁形图标)后隧道会自动重建。</value></data>
+  <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>未解锁,这次的密码没有保存。</value></data>
+  <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>插件信任库被主密码锁着:解锁(状态栏的锁形图标)后才能安装插件或信任发布者;已安装的用户插件解锁后自动载入。</value></data>
+  <data name="SyncSvc_Locked" xml:space="preserve"><value>已存的令牌与口令被主密码锁着:先解锁(状态栏的锁形图标)再同步。自动同步这一轮已跳过。</value></data>
 </root>

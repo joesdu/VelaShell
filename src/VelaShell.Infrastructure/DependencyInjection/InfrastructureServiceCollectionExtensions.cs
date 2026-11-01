@@ -65,6 +65,13 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton(sp => new AesSecretProtector(sp.GetRequiredService<VelaShellStoragePaths>()));
         services.AddSingleton<ISecretProtector>(sp => sp.GetRequiredService<AesSecretProtector>());
         services.AddSingleton<IMasterKeyStatusSource>(sp => sp.GetRequiredService<AesSecretProtector>());
+        // 可选主密码的闸口与管理入口(事实来源是包裹格式本身,在 AesSecretProtector 里)。解锁框由界面层注册
+        // IMasterPasswordPrompt,这里按需去取:headless 宿主取不到,交互式请求也只能是「没解开」。
+        services.AddSingleton(sp => new MasterPasswordService(
+            sp.GetRequiredService<AesSecretProtector>(),
+            () => sp.GetService<IMasterPasswordPrompt>()));
+        services.AddSingleton<IMasterPasswordService>(sp => sp.GetRequiredService<MasterPasswordService>());
+        services.AddSingleton<IMasterPasswordGate>(sp => sp.GetRequiredService<MasterPasswordService>());
         // 连接配置、设置、共享凭据三处仓储外面各套一层审计(Audit/):配置的增删改、设置变了哪几类、
         // 共享凭据改动与引用它的连接数都在落盘这一层记,不靠各个界面入口自己记。
         services.AddSingleton<ISessionRepository>(sp =>
@@ -79,10 +86,11 @@ public static class InfrastructureServiceCollectionExtensions
         {
             VelaShellStoragePaths paths = sp.GetRequiredService<VelaShellStoragePaths>();
             // 设置里的代理密码落盘前同样经 ISecretProtector 加密(与连接配置里的密码同一强度)。
-            return new AuditedSettingsService(
-                new SonnetDbSettingsService(sp.GetRequiredService<SonnetDbEngine>(), [paths.RootDirectory],
-                    sp.GetRequiredService<ISecretProtector>()),
-                sp.GetService<IAuditLogService>());
+            var settings = new SonnetDbSettingsService(sp.GetRequiredService<SonnetDbEngine>(), [paths.RootDirectory],
+                sp.GetRequiredService<ISecretProtector>());
+            // 主密码锁着时没解开的那份代理密码,解锁之后就地填回(不用等重启)。
+            sp.GetRequiredService<IMasterPasswordGate>().Unlocked += (_, _) => settings.RevealProxyPasswordAfterUnlock();
+            return new AuditedSettingsService(settings, sp.GetService<IAuditLogService>());
         });
         // 共享凭据(#550):连接配置只存引用,连接那一刻由解析器按来源取回。
         // 来源以集合注册(先注册具体类型,再转发),外部密码管理器接进来时在这里追加一行。

@@ -9865,4 +9865,11 @@ Send anyway?</value>
   <data name="AiRegion_Pin" xml:space="preserve"><value>Pin / auto-hide AI assistant</value></data>
   <data name="AiRegion_Collapse" xml:space="preserve"><value>Collapse AI assistant (keep conversation)</value></data>
   <data name="AiRegion_Hide" xml:space="preserve"><value>Hide AI assistant</value></data>
+  <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>Saved passwords are locked by the master password and were not unlocked this time. Enter the credentials in the sign-in dialog; what you type this time will not be saved.</value></data>
+  <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>Saved passwords are locked by the master password, so this tab was not reconnected. Unlock (the lock icon in the status bar), then reconnect.</value></data>
+  <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>Locked: automatic reconnects never show the unlock dialog. Once you unlock (the lock icon in the status bar) this tab is retried once; you can also reconnect with Enter or Ctrl+R.</value></data>
+  <data name="MasterPassword_TunnelLocked" xml:space="preserve"><value>Saved passwords are locked by the master password: the tunnel will be rebuilt automatically after you unlock (the lock icon in the status bar).</value></data>
+  <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>Not unlocked: the password was not saved this time.</value></data>
+  <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>The plugin trust store is locked by the master password. Unlock (the lock icon in the status bar) before installing plugins or trusting a publisher; installed user plugins load automatically once unlocked.</value></data>
+  <data name="SyncSvc_Locked" xml:space="preserve"><value>The saved token and passphrase are locked by the master password. Unlock (the lock icon in the status bar) before syncing; automatic sync skipped this round.</value></data>
 </root>

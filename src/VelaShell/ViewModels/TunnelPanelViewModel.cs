@@ -1218,6 +1218,11 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable, IDraggablePanel
             {
                 continue;
             }
+            // 主密码锁着时拦下的:等解锁(RetryAfterUnlock),不每 5 秒再撞一次。
+            if (_lockedProfiles.Contains(profileId))
+            {
+                continue;
+            }
             if (!items.Any(IsAutoReconnectCandidate))
             {
                 continue;
@@ -1301,6 +1306,15 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable, IDraggablePanel
                 ErrorMessage = FriendlyError(ex);
             }
         }
+        catch (Core.Data.SecretsLockedException ex)
+        {
+            // 主密码锁着:自动重建不弹解锁框,也不进退避 —— 解锁后由 RetryAfterUnlock 各重试一次。
+            _lockedProfiles.Add(profile.Id);
+            if (isSelected)
+            {
+                ErrorMessage = ex.Message;
+            }
+        }
         catch (Exception ex)
         {
             int failures = _autoReconnectFailures.GetValueOrDefault(profile.Id) + 1;
@@ -1324,6 +1338,20 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable, IDraggablePanel
                 RefreshServerStatus();
             }
         }
+    }
+
+    /// <summary>主密码锁着时被拦下自动重建的服务器。</summary>
+    private readonly HashSet<Guid> _lockedProfiles = [];
+
+    /// <summary>主密码解锁之后:锁着时被拦下的自动重建各重试一次。</summary>
+    internal void RetryAfterUnlock()
+    {
+        if (_lockedProfiles.Count == 0)
+        {
+            return;
+        }
+        _lockedProfiles.Clear();
+        ScheduleAutoReconnect();
     }
 
     /// <summary>失败重试的退避间隔:10s → 30s → 1min → 2min → 5min 封顶。</summary>

@@ -4,39 +4,6 @@ using VelaShell.Core.Data;
 
 namespace VelaShell.Infrastructure.Persistence;
 
-/// <summary>一次解锁的结果分类。</summary>
-internal enum VaultUnlockStatus
-{
-    /// <summary>解开了。</summary>
-    Unlocked,
-
-    /// <summary>主密码(或恢复码)不对:GCM 认证标签对不上。</summary>
-    WrongSecret,
-
-    /// <summary>上一次输错之后的等待还没过(见 <see cref="VaultUnlockOutcome.RetryAfter" />)。</summary>
-    Throttled,
-
-    /// <summary>没有能解的东西:头不在 / 读不出来、包裹过的密钥这次一把都没取到(见 <see cref="MasterKeyStatus.MasterPasswordProblem" />)。</summary>
-    NothingToUnlock,
-
-    /// <summary>恢复码写错了(字符认不出或校验不通过,不算一次输错)。</summary>
-    MalformedRecoveryCode,
-
-    /// <summary>这份数据目录没生成恢复码。</summary>
-    NoRecoveryCode,
-
-    /// <summary>主密码没开。</summary>
-    NotEnabled,
-
-    /// <summary>本来就解着锁。</summary>
-    AlreadyUnlocked
-}
-
-/// <summary>一次解锁的结果。</summary>
-/// <param name="Status">结果分类。</param>
-/// <param name="RetryAfter">输错之后要等多久才能再试(没有等待时为零)。</param>
-internal readonly record struct VaultUnlockOutcome(VaultUnlockStatus Status, TimeSpan RetryAfter = default);
-
 /// <summary>
 /// 本机加密密钥在内存里的那一份,以及主密码那一层:锁着(只有包裹)/ 解着(有能用的密钥)、解锁、锁定;
 /// 开启 / 关闭 / 修改 / 忘记见同名分部文件。
@@ -192,7 +159,7 @@ internal sealed partial class MasterKeyVault
 
     /// <summary>用主密码解锁。派生 KEK 要 64 MiB 内存与几百毫秒:只在后台线程上调。</summary>
     /// <param name="passwordUtf8">主密码的 UTF-8 字节(调用方负责用完清零)。</param>
-    public VaultUnlockOutcome Unlock(byte[] passwordUtf8)
+    public MasterPasswordUnlockResult Unlock(byte[] passwordUtf8)
     {
         ArgumentNullException.ThrowIfNull(passwordUtf8);
         lock (_operationGate)
@@ -217,7 +184,7 @@ internal sealed partial class MasterKeyVault
 
     /// <summary>用恢复码解锁(之后界面要求设一个新的主密码)。</summary>
     /// <param name="recoveryCode">用户输入的恢复码。</param>
-    public VaultUnlockOutcome UnlockWithRecoveryCode(string recoveryCode)
+    public MasterPasswordUnlockResult UnlockWithRecoveryCode(string recoveryCode)
     {
         lock (_operationGate)
         {
@@ -229,11 +196,11 @@ internal sealed partial class MasterKeyVault
             MasterPasswordHeader header = sealedKeys.Header!;
             if (header.RecoverySalt is not { } recoverySalt)
             {
-                return new(VaultUnlockStatus.NoRecoveryCode);
+                return new(MasterPasswordUnlockStatus.NoRecoveryCode);
             }
             if (!RecoveryCode.TryParse(recoveryCode, out byte[] entropy))
             {
-                return new(VaultUnlockStatus.MalformedRecoveryCode);
+                return new(MasterPasswordUnlockStatus.MalformedRecoveryCode);
             }
             byte[] key = MasterPasswordKdf.DeriveRecoveryKey(entropy, recoverySalt);
             CryptographicOperations.ZeroMemory(entropy);
@@ -249,40 +216,40 @@ internal sealed partial class MasterKeyVault
     }
 
     /// <summary>解锁前的几种早退:没开、已解、要等、没东西可解。</summary>
-    private VaultUnlockOutcome? Precheck()
+    private MasterPasswordUnlockResult? Precheck()
     {
         lock (_keysGate)
         {
             if (!_status.MasterPasswordEnabled)
             {
-                return new(VaultUnlockStatus.NotEnabled);
+                return new(MasterPasswordUnlockStatus.NotEnabled);
             }
             if (_ring is not null)
             {
-                return new(VaultUnlockStatus.AlreadyUnlocked);
+                return new(MasterPasswordUnlockStatus.AlreadyUnlocked);
             }
             TimeSpan left = _notBefore - _time.GetUtcNow();
             if (left > TimeSpan.Zero)
             {
-                return new(VaultUnlockStatus.Throttled, left);
+                return new(MasterPasswordUnlockStatus.Throttled, left);
             }
             if (_sealed is not { Header: not null, Wrapped.Count: > 0 })
             {
-                return new(VaultUnlockStatus.NothingToUnlock);
+                return new(MasterPasswordUnlockStatus.NothingToUnlock);
             }
             return null;
         }
     }
 
     /// <summary>输错一次:计数加一,算出这次要等多久。</summary>
-    private VaultUnlockOutcome RecordFailure()
+    private MasterPasswordUnlockResult RecordFailure()
     {
         lock (_keysGate)
         {
             _failures++;
             int seconds = Math.Min(MaxBackoffSeconds, 1 << Math.Min(_failures - 1, 5));
             _notBefore = _time.GetUtcNow() + TimeSpan.FromSeconds(seconds);
-            return new(VaultUnlockStatus.WrongSecret, TimeSpan.FromSeconds(seconds));
+            return new(MasterPasswordUnlockStatus.WrongSecret, TimeSpan.FromSeconds(seconds));
         }
     }
 
@@ -327,12 +294,12 @@ internal sealed partial class MasterKeyVault
     private sealed record OpenedKey(WrappedKey Wrapped, string Id, byte[] Key);
 
     /// <summary>逐个解包;解开至少一把就算解锁成功,接着做收尾。</summary>
-    private VaultUnlockOutcome Open(SealedKeys sealedKeys, WrapKind kind, byte[]? wrapId, byte[] key, byte[]? passwordKek)
+    private MasterPasswordUnlockResult Open(SealedKeys sealedKeys, WrapKind kind, byte[]? wrapId, byte[] key, byte[]? passwordKek)
     {
         List<OpenedKey> opened = UnwrapAll(sealedKeys, kind, wrapId, key, out bool anyCandidate);
         if (opened.Count == 0)
         {
-            return anyCandidate ? RecordFailure() : new(VaultUnlockStatus.NothingToUnlock);
+            return anyCandidate ? RecordFailure() : new(MasterPasswordUnlockStatus.NothingToUnlock);
         }
         // 密钥串:解开的(第一把用来加密)+ 明文存着的那几把;同一把只留一份。
         List<byte[]> keys = [];
@@ -368,7 +335,7 @@ internal sealed partial class MasterKeyVault
         {
             CryptographicOperations.ZeroMemory(o.Key);
         }
-        return new(VaultUnlockStatus.Unlocked);
+        return new(MasterPasswordUnlockStatus.Unlocked);
     }
 
     /// <summary>

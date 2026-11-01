@@ -9859,4 +9859,11 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="AiRegion_Pin" xml:space="preserve"><value>AI アシスタントを固定 / 自動的に隠す</value></data>
   <data name="AiRegion_Collapse" xml:space="preserve"><value>AI アシスタントを折りたたむ（会話を保持）</value></data>
   <data name="AiRegion_Hide" xml:space="preserve"><value>AI アシスタントを非表示</value></data>
+  <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>保存済みのパスワードはマスターパスワードでロックされており、今回はロック解除されませんでした。サインイン画面で手動入力してください。今回入力した内容は保存されません。</value></data>
+  <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>保存済みのパスワードがマスターパスワードでロックされているため、再接続しませんでした。ロックを解除(ステータスバーの錠前アイコン)してから再接続してください。</value></data>
+  <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>ロック中:自動再接続ではロック解除画面を表示しません。ロックを解除(ステータスバーの錠前アイコン)すると一度だけ再試行します。Enter または Ctrl+R で手動再接続もできます。</value></data>
+  <data name="MasterPassword_TunnelLocked" xml:space="preserve"><value>保存済みのパスワードがマスターパスワードでロックされています。ロックを解除(ステータスバーの錠前アイコン)するとトンネルを自動で再構築します。</value></data>
+  <data name="MasterPassword_SecretNotSaved" xml:space="preserve"><value>ロックが解除されていないため、今回のパスワードは保存されていません。</value></data>
+  <data name="MasterPassword_PluginTrustLocked" xml:space="preserve"><value>プラグインの信頼ストアはマスターパスワードでロックされています。プラグインのインストールや発行元の信頼にはロック解除(ステータスバーの錠前アイコン)が必要です。インストール済みのユーザープラグインはロック解除後に自動で読み込まれます。</value></data>
+  <data name="SyncSvc_Locked" xml:space="preserve"><value>保存済みのトークンとパスフレーズはマスターパスワードでロックされています。同期する前にロックを解除(ステータスバーの錠前アイコン)してください。今回の自動同期はスキップしました。</value></data>
 </root>
