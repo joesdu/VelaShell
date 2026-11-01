@@ -166,7 +166,16 @@ public sealed class ConnectionWorkflowService(
             throw;
         }
         profile.LastConnectedAt = DateTime.UtcNow;
-        await TouchLastConnectedAsync(profile.Id, profile.LastConnectedAt.Value).ConfigureAwait(false);
+        try
+        {
+            await TouchLastConnectedAsync(profile.Id, profile.LastConnectedAt.Value).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // 会话已经建好了:记一个时间没写进库(库读写出错、保存途中主密码恰好锁上……)不该让这次连接报失败 ——
+            // 那样调用方拿不到会话,建好的连接也就没人收拾。
+            System.Diagnostics.Trace.WriteLine($"[Connect] Recording the last connected time of {profile.Id} failed: {ex.Message}");
+        }
         // 历史里记实际登录的用户名 —— 引用共享凭据的配置自己可以不填用户名。
         await RecordHistoryAsync(profile, session.ConnectionInfo.Username, startedAt, true).ConfigureAwait(false);
         return session;

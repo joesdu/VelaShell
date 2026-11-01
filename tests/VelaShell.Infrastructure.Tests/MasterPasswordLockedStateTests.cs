@@ -207,6 +207,53 @@ public sealed class MasterPasswordLockedStateTests : IDisposable
     }
 
     [TestMethod]
+    public async Task SessionRepository_WhileLocked_SwitchingToTailscale_DoesNotPutTheOldSecretsBack()
+    {
+        var before = new SonnetDbSessionRepository(_engine, Unprotected());
+        SessionProfile profile = new()
+        {
+            Name = "box", Host = "box.tailnet", Username = "root", AuthMethod = AuthMethod.Password, RememberPassword = true,
+            Password = "old-password", PrivateKeyPassphrase = "old-passphrase"
+        };
+        await before.SaveSessionAsync(profile);
+        Assert.IsNotNull((await RawProfileAsync(profile.Id))!["password"]?.GetValue<string>());
+        var repository = new SonnetDbSessionRepository(_engine, LockedAfterWrapping());
+
+        SessionProfile loaded = (await repository.GetSessionAsync(profile.Id))!;
+        loaded.AuthMethod = AuthMethod.Tailscale; // 锁着时在编辑框里切到 Tailscale
+        await repository.SaveSessionAsync(loaded);
+
+        JsonNode raw = (await RawProfileAsync(profile.Id))!;
+        Assert.IsNull(raw["password"]?.GetValue<string>(), "Tailscale 不存任何认证材料:锁着时也不把库里那份旧密码的密文塞回去");
+        Assert.IsNull(raw["privateKeyPassphrase"]?.GetValue<string>());
+        Assert.IsFalse(raw["rememberPassword"]?.GetValue<bool>() ?? false);
+        Assert.AreEqual(AuthMethod.Tailscale, (await repository.GetSessionAsync(profile.Id))!.AuthMethod, "其余照常存");
+    }
+
+    [TestMethod]
+    public async Task SessionRepository_LockedBetweenAskingAndEncrypting_SavesLikeLocked()
+    {
+        var before = new SonnetDbSessionRepository(_engine, Unprotected());
+        SessionProfile profile = new() { Name = "db", Host = "db.example", Username = "root", AuthMethod = AuthMethod.Password, Password = "old-password" };
+        await before.SaveSessionAsync(profile);
+        string storedPassword = (await RawProfileAsync(profile.Id))!["password"]!.GetValue<string>();
+        var protector = new LocksBetweenAskingAndProtecting(LockedAfterWrapping());
+        var repository = new SonnetDbSessionRepository(_engine, protector);
+        SessionProfile loaded = (await repository.GetSessionAsync(profile.Id))!;
+        loaded.Name = "renamed";
+        loaded.Password = "typed just before the lock";
+
+        protector.ReportUnlockedOnce();
+        await repository.SaveSessionAsync(loaded);
+
+        Assert.AreEqual(1, protector.LockedProtects, "确实撞上了「问的时候解着、加密时已经锁上」");
+        JsonNode raw = (await RawProfileAsync(profile.Id))!;
+        Assert.AreEqual("renamed", raw["name"]!.GetValue<string>(), "这次保存不失败,其余字段照常存");
+        Assert.AreEqual(storedPassword, raw["password"]!.GetValue<string>(), "机密照锁着那条路冻在库里那一份上");
+        Assert.DoesNotContain("typed just before the lock", raw.ToJsonString());
+    }
+
+    [TestMethod]
     public async Task SharedCredentials_WhileLocked_KeepTheStoredPassword()
     {
         var before = new SonnetDbSharedCredentialRepository(_engine, Unprotected());
@@ -224,6 +271,29 @@ public sealed class MasterPasswordLockedStateTests : IDisposable
         SharedCredential reread = (await repository.GetAsync(credential.Id))!;
         Assert.AreEqual("ops (renamed)", reread.Name);
         Assert.AreEqual("old", reread.Password, "锁着时改的密码没存进去,原来那份还在");
+    }
+
+    [TestMethod]
+    public async Task SharedCredentials_LockedBetweenAskingAndEncrypting_SaveLikeLocked()
+    {
+        var before = new SonnetDbSharedCredentialRepository(_engine, Unprotected());
+        SharedCredential credential = new() { Name = "ops", Username = "ops", AuthMethod = AuthMethod.Password, Password = "old" };
+        await before.SaveAsync(credential);
+        AesSecretProtector locked = LockedAfterWrapping();
+        var protector = new LocksBetweenAskingAndProtecting(locked);
+        var repository = new SonnetDbSharedCredentialRepository(_engine, protector);
+        SharedCredential loaded = (await repository.GetAsync(credential.Id))!;
+        loaded.Name = "ops (renamed)";
+        loaded.Password = "typed just before the lock";
+
+        protector.ReportUnlockedOnce();
+        await repository.SaveAsync(loaded);
+
+        Assert.AreEqual(1, protector.LockedProtects, "确实撞上了「问的时候解着、加密时已经锁上」");
+        Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, locked.Vault.Unlock(Utf8(Password)).Status);
+        SharedCredential reread = (await repository.GetAsync(credential.Id))!;
+        Assert.AreEqual("ops (renamed)", reread.Name, "这次保存不失败,其余字段照常存");
+        Assert.AreEqual("old", reread.Password, "密码照锁着那条路冻在库里那一份上");
     }
 
     [TestMethod]
@@ -281,6 +351,35 @@ public sealed class MasterPasswordLockedStateTests : IDisposable
 
         Assert.AreEqual("proxy-secret", (await service.GetSettingsAsync()).Proxy.Password, "不用等重启");
         Assert.AreEqual("proxy-secret", (await service.GetSnapshotAsync()).Proxy.Password, "代理解析读的快照也带上");
+    }
+
+    [TestMethod]
+    public async Task ProxyPassword_LockedBetweenAskingAndEncrypting_SavesLikeLocked()
+    {
+        var first = new SonnetDbSettingsService(_engine, protector: Unprotected());
+        AppSettings settings = await first.GetSettingsAsync();
+        settings.Proxy.Type = "http";
+        settings.Proxy.Host = "proxy.example";
+        settings.Proxy.Port = 3128;
+        settings.Proxy.Password = "proxy-secret";
+        await first.SaveSettingsAsync(settings);
+        string stored = await StoredProxyPasswordAsync();
+        AesSecretProtector locked = LockedAfterWrapping();
+        Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, locked.Vault.Unlock(Utf8(Password)).Status);
+        var protector = new LocksBetweenAskingAndProtecting(locked);
+        var service = new SonnetDbSettingsService(_engine, protector: protector);
+        AppSettings loaded = await service.GetSettingsAsync();
+        Assert.AreEqual("proxy-secret", loaded.Proxy.Password);
+        Assert.IsTrue(locked.Vault.Lock());
+        loaded.Proxy.Password = "typed just before the lock";
+        loaded.TerminalFontSize = 15;
+
+        protector.ReportUnlockedOnce();
+        await service.SaveSettingsAsync(loaded);
+
+        Assert.AreEqual(1, protector.LockedProtects, "确实撞上了「问的时候解着、加密时已经锁上」");
+        Assert.AreEqual(stored, await StoredProxyPasswordAsync(), "代理密码照锁着那条路写回原密文");
+        Assert.AreEqual(15, (await new SonnetDbSettingsService(_engine, protector: protector).GetSettingsAsync()).TerminalFontSize, "别的设置照常存");
     }
 
     // ———— 云同步 ————
@@ -345,6 +444,42 @@ public sealed class MasterPasswordLockedStateTests : IDisposable
     private Task<string> StoredProxyPasswordAsync() =>
         _engine.WithCollectionAsync(SonnetDbEngine.ConfigCollection, store =>
             JsonNode.Parse(store.Get("settings")!.Json)?["proxy"]?["password"]?.GetValue<string>() ?? string.Empty);
+
+    /// <summary>
+    /// 自动锁定(或系统锁屏)恰好落在仓储「问锁没锁」与「加密」之间:包着一个真的保护器,
+    /// <see cref="ReportUnlockedOnce" /> 之后的下一次 <see cref="IsLocked" /> 答「解着」,紧接着的加密照真的那个来(锁着就抛)。
+    /// </summary>
+    private sealed class LocksBetweenAskingAndProtecting(AesSecretProtector inner) : ISecretProtector
+    {
+        private int _reportUnlocked;
+        private int _lockedProtects;
+
+        /// <summary>加密时撞上锁定(抛了 <see cref="SecretsLockedException" />)的次数。</summary>
+        public int LockedProtects => Volatile.Read(ref _lockedProtects);
+
+        public void ReportUnlockedOnce() => Volatile.Write(ref _reportUnlocked, 1);
+
+        public bool IsLocked => Interlocked.Exchange(ref _reportUnlocked, 0) != 1 && inner.IsLocked;
+
+        public bool IsReady => inner.IsReady;
+
+        public string? Protect(string? plaintext)
+        {
+            try
+            {
+                return inner.Protect(plaintext);
+            }
+            catch (SecretsLockedException)
+            {
+                Interlocked.Increment(ref _lockedProtects);
+                throw;
+            }
+        }
+
+        public string? Unprotect(string? ciphertext) => inner.Unprotect(ciphertext);
+
+        public bool TryUnprotect(string? ciphertext, out string? plaintext) => inner.TryUnprotect(ciphertext, out plaintext);
+    }
 
     /// <summary>假的解锁框:数一数弹了几次;可以让它停在框上等测试放行。</summary>
     private sealed class CountingPrompt : IMasterPasswordPrompt

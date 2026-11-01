@@ -74,7 +74,17 @@ public sealed class SonnetDbSharedCredentialRepository(SonnetDbEngine engine, IS
         ArgumentNullException.ThrowIfNull(credential);
         // 主密码锁着:密码与私钥口令冻在库里那一份上(新的加不了密,旧的也不被空值顶掉),其余字段照常存。
         bool locked = _protector.IsLocked;
-        SharedCredential copy = locked ? credential.Clone() : Protect(credential);
+        SharedCredential copy;
+        try
+        {
+            copy = locked ? credential.Clone() : Protect(credential);
+        }
+        catch (SecretsLockedException)
+        {
+            // 上面问的时候还解着,加密之前恰好锁上了(自动锁定、系统锁屏):照锁着那条路存,不让这次保存失败。
+            locked = true;
+            copy = credential.Clone();
+        }
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.SharedCredentialsCollection, store =>
         {
             string key = credential.Id.ToString("D");

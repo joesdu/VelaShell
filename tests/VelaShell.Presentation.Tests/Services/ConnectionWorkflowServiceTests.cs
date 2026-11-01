@@ -51,6 +51,35 @@ public sealed class ConnectionWorkflowServiceTests
     }
 
     /// <summary>
+    /// 会话已经建好之后,记最近连接时间那一次写库失败了(保存途中主密码恰好锁上、库读写出错):连接照样交回,
+    /// 不报失败 —— 否则调用方拿不到会话,建好的连接没人收拾。连接历史照记成功。
+    /// </summary>
+    [TestMethod]
+    [DataRow(true, DisplayName = "SecretsLockedException")]
+    [DataRow(false, DisplayName = "IOException")]
+    public async Task ConnectProfileAsync_WhenRecordingTheTimeFails_StillReturnsTheSession(bool lockedMidway)
+    {
+        IRecentConnectionService recent = Substitute.For<IRecentConnectionService>();
+        var service = new ConnectionWorkflowService(_sessionRepository, _sshConnectionService, recent);
+        SessionProfile profile = CreateProfile();
+        _sessionRepository.GetSessionAsync(profile.Id).Returns(_ => profile.Clone());
+        _sessionRepository.SaveSessionAsync(Arg.Any<SessionProfile>())
+                          .Returns<Task>(_ => lockedMidway ? throw new SecretsLockedException() : throw new IOException("disk full"));
+        var session = new SshSession
+        {
+            ConnectionInfo = new() { Host = profile.Host, Port = profile.Port, Username = profile.Username, AuthMethod = profile.AuthMethod },
+            Status = SessionStatus.Connected
+        };
+        _sshConnectionService.ConnectAsync(Arg.Any<ConnectionInfo>(), Arg.Any<CancellationToken>()).Returns(session);
+
+        SshSession result = await service.ConnectProfileAsync(profile);
+
+        Assert.AreSame(session, result);
+        await _sessionRepository.Received(1).SaveSessionAsync(Arg.Any<SessionProfile>());
+        await recent.Received(1).RecordAsync(Arg.Is<RecentConnectionEntry>(r => r.Success), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// 不在库里的是现搭的临时配置(外部拉起、「最近连接」重建的):连上之后不回写 —— 不进会话树,也就不随云同步上传;
     /// 连接历史(最近连接,不含密码)与审计照记。
     /// </summary>

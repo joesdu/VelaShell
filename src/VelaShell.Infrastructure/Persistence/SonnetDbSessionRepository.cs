@@ -90,7 +90,17 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         // 主密码锁着:新的明文加不了密(也不许另起密钥),机密字段冻在库里那一份上 —— 新的存不进去,
         // 旧的也不会被一份空值顶掉(「记住密码」没勾的副本、解锁取消后剥掉机密的副本都是空的)。其余字段照常存。
         bool locked = _protector.IsLocked;
-        SessionProfile copy = Protect(session, locked);
+        SessionProfile copy;
+        try
+        {
+            copy = Protect(session, locked);
+        }
+        catch (SecretsLockedException)
+        {
+            // 上面问的时候还解着,加密之前恰好锁上了(自动锁定、系统锁屏):照锁着那条路存,不让这次保存失败。
+            locked = true;
+            copy = Protect(session, locked);
+        }
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.ProfilesCollection, store =>
         {
             string key = session.Id.ToString("D");
@@ -131,6 +141,9 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
             }
         }
         copy.PluginSecrets = secrets;
+        // 换回来的是库里那份的密文,认证材料的两条不变量要再守一遍(同 Protect):Tailscale 不存任何认证材料
+        // (库里那份可能是切到 Tailscale 之前存的密码),引用了共享凭据的不存认证材料。
+        CredentialMaterial.ClearTailscaleCredentials(copy);
         if (copy.CredentialSource is not null)
         {
             CredentialMaterial.ClearInline(copy);

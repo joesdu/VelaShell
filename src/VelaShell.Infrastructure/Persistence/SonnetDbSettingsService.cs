@@ -250,23 +250,24 @@ public sealed class SonnetDbSettingsService(
     {
         if (protector!.IsLocked)
         {
-            // 主密码锁着:新填的密码加不了密(也不许另起密钥),清空也不算数 —— 代理密码冻在库里那一份上,
-            // 同一台代理就照旧写回原密文,别的设置照常保存。锁定前解开过、内存里还是明文的那份同样写回原密文,
-            // 不会因为锁着时的一次保存(关窗口时存窗口尺寸)被抹掉。解锁后重填即可。
-            if (proxy.Password.Length > 0)
-            {
-                Trace.WriteLine("[Settings] The proxy password was not re-saved: saved secrets are locked by the master password.");
-            }
-            return (_storedProxyPassword ?? _unreadableProxyPassword) is { } frozen && SettingsTransfer.SameProxy(frozen.Proxy, proxy)
-                ? frozen.Ciphertext
-                : string.Empty;
+            return FrozenProxyPassword(proxy);
         }
         string result;
         if (proxy.Password.Length > 0)
         {
+            string? encrypted;
+            try
+            {
+                encrypted = protector.Protect(proxy.Password);
+            }
+            catch (SecretsLockedException)
+            {
+                // 上面问的时候还解着,加密之前恰好锁上了(自动锁定、系统锁屏):照锁着那条路存,不让这次保存失败。
+                return FrozenProxyPassword(proxy);
+            }
             // 重填了密码:解不开的那份作废,存这一份(用当前的本机密钥,这台设备解得开)。
             _unreadableProxyPassword = null;
-            result = protector.Protect(proxy.Password) ?? string.Empty;
+            result = encrypted ?? string.Empty;
         }
         else if (_unreadableProxyPassword is { } kept && SettingsTransfer.SameProxy(kept.Proxy, proxy))
         {
@@ -280,6 +281,22 @@ public sealed class SonnetDbSettingsService(
         }
         _storedProxyPassword = result.Length > 0 ? new(result, ProxyOwner(proxy)) : null;
         return result;
+    }
+
+    /// <summary>
+    /// 主密码锁着时代理密码存成什么:新填的密码加不了密(也不许另起密钥),清空也不算数 —— 代理密码冻在库里那一份上,
+    /// 同一台代理就照旧写回原密文,别的设置照常保存。锁定前解开过、内存里还是明文的那份同样写回原密文,
+    /// 不会因为锁着时的一次保存(关窗口时存窗口尺寸)被抹掉。解锁后重填即可。
+    /// </summary>
+    private string FrozenProxyPassword(ProxyOptions proxy)
+    {
+        if (proxy.Password.Length > 0)
+        {
+            Trace.WriteLine("[Settings] The proxy password was not re-saved: saved secrets are locked by the master password.");
+        }
+        return (_storedProxyPassword ?? _unreadableProxyPassword) is { } frozen && SettingsTransfer.SameProxy(frozen.Proxy, proxy)
+            ? frozen.Ciphertext
+            : string.Empty;
     }
 
     /// <summary>
