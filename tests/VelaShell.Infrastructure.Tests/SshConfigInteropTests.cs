@@ -1166,7 +1166,9 @@ public sealed class SshConfigInteropTests
         Assert.Contains(n => n.Contains(@"IdentityAgent \.\pipe\openssh-ssh-agent"), readPipe.Notes);
 
         ImportedSession readFixed = await ScanOneAsync(config, "fixed");
-        Assert.DoesNotContain(n => n.Contains(@"\.\pipe"), readFixed.Notes);
+        // 只认「单个反斜杠开头」那一句(关键字 + 空格 + 读成的值):Linux / macOS 上命名管道另有一句「别的平台的路径,不导入」,
+        // 里面的 \\.\pipe\… 同样含子串 \.\pipe,不能拿它当没说明。
+        Assert.DoesNotContain(n => n.Contains(@"IdentityAgent \.\pipe"), readFixed.Notes);
         if (OperatingSystem.IsWindows())
         {
             Assert.AreEqual(AuthMethod.Agent, readFixed.AuthMethod);
