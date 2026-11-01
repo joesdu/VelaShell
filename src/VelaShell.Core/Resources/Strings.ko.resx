@@ -1513,6 +1513,9 @@
   <data name="FtpSvc_ReadCompletionTimeout" xml:space="preserve">
     <value>FTP 서버의 전송 완료 확인을 기다리는 중 시간이 초과되었습니다.</value>
   </data>
+  <data name="FtpSvc_TransferInterrupted" xml:space="preserve">
+    <value>{0} 전송 중 FTP 데이터 연결이 끊어졌습니다. 제어 연결은 계속 사용할 수 있습니다.</value>
+  </data>
   <data name="SftpSvc_RelayLengthMismatch" xml:space="preserve">
     <value>전송이 불완전합니다: {0}. 예상 크기는 {1}바이트지만 실제로 {2}바이트를 읽었습니다. 원본 파일이 변경되었거나 연결이 일찍 종료되었을 수 있습니다.</value>
   </data>

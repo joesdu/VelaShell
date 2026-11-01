@@ -119,10 +119,31 @@ internal sealed class LoopbackFtpServer : IDisposable
     public Func<string, ReadFault?>? ReadFaultForPath { get; set; }
 
     /// <summary>
-    /// 按远端路径控制 STOR / APPE:返回 N 时收满 N 个字节就复位数据连接并回 <c>426</c>(上传传到一半被掐断);
+    /// 按远端路径控制 STOR / APPE:返回 N 时收满 N 个字节就复位数据连接并回 <see cref="StoreFaultReply" />(默认 426,上传传到一半被掐断);
     /// null = 照常收完。默认不注入故障。
     /// </summary>
     public Func<string, int?>? ResetStoreAfterBytes { get; set; }
+
+    /// <summary>
+    /// 按远端路径控制 STOR / APPE 的「干净中断」:返回 N 时只落下前 N 个字节,其余照收照扔(数据流读到客户端自己关闭为止),
+    /// 然后回 <see cref="StoreFaultReply" />(默认 426)。客户端的每一次写都成功、数据流干净结束,中断只体现在最终回复上 ——
+    /// 三个平台走同一条路。<see cref="ResetStoreAfterBytes" /> 的复位不行:复位落在哪一次写上、
+    /// 写失败报成 ConnectionReset 还是 Broken pipe、FluentFTP 走不走自己的续写,都看平台与时机。
+    /// null = 照常收完。
+    /// </summary>
+    public Func<string, int?>? AbortStoreAfterBytes { get; set; }
+
+    /// <summary>
+    /// 按远端路径:STOR / APPE 收满 N 个字节后复位数据连接、**直接关掉控制连接**(不给任何回复)——
+    /// 控制连接本身断了,与「数据连接中断、控制连接还好好的」对照。null = 照常收完。
+    /// </summary>
+    public Func<string, int?>? DropControlDuringStoreAfterBytes { get; set; }
+
+    /// <summary>
+    /// <see cref="ResetStoreAfterBytes" /> 与 <see cref="AbortStoreAfterBytes" /> 掐断之后在控制连接上回的那一句。
+    /// 默认 <c>426</c>(连接关闭、传输中止);改成 <c>452</c> 之类就是「服务器一边拒写一边复位数据连接」。
+    /// </summary>
+    public string StoreFaultReply { get; set; } = "426 Connection closed; transfer aborted";
 
     /// <summary>按路径与当前 TYPE I 状态控制 SIZE 回复;null 使用磁盘长度。</summary>
     public Func<string, bool, string?>? SizeReplyForPath { get; set; }
@@ -410,8 +431,7 @@ internal sealed class LoopbackFtpServer : IDisposable
                 return await SendFileAsync(state, argument, writer).ConfigureAwait(false);
             case "STOR":
             case "APPE":
-                await ReceiveFileAsync(state, argument, writer, append: command == "APPE").ConfigureAwait(false);
-                return true;
+                return await ReceiveFileAsync(state, argument, writer, append: command == "APPE").ConfigureAwait(false);
             case "DELE":
                 {
                     string path = Local(Normalize(state, argument));
@@ -644,11 +664,13 @@ internal sealed class LoopbackFtpServer : IDisposable
         return true;
     }
 
-    private async Task ReceiveFileAsync(SessionState state, string argument, StreamWriter writer, bool append)
+    /// <summary>收一个文件;返回 false 表示控制连接就此关掉(<see cref="DropControlDuringStoreAfterBytes" />)。</summary>
+    private async Task<bool> ReceiveFileAsync(SessionState state, string argument, StreamWriter writer, bool append)
     {
-        string path = Local(Normalize(state, argument));
+        string remote = Normalize(state, argument);
+        string path = Local(remote);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        StoreCounts.AddOrUpdate(Normalize(state, argument), 1, static (_, count) => count + 1);
+        StoreCounts.AddOrUpdate(remote, 1, static (_, count) => count + 1);
 
         // "一次只让传一个文件"的服务器:控制连接开几条都行,但第二个传输直接 450 顶回去。
         int live = Interlocked.Increment(ref _liveTransfers);
@@ -657,12 +679,16 @@ internal sealed class LoopbackFtpServer : IDisposable
             Interlocked.Decrement(ref _liveTransfers);
             Interlocked.Increment(ref RejectedTransfers);
             await writer.WriteLineAsync("450 Transfer busy, only one transfer at a time").ConfigureAwait(false);
-            return;
+            return true;
         }
         try
         {
-            int? resetAfter = ResetStoreAfterBytes?.Invoke(Normalize(state, argument));
-            await ReceiveFileCoreAsync(state, path, writer, append, resetAfter).ConfigureAwait(false);
+            var fault = new StoreFault(
+                ResetStoreAfterBytes?.Invoke(remote),
+                AbortStoreAfterBytes?.Invoke(remote),
+                DropControlDuringStoreAfterBytes?.Invoke(remote),
+                StoreFaultReply);
+            return await ReceiveFileCoreAsync(state, path, writer, append, fault).ConfigureAwait(false);
         }
         finally
         {
@@ -670,7 +696,10 @@ internal sealed class LoopbackFtpServer : IDisposable
         }
     }
 
-    private static async Task ReceiveFileCoreAsync(SessionState state, string path, StreamWriter writer, bool append, int? resetAfter)
+    /// <summary>一次 STOR / APPE 要注入的故障(见 ResetStoreAfterBytes 等同名属性);三个字节数全为 null = 照常收完。</summary>
+    private readonly record struct StoreFault(int? ResetAfter, int? AbortAfter, int? DropControlAfter, string Reply);
+
+    private static async Task<bool> ReceiveFileCoreAsync(SessionState state, string path, StreamWriter writer, bool append, StoreFault fault)
     {
         await writer.WriteLineAsync("150 Opening data connection").ConfigureAwait(false);
         await using (Stream data = await state.AcceptDataAsync().ConfigureAwait(false))
@@ -678,7 +707,45 @@ internal sealed class LoopbackFtpServer : IDisposable
                          ? new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.None)
                          : new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None))
         {
-            if (resetAfter is int limit)
+            if (fault.AbortAfter is int keep)
+            {
+                // 只落下前 keep 个字节,其余读走扔掉,直到客户端自己关掉数据连接:客户端那边看到的是一次干净的传输,
+                // 中断只在最终回复(默认 426)里。
+                byte[] chunk = new byte[64 * 1024];
+                long received = 0;
+                int read;
+                while ((read = await data.ReadAsync(chunk).ConfigureAwait(false)) > 0)
+                {
+                    int take = (int)Math.Clamp(keep - received, 0, read);
+                    if (take > 0)
+                    {
+                        await target.WriteAsync(chunk.AsMemory(0, take)).ConfigureAwait(false);
+                    }
+                    received += read;
+                }
+                state.RestartOffset = 0;
+                state.CloseData();
+                await writer.WriteLineAsync(fault.Reply).ConfigureAwait(false);
+                return true;
+            }
+            if (fault.DropControlAfter is int dropAfter)
+            {
+                byte[] buffer = new byte[Math.Max(1, dropAfter)];
+                int received = 0;
+                while (received < dropAfter)
+                {
+                    int read = await data.ReadAsync(buffer.AsMemory(received, dropAfter - received)).ConfigureAwait(false);
+                    if (read == 0) break;
+                    received += read;
+                }
+                await target.WriteAsync(buffer.AsMemory(0, received)).ConfigureAwait(false);
+                ((DataStream)data).Reset();
+                state.RestartOffset = 0;
+                state.CloseData();
+                // 不回复,直接结束会话:调用方随即关掉控制连接。
+                return false;
+            }
+            if (fault.ResetAfter is int limit)
             {
                 // 收满 limit 个字节就掐断:客户端还在往数据连接里写,看到的是一次进行中的写被复位。
                 byte[] buffer = new byte[Math.Max(1, limit)];
@@ -693,14 +760,15 @@ internal sealed class LoopbackFtpServer : IDisposable
                 ((DataStream)data).Reset();
                 state.RestartOffset = 0;
                 state.CloseData();
-                await writer.WriteLineAsync("426 Connection closed; transfer aborted").ConfigureAwait(false);
-                return;
+                await writer.WriteLineAsync(fault.Reply).ConfigureAwait(false);
+                return true;
             }
             await data.CopyToAsync(target).ConfigureAwait(false);
         }
         state.RestartOffset = 0;
         state.CloseData();
         await writer.WriteLineAsync("226 Transfer complete").ConfigureAwait(false);
+        return true;
     }
 
     /// <summary>LIST 用的「服务器墙上时间」:默认本机时区,配了 <see cref="ListClockOffset" /> 就按那个偏移。</summary>

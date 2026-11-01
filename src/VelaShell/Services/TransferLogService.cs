@@ -103,6 +103,7 @@ public static class TransferLogService
                 RelayCacheException => "local-cache",
                 RemoteTransferLengthException => "source-length",
                 VelaSftpTransferInterruptedException => "target-write-or-close",
+                Core.Ftp.VelaFtpTransferInterruptedException => "ftp-data-connection",
                 Core.Ftp.VelaFtpClientException => "ftp-operation",
                 _ => "transfer",
             };

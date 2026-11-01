@@ -717,6 +717,9 @@
   <data name="FtpSvc_ReadCompletionTimeout" xml:space="preserve">
     <value>Timed out waiting for the FTP server to confirm that the transfer completed.</value>
   </data>
+  <data name="FtpSvc_TransferInterrupted" xml:space="preserve">
+    <value>The FTP data connection was interrupted while transferring {0}; the control connection is still available.</value>
+  </data>
   <data name="SftpSvc_RelayLengthMismatch" xml:space="preserve">
     <value>Transfer incomplete: {0}. Expected {1} bytes, but read {2} bytes. The source may have changed or the connection ended early.</value>
   </data>

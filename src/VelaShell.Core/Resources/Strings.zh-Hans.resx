@@ -771,6 +771,9 @@
   <data name="FtpSvc_ReadCompletionTimeout" xml:space="preserve">
     <value>等待 FTP 服务器确认传输完成时超时。</value>
   </data>
+  <data name="FtpSvc_TransferInterrupted" xml:space="preserve">
+    <value>传输 {0} 时 FTP 数据连接中途断开；控制连接仍然可用。</value>
+  </data>
   <data name="SftpSvc_RelayLengthMismatch" xml:space="preserve">
     <value>传输不完整：{0}。预期 {1} 字节，实际读取 {2} 字节。源文件可能已变化，或连接提前结束。</value>
   </data>

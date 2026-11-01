@@ -130,7 +130,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             resumeOffset = await ResolveUploadResumeAsync(sessionId, remotePath, local, totalBytes, cancellationToken).ConfigureAwait(false);
         }
         ReadCountingStream? attempt = null;
-        await RunTransferAsync(sessionId, "upload", async client =>
+        await RunTransferAsync(sessionId, "upload", fileName, async client =>
         {
             attempt = null;
             await using FileStream file = File.OpenRead(localPath);
@@ -147,7 +147,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                 token: cancellationToken).ConfigureAwait(false);
             if (status == FtpStatus.Failed)
             {
-                throw new VelaFtpOperationException($"FTP upload of {fileName} failed.");
+                throw UploadNotConfirmed(client, fileName);
             }
         }, () => attempt?.BytesRead > 0, replayable: true, cancellationToken).ConfigureAwait(false);
     }
@@ -186,7 +186,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             if (resumeOffset > 0)
             {
                 ReadCountingStream? attempt = null;
-                await RunTransferAsync(sessionId, "upload", async client =>
+                await RunTransferAsync(sessionId, "upload", fileName, async client =>
                 {
                     // 不包外壳的理由见上:Resume 要 Seek 源流。计数这层照样把 Seek 交给它。
                     var counted = attempt = new ReadCountingStream(source);
@@ -199,7 +199,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                         token: cancellationToken).ConfigureAwait(false);
                     if (resumed == FtpStatus.Failed)
                     {
-                        throw new VelaFtpOperationException($"FTP upload of {fileName} failed.");
+                        throw UploadNotConfirmed(client, fileName);
                     }
                 }, () => attempt?.BytesRead > 0, replayable: true, cancellationToken).ConfigureAwait(false);
                 return;
@@ -208,7 +208,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             source.Seek(0, SeekOrigin.Begin);
         }
         var input = new KnownLengthStream(source, length);
-        await RunTransferAsync(sessionId, "upload", async client =>
+        await RunTransferAsync(sessionId, "upload", fileName, async client =>
         {
             // 服务器以「忙」顶回来时 RunTransferAsync 会重试一次,而源流可能已经被读走一截 ——
             // 照原样再传,落下的就是一个少了开头的文件。能倒回去就倒回去。
@@ -231,7 +231,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                 token: cancellationToken).ConfigureAwait(false);
             if (status == FtpStatus.Failed)
             {
-                throw new VelaFtpOperationException($"FTP upload of {fileName} failed.");
+                throw UploadNotConfirmed(client, fileName);
             }
         }, () => input.BytesRead > 0, replayable: source.CanSeek, cancellationToken).ConfigureAwait(false);
     }
@@ -252,7 +252,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             resumeOffset = await ResolveDownloadResumeAsync(sessionId, remotePath, localPath, cancellationToken).ConfigureAwait(false);
         }
         long written = 0;
-        await RunTransferAsync(sessionId, "download", async client =>
+        await RunTransferAsync(sessionId, "download", fileName, async client =>
         {
             written = 0;
             long totalBytes = await client.GetFileSize(NormalizePath(remotePath), -1, cancellationToken).ConfigureAwait(false);
@@ -318,11 +318,6 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                 bool ok = await client.DownloadStream(output, path, token: cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
                 output.ThrowIfFailed(); // the library can swallow an IOException from the destination
-                // SIZE 不可用时 expected = -1:跳过长度核对,由下面的 226/250 完成回复把关。
-                // 以前这里只在「长短相同」时才算通过,于是不支持 SIZE 的服务器上一份完整的下载也被判失败,
-                // 白重试满设置里的次数。
-                if (expected >= 0 && output.BytesWritten != expected)
-                    throw new RemoteTransferLengthException(path, expected, output.BytesWritten);
                 // DownloadFileInternal already consumes the final reply, including its earlySuccess path.
                 // bool alone accepts a null code and preliminary replies. Never issue a second GetReply.
                 // f051d642: Execute sets LastCommandExecuted; ProcessGetReply copies it to Command
@@ -331,7 +326,17 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                 // or auto-restore PWD/CWD can replace this reply. Command is library attribution,
                 // not a server-supplied transfer identifier; length and completion code remain required.
                 FtpReply reply = client.LastReply;
-                if (!ok || reply.Code is not ("226" or "250") || reply.Command?.StartsWith("RETR ", StringComparison.Ordinal) != true)
+                bool retrReply = reply.Command?.StartsWith("RETR ", StringComparison.Ordinal) == true;
+                // 服务器明说这次传输中止了(426「连接关闭、传输中止」):不论长短都不算完成,也不是「源文件变了」——
+                // 交给下面的 catch 按数据连接中断核对控制连接(环回上的复位在 macOS 读成干净的 EOF,走的就是这里)。
+                if (retrReply && reply.Code == "426")
+                    throw new FtpCommandException(reply);
+                // SIZE 不可用时 expected = -1:跳过长度核对,由下面的 226/250 完成回复把关。
+                // 以前这里只在「长短相同」时才算通过,于是不支持 SIZE 的服务器上一份完整的下载也被判失败,
+                // 白重试满设置里的次数。
+                if (expected >= 0 && output.BytesWritten != expected)
+                    throw new RemoteTransferLengthException(path, expected, output.BytesWritten);
+                if (!ok || reply.Code is not ("226" or "250") || !retrReply)
                     throw new VelaFtpOperationException(Strings.Format("FtpSvc_ReadCompletionFailed", reply.Code, reply.Message));
                 return;
             }
@@ -357,15 +362,15 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                     continue;
                 }
                 if (ex is RemoteTransferLengthException) throw;
-                // A reset can make FluentFTP throw while closing the data stream instead of
-                // returning false. Preserve the short-transfer diagnosis for a 426 reply too.
-                if (expected >= 0 && output.BytesWritten != expected
-                    && HasAbortedTransferReply(ex))
-                {
-                    throw new RemoteTransferLengthException(path, expected, output.BytesWritten);
-                }
-
-                throw Fault(sessionId, ex, "download");
+                // 数据连接中途断了(复位、426):控制连接还应答就是一次可以重试的中断,会话不标失效;
+                // 这里的连接照样作废(上面已经 Invalidate),下一次重新登录。短了多少照样带上(§278 的诊断):
+                // 重试分类只看外层,传输日志沿链记下预期 / 实际字节。控制连接也断了的,照旧是会话掉线。
+                if (lease is null)
+                    throw Fault(sessionId, ex, "download");
+                throw await ClassifyTransferFailureAsync(sessionId, lease, ex, "download", GetRemoteFileName(path), cancellationToken,
+                    interruptionCause: expected >= 0 && output.BytesWritten != expected
+                        ? new RemoteTransferLengthException(path, expected, output.BytesWritten)
+                        : null).ConfigureAwait(false);
             }
             finally
             {
@@ -380,15 +385,6 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                 }
             }
         }
-    }
-
-    private static bool HasAbortedTransferReply(Exception exception)
-    {
-        for (Exception? current = exception; current is not null; current = current.InnerException)
-        {
-            if (current is FtpCommandException { CompletionCode: "426" }) return true;
-        }
-        return false;
     }
 
     /// <summary>续传前比对的尾部字节数:与 SftpService 同一口径 —— 够识别「同名不同文件」,又只值一次往返。</summary>
@@ -975,9 +971,15 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     /// 在这里把整段再跑一遍,续传下载会把同一段字节追加两遍,只能顺序读的源则只能改报一个「无法重放」的永久失败。
     /// 租连接本身失败(主机不可达)同样不算:那时数据连接还没开过,不能让每次上层重试都白等三轮连接超时。
     /// </para>
+    /// <para>
+    /// 不是「被拒」的失败交给 <see cref="ClassifyTransferFailureAsync" />:数据连接中途断了而控制连接还应答的,
+    /// 报 <see cref="VelaFtpTransferInterruptedException" />(会话不标失效,由上层的传输重试按临时失败再试);
+    /// 控制连接也断了的,照旧是会话掉线。
+    /// </para>
     /// </summary>
     /// <param name="sessionId">会话。</param>
     /// <param name="operation">出错时报的操作名。</param>
+    /// <param name="fileName">出错时报的文件名。</param>
     /// <param name="body">一次尝试;每次重试都整段再跑一遍。</param>
     /// <param name="movedBytes">这一次尝试有没有读走源 / 写下目标的字节(每次尝试开始时由 <paramref name="body" /> 自己清零)。</param>
     /// <param name="replayable">
@@ -988,6 +990,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     private async Task RunTransferAsync(
         Guid sessionId,
         string operation,
+        string fileName,
         Func<AsyncFtpClient, Task> body,
         Func<bool> movedBytes,
         bool replayable,
@@ -995,26 +998,198 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     {
         for (int attempt = 0; ; attempt++)
         {
-            bool rented = false;
+            FtpConnectionPool.Lease? lease = null;
+            bool transferred = false;
+            Exception failure;
             try
             {
-                using FtpConnectionPool.Lease lease = await RentAsync(sessionId, cancellationToken).ConfigureAwait(false);
-                rented = true;
-                await body(lease.Client).ConfigureAwait(false);
+                lease = await RentAsync(sessionId, cancellationToken).ConfigureAwait(false);
+                await RunWithUploadGuardAsync(lease.Client, body).ConfigureAwait(false);
+                transferred = true;
+                lease.Dispose();
                 return;
-            }
-            catch (Exception ex) when (
-                attempt < MaxBusyRetries
-                && !cancellationToken.IsCancellationRequested
-                && IsRetryableRejection(ex, rented, movedBytes(), replayable)
-                && LimitSessionToSingleConnection(sessionId))
-            {
-                // 落到下一轮循环重试:这一次会排队等那条唯一的连接空下来。
             }
             catch (Exception ex)
             {
-                throw Fault(sessionId, ex, operation);
+                failure = ex;
             }
+            // 租约留到这里才还:判断「被拒」与核对控制连接都要在这条连接还归自己的时候做。
+            // 传完之后归还本身失败的(transferred),连接已经不归自己了,照旧直接报。
+            try
+            {
+                if (!transferred
+                    && attempt < MaxBusyRetries
+                    && !cancellationToken.IsCancellationRequested
+                    && IsRetryableRejection(failure, lease is not null, movedBytes(), replayable)
+                    && LimitSessionToSingleConnection(sessionId))
+                {
+                    // 落到下一轮循环重试:这一次会排队等那条唯一的连接空下来。
+                    continue;
+                }
+                throw lease is null || transferred
+                    ? Fault(sessionId, failure, operation)
+                    : await ClassifyTransferFailureAsync(sessionId, lease, failure, operation, fileName, cancellationToken)
+                        .ConfigureAwait(false);
+            }
+            finally
+            {
+                lease?.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 一次传输尝试失败之后(连接已经租到):数据连接中途断了、控制连接断了,还是别的什么 —— 返回该抛给上层的异常。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 先按异常链认候选(<see cref="FluentFtpInterop.LooksLikeDataChannelInterruption" />:<c>426</c>、套接字失败、超时,
+    /// 且链上没有服务器别的明确答复),再问同一条控制连接(<see cref="ProbeControlConnectionAsync" />):
+    /// </para>
+    /// <list type="bullet">
+    /// <item>这次传输欠着的最终回复是服务器的明确答复(<c>452</c> 磁盘满、<c>552</c> 超配额、<c>550</c> 等):按答复算,
+    /// 照旧是一次操作失败 —— 服务器一边回拒写一边复位数据连接很常见,客户端那边只看得到复位。</item>
+    /// <item>NOOP 应答 2xx:控制连接健康且收发同步,只是数据连接断了 → <see cref="VelaFtpTransferInterruptedException" />,
+    /// 会话不标失效,连接照常回池。</item>
+    /// <item>应答了别的:控制连接还活着但收发错了位 → 同样算数据连接中断,只是这条连接作废、下次重新登录。</item>
+    /// <item>不应答 / 断开 / 被库在底下重连过:控制连接本身断了 → 照旧是 <see cref="VelaFtpConnectionException" />,会话标成失效。</item>
+    /// </list>
+    /// <para>
+    /// 只在传输已经失败、看上去是断线的时候多这一两次往返。超时取控制读超时与 5 秒中较短的一个:
+    /// 控制连接真断了的话,读多半当场就失败,用不着等满。
+    /// </para>
+    /// </remarks>
+    /// <param name="sessionId">会话。</param>
+    /// <param name="lease">这次尝试用的连接(还归自己)。</param>
+    /// <param name="failure">这次尝试的失败。</param>
+    /// <param name="operation">出错时报的操作名。</param>
+    /// <param name="fileName">出错时报的文件名。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <param name="interruptionCause">认定为数据连接中断时挂在里面的原因;null = <paramref name="failure" /> 本身。</param>
+    private async Task<Exception> ClassifyTransferFailureAsync(Guid sessionId, FtpConnectionPool.Lease lease, Exception failure,
+        string operation, string fileName, CancellationToken cancellationToken, Exception? interruptionCause = null)
+    {
+        if (cancellationToken.IsCancellationRequested || !FluentFtpInterop.LooksLikeDataChannelInterruption(failure))
+        {
+            return Fault(sessionId, failure, operation);
+        }
+        ControlCheck control = await ProbeControlConnectionAsync(lease.Client, cancellationToken).ConfigureAwait(false);
+        if (control.State != ControlConnectionState.InSync)
+        {
+            lease.Invalidate();
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        if (control.State == ControlConnectionState.Lost)
+        {
+            return Fault(sessionId, AsConnectionLost(failure, operation), operation);
+        }
+        if (control.OwedReply is { Code: [ '4' or '5', _, _ ] code } answer && code != "426")
+        {
+            return Fault(sessionId, new FtpCommandException(answer), operation);
+        }
+        return new VelaFtpTransferInterruptedException(Strings.Format("FtpSvc_TransferInterrupted", fileName), interruptionCause ?? failure);
+    }
+
+    /// <summary>控制连接在一次传输失败之后的状态(见 <see cref="ClassifyTransferFailureAsync" />)。</summary>
+    private enum ControlConnectionState
+    {
+        /// <summary>NOOP 应答 2xx:健康,收发同步,可以接着用。</summary>
+        InSync,
+
+        /// <summary>有应答但不是 NOOP 的成功回复:还活着,收发可能错了位,不再复用。</summary>
+        Answering,
+
+        /// <summary>没有应答、读写失败,或库在底下重连过:控制连接本身断了。</summary>
+        Lost,
+    }
+
+    /// <summary>探测结果:控制连接的状态,以及期间收下的、这次传输欠着的最终回复(没有欠着的为 null)。</summary>
+    private readonly record struct ControlCheck(ControlConnectionState State, FtpReply? OwedReply);
+
+    /// <summary>NOOP 探测最多等多久(还受控制读超时约束,取两者较短)。</summary>
+    private const int ControlProbeTimeoutMs = 5_000;
+
+    /// <summary>问一句这条控制连接还应不应答(口径见 <see cref="ControlConnectionState" />)。</summary>
+    /// <remarks>
+    /// 这次传输的最终回复要是还欠着(最后收到的是 1xx 预备回复,RFC 959 规定其后必有一条最终回复),先把它收下再发 NOOP。
+    /// 不收的话,FluentFTP 发 NOOP 之前的残留数据检查读到它,会把控制连接关掉重连 —— 好端端的连接被当成断了
+    /// (FluentFTP 55.1 自己的上传续写被拒掉之后,复位那一次的 <c>426</c> 就欠在这里)。
+    /// </remarks>
+    private static async Task<ControlCheck> ProbeControlConnectionAsync(AsyncFtpClient client, CancellationToken cancellationToken)
+    {
+        if (!client.IsConnected)
+        {
+            return new(ControlConnectionState.Lost, null);
+        }
+        // FluentFTP 发命令前发现断了会就地重连:那样 NOOP 照样成功,答的却是一条新连接。记下连接次数比一比。
+        int connects = client.Status.ConnectCount;
+        int readTimeout = client.Config.ReadTimeout;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(readTimeout > 0 ? Math.Min(readTimeout, ControlProbeTimeoutMs) : ControlProbeTimeoutMs);
+        try
+        {
+            FtpReply? owed = null;
+            if (client.LastReply.Code is [ '1', _, _ ])
+            {
+                FtpReply final = await client.GetReply(deadline.Token).WaitAsync(deadline.Token).ConfigureAwait(false);
+                // GetReply 可能返回空 Code 而不抛超时;又一条预备回复、或 421(服务器正在关控制连接)同样当断了。
+                if (final.Code is not [ '2' or '4' or '5', _, _ ] || final.Code == "421")
+                {
+                    return new(ControlConnectionState.Lost, null);
+                }
+                owed = final;
+            }
+            FtpReply reply = await client.Execute("NOOP", deadline.Token).WaitAsync(deadline.Token).ConfigureAwait(false);
+            if (client.Status.ConnectCount != connects || !client.IsConnected)
+            {
+                return new(ControlConnectionState.Lost, null);
+            }
+            ControlConnectionState state = reply.Code switch
+            {
+                [ '2', _, _ ] => ControlConnectionState.InSync,
+                // 421 = 服务器正在关掉控制连接。
+                { Length: 3 } code when code != "421" => ControlConnectionState.Answering,
+                _ => ControlConnectionState.Lost,
+            };
+            return new(state, state == ControlConnectionState.Lost ? null : owed);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return new(ControlConnectionState.Lost, null);
+        }
+    }
+
+    /// <summary>控制连接也断了:报成会话掉线(已经是连接类错误的原样用,不是的包一层)。</summary>
+    private static VelaFtpConnectionException AsConnectionLost(Exception failure, string operation) =>
+        FluentFtpInterop.Translate(failure, operation) is VelaFtpConnectionException lost
+            ? lost
+            : new VelaFtpConnectionException($"FTP connection was lost during {operation}; reconnect and try again.", failure);
+
+    /// <summary>
+    /// FluentFTP 读到非成功的最终回复时只回 <see cref="FtpStatus.Failed" />、不抛:<c>426</c>(连接关闭、传输中止)
+    /// 交给 <see cref="ClassifyTransferFailureAsync" /> 当数据连接中断认;其余(拒写、磁盘满)照旧是一次操作失败。
+    /// </summary>
+    private static Exception UploadNotConfirmed(AsyncFtpClient client, string fileName) =>
+        client.LastReply is { Code: "426" } reply
+            ? new FtpCommandException(reply)
+            : new VelaFtpOperationException($"FTP upload of {fileName} failed.");
+
+    /// <summary>跑一次传输尝试,期间这条连接上的上传只许打开一次(理由见 <see cref="UploadOpenGuard" />)。</summary>
+    private static async Task RunWithUploadGuardAsync(AsyncFtpClient client, Func<AsyncFtpClient, Task> body)
+    {
+        if (client is not IGuardedUploadClient guarded)
+        {
+            await body(client).ConfigureAwait(false);
+            return;
+        }
+        guarded.UploadGuard = new UploadOpenGuard();
+        try
+        {
+            await body(client).ConfigureAwait(false);
+        }
+        finally
+        {
+            guarded.UploadGuard = null;
         }
     }
 
@@ -1526,6 +1701,13 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                 {
                     // 租约仍独占;GetReply 可能返回空 Code 而不抛超时,必须显式检查。
                     FtpReply reply = await lease.Client.GetReply(deadline.Token).WaitAsync(deadline.Token).ConfigureAwait(false);
+                    if (reply.Code == "426")
+                    {
+                        // 服务器中止了这次传输:控制连接刚刚应答过,会话没掉线 —— 可以重试的数据连接中断
+                        // (连接照样不复用:verified 仍为 false)。
+                        throw new VelaFtpTransferInterruptedException(
+                            Strings.Format("FtpSvc_TransferInterrupted", GetRemoteFileName(_remotePath)), new FtpCommandException(reply));
+                    }
                     if (reply.Code is not ("226" or "250"))
                     {
                         throw new VelaFtpOperationException(Strings.Format("FtpSvc_ReadCompletionFailed", reply.Code, reply.Message));
@@ -1594,39 +1776,116 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         DownloadBudget? DownloadBudget { get; set; }
     }
 
+    /// <summary>
+    /// 一次上传尝试只放行一次「打开写入」(STOR / APPE),第二次在发出任何命令之前就拒掉。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 第二次打开只可能来自 FluentFTP 55.1 自己的「续写」:写到一半遇到复位(ConnectionReset),<c>ResumeUploadAsync</c>
+    /// 不带 REST 重发一次 STOR —— 远端那半截被截成 0 —— 再去设 <c>FtpDataStream.Position</c>,这一步恒抛
+    /// <see cref="InvalidOperationException" />,续写必败;新开的那条数据连接却没人关,服务器停在那次 STOR 上等数据,
+    /// 控制连接从此收发错位(下一条命令要等满读超时)。即使哪天它不再抛,按客户端写出的字节数接着追加也会让远端文件错位:
+    /// 写进套接字缓冲的字节服务器未必收到。
+    /// </para>
+    /// <para>
+    /// 拒掉之后,远端那半截保持服务器实际收下的样子,控制连接保持同步,失败原样交给
+    /// <see cref="ClassifyTransferFailureAsync" />;要不要续、从哪续,由上层按远端此刻的长度核实(见 <see cref="ResolveUploadResumeAsync" />)。
+    /// </para>
+    /// </remarks>
+    private sealed class UploadOpenGuard
+    {
+        private int _opens;
+
+        public void Opening()
+        {
+            if (Interlocked.Increment(ref _opens) > 1)
+            {
+                throw new UploadResumeSuppressedException();
+            }
+        }
+    }
+
+    /// <summary>FluentFTP 的就地续写被 <see cref="UploadOpenGuard" /> 拒掉;只出现在库包出来的异常链里。</summary>
+    private sealed class UploadResumeSuppressedException()
+        : Exception("FluentFTP's in-place upload resume is disabled; the remote length is verified before any resume.");
+
+    private interface IGuardedUploadClient
+    {
+        UploadOpenGuard? UploadGuard { get; set; }
+    }
+
     private sealed class BoundedFtpClient(string host, string user, string password, int port, FtpConfig config)
-        : AsyncFtpClient(host, user, password, port, config), IBoundedDownloadClient
+        : AsyncFtpClient(host, user, password, port, config), IBoundedDownloadClient, IGuardedUploadClient
     {
         public DownloadBudget? DownloadBudget { get; set; }
+        public UploadOpenGuard? UploadGuard { get; set; }
         public override Task<Stream> OpenReadInternal(string path, FtpDataType type, long fileLen, long restart,
             bool ignoreStaleData, CancellationToken token = default)
         {
             DownloadBudget?.Opening();
             return base.OpenReadInternal(path, type, fileLen, restart, ignoreStaleData, token);
+        }
+        public override Task<Stream> OpenWriteInternal(string path, FtpDataType type, long fileLen, bool ignoreStaleData,
+            CancellationToken token = default)
+        {
+            UploadGuard?.Opening();
+            return base.OpenWriteInternal(path, type, fileLen, ignoreStaleData, token);
+        }
+        public override Task<Stream> OpenAppendInternal(string path, FtpDataType type, long fileLen, bool ignoreStaleData,
+            CancellationToken token = default)
+        {
+            UploadGuard?.Opening();
+            return base.OpenAppendInternal(path, type, fileLen, ignoreStaleData, token);
         }
     }
 
     private sealed class BoundedHttpFtpClient(FtpProxyProfile profile)
-        : AsyncFtpClientHttp11Proxy(profile), IBoundedDownloadClient
+        : AsyncFtpClientHttp11Proxy(profile), IBoundedDownloadClient, IGuardedUploadClient
     {
         public DownloadBudget? DownloadBudget { get; set; }
+        public UploadOpenGuard? UploadGuard { get; set; }
         public override Task<Stream> OpenReadInternal(string path, FtpDataType type, long fileLen, long restart,
             bool ignoreStaleData, CancellationToken token = default)
         {
             DownloadBudget?.Opening();
             return base.OpenReadInternal(path, type, fileLen, restart, ignoreStaleData, token);
         }
+        public override Task<Stream> OpenWriteInternal(string path, FtpDataType type, long fileLen, bool ignoreStaleData,
+            CancellationToken token = default)
+        {
+            UploadGuard?.Opening();
+            return base.OpenWriteInternal(path, type, fileLen, ignoreStaleData, token);
+        }
+        public override Task<Stream> OpenAppendInternal(string path, FtpDataType type, long fileLen, bool ignoreStaleData,
+            CancellationToken token = default)
+        {
+            UploadGuard?.Opening();
+            return base.OpenAppendInternal(path, type, fileLen, ignoreStaleData, token);
+        }
     }
 
     private sealed class BoundedSocksFtpClient(FtpProxyProfile profile)
-        : AsyncFtpClientSocks5Proxy(profile), IBoundedDownloadClient
+        : AsyncFtpClientSocks5Proxy(profile), IBoundedDownloadClient, IGuardedUploadClient
     {
         public DownloadBudget? DownloadBudget { get; set; }
+        public UploadOpenGuard? UploadGuard { get; set; }
         public override Task<Stream> OpenReadInternal(string path, FtpDataType type, long fileLen, long restart,
             bool ignoreStaleData, CancellationToken token = default)
         {
             DownloadBudget?.Opening();
             return base.OpenReadInternal(path, type, fileLen, restart, ignoreStaleData, token);
+        }
+        public override Task<Stream> OpenWriteInternal(string path, FtpDataType type, long fileLen, bool ignoreStaleData,
+            CancellationToken token = default)
+        {
+            UploadGuard?.Opening();
+            return base.OpenWriteInternal(path, type, fileLen, ignoreStaleData, token);
+        }
+        public override Task<Stream> OpenAppendInternal(string path, FtpDataType type, long fileLen, bool ignoreStaleData,
+            CancellationToken token = default)
+        {
+            UploadGuard?.Opening();
+            return base.OpenAppendInternal(path, type, fileLen, ignoreStaleData, token);
         }
     }
 

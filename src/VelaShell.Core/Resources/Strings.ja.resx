@@ -1513,6 +1513,9 @@
   <data name="FtpSvc_ReadCompletionTimeout" xml:space="preserve">
     <value>FTP サーバーによる転送完了の確認を待機中にタイムアウトしました。</value>
   </data>
+  <data name="FtpSvc_TransferInterrupted" xml:space="preserve">
+    <value>{0} の転送中に FTP データ接続が途中で切断されました。制御接続は引き続き使用できます。</value>
+  </data>
   <data name="SftpSvc_RelayLengthMismatch" xml:space="preserve">
     <value>転送が不完全です：{0}。想定は {1} バイト、実際の読み取りは {2} バイトです。転送元が変更されたか、接続が途中で終了した可能性があります。</value>
   </data>

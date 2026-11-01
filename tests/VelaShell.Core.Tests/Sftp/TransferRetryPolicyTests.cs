@@ -21,7 +21,10 @@ public sealed class TransferRetryPolicyTests
         [new VelaSshOperationTimeoutException("超时")],
         [new VelaSftpTransferInterruptedException("中断", 4096)],
         [new VelaSshClientException("通道被对端关闭")],
-        [new VelaFtpConnectionException("数据连接掉了")],
+        [new VelaFtpConnectionException("控制连接掉了")],
+        // 数据连接传到一半断了、控制连接还应答:会话没掉线,这一个文件值得再试 —— 哪怕里面挂着短读的长度诊断。
+        [new VelaFtpTransferInterruptedException("数据连接中途断开")],
+        [new VelaFtpTransferInterruptedException("数据连接中途断开", new RemoteTransferLengthException("/source", 1024, 7))],
         [new PluginProtocolConnectionException("端点不可达")],
         [new TimeoutException()],
         [new SocketException((int)SocketError.ConnectionReset)],
@@ -43,6 +46,8 @@ public sealed class TransferRetryPolicyTests
         [new VelaFtpPermissionDeniedException("550")],
         [new VelaFtpPathNotFoundException("550 not found")],
         [new VelaFtpAuthenticationException("530")],
+        // 服务器的明确答复(拒写、磁盘满)照旧是永久失败(FTP 服务只在控制连接确认没有这类答复时才报数据连接中断)。
+        [new VelaFtpOperationException("452 Insufficient storage space")],
         // 源的实际字节数与元数据对不上:重试几次还是同一份数据,别再拿几次机会去撞同一堵墙。
         [new RemoteTransferLengthException("/source", 1024, 0)],
         [new PluginProtocolAuthenticationException("凭据无效")],
