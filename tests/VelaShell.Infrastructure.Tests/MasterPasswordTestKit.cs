@@ -50,6 +50,9 @@ internal static class MasterPasswordTestKit
         /// <summary>大于等于 0 时:再成功写这么多次之后,之后的写入一律拒绝(模拟写到一半断掉)。</summary>
         public int FailSavesAfter { get; set; } = -1;
 
+        /// <summary>大于等于 0 时:再成功写这么多次之后,只拒绝下一次写入(之后照常)—— 模拟写到一半失败、回滚写得进去。</summary>
+        public int FailOneSaveAfter { get; set; } = -1;
+
         public int SaveCount { get; private set; }
 
         public string Name => "Memory Keychain";
@@ -68,6 +71,15 @@ internal static class MasterPasswordTestKit
             if (Unavailable is { } error)
             {
                 return MasterKeyStoreResult.Unavailable(error);
+            }
+            if (FailOneSaveAfter == 0)
+            {
+                FailOneSaveAfter = -1;
+                return MasterKeyStoreResult.Unavailable("refused once");
+            }
+            if (FailOneSaveAfter > 0)
+            {
+                FailOneSaveAfter--;
             }
             if (FailSavesAfter == 0)
             {

@@ -48,6 +48,9 @@ internal sealed partial class MasterKeyVault
     private DateTimeOffset _notBefore;
     private bool _unlockedWithRecoveryCode;
 
+    /// <summary>上一次解锁时每个解开的位置装的是哪一把(编号,不含密钥材料):用恢复码解开后设新主密码时要知道本地密钥文件里是哪一把。</summary>
+    private readonly Dictionary<KeySlot, string> _openedSlotIds = [];
+
     /// <summary>解析一次本机加密密钥并构造(可能阻塞:密钥链解锁要等用户)。</summary>
     public MasterKeyVault(MasterKeyResolver resolver, TimeProvider? time = null)
     {
@@ -173,7 +176,12 @@ internal sealed partial class MasterKeyVault
             byte[] kek = MasterPasswordKdf.DerivePasswordKey(passwordUtf8, header);
             try
             {
-                return Open(sealedKeys, WrapKind.Password, header.PasswordWrapId, kek, passwordKek: kek);
+                MasterPasswordUnlockResult result = Open(sealedKeys, WrapKind.Password, header.PasswordWrapId, kek, passwordKek: kek);
+                if (result.Status == MasterPasswordUnlockStatus.Unlocked)
+                {
+                    TryRehash(passwordUtf8, header, kek);
+                }
+                return result;
             }
             finally
             {
@@ -324,6 +332,11 @@ internal sealed partial class MasterKeyVault
             _notBefore = default;
             _ring = new(keys, _status);
             _unlockedWithRecoveryCode = passwordKek is null;
+            _openedSlotIds.Clear();
+            foreach (OpenedKey o in opened)
+            {
+                _openedSlotIds[o.Wrapped.Slot] = o.Id;
+            }
         }
         Trace.WriteLine($"[Secrets] Unlocked {ids.Count} key(s) with the {(passwordKek is null ? "recovery code" : "master password")}");
         if (passwordKek is not null)

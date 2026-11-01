@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using VelaShell.Core.Data;
+using VelaShell.Core.Models;
 
 namespace VelaShell.Infrastructure.Persistence;
 
@@ -27,11 +28,15 @@ public sealed partial class MasterPasswordService : IMasterPasswordService
     /// <summary>构造。</summary>
     /// <param name="protector">应用的机密保护器(密钥与主密码那一层在它里面)。</param>
     /// <param name="prompt">取界面层的解锁框;null 或取不到时交互式请求一律为 false。</param>
-    public MasterPasswordService(AesSecretProtector protector, Func<IMasterPasswordPrompt?>? prompt = null)
+    /// <param name="audit">审计日志(开启 / 关闭 / 修改 / 忘记各记一条,只记动作);没有时不记。</param>
+    public MasterPasswordService(AesSecretProtector protector, Func<IMasterPasswordPrompt?>? prompt = null, IAuditLogService? audit = null)
     {
         _protector = protector ?? throw new ArgumentNullException(nameof(protector));
         _prompt = prompt ?? (static () => null);
+        _audit = audit;
     }
+
+    private readonly IAuditLogService? _audit;
 
     private MasterKeyVault Vault => _protector.Vault;
 
@@ -40,6 +45,9 @@ public sealed partial class MasterPasswordService : IMasterPasswordService
 
     /// <inheritdoc />
     public event EventHandler? Locked;
+
+    /// <inheritdoc />
+    public event EventHandler? StateChanged;
 
     /// <inheritdoc />
     public bool IsEnabled => Vault.IsProtected;
@@ -166,5 +174,93 @@ public sealed partial class MasterPasswordService : IMasterPasswordService
             Trace.WriteLine($"[Secrets] A lock listener failed: {ex.Message}");
         }
         return true;
+    }
+
+    /// <inheritdoc />
+    public Task<MasterPasswordChangeResult> EnableAsync(byte[] passwordUtf8, bool createRecoveryCode, CancellationToken cancellationToken = default) =>
+        RunChange(() => Vault.Enable(passwordUtf8, createRecoveryCode), AuditActions.MasterPasswordEnabled,
+            _ => createRecoveryCode ? "with recovery code" : "without recovery code", passwordUtf8).WaitAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task<MasterPasswordChangeResult> DisableAsync(byte[] passwordUtf8, CancellationToken cancellationToken = default) =>
+        RunChange(() => Vault.Disable(passwordUtf8), AuditActions.MasterPasswordDisabled, static _ => string.Empty, passwordUtf8)
+            .WaitAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task<MasterPasswordChangeResult> ChangeAsync(byte[] currentUtf8, byte[] nextUtf8, CancellationToken cancellationToken = default) =>
+        RunChange(() => Vault.Change(currentUtf8, nextUtf8), AuditActions.MasterPasswordChanged, static _ => string.Empty, currentUtf8, nextUtf8)
+            .WaitAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task<MasterPasswordChangeResult> SetPasswordAfterRecoveryAsync(byte[] nextUtf8, CancellationToken cancellationToken = default) =>
+        RunChange(() => Vault.SetPasswordAfterRecovery(nextUtf8), AuditActions.MasterPasswordChanged,
+            static _ => "after recovery code", nextUtf8).WaitAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task<MasterPasswordChangeResult> ForgetAsync(CancellationToken cancellationToken = default) =>
+        RunChange(Vault.Forget, AuditActions.MasterPasswordReset, static r => r.Detail ?? string.Empty).WaitAsync(cancellationToken);
+
+    /// <summary>
+    /// 在线程池上做一次开启 / 关闭 / 修改 / 忘记(派生 KEK、写存储都慢),用完清零交进来的口令字节;
+    /// 做完了记一条 <c>settings</c> 类审计(只记动作)、广播状态变了。等待被取消也照样做完 —— 写存储一旦开始就不能半途撂下。
+    /// </summary>
+    private Task<MasterPasswordChangeResult> RunChange(Func<MasterPasswordChangeResult> operation, string auditAction,
+        Func<MasterPasswordChangeResult, string> auditDetail, params byte[][] secrets) =>
+        Task.Run(async () =>
+        {
+            MasterPasswordChangeResult result;
+            try
+            {
+                result = operation();
+            }
+            finally
+            {
+                foreach (byte[] secret in secrets)
+                {
+                    CryptographicOperations.ZeroMemory(secret);
+                }
+            }
+            if (result.Status is MasterPasswordChangeStatus.Done or MasterPasswordChangeStatus.StorageFailedPartially)
+            {
+                await WriteAuditAsync(auditAction, result.Status == MasterPasswordChangeStatus.Done
+                    ? auditDetail(result)
+                    : $"partially; {result.Detail}").ConfigureAwait(false);
+                try
+                {
+                    StateChanged?.Invoke(this, EventArgs.Empty);
+                }
+                catch (Exception ex)
+                {
+                    Trace.WriteLine($"[Secrets] A master password state listener failed: {ex.Message}");
+                }
+                if (result.Status == MasterPasswordChangeStatus.Done && !Vault.IsLocked)
+                {
+                    // 修改 / 关闭 / 忘记之后内存里的密钥串都是现成解着的:让等着解锁的那几处(插件信任库、挂起的重连)接着走。
+                    RaiseUnlocked();
+                }
+            }
+            return result;
+        }, CancellationToken.None);
+
+    private async Task WriteAuditAsync(string action, string detail)
+    {
+        if (_audit is null)
+        {
+            return;
+        }
+        try
+        {
+            await _audit.WriteAsync(new AuditEntry
+            {
+                Category = AuditCategories.Settings,
+                Action = action,
+                Detail = detail
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // 审计写不进去不影响主密码本身(那已经落盘了)。
+            Trace.WriteLine($"[Secrets] Could not write the master password audit entry: {ex.Message}");
+        }
     }
 }

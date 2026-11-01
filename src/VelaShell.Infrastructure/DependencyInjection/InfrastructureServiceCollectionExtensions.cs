@@ -69,7 +69,8 @@ public static class InfrastructureServiceCollectionExtensions
         // IMasterPasswordPrompt,这里按需去取:headless 宿主取不到,交互式请求也只能是「没解开」。
         services.AddSingleton(sp => new MasterPasswordService(
             sp.GetRequiredService<AesSecretProtector>(),
-            () => sp.GetService<IMasterPasswordPrompt>()));
+            () => sp.GetService<IMasterPasswordPrompt>(),
+            sp.GetService<IAuditLogService>()));
         services.AddSingleton<IMasterPasswordService>(sp => sp.GetRequiredService<MasterPasswordService>());
         services.AddSingleton<IMasterPasswordGate>(sp => sp.GetRequiredService<MasterPasswordService>());
         // 连接配置、设置、共享凭据三处仓储外面各套一层审计(Audit/):配置的增删改、设置变了哪几类、

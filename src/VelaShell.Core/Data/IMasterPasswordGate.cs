@@ -112,7 +112,80 @@ public interface IMasterPasswordService : IMasterPasswordGate
 
     /// <summary>立即锁定(清零内存里的密钥)。主密码没开或本来就锁着时返回 false。</summary>
     bool LockNow();
+
+    /// <summary>
+    /// 开启主密码:用它派生的密钥包裹本机加密密钥(逐条写新、读回核对),任一步失败整体回到未开启。已存的密文一字不改。
+    /// </summary>
+    /// <param name="passwordUtf8">新主密码的 UTF-8 字节;交出所有权,用完由服务清零。</param>
+    /// <param name="createRecoveryCode">同时生成一份恢复码(它也能解开,结果里交回给用户抄下)。</param>
+    /// <param name="cancellationToken">取消令牌(只是不再等,写存储一旦开始就做完)。</param>
+    Task<MasterPasswordChangeResult> EnableAsync(byte[] passwordUtf8, bool createRecoveryCode, CancellationToken cancellationToken = default);
+
+    /// <summary>关闭主密码:核对当前主密码,把本机加密密钥写回第一步的形态,删掉 KDF 头。</summary>
+    /// <param name="passwordUtf8">当前主密码;交出所有权。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<MasterPasswordChangeResult> DisableAsync(byte[] passwordUtf8, CancellationToken cancellationToken = default);
+
+    /// <summary>修改主密码:旧的核对过才换;先加新的一份包裹、换头、再删旧的一份,中途断在哪儿都有一个口令解得开。</summary>
+    /// <param name="currentUtf8">当前主密码;交出所有权。</param>
+    /// <param name="nextUtf8">新主密码;交出所有权。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<MasterPasswordChangeResult> ChangeAsync(byte[] currentUtf8, byte[] nextUtf8, CancellationToken cancellationToken = default);
+
+    /// <summary>用恢复码解开之后设一个新的主密码(恢复码仍然有效)。只在这一次解锁是用恢复码时可用。</summary>
+    /// <param name="nextUtf8">新主密码;交出所有权。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<MasterPasswordChangeResult> SetPasswordAfterRecoveryAsync(byte[] nextUtf8, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 忘记主密码:头、清单、密钥文件改名保留(<c>.forgotten-时间戳</c>,不删;密钥链条目原样不动),另起新的本机加密密钥,
+    /// 主密码随之关掉。已存的机密在这台设备上从此解不开(没有后门),连接时重新输入。
+    /// </summary>
+    /// <param name="cancellationToken">取消令牌。</param>
+    Task<MasterPasswordChangeResult> ForgetAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>开启、关闭、修改、忘记之后触发(界面据此刷新状态;在线程池上)。</summary>
+    event EventHandler? StateChanged;
 }
+
+/// <summary>开启 / 关闭 / 修改 / 忘记主密码的结果分类。</summary>
+public enum MasterPasswordChangeStatus
+{
+    /// <summary>做完了。</summary>
+    Done,
+
+    /// <summary>当前主密码不对。</summary>
+    WrongPassword,
+
+    /// <summary>上一次输错之后的等待还没过。</summary>
+    Throttled,
+
+    /// <summary>主密码没开(关闭、修改时)。</summary>
+    NotEnabled,
+
+    /// <summary>主密码已经开着(开启时)。</summary>
+    AlreadyEnabled,
+
+    /// <summary>这一次不是用恢复码解开的(设新主密码时)。</summary>
+    NotRecovered,
+
+    /// <summary>有密钥这会儿取不到(系统密钥链用不了):不动任何东西,等它恢复再做。</summary>
+    KeysUnavailable,
+
+    /// <summary>写存储失败,已整体回到操作之前的状态。</summary>
+    StorageFailed,
+
+    /// <summary>写存储失败,而且没能完全撤回:主密码现在是开着的,用刚输入的那个主密码解锁(见 <see cref="MasterPasswordChangeResult.Detail" />)。</summary>
+    StorageFailedPartially
+}
+
+/// <summary>开启 / 关闭 / 修改 / 忘记主密码的结果。</summary>
+/// <param name="Status">结果分类。</param>
+/// <param name="RecoveryCode">开启时生成的恢复码(给用户抄下;之后不再能看到)。</param>
+/// <param name="RetryAfter">输错之后要等多久才能再试。</param>
+/// <param name="Detail">给日志与提示的补充(改名保留成的文件、失败的位置),不含任何口令材料。</param>
+public readonly record struct MasterPasswordChangeResult(
+    MasterPasswordChangeStatus Status, string? RecoveryCode = null, TimeSpan RetryAfter = default, string? Detail = null);
 
 /// <summary>闸口的几个小帮手。</summary>
 public static class MasterPasswordGuard

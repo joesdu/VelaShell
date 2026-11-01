@@ -512,12 +512,17 @@ public class GeneralOptions : ObservableOptions
     }
 
     // 隐私与安全
-    /// <summary>是否启用主密码保护本地凭据(可选主密码,尚未接线,界面已撤下 —— 设置审计 R-04)。</summary>
+    /// <summary>主密码保护开没开 —— <b>只是给界面看的镜像</b>(设置审计 R-04),不决定任何事。</summary>
     /// <remarks>
-    /// 主密码保护分两步走(维护者 2026-10-25 决定):第一步把本机加密密钥交给系统密钥链保管,已做
-    /// (macOS 钥匙串 / Secret Service,Windows 上密钥文件本来就以 DPAPI 包裹;见 <c>plan.md</c> 与 <c>MasterKeyResolver</c>);
-    /// 第二步才是这个开关 —— 可选主密码派生密钥、包裹本机密钥、启动解锁,设计见 velashell-docs 的主密码设计文档。
-    /// 在那之前这个字段没有消费者,也不要接到界面上。
+    /// <para>
+    /// 事实来源是本机加密密钥的包裹格式本身(<c>secret.key.mp</c> 与 <c>VSMP1</c> 包裹,见 <c>MasterKeyResolver</c> /
+    /// <c>MasterPasswordService</c>):设置导入、云同步都可能改这个布尔值,改成什么都不能让保护「看起来开了、其实没开」或反过来。
+    /// 设置页开启 / 关闭之后照实际状态回写它。
+    /// </para>
+    /// <para>
+    /// 登记在 <see cref="SettingsCategories.StateFields" />:导出不写、导入保留本机的、审计不算;云同步推送前清掉、拉取时保留本机的
+    /// (主密码只管本机,不跨设备)。
+    /// </para>
     /// </remarks>
     public bool MasterPasswordProtection
     {

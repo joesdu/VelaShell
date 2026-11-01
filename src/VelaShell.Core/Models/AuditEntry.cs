@@ -72,4 +72,16 @@ public static class AuditActions
 
     /// <summary>删了一条共享凭据。</summary>
     public const string CredentialDeleted = "credential-deleted";
+
+    /// <summary>开启了主密码(详情只记有没有恢复码,不记任何口令材料)。</summary>
+    public const string MasterPasswordEnabled = "master-password-enabled";
+
+    /// <summary>关闭了主密码。</summary>
+    public const string MasterPasswordDisabled = "master-password-disabled";
+
+    /// <summary>修改了主密码(含用恢复码解开后设新主密码)。</summary>
+    public const string MasterPasswordChanged = "master-password-changed";
+
+    /// <summary>忘记主密码、另起新密钥(详情是改名保留的文件名)。</summary>
+    public const string MasterPasswordReset = "master-password-reset";
 }

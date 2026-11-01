@@ -807,6 +807,8 @@ public sealed partial class GistSyncService(
         var defaults = new AppSettings();
         settings.General.LaunchAtStartup = defaults.General.LaunchAtStartup;
         settings.General.LastOpenProfileIds = [];
+        // 主密码只管本机(事实来源是包裹格式),这个镜像字段不跨设备。
+        settings.General.MasterPasswordProtection = defaults.General.MasterPasswordProtection;
         settings.Appearance.LastWindowWidth = defaults.Appearance.LastWindowWidth;
         settings.Appearance.LastWindowHeight = defaults.Appearance.LastWindowHeight;
         settings.Appearance.LastWindowMaximized = defaults.Appearance.LastWindowMaximized;
@@ -830,6 +832,7 @@ public sealed partial class GistSyncService(
         PreserveLocalSecrets(incoming, local);
         incoming.General.LaunchAtStartup = local.General.LaunchAtStartup;
         incoming.General.LastOpenProfileIds = local.General.LastOpenProfileIds;
+        incoming.General.MasterPasswordProtection = local.General.MasterPasswordProtection;
         incoming.Appearance.LastWindowWidth = local.Appearance.LastWindowWidth;
         incoming.Appearance.LastWindowHeight = local.Appearance.LastWindowHeight;
         incoming.Appearance.LastWindowMaximized = local.Appearance.LastWindowMaximized;
