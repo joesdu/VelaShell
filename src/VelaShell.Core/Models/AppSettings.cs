@@ -266,6 +266,7 @@ public class AppSettings
         General.MaxRetries = Math.Clamp(General.MaxRetries, 0, 100);
         General.ReconnectIntervalSeconds = Math.Clamp(General.ReconnectIntervalSeconds, 1, 300);
         General.StatusMetricsIntervalSeconds = Math.Clamp(General.StatusMetricsIntervalSeconds, 1, 60);
+        General.MasterPasswordAutoLockMinutes = Math.Clamp(General.MasterPasswordAutoLockMinutes, 0, 1440);
         Transfer.MaxConcurrentTransfers = Math.Clamp(Transfer.MaxConcurrentTransfers, 1, 16);
         Transfer.TransferMaxRetries = Math.Clamp(Transfer.TransferMaxRetries, 0, 10);
         Security.AuditLogRetentionDays = Math.Clamp(
@@ -525,6 +526,26 @@ public class GeneralOptions : ObservableOptions
     /// </para>
     /// </remarks>
     public bool MasterPasswordProtection
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
+    /// <summary>
+    /// 主密码开着时,VelaShell 的窗口这么多分钟没有键盘 / 鼠标操作就自动锁定(清零内存里的本机加密密钥);0 = 不自动锁(默认,
+    /// 维护者 2026-10-31 定)。只看本应用的输入,终端里一直在刷的输出不算操作。主密码没开时不起作用。
+    /// </summary>
+    public int MasterPasswordAutoLockMinutes
+    {
+        get;
+        set => Set(ref field, value);
+    }
+
+    /// <summary>
+    /// 主密码开着时,系统锁屏(Windows 的 Win+L、屏保要求登录)就自动锁定。默认关。只在读得到锁屏状态的平台上生效
+    /// (目前是 Windows;别的平台设置页不显示这一项)。
+    /// </summary>
+    public bool MasterPasswordLockOnSystemLock
     {
         get;
         set => Set(ref field, value);

@@ -53,6 +53,7 @@ public class App : Application
     private readonly SyncDebounceLifecycle _syncDebounce = new();
     private IThemeService? _themeService;
     private TrayIconService? _trayIconService;
+    private VelaShell.Services.MasterPassword.MasterPasswordAutoLock? _autoLock;
     private SingleInstanceLaunchChannel? _launchChannel;
 
     /// <summary>当前应用的 DI 服务容器;在 <see cref="Initialize" /> 完成前为 <c>null</c>。</summary>
@@ -380,6 +381,15 @@ public class App : Application
                 );
             }
 
+            // 主密码的自动锁定(设置 → 常规 → 隐私与安全:空闲 N 分钟、系统锁屏时;默认都关)。检查在线程池上做。
+            if (_serviceProvider?.GetService<IMasterPasswordService>() is { } masterPassword
+                && _serviceProvider.GetService<ISettingsService>() is { } autoLockSettings)
+            {
+                _autoLock = new(masterPassword, () => autoLockSettings.CurrentSnapshot,
+                    VelaShell.Services.MasterPassword.SystemSessionLockProbes.ForCurrentPlatform());
+                _autoLock.Start();
+            }
+
             // 宿主自我登记(~/.velashell/host.json):插件工具链据此找到本机安装、核对版本。
             // 一次文件写入,放后台线程,不占启动路径。
             if (_serviceProvider?.GetService<Infrastructure.Persistence.VelaShellStoragePaths>() is { } storagePaths)
@@ -431,6 +441,7 @@ public class App : Application
                 ExternalLaunchInbox.Detach();
                 _launchChannel?.Dispose();
                 _trayIconService?.Dispose();
+                _autoLock?.Dispose();
                 RemoteEditSessionManager.CleanupAll();
                 CloseTerminalBridgesOnExit(viewModel);
                 DisposeServicesOnExit();
