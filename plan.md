@@ -62,6 +62,7 @@
 | 10-24 | §235 – §248 | 一批欠账与路线图收口:标签条(底部、「+」、纵排溢出)、布局模板、设置导出脱敏与审计补全、传输重试与队列持久化、文件侧五项、会话树过滤与标签页图标、自动下载更新与插件日志、主机 CA 与 OpenSSH 互通、X 服务端收尾、隧道接上库的转发能力、命令块复制与重跑、SSH 诊断五语、协议 / 工作台插件模板、SSH 连接信息面板 |
 | 10-25 | §249 – §269 | 共享密码列表认出 sudo-rs、输入框高度按设计生效;维护者 2026-10-25 一轮拍板之后的一批:SFTP 双栏接线债五项、SSH 库限速分段与 FIPS 补 group18、手册三处安全说法改代码对齐、本机加密密钥交给系统密钥链、SSH 库其余中文诊断结构化、诊断包按项勾选与通用遮盖、发布页只放行本仓库、文件侧六处收尾、AI 上传四项口径、配置审计来源与输出遮盖重写、系统密钥库认证 / 协议轨迹 / agent 端点、SDK 五项契约(velashell-plugin-sdk 本地 dev,未发版)、生态仓库欠账(docs / templates / plugins / sdk 本地 dev,未推送)、布局模板同步与导出、AI 插件安全边界与复审遗留、终端输出规则(高亮 + 自动应答)、AI 供应商换源与凭据、一键放开算法推广到其它入口、会话健康巡检、「+」精确落点 |
 | 10-31 | §298 | 复审 #669 – #698：远程动态 SOCKS 放行名单、FTP 续传重复字节与起点核实、云同步密文与模板标记、「在此处打开终端」注入、共享密码自动回车的范围、输出规则自动应答、插件凭据与日志、ssh_config 导出互通、传输队列容错 |
+| 10-25 补记 · 10-31 ~ 11-01 | §299 – §309 | 10-25 第二轮补记(SDK 2.1.3 接线、文件栏快捷键 / 过滤 / 前进后退、代理密码加密、「另存为连接」等,§299);清欠账一轮:SSH 库拆两个上帝类、远程转发两头各自可以是套接字、ssh_config 照 OpenSSH 分词与 FIPS 预设拿掉群交换、重连从库里重读与非 ASCII 目录名只发 ASCII、外部编辑草稿重传与 INI 遮盖、FTP 中断可重试、插件传输条件撤回、AI 切换提示卡与 MCP SSE 实测、生态仓库与 docs 漂移、主密码第二步(P0 清零) |
 
 ## 📈 阶段脉络
 
@@ -3320,3 +3321,207 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 **验证**：每条修复带回归用例，修复方都把产品改动临时撤掉确认用例变红（少数守卫型用例撤掉前后都绿，已在提交说明里写明）。全部提交合到 dev 后，Windows / .NET SDK 11 RC3 上 `dotnet build VelaShell.slnx -c Debug --nologo -warnaserror` 0 警告 0 错误；`bash scripts/ci/run-tests.sh`（CI 同一过滤，排除 DockerIntegration / CrossPlatform / Interop）10971 通过、0 失败、57 跳过（XServer 9、Core 7、Infrastructure 32、宿主 9，均为环境早退）；`-p:Features=runtime-async=off` 另编一遍通过，没有 CS4007。未在 Linux / macOS 本机跑，未跑 Docker 集成用例（远端搜索 Big5、文件删除等新增的 Docker 用例只编译过）；Unix 专属的权限 / 符号链接用例在 Windows 上记 Inconclusive，留给 CI。
 
 **文档**：手册中英随各提交同步；velashell-docs 分支 `fix/review-669-698`（9 个提交，26 个文件，zh / en 成对）：ssh/spec/07 §4.6 放行名单、plugins/11 会话图片、交互规格（变体凭据与端口、插件日志与消息、§5.2 共享密码 / 命令块 / 自动应答、§4C 布局模板、§9 FTP 续传与队列、§11C 巡检、外部编辑与远端搜索、云同步）、会话导入 §7.7、SDK 参考 §3.7、消息中心、FTP 调研 §3.5、系统密钥链调研、settings-audit、SFTP 差距分析、plugins/02 与 STATUS。没改的三处（FIPS 预设、反斜杠转义、非 UTF-8 名字往返）规格照旧。
+
+## 299. 2026-10-25 维护者第二轮拍板之后的一批(随 #674 合入,2026-10-31 补记)
+
+**起因**:§250 – §269 那一轮之后,维护者对第二轮的待定项逐条按推荐拍板(提交说明里的「第二轮第 N 条」就是那份决策稿的条目号)。实现当天随 PR #674 合入 main,但当时没在这里补节,`feature-plan.md` 也没划掉 —— 有七八行「待 SDK 发版后宿主接」其实早已接上。2026-10-31 清欠账时对着 `git log f82ddba1..ffdff6d2`(36 个提交)逐条补记,并据此删掉 feature-plan 里做完的行。
+
+- **SDK 2.1.3 接线**:五套版本比较口径并成 SDK 的 `SemanticVersion`,删掉宿主的 `UpdateVersion`;minHost / minSdk 装载闸只比数字段、解析不出照旧放行,资讯源的版本定向不再用 `System.Version` 丢预发布后缀(179b0ae7)。清单版本字段按 `SemanticVersion` 收紧:`1.0.0-beta.01`、`1.0.0-a..b` 这类正则能过、排不了序的写法发现期判 Invalid、安装时拒(第 28 条,3be2d051)。插件协议的文件能力补口:链接字段映射进宿主模型,协议兼实现 `IProtocolLastWriteTime` / `IProtocolChecksum` 时设修改时间与取服务器端 SHA-256,没实现如实报不支持(2f638121)。插件往消息中心发通知:进程内与隔离模式都经 `PluginNotificationService` 校验、去重、按插件静音、限频(每插件 60 秒至多 6 条),卸载按 `plugin:<id>:` 前缀删,消息行显示来源插件名(05211378)。登记之前的明确拒绝改抛 `PluginTransferRejectedException`(SourceNotFound / SourceInUse / QuotaExceeded),AI 插件认它、不再按回执丢失重取(ab59d691)。插件下载确认框写明大小(第 27 条后半,8f078d0a)。批准生效与阶段推进放进同一把锁,已批准在排队的任务不再报 Approval(48c4c8d0)。CLI 与商店的版本比较同期改用 `SemanticVersion`(各自仓库);`RpcConnection` 不写半帧随 SDK 2.1.3 生效,宿主不用改代码。
+- **文件栏与 SFTP 双栏**(《SFTP双栏与WinSCP差距分析》A 类剩下的四项与第一梯队):传输浮窗每行一个 ×,只停这一项、这一批其余照传并从队列摘掉,零调用点的 `TransferManager` 整套删掉(A3 / A4,e230d092);远端右键「下载为…」,另存为对话框里的覆盖确认就是冲突决定(A9,32d81c80);系统文件拖进本地栏不再显示可放下(A12,23953e36);F5 刷新 / F2 重命名 / Delete 删除(026e9a62);可收起的当前目录过滤框(30d2ac94);后退 / 前进 `Alt+←` / `Alt+→`,每栏一对历史栈、断线重连不保留(8cf6ff9f);列宽与分栏比例跨重启记忆(d9393cc8);本地栏双击用系统程序打开、右键新建文件(5c073fa5);右键「在此处打开终端」(差距分析 C3 ①,9c974187)。
+- **安全与凭据**:认出「已存的密码解不开」—— 仍是密文原样的口令不再拿去试登录(白白一次失败认证、可能撞 fail2ban),界面上的连接直接弹登录框并按本机加密密钥的解析结果说明原因,不弹框的路报 `CredentialFailure.UnreadableSecret`(第 20 条,0b3c6e6b);代理密码落盘经 `ISecretProtector` 加密,存量明文下次保存换成密文(第 14 条,16dd6b21);临时连接的登录框不给「记住密码」、改给「另存为连接」(第 15 条,fa4db40e);云同步拉到「Webhook 告警开着、本机却没有地址」时在消息中心提示一次(第 17 条,847e8a2b);会话日志与录制遮盖:token / secret 后面跟非机密后缀(`token_type`、`token_endpoint`、`secretName`、`token_count`、`token_uri`)不再误遮(cabc0dca),补前缀令牌 `glpat-`、`sk_live_` / `rk_live_`、`AIza`、`npm_`、`pypi-`(49bb11aa)。
+- **SSH**:「系统密钥库」认证可选配一张用户证书(651daf51);SFTP「流水线已释放」的原因码从 Unsupported 改为 Aborted(f15f0f19);互操作靶机 `kex-gex.sh` 追加 group18(3d431097);CI 的 Linux 作业多编一遍 `runtime-async=off` 专扫 CS4007(b999e550)。
+- **AI 插件**:模型覆盖地址换到别的源时先问、确认后清掉这一行自带的 Key(第 24 条,df26cc1a);协作接入页认出已删的桥接模型、保存不再悄悄改成跟随(第 25 条,5894f40b)。
+- **测试**:映射盘用例只在 `VELASHELL_NET_USE_TESTS=1` 时跑(第 27 条前半,82ff717e)。
+- **仓库内文档**:本机加密密钥交给系统密钥链补进 PRIVACY 与手册(62a4e480),README 数据表改准(04b1d407)。
+
+**这一批没做的**仍在 `feature-plan.md`:主密码第二步、插件机密「解不开」的语义(随主密码第二步一起定)、宿主的条件撤回(SDK 2.1.4 已有契约,见下一轮)。
+
+## 300. 2026-10-31 SSH 库:拆两个上帝类(纯重构,维护者 10-25 批准)
+
+`src/VelaShell.Ssh/AGENTS.md` 4.4 要求单个类型约 800 行就拆成 internal 协作者、不要更多 partial。拆之前 `SshChannel` 1,795 行、`SshConnection` 六个 partial 共 4,133 行(`SshConnection.cs` 自己 2,014 行)。维护者 10-25 定「等这一轮 SSH 改动合入之后单独做」,§251 / §254 / §259 合入后前提已满足。行为不变,公开面不变(`SshChannel` 与六个 partial 的 public 声明前后都是 72 个,新类型一律 internal)。
+
+| 协作者 | 职责 | 行数 |
+| --- | --- | --- |
+| `Channels/ChannelReceiveWindow` | 接收窗口:到达扣减、消费后攒到半窗回补、自适应伸缩、回补泵 | 323 |
+| `Channels/ChannelDataReceiver` | 扣窗口后在通道状态锁里「看状态 + 写」stdout / stderr 管道,交不出去就丢弃并回补;保留丢弃 stderr 的末尾 | 282 |
+| `Channels/StandardInputPump` | 发送窗口、stdin 管道与泵、按包上限切 `CHANNEL_DATA`、冲刷进度 | 242 |
+| `Channels/ChannelEventQueue` | 事件流、退出状态 / 关闭原因缓存、对端通道请求的解析与积压上限 | 185 |
+| `Channels/ChannelRequestLedger` | 本端通道请求与 FIFO 应答账本、signal | 122 |
+| `Session/InboundDispatcher` | 接收循环 + `DispatchAsync` + 各通道报文的处理 + DEBUG / DISCONNECT / UNIMPLEMENTED | 455 |
+| `Session/ChannelTable` | 通道表、号的分配回收、会话窗口总预算、入站处理器、两个方向的开通道 | 675 |
+| `Session/GlobalRequestLedger` | 全局请求的发送 / 应答账本 / 保活探测、对端全局请求 | 152 |
+| `Session/KeepAliveMonitor` | 保活循环(什么时候探、几次没回算死) | 101 |
+| `Session/ConnectionFaults` | 纯函数 `NormalizeFault` / `DisconnectReasonFor` / `DisconnectDescription`(建连与会话期间共用) | 87 |
+
+行数:`SshChannel.cs` 1,795 → 958,`SshConnection.cs` 2,014 → 786,`SshConnection` 整个类型 4,133 → 2,905(其余 partial `.Send` 696、`.Rekey` 639、`.Connect` 429、`.HostKeys` 216、`.Ping` 139,只放宽了可见性、改了调用点)。⚠️ `SshChannel.cs` 没到 800 行:剩下的是状态机、双向 CLOSE、还号、收尾顺序与公开面文档(代码 494 行,xmldoc 266 行),①③⑤ 都挂在它那一把 `_stateLock` 上,再拆就是把状态机本身挪走。
+
+**2026-10-05 审查记下的七处耦合**:①admit 回调(`MayStillSend` / `TryCommitClose` / `OnClose` / 通道账本 `TryRegister` / 全局账本 `Register`)仍以委托交给 `EnqueueAsync` / `PostIf` / `PostRegistered`,由 `.Send.cs` 在 `_enqueueLock` 里与 `TryWriteFrame` 同一时刻执行,没有拆成「先查后发」或变异步;②没有新锁 —— `ChannelTable` 拿的就是连接的 `_stateLock`(⚠️ 必须保持:换成自己的锁就破坏了「故障检查与通道登记原子」),`ChannelDataReceiver` 拿通道的 `_stateLock`;协作者调宿主发送时一律不持锁,`ReleaseId` 原样(先放通道锁再进连接锁);③`FinishClose` 仍在 `SshChannel`,顺序逐步对应;④`RekeyKexTransport` 一行未改,仍调 `SshConnection.DispatchAsync`(转给 `_dispatcher`),各处理路径只投递;⑤`_windowBudgetUsed` 在 `ChannelTable` 归连接锁,`_budgetCharged` / `_idReleased` 留在 `SshChannel` 归通道锁,三步仍是 `TryChargeBudget` / `RefundBudget`;⑥`.Send.cs` 一行没动,发帧点仍传开通道时定下的 `IsInteractive`;⑦`WouldSendNow` + `Admit` 仍在 `Process` 里于泵线程上连续调用。搬走的代码按「只替换接收者前缀」逐行比对原文。约 20 个成员从 private 放宽到 internal(协作者持有宿主引用)。
+
+**验证**:`dotnet build -warnaserror` 0 警告;`runtime-async=off` 编一遍无 CS4007 / CS9217;`VelaShell.Ssh.Tests`(Debug)最终提交后跑 3 遍、通道那一刀后跑 1 遍,每遍 1454 通过 / 61 跳过 / 0 失败(与改动前基线相同,跳过是 Docker 互操作早退 —— **互操作没跑**);Core 的 Ssh / Sftp / Tunnels 907 通过,Infrastructure 的 Ssh 相关 224 通过。
+
+**顺带看到、没改的**(既有行为,不在纯重构范围):`FaultProtocolAsync` 在接收循环与重入的 KEX 分发里最多等 2 秒让 DISCONNECT 冲刷出去 —— 是「只投递、不等发送」的一个例外,但有界且只在终止路径;`SshChannel.DisposeAsync` 的 `_disposed` 先查后设不是原子的,其后全部幂等、无害;`WaitStandardInputSentAsync` 无屏障读 `_stdinPump`,良性。
+
+提交:ee24b0f7(SshChannel)、797ea3b6(SshConnection)、f7544f01(库 AGENTS.md 4.8 改成拆过一轮之后的实况)、e8569704(`SshWindow` 与 `EmptyPipeReader` 各自挪进自己的文件,4.4 一个文件一个类型)。
+
+## 301. 2026-10-31 远程转发两头各自可以是端口或 Unix 套接字;代理的「换 SOCKS5」提示改走 resx
+
+**来由**:`feature-plan.md` 一、欠账 / 终端与 SSH 的两行。§244 的隧道套接字按库实际公开的组合做,远程转发只有「两头 TCP」(`StartAsync`)与「两头套接字」(`StartUnixSocketAsync`),OpenSSH 的 `-R port:/本机/套接字`、`-R /服务器/套接字:host:port` 库没有入口(内部构造早就能表达),宿主于是表单两栏必填、隧道服务报 `TunnelSvc_RemoteSocketNeedsBothEnds`、ssh_config 导入跳过 / 导出写成注释。另:§254 之后 `ProxyTransportDialer` 在 HTTP 代理 + 22 端口时追加的那句英文是整句里唯一没本地化的部分。
+
+**规格先行**:velashell-docs spec/07 §4.4 由「Unix 套接字变体」改写为四种组合,与本地转发 §2.5 对称 —— 服务端那头(谁监听)决定协议上的一切(全局请求、回连通道、认领键、取消请求、被拒的种类),本机那头只决定回连来了怎么连目标;两种都先连好再确认;`Source` 只看服务端那头;本机套接字路径起转发时就查、服务端路径只查非空、远程动态只在端口上监听。spec/09 §7.3、getting-started 同步。
+
+**库**(31dbb6df):新增 `RemotePortForwardOptions.ListenSocketPath` 与 `RemotePortForwarder.StartToUnixSocketAsync`;`StartAsync` 照旧连本机 TCP(配 `ListenSocketPath` 即服务器套接字 → 本机 TCP);〔决策〕`StartUnixSocketAsync` 删掉 —— 与新入口 + `ListenSocketPath` 重复,库 AGENTS 4.3 / 4.7「同一个功能只留一个入口」(⚠️ 公开面变化,PR 描述要列出新增 / 删除的成员)。三个起法共用 `StartListeningAsync`,被拒的消息一字不变,套接字上的监听不再读应答里的端口。本机套接字路径太长起转发时就报 `SshForwardException`(`ForwardSetupFailed`,种类 `SocketPathTooLong`)、什么都不发 —— 曾经要等回连来了才失败,每条都被拒却不报 Error;`StartDynamicAsync` 收到设了 `ListenSocketPath` 的参数抛 `ArgumentException`(ssh 不给目标的 `-R` 只有端口一种写法)。`SshConfigFile.StartForwardsAsync` 的 `RemoteForward` 两头各自照写法起,只剩在套接字上监听的远程动态转发照「没起来」处理。
+
+**宿主**(c850c53b):隧道服务不再拦只给一头路径的远程转发;表单与本地转发一个口径(填了路径的那头才用套接字、置灰对应栏,两栏空着就是端口),标签补「留空则用……」;ssh_config 导入两头各自落到路径字段或主机与端口,在套接字上监听的远程动态转发仍跳过(说明换成 `SshCfgImport_NoteRemoteDynamicSocket`),导出两头各自写路径或 `主机:端口`。删 `TunnelSvc_RemoteSocketNeedsBothEnds`,改四个键的文案,五份 resx 齐;手册中英同一提交改准。
+
+**代理提示**(4469f61f):新键 `Msg_ProxyHttpSshPortHint`,追加条件不变(HTTP 代理、目标端口 22 —— 都是宿主自己手里的事实,不解析库的句子);库没加成员,库消息里 403 / 405 / 501 的「只放行 80/443」仍只是给非宿主调用方的默认文本。FTP 的同类写死英文(`FtpFileService.WithProxyContext`)一并改成 `Msg_ProxyHttpFtpHint`。
+
+**验证**:库新增 6 条用例(两种混搭端到端、被拒按服务端那头报种类、本机套接字连不上回 connect failed 并报路径、路径太长什么都不发、参数不成立当场抛)+ ssh_config 一条,原有四条套接字用例改用新入口;临时去掉路径长度检查,对应用例变红。`-warnaserror` 0 警告,runtime-async=off 无 CS4007;Debug:`VelaShell.Ssh.Tests` 1461 / 61 跳过(全是 Interop)、Core 1572 / 56 跳过、Infrastructure 1254 / 32 跳过、Presentation 106、宿主 3329 / 22 跳过,0 失败。⚠️ 两种混搭只对测试服务器替身跑过,没对真 OpenSSH 的 `-R port:/sock` 与 `-R /sock:host:port` 实测(Docker 没开)。
+
+**文档**:velashell-docs spec/07 §4.4(及 §一 / §4.1 / §4.3 / §4.5 / §八)、spec/09 §7.3、getting-started、host/交互与界面规格 §10、host/隧道功能规划、host/architecture、host/会话导入(zh / en;d1ffaca、c703217)。
+
+**顺带看到、没改的**:`RemotePortForwarder.cs` 929 → 970 行,本来就超过 4.4 的 800 行(不在两个上帝类里,另开纯重构);`SshConfigFile.Forwarding.cs` 的 `Unsupported(...)` 用 `new(...)` 写法,`StructuredFailureCoverageTests` 的源码扫描看不到它,抛出的 `SshForwardException` 也没带 `FailureKind`(宿主不走这条路)。
+
+## 302. 2026-10-31 SSH 库:ssh_config 分词照 OpenSSH 的读法(引号与反斜杠);FIPS 预设拿掉群交换
+
+**来由**:§298 复审没改、记进 `feature-plan.md`「一、欠账」的两项。维护者 2026-10-31 定:反斜杠按 OpenSSH 口径;FIPS 预设按推荐拿掉群交换,并确认 §251 自己定的两处(group18 留在默认清单、排在 group16 之后 group14 之前;`aes192-ctr` 留在 FIPS 加密清单)。
+
+**ssh_config 的反斜杠**(1ada877b):宿主导出把 `\\.\pipe\x`、`\\server\share\…` 原样写出,库的解析器只认双引号、只在整个值被括住时去引号,读回不变;Win32-OpenSSH 9.5 的 `ssh -G` 却读成 `\.\pipe\x`。
+- 规格先行:velashell-docs spec/09 §7.4。依据是 ssh_config(5) 的两句公开说明加对 `OpenSSH_for_Windows_9.5p2` 的 `ssh -G -F` 黑盒观察(逐个写法一份临时配置),不碰任何 SSH 实现的源码。规则:两种引号同一套、可夹在词中间;转义只有 `\\` `\"` `\'`(引号外再加 `\` + 空格),别的反斜杠原样(`\t` 不是制表符);落在词开头的 `#` 才是注释;行尾 `\` 不续行;关键字之后至多一个 `=`;`ProxyCommand` / `RemoteCommand` / `LocalCommand` / `KnownHostsCommand` 取到行尾的原文;9.5 的 `ProxyJump` 不认引号与转义、只取第一个词。
+- 库:新增 internal `SshConfigSyntax`(`Host` / `Match` / `Include` / 每个值共用),去掉三份各自的切法。〔决策〕引号没配对只丢那一行(OpenSSH 拒绝整份),`Host` / `Match` 行没配对开一个配不上任何主机的块,免得下面的设置漏进 `Host *`。`SshConfigBlock.Settings` 存原文,`First` / `All` 交出解开的值;多参数的键按词取(`UserKnownHostsFile "C:\a b\kh"` 曾只剩 `C:\a`,`SetEnv A="x y"` 曾被切断)。公开面:新增 `SshConfigFile.TryFormatArgument`(值写成本库与 ssh 都读回原值的形式,含换行或 NUL 交回 false);`SshHostConfig.GetForwards(onInvalid)`;`SshConfigForward.Parse(kind, string)` 改 internal。
+- 宿主:导出全部经 `TryFormatArgument`(管道 → `\\\\.\pipe\x`、UNC → `\\\\server\share`,普通 Windows 路径原样,带空白或 `#` 加引号,引号前加 `\`;带换行的值改写成说明注释 —— 曾经带换行的用户名能写出一行 `ProxyCommand`);别名里的 `'` 与 `\` 换成 `-`(`Host it's` 曾让 ssh 整份配置读不了)。导入改用 `GetForwards(onInvalid)`;单个反斜杠开头的路径进预览说明(`SshCfgImport_NoteSingleBackslash`)。〔决策〕与 ssh 读得一样,不替用户修回两个反斜杠 —— 修了就是「VelaShell 能用、ssh 不能用」那种看不出来的错。兼容:普通 Windows 路径读法不变;单个 `\\` 开头的 UNC / 管道与 OpenSSH 一样被读坏,包括此前 VelaShell 导出的管道,重新导出即可。手册中英同步。
+
+**FIPS 预设**(12af0bd5):`FipsApprovedOnly` 的密钥交换去掉 `diffie-hellman-group-exchange-sha256` —— 群是服务端现给的素数,库只核位数、`g` 的范围与素性,认不出是不是命名的群。现在是两种 nistp 混合、`ecdh-sha2-nistp256/384/521`、group16、group18、group14。代价:只给群交换的服务端用这份清单当场协商失败。默认清单不变。用例:与 RHEL 策略比对改为「只差群交换与 aes192-ctr」,新增默认清单顺序、只给群交换的服务端协商失败两条;临时加回群交换,三条红。宿主设置页、resx、手册里没有提到 FIPS 预设,不用改。
+
+**验证**:`-warnaserror` 0 警告;Debug:`VelaShell.Ssh.Tests`(排除 Docker / CrossPlatform / Interop)1538 通过(`远程动态转发_连不上按原因回码` 全量跑偶发 1 次失败、单跑 3/3 过,固定端口 34582 被并发测试抢的可能大,与本次无关);Config 命名空间 176 通过(含 Interop 分类、真调本机 `ssh -G` 的往返:19 个值 × `IdentityFile` / `IdentityAgent`);临时让分词不认反斜杠,34 条红;Infrastructure 的 SshConfig / Import 81 通过 / 3 跳过;本地化两组 7 通过;`runtime-async=off` 另编无 CS4007。导出结果另交本机 `ssh -G` 读回(`o'brien`、`say "hi"`、管道、带空格的 UNC、末尾带 `\` 的证书路径、带空格的套接字转发),全部原值。Docker 没开,ssh-shells / ssh-pq 互操作的 8 条 FIPS 用例没跑。
+
+**文档**:velashell-docs `ssh/spec/09-dialing` §7 / §7.1 / §7.3 / §7.4、`ssh/spec/00-overview` §6.1 / §6.6、`ssh/spec/03-key-exchange` §3.5、`host/会话导入` §3.4 / §7.7、`ssh/getting-started` 第九节、`ssh/design/architecture` §8(zh / en;c018b54、02be1d2)。
+
+**同批核对导出时查出的**(1956d9c5、c1f97f4b):Windows 本机套接字转发导出成 `LocalForward C:/x.sock …` 时,Win32-OpenSSH 报 `Bad forwarding specification`、**整份配置都不读**(被 Include 进 `~/.ssh/config` 之后连哪台主机都起不来)。黑盒试过加引号、`/C:/x.sock`、`//?/C:/…`、反斜杠形式都不行(冒号被当成 `主机:端口` 的分隔),**把整个路径放进方括号** `[C:/x.sock]` 才读成原路径(路径里有 `:` 的 Unix 套接字 `[/run/a:b.sock]` 同理;方括号里不能再有 `]`;`[C:/x.sock]:80` 按 TCP 的 `[主机]:端口` 读)。导出(`SshConfigExporter.SocketSide`)把本机那头的 Windows 盘符路径先换成 `/`、含 `:` 或 `\` 的路径整个放进方括号,写不出来的(里面还有 `]`)改写成说明注释;库的 `SshConfigForward` 认方括号写法,自己导出的读得回来(〔限制〕方括号外的 `\` 转义没跟,已写进规格)。引号没配对而被跳过的行:`SshConfigFile.LoadAsync` 新增可选的 `onSkippedLine`(公开 record `SshConfigSkippedLine`:文件、行号、原文,Include 进来的与没配对的 `Include` 行本身都报),宿主在这份配置的**每条**预览里说一句(`SshCfgImport_NoteUnbalancedQuotes`;跳过的若是 `Host` 行本来就说不清属于哪台,而 ssh 那边整份都用不了)。新增 Interop 分类用例「Windows本机套接字的导出ssh读得了」真调本机 `ssh -G`;变异:导出不加方括号 2 条红、库不认方括号 4 条红。与 §301 合在一起后,「服务器端口 → 本机套接字」的导出断言改用 `SocketSide` 取期望值(89ef6d3e)。
+
+## 303. 2026-10-31 终端标签普通重连从库里重读配置、连上之后只写最近连接时间;初始目录与「在此处打开终端」的非 ASCII 目录名只发可打印 ASCII
+
+**来由**:§298 留在 `feature-plan.md` 一、欠账里的两项,维护者 2026-10-31 定都按推荐做:「终端标签普通重连用的是标签里的配置副本」(巡检已每轮重读,a31289c5;标签重连仍拿 `tab.Profile` 去连,连上之后工作流还把它整份 `SaveSessionAsync` 回库,云同步、编辑框、巡检窗口「放开这几个算法」刚改的被冲掉);「在此处打开终端:C 区域设置下的非 ASCII 目录名」(控制字符已不进 PTY,2706df3f;C / POSIX 区域设置下 readline 可能把 ≥ 0x80 的字节当 Meta 键,`£` = C2 A3,A3 即 M-#)。
+
+**重连从库里重读**(2d2813bd):
+- Core `SessionProfileMerge`:`ForReconnect` = 库里那份的副本,登录身份(连接类型、主机〔不分大小写〕、端口、用户名、认证方式、凭据引用)相同时才叠上库里没有的认证材料 —— 密码认证的密码(库里空或 `enc1:` 解不开)、同一把私钥的口令、共享凭据配置在登录框里手输的四项;私钥 / 证书路径以库里为准。`CopyLoginFields` = 登录框改得到的七项。
+- 工作流:连上之后 `TouchLastConnectedAsync` 按 Id 取库里那份只改 `LastConnectedAt`(照旧过 `WithPersistablePasswordAsync`),临时配置不写。核对过整份写回实际在意的只有两样:最近连接时间与登录框交回的凭据(主机指纹在已知主机里,算法补救、证书信任、目录收藏各有各的写法)。登录框那部分改由新接口 `SaveLoginChangesAsync`,弹过框的三条 SSH 路径(终端首连、隧道、文件标签)在认证通过后调它,审计来源 `AuditSources.LoginPrompt`。〔决策〕拆出来由弹框路径显式写:只凭数据分不清「登录框刚输的」与「重连叠上去的」,混在一起会把叠上去的口令在库里那份勾着记住密码时写进库。〔决策〕叠凭据要求登录身份相同:配置被指向别的主机 / 账号时,为原账号敲的口令不跟过去;这时重连缺凭据会报错(重连本来就不弹登录框),要重新打开连接。
+- 宿主:`ReconnectTabCoreAsync` 先 `ResolveReconnectProfileAsync`,结果换到 `tab.Profile`。读不到时看 `TerminalTabViewModel.ProfileSeenInLibrary`:查到过 = 开着时被删了 → 照标签副本连、提示一次(`Msg_ReconnectProfileDeleted`,五份 resx)、不写回;没查到过 = 临时配置(§252)照旧。`StartupDirectoryOverride` 不受影响。手册 6.4 中英补「重连用的是最新的配置」。
+
+**非 ASCII 目录名只发可打印 ASCII**(c1c9abd4):Core `ChangeDirectoryCommand.Build(shell, directory, encoding)`:目录名按会话字符集(`TerminalEmulator.SessionEncoding`)编出来有 ≥ 0x80 的字节时写成 `cd "$(printf '…')"`,字母、数字与 `/ . _` 原样(回显与排障时读得出路径),其余每个字节写满三位八进制(`!` 在 bash / zsh 双引号里会历史展开、打头的 `-` 会被 printf 当选项,一并八进制);fish 写 `cd (printf '…')`;探不出种类按 POSIX 写;tcsh / csh 只报语法错、不执行别的(类注释写明取舍);Windows 服务器与纯 ASCII 名字照旧。配置的初始目录与「在此处打开终端」本来就是同一个函数,一起生效。〔实测〕WSL Debian 的 bash 5.2.37 / readline 8.2 在 `LC_ALL=C`、`convert-meta on` 下没复现 Meta 键现象(A3 按普通字符插入),更早的 readline、vi 模式与 zsh / fish 的行编辑器没验证;新写法在 bash / dash / BusyBox ash 上核过 `$PWD` 字节一致,完整注入行当击键敲进交互式 shell 照样切进去。手册中英补一段。
+
+**验证**:`-warnaserror` 0 警告;`runtime-async=off` 无 CS4007;按 CI 过滤 Core 1611 / 7 跳过、Presentation 110、宿主 3334 / 10 跳过,0 失败。新增 `SessionProfileMergeTests` 14 条、`ConnectionWorkflowServiceTests` 4 条、`TerminalTabReconnectProfileTests` 6 条(真 SonnetDB + 真工作流)、`ChangeDirectoryCommandTests` 25 条(纯 C# 的 POSIX sh / fish 引号 + printf 解码器逐字节反推,UTF-8 / GBK / GB18030 / Big5 / Shift_JIS 尾字节 0x5C / EUC-KR / ISO-8859-1)、`OpenTerminalHereTests` 1 条;撤掉实现分别 3 / 2 / 1 / 1 条变红。`AllowAlgorithmsFlowTests` 的替身保存改为真的写回。
+
+⚠️ 仍会被会话字符集替换成 `?` 的字符(如 GBK 会话里的 emoji)照旧 cd 到错误目录,与以前一样、不是安全问题。
+
+**同类的两处一并收掉**(a1c0895b):插件终端协议(Telnet / 串口)的重连同样先 `ResolveReconnectProfileAsync` 从库里重读(登录身份里加上「插件协议」,Telnet 改成串口后原来的口令不跟过去;配置被删按副本连、提示一次;库里那份换了连接类型或协议时用标签副本;插件终端本来就不经工作流、连上不写库);FTPS / 插件协议的证书信任 `PersistProfileIfSavedAsync` 换成 `PersistTrustedCertificateAsync` —— 按 Id 取库里那份只写指纹那一项(FTPS 写 `TrustedCertificateThumbprint`,插件协议写它声明的那个设置字段,没声明不写),临时配置不写,FTPS 文件标签、插件协议文件标签、工作台三处都改。`PluginTerminalReconnectProfileTests` 4 条、`CertificateTrustPersistenceTests` 3 条(撤掉 4 条红,另 3 条是守卫)。
+
+**登录框「记住密码」在 FTP / 插件路径上从不落库**(448d400a,核对上一条时显出来的「界面在骗人」):FTP / FTPS、插件协议文件标签与工作台的登录框勾了「记住密码」,以前只在恰好撞上证书提示、整份写回时才顺带存下;拆掉整份写回之后连这种顺带也没了。现在这三条路径弹过登录框、认证通过后与 SSH 一样经 `SaveLoginPromptAsync` 写登录框改得到的那几项(照「记住密码」与常规页总开关;临时配置不写;审计来源 LoginPrompt;写失败只留诊断日志),双栏远程里的 FTP / 插件那一栏一并生效;插件这几种登录框只交回用户名、口令与勾选,私钥 / 证书几栏原样不动。`DocumentLoginPromptPersistenceTests` 8 条(真 SonnetDB 与真工作流;撤掉 6 条红)。手册 9.2 中英写明登录框记什么、不记什么。VelaShell.Tests(CI 过滤)3349 / 0 失败 / 10 跳过。⚠️ 登录框里输了口令、这次没连上、随后在失败卡片上点「重新连接」连上的,口令不会记下(重试用上次交回的那份、不再弹框)—— SSH 文件标签同样如此。
+
+**文档**:velashell-docs `host/交互与界面规格`(断开连接状态的「重连用库里最新的配置」含插件终端、§13.2 登录框只写登录字段且三条文档型路径同样落盘、文档型连接的失败提示「信任只记那一张证书的指纹」、一键放开算法后重连读的就是改过的那份)、`host/SFTP双栏与WinSCP差距分析` 第 16 行切目录写法、`host/Xshell兼容登录` 删掉已不成立的括号(zh / en;8e8cdf8、ea65d67)。
+
+## 304. 2026-10-31 外部编辑草稿从消息中心直接「重新上传」;会话日志与录制遮盖认 INI 的「名字 = 值」
+
+**外部编辑草稿的「重新上传」**(d2862d82;feature-plan「一、欠账」那一行,§256 留下的):消息中心的动作原先只有一条不带参数的已注册命令,而重传要先连上那台服务器再按这一份传。
+- 消息去处:`NotificationLink.CommandParameter`、`NotificationItem.SecondaryLink`(只认站内命令),都是后加的可空字段,落盘的旧消息照常读出。〔决策〕带参数的动作不进命令注册表,也不按条注册临时命令 —— 注册表里的每一条都出现在命令面板里,面板给不出参数;按条注册要跟着草稿注册 / 注销,落盘的消息还指着启动扫描完之前并不存在的 id。带参数的去处交给 `MainWindowViewModel.InvokeParameterizedNotificationCommand`,不认识就不执行、不退回同名的无参命令;资讯源与插件消息的解析都不读这两个字段,远端来的消息够不着这些动作。
+- 面板:第二个动作摆在去处那一行的左端(次要色文字按钮,与整行按钮是兄弟、不嵌在里面),主动作是外链时不显示。
+- 草稿消息:主动作「重新上传」(`files.remoteEditDrafts.reupload`,只有带参数的这一种),第二个动作「打开所在文件夹」带着草稿子目录名。标记里没记连接配置或远端路径的(旧版本、快速连接)只有后者。旧版本投的那一条启动时换成新的,已读与第一次发现的时刻照旧。
+- 重传(`RemoteEditDraftReuploader`):按标记里的配置 Id 找已连着的面板,没有就照常打开文件标签 —— 与传输队列「继续」抽成同一个 `ResolveFileBrowserForProfileAsync`,缺凭据照样弹登录框。标记新增 `remoteLength` / `remoteModifiedUtc`:本地与远端最近一次一致时远端文件的样子(下载落地、干净地重新下载、每次传上去之后各查一次)。对得上才直接传;对不上、没记、后端查不了一律先问(不管「文件已存在时」的传输设置),没挂确认框按不覆盖。远端文件不在了:目录还在就问要不要重新创建,目录也不在就不传;路径成了目录不传。上传走外部编辑自动回传同一条路(进传输浮窗)。成功后先写干净标记再删子目录、撤消息;传的途中副本又被存过就不删;失败、配置已删、没记配置时草稿与消息都留着并写明原因;同一份连点两下第二下不做事。⚠️ 代价:外部编辑会话每次下载 / 重新下载 / 上传后多查一次远端;上传与那一查之间别人恰好改了远端,记下的就是别人的版本(代码注释写明,没防)。
+- 五份 resx 各加 18 个键;手册 9.4、20.1 中英同步。
+
+**会话日志与录制遮盖的剩余漏遮**(39c45c42;49bb11aa / cabc0dca 之后):
+- INI 的 `password = my pass phrase` 原先按「名字=值」到空白为止,只遮了 `my`。上下文从行首起时换用 `KeyValueAtLineStart`:名字在行首(缩进,或 `grep -n` / `grep -r` / `cat -n` 的前缀之后,与私钥行同一套前缀)、等号两边都有空白时,值走「名字: 值」的同一个判据遮到行尾。〔决策〕只认行首:命令行与代码里等号两边同样有空白(`[ $password = $x ]`、`grep password = …`、SQL 的 `WHERE password = $1 AND …`、PowerShell 的 `$Password = Read-Host …`),照旧只遮第一个词。上下文截断过或在行中间重新起时按不在行首算,与一次写入一致。行首判断是值开头处的逆向后顾,名字在后顾里是原子的,线性。
+- INI 里空着的 `password = ` 原先被 netrc 分行写法的单行规则遮成 `password *** `;口令恰好是一个 `=` 的不再算。
+- 验证:切分对照 +6 行,行首与照旧只遮第一个词的 12 行,不该遮的 9 条,线性用例 +6;变异(后顾去掉 `\A`、总用行首版、netrc 不排除 `=`)各有用例变红;另跑一遍不入库的随机切分对照(300 种子 × 2、块长 1–63),与一次写入逐字相同。手册 14.2 中英同步。
+
+**验证(合起来)**:`-warnaserror` 0 警告;`VelaShell.Tests`(CI 口径)3365 / 0 失败 / 10 跳过;Infrastructure 的 Notification + SonnetDbPersistence 76、Core 的 Notification 15、Presentation 106,0 失败。`RemoteEditDraftReuploadTests` 13 行、`RemoteEditDraftsTests` +4、`NotificationPanelViewModelTests` +2、`NotificationPanelUiTests` +1(headless 截图核过)、`MainWindowViewModelTests` +1、`NotificationCenterTests` +1(旧 JSON 与新字段经真 SonnetDB 往返);变异(比对恒为一致、上传后不记远端样子、带参数的去处退回无参命令)各有用例变红。没有真实服务器上的重传整链实测,FTP / 插件后端与重传途中弹登录框没有用例覆盖。
+
+**文档**:velashell-docs `host/消息中心与资讯源`(commandParameter 与第二个动作、§4B)、`host/交互与界面规格` §6「崩溃与草稿」、`host/settings-audit` 第十四批(INI、netrc,顺带补上 10-25 第二轮的前缀令牌与非机密后缀表 —— 49bb11aa / cabc0dca 当时只改了手册),zh / en(41d1498、b0b3c6b)。
+
+**顺手修的既有脆弱用例**(b12a8539):`TerminalSidebarRemoteEditTests.ConnectionLoss_EndsTheEditSessions_ButKeepsTheCopies_AndSaysSo` 只在测试线程恰好是 UI 线程时才泵调度器(与 355fea71 修过的同一类),和线程池上弹浮层的用例相邻时会红;改成整段经 `RunOnUiAsync` 跑在 headless UI 线程上。复现条件下旧写法 2 / 2 红、新写法 5 / 5 过。
+
+## 305. 2026-11-01 FTP:传到一半数据连接中断、控制连接仍应答时归为可重试的传输中断
+
+**来由**:§298 复审留下的欠账「FTP 上传传到一半被复位不自动重试」:FluentFTP 把数据连接中途复位包成 `FtpException`,`FluentFtpInterop.Translate` 归为 `VelaFtpOperationException`(永久失败);直接改成连接类错误又会让每次数据复位都把会话标成 Faulted(圆点变灰)。维护者 2026-10-31 定按推荐:单独归一类「可重试的传输中断」,只由传输失败重试(§238)按它重试,会话不标失效。动手前先用环回夹具在 Windows 上实测 FluentFTP 55.1:数据流干净结束、最终回复 `426` 时 `UploadStream` 不抛、只回 `Failed`(`LastReply` 是 426);写到一半被复位时,库自己的 `ResumeUploadAsync` 不带 REST 再发一次 STOR(远端那半截被截成 0),再去设 `FtpDataStream.Position` —— 恒抛 `InvalidOperationException`,续写必败,新开的数据连接没人关,控制连接从此收发错位;复位那一次的 `426` 欠在控制连接上,下一条命令之前库的残留数据检查读到它会把控制连接关掉重连。
+
+**做法**(2c1247c4):
+- Core 新增 `VelaFtpTransferInterruptedException`(派生自 `VelaFtpClientException`,不进连接 / 操作两族),`TransferRetryPolicy` 归为临时失败;五语 `FtpSvc_TransferInterrupted`;传输日志的 stage 记 `ftp-data-connection`。
+- 候选只按类型与应答码认(`FluentFtpInterop.LooksLikeDataChannelInterruption`):链上有 `426`、`SocketException` 或 `TimeoutException`,且没有别的 FTP 应答(425 / 450 / 451 / 452 / 552 / 5xx)、TLS 或登录失败;没有套接字异常垫底的裸 `IOException` 不算(本地磁盘错误长这样)。不看消息。
+- 下结论要问控制连接(`FtpFileService.ClassifyTransferFailureAsync`,`RunTransferAsync` 与 `DownloadStreamAsync` 共用):最后收到的是 1xx 预备回复就先 `GetReply` 收下欠着的最终回复,再发 `NOOP`(控制读超时与 5 秒取短),比对 `Status.ConnectCount` 识破库在底下重连。欠着的是 426 以外的 4xx / 5xx(如 452 磁盘满)→ 按答复算,照旧是操作失败;NOOP 2xx → 传输中断,会话不标失效,连接回池照常用;有应答但不是 2xx → 传输中断,连接作废;不应答 / 断开 / 被重连过 → `VelaFtpConnectionException` 并标 Faulted(⚠️ 行为变化:以前这种形状常被包成 `FtpException`、报成永久操作失败、也不变灰)。上传回 `Failed` 且 `LastReply` 为 426 按中断认;`DownloadStreamAsync` 收到 RETR 的 426 不再先报长度不符,中断里挂着 `RemoteTransferLengthException`(§278 的诊断留在链上),回 226 而字节不够的照旧是长度错误;读流最终回复 426 同样报中断。另一处行为变化:`RunTransferAsync` 路径上内部「忙」重试用尽之后数据连接打不开、而控制连接仍应答的,现在也是中断而不是 Faulted。
+- 上传每次尝试只放行一次「打开写入」(覆盖 `OpenWriteInternal` / `OpenAppendInternal`):库的就地续写在发出任何命令之前就拒掉,远端保持服务器实际收下的那半截。续不续、从哪续口径不变(续传探测 + 尾部 64 KiB 核实,对不上交回冲突策略,续传关着整份重传)。服务内部不重放中断;不新增设置项。
+
+**验证**:Windows / .NET SDK 11 RC3:`-warnaserror` 0 警告,`runtime-async=off` 另编通过;Infrastructure `TestCategory=Ftp` 连跑 4 轮各 134 / 134;按 CI 过滤 Infrastructure 1258 / 32 跳过、Core 1575 / 7 跳过、宿主 3302 / 39 跳过(环境早退)。夹具新增 `AbortStoreAfterBytes`(收下前 N 字节、其余收下丢弃、回 4xx —— 客户端每次写都成功,三个平台走同一条路,不依赖 `ResetData`)、`DropControlDuringStoreAfterBytes`、可配的 `StoreFaultReply`;上传(文件 / 流 × 续传开 / 关)426 中断不变灰、不重登、重试后内容一致;复位 + 452 仍是永久操作失败;复位 + 控制连接关闭仍 Faulted;下载干净 EOF + 426 续上后内容一致,226 短读仍报长度错误;已有的流式上传复位用例收紧到恰好一次 STOR、64 KiB 半截不被截断;端到端 `FtpTransferInterruptionRetryTests` 用真 `FtpFileService` + 文件面板的重试层。逐处撤掉实现,对应用例都红。复位形态(RST)的分类只在 Windows 实测过。
+
+**文档**:手册中英 9.3「失败自动重试」补一句 FTP。
+
+**服务器不认 REST / APPE 时的续传重试**(11d6c53e,上面那条接通之后能撞上的):没有 REST / APPE 能力判断,中断后续传开着的重试撞上 500 / 502 / 504 就成了永久的「不支持」。新增 `VelaSftpResumeUnsupportedException`(派生自 `VelaSftpResumeMismatchException`):规划时探到的半截(首次上传、队列「继续」、面板手动重试)照旧落进既有的不一致分支、交回冲突策略,绝不悄悄覆盖;只有偏移来自这一次尝试自己动过字节之后的自动重试(半截是本次写下的)时,`FileBrowserViewModel.RunTransferAsync` 才把偏移退回 0 整份重传,不过冲突策略、不多算一次重试。识别按回复码加 FluentFTP 记下的那条命令(`IsResumeCommandRefused`,续传上传的 APPE、续传下载的 REST、尾部核实的 REST + RETR),不看消息;文案复用 `SftpSvc_ResumeUnverifiable`。顺带三处:没有 REST 的服务器上下载中断时 FluentFTP 自己的 REST 重读回 502,原先把中断变成永久失败,现在当作数据流断了的证据;FluentFTP 55.1 的 `LastReply` 在回复历史为空时抛 `ArgumentOutOfRangeException`(第一条命令之前的本地失败会盖住真错误),一律走安全取值;FTP 进度改在传输线程上同步交出(与 SFTP 一致),让重试层「动没动过字节」的判断不依赖 `Progress<T>` 的排队时机。夹具加 `SupportsRest` / `SupportsAppe` 开关与拒绝计数;服务层 5 例 + 宿主层(真服务 + 面板重试层,冲突策略设成「跳过」,绕错路就会显成跳过)上传无 APPE / 下载无 REST × 续传开 / 关各一次重试完整传完、不变灰,服务器上已有较短文件时「跳过」不动它、「覆盖」整份重传。逐处撤掉 4 处实现各有用例变红。`TestCategory=Ftp` 140 / 140 × 3;按 CI 过滤 Infrastructure 1264 / 32 跳过、Core 1575 / 7、宿主 3308 / 39,0 失败。⚠️ 中断之后在面板上手动重试是新的一轮,认不出半截是自己的,没有 REST / APPE 的服务器上照样过冲突策略(「询问」时会弹框)。
+
+**文档**:velashell-docs 交互规格 §9 第 5 条、双栏差距分析 §8.1、FTP 调研 §3.5(zh / en;ea075fa)。
+
+**仍没做的**(记进 feature-plan):已知长度的读流短 EOF 不读最终回复、仍报长度不符(永久)—— 这条流喂 FTP → SFTP 安全提交的中转源与续传尾部核实,macOS 上的干净 EOF 在这里仍是永久失败;`DownloadStreamAsync` 控制连接恰在末尾断掉而 FluentFTP 不抛时仍报 `FtpSvc_ReadCompletionFailed`、不标失效;`DownloadFileAsync` 里 FluentFTP 自己的 REST 重读没有次数上限。
+
+## 306. 2026-10-31 宿主的条件撤回:停止或拒绝时只撤批准还没生效的传输(SDK 2.1.4 契约落地)
+
+**来由**:`feature-plan.md`「一、欠账 / 插件生态」的「宿主的条件取消」。§263「合入后发现」(1a61038c)之后,AI 插件停止 / 拒绝时先 `GetTransferAsync` 再按代次 `CancelTransferAsync`,取快照与发出取消之间仍有一个往返的空当,宿主恰在这一拍批准的照样被撤。SDK 2.1.4 已经给了契约(`SupportsTransferWithdraw`、`WithdrawPendingTransferAsync` → `RemoteTransferWithdrawResult`,`fs/transfer/withdraw`,握手 `SupportsTransferWithdraw`),宿主一直没实现 —— feature-plan 那一行还写着「要 SDK 新契约」。
+
+**宿主**(dadc3201,`RemoteFsCapability.Transfers.cs` / `.Downloads.cs`):任务上记两件事 —— `_approvalEffective`(在 `EnterTransferPhase` 里与阶段移出 Approval 同一步登记)与 `_cancelledBeforeApproval`(撤回、或批准前的 `CancelTransferAsync` 登记取消时设),都只在任务锁里改、互斥。条件撤回只取任务锁:48c4c8d0 的批准生效是「闸 → onApproved → 任务锁」,任务锁就是两边的串行点,不引入新锁序。判定顺序照 SDK:批准已生效 → PastApproval(什么都不改);否则批准前登记过取消 → Withdrawn;否则已收尾 → AlreadyEnded;否则本次登记取消意图、`RequestStop(User)` → Withdrawn(等闸的随令牌取消不再弹、已弹出的框随令牌关掉、迟到的批准在闸里或 `ConfirmApprovedOrCancelled` 里作废,一个字节都不读写)。同一代幂等;代次不符 `InvalidOperationException`;id 无效或属别的插件 `FileNotFoundException`;撤权后仍可清理,快照与取消同一脱敏口径(抽成 `CleanupView`)。上传、下载同一口径。后台流程还没跑起来就被撤或取消的不再把 CancelRequested 改回 Starting,并立即停下(下载不钉目录、不 stat 远端源)。〔决策〕批准前被撤下的一代收尾一律记 `Cancelled` / `cancelled` / `RemoteStopConfirmed`:断线、到期、撤权或拒绝已经叫停、还没发布终态的那一拍里撤回到达时,回执已答 Withdrawn,终态只能有一个结论;代价是这一拍里原先会记 `session-disconnected` / `TimedOut` / `permission-revoked` / `permission-denied` 的改记 `cancelled`(批准前的 `CancelTransferAsync` 撞上同一拍时同样如此)。
+
+**隔离模式**:`PluginCapabilityRouter` 处理 `fs/transfer/withdraw`;握手按能力实例的 `SupportsTransferWithdraw` 宣告(`UnavailableRemoteFs` 宣告 false);PluginHost `RpcRemoteFs` 按握手值决定,不支持时在插件进程里直接抛 `NotSupportedException`、一个请求都不发、不改走 cancel。
+
+**AI 插件**(39e74c56):`FileTransferJobRegistry.CancelUnapprovedAsync(Job)` 在 `SupportsTransferWithdraw` 时改用条件撤回,四种结论(含不认识的)都只发布宿主给的快照、绝不回退无条件取消;不支持的宿主保留「先取快照、仍在 Approval 才按代次取消」。插件 README 同步。用户看得见的行为没变(手册本来就写「已批准的照常传完」)。
+
+**验证**:宿主 `RemoteTransferTests.Withdraw.cs` 21 条(撤回先到 / 批准先到 / 已收尾 / 幂等与代次 / 别的插件的 id / 撤权后清理 / 叫停中途撤回,上传下载各一遍;批准与撤回同一拍竞争每向 40 轮;RPC 往返、握手与不支持时不发请求;路由后面接真实能力的整链);负载下 8 进程并跑 16/16 过、1280 次竞争两种先后都撞到。AI 插件的 Stop / 快照落后 / Denial / 正常收尾 / 迟到回执按支持与不支持两种宿主各跑一遍,新增批准与停止同一拍的竞争用例:负载下新路 16/16 过,临时指回老路 24 次红 2 次(宿主刚批准的又被撤),§263 那一拍的空当合上了。变异:去掉强制 Cancelled 分类 4 条红、撤回不看批准 5 条红、判定与登记之间插空当竞争用例红、插件强制走老路 5 条红。`-warnaserror` 0 警告;`runtime-async=off` 无 CS4007;Infrastructure 1270 / 0 / 32 跳过;AI 插件按 CI 拆 4 个进程 2043 通过,1 条 HttpListener 端口冲突(并行进程,与本改动无关)单独重跑通过。只在 Windows 上跑过。
+
+⚠️ 没改的:`FileNotFoundException` 跨管道仍还原不成同类型(SDK `RpcErrorCodes.FromException` 不认它,所有 `fs/transfer/*` 早就如此,插件进程收到 `RpcRemoteException("error")`),改要动 SDK。
+
+**同批**:SDK 源码里随 2.1.4 发出、却仍写「可用版本:TBD(发版时替换)」的 10 处注释(全是 c2dc2a44 引入的条件撤回一批)换成 2.1.4(velashell-plugin-sdk 本地 `docs/tbd-markers` 62cf66e,只改注释);velashell-docs `sdk/sdk-reference` 新增 §3.3f「条件撤回(SDK 2.1.4)」、§3.3b 方法表与版本表 2.1.4 一行,`plugins/05-ipc-protocol` §7.5,`07-capability-apis` §2.1,`11-automation-and-ai` 的 AI 上传一句,`sdk-reference` 里「宿主当前中央依赖」改写成 2.1.5(zh / en;830d1ee、496f78b)。
+
+## 307. 2026-10-31 AI 插件:故障转移 / 换 Key 在聊天记录里留切换提示;MCP 2.3 的 HTTP 自动探测与 SSE 回退实测;RpcConnection 半帧回归
+
+**来由**:`feature-plan.md`「一 / 🧩 插件生态」里的三行:#582 复审顺带记下的「切换会粘住并落盘,用户不知道后续请求换了供应商与计费归属」;#651 复审 ④(#654 升到 MCP 2.3 之后 HTTP 自动探测与 SSE 回退有改动,读代码判断不了);#616 – #636 复审 ⑤(`RpcConnection` 写出半帧,SDK 2.1.3 已修,待回归)。
+
+- **切换提示卡**(0c4ff3d2,插件 `Ui/ChatPanelView.SwitchNotice.cs`):一轮里换了站,或同一模型换了一把 Key,回复紧跟头行挂一张警示色的「已切换接入」卡 —— 第一行「改用 供应商·模型」,供应商配了不止一把 Key 时再点名「第 N 把 Key · ●●●●末四位」(与设置页 Key 行同一写法,不露 Key);下面逐跳写「哪一站(哪把 Key):为什么」,原因来自新加的 `TransientFailure.SwitchReason`,与换站判定同一套分类(429 限流、401 / 403、408 / 超时、5xx 与流式 overloaded / api_error、无状态码的网络层故障、空回复、接入配置已变、其它),服务端回过状态码的附上。状态行原来那句「已切换到 X」照旧。
+  - 〔决策〕一轮一张卡:只留最后一跳会丢掉「最初那一站为什么不能用」,每跳一张会把回答挤出屏幕;超过 4 跳时只列头一跳、中间合成「另有 N 次切换」、再列最后两跳;探活阶段就被跳过的候选不算一跳。
+  - 〔决策〕「之后的请求也会发到这里、记在这里的账上」只在这一轮答完且选择仍指着答上的那一站、或同一模型的新 Key 已写成当前槽且没开轮流时才补;没答完的一轮卡片照留、不带这一句。
+  - 不进模型上下文:卡只挂在气泡的可视树上,`History`、复制整段、入库的回复正文都不含它;存档记进这条回复的 `chat_meta`(新增 `ChatTurnMeta.Switch`:原因代码与状态码,Key 只存序号与末四位,站名截到 200 字,最多 16 跳;存量 JSON 读回 null),重开会话恢复成卡片,导出 Markdown 写成一段引用;半截回复入库时随它一起存,一个字都没留下的那一轮不入库。有卡时思考区排在卡后面(那份思考属于换过去的那一站)。五语新增 15 个键。
+- **MCP 2.3 的 HTTP 自动探测(e03c4f01,没改代码)**:测试里用 SDK 自带的服务端传输加 `HttpListener` 起三种服务器 —— `SseResponseStreamTransport` 的老式 `GET /sse` + `POST /messages?sessionId=`(只认 2024-11-05)、`StreamableHttpServerTransport` 带会话的 2025-11-25(拒收 `server/discover`)与无会话的 2026-07-28 —— 走插件真实的 `McpManager.RefreshToolsAsync` / `GetToolsAsync`(「HTTP」即 `AutoDetect`)列工具、调工具。实测:2.3 第一步 POST `server/discover`,老式服务器回 405 直接回落 SSE;回 400 / 404 先当「只认 initialize」用 Streamable HTTP 再试一次,失败才回落;回落后按 2024-11-05 降级握手,列 / 调工具正常。回退没坏。
+- **RpcConnection**:宿主 `ExecutionRpcTests` 8 / 8 通过,不用改代码。
+
+**验证**:新用例 22 行都不早退(`ChatPanelViewUiTests.SwitchNotice` 6 行、`ChatFormattingTests.SwitchReason_FollowsTheSameClassification`、`ChatHistoryMetaTests` 2 条、`McpHttpTransportTests` 5 行);ChatPanelViewUiTests 整组 351 通过,其余部分 1300 通过,0 失败 0 跳过;变异:提示漏进发送时 / 重开会话时的 History 各红一条,MCP 强制 StreamableHttp 时 SSE 那 3 行红。只在 Windows 上跑;没有真实供应商与真实老式 MCP 服务器,卡片外观没截图。
+
+**文档**:插件 README(「聊天记录里的切换提示」、MCP HTTP 的探测与回落顺序)、`manual.md` / `manual.en.md` §19.3 与 §19.5;velashell-docs `plugins/11-automation-and-ai` §1.8 第 7 条(zh / en)。
+
+⚠️ Key 末四位会落进本机会话历史与导出的 Markdown(与设置页本来就显示末四位同一口径;要收紧只留序号,改动很小)。
+
+## 308. 2026-10-31 生态仓库的欠账:S3 接上服务器端摘要、测试替身的重注册用例、SDK / 模板 / 插件仓库与 docs 的过时说法
+
+**来由**:`feature-plan.md`「一 / 🧩 插件生态」的「SDK 测试替身注册句柄口径」「生态仓库里几处过时的说法」,「一 / 📁 文件传输」插件协议补口里「velashell-plugins 的协议插件按能力选实现」那半句,以及「三、文档待同步」的两行(STATUS 与发版流程的漂移、§260 SDK 新契约)。SDK 2.1.3 – 2.1.5 早已发版、各仓库也已抬包,这几行一直等的前提都满足了。全部在各仓库本地 dev 的分支上,没有推送。
+
+- **velashell-plugins**(`feat/eco-cleanup`):S3 协议兼实现 `IProtocolChecksum`(70b8711,`S3StoredChecksum.cs`)—— 只取对象上传时存下的完整摘要(HEAD 带 `x-amz-checksum-mode: ENABLED`,sha256 / sha512 / sha1 / md5),分段上传的组合摘要(`COMPOSITE` 或值带 `-N`)、没存摘要、根 / 桶 / 目录、不存在、没权限那一项都为 null,不读回对象、不拿 ETag 充 MD5;插件自己上传用 `WHEN_REQUIRED` 不带校验和,所以它传上去的对象摘要恒为 null。〔决策〕`IProtocolLastWriteTime` 不实现:S3 改不了 LastModified,「复制对象自身」不等价 —— 写进 README 并有一条断言防人「补齐」。S3 的 `minSdkVersion` 随之从 2.0.4 抬到 2.1.3(用到 2.1.3 才有的接口,老宿主应在发现期就报不兼容,而不是运行期 `TypeLoadException`)。`S3ChecksumTests` 10 例。Telnet / 串口 / S3 各补「换语言重注册后,旧句柄 Dispose 不撤掉新注册」(7012c5e;三者都在 `LocaleChanged` 用同一实例先注册再 Dispose 旧句柄)。`Directory.Packages.props` 的 Label、AGENTS.md / README / `Directory.Build.props` / `release.yml` 注释里的 `VelaSdkVersion`、`nuget.config` 本地源与「`.Build` 在 cli 仓库」等过时说法改成如实的(72f1f19:仓库没有 `nuget.config`、没有 `VelaSdkVersion`,SDK 版本就是两行字面量,未发布的契约等发版后抬包);MongoDB 清单注释「打开已保存的会话」改成 2.0.1(4d46b54)。
+- **velashell-plugin-templates**(`fix/stale-notes`,dd8c27b):README 删掉「到 sdk 仓库 dotnet pack 本地 `.Build` 来验」那一段(维护者 2026-10-31 定,与 SDK 版本纪律一致);`.gitignore` 与 `local-packages/.gitkeep` 的说明改准(它们指向的 `nuget.config` 已在 3180c0c 删掉)。冒烟脚本 `-Feed` 没动。
+- **velashell-docs**(`docs/eco-drift`):STATUS 中英漂移收口(1f85ea1:页首仓库对照、zh 补回「SDK 产品化」一节、en 补三行与质量基线 / 日期);SDK 与 CLI 发版流程按 `.Build` 已在 sdk 仓库改写(7e506c4:一次发三个包,§4 Avalonia 链路与 VELA1000 / 1005 / 1006 对着 `.Build` 的 csproj / targets 核过,冒烟一节搬到 SDK 那篇);「打开已保存的会话」的可用版本改成 2.0.1(676ebf6,807c607 最早进的 tag 是 2.0.1);SDK 2.1.3 契约的剩余同步(c3bd894:dev-guide §5.9 通知、§5.13 可选接口与链接字段,07 §2 链接字段、en 07 补 timeSeries / protocols 附表,05 §7 帧原子取消、§7.1 写坏半帧作废连接扩到全部写入,STATUS 两行,S3 设计 §3.1);sdk-reference 的 §3.3d / §3.3e / §3.7 / §3.8、05 §7.4、07 §7、06 的通知权限原本就已同步。相对链接与锚点全树 146 个文件、1002 条,bad 0。
+- **SDK(只读核对)**:dev 与 tag 2.1.5 上 `VelaSdkVersion` / `VelaPluginApi.SdkVersion` 仍是 2.1.3(Release 工作流打包前按 tag 重跑 `Set-Version.ps1`,发出的 2.1.5 DLL 里是 2.1.5,不影响已发的包);docs 两份 `sdk-reference` 横幅写的也是 2.1.3 —— 下次发 SDK 时本地跑一次 `Set-Version.ps1 <版本> -DocsRoot …` 一起补上。
+
+**验证**:`dotnet build VelaShell.Plugins.slnx` 0 警告;`dotnet test` 全过(Telnet 27、串口 78、S3 115,Rdp / DockerPanel / Mongo / Redis 的跳过都是真机用例早退);模板仓库 build 0 警告。
+
+**同批顺手收掉的(核对时查出)**:en dev-guide 照 zh 补齐 §5.2b TimeSeries、§5.5b RemoteTunnel、§5.5c TerminalView 与 §5.5 两种执行形态全文,zh 的「隔离模式下取消不跨进程、流式执行补两小时死线」改准为看握手的 `SupportsExecutionOperations`(SDK 2.1.0 起的宿主经 `exec/cancel` 传取消、流式不限时),§5.9 不再教插件自己引 Avalonia(由 `.Build` 精确锁 12.1.4,对不上报 `VELA1001`),HelloWorld 死链换成 `dotnet new velaplugin-ui` 与 MongoDB 插件,§2.1 插件清单改准(docs 07847c2);SDK 契约工程里 Avalonia 版本锁导出那段注释改准(sdk 52037f8,只改注释);cli 仓库删掉无用的 `local-packages/.gitkeep` 与对应忽略规则(cli b22f9fb)。docs 全树相对链接 1006 条、bad 0。
+
+## 309. 2026-10-31 主密码保护第二步:可选主密码(Argon2id 包裹本机加密密钥、解锁与锁定态、闸口、开启 / 关闭 / 修改 / 忘记、恢复码、自动锁定)
+
+**来由**:`feature-plan.md` 唯一的 🔴 P0「主密码保护」只剩第二步(第一步本机加密密钥交给系统密钥链见 §253)。维护者 2026-10-31 定「按设计稿的倾向做」,设计稿 §9 六点:①主窗口出现后弹一次解锁框、可取消,状态栏留锁形入口;②默认不自动锁,可选「空闲 N 分钟」与「系统锁屏时」;③开启时生成 128 位恢复码、可跳过;④插件 `ISecretsApi` 锁着时先按等待交互式解锁处理,SDK 另写「已锁定」契约、宿主这一轮不接;⑤Windows Hello / Touch ID 留到第三步;⑥Argon2id 固定 m = 64 MiB、t = 3、p = 1,不为低端机降参。
+
+- **格式与解包**(0e73e5de,Infrastructure/Persistence):`secret.key.mp` 头记 version、kdf、m / t / p、salt、可选 recovery-salt、state(active / enabling / disabling),参数越界一律当读不出。密钥链条目与密钥文件里存 `VSMP1` ‖ 69 字节记录(种类 ‖ 由盐派生的 8 字节包裹编号 ‖ nonce ‖ tag ‖ 密文),附加认证数据是魔数 ‖ 种类 ‖ 编号;GCM 标签即校验,不另存验证值。恢复码 16 字节 + 1 字节校验,写成 28 位 Crockford base32,经 HKDF 派生。解析看包裹本身判定开没开(事实来源是包裹格式,不是 `AppSettings.MasterPasswordProtection`),开着时不生成、不迁移任何密钥;头与包裹对不上时只在确定没有密钥依赖它时才删头或改名保留(`.orphaned-*`)。Infrastructure 显式引用 BouncyCastle(`Directory.Packages.props` 注释登记新用途);Secret Service 的值改成可变长。
+- **闸口与锁定态**(e51c3a74):`MasterKeyVault` 持有密钥串,锁着时 `Protect` 对新明文抛 `SecretsLockedException`(Core)、`TryUnprotect` 为 false、`ISecretProtector.IsLocked` 如实说;锁定清零内存里的 DEK,加解密在同一把锁里。会话、共享凭据、代理密码三处仓储锁着时把机密字段冻在库里那一份上(锁定前已解开的代理密码不会被一次保存抹掉,解锁后就地填回);旧 `sessions.json` 的导入推迟到解锁之后。`IMasterPasswordGate` / `IMasterPasswordService`(Core)由 `MasterPasswordService` 实现:非交互式不弹框,并发的交互式请求共用一个框,界面层注册 `IMasterPasswordPrompt`。各构建点前插一层(`MainWindowViewModel.MasterPassword.cs`,`MainWindowViewModel` 改成 partial):交互式入口取消解锁时剥掉内存里的已存机密、改由登录框问这一次;自动重连与隧道自动重建锁着时不弹框、说明原因,解锁后各重试一次;解锁 / 锁定时重读会话树;Gist 锁着时跳过这一轮并记一行,手动同步、存令牌先弹框。插件机密由 `MasterPasswordGatedSecrets` 包一层:锁着时弹 / 等解锁框,取消抛 `PluginPermissionDeniedException`,**绝不返回 null**(插件会以为机密不存在、让用户重填覆盖旧值);插件信任库启动时不等,用户插件的收据校验等解锁后才做,管理页写「锁着」而不是「无法读取」。编辑存着密码的连接、改共享凭据、导入连接时锁着先弹框,取消就照存别的字段并明说密码这次没有保存(e98105a3 补上导入)。
+- **开启 / 关闭 / 修改 / 忘记与恢复码**(cf5b34f4):开启先落 `enabling` 的头,再逐条写新、读回核对,失败写回原样字节、删头,回滚也失败就如实按「开着」交代;关闭先把头标成 `disabling`,中途断掉下次启动或解锁时接着做完;修改三步(每个位置加上新主密码那一条 → 原子换头 → 删旧的那一条);用恢复码解开后要求设新主密码,恢复码解不开的那一份留 `.superseded-*` 旧头;忘记时头、清单、密钥文件改名保留成 `.forgotten-*`,密钥链条目不动,另起新密钥。头里的参数不是出厂参数时下一次解锁成功就 rehash。每次变更记一条 `settings` 审计(`master-password-enabled` / `-disabled` / `-changed` / `-reset`,不记口令材料)。`MasterPasswordProtection` 登记为 StateFields,只作界面镜像;云同步推送前清掉、拉取时保留本机的。
+- **自动锁定**(cc6b9525):`MasterPasswordAutoLock` 在全部顶层窗口挂隧道输入类处理器记活动,线程池定时器每 5 秒查一次;新设置 `General.MasterPasswordAutoLockMinutes`(0 = 关)与 `MasterPasswordLockOnSystemLock`(当场接线);系统锁屏只在 Windows 上读(`WTSQuerySessionInformation` 的 `SessionFlags`),别的平台设置页不显示这一项,免得「开了却不起作用」。
+- **界面与文案**(0d015859):`MasterPasswordDialogView`(解锁 / 开启 / 关闭 / 修改 / 恢复 / 忘记 / 显示恢复码七种样子,`SecurePasswordBox`,忙碌态,输错逐次退避 1 / 2 / 4… 秒上限 30 秒的倒数,破坏性操作用红框轮廓按钮);状态栏锁形入口;启动后弹一次解锁框;设置页恢复 R-04 那几行并接线;登录框说「被主密码锁着」;消息中心报头不在 / 读不出、头被改名保留。五语新增 86 个键。手册 15.1 / 16.4 / 新增 16.5 / 21.2 与 `PRIVACY.md`(中英)同步。对话框的确定改走 `FireAndForget`(去掉裸 `async void`,e98105a3)。
+- **SDK**(velashell-plugin-sdk 本地 `feat/secrets-locked`,未推送、未发版,版本号没动):`SecretsLockedException : InvalidOperationException`、`ISecretsApi.SupportsLockedState => false`、`HandshakeResponse.SupportsSecretsLocked`、线上码 `secrets-locked` 双向映射、`FakeSecrets.IsLocked` / `SupportsLockedState`(替身在「旧宿主 + 锁着」时抛 `PluginPermissionDeniedException`,与宿主这一轮一致),可用版本 TBD。
+
+**取舍**:〔决策〕锁定不清理已连着的会话、FTP 连接池与内存里的代理密码(否则走代理的连接全断);已开标签里那份配置的内存副本不清,但重连、克隆、新开都要先过闸。〔决策〕Windows 降级再升回时不从 `.unreadable-*` 自动找回(旧版本会把包裹过的 `secret.key` 改名成 `.unreadable-*`,升回来后头改名成 `.orphaned-*`、主密码按关着继续,降级之前存的密码要重输;文件都在;macOS / Linux 没有这个问题)。〔决策〕恢复码只包开启时已有的那几把,之后并入的(降级回来的那把)不补记录,也还没有「重新生成恢复码」。〔决策〕连接诊断这一轮不接闸口:锁着时第 4 步按「已存的密码解不开」标成要人补。⚠️ 用户目录里的插件要等解锁才载入,锁着时打开这类插件的连接又取消了解锁,激活会一直等到解锁;隔离插件的 RPC 有超时,用户在解锁框前停太久插件先收到 `TimeoutException`。⚠️ `SecurePasswordBox` 只收可打印 ASCII,主密码不能用中文口令短语;输错退避的计数只活在进程里;「忘了主密码」之后插件信任库也解不开,要在插件管理页重置(手册写了)。
+
+**验证**:`-warnaserror` 0 警告;`runtime-async=off` 无 CS4007;Infrastructure 1300 / 32 跳过、Core 1572 / 7、Presentation 106、宿主 3317 / 39、SDK 232,0 失败。新增 `MasterPasswordFormatTests` 19(降级用第一步原样拷贝的旧解析器做夹具)、`MasterPasswordOperationsTests` 19、`MasterPasswordLockedStateTests` 14、`MasterPasswordConnectFlowTests` 5、`MasterPasswordAutoLockTests` 6、`MasterPasswordDialogUiTests` 6、`NotificationSourcesTests` +2;变异(开着时照样生成新密钥、仓储锁着时不冻结机密)红 7 条。⚠️ 真密钥链用例(`VELASHELL_KEYCHAIN_TESTS=1`)没跑,macOS 钥匙串 / Linux Secret Service 只编译 + 假密钥链,系统锁屏「锁着」那个状态的取值没实测,真实窗口没启动看过(对话框只有 headless 用例与外壳规格断言)。
+
+**文档**:velashell-docs `host/主密码保护设计`(状态改「已实现(第二步)」、§9 写明定法、与实现不一致处按实现改写)、`settings-audit` R-04、`交互与界面规格` §7 状态栏锁形入口与新增 §14.7、`架构设计`、host 索引(zh / en;00db2e6、2bc5969)。
+
+**与同批其它改动合在一起之后查出、修掉的**(集成分支上先只读复审一遍交叉处,再修):①重连闸口原先看的是标签副本、在从库里重读(§303)之前 —— 库里那份在标签开着时被改成带密码、锁着时 SSH 报错原因(说「解不开」实为「锁着」),插件终端更会拿 `enc1:` 去登录一次;改成先 `ResolveReconnectProfileAsync` 再对重读后的那份过闸(`ResolveUnlockedReconnectProfileAsync`),刚解开时按库里再读一遍,SSH 的「连接中」挪到过闸之后(先标再 `MarkDisconnected` 会排下一轮自动重连、形成循环)(eb5fdfe2)。②锁着时保存 Tailscale 配置会把旧密文塞回去(`KeepStoredSecrets` 末尾补 `ClearTailscaleCredentials`);自动锁定恰好落在读 `IsLocked` 与 `Protect` 之间时三处仓储改走冻结那条路而不是抛 `SecretsLockedException`,`TouchLastConnectedAsync` 失败只记日志、不让一次已成功的连接失败(154602a5)。③同一标签的重连不再并行:读库与过闸期间按标签记「准备中」,第二个请求(再按回车、自动重连到点、解锁后的重试)并入正在进行的那一个,过闸后放开「准备中」之前就标成「连接中」(b248a467;代价:第一个停在解锁框上时到点的自动重连被丢掉,用户取消的话这个标签解锁后要手动重连)。④手册 16.5 把手动重连从「取消就这一次手输」里拆出来(取消 = 没有重连,解锁后再重连)(86719cdf),英文排障表补回 0d015859 弄丢的一行(65659d86)。⑤**存着的插件机密解不开时绝不原样交给插件**(09528f1d,早于主密码就有、也覆盖没开主密码的设备):新增 `PluginStoredSecrets`,在文件协议服务、终端连接器、工作台启动器交给插件之前最后查一道,插件声明的机密字段或要交出的密码在这台设备上解不开时报 `CredentialProviderException(CredentialFailure.UnreadableSecret)` 并说清是哪一项,既不交密文、也不交空串冒充「没设」(声明 `NoCredentials` 的协议不拦;插件已不再声明的旧键不拦但滤掉不交);界面入口(插件终端的打开与重连、插件文件文档、工作台)连接前先预检,按本机加密密钥的解析结果说明原因(密钥链这次没打开 / 密钥不在这里 / 说不出原因 / 被主密码锁着),插件字段没有登录框可填,直接失败并写明原因,文件文档与工作台的密码照旧由登录框问;锁着时主动连接又取消解锁,插件机密不再被剥成空交给插件,而是说明「被主密码锁着」、这次不连。五语各加 9 个键,手册 16.5 与排障表中英同步。新用例:`MasterPasswordReconnectFromLibraryTests` 5、`MasterPasswordLockedStateTests` +4、`ConnectionWorkflowServiceTests` +1(两个 DataRow)、`ReconnectReentrancyTests` 2、`PluginUnreadableSecretFlowTests` 3、插件协议 / 终端 / 工作台各 1;撤掉实现全红(守卫行除外)。合起来 `-warnaserror` 0 警告;VelaShell.Tests 3399 / 51 跳过、Infrastructure 1359 / 32、Presentation 112、Core 1615 / 56,0 失败。⚠️ 插件终端的密码解不开时是连接失败并说明原因,没有改成弹登录框(终端这条路本来就不弹登录框);不在库里的临时插件配置锁着时带着插件机密又取消解锁,仍只能剥成空(临时配置实际不带插件机密)。
+
+**§300 – §309 合起来的验证**(全部摘到同一条线上之后,Windows / .NET SDK 11 RC3):`dotnet build VelaShell.slnx -c Debug -warnaserror` 0 警告 0 错误;`bash scripts/ci/run-tests.sh`(CI 同一过滤,排除 DockerIntegration / CrossPlatform / Interop)11342 通过、0 失败、58 跳过(XServer 9、Core 7、Infrastructure 32、宿主 10,均为环境早退);`-p:Features=runtime-async=off` 另编一遍通过,没有 CS4007。合并时的冲突只在 ssh_config 导出的远程转发分支与手册的导入说明(§301 与 §302 各改一半)、spec/09 §7.3(docs);语义冲突一处(§301 的导出断言按 §302 的方括号写法改,1ebc9301)。主密码与重连重读、登录框落盘的交叉处在合流之后先只读复审一遍,查出的三处见 §309 末段。⚠️ 互操作(Docker)、真密钥链(`VELASHELL_KEYCHAIN_TESTS=1`)、macOS / Linux 真机都没跑。生态仓库:velashell-plugins 的 Telnet 27、串口 78、S3 115、Mongo 清单用例全过(变基到同时进行的 RDP 提交之上后重跑);SDK 232 通过;模板与 CLI 编译 0 警告。
