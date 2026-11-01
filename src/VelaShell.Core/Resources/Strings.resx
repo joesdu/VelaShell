@@ -9950,4 +9950,5 @@ Send anyway?</value>
   <data name="Notify_MasterPasswordProblemTitle" xml:space="preserve"><value>The master password cannot unlock</value></data>
   <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>Master password header set aside</value></data>
   <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>The master password header in the data folder no longer matches any wrapped key (most likely an older version moved the wrapped key file aside after a downgrade). It was kept as {0} and the master password is now off. Passwords saved before the downgrade cannot be read on this computer and need to be entered again.</value></data>
+  <data name="MasterPassword_ImportWhileLocked" xml:space="preserve"><value>Saved passwords are locked by the master password and were not unlocked: the connections are imported, but their passwords are not saved this time.</value></data>
 </root>

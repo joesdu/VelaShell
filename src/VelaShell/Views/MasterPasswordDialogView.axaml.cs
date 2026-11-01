@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using VelaShell.ViewModels;
+using FireAndForget = VelaShell.Services.FireAndForget;
 
 namespace VelaShell.Views;
 
@@ -62,7 +63,7 @@ public partial class MasterPasswordDialogView : Window
         this.PostClose(ViewModel?.Succeeded == true);
     }
 
-    private async void Confirm_Click(object? sender, RoutedEventArgs e)
+    private void Confirm_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
     {
         if (ViewModel is not { } vm)
         {
@@ -75,7 +76,7 @@ public partial class MasterPasswordDialogView : Window
             return;
         }
         FocusFirstField();
-    }
+    });
 
     private void ToggleRecovery_Click(object? sender, RoutedEventArgs e)
     {

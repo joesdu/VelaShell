@@ -10421,4 +10421,5 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Notify_MasterPasswordProblemTitle" xml:space="preserve"><value>主密码解不了锁</value></data>
   <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>主密码的头文件已停用</value></data>
   <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>数据目录里的主密码头文件找不到它包裹过的任何密钥(多半是降级到旧版本时旧版本把包裹过的密钥文件挪开了),已改名保留为 {0};主密码现在是关着的。降级之前存的密码在这台电脑上解不开,需要重新输入。</value></data>
+  <data name="MasterPassword_ImportWhileLocked" xml:space="preserve"><value>已存的密码被主密码锁着、这次没有解锁:连接照样导入,但这次导入的密码不会保存。</value></data>
 </root>

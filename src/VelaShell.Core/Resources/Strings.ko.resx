@@ -9944,4 +9944,5 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Notify_MasterPasswordProblemTitle" xml:space="preserve"><value>마스터 비밀번호로 잠금을 해제할 수 없음</value></data>
   <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>마스터 비밀번호 헤더를 보관 처리함</value></data>
   <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>데이터 폴더의 마스터 비밀번호 헤더가 감싼 키 중 어느 것과도 맞지 않습니다(대개 다운그레이드 때 이전 버전이 감싼 키 파일을 옮겨 두었기 때문입니다). {0}(으)로 남겨 두었고 마스터 비밀번호는 지금 꺼져 있습니다. 다운그레이드 전에 저장한 비밀번호는 이 컴퓨터에서 읽을 수 없어 다시 입력해야 합니다.</value></data>
+  <data name="MasterPassword_ImportWhileLocked" xml:space="preserve"><value>저장된 비밀번호가 마스터 비밀번호로 잠겨 있고 이번에는 잠금을 해제하지 않았습니다. 연결은 가져오지만 이번에 가져온 비밀번호는 저장되지 않습니다.</value></data>
 </root>

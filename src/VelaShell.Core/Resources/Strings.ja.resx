@@ -9944,4 +9944,5 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Notify_MasterPasswordProblemTitle" xml:space="preserve"><value>マスターパスワードでロック解除できません</value></data>
   <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>マスターパスワードのヘッダーを退避しました</value></data>
   <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>データフォルダーのマスターパスワードのヘッダーが、包んだキーのどれとも一致しません(多くはダウングレード時に旧バージョンが包まれたキーファイルを退避したため)。{0} として残し、マスターパスワードは現在無効です。ダウングレード前に保存したパスワードはこのコンピューターでは読めないため、入力し直してください。</value></data>
+  <data name="MasterPassword_ImportWhileLocked" xml:space="preserve"><value>保存済みのパスワードはマスターパスワードでロックされ、今回はロック解除されませんでした。接続はインポートしますが、今回インポートするパスワードは保存されません。</value></data>
 </root>

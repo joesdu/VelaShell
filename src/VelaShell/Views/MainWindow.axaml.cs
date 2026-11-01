@@ -1270,6 +1270,7 @@ public partial class MainWindow : Window
         {
             return;
         }
+        await SessionTreeActions.WarnIfImportingWhileLockedAsync(services, mainWindowViewModel);
         var dialog = new SessionImportView { DataContext = new SessionImportViewModel(importServices) };
         SessionImportOutcome? outcome = await dialog.ShowDialog<SessionImportOutcome?>(this);
         if (outcome is { Imported: > 0 })
