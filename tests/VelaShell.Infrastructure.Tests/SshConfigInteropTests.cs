@@ -711,7 +711,8 @@ public sealed class SshConfigInteropTests
         Assert.AreEqual("~/agents/deploy.sock", ReadBack(export, "keyforward").First("ForwardAgent"));
         Assert.IsNull(ReadBack(export, "unused").First("IdentityAgent"), "端点用不上就不写");
         Assert.IsNull(ReadBack(export, "unused").First("ForwardAgent"));
-        Assert.AreEqual(@"\\.\pipe\vela-pinned-agent", ReadBack(export, "pipe").First("IdentityAgent"), "命名管道原样写");
+        Assert.AreEqual(@"\\.\pipe\vela-pinned-agent", ReadBack(export, "pipe").First("IdentityAgent"),
+            @"命名管道读回来是原来的管道名(文件里写的是转义后的 \\\\.\pipe\…,见 §7.4)");
 
         // 读回来:导出时把主目录写成了 ~,导入这边由库按真正的主目录展开 —— 这里改用真主目录下的路径核对往返。
         string realHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
