@@ -1084,7 +1084,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                                     && FluentFtpInterop.IsResumeCommandRefused(LastReplyOrDefault(lease.Client));
         if (cancellationToken.IsCancellationRequested
             || failure is VelaSftpResumeMismatchException
-            || !FluentFtpInterop.LooksLikeDataChannelInterruption(failure, libraryResumeRefused))
+            || !(failure is UploadUnconfirmedException || FluentFtpInterop.LooksLikeDataChannelInterruption(failure, libraryResumeRefused)))
         {
             return Fault(sessionId, failure, operation);
         }
@@ -1187,12 +1187,32 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     /// <param name="client">这次上传用的连接。</param>
     /// <param name="fileName">出错时报的文件名。</param>
     /// <param name="resumePath">这次是续传(Resume 模式)时的远端路径:服务器拒的是 APPE 就报「续不了」;不是续传为 null。</param>
-    private static Exception UploadNotConfirmed(AsyncFtpClient client, string fileName, string? resumePath = null) =>
-        LastReplyOrDefault(client) is { Code: "426" } reply
-            ? new FtpCommandException(reply)
-            : resumePath is not null && FluentFtpInterop.IsResumeCommandRefused(LastReplyOrDefault(client))
-                ? ResumeUnsupported(resumePath, null)
-                : new VelaFtpOperationException($"FTP upload of {fileName} failed.");
+    /// <remarks>
+    /// 服务器什么明确答复都没给(一条回复都没有、或最后只是 <c>150</c> 一类的预备回复)时报 <see cref="UploadUnconfirmedException" />,
+    /// 由 <see cref="ClassifyTransferFailureAsync" /> 问控制连接再下结论:Linux / macOS 上数据连接被复位,FluentFTP 把写失败吞掉、
+    /// 只回 Failed(Windows 上则直接抛出套接字异常),控制连接也被关掉时最终回复读不到 —— 这不是服务器拒写,不能报成永久失败。
+    /// </remarks>
+    private static Exception UploadNotConfirmed(AsyncFtpClient client, string fileName, string? resumePath = null)
+    {
+        FtpReply last = LastReplyOrDefault(client);
+        if (last.Code == "426")
+        {
+            return new FtpCommandException(last);
+        }
+        if (resumePath is not null && FluentFtpInterop.IsResumeCommandRefused(last))
+        {
+            return ResumeUnsupported(resumePath, null);
+        }
+        return last.Code is null or "" or [ '1', _, _ ]
+            ? new UploadUnconfirmedException($"FTP upload of {fileName} was not confirmed by the server.")
+            : new VelaFtpOperationException($"FTP upload of {fileName} failed.");
+    }
+
+    /// <summary>
+    /// 上传回了 <see cref="FtpStatus.Failed" />,服务器却没给最终答复(见 <see cref="UploadNotConfirmed" />):
+    /// 是数据连接断了还是会话掉线,要问过控制连接才知道;问不出结论时照旧按一次操作失败报(基类)。
+    /// </summary>
+    private sealed class UploadUnconfirmedException(string message) : VelaFtpOperationException(message);
 
     /// <summary>
     /// 跑一次 FluentFTP 的传输调用;<paramref name="resuming" /> 时服务器对续传要用的命令(下载的 REST、上传的 APPE)

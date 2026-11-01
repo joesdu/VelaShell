@@ -1603,6 +1603,34 @@ public class FtpFileServiceIntegrationTests
     }
 
     /// <summary>
+    /// 上传的数据全部写完、数据流干净结束,服务器却不回最终答复就关掉了控制连接:同样是会话掉线,不是服务器拒写。
+    /// 与上面那条对照:上面靠数据连接复位造断线,Linux / macOS 上 FluentFTP 把写失败吞掉、只回 Failed、最后一条回复停在
+    /// <c>150</c>(曾被报成永久的「上传失败」,钉住那次修复的是上面那条);这一条不复位,客户端每次写都成功,
+    /// 断线只体现在读不到最终回复上,三个平台都报连接类错误、会话标成失效。
+    /// </summary>
+    [TestMethod]
+    public async Task Upload_ControlConnectionClosedWithoutFinalReply_FaultsTheSession()
+    {
+        byte[] payload = new byte[256 * 1024];
+        new Random(37).NextBytes(payload);
+        int armed = 1;
+        _server.DropControlAfterCleanStore = _ => Interlocked.Exchange(ref armed, 0) == 1;
+        Guid session = await OpenAsync(maxConnections: 1);
+        await SetProducerTimeoutAsync(session);
+        bool faulted = false;
+        _service.SessionStateChanged += (_, change) => faulted |= change.State == FtpSessionState.Faulted;
+        using var source = new MemoryStream(payload);
+
+        VelaFtpConnectionException error = await Assert.ThrowsExactlyAsync<VelaFtpConnectionException>(() => _service.UploadStreamAsync(
+            session, source, "/unconfirmed.bin", payload.Length, cancellationToken: TestContext.CancellationToken));
+
+        Assert.AreEqual(TransferFailureKind.Transient, TransferRetryPolicy.Classify(error));
+        Assert.IsTrue(faulted, "控制连接断了才是会话掉线,圆点照旧变灰。");
+        Assert.HasCount(1, await _service.ListDirectoryAsync(session, "/", TestContext.CancellationToken));
+        Assert.AreEqual(2, _server.AcceptedConnections);
+    }
+
+    /// <summary>
     /// 下载读到一半数据流干净结束、控制连接回 <c>426</c>(FluentFTP 若在别的平台上自己 REST 续读,那一次也回 426):
     /// 可以重试的数据连接中断,会话不标失效;上层按本地此刻的长度续传,最终与远端逐字节一致。
     /// </summary>

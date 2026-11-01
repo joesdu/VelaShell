@@ -152,6 +152,13 @@ internal sealed class LoopbackFtpServer : IDisposable
     public Func<string, int?>? DropControlDuringStoreAfterBytes { get; set; }
 
     /// <summary>
+    /// 按远端路径:STOR / APPE 照常收完(读到客户端自己关掉数据连接为止),然后**不回最终答复、直接关掉控制连接**。
+    /// 客户端的每一次写都成功,失败只在「读不到最终回复」上 —— 三个平台走同一条路;Linux / macOS 上数据连接被复位时,
+    /// FluentFTP 把写失败吞掉、只回 Failed、最后一条回复停在 150,与这个形状相同。false / null = 照常回复。
+    /// </summary>
+    public Func<string, bool>? DropControlAfterCleanStore { get; set; }
+
+    /// <summary>
     /// <see cref="ResetStoreAfterBytes" /> 与 <see cref="AbortStoreAfterBytes" /> 掐断之后在控制连接上回的那一句。
     /// 默认 <c>426</c>(连接关闭、传输中止);改成 <c>452</c> 之类就是「服务器一边拒写一边复位数据连接」。
     /// </summary>
@@ -707,6 +714,7 @@ internal sealed class LoopbackFtpServer : IDisposable
                 ResetStoreAfterBytes?.Invoke(remote),
                 AbortStoreAfterBytes?.Invoke(remote),
                 DropControlDuringStoreAfterBytes?.Invoke(remote),
+                DropControlAfterCleanStore?.Invoke(remote) == true,
                 StoreFaultReply);
             return await ReceiveFileCoreAsync(state, path, writer, append, fault).ConfigureAwait(false);
         }
@@ -717,7 +725,7 @@ internal sealed class LoopbackFtpServer : IDisposable
     }
 
     /// <summary>一次 STOR / APPE 要注入的故障(见 ResetStoreAfterBytes 等同名属性);三个字节数全为 null = 照常收完。</summary>
-    private readonly record struct StoreFault(int? ResetAfter, int? AbortAfter, int? DropControlAfter, string Reply);
+    private readonly record struct StoreFault(int? ResetAfter, int? AbortAfter, int? DropControlAfter, bool DropControlAfterClean, string Reply);
 
     private static async Task<bool> ReceiveFileCoreAsync(SessionState state, string path, StreamWriter writer, bool append, StoreFault fault)
     {
@@ -747,6 +755,14 @@ internal sealed class LoopbackFtpServer : IDisposable
                 state.CloseData();
                 await writer.WriteLineAsync(fault.Reply).ConfigureAwait(false);
                 return true;
+            }
+            if (fault.DropControlAfterClean)
+            {
+                // 照常收完、干净关掉数据连接,然后不回 226:调用方随即关掉控制连接。
+                await data.CopyToAsync(target).ConfigureAwait(false);
+                state.RestartOffset = 0;
+                state.CloseData();
+                return false;
             }
             if (fault.DropControlAfter is int dropAfter)
             {
