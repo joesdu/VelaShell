@@ -3551,11 +3551,12 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 
 **验证**:`dotnet build tests/VelaShell.Plugin.Ai.Tests -c Debug -warnaserror` 0 警告;AI 插件测试全量 2076 / 2076 通过。没有在真实 SSH 主机上用外部 Claude Code 端到端点一遍;宿主 sudo 链路这次没改,由 `SudoInteropTests`(`ssh-sudo` 靶机)覆盖。
 
-## 312. 2026-11-01 PR #705 的 CI 修复:macOS 上上传选择框的图标视图用例偶发丢选中
+## 312. 2026-11-01 PR #705 的 CI 修复:macOS 上两条偶发失败的用例(上传选择框图标视图丢选中、「在此处打开终端」非 ASCII 目录的整行断言)
 
 **起因**:#705 的 CI(run 41322823900)在 macOS 上红了一条与本 PR 无关的用例 `LocalPathPickerIconViewUiTests.ClickingTheSwitcher_LaysEntriesOutInAGrid_AndBack_KeepingTheSelection`:切到图标视图之后 `SelectedEntries` 是空的(「切视图不该丢掉选中」)。同一次运行的 Windows / Linux 通过。
 
 - **根因在测试环境,产品行为没错**:用例在临时目录里建好 96 个文件就开选择器,视图模型给这个目录挂的是真的 `FileSystemWatcher`。macOS 的 FSEvents 会在开启监视之后补投建文件那几下的创建事件(`RemoteEditDraftsTests` 里记过同一现象),300 ms 防抖后 `RefreshFromWatcher` 经 `RxSchedulers.MainThreadScheduler` 回 UI 线程 —— 而本测试程序集在 `ModuleInit` 里把它换成了 `CurrentThreadSequencer`,刷新于是就地跑在计时器的线程池线程上:重建 `Entries` 时 ListBox 抛 `The calling thread cannot access this object because a different thread owns it.`,此时选中集已被清掉,`RestoreSelection` 走不到。产品里那是 Avalonia 的调度器,刷新在 UI 线程上跑,选中按路径恢复。在 Windows 上用临时探针复现:选中两项后往目录里写一个文件,刷新落在线程池线程上(UI 线程 11,刷新在 16)、`ErrorMessage` 即上面那句、选中 2 → 0;在 UI 线程上直接调 `RefreshAsync`(列表视图 / 图标视图、切视图前后)选中都保得住。
 - **改法**:新增 `TestSupport/UnwatchedLocalFileSystem` —— 读写真实磁盘,`Watch` 返回 null(即「监视不了」,视图模型本来就会退化为不自动刷新)。在真实临时目录上开本地栏 / 上传选择框的四处 UI 用例(`LocalPathPickerIconViewUiTests`、`LocalPathPickerKeyboardUiTests`、`LocalPathPickerMarqueeUiTests`、`FilePaneKeyboardUiTests`)都改用它:后三处有同样的隐患,而迟到的线程池刷新还会把 `Dispatcher.UIThread` 绑走、坑下一条用例(见 Marquee 用例关窗处的注释)。自动刷新本身由 `LocalFilePaneViewModelTests` 用假文件系统盯着,不受影响。产品代码没动。
+- **第二轮(run 41325279041):`OpenTerminalHereTests.OpenTerminalHere_NonAsciiFolder_IsTypedAsPrintableAsciiOctal_InTheSessionEncoding`**。上一条修好后 macOS 上又红了这一条;它在 main / dev 上已经红过几轮(run 41307464360、41306852364、41290825826),与本 PR 无关。敲进去的 cd 行本身是对的(`cd "$(printf '/data/\261\250\261\355')"`,纯可打印 ASCII),断言拿到的却是「cd 行 + 换行 + 登录后命令 `echo after-cd` 那一行」:`SshTerminalBridge.WriteLoopAsync` 有意把上一段写出期间积压的几段并成一次 `WriteAsync`(语义等价于按序逐段发),runner 慢时 cd 与登录后命令进了同一次写出,中间的 `\n` 不是可打印 ASCII。用例原先按「一次 `WriteAsync` = 一行」找 cd,改为把录下的各段拼成字节流、按 `\n` 切行再找;同文件其余用例按子串 / 逐字节判断,不受合并影响。临时把替身的 `WriteAsync` 改成 `Task.Delay(300)` 强制合并:旧断言照 CI 那样红,新断言绿。
 
-**验证**:`dotnet build tests/VelaShell.Tests -c Debug -warnaserror` 0 警告;上述四个类加 `LocalFilePaneViewModelTests`、`HeadlessDispatchUsageTests` 共 82 通过、1 跳过(`Destination_RejectsExistingSymlinkChild`:这台 Windows 上没有建符号链接的权限,与本次无关)。macOS 上的效果只能靠 CI 验证。
+**验证**:`dotnet build tests/VelaShell.Tests -c Debug -warnaserror` 0 警告;上述四个类加 `LocalFilePaneViewModelTests`、`HeadlessDispatchUsageTests` 共 82 通过、1 跳过(`Destination_RejectsExistingSymlinkChild`:这台 Windows 上没有建符号链接的权限,与本次无关);`OpenTerminalHereTests` 16 / 16 通过。第一条修复后的 CI(run 41325279041)Windows / Linux 通过,macOS 上图标视图那条已过、只剩第二条;第二条在 macOS 上的效果仍要看 CI。
