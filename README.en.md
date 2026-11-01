@@ -451,7 +451,7 @@ Thanks to everyone below for supporting VelaShell (newest first; donors who left
 <!-- Add new entries as the first row under the header. Put the currency symbol in the amount (¥ / $ / €); the channel is one of Afdian / Alipay / WeChat Pay / Wise. Add the same row to README.md. -->
 
 | Donor ID | Amount | Channel |
-| :---: | ---: | --- |
+| :---: | :---: | :---: |
 | s*y | ￥10 | WeChatPay |
 
 Put the ID you'd like shown in your Afdian message or transfer note. To stay off the list, change your name, or be removed, email <dygood@outlook.com>.
