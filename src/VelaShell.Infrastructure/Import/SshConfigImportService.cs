@@ -72,8 +72,15 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
         // 用户手动指定了别处的配置文件时,里面的 `Include conf.d/*` 仍指向 ~/.ssh/conf.d。
         // 解析、Include 展开、Match 判定都用 SSH 库的 SshConfigFile,宿主不另写一份。
         string baseDirectory = SshPathResolver.SshDirectory;
+
+        // 引号没配对的行:SSH 库只跳过那一行,ssh 却整份配置不读(spec/09 §7.4)—— 每条预览都说一句,
+        // 这份配置在 ssh 里哪台主机都连不上,而 VelaShell 这边少了那一行的设置。
+        List<string> skippedLines = [];
         IReadOnlyList<SshConfigBlock> blocks = await SshConfigFile
-            .LoadAsync(path, includeDirectory: baseDirectory, cancellationToken).ConfigureAwait(false);
+            .LoadAsync(path, includeDirectory: baseDirectory,
+                onSkippedLine: skipped => skippedLines.Add(Strings.Format("SshCfgImport_NoteUnbalancedQuotes",
+                    Path.GetFileName(skipped.Path), skipped.LineNumber.ToString(CultureInfo.InvariantCulture), skipped.Text)),
+                cancellationToken).ConfigureAwait(false);
 
         List<SessionProfile> existing = await _repository.GetAllSessionsAsync().ConfigureAwait(false);
         var existingKeys = existing
@@ -99,7 +106,7 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
 
             int port = options.Port;   // SSH 库已经把配得不对的端口换成 22
             string user = Value(options.User) ?? string.Empty;
-            List<string> notes = [];
+            List<string> notes = [.. skippedLines];
             NoteSingleBackslashPaths(options, notes);
             // ~ 与 %d %u %h %r 由 SSH 库展开(与连接时读私钥同一套),宿主只把相对路径落到 ~/.ssh 下。
             List<string> identities = [.. options.ExpandIdentityFiles(user)

@@ -253,6 +253,48 @@ public sealed class SshConfigQuotingTests
     }
 
     /// <summary>
+    /// 引号没配对而跳过的行交给 <c>onSkippedLine</c>（文件、行号、原文），<c>Include</c> 进来的文件里的、没配对的 <c>Include</c> 行本身也报 ——
+    /// ssh 读到这样的行整份配置都不读，调用方要告诉使用者。
+    /// </summary>
+    [TestMethod]
+    public async Task 引号没配对而跳过的行交给onSkippedLine()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"velashell-skipped-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            string included = Path.Combine(root, "extra.conf");
+            await File.WriteAllTextAsync(included, "Host b\n    User \"bob\n    Port 2201\n", TestContext.CancellationToken);
+            string main = Path.Combine(root, "config");
+            await File.WriteAllTextAsync(main,
+                $"Include \"{included.Replace('\\', '/')}\"\n" +
+                "Include \"broken\n" +
+                "Host a\n    HostKeyAlias \"C:\\dir\\\"\n    User alice\n" +
+                "Host \"c\n    User carol\n",
+                TestContext.CancellationToken);
+
+            List<SshConfigSkippedLine> skipped = [];
+            IReadOnlyList<SshConfigBlock> blocks = await SshConfigFile.LoadAsync(main, onSkippedLine: skipped.Add,
+                cancellationToken: TestContext.CancellationToken);
+
+            Assert.AreSequenceEqual(
+                [
+                    new SshConfigSkippedLine(Path.GetFullPath(included), 2, @"User ""bob"),
+                    new SshConfigSkippedLine(Path.GetFullPath(main), 2, @"Include ""broken"),
+                    new SshConfigSkippedLine(Path.GetFullPath(main), 4, @"HostKeyAlias ""C:\dir\"""),
+                    new SshConfigSkippedLine(Path.GetFullPath(main), 6, @"Host ""c"),
+                ],
+                [.. skipped]);
+            Assert.AreEqual("alice", SshConfigFile.Resolve(blocks, "a").User, "同一个块里别的行照常");
+            Assert.AreEqual(2201, SshConfigFile.Resolve(blocks, "b").Port);
+            Assert.IsEmpty(SshConfigFile.Parse(await File.ReadAllTextAsync(main, TestContext.CancellationToken)).Where(b => b.Patterns.Contains("c")), "纯文本解析不报，也不开 c 的块");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+    /// <summary>
     /// 写出（<see cref="SshConfigFile.TryFormatArgument"/>）：能不改的地方不改；本库读回来与原值一致。
     /// 与 <c>ssh -G</c> 的核对在 <see cref="写出的参数ssh读回来也是原值"/>。
     /// </summary>

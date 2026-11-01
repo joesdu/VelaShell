@@ -6196,6 +6196,9 @@ Overwrite it?</value>
   <data name="SshCfgImport_NoteSingleBackslash" xml:space="preserve">
     <value>{0}: this reads as a path that starts with a single backslash. In ssh_config &quot;\\&quot; is an escape for one &quot;\&quot;, and ssh reads it the same way; for a UNC path or a named pipe, write \\\\server\share or \\\\.\pipe\name in the config.</value>
   </data>
+  <data name="SshCfgImport_NoteUnbalancedQuotes" xml:space="preserve">
+    <value>{0} line {1}: the quotes are unbalanced, so VelaShell skipped this line; ssh refuses the whole config file because of such a line (invalid quotes): {2}</value>
+  </data>
   <data name="SshCfgImport_NoteAlgoDropped" xml:space="preserve">
     <value>{0}: dropped {1} (not implemented in this version, it could never be negotiated)</value>
   </data>

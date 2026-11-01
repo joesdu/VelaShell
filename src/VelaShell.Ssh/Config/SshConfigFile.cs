@@ -93,6 +93,18 @@ public static partial class SshConfigFile
         /// <summary>正在展开的 Include 所在的块：这期间新开的块都带上它作外层条件。</summary>
         public SshConfigBlock? IncludeScope { get; set; }
 
+        /// <summary>跳过的行交给谁（<see cref="LoadAsync"/> 的 <c>onSkippedLine</c>）。</summary>
+        public Action<SshConfigSkippedLine>? OnSkipped { get; init; }
+
+        /// <summary>报一行跳过的行；纯文本解析（没有文件）时不报。</summary>
+        public void Skip(string? path, int lineNumber, string raw)
+        {
+            if (path is not null)
+            {
+                OnSkipped?.Invoke(new SshConfigSkippedLine(path, lineNumber, raw.Trim()));
+            }
+        }
+
         /// <summary>把攒着的那个块收进去，并开一个新的。</summary>
         public void StartBlock(
             List<SshConfigBlock> blocks, List<string> patterns, SshConfigMatchCriteria? match)
@@ -127,17 +139,27 @@ public static partial class SshConfigFile
     /// <param name="content">文本。</param>
     /// <param name="blocks">解出来的块往这里加。</param>
     /// <param name="state">跨调用带着走的解析状态（Include 会递归进来）。</param>
+    /// <param name="path">文本来自哪个文件（报跳过的行用）；纯文本解析时为 <see langword="null"/>。</param>
+    /// <param name="firstLine">文本的第一行在那个文件里是第几行。</param>
     /// <remarks><c>Include</c> 行在这里跳过：展开它要读文件，由 <see cref="LoadAsync"/> 在逐行扫描时就地做。</remarks>
-    private static void ParseInto(string content, List<SshConfigBlock> blocks, ParserState state)
+    private static void ParseInto(string content, List<SshConfigBlock> blocks, ParserState state, string? path = null, int firstLine = 1)
     {
+        int lineNumber = firstLine - 1;
         foreach (string raw in content.Split('\n'))
         {
+            lineNumber++;
             // 〔velashell-docs/zh/ssh/spec/09 §7.4〕分词照 OpenSSH 的读法：两种引号、\\ \" \' 三种转义、落在词开头的 # 才是注释。
             SshConfigLine line = SshConfigSyntax.ReadLine(raw);
             string key = line.Key;
             if (key.Length == 0)
             {
                 continue;
+            }
+
+            if (!line.QuotesBalanced && !string.Equals(key, "Include", StringComparison.OrdinalIgnoreCase))
+            {
+                // 引号没配对：OpenSSH 整份配置不读，我们只是这一行不算 —— 告诉调用方，同一份配置在 ssh 里用不了。
+                state.Skip(path, lineNumber, raw);
             }
 
             if (string.Equals(key, "Host", StringComparison.OrdinalIgnoreCase))
@@ -169,7 +191,7 @@ public static partial class SshConfigFile
 
             if (!line.QuotesBalanced)
             {
-                // 引号没配对：OpenSSH 整份配置不读，我们只是这一行不算 —— 不因一行写错让整份配置不可用，也不猜半截的值。
+                // 不因一行写错让整份配置不可用，也不猜半截的值（上面已经报过）。
                 continue;
             }
 
@@ -254,13 +276,18 @@ public static partial class SshConfigFile
     /// <c>Include</c> 里的相对路径以哪个目录为准；<see langword="null"/> 表示以写着那行 <c>Include</c> 的文件所在目录为准。
     /// OpenSSH 对用户配置的规则是 <c>~/.ssh</c> —— 读别处的一份用户配置、又要照 OpenSSH 的口径展开时传它。
     /// </param>
+    /// <param name="onSkippedLine">
+    /// 跳过的行交给它（含 <c>Include</c> 进来的文件里的）：目前是引号没配对的行（velashell-docs/zh/ssh/spec/09 §7.4）——
+    /// OpenSSH 读到这样的行整份配置都不读，本库只跳过这一行，调用方据此告诉使用者。
+    /// </param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <remarks>
     /// 文件不存在时返回空列表 —— 没有 <c>~/.ssh/config</c> 是完全正常的状态，
     /// 不该让调用方为此写一个 try。
     /// </remarks>
     public static async ValueTask<IReadOnlyList<SshConfigBlock>> LoadAsync(
-        string? path = null, string? includeDirectory = null, CancellationToken cancellationToken = default)
+        string? path = null, string? includeDirectory = null, Action<SshConfigSkippedLine>? onSkippedLine = null,
+        CancellationToken cancellationToken = default)
     {
         string actual = path ?? DefaultPath;
 
@@ -270,7 +297,7 @@ public static partial class SshConfigFile
         }
 
         List<SshConfigBlock> blocks = [];
-        ParserState state = new();
+        ParserState state = new() { OnSkipped = onSkippedLine };
 
         // 环检测按**规范化后的全路径**比，不按写法比 ——
         // `~/.ssh/a` 和 `/home/joe/.ssh/a` 是同一个文件。
@@ -331,8 +358,12 @@ public static partial class SshConfigFile
             // 而且落在那一行所在的 Host / Match 块里（带条件的包含）。这很要紧 —— ssh_config 是「先出现的值赢」。
             // 曾经是先把整个文件解完、再把被包含的内容接在后面：Include 之后的设置就跑到了被包含内容的前面。
             System.Text.StringBuilder chunk = new();
+            int lineNumber = 0;
+            int chunkStart = 1;
             foreach (string raw in content.Split('\n'))
             {
+                lineNumber++;
+
                 // Include 的参数照 spec/09 §7.4 分词（带空格的路径写成 "~/my dir/x"）。
                 SshConfigLine line = SshConfigSyntax.ReadLine(raw);
 
@@ -342,9 +373,14 @@ public static partial class SshConfigFile
                     continue;
                 }
 
-                ParseInto(chunk.ToString(), blocks, state);
+                ParseInto(chunk.ToString(), blocks, state, full, chunkStart);
                 chunk.Clear();
+                chunkStart = lineNumber + 1;
 
+                if (!line.QuotesBalanced)
+                {
+                    state.Skip(full, lineNumber, raw);
+                }
                 if (depth >= MaxIncludeDepth || !line.QuotesBalanced)
                 {
                     continue;   // 太深了（或者引号没配对），不再往下。不报错 —— 配置文件的其余部分仍然可用。
@@ -369,7 +405,7 @@ public static partial class SshConfigFile
                 state.Enclosing = enclosing;
             }
 
-            ParseInto(chunk.ToString(), blocks, state);
+            ParseInto(chunk.ToString(), blocks, state, full, chunkStart);
         }
         finally
         {

@@ -1289,6 +1289,29 @@ public sealed class SshConfigInteropTests
         Assert.Contains(l => l.StartsWith("localforward C:/Users/Public/vs-b.sock ", StringComparison.Ordinal) && l.EndsWith(":5432", StringComparison.Ordinal), lines, output);
     }
 
+    /// <summary>
+    /// 引号没配对的行:SSH 库只跳过那一行,ssh 却整份配置不读(spec/09 §7.4)—— 这份配置里每一条导入预览都说一句(文件、行号、原文)。
+    /// </summary>
+    [TestMethod]
+    public async Task 引号没配对的行在每条预览里说一句()
+    {
+        string path = WriteConfig(
+            """
+            Host first
+                HostName 10.0.0.61
+                User "bob
+            Host second
+                HostName 10.0.0.62
+            """);
+
+        foreach (string alias in new[] { "first", "second" })
+        {
+            ImportedSession item = await ScanOneAsync(path, alias);
+            Assert.Contains(n => n.Contains(Path.GetFileName(path)) && n.Contains('3') && n.Contains("User \"bob"), item.Notes, alias);
+        }
+        Assert.AreEqual(string.Empty, (await ScanOneAsync(path, "first")).Username, "那一行的设置没有导入");
+    }
+
     private static string? FindSsh()
     {
         if (OperatingSystem.IsWindows())

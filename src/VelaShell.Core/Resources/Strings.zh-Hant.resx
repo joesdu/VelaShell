@@ -6328,6 +6328,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SshCfgImport_NoteSingleBackslash" xml:space="preserve">
     <value>{0}：讀出來是以單個反斜線開頭的路徑 —— ssh_config 裡 \\ 是跳脫，讀成一個 \，ssh 也這麼讀。要寫 UNC 路徑或具名管道，在設定裡寫成 \\\\server\share、\\\\.\pipe\名稱。</value>
   </data>
+  <data name="SshCfgImport_NoteUnbalancedQuotes" xml:space="preserve">
+    <value>{0} 第 {1} 行引號沒配對，VelaShell 略過了這一行；ssh 讀到這樣的行整份設定都不讀（invalid quotes）：{2}</value>
+  </data>
   <data name="SshCfgImport_NoteAlgoDropped" xml:space="preserve">
     <value>{0}：去掉了 {1}（本版沒有實作，寫著也談不成）</value>
   </data>
