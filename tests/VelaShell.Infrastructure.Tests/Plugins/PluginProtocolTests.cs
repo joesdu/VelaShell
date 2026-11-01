@@ -234,6 +234,40 @@ public sealed class PluginProtocolTests
     }
 
     /// <summary>
+    /// 存着的机密(插件声明的机密字段、密码)在这台设备上解不开(仍是密文原样):不把密文、也不把空值交给插件 ——
+    /// 报「解不开」、说清是哪一项,插件那边一次连接也不发生。插件已经不声明的旧键解不开时不挡连接,但同样不交出去。
+    /// </summary>
+    [TestMethod]
+    public async Task FileService_UnreadableStoredSecret_IsNeverHandedToThePlugin()
+    {
+        var registry = new PluginProtocolRegistry();
+        using var fileSystem = new FakeProtocolFileSystem();
+        registry.Register(PluginId, Descriptor(new ProtocolSettingField { Key = "secretKey", Label = "Secret key", IsSecret = true }), fileSystem);
+        var service = new PluginProtocolFileService(registry);
+        SessionProfile sealedKey = Profile();
+        sealedKey.PluginSecrets = new(StringComparer.Ordinal) { ["secretKey"] = "enc1:AAAAsealed" };
+        SessionProfile sealedPassword = Profile();
+        sealedPassword.Username = "minio";
+        sealedPassword.Password = "enc1:AAAAsealed";
+
+        Core.Credentials.CredentialProviderException key = await Assert.ThrowsExactlyAsync<Core.Credentials.CredentialProviderException>(
+            () => service.OpenSessionAsync(sealedKey));
+        Core.Credentials.CredentialProviderException password = await Assert.ThrowsExactlyAsync<Core.Credentials.CredentialProviderException>(
+            () => service.OpenSessionAsync(sealedPassword));
+
+        Assert.AreEqual(Core.Credentials.CredentialFailure.UnreadableSecret, key.Kind);
+        Assert.Contains("Secret key", key.Message, "说清是哪一项");
+        Assert.AreEqual(Core.Credentials.CredentialFailure.UnreadableSecret, password.Kind);
+        Assert.IsNull(fileSystem.LastRequest, "插件那边一次连接也不发生");
+
+        SessionProfile stale = Profile();
+        stale.PluginSecrets = new(StringComparer.Ordinal) { ["secretKey"] = "fresh", ["retired"] = "enc1:AAAAsealed" };
+        await service.OpenSessionAsync(stale);
+        Assert.AreEqual("fresh", fileSystem.LastRequest!.GetString("secretKey"));
+        Assert.IsFalse(fileSystem.LastRequest.Settings.ContainsKey("retired"), "不再声明的旧键解不开:不挡连接,也不交出去");
+    }
+
+    /// <summary>
     /// 声明了 NoCredentials 的协议没有用户名口令可交:配置里残留的那一份(两栏收起之前填的、旧版本存下的)
     /// 用户看不见,不交给插件;没声明的协议照交。
     /// </summary>

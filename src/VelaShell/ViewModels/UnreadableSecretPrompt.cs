@@ -62,4 +62,33 @@ public static class UnreadableSecretPrompt
             ? Strings.Format("Auth_UnreadableSecretKeyMissing", subject)
             : Strings.Format("Auth_UnreadableSecretUnknown", subject);
     }
+
+    /// <summary>
+    /// 插件连接存着的机密(插件声明的机密字段,插件终端还有密码)解不开时的说明:是哪几项、为什么、怎么办,
+    /// 原因的分法同 <see cref="Describe" />。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="Describe" /> 分开:插件声明的机密字段没有登录框可以当场重填,不能说「也可以先在这里输入」——
+    /// 能做的是解锁、恢复系统密钥链,或者到连接配置里重新填写。连接就此失败,密文与空值都不交给插件。
+    /// </remarks>
+    /// <param name="labels">拼好的几项显示名(<c>PluginStoredSecrets.FormatLabels</c>)。</param>
+    /// <param name="status">本机加密密钥的解析结果;拿不到时为 null(按说不出原因的那种说)。</param>
+    /// <param name="masterPasswordLocked">主密码开着、此刻锁着。</param>
+    /// <returns>一段完整的说明。</returns>
+    public static string DescribePluginSecrets(string labels, MasterKeyStatus? status, bool masterPasswordLocked = false)
+    {
+        string subject = Strings.Format("Plugin_UnreadableSecretSubject", labels);
+        if (masterPasswordLocked)
+        {
+            return Strings.Format("Plugin_UnreadableSecretLocked", subject);
+        }
+        if (status is { UnavailableKeyIds.Count: > 0 })
+        {
+            return Strings.Format("Plugin_UnreadableSecretKeychainUnavailable", subject,
+                status.KeychainName ?? string.Empty, status.KeychainError ?? string.Empty);
+        }
+        return status is { MissingKeyIds.Count: > 0 } or { ReplacedKeyFile: not null }
+            ? Strings.Format("Plugin_UnreadableSecretKeyMissing", subject)
+            : Strings.Format("Plugin_UnreadableSecretUnknown", subject);
+    }
 }

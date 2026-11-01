@@ -166,6 +166,44 @@ public sealed class MasterPasswordReconnectFromLibraryTests
         }
     }
 
+    /// <summary>
+    /// 插件终端,锁着时主动连接、取消了解锁:插件机密没有登录框可问,不能剥成空、对插件装作「没设」——
+    /// 说明它们被主密码锁着,这次不连;也不先说一句「请在登录框里手输」。
+    /// </summary>
+    [TestMethod]
+    public async Task PluginTerminalConnect_WhileLocked_AndUnlockCancelled_SaysTheSecretsAreLocked_InsteadOfConnectingWithoutThem()
+    {
+        var terminal = new RecordingTerminal();
+        var gate = new FakeGate(_lock);
+        SessionProfile saved = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "switch-01",
+            Host = "10.0.0.9",
+            Port = 23,
+            Username = "admin",
+            AuthMethod = AuthMethod.Password,
+            ConnectionType = ConnectionType.Plugin,
+            PluginProtocolId = ProtocolId,
+            PluginSecrets = new(StringComparer.Ordinal) { ["token"] = "s3cret" },
+        };
+        await _repository.SaveSessionAsync(saved);
+        SessionProfile loaded = (await _repository.GetSessionAsync(saved.Id))!;
+        Assert.AreEqual("s3cret", loaded.PluginSecrets!["token"], "锁定前载入的:内存里是明文");
+        _lock.Locked = true;
+        MainWindowViewModel vm = CreatePluginViewModel(terminal, gate);
+
+        TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(loaded);
+
+        Assert.AreEqual(1, gate.InteractiveRequests, "主动连接:弹解锁框(这次取消了)");
+        Assert.AreEqual(0, terminal.Count, "不拿锁定前留在内存里的明文去连,也不剥成空去连");
+        Assert.IsNotNull(tab);
+        string expected = Strings.Format("Plugin_UnreadableSecretLocked",
+            Strings.Format("Plugin_UnreadableSecretSubject", Strings.Format("Plugin_SecretLabelQuoted", "Token")));
+        Assert.AreEqual(expected, vm.LastConnectionError);
+        Assert.DoesNotContain(t => t.Message == Strings.Get("MasterPassword_ConnectWhileLocked"), vm.Toasts.Toasts);
+    }
+
     // ---- 工具 ----
 
     /// <summary>

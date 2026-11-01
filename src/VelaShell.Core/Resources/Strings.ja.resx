@@ -9945,4 +9945,13 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>マスターパスワードのヘッダーを退避しました</value></data>
   <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>データフォルダーのマスターパスワードのヘッダーが、包んだキーのどれとも一致しません(多くはダウングレード時に旧バージョンが包まれたキーファイルを退避したため)。{0} として残し、マスターパスワードは現在無効です。ダウングレード前に保存したパスワードはこのコンピューターでは読めないため、入力し直してください。</value></data>
   <data name="MasterPassword_ImportWhileLocked" xml:space="preserve"><value>保存済みのパスワードはマスターパスワードでロックされ、今回はロック解除されませんでした。接続はインポートしますが、今回インポートするパスワードは保存されません。</value></data>
+  <data name="Plugin_SecretLabelPassword" xml:space="preserve"><value>パスワード</value></data>
+  <data name="Plugin_SecretLabelQuoted" xml:space="preserve"><value>「{0}」</value></data>
+  <data name="Plugin_SecretListSeparator" xml:space="preserve"><value>、</value></data>
+  <data name="Plugin_StoredSecretUnreadable" xml:space="preserve"><value>この接続に保存された{0}はこのデバイスでは復号できないため、プラグインに渡していません(暗号文は渡さず、空の値を「未設定」として渡すこともしません)。マスターパスワードでロックされている場合はロックを解除(ステータスバーの錠前アイコン)してから接続し直してください。そうでなければ接続設定でもう一度入力して保存してください。</value></data>
+  <data name="Plugin_UnreadableSecretSubject" xml:space="preserve"><value>この接続に保存された{0}</value></data>
+  <data name="Plugin_UnreadableSecretKeychainUnavailable" xml:space="preserve"><value>{0}は今回復号できません: {1} を開けませんでした({2})。そのためプラグインには渡していません。失われてはいません。{1} のロックを解除して VelaShell を再起動すれば通常どおり読み込めます。</value></data>
+  <data name="Plugin_UnreadableSecretKeyMissing" xml:space="preserve"><value>{0}はこのデバイスでは復号できません: 保存時に使ったローカルの暗号化キーがここにありません(データフォルダーを別の PC やアカウントからコピーした、キーチェーンの項目が削除された、またはキーファイルが置き換えられた可能性があります。メッセージセンターに説明があります)。そのためプラグインには渡していません。接続設定でもう一度入力して保存すれば、このデバイスで復号できる形で保存されます。</value></data>
+  <data name="Plugin_UnreadableSecretUnknown" xml:space="preserve"><value>{0}はこのデバイスでは復号できません(別のデバイスから同期またはコピーされたものか、壊れている可能性があります)。そのためプラグインには渡していません。接続設定でもう一度入力して保存すれば、このデバイスで復号できる形で保存されます。</value></data>
+  <data name="Plugin_UnreadableSecretLocked" xml:space="preserve"><value>{0}はマスターパスワードでロックされており、今回はロック解除されていないため、プラグインには渡していません。ロックを解除(ステータスバーの錠前アイコン)してから接続し直してください。</value></data>
 </root>

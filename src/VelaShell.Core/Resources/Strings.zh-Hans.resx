@@ -10422,4 +10422,13 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>主密码的头文件已停用</value></data>
   <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>数据目录里的主密码头文件找不到它包裹过的任何密钥(多半是降级到旧版本时旧版本把包裹过的密钥文件挪开了),已改名保留为 {0};主密码现在是关着的。降级之前存的密码在这台电脑上解不开,需要重新输入。</value></data>
   <data name="MasterPassword_ImportWhileLocked" xml:space="preserve"><value>已存的密码被主密码锁着、这次没有解锁:连接照样导入,但这次导入的密码不会保存。</value></data>
+  <data name="Plugin_SecretLabelPassword" xml:space="preserve"><value>密码</value></data>
+  <data name="Plugin_SecretLabelQuoted" xml:space="preserve"><value>「{0}」</value></data>
+  <data name="Plugin_SecretListSeparator" xml:space="preserve"><value>、</value></data>
+  <data name="Plugin_StoredSecretUnreadable" xml:space="preserve"><value>这条连接存着的{0}在这台设备上解不开,没有交给插件(不交密文,也不拿空值冒充没填)。被主密码锁着时解锁(状态栏的锁形图标)后再连;否则请在连接配置里重新填写并保存。</value></data>
+  <data name="Plugin_UnreadableSecretSubject" xml:space="preserve"><value>这条连接存着的{0}</value></data>
+  <data name="Plugin_UnreadableSecretKeychainUnavailable" xml:space="preserve"><value>{0}这次解不开:{1} 没能打开({2}),没有交给插件。它没有丢 —— 解锁 {1} 之后重启 VelaShell 就能照常读取。</value></data>
+  <data name="Plugin_UnreadableSecretKeyMissing" xml:space="preserve"><value>{0}在这台设备上解不开:加密它的本机密钥不在这里(数据目录从别的电脑或账户拷来,或者密钥条目被删、密钥文件被换过,消息中心里有说明),没有交给插件。请在连接配置里重新填写并保存,存的就是这台设备解得开的一份。</value></data>
+  <data name="Plugin_UnreadableSecretUnknown" xml:space="preserve"><value>{0}在这台设备上解不开(可能是从别的设备同步或拷来的,也可能已经损坏),没有交给插件。请在连接配置里重新填写并保存,存的就是这台设备解得开的一份。</value></data>
+  <data name="Plugin_UnreadableSecretLocked" xml:space="preserve"><value>{0}被主密码锁着,这次没有解锁,没有交给插件。解锁(状态栏的锁形图标)后再连。</value></data>
 </root>

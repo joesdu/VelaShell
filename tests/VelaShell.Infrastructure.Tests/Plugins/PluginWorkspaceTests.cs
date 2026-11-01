@@ -393,6 +393,42 @@ public sealed class PluginWorkspaceTests
     }
 
     /// <summary>
+    /// 存着的机密(插件声明的机密字段、密码)在这台设备上解不开:不把密文、也不把空值交给插件,报「解不开」并说清是哪一项。
+    /// 插件已经不声明的旧键解不开时不挡连接,但同样不交出去。
+    /// </summary>
+    [TestMethod]
+    public async Task Launcher_OpenAsync_UnreadableStoredSecret_IsNeverHandedToThePlugin()
+    {
+        var registry = new PluginProtocolRegistry();
+        var provider = new FakeWorkspaceProvider();
+        registry.RegisterWorkspace(PluginId, Descriptor(
+            new ProtocolSettingField { Key = "aclToken", Label = "ACL token", IsSecret = true }), provider);
+        var launcher = new PluginWorkspaceLauncher(registry);
+        SessionProfile sealedToken = Profile();
+        sealedToken.Password = "readable";
+        sealedToken.PluginSecrets = new(StringComparer.Ordinal) { ["aclToken"] = "enc1:AAAAsealed" };
+        SessionProfile sealedPassword = Profile();
+        sealedPassword.Password = "enc1:AAAAsealed";
+
+        Core.Credentials.CredentialProviderException token = await Assert.ThrowsExactlyAsync<Core.Credentials.CredentialProviderException>(
+            () => launcher.OpenAsync(sealedToken));
+        Core.Credentials.CredentialProviderException password = await Assert.ThrowsExactlyAsync<Core.Credentials.CredentialProviderException>(
+            () => launcher.OpenAsync(sealedPassword));
+
+        Assert.AreEqual(Core.Credentials.CredentialFailure.UnreadableSecret, token.Kind);
+        Assert.Contains("ACL token", token.Message);
+        Assert.AreEqual(Core.Credentials.CredentialFailure.UnreadableSecret, password.Kind);
+        Assert.IsNull(provider.LastRequest, "插件那边一次打开也不发生");
+
+        SessionProfile stale = Profile();
+        stale.Password = "readable";
+        stale.PluginSecrets = new(StringComparer.Ordinal) { ["aclToken"] = "fresh", ["retired"] = "enc1:AAAAsealed" };
+        await launcher.OpenAsync(stale);
+        Assert.AreEqual("fresh", provider.LastRequest!.GetString("aclToken"));
+        Assert.IsFalse(provider.LastRequest.Settings.ContainsKey("retired"), "不再声明的旧键解不开:不挡连接,也不交出去");
+    }
+
+    /// <summary>
     /// <b>没有凭据的那一档(SQLite,变体声明 NoCredentials):用户名口令一律交空串</b>,哪怕配置里还留着。
     /// 那是连接框把两栏收起之前填的(或旧版本存下的),用户看不见,不能交给第三方插件。
     /// 要凭据的那一档(MySQL)照旧原样交。

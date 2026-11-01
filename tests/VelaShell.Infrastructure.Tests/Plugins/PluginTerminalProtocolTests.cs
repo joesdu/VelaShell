@@ -184,6 +184,47 @@ public sealed class PluginTerminalProtocolTests
         Assert.AreEqual("pw", terminal.Request.Password);
     }
 
+    /// <summary>
+    /// 存着的机密在这台设备上解不开(仍是密文原样):不把密文、也不把空值交给插件 —— 报「解不开」,插件那边一次连接也不发生。
+    /// 声明了 NoCredentials 的协议本来就不交密码,那一份解不开也不挡连接。
+    /// </summary>
+    [TestMethod]
+    [DataRow("token", false, DisplayName = "机密字段")]
+    [DataRow("password", false, DisplayName = "密码")]
+    [DataRow("password", true, DisplayName = "NoCredentials 协议的密码不交也不挡")]
+    public async Task Connector_UnreadableStoredSecret_IsNeverHandedToThePlugin(string which, bool noCredentials)
+    {
+        var terminal = new FakeTerminal();
+        ProtocolDescriptor plain = Descriptor();
+        ProtocolDescriptor descriptor = noCredentials
+            ? new() { Id = plain.Id, DisplayName = plain.DisplayName, DefaultPort = plain.DefaultPort, Features = ProtocolFeatures.NoCredentials, Fields = plain.Fields }
+            : plain;
+        var registration = new PluginProtocolRegistration("test", descriptor, FileSystem: null, terminal);
+        SessionProfile profile = Profile();
+        profile.Username = "admin";
+        if (which == "token")
+        {
+            profile.PluginSecrets!["token"] = "enc1:AAAAsealed";
+        }
+        else
+        {
+            profile.Password = "enc1:AAAAsealed";
+        }
+
+        if (noCredentials)
+        {
+            await using IShellStreamWrapper stream = await PluginProtocolTerminalConnector.OpenAsync(registration, profile, new("xterm", 80, 24));
+            Assert.AreEqual(string.Empty, terminal.Request!.Password);
+            return;
+        }
+        Core.Credentials.CredentialProviderException failure = await Assert.ThrowsExactlyAsync<Core.Credentials.CredentialProviderException>(
+            () => PluginProtocolTerminalConnector.OpenAsync(registration, profile, new("xterm", 80, 24)));
+
+        Assert.AreEqual(Core.Credentials.CredentialFailure.UnreadableSecret, failure.Kind);
+        Assert.Contains(which == "token" ? "Token" : Core.Resources.Strings.Get("Plugin_SecretLabelPassword"), failure.Message, "说清是哪一项");
+        Assert.IsNull(terminal.Request, "插件那边一次连接也不发生");
+    }
+
     [TestMethod]
     public async Task Connector_TranslatesSdkAuthenticationException_IntoTheHostFamily()
     {

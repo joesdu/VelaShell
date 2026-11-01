@@ -10422,4 +10422,13 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Notify_MasterPasswordRetiredTitle" xml:space="preserve"><value>主密碼的標頭檔已停用</value></data>
   <data name="Notify_MasterPasswordRetiredBody" xml:space="preserve"><value>資料目錄裡的主密碼標頭檔找不到它包裹過的任何金鑰(多半是降級到舊版本時舊版本把包裹過的金鑰檔挪開了),已改名保留為 {0};主密碼現在是關著的。降級之前存的密碼在這台電腦上解不開,需要重新輸入。</value></data>
   <data name="MasterPassword_ImportWhileLocked" xml:space="preserve"><value>已儲存的密碼被主密碼鎖著、這次沒有解鎖:連線照樣匯入,但這次匯入的密碼不會儲存。</value></data>
+  <data name="Plugin_SecretLabelPassword" xml:space="preserve"><value>密碼</value></data>
+  <data name="Plugin_SecretLabelQuoted" xml:space="preserve"><value>「{0}」</value></data>
+  <data name="Plugin_SecretListSeparator" xml:space="preserve"><value>、</value></data>
+  <data name="Plugin_StoredSecretUnreadable" xml:space="preserve"><value>這條連線存著的{0}在這台裝置上解不開,沒有交給外掛(不交密文,也不拿空值冒充沒填)。被主密碼鎖著時解鎖(狀態列的鎖形圖示)後再連;否則請在連線設定裡重新填寫並儲存。</value></data>
+  <data name="Plugin_UnreadableSecretSubject" xml:space="preserve"><value>這條連線存著的{0}</value></data>
+  <data name="Plugin_UnreadableSecretKeychainUnavailable" xml:space="preserve"><value>{0}這次解不開:{1} 沒能開啟({2}),沒有交給外掛。它沒有遺失 —— 解鎖 {1} 之後重新啟動 VelaShell 就能照常讀取。</value></data>
+  <data name="Plugin_UnreadableSecretKeyMissing" xml:space="preserve"><value>{0}在這台裝置上解不開:加密它的本機金鑰不在這裡(資料目錄是從別的電腦或帳戶複製來的,或者金鑰項目被刪、金鑰檔被換過,訊息中心裡有說明),沒有交給外掛。請在連線設定裡重新填寫並儲存,存的就是這台裝置解得開的一份。</value></data>
+  <data name="Plugin_UnreadableSecretUnknown" xml:space="preserve"><value>{0}在這台裝置上解不開(可能是從別的裝置同步或複製來的,也可能已經損壞),沒有交給外掛。請在連線設定裡重新填寫並儲存,存的就是這台裝置解得開的一份。</value></data>
+  <data name="Plugin_UnreadableSecretLocked" xml:space="preserve"><value>{0}被主密碼鎖著,這次沒有解鎖,沒有交給外掛。解鎖(狀態列的鎖形圖示)後再連。</value></data>
 </root>

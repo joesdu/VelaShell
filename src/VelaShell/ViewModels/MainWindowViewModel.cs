@@ -5800,6 +5800,13 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
             return (null, new(profile, null));
         }
         bool allowsAnonymous = descriptor?.Features.HasFlag(ProtocolFeatures.AnonymousAccess) == true;
+        // 插件声明的机密字段没有登录框可问:存着的那几项在这台设备上解不开就说清是哪一项、为什么,这次不连 ——
+        // 不拿密文、也不拿空值去连。密码另由下面的登录框问(框上说明它为什么解不开)。插件还没解析出来时由协议服务那一道兜住。
+        if (descriptor is not null
+            && await UnreadablePluginSecretsAsync(profile, descriptor.Fields, includePassword: false).ConfigureAwait(true) is { } unreadable)
+        {
+            return (null, new(profile, unreadable));
+        }
 
         SessionProfile current = profile;
         // 证书提示单独计数:attempt-- 会与 attempt++ 相抵,把 3 次上限彻底架空。
@@ -6010,6 +6017,14 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
             _backgroundActivity?.Begin(Strings.Connecting, ProfileDisplayName(profile));
         // 共享凭据在这一刻才取(打开与重连都经过这里,重连自然用上凭据的新值,#550)。
         SessionProfile resolved = await ResolveCredentialsAsync(profile, cancellationToken).ConfigureAwait(true);
+        // 存着的机密(插件终端没有登录框,密码也算上)在这台设备上解不开:说清是哪一项、为什么,这次就不连 ——
+        // 不把密文、也不把空值交给插件。打开与重连都经过这里。
+        bool noCredentials = registration.Descriptor.Features.HasFlag(ProtocolFeatures.NoCredentials);
+        if (await UnreadablePluginSecretsAsync(resolved, registration.Descriptor.Fields, includePassword: !noCredentials)
+                .ConfigureAwait(true) is { } unreadable)
+        {
+            throw unreadable;
+        }
         IShellStreamWrapper stream = await PluginProtocolTerminalConnector
             .OpenAsync(registration, resolved, options, cancellationToken)
             .ConfigureAwait(true);
@@ -6138,6 +6153,13 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
             {
                 ui.Document.TypeLabel = descriptor.DisplayName;
             }
+        }
+        // 同插件文件协议那条路径:插件声明的机密字段解不开就说清是哪一项、为什么,这次不连(密码另由登录框问)。
+        if (descriptor is not null
+            && await UnreadablePluginSecretsAsync(profile, descriptor.Fields, includePassword: false).ConfigureAwait(true) is { } unreadable)
+        {
+            ReportDocumentConnectFailure(ui, profile, unreadable);
+            return null;
         }
 
         SessionProfile current = profile;
@@ -6543,6 +6565,44 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
         && (allowsAnonymous
             ? !string.IsNullOrWhiteSpace(profile.Username) && MissingPassword(profile)
             : string.IsNullOrWhiteSpace(profile.Username) || MissingPassword(profile));
+
+    /// <summary>
+    /// 插件连接存着的机密在这台设备上解不开(载入时仍是密文原样):是哪几项、为什么(按本机加密密钥的解析结果、主密码锁没锁)、
+    /// 怎么办,作为这次连接的失败原因交给调用方 —— 不把密文、也不把空值交给插件(协议服务、工作台启动器里的 PluginStoredSecrets 是最后一道)。
+    /// </summary>
+    /// <param name="profile">要交给插件的那份配置。</param>
+    /// <param name="fields">插件声明的设置字段。</param>
+    /// <param name="includePassword">把密码也算上(插件终端没有登录框可问;文件协议与工作台的密码由登录框问)。</param>
+    /// <returns>有解不开的时为要报的失败(<see cref="CredentialFailure.UnreadableSecret" />);都解得开时为 null。</returns>
+    private async Task<CredentialProviderException?> UnreadablePluginSecretsAsync(
+        SessionProfile profile, IEnumerable<ProtocolSettingField> fields, bool includePassword)
+    {
+        IReadOnlyList<string> labels = PluginStoredSecrets.UnreadableLabels(profile, fields, includePassword);
+        if (labels.Count == 0)
+        {
+            return null;
+        }
+        MasterKeyStatus? status = null;
+        if (_masterKeyStatus is { } keys)
+        {
+            try
+            {
+                // 启动时已在后台解析好,这里只是取结果;取的时候仍可能要等系统密钥链,放到线程池上。
+                status = await Task.Run(keys.GetKeyStatus).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                // 说不出原因就按「解不开」说,不影响这次的结论。
+                System.Diagnostics.Trace.WriteLine($"[Secrets] Master key status unavailable for a plugin connection: {ex.Message}");
+            }
+        }
+        // 主密码锁着:说的是「锁着」,不是「密钥不在」。
+        bool locked = _masterPassword is { } gate && await gate.IsLockedAsync().ConfigureAwait(true);
+        return new CredentialProviderException(
+            CredentialFailure.UnreadableSecret,
+            profile.CredentialSource?.ProviderId ?? string.Empty,
+            UnreadableSecretPrompt.DescribePluginSecrets(PluginStoredSecrets.FormatLabels(labels), status, locked));
+    }
 
     /// <summary>没有能用的密码:空着,或者存着的那份在这台设备上解不开(FTP 与插件协议只认密码)。</summary>
     private static bool MissingPassword(SessionProfile profile) =>

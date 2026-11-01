@@ -147,8 +147,13 @@ public partial class MainWindowViewModel
         {
             return await RefreshUnreadableSecretsAsync(profile).ConfigureAwait(true);
         }
-        Toasts.Info(Strings.Get("MasterPassword_ConnectWhileLocked"));
-        return StripSavedSecrets(profile);
+        SessionProfile stripped = await StripSavedSecretsAsync(profile).ConfigureAwait(true);
+        if (stripped.PluginSecrets is not { Count: > 0 })
+        {
+            // 插件机密被锁着时这次连不成(连接前的检查会说明「被主密码锁着」),不先说一句「请在登录框里手输」。
+            Toasts.Info(Strings.Get("MasterPassword_ConnectWhileLocked"));
+        }
+        return stripped;
     }
 
     /// <summary>
@@ -260,13 +265,44 @@ public partial class MainWindowViewModel
         return profile;
     }
 
-    /// <summary>剥掉已存机密的一份副本(锁着、用户取消了解锁:这一次手输)。</summary>
-    private static SessionProfile StripSavedSecrets(SessionProfile profile)
+    /// <summary>
+    /// 剥掉已存机密的一份副本(锁着、用户取消了解锁):密码与私钥口令这一次由登录框问。
+    /// </summary>
+    /// <remarks>
+    /// 插件声明的机密字段没有登录框可问,剥成空就等于对插件装作「用户没填」。换成库里那一份里解不开的几项(锁着时就是全部,仍是密文原样):
+    /// 连接前的检查(<see cref="UnreadablePluginSecretsAsync" />)据此说明它们被主密码锁着、这次不连,协议服务那一道也绝不把密文交出去。
+    /// 只留解不开的:锁定前留在内存里的明文不拿去用,这一份也绝不能把明文带回来。不在库里的(临时配置)只能剥掉。
+    /// </remarks>
+    private async Task<SessionProfile> StripSavedSecretsAsync(SessionProfile profile)
     {
         SessionProfile copy = profile.Clone();
         copy.Password = null;
         copy.PrivateKeyPassphrase = null;
-        copy.PluginSecrets = null;
+        copy.PluginSecrets = profile.PluginSecrets is { Count: > 0 }
+            ? await LockedPluginSecretsAsync(profile.Id).ConfigureAwait(true)
+            : null;
         return copy;
+    }
+
+    /// <summary>库里那份配置的插件机密里解不开的几项(锁着时载入的密文原样);没有、不在库里或读不出来时为 null。</summary>
+    private async Task<Dictionary<string, string>?> LockedPluginSecretsAsync(Guid profileId)
+    {
+        if (_sessionRepository is null)
+        {
+            return null;
+        }
+        try
+        {
+            SessionProfile? stored = await _sessionRepository.GetSessionAsync(profileId).ConfigureAwait(true);
+            Dictionary<string, string>? kept = stored?.PluginSecrets?
+                .Where(static entry => StoredSecret.IsUnreadable(entry.Value))
+                .ToDictionary(static entry => entry.Key, static entry => entry.Value, StringComparer.Ordinal);
+            return kept is { Count: > 0 } ? kept : null;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Secrets] Could not read the locked plugin secrets of {profileId}: {ex.Message}");
+            return null;
+        }
     }
 }
