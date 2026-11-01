@@ -1665,6 +1665,102 @@ public class FtpFileServiceIntegrationTests
         Assert.AreEqual(2, _server.AcceptedConnections);
     }
 
+    /// <summary>
+    /// 服务器不认续传要用的命令(REST 回 502 / APPE 回 502):不报永久的「操作失败」,而报「这台服务器续不了」——
+    /// 它派生自起点核实失败的那个异常,规划时探到的半截照旧交回同名冲突策略;目标一个字节都没被碰,
+    /// 会话不标失效。之后从头整份传(重试层对自己写下的半截就是这么做的)照常传完、内容一致。
+    /// </summary>
+    /// <param name="direction">上传 / 下载。</param>
+    /// <param name="refused">服务器不认的命令:REST 或 APPE。</param>
+    /// <param name="partial">目标上那半截的长度:不超过 64 KiB 时起点核实从 0 读、不发 REST,超过时核实要 REST。</param>
+    /// <param name="length">源文件长度。</param>
+    /// <param name="streamed">上传走流式接口。</param>
+    [TestMethod]
+    [DataRow("upload", "APPE", 30_000, 100_000, false, DisplayName = "上传:APPE 不认(核实不用 REST)")]
+    [DataRow("upload", "APPE", 30_000, 100_000, true, DisplayName = "流式上传:APPE 不认")]
+    [DataRow("upload", "REST", 100_000, 300_000, false, DisplayName = "上传:核实起点的 REST 不认")]
+    [DataRow("download", "REST", 30_000, 100_000, false, DisplayName = "下载:续读的 REST 不认")]
+    [DataRow("download", "REST", 100_000, 300_000, false, DisplayName = "下载:核实起点的 REST 不认")]
+    public async Task Resume_WhenTheServerDoesNotImplementRestOrAppe_ReportsResumeUnsupportedAndLeavesTheTargetAlone(
+        string direction, string refused, int partial, int length, bool streamed)
+    {
+        byte[] payload = new byte[length];
+        new Random(47).NextBytes(payload);
+        _server.SupportsRest = refused != "REST";
+        _server.SupportsAppe = refused != "APPE";
+        Guid session = await OpenAsync(maxConnections: 1);
+        bool faulted = false;
+        _service.SessionStateChanged += (_, change) => faulted |= change.State == FtpSessionState.Faulted;
+        string local = Path.Combine(Path.GetTempPath(), $"vela-ftp-norest-{Guid.NewGuid():N}.bin");
+        string remote = Path.Combine(_root, "partial.bin");
+        bool upload = direction == "upload";
+        // 目标上那半截:上传时在服务器上,下载时在本地。
+        await File.WriteAllBytesAsync(upload ? local : remote, payload, TestContext.CancellationToken);
+        await File.WriteAllBytesAsync(upload ? remote : local, payload[..partial], TestContext.CancellationToken);
+        try
+        {
+            VelaSftpResumeUnsupportedException error = await Assert.ThrowsExactlyAsync<VelaSftpResumeUnsupportedException>(() => upload
+                ? UploadAsync(session, local, "/partial.bin", partial, streamed)
+                : _service.DownloadFileAsync(session, "/partial.bin", local, new Progress<TransferProgress>(), partial, TestContext.CancellationToken));
+
+            Assert.IsInstanceOfType<VelaSftpResumeMismatchException>(error, "规划时探到的半截照旧交回同名冲突策略,不悄悄整份覆盖");
+            Assert.IsGreaterThanOrEqualTo(1, _server.UnsupportedResumeCommands, "确实撞上了服务器的「不支持」");
+            byte[] target = await File.ReadAllBytesAsync(upload ? remote : local, TestContext.CancellationToken);
+            Assert.AreSequenceEqual(payload[..partial], target, "目标上那半截一个字节都没被碰");
+            Assert.IsFalse(faulted, "服务器答的是「不支持」,不是掉线");
+
+            if (upload)
+            {
+                await UploadAsync(session, local, "/partial.bin", resumeOffset: 0, streamed);
+            }
+            else
+            {
+                await _service.DownloadFileAsync(session, "/partial.bin", local, new Progress<TransferProgress>(), 0, TestContext.CancellationToken);
+            }
+            Assert.AreSequenceEqual(SHA256.HashData(payload),
+                SHA256.HashData(await File.ReadAllBytesAsync(upload ? remote : local, TestContext.CancellationToken)));
+        }
+        finally
+        {
+            File.Delete(local);
+        }
+    }
+
+    /// <summary>
+    /// 不支持 REST 的服务器上下载读到一半被 426 中止:FluentFTP 发现数据流断了想自己 REST 续读(有的平台上),
+    /// 服务器回 502 —— 那条 502 是续读的结局,不是对这个文件的答复,照样是一次可以重试的数据连接中断,会话不标失效。
+    /// </summary>
+    [TestMethod]
+    public async Task DownloadFile_InterruptedOnAServerWithoutRest_IsStillARetryableInterruption()
+    {
+        byte[] payload = new byte[100_000];
+        new Random(53).NextBytes(payload);
+        await File.WriteAllBytesAsync(Path.Combine(_root, "norest.bin"), payload, TestContext.CancellationToken);
+        _server.SupportsRest = false;
+        int retrieves = 0;
+        _server.ReadFaultForPath = _ => Interlocked.Increment(ref retrieves) == 1
+            ? new() { DataLimit = 7_000, Reply = "426 Connection closed; transfer aborted" }
+            : null;
+        Guid session = await OpenAsync(maxConnections: 1);
+        bool faulted = false;
+        _service.SessionStateChanged += (_, change) => faulted |= change.State == FtpSessionState.Faulted;
+        string local = Path.Combine(Path.GetTempPath(), $"vela-ftp-norest-dl-{Guid.NewGuid():N}.bin");
+        try
+        {
+            VelaFtpTransferInterruptedException error = await Assert.ThrowsExactlyAsync<VelaFtpTransferInterruptedException>(
+                () => _service.DownloadFileAsync(session, "/norest.bin", local, new Progress<TransferProgress>(), 0, TestContext.CancellationToken));
+            Assert.AreEqual(TransferFailureKind.Transient, TransferRetryPolicy.Classify(error));
+            Assert.IsFalse(faulted);
+
+            await _service.DownloadFileAsync(session, "/norest.bin", local, new Progress<TransferProgress>(), 0, TestContext.CancellationToken);
+            Assert.AreSequenceEqual(SHA256.HashData(payload), SHA256.HashData(await File.ReadAllBytesAsync(local, TestContext.CancellationToken)));
+        }
+        finally
+        {
+            File.Delete(local);
+        }
+    }
+
     private sealed class SequentialSource(Stream inner) : Stream
     {
         public override bool CanRead => true;

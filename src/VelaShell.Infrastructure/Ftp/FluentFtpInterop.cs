@@ -1,3 +1,4 @@
+using FluentFTP;
 using FluentFTP.Exceptions;
 using VelaShell.Core.Ftp;
 
@@ -114,10 +115,18 @@ internal static class FluentFtpInterop
     /// 不是断线 —— 磁盘满的服务器常常一边回 <c>452</c> 一边复位数据连接,两样都在链上,得按答复算。
     /// 没有套接字异常垫底的裸 <see cref="IOException" /> 也不算:本地文件读写失败就是这个形状。
     /// </para>
+    /// <para>
+    /// <paramref name="libraryResumeRefused" />:这次调用自己没发 REST,最后一条回复却是服务器拒了 REST
+    /// (<see cref="IsResumeCommandRefused" />)—— 那是 FluentFTP 发现数据流断了、想按偏移续读,服务器不支持。
+    /// 链上那条 <c>500</c> / <c>502</c> / <c>504</c> 是续读的结局、不是对这个文件的答复,不据此否决;
+    /// 库会去续读,本身就说明数据连接中途断了(它只在读到提前的 EOF 或复位时才续),算作迹象。
+    /// </para>
     /// </remarks>
-    public static bool LooksLikeDataChannelInterruption(Exception? ex)
+    /// <param name="ex">这次尝试的失败。</param>
+    /// <param name="libraryResumeRefused">FluentFTP 自己的续读被服务器以「不支持」拒掉(见上)。</param>
+    public static bool LooksLikeDataChannelInterruption(Exception? ex, bool libraryResumeRefused = false)
     {
-        bool evidence = false;
+        bool evidence = libraryResumeRefused;
         var pending = new Stack<Exception>();
         if (ex is not null)
         {
@@ -130,6 +139,8 @@ internal static class FluentFtpInterop
             {
                 case FtpCommandException { CompletionCode: "426" }:
                     evidence = true;
+                    break;
+                case FtpCommandException { CompletionCode: "500" or "502" or "504" } when libraryResumeRefused:
                     break;
                 case FtpCommandException or FtpAuthenticationException or FtpSecurityNotAvailableException
                     or System.Security.Authentication.AuthenticationException:
@@ -152,6 +163,15 @@ internal static class FluentFtpInterop
         }
         return evidence;
     }
+
+    /// <summary>
+    /// 服务器对续传要用的命令回「不认识 / 没实现」(<c>500</c> / <c>502</c> / <c>504</c>):<c>REST</c>(按偏移续读,
+    /// 下载与续传起点核实用)或 <c>APPE</c>(追加写,续传上传用)。这台服务器续不了,与这个文件无关。
+    /// </summary>
+    /// <remarks>按 FluentFTP 给回复记下的命令认(<see cref="FtpReply.Command" />),不看消息。</remarks>
+    public static bool IsResumeCommandRefused(FtpReply reply) =>
+        reply is { Code: "500" or "502" or "504", Command: { } command }
+        && (command.StartsWith("REST ", StringComparison.Ordinal) || command.StartsWith("APPE ", StringComparison.Ordinal));
 
     private static readonly string[] ConcurrencyKeywords =
     [

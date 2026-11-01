@@ -104,6 +104,18 @@ internal sealed class LoopbackFtpServer : IDisposable
     public bool SupportsSha256 { get; set; } = true;
 
     /// <summary>
+    /// 是否实现 <c>REST</c>(按偏移续读 / 续写)。默认 true;置 false 时 FEAT 不通告 <c>REST STREAM</c>、命令回 <c>502</c> ——
+    /// 复刻不能按偏移续传的老服务器。
+    /// </summary>
+    public bool SupportsRest { get; set; } = true;
+
+    /// <summary>是否实现 <c>APPE</c>(追加写)。默认 true;置 false 时命令回 <c>502</c>,不开数据连接。</summary>
+    public bool SupportsAppe { get; set; } = true;
+
+    /// <summary>被回了 502 的 REST / APPE 次数(用于断言确实撞过「不支持」)。</summary>
+    public int UnsupportedResumeCommands;
+
+    /// <summary>
     /// 是否实现 <c>MLSD</c> / <c>MLST</c>(RFC 3659,时间一律 UTC)。默认 false —— 类型注释里说的那条主路径是 LIST;
     /// 置 true 时 FEAT 通告它们,客户端就改走机读列表,用来验「MLSD 的时间不该再按时区偏移挪」。
     /// </summary>
@@ -302,7 +314,10 @@ internal sealed class LoopbackFtpServer : IDisposable
                 // 只通告 SIZE / REST / UTF8:不给 MLSD,逼客户端走 Unix LIST 解析。
                 await writer.WriteLineAsync("211-Features:").ConfigureAwait(false);
                 await writer.WriteLineAsync(" SIZE").ConfigureAwait(false);
-                await writer.WriteLineAsync(" REST STREAM").ConfigureAwait(false);
+                if (SupportsRest)
+                {
+                    await writer.WriteLineAsync(" REST STREAM").ConfigureAwait(false);
+                }
                 await writer.WriteLineAsync(" UTF8").ConfigureAwait(false);
                 if (SupportsMfmt)
                 {
@@ -391,6 +406,11 @@ internal sealed class LoopbackFtpServer : IDisposable
                 await writer.WriteLineAsync(Directory.Exists(Local(state.WorkingDirectory))
                     ? "250 Directory changed"
                     : "550 No such directory").ConfigureAwait(false);
+                return true;
+            case "REST" when !SupportsRest:
+            case "APPE" when !SupportsAppe:
+                Interlocked.Increment(ref UnsupportedResumeCommands);
+                await writer.WriteLineAsync("502 Command not implemented").ConfigureAwait(false);
                 return true;
             case "REST":
                 state.RestartOffset = long.TryParse(argument, out long offset) ? offset : 0;

@@ -90,13 +90,115 @@ public sealed class FtpTransferInterruptionRetryTests
         Assert.IsFalse(rig.Faulted, "数据连接中途断开不是会话掉线,树上的圆点不能变灰。");
     }
 
+    /// <summary>
+    /// 服务器不认 APPE、上传被 426 中止:续传开着时重试先按远端那半截续(APPE 被 502 拒),因为那半截是这次传输自己写的,
+    /// 改为从头整份重传 —— 不报永久的「不支持」,不经冲突策略,也不多算一次重试;续传关着本来就整份重传。
+    /// 冲突策略设成「跳过」:要是这一步错走了冲突策略,这一项会以「跳过」收尾而不是传完。
+    /// </summary>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task AnInterruptedUpload_OnAServerWithoutAppe_IsRetriedFromTheStart(bool resume)
+    {
+        await using var rig = new Rig(resume, conflictPolicy: "skip");
+        rig.Server.SupportsAppe = false;
+        byte[] payload = new byte[1024 * 1024];
+        new Random(59).NextBytes(payload);
+        string local = Path.Combine(rig.LocalDirectory, "noappe.bin");
+        await File.WriteAllBytesAsync(local, payload);
+        int armed = 1;
+        rig.Server.AbortStoreAfterBytes = _ => Interlocked.Exchange(ref armed, 0) == 1 ? 64 * 1024 : null;
+
+        await rig.RunAsync(browser => browser.UploadLocalPathsAsync([local]));
+
+        Assert.AreEqual(TransferStatus.Completed, rig.Sink.Transfers.Single().Status, rig.Browser?.ErrorMessage);
+        Assert.HasCount(1, rig.Delays, "只有数据连接中断那一次重试;「续不了改从头」不另算一次");
+        Assert.AreEqual(resume ? 1 : 0, rig.Server.UnsupportedResumeCommands, "续传开着时确实先试了续传、被服务器拒了");
+        Assert.AreEqual(2, rig.Server.StoreCounts["/noappe.bin"], "中止的那一次 STOR + 从头重传的那一次 STOR");
+        Assert.AreSequenceEqual(SHA256.HashData(payload),
+            SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(rig.Root, "noappe.bin"))));
+        Assert.IsFalse(rig.Faulted);
+    }
+
+    /// <summary>
+    /// 服务器不认 REST、下载被 426 中止:续传开着时重试先核实本地那半截、再按偏移续读(REST 被 502 拒),
+    /// 那半截是这次传输自己写的,改为从头整份重下;结果与远端一致,会话不变灰。
+    /// </summary>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task AnInterruptedDownload_OnAServerWithoutRest_IsRetriedFromTheStart(bool resume)
+    {
+        await using var rig = new Rig(resume, conflictPolicy: "skip");
+        rig.Server.SupportsRest = false;
+        byte[] payload = new byte[100_000];
+        new Random(61).NextBytes(payload);
+        await File.WriteAllBytesAsync(Path.Combine(rig.Root, "norest.bin"), payload);
+        int retrieves = 0;
+        rig.Server.ReadFaultForPath = path => path == "/norest.bin" && Interlocked.Increment(ref retrieves) == 1
+            ? new() { DataLimit = 7_000, Reply = "426 Connection closed; transfer aborted" }
+            : null;
+
+        await rig.RunAsync(async browser =>
+        {
+            RemoteFileInfo info = await rig.Ftp.GetFileInfoAsync(browser.SessionId, "/norest.bin");
+            await browser.DownloadRemoteEntriesAsync([new RemoteFileInfoViewModel(info)], rig.LocalDirectory);
+        });
+
+        Assert.AreEqual(TransferStatus.Completed, rig.Sink.Transfers.Single().Status, rig.Browser?.ErrorMessage);
+        Assert.HasCount(1, rig.Delays, "只有数据连接中断那一次重试;「续不了改从头」不另算一次");
+        // 中止的那一次 + (续传开着:核实本地那半截读的一段) + 从头重下的那一次。REST 被拒都发生在 RETR 之前。
+        Assert.AreEqual(resume ? 3 : 2, rig.Server.RetrCounts["/norest.bin"]);
+        Assert.AreSequenceEqual(SHA256.HashData(payload),
+            SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(rig.LocalDirectory, "norest.bin"))));
+        Assert.IsFalse(rig.Faulted);
+    }
+
+    /// <summary>
+    /// 服务器上本来就有一份较短的同名文件(不是这次写的),续传开着、服务器却不认 APPE:续不了时<b>不</b>悄悄整份覆盖,
+    /// 照同名冲突策略办 —— 「跳过」就原样留着那份文件、这一项按跳过收尾;「覆盖」才整份重传。
+    /// </summary>
+    [TestMethod]
+    [DataRow("skip")]
+    [DataRow("overwrite")]
+    public async Task APlannedResumeOfAnExistingFile_OnAServerWithoutAppe_FollowsTheConflictPolicy(string policy)
+    {
+        await using var rig = new Rig(resume: true, conflictPolicy: policy);
+        rig.Server.SupportsAppe = false;
+        byte[] payload = new byte[100_000];
+        new Random(67).NextBytes(payload);
+        string local = Path.Combine(rig.LocalDirectory, "existing.bin");
+        await File.WriteAllBytesAsync(local, payload);
+        Directory.CreateDirectory(rig.Root);
+        await File.WriteAllBytesAsync(Path.Combine(rig.Root, "existing.bin"), payload[..30_000]);
+
+        await rig.RunAsync(browser => browser.UploadLocalPathsAsync([local]));
+
+        byte[] landed = await File.ReadAllBytesAsync(Path.Combine(rig.Root, "existing.bin"));
+        Assert.AreEqual(1, rig.Server.UnsupportedResumeCommands, "先按续传试了、被服务器拒了");
+        Assert.IsEmpty(rig.Delays, "「续不了」不是链路问题,不重试");
+        if (policy == "skip")
+        {
+            Assert.AreEqual(TransferStatus.Cancelled, rig.Sink.Transfers.Single().Status, "按跳过收尾");
+            Assert.AreSequenceEqual(payload[..30_000], landed, "那份已有的文件原样留着");
+        }
+        else
+        {
+            Assert.AreEqual(TransferStatus.Completed, rig.Sink.Transfers.Single().Status, rig.Browser?.ErrorMessage);
+            Assert.AreSequenceEqual(SHA256.HashData(payload), SHA256.HashData(landed));
+        }
+        Assert.IsFalse(rig.Faulted);
+    }
+
     private sealed class Rig : IAsyncDisposable
     {
         private readonly bool _resume;
+        private readonly string _conflictPolicy;
 
-        public Rig(bool resume)
+        public Rig(bool resume, string conflictPolicy = "overwrite")
         {
             _resume = resume;
+            _conflictPolicy = conflictPolicy;
             Root = Path.Combine(Path.GetTempPath(), $"vela-ftp-retry-root-{Guid.NewGuid():N}");
             LocalDirectory = Path.Combine(Path.GetTempPath(), $"vela-ftp-retry-local-{Guid.NewGuid():N}");
             Directory.CreateDirectory(LocalDirectory);
@@ -138,7 +240,7 @@ public sealed class FtpTransferInterruptionRetryTests
                 TransferSink = Sink,
                 TransferOptions = new()
                 {
-                    ConflictPolicy = "overwrite",
+                    ConflictPolicy = _conflictPolicy,
                     ResumeEnabled = _resume,
                     AutoCleanTempFiles = false,
                     TransferLogging = false,

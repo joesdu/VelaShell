@@ -136,18 +136,18 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             await using FileStream file = File.OpenRead(localPath);
             // 每一次尝试各数各的:只有这一次真从源里读走过字节,才说明数据已经上了数据连接。
             var source = attempt = new ReadCountingStream(file);
-            // 续传交给 FluentFTP:Resume 模式下它自己 SIZE 远端、再把本地流 Seek 到同一偏移(起点上面已经核实过)。
+            // 续传交给 FluentFTP:Resume 模式下它自己 SIZE 远端、再把本地流 Seek 到同一偏移(起点上面已经核实过)、用 APPE 追加。
             // 不需要 SFTP 那套「回退一个在途写入窗口」—— FTP 单条数据连接顺序写,没有乱序空洞。
-            FtpStatus status = await client.UploadStream(
+            FtpStatus status = await ResumeOrReportUnsupportedAsync(client, resumeOffset > 0, remotePath, () => client.UploadStream(
                 source,
                 NormalizePath(remotePath),
                 resumeOffset > 0 ? FtpRemoteExists.Resume : FtpRemoteExists.Overwrite,
                 createRemoteDir: false,
                 progress: MapProgress(progress, fileName, totalBytes),
-                token: cancellationToken).ConfigureAwait(false);
+                token: cancellationToken)).ConfigureAwait(false);
             if (status == FtpStatus.Failed)
             {
-                throw UploadNotConfirmed(client, fileName);
+                throw UploadNotConfirmed(client, fileName, resumeOffset > 0 ? remotePath : null);
             }
         }, () => attempt?.BytesRead > 0, replayable: true, cancellationToken).ConfigureAwait(false);
     }
@@ -190,16 +190,16 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                 {
                     // 不包外壳的理由见上:Resume 要 Seek 源流。计数这层照样把 Seek 交给它。
                     var counted = attempt = new ReadCountingStream(source);
-                    FtpStatus resumed = await client.UploadStream(
+                    FtpStatus resumed = await ResumeOrReportUnsupportedAsync(client, resuming: true, remotePath, () => client.UploadStream(
                         counted,
                         NormalizePath(remotePath),
                         FtpRemoteExists.Resume,
                         createRemoteDir: false,
                         progress: MapProgress(progress, fileName, length),
-                        token: cancellationToken).ConfigureAwait(false);
+                        token: cancellationToken)).ConfigureAwait(false);
                     if (resumed == FtpStatus.Failed)
                     {
-                        throw UploadNotConfirmed(client, fileName);
+                        throw UploadNotConfirmed(client, fileName, remotePath);
                     }
                 }, () => attempt?.BytesRead > 0, replayable: true, cancellationToken).ConfigureAwait(false);
                 return;
@@ -269,15 +269,17 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             }
             try
             {
-                bool ok = await client.DownloadStream(
+                bool ok = await ResumeOrReportUnsupportedAsync(client, resumeOffset > 0, remotePath, () => client.DownloadStream(
                     target,
                     NormalizePath(remotePath),
                     resumeOffset,
                     MapProgress(progress, fileName, totalBytes),
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken)).ConfigureAwait(false);
                 if (!ok)
                 {
-                    throw new VelaFtpOperationException($"FTP download of {fileName} failed.");
+                    throw resumeOffset > 0 && FluentFtpInterop.IsResumeCommandRefused(LastReplyOrDefault(client))
+                        ? ResumeUnsupported(remotePath, null)
+                        : new VelaFtpOperationException($"FTP download of {fileName} failed.");
                 }
             }
             finally
@@ -325,7 +327,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                 // Noop=false and Navigate=Manual are pinned before Connect below, so no daemon
                 // or auto-restore PWD/CWD can replace this reply. Command is library attribution,
                 // not a server-supplied transfer identifier; length and completion code remain required.
-                FtpReply reply = client.LastReply;
+                FtpReply reply = LastReplyOrDefault(client);
                 bool retrReply = reply.Command?.StartsWith("RETR ", StringComparison.Ordinal) == true;
                 // 服务器明说这次传输中止了(426「连接关闭、传输中止」):不论长短都不算完成,也不是「源文件变了」——
                 // 交给下面的 catch 按数据连接中断核对控制连接(环回上的复位在 macOS 读成干净的 EOF,走的就是这里)。
@@ -494,6 +496,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         Stream stream;
         try
         {
+            lease.Client.LastReplies.Clear();
             Stream inner = await lease.Client
                 .OpenRead(path, FtpDataType.Binary, start, fileLength, token: cancellationToken)
                 .ConfigureAwait(false);
@@ -506,6 +509,8 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         }
         catch (Exception ex)
         {
+            // 服务器不认 REST:按偏移读不了,也就核实不了起点 —— 这台服务器续不了,不是这个文件的错。
+            bool restRefused = start > 0 && FluentFtpInterop.IsResumeCommandRefused(LastReplyOrDefault(lease.Client));
             lease.Invalidate();
             try { lease.Dispose(); }
             catch (Exception cleanup) when (cleanup is not OutOfMemoryException)
@@ -513,6 +518,10 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                 // Preserve the original open failure.
             }
             cancellationToken.ThrowIfCancellationRequested();
+            if (restRefused)
+            {
+                throw ResumeUnsupported(path, ex);
+            }
             throw Fault(sessionId, ex, "resume check");
         }
         byte[] window = new byte[count];
@@ -1004,7 +1013,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             try
             {
                 lease = await RentAsync(sessionId, cancellationToken).ConfigureAwait(false);
-                await RunWithUploadGuardAsync(lease.Client, body).ConfigureAwait(false);
+                await RunAttemptAsync(lease.Client, body).ConfigureAwait(false);
                 transferred = true;
                 lease.Dispose();
                 return;
@@ -1069,7 +1078,13 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     private async Task<Exception> ClassifyTransferFailureAsync(Guid sessionId, FtpConnectionPool.Lease lease, Exception failure,
         string operation, string fileName, CancellationToken cancellationToken, Exception? interruptionCause = null)
     {
-        if (cancellationToken.IsCancellationRequested || !FluentFtpInterop.LooksLikeDataChannelInterruption(failure))
+        // 这次调用自己没要续(要续而服务器不认的,上面已经报成 VelaSftpResumeUnsupportedException),
+        // 最后一条回复却是服务器拒了 REST:那是 FluentFTP 发现数据流断了、自己想续读(见 LooksLikeDataChannelInterruption)。
+        bool libraryResumeRefused = failure is not VelaSftpResumeMismatchException
+                                    && FluentFtpInterop.IsResumeCommandRefused(LastReplyOrDefault(lease.Client));
+        if (cancellationToken.IsCancellationRequested
+            || failure is VelaSftpResumeMismatchException
+            || !FluentFtpInterop.LooksLikeDataChannelInterruption(failure, libraryResumeRefused))
         {
             return Fault(sessionId, failure, operation);
         }
@@ -1129,7 +1144,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         try
         {
             FtpReply? owed = null;
-            if (client.LastReply.Code is [ '1', _, _ ])
+            if (LastReplyOrDefault(client).Code is [ '1', _, _ ])
             {
                 FtpReply final = await client.GetReply(deadline.Token).WaitAsync(deadline.Token).ConfigureAwait(false);
                 // GetReply 可能返回空 Code 而不抛超时;又一条预备回复、或 421(服务器正在关控制连接)同样当断了。
@@ -1169,14 +1184,63 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     /// FluentFTP 读到非成功的最终回复时只回 <see cref="FtpStatus.Failed" />、不抛:<c>426</c>(连接关闭、传输中止)
     /// 交给 <see cref="ClassifyTransferFailureAsync" /> 当数据连接中断认;其余(拒写、磁盘满)照旧是一次操作失败。
     /// </summary>
-    private static Exception UploadNotConfirmed(AsyncFtpClient client, string fileName) =>
-        client.LastReply is { Code: "426" } reply
+    /// <param name="client">这次上传用的连接。</param>
+    /// <param name="fileName">出错时报的文件名。</param>
+    /// <param name="resumePath">这次是续传(Resume 模式)时的远端路径:服务器拒的是 APPE 就报「续不了」;不是续传为 null。</param>
+    private static Exception UploadNotConfirmed(AsyncFtpClient client, string fileName, string? resumePath = null) =>
+        LastReplyOrDefault(client) is { Code: "426" } reply
             ? new FtpCommandException(reply)
-            : new VelaFtpOperationException($"FTP upload of {fileName} failed.");
+            : resumePath is not null && FluentFtpInterop.IsResumeCommandRefused(LastReplyOrDefault(client))
+                ? ResumeUnsupported(resumePath, null)
+                : new VelaFtpOperationException($"FTP upload of {fileName} failed.");
 
-    /// <summary>跑一次传输尝试,期间这条连接上的上传只许打开一次(理由见 <see cref="UploadOpenGuard" />)。</summary>
-    private static async Task RunWithUploadGuardAsync(AsyncFtpClient client, Func<AsyncFtpClient, Task> body)
+    /// <summary>
+    /// 跑一次 FluentFTP 的传输调用;<paramref name="resuming" /> 时服务器对续传要用的命令(下载的 REST、上传的 APPE)
+    /// 回「不认识 / 没实现」,改报 <see cref="VelaSftpResumeUnsupportedException" />(目标还没被这次调用碰过)。
+    /// </summary>
+    /// <remarks>
+    /// 要不要因此从头整份重传不在这里定:只有调用方知道目标上那半截是不是这一次传输自己刚写下的
+    /// (传输失败重试动过字节之后的续传是,规划时探到的半截不是 —— 后者照旧交回同名冲突策略,见异常类型的说明)。
+    /// 判断按 FluentFTP 记下的「这条回复对应哪条命令」,所以调用前清掉旧回复,免得一条早先的拒绝被算到这次头上。
+    /// </remarks>
+    private static async Task<T> ResumeOrReportUnsupportedAsync<T>(AsyncFtpClient client, bool resuming, string remotePath, Func<Task<T>> call)
     {
+        if (!resuming)
+        {
+            return await call().ConfigureAwait(false);
+        }
+        client.LastReplies.Clear();
+        try
+        {
+            return await call().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (FluentFtpInterop.IsResumeCommandRefused(LastReplyOrDefault(client)))
+        {
+            throw ResumeUnsupported(remotePath, ex);
+        }
+    }
+
+    /// <summary>
+    /// 这条连接最近收到的那条回复;一条都没有时为 <c>default</c>(<see cref="FtpReply.Code" /> 为 null)。
+    /// FluentFTP 55.1 的 <c>LastReply</c> 在回复记录为空时抛 <see cref="ArgumentOutOfRangeException" /> ——
+    /// 每次尝试开始时清过记录(<see cref="RunAttemptAsync" />),在第一条命令之前就失败(本地文件打不开、连接已断)时正是空的,
+    /// 失败之后的判断不能反过来盖掉原来的失败。
+    /// </summary>
+    private static FtpReply LastReplyOrDefault(AsyncFtpClient client) =>
+        client.LastReplies is { Count: > 0 } replies ? replies[0] : default;
+
+    /// <summary>这台服务器续不了(见 <see cref="VelaSftpResumeUnsupportedException" />)。</summary>
+    private static VelaSftpResumeUnsupportedException ResumeUnsupported(string remotePath, Exception? cause) =>
+        new(Strings.Format("SftpSvc_ResumeUnverifiable", remotePath), cause);
+
+    /// <summary>
+    /// 跑一次传输尝试,期间这条连接上的上传只许打开一次(理由见 <see cref="UploadOpenGuard" />)。
+    /// 先清掉这条连接上早先的回复:失败之后按「最后一条回复对应哪条命令」认的几处判断(426、服务器拒了 REST / APPE)
+    /// 只该看这一次尝试自己的。
+    /// </summary>
+    private static async Task RunAttemptAsync(AsyncFtpClient client, Func<AsyncFtpClient, Task> body)
+    {
+        client.LastReplies.Clear();
         if (client is not IGuardedUploadClient guarded)
         {
             await body(client).ConfigureAwait(false);
@@ -1388,19 +1452,29 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         return length >= 0 ? length : -1;
     }
 
-    /// <summary>把 FluentFTP 的进度回调翻译成 VelaShell 的传输进度快照。</summary>
-    private static Progress<FtpProgress>? MapProgress(IProgress<TransferProgress>? progress, string fileName, long totalBytes) =>
-        progress is null
-            ? null
-            : new Progress<FtpProgress>(p => progress.Report(new()
-            {
-                FileName = fileName,
-                BytesTransferred = p.TransferredBytes,
-                TotalBytes = totalBytes > 0 ? totalBytes : p.TransferredBytes,
-                Percentage = p.Progress is >= 0 and <= 100 ? (int)p.Progress : 0,
-                SpeedBytesPerSecond = p.TransferSpeed,
-                EstimatedTimeRemaining = p.ETA,
-            }));
+    /// <summary>把 FluentFTP 的进度回调翻译成 VelaShell 的传输进度快照,在库的传输线程上同步转交。</summary>
+    /// <remarks>
+    /// 不用 <see cref="Progress{T}" />:它把每次回调投递到线程池(或构造时的同步上下文)再转交,一次尝试失败时
+    /// 传输失败重试读「这一次动没动过字节」可能还没收到那几拍 —— 而它据此决定接着传还是整份重来、
+    /// 服务器续不了时能不能从头重传(§238)。SFTP 的 <see cref="TransferProgressThrottle" /> 同样同步转交;
+    /// 切线程与节流是接收方自己的事(文件面板的 <see cref="Progress{T}" /> 回 UI 线程,插件与中转的接收方加锁、自带节流)。
+    /// </remarks>
+    private static FtpProgressAdapter? MapProgress(IProgress<TransferProgress>? progress, string fileName, long totalBytes) =>
+        progress is null ? null : new FtpProgressAdapter(progress, fileName, totalBytes);
+
+    /// <summary>见 <see cref="MapProgress" />。</summary>
+    private sealed class FtpProgressAdapter(IProgress<TransferProgress> sink, string fileName, long totalBytes) : IProgress<FtpProgress>
+    {
+        public void Report(FtpProgress value) => sink.Report(new()
+        {
+            FileName = fileName,
+            BytesTransferred = value.TransferredBytes,
+            TotalBytes = totalBytes > 0 ? totalBytes : value.TransferredBytes,
+            Percentage = value.Progress is >= 0 and <= 100 ? (int)value.Progress : 0,
+            SpeedBytesPerSecond = value.TransferSpeed,
+            EstimatedTimeRemaining = value.ETA,
+        });
+    }
 
     /// <summary>递归收集目录下的文件与子目录(不含目录自身)。</summary>
     private static async Task CollectAsync(AsyncFtpClient client, string path, List<string> files, List<string> directories, CancellationToken cancellationToken)
