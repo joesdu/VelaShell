@@ -13,6 +13,7 @@ using VelaShell.Core.Resources;
 using VelaShell.Core.Services;
 using VelaShell.Localization;
 using VelaShell.Presentation.ViewModels;
+using VelaShell.Tests.TestSupport;
 using VelaShell.ViewModels;
 using VelaShell.Views.Settings;
 
@@ -56,6 +57,38 @@ public sealed class SnippetsPageRowActionsTests
             return Task.CompletedTask;
         });
     }
+
+    [TestMethod]
+    public Task ExecuteAfterSendToggle_AddsAndEditsTheSnippet() => _session.RunOnUiAsync(async () =>
+    {
+        (SnippetsPage page, QuickCommandsViewModel snippets) = Show();
+        var window = (Window)TopLevel.GetTopLevel(page)!;
+        try
+        {
+            ToggleSwitch Toggle() => page.GetVisualDescendants().OfType<ToggleSwitch>()
+                .First(toggle => toggle.IsEffectivelyVisible
+                    && Equals(toggle.Content, Strings.Get("SetSnippets_ExecuteAfterSend")));
+
+            Assert.AreEqual(false, Toggle().IsChecked);
+            snippets.NewName = "execute-toggle";
+            snippets.NewCommandText = "echo hello";
+            Toggle().IsChecked = true;
+            await snippets.SaveNewCommandCommand.Execute().FirstAsync();
+            QuickCommandViewModel added = snippets.AllCommands.Single(c => c.Name == "execute-toggle");
+            Assert.IsTrue(added.ExecuteAfterSend);
+
+            RaiseClick(page, "EditSnippet_Click", added);
+            Dispatcher.UIThread.RunJobs();
+            Assert.AreEqual(true, Toggle().IsChecked);
+            Toggle().IsChecked = false;
+            await snippets.SaveEditCommand.Execute().FirstAsync();
+            Assert.IsFalse(added.ExecuteAfterSend);
+        }
+        finally
+        {
+            window.Close();
+        }
+    });
 
     /// <summary>点「删除」真的把那一条删掉。</summary>
     [TestMethod]

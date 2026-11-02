@@ -2774,7 +2774,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
         if (!template.HasVariables || QuickCommandVariablePrompt is null)
         {
             // 没有占位(或没有窗口可以问,如 headless 测试)时原样发送,与引入占位之前一致。
-            DeliverQuickCommand(request.TargetIds, request.CommandText);
+            DeliverQuickCommand(request.TargetIds, request.CommandText, request.ExecuteAfterSend);
             return;
         }
         FireAndForget.Run(async () =>
@@ -2784,7 +2784,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
                 return;
             }
             // 弹框期间目标可能已经断开:发送时再按当下的标签挑一遍,只发给仍连着的。
-            DeliverQuickCommand(request.TargetIds, rendered.Text, rendered.Secrets);
+            DeliverQuickCommand(request.TargetIds, rendered.Text, request.ExecuteAfterSend, rendered.Secrets);
         });
     }
 
@@ -2848,8 +2848,9 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
     /// </summary>
     /// <param name="targetIds">目标标签。</param>
     /// <param name="commandText">要发的正文。</param>
+    /// <param name="executeAfterSend">正文发送后是否按回车。</param>
     /// <param name="historySecrets">正文里凭据类占位填进去的值:各目标标签提交含它们的那一行时不进命令历史。</param>
-    private void DeliverQuickCommand(IReadOnlyList<Guid> targetIds, string commandText, IReadOnlyList<string>? historySecrets = null)
+    private void DeliverQuickCommand(IReadOnlyList<Guid> targetIds, string commandText, bool executeAfterSend, IReadOnlyList<string>? historySecrets = null)
     {
         if (
             QuickCommandMultilineConfirmer is { } confirm
@@ -2862,12 +2863,12 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
             {
                 if (await confirm(commandText))
                 {
-                    SendQuickCommandText(targetIds, commandText, historySecrets);
+                    SendQuickCommandText(targetIds, commandText, executeAfterSend, historySecrets);
                 }
             });
             return;
         }
-        SendQuickCommandText(targetIds, commandText, historySecrets);
+        SendQuickCommandText(targetIds, commandText, executeAfterSend, historySecrets);
     }
 
     private TerminalTabViewModel[] QuickCommandTargets(IReadOnlyList<Guid> targetIds)
@@ -2876,7 +2877,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
         return [.. TerminalTabs.Where(tab => tab.IsConnected && ids.Contains(tab.Id))];
     }
 
-    private void SendQuickCommandText(IReadOnlyList<Guid> targetIds, string commandText, IReadOnlyList<string>? historySecrets)
+    private void SendQuickCommandText(IReadOnlyList<Guid> targetIds, string commandText, bool executeAfterSend, IReadOnlyList<string>? historySecrets)
     {
         TerminalTabViewModel[] targets = QuickCommandTargets(targetIds);
         bool sent = false;
@@ -2884,10 +2885,10 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
         {
             if (historySecrets is { Count: > 0 })
             {
-                // 正文只写进命令行、回车由用户按:先挡住,等那一行提交时它就不进命令历史。
+                // 在正文与可能的自动回车之前登记,这次提交也不能进命令历史。
                 target.KeepOutOfCommandHistory(historySecrets);
             }
-            sent |= target.TrySendCommandText(commandText);
+            sent |= target.TrySendCommandText(commandText, executeAfterSend);
         }
         if (sent)
         {

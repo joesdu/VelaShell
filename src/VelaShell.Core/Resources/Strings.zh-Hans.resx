@@ -9675,8 +9675,14 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SetSnippets_RestoreBuiltInsBody" xml:space="preserve">
     <value>删掉的内置命令会重新出现,对内置命令的修改(包括挪到别的分组)会被撤销。自己新建的命令不受影响。确定继续吗?</value>
   </data>
+  <data name="SetSnippets_ExecuteAfterSend" xml:space="preserve">
+    <value>发送后执行</value>
+  </data>
+  <data name="SetSnippets_ExecuteAfterSendHint" xml:space="preserve">
+    <value>默认关闭。开启后，发送此片段会在正文之后按一次回车；接受命令补全仍只填入文本。</value>
+  </data>
   <data name="SetSnippets_MultilineHint" xml:space="preserve">
-    <value>// 可以换行写多行命令:发送时整段放进命令行,不会逐行执行;远端不支持括号粘贴时先询问</value>
+    <value>// 多行命令使用括号粘贴；目标未启用时可能立即逐行执行，是否询问沿用多行粘贴确认设置。</value>
   </data>
   <data name="Sidebar_More" xml:space="preserve">
     <value>更多</value>

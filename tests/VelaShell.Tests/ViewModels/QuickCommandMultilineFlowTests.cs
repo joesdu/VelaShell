@@ -1,4 +1,5 @@
 using System.Text;
+using Avalonia.Input;
 using NSubstitute;
 using ReactiveUI.Builder;
 using ReactiveUI.Primitives;
@@ -39,7 +40,9 @@ public class QuickCommandMultilineFlowTests
     }
 
     [TestMethod]
-    public void BracketedPasteTerminal_GetsTheWholeCommandAsOnePaste_WithoutAsking()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void BracketedPasteTerminal_GetsTheWholeCommandAsOnePaste_WithoutAsking(bool executeAfterSend)
     {
         (MainWindowViewModel vm, ITerminalEmulator emulator) = Connected(bracketedPaste: true);
         bool asked = false;
@@ -49,11 +52,20 @@ public class QuickCommandMultilineFlowTests
             return Task.FromResult(false);
         };
 
-        Send(vm, Multiline);
+        Send(vm, Multiline, executeAfterSend);
 
-        Assert.IsFalse(asked, "开着括号粘贴时整段进命令行、不会执行,不该打扰用户");
+        Assert.IsFalse(asked);
         emulator.Received(1).WritePasteInput(Multiline);
         emulator.DidNotReceive().WriteInput(Arg.Any<byte[]>());
+        emulator.Received(executeAfterSend ? 1 : 0).WriteKeyInput(Key.Enter, KeyModifiers.None);
+        if (executeAfterSend)
+        {
+            Received.InOrder(() =>
+            {
+                emulator.WritePasteInput(Multiline);
+                emulator.WriteKeyInput(Key.Enter, KeyModifiers.None);
+            });
+        }
     }
 
     [TestMethod]
@@ -69,8 +81,9 @@ public class QuickCommandMultilineFlowTests
             return Task.FromResult(false);
         };
 
-        Send(vm, Multiline);
+        Send(vm, Multiline, executeAfterSend: true);
 
+        emulator.DidNotReceive().WriteKeyInput(Arg.Any<Key>(), Arg.Any<KeyModifiers>());
         Assert.AreEqual(Multiline, asked);
         emulator.DidNotReceive().WritePasteInput(Arg.Any<string>());
         emulator.DidNotReceive().WriteInput(Arg.Any<byte[]>());
@@ -83,8 +96,14 @@ public class QuickCommandMultilineFlowTests
         (MainWindowViewModel vm, ITerminalEmulator emulator) = Connected(bracketedPaste: false);
         vm.QuickCommandMultilineConfirmer = _ => Task.FromResult(true);
 
-        Send(vm, Multiline);
+        Send(vm, Multiline, executeAfterSend: true);
 
+        Received.InOrder(() =>
+        {
+            emulator.WritePasteInput(Multiline);
+            emulator.WriteKeyInput(Key.Enter, KeyModifiers.None);
+        });
+        emulator.Received(1).WriteKeyInput(Key.Enter, KeyModifiers.None);
         emulator.Received(1).WritePasteInput(Multiline);
     }
 
@@ -142,6 +161,32 @@ public class QuickCommandMultilineFlowTests
         emulator.Received(1).WritePasteInput("cd /srv/web\ngit pull");
     }
 
+    [TestMethod]
+    public void ExecuteAfterSend_SubmitsOncePerSelectedTarget_WithoutSyncForwarding()
+    {
+        (MainWindowViewModel vm, ITerminalEmulator first) = Connected(bracketedPaste: true);
+        ITerminalEmulator second = FakeTerminal.Emulator();
+        var secondTab = new TerminalTabViewModel(second) { ConnectionStatus = SessionStatus.Connected };
+        vm.Layout.AddDocument(new TerminalDocument(secondTab));
+        QuickCommandRunnerViewModel runner = vm.Sidebar.QuickCommands!;
+        runner.SelectAllCommand.Execute().Subscribe();
+        var flags = new List<(bool Suppressed, bool Programmatic)>();
+        foreach (TerminalTabViewModel tab in vm.TerminalTabs)
+        {
+            tab.TerminalEmulator.When(t => t.WriteKeyInput(Key.Enter, KeyModifiers.None))
+                .Do(_ => flags.Add((tab.IsSyncForwardSuppressed, tab.IsProgrammaticInput)));
+        }
+
+        Send(vm, "echo ready", executeAfterSend: true);
+
+        foreach (ITerminalEmulator terminal in new[] { first, second })
+        {
+            terminal.Received(1).WriteInput(Arg.Is<byte[]>(bytes => Encoding.UTF8.GetString(bytes) == "echo ready"));
+            terminal.Received(1).WriteKeyInput(Key.Enter, KeyModifiers.None);
+        }
+        Assert.AreSequenceEqual([(true, true), (true, true)], flags);
+    }
+
     private static (MainWindowViewModel Vm, ITerminalEmulator Emulator) Connected(
         bool bracketedPaste,
         ISettingsService? settingsService = null
@@ -159,8 +204,8 @@ public class QuickCommandMultilineFlowTests
         return (vm, emulator);
     }
 
-    private static void Send(MainWindowViewModel vm, string commandText) =>
+    private static void Send(MainWindowViewModel vm, string commandText, bool executeAfterSend = false) =>
         vm.Sidebar.QuickCommands!.SendCommand
-            .Execute(new QuickCommandViewModel(new QuickCommand { Name = "multi", CommandText = commandText }))
+            .Execute(new QuickCommandViewModel(new QuickCommand { Name = "multi", CommandText = commandText, ExecuteAfterSend = executeAfterSend }))
             .Subscribe();
 }

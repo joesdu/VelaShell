@@ -266,6 +266,9 @@
                PlaceholderText="{loc:Localize SetSnippets_CommandPlaceholder}" />
       <TextBlock Classes="row-desc" TextWrapping="Wrap" Text="{loc:Localize SetSnippets_MultilineHint}" />
       <TextBlock Classes="row-desc" TextWrapping="Wrap" Text="{loc:Localize SetSnippets_VariablesHint}" />
+      <ToggleSwitch IsChecked="{Binding Snippets.NewExecuteAfterSend}"
+                    Content="{loc:Localize SetSnippets_ExecuteAfterSend}" />
+      <TextBlock Classes="row-desc" TextWrapping="Wrap" Text="{loc:Localize SetSnippets_ExecuteAfterSendHint}" />
       <TextBox Text="{Binding Snippets.NewDescription}"
                PlaceholderText="{loc:Localize Description}" />
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
@@ -289,6 +292,9 @@
              PlaceholderText="{loc:Localize SetSnippets_CommandPlaceholder}" />
     <TextBlock Classes="row-desc" TextWrapping="Wrap" Text="{loc:Localize SetSnippets_MultilineHint}" />
     <TextBlock Classes="row-desc" TextWrapping="Wrap" Text="{loc:Localize SetSnippets_VariablesHint}" />
+    <ToggleSwitch IsChecked="{Binding Snippets.NewExecuteAfterSend}"
+                  Content="{loc:Localize SetSnippets_ExecuteAfterSend}" />
+    <TextBlock Classes="row-desc" TextWrapping="Wrap" Text="{loc:Localize SetSnippets_ExecuteAfterSendHint}" />
     <TextBox Text="{Binding Snippets.NewDescription}"
              PlaceholderText="{loc:Localize Description}" />
     <Button Classes="dlg-primary" HorizontalAlignment="Right"

@@ -877,8 +877,8 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     public void RequestClose() => CloseRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>
-    /// 通过正常用户输入通道把快捷命令文本发送到终端。只发正文不附加回车——
-    /// 快捷命令可能是不完整的模板(如缺少参数),由用户在终端里补全后自行按 Enter 执行。
+    /// 通过正常用户输入通道把快捷命令文本发送到终端。默认只发正文,
+    /// 片段开启「发送后执行」时在正文之后按一次 Enter。
     /// </summary>
     /// <remarks>
     /// 多行命令走括号粘贴(#555):原样写进去的话,中间每个换行都等于按一次回车,前几行当场就执行了。
@@ -886,7 +886,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     /// 发之前问不问由调用方决定(见 <see cref="MainWindowViewModel" /> 的多行确认)。
     /// </remarks>
     /// <returns>文本已发送时为 true;终端未连接或命令为空时为 false。</returns>
-    public bool TrySendCommandText(string command) => SendCommand(command, submit: false);
+    public bool TrySendCommandText(string command, bool executeAfterSend = false) => SendCommand(command, submit: executeAfterSend);
 
     /// <summary>
     /// 「重跑」一条 OSC 133 命令块里的命令:与快捷命令同一条发送路径,末尾再按一次回车。

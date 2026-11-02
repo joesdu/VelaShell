@@ -115,6 +115,13 @@ public class QuickCommandsViewModel : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
+    /// <summary>新增或编辑片段是否在发送后按回车。</summary>
+    public bool NewExecuteAfterSend
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
     /// <summary>新增或编辑片段的说明。</summary>
     public string NewDescription
     {
@@ -410,6 +417,7 @@ public class QuickCommandsViewModel : ReactiveObject
         NewName = string.Empty;
         NewCategory = Strings.Get("QuickCmd_Ungrouped");
         NewCommandText = string.Empty;
+        NewExecuteAfterSend = false;
         NewDescription = string.Empty;
     }
 
@@ -431,6 +439,7 @@ public class QuickCommandsViewModel : ReactiveObject
                 GroupId = group.Id,
                 Name = NewName.Trim(),
                 CommandText = commandText,
+                ExecuteAfterSend = NewExecuteAfterSend,
                 Description = NewDescription.Trim(),
                 SortOrder = NextCustomSortOrder(group),
             }
@@ -479,6 +488,7 @@ public class QuickCommandsViewModel : ReactiveObject
         NewName = command.Name;
         NewCategory = command.Category;
         NewCommandText = command.CommandText;
+        NewExecuteAfterSend = command.ExecuteAfterSend;
         NewDescription = command.Description;
     }
 
@@ -508,6 +518,7 @@ public class QuickCommandsViewModel : ReactiveObject
                 ReferenceEquals(previous, next)
                 && name == command.Name
                 && commandText == command.CommandText
+                && NewExecuteAfterSend == command.ExecuteAfterSend
                 && description == command.Description
             )
             {
@@ -523,6 +534,7 @@ public class QuickCommandsViewModel : ReactiveObject
         }
         command.Name = name;
         command.CommandText = commandText;
+        command.ExecuteAfterSend = NewExecuteAfterSend;
         command.Description = description;
         if (!ReferenceEquals(previous, next))
         {
@@ -587,6 +599,7 @@ public class QuickCommandsViewModel : ReactiveObject
                 GroupId = group.Id,
                 Name = builtIn.Name,
                 CommandText = builtIn.CommandText,
+                ExecuteAfterSend = builtIn.ExecuteAfterSend,
                 Description = builtIn.Description,
             }
         )

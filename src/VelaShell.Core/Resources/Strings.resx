@@ -9204,8 +9204,14 @@ Send anyway?</value>
   <data name="SetSnippets_RestoreBuiltInsBody" xml:space="preserve">
     <value>Deleted built-in commands will come back, and changes to built-in commands (including moving them to another group) will be undone. Commands you created are not affected. Continue?</value>
   </data>
+  <data name="SetSnippets_ExecuteAfterSend" xml:space="preserve">
+    <value>Execute after sending</value>
+  </data>
+  <data name="SetSnippets_ExecuteAfterSendHint" xml:space="preserve">
+    <value>Off by default. When enabled, sending this snippet presses Enter after the text. Accepting a completion still only inserts text.</value>
+  </data>
   <data name="SetSnippets_MultilineHint" xml:space="preserve">
-    <value>// Line breaks are allowed: a multiline command lands on the command line as a whole instead of running line by line; if the remote side does not support bracketed paste, you will be asked first</value>
+    <value>// Multiline commands use bracketed paste. Without it, lines may execute immediately; confirmation follows the multiline paste setting.</value>
   </data>
   <data name="Sidebar_More" xml:space="preserve">
     <value>More</value>

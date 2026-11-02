@@ -32,7 +32,8 @@ public sealed class QuickCommandCompletionVariablesTests
     {
         Id = Guid.NewGuid(),
         Name = "查看日志",
-        CommandText = "kubectl logs -f {{pod}}"
+        CommandText = "kubectl logs -f {{pod}}",
+        ExecuteAfterSend = true
     };
 
     private static CommandSuggestionProvider Provider(CommandHistoryService history, params QuickCommand[] commands)

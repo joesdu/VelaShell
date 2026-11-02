@@ -47,7 +47,7 @@ public sealed class QuickCommandRunnerViewModel : ReactiveObject
     /// <summary>当前是否可以执行快捷命令。</summary>
     public bool CanRun => TargetSelector.CanSend;
 
-    /// <summary>把命令文本发送到解析出的目标终端(不附加回车,由用户补全后自行执行)。</summary>
+    /// <summary>把命令文本发送到解析出的目标终端,按片段配置决定是否附加回车。</summary>
     public ReactiveCommand<QuickCommandViewModel, RxVoid> SendCommand { get; }
 
     /// <summary>选择全部目标终端。</summary>
@@ -74,7 +74,7 @@ public sealed class QuickCommandRunnerViewModel : ReactiveObject
         {
             return;
         }
-        ExecutionRequested?.Invoke(this, new(command.CommandText, targetIds, command.Name, command.Id));
+        ExecutionRequested?.Invoke(this, new(command.CommandText, targetIds, command.Name, command.Id, command.ExecuteAfterSend));
     }
 
     private void OnTargetSelectorPropertyChanged(object? sender, PropertyChangedEventArgs e)
