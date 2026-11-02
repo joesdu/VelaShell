@@ -18,6 +18,11 @@
     <SelfContained>true</SelfContained>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Match the main host before .NET caches Unix authentication provider selection. -->
+    <RuntimeHostConfigurationOption Include="System.Net.Security.UseManagedNtlm" Value="true" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(SignAssembly)' != 'true'">
     <InternalsVisibleTo Include="VelaShell.Infrastructure.Tests" />
   </ItemGroup>

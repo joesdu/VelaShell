@@ -15,6 +15,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- .NET caches provider selection before plugins may load; Unix RDP must not require gss-ntlmssp. -->
+    <RuntimeHostConfigurationOption Include="System.Net.Security.UseManagedNtlm" Value="true" />
+  </ItemGroup>
+
+  <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
     <!-- 语法高亮定义(AvaloniaEdit 未内置的那几种)。用 EmbeddedResource 而非 AvaloniaResource:
          HighlightingLoader 要的是普通 Stream,由 Assembly.GetManifestResourceStream 提供。
