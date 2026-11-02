@@ -450,10 +450,10 @@ internal sealed partial class RemoteFsCapability
         /// <summary>句柄的最终路径(去掉 <c>\\?\</c> 前缀);查不出来为 null。</summary>
         private static string? FinalPath(SafeFileHandle handle)
         {
-            var buffer = new StringBuilder(32768);
-            uint length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, 0);
-            if (length == 0 || length >= buffer.Capacity) return null;
-            string actual = buffer.ToString();
+            char[] buffer = new char[32768];
+            uint length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Length, 0);
+            if (length == 0 || length >= buffer.Length) return null;
+            string actual = new(buffer, 0, (int)length);
             return actual.StartsWith(@"\\?\", StringComparison.Ordinal) ? actual[4..] : actual;
         }
 

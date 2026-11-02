@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Text;
 using Microsoft.Win32.SafeHandles;
 using NSubstitute;
 using VelaShell.Infrastructure.Plugins;
@@ -86,12 +85,36 @@ public sealed partial class RemoteTransferTests
         await File.WriteAllBytesAsync(file, [1, 2, 3]);
         try
         {
-            var buffer = new StringBuilder(32768);
-            uint length = GetShortPathNameW(file, buffer, (uint)buffer.Capacity);
-            string shortPath = length is > 0 and < 32768 ? buffer.ToString() : file;
+            char[] buffer = new char[32768];
+            uint length = GetShortPathNameW(file, buffer, (uint)buffer.Length);
+            string shortPath = length is > 0 and < 32768 ? new string(buffer, 0, (int)length) : file;
             if (string.Equals(shortPath, file, StringComparison.OrdinalIgnoreCase)) Assert.Inconclusive("这个卷没有生成 8.3 短名。");
             Assert.AreEqual(file, RemoteFsCapability.ResolveUploadSource(shortPath), ignoreCase: true);
             await AssertUploadStartsFrom(shortPath);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [TestMethod]
+    [OSCondition(ConditionMode.Include, OperatingSystems.Windows)]
+    public async Task WindowsShortPathBufferPreservesUnicodeAndLastError()
+    {
+        string directory = NewDirectory("vela-路径-é-📁-");
+        string file = Path.Combine(directory, "源文件-é-📄.bin");
+        await File.WriteAllBytesAsync(file, [1, 2, 3]);
+        try
+        {
+            char[] buffer = new char[32768];
+            uint length = GetShortPathNameW(file, buffer, (uint)buffer.Length);
+            Assert.IsTrue(length > 0 && length < buffer.Length, $"GetShortPathNameW failed: {Marshal.GetLastPInvokeError()}");
+            string shortPath = new(buffer, 0, (int)length);
+            using SafeFileHandle opened = File.OpenHandle(shortPath);
+            RemoteFsCapability.VerifyOpenedSource(opened, file);
+
+            uint missingLength = GetShortPathNameW(Path.Combine(directory, "不存在.bin"), buffer, (uint)buffer.Length);
+            int error = Marshal.GetLastPInvokeError();
+            Assert.AreEqual(0u, missingLength);
+            Assert.AreEqual(2, error);
         }
         finally { Directory.Delete(directory, true); }
     }
@@ -215,6 +238,7 @@ public sealed partial class RemoteTransferTests
         return process.ExitCode;
     }
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern uint GetShortPathNameW(string longPath, StringBuilder shortPath, uint length);
+    [LibraryImport("kernel32.dll", EntryPoint = "GetShortPathNameW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    private static partial uint GetShortPathNameW(string longPath,
+        [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] char[] shortPath, uint length);
 }

@@ -1,5 +1,6 @@
 #:project ../../../src/VelaShell/VelaShell.csproj
 #:property TreatWarningsAsErrors=false
+#:property AllowUnsafeBlocks=true
 #:property SignAssembly=false
 #:property ValidateExecutableReferencesMatchSelfContained=false
 
@@ -146,10 +147,10 @@ sealed class PerfApp : Application
     }
 }
 
-static class Native
+static partial class Native
 {
-    [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
-    public static extern uint TimeBeginPeriod(uint period);
+    [LibraryImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+    public static partial uint TimeBeginPeriod(uint period);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct PowerThrottlingState
@@ -157,11 +158,12 @@ static class Native
         public uint Version, ControlMask, StateMask;
     }
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool SetProcessInformation(nint process, int infoClass, ref PowerThrottlingState info, int size);
+    [LibraryImport("kernel32.dll", EntryPoint = "SetProcessInformation", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetProcessInformation(nint process, int infoClass, ref PowerThrottlingState info, int size);
 
-    [DllImport("kernel32.dll")]
-    private static extern nint GetCurrentProcess();
+    [LibraryImport("kernel32.dll", EntryPoint = "GetCurrentProcess")]
+    private static partial nint GetCurrentProcess();
 
     /// <summary>本进程不吃 Windows 11 对后台进程的节能限速(EcoQoS:降频、合并计时器唤醒)。对照实验用。</summary>
     public static void DisablePowerThrottling()
