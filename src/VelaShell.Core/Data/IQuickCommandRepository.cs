@@ -65,6 +65,9 @@ public sealed class QuickCommandSyncItem
     /// <summary>发送到终端的命令正文。</summary>
     public string CommandText { get; set; } = string.Empty;
 
+    /// <summary>发送正文后按回车;旧载荷缺省为关闭。</summary>
+    public bool ExecuteAfterSend { get; set; }
+
     /// <summary>命令说明。</summary>
     public string Description { get; set; } = string.Empty;
 

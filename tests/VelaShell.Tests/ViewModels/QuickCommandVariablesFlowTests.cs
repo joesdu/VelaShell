@@ -1,4 +1,5 @@
 using System.Text;
+using Avalonia.Input;
 using NSubstitute;
 using ReactiveUI.Builder;
 using ReactiveUI.Primitives;
@@ -36,7 +37,9 @@ public class QuickCommandVariablesFlowTests
     }
 
     [TestMethod]
-    public void Placeholders_AreAskedFor_AndTheRenderedCommandIsSent()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void Placeholders_AreAskedFor_AndTheRenderedCommandIsSent(bool executeAfterSend)
     {
         (MainWindowViewModel vm, ITerminalEmulator emulator) = Connected();
         string? askedName = null;
@@ -49,7 +52,9 @@ public class QuickCommandVariablesFlowTests
                 new Dictionary<string, string> { ["pod"] = "web-1", ["ns"] = "prod" });
         };
 
-        Send(vm, "查看日志", "kubectl logs -f {{pod}} -n {{ns=default}}");
+        Send(vm, "查看日志", "kubectl logs -f {{pod}} -n {{ns=default}}", executeAfterSend);
+
+        emulator.Received(executeAfterSend ? 1 : 0).WriteKeyInput(Key.Enter, KeyModifiers.None);
 
         Assert.AreEqual("查看日志", askedName);
         Assert.HasCount(2, askedTemplate!.Variables);
@@ -65,8 +70,9 @@ public class QuickCommandVariablesFlowTests
         vm.TerminalFocusRequested += (_, _) => focusRequested = true;
         vm.QuickCommandVariablePrompt = (_, _, _) => Task.FromResult<IReadOnlyDictionary<string, string>?>(null);
 
-        Send(vm, "查看日志", "kubectl logs -f {{pod}}");
+        Send(vm, "查看日志", "kubectl logs -f {{pod}}", executeAfterSend: true);
 
+        emulator.DidNotReceive().WriteKeyInput(Arg.Any<Key>(), Arg.Any<KeyModifiers>());
         emulator.DidNotReceive().WriteInput(Arg.Any<byte[]>());
         Assert.IsFalse(focusRequested);
     }
@@ -97,10 +103,11 @@ public class QuickCommandVariablesFlowTests
         var answer = new TaskCompletionSource<IReadOnlyDictionary<string, string>?>();
         vm.QuickCommandVariablePrompt = (_, _, _) => answer.Task;
 
-        Send(vm, "查看日志", "kubectl logs -f {{pod}}");
+        Send(vm, "查看日志", "kubectl logs -f {{pod}}", executeAfterSend: true);
         tab.ConnectionStatus = SessionStatus.Disconnected;
         answer.SetResult(new Dictionary<string, string> { ["pod"] = "web-1" });
 
+        emulator.DidNotReceive().WriteKeyInput(Arg.Any<Key>(), Arg.Any<KeyModifiers>());
         emulator.DidNotReceive().WriteInput(Arg.Any<byte[]>());
     }
 
@@ -178,8 +185,8 @@ public class QuickCommandVariablesFlowTests
         return (vm, emulator);
     }
 
-    private static void Send(MainWindowViewModel vm, string name, string commandText) =>
+    private static void Send(MainWindowViewModel vm, string name, string commandText, bool executeAfterSend = false) =>
         vm.Sidebar.QuickCommands!.SendCommand
-            .Execute(new QuickCommandViewModel(new QuickCommand { Name = name, CommandText = commandText }))
+            .Execute(new QuickCommandViewModel(new QuickCommand { Name = name, CommandText = commandText, ExecuteAfterSend = executeAfterSend }))
             .Subscribe();
 }

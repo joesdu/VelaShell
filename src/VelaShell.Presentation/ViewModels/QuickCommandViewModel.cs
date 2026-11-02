@@ -94,6 +94,21 @@ public class QuickCommandViewModel(QuickCommand model) : ReactiveObject
         }
     } = model.CommandText;
 
+    /// <summary>发送后是否按回车;内置命令忽略写入。</summary>
+    public bool ExecuteAfterSend
+    {
+        get;
+        set
+        {
+            if (IsBuiltIn)
+            {
+                return;
+            }
+            this.RaiseAndSetIfChanged(ref field, value);
+            _model.ExecuteAfterSend = value;
+        }
+    } = model.ExecuteAfterSend;
+
     /// <summary>命令描述说明;内置命令忽略写入。</summary>
     public string Description
     {

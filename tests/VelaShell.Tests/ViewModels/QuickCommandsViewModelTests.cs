@@ -23,7 +23,7 @@ public class QuickCommandsViewModelTests : IDisposable
     private readonly SonnetDbEngine _engine;
     private readonly string _legacyDataPath;
     private readonly string _testDirectory;
-    private readonly IQuickCommandRepository _repository;
+    private readonly SonnetDbQuickCommandRepository _repository;
     private readonly QuickCommandsViewModel _vm;
 
     public QuickCommandsViewModelTests()
@@ -182,6 +182,74 @@ public class QuickCommandsViewModelTests : IDisposable
         Assert.AreEqual("Says hello", added.Description);
         Assert.AreEqual(ungrouped, added.Category);
         Assert.IsFalse(added.IsBuiltIn);
+    }
+
+    [TestMethod]
+    [TestCategory("QuickCommands")]
+    public async Task ExecuteAfterSend_PersistsThroughEditingReloadAndSync()
+    {
+        _vm.AddCommandCommand.Execute().Subscribe();
+        _vm.NewName = "execute";
+        _vm.NewCommandText = "echo hello";
+        _vm.NewExecuteAfterSend = true;
+        await _vm.SaveNewCommandCommand.Execute().FirstAsync();
+        QuickCommandViewModel added = (await ReloadAsync()).AllCommands.Single(c => c.Name == "execute");
+        Assert.IsTrue(added.ExecuteAfterSend);
+
+        QuickCommandSyncData exported = await _repository.ExportSyncAsync();
+        Assert.IsTrue(exported.Commands.Single(c => c.Id == added.Id).ExecuteAfterSend);
+        await _repository.SaveAsync(new QuickCommandData());
+        await _repository.ApplySyncAsync(exported);
+        QuickCommandsViewModel reloaded = await ReloadAsync();
+        QuickCommandViewModel synced = reloaded.AllCommands.Single(c => c.Id == added.Id);
+        Assert.IsTrue(synced.ExecuteAfterSend);
+
+        reloaded.BeginEditCommand.Execute(synced).Subscribe();
+        Assert.IsTrue(reloaded.NewExecuteAfterSend);
+        reloaded.NewExecuteAfterSend = false;
+        await reloaded.SaveEditCommand.Execute().FirstAsync();
+        Assert.IsFalse((await ReloadAsync()).AllCommands.Single(c => c.Id == added.Id).ExecuteAfterSend);
+
+        _vm.AddCommandCommand.Execute().Subscribe();
+        Assert.IsFalse(_vm.NewExecuteAfterSend, "新片段不能沿用上一条的自动执行选项");
+    }
+
+    [TestMethod]
+    [TestCategory("QuickCommands")]
+    public async Task ExecuteAfterSend_OnlyChangeToBuiltIn_IsSavedAndRestored()
+    {
+        QuickCommandViewModel builtIn = _vm.AllCommands.Single(c => c.Id == SampleBuiltIn.Id);
+        _vm.BeginEditCommand.Execute(builtIn).Subscribe();
+        _vm.NewExecuteAfterSend = true;
+        await _vm.SaveEditCommand.Execute().FirstAsync();
+
+        QuickCommandsViewModel reloaded = await ReloadAsync();
+        QuickCommandViewModel edited = reloaded.AllCommands.Single(c => c.Id == builtIn.Id);
+        Assert.IsTrue(edited.IsBuiltInOverride);
+        Assert.IsTrue(edited.ExecuteAfterSend);
+        await reloaded.RestoreBuiltInCommand.Execute(edited).FirstAsync();
+        Assert.IsFalse((await ReloadAsync()).AllCommands.Single(c => c.Id == builtIn.Id).ExecuteAfterSend);
+    }
+
+    [TestMethod]
+    [TestCategory("QuickCommands")]
+    public async Task OldSnippetData_WithoutExecuteAfterSend_DoesNotSubmit()
+    {
+        QuickCommandData old = System.Text.Json.JsonSerializer.Deserialize<QuickCommandData>(
+            """{"SchemaVersion":2,"Commands":[{"Name":"old","CommandText":"echo old"}]}""")!;
+        await _repository.SaveAsync(old);
+        QuickCommandsViewModel reloaded = await ReloadAsync();
+        var runner = new QuickCommandRunnerViewModel(reloaded);
+        Guid target = Guid.NewGuid();
+        runner.UpdateTargets([(target, "terminal")]);
+        runner.SetCurrentTarget(target);
+        QuickCommandExecutionRequest? request = null;
+        runner.ExecutionRequested += (_, e) => request = e;
+
+        runner.SendCommand.Execute(reloaded.AllCommands.Single(c => c.Name == "old")).Subscribe();
+
+        Assert.IsNotNull(request);
+        Assert.IsFalse(request.ExecuteAfterSend);
     }
 
     [TestMethod]

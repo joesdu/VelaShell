@@ -9198,8 +9198,14 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SetSnippets_RestoreBuiltInsBody" xml:space="preserve">
     <value>削除した組み込みコマンドが再び表示され、組み込みコマンドへの変更(別のグループへの移動を含む)は取り消されます。自分で作成したコマンドには影響しません。続行しますか?</value>
   </data>
+  <data name="SetSnippets_ExecuteAfterSend" xml:space="preserve">
+    <value>送信後に実行</value>
+  </data>
+  <data name="SetSnippets_ExecuteAfterSendHint" xml:space="preserve">
+    <value>初期設定はオフです。有効にすると、このスニペットの本文を送信した後に Enter を押します。コマンド補完の確定では文字の挿入のみ行います。</value>
+  </data>
   <data name="SetSnippets_MultilineHint" xml:space="preserve">
-    <value>// 改行して複数行のコマンドを書けます。送信時はまとめてコマンドラインに入り、1 行ずつ実行されることはありません。リモートがブラケットペーストに対応していない場合は先に確認します</value>
+    <value>// 複数行のコマンドにはブラケットペーストを使います。接続先で無効な場合は行ごとに即実行されることがあり、確認の有無は複数行貼り付けの設定に従います。</value>
   </data>
   <data name="Sidebar_More" xml:space="preserve">
     <value>その他</value>

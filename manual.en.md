@@ -358,13 +358,15 @@ Tailscale mode requires Tailscale installed and signed in locally, a MagicDNS na
 
 ### 8.3 Quick Commands and Parameters
 
-**Multiline warning:** Quick commands append no Enter, but multiline bodies are not inherently safe. Shells without bracketed paste may execute embedded newlines immediately. Check content and target before sending, and keep multiline confirmation enabled.
+**Multiline warning:** Each quick command's **Execute after sending** switch is off by default. When off, no extra Enter is sent, but multiline bodies are not inherently safe. Shells without bracketed paste may execute embedded newlines immediately. Check content and target before sending, and keep multiline confirmation enabled; enabling **Execute after sending** does not bypass that confirmation.
 
 **Entry point:** Manage groups/snippets under **Settings → Snippets** and use them from the sidebar Quick Commands panel.
 
-**Steps:** Create a name and command body, optionally grouped. Use `{{name}}` or `{{name=default}}`, for example `cd {{directory=/tmp}}`. Supply prompted values, check the expanded result, and send. For single-line commands, decide separately whether to press Enter. The prompt pre-fills the values last entered for the same quick command (kept for this run only, never written to disk or synced; parameters whose names look like passwords, PINs, keys, tokens, or verification codes are not remembered, and a field left blank falls back to its default). Values entered into such parameters are also kept out of the command history: a line containing one is not recorded when you press Enter (nor when you recall it later with the shell's Up arrow and run it again), so completion and ghost text never offer the secret back.
+**Steps:** When adding or editing a command, enter its name and body, optionally group it, and choose **Execute after sending** for that command (off by default). Use `{{name}}` or `{{name=default}}`, for example `cd {{directory=/tmp}}`. Clicking Send in the sidebar prompts for values first; only confirming sends anything, and cancelling sends neither the body nor Enter. With the switch off, decide when to press Enter after a single-line body is sent; with it on, the client presses Enter once after sending the body. The prompt pre-fills the values last entered for the same quick command (kept for this run only, never written to disk or synced; parameters whose names look like passwords, PINs, keys, tokens, or verification codes are not remembered, and a field left blank falls back to its default). Values entered into such parameters are also kept out of the command history: a line containing one is not recorded when you press Enter (nor when you recall it later with the shell's Up arrow and run it again), so completion and ghost text never offer the secret back.
 
-**Result and how it works:** The host substitutes strings and sends the body to the current terminal. It is not a remote script-management service and does not validate shell escaping, permissions, or paths. Multiline sends prefer bracketed paste; otherwise follow confirmation behavior. There is no automatic-execution switch for quick commands.
+**Result and how it works:** The host substitutes strings and sends the body to the selected target terminals through the existing send path. It is not a remote script-management service and does not validate shell escaping, permissions, or paths. Backslash sequences such as `\n` and `\r` in the body are not converted into line breaks or keystrokes. Multiline sends prefer bracketed paste; otherwise follow confirmation behavior, and cancelling sends nothing. **Execute after sending** sends one Enter, encoded for each target terminal's current mode, only after the body has been sent. Each target tab receives it once, without forwarding it again through synchronized input channels. Accepting completion or ghost text still only inserts the body; this switch does not execute it.
+
+**Saving and compatibility:** The switch is saved per command, both locally and in v2 Gist snippet sync. Older data without the field and built-in commands default to off. Changing a built-in command's switch is a restorable override; **Restore Defaults** turns it off again. Older clients may ignore the new field and drop it when saving or syncing again, so check the switch when mixing client versions.
 
 ### 8.4 Layout Templates
 
@@ -721,7 +723,7 @@ Type conflicts, case-only name differences, and illegal local filenames are not 
 
 ### 15.11 Snippets
 
-**Operation:** Create/edit/delete groups and quick commands, fill bodies and placeholders, then use the sidebar panel. Snippets are terminal text, not scheduled jobs. See [Quick Commands](#workspace) for multiline warnings.
+**Operation:** Create/edit/delete groups and quick commands, fill bodies and placeholders, and optionally enable each command's **Execute after sending** switch in the add/edit form (off by default), then use the sidebar panel. Snippets are terminal text, not scheduled jobs. See [Quick Commands](#workspace) for send order, multiline risks, and sync compatibility.
 
 ### 15.12 Cloud Sync
 
@@ -1207,7 +1209,7 @@ This manual intentionally does not promise:
 - Per-profile proxies; dual-remote synchronization/keep-up-to-date; automatic remote→local watching; resuming transfers automatically at startup (the persisted transfer queue is only restored as "paused" and connects when you click "Resume").
 - Sixel/Kitty terminal images or ZMODEM. X11 graphical applications are not terminal image protocols.
 - Redis/S3/Telnet/serial/Docker without plugins. S3 is not POSIX storage and does not supply SSH chmod/upload-resume semantics.
-- Automatic quick-command execution, or a command-block rerun that goes back to the original directory or host. Completion is not a safety review.
+- A command-block rerun that goes back to the original directory or host. Quick commands' **Execute after sending** only presses Enter after the body; it does not guarantee success or safety, and completion is not a safety review.
 - Output rules as expect scripts: auto-answer only answers the line the cursor is waiting on, and a rule sends one piece of fixed text; there are no multi-step dialogues, variables, or passwords. Recording and log masking cannot take your own rules from this table yet.
 - Remote mtr/TCP SYN tracing, trace text/JSON export, or a fifth diagnostics stage. Current tracing uses local ICMP.
 - SSH library capabilities the host has not wired up, such as the TLS dialer and the packet tap. Library support does not imply panel configuration.

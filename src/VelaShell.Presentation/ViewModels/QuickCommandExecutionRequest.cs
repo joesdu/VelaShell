@@ -5,11 +5,15 @@ public sealed class QuickCommandExecutionRequest(
     string commandText,
     IReadOnlyList<Guid> targetIds,
     string? commandName = null,
-    Guid? commandId = null)
+    Guid? commandId = null,
+    bool executeAfterSend = false)
     : EventArgs
 {
     /// <summary>需要发送到终端的命令正文(可能含 <c>{{变量}}</c> 占位,由宿主在发送前询问并替换)。</summary>
     public string CommandText { get; } = commandText;
+
+    /// <summary>本次发送正文后是否按回车。</summary>
+    public bool ExecuteAfterSend { get; } = executeAfterSend;
 
     /// <summary>触发运行时确定的终端标签标识快照。</summary>
     public IReadOnlyList<Guid> TargetIds { get; } = targetIds;

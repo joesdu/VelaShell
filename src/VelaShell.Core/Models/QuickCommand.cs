@@ -15,6 +15,9 @@ public class QuickCommand
     /// <summary>实际要发送到终端执行的命令文本。</summary>
     public string CommandText { get; set; } = string.Empty;
 
+    /// <summary>从快捷命令面板发送正文后按回车;默认关闭。</summary>
+    public bool ExecuteAfterSend { get; set; }
+
     /// <summary>命令的说明文字,便于用户理解其用途。</summary>
     public string Description { get; set; } = string.Empty;
 

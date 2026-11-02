@@ -9198,8 +9198,14 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SetSnippets_RestoreBuiltInsBody" xml:space="preserve">
     <value>삭제한 기본 제공 명령이 다시 나타나고, 기본 제공 명령에 대한 변경(다른 그룹으로 옮긴 것 포함)은 취소됩니다. 직접 만든 명령은 영향을 받지 않습니다. 계속하시겠습니까?</value>
   </data>
+  <data name="SetSnippets_ExecuteAfterSend" xml:space="preserve">
+    <value>전송 후 실행</value>
+  </data>
+  <data name="SetSnippets_ExecuteAfterSendHint" xml:space="preserve">
+    <value>기본값은 꺼짐입니다. 켜면 이 스니펫의 본문을 전송한 후 Enter를 한 번 누릅니다. 명령 자동 완성을 수락하면 텍스트만 입력됩니다.</value>
+  </data>
   <data name="SetSnippets_MultilineHint" xml:space="preserve">
-    <value>// 줄을 바꿔 여러 줄 명령을 쓸 수 있습니다. 보낼 때 전체가 명령줄에 들어가며 한 줄씩 실행되지 않습니다. 원격이 브래킷 붙여넣기를 지원하지 않으면 먼저 확인합니다</value>
+    <value>// 여러 줄 명령은 브래킷 붙여넣기를 사용합니다. 대상에서 활성화되지 않으면 각 줄이 즉시 실행될 수 있으며, 확인 여부는 여러 줄 붙여넣기 확인 설정을 따릅니다.</value>
   </data>
   <data name="Sidebar_More" xml:space="preserve">
     <value>더 보기</value>

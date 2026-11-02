@@ -187,6 +187,7 @@ public sealed class SonnetDbQuickCommandRepository(
                         ? DisplayCompatibilityName(group)
                         : "Ungrouped",
                     CommandText = command.CommandText,
+                    ExecuteAfterSend = command.ExecuteAfterSend,
                     Description = command.Description,
                     SortOrder = command.SortOrder,
                 }),
@@ -242,6 +243,7 @@ public sealed class SonnetDbQuickCommandRepository(
                                 GroupId = command.GroupId,
                                 Name = command.Name,
                                 CommandText = command.CommandText,
+                                ExecuteAfterSend = command.ExecuteAfterSend,
                                 Description = command.Description,
                                 SortOrder = command.SortOrder,
                             }),

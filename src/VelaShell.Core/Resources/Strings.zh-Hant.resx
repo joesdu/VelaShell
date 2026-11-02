@@ -9675,8 +9675,14 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SetSnippets_RestoreBuiltInsBody" xml:space="preserve">
     <value>刪掉的內建命令會重新出現,對內建命令的修改(包括移到別的分組)會被復原。自己新建的命令不受影響。確定繼續嗎?</value>
   </data>
+  <data name="SetSnippets_ExecuteAfterSend" xml:space="preserve">
+    <value>傳送後執行</value>
+  </data>
+  <data name="SetSnippets_ExecuteAfterSendHint" xml:space="preserve">
+    <value>預設關閉。開啟後，傳送此片段會在本文之後按一次 Enter；接受命令補全仍只填入文字。</value>
+  </data>
   <data name="SetSnippets_MultilineHint" xml:space="preserve">
-    <value>// 可以換行寫多行命令:傳送時整段放進命令列,不會逐行執行;遠端不支援括號貼上時先詢問</value>
+    <value>// 多行命令使用括號貼上；目標未啟用時可能立即逐行執行，是否詢問沿用多行貼上確認設定。</value>
   </data>
   <data name="Sidebar_More" xml:space="preserve">
     <value>更多</value>
