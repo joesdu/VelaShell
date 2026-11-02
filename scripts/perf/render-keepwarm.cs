@@ -1,5 +1,6 @@
 #:project ../../src/VelaShell/VelaShell.csproj
 #:property TreatWarningsAsErrors=false
+#:property AllowUnsafeBlocks=true
 #:property SignAssembly=false
 #:property ValidateExecutableReferencesMatchSelfContained=false
 
@@ -170,10 +171,10 @@ sealed class ProbeApp(ProbeOptions options) : Application
     }
 }
 
-static class Native
+static partial class Native
 {
-    [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
-    public static extern uint TimeBeginPeriod(uint period);
+    [LibraryImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+    public static partial uint TimeBeginPeriod(uint period);
 }
 
 /// <summary>
