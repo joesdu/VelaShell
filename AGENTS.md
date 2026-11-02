@@ -72,6 +72,12 @@ dotnet test  VelaShell.slnx
 
 ### 几条会让你踩坑的硬约束
 
+- **原生绑定优先使用 `LibraryImport`**(包括测试和脚本)。新增或迁移绑定前逐项核对实际导出入口点、字符集与 ABI;
+`LibraryImport` 不做 `DllImport` 的 A/W 后缀探测,Windows 字符串 API 必须显式指定真实的 `EntryPoint`(如 `GetFinalPathNameByHandleW`),
+不得直接照搬没有后缀的托管方法名。保留各平台原有 UTF-16 / UTF-8 / ANSI 字符串语义、`bool` 宽度、调用约定、
+数组与输出缓冲区长度(字节还是字符)、`out` / 结构体布局、`SetLastError` 以及句柄生命周期与所有权。
+`StringBuilder` 等不受支持的形状先考虑等价的字符缓冲区或简洁封送声明;只有源生成器确实不能处理且无法简洁等价表达时才保留 `DllImport`,
+并在绑定旁注释具体限制与保留原因,不能只写「兼容性需要」。迁移须构建验证并运行相关原生路径测试;编译通过不代表入口点或跨平台 ABI 已验证。
 - **界面文案五份 resx 必须齐**(`Strings` / `zh-Hans` / `zh-Hant` / `ja` / `ko`),不许硬编码字符串。
 漏译与孤儿键由 `LocalizedKeyUsageTests` / `UnusedLocalizedKeyTests` 拦住。
 - **新增或改动快捷键先改目录**:唯一事实来源是

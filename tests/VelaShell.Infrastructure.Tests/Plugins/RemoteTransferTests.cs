@@ -1965,9 +1965,11 @@ public sealed partial class RemoteTransferTests
     }
 
     [TestMethod]
-    public async Task DownloadCommitsOnlyAfterVerificationAndProtectsExistingDestination()
+    [DataRow("vela-download-")]
+    [DataRow("vela-下载-é-📁-")]
+    public async Task DownloadCommitsOnlyAfterVerificationAndProtectsExistingDestination(string directoryPrefix)
     {
-        string directory = NewDirectory("vela-download-");
+        string directory = NewDirectory(directoryPrefix);
         string path = Path.Combine(directory, "target");
         IPluginPermissionPrompt prompt = Substitute.For<IPluginPermissionPrompt>();
         prompt.RequestFileDownloadAsync(Arg.Any<string>(), Arg.Any<string>(), "/source", path, Arg.Any<bool>(), Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(PluginPermissionDecision.AllowOnce);
@@ -1987,7 +1989,8 @@ public sealed partial class RemoteTransferTests
             await WaitIdle(api);
             Assert.AreEqual(RemoteTransferState.Succeeded, done.State, done.ErrorMessage);
             await _sftp.Received(1).ComputeSha256Async(_session, Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
-            Assert.AreSequenceEqual(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(path));
+            byte[] downloaded = await File.ReadAllBytesAsync(path);
+            Assert.AreSequenceEqual(new byte[] { 1, 2, 3 }, downloaded);
             RemoteTransferSnapshot exists = await api.StartDownloadAsync(_session.ToString(), "/source", path, new() { OperationId = "existing" });
             RemoteTransferSnapshot refused = await Terminal(api, exists.TransferId);
             Assert.AreEqual(RemoteTransferState.Failed, refused.State, refused.ErrorMessage);
@@ -1995,7 +1998,8 @@ public sealed partial class RemoteTransferTests
             Assert.IsTrue(refused.DestinationCommitConfirmedAbsent);
             Assert.AreEqual("download-failed", refused.ErrorCode);
             await WaitIdle(api);
-            Assert.AreSequenceEqual(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(path));
+            byte[] preserved = await File.ReadAllBytesAsync(path);
+            Assert.AreSequenceEqual(new byte[] { 1, 2, 3 }, preserved);
             Assert.HasCount(1, Directory.GetFiles(directory));
         }
         finally { await WaitIdle(api); Directory.Delete(directory, true); }
@@ -2472,7 +2476,7 @@ public sealed partial class RemoteTransferTests
     /// 切到 PHCM_EXPOSE_PLACEHOLDERS 才看得到真实的 IO_REPARSE_TAG_CLOUD_*(资源管理器这类进程就是这样看的)。
     /// 整个进程生效,用完恢复;本程序集不并行跑测试。
     /// </summary>
-    private sealed class ExposedPlaceholders : IDisposable
+    private sealed partial class ExposedPlaceholders : IDisposable
     {
         private readonly sbyte _previous = RtlSetProcessPlaceholderCompatibilityMode(2);
 
@@ -2483,8 +2487,8 @@ public sealed partial class RemoteTransferTests
 
         public void Dispose() => RtlSetProcessPlaceholderCompatibilityMode(_previous);
 
-        [DllImport("ntdll.dll")]
-        private static extern sbyte RtlSetProcessPlaceholderCompatibilityMode(sbyte mode);
+        [LibraryImport("ntdll.dll", EntryPoint = "RtlSetProcessPlaceholderCompatibilityMode")]
+        private static partial sbyte RtlSetProcessPlaceholderCompatibilityMode(sbyte mode);
     }
 
     /// <summary>收集宿主写进 <see cref="Trace" /> 的日志;本程序集不并行跑测试,全局监听器不会串到别的用例。</summary>

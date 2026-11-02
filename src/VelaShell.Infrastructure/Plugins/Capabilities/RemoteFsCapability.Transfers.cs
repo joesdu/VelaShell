@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Win32.SafeHandles;
 using VelaShell.Core.Models;
 using VelaShell.Core.Ssh;
@@ -418,8 +417,9 @@ internal sealed partial class RemoteFsCapability
         return "/" + string.Join('/', parts);
     }
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path, uint length, uint flags);
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    internal static partial uint GetFinalPathNameByHandle(SafeFileHandle handle,
+        [Out, MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] char[] path, uint length, uint flags);
 
     internal static string ResolveUploadSource(string path)
     {
