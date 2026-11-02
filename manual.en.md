@@ -876,6 +876,8 @@ Type conflicts, case-only name differences, and illegal local filenames are not 
 
 **Execution warning:** Redis writes/flushes, S3 deletions, and serial control signals can change production data or hardware state. Verify environment, backup, and authorization before writes. A protocol entry does not create server permissions.
 
+**RDP NLA authentication on Linux/macOS:** Update both the host and RDP plugin, then fully quit and restart. The client uses .NET managed NTLM without requiring `gss-ntlmssp`. If an older version reports `Unsupported` during NLA authentication, update first; do not disable server NLA to bypass this client error. The server must still permit NTLM. Retain the complete plugin log for other failures.
+
 ### 18.3 Docker Management Panel
 
 **High-privilege warning:** Docker socket access often grants extensive host privileges. Verify the host before stopping/deleting containers, images, volumes, or networks, or executing commands. Removing volumes may permanently destroy data.
