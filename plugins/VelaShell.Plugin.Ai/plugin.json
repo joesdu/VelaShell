@@ -1,12 +1,12 @@
 {
   "id": "velashell.ai",
-  "version": "0.5.0",
+  "version": "1.7.8",
   "displayName": "AI Assistant",
   "description": "多提供商 AI 助手:内置供应商目录,支持订阅登录(OAuth 授权码+PKCE / 设备码)或自填 API Key;OpenAI / Anthropic / Grok / Ollama / 自定义中转站,流式对话、Agent 模式与自定义 MCP 服务器工具;会话存入时序库可随时翻回,输入框 ↑↓ 调历史、@ 引用服务器文件。",
   "publisher": "velashell",
   "entry": "VelaShell.Plugin.Ai.dll",
   "apiLevel": 2,
-  "minSdkVersion": "2.1.6",
+  "minSdkVersion": "2.1.7",
   "license": "MIT",
   "homepage": "https://github.com/joesdu/VelaShell",
   // 启动即激活。IM 桥接必须常驻 —— 飞书/钉钉那头的消息随时会来,不能等用户

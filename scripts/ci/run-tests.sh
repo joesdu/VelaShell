@@ -7,8 +7,11 @@
 # #582 把这个工程从 587 条加到 1400 多条之后,单它一个就是整个测试步骤的最长一段
 # (macOS 上 22 分钟,别的工程都在 2 分钟内跑完),整个 CI 从 7 分钟拖到 25 分钟以上。
 #
-# 所以这三组各起一个进程,与解决方案的其余测试同时跑。每个进程仍只有一个 UI 线程、组内照旧串行;
+# 所以这三组各起一个进程并行跑。每个进程仍只有一个 UI 线程、组内照旧串行;
 # 插件没有跨实例的静态状态,TestPluginContext 的数据目录每个实例各一个,拆开跑不改变任何一条用例看到的东西。
+# Windows 先跑完解决方案的其余测试,再启动这三组:run 41561814649 中两组的首条用例同时
+# 撞上 60 秒超时,第三组首条也用了 56 秒,后续用例恢复正常。避免 UI 冷启动与其余测试抢资源,
+# 不放宽单测超时。Linux / macOS 仍让三组与解决方案同时跑。
 # 用例本身怎么等,见 tests/VelaShell.Plugin.Ai.Tests/HeadlessPump.cs。
 set -uo pipefail
 
@@ -19,16 +22,33 @@ common=(-c Debug --no-build --nologo --results-directory artifacts/trx)
 
 mkdir -p artifacts/logs
 rest="$base"
-pids=()
 for group in "${groups[@]}"; do
   rest+="&FullyQualifiedName!~$project.$group"
+done
+
+status=0
+run_rest() {
+  dotnet test VelaShell.slnx "${common[@]}" --filter "$rest" --logger "trx;LogFilePrefix=ci" || status=$?
+}
+
+windows=false
+case "${RUNNER_OS:-$OSTYPE}" in
+  Windows|msys*|cygwin*) windows=true ;;
+esac
+if "$windows"; then
+  run_rest
+fi
+
+pids=()
+for group in "${groups[@]}"; do
   dotnet test "tests/$project" "${common[@]}" --filter "$base&FullyQualifiedName~$project.$group" \
     --logger "trx;LogFilePrefix=ci-$group" > "artifacts/logs/$group.log" 2>&1 &
   pids+=($!)
 done
 
-status=0
-dotnet test VelaShell.slnx "${common[@]}" --filter "$rest" --logger "trx;LogFilePrefix=ci" || status=$?
+if ! "$windows"; then
+  run_rest
+fi
 
 for i in "${!groups[@]}"; do
   code=0
