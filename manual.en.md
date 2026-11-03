@@ -880,6 +880,8 @@ Type conflicts, case-only name differences, and illegal local filenames are not 
 
 **RDP NLA authentication on Linux/macOS:** Update both the host and RDP plugin, then fully quit and restart. The client uses .NET managed NTLM without requiring `gss-ntlmssp`. If an older version reports `Unsupported` during NLA authentication, update first; do not disable server NLA to bypass this client error. The server must still permit NTLM. Retain the complete plugin log for other failures.
 
+**RDP resource selection tree (pending matching releases):** Drive mapping groups drives, printers and portable devices into collapsed categories showing selected/total counts. Expand to select individual items; long lists scroll inside the tree. Category checkboxes support selecting all, clearing all and indicating partial selection. Existing selections are preserved and new devices start unchecked; cameras remain single-choice, while ports and custom folders remain text inputs. This requires a new SDK release followed by matching host and RDP plugin updates; integration validation is still pending.
+
 ### 18.3 Docker Management Panel
 
 **High-privilege warning:** Docker socket access often grants extensive host privileges. Verify the host before stopping/deleting containers, images, volumes, or networks, or executing commands. Removing volumes may permanently destroy data.

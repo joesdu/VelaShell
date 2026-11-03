@@ -1127,6 +1127,61 @@ public sealed class ConnectionProfileViewUiTests
     private static bool LabelShowing(Window window, string label) =>
         window.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == label && text.IsEffectivelyVisible);
 
+    [TestMethod]
+    public Task PluginSelectionTree_CollapsesAndTogglesDevicesWithoutFlatDuplicates() => _session.RunOnUiAsync(async () =>
+    {
+        var registry = new PluginProtocolRegistry();
+        using IDisposable handle = registry.RegisterWorkspace("test.resources", new WorkspaceDescriptor
+        {
+            Id = "test.resources", DisplayName = "Resources", DefaultPort = 3389,
+            Pages = [new("resources", "Resources")],
+            Fields = [.. Enumerable.Range(0, 40).Select(index => new ProtocolSettingField
+            {
+                Key = $"drive:{index}", Label = $"Disk {index}", Kind = ProtocolSettingKind.Boolean,
+                DefaultValue = index == 0 ? "true" : "false", Page = "resources",
+                SelectionGroup = new("drives", "Drives")
+            })]
+        }, new NoopWorkspace());
+        var vm = new ConnectionProfileViewModel(protocolRegistry: registry) { Host = "rdp.example.com" };
+        var window = new ConnectionProfileView { DataContext = vm };
+        window.Show();
+        try
+        {
+            await vm.SelectPluginProtocolCommand.Execute("test.resources").FirstAsync();
+            Layout(window);
+            Click(window, window.FindControl<Button>("NextButton")!);
+            vm.SelectPluginPageCommand.Execute("resources").Subscribe();
+            Layout(window);
+            TreeView tree = window.GetVisualDescendants().OfType<TreeView>().Single(control => control.IsEffectivelyVisible);
+            PluginSelectionNode group = vm.PluginFieldRows.Single().Group!;
+            CheckBox Header() => tree.GetVisualDescendants().OfType<CheckBox>()
+                .Single(box => box.IsEffectivelyVisible && ReferenceEquals(box.DataContext, group));
+            Assert.IsNull(Header().IsChecked);
+            Assert.AreEqual("1/40", group.SelectionCount);
+            Assert.HasCount(1, tree.GetVisualDescendants().OfType<CheckBox>().Where(box => box.IsEffectivelyVisible));
+            Click(window, Header());
+            Assert.IsTrue(vm.PluginFields.All(field => field.Toggle));
+            Assert.AreEqual(true, Header().IsChecked);
+
+            group.IsExpanded = true;
+            Layout(window);
+            CheckBox first = tree.GetVisualDescendants().OfType<CheckBox>()
+                .Single(box => box.IsEffectivelyVisible && ReferenceEquals(box.DataContext, group.Children[0]));
+            Click(window, first);
+            Assert.IsFalse(vm.PluginFields[0].Toggle);
+            Assert.IsNull(Header().IsChecked);
+            Assert.IsTrue(tree.Bounds.Height <= 280, "A long device list must scroll inside a bounded tree.");
+            SaveOptionalFrame(window, "plugin-resource-tree.png");
+            group.IsExpanded = false;
+            Layout(window);
+            Assert.HasCount(1, tree.GetVisualDescendants().OfType<CheckBox>().Where(box => box.IsEffectivelyVisible));
+            vm.SelectSectionCommand.Execute(ConnectionProfileSection.General).Subscribe();
+            Layout(window);
+            Assert.IsFalse(tree.IsEffectivelyVisible);
+        }
+        finally { window.Close(); }
+    });
+
     /// <summary>
     /// <b>插件声明的自定义页签画在「常规」与「高级」之间,点进去只露出那一页的字段</b>。
     /// <para>

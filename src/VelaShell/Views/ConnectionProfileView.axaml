@@ -296,6 +296,39 @@
         <TextBlock Classes="field-hint" Text="{Binding Hint}" IsVisible="{Binding HasHint}" />
       </StackPanel>
     </DataTemplate>
+
+    <DataTemplate x:Key="PluginFormRow" x:DataType="vm:PluginFormRow">
+      <StackPanel>
+        <ItemsControl ItemsSource="{Binding FieldItems}" ItemTemplate="{StaticResource PluginFieldRow}"
+                      IsVisible="{Binding IsField}" />
+        <TreeView ItemsSource="{Binding SelectionRoots}" IsVisible="{Binding IsGroupVisible}"
+                  MaxHeight="280" Margin="0,0,0,8"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <TreeView.Styles>
+            <Style Selector="TreeViewItem" x:DataType="vm:PluginSelectionNode">
+              <Setter Property="IsVisible" Value="{Binding IsVisible}" />
+              <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+              <Setter Property="MinHeight" Value="28" />
+              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </Style>
+          </TreeView.Styles>
+          <TreeView.ItemTemplate>
+            <TreeDataTemplate x:DataType="vm:PluginSelectionNode" ItemsSource="{Binding Children}">
+              <Grid ColumnDefinitions="*,Auto" MinHeight="28">
+                <CheckBox IsChecked="{Binding IsChecked, Mode=OneWay}" Command="{Binding ToggleCommand}"
+                          HorizontalAlignment="Stretch" MinHeight="28" ToolTip.Tip="{Binding Hint}">
+                  <TextBlock Classes="check-title" Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                </CheckBox>
+                <TextBlock Grid.Column="1" Margin="8,0,4,0" Text="{Binding SelectionCount}"
+                           IsVisible="{Binding IsGroup}" VerticalAlignment="Center"
+                           Foreground="{DynamicResource VelaTextTertiary}"
+                           FontSize="{DynamicResource VelaFontSize11}" />
+              </Grid>
+            </TreeDataTemplate>
+          </TreeView.ItemTemplate>
+        </TreeView>
+      </StackPanel>
+    </DataTemplate>
   </Window.Resources>
 
   <Window.Styles>
@@ -1192,7 +1225,7 @@
                   <TextBlock Text="…" IsVisible="{Binding IsPluginLoading}"
                              Foreground="{DynamicResource VelaTextMuted}"
                              FontSize="{DynamicResource VelaFontSize11}" />
-                  <ItemsControl ItemsSource="{Binding PluginFields}" ItemTemplate="{StaticResource PluginFieldRow}" />
+                  <ItemsControl ItemsSource="{Binding PluginFieldRows}" ItemTemplate="{StaticResource PluginFormRow}" />
                 </StackPanel>
 
                 <!-- 整理:显示名称 + 会话分组 + 标签,下面一整行备注 -->
@@ -1547,13 +1580,13 @@
                 <!-- 插件标了 IsAdvanced 的调优字段(分片大小、并发数之类):S3 一口气声明了十来个字段,
                      全铺在「常规」页上就长到屏幕外了。 -->
                 <ItemsControl IsVisible="{Binding IsPluginSelected}"
-                              ItemsSource="{Binding PluginFields}" ItemTemplate="{StaticResource PluginFieldRow}" />
+                              ItemsSource="{Binding PluginFieldRows}" ItemTemplate="{StaticResource PluginFormRow}" />
               </StackPanel>
 
               <!-- ============================== 插件自定义页(数据库 / SSL …) ==============================
                    第三份同一批行:哪一行画在这里看它的页键(VM 按当前选中的自定义页下发 IsRowVisible)。 -->
               <StackPanel x:Name="PluginPageSection" Grid.Row="1" Spacing="12" IsVisible="{Binding IsPluginPageSection}">
-                <ItemsControl ItemsSource="{Binding PluginFields}" ItemTemplate="{StaticResource PluginFieldRow}" />
+                <ItemsControl ItemsSource="{Binding PluginFieldRows}" ItemTemplate="{StaticResource PluginFormRow}" />
               </StackPanel>
             </Grid>
           </ScrollViewer>

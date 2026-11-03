@@ -18,6 +18,108 @@ namespace VelaShell.Tests.ViewModels;
 [TestClass]
 public sealed class ConnectionProfilePluginPagesTests
 {
+    [TestMethod]
+    public async Task SelectionGroups_FollowPagesAndVisibility_AndSaveOriginalKeys()
+    {
+        PluginProtocolRegistry registry = Registry(out IDisposable handle);
+        using (handle)
+        {
+            var group = new ProtocolSettingGroup("devices", "Devices");
+            PluginConnectionForm form = Form(
+                [
+                    new() { Key = "showSecond", Label = "Show second", Kind = ProtocolSettingKind.Boolean, DefaultValue = "true" },
+                    new() { Key = "drive:C", Label = "C:", Kind = ProtocolSettingKind.Boolean, DefaultValue = "true", SelectionGroup = group },
+                    new() { Key = "drive:D", Label = "D:", Kind = ProtocolSettingKind.Boolean, DefaultValue = "false", SelectionGroup = group, VisibleWhen = new("showSecond", "true") },
+                    new() { Key = "printer:one", Label = "Printer", Kind = ProtocolSettingKind.Boolean, SelectionGroup = group },
+                    new() { Key = "folders", Label = "Folders", SelectionGroup = group },
+                    new() { Key = "hidden", Label = "Hidden", Kind = ProtocolSettingKind.Boolean, IsHidden = true, SelectionGroup = group }
+                ],
+                [new(DatabasePage, "Resources"), new(SslPage, "Printers")],
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["showSecond"] = DatabasePage, ["drive:C"] = DatabasePage,
+                    ["drive:D"] = DatabasePage, ["folders"] = DatabasePage, ["printer:one"] = SslPage
+                });
+            ConnectionProfileViewModel vm = await OpenAsync(registry, form);
+            PluginFormRow[] groups = [.. vm.PluginFieldRows.Where(row => !row.IsField)];
+            Assert.HasCount(2, groups, "The same group key on different pages must stay separate.");
+            Assert.HasCount(2, groups[0].Group!.Children, "Hidden fields must not enter the tree.");
+            Assert.IsTrue(vm.PluginFieldRows.Any(row => row.Field?.Key == "folders"), "Non-Boolean fields retain their editor.");
+            Assert.IsTrue(groups.All(row => !row.IsGroupVisible));
+
+            vm.SelectPluginPageCommand.Execute(DatabasePage).Subscribe();
+            PluginSelectionNode drives = groups[0].Group!;
+            Assert.IsTrue(groups[0].IsGroupVisible);
+            Assert.IsFalse(groups[1].IsGroupVisible);
+            Assert.IsNull(drives.IsChecked);
+            Assert.AreEqual("1/2", drives.SelectionCount);
+            Assert.IsFalse(drives.IsExpanded);
+            await drives.ToggleCommand.Execute().FirstAsync();
+            Assert.AreEqual(true, drives.IsChecked, "Clicking a partial selection must select all.");
+            Assert.AreEqual("true", Row(vm, "drive:D").Text);
+
+            Row(vm, "showSecond").Toggle = false;
+            Assert.AreEqual("1/1", drives.SelectionCount);
+            await drives.ToggleCommand.Execute().FirstAsync();
+            Assert.AreEqual("false", Row(vm, "drive:C").Text);
+            Assert.AreEqual("true", Row(vm, "drive:D").Text, "Bulk selection must preserve conditionally hidden values.");
+            Row(vm, "showSecond").Toggle = true;
+            Assert.IsNull(drives.IsChecked);
+            drives.IsExpanded = true;
+            vm.SelectPluginPageCommand.Execute(SslPage).Subscribe();
+            Assert.IsFalse(groups[0].IsGroupVisible);
+            Assert.IsTrue(groups[1].IsGroupVisible);
+            vm.SelectPluginPageCommand.Execute(DatabasePage).Subscribe();
+            Assert.IsTrue(drives.IsExpanded);
+            Assert.IsNull(drives.IsChecked);
+
+            var saved = await vm.SaveCommand.Execute().FirstAsync();
+            Assert.IsNotNull(saved?.PluginSettings);
+            Assert.AreEqual("false", saved.PluginSettings["drive:C"]);
+            Assert.AreEqual("true", saved.PluginSettings["drive:D"]);
+            Assert.IsFalse(saved.PluginSettings.ContainsKey("devices"), "Group state must never become a saved setting.");
+
+            var reloadRegistry = new PluginProtocolRegistry();
+            using IDisposable reloadHandle = reloadRegistry.RegisterWorkspace(PagedId, new WorkspaceDescriptor
+            {
+                Id = PagedId, DisplayName = "Resources", DefaultPort = 3389,
+                Pages = [new(DatabasePage, "Resources"), new(SslPage, "Printers")],
+                Fields = [.. form.Fields.Select(field => field with { Page = form.PageKeyFor(field) })]
+            }, new NoopWorkspace());
+            var reopened = new ConnectionProfileViewModel(saved, protocolRegistry: reloadRegistry);
+            await reopened.PendingPluginLoad;
+            reopened.SelectPluginPageCommand.Execute(DatabasePage).Subscribe();
+            PluginSelectionNode restored = reopened.PluginFieldRows.First(row => row.Group is not null).Group!;
+            Assert.IsNull(restored.IsChecked);
+            Assert.AreEqual("1/2", restored.SelectionCount);
+        }
+    }
+
+    [TestMethod]
+    public void SelectionGroups_IgnoreBlankKeys_UseOrdinalKeys_AndDetachObservers()
+    {
+        PluginProtocolFieldViewModel Field(string key, string group, string label) => new(new()
+        {
+            Key = key, Label = key, Kind = ProtocolSettingKind.Boolean,
+            SelectionGroup = new(group, label)
+        }, "false");
+        var first = Field("one", "devices", "First label");
+        var second = Field("two", "devices", "Ignored label");
+        IReadOnlyList<PluginFormRow> rows = PluginFormRow.Build([first, second, Field("three", "Devices", "Other"), Field("four", " ", "Blank")]);
+        Assert.HasCount(3, rows);
+        Assert.AreEqual("First label", rows[0].Group!.Label);
+        Assert.AreEqual("Other", rows[1].Group!.Label);
+        Assert.AreEqual("four", rows[2].Field!.Key);
+        int notifications = 0;
+        rows[0].Group!.PropertyChanged += (_, _) => notifications++;
+        first.Toggle = true;
+        Assert.IsTrue(notifications > 0);
+        foreach (PluginFormRow row in rows) { row.Dispose(); }
+        notifications = 0;
+        second.Toggle = true;
+        Assert.AreEqual(0, notifications);
+    }
+
     private const string PagedId = "test.paged";
     private const string DatabasePage = "database";
     private const string SslPage = "ssl";

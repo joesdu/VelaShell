@@ -715,6 +715,9 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// <summary>当前插件协议的设置表单字段(选中协议并完成激活后才有内容)。</summary>
     public ObservableCollection<PluginProtocolFieldViewModel> PluginFields { get; } = [];
 
+    /// <summary>Presentation rows, with grouped Boolean fields represented as checkbox trees.</summary>
+    public ObservableCollection<PluginFormRow> PluginFieldRows { get; } = [];
+
     /// <summary>当前选中的插件协议 id;非插件协议时为 null。</summary>
     public string? PluginProtocolId
     {
@@ -2824,6 +2827,8 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// </summary>
     private void ClearPluginFields()
     {
+        foreach (PluginFormRow row in PluginFieldRows) { row.Dispose(); }
+        PluginFieldRows.Clear();
         foreach (PluginProtocolFieldViewModel row in PluginFields)
         {
             row.PropertyChanged -= OnPluginFieldChanged;
@@ -3028,6 +3033,7 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
                     field.Kind == ProtocolSettingKind.DynamicChoice ? ReloadFieldChoicesAsync : null,
                     pageKey: _pluginForm?.PageKeyFor(field)));
             }
+            foreach (PluginFormRow row in PluginFormRow.Build(PluginFields)) { PluginFieldRows.Add(row); }
             // 编辑既有配置时高级字段里有非默认值,「高级」页签上会点一个圆点
             // (IsAdvancedSectionModified,由下面这次下发一并刷新):用户填过的东西不能藏得看不出来,
             // 否则"我明明设过分片大小"会变成一次静默丢失的错觉。
