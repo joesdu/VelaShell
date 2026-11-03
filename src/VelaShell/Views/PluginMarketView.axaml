@@ -1,0 +1,138 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:VelaShell.ViewModels"
+             xmlns:market="using:VelaShell.Infrastructure.Plugins.Market"
+             xmlns:pc="using:VelaShell.Controls.Controls"
+             xmlns:loc="using:VelaShell.Localization"
+             xmlns:md="using:LiveMarkdown.Avalonia"
+             x:Class="VelaShell.Views.PluginMarketView" x:DataType="vm:PluginMarketViewModel">
+  <UserControl.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://LiveMarkdown.Avalonia/Defaults.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </UserControl.Resources>
+  <UserControl.Styles>
+    <StyleInclude Source="avares://LiveMarkdown.Avalonia/Styles.axaml" />
+    <Style Selector="TextBlock">
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="Theme" Value="{StaticResource VelaOutlineButtonTheme}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+    </Style>
+    <Style Selector="md|MarkdownRenderer md|MarkdownTextBlock">
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize13}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="SelectionBrush" Value="{DynamicResource VelaAccentDim}" />
+      <Setter Property="SelectionForegroundBrush" Value="{DynamicResource VelaTextPrimary}" />
+    </Style>
+    <Style Selector="md|MarkdownRenderer md|Link, md|MarkdownRenderer md|Link:clicked">
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccentText}" />
+    </Style>
+    <Style Selector="md|MarkdownRenderer md|CodeInline">
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccentText}" />
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+    </Style>
+    <Style Selector="md|CodeBlock">
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+    </Style>
+    <Style Selector="ListBoxItem">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="10" />
+      <Setter Property="Margin" Value="0,0,0,4" />
+    </Style>
+  </UserControl.Styles>
+  <Grid RowDefinitions="Auto,*" Margin="14,10">
+    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="0,0,0,10">
+      <TextBox x:Name="SearchBox" Text="{Binding Query, Mode=TwoWay}" PlaceholderText="{loc:Localize PluginMarket_SearchHint}"
+               AutomationProperties.Name="{loc:Localize PluginMarket_SearchHint}"
+               Height="28" MinHeight="28" KeyDown="Search_KeyDown" />
+      <ComboBox Grid.Column="1" ItemsSource="{Binding SortLabels}" SelectedIndex="{Binding SortIndex, Mode=TwoWay}"
+                AutomationProperties.Name="{loc:Localize PluginMarket_Sort}" MinWidth="110" Height="28" MinHeight="28"
+                SelectionChanged="Sort_SelectionChanged" />
+      <Button Grid.Column="2" Content="{loc:Localize PluginMarket_Search}" Click="Search_Click" IsEnabled="{Binding CanBrowse}" />
+    </Grid>
+    <Grid Grid.Row="1" ColumnDefinitions="2*,3*" ColumnSpacing="14">
+      <Grid RowDefinitions="*,Auto">
+        <ListBox x:Name="CatalogList" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="Transparent" BorderThickness="0"
+                 AutomationProperties.Name="{loc:Localize PluginManager_Market}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="market:PluginMarketEntry">
+              <StackPanel Spacing="5">
+                <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" FontWeight="SemiBold"
+                           FontSize="{DynamicResource VelaFontSize14}" Foreground="{DynamicResource VelaTextPrimary}" />
+                <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBlock Text="{Binding Author}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource VelaTextMuted}" />
+                  <TextBlock Grid.Column="1" Text="{Binding LatestVersion}" Foreground="{DynamicResource VelaTextMuted}" />
+                </Grid>
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <pc:CircularProgressRing IsVisible="{Binding IsLoading}" IsIndeterminate="True" Width="24" Height="24"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <TextBlock Text="{loc:Localize PluginMarket_Empty}" IsVisible="{Binding IsEmpty}" TextWrapping="Wrap"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="14" />
+        <StackPanel IsVisible="{Binding SearchError, Converter={x:Static ObjectConverters.IsNotNull}}" Spacing="10" Margin="14"
+                    VerticalAlignment="Center">
+          <TextBlock Text="{Binding SearchError}" TextWrapping="Wrap" Foreground="{DynamicResource VelaError}" />
+          <Button Content="{loc:Localize PluginMarket_Retry}" Click="RetrySearch_Click" HorizontalAlignment="Left" />
+        </StackPanel>
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,10,0,0">
+          <Button Content="{loc:Localize PluginMarket_Previous}" Click="Previous_Click" IsEnabled="{Binding CanPrevious}" />
+          <TextBlock Grid.Column="1" Text="{Binding PageText}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                     TextWrapping="Wrap" Margin="8,0" FontSize="{DynamicResource VelaFontSize11}" />
+          <Button Grid.Column="2" Content="{loc:Localize PluginMarket_Next}" Click="Next_Click" IsEnabled="{Binding CanNext}" />
+        </Grid>
+      </Grid>
+      <Border Grid.Column="1" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="1,0,0,0" Padding="14,0,0,0">
+        <Panel>
+          <pc:CircularProgressRing IsVisible="{Binding IsLoadingDetail}" IsIndeterminate="True" Width="24" Height="24"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+          <TextBlock Text="{loc:Localize PluginMarket_Select}" IsVisible="{Binding ShowDetailPlaceholder}"
+                     TextWrapping="Wrap" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="14" />
+          <StackPanel IsVisible="{Binding DetailError, Converter={x:Static ObjectConverters.IsNotNull}}" Spacing="10" Margin="14"
+                      VerticalAlignment="Center">
+            <TextBlock Text="{Binding DetailError}" TextWrapping="Wrap" Foreground="{DynamicResource VelaError}" />
+            <Button Content="{loc:Localize PluginMarket_Retry}" Click="RetryDetail_Click" HorizontalAlignment="Left" />
+          </StackPanel>
+          <Grid IsVisible="{Binding HasDetail}" RowDefinitions="*,Auto">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Spacing="8" Margin="0,0,8,10">
+                <TextBlock Text="{Binding Detail.DisplayName}" TextWrapping="Wrap" FontWeight="SemiBold"
+                           FontSize="{DynamicResource VelaFontSize20}" Foreground="{DynamicResource VelaTextPrimary}" />
+                <TextBlock Text="{Binding Detail.Id}" TextWrapping="Wrap" Foreground="{DynamicResource VelaTextMuted}" />
+                <TextBlock Text="{Binding Detail.Summary}" TextWrapping="Wrap" />
+                <WrapPanel>
+                  <TextBlock Text="{Binding VersionText}" Margin="0,0,12,4" />
+                  <TextBlock Text="{Binding SizeText}" Margin="0,0,12,4" />
+                </WrapPanel>
+                <TextBlock Text="{Binding AuthorText}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding LicenseText}" TextWrapping="Wrap" />
+                <md:MarkdownRenderer x:Name="DescriptionMarkdown" />
+              </StackPanel>
+            </ScrollViewer>
+            <StackPanel Grid.Row="1" Spacing="8" Margin="0,10,0,0">
+              <TextBlock Text="{Binding StateText}" TextWrapping="Wrap" />
+              <WrapPanel>
+                <Button x:Name="InstallButton" Content="{Binding InstallText}" Click="Install_Click" IsEnabled="{Binding CanInstall}"
+                        Theme="{StaticResource VelaAccentPillButtonTheme}" Margin="0,0,8,4" />
+                <Button Content="{loc:Localize PluginMarket_OpenWeb}" Click="OpenWeb_Click" Margin="0,0,0,4" />
+              </WrapPanel>
+            </StackPanel>
+          </Grid>
+        </Panel>
+      </Border>
+    </Grid>
+
+  </Grid>
+</UserControl>

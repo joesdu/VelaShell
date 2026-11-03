@@ -5,6 +5,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using VelaShell.Core.Resources;
 using VelaShell.Infrastructure.Plugins;
+using VelaShell.Infrastructure.Plugins.Market;
 using VelaShell.PluginSdk.Packaging;
 using VelaShell.ViewModels;
 using FireAndForget = VelaShell.Services.FireAndForget;
@@ -13,11 +14,12 @@ namespace VelaShell.Views;
 
 /// <summary>
 /// 插件管理窗口(自绘卡片窗口,与资源监视器同规格):列出插件、启停、卸载、
-/// 撤销敏感能力授权、从 .vpx 安装。
+/// 撤销敏感能力授权、从本地 .vpx 或商店安装。
 /// </summary>
 public partial class PluginManagerWindow : Window
 {
     private readonly DispatcherTimer _permissionRefresh = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    private bool _cancelOperations;
     /// <summary>初始化窗口,按平台装外框(最大化时卡片铺满、抓取区让位也由 <see cref="WindowChrome" /> 管)。</summary>
     public PluginManagerWindow()
     {
@@ -147,9 +149,9 @@ public partial class PluginManagerWindow : Window
         }
     }
 
-    private void Uninstall_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    private void Uninstall_Click(object? sender, RoutedEventArgs e) => RunPackageOperation(async vm =>
     {
-        if (sender is not Control { DataContext: PluginRowViewModel row } || ViewModel is not { } vm)
+        if (sender is not Control { DataContext: PluginRowViewModel row })
         {
             return;
         }
@@ -158,18 +160,14 @@ public partial class PluginManagerWindow : Window
             Strings.Format("PluginManager_ConfirmUninstall", row.DisplayName),
             confirmText: Strings.Get("PluginManager_Uninstall"),
             danger: true);
-        if (confirmed)
+        if (confirmed && IsVisible)
         {
             await vm.UninstallAsync(row);
         }
     });
 
-    private void Install_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    private void Install_Click(object? sender, RoutedEventArgs e) => RunPackageOperation(async vm =>
     {
-        if (ViewModel is not { } vm)
-        {
-            return;
-        }
         IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = Strings.Get("PluginManager_Install"),
@@ -195,9 +193,10 @@ public partial class PluginManagerWindow : Window
     /// </remarks>
     /// <param name="vm">插件管理视图模型。</param>
     /// <param name="path">包路径。</param>
-    private async Task InstallWithPromptsAsync(PluginManagerViewModel vm, string path)
+    /// <param name="expectedPackage">商店安装目标,在所有确认重试中保持一致。</param>
+    private async Task InstallWithPromptsAsync(PluginManagerViewModel vm, string path, PluginMarketVersion? expectedPackage = null)
     {
-        if (!await EnsureTrustStoreUsableAsync(vm))
+        if (!IsVisible || !await EnsureTrustStoreUsableAsync(vm) || !IsVisible)
         {
             return;
         }
@@ -209,7 +208,7 @@ public partial class PluginManagerWindow : Window
         catch
         {
             // 让统一安装路径生成本地化错误提示(损坏摘要/错误格式等)。
-            await vm.InstallFromVpxAsync(path);
+            await vm.InstallFromVpxAsync(path, expectedPackage: expectedPackage);
             return;
         }
         bool allowUntrusted = false;
@@ -243,7 +242,7 @@ public partial class PluginManagerWindow : Window
         // 信任发布者这一步挪到安装之后:这个包可能正是在顶替一个已装插件的发布者身份,
         // 而那一问要等解出包里的 id 才问得出来。先把新公钥收进信任库,等于用户还没被告知
         // "换人了",就已经替这把钥匙签下了"以后它的包一律直接信任"。
-        if (!await InstallWithPublisherCheckAsync(vm, path, allowUntrusted))
+        if (!IsVisible || !await InstallWithPublisherCheckAsync(vm, path, allowUntrusted, expectedPackage))
         {
             return;
         }
@@ -257,8 +256,9 @@ public partial class PluginManagerWindow : Window
             {
                 // 装是装上了(它自带的收据钉住了这把公钥),只是没进全局信任库 ——
                 // 失败方向朝着"信任更少",说清楚即可,不必回滚一次用户明确要的安装。
-                await MessageDialog.ShowMessageAsync(this,
-                    Strings.Get("PluginManager_UntrustedTitle"), ex.Message, MessageDialogKind.Error);
+                if (IsVisible)
+                    await MessageDialog.ShowMessageAsync(this,
+                        Strings.Get("PluginManager_UntrustedTitle"), ex.Message, MessageDialogKind.Error);
             }
         }
     }
@@ -277,12 +277,13 @@ public partial class PluginManagerWindow : Window
         {
             return true;
         }
+        if (!IsVisible) return false;
         bool reset = await MessageDialog.ConfirmAsync(this,
             Strings.Get("PluginManager_TrustStoreBrokenTitle"),
             Strings.Format("PluginManager_TrustStoreBrokenWarning", error),
             confirmText: Strings.Get("PluginManager_TrustStoreReset"),
             danger: true);
-        return reset && await vm.ResetTrustStoreAsync();
+        return reset && IsVisible && await vm.ResetTrustStoreAsync();
     }
 
     /// <summary>行内「更新到 x.y.z」:先把包下下来,再按发布者变没变决定怎么装。</summary>
@@ -291,24 +292,21 @@ public partial class PluginManagerWindow : Window
     /// 为同一个人的下一版再问一遍,问的是同一个问题。对不上(换人了,或者这一版干脆没签名)
     /// 则一律走完整确认流程,把指纹摆出来让用户自己判断。
     /// </remarks>
-    private void Update_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    private void Update_Click(object? sender, RoutedEventArgs e) => RunPackageOperation(async vm =>
     {
-        if (sender is Control { DataContext: PluginRowViewModel row } && ViewModel is { } vm)
+        if (sender is Control { DataContext: PluginRowViewModel row })
         {
             await UpdateRowAsync(vm, row);
         }
     });
 
     /// <summary>「全部更新」:把此刻能直接装的都装了。</summary>
-    private void UpdateAll_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    private void UpdateAll_Click(object? sender, RoutedEventArgs e) => RunPackageOperation(async vm =>
     {
-        if (ViewModel is not { } vm)
-        {
-            return;
-        }
         // 先快照:每装完一个,Changed 事件都会把 Plugins 整体重建,边遍历边重建必然出事。
         foreach (PluginRowViewModel row in vm.Plugins.Where(r => r.CanUpdate).ToList())
         {
+            if (_cancelOperations || !IsVisible) break;
             await UpdateRowAsync(vm, row);
         }
     });
@@ -327,25 +325,28 @@ public partial class PluginManagerWindow : Window
     /// <param name="row">要更新的那一行。</param>
     private async Task UpdateRowAsync(PluginManagerViewModel vm, PluginRowViewModel row)
     {
-        if (!await EnsureTrustStoreUsableAsync(vm))
+        if (!IsVisible || !row.CanUpdate || row.AvailableVersion is not { } version
+            || !await EnsureTrustStoreUsableAsync(vm) || !IsVisible)
         {
             return;
         }
-        if (await vm.DownloadUpdateAsync(row) is not { } package)
+        PluginMarketVersion expected = new() { Id = row.Id, Version = version };
+        if (await vm.Store.DownloadAsync(expected) is not { } package)
         {
             return;
         }
         try
         {
+            if (!IsVisible) return;
             if (row.PublisherUnchanged)
             {
                 // 同一把私钥签的下一版:发布者连续性那一闸自会放行。这里的 allowUntrustedPackage
                 // 补的是另一种情况 —— 这把公钥本就不在全局信任库里(它当初正是这么装进来的),
                 // 不给放行的话,一个从未换过人的插件反而永远升不了级。
-                await vm.InstallFromVpxAsync(package, allowUntrustedPackage: true);
+                await vm.InstallFromVpxAsync(package, allowUntrustedPackage: true, expectedPackage: expected);
                 return;
             }
-            await InstallWithPromptsAsync(vm, package);
+            await InstallWithPromptsAsync(vm, package, expected);
         }
         finally
         {
@@ -365,15 +366,16 @@ public partial class PluginManagerWindow : Window
     /// </remarks>
     /// <returns>是否已经装上。</returns>
     private async Task<bool> InstallWithPublisherCheckAsync(
-        PluginManagerViewModel vm, string path, bool allowUntrusted)
+        PluginManagerViewModel vm, string path, bool allowUntrusted, PluginMarketVersion? expectedPackage)
     {
+        if (!IsVisible) return false;
         try
         {
-            await vm.InstallFromVpxAsync(path, allowUntrusted);
-            return true;
+            return await vm.InstallFromVpxAsync(path, allowUntrusted, expectedPackage: expectedPackage);
         }
         catch (PluginPublisherChangedException ex)
         {
+            if (!IsVisible) return false;
             bool approved = await MessageDialog.ConfirmAsync(this,
                 Strings.Get("PluginManager_PublisherChangedTitle"),
                 Strings.Format("PluginManager_PublisherChangedWarning",
@@ -381,26 +383,46 @@ public partial class PluginManagerWindow : Window
                     ex.PackageFingerprint ?? Strings.Get("PluginManager_PackageUnsigned")),
                 confirmText: Strings.Get("PluginManager_InstallAnyway"),
                 danger: true);
-            if (!approved)
+            if (!approved || !IsVisible)
             {
                 return false;
             }
-            await vm.InstallFromVpxAsync(path, allowUntrusted, allowPublisherChange: true);
-            return true;
+            return await vm.InstallFromVpxAsync(path, allowUntrusted, allowPublisherChange: true, expectedPackage: expectedPackage);
         }
     }
 
-    /// <summary>点击"插件商店"链接:交给系统默认浏览器打开(地址存放在控件 Tag)。</summary>
-    private void OpenMarket_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    private void RunPackageOperation(Func<PluginManagerViewModel, Task> operation) => FireAndForget.Run(async () =>
     {
-        if (sender is not Control { Tag: string url }
-            || !Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)
-            || GetTopLevel(this) is not { } top)
-        {
-            return;
-        }
-        await top.Launcher.LaunchUriAsync(uri);
+        if (ViewModel is not { IsPackageBusy: false } vm || !IsVisible) return;
+        _cancelOperations = false;
+        vm.IsPackageBusy = true;
+        try { await operation(vm); }
+        finally { vm.IsPackageBusy = false; }
     });
+
+    private void ManagerTabs_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (ReferenceEquals(e.Source, ManagerTabs) && ManagerTabs.SelectedIndex == 1 && ViewModel is { } vm)
+            FireAndForget.Run(vm.Store.EnsureLoadedAsync);
+    }
+
+    private void CancelDownload_Click(object? sender, RoutedEventArgs e)
+    {
+        _cancelOperations = true;
+        ViewModel?.Store.CancelDownload();
+    }
+
+    private void MarketInstall_Click(object? sender, EventArgs e)
+    {
+        if (ViewModel?.Store.CreateInstallRequest() is not { } selected) return;
+        RunPackageOperation(async vm =>
+        {
+            if (!await EnsureTrustStoreUsableAsync(vm) || !IsVisible) return;
+            if (await vm.Store.DownloadAsync(selected) is not { } path) return;
+            try { await InstallWithPromptsAsync(vm, path, selected); }
+            finally { PluginManagerViewModel.DiscardDownloadedUpdate(path); }
+        });
+    }
 
     /// <inheritdoc />
     protected override void OnKeyDown(KeyEventArgs e)

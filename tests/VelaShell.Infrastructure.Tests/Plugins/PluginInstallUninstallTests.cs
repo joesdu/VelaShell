@@ -117,6 +117,39 @@ public class PluginInstallUninstallTests
     }
 
     [TestMethod]
+    [DataRow("acme.other", "2.0.0", "")]
+    [DataRow("acme.packaged", "1.5.0", "")]
+    [DataRow("acme.packaged", "2.0.0", ", \"minHostVersion\": \"999.0.0\"")]
+    public async Task MarketInstall_RejectsWrongIdentityOrCompatibilityBeforeReplacingTheInstalledPlugin(
+        string packageId, string packageVersion, string extras)
+    {
+        await using PluginManager manager = CreateManager();
+        await manager.StartAsync();
+        string original = BuildVpx();
+        string offered = BuildVpx(packageId, extras, packageVersion);
+        try
+        {
+            await manager.InstallFromVpxAsync(original, allowUntrustedPackage: true);
+            PluginDescriptor before = manager.Plugins.Single();
+            await Assert.ThrowsExactlyAsync<PluginSdk.Manifest.PluginManifestException>(() =>
+                manager.InstallFromVpxAsync(offered, allowUntrustedPackage: true,
+                    expectedPluginId: "acme.packaged", expectedVersion: "2.0.0"));
+            Assert.AreSame(before, manager.Plugins.Single());
+            Assert.AreEqual("1.0.0", manager.Plugins.Single().Manifest!.Version);
+            Assert.AreEqual(PluginState.Active, before.State);
+            Assert.IsEmpty(_dataStore.Purged);
+            Assert.IsFalse(Directory.Exists(Path.Combine(_userRoot, "acme.other")));
+        }
+        finally
+        {
+            File.Delete(original);
+            File.Delete(offered);
+            Directory.Delete(original[..^4], true);
+            Directory.Delete(offered[..^4], true);
+        }
+    }
+
+    [TestMethod]
     public async Task InstallFromVpx_ExtractsActivatesAndPersistsToUserRoot()
     {
         PluginManager manager = CreateManager();

@@ -9960,4 +9960,30 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Plugin_UnreadableSecretKeyMissing" xml:space="preserve"><value>{0}: 이 기기에서 복호화할 수 없습니다. 저장할 때 쓴 로컬 암호화 키가 여기에 없어(데이터 폴더를 다른 컴퓨터나 계정에서 복사해 왔거나, 키체인 항목이 삭제되었거나, 키 파일이 바뀌었을 수 있습니다. 메시지 센터에 설명이 있습니다) 플러그인에 넘기지 않았습니다. 연결 설정에서 다시 입력해 저장하면 이 기기에서 복호화할 수 있는 형태로 저장됩니다.</value></data>
   <data name="Plugin_UnreadableSecretUnknown" xml:space="preserve"><value>{0}: 이 기기에서 복호화할 수 없어(다른 기기에서 동기화했거나 복사해 왔거나, 손상되었을 수 있습니다) 플러그인에 넘기지 않았습니다. 연결 설정에서 다시 입력해 저장하면 이 기기에서 복호화할 수 있는 형태로 저장됩니다.</value></data>
   <data name="Plugin_UnreadableSecretLocked" xml:space="preserve"><value>{0}이(가) 마스터 비밀번호로 잠겨 있고 이번에는 잠금을 해제하지 않아 플러그인에 넘기지 않았습니다. 잠금을 해제(상태 표시줄의 자물쇠 아이콘)한 뒤 다시 연결하세요.</value></data>
+  <data name="PluginMarket_InstalledTab" xml:space="preserve"><value>설치됨</value></data>
+  <data name="PluginMarket_SortUpdated" xml:space="preserve"><value>최근 업데이트</value></data>
+  <data name="PluginMarket_SortDownloads" xml:space="preserve"><value>다운로드 순</value></data>
+  <data name="PluginMarket_SortRating" xml:space="preserve"><value>평점 순</value></data>
+  <data name="PluginMarket_Sort" xml:space="preserve"><value>플러그인 정렬</value></data>
+  <data name="PluginMarket_SearchHint" xml:space="preserve"><value>플러그인 검색</value></data>
+  <data name="PluginMarket_Search" xml:space="preserve"><value>검색</value></data>
+  <data name="PluginMarket_Retry" xml:space="preserve"><value>다시 시도</value></data>
+  <data name="PluginMarket_Previous" xml:space="preserve"><value>이전</value></data>
+  <data name="PluginMarket_Next" xml:space="preserve"><value>다음</value></data>
+  <data name="PluginMarket_Page" xml:space="preserve"><value>{0} / {1} · {2}개</value></data>
+  <data name="PluginMarket_Empty" xml:space="preserve"><value>플러그인을 찾을 수 없습니다. 다른 검색어를 입력하세요.</value></data>
+  <data name="PluginMarket_Select" xml:space="preserve"><value>플러그인을 선택하여 상세 정보를 확인하세요.</value></data>
+  <data name="PluginMarket_LoadFailed" xml:space="preserve"><value>마켓을 불러올 수 없습니다: {0}</value></data>
+  <data name="PluginMarket_Size" xml:space="preserve"><value>{0:0.##} MB</value></data>
+  <data name="PluginMarket_License" xml:space="preserve"><value>라이선스: {0}</value></data>
+  <data name="PluginMarket_Install" xml:space="preserve"><value>설치</value></data>
+  <data name="PluginMarket_NoStableRelease" xml:space="preserve"><value>설치 가능한 안정 버전이 없습니다.</value></data>
+  <data name="PluginMarket_InstalledVersion" xml:space="preserve"><value>설치된 버전: {0}</value></data>
+  <data name="PluginMarket_Ready" xml:space="preserve"><value>현재 VelaShell 버전과 호환됩니다.</value></data>
+  <data name="PluginMarket_Downloading" xml:space="preserve"><value>플러그인 패키지 다운로드 중…</value></data>
+  <data name="PluginMarket_Cancelled" xml:space="preserve"><value>다운로드가 취소되었습니다.</value></data>
+  <data name="PluginMarket_CancelDownload" xml:space="preserve"><value>다운로드 취소</value></data>
+  <data name="PluginMarket_OpenWeb" xml:space="preserve"><value>웹사이트에서 보기</value></data>
+  <data name="PluginMarket_PackageMismatch" xml:space="preserve"><value>다운로드한 패키지가 선택한 플러그인 또는 버전과 일치하지 않아 설치를 중지했습니다.</value></data>
+  <data name="PluginMarket_IncompatiblePackage" xml:space="preserve"><value>이 패키지에는 {0}이(가) 필요합니다. VelaShell을 먼저 업데이트하세요.</value></data>
 </root>
