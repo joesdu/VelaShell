@@ -158,7 +158,7 @@ jobs:
       # 环境缺失的用例现在一律 Assert.Inconclusive(如实记为「跳过」),不再是
       # 「写一行 [SKIP] 日志然后 return」那种在报告里显示为通过的伪装。
       # 所以这里的过滤只是省时间,不再兼着"掩盖伪通过"的作用。
-      # AI 插件的三组 headless UI 用例各起一个进程、与其余测试同时跑,理由见脚本开头。
+      # AI 插件的三组 headless UI 用例各起一个进程并行跑;Windows 先跑完其余测试,理由见脚本开头。
       # shell 写死 bash:Windows 上是 Git Bash(默认的 pwsh 里敲 bash 可能落到 WSL)。
       - name: 测试
         working-directory: VelaShell
