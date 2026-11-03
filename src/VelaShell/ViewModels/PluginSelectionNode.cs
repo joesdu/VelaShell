@@ -109,7 +109,7 @@ public sealed class PluginSelectionNode : ReactiveObject, IDisposable
     /// <summary>Detach field observers when the form is rebuilt.</summary>
     public void Dispose()
     {
-        if (_field is not null) { _field.PropertyChanged -= OnFieldChanged; }
+        _field?.PropertyChanged -= OnFieldChanged;
         foreach (PluginSelectionNode child in Children) { child.Dispose(); }
         ToggleCommand.Dispose();
     }

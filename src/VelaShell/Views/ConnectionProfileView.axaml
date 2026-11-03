@@ -309,7 +309,7 @@
               <Setter Property="IsVisible" Value="{Binding IsVisible}" />
               <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
               <Setter Property="MinHeight" Value="28" />
-              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+              <Setter Property="HorizontalAlignment" Value="Stretch" />
             </Style>
           </TreeView.Styles>
           <TreeView.ItemTemplate>

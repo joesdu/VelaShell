@@ -12,7 +12,7 @@ public sealed class PluginFormRow : ReactiveObject, IDisposable
         FieldItems = field is null ? [] : [field];
         Group = group;
         SelectionRoots = group is null ? [] : [group];
-        if (group is not null) { group.PropertyChanged += OnGroupChanged; }
+        group?.PropertyChanged += OnGroupChanged;
     }
 
     /// <summary>The existing editor for an ungrouped field.</summary>
