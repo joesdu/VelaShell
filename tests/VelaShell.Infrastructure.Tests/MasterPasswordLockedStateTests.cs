@@ -168,7 +168,11 @@ public sealed class MasterPasswordLockedStateTests : IDisposable
         var before = new SonnetDbSessionRepository(_engine, Unprotected());
         SessionProfile profile = new()
         {
-            Name = "db", Host = "db.example", Username = "root", AuthMethod = AuthMethod.Password, Password = "old-password",
+            Name = "db",
+            Host = "db.example",
+            Username = "root",
+            AuthMethod = AuthMethod.Password,
+            Password = "old-password",
             PluginSecrets = new() { ["token"] = "old-token" }
         };
         await before.SaveSessionAsync(profile);
@@ -213,8 +217,13 @@ public sealed class MasterPasswordLockedStateTests : IDisposable
         var before = new SonnetDbSessionRepository(_engine, Unprotected());
         SessionProfile profile = new()
         {
-            Name = "box", Host = "box.tailnet", Username = "root", AuthMethod = AuthMethod.Password, RememberPassword = true,
-            Password = "old-password", PrivateKeyPassphrase = "old-passphrase"
+            Name = "box",
+            Host = "box.tailnet",
+            Username = "root",
+            AuthMethod = AuthMethod.Password,
+            RememberPassword = true,
+            Password = "old-password",
+            PrivateKeyPassphrase = "old-passphrase"
         };
         await before.SaveSessionAsync(profile);
         Assert.IsNotNull((await RawProfileAsync(profile.Id))!["password"]?.GetValue<string>());

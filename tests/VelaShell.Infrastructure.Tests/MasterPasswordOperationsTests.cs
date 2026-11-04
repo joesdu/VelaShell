@@ -398,7 +398,11 @@ public sealed class MasterPasswordOperationsTests
         var resolver = new MasterKeyResolver(_keyFile, store);
         var header = new MasterPasswordHeader
         {
-            MemoryKiB = 1024, Iterations = 1, Parallelism = 1, Salt = RandomNumberGenerator.GetBytes(16), State = MasterPasswordHeaderState.Active
+            MemoryKiB = 1024,
+            Iterations = 1,
+            Parallelism = 1,
+            Salt = RandomNumberGenerator.GetBytes(16),
+            State = MasterPasswordHeaderState.Active
         };
         Assert.IsTrue(resolver.TryWriteHeader(header));
         byte[] kek = MasterPasswordKdf.DerivePasswordKey(Utf8(Password), header);

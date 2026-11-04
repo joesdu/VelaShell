@@ -1133,7 +1133,9 @@ public sealed class ConnectionProfileViewUiTests
         var registry = new PluginProtocolRegistry();
         using IDisposable handle = registry.RegisterWorkspace("test.resources", new WorkspaceDescriptor
         {
-            Id = "test.resources", DisplayName = "Resources", DefaultPort = 3389,
+            Id = "test.resources",
+            DisplayName = "Resources",
+            DefaultPort = 3389,
             Pages = [new("resources", "Resources")],
             Fields = [.. Enumerable.Range(0, 40).Select(index => new ProtocolSettingField
             {

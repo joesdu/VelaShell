@@ -214,7 +214,12 @@ public sealed class MasterPasswordReconnectFromLibraryTests
     {
         SessionProfile saved = new()
         {
-            Name = "web", Host = "web.example", Port = 22, Username = "root", AuthMethod = AuthMethod.Password, RememberPassword = false
+            Name = "web",
+            Host = "web.example",
+            Port = 22,
+            Username = "root",
+            AuthMethod = AuthMethod.Password,
+            RememberPassword = false
         };
         await _repository.SaveSessionAsync(saved);
 
