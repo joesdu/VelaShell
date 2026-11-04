@@ -584,7 +584,7 @@ public sealed class Loc(string locale)
         ["SwitchReasonConfig"] = ["connection settings changed", "接入配置已变", "接入設定已變更", "接続設定が変更されました", "연결 설정이 변경됨"],
         ["SwitchReasonOther"] = ["request failed", "请求失败", "請求失敗", "リクエスト失敗", "요청 실패"],
         ["SwitchReasonWithStatus"] = ["{0} (HTTP {1})", "{0}(HTTP {1})", "{0}(HTTP {1})", "{0}(HTTP {1})", "{0} (HTTP {1})"],
-        ["FailoverEmpty"] =["No models left to add.", "暂无可添加的模型。", "暫無可新增的模型。", "追加できるモデルがありません。", "추가할 모델이 없습니다."],
+        ["FailoverEmpty"] = ["No models left to add.", "暂无可添加的模型。", "暫無可新增的模型。", "追加できるモデルがありません。", "추가할 모델이 없습니다."],
         // 上下文占用条的悬停说明(条只给量感,数字仍在用量提示里)
         ["MeterTip"] = ["Share of the context window taken by the last turn.", "上一轮占掉了多大比例的上下文窗口。", "上一輪佔掉了多大比例的上下文視窗。", "直近のターンがコンテキスト長のどれだけを占めたか。", "직전 턴이 컨텍스트 창을 얼마나 차지했는지."],
 

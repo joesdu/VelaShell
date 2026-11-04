@@ -450,15 +450,15 @@ public sealed class PluginWorkspaceTests
                     DefaultValue = "mysql",
                     Choices = [new("mysql", "MySQL"), new("sqlite", "SQLite")]
                 }) with
-            {
-                Features = WorkspaceFeatures.CertificateTrust,
-                VariantKey = "dialect",
-                Variants =
+        {
+            Features = WorkspaceFeatures.CertificateTrust,
+            VariantKey = "dialect",
+            Variants =
                 [
                     new() { Value = "mysql", DefaultPort = 3306 },
                     new() { Value = "sqlite", Features = WorkspaceFeatures.NoCredentials }
                 ]
-            }, provider);
+        }, provider);
         var launcher = new PluginWorkspaceLauncher(registry);
         SessionProfile profile = Profile();
         profile.Username = "root";

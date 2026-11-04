@@ -1098,7 +1098,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         {
             return Fault(sessionId, AsConnectionLost(failure, operation), operation);
         }
-        if (control.OwedReply is { Code: [ '4' or '5', _, _ ] code } answer && code != "426")
+        if (control.OwedReply is { Code: ['4' or '5', _, _] code } answer && code != "426")
         {
             return Fault(sessionId, new FtpCommandException(answer), operation);
         }
@@ -1144,11 +1144,11 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         try
         {
             FtpReply? owed = null;
-            if (LastReplyOrDefault(client).Code is [ '1', _, _ ])
+            if (LastReplyOrDefault(client).Code is ['1', _, _])
             {
                 FtpReply final = await client.GetReply(deadline.Token).WaitAsync(deadline.Token).ConfigureAwait(false);
                 // GetReply 可能返回空 Code 而不抛超时;又一条预备回复、或 421(服务器正在关控制连接)同样当断了。
-                if (final.Code is not [ '2' or '4' or '5', _, _ ] || final.Code == "421")
+                if (final.Code is not ['2' or '4' or '5', _, _] || final.Code == "421")
                 {
                     return new(ControlConnectionState.Lost, null);
                 }
@@ -1161,7 +1161,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             }
             ControlConnectionState state = reply.Code switch
             {
-                [ '2', _, _ ] => ControlConnectionState.InSync,
+                ['2', _, _] => ControlConnectionState.InSync,
                 // 421 = 服务器正在关掉控制连接。
                 { Length: 3 } code when code != "421" => ControlConnectionState.Answering,
                 _ => ControlConnectionState.Lost,
@@ -1203,7 +1203,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         {
             return ResumeUnsupported(resumePath, null);
         }
-        return last.Code is null or "" or [ '1', _, _ ]
+        return last.Code is null or "" or ['1', _, _]
             ? new UploadUnconfirmedException($"FTP upload of {fileName} was not confirmed by the server.")
             : new VelaFtpOperationException($"FTP upload of {fileName} failed.");
     }

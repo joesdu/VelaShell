@@ -37,8 +37,11 @@ public sealed class ConnectionProfilePluginPagesTests
                 [new(DatabasePage, "Resources"), new(SslPage, "Printers")],
                 new Dictionary<string, string>(StringComparer.Ordinal)
                 {
-                    ["showSecond"] = DatabasePage, ["drive:C"] = DatabasePage,
-                    ["drive:D"] = DatabasePage, ["folders"] = DatabasePage, ["printer:one"] = SslPage
+                    ["showSecond"] = DatabasePage,
+                    ["drive:C"] = DatabasePage,
+                    ["drive:D"] = DatabasePage,
+                    ["folders"] = DatabasePage,
+                    ["printer:one"] = SslPage
                 });
             ConnectionProfileViewModel vm = await OpenAsync(registry, form);
             PluginFormRow[] groups = [.. vm.PluginFieldRows.Where(row => !row.IsField)];
@@ -82,7 +85,9 @@ public sealed class ConnectionProfilePluginPagesTests
             var reloadRegistry = new PluginProtocolRegistry();
             using IDisposable reloadHandle = reloadRegistry.RegisterWorkspace(PagedId, new WorkspaceDescriptor
             {
-                Id = PagedId, DisplayName = "Resources", DefaultPort = 3389,
+                Id = PagedId,
+                DisplayName = "Resources",
+                DefaultPort = 3389,
                 Pages = [new(DatabasePage, "Resources"), new(SslPage, "Printers")],
                 Fields = [.. form.Fields.Select(field => field with { Page = form.PageKeyFor(field) })]
             }, new NoopWorkspace());
@@ -100,7 +105,9 @@ public sealed class ConnectionProfilePluginPagesTests
     {
         PluginProtocolFieldViewModel Field(string key, string group, string label) => new(new()
         {
-            Key = key, Label = key, Kind = ProtocolSettingKind.Boolean,
+            Key = key,
+            Label = key,
+            Kind = ProtocolSettingKind.Boolean,
             SelectionGroup = new(group, label)
         }, "false");
         var first = Field("one", "devices", "First label");

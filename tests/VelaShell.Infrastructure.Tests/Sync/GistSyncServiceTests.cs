@@ -306,13 +306,20 @@ public sealed class GistSyncServiceTests
         credentials.GetAllAsync().Returns([new SharedCredential { Id = credentialId, Password = "local-cred-pass", PrivateKeyPassphrase = "local-cred-phrase" }]);
         SessionProfile incoming = new()
         {
-            Id = profileId, Name = "s3", Password = OtherDeviceCiphertext, PrivateKeyPassphrase = null, PluginProtocolId = "s3",
+            Id = profileId,
+            Name = "s3",
+            Password = OtherDeviceCiphertext,
+            PrivateKeyPassphrase = null,
+            PluginProtocolId = "s3",
             // sessionToken 原样带着密文、region 没带(新版本推送时把解不开的那一项移出去了)、secretKey 换了新值。
             PluginSecrets = new() { ["sessionToken"] = OtherDeviceCiphertext, ["secretKey"] = "rotated-key" }
         };
         SessionProfile switched = new()
         {
-            Id = otherProtocolId, Name = "was-s3", PluginProtocolId = "webdav", PluginSecrets = new() { ["password"] = OtherDeviceCiphertext }
+            Id = otherProtocolId,
+            Name = "was-s3",
+            PluginProtocolId = "webdav",
+            PluginSecrets = new() { ["password"] = OtherDeviceCiphertext }
         };
         SessionProfile brandNew = new() { Id = newId, Name = "new", Password = OtherDeviceCiphertext };
         SharedCredential credential = new() { Id = credentialId, Password = OtherDeviceCiphertext, PrivateKeyPassphrase = "rotated-cred-phrase" };
