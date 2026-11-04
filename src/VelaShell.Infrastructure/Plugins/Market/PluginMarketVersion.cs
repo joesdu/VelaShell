@@ -3,7 +3,7 @@ namespace VelaShell.Infrastructure.Plugins.Market;
 /// <summary>商店上某个插件的「最新已发布版本」,以及装上它需要什么。</summary>
 /// <remarks>
 /// 字段刻意比商店详情页窄:这是拿来做机器比对的(该不该升、升得上去吗、还是不是上次那个人),
-/// 不是拿来渲染插件详情的。要展示描述、评分、截图,让用户去商店页面看。
+/// 不是拿来渲染插件详情的;详情由 <see cref="PluginMarketDetail" /> 提供。
 /// </remarks>
 public sealed record PluginMarketVersion
 {

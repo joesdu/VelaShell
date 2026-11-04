@@ -337,11 +337,15 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// 合成一个开关的话,用户为前者点一次"仍要安装",就顺带把后者也答了。
     /// </param>
     /// <param name="cancellationToken">取消令牌。</param>
+    /// <param name="expectedPluginId">商店选择的插件 ID;提供时还会校验实际兼容性。</param>
+    /// <param name="expectedVersion">商店选择的版本;覆盖旧版前必须与包内版本一致。</param>
     public async Task<string> InstallFromVpxAsync(
         string vpxPath,
         bool allowUntrustedPackage = false,
         bool allowPublisherChange = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? expectedPluginId = null,
+        string? expectedVersion = null)
     {
         if (options.UserPluginRoot is not { } userRoot)
         {
@@ -375,6 +379,13 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                 throw new InvalidOperationException("Package has no plugin.json at its root.");
             }
             manifest = PluginManifestReader.Load(manifestPath); // 坏清单在此抛 PluginManifestException
+            if ((expectedPluginId is not null && !string.Equals(manifest.Id, expectedPluginId, StringComparison.Ordinal))
+                || (expectedVersion is not null && !string.Equals(manifest.Version, expectedVersion, StringComparison.Ordinal)))
+                throw new PluginManifestException(Strings.Get("PluginMarket_PackageMismatch"));
+            if (expectedPluginId is not null
+                && DescribeUpdateBlocker(manifest.ApiLevel, manifest.MinHostVersion, manifest.MinSdkVersion) is { } blocker)
+                throw new PluginManifestException(Strings.Format("PluginMarket_IncompatiblePackage", blocker));
+            cancellationToken.ThrowIfCancellationRequested();
             if (DescribeManifestVersionProblem(manifest) is { } versionProblem)
             {
                 // 与发现期同一套收紧(见 DescribeManifestVersionProblem):装上了也只会是一行 Invalid,不如在这里就拒。

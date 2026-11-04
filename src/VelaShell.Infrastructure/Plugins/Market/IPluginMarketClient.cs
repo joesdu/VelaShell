@@ -1,15 +1,17 @@
 namespace VelaShell.Infrastructure.Plugins.Market;
 
-/// <summary>插件商店的**只读**客户端:查最新版、把包取回来。</summary>
-/// <remarks>
-/// 只读是刻意的 —— 宿主不上传、不评价、不登录,也就没有任何需要带凭据的请求。
-/// 这个接口存在的全部理由只有两条:回答"我装的这几个插件有没有新版",
-/// 以及在用户点了更新之后把那个 <c>.vpx</c> 取回来。
-/// </remarks>
+/// <summary>插件商店的匿名只读客户端:浏览、详情、查更新与下载。无登录、上传或评价操作。</summary>
 public interface IPluginMarketClient
 {
     /// <summary>商店根地址(展示与日志用)。</summary>
     string BaseUrl { get; }
+
+    /// <summary>分页浏览与搜索;请求失败抛错,与成功但无结果区分。</summary>
+    Task<PluginMarketPage> SearchAsync(string? query = null, string sort = "updated", int page = 1,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>读取详情与已发布版本;请求失败或条目下架时抛错。</summary>
+    Task<PluginMarketDetail> GetDetailAsync(string pluginId, CancellationToken cancellationToken = default);
 
     /// <summary>批量查这些 id 在商店上的最新已发布版本。</summary>
     /// <remarks>
