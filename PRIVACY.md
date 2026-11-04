@@ -110,15 +110,17 @@ VelaShell connects to the network only in these situations:
    Clicking "Check for Updates" on the About page downloads the update as before. **In the
    Microsoft Store version this feature is disabled entirely**, because the Store handles updates.
 
-5. **Plugin update checks.** When you open the Plugin Manager window, VelaShell asks the plugin
-   marketplace (<https://market.easilynet.top>, https only) whether the plugins you installed have
-   newer versions. The request carries **the ids of the plugins you installed yourself** — bundled
-   plugins and development-mounted ones are not included — because there is no way to ask whether
-   they have updates without naming them. No account, no token, no install identifier: that server
-   sees only your IP address. **This happens only when you open that window** — not at startup, not
-   on a background timer. If you never open it, no request is ever made. A plugin package is
-   downloaded only after you click Update, only over https, and only when the marketplace
-   declares its SHA-256 digest, which is verified before it is installed.
+5. **Plugin store browsing, installation and update checks.** Opening Plugin Manager checks
+   <https://market.easilynet.top> for updates using **the ids of user-installed plugins**; bundled
+   plugins and development mounts are excluded. You can also check again manually. Opening the
+   **Plugin Store** tab loads its catalog; searching, sorting and paging send the entered search
+   text, sort order, page number and page size. Selecting an entry (including the first result
+   selected automatically) requests details using its plugin id. These requests contain no account,
+   token or installation identifier; the server also sees your IP address. Requests happen through
+   these actions, not at startup or on a background timer. Store descriptions do not load remote
+   images; links open in your browser only when clicked. Packages are requested only after
+   **Install**, **Update to …** or **Update all**, using the selected plugin id and version. Downloads
+   use https and require the marketplace's SHA-256 digest, verified before installation.
 
 6. **Contributor avatars.** Opening the About page loads contributor profile pictures from
    GitHub, which discloses your IP address to GitHub in the same way. If the request fails,
@@ -321,13 +323,13 @@ VelaShell 仅在以下情形联网:
    只是一次安装包下载,同样不带任何关于你的信息;只有你点了重启才会安装。在"关于"页点
    "检查更新"照旧会接着下载。**Microsoft Store 版本完全禁用了该功能**,更新由商店接管。
 
-5. **插件更新检查。** 打开「插件管理」窗口时,VelaShell 会向插件商店
-   (<https://market.easilynet.top>,仅 https)问一次:你装的这几个插件有没有新版本。
-   请求里带的是**你自己安装的那些插件的 id** —— 应用自带的与开发期挂载的不在其中 ——
-   因为"它们有没有新版"这个问题,没办法在不说出是哪几个插件的前提下问出口。
-   不带账号、不带令牌、不带任何安装标识符,那台服务器看到的只有你的 IP 地址。
-   **只在你打开那个窗口时发生** —— 不在启动时,也不在后台定时发生;你不打开它,
-   一个请求都不会发出。插件包只有在你点了「更新」之后才会下载,只走 https,而且商店必须声明它的 SHA-256 摘要(没给就不下),装之前核对。
+5. **插件商店浏览、安装与更新检查。** 打开「插件管理」时,向
+   <https://market.easilynet.top> 查询**用户安装插件的 id** 是否有新版;不包含应用自带与开发挂载的插件,
+   也可手动再次检查。切换到「插件商店」才加载目录;搜索、排序、翻页会发送输入的关键词、排序方式、
+   页码与每页条数。选择条目(包括自动选中的首个结果)时,用插件 id 请求详情。这些请求不带账号、
+   令牌或安装标识符;服务器也会看到你的 IP 地址。请求由上述操作触发,不在启动时或后台定时发生。
+   商店描述不加载远程图片,链接只有点击后才在浏览器打开。只有点「安装」「更新到 …」「全部更新」
+   才按所选插件 id 与版本请求下载;只走 https,且商店必须声明 SHA-256 摘要,安装前核对。
 
 6. **贡献者头像。** 打开"关于"页面会从 GitHub 加载贡献者头像,同样会向 GitHub 暴露你的
    IP 地址。请求失败时显示首字母占位图,不影响其他功能。

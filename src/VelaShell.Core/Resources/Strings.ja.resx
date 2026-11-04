@@ -9960,4 +9960,30 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Plugin_UnreadableSecretKeyMissing" xml:space="preserve"><value>{0}はこのデバイスでは復号できません: 保存時に使ったローカルの暗号化キーがここにありません(データフォルダーを別の PC やアカウントからコピーした、キーチェーンの項目が削除された、またはキーファイルが置き換えられた可能性があります。メッセージセンターに説明があります)。そのためプラグインには渡していません。接続設定でもう一度入力して保存すれば、このデバイスで復号できる形で保存されます。</value></data>
   <data name="Plugin_UnreadableSecretUnknown" xml:space="preserve"><value>{0}はこのデバイスでは復号できません(別のデバイスから同期またはコピーされたものか、壊れている可能性があります)。そのためプラグインには渡していません。接続設定でもう一度入力して保存すれば、このデバイスで復号できる形で保存されます。</value></data>
   <data name="Plugin_UnreadableSecretLocked" xml:space="preserve"><value>{0}はマスターパスワードでロックされており、今回はロック解除されていないため、プラグインには渡していません。ロックを解除(ステータスバーの錠前アイコン)してから接続し直してください。</value></data>
+  <data name="PluginMarket_InstalledTab" xml:space="preserve"><value>インストール済み</value></data>
+  <data name="PluginMarket_SortUpdated" xml:space="preserve"><value>更新順</value></data>
+  <data name="PluginMarket_SortDownloads" xml:space="preserve"><value>ダウンロード順</value></data>
+  <data name="PluginMarket_SortRating" xml:space="preserve"><value>評価順</value></data>
+  <data name="PluginMarket_Sort" xml:space="preserve"><value>プラグインの並び順</value></data>
+  <data name="PluginMarket_SearchHint" xml:space="preserve"><value>プラグインを検索</value></data>
+  <data name="PluginMarket_Search" xml:space="preserve"><value>検索</value></data>
+  <data name="PluginMarket_Retry" xml:space="preserve"><value>再試行</value></data>
+  <data name="PluginMarket_Previous" xml:space="preserve"><value>前へ</value></data>
+  <data name="PluginMarket_Next" xml:space="preserve"><value>次へ</value></data>
+  <data name="PluginMarket_Page" xml:space="preserve"><value>{0} / {1} · {2} 件</value></data>
+  <data name="PluginMarket_Empty" xml:space="preserve"><value>見つかりませんでした。別のキーワードをお試しください。</value></data>
+  <data name="PluginMarket_Select" xml:space="preserve"><value>プラグインを選択すると詳細が表示されます。</value></data>
+  <data name="PluginMarket_LoadFailed" xml:space="preserve"><value>マーケットを読み込めません：{0}</value></data>
+  <data name="PluginMarket_Size" xml:space="preserve"><value>{0:0.##} MB</value></data>
+  <data name="PluginMarket_License" xml:space="preserve"><value>ライセンス：{0}</value></data>
+  <data name="PluginMarket_Install" xml:space="preserve"><value>インストール</value></data>
+  <data name="PluginMarket_NoStableRelease" xml:space="preserve"><value>インストール可能な安定版がありません。</value></data>
+  <data name="PluginMarket_InstalledVersion" xml:space="preserve"><value>インストール済み：{0}</value></data>
+  <data name="PluginMarket_Ready" xml:space="preserve"><value>この VelaShell バージョンに対応しています。</value></data>
+  <data name="PluginMarket_Downloading" xml:space="preserve"><value>プラグインをダウンロード中…</value></data>
+  <data name="PluginMarket_Cancelled" xml:space="preserve"><value>ダウンロードをキャンセルしました。</value></data>
+  <data name="PluginMarket_CancelDownload" xml:space="preserve"><value>ダウンロードをキャンセル</value></data>
+  <data name="PluginMarket_OpenWeb" xml:space="preserve"><value>Web サイトで表示</value></data>
+  <data name="PluginMarket_PackageMismatch" xml:space="preserve"><value>ダウンロードしたパッケージが選択したプラグインまたはバージョンと一致しないため、インストールを停止しました。</value></data>
+  <data name="PluginMarket_IncompatiblePackage" xml:space="preserve"><value>このパッケージには {0} が必要です。先に VelaShell を更新してください。</value></data>
 </root>

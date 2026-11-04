@@ -11,13 +11,13 @@ namespace VelaShell.Infrastructure.Plugins.Market;
 /// <para>
 /// 规矩与 <c>HttpAnnouncementFeed</c> 一套:**只走 https**(明文取回的版本号与下载地址
 /// 可被中间人换掉,而那头连着的是要在本机跑起来的代码)、响应体有上限、元数据请求短超时、
-/// 失败不抛只留一行 <see cref="Trace" />。出站自动继承进程级
+/// 查更新失败只留一行 <see cref="Trace" />,浏览与详情失败则抛错供界面重试。出站自动继承进程级
 /// <c>HttpClient.DefaultProxy</c>(由 <c>VelaWebProxy</c> 接管),因此与更新检查、
 /// 资讯源同样遵守「设置 → 网络代理」。
 /// </para>
 /// <para>
 /// **不发任何身份信息**:没有账号、没有令牌、没有安装 id。请求里唯一与本机有关的东西,
-/// 是用户自己装了哪几个插件的 id —— 那是"问哪几个插件有没有新版"绕不开的输入。
+/// 是用户自己装了哪几个插件的 id。浏览额外发送用户输入的关键词、排序、页码与条目 id。
 /// </para>
 /// </remarks>
 /// <param name="baseUrl">商店根地址;缺省走 <see cref="DefaultBaseUrl" />。</param>
@@ -39,6 +39,45 @@ public sealed class HttpPluginMarketClient(string? baseUrl = null, HttpClient? h
 
     /// <inheritdoc />
     public string BaseUrl { get; } = (baseUrl ?? DefaultBaseUrl).TrimEnd('/');
+
+    private static readonly JsonSerializerOptions CatalogJson = new(JsonSerializerDefaults.Web);
+
+    /// <inheritdoc />
+    public async Task<PluginMarketPage> SearchAsync(string? query = null, string sort = "updated", int page = 1,
+        CancellationToken cancellationToken = default)
+    {
+        if (sort is not ("updated" or "downloads" or "rating" or "created"))
+            throw new ArgumentOutOfRangeException(nameof(sort));
+        ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
+        string url = $"{BaseUrl}/api/plugins/?q={Uri.EscapeDataString(query?.Trim() ?? "")}&sort={sort}&page={page}&size=20";
+        PluginMarketPage result = await ReadCatalogAsync<PluginMarketPage>(url, cancellationToken).ConfigureAwait(false);
+        if (result.Items is null || result.Total < 0 || result.Page != page || result.Size is < 1 or > 100
+            || result.Items.Any(item => item is null || string.IsNullOrWhiteSpace(item.Id)
+                || string.IsNullOrWhiteSpace(item.DisplayName)))
+            throw new JsonException("Invalid marketplace catalog.");
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<PluginMarketDetail> GetDetailAsync(string pluginId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
+        PluginMarketDetail result = await ReadCatalogAsync<PluginMarketDetail>(
+            $"{BaseUrl}/api/plugins/{Uri.EscapeDataString(pluginId)}", cancellationToken).ConfigureAwait(false);
+        if (!string.Equals(result.Id, pluginId, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(result.DisplayName)
+            || result.Versions is null || result.Versions.Any(version => version is null || string.IsNullOrWhiteSpace(version.Version)))
+            throw new JsonException("Invalid marketplace detail.");
+        return result;
+    }
+
+    private async Task<T> ReadCatalogAsync<T>(string url, CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(BaseUrl, UriKind.Absolute, out Uri? root) || root.Scheme != Uri.UriSchemeHttps)
+            throw new InvalidOperationException("The marketplace address must use https.");
+        string json = await GetMetadataAsync(url, cancellationToken).ConfigureAwait(false)
+            ?? throw new HttpRequestException("The marketplace is unavailable or its response is too large.");
+        return JsonSerializer.Deserialize<T>(json, CatalogJson) ?? throw new JsonException("Empty marketplace response.");
+    }
 
     /// <inheritdoc />
     public async Task<IReadOnlyDictionary<string, PluginMarketVersion>> GetLatestAsync(
@@ -120,8 +159,13 @@ public sealed class HttpPluginMarketClient(string? baseUrl = null, HttpClient? h
             ? parsed
             : 0;
 
-        string actual = await DownloadToFileAsync(download, destinationPath, declaredSize, progress, cancellationToken)
-            .ConfigureAwait(false);
+        string actual;
+        try
+        {
+            actual = await DownloadToFileAsync(download, destinationPath, declaredSize, progress, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally { TryDelete(destinationPath + ".partial"); }
         if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
         {
             // 摘要对不上就把文件删掉再报错:一个内容存疑的包留在磁盘上,
@@ -159,6 +203,8 @@ public sealed class HttpPluginMarketClient(string? baseUrl = null, HttpClient? h
                 }
                 read += chunk;
             }
+            if (read == buffer.Length && await stream.ReadAsync(new byte[1], timeout.Token).ConfigureAwait(false) != 0)
+                return null;
             return System.Text.Encoding.UTF8.GetString(buffer, 0, read);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException

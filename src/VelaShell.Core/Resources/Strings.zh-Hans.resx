@@ -10437,4 +10437,30 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Plugin_UnreadableSecretKeyMissing" xml:space="preserve"><value>{0}在这台设备上解不开:加密它的本机密钥不在这里(数据目录从别的电脑或账户拷来,或者密钥条目被删、密钥文件被换过,消息中心里有说明),没有交给插件。请在连接配置里重新填写并保存,存的就是这台设备解得开的一份。</value></data>
   <data name="Plugin_UnreadableSecretUnknown" xml:space="preserve"><value>{0}在这台设备上解不开(可能是从别的设备同步或拷来的,也可能已经损坏),没有交给插件。请在连接配置里重新填写并保存,存的就是这台设备解得开的一份。</value></data>
   <data name="Plugin_UnreadableSecretLocked" xml:space="preserve"><value>{0}被主密码锁着,这次没有解锁,没有交给插件。解锁(状态栏的锁形图标)后再连。</value></data>
+  <data name="PluginMarket_InstalledTab" xml:space="preserve"><value>已安装</value></data>
+  <data name="PluginMarket_SortUpdated" xml:space="preserve"><value>最近更新</value></data>
+  <data name="PluginMarket_SortDownloads" xml:space="preserve"><value>下载最多</value></data>
+  <data name="PluginMarket_SortRating" xml:space="preserve"><value>评分最高</value></data>
+  <data name="PluginMarket_Sort" xml:space="preserve"><value>插件排序</value></data>
+  <data name="PluginMarket_SearchHint" xml:space="preserve"><value>搜索插件</value></data>
+  <data name="PluginMarket_Search" xml:space="preserve"><value>搜索</value></data>
+  <data name="PluginMarket_Retry" xml:space="preserve"><value>重试</value></data>
+  <data name="PluginMarket_Previous" xml:space="preserve"><value>上一页</value></data>
+  <data name="PluginMarket_Next" xml:space="preserve"><value>下一页</value></data>
+  <data name="PluginMarket_Page" xml:space="preserve"><value>{0} / {1} · 共 {2} 个</value></data>
+  <data name="PluginMarket_Empty" xml:space="preserve"><value>没有找到插件，请换个关键词。</value></data>
+  <data name="PluginMarket_Select" xml:space="preserve"><value>选择插件查看详情。</value></data>
+  <data name="PluginMarket_LoadFailed" xml:space="preserve"><value>无法加载插件商店：{0}</value></data>
+  <data name="PluginMarket_Size" xml:space="preserve"><value>{0:0.##} MB</value></data>
+  <data name="PluginMarket_License" xml:space="preserve"><value>许可证：{0}</value></data>
+  <data name="PluginMarket_Install" xml:space="preserve"><value>安装</value></data>
+  <data name="PluginMarket_NoStableRelease" xml:space="preserve"><value>暂无可安装的正式版。</value></data>
+  <data name="PluginMarket_InstalledVersion" xml:space="preserve"><value>已安装：{0}</value></data>
+  <data name="PluginMarket_Ready" xml:space="preserve"><value>与当前 VelaShell 版本兼容。</value></data>
+  <data name="PluginMarket_Downloading" xml:space="preserve"><value>正在下载插件包…</value></data>
+  <data name="PluginMarket_Cancelled" xml:space="preserve"><value>已取消下载。</value></data>
+  <data name="PluginMarket_CancelDownload" xml:space="preserve"><value>取消下载</value></data>
+  <data name="PluginMarket_OpenWeb" xml:space="preserve"><value>在网站查看</value></data>
+  <data name="PluginMarket_PackageMismatch" xml:space="preserve"><value>下载的包与所选插件或版本不符，已停止安装。</value></data>
+  <data name="PluginMarket_IncompatiblePackage" xml:space="preserve"><value>此插件包需要 {0}，请先更新 VelaShell。</value></data>
 </root>

@@ -48,6 +48,112 @@ public class PluginMarketClientTests : IDisposable
     private static HttpResponseMessage Json(string body) =>
         new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
+    [TestMethod]
+    public async Task SearchAsync_EncodesSearchAndReturnsPaginationWithoutCredentials()
+    {
+        StubHandler handler = new(request =>
+        {
+            Assert.IsNull(request.Headers.Authorization);
+            Assert.IsFalse(request.Headers.Contains("Cookie"));
+            Assert.AreEqual("?q=redis%20%26%20docker&sort=downloads&page=2&size=20", request.RequestUri!.Query);
+            return Json("""{"total":21,"page":2,"size":20,"items":[{"id":"acme.redis","displayName":"Redis","latestVersion":"2.0.0"}]}""");
+        });
+        HttpPluginMarketClient client = new("https://market.test", new(handler));
+        PluginMarketPage page = await client.SearchAsync(" redis & docker ", "downloads", 2);
+        Assert.AreEqual(21L, page.Total);
+        Assert.AreEqual("acme.redis", page.Items.Single().Id);
+        Assert.ContainsSingle(handler.Requested);
+    }
+
+    [TestMethod]
+    public async Task SearchAsync_DistinguishesAnEmptyCatalogFromNetworkFailure()
+    {
+        HttpPluginMarketClient empty = new("https://market.test", new(new StubHandler(_ => Json("""{"total":0,"page":1,"size":20,"items":[]}"""))));
+        Assert.IsEmpty((await empty.SearchAsync()).Items);
+        HttpPluginMarketClient failed = new("https://market.test", new(new StubHandler(_ => new(HttpStatusCode.BadGateway))));
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => failed.SearchAsync());
+    }
+
+    [TestMethod]
+    [DataRow("null")]
+    [DataRow("{}")]
+    [DataRow("{\"total\":0,\"page\":1,\"size\":20,\"items\":null}")]
+    [DataRow("{\"total\":0,\"page\":2,\"size\":20,\"items\":[]}")]
+    public async Task SearchAsync_RejectsMalformedCatalogs(string json)
+    {
+        HttpPluginMarketClient client = new("https://market.test", new(new StubHandler(_ => Json(json))));
+        await Assert.ThrowsExactlyAsync<System.Text.Json.JsonException>(() => client.SearchAsync());
+    }
+
+    [TestMethod]
+    public async Task GetDetailAsync_ReadsVersionRequirementsWithoutRequestingADownload()
+    {
+        StubHandler handler = new(_ => Json("""
+            {"id":"acme.redis","displayName":"Redis","descriptionMarkdown":"# Redis","versions":[
+            {"version":"2.0.0","apiLevel":2,"minHostVersion":"1.0.0","minSdkVersion":"2.0.0","packageSize":2048}]}
+            """));
+        HttpPluginMarketClient client = new("https://market.test", new(handler));
+        PluginMarketDetail detail = await client.GetDetailAsync("acme.redis");
+        Assert.AreEqual("# Redis", detail.DescriptionMarkdown);
+        Assert.AreEqual("2.0.0", detail.Versions.Single().MinSdkVersion);
+        Assert.AreEqual("https://market.test/api/plugins/acme.redis", handler.Requested.Single());
+        await Assert.ThrowsExactlyAsync<System.Text.Json.JsonException>(() => client.GetDetailAsync("acme.other"));
+    }
+
+    [TestMethod]
+    public async Task BrowseAsync_RejectsPlainHttpAndPropagatesCancellation()
+    {
+        StubHandler handler = new(_ => Json("{}"));
+        HttpPluginMarketClient plain = new("http://market.test", new(handler));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => plain.SearchAsync());
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => plain.GetDetailAsync("acme.test"));
+        Assert.IsEmpty(handler.Requested);
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        HttpPluginMarketClient secure = new("https://market.test", new(handler));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => secure.SearchAsync(cancellationToken: cancelled.Token));
+    }
+
+    [TestMethod]
+    public async Task SearchAsync_RejectsOversizedMetadataWithoutContentLength()
+    {
+        string prefix = """{"total":0,"page":1,"size":20,"items":[]}""";
+        byte[] bytes = Encoding.UTF8.GetBytes(prefix.PadRight(512 * 1024 + 1));
+        var handler = new StubHandler(_ => new(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new UnseekableStream(bytes))
+        });
+        var client = new HttpPluginMarketClient("https://market.test", new(handler));
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => client.SearchAsync());
+    }
+
+    [TestMethod]
+    public async Task DownloadAsync_RemovesPartialFileWhenTheStreamFails()
+    {
+        byte[] payload = Encoding.UTF8.GetBytes("partial package");
+        string digest = Convert.ToHexStringLower(SHA256.HashData(payload));
+        var handler = new StubHandler(request => request.RequestUri!.Host == "market.test"
+            ? Json($$"""{"url":"https://download.test/package.vpx","fileSha256":"{{digest}}"}""")
+            : new(HttpStatusCode.OK) { Content = new StreamContent(new UnseekableStream(payload, failAfterRead: true)) });
+        var client = new HttpPluginMarketClient("https://market.test", new(handler));
+        string destination = Path.Combine(_dir, "interrupted.vpx");
+        await Assert.ThrowsExactlyAsync<IOException>(() => client.DownloadAsync("acme.test", "1.0.0", destination));
+        Assert.IsFalse(File.Exists(destination));
+        Assert.IsFalse(File.Exists(destination + ".partial"));
+    }
+
+    private sealed class UnseekableStream(byte[] bytes, bool failAfterRead = false) : MemoryStream(bytes)
+    {
+        private bool _hasRead;
+        public override bool CanSeek => false;
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_hasRead && failAfterRead) throw new IOException("Connection interrupted.");
+            _hasRead = true;
+            return base.ReadAsync(buffer, cancellationToken);
+        }
+    }
+
     private const string TwoPlugins = """
         { "plugins": {
             "acme.foo": { "version": "1.3.0", "apiLevel": 2, "minHostVersion": "0.4.0",
