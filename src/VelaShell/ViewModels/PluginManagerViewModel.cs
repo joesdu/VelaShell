@@ -224,6 +224,21 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
     /// <summary>插件行集合(UI 线程更新)。</summary>
     public ObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
+    /// <summary>与已安装列表共享管理器的商店浏览状态。</summary>
+    public PluginMarketViewModel Store { get; }
+
+    /// <summary>串行化下载、安装及卸载,同步禁用商店安装入口。</summary>
+    public bool IsPackageBusy
+    {
+        get;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref field, value);
+            if (value) Notice = null;
+            Store.IsInstalling = value;
+        }
+    }
+
     /// <summary>标题文案。</summary>
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
     public string Title => Strings.Get("PluginManager_Title");
@@ -304,6 +319,7 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         _gate = gate;
         _market = market;
         _notifications = notifications;
+        Store = new(manager, market);
         _onChanged = () => Dispatcher.UIThread.Post(() => _ = ReloadAsync());
         // 等待调试器的隔离插件:把 pid 摆到管理页上。它同时进日志、落 pid 文件,
         // 但开发者此刻多半正开着这个页面,让他去翻日志属于本可以省掉的一步。
@@ -519,20 +535,24 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
     /// <param name="vpxPath">包路径。</param>
     /// <param name="allowUntrustedPackage">是否单次放行未签名 / 发布者陌生的包。</param>
     /// <param name="allowPublisherChange">是否单次放行"换了发布者"的覆盖安装。</param>
+    /// <param name="expectedPackage">商店操作快照;提供时核对包身份与兼容性。</param>
+    /// <returns>安装成功才返回 true,供界面决定是否记录发布者信任。</returns>
     /// <exception cref="PluginPublisherChangedException">
     /// 发布者与钉住的那一个对不上,而调用方没给授权。**这一条不吞** —— 它不是失败,
     /// 而是只有界面才问得出口的一个问题(要摆两个指纹给用户看)。吞成一行状态提示,
     /// 用户看到的就是"装不上",既不知道为什么,也没有回答的机会。
     /// </exception>
-    public async Task InstallFromVpxAsync(string vpxPath, bool allowUntrustedPackage = false,
-        bool allowPublisherChange = false)
+    public async Task<bool> InstallFromVpxAsync(string vpxPath, bool allowUntrustedPackage = false,
+        bool allowPublisherChange = false, PluginMarketVersion? expectedPackage = null)
     {
         try
         {
             string id = await _manager
-                              .InstallFromVpxAsync(vpxPath, allowUntrustedPackage, allowPublisherChange)
+                              .InstallFromVpxAsync(vpxPath, allowUntrustedPackage, allowPublisherChange,
+                                  expectedPluginId: expectedPackage?.Id, expectedVersion: expectedPackage?.Version)
                               .ConfigureAwait(false);
             SetNotice(Strings.Format("PluginManager_Installed", id));
+            return true;
         }
         catch (PluginPublisherChangedException)
         {
@@ -541,6 +561,7 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         catch (Exception ex)
         {
             SetNotice(Strings.Format("PluginManager_InstallFailed", ex.Message));
+            return false;
         }
     }
 
@@ -576,6 +597,8 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         }
         void Apply()
         {
+            if (_disposed) return;
+            Store.RefreshInstalledState();
             Plugins.Clear();
             foreach (PluginRowViewModel row in rows.OrderBy(r => r.DisplayName, StringComparer.CurrentCultureIgnoreCase))
             {
@@ -642,6 +665,7 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
     public void Dispose()
     {
         _disposed = true;
+        Store.Dispose();
         _manager.Changed -= _onChanged;
         _manager.DebugAttachRequested -= _onDebugAttach;
     }

@@ -8,9 +8,7 @@ using Avalonia.Interactivity;
 using Avalonia.Reactive;
 using Avalonia.Styling;
 using LiveMarkdown.Avalonia;
-using Markdig;
 using Markdig.Syntax;
-using Markdig.Syntax.Inlines;
 using ReactiveUI.Primitives;
 using TextMateSharp.Grammars;
 using VelaShell.Core.Resources;
@@ -35,19 +33,6 @@ public partial class ReleaseNotesDialog : Window
     private CancellationTokenSource? _request;
     private bool _closed;
     private readonly List<IDisposable> _skinSubscriptions = [];
-
-    /// <summary>
-    /// GitHub 风格的 Markdown:自动生成的发布说明里 PR 与 Full Changelog 都是裸 URL,
-    /// 不开自动链接就是一串点不动的文字;表格、删除线、任务列表同样常见。
-    /// 自动链接生成的也是 <see cref="LinkInline" />,照样经过 <see cref="ParseNotes" /> 的 https 过滤。
-    /// </summary>
-    private static readonly MarkdownPipeline NotesPipeline = new MarkdownPipelineBuilder()
-        .DisableHtml()
-        .UseAutoLinks()
-        .UsePipeTables()
-        .UseEmphasisExtras()
-        .UseTaskLists()
-        .Build();
 
     /// <summary>仅初始化界面,供设计器及窗口外框测试使用,不联网。</summary>
     public ReleaseNotesDialog()
@@ -249,34 +234,9 @@ public partial class ReleaseNotesDialog : Window
         base.OnClosed(e);
     }
 
-    internal static MarkdownDocument ParseNotes(string body)
-    {
-        MarkdownDocument document = Markdown.Parse(body, NotesPipeline);
-        // 在控件生成前去掉图片节点,所有资源协议都不能触发读取。保留图片替代文字。
-        foreach (LinkInline link in document.Descendants<LinkInline>().ToArray())
-        {
-            if (link.IsImage || !IsAllowedLink(link.Url))
-            {
-                while (link.FirstChild is { } child)
-                {
-                    child.Remove();
-                    link.InsertBefore(child);
-                }
-                link.Remove();
-            }
-        }
-        foreach (AutolinkInline link in document.Descendants<AutolinkInline>().ToArray())
-        {
-            if (link.IsEmail || !IsAllowedLink(link.Url))
-            {
-                link.ReplaceBy(new LiteralInline(link.Url));
-            }
-        }
-        return document;
-    }
+    internal static MarkdownDocument ParseNotes(string body) => RemoteMarkdown.Parse(body);
 
-    internal static bool IsAllowedLink(string? url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) && uri.Scheme == Uri.UriSchemeHttps;
+    internal static bool IsAllowedLink(string? url) => RemoteMarkdown.IsAllowedLink(url);
 
     private void UpdateCodeTheme() => BodyMarkdown.CodeBlockColorTheme =
         ActualThemeVariant == ThemeVariant.Dark ? ThemeName.DarkPlus : ThemeName.LightPlus;
