@@ -46,12 +46,29 @@
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
-    <Style Selector="Button.row-action:pointerover /template/ ContentPresenter">
+    <Style Selector="Button.row-action:pointerover">
       <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+    </Style>
+    <Style Selector="Button.row-action:pressed">
+      <Setter Property="Background" Value="{DynamicResource VelaBgActive}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
     </Style>
     <Style Selector="Button.row-danger">
       <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
       <Setter Property="BorderBrush" Value="{DynamicResource VelaError}" />
+    </Style>
+    <Style Selector="Button.row-danger:pointerover">
+      <Setter Property="Background" Value="{DynamicResource VelaDangerHover}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaError}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
+    </Style>
+    <Style Selector="Button.row-danger:pressed">
+      <Setter Property="Background" Value="{DynamicResource VelaError}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaError}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaErrorForeground}" />
     </Style>
 
     <Style Selector="Ellipse.dot">
@@ -123,7 +140,7 @@
           </Grid>
         </Border>
         <TabControl x:Name="ManagerTabs" Grid.Row="2" SelectionChanged="ManagerTabs_SelectionChanged">
-          <TabItem Header="{loc:Localize PluginMarket_InstalledTab}">
+          <TabItem Header="{loc:Localize PluginMarket_InstalledTab}" FontSize="{DynamicResource VelaFontSize11}">
             <Grid RowDefinitions="Auto,*" IsEnabled="{Binding !IsPackageBusy}">
               <WrapPanel Margin="14,10,14,0">
                 <Button Theme="{StaticResource VelaOutlineButtonTheme}" Content="{Binding CheckUpdatesText}"
@@ -152,7 +169,7 @@
                         <Border Background="{DynamicResource VelaBgInput}"
                                 BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="1"
                                 CornerRadius="6" Padding="14,11" Margin="0,0,0,8">
-                          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                          <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
                             <Ellipse Grid.Column="0" Classes="dot"
                                      Classes.ok="{Binding IsOk}" Classes.warn="{Binding IsWarn}"
                                      Classes.err="{Binding IsErr}" Classes.idle="{Binding IsIdle}"
@@ -210,7 +227,8 @@
                                          FontSize="{DynamicResource VelaFontSize10}"
                                          TextWrapping="Wrap" Margin="0,2,0,0" />
                             </StackPanel>
-                            <WrapPanel Grid.Row="1" Grid.Column="1" Margin="0,10,0,0">
+                            <StackPanel Grid.Column="2" Grid.RowSpan="2" Orientation="Horizontal" Spacing="6"
+                                        VerticalAlignment="Center" Margin="12,0,0,0">
                               <!-- 用户报「插件不工作」时第一件要看的:这个插件自己那份日志的尾部(只读窗口)。 -->
                               <Button Classes="row-action" Content="{Binding ViewLogText}"
                                       IsVisible="{Binding CanViewLog}" Click="ViewLog_Click" />
@@ -229,7 +247,7 @@
                                       IsVisible="{Binding CanToggle}" Click="Toggle_Click" />
                               <Button Classes="row-action row-danger" Content="{Binding UninstallText}"
                                       IsVisible="{Binding CanUninstall}" Click="Uninstall_Click" />
-                            </WrapPanel>
+                            </StackPanel>
                           </Grid>
                         </Border>
                       </DataTemplate>
@@ -239,7 +257,8 @@
               </Panel>
             </Grid>
           </TabItem>
-          <TabItem Header="{loc:Localize PluginManager_Market}" IsVisible="{Binding Store.CanBrowse}">
+          <TabItem Header="{loc:Localize PluginManager_Market}" IsVisible="{Binding Store.CanBrowse}"
+                   FontSize="{DynamicResource VelaFontSize11}">
             <views:PluginMarketView DataContext="{Binding Store}" InstallRequested="MarketInstall_Click" />
           </TabItem>
         </TabControl>

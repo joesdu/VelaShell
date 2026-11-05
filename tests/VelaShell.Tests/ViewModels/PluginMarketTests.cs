@@ -113,12 +113,18 @@ public sealed class PluginMarketTests
             }
         };
         using var vm = new PluginMarketViewModel(manager, market);
+        Assert.AreEqual("", vm.DetailDisplayName);
+        Assert.AreEqual("", vm.DetailId);
+        Assert.AreEqual("", vm.DetailSummary);
         vm.SelectedEntry = Entry("old");
         vm.SelectedEntry = Entry("new");
         Assert.IsTrue(oldToken.IsCancellationRequested);
         old.SetResult(Detail("old"));
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
         Assert.AreEqual("new", vm.Detail!.Id);
+        Assert.AreEqual("new", vm.DetailDisplayName);
+        Assert.AreEqual("new", vm.DetailId);
+        Assert.AreEqual("", vm.DetailSummary);
         vm.SelectedEntry = Entry("closed");
         vm.Dispose();
         Assert.IsTrue(closedToken.IsCancellationRequested);
@@ -224,6 +230,8 @@ public sealed class PluginMarketTests
             Button install = view.FindControl<Button>("InstallButton")!;
             Assert.IsTrue(install.IsEffectivelyVisible);
             Assert.IsTrue(install.IsEnabled);
+            GridSplitter splitter = view.FindControl<GridSplitter>("MarketSplitter")!;
+            Assert.IsTrue(splitter.IsEffectivelyVisible);
             Avalonia.Point position = install.TranslatePoint(default, window)!.Value;
             Assert.IsTrue(position.X >= 0 && position.X + install.Bounds.Width <= window.Bounds.Width);
             Assert.IsTrue(position.Y >= 0 && position.Y + install.Bounds.Height <= window.Bounds.Height);
