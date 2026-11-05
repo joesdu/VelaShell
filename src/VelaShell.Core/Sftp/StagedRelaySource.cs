@@ -108,6 +108,7 @@ public sealed class StagedRelaySource : IAsyncDisposable
         // created directories; never chmod an existing home, .velashell or temp directory.
         if (OperatingSystem.IsWindows()) Directory.CreateDirectory(directory);
         else Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        SweepStale(directory);
         var options = new FileStreamOptions
         {
             Mode = FileMode.CreateNew,
@@ -117,7 +118,56 @@ public sealed class StagedRelaySource : IAsyncDisposable
             Options = FileOptions.Asynchronous | FileOptions.DeleteOnClose,
         };
         if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-        return new FileStream(Path.Combine(directory, $"velashell-relay-{Guid.NewGuid():N}.tmp"), options);
+        var stream = new FileStream(Path.Combine(directory, $"velashell-relay-{Guid.NewGuid():N}.tmp"), options);
+        try
+        {
+            // Unix DeleteOnClose runs in managed disposal, not on process termination.
+            // Unlink before writing payload; the open handle keeps the snapshot seekable.
+            if (!OperatingSystem.IsWindows()) File.Delete(stream.Name);
+            return stream;
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>Reclaim old relay files left by previous versions or interrupted cleanup, without touching live snapshots.</summary>
+    public static int SweepStale(string? directory = null, DateTime? utcNow = null)
+    {
+        directory ??= Path.Combine(UserPathResolver.Home, ".velashell", "temp");
+        DateTime cutoff = (utcNow ?? DateTime.UtcNow).AddDays(-1);
+        int removed = 0;
+        try
+        {
+            foreach (string path in Directory.EnumerateFiles(directory, "velashell-relay-*.tmp"))
+            {
+                string name = Path.GetFileName(path);
+                if (name.Length != "velashell-relay-".Length + 32 + ".tmp".Length
+                    || !Guid.TryParseExact(name.AsSpan("velashell-relay-".Length, 32), "N", out _)) continue;
+                try
+                {
+                    var file = new FileInfo(path);
+                    if (file.LinkTarget is not null || (file.Attributes & FileAttributes.ReparsePoint) != 0
+                        || file.LastWriteTimeUtc >= cutoff) continue;
+                    // Read/write avoids blocking on a Unix FIFO; non-seekable entries are not caches.
+                    // Delete sharing permits unlink while retaining the exclusive read/write lease.
+                    using var orphan = new FileStream(path, new FileStreamOptions
+                    {
+                        Mode = FileMode.Open,
+                        Access = FileAccess.ReadWrite,
+                        Share = FileShare.Delete,
+                    });
+                    if (!orphan.CanSeek) continue;
+                    File.Delete(path);
+                    removed++;
+                }
+                catch (Exception ex) when (IsLocalFailure(ex)) { }
+            }
+        }
+        catch (Exception ex) when (IsLocalFailure(ex)) { }
+        return removed;
     }
 
     private static bool IsLocalFailure(Exception ex) => ex is IOException or UnauthorizedAccessException

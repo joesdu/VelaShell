@@ -14,6 +14,7 @@ using VelaShell.Core.Localization;
 using VelaShell.Core.Models;
 using VelaShell.Core.Recording;
 using VelaShell.Core.Services;
+using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
 using VelaShell.Core.Sync;
 using VelaShell.Infrastructure.DependencyInjection;
@@ -323,6 +324,10 @@ public class App : Application
                 SessionLogService.CleanupExpired(logRetentionDays);
                 TransferLogService.CleanupExpired(transferLogDirectory, transferLogRetentionDays);
                 RemoteEditLog.CleanupExpired();
+                if (_serviceProvider?.GetService<Infrastructure.Persistence.VelaShellStoragePaths>() is { } storagePaths)
+                    Infrastructure.Plugins.PluginPackageDownloads.Sweep(storagePaths.PluginUpdateDirectory);
+                StagedRelaySource.SweepStale();
+                VelaShell.Infrastructure.XServer.SftpXServerDragDownloader.CleanupStaleDownloads();
                 // 内置编辑器崩溃留下的临时副本(关窗才删,进程没了就没人删):7 天没碰过的清掉。
                 BuiltInEditTempFiles.SweepStale(BuiltInEditTempFiles.TempBase, DateTime.UtcNow);
                 // 外部编辑的副本按状态标记分:干净的同样 7 天后清;有未传改动的(含没有标记的旧副本)是草稿,

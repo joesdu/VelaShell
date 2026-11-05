@@ -7,6 +7,7 @@ using Avalonia.Input.TextInput;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using VelaShell.Infrastructure.XServer;
 using VelaShell.Services.XServer;
 using VelaShell.XServer;
 
@@ -751,6 +752,7 @@ public sealed class XNativeWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _closed = true;
+        _outgoingDrag?.Cancel.Cancel();
         base.OnClosed(e);
         _surface.Release();
         ReleaseImageCursors();
@@ -1103,11 +1105,12 @@ public sealed class XNativeWindow : Window
             return;
         }
         using CancellationTokenSource cancel = new();
+        using XServerDragDownloadScope downloads = new(_host.DragDownloader);
         _outgoingDrag = (drag, cancel);
         bool dropped = false, started = false;
         try
         {
-            DataTransfer? data = await XDragSource.BuildAsync(this, drag, _host.DragDownloader, AvaloniaXServerHost.NotifyUser, cancel.Token);
+            DataTransfer? data = await XDragSource.BuildAsync(this, drag, downloads, AvaloniaXServerHost.NotifyUser, cancel.Token);
             if (data is null || cancel.IsCancellationRequested)
             {
                 return;
@@ -1119,6 +1122,7 @@ public sealed class XNativeWindow : Window
             }
             started = _nativeDragging = true;
             dropped = await StartNativeDrag(press, data, DragDropEffects.Copy) != DragDropEffects.None;
+            downloads.HandedOff = dropped;
         }
         catch (OperationCanceledException)
         {

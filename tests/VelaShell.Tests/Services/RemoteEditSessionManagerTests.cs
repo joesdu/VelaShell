@@ -145,6 +145,70 @@ public sealed class RemoteEditSessionManagerTests
         Assert.IsEmpty(fixture.UploadedContents, "关标签页时把那份改动传上去了 —— 开关在骗人。");
     }
 
+    [TestMethod]
+    [TestCategory("ExternalEdit")]
+    public async Task AutoUploadOff_RefreshAndDisposePreserveLocalChanges()
+    {
+        using var fixture = new SessionFixture(autoUpload: false);
+        await File.WriteAllTextAsync(fixture.LocalPath, "local changes that must survive");
+        await fixture.Session.RefreshFromRemoteAsync();
+        Assert.AreEqual("local changes that must survive", await File.ReadAllTextAsync(fixture.LocalPath));
+        fixture.Session.Dispose();
+        Assert.AreEqual("local changes that must survive", await File.ReadAllTextAsync(fixture.LocalPath));
+        Assert.AreEqual(RemoteEditDrafts.Dirty, RemoteEditDrafts.Read(fixture.Directory)?.State);
+        Assert.IsEmpty(fixture.UploadedContents);
+    }
+
+    [TestMethod]
+    [TestCategory("ExternalEdit")]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task OpenAsync_ThrownDownloadRemovesPartialDirectory(bool cancel)
+    {
+        string? directory = null;
+        try
+        {
+            await RemoteEditSessionManager.OpenAsync(new()
+            {
+                SftpService = Substitute.For<ISftpService>(),
+                SessionId = Guid.NewGuid(),
+                RemotePath = "/etc/app.conf",
+                FileName = "app.conf",
+                DownloadAsync = (local, _) =>
+                {
+                    directory = Path.GetDirectoryName(local);
+                    File.WriteAllText(local, "partial");
+                    return Task.FromException<bool>(cancel ? new OperationCanceledException() : new IOException("failed"));
+                },
+            });
+            Assert.Fail("Download must fail.");
+        }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException)
+        {
+            Assert.IsNotNull(directory);
+            Assert.IsFalse(Directory.Exists(directory));
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("ExternalEdit")]
+    public async Task ShutdownTimeout_PreservesCopyAndLeaseUntilUploadCompletes()
+    {
+        using var fixture = new SessionFixture { UploadDelay = TimeSpan.FromSeconds(1) };
+        await fixture.SaveAsync("upload in progress");
+        Assert.IsFalse(await fixture.Session.ShutdownAsync(TimeSpan.FromMilliseconds(20)));
+        fixture.Session.Dispose();
+        Assert.IsTrue(File.Exists(fixture.LocalPath));
+        using (IDisposable? lease = EditDirectoryLease.TryAcquireExisting(fixture.Directory))
+        {
+            Assert.IsNull(lease, "The in-flight upload must retain ownership.");
+        }
+        await fixture.WaitForUploadCountAsync(1);
+        await fixture.WaitForStateAsync(RemoteEditState.Watching);
+        Assert.IsTrue(File.Exists(fixture.LocalPath));
+        Assert.AreEqual(RemoteEditDrafts.Dirty, RemoteEditDrafts.Read(fixture.Directory)?.State);
+    }
+
     /// <summary>同一个远程文件重复打开只该有一个会话、一份本地副本。</summary>
     [TestMethod]
     [TestCategory("ExternalEdit")]

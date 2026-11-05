@@ -63,8 +63,13 @@ public sealed class PluginMarketTests
             Task.FromResult<IReadOnlyDictionary<string, PluginMarketVersion>>(new Dictionary<string, PluginMarketVersion>());
         public Func<IProgress<int>?, CancellationToken, Task> Download { get; set; } = (_, _) =>
             throw new InvalidOperationException("No test should download a production plugin.");
-        public Task DownloadAsync(string pluginId, string version, string destinationPath, IProgress<int>? progress = null, CancellationToken cancellationToken = default) =>
-            Download(progress, cancellationToken);
+        public string? DownloadPath { get; private set; }
+        public Task DownloadAsync(string pluginId, string version, string destinationPath, IProgress<int>? progress = null, CancellationToken cancellationToken = default)
+        {
+            DownloadPath = destinationPath;
+            File.WriteAllText(destinationPath + ".partial", "partial download");
+            return Download(progress, cancellationToken);
+        }
     }
 
     [TestMethod]
@@ -178,7 +183,7 @@ public sealed class PluginMarketTests
                 await Task.Delay(Timeout.InfiniteTimeSpan, token);
             }
         };
-        using var vm = new PluginMarketViewModel(manager, market);
+        using var vm = new PluginMarketViewModel(manager, market, _root);
         Task<string?> download = vm.DownloadAsync(new() { Id = "acme.test", Version = "1.0.0" });
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
         Assert.IsTrue(vm.IsDownloading);
@@ -186,11 +191,36 @@ public sealed class PluginMarketTests
         Assert.AreEqual(0.5, vm.DownloadFraction);
         vm.CancelDownload();
         Assert.IsNull(await download);
+        Assert.IsFalse(File.Exists(market.DownloadPath + ".partial"));
+        Assert.IsFalse(File.Exists(market.DownloadPath + ".lease"));
         Assert.IsFalse(vm.IsDownloading);
         Assert.IsFalse(vm.HasDownloadProgress);
         Assert.IsNotNull(vm.OperationNotice);
         vm.IsInstalling = true;
         Assert.IsNull(vm.OperationNotice, "A new operation must not retain the previous cancellation notice.");
+    });
+
+    [TestMethod]
+    public Task Download_KeepsOwnershipThroughConfirmationAndCleansFailures() => _session.RunOnUiAsync(async () =>
+    {
+        await using PluginManager manager = Manager();
+        var market = new Market { Download = (_, _) => Task.CompletedTask };
+        using var vm = new PluginMarketViewModel(manager, market, _root);
+        string? path = await vm.DownloadAsync(new() { Id = "acme.test", Version = "1.0.0" });
+        Assert.IsNotNull(path);
+        try
+        {
+            PluginPackageDownloads.Sweep(_root);
+            Assert.IsTrue(File.Exists(path + ".lease"));
+            Assert.IsTrue(File.Exists(path + ".partial"));
+        }
+        finally { PluginManagerViewModel.DiscardDownloadedUpdate(path); }
+        Assert.IsFalse(File.Exists(path + ".partial"));
+        Assert.IsFalse(File.Exists(path + ".lease"));
+        market.Download = (_, _) => throw new IOException("interrupted");
+        Assert.IsNull(await vm.DownloadAsync(new() { Id = "acme.test", Version = "1.0.0" }));
+        Assert.IsFalse(File.Exists(market.DownloadPath + ".partial"));
+        Assert.IsFalse(File.Exists(market.DownloadPath + ".lease"));
     });
 
     [TestMethod]

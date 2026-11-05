@@ -468,23 +468,27 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
     /// 不下到系统临时目录的原因见 <see cref="Infrastructure.Persistence.VelaShellStoragePaths.PluginUpdateDirectory" />。
     /// </remarks>
     /// <param name="row">要更新的那一行。</param>
-    public async Task<string?> DownloadUpdateAsync(PluginRowViewModel row)
+    /// <param name="cancellationToken">取消下载并清理本次临时包。</param>
+    public async Task<string?> DownloadUpdateAsync(PluginRowViewModel row, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(row);
         if (_market is null || row.AvailableVersion is not { Length: > 0 } version)
         {
             return null;
         }
-        string destination = Path.Combine(
-            new Infrastructure.Persistence.VelaShellStoragePaths().PluginUpdateDirectory, $"{row.Id}-{version}.vpx");
+        string? destination = null;
         SetNotice(Strings.Format("PluginManager_Updating", row.DisplayName));
         try
         {
-            await _market.DownloadAsync(row.Id, version, destination).ConfigureAwait(false);
+            destination = PluginPackageDownloads.CreatePath(
+                new Infrastructure.Persistence.VelaShellStoragePaths().PluginUpdateDirectory);
+            await _market.DownloadAsync(row.Id, version, destination, cancellationToken: cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             return destination;
         }
         catch (Exception ex)
         {
+            if (destination is not null) PluginPackageDownloads.Discard(destination);
             SetNotice(Strings.Format("PluginManager_UpdateFailed", ex.Message));
             return null;
         }
@@ -492,17 +496,7 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
 
     /// <summary>删掉 <see cref="DownloadUpdateAsync" /> 下的那个包(装上了、没装、用户取消都删);删不掉只记一行。</summary>
     /// <param name="path">包路径。</param>
-    public static void DiscardDownloadedUpdate(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Trace.WriteLine($"[VelaShell] The downloaded plugin update could not be deleted ({path}): {ex.Message}");
-        }
-    }
+    public static void DiscardDownloadedUpdate(string path) => PluginPackageDownloads.Discard(path);
 
     /// <summary>校验插件包并返回发布者信任状态与公钥指纹。</summary>
     public PluginPackageTrustInfo InspectPackageTrust(string vpxPath) =>

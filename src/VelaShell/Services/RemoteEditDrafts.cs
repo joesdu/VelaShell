@@ -170,13 +170,18 @@ public static class RemoteEditDrafts
         }
         try
         {
+            if (!Directory.Exists(root) || File.GetAttributes(root).HasFlag(FileAttributes.ReparsePoint))
+            {
+                return null;
+            }
             var directory = new DirectoryInfo(Path.Combine(root, key));
             if (!directory.Exists || directory.Attributes.HasFlag(FileAttributes.ReparsePoint)
                 || (activeDirectories ?? []).Any(active => SameDirectory(active, directory.FullName)))
             {
                 return null;
             }
-            return Classify(directory)?.Draft;
+            using IDisposable? lease = EditDirectoryLease.TryAcquireExisting(directory.FullName);
+            return lease is null ? null : Classify(directory)?.Draft;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -195,7 +200,7 @@ public static class RemoteEditDrafts
         DirectoryInfo[] directories;
         try
         {
-            if (!Directory.Exists(root))
+            if (!Directory.Exists(root) || File.GetAttributes(root).HasFlag(FileAttributes.ReparsePoint))
             {
                 yield break;
             }
@@ -215,6 +220,11 @@ public static class RemoteEditDrafts
             {
                 continue;
             }
+            using IDisposable? lease = EditDirectoryLease.TryAcquireExisting(directory.FullName);
+            if (lease is null)
+            {
+                continue;
+            }
             (RemoteEditDraft? Draft, DateTime Newest)? classified = Classify(directory);
             if (classified is { } entry)
             {
@@ -229,7 +239,7 @@ public static class RemoteEditDrafts
         {
             DateTime newest = directory.LastWriteTimeUtc;
             List<FileInfo> copies = [];
-            foreach (FileSystemInfo entry in directory.EnumerateFileSystemInfos("*", SearchOption.AllDirectories))
+            foreach (FileSystemInfo entry in EditDirectoryLease.EnumerateEntries(directory))
             {
                 if (entry.LastWriteTimeUtc > newest)
                 {
@@ -250,6 +260,7 @@ public static class RemoteEditDrafts
                 return (null, newest);
             }
             bool clean = marker is { State: Clean }
+                         && copies.Count == 1
                          && copy is not null
                          && copy.Length == marker.Length
                          && copy.LastWriteTimeUtc == marker.LastWriteUtc;

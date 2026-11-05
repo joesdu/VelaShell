@@ -47,6 +47,10 @@ public sealed class UpdateApplier(string applicationDirectory)
     /// <summary>换版日志文件名(位于暂存目录);下载流程清理残留时须避开它。</summary>
     public const string JournalFileName = "apply.json";
 
+    // Outside staging so repair/removal never unlinks the lock while another instance holds it.
+    internal const string StagingLeaseFileName = ".velashell-update.lock";
+    private readonly string _stagingOwner = Guid.NewGuid().ToString("N");
+
     private const string PayloadDirectoryName = "payload";
     private const string BackupDirectoryName = "backup";
     internal const int MaxUpdateEntries = 20_000;
@@ -92,6 +96,8 @@ public sealed class UpdateApplier(string applicationDirectory)
     /// <summary>创建(或清空后重建)暂存目录,返回其路径。</summary>
     public string PrepareStagingDirectory()
     {
+        using FileStream lease = AcquireStagingLease();
+        ThrowIfAnotherOwnerIsActive(ReadJournal());
         if (Directory.Exists(StagingDirectory))
         {
             Directory.Delete(StagingDirectory, true);
@@ -119,35 +125,57 @@ public sealed class UpdateApplier(string applicationDirectory)
     /// 把更新包完整解到 <see cref="PayloadDirectory" /> 并写下换版日志(阶段 <c>staged</c>),
     /// 返回包内文件的相对路径清单。<b>本方法不改动应用目录里的任何文件</b> —— 磁盘不足、
     /// 包损坏、路径可疑等失败都在这里暴露,失败后应用保持原样,重试即可,不会留下半换版现场。
+    /// 解包至日志写入由应用目录的独占租约保护;之后由日志里的进程身份保护等待换版的 payload。
     /// </summary>
     public IReadOnlyList<string> Stage(string archivePath)
     {
+        using FileStream lease = AcquireStagingLease();
+        ThrowIfAnotherOwnerIsActive(ReadJournal());
         EnsureStagingDirectory();
+        if ((File.GetAttributes(StagingDirectory) & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new IOException("Update staging directory must not be a link.");
+        }
+        if (File.Exists(JournalPath) && ReadJournal() is not { Phase: UpdateJournal.PhaseStaged })
+        {
+            throw new InvalidOperationException("Finalize the pending update before staging another package.");
+        }
         // 上一轮的解包/备份残留必须先清干净,否则回滚会拿旧备份覆盖新版本。
         // 清不掉就直接抛:此时应用目录尚未被触碰,用户可用"修复更新状态"强制重置。
         DeleteDirectory(PayloadDirectory);
         DeleteDirectory(BackupDirectory);
         Directory.CreateDirectory(PayloadDirectory);
 
-        List<string> entries = IsZip(archivePath)
-            ? ExtractZipToPayload(archivePath)
-            : ExtractTarGzToPayload(archivePath);
-        if (entries.Count == 0)
+        try
         {
-            throw new InvalidDataException($"Update package contains no files: {archivePath}");
-        }
-
-        UpdateJournal journal = new()
-        {
-            Phase = UpdateJournal.PhaseStaged,
-            Files = [.. entries.Select(path => new UpdateJournalFile
+            List<string> entries = IsZip(archivePath)
+                ? ExtractZipToPayload(archivePath)
+                : ExtractTarGzToPayload(archivePath);
+            if (entries.Count == 0)
             {
-                Path = path,
-                Existed = File.Exists(Path.Combine(ApplicationDirectory, path))
-            })]
-        };
-        WriteJournal(journal);
-        return entries;
+                throw new InvalidDataException($"Update package contains no files: {archivePath}");
+            }
+
+            UpdateJournal journal = new()
+            {
+                Phase = UpdateJournal.PhaseStaged,
+                Owner = _stagingOwner,
+                OwnerProcessId = Environment.ProcessId,
+                OwnerProcessStartUtcTicks = CurrentProcessStartUtcTicks(),
+                Files = [.. entries.Select(path => new UpdateJournalFile
+                {
+                    Path = path,
+                    Existed = File.Exists(Path.Combine(ApplicationDirectory, path))
+                })]
+            };
+            WriteJournal(journal);
+            return entries;
+        }
+        catch
+        {
+            TryDeleteDirectory(PayloadDirectory);
+            throw;
+        }
     }
 
     // ———————————————————— 第二步:换版 ————————————————————
@@ -159,8 +187,13 @@ public sealed class UpdateApplier(string applicationDirectory)
     /// </summary>
     public void SwapFromPayload()
     {
+        using FileStream lease = AcquireStagingLease();
         UpdateJournal journal = ReadJournal()
             ?? throw new InvalidOperationException("No staged update found; call Stage first.");
+        if (journal.OwnerProcessId != Environment.ProcessId)
+        {
+            ThrowIfAnotherOwnerIsActive(journal);
+        }
         if (journal.Phase == UpdateJournal.PhaseDone)
         {
             return; // 已换完,等收尾即可(外置进程重入时走这里)。
@@ -228,7 +261,9 @@ public sealed class UpdateApplier(string applicationDirectory)
     /// </returns>
     public bool TryHandOffToExternalUpdater(int parentProcessId)
     {
+        using FileStream lease = AcquireStagingLease();
         UpdateJournal? journal = ReadJournal();
+        ThrowIfAnotherOwnerIsActive(journal);
         if (journal is not { Phase: UpdateJournal.PhaseStaged })
         {
             return false;
@@ -243,6 +278,7 @@ public sealed class UpdateApplier(string applicationDirectory)
             return false;
         }
 
+        bool updaterStarted = false;
         try
         {
             if (!OperatingSystem.IsWindows())
@@ -255,7 +291,7 @@ public sealed class UpdateApplier(string applicationDirectory)
             journal.Phase = UpdateJournal.PhaseHandoff;
             journal.UpdaterDirectory = null;
             WriteJournal(journal);
-            Process.Start(new ProcessStartInfo(payloadLauncher)
+            using Process updater = Process.Start(new ProcessStartInfo(payloadLauncher)
             {
                 WorkingDirectory = PayloadDirectory,
                 UseShellExecute = false,
@@ -265,11 +301,22 @@ public sealed class UpdateApplier(string applicationDirectory)
                     UpdateRunner.TargetSwitch, ApplicationDirectory,
                     UpdateRunner.WaitPidSwitch, parentProcessId.ToString()
                 }
-            });
+            }) ?? throw new IOException("Could not start the update process.");
+            updaterStarted = true;
+            journal.OwnerProcessId = updater.Id;
+            journal.OwnerProcessStartUtcTicks = 0;
+            journal.OwnerProcessStartUtcTicks = updater.StartTime.ToUniversalTime().Ticks;
+            WriteJournal(journal);
             return true;
         }
         catch (Exception ex)
         {
+            if (updaterStarted)
+            {
+                // Do not run a second swap or shut down automatically if durable ownership transfer failed.
+                TryWriteJournal(journal);
+                throw;
+            }
             Trace.WriteLine($"[VelaShell] External updater hand-off failed, falling back in-process: {ex.Message}");
             journal.Phase = UpdateJournal.PhaseStaged;
             journal.UpdaterDirectory = null;
@@ -301,21 +348,37 @@ public sealed class UpdateApplier(string applicationDirectory)
     /// <summary>
     /// 启动期收尾:按日志回滚上一轮没换完的换版,或清掉换版成功后的备份;顺带清扫外置更新器
     /// 的临时目录与历史版本遗留的 <c>*.old</c>。已下载的更新包保留给断点续传/免下载复用。
-    /// 全部处理干净返回 true;返回 false 表示还有占用中的残留,调用方可稍后重试。绝不抛出异常。
+    /// 全部处理干净返回 true;返回 false 表示另一个更新操作持有租约、staged/handoff 的属主进程仍在,
+    /// 或还有占用中的残留,调用方可稍后重试。绝不抛出异常。
     /// </summary>
     public bool TryFinalizeStartup()
     {
         try
         {
+            using FileStream lease = AcquireStagingLease();
+            if (IsJournalOwnerActive(ReadJournal()))
+            {
+                return false;
+            }
+            if (Directory.Exists(StagingDirectory)
+                && (File.GetAttributes(StagingDirectory) & FileAttributes.ReparsePoint) != 0)
+            {
+                return false;
+            }
             // 历史遗留 .old 与换版记账互不相干,各自成败分开算。
             bool legacyClean = TryPurgeLegacyOldFiles();
             UpdateJournal? journal = ReadJournal();
             if (journal == null)
             {
-                // 无日志:暂存目录里只可能有下载产物(完整包或 .partial 半成品),
-                // 保留原样供下次检查更新时断点续传或免下载复用;过期残留由
-                // 下次下载按文件名清理(产物名带版本号与 RID,可精确识别)。
-                return legacyClean & TrySweepUpdaterDirectories(null);
+                // 日志读不懂时不能推断没有回滚现场;只清理确实没有日志的解包残留。
+                if (File.Exists(JournalPath))
+                {
+                    return false;
+                }
+                bool orphanClean = TryDeleteDirectory(PayloadDirectory);
+                TryDeleteStagingIfEmpty();
+                // 完整包、.partial 与无法确认用途的备份原样保留。
+                return legacyClean & orphanClean & TrySweepUpdaterDirectories(null);
             }
             // staged/handoff:应用目录未被触碰,回滚是空操作,只需清掉解包内容;
             // applying:换到一半,按备份还原。两种情形同一套幂等逻辑。
@@ -352,7 +415,9 @@ public sealed class UpdateApplier(string applicationDirectory)
     {
         try
         {
+            using FileStream lease = AcquireStagingLease();
             UpdateJournal? journal = ReadJournal();
+            ThrowIfAnotherOwnerIsActive(journal);
             bool rolledBack = true;
             if (journal is { Phase: not UpdateJournal.PhaseDone })
             {
@@ -698,7 +763,8 @@ public sealed class UpdateApplier(string applicationDirectory)
             throw new InvalidDataException($"Update package contains a suspicious entry path: {rawPath}");
         }
         // 更新器自己的暂存目录不属于应用文件,包里出现同名路径直接忽略。
-        if (segments[0].Equals(StagingDirectoryName, StringComparison.OrdinalIgnoreCase))
+        if (segments[0].Equals(StagingDirectoryName, StringComparison.OrdinalIgnoreCase)
+            || segments[0].Equals(StagingLeaseFileName, StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
@@ -730,6 +796,57 @@ public sealed class UpdateApplier(string applicationDirectory)
         : StringComparison.Ordinal;
 
     // ———————————————————— 日志与文件小工具 ————————————————————
+
+    private FileStream AcquireStagingLease()
+    {
+        string path = Path.Combine(ApplicationDirectory, StagingLeaseFileName);
+        FileInfo file = new(path);
+        if (file.LinkTarget is not null || (file.Exists && (file.Attributes & FileAttributes.ReparsePoint) != 0))
+        {
+            throw new IOException("Update lease must not be a link.");
+        }
+        return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+    }
+
+    private static long CurrentProcessStartUtcTicks()
+    {
+        using Process process = Process.GetCurrentProcess();
+        return process.StartTime.ToUniversalTime().Ticks;
+    }
+
+    private void ThrowIfAnotherOwnerIsActive(UpdateJournal? journal)
+    {
+        if (journal is not null
+            && (journal.Owner != _stagingOwner || journal.OwnerProcessId != Environment.ProcessId)
+            && IsJournalOwnerActive(journal))
+        {
+            throw new IOException("Another process is using the staged update.");
+        }
+    }
+
+    private static bool IsJournalOwnerActive(UpdateJournal? journal)
+    {
+        if (journal is not { OwnerProcessId: > 0 }
+            || journal.Phase is not (UpdateJournal.PhaseStaged or UpdateJournal.PhaseHandoff))
+        {
+            return false;
+        }
+        try
+        {
+            using Process process = Process.GetProcessById(journal.OwnerProcessId);
+            return !process.HasExited && (journal.OwnerProcessStartUtcTicks == 0
+                || process.StartTime.ToUniversalTime().Ticks == journal.OwnerProcessStartUtcTicks);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+        {
+            // If process identity cannot be checked, preserve the payload rather than guess it is abandoned.
+            return true;
+        }
+    }
 
     private void WriteJournal(UpdateJournal journal)
     {
@@ -763,7 +880,7 @@ public sealed class UpdateApplier(string applicationDirectory)
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"[VelaShell] Update journal unreadable, discarding: {ex.Message}");
+            Trace.WriteLine($"[VelaShell] Update journal unreadable, preserving: {ex.Message}");
             return null;
         }
     }
@@ -799,7 +916,30 @@ public sealed class UpdateApplier(string applicationDirectory)
     {
         if (Directory.Exists(path))
         {
+            DirectoryInfo directory = new(path);
+            if ((directory.Attributes & FileAttributes.ReparsePoint) != 0
+                || (directory.Parent is { } parent && (parent.Attributes & FileAttributes.ReparsePoint) != 0))
+            {
+                throw new IOException($"Refusing to clean a linked update directory: {path}");
+            }
+            EnsurePlainDirectoryTree(path);
             Directory.Delete(path, true);
+        }
+    }
+
+    private static void EnsurePlainDirectoryTree(string path)
+    {
+        foreach (string entry in Directory.EnumerateFileSystemEntries(path))
+        {
+            FileAttributes attributes = File.GetAttributes(entry);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new IOException($"Refusing to clean a linked update entry: {entry}");
+            }
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                EnsurePlainDirectoryTree(entry);
+            }
         }
     }
 
@@ -864,6 +1004,15 @@ public sealed class UpdateJournal
 
     /// <summary>当前阶段。</summary>
     public string Phase { get; set; } = PhaseStaged;
+
+    /// <summary>暂存内容的调用方标识,允许同一个更新流程重试。</summary>
+    public string? Owner { get; set; }
+
+    /// <summary>staged/handoff 阶段仍在使用 payload 的进程;旧日志为 0。</summary>
+    public int OwnerProcessId { get; set; }
+
+    /// <summary>进程开始时间,避免把复用的 PID 当作原来的更新进程。</summary>
+    public long OwnerProcessStartUtcTicks { get; set; }
 
     /// <summary>本次更新涉及的文件。</summary>
     public List<UpdateJournalFile> Files { get; set; } = [];

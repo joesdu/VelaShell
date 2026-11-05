@@ -25,10 +25,47 @@ public interface IXServerDragDownloader
     Task<IReadOnlyList<string>?> DownloadAsync(string clientLabel, IReadOnlyList<string> remotePaths, CancellationToken cancellationToken = default);
 }
 
+/// <summary>一次本机拖放的下载所有权;下载与系统拖放都结束后释放,只有成功放下的文件保留。</summary>
+public sealed class XServerDragDownloadScope(IXServerDragDownloader? downloader) : IXServerDragDownloader, IDisposable
+{
+    private readonly List<SftpXServerDragDownloader.DownloadBatch> _batches = [];
+
+    /// <summary>接收程序是否接受了本机拖放。</summary>
+    public bool HandedOff { get; set; }
+
+    /// <inheritdoc />
+    public bool CanDownload(string clientLabel) => downloader?.CanDownload(clientLabel) == true;
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>?> DownloadAsync(string clientLabel, IReadOnlyList<string> remotePaths, CancellationToken cancellationToken = default)
+    {
+        if (downloader is null)
+        {
+            return null;
+        }
+        IReadOnlyList<string>? paths = await downloader.DownloadAsync(clientLabel, remotePaths, cancellationToken).ConfigureAwait(false);
+        if (paths is SftpXServerDragDownloader.DownloadBatch batch)
+        {
+            _batches.Add(batch);
+        }
+        return paths;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        foreach (SftpXServerDragDownloader.DownloadBatch batch in _batches)
+        {
+            batch.Complete(HandedOff);
+        }
+        _batches.Clear();
+    }
+}
+
 /// <summary>
 /// <see cref="IXServerDragDownloader" /> 的实现:按连接名找连着的 SSH 会话(与上传同一个写法,见 <see cref="SftpXServerDropUploader.LabelOf" />),
 /// 经 <see cref="ISftpService" /> 取到 <c>临时目录/velashell-xdrag/随机串/</c>。文件留在那里给放下的程序拷走(资源管理器拷大文件是在拖放结束后
-/// 慢慢拷的,不能马上删);每次取之前清掉一天以前留下的。
+/// 慢慢拷的,不能马上删);交接后保留一天,启动与下次取之前清理,仍由下载或拖放持有的目录不删。
 /// </summary>
 public sealed class SftpXServerDragDownloader(ISshConnectionService connections, ISftpService sftp, string? root = null) : IXServerDragDownloader
 {
@@ -38,8 +75,9 @@ public sealed class SftpXServerDragDownloader(ISshConnectionService connections,
     /// <summary>取回的文件放在这个目录下面(每次一个子目录)。</summary>
     public string Root { get; } = root ?? Path.Combine(Path.GetTempPath(), "velashell-xdrag");
 
-    /// <summary>留下的子目录过了这么久就在下一次取之前删掉。</summary>
+    /// <summary>成功交接后给接收程序留出的读取时间。</summary>
     internal static readonly TimeSpan Retention = TimeSpan.FromDays(1);
+    internal const string LeaseFileName = ".velashell-drag-lease";
 
     private SshSession? SessionFor(string clientLabel) =>
         _connections.Sessions.FirstOrDefault(s => s.Status == SessionStatus.Connected && SftpXServerDropUploader.LabelOf(s.ConnectionInfo) == clientLabel);
@@ -56,32 +94,51 @@ public sealed class SftpXServerDragDownloader(ISshConnectionService connections,
             return null;
         }
         Guid id = session.SessionId;
-        PruneOld();
+        CleanupStaleDownloads(Root);
+        if (Directory.Exists(Root) && (File.GetAttributes(Root) & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new IOException("Drag download root must not be a link.");
+        }
         string directory = Path.Combine(Root, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
-        List<string> local = [];
-        HashSet<string> names = [with(OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)];
-        foreach (string remote in remotePaths)
+        DownloadBatch? batch = null;
+        try
         {
+            batch = new(directory);
+            HashSet<string> names = [with(OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal), LeaseFileName];
+            foreach (string remote in remotePaths)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!await _sftp.ExistsAsync(id, remote, cancellationToken).ConfigureAwait(false))
+                {
+                    continue;
+                }
+                RemoteFileInfo info = await _sftp.GetFileInfoAsync(id, remote, cancellationToken).ConfigureAwait(false);
+                string name = UniqueName(names, SafeName(info.Name.Length > 0 ? info.Name : remote.TrimEnd('/').Split('/')[^1]));
+                string target = Path.Combine(directory, name);
+                if (info.IsDirectory)
+                {
+                    await DownloadDirectoryAsync(id, remote, target, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await _sftp.DownloadFileAsync(id, remote, target, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+                batch.Add(target);
+            }
             cancellationToken.ThrowIfCancellationRequested();
-            if (!await _sftp.ExistsAsync(id, remote, cancellationToken).ConfigureAwait(false))
+            if (batch.Count == 0)
             {
-                continue;   // 拖着的时候还在,放下时已经没了
+                batch.Complete(handedOff: false);
             }
-            RemoteFileInfo info = await _sftp.GetFileInfoAsync(id, remote, cancellationToken).ConfigureAwait(false);
-            string name = UniqueName(names, SafeName(info.Name.Length > 0 ? info.Name : remote.TrimEnd('/').Split('/')[^1]));
-            string target = Path.Combine(directory, name);
-            if (info.IsDirectory)
-            {
-                await DownloadDirectoryAsync(id, remote, target, cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                await _sftp.DownloadFileAsync(id, remote, target, cancellationToken: cancellationToken).ConfigureAwait(false);
-            }
-            local.Add(target);
+            return batch;
         }
-        return local;
+        catch
+        {
+            batch?.Complete(handedOff: false);
+            TryDeleteBatch(directory);
+            throw;
+        }
     }
 
     /// <summary>目录连同里面的文件与子目录一起取回。指向目录的符号链接不跟(可能绕回自己);指向文件的照常取(取的是它指的内容)。</summary>
@@ -109,26 +166,124 @@ public sealed class SftpXServerDragDownloader(ISshConnectionService connections,
         }
     }
 
-    /// <summary>删掉一天以前留下的子目录(删不掉的 —— 程序还开着里面的文件 —— 留到下次)。</summary>
-    private void PruneOld()
+    /// <summary>启动时与每次下载前清理过期批次;仍在下载或拖放中的批次由独占租约保护。清理失败留待下次。</summary>
+    public static void CleanupStaleDownloads(string? root = null)
     {
-        if (!Directory.Exists(Root))
+        root ??= Path.Combine(Path.GetTempPath(), "velashell-xdrag");
+        try
         {
-            return;
+            if (!Directory.Exists(root) || (File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
+            {
+                return;
+            }
+            DateTime cutoff = DateTime.UtcNow - Retention;
+            foreach (string directory in Directory.EnumerateDirectories(root))
+            {
+                try
+                {
+                    string name = Path.GetFileName(directory);
+                    if (!Guid.TryParseExact(name, "N", out Guid batchId) || name != batchId.ToString("N")
+                        || !IsPlainTree(directory))
+                    {
+                        continue;
+                    }
+                    string leasePath = Path.Combine(directory, LeaseFileName);
+                    if (File.Exists(leasePath))
+                    {
+                        using FileStream lease = new(leasePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Delete);
+                        if (File.GetLastWriteTimeUtc(lease.SafeFileHandle) < cutoff)
+                        {
+                            TryDeleteBatch(directory);
+                        }
+                        continue;
+                    }
+                    else
+                    {
+                        // 老版本没有租约:至少检查整个目录树,不能把仍在写子文件的旧目录误当陈旧目录。
+                        if (Directory.GetLastWriteTimeUtc(directory) >= cutoff
+                            || Directory.EnumerateFileSystemEntries(directory, "*", new EnumerationOptions
+                            {
+                                RecurseSubdirectories = true,
+                                AttributesToSkip = FileAttributes.ReparsePoint,
+                                IgnoreInaccessible = false
+                            }).Any(path => File.GetLastWriteTimeUtc(path) >= cutoff))
+                        {
+                            continue;
+                        }
+                    }
+                    TryDeleteBatch(directory);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // 租约被另一个实例持有,或接收程序还占着文件。
+                }
+            }
         }
-        DateTime cutoff = DateTime.UtcNow - Retention;
-        foreach (string directory in Directory.EnumerateDirectories(Root))
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // 启动清理不影响应用启动。
+        }
+    }
+
+    private static bool IsPlainTree(string directory)
+    {
+        if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
+        {
+            return false;
+        }
+        foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
+        {
+            FileAttributes attributes = File.GetAttributes(entry);
+            if ((attributes & FileAttributes.ReparsePoint) != 0
+                || ((attributes & FileAttributes.Directory) != 0 && !IsPlainTree(entry)))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static void TryDeleteBatch(string directory)
+    {
+        try
+        {
+            if (!Directory.Exists(directory) || !IsPlainTree(directory))
+            {
+                return;
+            }
+            Directory.Delete(directory, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    internal sealed class DownloadBatch(string directory) : System.Collections.ObjectModel.Collection<string>, IReadOnlyList<string>
+    {
+        private FileStream? _lease = new(Path.Combine(directory, LeaseFileName), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+
+        internal void Complete(bool handedOff)
+        {
+            FileStream? lease = Interlocked.Exchange(ref _lease, null);
+            if (lease is null)
+            {
+                return;
+            }
             try
             {
-                if (Directory.GetLastWriteTimeUtc(directory) < cutoff)
-                {
-                    Directory.Delete(directory, recursive: true);
-                }
+                // 年龄从交接而不是开始下载算起;慢下载也有完整的一天留给接收程序。
+                File.SetLastWriteTimeUtc(lease.SafeFileHandle, DateTime.UtcNow);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // 还被占着:下次再删
+            }
+            finally
+            {
+                lease.Dispose();
+            }
+            if (!handedOff)
+            {
+                TryDeleteBatch(directory);
             }
         }
     }

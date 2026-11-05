@@ -1841,14 +1841,17 @@ public class FileBrowserViewModel : ReactiveObject
                 ErrorMessage = Strings.Get("KeySvc_InvalidName");
                 return;
             }
-            Directory.CreateDirectory(tempDir);
-            await _sftpService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, cancellationToken: ct);
-            string remotePath = file.FullPath;
-            await OpenInBuiltInEditor(
-                file,
-                localPath,
-                () => UploadEditedFileAsync(localPath, remotePath)
-            );
+            await BuiltInEditTempFiles.OpenOwnedAsync(tempDir, async () =>
+            {
+                await _sftpService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, cancellationToken: ct);
+                ct.ThrowIfCancellationRequested();
+                string remotePath = file.FullPath;
+                await OpenInBuiltInEditor(
+                    file,
+                    localPath,
+                    () => UploadEditedFileAsync(localPath, remotePath)
+                );
+            });
         }
         catch (Exception ex)
         {

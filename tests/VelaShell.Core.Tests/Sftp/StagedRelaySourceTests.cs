@@ -214,11 +214,13 @@ public class StagedRelaySourceTests
         });
         await using StagedRelaySource staged = await StagedRelaySource.PrepareAsync(source, SourceSession, "/source");
         Assert.IsNotNull(file);
-        Assert.IsTrue(File.Exists(file.Name), "Prepare must retain the completed snapshot for upload/retry.");
+        Assert.AreEqual(OperatingSystem.IsWindows(), File.Exists(file.Name),
+            "Unix snapshots must be unlinked while the open handle retains their bytes for upload/retry.");
         Assert.AreEqual(payloadLength, file.Length);
-        Assert.ThrowsExactly<IOException>(() => { using FileStream other = File.OpenRead(file.Name); });
+        if (OperatingSystem.IsWindows())
+            Assert.ThrowsExactly<IOException>(() => { using FileStream other = File.OpenRead(file.Name); });
         await staged.UploadAsync(Target(input => input.CopyToAsync(Stream.Null)), TargetSession, "/target");
-        Assert.IsTrue(File.Exists(file.Name));
+        Assert.AreEqual(OperatingSystem.IsWindows(), File.Exists(file.Name));
         await staged.DisposeAsync();
         await staged.DisposeAsync();
         Assert.IsFalse(file.CanRead);
@@ -269,15 +271,71 @@ public class StagedRelaySourceTests
         Assert.IsTrue(Directory.Exists(Path.GetDirectoryName(file.Name)));
     }
 
+    [TestMethod]
+    public void SweepStale_DeletesOnlyOldUnlockedRelayFiles()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"vela-relay-sweep-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        DateTime now = DateTime.UtcNow;
+        try
+        {
+            string orphan = CreateFile($"velashell-relay-{Guid.NewGuid():N}.tmp", now.AddDays(-2));
+            string active = CreateFile($"velashell-relay-{Guid.NewGuid():N}.tmp", now.AddDays(-2));
+            string fresh = CreateFile($"velashell-relay-{Guid.NewGuid():N}.tmp", now);
+            string unrelated = CreateFile("velashell-relay-user-notes.tmp", now.AddDays(-2));
+            string directory = Path.Combine(root, $"velashell-relay-{Guid.NewGuid():N}.tmp");
+            Directory.CreateDirectory(directory);
+            string? link = null;
+            string? fifo = null;
+            if (!OperatingSystem.IsWindows())
+            {
+                link = Path.Combine(root, $"velashell-relay-{Guid.NewGuid():N}.tmp");
+                File.CreateSymbolicLink(link, unrelated);
+                fifo = Path.Combine(root, $"velashell-relay-{Guid.NewGuid():N}.tmp");
+                var start = new System.Diagnostics.ProcessStartInfo("mkfifo") { UseShellExecute = false };
+                start.ArgumentList.Add(fifo);
+                using var process = System.Diagnostics.Process.Start(start)!;
+                Assert.IsTrue(process.WaitForExit(5000));
+                Assert.AreEqual(0, process.ExitCode);
+                File.SetLastWriteTimeUtc(fifo, now.AddDays(-2));
+            }
+            using (var live = new FileStream(active, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                Assert.AreEqual(1, StagedRelaySource.SweepStale(root, now));
+                Assert.IsFalse(File.Exists(orphan));
+                Assert.IsTrue(File.Exists(active));
+                Assert.AreEqual(3L, live.Length);
+            }
+            Assert.AreEqual(1, StagedRelaySource.SweepStale(root, now));
+            Assert.IsFalse(File.Exists(active));
+            Assert.IsTrue(File.Exists(fresh));
+            Assert.IsTrue(File.Exists(unrelated));
+            Assert.IsTrue(Directory.Exists(directory));
+            if (link is not null) Assert.IsNotNull(new FileInfo(link).LinkTarget);
+            if (fifo is not null) Assert.IsTrue(File.Exists(fifo));
+            Assert.AreEqual(0, StagedRelaySource.SweepStale(Path.Combine(root, "missing"), now));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+
+        string CreateFile(string name, DateTime lastWrite)
+        {
+            string path = Path.Combine(root, name);
+            File.WriteAllBytes(path, [1, 2, 3]);
+            File.SetLastWriteTimeUtc(path, lastWrite);
+            return path;
+        }
+    }
+
     private static FileStream AssertUserTempFile(Stream sink)
     {
         Assert.IsInstanceOfType<FileStream>(Storage(sink));
         var file = (FileStream)Storage(sink);
         Assert.AreEqual(Path.Combine(UserPathResolver.Home, ".velashell", "temp"), Path.GetDirectoryName(file.Name));
-        Assert.IsTrue(File.Exists(file.Name));
-        Assert.ThrowsExactly<IOException>(() => { using FileStream other = File.OpenRead(file.Name); });
-        if (!OperatingSystem.IsWindows())
-            Assert.AreEqual(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(file.Name));
+        Assert.AreEqual(OperatingSystem.IsWindows(), File.Exists(file.Name));
+        if (OperatingSystem.IsWindows())
+            Assert.ThrowsExactly<IOException>(() => { using FileStream other = File.OpenRead(file.Name); });
+        else
+            Assert.AreEqual(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(file.SafeFileHandle));
         return file;
     }
 

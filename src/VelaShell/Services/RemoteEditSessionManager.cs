@@ -159,14 +159,29 @@ public static class RemoteEditSessionManager
             throw new InvalidOperationException(Strings.Get("KeySvc_InvalidName"));
         }
         Directory.CreateDirectory(directory);
-        if (!await FetchAsync(request, localPath, cancellationToken))
+        IDisposable? lease = null;
+        RemoteEditSession session;
+        try
         {
-            // 下载被取消或失败:别留一个对着半截文件的 watcher(调用方已经报过原因了)。
-            TryDeleteDirectory(directory);
-            RemoteEditLog.Write("open", $"download did not land {request.RemotePath}");
-            return null;
+            lease = EditDirectoryLease.Acquire(directory);
+            if (!await FetchAsync(request, localPath, cancellationToken))
+            {
+                TryDeleteDirectory(directory);
+                return null;
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            session = new RemoteEditSession(request, localPath, lease);
+            lease = null;
         }
-        var session = new RemoteEditSession(request, localPath);
+        catch
+        {
+            TryDeleteDirectory(directory);
+            throw;
+        }
+        finally
+        {
+            lease?.Dispose();
+        }
         lock (Gate)
         {
             Sessions.Add(session);
@@ -287,6 +302,10 @@ public static class RemoteEditSessionManager
             }
             foreach (string directory in Directory.EnumerateDirectories(root))
             {
+                if (File.GetAttributes(directory).HasFlag(FileAttributes.ReparsePoint))
+                {
+                    continue;
+                }
                 if (!Directory.EnumerateFileSystemEntries(directory).Any())
                 {
                     Directory.Delete(directory);
@@ -387,6 +406,8 @@ public sealed class RemoteEditSession : IDisposable
     private readonly FileSystemWatcher _watcher;
     private Timer? _debounce;
     private bool _disposed;
+    private IDisposable? _directoryLease;
+    private bool _shutdownTimedOut;
 
     /// <summary>已进入收尾:不再接受新的文件变化(但正在跑的收尾还要把最后一次改动传完)。</summary>
     private bool _closing;
@@ -419,8 +440,9 @@ public sealed class RemoteEditSession : IDisposable
     /// </summary>
     private (long Length, DateTime LastWriteUtc)? _clean;
 
-    internal RemoteEditSession(RemoteEditRequest request, string localPath)
+    internal RemoteEditSession(RemoteEditRequest request, string localPath, IDisposable? directoryLease = null)
     {
+        _directoryLease = directoryLease ?? EditDirectoryLease.Acquire(Path.GetDirectoryName(localPath)!);
         _request = request;
         _onError = request.OnError;
         LocalPath = localPath;
@@ -477,12 +499,19 @@ public sealed class RemoteEditSession : IDisposable
         {
             return;
         }
-        if (KeepDraft(_onError))
+        try
         {
-            return;
+            if (KeepDraft(_onError))
+            {
+                return;
+            }
+            RemoteEditLog.Write("close", $"done {RemotePath} (uploads={_uploadCount})");
+            RemoteEditSessionManager.TryDeleteDirectory(Path.GetDirectoryName(LocalPath)!);
         }
-        RemoteEditLog.Write("close", $"done {RemotePath} (uploads={_uploadCount})");
-        RemoteEditSessionManager.TryDeleteDirectory(Path.GetDirectoryName(LocalPath)!);
+        finally
+        {
+            _ = ReleaseLeaseWhenIdleAsync();
+        }
     }
 
     /// <summary>
@@ -504,12 +533,35 @@ public sealed class RemoteEditSession : IDisposable
     /// <param name="notify">把话说给用户听的通道(断线时文件面板已经被拆掉,它的报错栏没人看得见)。</param>
     internal void Detach(Action<string> notify)
     {
-        if (!StopWatching() || KeepDraft(notify))
+        if (!StopWatching())
         {
             return;
         }
-        RemoteEditLog.Write("close", $"connection lost, copy kept {RemotePath} -> {LocalPath} (uploads={_uploadCount})");
-        notify(Strings.Format("Svc_RemoteEditEndedByDisconnect", FileName, LocalPath));
+        try
+        {
+            if (!KeepDraft(notify))
+            {
+                RemoteEditLog.Write("close", $"connection lost, copy kept {RemotePath} -> {LocalPath} (uploads={_uploadCount})");
+                notify(Strings.Format("Svc_RemoteEditEndedByDisconnect", FileName, LocalPath));
+            }
+        }
+        finally
+        {
+            _ = ReleaseLeaseWhenIdleAsync();
+        }
+    }
+
+    private async Task ReleaseLeaseWhenIdleAsync()
+    {
+        await _uploadGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            Interlocked.Exchange(ref _directoryLease, null)?.Dispose();
+        }
+        finally
+        {
+            _uploadGate.Release();
+        }
     }
 
     /// <summary>停掉监视与防抖;已经拆过时返回 false。</summary>
@@ -530,7 +582,8 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>有改动没落到远端时保留副本、标成草稿并说一声;返回是否保留了。</summary>
     private bool KeepDraft(Action<string>? notify)
     {
-        if (!_lastUploadFailed && Volatile.Read(ref _pendingSave) == 0)
+        if (!_shutdownTimedOut && _uploadGate.CurrentCount != 0 && !_lastUploadFailed
+            && Volatile.Read(ref _pendingSave) == 0 && MatchesClean(Snapshot()))
         {
             return false;
         }
@@ -561,6 +614,8 @@ public sealed class RemoteEditSession : IDisposable
         }
         catch (TimeoutException)
         {
+            _shutdownTimedOut = true;
+            MarkDirty();
             return false;
         }
         return !_lastUploadFailed && Volatile.Read(ref _pendingSave) == 0;
@@ -582,7 +637,7 @@ public sealed class RemoteEditSession : IDisposable
         {
             return;
         }
-        if (HasPendingChange || _lastUploadFailed)
+        if (HasPendingChange || _lastUploadFailed || _uploadGate.CurrentCount == 0 || !MatchesClean(Snapshot()))
         {
             RemoteEditLog.Write("open", $"skip refresh (pending changes) {RemotePath}");
             _onError?.Invoke(Strings.Format("Svc_RemoteEditReusedDraft", FileName, LocalPath));
@@ -737,7 +792,7 @@ public sealed class RemoteEditSession : IDisposable
         await _uploadGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            while (Interlocked.Exchange(ref _pendingSave, 0) == 1)
+            while (!_disposed && Interlocked.Exchange(ref _pendingSave, 0) == 1)
             {
                 if (!File.Exists(LocalPath))
                 {
@@ -819,6 +874,11 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>标记:本地副本(就是 <paramref name="copy" /> 这一份)与远端一致。</summary>
     private void MarkClean(FileInfo copy)
     {
+        if (_disposed || _shutdownTimedOut)
+        {
+            MarkDirty();
+            return;
+        }
         if (RememberClean(copy) is { } clean)
         {
             WriteMarker(RemoteEditDrafts.Clean, clean.Length, clean.LastWriteUtc);
@@ -881,6 +941,12 @@ public sealed class RemoteEditSession : IDisposable
     {
         lock (_markerGate)
         {
+            if (state == RemoteEditDrafts.Clean && (_disposed || _shutdownTimedOut))
+            {
+                state = RemoteEditDrafts.Dirty;
+                length = 0;
+                lastWriteUtc = default;
+            }
             if (state == RemoteEditDrafts.Dirty && _markedState == RemoteEditDrafts.Dirty)
             {
                 return;
