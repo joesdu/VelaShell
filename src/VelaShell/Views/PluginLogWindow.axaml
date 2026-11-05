@@ -2,6 +2,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:VelaShell.ViewModels"
         xmlns:loc="using:VelaShell.Localization"
+        xmlns:ae="using:AvaloniaEdit"
+        xmlns:aer="using:AvaloniaEdit.Rendering"
         xmlns:pc="using:VelaShell.Controls.Controls"
         x:Class="VelaShell.Views.PluginLogWindow"
         x:DataType="vm:PluginLogViewModel"
@@ -16,6 +18,10 @@
        + 自绘缩放抓取区;副标题行只放文件路径。 -->
 
   <Window.Styles>
+    <!-- AvaloniaEdit 默认使用纯蓝链接色,在深色日志背景上对比度不足;改用随主题变化的信息色。 -->
+    <Style Selector="aer|TextView">
+      <Setter Property="LinkTextForegroundBrush" Value="{DynamicResource VelaInfo}" />
+    </Style>
     <Style Selector="Button.caption">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
@@ -103,17 +109,17 @@
 
         <!-- 正文:只读、等宽、不折行(日志行与堆栈按原样对齐),横竖都能滚。 -->
         <Panel Grid.Row="2" Margin="14,12,14,14">
-          <TextBox x:Name="LogText" Text="{Binding Text, Mode=OneWay}"
-                   IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
-                   IsVisible="{Binding !IsEmpty}"
-                   FontFamily="{DynamicResource VelaUiMonoFont}"
-                   FontSize="{DynamicResource VelaFontSize11}"
-                   Foreground="{DynamicResource VelaTextSecondary}"
-                   Background="{DynamicResource VelaBgInput}"
-                   BorderBrush="{DynamicResource VelaBorderPrimary}"
-                   VerticalContentAlignment="Top"
-                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                   ScrollViewer.VerticalScrollBarVisibility="Auto" />
+          <ae:TextEditor x:Name="LogText"
+                         IsReadOnly="True" ShowLineNumbers="False"
+                         IsVisible="{Binding !IsEmpty}"
+                         FontFamily="{DynamicResource VelaUiMonoFont}"
+                         FontSize="{DynamicResource VelaFontSize11}"
+                         Foreground="{DynamicResource VelaTextSecondary}"
+                         Background="{DynamicResource VelaBgInput}"
+                         BorderBrush="{DynamicResource VelaBorderPrimary}"
+                         HorizontalScrollBarVisibility="Auto"
+                         VerticalScrollBarVisibility="Auto"
+                         Padding="8,6" />
           <StackPanel IsVisible="{Binding IsEmpty}" Spacing="10"
                       VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="460">
             <pc:LucideIcon Width="28" Height="28" Data="{StaticResource Icon.file-text}"
