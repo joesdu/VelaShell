@@ -96,6 +96,12 @@ public sealed class PluginMarketViewModel(PluginManager manager, IPluginMarketCl
 
     /// <summary>是否可展示详情内容。</summary>
     public bool HasDetail => Detail is not null;
+    /// <summary>详情标题;未加载详情时返回空文本以避免绑定空对象。</summary>
+    public string DetailDisplayName => Detail?.DisplayName ?? "";
+    /// <summary>详情标识;未加载详情时返回空文本以避免绑定空对象。</summary>
+    public string DetailId => Detail?.Id ?? "";
+    /// <summary>详情摘要;未填写或未加载详情时返回空文本。</summary>
+    public string DetailSummary => Detail?.Summary ?? "";
     /// <summary>未选择条目时显示占位提示。</summary>
     public bool ShowDetailPlaceholder => Detail is null && !IsLoadingDetail && DetailError is null;
     /// <summary>成功查询且没有匹配结果。</summary>
@@ -300,8 +306,9 @@ public sealed class PluginMarketViewModel(PluginManager manager, IPluginMarketCl
 
     private void NotifyDetailState()
     {
-        foreach (string name in new[] { nameof(HasDetail), nameof(ShowDetailPlaceholder), nameof(Description), nameof(VersionText),
-            nameof(SizeText), nameof(AuthorText), nameof(LicenseText), nameof(DetailUrl), nameof(Blocker) })
+        foreach (string name in new[] { nameof(HasDetail), nameof(DetailDisplayName), nameof(DetailId), nameof(DetailSummary),
+            nameof(ShowDetailPlaceholder), nameof(Description), nameof(VersionText), nameof(SizeText), nameof(AuthorText),
+            nameof(LicenseText), nameof(DetailUrl), nameof(Blocker) })
             this.RaisePropertyChanged(name);
         RefreshInstalledState();
     }

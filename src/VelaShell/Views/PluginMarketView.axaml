@@ -24,6 +24,9 @@
       <Setter Property="Theme" Value="{StaticResource VelaOutlineButtonTheme}" />
       <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
     </Style>
+    <Style Selector="GridSplitter.market-splitter:pointerover">
+      <Setter Property="Background" Value="{DynamicResource VelaAccent}" />
+    </Style>
     <Style Selector="md|MarkdownRenderer md|MarkdownTextBlock">
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
       <Setter Property="FontSize" Value="{DynamicResource VelaFontSize13}" />
@@ -59,8 +62,8 @@
                 SelectionChanged="Sort_SelectionChanged" />
       <Button Grid.Column="2" Content="{loc:Localize PluginMarket_Search}" Click="Search_Click" IsEnabled="{Binding CanBrowse}" />
     </Grid>
-    <Grid Grid.Row="1" ColumnDefinitions="2*,3*" ColumnSpacing="14">
-      <Grid RowDefinitions="*,Auto">
+    <Grid Grid.Row="1" ColumnDefinitions="2*,4,3*">
+      <Grid RowDefinitions="*,Auto" MinWidth="220">
         <ListBox x:Name="CatalogList" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="Transparent" BorderThickness="0"
                  AutomationProperties.Name="{loc:Localize PluginManager_Market}">
@@ -94,7 +97,10 @@
           <Button Grid.Column="2" Content="{loc:Localize PluginMarket_Next}" Click="Next_Click" IsEnabled="{Binding CanNext}" />
         </Grid>
       </Grid>
-      <Border Grid.Column="1" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="1,0,0,0" Padding="14,0,0,0">
+      <GridSplitter x:Name="MarketSplitter" Grid.Column="1" Classes="market-splitter"
+                    Background="{DynamicResource VelaBorderPrimary}" ResizeDirection="Columns"
+                    ResizeBehavior="PreviousAndNext" />
+      <Border Grid.Column="2" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="1,0,0,0" Padding="14,0,0,0" MinWidth="260">
         <Panel>
           <pc:CircularProgressRing IsVisible="{Binding IsLoadingDetail}" IsIndeterminate="True" Width="24" Height="24"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -108,10 +114,10 @@
           <Grid IsVisible="{Binding HasDetail}" RowDefinitions="*,Auto">
             <ScrollViewer HorizontalScrollBarVisibility="Disabled">
               <StackPanel Spacing="8" Margin="0,0,8,10">
-                <TextBlock Text="{Binding Detail.DisplayName}" TextWrapping="Wrap" FontWeight="SemiBold"
+                <TextBlock Text="{Binding DetailDisplayName}" TextWrapping="Wrap" FontWeight="SemiBold"
                            FontSize="{DynamicResource VelaFontSize20}" Foreground="{DynamicResource VelaTextPrimary}" />
-                <TextBlock Text="{Binding Detail.Id}" TextWrapping="Wrap" Foreground="{DynamicResource VelaTextMuted}" />
-                <TextBlock Text="{Binding Detail.Summary}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding DetailId}" TextWrapping="Wrap" Foreground="{DynamicResource VelaTextMuted}" />
+                <TextBlock Text="{Binding DetailSummary}" TextWrapping="Wrap" />
                 <WrapPanel>
                   <TextBlock Text="{Binding VersionText}" Margin="0,0,12,4" />
                   <TextBlock Text="{Binding SizeText}" Margin="0,0,12,4" />
@@ -121,14 +127,17 @@
                 <md:MarkdownRenderer x:Name="DescriptionMarkdown" />
               </StackPanel>
             </ScrollViewer>
-            <StackPanel Grid.Row="1" Spacing="8" Margin="0,10,0,0">
-              <TextBlock Text="{Binding StateText}" TextWrapping="Wrap" />
-              <WrapPanel>
-                <Button x:Name="InstallButton" Content="{Binding InstallText}" Click="Install_Click" IsEnabled="{Binding CanInstall}"
-                        Theme="{StaticResource VelaAccentPillButtonTheme}" Margin="0,0,8,4" />
-                <Button Content="{loc:Localize PluginMarket_OpenWeb}" Click="OpenWeb_Click" Margin="0,0,0,4" />
-              </WrapPanel>
-            </StackPanel>
+            <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+              <StackPanel Grid.Column="1" Spacing="8" HorizontalAlignment="Right" MaxWidth="360">
+                <TextBlock Text="{Binding StateText}" TextWrapping="Wrap" HorizontalAlignment="Right"
+                           TextAlignment="Right" />
+                <WrapPanel HorizontalAlignment="Right">
+                  <Button x:Name="InstallButton" Content="{Binding InstallText}" Click="Install_Click" IsEnabled="{Binding CanInstall}"
+                          Theme="{StaticResource VelaAccentPillButtonTheme}" Margin="0,0,8,4" />
+                  <Button Content="{loc:Localize PluginMarket_OpenWeb}" Click="OpenWeb_Click" Margin="0,0,0,4" />
+                </WrapPanel>
+              </StackPanel>
+            </Grid>
           </Grid>
         </Panel>
       </Border>
