@@ -2,7 +2,6 @@ using Anthropic.Exceptions;
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Chat;
 using VelaShell.Plugin.Ai.Configuration;
-using AnthropicErrorType = Anthropic.Models.ErrorType;
 
 namespace VelaShell.Plugin.Ai.Ui;
 /// <summary>发送准备期间配置已失效;只可换用其他已验证接入,不能原地重试。</summary>
@@ -144,11 +143,8 @@ public static class TransientFailure
                 // 流式中途的 error 事件:HTTP 200 早已回过,overloaded_error 正是 529 的流式形态。
                 // SDK 抛的是不带状态码的 AnthropicSseException,只能按错误类型判 ——
                 // 不认的话,故障转移最该接手的"过载"反而原地报错
-                case AnthropicSseException
-                {
-                    ErrorType: AnthropicErrorType.OverloadedError or AnthropicErrorType.ApiError
-                    or AnthropicErrorType.RateLimitError or AnthropicErrorType.TimeoutError
-                }:
+                case AnthropicSseException sse when sse.Type?.Raw() is
+                    "overloaded_error" or "api_error" or "rate_limit_error" or "timeout_error":
                     return true;
                 // 没状态码 = 压根没连上(DNS/拒绝/断连),抖一下就好
                 case HttpRequestException:
@@ -256,12 +252,12 @@ public static class TransientFailure
                 // 内置 OAuth 凭据不能发往这个地址:凭据这一侧的问题
                 case AiSettingsStore.BuiltinOAuthHostMismatchException:
                     return (SwitchAuth, 0);
-                case AnthropicSseException { ErrorType: AnthropicErrorType.RateLimitError }:
+                case AnthropicSseException sse when sse.Type?.Raw() is "rate_limit_error":
                     return (SwitchRateLimit, 0);
-                case AnthropicSseException { ErrorType: AnthropicErrorType.TimeoutError }:
+                case AnthropicSseException sse when sse.Type?.Raw() is "timeout_error":
                 case TimeoutException:
                     return (SwitchTimeout, 0);
-                case AnthropicSseException { ErrorType: AnthropicErrorType.OverloadedError or AnthropicErrorType.ApiError }:
+                case AnthropicSseException sse when sse.Type?.Raw() is "overloaded_error" or "api_error":
                     return (SwitchServer, 0);
                 case IOException:
                     network = true;
