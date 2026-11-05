@@ -199,18 +199,26 @@ public sealed class TransientFailureTests
     /// 参数错与鉴权错不值得。
     /// </summary>
     [TestMethod]
-    [DataRow(Anthropic.Models.ErrorType.OverloadedError, true)]
-    [DataRow(Anthropic.Models.ErrorType.ApiError, true)]
-    [DataRow(Anthropic.Models.ErrorType.RateLimitError, true)]
-    [DataRow(Anthropic.Models.ErrorType.TimeoutError, true)]
-    [DataRow(Anthropic.Models.ErrorType.InvalidRequestError, false)]
-    [DataRow(Anthropic.Models.ErrorType.AuthenticationError, false)]
-    public void AnthropicInStreamErrorsAreJudgedByType(Anthropic.Models.ErrorType type, bool transient)
+    [DataRow("overloaded_error", true, TransientFailure.SwitchServer)]
+    [DataRow("api_error", true, TransientFailure.SwitchServer)]
+    [DataRow("rate_limit_error", true, TransientFailure.SwitchRateLimit)]
+    [DataRow("timeout_error", true, TransientFailure.SwitchTimeout)]
+    [DataRow("invalid_request_error", false, TransientFailure.SwitchOther)]
+    [DataRow("authentication_error", false, TransientFailure.SwitchOther)]
+    [DataRow("unknown_error", false, TransientFailure.SwitchOther)]
+    [DataRow(null, false, TransientFailure.SwitchOther)]
+    public void AnthropicInStreamErrorsAreJudgedByType(string? type, bool transient, string reason)
     {
-        var error = new Anthropic.Exceptions.AnthropicSseException("stream error", null) { ErrorType = type };
+        var error = Sse(type);
         Assert.AreEqual(transient, TransientFailure.IsTransient(error));
         Assert.AreEqual(transient, TransientFailure.IsWorthSwitching(error));
+        Assert.AreEqual((reason, 0), TransientFailure.SwitchReason(error));
     }
+
+    private static Anthropic.Exceptions.AnthropicSseException Sse(string? type) => new("stream error", null)
+    {
+        Body = System.Text.Json.JsonSerializer.SerializeToElement(new { type = "error", error = new { type } })
+    };
 
     /// <summary>
     /// 切换提示里的「因为什么」:与重试 / 换站判定同一口径逐层看,带状态码的按码、流式 error 事件按类型、没连上算连不上。
@@ -228,9 +236,9 @@ public sealed class TransientFailureTests
         Assert.AreEqual((TransientFailure.SwitchRateLimit, 429), TransientFailure.SwitchReason(
             new InvalidOperationException("wrapped", new ClientResultException("slow down", Response(429)))));
         Assert.AreEqual((TransientFailure.SwitchServer, 0), TransientFailure.SwitchReason(
-            new Anthropic.Exceptions.AnthropicSseException("stream error", null) { ErrorType = Anthropic.Models.ErrorType.OverloadedError }));
+            Sse("overloaded_error")));
         Assert.AreEqual((TransientFailure.SwitchRateLimit, 0), TransientFailure.SwitchReason(
-            new Anthropic.Exceptions.AnthropicSseException("stream error", null) { ErrorType = Anthropic.Models.ErrorType.RateLimitError }));
+            Sse("rate_limit_error")));
         Assert.AreEqual((TransientFailure.SwitchNetwork, 0), TransientFailure.SwitchReason(
             new HttpRequestException("offline", new System.Net.Sockets.SocketException(10061))));
         Assert.AreEqual((TransientFailure.SwitchNetwork, 0), TransientFailure.SwitchReason(new IOException("reset")));
