@@ -357,8 +357,10 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             throw new InvalidOperationException($"Package not found: {vpxPath}");
         }
 
-        // 先解到临时目录并校验,校验过再原子搬进最终位置 —— 避免坏包污染插件目录。
-        string staging = Path.Combine(Path.GetTempPath(), "velashell-vpx", Guid.NewGuid().ToString("N"));
+        // 暂存目录必须位于用户插件根下:Linux 上 /tmp 可能是独立 tmpfs,
+        // 与用户目录不在同一文件系统,跨设备 Directory.Move 会失败(EXDEV)。
+        // 同根暂存还保留校验完成后的原子目录替换,避免坏包污染插件目录。
+        string staging = Path.Combine(PackageStagingRoot(userRoot), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(staging);
         PluginManifest? manifest = null;
         // 安装是纯等待的几秒:验签 → 解压 → 对整个目录算哈希落安装凭据。
@@ -2096,6 +2098,9 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
         return descriptor;
     }
+
+    internal static string PackageStagingRoot(string userRoot) =>
+        Path.Combine(userRoot, ".staging", "velashell-vpx");
 
     private bool IsUserPluginDirectory(string directory) =>
         options.UserPluginRoot is { } root && IsUnder(directory, root);

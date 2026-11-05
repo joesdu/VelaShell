@@ -150,6 +150,15 @@ public class PluginInstallUninstallTests
     }
 
     [TestMethod]
+    public void PackageStagingRoot_IsUnderUserPluginRoot()
+    {
+        string stagingRoot = PluginManager.PackageStagingRoot(_userRoot);
+
+        Assert.AreEqual(Path.Combine(_userRoot, ".staging", "velashell-vpx"), stagingRoot);
+        Assert.IsTrue(stagingRoot.StartsWith(_userRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public async Task InstallFromVpx_ExtractsActivatesAndPersistsToUserRoot()
     {
         PluginManager manager = CreateManager();
