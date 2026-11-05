@@ -1,10 +1,11 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!-- 日志。按级别着色是排障时最省眼力的一件事:一屏里 ERROR 能立刻跳出来。
      颜色见 Shell.xshd 顶部说明。 -->
 <SyntaxDefinition name="Log" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
 
   <Color name="Error"    foreground="#FF5555" fontWeight="bold" />
   <Color name="Warning"  foreground="#FFB86C" />
+  <Color name="Success"  foreground="#50FA7B" />
   <Color name="Info"     foreground="#8BE9FD" />
   <Color name="Debug"    foreground="#6272A4" />
   <Color name="Number"   foreground="#BD93F9" />
@@ -21,15 +22,19 @@
     </Rule>
 
     <Rule color="Error">
-      \b(ERROR|ERR|FATAL|CRITICAL|CRIT|ALERT|EMERG|PANIC|SEVERE|EXCEPTION|FAILED|FAILURE)\b
+      \b(ERROR|ERR|FATAL|CRITICAL|CRIT|ALERT|EMERG|PANIC|SEVERE|EXCEPTION|FAILED|FAILURE|ERRORS|错误|异常|失败|崩溃|致命|拒绝)\b
     </Rule>
 
     <Rule color="Warning">
-      \b(WARN|WARNING|NOTICE|DEPRECATED)\b
+      \b(WARN|WARNING|NOTICE|DEPRECATED|警告|警示|弃用)\b
+    </Rule>
+
+    <Rule color="Success">
+      \b(SUCCESS|SUCCEEDED|PASSED|PASS|COMPLETED|COMPLETE|CONNECTED|READY|ENABLED|INSTALLED|LOADED|成功|完成|已连接|就绪|通过|已启用|已安装|已加载)\b
     </Rule>
 
     <Rule color="Info">
-      \b(INFO|INFORMATION|NOTE|SUCCESS|OK|STARTED|STARTING|STOPPED)\b
+      \b(INFO|INFORMATION|NOTE|OK|STARTED|STARTING|STOPPED|信息|开始|启动|停止)\b
     </Rule>
 
     <Rule color="Debug">

@@ -220,6 +220,9 @@ public class SyntaxHighlightingTests
     [DataRow("main.tf", "resource \"aws_instance\" \"web\" {\n  ami = var.ami_id\n}\n", "resource", "Keyword")]
     [DataRow("main.tf", "resource \"aws_instance\" \"web\" {\n  ami = var.ami_id\n}\n", "ami", "Key")]
     [DataRow("main.tf", "resource \"aws_instance\" \"web\" {\n  ami = var.ami_id\n}\n", "var.ami_id", "Variable")]
+    [DataRow("plugin.log", "2026-10-24 [ERROR] Exception failed\n", "ERROR", "Error")]
+    [DataRow("plugin.log", "2026-10-24 [WARNING] retrying\n", "WARNING", "Warning")]
+    [DataRow("plugin.log", "2026-10-24 [SUCCESS] connected\n", "SUCCESS", "Success")]
     public void BundledDefinitions_ColourTheRightTokens(string fileName, string text, string token, string expectedColor)
     {
         IHighlightingDefinition? definition = SyntaxHighlightingService.Resolve(fileName, null, UiThemeCatalog.DefaultDark);
