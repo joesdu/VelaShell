@@ -29,8 +29,52 @@ public static class BuiltInEditTempFiles
     /// <summary>内置编辑器副本的根目录:%TEMP%/VelaShell/builtin-edit。</summary>
     public static string Root { get; } = RootUnder(TempBase);
 
+    private static readonly Dictionary<string, IDisposable> Opening = new(
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    private static readonly Lock OwnershipGate = new();
+
     /// <summary>给一次「打开」分一个新的独占子目录(只拼路径,不创建)。</summary>
     public static string NewDirectory() => Path.Combine(Root, Guid.NewGuid().ToString("N")[..8]);
+
+    /// <summary>下载与显示窗口期间持有目录;窗口实际打开时才接管,失败则立即清理。</summary>
+    internal static async Task OpenOwnedAsync(string directory, Func<Task> openAsync)
+    {
+        Directory.CreateDirectory(directory);
+        IDisposable? lease = null;
+        bool registered = false;
+        try
+        {
+            lease = EditDirectoryLease.Acquire(directory);
+            lock (OwnershipGate)
+            {
+                Opening.Add(directory, lease);
+                registered = true;
+            }
+            await openAsync();
+        }
+        finally
+        {
+            bool unclaimed;
+            lock (OwnershipGate)
+            {
+                unclaimed = !registered || Opening.Remove(directory);
+            }
+            if (unclaimed)
+            {
+                RemoteEditSessionManager.TryDeleteDirectory(directory, lease);
+                lease?.Dispose();
+            }
+        }
+    }
+
+    internal static IDisposable? TakeOwnership(string localPath)
+    {
+        string? directory = Path.GetDirectoryName(localPath);
+        lock (OwnershipGate)
+        {
+            return directory is not null && Opening.Remove(directory, out IDisposable? lease) ? lease : null;
+        }
+    }
 
     /// <summary>
     /// 删掉 <paramref name="tempBase" /> 下 <c>builtin-edit</c> 里超过 <see cref="StaleAfter" /> 没碰过的子目录;尽力而为,从不抛。
@@ -48,10 +92,10 @@ public static class BuiltInEditTempFiles
     public static int SweepStale(string tempBase, DateTime utcNow)
     {
         string root = RootUnder(tempBase);
-        int removed = 0;
+        int removed = EditDirectoryLease.SweepRetired(root);
         try
         {
-            if (!Directory.Exists(root))
+            if (!Directory.Exists(root) || File.GetAttributes(root).HasFlag(FileAttributes.ReparsePoint))
             {
                 return 0;
             }
@@ -81,8 +125,13 @@ public static class BuiltInEditTempFiles
             {
                 return false;
             }
+            using IDisposable? lease = EditDirectoryLease.TryAcquireExisting(directory);
+            if (lease is null)
+            {
+                return false;
+            }
             DateTime newest = info.LastWriteTimeUtc;
-            foreach (FileSystemInfo entry in info.EnumerateFileSystemInfos("*", SearchOption.AllDirectories))
+            foreach (FileSystemInfo entry in EditDirectoryLease.EnumerateEntries(info))
             {
                 if (entry.LastWriteTimeUtc > newest)
                 {
@@ -93,7 +142,7 @@ public static class BuiltInEditTempFiles
             {
                 return false;
             }
-            info.Delete(recursive: true);
+            EditDirectoryLease.DeleteOwnedDirectory(directory, lease);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -105,4 +154,154 @@ public static class BuiltInEditTempFiles
     /// <summary>本程序起的子目录名:<c>Guid.ToString("N")</c> 的前 8 位。</summary>
     private static bool IsOwnDirectoryName(string name) =>
         name.Length == 8 && name.All(static c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+}
+
+/// <summary>共享系统临时目录的跨进程租约;崩溃会自动释放句柄,租约文件留给下次启动判断。</summary>
+internal static class EditDirectoryLease
+{
+    internal const string FileName = ".vela-edit.lease";
+
+    // Unix uses an exclusive flock only for FileShare.None. Windows can additionally
+    // permit deletion, keeping the handle locked throughout recursive cleanup.
+    private static FileShare Sharing => OperatingSystem.IsWindows() ? FileShare.Delete : FileShare.None;
+
+    internal static IDisposable Acquire(string directory)
+    {
+        using IDisposable? cleanupLock = OperatingSystem.IsWindows() ? null : AcquireCleanupLock(Path.GetDirectoryName(directory)!);
+        return new FileStream(Path.Combine(directory, FileName), FileMode.OpenOrCreate,
+            FileAccess.ReadWrite, Sharing);
+    }
+
+    internal static void DeleteOwnedDirectory(string directory, IDisposable lease, bool cleanupLockHeld = false)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.Delete(directory, recursive: true);
+            return;
+        }
+
+        using IDisposable? cleanupLock = cleanupLockHeld ? null : AcquireCleanupLock(Path.GetDirectoryName(directory)!);
+        // Remove the discoverable path while ownership is still exclusive. Release
+        // the lock before unlinking its inode; contenders cannot acquire a new lock
+        // at the old path while cleanup is in progress.
+        string retired = Path.Combine(Path.GetDirectoryName(directory)!,
+            Path.GetFileName(directory).Split(".deleting-", StringSplitOptions.None)[0]
+            + ".deleting-" + Guid.NewGuid().ToString("N"));
+        Directory.Move(directory, retired);
+        lease.Dispose();
+        Directory.Delete(retired, recursive: true);
+    }
+
+    // This root-level inode is deliberately retained: concurrent processes must
+    // synchronize retirement and recovery on the same lock, including after crashes.
+    private static FileStream AcquireCleanupLock(string root) =>
+        new FileStream(Path.Combine(root, ".vela-edit.cleanup.lease"), FileMode.OpenOrCreate,
+            FileAccess.ReadWrite, FileShare.None);
+
+    internal static int SweepRetired(string root)
+    {
+        int removed = 0;
+        try
+        {
+            if (!Directory.Exists(root) || File.GetAttributes(root).HasFlag(FileAttributes.ReparsePoint))
+            {
+                return 0;
+            }
+            using IDisposable? cleanupLock = OperatingSystem.IsWindows() ? null : AcquireCleanupLock(root);
+            foreach (string directory in Directory.EnumerateDirectories(root, "*.deleting-*"))
+            {
+                string[] parts = Path.GetFileName(directory).Split(".deleting-", StringSplitOptions.None);
+                if (parts.Length != 2 || !RemoteEditDrafts.IsOwnDirectoryName(parts[0])
+                    || !Guid.TryParseExact(parts[1], "N", out _)
+                    || File.GetAttributes(directory).HasFlag(FileAttributes.ReparsePoint))
+                {
+                    continue;
+                }
+                try
+                {
+                    using IDisposable? lease = TryAcquireExisting(directory, cleanupLockHeld: true);
+                    if (lease is null)
+                    {
+                        continue;
+                    }
+                    // Validate the tree before resuming an interrupted deletion.
+                    _ = EnumerateEntries(new DirectoryInfo(directory)).Count();
+                    DeleteOwnedDirectory(directory, lease, cleanupLockHeld: true);
+                    removed++;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Retry at the next startup.
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+        return removed;
+    }
+
+    internal static IEnumerable<FileSystemInfo> EnumerateEntries(DirectoryInfo directory)
+    {
+        foreach (FileSystemInfo entry in directory.EnumerateFileSystemInfos())
+        {
+            if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                throw new IOException("Linked editor artifacts must be preserved.");
+            }
+            if (entry.Name == FileName)
+            {
+                continue;
+            }
+            yield return entry;
+            if (entry is DirectoryInfo child)
+            {
+                foreach (FileSystemInfo nested in EnumerateEntries(child))
+                {
+                    yield return nested;
+                }
+            }
+        }
+    }
+
+    internal static IDisposable? TryAcquireExisting(string directory, bool cleanupLockHeld = false)
+    {
+        try
+        {
+            using IDisposable? cleanupLock = OperatingSystem.IsWindows() || cleanupLockHeld
+                ? null : AcquireCleanupLock(Path.GetDirectoryName(directory)!);
+            string path = Path.Combine(directory, FileName);
+            if (File.Exists(path))
+            {
+                if (File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint))
+                {
+                    return null;
+                }
+                var existing = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, Sharing);
+                if (!Directory.Exists(directory))
+                {
+                    existing.Dispose();
+                    return null;
+                }
+                return existing;
+            }
+            // Migrate legacy directories without making old copies appear newly modified.
+            DateTime lastWrite = Directory.GetLastWriteTimeUtc(directory);
+            var lease = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, Sharing);
+            try
+            {
+                Directory.SetLastWriteTimeUtc(directory, lastWrite);
+                return lease;
+            }
+            catch
+            {
+                lease.Dispose();
+                throw;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 }

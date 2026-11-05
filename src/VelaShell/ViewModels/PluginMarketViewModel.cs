@@ -9,7 +9,8 @@ using VelaShell.Services;
 namespace VelaShell.ViewModels;
 
 /// <summary>按需加载的商店浏览页。所有可绑定状态只在 UI 线程更新。</summary>
-public sealed class PluginMarketViewModel(PluginManager manager, IPluginMarketClient? market) : ReactiveObject, IDisposable
+public sealed class PluginMarketViewModel(PluginManager manager, IPluginMarketClient? market,
+    string? downloadDirectory = null) : ReactiveObject, IDisposable
 {
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationTokenSource? _search;
@@ -255,13 +256,14 @@ public sealed class PluginMarketViewModel(PluginManager manager, IPluginMarketCl
         if (market is null || _disposed || IsDownloading) return null;
         using var request = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         _download = request;
-        string path = Path.Combine(new Infrastructure.Persistence.VelaShellStoragePaths().PluginUpdateDirectory,
-            $"market-{Guid.NewGuid():N}.vpx");
+        string? path = null;
         IsDownloading = true;
         DownloadProgress = 0;
         OperationNotice = Strings.Get("PluginMarket_Downloading");
         try
         {
+            path = Infrastructure.Plugins.PluginPackageDownloads.CreatePath(
+                downloadDirectory ?? new Infrastructure.Persistence.VelaShellStoragePaths().PluginUpdateDirectory);
             await market.DownloadAsync(package.Id, package.Version, path,
                 new Progress<int>(value => { if (!_disposed && ReferenceEquals(_download, request)) DownloadProgress = value; }), request.Token);
             request.Token.ThrowIfCancellationRequested();
@@ -271,20 +273,19 @@ public sealed class PluginMarketViewModel(PluginManager manager, IPluginMarketCl
         catch (OperationCanceledException) when (request.IsCancellationRequested)
         {
             OperationNotice = Strings.Get("PluginMarket_Cancelled");
-            PluginManagerViewModel.DiscardDownloadedUpdate(path);
+            if (path is not null) PluginManagerViewModel.DiscardDownloadedUpdate(path);
             return null;
         }
         catch (Exception ex)
         {
             OperationNotice = Strings.Format("PluginManager_InstallFailed", ex.Message);
-            PluginManagerViewModel.DiscardDownloadedUpdate(path);
+            if (path is not null) PluginManagerViewModel.DiscardDownloadedUpdate(path);
             return null;
         }
         finally
         {
             _download = null;
             IsDownloading = false;
-            PluginManagerViewModel.DiscardDownloadedUpdate(path + ".partial");
         }
     }
 

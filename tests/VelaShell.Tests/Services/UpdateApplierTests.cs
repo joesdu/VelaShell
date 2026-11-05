@@ -123,11 +123,148 @@ public class UpdateApplierTests : IDisposable
 
         Assert.ThrowsExactly<InvalidDataException>(() => _applier.Stage(corrupt));
         Assert.AreEqual("old-exe", ReadAppFile("app.exe"));
+        Assert.IsFalse(Directory.Exists(_applier.PayloadDirectory));
+        Assert.IsTrue(File.Exists(corrupt));
 
         // 同一个 applier 立刻重试一个好包:必须照常成功,不需要任何人工清理。
         string good = CreateZip(("app.exe", "new-exe"));
         _applier.Apply(good);
         Assert.AreEqual("new-exe", ReadAppFile("app.exe"));
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public void Stage_FailureAfterExtractingAFile_RemovesPayloadAndKeepsArchive()
+    {
+        string archive = CreateZip(("good.txt", "extracted"), ("../escape.txt", "invalid"));
+        Assert.ThrowsExactly<InvalidDataException>(() => _applier.Stage(archive));
+        Assert.IsFalse(Directory.Exists(_applier.PayloadDirectory));
+        Assert.IsTrue(File.Exists(archive));
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public void Startup_ActiveStagingLease_ProtectsUnjournaledExtractionAcrossAppliers()
+    {
+        string archive = CreateZip(("app.exe", "new"));
+        UpdateApplier otherInstance = new(_appDir);
+        string partial = Path.Combine(_applier.PayloadDirectory, "extracting.dll");
+        using (FileStream lease = new(Path.Combine(_appDir, UpdateApplier.StagingLeaseFileName),
+                   FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+        {
+            Directory.CreateDirectory(_applier.PayloadDirectory);
+            File.WriteAllText(partial, "active extraction");
+            Assert.IsFalse(otherInstance.TryFinalizeStartup());
+            Assert.IsFalse(otherInstance.TryRepair());
+            Assert.ThrowsExactly<IOException>(() => otherInstance.Stage(archive));
+            Assert.ThrowsExactly<IOException>(() => otherInstance.PrepareStagingDirectory());
+            Assert.AreEqual("active extraction", File.ReadAllText(partial));
+        }
+        Assert.IsTrue(otherInstance.TryFinalizeStartup());
+        Assert.IsFalse(Directory.Exists(_applier.PayloadDirectory));
+        Assert.IsTrue(File.Exists(archive));
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public void Startup_LiveStagedOwner_ProtectsPayloadBetweenStageAndSwap()
+    {
+        string archive = CreateZip(("app.exe", "new"));
+        _applier.Stage(archive);
+        UpdateApplier otherInstance = new(_appDir);
+        Assert.IsFalse(otherInstance.TryFinalizeStartup());
+        Assert.IsFalse(otherInstance.TryRepair());
+        Assert.ThrowsExactly<IOException>(() => otherInstance.Stage(archive));
+        Assert.AreEqual("new", File.ReadAllText(Path.Combine(_applier.PayloadDirectory, "app.exe")));
+        _applier.SwapFromPayload();
+        Assert.IsTrue(otherInstance.TryFinalizeStartup());
+        Assert.AreEqual("new", ReadAppFile("app.exe"));
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public void Startup_ReusedOwnerPid_DoesNotKeepAbandonedPayload()
+    {
+        _applier.EnsureStagingDirectory();
+        Directory.CreateDirectory(_applier.PayloadDirectory);
+        File.WriteAllText(Path.Combine(_applier.PayloadDirectory, "abandoned.dll"), "old");
+        File.WriteAllText(Path.Combine(_applier.StagingDirectory, UpdateApplier.JournalFileName),
+            $$"""{ "Phase": "staged", "OwnerProcessId": {{Environment.ProcessId}}, "OwnerProcessStartUtcTicks": 1, "Files": [] }""");
+        Assert.IsTrue(_applier.TryFinalizeStartup());
+        Assert.IsFalse(Directory.Exists(_applier.PayloadDirectory));
+        Assert.IsFalse(_applier.HasPendingSwap());
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public void Startup_RemovesOrphanPayload_ButPreservesDownloadsAndUnjournaledBackup()
+    {
+        string archive = CreateZip(("app.exe", "new"));
+        string partial = Path.Combine(_applier.StagingDirectory, "next.zip.partial");
+        File.WriteAllText(partial, "resume");
+        Directory.CreateDirectory(_applier.PayloadDirectory);
+        File.WriteAllText(Path.Combine(_applier.PayloadDirectory, "unfinished.dll"), "partial extraction");
+        Directory.CreateDirectory(_applier.BackupDirectory);
+        File.WriteAllText(BackupPath("app.exe"), "old");
+
+        Assert.IsTrue(_applier.TryFinalizeStartup());
+        Assert.IsFalse(Directory.Exists(_applier.PayloadDirectory));
+        Assert.IsTrue(File.Exists(archive));
+        Assert.AreEqual("resume", File.ReadAllText(partial));
+        Assert.AreEqual("old", File.ReadAllText(BackupPath("app.exe")));
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public void Startup_OrphanPayloadLink_PreservesTarget()
+    {
+        _applier.EnsureStagingDirectory();
+        string target = Directory.CreateDirectory(Path.Combine(_appDir, "user-data")).FullName;
+        string file = Path.Combine(target, "keep.txt");
+        File.WriteAllText(file, "keep");
+        try
+        {
+            Directory.CreateSymbolicLink(_applier.PayloadDirectory, target);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+        {
+            Assert.Inconclusive($"Symbolic links unavailable: {ex.Message}");
+        }
+        try
+        {
+            Assert.IsFalse(_applier.TryFinalizeStartup());
+            Assert.AreEqual("keep", File.ReadAllText(file));
+        }
+        finally
+        {
+            Directory.Delete(_applier.PayloadDirectory);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public void Startup_UnreadableJournal_PreservesPayloadAndBackup()
+    {
+        _applier.EnsureStagingDirectory();
+        Directory.CreateDirectory(_applier.PayloadDirectory);
+        Directory.CreateDirectory(_applier.BackupDirectory);
+        File.WriteAllText(Path.Combine(_applier.StagingDirectory, UpdateApplier.JournalFileName), "broken journal");
+        Assert.IsFalse(_applier.TryFinalizeStartup());
+        Assert.IsTrue(Directory.Exists(_applier.PayloadDirectory));
+        Assert.IsTrue(Directory.Exists(_applier.BackupDirectory));
+    }
+
+    [TestMethod]
+    [TestCategory("Update")]
+    public void Stage_PendingRollback_PreservesRecoveryFiles()
+    {
+        string archive = CreateZip(("app.exe", "new"));
+        Directory.CreateDirectory(_applier.BackupDirectory);
+        File.WriteAllText(BackupPath("app.exe"), "old");
+        WriteJournal(UpdateJournal.PhaseApplying, ("app.exe", true));
+        Assert.ThrowsExactly<InvalidOperationException>(() => _applier.Stage(archive));
+        Assert.AreEqual("old", File.ReadAllText(BackupPath("app.exe")));
+        Assert.IsTrue(_applier.HasPendingSwap());
     }
 
     [TestMethod]

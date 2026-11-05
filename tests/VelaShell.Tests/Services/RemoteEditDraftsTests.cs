@@ -85,6 +85,8 @@ public sealed class RemoteEditDraftsTests
             await File.WriteAllTextAsync(localPath, "edited twice");
             await WaitUntilAsync(() => session.State == RemoteEditState.Failed);
             Assert.AreEqual(RemoteEditDrafts.Dirty, RemoteEditDrafts.Read(directory)?.State);
+            Assert.IsEmpty(RemoteEditDrafts.ListDrafts(_root), "Active leases are not recovery drafts.");
+            session.Dispose();
             RemoteEditDraft draft = RemoteEditDrafts.ListDrafts(_root).Single();
             Assert.AreEqual(localPath, draft.LocalPath);
             Assert.AreEqual("/etc/app.conf", draft.RemotePath);
@@ -183,6 +185,29 @@ public sealed class RemoteEditDraftsTests
         RemoteEditDraft unknown = drafts.Single(d => d.Directory == legacy);
         Assert.IsNull(unknown.RemotePath, "旧版本留下的没有标记,说不出远端路径");
         Assert.AreEqual("app.conf", unknown.FileName);
+    }
+
+    [TestMethod]
+    public void Sweep_LeaseProtectsOldCleanCopyUntilReleased()
+    {
+        string directory = CleanCopy("00000001", Old);
+        using (EditDirectoryLease.Acquire(directory))
+        {
+            Directory.SetLastWriteTimeUtc(directory, Old);
+            Assert.AreEqual(0, RemoteEditDrafts.SweepStaleClean(_root, Now));
+            Assert.IsTrue(Directory.Exists(directory));
+        }
+        Assert.AreEqual(1, RemoteEditDrafts.SweepStaleClean(_root, Now));
+    }
+
+    [TestMethod]
+    public void Sweep_CleanMarkerDoesNotAuthorizeDeletingUnknownExtraFiles()
+    {
+        string directory = CleanCopy("00000001", Old);
+        File.WriteAllText(Path.Combine(directory, "recovered.txt"), "unsaved work");
+        Touch(directory, Old);
+        Assert.AreEqual(0, RemoteEditDrafts.SweepStaleClean(_root, Now));
+        Assert.HasCount(1, RemoteEditDrafts.ListDrafts(_root));
     }
 
     [TestMethod]

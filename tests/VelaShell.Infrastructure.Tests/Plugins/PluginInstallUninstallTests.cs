@@ -150,6 +150,38 @@ public class PluginInstallUninstallTests
     }
 
     [TestMethod]
+    public async Task FailedInstall_RemovesStagingAndItsLease()
+    {
+        await using PluginManager manager = CreateManager();
+        string package = Path.Combine(_userRoot, "broken.vpx");
+        File.WriteAllText(package, "not a package");
+        await Assert.ThrowsExactlyAsync<VpxFormatException>(() =>
+            manager.InstallFromVpxAsync(package, allowUntrustedPackage: true));
+        Assert.IsEmpty(Directory.EnumerateFileSystemEntries(PluginManager.PackageStagingRoot(_userRoot)));
+    }
+
+    [TestMethod]
+    public async Task CancelledInstall_RemovesStagingAndItsLease()
+    {
+        await using PluginManager manager = CreateManager();
+        string package = BuildVpx();
+        try
+        {
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() =>
+                manager.InstallFromVpxAsync(package, allowUntrustedPackage: true, cancellationToken: cancellation.Token));
+            Assert.IsEmpty(Directory.EnumerateFileSystemEntries(PluginManager.PackageStagingRoot(_userRoot)));
+            Assert.IsFalse(Directory.Exists(Path.Combine(_userRoot, "acme.packaged")));
+        }
+        finally
+        {
+            File.Delete(package);
+            Directory.Delete(package[..^4], true);
+        }
+    }
+
+    [TestMethod]
     public void PackageStagingRoot_IsUnderUserPluginRoot()
     {
         string stagingRoot = PluginManager.PackageStagingRoot(_userRoot);
@@ -566,6 +598,44 @@ public class PluginInstallUninstallTests
         Assert.IsFalse(Directory.Exists(Path.Combine(_userRoot, ".upgrade")),
             "换完就该把旧版备份连同那个窝一起收掉,别在插件根下养垃圾。");
         await manager.DisposeAsync();
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Startup_ReclaimsOwnedUpgradeBackupOnlyAfterProtectedReceiptMatches(bool tampered)
+    {
+        const string id = "acme.backupcleanup";
+        using var engine = new SonnetDbEngine(Path.Combine(_trustDbRoot, "backup-cleanup-db"));
+        var repository = new PluginTrustRepository(engine, new TestSecretProtector());
+        string package = BuildVpx(id);
+        try
+        {
+            await using (PluginManager installer = CreateManager(repository))
+            {
+                await installer.StartAsync();
+                await installer.InstallFromVpxAsync(package, allowUntrustedPackage: true);
+            }
+            string backupRoot = Path.Combine(_userRoot, ".upgrade");
+            Directory.CreateDirectory(backupRoot);
+            string owned = Path.Combine(backupRoot, $"{id}-{Guid.NewGuid():N}");
+            string legacy = Path.Combine(backupRoot, $"{id}-{Guid.NewGuid():N}");
+            Directory.Move(StagePlugin(id), owned);
+            Directory.Move(StagePlugin(id), legacy);
+            PluginArtifactMaintenance.MarkBackup(owned);
+            if (tampered) File.WriteAllText(Path.Combine(_userRoot, id, "changed.txt"), "tampered");
+
+            await using PluginManager restarted = CreateManager(repository);
+            await restarted.StartAsync();
+            Assert.AreEqual(tampered, Directory.Exists(owned));
+            Assert.AreEqual(tampered, File.Exists(owned + ".owned"));
+            Assert.IsTrue(Directory.Exists(legacy), "An unmarked backup has no cleanup ownership proof.");
+        }
+        finally
+        {
+            File.Delete(package);
+            Directory.Delete(package[..^4], true);
+        }
     }
 
     [TestMethod]

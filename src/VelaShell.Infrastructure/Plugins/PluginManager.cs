@@ -101,6 +101,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     private readonly Lazy<HostThemeSource> _themeSource = new(() =>
         new(options.Theme, options.SystemPrefersDark, options.ThemeTokensProvider));
     private readonly Lock _gate = new();
+    private readonly List<PluginArtifactLease> _shadowLeases = [];
     private readonly CancellationTokenSource _shutdown = new();
     /// <summary>开发期插件的重建监视(见 <see cref="PluginDevWatcher" />);未开启自动重载时为 null。</summary>
     private PluginDevWatcher? _devWatcher;
@@ -360,8 +361,10 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         // 暂存目录必须位于用户插件根下:Linux 上 /tmp 可能是独立 tmpfs,
         // 与用户目录不在同一文件系统,跨设备 Directory.Move 会失败(EXDEV)。
         // 同根暂存还保留校验完成后的原子目录替换,避免坏包污染插件目录。
-        string staging = Path.Combine(PackageStagingRoot(userRoot), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(staging);
+        using PluginArtifactLease stagingLease = PluginArtifactLease.Create(
+            PackageStagingRoot(userRoot), "", "", directory: true);
+        string staging = stagingLease.Path;
+        using FileStream installationLease = PluginArtifactMaintenance.AcquireInstallationLease(userRoot);
         PluginManifest? manifest = null;
         // 安装是纯等待的几秒:验签 → 解压 → 对整个目录算哈希落安装凭据。
         // 用户从商店下完包点"安装"之后,这段时间界面上必须有东西在动。
@@ -437,7 +440,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                 // 没有受保护收据的目录绝不能留下来被下次启动误认为已安装;旧版则原样搬回去
                 // 重新挂上 —— 它那张收据从头到尾没被动过,恢复之后仍然对得上。
                 TryDeleteDirectory(target);
-                await RestoreUpgradeBackupAsync(backup, target, cancellationToken).ConfigureAwait(false);
+                await RestoreUpgradeBackupAsync(backup, target, CancellationToken.None).ConfigureAwait(false);
                 throw;
             }
             CleanUpgradeBackup(backup);
@@ -873,7 +876,8 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         {
             return false;
         }
-        string[] orphans = [.. state.Receipts.Keys.Where(id => !Directory.Exists(Path.Combine(root, id)))];
+        string[] orphans = [.. state.Receipts.Keys.Where(id => !Directory.Exists(Path.Combine(root, id))
+            && !PluginArtifactMaintenance.HasBackup(root, id))];
         foreach (string id in orphans)
         {
             state.Receipts.Remove(id);
@@ -1034,20 +1038,13 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
 
     /// <summary>
     /// 把旧插件目录挪进备份窝并返回备份路径;没有旧目录(全新安装)时返回 <see langword="null" />。
-    /// 同 id 的历史残留顺手清掉:本次安装马上就要写下这个 id 的新副本,它们再没有用处。
+    /// 历史备份保留给启动恢复,不在新一轮安装开始时删除。
     /// </summary>
     /// <param name="userRoot">用户插件安装根。</param>
     /// <param name="pluginId">插件 id。</param>
     private static string? MoveAsideForUpgrade(string userRoot, string pluginId)
     {
         string backupRoot = Path.Combine(userRoot, UpgradeBackupDirectoryName);
-        if (Directory.Exists(backupRoot))
-        {
-            foreach (string stale in Directory.EnumerateDirectories(backupRoot, $"{pluginId}-*"))
-            {
-                TryDeleteDirectory(stale);
-            }
-        }
         string target = Path.Combine(userRoot, pluginId);
         if (!Directory.Exists(target))
         {
@@ -1055,6 +1052,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
         Directory.CreateDirectory(backupRoot);
         string backup = Path.Combine(backupRoot, $"{pluginId}-{Guid.CreateVersion7():n}");
+        PluginArtifactMaintenance.MarkBackup(backup);
         Directory.Move(target, backup);
         return backup;
     }
@@ -1068,6 +1066,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             return;
         }
         TryDeleteDirectory(backup);
+        if (!Directory.Exists(backup)) PluginArtifactMaintenance.RemoveBackupMarker(backup);
         try
         {
             string backupRoot = Path.GetDirectoryName(backup)!;
@@ -1098,6 +1097,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         try
         {
             Directory.Move(backup, target);
+            PluginArtifactMaintenance.RemoveBackupMarker(backup);
             await AttachAsync(target, cancellationToken).ConfigureAwait(false);
             Log($"Restored the previous version of '{Path.GetFileName(target)}' after a failed upgrade.");
         }
@@ -1319,6 +1319,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             source.SurfacesChanged += RaiseChanged;
         }
         // 主密码锁着时不在这里等:发现、应用自带插件照常;用户目录里的插件要校验收据,校验那一步自己等解锁(EnsureVerifiedAsync)。
+        PluginArtifactMaintenance.Sweep(options.UserPluginRoot, options.DevShadowRootDirectory);
         await EnsureTrustInitializedAsync(cancellationToken, TrustUnlock.DontWait).ConfigureAwait(false);
         Discover();
         List<PluginRuntime> discovered;
@@ -1844,6 +1845,24 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             // 或重新启用后数据应仍在);Invalid 无清单者以目录名兜底。
             installed = [.. _plugins.Select(p => p.Descriptor.Id)];
         }
+        try
+        {
+            if (options.UserPluginRoot is { } userRoot
+                && Directory.Exists(Path.Combine(userRoot, UpgradeBackupDirectoryName)))
+            {
+                foreach (string backup in Directory.EnumerateDirectories(Path.Combine(userRoot, UpgradeBackupDirectoryName)))
+                {
+                    string name = Path.GetFileName(backup);
+                    if (name.Length > 33 && PluginArtifactLease.IsArtifactName(name, name[..^32], "") && name[^33] == '-')
+                        installed.Add(name[..^33]);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log($"Skipping plugin data cleanup while upgrade backups are unreadable: {ex.Message}");
+            return;
+        }
         if (options.Notifications is { } notifications)
         {
             try
@@ -2157,6 +2176,8 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             InstalledPluginReceipt? receipt = _trustState.Receipts.GetValueOrDefault(pluginId);
             if (receipt is not null && ContentMatches(actual, receipt.ContentSha256))
             {
+                if (!receipt.LegacyAdopted && options.UserPluginRoot is { } userRoot)
+                    PluginArtifactMaintenance.CleanVerifiedBackups(userRoot, pluginId, receipt.ContentSha256);
                 return null;
             }
             if (receipt is { LegacyAdopted: false })
@@ -2640,6 +2661,11 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         {
             _themeSource.Value.Dispose();
         }
+        lock (_gate)
+        {
+            foreach (PluginArtifactLease lease in _shadowLeases) lease.Dispose();
+            _shadowLeases.Clear();
+        }
         _shutdown.Dispose();
     }
 
@@ -2825,7 +2851,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// <summary>
     /// 决定从哪个目录装载。已安装插件就地装载;开发期插件在配置了
     /// <see cref="PluginManagerOptions.DevShadowRootDirectory" /> 时先整份复制到
-    /// <c>&lt;影子根&gt;/&lt;id&gt;/gen-N</c> 再从副本装载。
+    /// <c>&lt;影子根&gt;/&lt;id&gt;/gen-GUID</c> 再从副本装载。
     /// <para>
     /// 用"新一代目录"而不是"覆盖同一个目录":ALC 的卸载是异步的(要等 GC 真正回收才放句柄),
     /// 刚停用的那一代很可能还锁着,覆盖必然时灵时不灵。换个代号目录则永远成功,
@@ -2842,21 +2868,22 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         try
         {
             string pluginShadow = Path.Combine(shadowRoot, SanitizeDirectoryName(descriptor.Id));
-            Directory.CreateDirectory(pluginShadow);
-            int generation = 1;
-            foreach (string existing in Directory.EnumerateDirectories(pluginShadow))
+            PluginArtifactLease lease = PluginArtifactLease.Create(pluginShadow, "gen-", "", directory: true);
+            try
             {
-                string name = Path.GetFileName(existing);
-                if (name.StartsWith("gen-", StringComparison.Ordinal)
-                    && int.TryParse(name.AsSpan(4), out int n) && n >= generation)
+                CopyDirectory(descriptor.Directory, lease.Path);
+                lock (_gate)
                 {
-                    generation = n + 1;
+                    if (_disposed) throw new IOException("The plugin manager is stopping.");
+                    _shadowLeases.Add(lease);
                 }
+                return lease.Path;
             }
-            string target = Path.Combine(pluginShadow, $"gen-{generation}");
-            CopyDirectory(descriptor.Directory, target);
-            PurgeShadowGenerations(pluginShadow, keep: target);
-            return target;
+            catch
+            {
+                lease.Dispose();
+                throw;
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
@@ -2883,62 +2910,8 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
     }
 
-    /// <summary>清理某插件影子目录下除 <paramref name="keep" /> 外的旧代(删不掉的留到下次)。</summary>
-    private static void PurgeShadowGenerations(string pluginShadowDirectory, string? keep)
-    {
-        foreach (string directory in Directory.EnumerateDirectories(pluginShadowDirectory))
-        {
-            if (keep is not null && string.Equals(directory, keep, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-            try
-            {
-                Directory.Delete(directory, recursive: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // 上一代还被未回收的 ALC 锁着:留着,下次装载时再清。
-            }
-        }
-    }
-
-    /// <summary>清掉已不再挂载的开发期插件留下的影子目录(每次发现后调用)。</summary>
-    private void PurgeOrphanShadows()
-    {
-        if (options.DevShadowRootDirectory is not { } shadowRoot || !Directory.Exists(shadowRoot))
-        {
-            return;
-        }
-        HashSet<string> live;
-        lock (_gate)
-        {
-            live = [.. _plugins.Where(p => p.Descriptor.IsDevelopment)
-                               .Select(p => SanitizeDirectoryName(p.Descriptor.Id))];
-        }
-        try
-        {
-            foreach (string directory in Directory.EnumerateDirectories(shadowRoot))
-            {
-                if (!live.Contains(Path.GetFileName(directory)))
-                {
-                    PurgeShadowGenerations(directory, keep: null);
-                    try
-                    {
-                        Directory.Delete(directory, recursive: true);
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        // 留着,下次再清。
-                    }
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Log($"Could not sweep the development shadow directory: {ex.Message}");
-        }
-    }
+    private void PurgeOrphanShadows() =>
+        PluginArtifactMaintenance.SweepShadows(options.DevShadowRootDirectory);
 
     /// <summary>插件 id 里可能出现的路径非法字符一律换成 <c>_</c>(id 规则本已很窄,这是兜底)。</summary>
     private static string SanitizeDirectoryName(string id)

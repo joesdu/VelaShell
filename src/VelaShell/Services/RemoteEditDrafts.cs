@@ -128,8 +128,8 @@ public static class RemoteEditDrafts
     /// <returns>删掉的子目录个数。</returns>
     public static int SweepStaleClean(string root, DateTime utcNow, IReadOnlyCollection<string>? activeDirectories = null)
     {
-        int removed = 0;
-        foreach ((DirectoryInfo directory, RemoteEditDraft? draft, DateTime newest) in Scan(root, activeDirectories))
+        int removed = EditDirectoryLease.SweepRetired(root);
+        foreach ((DirectoryInfo directory, RemoteEditDraft? draft, DateTime newest, IDisposable lease) in Scan(root, activeDirectories))
         {
             if (draft is not null || utcNow - newest < StaleAfter)
             {
@@ -137,7 +137,7 @@ public static class RemoteEditDrafts
             }
             try
             {
-                directory.Delete(recursive: true);
+                EditDirectoryLease.DeleteOwnedDirectory(directory.FullName, lease);
                 removed++;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -170,13 +170,18 @@ public static class RemoteEditDrafts
         }
         try
         {
+            if (!Directory.Exists(root) || File.GetAttributes(root).HasFlag(FileAttributes.ReparsePoint))
+            {
+                return null;
+            }
             var directory = new DirectoryInfo(Path.Combine(root, key));
             if (!directory.Exists || directory.Attributes.HasFlag(FileAttributes.ReparsePoint)
                 || (activeDirectories ?? []).Any(active => SameDirectory(active, directory.FullName)))
             {
                 return null;
             }
-            return Classify(directory)?.Draft;
+            using IDisposable? lease = EditDirectoryLease.TryAcquireExisting(directory.FullName);
+            return lease is null ? null : Classify(directory)?.Draft;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -189,13 +194,13 @@ public static class RemoteEditDrafts
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     /// <summary>把一个子目录归类:是草稿就给出草稿,干净就给 null;外加最晚修改时间。</summary>
-    private static IEnumerable<(DirectoryInfo Directory, RemoteEditDraft? Draft, DateTime Newest)> Scan(
+    private static IEnumerable<(DirectoryInfo Directory, RemoteEditDraft? Draft, DateTime Newest, IDisposable Lease)> Scan(
         string root, IReadOnlyCollection<string>? activeDirectories)
     {
         DirectoryInfo[] directories;
         try
         {
-            if (!Directory.Exists(root))
+            if (!Directory.Exists(root) || File.GetAttributes(root).HasFlag(FileAttributes.ReparsePoint))
             {
                 yield break;
             }
@@ -215,10 +220,15 @@ public static class RemoteEditDrafts
             {
                 continue;
             }
+            using IDisposable? lease = EditDirectoryLease.TryAcquireExisting(directory.FullName);
+            if (lease is null)
+            {
+                continue;
+            }
             (RemoteEditDraft? Draft, DateTime Newest)? classified = Classify(directory);
             if (classified is { } entry)
             {
-                yield return (directory, entry.Draft, entry.Newest);
+                yield return (directory, entry.Draft, entry.Newest, lease);
             }
         }
     }
@@ -229,7 +239,7 @@ public static class RemoteEditDrafts
         {
             DateTime newest = directory.LastWriteTimeUtc;
             List<FileInfo> copies = [];
-            foreach (FileSystemInfo entry in directory.EnumerateFileSystemInfos("*", SearchOption.AllDirectories))
+            foreach (FileSystemInfo entry in EditDirectoryLease.EnumerateEntries(directory))
             {
                 if (entry.LastWriteTimeUtc > newest)
                 {
@@ -250,6 +260,7 @@ public static class RemoteEditDrafts
                 return (null, newest);
             }
             bool clean = marker is { State: Clean }
+                         && copies.Count == 1
                          && copy is not null
                          && copy.Length == marker.Length
                          && copy.LastWriteTimeUtc == marker.LastWriteUtc;

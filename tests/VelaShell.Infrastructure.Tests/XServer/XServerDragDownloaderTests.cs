@@ -64,7 +64,8 @@ public sealed class XServerDragDownloaderTests
 
         Assert.IsTrue(downloader.CanDownload("joe@box:2222"));
         Assert.IsFalse(downloader.CanDownload("joe@box:22"), "端口不同就不是同一个会话");
-        IReadOnlyList<string>? local = await downloader.DownloadAsync("joe@box:2222", ["/home/joe/a.txt", "/home/joe/gone", "/home/joe/dir", "/srv/a.txt"]);
+        using XServerDragDownloadScope scope = new(downloader);
+        IReadOnlyList<string>? local = await scope.DownloadAsync("joe@box:2222", ["/home/joe/a.txt", "/home/joe/gone", "/home/joe/dir", "/srv/a.txt"]);
 
         Assert.IsNotNull(local);
         Assert.HasCount(3, local, "远端已经不存在的跳过");
@@ -89,7 +90,7 @@ public sealed class XServerDragDownloaderTests
         Assert.IsFalse(offline.CanDownload("joe@box:22"), "会话断开了");
         Assert.IsNull(await offline.DownloadAsync("joe@box:22", ["/x"]));
 
-        string old = Directory.CreateDirectory(Path.Combine(_root, "old")).FullName;
+        string old = Directory.CreateDirectory(Path.Combine(_root, Guid.NewGuid().ToString("N"))).FullName;
         Directory.SetLastWriteTimeUtc(old, DateTime.UtcNow - SftpXServerDragDownloader.Retention - TimeSpan.FromHours(1));
         string fresh = Directory.CreateDirectory(Path.Combine(_root, "fresh")).FullName;
         SshSession box = Session("joe", "box", 22, SessionStatus.Connected);
@@ -97,6 +98,133 @@ public sealed class XServerDragDownloaderTests
         await new SftpXServerDragDownloader(connections, sftp, _root).DownloadAsync("joe@box:22", []);
         Assert.IsFalse(Directory.Exists(old), "一天以前的清掉");
         Assert.IsTrue(Directory.Exists(fresh), "新的留着(放下的程序可能还在拷)");
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Scope_ReleasesUnusedDownloads_AndRetainsAcceptedCopies(bool handedOff)
+    {
+        SshSession box = Session("joe", "box", 22, SessionStatus.Connected);
+        ISshConnectionService connections = Substitute.For<ISshConnectionService>();
+        connections.Sessions.Returns([box]);
+        ISftpService sftp = Substitute.For<ISftpService>();
+        sftp.ExistsAsync(box.SessionId, "/a", Arg.Any<CancellationToken>()).Returns(true);
+        sftp.GetFileInfoAsync(box.SessionId, "/a", Arg.Any<CancellationToken>()).Returns(Info("a", "/a", false));
+        string directory;
+        using (XServerDragDownloadScope scope = new(new SftpXServerDragDownloader(connections, sftp, _root)))
+        {
+            IReadOnlyList<string>? paths = await scope.DownloadAsync("joe@box:22", ["/a"]);
+            Assert.IsNotNull(paths);
+            directory = Path.GetDirectoryName(paths[0])!;
+            // Another downloader's sweep cannot claim a batch while the native drag owns it.
+            Directory.SetLastWriteTimeUtc(directory, DateTime.UtcNow.AddDays(-2));
+            SftpXServerDragDownloader.CleanupStaleDownloads(_root);
+            Assert.IsTrue(Directory.Exists(directory));
+            scope.HandedOff = handedOff;
+        }
+        Assert.AreEqual(handedOff, Directory.Exists(directory));
+        if (handedOff)
+        {
+            SftpXServerDragDownloader.CleanupStaleDownloads(_root);
+            Assert.IsTrue(Directory.Exists(directory));
+            File.SetLastWriteTimeUtc(Path.Combine(directory, SftpXServerDragDownloader.LeaseFileName), DateTime.UtcNow.AddDays(-2));
+            SftpXServerDragDownloader.CleanupStaleDownloads(_root);
+            Assert.IsFalse(Directory.Exists(directory));
+        }
+    }
+
+    [TestMethod]
+    public async Task Download_WhenEveryRemotePathIsMissing_RemovesEmptyBatch()
+    {
+        SshSession box = Session("joe", "box", 22, SessionStatus.Connected);
+        ISshConnectionService connections = Substitute.For<ISshConnectionService>();
+        connections.Sessions.Returns([box]);
+        ISftpService sftp = Substitute.For<ISftpService>();
+        sftp.ExistsAsync(box.SessionId, "/missing", Arg.Any<CancellationToken>()).Returns(false);
+        SftpXServerDragDownloader downloader = new(connections, sftp, _root);
+        IReadOnlyList<string>? paths = await downloader.DownloadAsync("joe@box:22", ["/missing"]);
+        Assert.IsNotNull(paths);
+        Assert.IsEmpty(paths);
+        Assert.IsEmpty(Directory.GetFileSystemEntries(_root));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Download_FailureOrCancellation_RemovesPartialBatch(bool cancel)
+    {
+        SshSession box = Session("joe", "box", 22, SessionStatus.Connected);
+        ISshConnectionService connections = Substitute.For<ISshConnectionService>();
+        connections.Sessions.Returns([box]);
+        ISftpService sftp = Substitute.For<ISftpService>();
+        sftp.ExistsAsync(box.SessionId, "/a", Arg.Any<CancellationToken>()).Returns(true);
+        sftp.GetFileInfoAsync(box.SessionId, "/a", Arg.Any<CancellationToken>()).Returns(Info("a", "/a", false));
+        sftp.DownloadFileAsync(box.SessionId, "/a", Arg.Any<string>(), null, 0, Arg.Any<CancellationToken>()).Returns(c =>
+        {
+            File.WriteAllText(c.ArgAt<string>(2), "partial");
+            return Task.FromException(cancel ? new OperationCanceledException() : new IOException("transfer failed"));
+        });
+        SftpXServerDragDownloader downloader = new(connections, sftp, _root);
+        if (cancel)
+        {
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => downloader.DownloadAsync("joe@box:22", ["/a"]));
+        }
+        else
+        {
+            await Assert.ThrowsExactlyAsync<IOException>(() => downloader.DownloadAsync("joe@box:22", ["/a"]));
+        }
+        Assert.IsEmpty(Directory.GetDirectories(_root));
+    }
+
+    [TestMethod]
+    public void Cleanup_PreservesUnrelatedDirectories_AndAnExpiredLiveLease()
+    {
+        string unrelated = Directory.CreateDirectory(Path.Combine(_root, "user-files")).FullName;
+        Directory.SetLastWriteTimeUtc(unrelated, DateTime.UtcNow.AddDays(-3));
+        string live = Directory.CreateDirectory(Path.Combine(_root, Guid.NewGuid().ToString("N"))).FullName;
+        string leasePath = Path.Combine(live, SftpXServerDragDownloader.LeaseFileName);
+        File.WriteAllText(leasePath, "");
+        File.SetLastWriteTimeUtc(leasePath, DateTime.UtcNow.AddDays(-3));
+        using (FileStream lease = new(leasePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            SftpXServerDragDownloader.CleanupStaleDownloads(_root);
+            Assert.IsTrue(Directory.Exists(live));
+            Assert.IsTrue(Directory.Exists(unrelated));
+        }
+        SftpXServerDragDownloader.CleanupStaleDownloads(_root);
+        Assert.IsFalse(Directory.Exists(live));
+        Assert.IsTrue(Directory.Exists(unrelated));
+    }
+
+    [TestMethod]
+    public void Cleanup_DoesNotFollowDirectoryLinks_OrLinkedRoots()
+    {
+        string target = Directory.CreateDirectory(Path.Combine(_root, "user-data")).FullName;
+        string file = Path.Combine(target, "keep.txt");
+        File.WriteAllText(file, "keep");
+        string link = Path.Combine(_root, Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateSymbolicLink(link, target);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+        {
+            Assert.Inconclusive($"Symbolic links unavailable: {ex.Message}");
+        }
+        try
+        {
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddDays(-3));
+            Directory.SetLastWriteTimeUtc(target, DateTime.UtcNow.AddDays(-3));
+            SftpXServerDragDownloader.CleanupStaleDownloads(_root);
+            SftpXServerDragDownloader.CleanupStaleDownloads(link);
+            Assert.AreEqual("keep", File.ReadAllText(file));
+            Assert.IsTrue(Directory.Exists(link));
+        }
+        finally
+        {
+            Directory.Delete(link);
+        }
     }
 
     [TestMethod]

@@ -55,6 +55,81 @@ public sealed class BuiltInEditTempFilesTests
     }
 
     [TestMethod]
+    public void SweepStale_LeasedCopyIsProtectedRegardlessOfAge()
+    {
+        string directory = Copy("builtin-edit", "1234abcd", "app.conf", Now.AddDays(-30));
+        using (EditDirectoryLease.Acquire(directory))
+        {
+            Directory.SetLastWriteTimeUtc(directory, Now.AddDays(-30));
+            Assert.AreEqual(0, BuiltInEditTempFiles.SweepStale(_base, Now));
+            Assert.IsTrue(Directory.Exists(directory));
+        }
+        Assert.AreEqual(1, BuiltInEditTempFiles.SweepStale(_base, Now));
+    }
+
+    [TestMethod]
+    public void SweepStale_ResumesRetiredCleanupOnlyAfterLeaseIsReleased()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Directory retirement is Unix-only; Windows deletes under the held lease.");
+            return;
+        }
+        string directory = Copy("builtin-edit", "1234abcd", "app.conf", Now);
+        string retired = directory + ".deleting-" + Guid.NewGuid().ToString("N");
+        using (EditDirectoryLease.Acquire(directory))
+        {
+            Directory.Move(directory, retired);
+            Assert.AreEqual(0, BuiltInEditTempFiles.SweepStale(_base, Now));
+            Assert.IsTrue(File.Exists(Path.Combine(retired, "app.conf")));
+        }
+        Assert.AreEqual(1, BuiltInEditTempFiles.SweepStale(_base, Now));
+        Assert.IsFalse(Directory.Exists(retired));
+    }
+
+    [TestMethod]
+    public void SweepStale_DoesNotFollowNestedDirectoryLinks()
+    {
+        string directory = Copy("builtin-edit", "1234abcd", "app.conf", Now.AddDays(-30));
+        string target = Directory.CreateDirectory(Path.Combine(_base, "outside")).FullName;
+        string protectedFile = Path.Combine(target, "keep.txt");
+        File.WriteAllText(protectedFile, "keep");
+        string link = Path.Combine(directory, "linked");
+        try
+        {
+            Directory.CreateSymbolicLink(link, target);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+        {
+            Assert.Inconclusive($"Symbolic links unavailable: {ex.Message}");
+            return;
+        }
+        try
+        {
+            Directory.SetLastWriteTimeUtc(directory, Now.AddDays(-30));
+            Assert.AreEqual(0, BuiltInEditTempFiles.SweepStale(_base, Now));
+            Assert.AreEqual("keep", File.ReadAllText(protectedFile));
+            Assert.IsTrue(Directory.Exists(directory));
+        }
+        finally
+        {
+            Directory.Delete(link);
+        }
+    }
+
+    [TestMethod]
+    public async Task OpenOwnedAsync_FailedOpenRemovesDownloadedCopy()
+    {
+        string directory = Path.Combine(_base, "builtin-edit", "1234abcd");
+        await Assert.ThrowsExactlyAsync<IOException>(() => BuiltInEditTempFiles.OpenOwnedAsync(directory, () =>
+        {
+            File.WriteAllText(Path.Combine(directory, "app.conf"), "partial download");
+            throw new IOException("download failed");
+        }));
+        Assert.IsFalse(Directory.Exists(directory));
+    }
+
+    [TestMethod]
     public void SweepStale_MissingRoot_IsANoOp() =>
         Assert.AreEqual(0, BuiltInEditTempFiles.SweepStale(Path.Combine(_base, "absent"), Now));
 

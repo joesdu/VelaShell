@@ -27,6 +27,7 @@ public partial class RemoteFileEditorView : Window
 
     private readonly string _localPath = string.Empty;
     private readonly Func<Task>? _uploadAsync;
+    private IDisposable? _directoryLease;
 
     /// <summary>主题服务:语法配色取当前界面主题,主题切换时重新着色。无服务(设计器/单测)时按明暗兜底。</summary>
     private readonly IThemeService? _themeService;
@@ -305,6 +306,7 @@ public partial class RemoteFileEditorView : Window
     {
         base.OnOpened(e);
         FitIntoWorkArea();
+        _directoryLease = BuiltInEditTempFiles.TakeOwnership(_localPath);
     }
 
     private void FitIntoWorkArea()
@@ -403,12 +405,17 @@ public partial class RemoteFileEditorView : Window
             string? dir = Path.GetDirectoryName(_localPath);
             if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
             {
-                Directory.Delete(dir, true);
+                RemoteEditSessionManager.TryDeleteDirectory(dir, _directoryLease);
             }
         }
         catch
         {
-            // 尽力而为;残留交给应用退出清理。
+            // 尽力而为;残留交给下次启动清理。
+        }
+        finally
+        {
+            _directoryLease?.Dispose();
+            _directoryLease = null;
         }
         base.OnClosed(e);
     }
