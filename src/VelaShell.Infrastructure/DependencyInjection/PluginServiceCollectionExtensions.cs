@@ -66,8 +66,8 @@ public static class PluginServiceCollectionExtensions
                 DisabledStateFile = paths.PluginDisabledFile,
                 DevAutoReload = Startup.VelaShellStartupArguments.Current.DevWatch,
                 DiagnosticsDirectory = paths.LogsDirectory,
-                // 每插件一份日志(logs/plugins/<id>.log,1 MB 轮转一份):宿主日志里混着几十种输出,
-                // 用户报「插件不工作」时要看的是这一个插件自己的。子目录不进诊断包。
+                // 每插件按天一份日志(logs/plugins/<id>-yyyyMMdd.log):宿主日志里混着几十种输出,
+                // 用户报「插件不工作」时要看的是这一个插件自己的。启动时清理过期文件,子目录不进诊断包。
                 LogFiles = new PluginLogFiles(Path.Combine(paths.LogsDirectory, "plugins")),
                 DataRootDirectory = Path.Combine(paths.RootDirectory, "plugin-data"),
                 UserPluginRoot = paths.UserPluginDirectory,

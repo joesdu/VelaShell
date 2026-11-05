@@ -143,7 +143,8 @@ public sealed class VcXsrvLocalXServer : ILocalXServer, IDisposable
             return XServerStartResult.Fail(Strings.Format("XServer_ErrNoFreeDisplay", XServerOptions.MaxDisplayNumber));
         }
 
-        string logFile = Path.Combine(DiagnosticLog.Directory ?? Path.GetTempPath(), "vcxsrv.log");
+        string logDirectory = DiagnosticLog.Directory ?? Path.GetTempPath();
+        string logFile = Path.Combine(logDirectory, $"vcxsrv-{DateTime.Now:yyyyMMdd}.log");
         ProcessStartInfo start = new(executable)
         {
             UseShellExecute = false,

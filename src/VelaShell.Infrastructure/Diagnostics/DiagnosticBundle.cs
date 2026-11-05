@@ -16,13 +16,13 @@ public enum DiagnosticLogKind
     /// <summary>传输记录 <c>transfer-yyyyMMdd.log</c>(设置 → 文件传输 → 日志记录,目录可改):每次传输的本机与远端路径。</summary>
     Transfer,
 
-    /// <summary>外部编辑日志 <c>remote-edit.log</c>:用外部编辑器打开、保存、回传远程文件的经过。</summary>
+    /// <summary>外部编辑日志 <c>remote-edit-yyyyMMdd.log</c>:用外部编辑器打开、保存、回传远程文件的经过。</summary>
     RemoteEdit,
 
-    /// <summary>VcXsrv 的输出 <c>vcxsrv.log</c>(Windows 上用外部 X 服务器时)。</summary>
+    /// <summary>VcXsrv 的输出 <c>vcxsrv-yyyyMMdd.log</c>(Windows 上用外部 X 服务器时)。</summary>
     VcXsrv,
 
-    /// <summary>某个插件自己的日志 <c>logs/plugins/&lt;id&gt;.log</c>(连同轮转下来的 <c>&lt;id&gt;.log.1</c>)。</summary>
+    /// <summary>某个插件自己的日志 <c>logs/plugins/&lt;id&gt;-yyyyMMdd.log</c>(兼容旧 <c>&lt;id&gt;.log</c> 与轮转文件)。</summary>
     Plugin
 }
 
@@ -60,7 +60,7 @@ public sealed record DiagnosticBundleResult(int LogFiles, IReadOnlyDictionary<st
 /// </para>
 /// <para>
 /// <b>默认只收诊断日志 <c>velashell-*.log</c> 与崩溃记录 <c>crash-*.txt</c></b>。同一个目录里的传输记录、外部编辑日志、
-/// <c>vcxsrv.log</c> 与按插件的日志满是本机与远端的路径、文件名,通用规则遮不了文件名;它们只在导出框里勾上了才收
+/// <c>vcxsrv-yyyyMMdd.log</c> 与按插件的日志满是本机与远端的路径、文件名,通用规则遮不了文件名;它们只在导出框里勾上了才收
 /// (<see cref="DiagnosticLogOption" />,默认一个都不勾),照样遮盖。会话日志(<c>session-*.log</c>,终端原始输出)与其余文件一律不收
 /// (维护者 2026-10-25 定)。
 /// </para>
@@ -88,11 +88,14 @@ public static class DiagnosticBundle
     {
         var options = new List<DiagnosticLogOption>();
         AddIfAny("transfer", DiagnosticLogKind.Transfer, null, Files(transferLogDirectory, "transfer-*.log"));
-        AddIfAny("remote-edit", DiagnosticLogKind.RemoteEdit, null, Files(logsDirectory, "remote-edit.log"));
-        AddIfAny("vcxsrv", DiagnosticLogKind.VcXsrv, null, Files(logsDirectory, "vcxsrv.log"));
+        AddIfAny("remote-edit", DiagnosticLogKind.RemoteEdit, null,
+            Files(logsDirectory, "remote-edit-*.log").Concat(Files(logsDirectory, "remote-edit.log")));
+        AddIfAny("vcxsrv", DiagnosticLogKind.VcXsrv, null,
+            Files(logsDirectory, "vcxsrv-*.log").Concat(Files(logsDirectory, "vcxsrv.log")));
         string? pluginLogs = string.IsNullOrWhiteSpace(logsDirectory) ? null : Path.Combine(logsDirectory, PluginLogsFolder);
         foreach (IGrouping<string, FileInfo> plugin in Files(pluginLogs, "*" + PluginLogFiles.CurrentSuffix)
                      .Concat(Files(pluginLogs, "*" + PluginLogFiles.RotatedSuffix))
+                     .Where(file => PluginLogFiles.TryGetPluginLogInfo(file.Name, out _, out _))
                      .GroupBy(file => PluginIdOf(file.Name), StringComparer.Ordinal)
                      .OrderBy(group => group.Key, StringComparer.Ordinal))
         {
@@ -108,14 +111,12 @@ public static class DiagnosticBundle
         }
     }
 
-    /// <summary>
-    /// <c>velashell.ai.log.1</c>(轮转下来的那份)与 <c>velashell.ai.log</c> 都归插件 <c>velashell.ai</c>。
-    /// <c>x.1.log</c> 归插件 <c>x.1</c>:那是它的当前日志(旧版本的轮转名与它撞名,见 <see cref="PluginLogFiles" />)。
-    /// </summary>
-    private static string PluginIdOf(string fileName) =>
-        fileName.EndsWith(PluginLogFiles.RotatedSuffix, StringComparison.Ordinal)
-            ? fileName[..^PluginLogFiles.RotatedSuffix.Length]
-            : fileName[..^PluginLogFiles.CurrentSuffix.Length];
+    /// <summary>按新日期格式分组,并兼容旧当前/轮转文件的插件归属。</summary>
+    private static string PluginIdOf(string fileName)
+    {
+        PluginLogFiles.TryGetPluginLogInfo(fileName, out string? pluginId, out _);
+        return pluginId!;
+    }
 
     /// <summary>写诊断包。已有同名文件时覆盖。</summary>
     /// <param name="zipPath">包的落盘位置。</param>
@@ -189,7 +190,7 @@ public static class DiagnosticBundle
     /// <summary>默认收的那两类:日志目录顶层的诊断日志 <c>velashell-*.log</c> 与崩溃记录 <c>crash-*.txt</c>,新的在前,总量封顶。</summary>
     /// <remarks>
     /// 同一目录里的其余文件不在这里收:会话日志(<c>session-*.log</c>,终端原始输出)隐私说明里是单独的一类,永远不进包;
-    /// 传输记录、外部编辑日志、<c>vcxsrv.log</c> 要用户勾选(<see cref="FindOptionalLogs" />)。
+    /// 传输记录、按天外部编辑日志、<c>vcxsrv-yyyyMMdd.log</c> 要用户勾选(<see cref="FindOptionalLogs" />)。
     /// </remarks>
     internal static IEnumerable<FileInfo> LogFiles(string? directory) =>
         WithinBudget(

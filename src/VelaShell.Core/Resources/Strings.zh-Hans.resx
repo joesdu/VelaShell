@@ -3608,7 +3608,7 @@
     <value>终端会话日志保留天数</value>
   </data>
   <data name="SetGeneral_LogRetentionDaysDesc" xml:space="preserve">
-    <value>// 超过天数的终端会话日志将自动清理;文件传输日志的保留天数在「文件传输」页单独设置</value>
+    <value>// 超过天数的终端会话日志将自动清理;默认保留 7 天;文件传输日志的保留天数在「文件传输」页单独设置</value>
   </data>
   <data name="SetGeneral_MaxRetries" xml:space="preserve">
     <value>最大自动重连次数</value>
@@ -4454,7 +4454,7 @@
     <value>文件传输日志保留天数</value>
   </data>
   <data name="SetTransfer_LogRetentionDaysDesc" xml:space="preserve">
-    <value>// 超过天数的传输日志将自动清理;终端会话日志的保留天数在「常规」页单独设置</value>
+    <value>// 超过天数的传输日志将自动清理;默认保留 7 天;终端会话日志的保留天数在「常规」页单独设置</value>
   </data>
   <data name="SetTransfer_MaxConcurrent" xml:space="preserve">
     <value>最大并发传输数</value>

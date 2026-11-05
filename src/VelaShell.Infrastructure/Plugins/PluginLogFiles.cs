@@ -10,15 +10,13 @@ namespace VelaShell.Infrastructure.Plugins;
 public sealed record PluginLogTail(string Text, string? FilePath, bool Truncated);
 
 /// <summary>
-/// 每个插件一份日志文件:<c>&lt;日志目录&gt;/plugins/&lt;插件 id&gt;.log</c>,写满 <see cref="MaxBytes" /> 就轮转成
-/// <c>&lt;插件 id&gt;.log.1</c>(只留这一份旧的),每个插件最多占约两倍上限。
+/// 每个插件每天一份日志文件:<c>&lt;日志目录&gt;/plugins/&lt;安全插件 id&gt;-yyyyMMdd.log</c>。
+/// 不做大小轮转,启动时按天清理过期文件。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 轮转名不能是 <c>&lt;插件 id&gt;.1.log</c>(旧版本就是这么叫的):插件 id 可以以 <c>.1</c> 结尾,
-/// <c>acme.tool</c> 的轮转件就是 <c>acme.tool.1</c> 的当前日志 —— 轮转会盖掉别人的日志,卸载会删掉它,
-/// 「查看日志」还会把别人的行当成自己的前文显示出来(一个插件就能往另一个插件的日志里塞几行假的 <c>[Host]</c>)。
-/// 当前日志总以 <c>.log</c> 结尾,<c>.log.1</c> 不会是任何插件的当前日志。旧名字留下的文件由 <see cref="SweepUninstalled" /> 认领。
+/// 新格式把日期放在安全插件 id 与 <c>.log</c> 之间,因此不同日期和相近 id 不会互相覆盖。
+/// 旧版 <c>.log</c>、<c>.log.1</c> 与 <c>.1.log</c> 文件由 <see cref="SweepUninstalled" /> 按兼容规则清理或接续。
 /// </para>
 /// <para>
 /// 插件的日志原先只进宿主的 Trace(<c>velashell-yyyyMMdd.log</c>,带 <c>[Plugin:id]</c> / <c>[PluginHost:id]</c> 前缀),
@@ -33,47 +31,50 @@ public sealed record PluginLogTail(string Text, string? FilePath, bool Truncated
 /// <para><b>任何情况下都不抛异常</b>(同 <c>RollingFileTraceListener</c>):日志写不进去是小事,把插件或宿主带崩不是。</para>
 /// </remarks>
 /// <param name="directory">插件日志目录(不存在时第一次写入时建)。</param>
-/// <param name="maxBytes">单个文件的上限(字节);到了就轮转。</param>
+/// <param name="maxBytes">兼容旧调用方保留的参数;按天日志不再按大小轮转。</param>
 public sealed class PluginLogFiles(string directory, long maxBytes = PluginLogFiles.DefaultMaxBytes)
 {
-    /// <summary>默认单文件 1 MB:正常插件一天写不了几 KB,刷屏的插件也只占 2 MB。</summary>
+    /// <summary>兼容旧调用方保留的单文件上限常量;按天日志不使用。</summary>
     public const long DefaultMaxBytes = 1024 * 1024;
+
+    /// <summary>插件日志默认保留天数。</summary>
+    public const int DefaultRetentionDays = 7;
 
     /// <summary>「查看日志」默认取的尾部大小。</summary>
     public const int DefaultTailBytes = 256 * 1024;
 
     private readonly Lock _gate = new();
-    private readonly Dictionary<string, long> _sizes = [with(StringComparer.Ordinal)];
 
     /// <summary>插件日志目录。</summary>
     public string Directory { get; } = directory;
 
-    /// <summary>单个文件的上限(字节)。</summary>
+    /// <summary>兼容旧调用方保留的单个文件上限;新格式不按大小轮转。</summary>
     public long MaxBytes { get; } = maxBytes;
 
-    /// <summary>当前日志的后缀。</summary>
+    /// <summary>旧格式当前日志的后缀。</summary>
     public const string CurrentSuffix = ".log";
 
-    /// <summary>轮转下来那一份的后缀(为什么不是 <c>.1.log</c> 见类型说明)。</summary>
+    /// <summary>旧格式轮转日志的后缀。</summary>
     public const string RotatedSuffix = ".log.1";
 
-    /// <summary>旧版本的轮转后缀:与 id 以 <c>.1</c> 结尾的插件的当前日志撞名,只在 <see cref="SweepUninstalled" /> 里认。</summary>
+    /// <summary>按天日志的日期部分格式。</summary>
+    public const string DateSuffixFormat = "yyyyMMdd";
+
+    /// <summary>旧版本的轮转后缀:与 id 以 <c>.1</c> 结尾的插件的当前日志撞名。</summary>
     private const string LegacyRotatedSuffix = ".1" + CurrentSuffix;
 
-    /// <summary>当前在写的那份日志;插件 id 不能当文件名时为 null。</summary>
-    /// <param name="pluginId">插件 id。</param>
-    public string? PathFor(string pluginId) => IsSafeFileName(pluginId) ? Path.Combine(Directory, pluginId + CurrentSuffix) : null;
+    /// <summary>当天日志路径;插件 id 不能当文件名时为 null。</summary>
+    public string? PathFor(string pluginId) => IsSafeFileName(pluginId)
+        ? Path.Combine(Directory, pluginId + "-" + DateTime.Now.ToString(DateSuffixFormat, CultureInfo.InvariantCulture) + CurrentSuffix)
+        : null;
 
-    /// <summary>轮转下来的上一份日志;插件 id 不能当文件名时为 null。</summary>
-    /// <param name="pluginId">插件 id。</param>
+    /// <summary>旧格式轮转日志路径,供现有调用方兼容使用。</summary>
     public string? RotatedPathFor(string pluginId) => IsSafeFileName(pluginId) ? Path.Combine(Directory, pluginId + RotatedSuffix) : null;
 
-    /// <summary>追加一行(自动加时间戳;文本里自带的换行原样保留,异常堆栈因此是完整的)。</summary>
-    /// <param name="pluginId">插件 id。</param>
-    /// <param name="text">日志正文,如 <c>[Warning] 连不上服务器</c>。</param>
+    /// <summary>追加一行到当天文件(自动加时间戳;文本里自带的换行原样保留)。</summary>
     public void Append(string pluginId, string text)
     {
-        if (PathFor(pluginId) is not { } path || RotatedPathFor(pluginId) is not { } rotated)
+        if (PathFor(pluginId) is not { } path)
         {
             return;
         }
@@ -81,46 +82,24 @@ public sealed class PluginLogFiles(string directory, long maxBytes = PluginLogFi
         {
             string line = string.Create(CultureInfo.InvariantCulture,
                 $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {text}{Environment.NewLine}");
-            long bytes = Encoding.UTF8.GetByteCount(line);
             lock (_gate)
             {
                 System.IO.Directory.CreateDirectory(Directory);
-                if (!_sizes.TryGetValue(pluginId, out long size))
-                {
-                    size = File.Exists(path) ? new FileInfo(path).Length : 0;
-                }
-                if (size > 0 && size + bytes > MaxBytes)
-                {
-                    File.Move(path, rotated, overwrite: true);
-                    size = 0;
-                }
                 File.AppendAllText(path, line, Utf8NoBom);
-                _sizes[pluginId] = size + bytes;
             }
         }
         catch
         {
-            // 见类型注释:日志写失败绝不能影响调用方。下次重新取文件大小。
-            lock (_gate)
-            {
-                _sizes.Remove(pluginId);
-            }
+            // 日志写失败绝不能影响调用方。
         }
     }
 
     /// <summary>
-    /// 启动清扫:删掉不在 <paramref name="installed" /> 里的插件留下的日志 —— 插件目录在宿主没运行时被删掉
-    /// (手动删、换机器拷数据)也算卸载,卸载那一路的 <see cref="Delete" /> 没机会跑,与插件数据、消息中心的卸载清扫同一口径。
-    /// 顺带把旧版本留下的轮转件 <c>&lt;id&gt;.1.log</c> 改名成 <c>&lt;id&gt;.log.1</c>,免得升级后「查看日志」的前文丢了。
-    /// 失败静默忽略(删不掉的下次启动再试)。
+    /// 启动清扫:删掉不在 <paramref name="installed" /> 里的按天日志,并兼容清理旧版的
+    /// <c>&lt;id&gt;.log</c>、<c>&lt;id&gt;.log.1</c> 与 <c>&lt;id&gt;.1.log</c>。
+    /// 旧版轮转名在插件 id 可能以 <c>.1</c> 结尾时有歧义,只有名单能确认归属;确认属于仍安装插件时会接回
+    /// <c>&lt;id&gt;.log.1</c>,以保留旧日志读取语义。失败静默忽略。
     /// </summary>
-    /// <remarks>
-    /// 旧轮转名只在这里认,因为单看文件名分不出它是谁的:<c>x.1.log</c> 既可能是 <c>x</c> 的旧轮转件,
-    /// 也可能是插件 <c>x.1</c> 的当前日志。有了"装着哪些插件"这份名单才分得清 ——
-    /// <c>x.1</c> 装着,它就是 <c>x.1</c> 的当前日志,不动;只有 <c>x</c> 装着,才是 <c>x</c> 的旧轮转件,改名接上
-    /// (<c>x.log.1</c> 已经有了就删掉旧的,那份更新);两个都没装,就是孤儿。日志目录里不像插件日志的文件一律不碰。
-    /// </remarks>
-    /// <param name="installed">仍在盘上的插件 id(含被禁用、清单无效的 —— 修好或重新启用后日志应仍在)。</param>
     public void SweepUninstalled(IReadOnlySet<string> installed)
     {
         ArgumentNullException.ThrowIfNull(installed);
@@ -147,7 +126,57 @@ public sealed class PluginLogFiles(string directory, long maxBytes = PluginLogFi
                 }
                 catch
                 {
-                    // 删不掉(被占用)就留着:有大小上限,下次启动再试。
+                    // 删不掉(被占用)就留着,下次启动再试。
+                }
+            }
+        }
+    }
+
+    /// <summary>启动时清理超过保留期的按天日志,并按文件时间清理无法解析日期的旧日志。</summary>
+    public void CleanupExpired(int retentionDays = DefaultRetentionDays)
+    {
+        if (retentionDays < 1)
+        {
+            return;
+        }
+        DateTime today = DateTime.Now.Date;
+        DateTime firstKeptDate = today.AddDays(-(retentionDays - 1));
+        DateTime oldCutoffUtc = DateTime.UtcNow.AddDays(-retentionDays);
+        lock (_gate)
+        {
+            string[] names;
+            try
+            {
+                if (!System.IO.Directory.Exists(Directory))
+                {
+                    return;
+                }
+                names = [.. System.IO.Directory.EnumerateFiles(Directory).Select(Path.GetFileName).OfType<string>()];
+            }
+            catch
+            {
+                return;
+            }
+            foreach (string name in names)
+            {
+                try
+                {
+                    if (TryParseDailyFileName(name, out _, out DateTime date))
+                    {
+                        if (date < firstKeptDate)
+                        {
+                            File.Delete(Path.Combine(Directory, name));
+                        }
+                    }
+                    else if (TryParseLegacyFileName(name, out _)
+                             && File.GetLastWriteTimeUtc(Path.Combine(Directory, name)) < oldCutoffUtc)
+                    {
+                        File.Delete(Path.Combine(Directory, name));
+                    }
+                }
+                catch
+                {
+                    // 单个文件失败不影响其它日志,下次启动再试。
                 }
             }
         }
@@ -157,6 +186,14 @@ public sealed class PluginLogFiles(string directory, long maxBytes = PluginLogFi
     private void SweepOne(string name, IReadOnlySet<string> installed)
     {
         string path = Path.Combine(Directory, name);
+        if (TryParseDailyFileName(name, out string? dailyId, out _))
+        {
+            if (dailyId is not null && !installed.Contains(dailyId))
+            {
+                File.Delete(path);
+            }
+            return;
+        }
         if (name.EndsWith(RotatedSuffix, StringComparison.Ordinal))
         {
             string id = name[..^RotatedSuffix.Length];
@@ -191,48 +228,54 @@ public sealed class PluginLogFiles(string directory, long maxBytes = PluginLogFi
             return;
         }
         File.Delete(path);
-        _sizes.Remove(stem);
     }
 
-    /// <summary>删掉这个插件的日志(卸载时随插件数据一起清)。失败静默忽略。</summary>
-    /// <remarks>
-    /// 不删旧名字的 <c>&lt;id&gt;.1.log</c>:它可能是插件 <c>&lt;id&gt;.1</c> 的当前日志。真是这个插件的旧轮转件的话,
-    /// 下次启动的 <see cref="SweepUninstalled" /> 会把它当孤儿清掉。
-    /// </remarks>
-    /// <param name="pluginId">插件 id。</param>
+    /// <summary>删掉这个插件的全部按天日志,并清掉无歧义的旧格式文件。失败静默忽略。</summary>
     public void Delete(string pluginId)
     {
-        if (PathFor(pluginId) is not { } path || RotatedPathFor(pluginId) is not { } rotated)
+        if (!IsSafeFileName(pluginId))
         {
             return;
         }
         lock (_gate)
         {
-            _sizes.Remove(pluginId);
-            foreach (string file in (string[])[path, rotated])
+            string[] names;
+            try
             {
+                names = System.IO.Directory.Exists(Directory)
+                    ? [.. System.IO.Directory.EnumerateFiles(Directory).Select(Path.GetFileName).OfType<string>()]
+                    : [];
+            }
+            catch
+            {
+                return;
+            }
+            foreach (string name in names)
+            {
+                if (!IsOwnedBy(pluginId, name))
+                {
+                    continue;
+                }
                 try
                 {
-                    File.Delete(file);
+                    File.Delete(Path.Combine(Directory, name));
                 }
                 catch
                 {
-                    // 删不掉(被占用)就留着:有大小上限,不会越攒越多。
+                    // 删不掉(被占用)就留着,下次启动再试。
                 }
             }
         }
     }
 
     /// <summary>
-    /// 读日志尾部:取当前文件的最后 <paramref name="maxBytes" /> 字节,不够再从轮转下来的那份补。
+    /// 读日志尾部:新格式只读取磁盘上实际存在的最新日期文件;旧格式没有日期时保留当前+轮转的读取兼容。
     /// 从中间截断时丢掉不完整的第一行(也就不会切坏一个多字节字符)。读不了就返回空正文。
     /// </summary>
-    /// <param name="pluginId">插件 id。</param>
-    /// <param name="maxBytes">最多读多少字节。</param>
     public PluginLogTail ReadTail(string pluginId, int maxBytes = DefaultTailBytes)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxBytes);
-        if (PathFor(pluginId) is not { } path || RotatedPathFor(pluginId) is not { } rotated)
+        if (!IsSafeFileName(pluginId))
         {
             return new(string.Empty, null, false);
         }
@@ -240,31 +283,155 @@ public sealed class PluginLogFiles(string directory, long maxBytes = PluginLogFi
         {
             lock (_gate)
             {
-                (byte[] current, bool currentCut) = ReadEnd(path, maxBytes);
+                string? latest = FindLatestDailyPath(pluginId);
+                if (latest is not null)
+                {
+                    return ReadSingleTail(latest, maxBytes);
+                }
+
+                string? current = Path.Combine(Directory, pluginId + CurrentSuffix);
+                string? rotated = Path.Combine(Directory, pluginId + RotatedSuffix);
+                bool hasCurrent = File.Exists(current);
+                bool hasRotated = File.Exists(rotated);
+                if (!hasCurrent && !hasRotated)
+                {
+                    return new(string.Empty, null, false);
+                }
+                (byte[] currentBytes, bool currentCut) = ReadEnd(current, maxBytes);
                 byte[] older = [];
                 bool olderCut = false;
-                if (!currentCut && current.Length < maxBytes)
+                if (!currentCut && currentBytes.Length < maxBytes)
                 {
-                    (older, olderCut) = ReadEnd(rotated, maxBytes - current.Length);
+                    (older, olderCut) = ReadEnd(rotated, maxBytes - currentBytes.Length);
                 }
                 bool cutMidLine = currentCut || olderCut;
-                // 当前那份正好读满、没轮到旧的那份:旧内容还在,只是这次没取。
-                bool olderLeftOut = older.Length == 0 && current.Length >= maxBytes && File.Exists(rotated);
-                byte[] all = [.. older, .. current];
-                int start = 0;
-                if (cutMidLine)
-                {
-                    // 截在一行中间:从第一个换行之后开始。
-                    int newline = Array.IndexOf(all, (byte)'\n');
-                    start = newline < 0 ? all.Length : newline + 1;
-                }
+                bool olderLeftOut = older.Length == 0 && currentBytes.Length >= maxBytes && hasRotated;
+                byte[] all = [.. older, .. currentBytes];
+                int start = cutMidLine ? FirstCompleteLineOffset(all) : 0;
+                string path = hasCurrent ? current : rotated;
                 return new(Encoding.UTF8.GetString(all, start, all.Length - start), path, cutMidLine || olderLeftOut);
             }
         }
         catch
         {
-            return new(string.Empty, path, false);
+            return new(string.Empty, null, false);
         }
+    }
+
+    private static PluginLogTail ReadSingleTail(string path, int maxBytes)
+    {
+        (byte[] bytes, bool cut) = ReadEnd(path, maxBytes);
+        int start = cut ? FirstCompleteLineOffset(bytes) : 0;
+        return new(Encoding.UTF8.GetString(bytes, start, bytes.Length - start), path, cut);
+    }
+
+    private string? FindLatestDailyPath(string pluginId)
+    {
+        if (!System.IO.Directory.Exists(Directory))
+        {
+            return null;
+        }
+        string? latestPath = null;
+        DateTime latestDate = DateTime.MinValue;
+        DateTime latestWrite = DateTime.MinValue;
+        foreach (string path in System.IO.Directory.EnumerateFiles(Directory))
+        {
+            string name = Path.GetFileName(path);
+            if (!TryParseDailyFileName(name, out string? id, out DateTime date)
+                || !string.Equals(id, pluginId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+            DateTime write = File.GetLastWriteTimeUtc(path);
+            if (date > latestDate || date == latestDate && write > latestWrite)
+            {
+                latestPath = path;
+                latestDate = date;
+                latestWrite = write;
+            }
+        }
+        return latestPath;
+    }
+
+    private static bool IsOwnedBy(string pluginId, string name)
+    {
+        if (TryParseDailyFileName(name, out string? dailyId, out _))
+        {
+            return string.Equals(dailyId, pluginId, StringComparison.Ordinal);
+        }
+        return name.Equals(pluginId + CurrentSuffix, StringComparison.Ordinal)
+            || name.Equals(pluginId + RotatedSuffix, StringComparison.Ordinal)
+            || name.Equals(pluginId + LegacyRotatedSuffix, StringComparison.Ordinal);
+    }
+
+    private static bool TryParseDailyFileName(string name, out string? pluginId, out DateTime date)
+    {
+        pluginId = null;
+        date = default;
+        if (!name.EndsWith(CurrentSuffix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+        string stem = name[..^CurrentSuffix.Length];
+        int separator = stem.Length - DateSuffixFormat.Length - 1;
+        if (separator < 1 || stem[separator] != '-')
+        {
+            return false;
+        }
+        string dateText = stem[(separator + 1)..];
+        if (!DateTime.TryParseExact(dateText, DateSuffixFormat, CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out date))
+        {
+            return false;
+        }
+        string id = stem[..separator];
+        if (!IsSafeFileName(id))
+        {
+            date = default;
+            return false;
+        }
+        pluginId = id;
+        return true;
+    }
+
+    private static bool TryParseLegacyFileName(string name, out string? pluginId)
+    {
+        pluginId = null;
+        if (name.EndsWith(RotatedSuffix, StringComparison.Ordinal))
+        {
+            string id = name[..^RotatedSuffix.Length];
+            if (!IsSafeFileName(id)) return false;
+            pluginId = id;
+            return true;
+        }
+        if (!name.EndsWith(CurrentSuffix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+        string stem = name[..^CurrentSuffix.Length];
+        if (!IsSafeFileName(stem))
+        {
+            return false;
+        }
+        pluginId = stem;
+        return true;
+    }
+
+    internal static bool TryGetPluginLogInfo(string fileName, out string? pluginId, out DateTime? date)
+    {
+        if (TryParseDailyFileName(fileName, out pluginId, out DateTime dailyDate))
+        {
+            date = dailyDate;
+            return true;
+        }
+        date = null;
+        return TryParseLegacyFileName(fileName, out pluginId);
+    }
+
+    private static int FirstCompleteLineOffset(byte[] bytes)
+    {
+        int newline = Array.IndexOf(bytes, (byte)'\n');
+        return newline < 0 ? bytes.Length : newline + 1;
     }
 
     /// <summary>读文件最后 <paramref name="maxBytes" /> 字节;返回内容与是否从中间截断。文件不存在时为空。</summary>

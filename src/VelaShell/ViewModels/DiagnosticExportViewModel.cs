@@ -43,7 +43,7 @@ public sealed class DiagnosticExportItem : ReactiveObject
 }
 
 /// <summary>
-/// 导出诊断包之前的勾选框(关于页):默认只收诊断日志与崩溃记录,传输记录、外部编辑日志、<c>vcxsrv.log</c>
+/// 导出诊断包之前的勾选框(关于页):默认只收诊断日志与崩溃记录,传输记录、按天的外部编辑日志、<c>vcxsrv-yyyyMMdd.log</c>
 /// 与各插件的日志列在这里、<b>默认一个都不勾</b>。
 /// </summary>
 /// <remarks>

@@ -929,7 +929,7 @@ public partial class SettingsViewModel : ReactiveObject
     } = string.Empty;
 
     /// <summary>
-    /// 导出框里可以另外勾选的几类日志(传输记录、外部编辑日志、<c>vcxsrv.log</c>、各插件的日志),只列确有文件的。
+    /// 导出框里可以另外勾选的几类日志(传输记录、按天的外部编辑日志、<c>vcxsrv-yyyyMMdd.log</c>、各插件的日志),只列确有文件的。
     /// 传输记录按「文件传输 → 日志目录」的设置去找,那个目录可以改到日志目录之外。
     /// </summary>
     public Task<IReadOnlyList<DiagnosticLogOption>> FindDiagnosticLogOptionsAsync() => FindDiagnosticLogOptionsAsync(DiagnosticLog.Directory);

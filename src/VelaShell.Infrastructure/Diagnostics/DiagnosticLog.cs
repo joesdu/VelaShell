@@ -160,7 +160,11 @@ public static class DiagnosticLog
             {
                 string name = Path.GetFileName(file);
                 bool ours = name.StartsWith(LogPrefix, StringComparison.Ordinal)
-                            || name.StartsWith(CrashPrefix, StringComparison.Ordinal);
+                            || name.StartsWith(CrashPrefix, StringComparison.Ordinal)
+                            || name.StartsWith("remote-edit-", StringComparison.Ordinal)
+                            || name.Equals("remote-edit.log", StringComparison.Ordinal)
+                            || name.StartsWith("vcxsrv-", StringComparison.Ordinal)
+                            || name.Equals("vcxsrv.log", StringComparison.Ordinal);
                 if (ours && File.GetLastWriteTimeUtc(file) < cutoff)
                 {
                     File.Delete(file);
