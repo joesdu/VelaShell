@@ -393,7 +393,7 @@ public class GeneralOptions : ObservableOptions
     {
         get;
         set => Set(ref field, value);
-    } = 30;
+    } = 7;
 
     // 更新
     /// <summary>更新通道(如 stable / beta)。</summary>
@@ -1219,7 +1219,7 @@ public class TransferOptions : ObservableOptions
     {
         get;
         set => Set(ref field, value);
-    } = 30;
+    } = 7;
 
     /// <summary>传输日志的存放目录。</summary>
     public string LogDirectory

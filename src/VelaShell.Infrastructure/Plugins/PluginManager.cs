@@ -1377,6 +1377,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         try
         {
             PurgeOrphanShadows();
+            options.LogFiles?.CleanupExpired();
             await PurgeUninstalledDataAsync().ConfigureAwait(false);
             await PrewarmAsync(discovered).ConfigureAwait(false);
         }

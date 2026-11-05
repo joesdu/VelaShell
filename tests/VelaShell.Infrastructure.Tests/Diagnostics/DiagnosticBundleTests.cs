@@ -299,6 +299,22 @@ public sealed class DiagnosticBundleTests : IDisposable
         Assert.IsEmpty(DiagnosticBundle.FindOptionalLogs(Path.Combine(_root, "missing"), null), "目录不在就一类都没有");
     }
 
+    [TestMethod]
+    public async Task FindOptionalLogs_GroupsDailyPluginFilesByPluginId()
+    {
+        Directory.CreateDirectory(Path.Combine(Logs, "plugins"));
+        await File.WriteAllTextAsync(Path.Combine(Logs, "plugins", "acme.tool-20261105.log"), "today\n");
+        await File.WriteAllTextAsync(Path.Combine(Logs, "plugins", "acme.tool-20261104.log"), "yesterday\n");
+
+        IReadOnlyList<DiagnosticLogOption> options = DiagnosticBundle.FindOptionalLogs(Logs, null);
+        DiagnosticLogOption plugin = options.Single(option => option.Id == "plugin:acme.tool");
+
+        Assert.AreEqual("acme.tool", plugin.PluginId);
+        Assert.AreSequenceEqual(
+            [Path.Combine(Logs, "plugins", "acme.tool-20261105.log"), Path.Combine(Logs, "plugins", "acme.tool-20261104.log")],
+            [.. plugin.Files], SequenceOrder.InAnyOrder);
+    }
+
     /// <summary>
     /// id 只差一个 <c>.1</c> 的两个插件是两项:<c>acme.tool.1.log</c> 是插件 <c>acme.tool.1</c> 的当前日志,
     /// 不是 <c>acme.tool</c> 的轮转件(那个叫 <c>acme.tool.log.1</c>)。勾 <c>acme.tool</c> 不该把别人的日志一起收进包。

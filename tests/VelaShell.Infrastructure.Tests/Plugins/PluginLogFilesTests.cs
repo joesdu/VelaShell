@@ -48,7 +48,7 @@ public sealed class PluginLogFilesTests
         files.Append("velashell.redis", $"[Error] boom — System.Exception: boom{Environment.NewLine}   at Foo.Bar()");
         PluginLogTail tail = files.ReadTail("velashell.redis");
 
-        Assert.AreEqual(Path.Combine(LogDir, "velashell.redis.log"), tail.FilePath);
+        Assert.AreEqual(Path.Combine(LogDir, $"velashell.redis-{DateTime.Now:yyyyMMdd}.log"), tail.FilePath);
         Assert.IsFalse(tail.Truncated);
         Assert.Contains("[Info] connected", tail.Text);
         Assert.Contains("   at Foo.Bar()", tail.Text, "异常堆栈的续行要原样保留 —— 按前缀筛宿主日志正是丢在这里");
@@ -56,59 +56,42 @@ public sealed class PluginLogFilesTests
     }
 
     [TestMethod]
-    public void NothingWrittenYet_IsAnEmptyTailWithThePath()
+    public void NothingWrittenYet_IsAnEmptyTailWithoutCreatingAPath()
     {
         PluginLogTail tail = new PluginLogFiles(LogDir).ReadTail("velashell.redis");
 
         Assert.AreEqual(string.Empty, tail.Text);
-        Assert.AreEqual(Path.Combine(LogDir, "velashell.redis.log"), tail.FilePath);
+        Assert.IsNull(tail.FilePath);
+        Assert.IsFalse(Directory.Exists(LogDir));
     }
 
-    /// <summary>写满上限轮转成 .log.1,只留这一份旧的:刷屏的插件也只占两倍上限。</summary>
     [TestMethod]
-    public void FullFile_RotatesKeepingOneOlderCopy()
+    public void Append_UsesDailyFileWithoutSizeRotation()
     {
-        PluginLogFiles files = new(LogDir, maxBytes: 1024);
-        string line = new('x', 200);
+        PluginLogFiles files = new(LogDir, maxBytes: 32);
         for (int i = 0; i < 40; i++)
         {
-            files.Append("p", $"{i:D2} {line}");
+            files.Append("p", $"{i:D2} {new string('x', 200)}");
         }
 
-        Assert.IsTrue(File.Exists(Path.Combine(LogDir, "p.log.1")));
-        Assert.IsFalse(File.Exists(Path.Combine(LogDir, "p.1.log")), "轮转件不能叫 p.1.log:那是插件 p.1 的当前日志");
-        Assert.IsFalse(File.Exists(Path.Combine(LogDir, "p.log.2")));
-        Assert.IsLessThanOrEqualTo(1024L, new FileInfo(Path.Combine(LogDir, "p.log")).Length);
-        Assert.IsLessThanOrEqualTo(1024L, new FileInfo(Path.Combine(LogDir, "p.log.1")).Length);
+        string path = Path.Combine(LogDir, $"p-{DateTime.Now:yyyyMMdd}.log");
+        Assert.IsTrue(File.Exists(path));
+        Assert.HasCount(1, Directory.EnumerateFiles(LogDir));
         Assert.Contains("39 ", files.ReadTail("p").Text, "最新的一行在尾部");
     }
 
-    /// <summary>
-    /// <b>id 只差一个 <c>.1</c> 的两个插件(<c>a.b</c> 与 <c>a.b.1</c>)各写各的</b>:<c>a.b</c> 轮转不盖掉 <c>a.b.1</c> 的日志,
-    /// 「查看日志」不把别人的行当自己的前文,卸载 <c>a.b</c> 也不删 <c>a.b.1</c> 的。
-    /// <para>
-    /// 轮转名原先是 <c>&lt;id&gt;.1.log</c>,正好是 <c>a.b.1</c> 的当前日志:一个插件就能往另一个插件的「查看日志」里塞几行假的 <c>[Host]</c>。
-    /// </para>
-    /// </summary>
     [TestMethod]
-    public void TwoIdsOneDotOneApart_RotateReadAndDeleteWithoutTouchingEachOther()
+    public void TwoIdsOneDotOneApart_UseSeparateDailyFiles()
     {
-        PluginLogFiles files = new(LogDir, maxBytes: 1024);
-        files.Append("a.b.1", "[Host] Activated v9.9.9 —— 这是 a.b.1 自己的行");
-        string line = new('x', 200);
-        for (int i = 0; i < 20; i++)
-        {
-            files.Append("a.b", $"{i:D2} {line}");
-        }
+        PluginLogFiles files = new(LogDir);
+        files.Append("a.b.1", "a.b.1 own");
+        files.Append("a.b", "a.b own");
 
-        Assert.Contains("a.b.1 自己的行", File.ReadAllText(Path.Combine(LogDir, "a.b.1.log")), "a.b 的轮转盖掉了 a.b.1 的日志");
-        Assert.DoesNotContain("a.b.1 自己的行", files.ReadTail("a.b").Text, "a.b 的「查看日志」把 a.b.1 的行当成了自己的前文");
-        Assert.DoesNotContain(" xxxx", files.ReadTail("a.b.1").Text, "a.b.1 的「查看日志」里混进了 a.b 的行");
-
+        Assert.Contains("a.b.1 own", files.ReadTail("a.b.1").Text);
+        Assert.Contains("a.b own", files.ReadTail("a.b").Text);
         files.Delete("a.b");
-
-        Assert.IsTrue(File.Exists(Path.Combine(LogDir, "a.b.1.log")), "卸载 a.b 删掉了 a.b.1 的日志");
-        Assert.Contains("a.b.1 自己的行", files.ReadTail("a.b.1").Text);
+        Assert.IsTrue(File.Exists(Path.Combine(LogDir, $"a.b.1-{DateTime.Now:yyyyMMdd}.log")));
+        Assert.IsFalse(File.Exists(Path.Combine(LogDir, $"a.b-{DateTime.Now:yyyyMMdd}.log")));
     }
 
     /// <summary>
@@ -130,9 +113,11 @@ public sealed class PluginLogFilesTests
         Write("dup.log", "dup-current");
         Write("dup.log.1", "dup-rotated-new");
         Write("dup.1.log", "dup-legacy-rotated");
+        Write("kept-20261105.log", "kept-daily");
         Write("ghost.log", "ghost-current");
         Write("ghost.log.1", "ghost-rotated");
         Write("ghost.1.log", "ghost-legacy-rotated");
+        Write("ghost-20261105.log", "ghost-daily");
         Write("notes.txt", "not a plugin log");
         PluginLogFiles files = new(LogDir);
 
@@ -140,11 +125,26 @@ public sealed class PluginLogFilesTests
 
         string[] left = [.. Directory.EnumerateFiles(LogDir).Select(Path.GetFileName).OfType<string>()];
         Assert.AreSequenceEqual(
-            ["kept.log", "kept.log.1", "old.log", "old.log.1", "both.log", "both.1.log", "dup.log", "dup.log.1", "notes.txt"],
+            ["kept.log", "kept.log.1", "kept-20261105.log", "old.log", "old.log.1", "both.log", "both.1.log", "dup.log", "dup.log.1", "notes.txt"],
             left, SequenceOrder.InAnyOrder);
         Assert.AreEqual("old-legacy-rotated\nold-current\n", files.ReadTail("old").Text, "旧轮转件改了名,前文接上");
         Assert.AreEqual("dup-rotated-new\n", File.ReadAllText(Path.Combine(LogDir, "dup.log.1")), "新轮转件已经有了:留新的,删旧的");
         Assert.AreEqual("both.1-current\n", File.ReadAllText(Path.Combine(LogDir, "both.1.log")), "both.1 装着:那是它的当前日志");
+    }
+
+    [TestMethod]
+    public void CleanupExpired_KeepsSevenDaysAndDeletesOlderDailyFiles()
+    {
+        Directory.CreateDirectory(LogDir);
+        string recent = Path.Combine(LogDir, "p-" + DateTime.Now.AddDays(-6).ToString("yyyyMMdd") + ".log");
+        string stale = Path.Combine(LogDir, "p-" + DateTime.Now.AddDays(-7).ToString("yyyyMMdd") + ".log");
+        File.WriteAllText(recent, "recent");
+        File.WriteAllText(stale, "stale");
+
+        new PluginLogFiles(LogDir).CleanupExpired();
+
+        Assert.IsTrue(File.Exists(recent));
+        Assert.IsFalse(File.Exists(stale));
     }
 
     /// <summary>
@@ -165,6 +165,7 @@ public sealed class PluginLogFilesTests
         File.WriteAllText(Path.Combine(LogDir, "acme.kept.1.log"), "kept-legacy-rotated\n");
         File.WriteAllText(Path.Combine(LogDir, "ghost.plugin.log"), "ghost\n");
         File.WriteAllText(Path.Combine(LogDir, "ghost.plugin.log.1"), "ghost-rotated\n");
+        File.WriteAllText(Path.Combine(LogDir, $"ghost.plugin-{DateTime.Now:yyyyMMdd}.log"), "ghost-daily\n");
         await using PluginManager manager = new(new()
         {
             PluginRoots = [plugins],
@@ -182,6 +183,7 @@ public sealed class PluginLogFilesTests
 
         Assert.IsFalse(File.Exists(Path.Combine(LogDir, "ghost.plugin.log")), "已卸载插件的日志应删除");
         Assert.IsFalse(File.Exists(Path.Combine(LogDir, "ghost.plugin.log.1")), "已卸载插件的轮转件应删除");
+        Assert.IsFalse(File.Exists(Path.Combine(LogDir, $"ghost.plugin-{DateTime.Now:yyyyMMdd}.log")), "已卸载插件的按天日志应删除");
         Assert.IsTrue(File.Exists(Path.Combine(LogDir, "acme.kept.log")), "禁用 ≠ 卸载,日志保留");
         Assert.Contains("kept-legacy-rotated", manager.ReadLogTail("acme.kept").Text, "旧版本的轮转件要改名接上,前文不丢");
     }
@@ -216,6 +218,17 @@ public sealed class PluginLogFilesTests
         Assert.IsFalse(File.Exists(Path.Combine(LogDir, "p.log.1")));
         files.Append("p", "after");
         Assert.Contains("after", files.ReadTail("p").Text, "删完照样能接着写");
+    }
+
+    [TestMethod]
+    public void Delete_RemovesLegacyRotatedFile()
+    {
+        Directory.CreateDirectory(LogDir);
+        File.WriteAllText(Path.Combine(LogDir, "p.1.log"), "legacy\n");
+
+        new PluginLogFiles(LogDir).Delete("p");
+
+        Assert.IsFalse(File.Exists(Path.Combine(LogDir, "p.1.log")));
     }
 
     /// <summary>一个拼得出目录外路径的 id 不落文件(插件 id 本是 [a-z0-9.-],这里再守一道)。</summary>

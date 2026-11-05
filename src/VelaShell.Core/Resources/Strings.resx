@@ -3500,7 +3500,7 @@ Paste anyway?</value>
     <value>Session log retention (days)</value>
   </data>
   <data name="SetGeneral_LogRetentionDaysDesc" xml:space="preserve">
-    <value>// Terminal session logs older than this are cleaned up automatically; file transfer log retention is set separately on the File Transfer page</value>
+    <value>// Terminal session logs older than this are cleaned up automatically; the default is 7 days; file transfer log retention is set separately on the File Transfer page</value>
   </data>
   <data name="SetGeneral_MaxRetries" xml:space="preserve">
     <value>Max reconnect attempts</value>
@@ -4346,7 +4346,7 @@ Rerun anyway?</value>
     <value>Transfer log retention (days)</value>
   </data>
   <data name="SetTransfer_LogRetentionDaysDesc" xml:space="preserve">
-    <value>// Transfer logs older than this are cleaned up automatically; terminal session log retention is configured separately on the General page</value>
+    <value>// Transfer logs older than this are cleaned up automatically; the default is 7 days; terminal session log retention is configured separately on the General page</value>
   </data>
   <data name="SetTransfer_MaxConcurrent" xml:space="preserve">
     <value>Max concurrent transfers</value>
