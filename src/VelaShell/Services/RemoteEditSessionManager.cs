@@ -166,7 +166,7 @@ public static class RemoteEditSessionManager
             lease = EditDirectoryLease.Acquire(directory);
             if (!await FetchAsync(request, localPath, cancellationToken))
             {
-                TryDeleteDirectory(directory);
+                TryDeleteDirectory(directory, lease);
                 return null;
             }
             cancellationToken.ThrowIfCancellationRequested();
@@ -175,7 +175,7 @@ public static class RemoteEditSessionManager
         }
         catch
         {
-            TryDeleteDirectory(directory);
+            TryDeleteDirectory(directory, lease);
             throw;
         }
         finally
@@ -362,13 +362,17 @@ public static class RemoteEditSessionManager
         }
     }
 
-    internal static void TryDeleteDirectory(string path)
+    internal static void TryDeleteDirectory(string path, IDisposable? ownedLease = null)
     {
         try
         {
             if (Directory.Exists(path))
             {
-                Directory.Delete(path, true);
+                using IDisposable? acquiredLease = ownedLease is null ? EditDirectoryLease.TryAcquireExisting(path) : null;
+                if ((ownedLease ?? acquiredLease) is { } lease)
+                {
+                    EditDirectoryLease.DeleteOwnedDirectory(path, lease);
+                }
             }
         }
         catch
@@ -506,7 +510,7 @@ public sealed class RemoteEditSession : IDisposable
                 return;
             }
             RemoteEditLog.Write("close", $"done {RemotePath} (uploads={_uploadCount})");
-            RemoteEditSessionManager.TryDeleteDirectory(Path.GetDirectoryName(LocalPath)!);
+            RemoteEditSessionManager.TryDeleteDirectory(Path.GetDirectoryName(LocalPath)!, _directoryLease);
         }
         finally
         {

@@ -405,7 +405,7 @@ public partial class RemoteFileEditorView : Window
             string? dir = Path.GetDirectoryName(_localPath);
             if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
             {
-                Directory.Delete(dir, true);
+                RemoteEditSessionManager.TryDeleteDirectory(dir, _directoryLease);
             }
         }
         catch
