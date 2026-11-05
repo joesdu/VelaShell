@@ -68,6 +68,26 @@ public sealed class BuiltInEditTempFilesTests
     }
 
     [TestMethod]
+    public void SweepStale_ResumesRetiredCleanupOnlyAfterLeaseIsReleased()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Directory retirement is Unix-only; Windows deletes under the held lease.");
+            return;
+        }
+        string directory = Copy("builtin-edit", "1234abcd", "app.conf", Now);
+        string retired = directory + ".deleting-" + Guid.NewGuid().ToString("N");
+        using (EditDirectoryLease.Acquire(directory))
+        {
+            Directory.Move(directory, retired);
+            Assert.AreEqual(0, BuiltInEditTempFiles.SweepStale(_base, Now));
+            Assert.IsTrue(File.Exists(Path.Combine(retired, "app.conf")));
+        }
+        Assert.AreEqual(1, BuiltInEditTempFiles.SweepStale(_base, Now));
+        Assert.IsFalse(Directory.Exists(retired));
+    }
+
+    [TestMethod]
     public void SweepStale_DoesNotFollowNestedDirectoryLinks()
     {
         string directory = Copy("builtin-edit", "1234abcd", "app.conf", Now.AddDays(-30));
