@@ -337,16 +337,16 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// 因为它们问的是两件事:一件是"这个包我认不认识",另一件是"它还是不是上次那个人"。
     /// 合成一个开关的话,用户为前者点一次"仍要安装",就顺带把后者也答了。
     /// </param>
-    /// <param name="cancellationToken">取消令牌。</param>
     /// <param name="expectedPluginId">商店选择的插件 ID;提供时还会校验实际兼容性。</param>
     /// <param name="expectedVersion">商店选择的版本;覆盖旧版前必须与包内版本一致。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public async Task<string> InstallFromVpxAsync(
         string vpxPath,
         bool allowUntrustedPackage = false,
         bool allowPublisherChange = false,
-        CancellationToken cancellationToken = default,
         string? expectedPluginId = null,
-        string? expectedVersion = null)
+        string? expectedVersion = null,
+        CancellationToken cancellationToken = default)
     {
         if (options.UserPluginRoot is not { } userRoot)
         {
