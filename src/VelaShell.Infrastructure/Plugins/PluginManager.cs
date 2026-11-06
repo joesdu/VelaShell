@@ -361,7 +361,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         // 暂存目录必须位于用户插件根下:Linux 上 /tmp 可能是独立 tmpfs,
         // 与用户目录不在同一文件系统,跨设备 Directory.Move 会失败(EXDEV)。
         // 同根暂存还保留校验完成后的原子目录替换,避免坏包污染插件目录。
-        using PluginArtifactLease stagingLease = PluginArtifactLease.Create(
+        using var stagingLease = PluginArtifactLease.Create(
             PackageStagingRoot(userRoot), "", "", directory: true);
         string staging = stagingLease.Path;
         using FileStream installationLease = PluginArtifactMaintenance.AcquireInstallationLease(userRoot);
@@ -2868,7 +2868,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         try
         {
             string pluginShadow = Path.Combine(shadowRoot, SanitizeDirectoryName(descriptor.Id));
-            PluginArtifactLease lease = PluginArtifactLease.Create(pluginShadow, "gen-", "", directory: true);
+            var lease = PluginArtifactLease.Create(pluginShadow, "gen-", "", directory: true);
             try
             {
                 CopyDirectory(descriptor.Directory, lease.Path);
