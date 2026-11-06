@@ -2868,7 +2868,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         try
         {
             string pluginShadow = Path.Combine(shadowRoot, SanitizeDirectoryName(descriptor.Id));
-            using var lease = PluginArtifactLease.Create(pluginShadow, "gen-", "", directory: true);
+            PluginArtifactLease lease = PluginArtifactLease.Create(pluginShadow, "gen-", "", directory: true);
             try
             {
                 CopyDirectory(descriptor.Directory, lease.Path);
