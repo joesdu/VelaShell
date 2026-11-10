@@ -28,9 +28,9 @@
     <!-- 启动画面的 Logo(见 Splash/SplashResources)。它在 Avalonia 起来之前就要画,读不到
          avares:// 资源,所以同一张图再以普通嵌入资源编一份(约 95 KB)。 -->
     <EmbeddedResource Include="Assets\velashell.png" LogicalName="VelaShell.Splash.logo.png" />
-    <!-- 启动画面「看板娘」样式的插画:近 800 KB,只有选了那一套才读,不进程序集 ——
+    <!-- 启动画面「看板娘」样式的插画:只有选了那一套才读,不进程序集 ——
          每次冷启动都要被 Defender 按字节扫一遍的东西,不该为一个可选样式变大。随应用分发成松散文件。 -->
-    <None Include="..\..\mascot\chibi-laptop.png" Link="splash\mascot.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\mascot\6fe3733c42d444a1b9606e3b282b4395.png" Link="splash\mascot.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--

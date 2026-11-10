@@ -86,6 +86,8 @@ public sealed class SplashPreviewUiTests
             Assert.AreEqual(OperatingSystem.IsWindows(), preview.IsEffectivelyVisible, "启动画面只在 Windows 上有,设置项也只在 Windows 上出现。");
             if (OperatingSystem.IsWindows())
             {
+                Assert.AreEqual(520, preview.Bounds.Width, 0.5, "设置页预览宽度应限制在 520px,避免占用过多纵向空间。");
+                Assert.AreEqual(520d * 340 / 600, preview.Bounds.Height, 0.5, "设置页预览仍保持 600:340 比例。");
                 ComboBox styles = window.GetVisualDescendants().OfType<ComboBox>()
                     .Single(box => box.ItemCount == SplashStyles.All.Count && box.SelectedIndex == viewModel.SplashStyleIndex
                                    && box.IsEffectivelyVisible && box.GetVisualAncestors().Contains(preview.GetVisualParent()!));

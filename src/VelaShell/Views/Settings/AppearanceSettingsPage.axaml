@@ -216,7 +216,7 @@
           <ComboBoxItem Content="{loc:Localize SetAppear_SplashNone}" />
         </ComboBox>
       </Grid>
-      <ctl:SplashPreview HorizontalAlignment="Left" Width="420"
+      <ctl:SplashPreview HorizontalAlignment="Stretch" MaxWidth="520"
                          IsVisible="{Binding ShowSplashPreview}"
                          SplashStyle="{Binding Appearance.SplashStyle}"
                          ThemeId="{Binding Theme}"
