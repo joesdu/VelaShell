@@ -6299,6 +6299,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="PluginManager_UpdatesFound"><value>{0} 個のプラグインに新しいバージョンがあります。</value></data>
   <data name="PluginManager_Updating"><value>「{0}」を更新しています…</value></data>
   <data name="PluginManager_UpdateFailed"><value>更新に失敗しました: {0}</value></data>
+  <data name="PluginManager_ActiveConnectionsTitle"><value>プラグインのアクティブな接続</value></data>
+  <data name="PluginManager_ActiveConnectionsWarning"><value>「{0}」にはアクティブな接続が {1} 件あります。更新すると接続が切断されます。続行しますか？</value></data>
+  <data name="PluginManager_DisconnectAndUpdate"><value>切断して更新</value></data>
   <data name="PluginManager_WaitingForDebugger"><value>プラグイン「{0}」のホストプロセスがデバッガーの接続を待機しています(プロセス ID {1})。</value></data>
   <data name="PluginManager_Installed"><value>「{0}」をインストールしました。</value></data>
   <data name="PluginManager_InstallFailed"><value>インストール失敗: {0}</value></data>

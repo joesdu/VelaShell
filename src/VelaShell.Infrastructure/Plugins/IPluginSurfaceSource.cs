@@ -20,3 +20,13 @@ public interface IPluginSurfaceSource
     /// <summary>开着的界面数可能变化时触发;可能在任意线程上触发。</summary>
     event Action? SurfacesChanged;
 }
+
+/// <summary>能在更新前断开插件所拥有连接的宿主来源。</summary>
+public interface IPluginConnectionSource : IPluginSurfaceSource
+{
+    /// <summary>该插件当前拥有的连接数。</summary>
+    int CountOpenConnections(PluginManifest manifest);
+
+    /// <summary>断开该插件的全部连接，并等待连接对象释放完成。</summary>
+    Task CloseOpenConnectionsAsync(PluginManifest manifest, CancellationToken cancellationToken = default);
+}

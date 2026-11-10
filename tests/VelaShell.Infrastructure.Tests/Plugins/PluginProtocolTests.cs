@@ -2,6 +2,8 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Protocols;
 using VelaShell.Infrastructure.Plugins.Capabilities;
 using VelaShell.Infrastructure.Plugins.Protocols;
+using VelaShell.PluginSdk;
+using VelaShell.PluginSdk.Manifest;
 using VelaShell.PluginSdk.Protocols;
 using VelaShell.PluginSdk.RemoteFs;
 using VelaShell.PluginSdk.Testing;
@@ -40,6 +42,28 @@ public sealed class PluginProtocolTests
             Port = 8443,
             PluginProtocolId = protocolId,
         };
+
+    [TestMethod]
+    public async Task FileService_CloseOpenConnections_DisconnectsOwnedSessions()
+    {
+        PluginManifest manifest = PluginManifestReader.Parse("""
+        {
+          "id": "acme.storage", "version": "1.0.0", "displayName": "Acme", "entry": "Acme.dll",
+          "contributes": { "protocols": [ { "id": "acme.storage", "displayName": "Acme", "defaultPort": 8443 } ] }
+        }
+        """);
+        var registry = new PluginProtocolRegistry();
+        var fileSystem = new FakeProtocolFileSystem();
+        registry.Register(PluginId, Descriptor(), fileSystem);
+        var service = new PluginProtocolFileService(registry);
+        await service.OpenSessionAsync(Profile());
+
+        Assert.AreEqual(1, service.CountOpenConnections(manifest));
+        await service.CloseOpenConnectionsAsync(manifest);
+
+        Assert.AreEqual(1, fileSystem.DisconnectCount);
+        Assert.AreEqual(0, service.CountOpenConnections(manifest));
+    }
 
     /// <summary>清单声明的协议页签在**不装载程序集**的前提下就要出现,只是还没"就绪"。</summary>
     [TestMethod]
@@ -598,6 +622,8 @@ public sealed class PluginProtocolTests
     {
         public ProtocolConnectRequest? LastRequest { get; private set; }
 
+        public int DisconnectCount { get; private set; }
+
         public Exception? ConnectFailure { get; init; }
 
         /// <summary>列目录返回的条目;缺省是一个普通文件 <c>readme.txt</c>。</summary>
@@ -611,7 +637,11 @@ public sealed class PluginProtocolTests
             return ConnectFailure is { } failure ? Task.FromException(failure) : Task.CompletedTask;
         }
 
-        public Task DisconnectAsync(string sessionId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DisconnectAsync(string sessionId, CancellationToken cancellationToken = default)
+        {
+            DisconnectCount++;
+            return Task.CompletedTask;
+        }
 
         public Task<string> GetHomePathAsync(string sessionId, CancellationToken cancellationToken = default) => Task.FromResult("/");
 

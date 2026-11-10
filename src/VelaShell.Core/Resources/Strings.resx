@@ -6305,6 +6305,9 @@ Overwrite it?</value>
   <data name="PluginManager_UpdatesFound"><value>{0} plugin(s) have a newer version.</value></data>
   <data name="PluginManager_Updating"><value>Updating “{0}”…</value></data>
   <data name="PluginManager_UpdateFailed"><value>Update failed: {0}</value></data>
+  <data name="PluginManager_ActiveConnectionsTitle"><value>Active plugin connections</value></data>
+  <data name="PluginManager_ActiveConnectionsWarning"><value>{0} has {1} active connection(s). Updating will disconnect them. Continue?</value></data>
+  <data name="PluginManager_DisconnectAndUpdate"><value>Disconnect and update</value></data>
   <data name="PluginManager_WaitingForDebugger"><value>Plugin host for "{0}" is waiting for a debugger — attach to process {1}.</value></data>
   <data name="PluginManager_Installed"><value>Installed "{0}".</value></data>
   <data name="PluginManager_InstallFailed"><value>Install failed: {0}</value></data>

@@ -6506,6 +6506,15 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="PluginManager_UpdateFailed" xml:space="preserve">
     <value>更新失敗：{0}</value>
   </data>
+  <data name="PluginManager_ActiveConnectionsTitle" xml:space="preserve">
+    <value>外掛程式存在作用中連線</value>
+  </data>
+  <data name="PluginManager_ActiveConnectionsWarning" xml:space="preserve">
+    <value>「{0}」目前有 {1} 個作用中連線。更新將中斷這些連線，是否繼續？</value>
+  </data>
+  <data name="PluginManager_DisconnectAndUpdate" xml:space="preserve">
+    <value>中斷連線並更新</value>
+  </data>
   <data name="PluginManager_WaitingForDebugger" xml:space="preserve">
     <value>外掛「{0}」的宿主行程正在等待偵錯工具附加,行程 id {1}。</value>
   </data>

@@ -28,7 +28,7 @@ namespace VelaShell.Infrastructure.Plugins.Protocols;
 /// </summary>
 /// <param name="registry">协议注册表。</param>
 public sealed class PluginProtocolFileService(PluginProtocolRegistry registry)
-    : ISftpService, IPluginProtocolSessionService, IPluginSurfaceSource
+    : ISftpService, IPluginProtocolSessionService, IPluginConnectionSource
 {
     /// <inheritdoc />
     public event Action? SurfacesChanged;
@@ -48,6 +48,28 @@ public sealed class PluginProtocolFileService(PluginProtocolRegistry registry)
         bool Owns(string protocolId) =>
             protocols.Any(protocol => protocol.Id.Equals(protocolId, StringComparison.OrdinalIgnoreCase));
         return _sessions.Values.Count(session => Owns(session.Descriptor.Id)) + _opening.Values.Count(Owns);
+    }
+
+    /// <inheritdoc />
+    public int CountOpenConnections(PluginManifest manifest) => CountOpenSurfaces(manifest);
+
+    /// <inheritdoc />
+    public async Task CloseOpenConnectionsAsync(PluginManifest manifest, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (manifest.Contributes?.Protocols is not { Length: > 0 } protocols)
+        {
+            return;
+        }
+        var owned = protocols.Select(static protocol => protocol.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Guid[] sessions = [.. _sessions
+            .Where(pair => owned.Contains(pair.Value.Descriptor.Id))
+            .Select(static pair => pair.Key)];
+        foreach (Guid sessionId in sessions)
+        {
+            await CloseSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>一条已建立的插件协议会话。</summary>
