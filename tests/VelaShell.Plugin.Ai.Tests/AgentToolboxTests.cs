@@ -169,7 +169,7 @@ public sealed class AgentToolboxTests
 
             string outside = await InvokeAsync(toolbox, "write_local_file", new()
             {
-                ["path"] = "..\\outside.txt",
+                ["path"] = Path.Combine("..", "outside.txt"),
                 ["content"] = "must not be written"
             });
             Assert.Contains("outside", outside);
