@@ -92,6 +92,18 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     /// <summary>当前选中的目标会话 id(由聊天面板提供;null = 未选)。</summary>
     public Func<string?>? SessionIdProvider { get; set; }
 
+    /// <summary>本地 Agent 的工作区配置。</summary>
+    public IReadOnlyList<LocalWorkspace> LocalWorkspaces { get; set; } = [];
+
+    /// <summary>本地 Agent 的默认工作区 id。</summary>
+    public string? LocalDefaultWorkspaceId { get; set; }
+
+    /// <summary>本地文件工具单次操作的最大字节数。</summary>
+    public int LocalMaxFileBytes { get; set; } = MaxFileBytes;
+
+    /// <summary>本地目录工具返回的最大条目数。</summary>
+    public int LocalMaxDirectoryEntries { get; set; } = MaxDirectoryEntries;
+
     /// <summary>最近一次 <c>open_session</c> 开出来的会话;界面上没有选中项时的兜底目标。</summary>
     /// <remarks>
     /// <b>只在 <see cref="SessionIdProvider" /> 给不出东西时才用。</b>这正是"没绑机器"的那条路:
@@ -113,6 +125,9 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
     /// <summary>审批方式(见 <see cref="ApprovalMode" />)。</summary>
     public ApprovalMode Approval { get; set; } = ApprovalMode.Ask;
+
+    /// <summary>当前轮次的子 Agent 编排器;为空时不暴露委托工具。</summary>
+    public SubagentOrchestrator? Subagents { get; set; }
 
     /// <summary>
     /// 提权命令(<c>run_command</c> 带 <c>elevated=true</c>)不过插件这一层审批,直接交给宿主的 root 确认框。
@@ -180,6 +195,10 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         ("list_remote_directory", "经 SFTP 列出远端目录", true),
         ("stat_remote_path", "查远端路径存不存在、多大、什么时候改的", true),
         ("get_working_directory", "取会话的当前工作目录(相对路径的基准)", true),
+        ("list_local_workspaces", "列出当前 Agent 获得授权的本地工作区", true),
+        ("list_local_directory", "列出授权本地工作区中的目录", true),
+        ("stat_local_path", "查看授权本地路径的类型和元数据", true),
+        ("read_local_file", "读取授权本地工作区中的 UTF-8 文本文件", true),
         ("system_overview", "一次取回系统概览(内核、发行版、负载、内存、磁盘)", true),
         ("web_search", "检索网络,返回标题/链接/摘要清单(不含正文)", true),
         ("web_fetch", "取一个网页并转成文本", true),
@@ -194,6 +213,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         ("patch_remote_file", "只替换远端文件里的一段文本(不必回传整份)", false),
         ("make_remote_directory", "创建远端目录(幂等)", false),
         ("rename_remote_path", "重命名 / 移动远端文件或目录(改配置前备份用)", false),
+        ("write_local_file", "创建或覆盖授权本地工作区中的文本文件", false),
+        ("patch_local_file", "只替换授权本地文件中的唯一文本片段", false),
+        ("make_local_directory", "创建授权本地工作区中的目录", false),
+        ("rename_local_path", "重命名或移动授权本地路径", false),
+        ("delete_local_path", "删除授权本地文件或空目录", false),
         ("upload_local_file", "启动独立上传，大文件立即返回 transfer_id", false),
         ("transfer_status", "查看本轮传输状态、字节、速率和预计剩余时间", true),
         ("transfer_wait", "本地短等传输完成，等待到期不会取消传输", true),
@@ -201,7 +225,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         ("transfer_resume", "重新审批后显式恢复本轮可恢复传输", false),
         ("download_remote_file", "把远端文件后台拉到本机(交给本地 MCP 工具处理)", false),
         ("write_terminal", "把文本敲进用户可见的终端", false),
-        ("send_file", "把已下载的文件当附件发进当前这个 IM 聊天(只有 IM 那条路有)", false)
+        ("send_file", "把已下载的文件当附件发进当前这个 IM 聊天(只有 IM 那条路有)", false),
+        ("delegate_subagent", "委托一个只读子 Agent 并行分析任务", false),
+        ("subagent_status", "查看子 Agent 的状态", true),
+        ("subagent_wait", "等待子 Agent 完成并取得结果", true),
+        ("subagent_cancel", "取消一个仍在运行的子 Agent", false)
     ];
 
     /// <summary>
@@ -251,6 +279,20 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
             ("get_working_directory", AIFunctionFactory.Create(GetWorkingDirectoryAsync, "get_working_directory",
                 "Get the current working directory of an SSH session. Resolve relative paths against it instead of guessing."), true),
+
+            ("list_local_workspaces", AIFunctionFactory.Create(ListLocalWorkspacesAsync, "list_local_workspaces",
+                "List the local workspaces explicitly authorized for this Agent. "
+                + "These are the only local roots that local file tools may access."), true),
+
+            ("list_local_directory", AIFunctionFactory.Create(ListLocalDirectoryAsync, "list_local_directory",
+                "List entries in an authorized local workspace directory. "
+                + "Use workspace_id from list_local_workspaces and a relative path when possible."), true),
+
+            ("stat_local_path", AIFunctionFactory.Create(StatLocalPathAsync, "stat_local_path",
+                "Inspect an authorized local file or directory without changing it."), true),
+
+            ("read_local_file", AIFunctionFactory.Create(ReadLocalFileAsync, "read_local_file",
+                "Read a UTF-8 text file from an authorized local workspace, subject to the configured size limit."), true),
 
             ("system_overview", AIFunctionFactory.Create(SystemOverviewAsync, "system_overview",
                 "Collect a read-only snapshot of the server in one call: kernel, distribution, uptime and load, CPU count, "
@@ -305,6 +347,22 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 "Rename or move a remote file or directory. Requires user approval. "
                 + "Use it to back a config file up (foo.conf → foo.conf.bak) before editing it."), false),
 
+            ("write_local_file", AIFunctionFactory.Create(WriteLocalFileAsync, "write_local_file",
+                "Create or overwrite a UTF-8 text file in an authorized local workspace. Requires user approval. "
+                + "Use patch_local_file for a small change to an existing file."), false),
+
+            ("patch_local_file", AIFunctionFactory.Create(PatchLocalFileAsync, "patch_local_file",
+                "Replace one exact, unique text snippet in an authorized local UTF-8 file. Requires user approval."), false),
+
+            ("make_local_directory", AIFunctionFactory.Create(MakeLocalDirectoryAsync, "make_local_directory",
+                "Create a directory and its missing parents in an authorized local workspace. Requires user approval."), false),
+
+            ("rename_local_path", AIFunctionFactory.Create(RenameLocalPathAsync, "rename_local_path",
+                "Rename or move a file or directory inside authorized local workspaces. Requires user approval."), false),
+
+            ("delete_local_path", AIFunctionFactory.Create(DeleteLocalPathAsync, "delete_local_path",
+                "Delete an authorized local file or empty directory. Recursive deletion is not supported. Requires user approval."), false),
+
             ("upload_local_file", AIFunctionFactory.Create(UploadLocalFileAsync, "upload_local_file",
                 "Upload a file from the USER'S OWN MACHINE to the SSH server via SFTP. Requires user approval. "
                 + "No fixed upload size limit. Returns transfer_id and a JSON snapshot promptly; host-owned uploads survive request timeout and model Stop. "
@@ -327,6 +385,28 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 "Type text into the user's visible terminal of an SSH session, as if the user typed it. A trailing newline executes the command. "
                 + "The host will additionally ask the user for permission. Use only when the user explicitly wants something typed into their terminal."), false)
         };
+        all = all.Where(item => !IsLocalToolName(item.Name)).ToList();
+        if (new LocalPathScope(LocalWorkspaces).HasUsableWorkspace)
+        {
+            all.Add(("list_local_workspaces", AIFunctionFactory.Create(ListLocalWorkspacesAsync, "list_local_workspaces",
+                "List the local workspaces explicitly authorized for this Agent."), true));
+            all.Add(("list_local_directory", AIFunctionFactory.Create(ListLocalDirectoryAsync, "list_local_directory",
+                "List entries in an authorized local workspace directory."), true));
+            all.Add(("stat_local_path", AIFunctionFactory.Create(StatLocalPathAsync, "stat_local_path",
+                "Inspect an authorized local file or directory."), true));
+            all.Add(("read_local_file", AIFunctionFactory.Create(ReadLocalFileAsync, "read_local_file",
+                "Read a UTF-8 text file from an authorized local workspace."), true));
+            all.Add(("write_local_file", AIFunctionFactory.Create(WriteLocalFileAsync, "write_local_file",
+                "Create or overwrite a UTF-8 text file in an authorized local workspace. Requires approval."), false));
+            all.Add(("patch_local_file", AIFunctionFactory.Create(PatchLocalFileAsync, "patch_local_file",
+                "Replace one exact, unique text snippet in an authorized local file. Requires approval."), false));
+            all.Add(("make_local_directory", AIFunctionFactory.Create(MakeLocalDirectoryAsync, "make_local_directory",
+                "Create a directory in an authorized local workspace. Requires approval."), false));
+            all.Add(("rename_local_path", AIFunctionFactory.Create(RenameLocalPathAsync, "rename_local_path",
+                "Rename or move an authorized local path. Requires approval."), false));
+            all.Add(("delete_local_path", AIFunctionFactory.Create(DeleteLocalPathAsync, "delete_local_path",
+                "Delete an authorized local file or empty directory. Requires approval."), false));
+        }
         // 两个网络工具受"网络检索"总闸控制;开着才注册。都是只读的,所以计划模式也给 ——
         // "先查清楚再说怎么做"本来就是计划该干的事。
         if (WebSearch.Enabled && !nativeWebSearch)
@@ -354,6 +434,18 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 + "Same-host redirects are followed; a cross-host redirect is reported back instead of followed, "
                 + "so call web_fetch again with the new URL if that is where you want to go."), true));
         }
+        if (mode == ChatMode.Agent && Subagents is not null)
+        {
+            all.Add(("delegate_subagent", AIFunctionFactory.Create(DelegateSubagentAsync, "delegate_subagent",
+                "Delegate a focused read-only analysis task to a parallel subagent. "
+                + "The subagent cannot call tools or create more subagents. Returns an id immediately."), false));
+            all.Add(("subagent_status", AIFunctionFactory.Create(SubagentStatusAsync, "subagent_status",
+                "Get the status of a delegated subagent by id."), true));
+            all.Add(("subagent_wait", AIFunctionFactory.Create(SubagentWaitAsync, "subagent_wait",
+                "Wait briefly for a delegated subagent and return its result if complete."), true));
+            all.Add(("subagent_cancel", AIFunctionFactory.Create(SubagentCancelAsync, "subagent_cancel",
+                "Cancel a delegated subagent by id."), false));
+        }
         return
         [
             .. all.Where(t => (mode != ChatMode.Plan || t.ReadOnly) && !DisabledTools.Contains(t.Name))
@@ -361,6 +453,31 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                       ? new RunScopedFunction(function, this, runScope ?? CurrentRun) : t.Tool)
         ];
     }
+
+    private string DelegateSubagentAsync(string prompt, string? role = null)
+        => Subagents?.Start(prompt, role) ?? "Subagent support is unavailable in this turn.";
+
+    private string SubagentStatusAsync(string id)
+        => Subagents?.Status(id) ?? "Subagent support is unavailable in this turn.";
+
+    private Task<string> SubagentWaitAsync(string id, int timeout_seconds = 30,
+        CancellationToken cancellationToken = default)
+        => Subagents?.WaitAsync(id, timeout_seconds, cancellationToken)
+            ?? Task.FromResult("Subagent support is unavailable in this turn.");
+
+    private string SubagentCancelAsync(string id)
+        => Subagents?.Cancel(id) ?? "Subagent support is unavailable in this turn.";
+
+    private static bool IsLocalToolName(string name)
+        => name is "list_local_workspaces"
+            or "list_local_directory"
+            or "stat_local_path"
+            or "read_local_file"
+            or "write_local_file"
+            or "patch_local_file"
+            or "make_local_directory"
+            or "rename_local_path"
+            or "delete_local_path";
 
     /// <summary>scope 由工具列表捕获,不是模型参数;AsyncLocal 仅在一次工具调用内部传递。</summary>
     private sealed class RunScopedFunction(AIFunction inner, AgentToolbox toolbox, CommandJobRunScope scope)
@@ -624,6 +741,386 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             return $"Failed to get the working directory: {ex.Message}";
         }
+    }
+
+    // ---- 本地工作区 ----
+
+    private LocalPathScope CreateLocalScope() => new(LocalWorkspaces);
+
+    private bool TryResolveLocal(
+        string? workspaceId,
+        string? path,
+        bool write,
+        out LocalPath localPath,
+        out string error)
+    {
+        string? selectedWorkspace = string.IsNullOrWhiteSpace(workspaceId)
+            ? LocalDefaultWorkspaceId
+            : workspaceId.Trim();
+        return CreateLocalScope().TryResolve(selectedWorkspace, path, write, out localPath, out error);
+    }
+
+    private int EffectiveLocalMaxFileBytes
+        => LocalMaxFileBytes > 0 ? LocalMaxFileBytes : MaxFileBytes;
+
+    private int EffectiveLocalMaxDirectoryEntries
+        => LocalMaxDirectoryEntries > 0 ? LocalMaxDirectoryEntries : MaxDirectoryEntries;
+
+    private async Task<string> ListLocalWorkspacesAsync(CancellationToken cancellationToken = default)
+    {
+        await Task.CompletedTask.ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        LocalPathScope scope = CreateLocalScope();
+        if (!scope.HasUsableWorkspace)
+        {
+            return "No usable local workspace is configured.";
+        }
+
+        var sb = new StringBuilder();
+        foreach (LocalWorkspace workspace in scope.Workspaces.Where(LocalPathScope.IsConfigured))
+        {
+            sb.AppendLine(JsonSerializer.Serialize(new
+            {
+                workspace_id = workspace.Id,
+                name = workspace.Name,
+                root = Path.GetFullPath(workspace.RootPath),
+                read = true,
+                write = true,
+                @default = string.Equals(workspace.Id, LocalDefaultWorkspaceId, StringComparison.OrdinalIgnoreCase)
+            }));
+        }
+        return sb.Length == 0 ? "No usable local workspace is configured." : sb.ToString();
+    }
+
+    private async Task<string> ListLocalDirectoryAsync(
+        [Description("Relative path inside the workspace, or an absolute path inside it.")] string path = ".",
+        [Description("Workspace id from list_local_workspaces. Omit to use the configured default workspace.")] string? workspaceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryResolveLocal(workspaceId, path, write: false, out LocalPath localPath, out string error))
+        {
+            return error;
+        }
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!Directory.Exists(localPath.FullPath))
+            {
+                return $"No such directory: {path}";
+            }
+
+            FileSystemInfo[] entries = new DirectoryInfo(localPath.FullPath)
+                .EnumerateFileSystemInfos()
+                .Take(EffectiveLocalMaxDirectoryEntries + 1)
+                .ToArray();
+            if (entries.Length == 0)
+            {
+                return "(directory is empty)";
+            }
+
+            var sb = new StringBuilder();
+            foreach (FileSystemInfo entry in entries.Take(EffectiveLocalMaxDirectoryEntries))
+            {
+                sb.AppendLine(DescribeLocal(entry));
+            }
+            if (entries.Length > EffectiveLocalMaxDirectoryEntries)
+            {
+                sb.AppendLine($"…(more entries omitted; limit is {EffectiveLocalMaxDirectoryEntries})");
+            }
+            return sb.ToString();
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to list local directory: {ex.Message}";
+        }
+    }
+
+    private async Task<string> StatLocalPathAsync(
+        [Description("Relative path inside the workspace, or an absolute path inside it.")] string path,
+        [Description("Workspace id from list_local_workspaces. Omit to use the configured default workspace.")] string? workspaceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryResolveLocal(workspaceId, path, write: false, out LocalPath localPath, out string error))
+        {
+            return error;
+        }
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!File.Exists(localPath.FullPath) && !Directory.Exists(localPath.FullPath))
+            {
+                return $"No such path: {path}";
+            }
+            FileSystemInfo info = Directory.Exists(localPath.FullPath)
+                ? new DirectoryInfo(localPath.FullPath)
+                : new FileInfo(localPath.FullPath);
+            return DescribeLocal(info);
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to stat local path: {ex.Message}";
+        }
+    }
+
+    private async Task<string> ReadLocalFileAsync(
+        [Description("Relative path inside the workspace, or an absolute path inside it.")] string path,
+        [Description("Workspace id from list_local_workspaces. Omit to use the configured default workspace.")] string? workspaceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryResolveLocal(workspaceId, path, write: false, out LocalPath localPath, out string error))
+        {
+            return error;
+        }
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!File.Exists(localPath.FullPath))
+            {
+                return $"No such file: {path}";
+            }
+            if (new FileInfo(localPath.FullPath).Length > EffectiveLocalMaxFileBytes)
+            {
+                return $"File is larger than {EffectiveLocalMaxFileBytes / 1024} KB; read a smaller file.";
+            }
+            string content = await File.ReadAllTextAsync(localPath.FullPath, Encoding.UTF8, cancellationToken)
+                .ConfigureAwait(false);
+            return content.Length == 0 ? "(file is empty)" : content;
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to read local file: {ex.Message}";
+        }
+    }
+
+    private async Task<string> WriteLocalFileAsync(
+        [Description("Relative path inside the workspace, or an absolute path inside it. Parent directory must exist.")] string path,
+        [Description("Complete new UTF-8 content of the file.")] string content,
+        [Description("Workspace id from list_local_workspaces. Omit to use the configured default workspace.")] string? workspaceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryResolveLocal(workspaceId, path, write: true, out LocalPath localPath, out string error))
+        {
+            return error;
+        }
+        content ??= "";
+        int byteCount = Encoding.UTF8.GetByteCount(content);
+        if (byteCount > EffectiveLocalMaxFileBytes)
+        {
+            return $"Refusing to write more than {EffectiveLocalMaxFileBytes / 1024} KB in one call.";
+        }
+        string preview = content.Length <= 400 ? content : content[..400] + "…";
+        if (!await ApproveAsync(new ApprovalRequest("write_local_file",
+                $"{localPath.RelativePath}\n{preview}"), cancellationToken).ConfigureAwait(false))
+        {
+            return "The user DENIED writing this local file. Do not retry; ask the user how to proceed.";
+        }
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string? parent = Path.GetDirectoryName(localPath.FullPath);
+            if (parent is null || !Directory.Exists(parent))
+            {
+                return $"Parent directory does not exist: {path}";
+            }
+            await File.WriteAllTextAsync(localPath.FullPath, content, Encoding.UTF8, cancellationToken)
+                .ConfigureAwait(false);
+            return $"Wrote {byteCount} bytes to {localPath.RelativePath}.";
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to write local file: {ex.Message}";
+        }
+    }
+
+    private async Task<string> PatchLocalFileAsync(
+        [Description("Relative path inside the workspace, or an absolute path inside it.")] string path,
+        [Description("Exact text to replace; it must occur exactly once.")] string oldText,
+        [Description("Replacement text.")] string newText,
+        [Description("Workspace id from list_local_workspaces. Omit to use the configured default workspace.")] string? workspaceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryResolveLocal(workspaceId, path, write: true, out LocalPath localPath, out string error))
+        {
+            return error;
+        }
+        if (string.IsNullOrEmpty(oldText))
+        {
+            return "old_text must not be empty; use write_local_file to create a file.";
+        }
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!File.Exists(localPath.FullPath))
+            {
+                return $"No such file: {path}";
+            }
+            if (new FileInfo(localPath.FullPath).Length > EffectiveLocalMaxFileBytes)
+            {
+                return $"File is larger than {EffectiveLocalMaxFileBytes / 1024} KB; patch a smaller file.";
+            }
+            string original = await File.ReadAllTextAsync(localPath.FullPath, Encoding.UTF8, cancellationToken)
+                .ConfigureAwait(false);
+            int occurrences = CountOccurrences(original, oldText);
+            if (occurrences == 0)
+            {
+                return $"old_text was not found in {localPath.RelativePath}. Read the file first and copy the snippet exactly.";
+            }
+            if (occurrences > 1)
+            {
+                return $"old_text occurs {occurrences} times in {localPath.RelativePath}; it must be unique.";
+            }
+            string patched = original.Replace(oldText, newText ?? "", StringComparison.Ordinal);
+            if (Encoding.UTF8.GetByteCount(patched) > EffectiveLocalMaxFileBytes)
+            {
+                return $"The patched file would exceed {EffectiveLocalMaxFileBytes / 1024} KB.";
+            }
+            if (!await ApproveAsync(new ApprovalRequest("patch_local_file",
+                    $"{localPath.RelativePath}\n- {Clip(oldText)}\n+ {Clip(newText ?? "")}"), cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                return "The user DENIED this local edit. Do not retry; ask the user how to proceed.";
+            }
+            await File.WriteAllTextAsync(localPath.FullPath, patched, Encoding.UTF8, cancellationToken)
+                .ConfigureAwait(false);
+            return $"Patched {localPath.RelativePath} ({original.Length} → {patched.Length} chars).";
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to patch local file: {ex.Message}";
+        }
+    }
+
+    private async Task<string> MakeLocalDirectoryAsync(
+        [Description("Relative path inside the workspace, or an absolute path inside it.")] string path,
+        [Description("Workspace id from list_local_workspaces. Omit to use the configured default workspace.")] string? workspaceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryResolveLocal(workspaceId, path, write: true, out LocalPath localPath, out string error))
+        {
+            return error;
+        }
+        if (!await ApproveAsync(new ApprovalRequest("make_local_directory", localPath.RelativePath), cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return "The user DENIED creating this local directory. Do not retry; ask the user how to proceed.";
+        }
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Directory.CreateDirectory(localPath.FullPath);
+            return $"Directory ready: {localPath.RelativePath}";
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to create local directory: {ex.Message}";
+        }
+    }
+
+    private async Task<string> RenameLocalPathAsync(
+        [Description("Current relative or absolute path inside the workspace.")] string oldPath,
+        [Description("New relative or absolute path inside the same workspace.")] string newPath,
+        [Description("Workspace id from list_local_workspaces. Omit to use the configured default workspace.")] string? workspaceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryResolveLocal(workspaceId, oldPath, write: true, out LocalPath source, out string error))
+        {
+            return error;
+        }
+        if (!TryResolveLocal(workspaceId, newPath, write: true, out LocalPath destination, out error))
+        {
+            return error;
+        }
+        if (!File.Exists(source.FullPath) && !Directory.Exists(source.FullPath))
+        {
+            return $"No such path: {oldPath}";
+        }
+        if (File.Exists(destination.FullPath) || Directory.Exists(destination.FullPath))
+        {
+            return $"Destination already exists: {newPath}";
+        }
+        if (!await ApproveAsync(new ApprovalRequest("rename_local_path",
+                $"{source.RelativePath}\n→ {destination.RelativePath}"), cancellationToken).ConfigureAwait(false))
+        {
+            return "The user DENIED this local rename. Do not retry; ask the user how to proceed.";
+        }
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            string? parent = Path.GetDirectoryName(destination.FullPath);
+            if (parent is null || !Directory.Exists(parent))
+            {
+                return $"Destination parent directory does not exist: {newPath}";
+            }
+            if (Directory.Exists(source.FullPath))
+            {
+                Directory.Move(source.FullPath, destination.FullPath);
+            }
+            else
+            {
+                File.Move(source.FullPath, destination.FullPath);
+            }
+            return $"Renamed {source.RelativePath} → {destination.RelativePath}.";
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to rename local path: {ex.Message}";
+        }
+    }
+
+    private async Task<string> DeleteLocalPathAsync(
+        [Description("Relative or absolute file path, or an empty directory, inside the workspace.")] string path,
+        [Description("Workspace id from list_local_workspaces. Omit to use the configured default workspace.")] string? workspaceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryResolveLocal(workspaceId, path, write: true, out LocalPath localPath, out string error))
+        {
+            return error;
+        }
+        if (!File.Exists(localPath.FullPath) && !Directory.Exists(localPath.FullPath))
+        {
+            return $"No such path: {path}";
+        }
+        if (!await ApproveAsync(new ApprovalRequest("delete_local_path", localPath.RelativePath), cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return "The user DENIED deleting this local path. Do not retry; ask the user how to proceed.";
+        }
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Directory.Exists(localPath.FullPath))
+            {
+                if (Directory.EnumerateFileSystemEntries(localPath.FullPath).Any())
+                {
+                    return "Refusing to delete a non-empty directory; recursive deletion is not supported.";
+                }
+                Directory.Delete(localPath.FullPath);
+            }
+            else
+            {
+                File.Delete(localPath.FullPath);
+            }
+            return $"Deleted {localPath.RelativePath}.";
+        }
+        catch (Exception ex)
+        {
+            return $"Failed to delete local path: {ex.Message}";
+        }
+    }
+
+    private static string DescribeLocal(FileSystemInfo info)
+    {
+        bool directory = info is DirectoryInfo;
+        long size = directory ? 0 : (info as FileInfo)?.Length ?? 0;
+        return JsonSerializer.Serialize(new
+        {
+            name = info.Name,
+            path = info.FullName,
+            type = directory ? "directory" : "file",
+            size,
+            modified = info.LastWriteTimeUtc,
+            reparse_point = info.Attributes.HasFlag(FileAttributes.ReparsePoint)
+        });
     }
 
     /// <summary>

@@ -154,7 +154,11 @@ public sealed class BridgeAgentRunner(
             DisabledTools = new HashSet<string>(
                 (ai.DisabledBuiltinTools ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
                 StringComparer.OrdinalIgnoreCase),
-            WebSearch = ai.WebSearch
+            WebSearch = ai.WebSearch,
+            LocalWorkspaces = ai.LocalWorkspaces,
+            LocalDefaultWorkspaceId = ai.LocalDefaultWorkspaceId,
+            LocalMaxFileBytes = ai.LocalMaxFileBytes,
+            LocalMaxDirectoryEntries = ai.LocalMaxDirectoryEntries
         };
 
         string runId = Guid.NewGuid().ToString("N");
@@ -253,7 +257,8 @@ public sealed class BridgeAgentRunner(
                 {
                     // 审批上下文每轮一份:mcp 是所有聊天共用的,别的聊天的轮次可能正同时在跑
                     (List<AITool> mcpTools, List<string> errors) = await mcp
-                        .GetToolsAsync(ai.McpServers, new McpApproval(approve, approval), cancellationToken).ConfigureAwait(false);
+                        .GetToolsAsync(ai.McpServers, new McpApproval(approve, approval), cancellationToken,
+                            ai.LocalWorkspaces).ConfigureAwait(false);
                     foreach (AITool tool in mcpTools)
                     {
                         tools.Add(tool);

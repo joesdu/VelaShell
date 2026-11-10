@@ -1,0 +1,283 @@
+# VelaShell AI 插件能力增强计划
+
+## 1. 目标
+
+本次增强解决四类实际使用场景：
+
+1. 用户没有 SSH 连接时，AI 仍可作为本地 Agent 工作。
+2. 用户可以把本地文件作为消息附件或工作区文件交给 Agent 读取、修改和管理。
+3. Agent 可以把复杂任务拆成多个受控的 subagent 并行处理，再汇总结果。
+4. 本地 MCP 服务器能够稳定运行、配置工作区和环境，并以可审计的权限接入 Agent。
+
+本次实现保持现有远端 SSH、SFTP、消息附件、IM Bridge 和对外 MCP 行为兼容。
+
+## 2. 非目标与边界
+
+- 不把本地文件访问宣称为操作系统级沙箱。插件进程内的 `System.IO` 访问仍受宿主进程权限影响。
+- 不允许模型通过任意 shell 命令绕过本地路径授权；本地 Agent 只暴露结构化文件工具。
+- 不让 subagent 获得父 Agent 之外的本地目录、SSH 会话、MCP 工具或审批权限。
+- 不自动执行本地写入、删除、移动、启动进程或任意 MCP 写工具。
+- 不在第一版实现跨机器分布式 Agent、持久化队列、计费系统或复杂工作流 DSL。
+- 不将消息附件与持久化工作区混为一体：附件只进入当前消息，上下文工作区由显式路径授权控制。
+
+## 3. 现状与设计结论
+
+### 3.1 现有能力
+
+- `ChatPanelView.Attachments.cs` 已支持本地文件选择、拖放、剪贴板图片和消息附件。
+- `ChatPanelView.FilePicker.cs` 的 `@` 引用只支持当前 SSH 会话的远端目录。
+- `AgentToolbox` 是 UI、IM Bridge 和对外 MCP 共用的内置工具注册入口，目前文件工具主要针对远端 SFTP。
+- `McpManager` 已支持 Stdio 和 HTTPS/loopback HTTP，连接按配置指纹缓存，但缺少本地工作区授权、状态查询和更明确的进程生命周期控制。
+- 已有 `ChatMode.Chat`、`Plan`、`Agent` 和审批模式，可复用为本地 Agent 的模式基础。
+
+### 3.2 总体架构
+
+```text
+ChatPanel / Bridge / external MCP
+             |
+       AgentToolbox
+       /     |      \
+LocalFs  RemoteFs   MCP tools
+   |                    |
+LocalPathScope      McpManager
+   |                    |
+ normalized paths   bounded local server
+
+AgentRunCoordinator
+        |
+   SubagentOrchestrator
+        |
+ child AgentToolbox + child run scope
+```
+
+本地文件工具使用 `LocalPathScope`，不复用 SSH 的 `SessionScope`。每个工具调用先规范化路径、解析真实路径、验证范围和文件类型，再进行读取或写入。范围来自当前本地工作区配置及本轮临时授权。
+
+## 4. 本地文件与本地 Agent
+
+### 4.1 配置模型
+
+在 `AiSettings` 增加本地 Agent 配置：
+
+- `LocalAgentApproval`：沿用 `ApprovalMode`，默认 `Ask`。
+- `LocalWorkspaces`：多个命名工作区，每个工作区包含绝对根目录。旧版读写字段保留用于 JSON 兼容，不再作为运行时开关。
+- `LocalDefaultWorkspaceId`：聊天输入框当前选择的工作区。
+- `LocalMaxFileBytes`、`LocalMaxDirectoryEntries`：输出和资源上限。
+
+配置序列化必须向后兼容：旧配置中的本地 Agent 和工作区字段继续可读取；新的运行时默认直接支持本地和远程 Agent，本地工具仅在输入框选定有效工作区后注册。
+
+### 4.2 路径授权
+
+新增 `LocalPathScope` 和 `LocalWorkspace`：
+
+- 根目录在加载时规范化为绝对路径。
+- 所有输入使用 `Path.GetFullPath`，拒绝空路径、NUL、无法规范化的路径和越过根目录的路径。
+- 通过 `FileInfo`/`DirectoryInfo` 解析现有路径；对新文件检查父目录。
+- 默认拒绝跟随越界符号链接；对无法可靠确认的路径返回明确错误。
+- 文件大小、目录项数量、单次输出字符数均有限制。
+- 读取能力和写入能力独立判断；写入包括创建、覆盖、patch、移动、删除和创建目录。
+- 每次写入审批摘要显示工作区、规范化路径、操作类型、大小和覆盖策略。
+
+v1 直接使用插件进程的本地文件 API，但所有工具都必须经过 `LocalPathScope`。后续若宿主提供 `fs.local.read/write` Broker，可将实现替换为 Broker 适配器而不改变工具契约。
+
+### 4.3 内置工具
+
+新增以下工具，命名与远端工具明确区分：
+
+- `list_local_workspaces`：列出当前 Agent 可用工作区，不泄露未授权目录。
+- `list_local_directory`：列出目录。
+- `stat_local_path`：查看文件或目录元数据。
+- `read_local_file`：读取受限大小的 UTF-8 文本。
+- `write_local_file`：创建或覆盖文本文件。
+- `patch_local_file`：唯一片段替换，避免模型重写整个文件。
+- `make_local_directory`：创建目录。
+- `rename_local_path`：移动或重命名。
+- `delete_local_path`：删除文件或空目录，默认不递归删除。
+
+`ChatMode.Plan` 只注册本地只读工具；`ChatMode.Agent` 才注册写工具。没有 SSH 时，工具箱仍然可以创建并工作，不能再返回“请先连接 SSH”作为唯一出口。
+
+### 4.4 UI 与附件
+
+- 保留现有“选择文件/拖放/剪贴板”消息附件行为。
+- 在 `@` 文件引用中增加本地工作区来源选择；远端引用仍保留。
+- 本地引用在发送时读取并展开为消息内容，使用与远端引用相同的大小、二进制和失败提示规则。
+- Agent 工作区授权采用“输入框选择已保存根目录 + 本轮写入审批”的组合；不把一次消息附件自动升级为持久工作区授权。
+- 工作区通过输入框附近的选择器和文件夹按钮添加、切换；全局设置页不再提供本地 Agent 或工作区配置开关。
+
+## 5. Subagent / Team Model
+
+### 5.1 目标
+
+提供一个受控的 `delegate_subagent` 工具，让主 Agent 可以把独立子任务委派给同一供应商或指定模型。第一版重点支持并行只读分析和有限的实现任务，不引入独立 UI 工作流。
+
+### 5.2 运行模型
+
+- 新增 `SubagentOrchestrator`，由当前 `AgentToolbox` 持有。
+- 每个子任务拥有唯一 `subagent_id`、独立 `CommandJobRunScope` 和取消令牌。
+- 子 Agent 继承父 Agent 的 `LocalPathScope`、`ISessionScope`、MCP 工具筛选和审批模式，不能扩大权限。
+- 默认最多 4 个并发子 Agent、每轮最多 8 个、单个子 Agent 默认 120 秒。
+- 子 Agent 默认使用只读工具；只有主 Agent 明确指定 `allowWrites=true` 且父轮为 Agent 模式时才提供写工具，并仍逐次审批。
+- 子 Agent 不允许继续创建子 Agent，避免递归爆炸。
+- 父轮取消时取消全部子 Agent；单个子 Agent 失败不吞掉错误，汇总中保留状态和错误。
+
+### 5.3 工具契约
+
+- `delegate_subagent(task, role, modelId?, allowWrites=false, timeoutSeconds?)`
+- `subagent_status(subagentId)`
+- `subagent_wait(subagentId, waitSeconds?)`
+- `subagent_cancel(subagentId)`
+
+第一版结果汇总为结构化 JSON 文本，包含状态、摘要、输出、使用的工具和错误。模型提示明确要求主 Agent 验证子 Agent 的结果，不能把子 Agent 的文本视为用户已批准的事实。
+
+### 5.4 模型选择与兼容
+
+- `modelId` 为空时使用当前模型。
+- 指定模型必须存在于当前 `AiSettings`，并通过同一凭据解析流程获取客户端。
+- 若模型或供应商不支持工具调用，子 Agent 返回可解释的失败，而不是静默回退成无工具聊天。
+- 不保存 API Key 到任务对象；子 Agent 只持有短生命周期客户端和取消令牌。
+
+## 6. 本地 MCP 增强
+
+### 6.1 配置增强
+
+在 `McpServerConfig` 增加：
+
+- `AutoStart`：是否在首次 Agent 请求前自动连接。
+- `KeepAlive`：是否跨对话复用连接。
+- `AllowedTools`：允许暴露给 Agent 的白名单；与现有 `DisabledTools` 同时存在时白名单优先。
+- `WorkspaceId`：将本地服务器绑定到指定本地工作区。
+- `MaxConcurrentCalls`：单服务器并发上限。
+- `StartupTimeoutSeconds`、`CallTimeoutSeconds`：启动和调用超时。
+- `EnvironmentInheritMode`：默认只继承必要的系统环境，再叠加用户显式变量；敏感变量不在 UI 工具列表中回显。
+
+### 6.2 生命周期与可观察性
+
+- `McpManager` 增加服务器状态快照：Stopped、Starting、Ready、Degraded、Failed、Stopping。
+- 连接/断开/重启使用显式取消和超时，确保 Stdio 子进程在配置删除或插件停用时被收尾。
+- 工具调用受每服务器并发闸门和调用超时控制。
+- 失败信息区分启动失败、握手失败、工具失败和超时；返回给模型的文本不包含环境变量值或认证头。
+- 设置页提供“启动、停止、重启、刷新工具、查看最近错误”操作。
+
+### 6.3 权限与工具暴露
+
+- MCP 工具全部经过本地审批包装；远端 `readOnlyHint` 只作为展示和只读重试提示，不能成为安全边界。
+- `Plan` 模式不连接或暴露可写 MCP 工具。
+- 本地 MCP 服务器绑定工作区时，工具调用请求带上本地作用域；无法证明路径受限的服务器只允许在显式 Agent 审批下使用。
+- 服务器工具名称继续使用稳定前缀，冲突时保持确定性编号。
+
+## 7. 数据、UI 与文档
+
+### 7.1 数据兼容
+
+- 新字段全部使用安全默认值。
+- 配置读取遇到无效路径时保留配置并在 UI/日志显示错误，不静默改写用户路径。
+- 删除工作区前检查是否被默认设置、MCP 或活动子 Agent 使用。
+- 活动子 Agent 和 MCP 连接不写入 API Key、请求头、环境变量值或完整文件内容。
+
+### 7.2 UI
+
+- 聊天输入框显示当前本地工作区；全局设置页不再管理本地 Agent 或工作区。
+- 工具配置窗口展示本地工具和 MCP 工具的读写属性、来源和启用状态。
+- 聊天面板显示当前本地工作区、审批状态和子 Agent 运行卡片。
+- 本地文件失败信息包含操作、路径和原因；不显示未授权目录列表。
+- 五语言资源同步：英语、简体中文、繁体中文、日语、韩语。
+
+### 7.3 文档
+
+同步更新：
+
+- `VelaShell/manual.md`
+- `VelaShell/manual.en.md`
+- `velashell-docs/zh/plugins/11-automation-and-ai.md`
+- `velashell-docs/en/plugins/11-automation-and-ai.md`
+- `velashell-docs/zh/plugins/06-permission-system.md`
+- `velashell-docs/en/plugins/06-permission-system.md`
+- `velashell-docs/zh/plugins/12-security-threat-model.md`
+- `velashell-docs/en/plugins/12-security-threat-model.md`
+
+文档必须明确本地 Agent 的路径范围、审批行为、符号链接边界、subagent 权限继承和 MCP 进程风险。
+
+## 8. 测试矩阵与验收标准
+
+### 8.1 单元测试
+
+- 路径规范化、根目录边界、大小写差异、相对路径、`..`、NUL 和符号链接。
+- 本地文件读写、唯一 patch、非 UTF-8、超限和不存在路径。
+- `Plan`/`Agent` 工具注册差异。
+- 没有 SSH 会话时本地工具仍可调用。
+- 审批拒绝不会写入、删除或移动文件。
+- subagent 并发上限、取消、超时、权限继承和失败汇总。
+- MCP 配置往返、白名单优先级、状态变化、调用超时和连接清理。
+
+### 8.2 集成/UI 测试
+
+- 本地工作区设置保存和重新加载。
+- `@` 本地文件补全与发送展开。
+- 本地 Agent 在无 SSH 模式下完成读取和 patch。
+- MCP Stdio 测试服务器启动、工具发现、调用、重启和停用清理。
+- 子 Agent 在 UI 中显示运行、完成、失败和取消状态。
+
+### 8.3 验收
+
+1. 无 SSH 时，Agent 能列出授权工作区、读取文件并在审批后修改文件。
+2. 越出工作区、跟随越界链接或缺少写权限时，操作在文件系统调用前被拒绝。
+3. 远端 SSH 工具和现有附件/远端引用测试继续通过。
+4. 至少两个只读 subagent 可并行运行，父轮取消后不会遗留任务。
+5. 本地 MCP 服务器可配置工作目录、环境变量、工具白名单和生命周期操作。
+6. 定向测试、插件构建和解决方案级构建/测试通过。
+
+## 9. 分阶段实施顺序
+
+### 阶段 A：本地文件 MVP
+
+1. 新增本地工作区配置和 `LocalPathScope`。
+2. 在 `AgentToolbox` 接入本地只读/写工具。
+3. 无 SSH 时让本地 Agent 正常工作。
+4. 增加设置 UI、工具选择和本地化。
+5. 添加路径安全、工具行为和 UI 测试。
+
+### 阶段 B：本地引用与附件统一
+
+1. 抽取本地/远端引用解析的公共边界。
+2. 在 `@` 补全中增加本地工作区来源。
+3. 保持消息附件上限和二进制处理规则。
+4. 增加引用和发送展开测试。
+
+### 阶段 C：Subagent / Team Model
+
+1. 新增编排器、子任务状态和工具。
+2. 接入当前模型和可选模型选择。
+3. 实现并发、超时、取消、权限继承和结果汇总。
+4. 增加运行卡片、状态提示和测试。
+
+### 阶段 D：本地 MCP 增强
+
+1. 扩展配置模型和迁移默认值。
+2. 增加状态机、生命周期控制、并发与调用超时。
+3. 增加工作区绑定和工具白名单。
+4. 更新设置 UI、错误展示和 MCP 测试。
+
+### 阶段 E：文档与完整验证
+
+1. 同步手册、插件文档和安全威胁模型。
+2. 运行 AI 插件定向测试。
+3. 运行插件构建，再运行解决方案级构建和测试。
+4. 检查配置迁移、文档语言资源、工作区状态和计划完成项。
+
+## 10. 风险、回滚与后续
+
+- 若宿主进程内 `System.IO` 权限无法满足更高隔离要求，保留 `LocalPathScope` 契约，后续接入宿主 Broker。
+- 若不同模型的工具调用协议不兼容，subagent 对该模型明确失败并保留主 Agent 工作流。
+- 若 MCP SDK 无法可靠停止某类子进程，记录为 Degraded 并在插件停用时执行尽力清理，不假报已停止。
+- 新配置均可通过删除对应字段回到旧行为；清空输入框工作区、停用 subagent 和 MCP 服务器即可回滚对应功能暴露。
+
+## 11. 当前执行状态
+
+截至当前实现：
+
+- 阶段 A、B 已完成：本地 Agent、工作区授权、本地读写工具、输入框工作区选择、`#local://` 引用、本地附件，以及 SSH 存在时的本地候选均已接入。当前选定工作区是本轮本地工具、附件补全和本地 MCP 工作目录的唯一授权范围。
+- 阶段 C 已完成第一版受控编排：`SubagentOrchestrator` 提供 `delegate_subagent`、`subagent_status`、`subagent_wait`、`subagent_cancel`，限制并发、总量和超时，父轮取消会收尾子任务。当前子 Agent 是无工具的只读分析模型，尚未实现独立模型选择和子 Agent 工具继承。
+- 阶段 D 已完成配置和调用安全核心：MCP 工具白名单优先于禁用列表，stdio 可绑定已授权本地工作区作为工作目录，连接启动超时、单服务器并发闸门和单次调用超时已生效。`AutoStart`、`KeepAlive` 的显式生命周期按钮、服务器状态 UI、环境继承模式和完整状态机仍属于后续增强。
+- 已更新中英文主手册，说明本地 Agent、`#local://`、subagent 限制和 MCP 工作区/超时配置。
+- 已完成输入区视觉重排：Agent 模式、自动审批和工作区均采用与模型选择器一致的透明下拉样式，并使用图标与文本；工作区和添加按钮位于自动审批右侧，工具栏仅保留附件、模型/工具、模式和发送操作。
+- 最新插件构建通过；布局、AgentToolbox、文件引用和本地 Agent 相关定向测试共 227 个通过。完整测试仍有 Failover/MCP 握手场景的既有失败，表现为请求重试次数或顺序、以及异步完成等待与测试预期不一致，与本次选择器布局改动无关。
+

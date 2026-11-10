@@ -118,6 +118,30 @@ public sealed class FileReferenceTests
     }
 
     [TestMethod]
+    public void LocalWorkspaceReferences_AreRecognizedAndPreserved()
+    {
+        const string text = "读取 #local://workspace/src/app.cs 后继续";
+
+        int caret = text.IndexOf(" 后", StringComparison.Ordinal);
+        Assert.IsTrue(FileReference.TryFindToken(text, caret, out _, out _, out string token));
+        Assert.AreEqual("local://workspace/src/app.cs", token);
+        Assert.AreSequenceEqual(["local://workspace/src/app.cs"], FileReference.Parse(text));
+        Assert.IsTrue(FileReference.IsLocal(token));
+        Assert.IsFalse(FileReference.IsLocal("/etc/hosts"));
+    }
+
+    [TestMethod]
+    public void LocalWorkspaceReferences_CanBeCompletedAndShortened()
+    {
+        const string text = "读取 #local://workspace/src/app.cs ";
+
+        Assert.IsTrue(FileReference.TryFindCompletedReferenceBefore(text, text.Length, out int start));
+        Assert.AreEqual(3, start);
+        Assert.AreEqual("app.cs", FileReference.DisplayName("local://workspace/src/app.cs"));
+        Assert.AreEqual("读取 #app.cs ", FileReference.Shorten(text));
+    }
+
+    [TestMethod]
     public void Parse_DropsTrailingSentencePunctuation()
     {
         Assert.AreSequenceEqual(["/var/log/syslog"], FileReference.Parse("看看 #/var/log/syslog。"));

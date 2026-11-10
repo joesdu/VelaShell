@@ -58,11 +58,128 @@ public sealed class AgentToolboxTests
         string[] names = [.. toolbox.CreateTools(ChatMode.Plan).OfType<AIFunction>().Select(f => f.Name)];
 
         Assert.AreSequenceEqual(
-            AgentToolbox.Catalog.Where(t => t.ReadOnly).Select(t => t.Name),
+            AgentToolbox.Catalog.Where(t => t.ReadOnly && !t.Name.Contains("_local_", StringComparison.Ordinal))
+                .Where(t => t.Name is not ("subagent_status" or "subagent_wait"))
+                .Select(t => t.Name),
             names,
             SequenceOrder.InAnyOrder);
         Assert.DoesNotContain("run_command", names, "计划模式不该能执行命令");
         Assert.DoesNotContain("write_remote_file", names, "计划模式不该能写文件");
+    }
+
+    [TestMethod]
+    public void CreateTools_WithWorkspace_ExposesLocalToolsByDefault()
+    {
+        using var context = new TestPluginContext();
+        string root = Path.Combine(Path.GetTempPath(), "velashell-ai-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var toolbox = new AgentToolbox(context)
+            {
+                LocalWorkspaces =
+                [
+                    new LocalWorkspace { Id = "local", RootPath = root, AllowWrite = true }
+                ]
+            };
+
+            string[] names = [.. toolbox.CreateTools(ChatMode.Agent).OfType<AIFunction>().Select(f => f.Name)];
+
+            Assert.Contains("read_local_file", names);
+            Assert.Contains("write_local_file", names);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task LocalAgent_CanReadPatchAndDeleteWithinAuthorizedWorkspace()
+    {
+        using var context = new TestPluginContext();
+        string root = Path.Combine(Path.GetTempPath(), "velashell-ai-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        string file = Path.Combine(root, "settings.txt");
+        File.WriteAllText(file, "before\n");
+        try
+        {
+            var toolbox = new AgentToolbox(context)
+            {
+                LocalWorkspaces =
+                [
+                    new LocalWorkspace { Id = "local", RootPath = root, AllowWrite = true }
+                ],
+                LocalDefaultWorkspaceId = "local",
+                Approval = ApprovalMode.Bypass
+            };
+
+            string read = await InvokeAsync(toolbox, "read_local_file", new() { ["path"] = "settings.txt" });
+            Assert.Contains("before", read);
+
+            string patch = await InvokeAsync(toolbox, "patch_local_file", new()
+            {
+                ["path"] = "settings.txt",
+                ["oldText"] = "before",
+                ["newText"] = "after"
+            });
+            Assert.Contains("Patched", patch);
+            Assert.AreEqual("after\n", File.ReadAllText(file));
+
+            string delete = await InvokeAsync(toolbox, "delete_local_path", new() { ["path"] = "settings.txt" });
+            Assert.Contains("Deleted", delete);
+            Assert.IsFalse(File.Exists(file));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task LocalAgent_RefusesOutsideWorkspaceAndApprovalLeavesNoSideEffect()
+    {
+        using var context = new TestPluginContext();
+        string root = Path.Combine(Path.GetTempPath(), "velashell-ai-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var toolbox = new AgentToolbox(context)
+            {
+                LocalWorkspaces =
+                [
+                    new LocalWorkspace { Id = "local", RootPath = root, AllowWrite = true }
+                ],
+                LocalDefaultWorkspaceId = "local",
+                Approval = ApprovalMode.Ask,
+                ApprovalHandler = _ => Task.FromResult(false)
+            };
+
+            string outside = await InvokeAsync(toolbox, "write_local_file", new()
+            {
+                ["path"] = Path.Combine("..", "outside.txt"),
+                ["content"] = "must not be written"
+            });
+            Assert.Contains("outside", outside);
+
+            string denied = await InvokeAsync(toolbox, "write_local_file", new()
+            {
+                ["path"] = "new.txt",
+                ["content"] = "must not be written"
+            });
+            Assert.Contains("DENIED", denied);
+            Assert.IsFalse(File.Exists(Path.Combine(root, "new.txt")));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
     }
 
     /// <summary>

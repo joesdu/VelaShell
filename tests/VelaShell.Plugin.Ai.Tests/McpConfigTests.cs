@@ -95,7 +95,14 @@ public sealed class McpConfigTests
                     Transport = McpTransportType.Stdio,
                     Command = "npx",
                     Arguments = "-y @modelcontextprotocol/server-filesystem C:\\data",
-                    EnvironmentVariables = "DEBUG=1"
+                    EnvironmentVariables = "DEBUG=1",
+                    AutoStart = false,
+                    KeepAlive = false,
+                    AllowedTools = "read_file\nlist_directory",
+                    WorkspaceId = "local",
+                    MaxConcurrentCalls = 3,
+                    StartupTimeoutSeconds = 7,
+                    CallTimeoutSeconds = 45
                 },
                 new McpServerConfig
                 {
@@ -116,6 +123,13 @@ public sealed class McpConfigTests
         Assert.AreEqual(McpTransportType.Stdio, loaded.McpServers[0].Transport);
         Assert.AreEqual("npx", loaded.McpServers[0].Command);
         Assert.IsTrue(loaded.McpServers[0].Enabled);
+        Assert.IsFalse(loaded.McpServers[0].AutoStart);
+        Assert.IsFalse(loaded.McpServers[0].KeepAlive);
+        Assert.AreEqual("read_file\nlist_directory", loaded.McpServers[0].AllowedTools);
+        Assert.AreEqual("local", loaded.McpServers[0].WorkspaceId);
+        Assert.AreEqual(3, loaded.McpServers[0].MaxConcurrentCalls);
+        Assert.AreEqual(7, loaded.McpServers[0].StartupTimeoutSeconds);
+        Assert.AreEqual(45, loaded.McpServers[0].CallTimeoutSeconds);
         Assert.AreEqual(McpTransportType.Http, loaded.McpServers[1].Transport);
         Assert.IsFalse(loaded.McpServers[1].Enabled);
         Assert.AreEqual("https://example.com/mcp", loaded.McpServers[1].Url);

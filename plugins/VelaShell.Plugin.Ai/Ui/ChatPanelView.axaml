@@ -496,13 +496,17 @@
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
-    <!-- ===== 模式 / 审批两枚下拉的芯片化 =====
-         模式决定"这条消息怎么发",审批决定"会不会替你按下确定" —— 两者都得能被余光读到,
-         所以从灰底下拉变成带色描边的芯片。模式恒为强调色;审批的三档颜色由 SyncModeUi 按挡位写,
-         这里只把模板里的底/描边接到控件自身的属性上(否则悬停态会被 Fluent 的主题色盖回去)。 -->
-    <Style Selector="ComboBox#ModeCombo, ComboBox#ModeCombo:pointerover">
-      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
-      <Setter Property="FontWeight" Value="Medium" />
+    <!-- ===== 输入区选择器 =====
+         模式、审批和工作区都使用与模型选择器一致的透明按钮语言;
+         审批项仍保留语义色和图标,避免只靠文字区分风险档位。 -->
+    <Style Selector="ComboBox#ModeCombo, ComboBox#ModeCombo:pointerover,
+                   ComboBox#ApprovalCombo, ComboBox#ApprovalCombo:pointerover,
+                   ComboBox#WorkspaceCombo, ComboBox#WorkspaceCombo:pointerover">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="FontWeight" Value="Normal" />
     </Style>
     <!-- 部件名是实测出来的(Fluent 12 的 ComboBox 模板里有两层底:Border#Background 是常态那层,
          Border#HighlightBackground 是悬停/聚焦时盖上来的那层)。两层都要接管,
@@ -510,16 +514,16 @@
     <Style Selector="ComboBox#ModeCombo /template/ Border#Background,
                      ComboBox#ModeCombo:pointerover /template/ Border#Background,
                      ComboBox#ModeCombo:focus /template/ Border#Background">
-      <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
-      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
     </Style>
     <Style Selector="ComboBox#ModeCombo /template/ Border#HighlightBackground,
                      ComboBox#ModeCombo:pointerover /template/ Border#HighlightBackground,
                      ComboBox#ModeCombo:focus /template/ Border#HighlightBackground">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
-      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
     </Style>
     <Style Selector="ComboBox#ModeCombo /template/ PathIcon#DropDownGlyph">
       <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
@@ -527,8 +531,25 @@
     <!-- 选中项那块内容是模板里的 ContentControl#ContentPresenter,它的前景不跟随控件的
          Foreground(实测:只设控件 Foreground,芯片里的字仍是默认的浅灰) -->
     <Style Selector="ComboBox#ModeCombo /template/ ContentControl#ContentPresenter">
-      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
-      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+    <Style Selector="ComboBox#WorkspaceCombo /template/ Border#Background,
+                     ComboBox#WorkspaceCombo:pointerover /template/ Border#Background,
+                     ComboBox#WorkspaceCombo:focus /template/ Border#Background,
+                     ComboBox#WorkspaceCombo /template/ Border#HighlightBackground,
+                     ComboBox#WorkspaceCombo:pointerover /template/ Border#HighlightBackground,
+                     ComboBox#WorkspaceCombo:focus /template/ Border#HighlightBackground">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="ComboBox#WorkspaceCombo /template/ PathIcon#DropDownGlyph">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+    </Style>
+    <Style Selector="ComboBox#WorkspaceCombo /template/ ContentControl#ContentPresenter">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="FontWeight" Value="Normal" />
     </Style>
     <Style Selector="ComboBox#ApprovalCombo /template/ Border#Background,
                      ComboBox#ApprovalCombo:pointerover /template/ Border#Background,
@@ -537,11 +558,11 @@
                      ComboBox#ApprovalCombo:pointerover /template/ Border#HighlightBackground,
                      ComboBox#ApprovalCombo:focus /template/ Border#HighlightBackground">
       <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="{Binding $parent[ComboBox].BorderBrush}" />
-      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
     </Style>
     <Style Selector="ComboBox#ApprovalCombo /template/ PathIcon#DropDownGlyph">
-      <Setter Property="Foreground" Value="{Binding $parent[ComboBox].Foreground}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
     </Style>
 
     <!-- 思考档位:没改过档时<b>一个属性都不设</b> —— 就让它和旁边的模型选择器长得一模一样。
@@ -764,11 +785,11 @@
     </Grid>
 
     <!-- 最下沿的一条细行:左边是 Agent 的审批模式,右边是 token 用量和上下文占用条。 -->
-    <Grid x:Name="InputStatusBar" DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*,Auto" Margin="2,5,2,0">
+    <Grid x:Name="InputStatusBar" DockPanel.Dock="Bottom" ColumnDefinitions="Auto,Auto,Auto,*,Auto" Margin="2,5,2,0">
       <!-- 审批方式:默认审批 / 只读放行 / 绕过审批(只在有工具的模式下才有意义)。
            三档的语义色由 SyncModeUi 就地写(问=中性 / 只读自动=warn / 全部自动=error) ——
            这是个安全开关,当前挡位该在余光里就能读出来。 -->
-      <ComboBox x:Name="ApprovalCombo" IsVisible="False" MinWidth="96" MaxWidth="160"
+      <ComboBox x:Name="ApprovalCombo" IsVisible="False" MinWidth="112" MaxWidth="160"
                 HorizontalAlignment="Left" HorizontalContentAlignment="Stretch">
         <ComboBox.ItemTemplate>
           <DataTemplate x:DataType="ui:ApprovalNavItem">
@@ -786,12 +807,36 @@
           </DataTemplate>
         </ComboBox.ItemTemplate>
       </ComboBox>
+      <ComboBox x:Name="WorkspaceCombo" Grid.Column="1" Width="132" MinWidth="0" Margin="8,0,0,0"
+                HorizontalContentAlignment="Stretch">
+        <ComboBox.ItemTemplate>
+          <DataTemplate x:DataType="ui:WorkspaceNavItem">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="5" VerticalAlignment="Center">
+              <Viewbox Width="11" Height="11" VerticalAlignment="Center">
+                <Path Width="24" Height="24" Data="{StaticResource AiIcon.box}"
+                      Stroke="{DynamicResource VelaTextSecondary}" StrokeThickness="2"
+                      StrokeLineCap="Round" StrokeJoin="Round" />
+              </Viewbox>
+              <TextBlock Grid.Column="1" Text="{Binding Text}" Foreground="{DynamicResource VelaTextSecondary}"
+                         VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </Grid>
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+      <Button x:Name="WorkspaceAddButton" Grid.Column="2" Theme="{DynamicResource AiGhostIconButtonTheme}"
+              Width="22" MinWidth="0" Margin="2,0,0,0" Padding="0">
+        <Viewbox Width="13" Height="13">
+          <Path Width="24" Height="24" Data="{StaticResource AiIcon.plus}"
+                Stroke="{DynamicResource VelaTextSecondary}" StrokeThickness="2"
+                StrokeLineCap="Round" StrokeJoin="Round" />
+        </Viewbox>
+      </Button>
       <!-- 命中缓存时这段会长一截(多一个"缓存 80%"),留够宽度;再长由 TextTrimming 收,
            完整明细本来就在悬停提示里。 -->
-      <TextBlock x:Name="UsageText" Grid.Column="1" Classes="meta" MaxWidth="300" Margin="8,0,0,0" HorizontalAlignment="Right" />
+      <TextBlock x:Name="UsageText" Grid.Column="3" Classes="meta" MaxWidth="300" Margin="8,0,0,0" HorizontalAlignment="Right" />
       <!-- 上下文占用条:占比是要被瞥见的东西,不该只活在悬停提示里。
            知道窗口大小才画得出来(MaxInputTokens=0 就整条隐掉,见 UpdateUsageText)。 -->
-      <Border x:Name="UsageMeterTrack" Grid.Column="2" Width="56" Height="4" CornerRadius="2"
+      <Border x:Name="UsageMeterTrack" Grid.Column="4" Width="56" Height="4" CornerRadius="2"
               Margin="8,0,0,0" IsVisible="False" VerticalAlignment="Center"
               Background="{DynamicResource VelaBorderSecondary}">
         <Border x:Name="UsageMeterFill" Width="0" CornerRadius="2"
@@ -848,18 +893,18 @@
           </Button>
           <Grid Grid.Column="1" ColumnDefinitions="*,Auto" HorizontalAlignment="Left" MaxWidth="386">
             <Button x:Name="ModelButton" Theme="{StaticResource AiGhostIconButtonTheme}"
-                    Width="NaN" MinWidth="0" MaxWidth="360" HorizontalAlignment="Left" HorizontalContentAlignment="Stretch" Padding="4,0">
+                    Width="NaN" MinWidth="32" MaxWidth="360" HorizontalAlignment="Left" HorizontalContentAlignment="Stretch" Padding="4,0">
               <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="4">
                 <Viewbox Width="12" Height="12" VerticalAlignment="Center">
                   <Path Width="24" Height="24" Data="{StaticResource AiIcon.sparkles}"
                         Stroke="{DynamicResource VelaTextSecondary}" StrokeThickness="2"
                         StrokeLineCap="Round" StrokeJoin="Round" />
                 </Viewbox>
-                <TextBlock x:Name="ModelSummary" Grid.Column="1" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                <TextBlock x:Name="ModelSummary" Grid.Column="1" MinWidth="1" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                            FontSize="{DynamicResource VelaFontSize11}" Foreground="{DynamicResource VelaTextSecondary}" />
                 <Border Grid.Column="2" Width="1" Height="10" VerticalAlignment="Center"
                         Background="{DynamicResource VelaBorderSecondary}" />
-                <TextBlock x:Name="ReasoningSummary" Grid.Column="3" MaxWidth="40" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                <TextBlock x:Name="ReasoningSummary" Grid.Column="3" MinWidth="1" MaxWidth="40" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                            FontSize="{DynamicResource VelaFontSize11}" Foreground="{DynamicResource VelaTextMuted}" />
               </Grid>
             </Button>
@@ -903,7 +948,21 @@
               </Viewbox>
             </Button>
             </Grid>
-          <ComboBox x:Name="ModeCombo" Grid.Column="2" Width="76" MinWidth="0" Margin="4,0,0,0" />
+          <ComboBox x:Name="ModeCombo" Grid.Column="2" Width="92" MinWidth="0" Margin="4,0,0,0">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="5" VerticalAlignment="Center">
+                  <Viewbox Width="11" Height="11" VerticalAlignment="Center">
+                    <Path Width="24" Height="24" Data="{StaticResource AiIcon.sparkles}"
+                          Stroke="{DynamicResource VelaTextSecondary}" StrokeThickness="2"
+                          StrokeLineCap="Round" StrokeJoin="Round" />
+                  </Viewbox>
+                  <TextBlock Grid.Column="1" Text="{Binding}" Foreground="{DynamicResource VelaTextSecondary}"
+                             VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </Grid>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
           <Button x:Name="SendButton" Grid.Column="3" Theme="{DynamicResource VelaAccentPillButtonTheme}"
                   Width="22" MinWidth="0" Margin="4,0,0,0" Padding="0">
             <Panel>
