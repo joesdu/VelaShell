@@ -13,6 +13,54 @@ namespace VelaShell.Plugin.Ai.Tests;
 
 public sealed partial class ChatPanelViewUiTests
 {
+    [TestMethod]
+    [DataRow("ModeCombo")]
+    [DataRow("ApprovalCombo")]
+    [DataRow("WorkspaceCombo")]
+    public void Composer_SelectorsFitSelectedContent_WithoutArrowSpace(string name)
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                Find<ComboBox>(panel, "ModeCombo").SelectedIndex = (int)ChatMode.Agent;
+                ComboBox picker = Find<ComboBox>(panel, name);
+                if (name == "WorkspaceCombo")
+                    picker.ItemsSource = new[]
+                    {
+                        new WorkspaceNavItem(null, "App", false),
+                        new WorkspaceNavItem(null, "Application workspace", false)
+                    };
+
+                var widths = new List<double>();
+                for (int index = 0; index < picker.ItemCount; index++)
+                {
+                    picker.SelectedIndex = index;
+                    await PumpAsync(5);
+                    TextBlock label = picker.GetVisualDescendants().OfType<TextBlock>()
+                        .Single(text => text.IsEffectivelyVisible);
+                    double textEnd = label.TranslatePoint(default, picker)!.Value.X + label.DesiredSize.Width;
+                    Assert.IsTrue(picker.Bounds.Width - textEnd <= 8,
+                        $"{name}: width={picker.Bounds.Width}, textEnd={textEnd}");
+                    widths.Add(picker.Bounds.Width);
+                }
+                Assert.IsTrue(widths.Max() - widths.Min() > 1,
+                    $"{name} must resize when the selected label changes");
+                await ClickComposerControlAsync(window, picker);
+                Assert.IsTrue(picker.IsDropDownOpen);
+                var item = (ComboBoxItem)picker.ContainerFromIndex(0)!;
+                await ClickComposerControlAsync(TopLevel.GetTopLevel(item)!, item);
+                Assert.AreEqual(0, picker.SelectedIndex);
+                Assert.IsFalse(picker.IsDropDownOpen);
+                Assert.AreEqual(widths[0], picker.Bounds.Width, 1,
+                    "Returning to the first item must restore its compact width");
+            }
+            finally { panel.Detach(); window.Close(); }
+        });
+    }
+
     private static async Task ClickComposerControlAsync(TopLevel root, Control control)
     {
         // Supply hover/focus tokens omitted by the headless host so a transparent hit target remains.

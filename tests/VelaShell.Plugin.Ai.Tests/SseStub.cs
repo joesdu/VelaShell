@@ -202,6 +202,13 @@ public sealed class SseStub : IAsyncDisposable
                     }
                     try
                     {
+                        if (context.Request.HttpMethod == "GET"
+                            && context.Request.Url?.AbsolutePath.StartsWith("/mcp", StringComparison.OrdinalIgnoreCase) == true)
+                        {
+                            context.Response.StatusCode = 404;
+                            context.Response.Close();
+                            continue;
+                        }
                         string body;
                         using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
                         {
@@ -215,6 +222,16 @@ public sealed class SseStub : IAsyncDisposable
                             _headers.Add([with(context.Request.Headers)]);
                         }
                         _request.TrySetResult(body);
+                        if (body.Contains("\"jsonrpc\":\"2.0\"", StringComparison.Ordinal))
+                        {
+                            if (hold)
+                            {
+                                await _released.Task;
+                            }
+                            context.Response.StatusCode = 404;
+                            context.Response.Close();
+                            continue;
+                        }
                         bool wantsStream = body.Contains("\"stream\":true", StringComparison.Ordinal);
                         bool firstStream = wantsStream && receivedStreams++ == skipFirstStreams;
                         if (firstStream && holdFirstStream)

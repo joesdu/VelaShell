@@ -118,6 +118,8 @@ public sealed class Loc(string locale)
         ["NoProvider"] = ["No model configured — opening the model settings.", "尚未配置模型 —— 已为你打开模型配置。", "尚未設定模型 —— 已為你開啟模型設定。", "モデル未設定 — モデル設定を開きました。", "모델이 없습니다 — 모델 설정을 열었습니다."],
         ["Agent"] = ["Agent", "Agent", "Agent", "Agent", "Agent"],
         ["AgentTip"] = ["Agent mode: the model may call tools (read terminal, run commands…).", "Agent 模式:模型可调用工具(读终端、执行命令等)。", "Agent 模式:模型可呼叫工具(讀終端、執行命令等)。", "Agent モード:モデルがツールを呼び出せます(端末読取・コマンド実行など)。", "Agent 모드: 모델이 도구를 호출할 수 있습니다(터미널 읽기, 명령 실행 등)."],
+        ["SubagentRuns"] = ["Subagent runs", "子 Agent 运行", "子 Agent 執行", "サブエージェント実行", "하위 에이전트 실행"],
+        ["SubagentTools"] = ["tools", "工具", "工具", "ツール", "도구"],
         ["SecLocalAgent"] = ["Local Agent and workspaces", "本地 Agent 与工作区", "本機 Agent 與工作區", "ローカル Agent とワークスペース", "로컬 Agent 및 작업 영역"],
         ["LocalAgentEnabled"] = ["Enable local Agent file tools", "启用本地 Agent 文件工具", "啟用本機 Agent 檔案工具", "ローカル Agent のファイルツールを有効化", "로컬 Agent 파일 도구 사용"],
         ["LocalAgentEnabledHint"] = ["Allows the Agent to access only the workspaces listed below. This is an in-process boundary, not an OS sandbox.", "仅允许 Agent 访问下方列出的工作区。这是插件内边界，不是操作系统沙箱。", "僅允許 Agent 存取下方列出的工作區。這是外掛程式內邊界，不是作業系統沙箱。", "Agent は下記のワークスペースだけにアクセスできます。これはプロセス内の境界であり、OS サンドボックスではありません。", "Agent는 아래 작업 영역만 액세스합니다. 이는 프로세스 내부 경계이며 OS 샌드박스가 아닙니다."],

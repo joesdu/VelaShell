@@ -2319,6 +2319,7 @@ public sealed partial class ChatPanelViewUiTests
             {
                 Providers = [provider],
                 ActiveModelId = provider.Models[0].Id,
+                Mode = ChatMode.Chat,
                 McpServers = [new McpServerConfig { Name = "held", Transport = McpTransportType.Http, Url = mcp.BaseUrl + "/mcp" }],
                 SuggestFollowUps = false
             });

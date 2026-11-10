@@ -2628,7 +2628,7 @@ public partial class SettingsView : UserControl
                 {
                     // 没有新填的 Key:只看保存之前它本会带上的那一把 —— 自带 Key 的首模型是它自己那把,继承的是主槽。
                     // 它还在就请用户先填新 Key;没有(无鉴权接入)才照常测,而且照常测也不带任何已存的 Key(见 keyless)
-                    long version = _store.ProviderConfigurationVersion(provider);
+                    long version = AiSettingsStore.ProviderConfigurationVersion(provider);
                     bool keyFollows;
                     try
                     {
@@ -2643,7 +2643,7 @@ public partial class SettingsView : UserControl
                     // 等机密期间换了选择,或者又点了一次(那一击按当时的表单自己测):这次就不测了
                     if (editorRun != _editorRun || originKeyRead != _originKeyRead) return;
                     // 读的期间这家的配置变了(别处存了 Key、改了模型):刚读到的已不作数,按有 Key 会跟过去处理
-                    keyFollows |= _store.ProviderConfigurationVersion(provider) != version;
+                    keyFollows |= AiSettingsStore.ProviderConfigurationVersion(provider) != version;
                     // 本机的 ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN 不必算进来:没有 Key 时它们只发往官方 api.anthropic.com
                     // (见 AiSettingsStore.CreateClient),新地址是官方的,那正是它们该去的地方;是别家就不会带上
                     if (keyFollows)
@@ -2661,7 +2661,7 @@ public partial class SettingsView : UserControl
             if (provider.Auth == AuthMethod.Subscription && string.IsNullOrWhiteSpace(first.BaseUrlOverride)
                 && AiSettingsStore.MovesOrigin(provider.BaseUrl, draft.BaseUrl))
             {
-                long version = _store.ProviderConfigurationVersion(provider);
+                long version = AiSettingsStore.ProviderConfigurationVersion(provider);
                 bool credentialFollows;
                 try
                 {
@@ -2676,7 +2676,7 @@ public partial class SettingsView : UserControl
                     return;
                 }
                 if (editorRun != _editorRun || originKeyRead != _originKeyRead) return;
-                if (credentialFollows || _store.ProviderConfigurationVersion(provider) != version)
+                if (credentialFollows || AiSettingsStore.ProviderConfigurationVersion(provider) != version)
                 {
                     StatusText.Text = _loc["SetupTestNeedsSaveSignIn"];
                     return;
@@ -2709,7 +2709,7 @@ public partial class SettingsView : UserControl
         }
         ResolvedModel? savedCredentialModel = _settings.FindModel(compareId);
         KeyRequestSnapshot? savedRequest = savedCredentialModel is null ? null : KeyRequestSnapshot.Capture(savedCredentialModel);
-        long savedProviderVersion = _store.ProviderConfigurationVersion(provider);
+        long savedProviderVersion = AiSettingsStore.ProviderConfigurationVersion(provider);
         int myRun = Interlocked.Increment(ref _testRun);
         string rowKey = NavKey(item);
         // 显示按行裁决;供应商行与首模型行虽有不同的点,共享健康却写同一个模型 id。
@@ -2749,7 +2749,7 @@ public partial class SettingsView : UserControl
                 sentCredential = ProviderCredential.Key(apiKeyOverride);
                 sentKeyId = overrideKeyId;
             }
-            if (_store.ProviderConfigurationVersion(provider) != savedProviderVersion
+            if (AiSettingsStore.ProviderConfigurationVersion(provider) != savedProviderVersion
                 || savedRequest != KeyRequestSnapshot.Capture(new ResolvedModel(provider, saved.Config)))
             {
                 throw new AiSettingsStore.ApiKeySlotChangedException();

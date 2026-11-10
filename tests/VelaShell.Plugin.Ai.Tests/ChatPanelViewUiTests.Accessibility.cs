@@ -92,13 +92,13 @@ public sealed partial class ChatPanelViewUiTests
                 health.RecordKey(provider.Id, false);
                 int version = health.Version;
                 AiProvider liveProvider = PanelSettings(panel).Providers[0];
-                long requestVersion = store.ProviderConfigurationVersion(liveProvider);
+                long requestVersion = AiSettingsStore.ProviderConfigurationVersion(liveProvider);
                 var otherStore = new AiSettingsStore(context);
                 if (beforeWindow) await otherStore.SetApiKeyAsync(provider.Id, "new-key");
                 GlobalSettingsView view = await OpenGlobalViewAsync(context, panel);
                 host = Host(view);
                 if (!beforeWindow) await otherStore.SetApiKeyAsync(provider.Id, "new-key");
-                Assert.IsGreaterThan(requestVersion, store.ProviderConfigurationVersion(liveProvider),
+                Assert.IsGreaterThan(requestVersion, AiSettingsStore.ProviderConfigurationVersion(liveProvider),
                     "直接写 Key 在重载前已推进活对象代次");
                 // 纯显示刷新不得提前认可新 Key 的代次、吞掉父健康表仍持有的旧失败。
                 typeof(ChatPanelView).GetMethod("RefreshProviderViews",
@@ -268,7 +268,7 @@ public sealed partial class ChatPanelViewUiTests
                 health.Record(provider.Models[0].Id, false);
                 health.RecordKey(provider.Id, false);
                 int healthVersion = health.Version;
-                long requestVersion = store.ProviderConfigurationVersion(kept);
+                long requestVersion = AiSettingsStore.ProviderConfigurationVersion(kept);
                 FindIn<TextBox>(view, "SystemPromptBox").Text = "explicit prompt draft";
                 var otherStore = new AiSettingsStore(context);
                 AiSettings other = await otherStore.LoadAsync();
@@ -291,7 +291,7 @@ public sealed partial class ChatPanelViewUiTests
                 RaiseClick(save);
                 Assert.IsTrue(await WaitForAsync(() => save.IsEnabled && status.Text == $"{loc["Error"]}: {loc["SetupConfigChanged"]}"));
                 Assert.AreSame(kept, live.Providers[0], "同 ID 的请求变化不得靠替换引用检测");
-                Assert.AreEqual(requestChanged, store.ProviderConfigurationVersion(kept) != requestVersion);
+                Assert.AreEqual(requestChanged, AiSettingsStore.ProviderConfigurationVersion(kept) != requestVersion);
                 Assert.AreEqual(requestChanged ? healthVersion + 1 : healthVersion, health.Version);
                 Assert.AreEqual(!requestChanged, health.IsCooling(provider.Models[0].Id));
                 Assert.AreEqual(!requestChanged, health.IsKeyCooling(provider.Id));

@@ -166,7 +166,7 @@ public sealed class BridgeAgentRunner(
         var execution = new AgentExecution(runId, () => runScope.HasUnknownOutcome, () => runScope.HasDeniedExecution);
         var coordinator = new AgentRunCoordinator(runScope, execution);
         ProviderCredential fixedCredential = await store.ResolveCredentialAsync(model, cancellationToken: cancellationToken).ConfigureAwait(false);
-        long providerVersion = store.ProviderConfigurationVersion(model.Provider);
+        long providerVersion = AiSettingsStore.ProviderConfigurationVersion(model.Provider);
         string endpoint = model.BaseUrl;
         string modelName = model.Model;
         (OAuthTokens? Tokens, long Version) account = await store.GetTokenSnapshotAsync(model.Provider.Id, cancellationToken).ConfigureAwait(false);
@@ -177,7 +177,7 @@ public sealed class BridgeAgentRunner(
                 AiSettings latest = await store.LoadAsync(token).ConfigureAwait(false);
                 ResolvedModel? candidate = latest.FindModel(model.Id);
                 if (candidate is null || candidate.BaseUrl != endpoint || candidate.Model != modelName
-                    || store.ProviderConfigurationVersion(model.Provider) != providerVersion)
+                    || AiSettingsStore.ProviderConfigurationVersion(model.Provider) != providerVersion)
                 {
                     throw new ProviderConfigurationChangedException();
                 }

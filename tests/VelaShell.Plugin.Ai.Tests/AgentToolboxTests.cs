@@ -65,6 +65,15 @@ public sealed class AgentToolboxTests
             SequenceOrder.InAnyOrder);
         Assert.DoesNotContain("run_command", names, "计划模式不该能执行命令");
         Assert.DoesNotContain("write_remote_file", names, "计划模式不该能写文件");
+        foreach (string forbidden in new[]
+                 {
+                     "open_session", "close_session", "task_cancel", "write_local_file", "patch_local_file",
+                     "make_local_directory", "rename_local_path", "delete_local_path", "delegate_subagent",
+                     "subagent_cancel"
+                 })
+        {
+            Assert.DoesNotContain(forbidden, names, $"计划模式不该暴露 {forbidden}");
+        }
     }
 
     [TestMethod]

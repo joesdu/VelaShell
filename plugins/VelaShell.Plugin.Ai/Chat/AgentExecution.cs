@@ -316,7 +316,8 @@ internal sealed class AgentPausedException(string key, Exception? inner = null) 
 /// </summary>
 internal sealed class RecoveringChatClient(IChatClient inner, AgentExecution execution,
     string continuationBoundary, Action<int, Exception>? retrying = null,
-    Func<TimeSpan, CancellationToken, Task>? delay = null, Action? recovered = null) : DelegatingChatClient(inner)
+    Func<TimeSpan, CancellationToken, Task>? delay = null, Action? recovered = null,
+    bool continueAfterVisibleOutput = true) : DelegatingChatClient(inner)
 {
     /// <summary>工具调用之后最终一步空答时补的那一句(只进补试的那次请求)。</summary>
     internal const string ContinueAfterTools =
@@ -342,6 +343,7 @@ internal sealed class RecoveringChatClient(IChatClient inner, AgentExecution exe
         {
             List<ChatResponseUpdate> buffered = [];
             var partial = new StringBuilder();
+            bool visibleOutput = false;
             Exception? failure = null;
             await using (IAsyncEnumerator<ChatResponseUpdate> iterator = InnerClient
                 .GetStreamingResponseAsync(outgoing, options, cancellationToken).GetAsyncEnumerator(cancellationToken))
@@ -361,6 +363,13 @@ internal sealed class RecoveringChatClient(IChatClient inner, AgentExecution exe
                         || ReasoningPeek.IsBlank(update))
                     {
                         var prose = update.Contents.Where(c => c is TextContent or TextReasoningContent).ToList();
+                        visibleOutput |= prose.Any(c => c switch
+                        {
+                            TextContent { Text: { Length: > 0 } text } => !string.IsNullOrWhiteSpace(text),
+                            TextReasoningContent { Text: { Length: > 0 } text } => !string.IsNullOrWhiteSpace(text),
+                            _ => false
+                        }) || ReasoningPeek.TryRead(update.RawRepresentation, out string reasoningText)
+                            && !string.IsNullOrWhiteSpace(reasoningText);
                         foreach (TextContent text in prose.OfType<TextContent>()) partial.Append(text.Text);
                         ChatResponseUpdate visible = update.Clone();
                         visible.Contents = prose;
@@ -445,8 +454,15 @@ internal sealed class RecoveringChatClient(IChatClient inner, AgentExecution exe
                 usage.RawRepresentation = null;
                 yield return usage;
             }
+            if (!continueAfterVisibleOutput && visibleOutput)
+            {
+                execution.CompleteStep(buffered.ToChatResponse());
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+            }
             cancellationToken.ThrowIfCancellationRequested();
-            if (attempt >= 2 || !TransientFailure.IsTransient(failure))
+            bool transient = TransientFailure.IsTransient(failure);
+            bool apiKeyFailure = TransientFailure.IsApiKeyFailure(failure);
+            if (!transient || (apiKeyFailure ? attempt >= 1 : attempt >= 2))
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
             // 先算等待:Retry-After 超出预算就此暂停,不能先报「正在重试」、再写一道永远等不到续写的续接边界。
             TimeSpan backoff = RetryAfter(failure) ?? TimeSpan.FromMilliseconds(400 * (attempt + 1));

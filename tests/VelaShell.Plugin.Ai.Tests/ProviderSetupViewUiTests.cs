@@ -85,14 +85,14 @@ public sealed class ProviderSetupViewUiTests
                 await store.SaveAsync(settings).WaitAsync(TimeSpan.FromSeconds(15));
                 string diskBefore = System.Text.Json.JsonSerializer.Serialize(await context.Storage.GetAsync<System.Text.Json.JsonElement>("settings"));
                 string providerBefore = System.Text.Json.JsonSerializer.Serialize(source);
-                long epoch = store.ProviderConfigurationVersion(source);
+                long epoch = AiSettingsStore.ProviderConfigurationVersion(source);
                 storage.Hold = true;
                 catalogue.Release();
                 await storage.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
                 Assert.AreEqual(providerBefore, System.Text.Json.JsonSerializer.Serialize(source), "等待 JSON 时不得发布新 GUID、来源或窗口");
                 Assert.AreEqual(diskBefore, System.Text.Json.JsonSerializer.Serialize(await context.Storage.GetAsync<System.Text.Json.JsonElement>("settings")));
                 Assert.AreEqual(formBaseline, typeof(ProviderSetupView).GetField("_providerFormBaseline", flags)!.GetValue(view));
-                Assert.AreEqual(epoch, store.ProviderConfigurationVersion(source));
+                Assert.AreEqual(epoch, AiSettingsStore.ProviderConfigurationVersion(source));
                 Assert.IsTrue(health.IsCooling(model.Id));
                 Assert.AreEqual(0, notifications);
                 await Assert.ThrowsAsync<AiSettingsStore.ApiKeySlotChangedException>(() => store.ResolveCredentialAsync(settings.FindModel(model.Id)!));
@@ -127,7 +127,7 @@ public sealed class ProviderSetupViewUiTests
                     Assert.Contains("added-model", source.AvailableModels);
                     Assert.HasCount(3, source.Models);
                     Assert.IsNull(source.ModelsExpanded);
-                    Assert.AreEqual(epoch + 1, store.ProviderConfigurationVersion(source));
+                    Assert.AreEqual(epoch + 1, AiSettingsStore.ProviderConfigurationVersion(source));
                     Assert.IsFalse(health.IsCooling(model.Id));
                     Assert.AreEqual(1, notifications);
                     AiProvider accepted = System.Text.Json.JsonSerializer.Deserialize<AiProvider>((string)typeof(ProviderSetupView)
@@ -147,7 +147,7 @@ public sealed class ProviderSetupViewUiTests
                     Assert.IsFalse(model.DefaultContextWindow);
                     Assert.AreEqual(outcome == "live-conflict", model.ContextWindowIsManual);
                     Assert.HasCount(2, source.Models, "失败目录不能遗留新增型号与 ghost 来源标记");
-                    Assert.AreEqual(epoch, store.ProviderConfigurationVersion(source));
+                    Assert.AreEqual(epoch, AiSettingsStore.ProviderConfigurationVersion(source));
                     Assert.IsTrue(health.IsCooling(model.Id));
                     Assert.AreEqual(0, notifications);
                 }
@@ -197,7 +197,7 @@ public sealed class ProviderSetupViewUiTests
                     BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(panel)!;
                 AiProvider owner = live.Providers.Single();
                 AiModelConfig model = owner.Models.Single();
-                long epoch = store.ProviderConfigurationVersion(owner);
+                long epoch = AiSettingsStore.ProviderConfigurationVersion(owner);
                 string expected = System.Text.Json.JsonSerializer.Serialize(owner);
                 AiProvider draft = System.Text.Json.JsonSerializer.Deserialize<AiProvider>(expected)!;
                 draft.Name = "catalogue display name";
@@ -206,7 +206,7 @@ public sealed class ProviderSetupViewUiTests
                 if (requestChanged) draft.Models[0].MaxInputTokens = 65536;
                 await store.SaveProviderCatalogueAsync(live, owner, draft, expected);
                 Assert.AreSame(model, owner.Models.Single());
-                Assert.AreEqual(epoch + (requestChanged ? 1 : 0), store.ProviderConfigurationVersion(owner));
+                Assert.AreEqual(epoch + (requestChanged ? 1 : 0), AiSettingsStore.ProviderConfigurationVersion(owner));
                 mcp.Release();
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(40));
                 PropertyInfo busy = typeof(ChatPanelView).GetProperty("Busy",

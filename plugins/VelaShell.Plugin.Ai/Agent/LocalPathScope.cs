@@ -8,20 +8,18 @@ namespace VelaShell.Plugin.Ai.Agent;
 /// </summary>
 public sealed class LocalPathScope(IReadOnlyList<LocalWorkspace> workspaces)
 {
-    private readonly IReadOnlyList<LocalWorkspace> _workspaces = workspaces ?? [];
-    private static readonly StringComparison PathComparison =
-        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+    private static readonly StringComparison PathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     /// <summary>当前配置中的本地工作区。</summary>
-    public IReadOnlyList<LocalWorkspace> Workspaces => _workspaces;
+    public IReadOnlyList<LocalWorkspace> Workspaces { get; } = workspaces ?? [];
 
     /// <summary>至少有一个根目录存在且格式有效。</summary>
-    public bool HasUsableWorkspace
-        => _workspaces.Any(static workspace => IsConfigured(workspace));
+    public bool HasUsableWorkspace => Workspaces.Any(static workspace => IsConfigured(workspace));
 
     /// <summary>解析并校验一个工作区路径。</summary>
     public bool TryResolve(string? workspaceId, string? path, bool write, out LocalPath pathInfo, out string error)
     {
+        _ = write;
         pathInfo = default;
         error = "";
         LocalWorkspace? workspace = FindWorkspace(workspaceId);
@@ -84,9 +82,9 @@ public sealed class LocalPathScope(IReadOnlyList<LocalWorkspace> workspaces)
     {
         if (workspaceId is null)
         {
-            return _workspaces.FirstOrDefault(IsConfigured);
+            return Workspaces.FirstOrDefault(IsConfigured);
         }
-        return _workspaces.FirstOrDefault(workspace =>
+        return Workspaces.FirstOrDefault(workspace =>
             string.Equals(workspace.Id, workspaceId, StringComparison.OrdinalIgnoreCase));
     }
 

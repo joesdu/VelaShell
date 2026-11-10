@@ -438,7 +438,8 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             all.Add(("delegate_subagent", AIFunctionFactory.Create(DelegateSubagentAsync, "delegate_subagent",
                 "Delegate a focused read-only analysis task to a parallel subagent. "
-                + "The subagent cannot call tools or create more subagents. Returns an id immediately."), false));
+                + "The subagent may use inherited read-only workspace, session, and MCP tools, "
+                + "but cannot write, create sessions, or create more subagents. Returns an id immediately."), false));
             all.Add(("subagent_status", AIFunctionFactory.Create(SubagentStatusAsync, "subagent_status",
                 "Get the status of a delegated subagent by id."), true));
             all.Add(("subagent_wait", AIFunctionFactory.Create(SubagentWaitAsync, "subagent_wait",

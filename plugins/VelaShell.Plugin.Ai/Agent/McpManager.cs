@@ -141,6 +141,13 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
         return (tools, errors);
     }
 
+    /// <summary>
+    /// 只返回服务器声明为只读的 MCP 工具，供子 Agent 继承。
+    /// 该筛选只决定可见性，工具仍保留本轮的本地审批包装。
+    /// </summary>
+    public static IReadOnlyList<AITool> FilterReadOnlyTools(IEnumerable<AITool> tools)
+        => tools.Where(static tool => tool is ApprovalGatedFunction gated && gated.ReadOnlyHint).ToArray();
+
     /// <summary>设置页"测试":临时连接,返回工具名列表后即断开。</summary>
     public static async Task<IReadOnlyList<string>> ProbeAsync(McpServerConfig server, CancellationToken cancellationToken)
         => [.. (await RefreshToolsAsync(server, cancellationToken).ConfigureAwait(false)).Select(t => t.Name)];
@@ -352,6 +359,7 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
     {
         private readonly SemaphoreSlim _calls = calls;
         private readonly TimeSpan _callTimeout = callTimeout;
+        internal bool ReadOnlyHint => inner.ProtocolTool.Annotations?.ReadOnlyHint == true;
 
         protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
         {
