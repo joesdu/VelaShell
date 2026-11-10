@@ -29,6 +29,12 @@ public sealed class McpServerConfig
     /// <summary>是否启用(Agent 模式下参与连接)。</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>首次需要工具时是否自动启动/连接。</summary>
+    public bool AutoStart { get; set; } = true;
+
+    /// <summary>是否在多轮对话间复用已建立的连接。</summary>
+    public bool KeepAlive { get; set; } = true;
+
     /// <summary>连接方式。</summary>
     public McpTransportType Transport { get; set; } = McpTransportType.Stdio;
 
@@ -56,6 +62,21 @@ public sealed class McpServerConfig
     /// </summary>
     /// <remarks>有些 MCP 服务器一口气给几十个工具,全塞进去既占上下文又容易被误调。</remarks>
     public string DisabledTools { get; set; } = "";
+
+    /// <summary>允许暴露给 Agent 的原始工具白名单;非空时优先于 <see cref="DisabledTools" />。</summary>
+    public string AllowedTools { get; set; } = "";
+
+    /// <summary>本地服务器可绑定的本地工作区 id。</summary>
+    public string? WorkspaceId { get; set; }
+
+    /// <summary>单服务器同时执行的最大工具调用数。</summary>
+    public int MaxConcurrentCalls { get; set; } = 2;
+
+    /// <summary>启动和握手超时(秒)。</summary>
+    public int StartupTimeoutSeconds { get; set; } = 20;
+
+    /// <summary>单次工具调用超时(秒)。</summary>
+    public int CallTimeoutSeconds { get; set; } = 120;
 
     /// <summary>
     /// 上次连上时这台服务器提供的工具(名称 + 一句说明)。

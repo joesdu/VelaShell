@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -25,6 +26,9 @@ namespace VelaShell.Plugin.Ai.Ui;
 /// <param name="Text">显示文字(<c>用户@主机</c>)。</param>
 /// <param name="Dot">状态点的颜色。画笔在构造项时就解析好,免得为它写一个 bool→Brush 的转换器。</param>
 public sealed record SessionNavItem(string Text, IBrush Dot);
+
+/// <summary>输入框旁边的本地工作区选择项。</summary>
+public sealed record WorkspaceNavItem(string? Id, string Text, bool IsAdd);
 
 /// <summary>
 /// 审批方式下拉的一项(<c>ApprovalCombo</c> 的 ItemTemplate 用)。
@@ -147,6 +151,7 @@ public partial class ChatPanelView : UserControl
 
     /// <summary>下拉正在重载(选中项由设置决定,不是由用户点的):此时的 <c>SelectionChanged</c> 是回声,别回写设置。</summary>
     private bool _syncingProviders;
+    private bool _syncingWorkspace;
 
     /// <summary>
     /// 选择变更计数:手选、自动粘住和回滚每次 +1;下拉重载回声不计。
@@ -308,6 +313,21 @@ public partial class ChatPanelView : UserControl
             SyncModeUi();
             _ = PersistSettingsAsync();
         };
+        WorkspaceCombo.SelectionChanged += (_, _) =>
+        {
+            if (_syncingWorkspace || WorkspaceCombo.SelectedItem is not WorkspaceNavItem item)
+            {
+                return;
+            }
+            if (item.IsAdd)
+            {
+                _ = AddWorkspaceAsync();
+                return;
+            }
+            _settings.LocalDefaultWorkspaceId = item.Id;
+            _ = PersistSettingsAsync();
+        };
+        WorkspaceAddButton.Click += (_, _) => _ = AddWorkspaceAsync();
         ApprovalCombo.SelectionChanged += (_, _) =>
         {
             if (ApprovalCombo.SelectedIndex < 0)
@@ -463,6 +483,7 @@ public partial class ChatPanelView : UserControl
             _settings.Migrate(); // 旧版的两个布尔开关折算成新的模式枚举
             ModeCombo.SelectedIndex = (int)_settings.Mode;
             ApprovalCombo.SelectedIndex = (int)_settings.Approval;
+            RefreshWorkspaceSelector();
             SyncModeUi();
             ReloadProviderCombo();
             await RefreshSessionsAsync();
@@ -520,10 +541,97 @@ public partial class ChatPanelView : UserControl
         Avalonia.Automation.AutomationProperties.SetName(AttachButton, _loc["AttachLocal"]);
         ToolTip.SetTip(AttachButton, _loc["AttachLocal"]);
         ToolTip.SetTip(ModelButton, _loc["Model"]);
+        ToolTip.SetTip(WorkspaceCombo, _loc["LocalWorkspace"]);
+        ToolTip.SetTip(WorkspaceAddButton, _loc["WorkspaceChoose"]);
+        RefreshWorkspaceSelector();
         UpdateUsageText();
         // 代码块头部按钮的提示藏在 LiveMarkdown 的 ControlTemplate 里,只能经 DynamicResource 灌进去
         Resources["AiCopyTip"] = _loc["Copy"];
         Resources["AiWrapTip"] = _loc["ToggleWrap"];
+    }
+
+    private void RefreshWorkspaceSelector()
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(RefreshWorkspaceSelector);
+            return;
+        }
+        string? selectedId = _settings.LocalDefaultWorkspaceId;
+        var items = new List<WorkspaceNavItem>
+        {
+            new(null, _loc["WorkspaceNone"], false)
+        };
+        items.AddRange(_settings.LocalWorkspaces
+            .Where(LocalPathScope.IsConfigured)
+            .Select(workspace => new WorkspaceNavItem(
+                workspace.Id,
+                string.IsNullOrWhiteSpace(workspace.Name)
+                    ? workspace.RootPath
+                    : workspace.Name,
+                false)));
+        items.Add(new WorkspaceNavItem(null, _loc["WorkspaceChoose"], true));
+        _syncingWorkspace = true;
+        try
+        {
+            WorkspaceCombo.ItemsSource = items;
+            WorkspaceCombo.SelectedItem = items.FirstOrDefault(item =>
+                !item.IsAdd && string.Equals(item.Id, selectedId, StringComparison.OrdinalIgnoreCase))
+                ?? items[0];
+        }
+        finally
+        {
+            _syncingWorkspace = false;
+        }
+    }
+
+    private IReadOnlyList<LocalWorkspace> GetActiveLocalWorkspaces()
+    {
+        if (string.IsNullOrWhiteSpace(_settings.LocalDefaultWorkspaceId))
+        {
+            return [];
+        }
+
+        LocalWorkspace? workspace = _settings.LocalWorkspaces.FirstOrDefault(item =>
+            string.Equals(item.Id, _settings.LocalDefaultWorkspaceId, StringComparison.OrdinalIgnoreCase)
+            && LocalPathScope.IsConfigured(item));
+        return workspace is null ? [] : [workspace];
+    }
+
+    private async Task AddWorkspaceAsync()
+    {
+        TopLevel? top = TopLevel.GetTopLevel(this);
+        if (top?.StorageProvider is not { } storage)
+        {
+            return;
+        }
+        IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(new()
+        {
+            Title = _loc["WorkspaceChoose"],
+            AllowMultiple = false
+        });
+        if (folders.Count == 0 || folders[0].TryGetLocalPath() is not { } rootPath
+            || !Directory.Exists(rootPath))
+        {
+            return;
+        }
+        LocalWorkspace? existing = _settings.LocalWorkspaces.FirstOrDefault(workspace =>
+            string.Equals(Path.GetFullPath(workspace.RootPath), Path.GetFullPath(rootPath),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
+        if (existing is null)
+        {
+            existing = new LocalWorkspace
+            {
+                Name = Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+                RootPath = rootPath,
+                AllowRead = true,
+                AllowWrite = true
+            };
+            _settings.LocalWorkspaces.Add(existing);
+        }
+        _settings.LocalDefaultWorkspaceId = existing.Id;
+        RefreshWorkspaceSelector();
+        await PersistSettingsAsync();
     }
 
     /// <summary>
@@ -1479,6 +1587,7 @@ public partial class ChatPanelView : UserControl
         int verifiedVersion = 0; // 每次真实流式请求开始时取配置代际,仅限制旧健康结果写回
         long verifiedObservation = 0; // 每次真实流式请求单独取号,同模型的并发结果按起跑顺序结算
         string replyText = "";
+        SubagentOrchestrator? subagents = null;
         // 这一轮的故障转移 / 换 Key:合成一张切换提示卡挂在这条回复里(只给人看,不进 History,见 ChatPanelView.SwitchNotice.cs)
         List<ChatProviderSwitch> switches = [];
         try
@@ -1858,10 +1967,30 @@ public partial class ChatPanelView : UserControl
                 // 纯对话模式不给任何工具;计划模式只给只读工具(见 AgentToolbox.CreateTools)
                 if (usesToolLoop)
                 {
+                    subagents ??= new SubagentOrchestrator(async (prompt, childToken) =>
+                    {
+                        using IChatClient childClient = _store.CreateClient(current, verifiedCredential);
+                        var childOptions = new ChatOptions
+                        {
+                            MaxOutputTokens = Math.Min(current.MaxTokens, 2048),
+                            Temperature = current.Temperature,
+                            TopP = current.TopP
+                        };
+                        AiSettingsStore.ApplyReasoning(childOptions, current);
+                        AiSettingsStore.ApplyEndpointQuirks(childOptions, current);
+                        ChatResponse response = await childClient.GetResponseAsync(prompt, childOptions, childToken)
+                            .ConfigureAwait(false);
+                        return response.Text;
+                    }, token);
+                    _toolbox.Subagents = mode == ChatMode.Agent ? subagents : null;
                     ApplyApprovalMode(); // 挡位推给工具箱与 MCP(中途再改也会经这条路重推)
                     _toolbox.DisabledTools = new HashSet<string>(
                         SplitLines(_settings.DisabledBuiltinTools) ?? [], StringComparer.OrdinalIgnoreCase);
                     _toolbox.WebSearch = _settings.WebSearch;
+                    _toolbox.LocalWorkspaces = GetActiveLocalWorkspaces();
+                    _toolbox.LocalDefaultWorkspaceId = _settings.LocalDefaultWorkspaceId;
+                    _toolbox.LocalMaxFileBytes = _settings.LocalMaxFileBytes;
+                    _toolbox.LocalMaxDirectoryEntries = _settings.LocalMaxDirectoryEntries;
                     IList<AITool> tools = mode == ChatMode.Chat ? [] : _toolbox.CreateTools(mode, nativeSearch, runScope);
                     if (bubble.ImageTools is { } imageTools)
                         foreach (AITool tool in imageTools.CreateTools()) tools.Add(tool);
@@ -1870,7 +1999,8 @@ public partial class ChatPanelView : UserControl
                     if (mode == ChatMode.Agent && _settings.McpServers.Any(s => s.Enabled))
                     {
                         SetStatus(_loc["McpConnecting"]);
-                        (List<AITool> mcpTools, List<string> mcpErrors) = await _mcp.GetToolsAsync(_settings.McpServers, _mcpApproval, token);
+                        (List<AITool> mcpTools, List<string> mcpErrors) = await _mcp.GetToolsAsync(
+                            _settings.McpServers, _mcpApproval, token, GetActiveLocalWorkspaces());
                         foreach (AITool tool in mcpTools)
                         {
                             tools.Add(tool);
@@ -2290,6 +2420,11 @@ public partial class ChatPanelView : UserControl
                 try { await runScope.CancelAsync(); }
                 catch (ObjectDisposedException) { }
                 conv.RunScope = null;
+                _toolbox.Subagents = null;
+                if (subagents is not null)
+                {
+                    await subagents.DisposeAsync();
+                }
                 Cts?.Dispose();
                 Cts = null;
                 ActiveBubble = null;

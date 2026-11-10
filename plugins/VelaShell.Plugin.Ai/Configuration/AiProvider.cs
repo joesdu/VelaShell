@@ -470,8 +470,8 @@ public sealed class AiSettings
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ActiveProviderId { get; set; }
 
-    /// <summary>对话模式(纯对话 / 计划 / Agent)。</summary>
-    public ChatMode Mode { get; set; } = ChatMode.Chat;
+    /// <summary>对话模式(纯对话 / 计划 / Agent)。新配置默认使用 Agent。</summary>
+    public ChatMode Mode { get; set; } = ChatMode.Agent;
 
     /// <summary>危险操作的审批方式。</summary>
     public ApprovalMode Approval { get; set; } = ApprovalMode.Ask;
@@ -534,6 +534,23 @@ public sealed class AiSettings
 
     /// <summary>用户自定义的 MCP 服务器(Agent 模式下启用项的工具并入工具箱)。</summary>
     public List<McpServerConfig> McpServers { get; set; } = [];
+
+    /// <summary>
+    /// 旧版兼容字段。现在本地 Agent 与远程 Agent 都默认可用，是否提供本地工具由输入框选择的工作区决定。
+    /// </summary>
+    public bool LocalAgentEnabled { get; set; }
+
+    /// <summary>本地 Agent 可访问的工作区。</summary>
+    public List<LocalWorkspace> LocalWorkspaces { get; set; } = [];
+
+    /// <summary>聊天输入框当前选择的工作区 id；为空时本轮不启用本地工作区工具。</summary>
+    public string? LocalDefaultWorkspaceId { get; set; }
+
+    /// <summary>本地文件工具单次读取或写入的最大字节数。</summary>
+    public int LocalMaxFileBytes { get; set; } = 256 * 1024;
+
+    /// <summary>本地目录工具最多返回的条目数。</summary>
+    public int LocalMaxDirectoryEntries { get; set; } = 200;
 
     /// <summary>网络检索(web_search / web_fetch)。</summary>
     public WebSearchOptions WebSearch { get; set; } = new();
