@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -25,6 +26,9 @@ namespace VelaShell.Plugin.Ai.Ui;
 /// <param name="Text">显示文字(<c>用户@主机</c>)。</param>
 /// <param name="Dot">状态点的颜色。画笔在构造项时就解析好,免得为它写一个 bool→Brush 的转换器。</param>
 public sealed record SessionNavItem(string Text, IBrush Dot);
+
+/// <summary>输入框旁边的本地工作区选择项。</summary>
+public sealed record WorkspaceNavItem(string? Id, string Text, bool IsAdd);
 
 /// <summary>
 /// 审批方式下拉的一项(<c>ApprovalCombo</c> 的 ItemTemplate 用)。
@@ -147,6 +151,7 @@ public partial class ChatPanelView : UserControl
 
     /// <summary>下拉正在重载(选中项由设置决定,不是由用户点的):此时的 <c>SelectionChanged</c> 是回声,别回写设置。</summary>
     private bool _syncingProviders;
+    private bool _syncingWorkspace;
 
     /// <summary>
     /// 选择变更计数:手选、自动粘住和回滚每次 +1;下拉重载回声不计。
@@ -308,6 +313,20 @@ public partial class ChatPanelView : UserControl
             SyncModeUi();
             _ = PersistSettingsAsync();
         };
+        WorkspaceCombo.SelectionChanged += (_, _) =>
+        {
+            if (_syncingWorkspace || WorkspaceCombo.SelectedItem is not WorkspaceNavItem item)
+            {
+                return;
+            }
+            if (item.IsAdd)
+            {
+                _ = AddWorkspaceAsync();
+                return;
+            }
+            _settings.LocalDefaultWorkspaceId = item.Id;
+            _ = PersistSettingsAsync();
+        };
         ApprovalCombo.SelectionChanged += (_, _) =>
         {
             if (ApprovalCombo.SelectedIndex < 0)
@@ -463,6 +482,7 @@ public partial class ChatPanelView : UserControl
             _settings.Migrate(); // 旧版的两个布尔开关折算成新的模式枚举
             ModeCombo.SelectedIndex = (int)_settings.Mode;
             ApprovalCombo.SelectedIndex = (int)_settings.Approval;
+            RefreshWorkspaceSelector();
             SyncModeUi();
             ReloadProviderCombo();
             await RefreshSessionsAsync();
@@ -520,10 +540,96 @@ public partial class ChatPanelView : UserControl
         Avalonia.Automation.AutomationProperties.SetName(AttachButton, _loc["AttachLocal"]);
         ToolTip.SetTip(AttachButton, _loc["AttachLocal"]);
         ToolTip.SetTip(ModelButton, _loc["Model"]);
+        ToolTip.SetTip(WorkspaceCombo, _loc["LocalWorkspace"]);
+        RefreshWorkspaceSelector();
         UpdateUsageText();
         // 代码块头部按钮的提示藏在 LiveMarkdown 的 ControlTemplate 里,只能经 DynamicResource 灌进去
         Resources["AiCopyTip"] = _loc["Copy"];
         Resources["AiWrapTip"] = _loc["ToggleWrap"];
+    }
+
+    private void RefreshWorkspaceSelector()
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(RefreshWorkspaceSelector);
+            return;
+        }
+        string? selectedId = _settings.LocalDefaultWorkspaceId;
+        var items = new List<WorkspaceNavItem>
+        {
+            new(null, _loc["WorkspaceNone"], false)
+        };
+        items.AddRange(_settings.LocalWorkspaces
+            .Where(LocalPathScope.IsConfigured)
+            .Select(workspace => new WorkspaceNavItem(
+                workspace.Id,
+                string.IsNullOrWhiteSpace(workspace.Name)
+                    ? workspace.RootPath
+                    : workspace.Name,
+                false)));
+        items.Add(new WorkspaceNavItem(null, _loc["WorkspaceChoose"], true));
+        _syncingWorkspace = true;
+        try
+        {
+            WorkspaceCombo.ItemsSource = items;
+            WorkspaceCombo.SelectedItem = items.FirstOrDefault(item =>
+                !item.IsAdd && string.Equals(item.Id, selectedId, StringComparison.OrdinalIgnoreCase))
+                ?? items[0];
+        }
+        finally
+        {
+            _syncingWorkspace = false;
+        }
+    }
+
+    private IReadOnlyList<LocalWorkspace> GetActiveLocalWorkspaces()
+    {
+        if (string.IsNullOrWhiteSpace(_settings.LocalDefaultWorkspaceId))
+        {
+            return [];
+        }
+
+        LocalWorkspace? workspace = _settings.LocalWorkspaces.FirstOrDefault(item =>
+            string.Equals(item.Id, _settings.LocalDefaultWorkspaceId, StringComparison.OrdinalIgnoreCase)
+            && LocalPathScope.IsConfigured(item));
+        return workspace is null ? [] : [workspace];
+    }
+
+    private async Task AddWorkspaceAsync()
+    {
+        TopLevel? top = TopLevel.GetTopLevel(this);
+        if (top?.StorageProvider is not { } storage)
+        {
+            return;
+        }
+        IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(new()
+        {
+            Title = _loc["WorkspaceChoose"],
+            AllowMultiple = false
+        });
+        if (folders.Count == 0 || folders[0].TryGetLocalPath() is not { } rootPath
+            || !Directory.Exists(rootPath))
+        {
+            return;
+        }
+        LocalWorkspace? existing = _settings.LocalWorkspaces.FirstOrDefault(workspace =>
+            string.Equals(Path.GetFullPath(workspace.RootPath), Path.GetFullPath(rootPath),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
+        if (existing is null)
+        {
+            existing = new LocalWorkspace
+            {
+                Name = Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+                RootPath = rootPath,
+                AllowRead = true,
+                AllowWrite = true
+            };
+            _settings.LocalWorkspaces.Add(existing);
+        }
+        _settings.LocalDefaultWorkspaceId = existing.Id;
+        RefreshWorkspaceSelector();
+        await PersistSettingsAsync();
     }
 
     /// <summary>
@@ -1467,7 +1573,7 @@ public partial class ChatPanelView : UserControl
         string? truncation = null;
         ProviderCredential verifiedCredential = default;
         OAuthAccountSnapshot? verifiedAccount = null;
-        long verifiedProviderVersion = _store.ProviderConfigurationVersion(provider.Provider);
+        long verifiedProviderVersion = AiSettingsStore.ProviderConfigurationVersion(provider.Provider);
         string? selectedKeyId = null;
         var keyStates = _settings.Providers.Where(p => p.Auth == AuthMethod.ApiKey && p.Models.Any(m => !m.HasOwnApiKey))
             .ToDictionary(p => p.Id,
@@ -1479,6 +1585,7 @@ public partial class ChatPanelView : UserControl
         int verifiedVersion = 0; // 每次真实流式请求开始时取配置代际,仅限制旧健康结果写回
         long verifiedObservation = 0; // 每次真实流式请求单独取号,同模型的并发结果按起跑顺序结算
         string replyText = "";
+        SubagentOrchestrator? subagents = null;
         // 这一轮的故障转移 / 换 Key:合成一张切换提示卡挂在这条回复里(只给人看,不进 History,见 ChatPanelView.SwitchNotice.cs)
         List<ChatProviderSwitch> switches = [];
         try
@@ -1575,7 +1682,7 @@ public partial class ChatPanelView : UserControl
             // 已选 Key 槽保持固定;MCP/摘要等待后订阅续期和思考能力变化仍须重新证明。
             async Task<bool> RefreshBeforeSendAsync()
             {
-                if (_store.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
+                if (AiSettingsStore.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
                     throw new ProviderConfigurationChangedException();
                 if (!SameEndpoint(current, _settings.FindModel(current.Id))
                     || !string.Equals(current.Model, verifiedModel, StringComparison.Ordinal))
@@ -1641,7 +1748,7 @@ public partial class ChatPanelView : UserControl
                     await Dispatcher.UIThread.InvokeAsync(() => VerifyFixedRequestAsync(cancellationToken, formal));
                     return;
                 }
-                if (_store.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
+                if (AiSettingsStore.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
                     throw new ProviderConfigurationChangedException();
                 if (!SameEndpoint(current, _settings.FindModel(current.Id))
                     || !string.Equals(current.Model, verifiedModel, StringComparison.Ordinal))
@@ -1815,7 +1922,7 @@ public partial class ChatPanelView : UserControl
                         ?? throw new ProviderConfigurationChangedException();
                     if (initialCredential.IsBearerToken && CaptureOAuthIssuer(current.Provider) != issuerBeforeResolve)
                         throw new ProviderConfigurationChangedException();
-                    if (_store.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
+                    if (AiSettingsStore.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
                         throw new ProviderConfigurationChangedException();
                     if (!string.Equals(current.Model, verifiedModel, StringComparison.Ordinal)
                         || !SameEndpoint(current, _settings.FindModel(current.Id)))
@@ -1858,10 +1965,90 @@ public partial class ChatPanelView : UserControl
                 // 纯对话模式不给任何工具;计划模式只给只读工具(见 AgentToolbox.CreateTools)
                 if (usesToolLoop)
                 {
+                    ResolvedModel subagentModel = current;
+                    ProviderCredential subagentCredential = verifiedCredential;
+                    subagents ??= new SubagentOrchestrator(async (request, childToken) =>
+                    {
+                        var toolCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+                        var toolErrors = new List<string>();
+                        string? childSessionId = _toolbox.SessionIdProvider?.Invoke();
+                        await using var childToolbox = new AgentToolbox(_context)
+                        {
+                            SessionIdProvider = () => childSessionId,
+                            ApprovalHandler = _toolbox.ApprovalHandler,
+                            Approval = _toolbox.Approval,
+                            Scope = _toolbox.Scope,
+                            LocalWorkspaces = _toolbox.LocalWorkspaces,
+                            LocalDefaultWorkspaceId = _toolbox.LocalDefaultWorkspaceId,
+                            LocalMaxFileBytes = _toolbox.LocalMaxFileBytes,
+                            LocalMaxDirectoryEntries = _toolbox.LocalMaxDirectoryEntries,
+                            DisabledTools = new HashSet<string>(_toolbox.DisabledTools, StringComparer.OrdinalIgnoreCase),
+                            WebSearch = _toolbox.WebSearch
+                        };
+                        await using CommandJobRunScope childRun = childToolbox.BeginRun(
+                            $"subagent:{Guid.NewGuid():N}", Guid.NewGuid().ToString("N"),
+                            cancellationToken: childToken);
+                        IList<AITool> childTools = childToolbox.CreateTools(
+                            ChatMode.Plan, nativeWebSearch: false, childRun);
+                        foreach (AITool mcpTool in subagents!.ReadOnlyMcpTools)
+                        {
+                            childTools.Add(mcpTool);
+                        }
+                        IReadOnlyList<AITool> trackedTools = SubagentOrchestrator.SubagentToolTracker.Wrap(
+                            childTools, (name, result) =>
+                            {
+                                toolCounts[name] = toolCounts.GetValueOrDefault(name) + 1;
+                                string? text = result switch
+                                {
+                                    Exception exception => exception.GetBaseException().Message,
+                                    string value => value,
+                                    _ => null
+                                };
+                                if (result is Exception
+                                    || (text is not null
+                                        && (text.Contains("DENIED", StringComparison.OrdinalIgnoreCase)
+                                            || text.Contains("No approval channel", StringComparison.OrdinalIgnoreCase))))
+                                {
+                                    toolErrors.Add($"{name}: {text}");
+                                }
+                            });
+                        var childOptions = new ChatOptions
+                        {
+                            MaxOutputTokens = Math.Min(subagentModel.MaxTokens, 2048),
+                            Temperature = subagentModel.Temperature,
+                            TopP = subagentModel.TopP,
+                            Tools = trackedTools.ToList()
+                        };
+                        AiSettingsStore.ApplyReasoning(childOptions, subagentModel);
+                        AiSettingsStore.ApplyEndpointQuirks(childOptions, subagentModel);
+                        using IChatClient rawChildClient = _store.CreateClient(subagentModel, subagentCredential);
+                        using IChatClient childClient = rawChildClient.AsBuilder()
+                            .UseFunctionInvocation(configure: c =>
+                            {
+                                c.MaximumIterationsPerRequest = 30;
+                                c.MaximumConsecutiveErrorsPerRequest = 0;
+                                c.AllowConcurrentInvocation = false;
+                            })
+                            .Build();
+                        string instruction = string.IsNullOrWhiteSpace(request.Role)
+                            ? request.Prompt
+                            : $"You are a specialist subagent focused on {request.Role.Trim()}.\n\n{request.Prompt}";
+                        ChatResponse response = await childClient.GetResponseAsync(
+                            instruction, childOptions, childToken).ConfigureAwait(false);
+                        return new SubagentExecutionResult(
+                            response.Text,
+                            toolCounts.Select(pair => new SubagentToolUsage(pair.Key, pair.Value)).ToArray(),
+                            toolErrors);
+                    }, token);
+                    _toolbox.Subagents = mode == ChatMode.Agent ? subagents : null;
                     ApplyApprovalMode(); // 挡位推给工具箱与 MCP(中途再改也会经这条路重推)
                     _toolbox.DisabledTools = new HashSet<string>(
                         SplitLines(_settings.DisabledBuiltinTools) ?? [], StringComparer.OrdinalIgnoreCase);
                     _toolbox.WebSearch = _settings.WebSearch;
+                    _toolbox.LocalWorkspaces = GetActiveLocalWorkspaces();
+                    _toolbox.LocalDefaultWorkspaceId = _settings.LocalDefaultWorkspaceId;
+                    _toolbox.LocalMaxFileBytes = _settings.LocalMaxFileBytes;
+                    _toolbox.LocalMaxDirectoryEntries = _settings.LocalMaxDirectoryEntries;
                     IList<AITool> tools = mode == ChatMode.Chat ? [] : _toolbox.CreateTools(mode, nativeSearch, runScope);
                     if (bubble.ImageTools is { } imageTools)
                         foreach (AITool tool in imageTools.CreateTools()) tools.Add(tool);
@@ -1870,7 +2057,9 @@ public partial class ChatPanelView : UserControl
                     if (mode == ChatMode.Agent && _settings.McpServers.Any(s => s.Enabled))
                     {
                         SetStatus(_loc["McpConnecting"]);
-                        (List<AITool> mcpTools, List<string> mcpErrors) = await _mcp.GetToolsAsync(_settings.McpServers, _mcpApproval, token);
+                        (List<AITool> mcpTools, List<string> mcpErrors) = await _mcp.GetToolsAsync(
+                            _settings.McpServers, _mcpApproval, token, GetActiveLocalWorkspaces());
+                        subagents.ReadOnlyMcpTools = McpManager.FilterReadOnlyTools(mcpTools);
                         foreach (AITool tool in mcpTools)
                         {
                             tools.Add(tool);
@@ -1913,11 +2102,10 @@ public partial class ChatPanelView : UserControl
                             recovered: () => Dispatcher.UIThread.Post(() =>
                             {
                                 if (Cur.Status == retryStatus) SetStatus("");
-                            }))
+                            }), continueAfterVisibleOutput: false)
                         .AsBuilder().UseFunctionInvocation(configure: c => execution.Configure(c, 25)).Build();
                 }
 
-                // MCP 结束后完整复验，而非仅比较 BaseUrl：摘要不能使用已切账号的旧 inner。
                 if (!usesToolLoop && mode == ChatMode.Chat && await RefreshBeforeSendAsync())
                 {
                     client.Dispose();
@@ -1992,7 +2180,8 @@ public partial class ChatPanelView : UserControl
                             break;
                         }
                         catch (Exception ex) when (!AiSettingsStore.IsImageModel(current) && mode == ChatMode.Chat && attempt < (ex is HealthProbe.EmptyReplyException ? 2 : StreamRetries) && !execution.HasToolCalls && !HasMeaningfulOutput(updates)
-                                                   && !token.IsCancellationRequested && TransientFailure.IsTransient(ex))
+                                                   && !token.IsCancellationRequested && !TransientFailure.IsApiKeyFailure(ex)
+                                                   && TransientFailure.IsTransient(ex))
                         {
                             _context.Log.Warn($"Stream failed before any content (attempt {attempt + 1}): {ex.Message}");
                             // 未开口时给 warn 色区别于普通提示;成功后连色带字一起撤掉
@@ -2054,7 +2243,7 @@ public partial class ChatPanelView : UserControl
                         _health.RecordKeyFailure(failedKey, current.Id, TransientFailure.IsKeyRejected(ex), verifiedVersion, verifiedObservation);
                         try
                         {
-                            if (_store.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
+                            if (AiSettingsStore.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
                                 throw new ProviderConfigurationChangedException();
                             (ProviderCredential Credential, string ProbedModel, string? KeyId, long ProviderVersion)? nextKey = await ProbeApiKeysAsync(current, turnOverride,
                                 keyStates.GetValueOrDefault(current.Provider.Id), null, RecordProbeUsage, verifiedProviderVersion, token);
@@ -2137,8 +2326,7 @@ public partial class ChatPanelView : UserControl
                         await PersistSettingsAsync();
                     }
                 }
-                catch (Exception ex) when (HasMeaningfulOutput(updates)
-                                           && !token.IsCancellationRequested && TransientFailure.IsWorthSwitching(ex))
+                catch (Exception ex) when (HasMeaningfulOutput(updates) && !token.IsCancellationRequested)
                 {
                     // 已开口后断流不能换 Key/模型或原地重试,否则会重放可见内容或工具副作用。
                     // 不切不等于没发生:这次失败仍是健康数据,不记的话下一轮仍会把这个
@@ -2290,6 +2478,12 @@ public partial class ChatPanelView : UserControl
                 try { await runScope.CancelAsync(); }
                 catch (ObjectDisposedException) { }
                 conv.RunScope = null;
+                _toolbox.Subagents = null;
+                if (subagents is not null)
+                {
+                    await subagents.DisposeAsync();
+                    AddSubagentCards(bubble, subagents.Snapshots());
+                }
                 Cts?.Dispose();
                 Cts = null;
                 ActiveBubble = null;
@@ -2383,7 +2577,7 @@ public partial class ChatPanelView : UserControl
         {
             ResolvedModel target = WithTurn(candidate);
             if (AiSettingsStore.IsImageModel(target) || _health.IsCooling(target.Id)) continue;
-            long candidateProviderVersion = _store.ProviderConfigurationVersion(target.Provider);
+            long candidateProviderVersion = AiSettingsStore.ProviderConfigurationVersion(target.Provider);
             OAuthAccountSnapshot issuerBeforeResolve = CaptureOAuthIssuer(target.Provider);
             for (int round = 0; round < 2; round++)
             {
@@ -2560,7 +2754,7 @@ public partial class ChatPanelView : UserControl
     private async Task<bool> StillVerifiedAsync(ResolvedModel target, ProviderCredential credential,
         CancellationToken token, string? probedModel = null, string? selectedKeyId = null, long? providerVersion = null)
     {
-        if (providerVersion is { } expectedVersion && _store.ProviderConfigurationVersion(target.Provider) != expectedVersion) return false;
+        if (providerVersion is { } expectedVersion && AiSettingsStore.ProviderConfigurationVersion(target.Provider) != expectedVersion) return false;
         token.ThrowIfCancellationRequested();
         if ((probedModel is not null && !string.Equals(probedModel, target.Model, StringComparison.Ordinal))
             || !SameEndpoint(target, _settings.FindModel(target.Id)))
@@ -2575,7 +2769,7 @@ public partial class ChatPanelView : UserControl
             token.ThrowIfCancellationRequested();
             return (probedModel is null || string.Equals(probedModel, target.Model, StringComparison.Ordinal))
                 && SameEndpoint(target, _settings.FindModel(target.Id))
-                && (providerVersion is null || _store.ProviderConfigurationVersion(target.Provider) == providerVersion)
+                && (providerVersion is null || AiSettingsStore.ProviderConfigurationVersion(target.Provider) == providerVersion)
                 && currentKeyId == selectedKeyId && SameCredential(credential, currentCredential);
         }
         catch (AiSettingsStore.ApiKeySlotChangedException) { return false; }
@@ -3089,6 +3283,56 @@ public partial class ChatPanelView : UserControl
         RequestAutoScroll(force: true);
     }
 
+    private void AddSubagentCards(AssistantBubble? bubble, IReadOnlyList<SubagentSnapshot> snapshots)
+    {
+        if (snapshots.Count == 0)
+        {
+            return;
+        }
+        if (bubble is null)
+        {
+            SetStatus($"{_loc["SubagentRuns"]}: {snapshots.Count}");
+            return;
+        }
+
+        var stack = new StackPanel { Spacing = 6 };
+        stack.Children.Add(BuildCardHeader("Icon.users", "VelaAccent", _loc["SubagentRuns"], null));
+        foreach (SubagentSnapshot snapshot in snapshots)
+        {
+            string tools = snapshot.ToolsUsed.Count == 0
+                ? $"0 {_loc["SubagentTools"]}"
+                : string.Join(", ", snapshot.ToolsUsed.Select(tool => $"{tool.Name} ×{tool.Count}"));
+            var detail = new StackPanel { Spacing = 3 };
+            detail.Children.Add(new TextBlock
+            {
+                Classes = { "roleHeader" },
+                Text = $"{snapshot.SubagentId} · {snapshot.Role} · {snapshot.Status}"
+            });
+            detail.Children.Add(new TextBlock
+            {
+                Classes = { "dim" },
+                Text = $"{snapshot.Elapsed.TotalSeconds:0.0}s · {tools}",
+                TextWrapping = TextWrapping.Wrap
+            });
+            detail.Children.Add(new SelectableTextBlock
+            {
+                Classes = { "mono" },
+                Text = Truncate(snapshot.Output, 1200)
+            });
+            if (snapshot.Errors.Count > 0)
+            {
+                detail.Children.Add(new SelectableTextBlock
+                {
+                    Classes = { "mono" },
+                    Text = Truncate(string.Join(Environment.NewLine, snapshot.Errors), 800)
+                });
+            }
+            stack.Children.Add(new Border { Classes = { "toolCard" }, Child = detail });
+        }
+        bubble.AddCard(new Border { Classes = { "noticeCard" }, Child = stack });
+        RequestAutoScroll(force: true);
+    }
+
     private void AddErrorCard(AssistantBubble? bubble, string detail)
     {
         if (bubble is null)
@@ -3515,6 +3759,10 @@ public partial class ChatPanelView : UserControl
         public void AppendText(string text)
         {
             if (text.Length == 0)
+            {
+                return;
+            }
+            if (_replyText.Length == 0 && string.IsNullOrWhiteSpace(text))
             {
                 return;
             }

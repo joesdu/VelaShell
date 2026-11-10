@@ -99,7 +99,7 @@ public partial class ChatPanelView
         try
         {
             // 正文的账号与配置快照来自发送前;此时旧 token 可能已被其它请求合法旋转。
-            if (_store.ProviderConfigurationVersion(provider.Provider) != verifiedProviderVersion
+            if (AiSettingsStore.ProviderConfigurationVersion(provider.Provider) != verifiedProviderVersion
                 || !SameEndpoint(provider, _settings.FindModel(provider.Id)) || provider.Model != sentModel
                 || (credential.IsBearerToken && (verifiedAccount is not { } issuer
                     || issuer with { Id = null, Account = null, LoginVersion = 0 } != CaptureOAuthIssuer(provider.Provider)))

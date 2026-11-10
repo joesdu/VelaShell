@@ -75,12 +75,13 @@ public sealed class AiSettingsStore(IPluginContext context)
         public readonly ConcurrentDictionary<string, byte> Updating = new(StringComparer.Ordinal);
         public readonly ConditionalWeakTable<AiSettings, SettingsBaseline> SettingsBaselines = [];
         public readonly ConditionalWeakTable<AiProvider, SettingsScope> ProviderSettings = [];
-        public readonly ConditionalWeakTable<AiProvider, ProviderEpoch> ProviderEpochs = [];
         public readonly ConcurrentDictionary<string, OAuthTokens?> Tokens = new(StringComparer.Ordinal);
         public readonly ConcurrentDictionary<string, long> LoginVersions = new(StringComparer.Ordinal);
         public readonly SemaphoreSlim RefreshGate = new(1, 1);
         public readonly SemaphoreSlim TokenWriteGate = new(1, 1);
     }
+
+    private static readonly ConcurrentDictionary<string, ProviderEpoch> ProviderEpochs = new(StringComparer.Ordinal);
 
     private sealed class SettingsBaseline
     {
@@ -104,8 +105,8 @@ public sealed class AiSettingsStore(IPluginContext context)
         }
     }
 
-    internal long ProviderConfigurationVersion(AiProvider provider)
-        => Volatile.Read(ref _providerKeys.ProviderEpochs.GetValue(provider, static _ => new()).Value);
+    internal static long ProviderConfigurationVersion(AiProvider provider)
+        => Volatile.Read(ref ProviderEpochs.GetOrAdd(provider.Id, static _ => new()).Value);
 
     private static string ProviderRequestJson(AiProvider provider) => JsonSerializer.Serialize(new
     {
@@ -142,15 +143,16 @@ public sealed class AiSettingsStore(IPluginContext context)
         string? changedKeyOwnerId = null)
     {
         // 弱引用登记也保留已从当前列表移除的活对象；仅比较成功发布的请求快照。
+        HashSet<string> advancedProviderIds = [];
         foreach (KeyValuePair<AiProvider, SettingsScope> entry in _providerKeys.ProviderSettings)
         {
             AiProvider provider = entry.Key;
-            ProviderEpoch epoch = _providerKeys.ProviderEpochs.GetValue(provider, static _ => new());
+            ProviderEpoch epoch = ProviderEpochs.GetOrAdd(provider.Id, static _ => new());
             bool keyChanged = changedKeyOwnerId is not null && epoch.RequestJson is not null && !epoch.Deleted
                 && ProviderOwnsApiKey(provider, changedKeyOwnerId);
             if (!ReferenceEquals(entry.Value.Settings, settings))
             {
-                if (keyChanged) Interlocked.Increment(ref epoch.Value);
+                if (keyChanged && advancedProviderIds.Add(provider.Id)) Interlocked.Increment(ref epoch.Value);
                 continue;
             }
             AiProvider? saved = snapshot.Providers.Find(candidate => candidate.Id == provider.Id);
@@ -158,7 +160,7 @@ public sealed class AiSettingsStore(IPluginContext context)
             if ((epoch.RequestJson is not null || epoch.Deleted) && epoch.RequestJson != requestJson
                 || ReferenceEquals(provider, newLogin) || keyChanged)
             {
-                Interlocked.Increment(ref epoch.Value);
+                if (advancedProviderIds.Add(provider.Id)) Interlocked.Increment(ref epoch.Value);
             }
 
             epoch.RequestJson = requestJson;
@@ -172,13 +174,14 @@ public sealed class AiSettingsStore(IPluginContext context)
 
     private void PublishApiKeyChange(string ownerId)
     {
+        HashSet<string> advancedProviderIds = [];
         foreach (KeyValuePair<AiProvider, SettingsScope> entry in _providerKeys.ProviderSettings)
         {
             if (ProviderOwnsApiKey(entry.Key, ownerId)
-                && _providerKeys.ProviderEpochs.TryGetValue(entry.Key, out ProviderEpoch? epoch)
+                && ProviderEpochs.TryGetValue(entry.Key.Id, out ProviderEpoch? epoch)
                 && epoch.RequestJson is not null && !epoch.Deleted)
             {
-                Interlocked.Increment(ref epoch.Value);
+                if (advancedProviderIds.Add(entry.Key.Id)) Interlocked.Increment(ref epoch.Value);
             }
         }
     }
@@ -1453,14 +1456,14 @@ public sealed class AiSettingsStore(IPluginContext context)
     private async Task ValidateCredentialScopeAsync(ResolvedModel model, bool providerOnly, CancellationToken token)
     {
         if (_providerKeys.Updating.ContainsKey(model.Provider.Id)
-            || _providerKeys.ProviderEpochs.TryGetValue(model.Provider, out ProviderEpoch? epoch) && epoch.Deleted)
+            || ProviderEpochs.TryGetValue(model.Provider.Id, out ProviderEpoch? epoch) && epoch.Deleted)
         {
             throw new ApiKeySlotChangedException();
         }
 
         JsonElement raw = await context.Storage.GetAsync<JsonElement>(SettingsKey, token).ConfigureAwait(false);
         if (_providerKeys.Updating.ContainsKey(model.Provider.Id)
-            || _providerKeys.ProviderEpochs.TryGetValue(model.Provider, out epoch) && epoch.Deleted)
+            || ProviderEpochs.TryGetValue(model.Provider.Id, out epoch) && epoch.Deleted)
         {
             throw new ApiKeySlotChangedException();
         }
@@ -2071,7 +2074,8 @@ public sealed class AiSettingsStore(IPluginContext context)
     private bool HasProviderKeyPool(ResolvedModel model)
         => model.Provider.Auth == AuthMethod.ApiKey && !model.Config.HasOwnApiKey
             && SameOrigin(model.BaseUrl, model.Provider.BaseUrl)
-            && ProviderApiKeyIds(model.Provider).Skip(1).Any();
+            && (ProviderApiKeyIds(model.Provider).Skip(1).Any()
+                || model.Provider.AdditionalApiKeyIds.Any(static id => Guid.TryParseExact(id, "N", out _)));
 
     internal static bool IsImageModel(ResolvedModel model)
         => model.Protocol == ChatProtocol.OpenAiImages

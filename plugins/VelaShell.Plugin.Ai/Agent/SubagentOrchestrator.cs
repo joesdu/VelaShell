@@ -1,0 +1,302 @@
+using System.Collections.Concurrent;
+using System.Text.Json;
+using Microsoft.Extensions.AI;
+
+namespace VelaShell.Plugin.Ai.Agent;
+
+/// <summary>提交给只读子 Agent 的任务请求。</summary>
+/// <param name="Prompt">子 Agent 要执行的分析任务。</param>
+/// <param name="Role">任务角色的显示名称；未指定时使用默认分析角色。</param>
+public sealed record SubagentRequest(string Prompt, string? Role);
+
+/// <summary>子 Agent 对某个工具的调用次数。</summary>
+/// <param name="Name">工具名称。</param>
+/// <param name="Count">调用次数。</param>
+public sealed record SubagentToolUsage(string Name, int Count);
+
+/// <summary>子 Agent 执行完成或失败后的结构化结果。</summary>
+/// <param name="Output">子 Agent 输出的文本。</param>
+/// <param name="ToolsUsed">子 Agent 使用过的工具及调用次数。</param>
+/// <param name="Errors">执行期间产生的错误或权限拒绝信息。</param>
+public sealed record SubagentExecutionResult(
+    string Output,
+    IReadOnlyList<SubagentToolUsage> ToolsUsed,
+    IReadOnlyList<string> Errors)
+{
+    /// <summary>从纯文本输出创建没有工具和错误的结果。</summary>
+    /// <param name="output">子 Agent 输出的文本。</param>
+    public static SubagentExecutionResult FromText(string output)
+        => new(output, [], []);
+}
+
+/// <summary>用于聊天 UI 和状态接口的子 Agent 运行快照。</summary>
+/// <param name="SubagentId">子 Agent 标识。</param>
+/// <param name="Role">子 Agent 角色。</param>
+/// <param name="Status">排队、运行中、完成、失败、取消或超时状态。</param>
+/// <param name="Summary">从最终输出提取的简短摘要。</param>
+/// <param name="Output">完整输出文本。</param>
+/// <param name="ToolsUsed">使用过的工具及调用次数。</param>
+/// <param name="Errors">执行期间产生的错误或权限拒绝信息。</param>
+/// <param name="Elapsed">从排队到结束或当前时刻的耗时。</param>
+public sealed record SubagentSnapshot(
+    string SubagentId,
+    string Role,
+    string Status,
+    string Summary,
+    string Output,
+    IReadOnlyList<SubagentToolUsage> ToolsUsed,
+    IReadOnlyList<string> Errors,
+    TimeSpan Elapsed);
+
+/// <summary>
+/// 管理当前 Agent 委托出去的只读子任务。子任务使用父轮次已经验证过的模型和凭据，
+/// 继承父轮次明确授权的只读工具，但不能递归创建子 Agent。
+/// </summary>
+public sealed class SubagentOrchestrator(
+    Func<SubagentRequest, CancellationToken, Task<SubagentExecutionResult>> runner,
+    CancellationToken parentCancellation,
+    TimeSpan? timeout = null) : IAsyncDisposable
+{
+    private const int MaxConcurrent = 4;
+    private const int MaxTotal = 8;
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
+    private readonly SemaphoreSlim _slots = new(MaxConcurrent, MaxConcurrent);
+    private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.Ordinal);
+    private readonly TimeSpan _timeout = timeout ?? DefaultTimeout;
+    private int _started;
+    private int _disposed;
+
+    private sealed class Entry(CancellationTokenSource cancellation)
+    {
+        public CancellationTokenSource Cancellation { get; } = cancellation;
+        public Task<SubagentExecutionResult>? Task { get; set; }
+        public string Status { get; set; } = "queued";
+        public string? Role { get; set; }
+        public SubagentExecutionResult? Result { get; set; }
+        public string? Error { get; set; }
+        public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset? FinishedAt { get; set; }
+    }
+
+    /// <summary>使用纯文本委托函数创建子任务编排器。</summary>
+    /// <param name="runner">执行子任务并返回文本结果的委托。</param>
+    /// <param name="parentCancellation">父 Agent 轮次的取消令牌。</param>
+    public SubagentOrchestrator(
+        Func<string, CancellationToken, Task<string>> runner,
+        CancellationToken parentCancellation)
+        : this(async (request, token) =>
+            SubagentExecutionResult.FromText(await runner(request.Prompt, token).ConfigureAwait(false)),
+            parentCancellation)
+    {
+    }
+
+    /// <summary>允许父轮把已发现的只读 MCP 工具注入后续子任务。</summary>
+    public IReadOnlyList<AITool> ReadOnlyMcpTools { get; set; } = [];
+
+    /// <summary>启动一个受限只读子任务并立即返回任务 id。</summary>
+    public string Start(string prompt, string? role)
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            return "Subagent service is shutting down.";
+        }
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return "A non-empty subagent prompt is required.";
+        }
+        if (Interlocked.Increment(ref _started) > MaxTotal)
+        {
+            Interlocked.Decrement(ref _started);
+            return $"The maximum of {MaxTotal} subagents per parent turn has been reached.";
+        }
+
+        string id = $"sub-{Guid.NewGuid():N}"[..12];
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(parentCancellation);
+        var entry = new Entry(cancellation) { Role = role };
+        _entries[id] = entry;
+        entry.Task = RunAsync(entry, prompt, role);
+        return $"Started subagent {id}. Use subagent_status or subagent_wait with this id.";
+    }
+
+    /// <summary>取得子任务当前状态和已完成结果。</summary>
+    public string Status(string id)
+    {
+        if (!_entries.TryGetValue(id, out Entry? entry))
+        {
+            return $"Unknown subagent id '{id}'.";
+        }
+        return Format(id, entry);
+    }
+
+    /// <summary>等待一个子任务，超时只返回状态，不取消子任务。</summary>
+    public async Task<string> WaitAsync(string id, int timeoutSeconds, CancellationToken cancellationToken)
+    {
+        if (!_entries.TryGetValue(id, out Entry? entry))
+        {
+            return $"Unknown subagent id '{id}'.";
+        }
+        Task<SubagentExecutionResult> task = entry.Task
+            ?? Task.FromResult(SubagentExecutionResult.FromText("Subagent was not scheduled."));
+        try
+        {
+            await task.WaitAsync(TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, 1, 120)), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return $"Subagent {id} is still running. Use subagent_status to check it.";
+        }
+        return Format(id, entry);
+    }
+
+    /// <summary>返回给运行状态 UI 的结构化快照。</summary>
+    public IReadOnlyList<SubagentSnapshot> Snapshots()
+        => [.. _entries.Select(pair => Snapshot(pair.Key, pair.Value)).OrderBy(item => item.SubagentId)];
+
+    /// <summary>请求取消一个子任务。</summary>
+    public string Cancel(string id)
+    {
+        if (!_entries.TryGetValue(id, out Entry? entry))
+        {
+            return $"Unknown subagent id '{id}'.";
+        }
+        entry.Cancellation.Cancel();
+        return $"Cancellation requested for subagent {id}.";
+    }
+
+    private async Task<SubagentExecutionResult> RunAsync(Entry entry, string prompt, string? role)
+    {
+        bool acquired = false;
+        try
+        {
+            await _slots.WaitAsync(entry.Cancellation.Token).ConfigureAwait(false);
+            acquired = true;
+            entry.Status = "running";
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(entry.Cancellation.Token);
+            timeout.CancelAfter(_timeout);
+            entry.Result = await runner(new SubagentRequest(prompt.Trim(), role), timeout.Token)
+                .ConfigureAwait(false);
+            entry.Status = "completed";
+            return entry.Result;
+        }
+        catch (OperationCanceledException) when (entry.Cancellation.IsCancellationRequested)
+        {
+            entry.Status = "cancelled";
+            entry.Error = "The subagent was cancelled.";
+            return new SubagentExecutionResult("", [], [entry.Error]);
+        }
+        catch (OperationCanceledException)
+        {
+            entry.Status = "timed_out";
+            entry.Error = $"The subagent exceeded {_timeout.TotalSeconds:0.###} seconds.";
+            return new SubagentExecutionResult("", [], [entry.Error]);
+        }
+        catch (Exception ex)
+        {
+            entry.Status = "failed";
+            entry.Error = ex.GetBaseException().Message;
+            return new SubagentExecutionResult("", [], [entry.Error]);
+        }
+        finally
+        {
+            entry.FinishedAt = DateTimeOffset.UtcNow;
+            if (acquired)
+            {
+                _slots.Release();
+            }
+        }
+
+    }
+
+    private static string Format(string id, Entry entry)
+    {
+        SubagentSnapshot snapshot = Snapshot(id, entry);
+        return JsonSerializer.Serialize(new
+        {
+            subagentId = snapshot.SubagentId,
+            role = snapshot.Role,
+            status = snapshot.Status,
+            summary = snapshot.Summary,
+            output = snapshot.Output,
+            toolsUsed = snapshot.ToolsUsed.Select(tool => new { name = tool.Name, count = tool.Count }),
+            errors = snapshot.Errors,
+            elapsedMs = (long)snapshot.Elapsed.TotalMilliseconds
+        });
+    }
+
+    private static SubagentSnapshot Snapshot(string id, Entry entry)
+    {
+        TimeSpan elapsed = (entry.FinishedAt ?? DateTimeOffset.UtcNow) - entry.StartedAt;
+        return new(
+            id,
+            entry.Role ?? "analysis",
+            entry.Status,
+            Summary(entry.Result?.Output ?? entry.Error),
+            entry.Result?.Output ?? "",
+            entry.Result?.ToolsUsed ?? [],
+            entry.Result?.Errors is { } errors
+                ? entry.Error is { } statusError ? [.. errors, statusError] : errors
+                : entry.Error is { } error ? [error] : [],
+            elapsed);
+    }
+
+    internal static class SubagentToolTracker
+    {
+        public static IReadOnlyList<AITool> Wrap(
+            IEnumerable<AITool> tools,
+            Action<string, object?> record)
+            => [.. tools.Select(tool => tool is AIFunction function
+                ? new CountingFunction(function, record)
+                : tool)];
+
+        private sealed class CountingFunction(AIFunction inner, Action<string, object?> record)
+            : DelegatingAIFunction(inner)
+        {
+            protected override async ValueTask<object?> InvokeCoreAsync(
+                AIFunctionArguments arguments,
+                CancellationToken cancellationToken)
+            {
+                try
+                {
+                    object? result = await base.InvokeCoreAsync(arguments, cancellationToken).ConfigureAwait(false);
+                    record(Name, result);
+                    return result;
+                }
+                catch (Exception ex)
+                {
+                    record(Name, ex);
+                    throw;
+                }
+            }
+        }
+    }
+
+    private static string Summary(string? output)
+    {
+        string text = output?.ReplaceLineEndings(" ").Trim() ?? "";
+        return text.Length <= 160 ? text : text[..160] + "…";
+    }
+
+    /// <summary>取消并等待当前编排器中的全部子任务。</summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+        foreach (Entry entry in _entries.Values)
+        {
+            entry.Cancellation.Cancel();
+        }
+        Task[] tasks = [.. _entries.Values.Select(e => e.Task).OfType<Task>()];
+        if (tasks.Length > 0)
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        foreach (Entry entry in _entries.Values)
+        {
+            entry.Cancellation.Dispose();
+        }
+        _slots.Dispose();
+    }
+}

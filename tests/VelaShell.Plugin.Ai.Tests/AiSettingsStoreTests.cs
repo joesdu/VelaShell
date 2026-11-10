@@ -81,7 +81,7 @@ public sealed class AiSettingsStoreTests
         draft.Models.Add(new AiModelConfig { Model = "added-model", DefaultContextWindow = true });
         string draftJson = System.Text.Json.JsonSerializer.Serialize(draft);
         ResolvedModel retained = settings.FindModel(model.Id)!;
-        long epoch = store.ProviderConfigurationVersion(provider);
+        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider);
         using var cancellation = new CancellationTokenSource();
         storage.Hold = true;
         storage.FailHeldWrite = outcome == "storage";
@@ -91,7 +91,7 @@ public sealed class AiSettingsStoreTests
             await storage.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
             Assert.AreEqual(originalJson, System.Text.Json.JsonSerializer.Serialize(settings), "目录候选、GUID、窗口与来源仍未发布");
             Assert.AreEqual(originalJson, System.Text.Json.JsonSerializer.Serialize(await context.Storage.GetAsync<System.Text.Json.JsonElement>("settings")));
-            Assert.AreEqual(epoch, store.ProviderConfigurationVersion(provider));
+            Assert.AreEqual(epoch, AiSettingsStore.ProviderConfigurationVersion(provider));
             (Exception? error, _) = await HealthProbe.ProbeAsync(store, retained);
             Assert.IsInstanceOfType<AiSettingsStore.ApiKeySlotChangedException>(error);
             await Assert.ThrowsAsync<AiSettingsStore.ApiKeySlotChangedException>(() => store.ResolveProviderCredentialAsync(provider));
@@ -114,7 +114,7 @@ public sealed class AiSettingsStoreTests
             Assert.AreSame(provider, settings.Providers.Single());
             Assert.AreSame(model, provider.Models[0], "自动更新沿用原模型 GUID 与活对象");
             Assert.AreEqual(draftJson, System.Text.Json.JsonSerializer.Serialize(provider));
-            Assert.AreEqual(epoch + 1, store.ProviderConfigurationVersion(provider));
+            Assert.AreEqual(epoch + 1, AiSettingsStore.ProviderConfigurationVersion(provider));
             (Exception? staleError, _) = await HealthProbe.ProbeAsync(store, retained);
             Assert.IsInstanceOfType<AiSettingsStore.ApiKeySlotChangedException>(staleError,
                 "旧 ResolvedModel 保留提交前的出境地址，不能因活对象同 ID 更新而重新授权");
@@ -133,7 +133,7 @@ public sealed class AiSettingsStoreTests
         {
             Assert.AreEqual(expected, System.Text.Json.JsonSerializer.Serialize(provider));
             Assert.AreEqual(originalJson, System.Text.Json.JsonSerializer.Serialize(await context.Storage.GetAsync<System.Text.Json.JsonElement>("settings")), "失败与晚到冲突都恢复原磁盘基线");
-            Assert.AreEqual(epoch, store.ProviderConfigurationVersion(provider));
+            Assert.AreEqual(epoch, AiSettingsStore.ProviderConfigurationVersion(provider));
             if (outcome == "live-conflict") Assert.AreEqual(62, settings.PanelWidthPercent, "不得覆盖等待期间的活修改");
             storage.FailHeldWrite = false;
             AiProvider current = settings.Providers.Single();
@@ -189,16 +189,16 @@ public sealed class AiSettingsStoreTests
         metadata.Models[0].DefaultContextWindow = true;
         metadata.Models[0].InputPricePerMillion = 3;
         await store.SaveProviderCatalogueAsync(settings, provider, metadata, initial);
-        Assert.AreEqual(0L, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(provider));
         string baseline = System.Text.Json.JsonSerializer.Serialize(provider);
         AiProvider changed = System.Text.Json.JsonSerializer.Deserialize<AiProvider>(baseline)!;
         changed.Models[0].MaxInputTokens = 65536;
         await store.SaveProviderCatalogueAsync(settings, provider, changed, baseline);
-        Assert.AreEqual(1L, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(1L, AiSettingsStore.ProviderConfigurationVersion(provider));
         await store.SaveProviderCatalogueAsync(settings, provider, metadata, System.Text.Json.JsonSerializer.Serialize(provider));
-        Assert.AreEqual(2L, store.ProviderConfigurationVersion(provider), "A→B→A 仍拒绝等待前的旧历史请求");
+        Assert.AreEqual(2L, AiSettingsStore.ProviderConfigurationVersion(provider), "A→B→A 仍拒绝等待前的旧历史请求");
         await store.SaveAsync(settings);
-        Assert.AreEqual(2L, store.ProviderConfigurationVersion(provider), "普通重写不能重复推进目录 epoch");
+        Assert.AreEqual(2L, AiSettingsStore.ProviderConfigurationVersion(provider), "普通重写不能重复推进目录 epoch");
     }
 
     [TestMethod]
@@ -237,7 +237,7 @@ public sealed class AiSettingsStoreTests
         Assert.AreEqual(draftJson, System.Text.Json.JsonSerializer.Serialize(draft));
         Assert.AreEqual("old-key", await context.Secrets.GetAsync("apikey:" + model.Id));
         Assert.AreEqual(128000, (await store.LoadAsync()).Providers[0].Models[0].MaxInputTokens);
-        Assert.AreEqual(0L, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(provider));
     }
 
     [TestMethod]
@@ -353,7 +353,7 @@ public sealed class AiSettingsStoreTests
 
         Assert.AreEqual("primary-old", await new AiSettingsStore(context).GetApiKeyAsync(provider.Id));
         Assert.AreEqual("token-old", (await new AiSettingsStore(context).GetTokensAsync(provider.Id))?.AccessToken);
-        Assert.AreEqual(0L, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(provider));
         Assert.AreEqual(0L, store.TokenLoginVersion(provider.Id));
         (Exception? error, _) = await HealthProbe.ProbeAsync(new AiSettingsStore(context), settings.FindModel(model.Id)!);
         Assert.IsNull(error, error?.ToString());
@@ -446,7 +446,7 @@ public sealed class AiSettingsStoreTests
         string expected = System.Text.Json.JsonSerializer.Serialize(provider);
         AiProvider draft = System.Text.Json.JsonSerializer.Deserialize<AiProvider>(expected)!;
         draft.BaseUrl = "https://elsewhere.example/v1";
-        long epoch = store.ProviderConfigurationVersion(provider), login = store.TokenLoginVersion(provider.Id);
+        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider), login = store.TokenLoginVersion(provider.Id);
 
         // 没确认:一样都不动,并说清会退出登录、要清哪把模型 Key
         AiSettingsStore.ApiKeyResetRequiredException reset = await Assert.ThrowsAsync<AiSettingsStore.ApiKeyResetRequiredException>(
@@ -465,7 +465,7 @@ public sealed class AiSettingsStoreTests
         reset = await Assert.ThrowsAsync<AiSettingsStore.ApiKeyResetRequiredException>(
             () => store.SaveProviderFormAsync(settings, provider, draft, expected));
         Assert.AreNotEqual(tokenJson, await context.Secrets.GetAsync("oauth:" + provider.Id), "前提:确实换了一份令牌");
-        epoch = store.ProviderConfigurationVersion(provider);
+        epoch = AiSettingsStore.ProviderConfigurationVersion(provider);
         login = store.TokenLoginVersion(provider.Id);
 
         (IReadOnlyList<string> cleared, bool signedOut) = await store.SaveProviderFormAsync(settings, provider, draft, expected, reset.Confirmation);
@@ -476,7 +476,7 @@ public sealed class AiSettingsStoreTests
         Assert.IsNull(await store.GetTokensAsync(provider.Id));
         Assert.IsNull(await store.GetApiKeyAsync(own.Id));
         Assert.IsTrue(own.HasOwnApiKey, "仍标着自带 Key,不悄悄改用登录");
-        Assert.IsGreaterThan(epoch, store.ProviderConfigurationVersion(provider), "在途请求复验时认得出配置变了");
+        Assert.IsGreaterThan(epoch, AiSettingsStore.ProviderConfigurationVersion(provider), "在途请求复验时认得出配置变了");
         Assert.AreEqual(login + 1, store.TokenLoginVersion(provider.Id), "在途的令牌刷新回来对不上号,不会把旧令牌写回");
         // 新地址上:没有任何凭据会被带出去,登录后才有
         foreach (ResolvedModel model in settings.ResolveModels())
@@ -679,7 +679,7 @@ public sealed class AiSettingsStoreTests
         await context.Secrets.SetAsync("oauth:" + ownerId,
             System.Text.Json.JsonSerializer.Serialize(new OAuthTokens { AccessToken = "original-token", AccountId = "original-account" }));
         ResolvedModel retained = settings.FindModel(model.Id)!;
-        long epoch = store.ProviderConfigurationVersion(provider), login = store.TokenLoginVersion(ownerId);
+        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider), login = store.TokenLoginVersion(ownerId);
         using var cancellation = new CancellationTokenSource();
         storage.Hold = true;
         storage.FailHeldWrite = outcome == "storage";
@@ -706,7 +706,7 @@ public sealed class AiSettingsStoreTests
             else await deletion.WaitAsync(TimeSpan.FromSeconds(15));
             secrets.ReadRelease.TrySetResult();
             Assert.IsNull(await lateRawRead.WaitAsync(TimeSpan.FromSeconds(15)), "原始读取返回其删除窗口快照，不得污染晚缓存");
-            Assert.AreEqual(epoch + (outcome == "success" ? 1 : 0), store.ProviderConfigurationVersion(provider));
+            Assert.AreEqual(epoch + (outcome == "success" ? 1 : 0), AiSettingsStore.ProviderConfigurationVersion(provider));
             Assert.AreEqual(login + (outcome == "success" ? 1 : 0), store.TokenLoginVersion(ownerId));
             if (outcome == "success")
             {
@@ -799,7 +799,7 @@ public sealed class AiSettingsStoreTests
         var originals = new Dictionary<string, string?>();
         foreach (string id in new[] { provider.Id, extra, model.Id })
             foreach (string prefix in new[] { "apikey:", "oauth:" }) originals[prefix + id] = await context.Secrets.GetAsync(prefix + id);
-        long epoch = store.ProviderConfigurationVersion(provider), login = store.TokenLoginVersion(provider.Id);
+        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider), login = store.TokenLoginVersion(provider.Id);
         if (failure == "conflict")
         {
             var external = new AiSettingsStore(context);
@@ -815,7 +815,7 @@ public sealed class AiSettingsStoreTests
         Assert.AreEqual(liveJson, System.Text.Json.JsonSerializer.Serialize(live));
         Assert.AreSame(provider, live.Providers[0]);
         Assert.AreSame(model, provider.Models[0]);
-        Assert.AreEqual(epoch, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(epoch, AiSettingsStore.ProviderConfigurationVersion(provider));
         Assert.AreEqual(login, store.TokenLoginVersion(provider.Id));
         foreach (KeyValuePair<string, string?> original in originals) Assert.AreEqual(original.Value, await context.Secrets.GetAsync(original.Key), original.Key);
         Assert.AreEqual("primary", await store.GetApiKeyAsync(provider.Id));
@@ -938,17 +938,17 @@ public sealed class AiSettingsStoreTests
             return store.SaveModelFormAsync(settings, provider, model, modelDraft, modelExpected, null, null);
         }
         await Commit(false);
-        Assert.AreEqual(0L, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(provider));
         storage.Fail = true;
         await Assert.ThrowsAsync<IOException>(() => Commit(true));
-        Assert.AreEqual(0L, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(provider));
         storage.Fail = false;
         await Commit(true);
-        Assert.AreEqual(1L, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(1L, AiSettingsStore.ProviderConfigurationVersion(provider));
         await Commit(true);
-        Assert.AreEqual(2L, store.ProviderConfigurationVersion(provider), "A→B→A不能让MCP等待前的旧请求重新有效");
+        Assert.AreEqual(2L, AiSettingsStore.ProviderConfigurationVersion(provider), "A→B→A不能让MCP等待前的旧请求重新有效");
         await store.SaveAsync(settings);
-        Assert.AreEqual(2L, store.ProviderConfigurationVersion(provider), "表单成功后的普通保存不得重复推进 epoch");
+        Assert.AreEqual(2L, AiSettingsStore.ProviderConfigurationVersion(provider), "表单成功后的普通保存不得重复推进 epoch");
     }
 
     [TestMethod]
@@ -977,7 +977,7 @@ public sealed class AiSettingsStoreTests
         var otherStore = new AiSettingsStore(context);
         AiSettings independent = await otherStore.LoadAsync();
         AiProvider registered = independent.Providers[0];
-        long epoch = store.ProviderConfigurationVersion(provider), otherEpoch = otherStore.ProviderConfigurationVersion(registered);
+        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider), otherEpoch = AiSettingsStore.ProviderConfigurationVersion(registered);
         string originalJson = System.Text.Json.JsonSerializer.Serialize(provider);
         async Task Commit(string key, bool requestChange = false)
         {
@@ -1004,26 +1004,26 @@ public sealed class AiSettingsStoreTests
         secrets.CancelSet = !form && cancel;
         if (cancel) await Assert.ThrowsAsync<OperationCanceledException>(() => Commit("key-b"));
         else await Assert.ThrowsAsync<IOException>(() => Commit("key-b"));
-        Assert.AreEqual(epoch, store.ProviderConfigurationVersion(provider));
-        Assert.AreEqual(otherEpoch, otherStore.ProviderConfigurationVersion(registered));
+        Assert.AreEqual(epoch, AiSettingsStore.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(otherEpoch, AiSettingsStore.ProviderConfigurationVersion(registered));
         Assert.AreEqual("key-a", await context.Secrets.GetAsync("apikey:" + ownerId));
         storage.Fail = storage.Cancel = secrets.FailSet = secrets.CancelSet = false;
         await Commit("key-b");
-        Assert.AreEqual(epoch + 1, store.ProviderConfigurationVersion(provider));
-        Assert.AreEqual(otherEpoch + 1, otherStore.ProviderConfigurationVersion(registered));
+        Assert.AreEqual(epoch + 1, AiSettingsStore.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(otherEpoch + 1, AiSettingsStore.ProviderConfigurationVersion(registered));
         await Commit("key-b");
-        Assert.AreEqual(epoch + 1, store.ProviderConfigurationVersion(provider), "相同 bytes 重写不是新凭据");
+        Assert.AreEqual(epoch + 1, AiSettingsStore.ProviderConfigurationVersion(provider), "相同 bytes 重写不是新凭据");
         await Commit("key-a");
-        Assert.AreEqual(epoch + 2, store.ProviderConfigurationVersion(provider));
-        Assert.AreEqual(otherEpoch + 2, otherStore.ProviderConfigurationVersion(registered));
+        Assert.AreEqual(epoch + 2, AiSettingsStore.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(otherEpoch + 2, AiSettingsStore.ProviderConfigurationVersion(registered));
         Assert.AreEqual(originalJson, System.Text.Json.JsonSerializer.Serialize(provider), "纯 Key ABA 的请求 JSON 完全相同");
         Assert.AreEqual("key-a", (await store.ResolveCredentialAsync(settings.FindModel(model.Id)!)).Value);
-        Assert.AreEqual(0L, store.ProviderConfigurationVersion(unrelated));
+        Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(unrelated));
         if (form)
         {
             await Commit("key-c", true);
-            Assert.AreEqual(epoch + 3, store.ProviderConfigurationVersion(provider), "JSON 与 Key 同笔变化只推进一次");
-            Assert.AreEqual(otherEpoch + 3, otherStore.ProviderConfigurationVersion(registered));
+            Assert.AreEqual(epoch + 3, AiSettingsStore.ProviderConfigurationVersion(provider), "JSON 与 Key 同笔变化只推进一次");
+            Assert.AreEqual(otherEpoch + 3, AiSettingsStore.ProviderConfigurationVersion(registered));
         }
     }
 
@@ -1039,13 +1039,13 @@ public sealed class AiSettingsStoreTests
         await store.AddProviderApiKeyAsync(settings, provider, supplementary ? "primary" : "key-a");
         string ownerId = supplementary ? await store.AddProviderApiKeyAsync(settings, provider, "key-a") : provider.Id;
         AiProvider retained = (await new AiSettingsStore(context).LoadAsync()).Providers[0];
-        long epoch = store.ProviderConfigurationVersion(provider), otherEpoch = store.ProviderConfigurationVersion(retained);
+        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider), otherEpoch = AiSettingsStore.ProviderConfigurationVersion(retained);
         await store.ReplaceProviderApiKeyAsync(settings, provider, ownerId, "key-b");
         await store.ReplaceProviderApiKeyAsync(settings, provider, ownerId, "key-a");
-        Assert.AreEqual(epoch + 2, store.ProviderConfigurationVersion(provider));
-        Assert.AreEqual(otherEpoch + 2, store.ProviderConfigurationVersion(retained));
+        Assert.AreEqual(epoch + 2, AiSettingsStore.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(otherEpoch + 2, AiSettingsStore.ProviderConfigurationVersion(retained));
         await store.SaveAsync(settings);
-        Assert.AreEqual(epoch + 2, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(epoch + 2, AiSettingsStore.ProviderConfigurationVersion(provider));
     }
 
     [TestMethod]
@@ -1062,14 +1062,14 @@ public sealed class AiSettingsStoreTests
         string ownerId = ownKey ? provider.Models[0].Id : provider.Id;
         if (ownKey) await store.SetApiKeyAsync(ownerId, "key-a");
         AiProvider retained = (await new AiSettingsStore(context).LoadAsync()).Providers[0];
-        long epoch = store.ProviderConfigurationVersion(provider), otherEpoch = store.ProviderConfigurationVersion(retained);
+        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider), otherEpoch = AiSettingsStore.ProviderConfigurationVersion(retained);
         if (directDelete) await store.DeleteApiKeyAsync(ownerId);
         else await store.RemoveProviderApiKeyAsync(settings, provider, ownerId);
-        Assert.AreEqual(epoch + 1, store.ProviderConfigurationVersion(provider));
-        Assert.AreEqual(otherEpoch + 1, store.ProviderConfigurationVersion(retained));
+        Assert.AreEqual(epoch + 1, AiSettingsStore.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(otherEpoch + 1, AiSettingsStore.ProviderConfigurationVersion(retained));
         await store.SetApiKeyAsync(ownerId, "key-a");
-        Assert.AreEqual(epoch + 2, store.ProviderConfigurationVersion(provider));
-        Assert.AreEqual(otherEpoch + 2, store.ProviderConfigurationVersion(retained));
+        Assert.AreEqual(epoch + 2, AiSettingsStore.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(otherEpoch + 2, AiSettingsStore.ProviderConfigurationVersion(retained));
         Assert.AreEqual("key-a", (await store.ResolveCredentialAsync(settings.FindModel(provider.Models[0].Id)!)).Value);
     }
 
@@ -1085,11 +1085,11 @@ public sealed class AiSettingsStoreTests
         string selectedId = await store.AddProviderApiKeyAsync(settings, provider, "key-b");
         ResolvedModel target = settings.FindModel(provider.Models[0].Id)!;
         (ProviderCredential selectedCredential, _) = await store.ResolveCredentialWithKeyIdAsync(target, keyId: selectedId);
-        long epoch = store.ProviderConfigurationVersion(provider), selection = provider.ActiveApiKeySelectionEpoch;
+        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider), selection = provider.ActiveApiKeySelectionEpoch;
         provider.ActiveApiKeyId = selectedId;
         provider.BalanceApiKeys = true;
         await store.SaveAsync(settings);
-        Assert.AreEqual(epoch, store.ProviderConfigurationVersion(provider), "成功粘槽不能使该轮已固定凭据的正文和建议失效");
+        Assert.AreEqual(epoch, AiSettingsStore.ProviderConfigurationVersion(provider), "成功粘槽不能使该轮已固定凭据的正文和建议失效");
         Assert.AreNotEqual(selection, provider.ActiveApiKeySelectionEpoch, "选槽并发仍由独立代际裁决");
         (ProviderCredential checkedCredential, _) = await store.ResolveCredentialWithKeyIdAsync(target, keyId: selectedId);
         Assert.AreEqual(selectedCredential.Value, checkedCredential.Value);
@@ -1125,14 +1125,14 @@ public sealed class AiSettingsStoreTests
         await store.SaveTokensAsync(provider.Id, original);
         ResolvedModel target = settings.FindModel(provider.Models[0].Id)!;
         ProviderCredential credential = await store.ResolveCredentialAsync(target, refreshTokens: false);
-        long login = store.TokenLoginVersion(provider.Id), epoch = store.ProviderConfigurationVersion(provider);
+        long login = store.TokenLoginVersion(provider.Id), epoch = AiSettingsStore.ProviderConfigurationVersion(provider);
         if (cancel) secrets.CancelDeleteNumber = directDelete ? 2 : 1;
         else secrets.FailDeleteNumber = directDelete ? 2 : 1;
         Task Clear() => directDelete ? store.DeleteApiKeyAsync(provider.Id) : store.ClearTokensAsync(provider.Id);
         if (cancel) await Assert.ThrowsAsync<OperationCanceledException>(Clear);
         else await Assert.ThrowsAsync<IOException>(Clear);
         Assert.AreEqual(login, store.TokenLoginVersion(provider.Id));
-        Assert.AreEqual(epoch, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(epoch, AiSettingsStore.ProviderConfigurationVersion(provider));
         Assert.AreSame(original, await store.GetTokensAsync(provider.Id), "失败不得清除原缓存账号");
         Assert.AreEqual("retained-unused-key", await context.Secrets.GetAsync("apikey:" + provider.Id));
         Assert.AreEqual(credential.Value, (await store.ResolveCredentialAsync(target, refreshTokens: false)).Value);
@@ -1165,7 +1165,7 @@ public sealed class AiSettingsStoreTests
         settings.ActiveModelId = model.Id;
         settings.PanelWidthPercent = 61;
         await store.SaveAsync(settings);
-        Assert.AreEqual(0L, store.ProviderConfigurationVersion(provider), "名字、价格、活跃模型和面板设置不是请求配置");
+        Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(provider), "名字、价格、活跃模型和面板设置不是请求配置");
         if (materialise)
         {
             ModelsDevCatalog.Materialise(provider, [new ModelSpec("m", "模型显示名", 8000, 4000, 3, 4, 1, false)]);
@@ -1175,22 +1175,22 @@ public sealed class AiSettingsStoreTests
             model.MaxTokens = 4000;
             model.MaxInputTokens = 8000;
         }
-        Assert.AreEqual(0L, store.ProviderConfigurationVersion(provider), "读取版本不能把未提交草稿发布为新 epoch");
+        Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(provider), "读取版本不能把未提交草稿发布为新 epoch");
         storage.Fail = true;
         await Assert.ThrowsAsync<IOException>(() => store.SaveAsync(settings));
-        Assert.AreEqual(0L, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(provider));
         storage.Fail = false;
         await store.SaveAsync(settings);
-        Assert.AreEqual(1L, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(1L, AiSettingsStore.ProviderConfigurationVersion(provider));
         AiModelConfig saved = (await store.LoadAsync()).Providers[0].Models[0];
         Assert.AreEqual(4000, saved.MaxTokens);
         Assert.AreEqual(8000, saved.MaxInputTokens);
         await store.SaveAsync(settings);
-        Assert.AreEqual(1L, store.ProviderConfigurationVersion(provider), "相同请求配置重写不应再次推进");
+        Assert.AreEqual(1L, AiSettingsStore.ProviderConfigurationVersion(provider), "相同请求配置重写不应再次推进");
         model.MaxTokens = 1000;
         model.MaxInputTokens = 2000;
         await store.SaveAsync(settings);
-        Assert.AreEqual(2L, store.ProviderConfigurationVersion(provider), "A→B→A 的普通保存也必须使旧回合失效");
+        Assert.AreEqual(2L, AiSettingsStore.ProviderConfigurationVersion(provider), "A→B→A 的普通保存也必须使旧回合失效");
     }
 
     [TestMethod]
@@ -1210,17 +1210,17 @@ public sealed class AiSettingsStoreTests
         {
             await storage.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
             model.MaxTokens = 1000;
-            Assert.AreEqual(0L, store.ProviderConfigurationVersion(provider));
+            Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(provider));
         }
         finally { storage.Release.TrySetResult(); }
         await saving.WaitAsync(TimeSpan.FromSeconds(15));
-        Assert.AreEqual(1L, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(1L, AiSettingsStore.ProviderConfigurationVersion(provider));
         Assert.AreEqual(4000, (await new AiSettingsStore(context).LoadAsync()).Providers[0].Models[0].MaxTokens);
         await store.SaveAsync(settings);
-        Assert.AreEqual(2L, store.ProviderConfigurationVersion(provider), "已写 B 再写活配置 A 必须产生两次实际请求变化");
+        Assert.AreEqual(2L, AiSettingsStore.ProviderConfigurationVersion(provider), "已写 B 再写活配置 A 必须产生两次实际请求变化");
         settings.Providers.Remove(provider);
         await store.SaveAsync(settings);
-        Assert.AreEqual(3L, store.ProviderConfigurationVersion(provider), "普通保存移除供应商也要推进被保留对象的 epoch");
+        Assert.AreEqual(3L, AiSettingsStore.ProviderConfigurationVersion(provider), "普通保存移除供应商也要推进被保留对象的 epoch");
         await Assert.ThrowsAsync<AiSettingsStore.ApiKeySlotChangedException>(() => store.ResolveCredentialAsync(new ResolvedModel(provider, model)));
     }
 
@@ -1300,13 +1300,13 @@ public sealed class AiSettingsStoreTests
         Assert.AreEqual("old account", provider.Name);
         Assert.AreEqual("old-account", (await store.GetTokensAsync(provider.Id))!.AccountId);
         Assert.AreEqual(version, store.TokenLoginVersion(provider.Id));
-        Assert.AreEqual(0L, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(provider));
         storage.FailHeldWrite = false;
         await store.SaveProviderOAuthFormAsync(live, provider, draft, expected, tokens).WaitAsync(TimeSpan.FromSeconds(15));
         Assert.AreEqual("https://new.example", provider.BaseUrl);
         Assert.AreEqual("new-account", (await store.GetTokenSnapshotAsync(provider.Id, default)).Tokens!.AccountId);
         Assert.AreEqual(version + 1, store.TokenLoginVersion(provider.Id));
-        Assert.AreEqual(1L, store.ProviderConfigurationVersion(provider), "订阅登录提交不能丢失已有epoch护栏");
+        Assert.AreEqual(1L, AiSettingsStore.ProviderConfigurationVersion(provider), "订阅登录提交不能丢失已有epoch护栏");
         Assert.AreEqual("https://new.example", (await store.LoadAsync()).Providers[0].BaseUrl);
     }
 
@@ -1360,7 +1360,7 @@ public sealed class AiSettingsStoreTests
         other.PanelWidthPercent = 66;
         await otherStore.SaveAsync(other);
         await store.ReloadIntoAsync(live);
-        Assert.AreEqual(0L, store.ProviderConfigurationVersion(kept), "仅全局修改不使供应商请求失效");
+        Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(kept), "仅全局修改不使供应商请求失效");
         Assert.AreEqual("最新全局值", live.SystemPrompt);
         Assert.AreEqual(98765, live.WebSearch.MaxFetchChars);
         other.Providers[0].BaseUrl = "https://new.example";
@@ -1372,11 +1372,11 @@ public sealed class AiSettingsStoreTests
         Assert.AreEqual("https://new.example", kept.BaseUrl);
         Assert.AreEqual(0.7f, keptModel.Temperature);
         Assert.AreEqual("new-extra", await store.GetApiKeyAsync(slot));
-        Assert.AreEqual(1L, store.ProviderConfigurationVersion(kept));
+        Assert.AreEqual(1L, AiSettingsStore.ProviderConfigurationVersion(kept));
         other.Providers[0].BaseUrl = "https://original.example";
         await otherStore.SaveAsync(other);
         await store.ReloadIntoAsync(live);
-        Assert.AreEqual(2L, store.ProviderConfigurationVersion(kept), "A→B→A 不能复活旧回合");
+        Assert.AreEqual(2L, AiSettingsStore.ProviderConfigurationVersion(kept), "A→B→A 不能复活旧回合");
         live.SystemPrompt = "确认后再保存";
         await store.SaveAsync(live);
         AiSettings saved = await otherStore.LoadAsync();
@@ -1550,7 +1550,7 @@ public sealed class AiSettingsStoreTests
         string expected = System.Text.Json.JsonSerializer.Serialize(provider);
         AiProvider draft = System.Text.Json.JsonSerializer.Deserialize<AiProvider>(expected)!;
         draft.BaseUrl = "https://new.example/v1";
-        long epoch = store.ProviderConfigurationVersion(provider);
+        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider);
 
         AiSettingsStore.ApiKeyResetRequiredException refused = await Assert.ThrowsAsync<AiSettingsStore.ApiKeyResetRequiredException>(() =>
             store.SaveProviderApiKeyFormAsync(settings, provider, draft, expected, null, provider.Id, "primary"));
@@ -1561,7 +1561,7 @@ public sealed class AiSettingsStoreTests
         Assert.AreEqual("primary", await context.Secrets.GetAsync("apikey:" + provider.Id));
         Assert.AreEqual("extra", await context.Secrets.GetAsync("apikey:" + extra));
         Assert.AreEqual("own-key", await context.Secrets.GetAsync("apikey:" + ownKey.Id));
-        Assert.AreEqual(epoch, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(epoch, AiSettingsStore.ProviderConfigurationVersion(provider));
 
         IReadOnlyList<string> cleared = await store.SaveProviderApiKeyFormAsync(settings, provider, draft, expected, null,
             provider.Id, "primary", confirmedKeyReset: refused.Confirmation);
@@ -1575,7 +1575,7 @@ public sealed class AiSettingsStoreTests
         Assert.IsNull(await store.GetApiKeyAsync(ownKey.Id));
         Assert.IsEmpty(provider.AdditionalApiKeyIds);
         Assert.IsNull(provider.ActiveApiKeyId);
-        Assert.IsGreaterThan(epoch, store.ProviderConfigurationVersion(provider), "旧地址上解出的请求作废");
+        Assert.IsGreaterThan(epoch, AiSettingsStore.ProviderConfigurationVersion(provider), "旧地址上解出的请求作废");
         AiSettings saved = await store.LoadAsync();
         Assert.AreEqual("https://new.example/v1", saved.Providers[0].BaseUrl);
         Assert.IsEmpty(saved.Providers[0].AdditionalApiKeyIds);
@@ -1833,7 +1833,7 @@ public sealed class AiSettingsStoreTests
         AiModelConfig draft = System.Text.Json.JsonSerializer.Deserialize<AiModelConfig>(expected)!;
         draft.BaseUrlOverride = to;
         draft.Name = "renamed";
-        long epoch = store.ProviderConfigurationVersion(provider);
+        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider);
 
         // 表单预填的那把没动过,原样交回:它会被发往新地址,先拒
         AiSettingsStore.ApiKeyResetRequiredException refused = await Assert.ThrowsAsync<AiSettingsStore.ApiKeyResetRequiredException>(() =>
@@ -1844,7 +1844,7 @@ public sealed class AiSettingsStoreTests
         Assert.AreEqual(expected, System.Text.Json.JsonSerializer.Serialize(own), "没确认就什么都不改");
         Assert.AreEqual(from, (await store.LoadAsync()).Providers[0].Models[0].BaseUrlOverride);
         Assert.AreEqual("own-key", await context.Secrets.GetAsync("apikey:" + own.Id));
-        Assert.AreEqual(epoch, store.ProviderConfigurationVersion(provider));
+        Assert.AreEqual(epoch, AiSettingsStore.ProviderConfigurationVersion(provider));
 
         IReadOnlyList<string> cleared = await store.SaveModelFormAsync(settings, provider, own, draft, expected,
             "own-key", "own-key", refused.Confirmation);
@@ -1856,7 +1856,7 @@ public sealed class AiSettingsStoreTests
         Assert.IsNull(await store.GetApiKeyAsync(own.Id), "缓存同步失效");
         Assert.IsNull((await store.ResolveCredentialAsync(settings.FindModel(own.Id)!)).Value, "新地址上取不到旧 Key");
         Assert.AreEqual("primary", await store.GetApiKeyAsync(provider.Id), "供应商的 Key 不受模型这一层换源影响");
-        Assert.IsGreaterThan(epoch, store.ProviderConfigurationVersion(provider), "旧地址上解出的请求作废");
+        Assert.IsGreaterThan(epoch, AiSettingsStore.ProviderConfigurationVersion(provider), "旧地址上解出的请求作废");
         AiModelConfig saved = (await store.LoadAsync()).Providers[0].Models[0];
         Assert.AreEqual(to, saved.BaseUrlOverride);
         Assert.IsTrue(saved.HasOwnApiKey);

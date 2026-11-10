@@ -154,7 +154,11 @@ public sealed class BridgeAgentRunner(
             DisabledTools = new HashSet<string>(
                 (ai.DisabledBuiltinTools ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
                 StringComparer.OrdinalIgnoreCase),
-            WebSearch = ai.WebSearch
+            WebSearch = ai.WebSearch,
+            LocalWorkspaces = ai.LocalWorkspaces,
+            LocalDefaultWorkspaceId = ai.LocalDefaultWorkspaceId,
+            LocalMaxFileBytes = ai.LocalMaxFileBytes,
+            LocalMaxDirectoryEntries = ai.LocalMaxDirectoryEntries
         };
 
         string runId = Guid.NewGuid().ToString("N");
@@ -162,7 +166,7 @@ public sealed class BridgeAgentRunner(
         var execution = new AgentExecution(runId, () => runScope.HasUnknownOutcome, () => runScope.HasDeniedExecution);
         var coordinator = new AgentRunCoordinator(runScope, execution);
         ProviderCredential fixedCredential = await store.ResolveCredentialAsync(model, cancellationToken: cancellationToken).ConfigureAwait(false);
-        long providerVersion = store.ProviderConfigurationVersion(model.Provider);
+        long providerVersion = AiSettingsStore.ProviderConfigurationVersion(model.Provider);
         string endpoint = model.BaseUrl;
         string modelName = model.Model;
         (OAuthTokens? Tokens, long Version) account = await store.GetTokenSnapshotAsync(model.Provider.Id, cancellationToken).ConfigureAwait(false);
@@ -173,7 +177,7 @@ public sealed class BridgeAgentRunner(
                 AiSettings latest = await store.LoadAsync(token).ConfigureAwait(false);
                 ResolvedModel? candidate = latest.FindModel(model.Id);
                 if (candidate is null || candidate.BaseUrl != endpoint || candidate.Model != modelName
-                    || store.ProviderConfigurationVersion(model.Provider) != providerVersion)
+                    || AiSettingsStore.ProviderConfigurationVersion(model.Provider) != providerVersion)
                 {
                     throw new ProviderConfigurationChangedException();
                 }
@@ -253,7 +257,8 @@ public sealed class BridgeAgentRunner(
                 {
                     // 审批上下文每轮一份:mcp 是所有聊天共用的,别的聊天的轮次可能正同时在跑
                     (List<AITool> mcpTools, List<string> errors) = await mcp
-                        .GetToolsAsync(ai.McpServers, new McpApproval(approve, approval), cancellationToken).ConfigureAwait(false);
+                        .GetToolsAsync(ai.McpServers, new McpApproval(approve, approval), cancellationToken,
+                            ai.LocalWorkspaces).ConfigureAwait(false);
                     foreach (AITool tool in mcpTools)
                     {
                         tools.Add(tool);

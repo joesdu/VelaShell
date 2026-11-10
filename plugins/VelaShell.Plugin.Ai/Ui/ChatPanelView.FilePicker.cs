@@ -4,13 +4,14 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
+using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Chat;
 using VelaShell.PluginSdk.RemoteFs;
 
 namespace VelaShell.Plugin.Ai.Ui;
 
 /// <summary>
-/// 聊天面板的 <c>@</c> 文件引用部分:在输入框里键入 <c>@</c> 即列出所选会话的远端目录,
+/// 聊天面板的 <c>#</c> 文件引用部分:在输入框里键入 <c>#</c> 即列出所选会话的远端目录,
 /// 上下键选择、回车/Tab 确认、目录可继续下钻;发送时把被引用文件的内容随消息一并送给模型。
 /// 读取走 SFTP(<see cref="IRemoteFsApi" />),
 /// 写回/编辑由 Agent 模式的 <c>write_remote_file</c> 工具负责(需审批)。
@@ -73,7 +74,7 @@ public partial class ChatPanelView
         }
     }
 
-    /// <summary>按光标处的 <c>@token</c> 刷新候选列表;不在引用里就收起弹层。</summary>
+    /// <summary>按光标处的 <c>#token</c> 刷新候选列表;不在引用里就收起弹层。</summary>
     /// <param name="immediate">
     /// 跳过防抖:补全落定后继续下钻目录时用 —— 那是一次明确的用户动作,不该再等一拍。
     /// </param>
@@ -107,11 +108,35 @@ public partial class ChatPanelView
             else CloseFilePicker();
             return;
         }
-        if (SelectedSessionId is not { } sessionId)
+        bool localReference = FileReference.IsLocal(reference);
+        if (localReference || SelectedSessionId is null)
         {
-            CloseFilePicker();
+            if (new LocalPathScope(GetActiveLocalWorkspaces()).HasUsableWorkspace)
+            {
+                try
+                {
+                    IReadOnlyList<RemoteFileEntry> entries =
+                        await ListLocalEntriesAsync(reference, cancellationToken: default);
+                    if (generation != _pickerGeneration) return;
+                    ShowCandidates(entries, GetLocalFilter(reference),
+                        localReference ? reference : "local");
+                }
+                catch (Exception ex)
+                {
+                    if (generation != _pickerGeneration) return;
+                    _fileCandidates.Clear();
+                    FileList.Children.Clear();
+                    FilePopupHeader.Text = $"{_loc["Error"]}: {ex.Message}";
+                    FilePopup.IsOpen = true;
+                }
+            }
+            else
+            {
+                CloseFilePicker();
+            }
             return;
         }
+        string sessionId = SelectedSessionId;
 
         _fileCts ??= new();
         CancellationToken cancellationToken = _fileCts.Token;
@@ -138,6 +163,12 @@ public partial class ChatPanelView
             }
             IReadOnlyList<RemoteFileEntry> entries = await _context.RemoteFs
                 .ListDirectoryAsync(sessionId, directory, cancellationToken);
+            if (new LocalPathScope(GetActiveLocalWorkspaces()).HasUsableWorkspace)
+            {
+                IReadOnlyList<RemoteFileEntry> localRoots =
+                    await ListLocalEntriesAsync(reference, cancellationToken);
+                entries = [.. entries, .. localRoots];
+            }
             CacheEntries(sessionId, directory, entries);
             if (generation != _pickerGeneration)
             {
@@ -199,6 +230,82 @@ public partial class ChatPanelView
             _directoryCache.Clear();
         }
         _directoryCache[(sessionId, directory)] = (entries, Environment.TickCount64);
+    }
+
+    private Task<IReadOnlyList<RemoteFileEntry>> ListLocalEntriesAsync(
+        string reference, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LocalPathScope scope = new(GetActiveLocalWorkspaces());
+        if (!FileReference.IsLocal(reference))
+        {
+            IReadOnlyList<RemoteFileEntry> workspaces = scope.Workspaces
+                .Where(LocalPathScope.IsConfigured)
+                .Select(workspace => new RemoteFileEntry(
+                    string.IsNullOrWhiteSpace(workspace.Name) ? workspace.Id : workspace.Name,
+                    $"local://{workspace.Id}/",
+                    true, 0, DateTimeOffset.MinValue, "local", "", ""))
+                .ToArray();
+            return Task.FromResult(workspaces);
+        }
+
+        string payload = reference["local://".Length..];
+        if (payload.Length == 0)
+        {
+            IReadOnlyList<RemoteFileEntry> roots = scope.Workspaces
+                .Where(LocalPathScope.IsConfigured)
+                .Select(workspace => new RemoteFileEntry(
+                    string.IsNullOrWhiteSpace(workspace.Name) ? workspace.Id : workspace.Name,
+                    $"local://{workspace.Id}/",
+                    true, 0, DateTimeOffset.MinValue, "local", "", ""))
+                .ToArray();
+            return Task.FromResult(roots);
+        }
+        int slash = payload.IndexOf('/');
+        string workspaceId = slash < 0 ? payload : payload[..slash];
+        string relative = slash < 0 ? "" : payload[(slash + 1)..];
+        int lastSlash = relative.LastIndexOf('/');
+        string directoryRelative = lastSlash < 0 ? "" : relative[..lastSlash];
+        if (!scope.TryResolve(workspaceId, directoryRelative, write: false,
+                out LocalPath localPath, out string error))
+        {
+            throw new InvalidOperationException(error);
+        }
+        if (!Directory.Exists(localPath.FullPath))
+        {
+            return Task.FromResult<IReadOnlyList<RemoteFileEntry>>([]);
+        }
+
+        IReadOnlyList<RemoteFileEntry> entries = new DirectoryInfo(localPath.FullPath)
+            .EnumerateFileSystemInfos()
+            .Take(Math.Max(1, _settings.LocalMaxDirectoryEntries))
+            .Select(entry =>
+            {
+                string childRelative = Path.GetRelativePath(localPath.Workspace.RootPath, entry.FullName)
+                    .Replace(Path.DirectorySeparatorChar, '/');
+                bool directory = entry is DirectoryInfo;
+                long size = directory ? 0 : (entry as FileInfo)?.Length ?? 0;
+                return new RemoteFileEntry(
+                    entry.Name,
+                    $"local://{workspaceId}/{childRelative}",
+                    directory,
+                    size,
+                    entry.LastWriteTimeUtc,
+                    "local", "", "");
+            })
+            .ToArray();
+        return Task.FromResult(entries);
+    }
+
+    private static string GetLocalFilter(string reference)
+    {
+        if (!FileReference.IsLocal(reference))
+        {
+            return reference;
+        }
+        string payload = reference["local://".Length..];
+        int slash = payload.LastIndexOf('/');
+        return slash < 0 ? "" : payload[(slash + 1)..];
     }
 
     private void RenderFileCandidates(string directory)
@@ -304,7 +411,7 @@ public partial class ChatPanelView
     }
 
     /// <summary>
-    /// 选中一个候选:把 <c>@token</c> 整段换成候选的完整路径。
+    /// 选中一个候选:把 <c>#token</c> 整段换成候选的完整路径。
     /// 目录 → 补 <c>/</c> 并继续列出下一层;文件 → 补一个空格收尾并收起弹层。
     /// 路径含空格时改用 <c>@"..."</c> 形式,引号在目录下钻期间保持敞开。
     /// </summary>
@@ -490,7 +597,7 @@ public partial class ChatPanelView
     // ---------- 发送时展开 ----------
 
     /// <summary>
-    /// 把消息里 <c>@</c> 引用的文件读出来附在消息后面(给模型看的那一份)。
+    /// 把消息里 <c>#</c> 引用的文件读出来附在消息后面(给模型看的那一份)。
     /// 返回展开后的文本、成功附带的路径,以及<b>没能读到</b>的路径;读失败/二进制/超限
     /// 都以文字说明,不打断发送。
     /// </summary>
@@ -508,11 +615,8 @@ public partial class ChatPanelView
         {
             return (text, [], []);
         }
-        if (SelectedSessionId is not { } sessionId)
-        {
-            return (text + $"\n\n[{_loc["NoSession"]}]", [], references);
-        }
-        string cwd = await ResolveWorkingDirectoryAsync(sessionId, cancellationToken);
+        string? sessionId = SelectedSessionId;
+        string cwd = sessionId is null ? "/" : await ResolveWorkingDirectoryAsync(sessionId, cancellationToken);
         var builder = new StringBuilder(text);
         var attached = new List<string>();
         var failed = new List<string>();
@@ -520,18 +624,45 @@ public partial class ChatPanelView
         foreach (string reference in references.Take(MaxAttachedFiles))
         {
             string path = FileReference.Expand(reference, cwd);
+            string displayPath = path;
             try
             {
-                byte[] bytes = await _context.RemoteFs.ReadAllBytesAsync(sessionId, path, MaxAttachBytes, cancellationToken);
+                byte[] bytes;
+                if (FileReference.IsLocal(reference))
+                {
+                    if (!TryResolveLocalReference(reference, out LocalPath localPath, out string error))
+                    {
+                        throw new InvalidOperationException(error);
+                    }
+                    displayPath = localPath.FullPath;
+                    if (!File.Exists(displayPath))
+                    {
+                        throw new FileNotFoundException("The local file does not exist.", displayPath);
+                    }
+                    long maxBytes = Math.Min(MaxAttachBytes, Math.Max(1, _settings.LocalMaxFileBytes));
+                    if (new FileInfo(displayPath).Length > maxBytes)
+                    {
+                        throw new IOException($"The local file exceeds the {maxBytes} byte attachment limit.");
+                    }
+                    bytes = await File.ReadAllBytesAsync(displayPath, cancellationToken);
+                }
+                else
+                {
+                    if (sessionId is null)
+                    {
+                        throw new InvalidOperationException(_loc["NoSession"]);
+                    }
+                    bytes = await _context.RemoteFs.ReadAllBytesAsync(sessionId, path, MaxAttachBytes, cancellationToken);
+                }
                 if (FileReference.LooksBinary(bytes))
                 {
-                    builder.Append($"\n\n===== {path} =====\n[{_loc["AttachBinary"]}]");
+                    builder.Append($"\n\n===== {displayPath} =====\n[{_loc["AttachBinary"]}]");
                     continue;
                 }
-                builder.Append($"\n\n===== {path} =====\n```\n")
+                builder.Append($"\n\n===== {displayPath} =====\n```\n")
                        .Append(Encoding.UTF8.GetString(bytes))
                        .Append("\n```");
-                attached.Add(path);
+                attached.Add(displayPath);
             }
             catch (OperationCanceledException)
             {
@@ -539,8 +670,8 @@ public partial class ChatPanelView
             }
             catch (Exception ex)
             {
-                builder.Append($"\n\n===== {path} =====\n[{_loc["AttachFailed"]}: {ex.Message}]");
-                failed.Add(path);
+                builder.Append($"\n\n===== {displayPath} =====\n[{_loc["AttachFailed"]}: {ex.Message}]");
+                failed.Add(displayPath);
             }
         }
         if (references.Count > MaxAttachedFiles)
@@ -549,6 +680,23 @@ public partial class ChatPanelView
             failed.AddRange(references.Skip(MaxAttachedFiles).Select(r => FileReference.Expand(r, cwd)));
         }
         return (builder.ToString(), attached, failed);
+    }
+
+    private bool TryResolveLocalReference(string reference, out LocalPath localPath, out string error)
+    {
+        localPath = default;
+        error = "";
+        if (!FileReference.IsLocal(reference))
+        {
+            error = "The reference is not a local workspace path.";
+            return false;
+        }
+        string payload = reference["local://".Length..];
+        int slash = payload.IndexOf('/');
+        string workspaceId = slash < 0 ? payload : payload[..slash];
+        string relative = slash < 0 ? "" : payload[(slash + 1)..];
+        return new LocalPathScope(GetActiveLocalWorkspaces())
+            .TryResolve(workspaceId, relative, write: false, out localPath, out error);
     }
 
     /// <summary>没读到的引用在消息流里补一行提示(读到的已经在气泡的芯片里了,不再重复报)。</summary>

@@ -48,12 +48,12 @@ public sealed partial class SettingsViewUiTests
                 CheckBox check = view.GetControl<CheckBox>("ProviderStoreCheck");
                 Assert.IsTrue(panel.IsVisible, "自定义接入要摆出这个开关");
                 Assert.IsFalse(check.IsChecked, "默认关");
-                long version = store.ProviderConfigurationVersion(custom);
+                long version = AiSettingsStore.ProviderConfigurationVersion(custom);
 
                 check.IsChecked = true;
                 await WaitUntilAsync(() => custom.CustomResponsesStore == true && check.IsEnabled);
                 Assert.IsTrue((await new AiSettingsStore(context).LoadAsync()).Providers[0].CustomResponsesStore, "勾上当场落库");
-                Assert.IsGreaterThan(version, store.ProviderConfigurationVersion(custom), "它改的是请求本身:推进请求配置代次");
+                Assert.IsGreaterThan(version, AiSettingsStore.ProviderConfigurationVersion(custom), "它改的是请求本身:推进请求配置代次");
                 Assert.IsFalse(EndpointQuirks.Of(custom) is { StoreResponses: false });
 
                 view.GetControl<ListBox>("ProvidersList").SelectedIndex = 1;

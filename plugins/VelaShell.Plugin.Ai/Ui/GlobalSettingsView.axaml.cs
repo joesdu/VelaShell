@@ -4,6 +4,7 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using Avalonia.Threading;
+using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
 
@@ -55,7 +56,7 @@ public partial class GlobalSettingsView : UserControl
     private string[] _displayedChain = [];
     private (string Id, AiProvider Provider, long Version)[] _confirmedProviderRequests = [];
 
-    private void ConfirmProviderRequests() => _confirmedProviderRequests = [.. _settings.Providers.Select(provider => (provider.Id, provider, _store.ProviderConfigurationVersion(provider)))];
+    private void ConfirmProviderRequests() => _confirmedProviderRequests = [.. _settings.Providers.Select(provider => (provider.Id, provider, AiSettingsStore.ProviderConfigurationVersion(provider)))];
 
     private sealed record ImageModelOption(string? Id, string Label)
     {
@@ -125,7 +126,7 @@ public partial class GlobalSettingsView : UserControl
             || _confirmedProviderRequests.Any(previous =>
                 !_settings.Providers.Any(provider => provider.Id == previous.Id
                     && ReferenceEquals(provider, previous.Provider)
-                    && _store.ProviderConfigurationVersion(provider) == previous.Version));
+                    && AiSettingsStore.ProviderConfigurationVersion(provider) == previous.Version));
         // Reload 等待期间仍允许编辑；重填之前才读取当前草稿。
         var dirty = CaptureForm()
             .Where(field => !_loadedForm.TryGetValue(field.Key, out object? loaded) || !Equals(loaded, field.Value))
@@ -823,6 +824,8 @@ public partial class GlobalSettingsView : UserControl
                 SystemPrompt = string.IsNullOrWhiteSpace(SystemPromptBox.Text) ? null : SystemPromptBox.Text,
                 CompactContext = CompactContextCheck.IsChecked == true,
                 SuggestFollowUps = SuggestFollowUpsCheck.IsChecked == true,
+                LocalMaxFileBytes = _settings.LocalMaxFileBytes,
+                LocalMaxDirectoryEntries = _settings.LocalMaxDirectoryEntries,
                 WebSearch = new WebSearchOptions
                 {
                     Enabled = WebEnabledCheck.IsChecked == true,

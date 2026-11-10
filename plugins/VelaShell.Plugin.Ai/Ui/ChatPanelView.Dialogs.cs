@@ -33,7 +33,7 @@ public partial class ChatPanelView
     private (string Id, AiProvider Provider, long Version)[] _confirmedProviderRequests = [];
 
     // 健康表跨窗口存在：初始化和真正清旧健康之后才确认，不让显示刷新吞掉提前发布的 Key 代次。
-    private void ConfirmProviderRequests() => _confirmedProviderRequests = [.. _settings.Providers.Select(provider => (provider.Id, provider, _store.ProviderConfigurationVersion(provider)))];
+    private void ConfirmProviderRequests() => _confirmedProviderRequests = [.. _settings.Providers.Select(provider => (provider.Id, provider, AiSettingsStore.ProviderConfigurationVersion(provider)))];
 
     /// <summary>MCP 表单视图本体。窗口已经开着时要把选中项挪到用户刚点的那台上,得有个把手。</summary>
     private McpServersView? _mcpView;
@@ -156,7 +156,7 @@ public partial class ChatPanelView
             || _confirmedProviderRequests.Any(previous =>
                 !_settings.Providers.Any(provider => provider.Id == previous.Id
                     && ReferenceEquals(provider, previous.Provider)
-                    && _store.ProviderConfigurationVersion(provider) == previous.Version));
+                    && AiSettingsStore.ProviderConfigurationVersion(provider) == previous.Version));
         _settingsView?.RefreshCatalogModels();
         if (requestChanged) OnProvidersChanged();
         else RefreshProviderViews(false);

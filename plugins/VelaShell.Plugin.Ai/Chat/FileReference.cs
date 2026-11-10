@@ -6,7 +6,7 @@ namespace VelaShell.Plugin.Ai.Chat;
 /// 输入框里 <c>#</c> 文件引用的语法(与界面无关的纯逻辑,便于单测)。
 /// 规则:<c>#</c> 必须在行首或空白之后;含空格的路径写成 <c>#"…"</c>,
 /// 目录下钻期间开引号可以一直敞着(还没输完);只认绝对路径与 <c>~</c> 开头,
-/// 因此 <c>#someone</c> 这类提及不会被误当成文件。
+/// 或 <c>local://</c> 开头的本地工作区引用,因此 <c>#someone</c> 这类提及不会被误当成文件。
 /// </summary>
 public static class FileReference
 {
@@ -132,7 +132,7 @@ public static class FileReference
         }
         return false;
 
-        // 路径本体(pathStart..pathEnd)必须是绝对路径或 ~ 开头,否则不认
+        // 路径本体(pathStart..pathEnd)必须是绝对路径、~ 或 local:// 开头,否则不认
         static bool Accept(string text, int at, int pathStart, int pathEnd, ref int start)
         {
             if (pathEnd <= pathStart)
@@ -140,7 +140,7 @@ public static class FileReference
                 return false;
             }
             char first = text[pathStart];
-            if (first is not ('/' or '~'))
+            if (first is not ('/' or '~') && !text[pathStart..pathEnd].StartsWith("local://", StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
@@ -200,7 +200,7 @@ public static class FileReference
             path = text[bodyStart..scan];
             end = scan;
         }
-        if (path.Length == 0 || (!path.StartsWith('/') && !path.StartsWith('~')))
+        if (path.Length == 0 || !IsReferencePath(path))
         {
             return false;
         }
@@ -260,7 +260,7 @@ public static class FileReference
             }
             // 句末标点不属于路径(“看看 #/etc/hosts。”)
             path = path.TrimEnd('.', ',', ';', ':', ')');
-            if ((path.StartsWith('/') || path.StartsWith('~')) && !paths.Contains(path, StringComparer.Ordinal))
+            if (IsReferencePath(path) && !paths.Contains(path, StringComparer.Ordinal))
             {
                 paths.Add(path);
             }
@@ -309,6 +309,10 @@ public static class FileReference
     public static string Expand(string path, string workingDirectory)
         => path.StartsWith('~') ? workingDirectory.TrimEnd('/') + path[1..] : path;
 
+    /// <summary>判断一条引用是远端绝对路径还是授权本地工作区路径。</summary>
+    public static bool IsLocal(string path)
+        => path.StartsWith("local://", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>头 1KB 里出现 NUL 就当二进制(和 <c>file</c> 的粗判一个路子)。</summary>
     public static bool LooksBinary(ReadOnlySpan<byte> bytes)
         => bytes[..Math.Min(bytes.Length, 1024)].IndexOf((byte)0) >= 0;
@@ -322,6 +326,9 @@ public static class FileReference
 
     /// <summary>该路径在插入输入框时是否需要 <c>#"…"</c> 包裹(含空格或非 ASCII)。</summary>
     public static bool NeedsQuoting(string path) => path.Any(IsTokenBreak);
+
+    private static bool IsReferencePath(string path)
+        => path.StartsWith('/') || path.StartsWith('~') || IsLocal(path);
 
     /// <summary>位置 <paramref name="index" /> 是否落在一个未闭合的 <c>#"</c> 引用里。</summary>
     private static bool HasOpenQuote(string text, int index)
