@@ -338,6 +338,20 @@ public partial class PluginManagerWindow : Window
         try
         {
             if (!IsVisible) return;
+            int openConnections = vm.GetOpenConnectionCount(row.Id);
+            if (openConnections > 0)
+            {
+                bool disconnect = await MessageDialog.ConfirmAsync(this,
+                    Strings.Get("PluginManager_ActiveConnectionsTitle"),
+                    Strings.Format("PluginManager_ActiveConnectionsWarning", row.DisplayName, openConnections),
+                    confirmText: Strings.Get("PluginManager_DisconnectAndUpdate"),
+                    danger: true);
+                if (!disconnect || !IsVisible)
+                {
+                    return;
+                }
+                await vm.CloseOpenConnectionsAsync(row.Id);
+            }
             if (row.PublisherUnchanged)
             {
                 // 同一把私钥签的下一版:发布者连续性那一闸自会放行。这里的 allowUntrustedPackage

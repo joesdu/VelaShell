@@ -607,6 +607,38 @@ public sealed class PluginWorkspaceTests
         Assert.IsEmpty(abandoned);
     }
 
+    /// <summary>更新前关闭工作台连接时,必须等待界面层的异步关闭入口完成。</summary>
+    [TestMethod]
+    public async Task Launcher_CloseOpenConnections_WaitsForCloseCallback()
+    {
+        PluginManifest manifest = PluginManifestReader.Parse("""
+        {
+          "id": "acme.cache", "version": "1.0.0", "displayName": "Acme", "entry": "Acme.dll",
+          "contributes": { "workspaces": [ { "id": "acme.cache", "displayName": "Acme", "defaultPort": 6379 } ] }
+        }
+        """);
+        var registry = new PluginProtocolRegistry();
+        registry.RegisterWorkspace(PluginId, Descriptor(), new FakeWorkspaceProvider());
+        var launcher = new PluginWorkspaceLauncher(registry);
+        PluginWorkspaceSession session = await launcher.OpenAsync(Profile());
+        var closeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        launcher.CloseSessionRequested = async (sessionId, _) =>
+        {
+            Assert.AreEqual(session.SessionId, sessionId);
+            closeStarted.SetResult();
+            await release.Task;
+        };
+
+        Task closing = launcher.CloseOpenConnectionsAsync(manifest);
+        await closeStarted.Task;
+        Assert.IsFalse(closing.IsCompleted, "更新必须等待界面关闭和隧道收尾");
+        release.SetResult();
+        await closing;
+
+        Assert.AreEqual(0, launcher.CountOpenConnections(manifest));
+    }
+
     /// <summary>测试替身:记录请求、按需失败、交出一个什么都不做的文档。</summary>
     private sealed class FakeWorkspaceProvider : IWorkspaceProvider
     {

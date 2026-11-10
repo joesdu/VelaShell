@@ -163,7 +163,10 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         try
         {
             SetDisabledMarker(runtime.Descriptor, disabled: true);
-            if (runtime.Descriptor.State == PluginState.Active)
+            if (runtime.Descriptor.State == PluginState.Active
+                || runtime.Instance is not null
+                || runtime.Process is not null
+                || runtime.Context is not null)
             {
                 await DeactivateAsync(runtime).ConfigureAwait(false);
             }
@@ -1946,6 +1949,40 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             return 0;
         }
         return CountOpenSurfaces(runtime, manifest);
+    }
+
+    /// <summary>该插件名下当前打开的协议连接数。</summary>
+    public int GetOpenConnectionCount(string pluginId)
+    {
+        PluginRuntime? runtime;
+        lock (_gate)
+        {
+            runtime = _plugins.FirstOrDefault(p => p.Descriptor.Id == pluginId);
+        }
+        if (runtime is not { Descriptor: { State: PluginState.Active, Manifest: { } manifest } })
+        {
+            return 0;
+        }
+        return options.SurfaceSources.OfType<IPluginConnectionSource>()
+            .Sum(source => source.CountOpenConnections(manifest));
+    }
+
+    /// <summary>断开插件名下的全部协议连接，并等待来源完成收尾。</summary>
+    public async Task CloseOpenConnectionsAsync(string pluginId, CancellationToken cancellationToken = default)
+    {
+        PluginRuntime? runtime;
+        lock (_gate)
+        {
+            runtime = _plugins.FirstOrDefault(p => p.Descriptor.Id == pluginId);
+        }
+        if (runtime is not { Descriptor: { State: PluginState.Active, Manifest: { } manifest } })
+        {
+            return;
+        }
+        foreach (IPluginConnectionSource source in options.SurfaceSources.OfType<IPluginConnectionSource>())
+        {
+            await source.CloseOpenConnectionsAsync(manifest, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private int CountOpenSurfaces(PluginRuntime runtime, PluginManifest manifest)

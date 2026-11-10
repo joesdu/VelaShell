@@ -105,6 +105,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
 
     /// <summary>工作台会话 id → 已打开的停靠文档(插件被停用时要按 id 找到它并关掉)。</summary>
     private readonly ConcurrentDictionary<Guid, PluginWorkspaceDocument> _workspaceDocuments = new();
+    private readonly ConcurrentDictionary<Guid, byte> _workspaceCloseInProgress = new();
 
     /// <summary>
     /// 每条配置名下都有谁活着,以及树上那个圆点该显示什么状态(见 <see cref="SessionStatusRegistry" />)。
@@ -326,6 +327,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
         gistSyncService?.WebhookUrlMissing += OnSyncWebhookUrlMissing;
         // 插件被停用/卸载 → 它名下的工作台文档已无人应答,走正常关闭路径撤掉标签页。
         workspaceLauncher?.SessionAbandoned += OnWorkspaceSessionAbandoned;
+        workspaceLauncher?.CloseSessionRequested = CloseWorkspaceSessionForUpgradeAsync;
         // 新建连接对话框里的「测试」对插件连接类型没法拿 SSH 去试(那只会撞出一个
         // 与真实原因无关的超时)。探针挂在这里而不是注进工作流服务:真开一次插件会话
         // 要用到隧道链路与凭据解密,那些都只在界面层有。
@@ -2212,7 +2214,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
         IReadOnlyList<NotificationItem> fresh = NotificationSources.BuildRemoteEditDraftNotifications(drafts);
         // 旧版本投的那几条(只有不带参数的「打开所在文件夹」):草稿还在就换成这一版的,保住已读与第一次发现的时刻。
         // 投递按 id 去重、保留旧的那一条,不先撤掉的话升级之前就列出来的草稿永远没有「重新上传」。
-        Dictionary<string, NotificationItem> existing = center.Items.ToDictionary(static item => item.Id, StringComparer.Ordinal);
+        var existing = center.Items.ToDictionary(static item => item.Id, StringComparer.Ordinal);
         List<NotificationItem> upgrades = [];
         foreach (NotificationItem item in fresh)
         {
@@ -6348,18 +6350,60 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
     /// <summary>工作台文档关闭:摘登记、退订状态、拆隧道、释放插件那边的连接。幂等。</summary>
     private async Task CloseWorkspaceDocumentAsync(PluginWorkspaceDocument document)
     {
-        document.Workspace.StatusChanged -= OnWorkspaceStatusChanged;
-        _workspaceDocuments.TryRemove(document.SessionId, out _);
-        _workspaceLauncher?.Forget(document.SessionId);
-        // 摘掉这一条会话再重算,而不是直接把节点写成「未连接」:
-        // 同一条配置名下可能还开着别的文档或终端标签(#321 那条纪律的文档版)。
-        ForgetDocumentSession(document.SessionId);
-        // 先关插件那边的连接,再拆隧道:反过来会让插件的关闭流程对着一条已经断掉的通道超时。
-        await document.CloseAsync().ConfigureAwait(true);
-        if (_workspaceTunnels.TryRemove(document.SessionId, out Guid tunnelId))
+        if (!_workspaceCloseInProgress.TryAdd(document.SessionId, 0))
         {
-            await RemoveWorkspaceTunnelAsync(tunnelId).ConfigureAwait(true);
+            return;
         }
+        try
+        {
+            document.Workspace.StatusChanged -= OnWorkspaceStatusChanged;
+            _workspaceDocuments.TryRemove(document.SessionId, out _);
+            _workspaceLauncher?.Forget(document.SessionId);
+            // 摘掉这一条会话再重算,而不是直接把节点写成「未连接」:
+            // 同一条配置名下可能还开着别的文档或终端标签(#321 那条纪律的文档版)。
+            ForgetDocumentSession(document.SessionId);
+            // 先关插件那边的连接,再拆隧道:反过来会让插件的关闭流程对着一条已经断掉的通道超时。
+            await document.CloseAsync().ConfigureAwait(true);
+            if (_workspaceTunnels.TryRemove(document.SessionId, out Guid tunnelId))
+            {
+                await RemoveWorkspaceTunnelAsync(tunnelId).ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            _workspaceCloseInProgress.TryRemove(document.SessionId, out _);
+        }
+    }
+
+    /// <summary>更新前在 UI 线程同步关闭工作台文档,确保标签页、插件连接和隧道都已收尾。</summary>
+    private Task CloseWorkspaceSessionForUpgradeAsync(Guid sessionId, IWorkspaceDocument launcherDocument)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        RxSchedulers.MainThreadScheduler.Schedule(async () =>
+        {
+            try
+            {
+                if (_workspaceDocuments.TryGetValue(sessionId, out PluginWorkspaceDocument? document))
+                {
+                    Layout.CloseDocument(document);
+                    await CloseWorkspaceDocumentAsync(document).ConfigureAwait(true);
+                }
+                else if (!_workspaceCloseInProgress.ContainsKey(sessionId))
+                {
+                    await launcherDocument.DisposeAsync().ConfigureAwait(true);
+                    if (_workspaceTunnels.TryRemove(sessionId, out Guid tunnelId))
+                    {
+                        await RemoveWorkspaceTunnelAsync(tunnelId).ConfigureAwait(true);
+                    }
+                }
+                completion.TrySetResult();
+            }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+        });
+        return completion.Task;
     }
 
     /// <summary>

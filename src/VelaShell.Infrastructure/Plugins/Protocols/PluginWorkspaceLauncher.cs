@@ -44,9 +44,12 @@ public sealed record PluginWorkspaceSession(Guid SessionId, string TypeName, IWo
 /// </para>
 /// </summary>
 /// <param name="registry">连接类型注册表。</param>
-public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry) : IPluginSurfaceSource
+public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry) : IPluginConnectionSource
 {
     private readonly ConcurrentDictionary<Guid, (string TypeId, IWorkspaceDocument Document)> _sessions = new();
+
+    /// <summary>界面层提供的同步关闭入口;设置后更新会等待标签页和隧道完成收尾。</summary>
+    public Func<Guid, IWorkspaceDocument, Task>? CloseSessionRequested { get; set; }
 
     /// <summary>正在打开、文档还没交出来的会话(键只用来配对增删,值是连接类型 id)。</summary>
     private readonly ConcurrentDictionary<Guid, string> _opening = new();
@@ -66,6 +69,49 @@ public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry) : I
         bool Owns(string typeId) =>
             workspaces.Any(workspace => workspace.Id.Equals(typeId, StringComparison.OrdinalIgnoreCase));
         return _sessions.Values.Count(session => Owns(session.TypeId)) + _opening.Values.Count(Owns);
+    }
+
+    /// <inheritdoc />
+    public int CountOpenConnections(PluginSdk.PluginManifest manifest) => CountOpenSurfaces(manifest);
+
+    /// <summary>更新前关掉该插件的全部工作台文档，并等待界面关闭回调完成。</summary>
+    public async Task CloseOpenConnectionsAsync(
+        PluginSdk.PluginManifest manifest,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (manifest.Contributes?.Workspaces is not { Length: > 0 } workspaces)
+        {
+            return;
+        }
+        var owned = workspaces.Select(static workspace => workspace.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        KeyValuePair<Guid, (string TypeId, IWorkspaceDocument Document)>[] sessions = [.. _sessions.Where(pair => owned.Contains(pair.Value.TypeId))];
+        foreach (KeyValuePair<Guid, (string TypeId, IWorkspaceDocument Document)> pair in sessions)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_sessions.TryRemove(pair.Key, out _))
+            {
+                continue;
+            }
+            RaiseSurfacesChanged();
+            if (CloseSessionRequested is { } close)
+            {
+                await close(pair.Key, pair.Value.Document).ConfigureAwait(false);
+            }
+            else
+            {
+                try
+                {
+                    SessionAbandoned?.Invoke(pair.Key);
+                }
+                catch (Exception ex)
+                {
+                    Trace.WriteLine($"[PluginWorkspace] Close handler for '{pair.Value.TypeId}' threw: {ex.Message}");
+                }
+                await pair.Value.Document.DisposeAsync().ConfigureAwait(false);
+            }
+        }
     }
 
     private void RaiseSurfacesChanged()

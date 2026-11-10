@@ -360,6 +360,12 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         return new(id, row.DisplayName, () => _manager.ReadLogTail(id), _manager.LogDirectory);
     }
 
+    /// <summary>插件更新前需要确认的活动协议连接数。</summary>
+    public int GetOpenConnectionCount(string pluginId) => _manager.GetOpenConnectionCount(pluginId);
+
+    /// <summary>按确认结果断开插件的全部协议连接。</summary>
+    public Task CloseOpenConnectionsAsync(string pluginId) => _manager.CloseOpenConnectionsAsync(pluginId);
+
     /// <summary>
     /// 重新加载某个开发期插件:停用 → 重读清单 → 重新装载。开发内环的一步:
     /// 改完代码 <c>dotnet build</c>,点这里就跑上新代码,不必重启 VelaShell。

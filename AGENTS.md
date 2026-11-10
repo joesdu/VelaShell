@@ -142,7 +142,7 @@ Docker 与 `docker-compose.test.yml`,`CrossPlatformPublishTests` 需 `VELASHELL_
 ### 提交约束
 
 - **所有提交信息与 PR 描述都不要附加 Claude Code 等 AI 工具的作者信息** —— 不加 `Co-Authored-By: Claude …` 行,也不加 `🤖 Generated with Claude Code` 之类的署名。VelaShellLabs 下所有仓库一致适用。
-- 只有仓库所有者才需要从dev分支发 PR,其他人都从 feature 分支发 PR。feature 分支的命名规则是 `feat/xxx` 或 `fix/xxx`,其中 `xxx` 是简短描述,不许用中文。
+- 只有仓库所有者才需要从dev分支发 PR,其他人都从 feature 分支发 PR。feature 分支的命名规则是 `feat/xxx` 或 `fix/xxx`,其中 `xxx` 是简短描述,不许用中文。仓库所有者处理同一任务中的连续调整时,若不是多个独立任务并行产生的不同改动,统一直接提交到 `dev`,从 `dev` 创建 PR 合并到 `main`,无需为每次调整另建分支。
 - 创建PR的时候直接选择合并到main分支,但是在PR描述中必须写明本次PR的主要改动内容,以及是否涉及到文档的修改,如果涉及到文档的修改,请在PR描述中附上对应的文档链接。
 - **发布 Release 时避免重复触发发布流水线**：`.github/workflows/release.yml` 同时监听 `published` 与 `edited`。创建 Release 后，必须一次性写好标题与正文（包括对应 PR 链接），不要再通过编辑 Release 反复修正文案；每次编辑都会为同一标签新增一次 Actions 运行。若正文确需修改，先确认已有同标签运行已结束，再只编辑一次，并等待该次 `edited` 运行完成。发布前先检查同一标签是否已有 Release、标签和运行，避免重复创建、删除后重建或并发补发。
 - **Release 标题只填写版本号**：标题必须与标签一致（例如标签为 `1.7.4` 时标题填写 `1.7.4`），不要添加产品名或其他前后缀。创建 Release 时直接使用版本号作为标题，避免后续手动修改并再次触发发布流水线。
