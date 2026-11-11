@@ -439,7 +439,9 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             all.Add(("delegate_subagent", AIFunctionFactory.Create(DelegateSubagentAsync, "delegate_subagent",
                 "Delegate a focused read-only analysis task to a parallel subagent. "
                 + "The subagent may use inherited read-only workspace, session, and MCP tools, "
-                + "but cannot write, create sessions, or create more subagents. Returns an id immediately."), false));
+                + "but cannot write, create sessions, or create more subagents. Returns an id immediately. "
+                + "Omit modelId to inherit the parent model, or select a configured model ID from: "
+                + JsonSerializer.Serialize(Subagents.ModelChoices)), false));
             all.Add(("subagent_status", AIFunctionFactory.Create(SubagentStatusAsync, "subagent_status",
                 "Get the status of a delegated subagent by id."), true));
             all.Add(("subagent_wait", AIFunctionFactory.Create(SubagentWaitAsync, "subagent_wait",
@@ -455,8 +457,8 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         ];
     }
 
-    private string DelegateSubagentAsync(string prompt, string? role = null)
-        => Subagents?.Start(prompt, role) ?? "Subagent support is unavailable in this turn.";
+    private string DelegateSubagentAsync(string prompt, string? role = null, string? modelId = null)
+        => Subagents?.Start(prompt, role, modelId) ?? "Subagent support is unavailable in this turn.";
 
     private string SubagentStatusAsync(string id)
         => Subagents?.Status(id) ?? "Subagent support is unavailable in this turn.";

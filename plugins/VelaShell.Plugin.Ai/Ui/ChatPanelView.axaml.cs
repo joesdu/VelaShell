@@ -1986,10 +1986,11 @@ public partial class ChatPanelView : UserControl
                 // 纯对话模式不给任何工具;计划模式只给只读工具(见 AgentToolbox.CreateTools)
                 if (usesToolLoop)
                 {
-                    ResolvedModel subagentModel = current;
-                    ProviderCredential subagentCredential = verifiedCredential;
                     subagents ??= new SubagentOrchestrator(async (request, childToken) =>
                     {
+                        (ResolvedModel subagentModel, ProviderCredential subagentCredential) =
+                            await ResolveSubagentModelAsync(request, current,
+                                verifiedCredential, selectedKeyId, childToken);
                         var toolCounts = new Dictionary<string, int>(StringComparer.Ordinal);
                         var toolErrors = new List<string>();
                         string? childSessionId = _toolbox.SessionIdProvider?.Invoke();
@@ -2061,7 +2062,13 @@ public partial class ChatPanelView : UserControl
                             response.Text,
                             toolCounts.Select(pair => new SubagentToolUsage(pair.Key, pair.Value)).ToArray(),
                             toolErrors);
-                    }, token);
+                    }, token)
+                    {
+                        ModelChoices = _settings.Providers.SelectMany(p => p.Models.Select(m => new ResolvedModel(p, m)))
+                            .Where(m => !AiSettingsStore.IsImageModel(m))
+                            .ToDictionary(m => m.Id, m => $"{m.Provider.Name} / {m.Model}", StringComparer.Ordinal)
+                    };
+                    subagents.DefaultModelId = current.Id;
                     if (bubble is not null && !_subagentSnapshotSources.ContainsKey(bubble))
                     {
                         SubagentOrchestrator observed = subagents;
@@ -2804,6 +2811,29 @@ public partial class ChatPanelView : UserControl
     }
 
     /// <summary>核对探通的端点与实际鉴权信息;健康代数只负责隔离旧结果写回。</summary>
+    internal async Task<(ResolvedModel Model, ProviderCredential Credential)> ResolveSubagentModelAsync(
+        SubagentRequest request, ResolvedModel parentModel, ProviderCredential parentCredential,
+        string? parentKeyId, CancellationToken token)
+    {
+        string modelId = string.IsNullOrWhiteSpace(request.ModelId) ? parentModel.Id : request.ModelId.Trim();
+        ResolvedModel model = _settings.FindModel(modelId)
+            ?? throw new InvalidOperationException("The requested subagent model is no longer configured.");
+        if (AiSettingsStore.IsImageModel(model))
+        {
+            throw new InvalidOperationException("Image models cannot run subagent tools. Select a chat model with tool support.");
+        }
+        if (model.Id == parentModel.Id)
+        {
+            if (!await StillVerifiedAsync(parentModel, parentCredential, token, parentModel.Model, parentKeyId))
+            {
+                throw new InvalidOperationException("The parent model or credential changed. Start a new turn.");
+            }
+            return (parentModel, parentCredential);
+        }
+        ProviderCredential credential = await _store.ResolveCredentialAsync(model, cancellationToken: token);
+        return (model, credential);
+    }
+
     private async Task<bool> StillVerifiedAsync(ResolvedModel target, ProviderCredential credential,
         CancellationToken token, string? probedModel = null, string? selectedKeyId = null, long? providerVersion = null)
     {
@@ -3367,6 +3397,15 @@ public partial class ChatPanelView : UserControl
                 Text = $"{snapshot.Elapsed.TotalSeconds:0.0}s · {tools}",
                 TextWrapping = TextWrapping.Wrap
             });
+            if (snapshot.ModelId is { } modelId)
+            {
+                detail.Children.Add(new TextBlock
+                {
+                    Classes = { "dim" },
+                    Text = $"{_loc["Model"]}: {_settings.FindModel(modelId)?.Model ?? modelId}",
+                    TextWrapping = TextWrapping.Wrap
+                });
+            }
             detail.Children.Add(new SelectableTextBlock
             {
                 Classes = { "mono" },

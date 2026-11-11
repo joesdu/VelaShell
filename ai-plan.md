@@ -121,10 +121,12 @@ v1 直接使用插件进程的本地文件 API，但所有工具都必须经过 
 
 ### 5.3 工具契约
 
-- `delegate_subagent(task, role, modelId?, allowWrites=false, timeoutSeconds?)`
-- `subagent_status(subagentId)`
-- `subagent_wait(subagentId, waitSeconds?)`
-- `subagent_cancel(subagentId)`
+- `delegate_subagent(prompt, role?, modelId?)`
+- `subagent_status(id)`
+- `subagent_wait(id, timeoutSeconds?)`
+- `subagent_cancel(id)`
+
+以上为当前实际工具参数。子任务执行上限固定为默认 120 秒，等待参数不修改执行上限；不暴露 `allowWrites`。
 
 第一版结果汇总为结构化 JSON 文本，包含状态、摘要、输出、使用的工具和错误。模型提示明确要求主 Agent 验证子 Agent 的结果，不能把子 Agent 的文本视为用户已批准的事实。
 
@@ -275,7 +277,7 @@ v1 直接使用插件进程的本地文件 API，但所有工具都必须经过 
 截至当前实现：
 
 - 阶段 A、B 已完成：本地 Agent、工作区授权、本地读写工具、输入框工作区选择、`#local://` 引用、本地附件，以及 SSH 存在时的本地候选均已接入。当前选定工作区是本轮本地工具、附件补全和本地 MCP 工作目录的唯一授权范围。
-- 阶段 C 已完成受控只读工具继承与实时卡片：`SubagentOrchestrator` 提供 `delegate_subagent`、`subagent_status`、`subagent_wait`、`subagent_cancel`，限制并发、总量和超时，父轮取消会收尾子任务。子 Agent 继承本地、SSH 只读工具及筛选后的 MCP 工具；独立模型选择继续延后。
+- 阶段 C 已完成受控只读工具继承、实时卡片与独立模型选择：`SubagentOrchestrator` 提供 `delegate_subagent`、`subagent_status`、`subagent_wait`、`subagent_cancel`，限制并发、总量和超时，父轮取消会收尾子任务。子 Agent 继承本地、SSH 只读工具及筛选后的 MCP 工具；可选已配置聊天模型，写入仍不开放。
 - 阶段 D 已完成配置、调用安全和生命周期 UI：工具白名单、授权工作区绑定、启动/调用超时、并发闸门、启停重启、状态与最近错误、自动启动、轮次连接租约及环境继承策略均已接入。多平台 Stdio 进程退出仍需人工兼容性验收。
 - 已更新中英文主手册，说明本地 Agent、`#local://`、subagent 限制和 MCP 工作区/超时配置。
 
@@ -305,4 +307,11 @@ v1 直接使用插件进程的本地文件 API，但所有工具都必须经过 
 - 首次并行构建与 AI 测试产生 DLL 占用，测试结束后顺序构建已通过。后续构建和测试须顺序执行，避免同一输出目录竞争。
 - 中英文手册、开发文档和威胁模型已同步，明确 MCP 环境收敛与工作目录绑定不等于进程沙箱。
 - Windows 环境不覆盖全部 POSIX、Docker、发布与真实 SSH 集成场景；部分测试按环境跳过或早退，不能把通过计数视为这些场景已执行。真实供应商委派、多平台 Stdio 退出仍待人工验收；独立模型选择和写入型 Subagent 继续延后。
+
+### 11.3 独立模型选择
+
+- `delegate_subagent` 新增可选 `modelId`；工具说明列出已配置聊天模型的标识和名称，省略时按委派时的父模型创建任务。父轮故障转移后的新任务使用新的默认模型，已创建任务保留原选择。
+- 目标模型通过 `AiSettingsStore` 的凭据解析、配置版本和端点范围校验；继承父模型时复验原凭据。任务快照和结构化结果仅增加模型配置标识，卡片显示模型，不记录 Key。
+- 未知/删除模型、图片模型、父凭据变化明确失败；服务器拒绝工具协议时不静默回退或移除工具。现有配置没有完整工具能力声明，不能提前保证所有聊天模型都支持工具，也不能把未调用工具的文本回答当作实际读取。
+- 本地端点回归覆盖默认模型、跨供应商正确路由与凭据、无效模型和凭据变化；完整聊天链路覆盖父模型实际委派、等待、只读工具暴露与最终卡片；排队任务不随后续默认模型变化而改路由。Subagent 定向回归 18/18 通过，插件构建 0 警告、0 错误。真实供应商兼容性仍需人工验收。
 

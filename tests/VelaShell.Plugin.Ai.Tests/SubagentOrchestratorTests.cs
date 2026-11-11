@@ -6,6 +6,30 @@ namespace VelaShell.Plugin.Ai.Tests;
 public sealed class SubagentOrchestratorTests
 {
     [TestMethod]
+    public async Task DefaultModelChange_DoesNotRerouteQueuedTasks()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var models = new System.Collections.Concurrent.ConcurrentBag<string?>();
+        await using var orchestrator = new SubagentOrchestrator(async (request, token) =>
+        {
+            await release.Task.WaitAsync(token);
+            models.Add(request.ModelId);
+            return SubagentExecutionResult.FromText("done");
+        }, CancellationToken.None) { DefaultModelId = "original" };
+        for (int i = 0; i < 5; i++) orchestrator.Start("inspect", null);
+        orchestrator.DefaultModelId = "replacement";
+        orchestrator.Start("inspect", null);
+        orchestrator.Start("inspect", null, "explicit");
+        release.SetResult();
+        await Task.WhenAll(orchestrator.Snapshots().Select(s =>
+            orchestrator.WaitAsync(s.SubagentId, 5, CancellationToken.None)));
+        Assert.AreEqual(5, models.Count(m => m == "original"));
+        Assert.AreEqual(1, models.Count(m => m == "replacement"));
+        Assert.AreEqual(1, models.Count(m => m == "explicit"));
+        Assert.IsTrue(orchestrator.Snapshots().All(s => s.Status == "completed"));
+    }
+
+    [TestMethod]
     public async Task StartAndWait_ReturnsCompletedResult()
     {
         await using var orchestrator = new SubagentOrchestrator(
