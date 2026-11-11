@@ -506,6 +506,28 @@ public class TerminalTabViewModelTests
 
     [TestMethod]
     [TestCategory("TerminalTab")]
+    public async Task DismissDisconnectedOverlay_HidesOnlyOverlay_AndResetsForNextDisconnect()
+    {
+        _vm.LocalShell = new("cmd", "命令提示符", "cmd.exe");
+        _vm.ConnectionStatus = SessionStatus.Connected;
+        _vm.ConnectionStatus = SessionStatus.Disconnected;
+        int closeRequests = 0;
+        _vm.CloseRequested += (_, _) => closeRequests++;
+
+        await _vm.DismissDisconnectedOverlayCommand.Execute().FirstAsync();
+
+        Assert.IsFalse(_vm.ShowDisconnectedOverlay);
+        Assert.AreEqual(SessionStatus.Disconnected, _vm.ConnectionStatus);
+        Assert.AreEqual(0, closeRequests);
+
+        _vm.ConnectionStatus = SessionStatus.Connecting;
+        _vm.ConnectionStatus = SessionStatus.Disconnected;
+
+        Assert.IsTrue(_vm.ShowDisconnectedOverlay);
+    }
+
+    [TestMethod]
+    [TestCategory("TerminalTab")]
     public async Task CopyErrorCommand_CopiesTheWholeOverlayText_AndAcknowledges()
     {
         // 算法协商失败这类原因是多行的(双方的算法名单都列出来),正是照着屏幕抄不动、

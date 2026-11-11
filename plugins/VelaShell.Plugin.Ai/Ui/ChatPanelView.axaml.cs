@@ -40,6 +40,11 @@ public sealed record WorkspaceNavItem(string? Id, string Text, bool IsAdd);
 /// <param name="Tone">这一档的语义色(中性 / warn / error)。</param>
 public sealed record ApprovalNavItem(string Text, Geometry? Icon, IBrush? Tone);
 
+/// <summary>聊天模式下拉的一项。</summary>
+/// <param name="Text">本地化模式名称。</param>
+/// <param name="Icon">模式图标。</param>
+public sealed record ModeNavItem(string Text, Geometry? Icon);
+
 /// <summary>
 /// AI 聊天面板:回复以 Markdown 渲染(流式期间节流重渲染,收尾整段定稿),
 /// 工具调用为紧凑单行卡片(点击展开参数与结果),Agent 模式下危险操作带审批交互。
@@ -511,7 +516,7 @@ public partial class ChatPanelView : UserControl
     {
         // 下拉项跟着语言换,选中项按索引留住(枚举值 = 索引,见 ChatMode / ApprovalMode)
         int mode = ModeCombo.SelectedIndex, approval = ApprovalCombo.SelectedIndex;
-        ModeCombo.ItemsSource = (string[])[_loc["ModeChat"], _loc["ModePlan"], _loc["ModeAgent"]];
+        ReloadModeItems();
         ReloadApprovalItems();
         ModeCombo.SelectedIndex = mode;
         ApprovalCombo.SelectedIndex = approval;
@@ -656,6 +661,18 @@ public partial class ChatPanelView : UserControl
         ApprovalCombo.SelectedIndex = keep;
     }
 
+    private void ReloadModeItems()
+    {
+        int keep = ModeCombo.SelectedIndex;
+        ModeCombo.ItemsSource = (ModeNavItem[])
+        [
+            new(_loc["ModeChat"], FindIcon("AiIcon.messages-square")),
+            new(_loc["ModePlan"], FindIcon("AiIcon.list-todo")),
+            new(_loc["ModeAgent"], FindIcon("AiIcon.galaxy"))
+        ];
+        ModeCombo.SelectedIndex = keep;
+    }
+
     /// <inheritdoc />
     protected override void OnLoaded(RoutedEventArgs e)
     {
@@ -663,6 +680,7 @@ public partial class ChatPanelView : UserControl
         // 到这一刻才查得到宿主资源,构造期(以及 InitAsync 续体里)建的东西要重来一遍。
         // 空状态尤其明显:三条示例的图标取自宿主的 Icon.*,建早了就是三个空 Path ——
         // 位置占着、图形没有(品牌脑图标反而在,因为它在插件自己的资源字典里)。
+        ReloadModeItems();
         ReloadApprovalItems();
         SyncModeUi();
         _emptyStateNeedsProvider = null;

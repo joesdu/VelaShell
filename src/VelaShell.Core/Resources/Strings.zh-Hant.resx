@@ -741,6 +741,9 @@
   <data name="CloseTab" xml:space="preserve">
     <value>關閉分頁</value>
   </data>
+  <data name="DismissOverlay" xml:space="preserve">
+    <value>關閉提示</value>
+  </data>
   <data name="Copy" xml:space="preserve">
     <value>複製</value>
   </data>

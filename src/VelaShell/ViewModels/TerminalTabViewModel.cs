@@ -27,6 +27,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     private readonly Lock _ptyResizeGate = new();
     private IDisposable? _copyFeedbackReset;
     private bool _disposed;
+    private bool _disconnectedOverlayDismissed;
     private PtySize? _pendingPtySize;
     private bool _ptyResizeSending;
     private bool _started;
@@ -88,6 +89,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         CloseTabCommand = ReactiveCommand.Create(() =>
             CloseRequested?.Invoke(this, EventArgs.Empty)
         );
+        DismissDisconnectedOverlayCommand = ReactiveCommand.Create(DismissDisconnectedOverlay);
 
         // 同步输入横条(标签右键菜单 → 同步输入)的三个动作。
         ToggleSyncPauseCommand = ReactiveCommand.Create(() =>
@@ -636,6 +638,10 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
                 ConnectionError = null;
                 AlgorithmRemedy = null;
             }
+            if (value is SessionStatus.Connecting or SessionStatus.Connected)
+            {
+                _disconnectedOverlayDismissed = false;
+            }
             this.RaisePropertyChanged(nameof(ShowDisconnectedOverlay));
             this.RaisePropertyChanged(nameof(DisconnectOverlayTitle));
             this.RaisePropertyChanged(nameof(DisconnectOverlayDetail));
@@ -682,10 +688,11 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
 
     /// <summary>
     /// 标签页内失败/断开覆盖层(设计 yxjmg)的可见性:未连接(断开/错误)且是一个
-    /// 真实会话标签(SSH 或本地)时显示。连接中/已连接不显示。
+    /// 真实会话标签(SSH 或本地)时显示,除非用户主动关闭了提示。连接中/已连接不显示。
     /// </summary>
     public bool ShowDisconnectedOverlay =>
         !_disposed
+        && !_disconnectedOverlayDismissed
         && ConnectionStatus is SessionStatus.Disconnected or SessionStatus.Error
         && (Profile is not null || LocalShell is not null);
 
@@ -782,6 +789,9 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     /// <summary>从标签页内失败/断开覆盖层(设计 yxjmg)关闭标签页。</summary>
     public ReactiveCommand<RxVoid, RxVoid> CloseTabCommand { get; }
 
+    /// <summary>仅关闭断开提示覆盖层,保留标签页和终端历史。</summary>
+    public ReactiveCommand<RxVoid, RxVoid> DismissDisconnectedOverlayCommand { get; }
+
     /// <summary>
     /// 释放标签资源:解绑事件、即时销毁终端模拟器(UI 安全),并把耗时的网络拆除
     /// (取消读循环、关闭 SSH 通道)放到后台线程,避免关闭标签时卡住 UI(#18)。
@@ -870,6 +880,16 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         if (ConnectionStatus == SessionStatus.Disconnected)
         {
             ReconnectRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>仅隐藏断开提示覆盖层,不关闭标签页或清理终端历史。</summary>
+    public void DismissDisconnectedOverlay()
+    {
+        if (!_disconnectedOverlayDismissed)
+        {
+            _disconnectedOverlayDismissed = true;
+            this.RaisePropertyChanged(nameof(ShowDisconnectedOverlay));
         }
     }
 
@@ -1264,6 +1284,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         }
 
         // 先记录原因(覆盖层显示“连接失败”),再切断开态刷新覆盖层可见性。
+        _disconnectedOverlayDismissed = false;
         ConnectionError = message;
         AlgorithmRemedy = remedy;
         ConnectionStatus = SessionStatus.Disconnected;
@@ -1345,6 +1366,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
         {
             return;
         }
+        _disconnectedOverlayDismissed = false;
         ConnectionStatus = SessionStatus.Disconnected;
         FeedDisconnectNotice();
         Disconnected?.Invoke(this, EventArgs.Empty);
