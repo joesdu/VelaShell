@@ -76,6 +76,17 @@
           </Grid>
           <TextBlock x:Name="McpToolsText" DockPanel.Dock="Top" Classes="dim"
                      TextWrapping="Wrap" Margin="0,0,0,4" />
+          <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,4,0,8">
+            <TextBlock x:Name="McpRuntimeText" TextWrapping="Wrap" />
+            <TextBlock x:Name="McpLastErrorText" Foreground="{DynamicResource VelaError}" TextWrapping="Wrap" />
+            <WrapPanel>
+              <Button x:Name="McpStartButton" Theme="{DynamicResource VelaOutlineButtonTheme}" Margin="0,0,6,4" />
+              <Button x:Name="McpStopButton" Theme="{DynamicResource VelaOutlineButtonTheme}" Margin="0,0,6,4" />
+              <Button x:Name="McpRestartButton" Theme="{DynamicResource VelaOutlineButtonTheme}" Margin="0,0,6,4" />
+              <Button x:Name="McpRefreshButton" Theme="{DynamicResource VelaOutlineButtonTheme}" Margin="0,0,6,4" />
+            </WrapPanel>
+            <CheckBox x:Name="McpAutoStartCheck" Theme="{StaticResource AiCheckBoxTheme}" />
+          </StackPanel>
 
           <!-- 底部操作行:保存/测试在左,删除推到右边 —— 破坏性操作别挨着主操作 -->
           <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource VelaBorderPrimary}"

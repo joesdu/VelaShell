@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
@@ -6,6 +7,12 @@ using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
 
 namespace VelaShell.Plugin.Ai.Agent;
+
+/// <summary>一台 MCP 服务器在当前管理器中的运行状态，不包含连接凭据。</summary>
+/// <param name="State">Stopped、Starting、Ready、Degraded、Failed 或 Stopping。</param>
+/// <param name="ToolCount">已发现的工具数量。</param>
+/// <param name="LastError">不含服务器原始响应或配置秘密的最近错误。</param>
+public sealed record McpServerSnapshot(string State, int ToolCount, string? LastError);
 
 /// <summary>
 /// MCP 服务器连接管理:按配置连接启用的服务器,把其工具
@@ -20,15 +27,201 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
     private sealed class Connection
     {
         public string Fingerprint = "";
+        public string? WorkspaceRoot;
         public McpClient? Client;
         public IList<McpClientTool> Tools = [];
         public string? Error;
         public DateTimeOffset FailedAt;
         public SemaphoreSlim Calls = new(2, 2);
+        public CancellationTokenSource Lifetime = new();
     }
 
     private readonly Dictionary<string, Connection> _connections = [];
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly ConcurrentDictionary<string, McpServerSnapshot> _states = new();
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _lifetimes = new();
+    private readonly HashSet<string> _manuallyStopped = [];
+
+    /// <summary>取得实时状态；从未连接的服务器为 Stopped。</summary>
+    public McpServerSnapshot GetSnapshot(string serverId)
+        => _states.GetValueOrDefault(serverId) ?? new("Stopped", 0, null);
+
+    private void SetState(string id, string state, int tools = 0, string? error = null)
+        => _states[id] = new(state, tools, error);
+
+    /// <summary>显式启动服务器，绕过自动启动设置与失败退避。</summary>
+    public async Task StartAsync(McpServerConfig server, CancellationToken cancellationToken,
+        IReadOnlyList<LocalWorkspace>? localWorkspaces = null)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!server.Enabled)
+            {
+                throw new InvalidOperationException("Enable the MCP server before starting it.");
+            }
+            _manuallyStopped.Remove(server.Id);
+            Connection connection = await EnsureConnectionAsync(server, cancellationToken, localWorkspaces, retry: true)
+                .ConfigureAwait(false);
+            if (connection.Client is null)
+            {
+                throw new InvalidOperationException(connection.Error);
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>停止服务器并撤销旧工具；后续取工具不会自动重新启动，直到显式启动。</summary>
+    public async Task StopAsync(string serverId, CancellationToken cancellationToken = default)
+    {
+        if (_lifetimes.TryGetValue(serverId, out CancellationTokenSource? lifetime))
+        {
+            await lifetime.CancelAsync().ConfigureAwait(false);
+        }
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _manuallyStopped.Add(serverId);
+            if (_connections.TryGetValue(serverId, out Connection? connection))
+            {
+                await CloseAsync(serverId, connection).ConfigureAwait(false);
+                _connections.Remove(serverId);
+            }
+            else
+            {
+                SetState(serverId, "Stopped");
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>关闭旧连接后用当前配置重新启动。</summary>
+    public async Task RestartAsync(McpServerConfig server, CancellationToken cancellationToken,
+        IReadOnlyList<LocalWorkspace>? localWorkspaces = null)
+    {
+        await StopAsync(server.Id, cancellationToken).ConfigureAwait(false);
+        await StartAsync(server, cancellationToken, localWorkspaces).ConfigureAwait(false);
+    }
+
+    /// <summary>刷新实际运行连接的工具目录，不创建临时测试连接。</summary>
+    public async Task<IReadOnlyList<McpToolInfo>> RefreshServerToolsAsync(string serverId, CancellationToken token)
+    {
+        await _gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            if (!_connections.TryGetValue(serverId, out Connection? connection) || connection.Client is null)
+            {
+                throw new InvalidOperationException("Start the MCP server before refreshing its tools.");
+            }
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token, connection.Lifetime.Token);
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            try
+            {
+                connection.Tools = await connection.Client.ListToolsAsync(
+                    (ModelContextProtocol.RequestOptions?)null, timeout.Token).ConfigureAwait(false);
+                SetState(serverId, "Ready", connection.Tools.Count);
+                return [.. connection.Tools.Select(t => new McpToolInfo
+                {
+                    Name = t.Name, Description = Shorten(t.Description),
+                    ReadOnly = t.ProtocolTool.Annotations?.ReadOnlyHint == true
+                })];
+            }
+            catch (Exception ex) when (!token.IsCancellationRequested && !connection.Lifetime.IsCancellationRequested)
+            {
+                string error = $"MCP tool discovery failed ({ex.GetType().Name}).";
+                SetState(serverId, "Degraded", connection.Tools.Count, error);
+                context.Log.Warn(error);
+                throw new InvalidOperationException(error);
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>关闭已删除、停用或修改连接参数的服务器，不启动新连接。</summary>
+    public async Task ReconcileAsync(IReadOnlyList<McpServerConfig> servers)
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            foreach (string id in _connections.Keys.ToArray())
+            {
+                McpServerConfig? server = servers.FirstOrDefault(s => s.Id == id && s.Enabled);
+                if (server is null || _connections[id].Fingerprint != Fingerprint(server))
+                {
+                    Connection connection = _connections[id];
+                    await CloseAsync(id, connection).ConfigureAwait(false);
+                    _connections.Remove(id);
+                }
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    private static string Fingerprint(McpServerConfig server)
+        => JsonSerializer.Serialize(new
+        {
+            server.Transport, server.Command, server.Arguments, server.WorkingDirectory,
+            server.EnvironmentVariables, server.Url, server.Headers, server.WorkspaceId,
+            server.MaxConcurrentCalls, server.StartupTimeoutSeconds
+        });
+
+    private async Task<Connection> EnsureConnectionAsync(McpServerConfig server, CancellationToken token,
+        IReadOnlyList<LocalWorkspace>? workspaces, bool retry = false)
+    {
+        string fingerprint = Fingerprint(server);
+        string? workspaceRoot = null;
+        string? scopeError = null;
+        if (server.Transport == McpTransportType.Stdio && !string.IsNullOrWhiteSpace(server.WorkspaceId))
+        {
+            var scope = new LocalPathScope(workspaces ?? []);
+            if (scope.TryResolve(server.WorkspaceId, "", write: false, out LocalPath root, out string error))
+                workspaceRoot = root.FullPath;
+            else
+                scopeError = error;
+        }
+        if (_connections.TryGetValue(server.Id, out Connection? existing))
+        {
+            if (existing.Fingerprint == fingerprint && !existing.Lifetime.IsCancellationRequested
+                && scopeError is null && existing.WorkspaceRoot == workspaceRoot
+                && (existing.Client is not null || (!retry && DateTimeOffset.UtcNow - existing.FailedAt < FailureRetryDelay)))
+            {
+                return existing;
+            }
+            await CloseAsync(server.Id, existing).ConfigureAwait(false);
+        }
+        var connection = new Connection
+        {
+            Fingerprint = fingerprint,
+            WorkspaceRoot = workspaceRoot,
+            Calls = new SemaphoreSlim(Math.Clamp(server.MaxConcurrentCalls, 1, 32), Math.Clamp(server.MaxConcurrentCalls, 1, 32))
+        };
+        _connections[server.Id] = connection;
+        _lifetimes[server.Id] = connection.Lifetime;
+        SetState(server.Id, "Starting");
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, connection.Lifetime.Token);
+        try
+        {
+            if (scopeError is not null) throw new InvalidOperationException("MCP workspace is not authorized.");
+            (connection.Client, connection.Tools) = await Task.Run(
+                () => ConnectAsync(server, linked.Token, workspaces), linked.Token).ConfigureAwait(false);
+            SetState(server.Id, "Ready", connection.Tools.Count);
+        }
+        catch (OperationCanceledException) when (linked.IsCancellationRequested)
+        {
+            SetState(server.Id, "Stopped");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            connection.Error = ex is OperationCanceledException
+                ? "MCP startup timed out."
+                : $"MCP connection or tool discovery failed ({ex.GetType().Name}).";
+            connection.FailedAt = DateTimeOffset.UtcNow;
+            SetState(server.Id, "Failed", error: connection.Error);
+            context.Log.Warn(connection.Error);
+        }
+        return connection;
+    }
 
     /// <summary>把一条工具执行告警写进插件日志(供嵌套的工具包装器用,它拿不到 <c>context</c>)。</summary>
     internal void LogToolWarning(string message) => context.Log.Warn(message);
@@ -80,57 +273,26 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
             // 被删除/停用的服务器:断开并移除
             foreach (string staleId in _connections.Keys.Except(wanted.Select(s => s.Id)).ToList())
             {
-                await CloseAsync(_connections[staleId]).ConfigureAwait(false);
+                await CloseAsync(staleId, _connections[staleId]).ConfigureAwait(false);
                 _connections.Remove(staleId);
             }
 
             foreach (McpServerConfig server in wanted)
             {
-                string fingerprint = JsonSerializer.Serialize(server);
-                if (_connections.TryGetValue(server.Id, out Connection? existing) && existing.Fingerprint == fingerprint)
+                if (_manuallyStopped.Contains(server.Id)
+                    || (!server.AutoStart && (!_connections.TryGetValue(server.Id, out Connection? active) || active.Client is null)))
                 {
-                    if (existing.Client is not null)
-                    {
-                        CollectTools(tools, usedNames, server, existing.Tools, approval);
-                        continue;
-                    }
-                    if (DateTimeOffset.UtcNow - existing.FailedAt < FailureRetryDelay)
-                    {
-                        errors.Add($"{DisplayName(server)}: {existing.Error}");
-                        continue;
-                    }
+                    continue;
                 }
-                if (existing is not null)
+                Connection connection = await EnsureConnectionAsync(server, cancellationToken, localWorkspaces)
+                    .ConfigureAwait(false);
+                if (connection.Client is not null)
                 {
-                    await CloseAsync(existing).ConfigureAwait(false);
-                    _connections.Remove(server.Id);
-                }
-
-                var connection = new Connection
-                {
-                    Fingerprint = fingerprint,
-                    Calls = new SemaphoreSlim(Math.Clamp(server.MaxConcurrentCalls, 1, 32),
-                        Math.Clamp(server.MaxConcurrentCalls, 1, 32))
-                };
-                _connections[server.Id] = connection;
-                try
-                {
-                    // 进程拉起/网络握手放线程池,避免占用 UI 线程
-                    (connection.Client, connection.Tools) = await Task.Run(
-                        () => ConnectAsync(server, cancellationToken, localWorkspaces), cancellationToken)
-                        .ConfigureAwait(false);
                     CollectTools(tools, usedNames, server, connection.Tools, approval);
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                else
                 {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    connection.Error = ex.Message;
-                    connection.FailedAt = DateTimeOffset.UtcNow;
-                    context.Log.Error($"MCP server '{DisplayName(server)}' connect failed.", ex);
-                    errors.Add($"{DisplayName(server)}: {ex.Message}");
+                    errors.Add($"{DisplayName(server)}: {connection.Error}");
                 }
             }
         }
@@ -186,12 +348,16 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
     /// <summary>断开全部连接(面板关闭时调用)。</summary>
     public async ValueTask DisposeAsync()
     {
+        foreach (CancellationTokenSource lifetime in _lifetimes.Values)
+        {
+            await lifetime.CancelAsync().ConfigureAwait(false);
+        }
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            foreach (Connection connection in _connections.Values)
+            foreach ((string id, Connection connection) in _connections)
             {
-                await CloseAsync(connection).ConfigureAwait(false);
+                await CloseAsync(id, connection).ConfigureAwait(false);
             }
             _connections.Clear();
         }
@@ -305,7 +471,8 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
             // readOnlyHint 是远端服务器自己给出的建议性元数据,不能作为安全边界。恶意服务器
             // 完全可以把删除/上传工具伪装成只读;所有 MCP 工具统一经过本地审批策略。
             sink.Add(new ApprovalGatedFunction(named, DisplayName(server), this, approval,
-                connection.Calls, TimeSpan.FromSeconds(Math.Clamp(server.CallTimeoutSeconds, 1, 3600))));
+                connection.Calls, TimeSpan.FromSeconds(Math.Clamp(server.CallTimeoutSeconds, 1, 3600)),
+                server.Id, connection));
         }
     }
 
@@ -331,20 +498,26 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
     private static string DisplayName(McpServerConfig server)
         => string.IsNullOrWhiteSpace(server.Name) ? "(unnamed MCP)" : server.Name.Trim();
 
-    private async Task CloseAsync(Connection connection)
+    private async Task CloseAsync(string id, Connection connection)
     {
+        SetState(id, "Stopping");
+        await connection.Lifetime.CancelAsync().ConfigureAwait(false);
         if (connection.Client is { } client)
         {
-            connection.Client = null;
             try
             {
                 await client.DisposeAsync().ConfigureAwait(false);
+                connection.Client = null;
             }
             catch (Exception ex)
             {
-                context.Log.Warn($"MCP client dispose failed: {ex.Message}");
+                string error = $"MCP connection cleanup failed ({ex.GetType().Name}).";
+                context.Log.Warn(error);
+                SetState(id, "Failed", error: error);
+                throw new InvalidOperationException(error);
             }
         }
+        SetState(id, "Stopped");
     }
 
     /// <summary>非只读 MCP 工具的审批闸:批准后转调原工具,拒绝以文本告知模型。</summary>
@@ -354,7 +527,9 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
         McpManager owner,
         McpApproval approval,
         SemaphoreSlim calls,
-        TimeSpan callTimeout)
+        TimeSpan callTimeout,
+        string serverId,
+        Connection connection)
         : DelegatingAIFunction(inner)
     {
         private readonly SemaphoreSlim _calls = calls;
@@ -363,6 +538,8 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
 
         protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
         {
+            connection.Lifetime.Token.ThrowIfCancellationRequested();
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, connection.Lifetime.Token);
             // MCP 的 readOnlyHint 来自远端,只能用于展示,不能据此跳过本地审批。
             // 挡位与回调都取自造这个包装器的那一轮(approval),不读管理器:管理器是各轮、各聊天共用的
             if (approval.Mode != ApprovalMode.Bypass)
@@ -375,7 +552,7 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
                 var request = new ApprovalRequest($"mcp:{serverName} · {Name}", SerializeArguments(arguments),
                     $"mcp:{serverName}:{Name}");
                 // 用户点停止时不再傻等审批
-                if (!await handler(request).WaitAsync(cancellationToken).ConfigureAwait(false))
+                if (!await handler(request).WaitAsync(lifetime.Token).ConfigureAwait(false))
                 {
                     return "The user DENIED this MCP tool call. Do not retry it; ask the user how to proceed.";
                 }
@@ -388,8 +565,8 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
             //       ②最终仍失败就把原因转成给模型看的文本(而不是抛)—— 工具调用始终有个结果,
             //         tool_use 不再悬空,模型可以自己决定再试一次还是如实告诉用户。
             // 只有用户按了停止(cancellationToken)才照旧抛出,交给外层统一收尾。
-            await _calls.WaitAsync(cancellationToken).ConfigureAwait(false);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            await _calls.WaitAsync(lifetime.Token).ConfigureAwait(false);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             timeout.CancelAfter(_callTimeout);
             try
             {
@@ -399,33 +576,46 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
                 {
                     try
                     {
-                        return await base.InvokeCoreAsync(arguments, timeout.Token).ConfigureAwait(false);
+                        object? result = await base.InvokeCoreAsync(arguments, timeout.Token).ConfigureAwait(false);
+                        if (!connection.Lifetime.IsCancellationRequested)
+                        {
+                            owner.SetState(serverId, "Ready", connection.Tools.Count);
+                        }
+                        return result;
                     }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
                     {
                         throw;
                     }
-                    catch (Exception ex) when (attempt < maxAttempts && IsTransientToolFailure(ex))
+                    catch (Exception ex) when (!timeout.IsCancellationRequested && attempt < maxAttempts && IsTransientToolFailure(ex))
                     {
                         owner.LogToolWarning(
-                            $"MCP tool '{Name}' failed (attempt {attempt}/{maxAttempts}), retrying: {ex.Message}");
+                            $"MCP tool '{Name}' failed (attempt {attempt}/{maxAttempts}), retrying: {ex.GetType().Name}");
                         await Task.Delay(TimeSpan.FromMilliseconds(400 * attempt), timeout.Token).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
                     {
+                        owner.SetState(serverId, "Degraded", connection.Tools.Count, "MCP tool call timed out.");
                         return $"The MCP tool '{Name}' timed out after {_callTimeout.TotalSeconds:0} seconds.";
                     }
                     catch (Exception ex)
                     {
-                        owner.LogToolWarning($"MCP tool '{Name}' failed: {ex.Message}");
+                        string error = $"MCP tool call failed ({ex.GetType().Name}).";
+                        owner.SetState(serverId, "Degraded", connection.Tools.Count, error);
+                        owner.LogToolWarning(error);
                         string hint = IsTransientToolFailure(ex)
                             ? " This looks like a transient network issue (the MCP server may be unreachable or blocked);"
                               + " you may retry the call."
                             : "";
-                        return $"The MCP tool '{Name}' failed: {ex.Message}.{hint}"
+                        return $"The MCP tool '{Name}' failed: {ex.GetType().Name}.{hint}"
                                + " Do not treat this as your own mistake — report what happened to the user if it keeps failing.";
                     }
                 }
+            }
+            catch (OperationCanceledException) when (!lifetime.IsCancellationRequested)
+            {
+                owner.SetState(serverId, "Degraded", connection.Tools.Count, "MCP tool call timed out.");
+                return $"The MCP tool '{Name}' timed out after {_callTimeout.TotalSeconds:0} seconds.";
             }
             finally
             {

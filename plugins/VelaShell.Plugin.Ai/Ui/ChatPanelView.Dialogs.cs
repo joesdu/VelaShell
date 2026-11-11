@@ -210,7 +210,8 @@ public partial class ChatPanelView
             _loc["McpServers"], 1060, 780, [],
             () =>
             {
-                var servers = new McpServersView(_context, _settings, _loc, PersistSettingsAsync);
+                var servers = new McpServersView(_context, _settings, _loc, PersistSettingsAsync,
+                    _mcp, () => GetActiveLocalWorkspaces());
                 servers.ServersChanged += picker.Rebuild;
                 _mcpView = servers;
                 ApplySelection(servers);
