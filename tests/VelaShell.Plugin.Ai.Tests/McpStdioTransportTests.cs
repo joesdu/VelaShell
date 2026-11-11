@@ -34,8 +34,8 @@ public sealed class McpStdioTransportTests
                 new McpApproval(null, ApprovalMode.Bypass), fixture.Token);
             using JsonDocument data = await InspectAsync(lease, fixture.Token);
             Assert.AreEqual(expected, data.RootElement.GetProperty("value").GetString());
-            Assert.AreEqual(Path.TrimEndingDirectorySeparator(fixture.Directory),
-                Path.TrimEndingDirectorySeparator(data.RootElement.GetProperty("directory").GetString()!));
+            Assert.AreEqual(CanonicalPath(fixture.Directory),
+                CanonicalPath(data.RootElement.GetProperty("directory").GetString()!));
             Assert.AreEqual("Ready", manager.GetSnapshot(fixture.Config.Id).State);
             using Process process = Process.GetProcessById(data.RootElement.GetProperty("pid").GetInt32());
             await manager.StopAsync(fixture.Config.Id, fixture.Token);
@@ -118,6 +118,32 @@ public sealed class McpStdioTransportTests
         object? raw = await lease.Tools.OfType<AIFunction>().Single().InvokeAsync(new AIFunctionArguments(), token);
         TextContent result = Assert.IsInstanceOfType<TextContent>(raw);
         return JsonDocument.Parse(result.Text);
+    }
+
+    private static string CanonicalPath(string path)
+    {
+        string fullPath = Path.GetFullPath(path);
+        string root = Path.GetPathRoot(fullPath)!;
+        string current = root;
+
+        foreach (string segment in fullPath[root.Length..].Split(
+                     [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, segment);
+            DirectoryInfo directory = new(current);
+            string? target = directory.LinkTarget;
+            if (target is null)
+            {
+                continue;
+            }
+
+            current = Path.GetFullPath(Path.IsPathFullyQualified(target)
+                ? target
+                : Path.Combine(directory.Parent?.FullName ?? root, target));
+        }
+
+        return Path.TrimEndingDirectorySeparator(current);
     }
 
     private sealed class Fixture : IDisposable

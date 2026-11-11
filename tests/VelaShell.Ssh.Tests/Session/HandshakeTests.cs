@@ -123,6 +123,8 @@ public sealed class HandshakeTests
     }
 
     [TestMethod]
+    // The KEX matrix includes CPU-heavy post-quantum and 8192-bit DH cases.
+    [Timeout(120_000, CooperativeCancellation = true)]
     public async Task 每一种密钥交换算法都能完成握手()
     {
         foreach (string kex in SshAlgorithmSet.Default.KeyExchange)
