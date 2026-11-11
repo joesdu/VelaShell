@@ -49,6 +49,9 @@ public partial class ChatPanelView
         public long LastCachedInputTokens;
         public long TotalCachedInputTokens;
         public long TotalCacheWriteTokens;
+        public string? StreamingUsageConversationId;
+        public long StreamingInputTokens;
+        public double StreamingOutputTokens;
 
         // ---------- 在途一轮 ----------
         public CancellationTokenSource? Cts;

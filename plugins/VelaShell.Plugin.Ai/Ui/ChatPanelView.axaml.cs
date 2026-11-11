@@ -1054,7 +1054,8 @@ public partial class ChatPanelView : UserControl
         string modelTip = $"{_loc["Model"]}: {ModelSummary.Text} {ReasoningSummary.Text}".TrimEnd();
         ToolTip.SetTip(ModelButton, windowWarning.Length > 0 ? modelTip + "\n" + windowWarning : modelTip);
         Avalonia.Automation.AutomationProperties.SetHelpText(ModelButton, windowWarning);
-        if (TotalInputTokens == 0 && TotalOutputTokens == 0)
+        bool streamingUsage = Cur.StreamingUsageConversationId == Cur.ConversationId;
+        if (TotalInputTokens == 0 && TotalOutputTokens == 0 && !streamingUsage)
         {
             TokenFlowText.Text = "";
             TokenFlowText.IsVisible = false;
@@ -1066,11 +1067,15 @@ public partial class ChatPanelView : UserControl
 
         var detail = new StringBuilder();
         var label = new StringBuilder();
-        TokenFlowText.Text = $"{ChatFormatting.Compact(TotalInputTokens)} tok ↑  {ChatFormatting.Compact(TotalOutputTokens)} tok ↓";
+        string estimate = streamingUsage ? "~" : "";
+        long input = TotalInputTokens + (streamingUsage ? Cur.StreamingInputTokens : 0);
+        long output = TotalOutputTokens + (streamingUsage ? (long)Math.Ceiling(Cur.StreamingOutputTokens) : 0);
+        TokenFlowText.Text = $"{estimate}{ChatFormatting.Compact(input)} tok ↑  {estimate}{ChatFormatting.Compact(output)} tok ↓";
         TokenFlowText.IsVisible = true;
         string totals = _loc.F("UsageTotalsLine", $"{TotalInputTokens:N0}", $"{TotalOutputTokens:N0}");
         ToolTip.SetTip(TokenFlowText, totals);
-        Avalonia.Automation.AutomationProperties.SetName(TokenFlowText, totals);
+        Avalonia.Automation.AutomationProperties.SetName(TokenFlowText,
+            streamingUsage ? $"{TokenFlowText.Text}. {_loc["UsageStreamingEstimate"]}" : totals);
         if (window > 0 && LastInputTokens > 0)
         {
             int percent = (int)Math.Min(100, Math.Round(LastInputTokens * 100.0 / window));
@@ -1123,6 +1128,7 @@ public partial class ChatPanelView : UserControl
             if (windowWarning.Length > 0) detail.AppendLine().Append(windowWarning);
         }
         ToolTip.SetTip(UsageText, detail.ToString().TrimEnd());
+        if (streamingUsage) detail.AppendLine().Append(_loc["UsageStreamingEstimate"]);
         ToolTip.SetTip(TokenFlowText, detail.ToString().TrimEnd());
     }
 
@@ -1543,6 +1549,10 @@ public partial class ChatPanelView : UserControl
         }
 
         SetBusy(true);
+        Cur.StreamingUsageConversationId = Cur.ConversationId;
+        Cur.StreamingInputTokens = 0;
+        Cur.StreamingOutputTokens = 0;
+        UpdateUsageText();
         // 输入框/文件选择器/视图切换都是共享控件:只有正显示这份时才动它们,
         // 否则后台续跑会把你正在别份对话里敲的字清掉、把你正看的历史页切走。
         if (IsForeground)
@@ -1703,7 +1713,33 @@ public partial class ChatPanelView : UserControl
                 foreach (ChatResponseUpdate update in batch)
                 {
                     RenderUpdate(bubble, update);
+                    if (conv.StreamingUsageConversationId == conv.ConversationId)
+                    {
+                        if (ReasoningPeek.IsBlank(update)
+                            && ReasoningPeek.TryRead(update.RawRepresentation, out string peeked))
+                        {
+                            foreach (char c in peeked)
+                                conv.StreamingOutputTokens += char.IsAscii(c) ? 0.25 : 1.0 / 1.5;
+                        }
+                        foreach (AIContent content in update.Contents)
+                        {
+                            string? text = content switch
+                            {
+                                TextContent value => value.Text,
+                                TextReasoningContent value => value.Text,
+                                FunctionCallContent call => SerializeArguments(call.Arguments),
+                                _ => null
+                            };
+                            if (text is not null)
+                            {
+                                // 与上下文估算相同的字符权重;保留小数,避免逐帧取整夸大用量。
+                                foreach (char c in text)
+                                    conv.StreamingOutputTokens += char.IsAscii(c) ? 0.25 : 1.0 / 1.5;
+                            }
+                        }
+                    }
                 }
+                UpdateUsageText();
                 RequestAutoScroll();
             }
 
@@ -1864,6 +1900,10 @@ public partial class ChatPanelView : UserControl
                     }
                 }
                 modelLabel = string.IsNullOrWhiteSpace(verifiedModel) ? current.Name : verifiedModel;
+                conv.StreamingUsageConversationId = turnConversationId;
+                conv.StreamingInputTokens = ContextBuilder.Estimate(requestMessages);
+                conv.StreamingOutputTokens = 0;
+                UpdateUsageText();
                 verifiedVersion = _health.Version;
                 verifiedObservation = _health.BeginObservation();
                 try
@@ -1913,6 +1953,8 @@ public partial class ChatPanelView : UserControl
                 }
                 catch
                 {
+                    DrainUpdates();
+                    conv.StreamingUsageConversationId = null;
                     // 各次空流的 usage 属于真实已计费请求；只结算一次，不并入后续回答正文。
                     if (updates.Count > 0)
                     {
@@ -2420,6 +2462,7 @@ public partial class ChatPanelView : UserControl
             DrainUpdates(); // 兜底清空残留批(此处已回到 UI 线程)
 
             var response = updates.ToChatResponse();
+            conv.StreamingUsageConversationId = null;
             RecordUsage(response.Usage, lastRequest: ChatFormatting.LastRequestUsage(updates));
             // 兜底补齐插话:送达回调的 Post 可能还排在队里没跑到,而它必须排在
             // 这一轮的回复之前进历史与库(顺序:原消息 → 插话 → 回复)。
@@ -2562,6 +2605,8 @@ public partial class ChatPanelView : UserControl
                     StatusText.Classes.Remove("retrying");
                 }
                 SetBusy(false);
+                conv.StreamingUsageConversationId = null;
+                UpdateUsageText();
                 // 一轮到此为止(成功/取消/出错都算):收起思考区,补上"耗时 · 步数"与"时间 · 模型"
                 bubble?.FinishStreaming(
                     modelLabel,

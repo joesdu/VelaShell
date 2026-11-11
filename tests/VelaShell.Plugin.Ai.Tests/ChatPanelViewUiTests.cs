@@ -1107,14 +1107,14 @@ public sealed partial class ChatPanelViewUiTests
         {
             // prompt_tokens 含 cached_tokens(OpenAI 口径):1000 里命中 800
             await using var stub = new SseStub("""
-            data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}
+            data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"streaming text"},"finish_reason":null}]}
 
             data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":50,"total_tokens":1050,"prompt_tokens_details":{"cached_tokens":800}}}
 
             data: [DONE]
 
 
-            """);
+            """, holdAfterFirstChunk: true);
 
             using var context = new TestPluginContext();
             AiProvider provider = StubProvider("stub", stub.BaseUrl, "m", maxInputTokens: 10000);
@@ -1134,6 +1134,11 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsFalse(flow.IsVisible);
 
                 panel.SendExternal("hi");
+                Assert.IsTrue(await WaitForAsync(() => flow.IsVisible), "首次请求开始即显示计数");
+                Assert.IsTrue(await WaitForAsync(() => AnswerRenderers(Find<StackPanel>(panel, "MessagesPanel")).Count > 0));
+                Assert.Contains("~4 tok ↓", flow.Text ?? "", "流尚未结束时按文本增量刷新");
+                Assert.IsTrue(Find<Viewbox>(panel, "StopIcon").IsVisible);
+                stub.Release();
                 Assert.IsTrue(await WaitForAsync(() => !string.IsNullOrEmpty(usage.Text)),
                     "一轮结束后应当显示用量");
 
@@ -1149,6 +1154,7 @@ public sealed partial class ChatPanelViewUiTests
             }
             finally
             {
+                stub.Release();
                 panel.Detach();
                 window.Close();
             }
