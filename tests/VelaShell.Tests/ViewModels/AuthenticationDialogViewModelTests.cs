@@ -72,7 +72,7 @@ public sealed class AuthenticationDialogViewModelTests
         vm.NextCommand.Execute().Subscribe();
 
         Assert.IsTrue(vm.IsPasswordMethod);
-        Assert.IsFalse(await vm.LoginCommand.CanExecute.FirstAsync());
+        Assert.IsTrue(await vm.LoginCommand.CanExecute.FirstAsync());
 
         vm.Password = SecureStringConvert.FromPlaintext("s3cret");
         vm.RememberPassword = false;
@@ -87,6 +87,55 @@ public sealed class AuthenticationDialogViewModelTests
         Assert.AreEqual(AuthMethod.Password, result.AuthMethod);
         Assert.AreEqual("s3cret", SecureStringConvert.ToPlaintext(result.Password));
         Assert.IsFalse(result.RememberPassword);
+    }
+
+    [TestMethod]
+    [DataRow(ConnectionType.SSH, false)]
+    [DataRow(ConnectionType.SSH, true)]
+    [DataRow(ConnectionType.SFTP, false)]
+    [DataRow(ConnectionType.SFTP, true)]
+    [DataRow(ConnectionType.FTP, false)]
+    [DataRow(ConnectionType.FTP, true)]
+    [DataRow(ConnectionType.Plugin, false)]
+    [DataRow(ConnectionType.Plugin, true)]
+    public async Task Login_PasswordMethod_AllowsUntouchedOrClearedPassword(ConnectionType type, bool cleared)
+    {
+        var profile = new SessionProfile
+        {
+            ConnectionType = type,
+            Host = "h",
+            Username = "root",
+            Password = "old-password"
+        };
+        var vm = new AuthenticationDialogViewModel("h", 22, "root", connectionType: type);
+        using var emptyPassword = new System.Security.SecureString();
+        if (cleared)
+        {
+            using var previousPassword = SecureStringConvert.FromPlaintext("previous-input");
+            vm.Password = previousPassword;
+            vm.Password = emptyPassword;
+        }
+
+        Assert.IsTrue(await vm.NextCommand.CanExecute.FirstAsync());
+        await vm.NextCommand.Execute().FirstAsync();
+        Assert.IsTrue(vm.IsStep2);
+        Assert.IsTrue(await vm.LoginCommand.CanExecute.FirstAsync());
+
+        AuthenticationResult result = await vm.LoginCommand.Execute().FirstAsync();
+        using (result.Password)
+        {
+            Assert.AreEqual("root", result.Username);
+            Assert.AreEqual(AuthMethod.Password, result.AuthMethod);
+            string? password = SecureStringConvert.ToPlaintext(result.Password);
+            Assert.IsTrue(string.IsNullOrEmpty(password));
+            SessionProfile copy = SharedCredentialPrompt.Apply(profile, null, result, password, out _);
+            Assert.IsTrue(string.IsNullOrEmpty(copy.Password));
+            Assert.AreEqual("old-password", profile.Password);
+        }
+
+        vm.Username = " ";
+        Assert.IsFalse(await vm.NextCommand.CanExecute.FirstAsync());
+        Assert.IsFalse(await vm.LoginCommand.CanExecute.FirstAsync());
     }
 
     [TestMethod]
@@ -169,7 +218,7 @@ public sealed class AuthenticationDialogViewModelTests
     }
 
     [TestMethod]
-    public async Task SelectingTailscale_AndReturningToPassword_RestoresNormalCredentialRequirements()
+    public async Task SelectingTailscale_AndReturningToPassword_AllowsEmptyPassword()
     {
         var vm = new AuthenticationDialogViewModel("h", 22, "ops");
         await vm.SelectTailscaleCommand.Execute().FirstAsync();
@@ -180,7 +229,7 @@ public sealed class AuthenticationDialogViewModelTests
         await vm.SelectPasswordCommand.Execute().FirstAsync();
         Assert.IsFalse(vm.IsTailscaleMethod);
         Assert.IsTrue(vm.ShowRememberPassword);
-        Assert.IsFalse(await vm.LoginCommand.CanExecute.FirstAsync());
+        Assert.IsTrue(await vm.LoginCommand.CanExecute.FirstAsync());
     }
 
     /// <summary>

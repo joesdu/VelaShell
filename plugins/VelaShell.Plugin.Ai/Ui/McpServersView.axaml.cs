@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
@@ -28,6 +29,11 @@ public partial class McpServersView : UserControl
     private readonly Loc _loc;
     private readonly Func<Task> _persist;
     private bool _loading;
+    private readonly McpManager? _manager;
+    private readonly Func<IReadOnlyList<LocalWorkspace>>? _workspaces;
+    private readonly DispatcherTimer _runtimeTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    private bool _runtimeBusy;
+    private CancellationTokenSource _operations = new();
 
     /// <summary>服务器集合或它的工具库变了 —— 下方的勾选列表要跟着重建。</summary>
     public event Action? ServersChanged;
@@ -36,12 +42,17 @@ public partial class McpServersView : UserControl
     /// <param name="settings">面板共享的设置实例;直接改它。</param>
     /// <param name="loc">多语言文案。</param>
     /// <param name="persist">落盘。</param>
-    public McpServersView(IPluginContext context, AiSettings settings, Loc loc, Func<Task> persist)
+    /// <param name="manager">聊天正在使用的 MCP 管理器。</param>
+    /// <param name="workspaces">当前聊天授权的工作区。</param>
+    public McpServersView(IPluginContext context, AiSettings settings, Loc loc, Func<Task> persist,
+        McpManager? manager = null, Func<IReadOnlyList<LocalWorkspace>>? workspaces = null)
     {
         _context = context;
         _settings = settings;
         _loc = loc;
         _persist = persist;
+        _manager = manager;
+        _workspaces = workspaces;
         InitializeComponent();
         ApplyLoc();
 
@@ -52,6 +63,21 @@ public partial class McpServersView : UserControl
         McpSaveButton.Click += OnSaveClick;
         McpDeleteButton.Click += OnDeleteClick;
         McpTestButton.Click += OnTestClick;
+        McpStartButton.Click += async (_, _) => await RunLifecycleAsync("start");
+        McpStopButton.Click += async (_, _) => await RunLifecycleAsync("stop");
+        McpRestartButton.Click += async (_, _) => await RunLifecycleAsync("restart");
+        McpRefreshButton.Click += async (_, _) => await RunLifecycleAsync("refresh");
+        _runtimeTimer.Tick += (_, _) => RefreshRuntime();
+        AttachedToVisualTree += (_, _) =>
+        {
+            if (_operations.IsCancellationRequested) _operations = new();
+            _runtimeTimer.Start();
+        };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            _runtimeTimer.Stop();
+            _operations.Cancel();
+        };
 
         ReloadList(_settings.McpServers.Count > 0 ? 0 : -1);
     }
@@ -78,6 +104,20 @@ public partial class McpServersView : UserControl
         McpSaveText.Text = _loc["Save"];
         McpTestText.Text = _loc["Test"];
         McpDeleteText.Text = _loc["Delete"];
+        McpStartButton.Content = _loc["McpStart"];
+        McpStopButton.Content = _loc["McpStop"];
+        McpRestartButton.Content = _loc["McpRestart"];
+        McpRefreshButton.Content = _loc["McpRefreshRuntime"];
+        McpAutoStartCheck.Content = _loc["McpAutoStart"];
+        McpKeepAliveCheck.Content = _loc["McpKeepAlive"];
+        McpEnvironmentModeLabel.Text = _loc["McpEnvironmentMode"];
+        int environmentMode = McpEnvironmentModeCombo.SelectedIndex;
+        McpEnvironmentModeCombo.ItemsSource = new[]
+        {
+            _loc["McpEnvironmentMinimal"], _loc["McpEnvironmentNone"], _loc["McpEnvironmentAll"]
+        };
+        McpEnvironmentModeCombo.SelectedIndex = Math.Max(0, environmentMode);
+        RefreshRuntime();
     }
 
     private McpServerConfig? Selected
@@ -135,6 +175,9 @@ public partial class McpServersView : UserControl
         {
             McpServerConfig? server = Selected;
             McpEnabledCheck.IsChecked = server?.Enabled ?? false;
+            McpAutoStartCheck.IsChecked = server?.AutoStart ?? true;
+            McpKeepAliveCheck.IsChecked = server?.KeepAlive ?? true;
+            McpEnvironmentModeCombo.SelectedIndex = (int)(server?.EnvironmentInheritMode ?? McpEnvironmentInheritMode.Minimal);
             McpNameBox.Text = server?.Name ?? "";
             McpTransportCombo.SelectedIndex = server is null ? -1 : (int)server.Transport;
             McpCommandBox.Text = server?.Command ?? "";
@@ -153,6 +196,7 @@ public partial class McpServersView : UserControl
                 McpStatusText.Text = "";
             }
             UpdateTransportPanels();
+            RefreshRuntime();
         }
         finally
         {
@@ -212,6 +256,69 @@ public partial class McpServersView : UserControl
 
     private void OnTestClick(object? sender, RoutedEventArgs e) => _ = TestAsync();
 
+    private void RefreshRuntime()
+    {
+        McpServerSnapshot snapshot = _manager?.GetSnapshot(Selected?.Id ?? "") ?? new("Stopped", 0, null);
+        McpRuntimeText.Text = _loc.F("McpRuntime", _loc["McpState" + snapshot.State], snapshot.ToolCount);
+        McpLastErrorText.Text = snapshot.LastError is { } error ? _loc.F("McpLastError", error) : "";
+        bool available = _manager is not null && Selected is not null && !_runtimeBusy;
+        McpStartButton.IsEnabled = available && Selected?.Enabled == true && snapshot.State is "Stopped" or "Failed";
+        McpStopButton.IsEnabled = _manager is not null && Selected is not null && snapshot.State is "Starting" or "Ready" or "Degraded";
+        McpRestartButton.IsEnabled = available && Selected?.Enabled == true;
+        McpRefreshButton.IsEnabled = available && snapshot.State is "Ready" or "Degraded";
+    }
+
+    private async Task RunLifecycleAsync(string operation)
+    {
+        if (_manager is null || Selected is not { } server)
+        {
+            return;
+        }
+        _runtimeBusy = true;
+        CancellationToken token = _operations.Token;
+        RefreshRuntime();
+        try
+        {
+            if (operation == "stop")
+            {
+                await _manager.StopAsync(server.Id);
+            }
+            else if (operation == "refresh")
+            {
+                server.KnownTools = [.. await _manager.RefreshServerToolsAsync(server.Id, token)];
+                server.ToolsRefreshedAt = DateTimeOffset.UtcNow;
+                await _persist();
+                ServersChanged?.Invoke();
+            }
+            else
+            {
+                if (operation == "restart")
+                    await _manager.RestartAsync(server, token, _workspaces?.Invoke());
+                else
+                    await _manager.StartAsync(server, token, _workspaces?.Invoke());
+            }
+            if (Selected?.Id == server.Id)
+            {
+                McpToolsText.Text = ToolLibraryLine(server);
+                McpStatusText.Text = "";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (Selected?.Id == server.Id) McpStatusText.Text = _loc["McpStateStopped"];
+        }
+        catch (Exception ex)
+        {
+            _context.Log.Warn($"MCP lifecycle operation failed ({ex.GetType().Name}).");
+            if (Selected?.Id == server.Id) McpStatusText.Text = _loc.F("TestFail", ex.Message);
+        }
+        finally
+        {
+            _runtimeBusy = false;
+            RefreshRuntime();
+        }
+    }
+
     /// <summary>
     /// 连一次并把工具库<b>顺手拉下来</b>存进配置 —— 连接都建好了,
     /// 再让用户去下面每台服务器上点一次"更新工具库"纯属多此一举。
@@ -259,6 +366,9 @@ public partial class McpServersView : UserControl
     private void ApplyForm(McpServerConfig target)
     {
         target.Enabled = McpEnabledCheck.IsChecked == true;
+        target.AutoStart = McpAutoStartCheck.IsChecked == true;
+        target.KeepAlive = McpKeepAliveCheck.IsChecked == true;
+        target.EnvironmentInheritMode = (McpEnvironmentInheritMode)Math.Max(0, McpEnvironmentModeCombo.SelectedIndex);
         target.Name = McpNameBox.Text?.Trim() ?? "";
         target.Transport = McpTransportCombo.SelectedIndex == (int)McpTransportType.Http
             ? McpTransportType.Http
@@ -272,9 +382,19 @@ public partial class McpServersView : UserControl
         // DisabledTools 不在这儿写:那是下方勾选列表的结果,这里跟着回写就会拿旧值盖掉刚勾的状态。
     }
 
-    private void SaveAndNotify()
+    private async void SaveAndNotify()
     {
-        _ = _persist();
-        ServersChanged?.Invoke();
+        try
+        {
+            await _persist();
+            if (_manager is not null) await _manager.ReconcileAsync(_settings.McpServers);
+            ServersChanged?.Invoke();
+            RefreshRuntime();
+        }
+        catch (Exception ex)
+        {
+            _context.Log.Warn($"Saving MCP configuration failed ({ex.GetType().Name}).");
+            McpStatusText.Text = _loc.F("TestFail", ex.Message);
+        }
     }
 }

@@ -58,7 +58,8 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             => await runContext.Sessions.GetAsync(id, token).ConfigureAwait(false) is { } session
                 && (runAuthorization is null || await runAuthorization.AllowsLiveAsync(session, token).ConfigureAwait(false));
         CommandJobRunScope run = _jobs.BeginRun(ownerId, runId, Authorize, denialEndsRun, cancellationToken);
-        run.Transfers = FileTransferJobRegistry.For(context).BeginRun(ownerId, runId, Authorize, denialEndsRun);
+        run.Transfers = FileTransferJobRegistry.For(context).BeginRun(ownerId, runId, Authorize, denialEndsRun,
+            TransferApprovalContext);
         return run;
     }
 
@@ -125,6 +126,19 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
     /// <summary>审批方式(见 <see cref="ApprovalMode" />)。</summary>
     public ApprovalMode Approval { get; set; } = ApprovalMode.Ask;
+
+    internal RemoteTransferApprovalContext TransferApprovalContext { get; init; }
+    internal bool AutoApproveUploads { get; init; }
+    internal bool AutoApproveDownloads { get; init; }
+
+    private bool AutoApprovesTransfer(RemoteTransferDirection direction)
+        => TransferApprovalContext == RemoteTransferApprovalContext.ExternalMcp
+           && direction switch
+           {
+               RemoteTransferDirection.Upload => AutoApproveUploads,
+               RemoteTransferDirection.Download => AutoApproveDownloads,
+               _ => false
+           };
 
     /// <summary>当前轮次的子 Agent 编排器;为空时不暴露委托工具。</summary>
     public SubagentOrchestrator? Subagents { get; set; }
@@ -439,7 +453,9 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             all.Add(("delegate_subagent", AIFunctionFactory.Create(DelegateSubagentAsync, "delegate_subagent",
                 "Delegate a focused read-only analysis task to a parallel subagent. "
                 + "The subagent may use inherited read-only workspace, session, and MCP tools, "
-                + "but cannot write, create sessions, or create more subagents. Returns an id immediately."), false));
+                + "but cannot write, create sessions, or create more subagents. Returns an id immediately. "
+                + "Omit modelId to inherit the parent model, or select a configured model ID from: "
+                + JsonSerializer.Serialize(Subagents.ModelChoices)), false));
             all.Add(("subagent_status", AIFunctionFactory.Create(SubagentStatusAsync, "subagent_status",
                 "Get the status of a delegated subagent by id."), true));
             all.Add(("subagent_wait", AIFunctionFactory.Create(SubagentWaitAsync, "subagent_wait",
@@ -455,8 +471,8 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         ];
     }
 
-    private string DelegateSubagentAsync(string prompt, string? role = null)
-        => Subagents?.Start(prompt, role) ?? "Subagent support is unavailable in this turn.";
+    private string DelegateSubagentAsync(string prompt, string? role = null, string? modelId = null)
+        => Subagents?.Start(prompt, role, modelId) ?? "Subagent support is unavailable in this turn.";
 
     private string SubagentStatusAsync(string id)
         => Subagents?.Status(id) ?? "Subagent support is unavailable in this turn.";
@@ -1155,7 +1171,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
     private async Task<string> RunCommandAsync(
         [Description("The shell command to execute (non-interactive, one-shot).")] string command,
-        [Description("Execution deadline in seconds. 0 (default) means no deadline; max 86400. Not the short wait window.")] int timeoutSeconds = 0,
+        [Description("Execution deadline in seconds. 0 (default) means no deadline; max 86400. Leave at 0 for long or unpredictable work; use waitSeconds to return early without cancelling. An expired deadline leaves the remote outcome unknown and pauses the parent turn; it does not prove the process stopped.")] int timeoutSeconds = 0,
         [Description("Optional session id from list_sessions; omit to use the session selected in the panel.")] string? sessionId = null,
         [Description("Seconds to wait before returning taskId (default 2, max 10). Expiry does NOT cancel execution.")] int waitSeconds = 2,
         [Description("True only for deliberately unbounded streams such as tail -f. These do not auto-wake the model.")] bool monitoring = false,
@@ -1929,7 +1945,10 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     {
         try
         {
-            if (!await ApproveAsync(new ApprovalRequest("transfer_cancel",
+            bool autoApprove = TransferApprovalContext == RemoteTransferApprovalContext.ExternalMcp
+                && (AutoApproveUploads || AutoApproveDownloads)
+                && AutoApprovesTransfer(CurrentRun.Transfers!.GetDirection(transferId));
+            if (!autoApprove && !await ApproveAsync(new ApprovalRequest("transfer_cancel",
                 $"Cancel transfer {transferId}, generation={expectedGeneration}"), cancellationToken).ConfigureAwait(false))
             {
                 return "The user DENIED cancelling this transfer. Do not retry.";
@@ -2074,7 +2093,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             return $"{remotePath} is a directory; archive it first (tar) and download the archive.";
         }
-        // 往用户自己的磁盘上写东西,一律问一次;覆盖意图必须显式传入。
+        // 覆盖意图必须显式传入;MCP 可由用户单独开启下载自动批准。
         if (!await ApproveAsync(new ApprovalRequest("download_remote_file", $"{remotePath}\n→ {target}  ({entry.Size} bytes, overwrite={overwrite})"),
                 cancellationToken).ConfigureAwait(false))
         {
@@ -2416,6 +2435,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
     private async Task<bool> ApproveAsync(ApprovalRequest request, CancellationToken cancellationToken)
     {
+        if ((request.Kind is "upload_local_file" or "transfer_resume" && AutoApprovesTransfer(RemoteTransferDirection.Upload))
+            || (request.Kind == "download_remote_file" && AutoApprovesTransfer(RemoteTransferDirection.Download)))
+        {
+            return true;
+        }
         if (Approval == ApprovalMode.Bypass)
         {
             return true;

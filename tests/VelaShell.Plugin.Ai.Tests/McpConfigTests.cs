@@ -13,6 +13,35 @@ public sealed class McpConfigTests
     private static readonly string[] SingleEmptyToken = [""];
 
     [TestMethod]
+    public void StdioEnvironment_DefaultExcludesUnlistedSecrets_ExplicitValuesOverride()
+    {
+        string key = "VELA_MCP_TEST_" + Guid.NewGuid().ToString("N");
+        Environment.SetEnvironmentVariable(key, "parent-only");
+        try
+        {
+            var server = new McpServerConfig
+            {
+                Command = "unused",
+                WorkingDirectory = Path.GetTempPath(),
+                EnvironmentVariables = "PATH=explicit-path"
+            };
+            var minimal = McpManager.CreateStdioOptions(server);
+            Assert.IsFalse(minimal.InheritEnvironmentVariables);
+            Assert.IsFalse(minimal.EnvironmentVariables!.ContainsKey(key));
+            Assert.AreEqual("explicit-path", minimal.EnvironmentVariables["PATH"]);
+            server.EnvironmentInheritMode = McpEnvironmentInheritMode.None;
+            server.EnvironmentVariables = key + "=explicit-secret";
+            var isolated = McpManager.CreateStdioOptions(server);
+            Assert.IsFalse(isolated.InheritEnvironmentVariables);
+            Assert.HasCount(1, isolated.EnvironmentVariables!);
+            Assert.AreEqual("explicit-secret", isolated.EnvironmentVariables![key]);
+            server.EnvironmentInheritMode = McpEnvironmentInheritMode.All;
+            Assert.IsTrue(McpManager.CreateStdioOptions(server).InheritEnvironmentVariables);
+        }
+        finally { Environment.SetEnvironmentVariable(key, null); }
+    }
+
+    [TestMethod]
     public void SplitArguments_SplitsOnWhitespace()
     {
         Assert.AreSequenceEqual(

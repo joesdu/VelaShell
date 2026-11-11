@@ -165,6 +165,9 @@ public partial class CollaborationView : UserControl
         McpModeLabel.Text = _loc["BridgeMode"];
         McpApprovalLabel.Text = _loc["BridgeApproval"];
         McpApprovalHint.Text = _loc["McpServerApprovalHint"];
+        McpAutoApproveDownloadsCheck.Content = _loc["McpAutoApproveDownloads"];
+        McpAutoApproveUploadsCheck.Content = _loc["McpAutoApproveUploads"];
+        McpAutoApproveTransfersHint.Text = _loc["McpAutoApproveTransfersHint"];
         McpTargetsLabel.Text = _loc["McpServerTargets"];
         McpTargetsHint.Text = _loc["McpServerTargetsHint"];
         McpTokenLabel.Text = _loc["McpServerToken"];
@@ -247,6 +250,8 @@ public partial class CollaborationView : UserControl
         McpPortBox.Text = _mcp.Port.ToString();
         McpModeCombo.SelectedIndex = (int)_mcp.Mode;
         McpApprovalCombo.SelectedIndex = (int)_mcp.Approval;
+        McpAutoApproveDownloadsCheck.IsChecked = _mcp.AutoApproveDownloads;
+        McpAutoApproveUploadsCheck.IsChecked = _mcp.AutoApproveUploads;
         McpTokenBox.Text = _token;
 
         // 范围选择器要等 _saved 到手才建得出来,所以它不在 ApplyLoc 里而在这
@@ -881,6 +886,8 @@ public partial class CollaborationView : UserControl
             _mcp.Port = ParseInt(McpPortBox.Text, _mcp.Port, 1024, 65535);
             _mcp.Mode = (ChatMode)Math.Max(0, McpModeCombo.SelectedIndex);
             _mcp.Approval = (ApprovalMode)Math.Max(0, McpApprovalCombo.SelectedIndex);
+            _mcp.AutoApproveDownloads = McpAutoApproveDownloadsCheck.IsChecked == true;
+            _mcp.AutoApproveUploads = McpAutoApproveUploadsCheck.IsChecked == true;
             // 范围选择器建不出来时(这一页还没加载完就点了保存)保持原样,别把它当成"用户清空了"
             _mcp.Scope = _mcpScope?.Invoke() ?? _mcp.Scope;
             await _mcpStore.SaveAsync(_mcp);

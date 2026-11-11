@@ -132,6 +132,69 @@
     </Style>
   </ControlTheme>
 
+  <ControlTheme x:Key="AiSubagentHeaderTheme" TargetType="ToggleButton"
+                BasedOn="{StaticResource AiChipToggleTheme}">
+    <Setter Property="Height" Value="NaN" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="6,5" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Style Selector="^:checked">
+      <Setter Property="Background" Value="{DynamicResource VelaBgSurface}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+    </Style>
+    <Style Selector="^:checked:pointerover">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+    </Style>
+    <Style Selector="^:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+    </Style>
+  </ControlTheme>
+
+  <ControlTheme x:Key="AiSubagentExpanderTheme" TargetType="Expander">
+    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+    <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <StackPanel>
+          <ToggleButton Name="PART_Header" Theme="{StaticResource AiSubagentHeaderTheme}"
+                        IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+              <Viewbox Width="11" Height="11" VerticalAlignment="Top" Margin="0,3,0,0">
+                <Path Name="Chevron" Width="24" Height="24" Data="{StaticResource AiIcon.chevron-down}"
+                      Stroke="{DynamicResource VelaTextTertiary}" StrokeThickness="2"
+                      StrokeLineCap="Round" StrokeJoin="Round" RenderTransformOrigin="50%,50%" />
+              </Viewbox>
+              <ContentPresenter Grid.Column="1" Content="{TemplateBinding Header}"
+                                ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                HorizontalContentAlignment="Stretch" />
+            </Grid>
+          </ToggleButton>
+          <Border IsVisible="{TemplateBinding IsExpanded}" Margin="23,4,6,6"
+                  BorderThickness="1,0,0,0" BorderBrush="{DynamicResource VelaBorderPrimary}" Padding="8,0,0,0">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="Stretch" />
+          </Border>
+        </StackPanel>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^ /template/ Path#Chevron">
+      <Setter Property="RenderTransform">
+        <RotateTransform Angle="-90" />
+      </Setter>
+    </Style>
+    <Style Selector="^:expanded /template/ Path#Chevron">
+      <Setter Property="RenderTransform">
+        <RotateTransform Angle="0" />
+      </Setter>
+    </Style>
+  </ControlTheme>
+
   <ControlTheme x:Key="AiModelMenuItemTheme" TargetType="ListBoxItem">
     <Setter Property="MinHeight" Value="30" />
     <Setter Property="Padding" Value="8,5" />

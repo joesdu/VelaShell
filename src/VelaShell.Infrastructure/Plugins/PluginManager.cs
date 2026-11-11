@@ -2594,6 +2594,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         // 禁用插件后它们照跑,还攥着插件自己的委托,把可收集 ALC 钉在内存里。
         runtime.Lifetime?.Dispose();
         runtime.Lifetime = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+        var storage = options.DataStore?.CreateStorage(manifest.Id) ?? new JsonFilePluginStorage(dataDirectory);
         return new()
         {
             PluginId = manifest.Id,
@@ -2603,8 +2604,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             Log = log,
             // 数据后端优先 SonnetDB(按插件 id 命名空间隔离,卸载可整体清除);
             // 无 DB 的宿主(headless 测试)退回数据目录文件。
-            Storage = options.DataStore?.CreateStorage(manifest.Id)
-                      ?? new JsonFilePluginStorage(dataDirectory),
+            Storage = storage,
             // 时序只有 SonnetDB 后端能提供(文件退化实现没有意义):无 DB 的宿主一律报不可用。
             TimeSeries = options.DataStore?.CreateTimeSeries(manifest.Id) ?? new UnavailableTimeSeries(),
             // 会话能力按插件分实例:开出来的会话记在实例里,CloseAsync 据此判"这条是不是你开的"。
@@ -2612,7 +2612,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                 ? new SessionsCapability(manifest.Id, connections, options.SessionProfiles, options.SessionOpener)
                 : new EmptySessionsApi(),
             RemoteFs = options is { Sftp: { } sftp, Connections: { } conn }
-                ? new RemoteFsCapability(sftp, conn, runtime.Lifetime.Token, manifest.Id, options.UploadPermissions)
+                ? new RemoteFsCapability(sftp, conn, runtime.Lifetime.Token, manifest.Id, options.UploadPermissions, storage)
                 : new UnavailableRemoteFs(),
             RemoteExec = options.Connections is { } execConnections
                 ? new RemoteExecCapability(execConnections, manifest.Id, options.SudoPrompt, runtime.Lifetime.Token)

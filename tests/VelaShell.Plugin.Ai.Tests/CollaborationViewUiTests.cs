@@ -92,6 +92,8 @@ public sealed class CollaborationViewUiTests
                 Assert.IsFalse(view.FindControl<StackPanel>("BridgeDetailPanel")!.IsVisible);
 
                 Assert.IsTrue(view.FindControl<CheckBox>("McpEnabledCheck")!.IsChecked);
+                Assert.IsFalse(view.FindControl<CheckBox>("McpAutoApproveUploadsCheck")!.IsChecked);
+                Assert.IsFalse(view.FindControl<CheckBox>("McpAutoApproveDownloadsCheck")!.IsChecked);
                 Assert.IsTrue(view.FindControl<StackPanel>("McpDetailPanel")!.IsVisible);
                 return Task.CompletedTask;
             });
@@ -102,6 +104,31 @@ public sealed class CollaborationViewUiTests
     [TestMethod]
     public void McpServer_DefaultsToTheReadOnlyMode()
         => Assert.AreEqual(ChatMode.Plan, new McpServerSettings().Mode);
+
+    [TestMethod]
+    public void TransferAutoApproval_LoadsAndSavesEachDirectionIndependently()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            var store = new McpServerSettingsStore(context);
+            await store.SaveAsync(new McpServerSettings { AutoApproveDownloads = true });
+            await WithViewAsync(context, async view =>
+            {
+                CheckBox download = view.FindControl<CheckBox>("McpAutoApproveDownloadsCheck")!;
+                CheckBox upload = view.FindControl<CheckBox>("McpAutoApproveUploadsCheck")!;
+                Assert.IsTrue(download.IsChecked);
+                Assert.IsFalse(upload.IsChecked);
+                download.IsChecked = false;
+                upload.IsChecked = true;
+                view.FindControl<Button>("SaveButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await PumpAsync(40);
+            });
+            McpServerSettings saved = await store.LoadAsync();
+            Assert.IsFalse(saved.AutoApproveDownloads);
+            Assert.IsTrue(saved.AutoApproveUploads);
+        });
+    }
 
     /// <summary>
     /// 页面上<b>每一个</b>按钮的文字都得是居中的 —— 含代码建的那些。

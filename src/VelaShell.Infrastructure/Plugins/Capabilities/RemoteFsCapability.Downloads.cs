@@ -115,10 +115,11 @@ internal sealed partial class RemoteFsCapability
             Update(op, s => s with { TotalBytes = source.Size });
             SshSession connection = connections.GetSession(session) ?? throw new PluginSessionNotFoundException(Read(op).SessionId);
             string label = $"{connection.ConnectionInfo.Username}@{connection.ConnectionInfo.Host}:{connection.ConnectionInfo.Port}";
+            bool autoApprove = await AutoApproveTransferAsync(options.ApprovalContext, RemoteTransferDirection.Download, ct).ConfigureAwait(false);
             // 批准生效与阶段推进在授权闸的同一把锁里(见 EnterTransferPhase):已批准、在等传输槽的下载报 Transfer,
             // 插件停止时按「Approval 才撤」的口径不会再把它当成还在等确认的撤掉;条件撤回在同一把任务锁里判先后。
             if (!await uploadPermissions.CheckDownloadAsync(op._downloadPermission, pluginId, label, Read(op).RemotePath,
-                Read(op).LocalPath, options.Overwrite, source.Size, ct, () => EnterTransferPhase(op)).ConfigureAwait(false))
+                Read(op).LocalPath, options.Overwrite, source.Size, ct, () => EnterTransferPhase(op), autoApprove).ConfigureAwait(false))
             {
                 throw new PluginPermissionDeniedException("The user denied this download.");
             }

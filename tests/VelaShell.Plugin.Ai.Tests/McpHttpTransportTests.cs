@@ -38,6 +38,142 @@ public sealed class McpHttpTransportTests
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(60);
 
     [TestMethod]
+    public async Task Lifecycle_ProtocolErrorIsDegraded_StopCancelsPendingApproval()
+    {
+        await using var server = new McpTestServer(McpTestServer.Kind.StreamableStateless, 400);
+        using var context = new TestPluginContext();
+        await using var manager = new McpManager(context);
+        var config = new McpServerConfig { Transport = McpTransportType.Http, Url = server.BaseUrl + "/mcp" };
+        await using var lease = await manager.AcquireToolsAsync([config],
+            new McpApproval(null, ApprovalMode.Bypass), CancellationToken.None);
+        await lease.Tools.OfType<AIFunction>().Single().InvokeAsync(new AIFunctionArguments { ["text"] = "__fail__" });
+        Assert.AreEqual("Degraded", manager.GetSnapshot(config.Id).State);
+        var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var approve = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var pending = await manager.AcquireToolsAsync([config], new McpApproval(_ =>
+        {
+            requested.SetResult();
+            return approve.Task;
+        }), CancellationToken.None);
+        Task<object?> invocation = pending.Tools.OfType<AIFunction>().Single()
+            .InvokeAsync(new AIFunctionArguments { ["text"] = "pending" }).AsTask();
+        await requested.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await manager.StopAsync(config.Id);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => invocation.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.AreEqual("Stopped", manager.GetSnapshot(config.Id).State);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task KeepAlive_LastConcurrentLeaseControlsRelease(bool keepAlive)
+    {
+        await using var server = new McpTestServer(McpTestServer.Kind.StreamableStateless, 400);
+        using var context = new TestPluginContext();
+        await using var manager = new McpManager(context);
+        var config = new McpServerConfig
+        {
+            Transport = McpTransportType.Http,
+            Url = server.BaseUrl + "/mcp",
+            KeepAlive = keepAlive
+        };
+        var approval = new McpApproval(null, ApprovalMode.Bypass);
+        await using McpManager.ToolLease first = await manager.AcquireToolsAsync([config], approval, CancellationToken.None);
+        await using McpManager.ToolLease second = await manager.AcquireToolsAsync([config], approval, CancellationToken.None);
+        await first.DisposeAsync();
+        await first.DisposeAsync();
+        Assert.AreEqual("Ready", manager.GetSnapshot(config.Id).State);
+        object? result = await second.Tools.OfType<AIFunction>().Single().InvokeAsync(
+            new AIFunctionArguments { ["text"] = "still-used" }, CancellationToken.None);
+        Assert.IsNotNull(result);
+        await second.DisposeAsync();
+        Assert.AreEqual(keepAlive ? "Ready" : "Stopped", manager.GetSnapshot(config.Id).State);
+        await using McpManager.ToolLease next = await manager.AcquireToolsAsync([config], approval, CancellationToken.None);
+        Assert.AreEqual("Ready", manager.GetSnapshot(config.Id).State);
+        Assert.HasCount(1, next.Tools);
+    }
+
+    [TestMethod]
+    public async Task Lifecycle_StopInterruptsStartup_WithoutStoppingOtherServer()
+    {
+        await using var healthy = new McpTestServer(McpTestServer.Kind.StreamableStateless, 400);
+        await using var stalled = new McpTestServer(McpTestServer.Kind.Unresponsive, 400);
+        using var context = new TestPluginContext();
+        await using var manager = new McpManager(context);
+        using var timeout = new CancellationTokenSource(Budget);
+        var first = new McpServerConfig { Transport = McpTransportType.Http, Url = healthy.BaseUrl + "/mcp" };
+        var second = new McpServerConfig { Transport = McpTransportType.Http, Url = stalled.BaseUrl + "/mcp" };
+        await manager.StartAsync(first, timeout.Token);
+        Task starting = manager.StartAsync(second, timeout.Token);
+        while (stalled.Log.Length == 0) await Task.Delay(10, timeout.Token);
+        Assert.AreEqual("Starting", manager.GetSnapshot(second.Id).State);
+        await manager.StopAsync(second.Id, timeout.Token).WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => starting);
+        Assert.AreEqual("Stopped", manager.GetSnapshot(second.Id).State);
+        Assert.AreEqual("Ready", manager.GetSnapshot(first.Id).State);
+    }
+
+    [TestMethod]
+    public async Task Lifecycle_ManualStartStopRestartAndRefresh_ControlsActualConnection()
+    {
+        await using var server = new McpTestServer(McpTestServer.Kind.StreamableStateless, 400);
+        var config = new McpServerConfig
+        {
+            Name = "lifecycle",
+            Transport = McpTransportType.Http,
+            Url = server.BaseUrl + "/mcp",
+            AutoStart = false
+        };
+        using var context = new TestPluginContext();
+        await using var manager = new McpManager(context);
+        using var timeout = new CancellationTokenSource(Budget);
+        var approval = new McpApproval(null, ApprovalMode.Bypass);
+        Assert.IsEmpty((await manager.GetToolsAsync([config], approval, timeout.Token)).Tools);
+        Assert.IsEmpty(server.Log);
+        await manager.StartAsync(config, timeout.Token);
+        Assert.AreEqual("Ready", manager.GetSnapshot(config.Id).State);
+        var tools = (await manager.GetToolsAsync([config], approval, timeout.Token)).Tools;
+        AIFunction oldTool = tools.OfType<AIFunction>().Single();
+        Assert.HasCount(1, await manager.RefreshServerToolsAsync(config.Id, timeout.Token));
+        await manager.StopAsync(config.Id, timeout.Token);
+        Assert.AreEqual("Stopped", manager.GetSnapshot(config.Id).State);
+        config.AutoStart = true;
+        Assert.IsEmpty((await manager.GetToolsAsync([config], approval, timeout.Token)).Tools,
+            "显式停止不能在下一次取工具时被自动启动覆盖");
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () =>
+            await oldTool.InvokeAsync(new AIFunctionArguments { ["text"] = "stale" }, timeout.Token));
+        await manager.RestartAsync(config, timeout.Token);
+        Assert.AreEqual("Ready", manager.GetSnapshot(config.Id).State);
+        config.Enabled = false;
+        await manager.ReconcileAsync([config]);
+        Assert.AreEqual("Stopped", manager.GetSnapshot(config.Id).State);
+    }
+
+    [TestMethod]
+    public async Task Lifecycle_FailedStartHasSafeError_AndExplicitStartCanRetry()
+    {
+        using var context = new TestPluginContext();
+        await using var manager = new McpManager(context);
+        var config = new McpServerConfig
+        {
+            Transport = McpTransportType.Http,
+            Url = "invalid-secret-url",
+            Headers = "Authorization: Bearer private-value"
+        };
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => manager.StartAsync(config, CancellationToken.None));
+        McpServerSnapshot failed = manager.GetSnapshot(config.Id);
+        Assert.AreEqual("Failed", failed.State);
+        Assert.IsNotNull(failed.LastError);
+        Assert.DoesNotContain("private-value", failed.LastError);
+        Assert.DoesNotContain("invalid-secret-url", failed.LastError);
+        await using var server = new McpTestServer(McpTestServer.Kind.StreamableStateless, 400);
+        config.Url = server.BaseUrl + "/mcp";
+        await manager.StartAsync(config, CancellationToken.None);
+        Assert.AreEqual("Ready", manager.GetSnapshot(config.Id).State);
+        Assert.IsNull(manager.GetSnapshot(config.Id).LastError);
+    }
+
+    [TestMethod]
     [DataRow(400)]
     [DataRow(404)]
     [DataRow(405)]
@@ -113,7 +249,8 @@ public sealed class McpHttpTransportTests
             StreamableSession,
 
             /// <summary>2026-07-28 的无会话 Streamable HTTP:每个 POST 自带元数据,不握手。</summary>
-            StreamableStateless
+            StreamableStateless,
+            Unresponsive
         }
 
         private readonly Kind _kind;
@@ -165,7 +302,8 @@ public sealed class McpHttpTransportTests
             ServerInfo = new Implementation { Name = "vela-test", Version = "1.0" },
             // 老式服务器只认 2024-11-05:按它答 initialize,看客户端肯不肯降级
             ProtocolVersion = _kind == Kind.LegacySse ? "2024-11-05" : null,
-            ToolCollection = [McpServerTool.Create((string text) => "echo:" + text,
+            ToolCollection = [McpServerTool.Create((string text) => text == "__fail__"
+                ? throw new InvalidOperationException("test tool failure") : "echo:" + text,
                 new McpServerToolCreateOptions { Name = "echo", Description = "Echo the text back." })]
         };
 
@@ -195,6 +333,9 @@ public sealed class McpHttpTransportTests
                 _log.Enqueue($"{request.HttpMethod} {request.Url!.PathAndQuery} {body}");
                 switch (_kind)
                 {
+                    case Kind.Unresponsive:
+                        await Task.Delay(Timeout.Infinite, _stop.Token);
+                        break;
                     case Kind.LegacySse:
                         await HandleLegacyAsync(request, response, body);
                         break;

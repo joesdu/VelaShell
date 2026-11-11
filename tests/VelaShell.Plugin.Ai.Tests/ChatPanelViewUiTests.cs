@@ -1107,21 +1107,22 @@ public sealed partial class ChatPanelViewUiTests
         {
             // prompt_tokens 含 cached_tokens(OpenAI 口径):1000 里命中 800
             await using var stub = new SseStub("""
-            data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}
+            data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"streaming text"},"finish_reason":null}]}
 
             data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":50,"total_tokens":1050,"prompt_tokens_details":{"cached_tokens":800}}}
 
             data: [DONE]
 
 
-            """);
+            """, holdAfterFirstChunk: true);
 
             using var context = new TestPluginContext();
             AiProvider provider = StubProvider("stub", stub.BaseUrl, "m", maxInputTokens: 10000);
             await new AiSettingsStore(context).SaveAsync(new AiSettings
             {
                 Providers = [provider],
-                ActiveModelId = provider.Models[0].Id
+                ActiveModelId = provider.Models[0].Id,
+                SuggestFollowUps = false
             });
 
             (Window window, ChatPanelView panel) = await ShowAsync(context);
@@ -1129,14 +1130,27 @@ public sealed partial class ChatPanelViewUiTests
             {
                 TextBlock usage = Find<TextBlock>(panel, "UsageText");
                 Assert.IsEmpty(usage.Text ?? "", "还没发过消息时不显示用量");
+                TextBlock flow = Find<TextBlock>(panel, "TokenFlowText");
+                Assert.IsFalse(flow.IsVisible);
 
                 panel.SendExternal("hi");
-                Assert.IsTrue(await WaitForAsync(() => !string.IsNullOrEmpty(usage.Text)),
+                Assert.IsTrue(await WaitForAsync(() => flow.IsVisible), "首次请求开始即显示计数");
+                Assert.IsTrue(await WaitForAsync(() => AnswerRenderers(Find<StackPanel>(panel, "MessagesPanel")).Count > 0));
+                Assert.Contains("~4 tok ↓", flow.Text ?? "", "流尚未结束时按文本增量刷新");
+                Assert.IsTrue(Find<Border>(panel, "UsageMeterTrack").IsVisible);
+                Assert.Contains("~", usage.Text ?? "", "首次生成期间已有上下文占比估算");
+                Assert.Contains("/10k", usage.Text ?? "");
+                Assert.IsTrue(Find<Viewbox>(panel, "StopIcon").IsVisible);
+                stub.Release();
+                Assert.IsTrue(await WaitForAsync(() => !string.IsNullOrEmpty(usage.Text)
+                    && !usage.Text.Contains('~')),
                     "一轮结束后应当显示用量");
 
                 // 上下文 1000/10000 = 10%,缓存命中 800/1000 = 80%
                 Assert.Contains("10%", usage.Text!, "上下文占比");
                 Assert.Contains("80%", usage.Text!, "缓存命中率就显示在占比旁边");
+                Assert.IsTrue(flow.IsVisible);
+                Assert.AreEqual("1k tok ↑  50 tok ↓", flow.Text);
 
                 string tip = ToolTip.GetTip(usage) as string ?? "";
                 Assert.Contains("800", tip, "悬停给出命中的具体 token 数");
@@ -1144,6 +1158,7 @@ public sealed partial class ChatPanelViewUiTests
             }
             finally
             {
+                stub.Release();
                 panel.Detach();
                 window.Close();
             }
@@ -1187,6 +1202,9 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsNotNull(tools.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single().Data,
                     "工具图标在没有宿主图标资源时也应可用");
                 usage.Text = new string('8', 100);
+                TextBlock flow = Find<TextBlock>(panel, "TokenFlowText");
+                flow.Text = "999k tok ↑  999k tok ↓";
+                flow.IsVisible = true;
                 Find<Border>(panel, "UsageMeterTrack").IsVisible = true;
                 foreach (double width in new[] { 800d, 300d })
                 {
@@ -1195,6 +1213,8 @@ public sealed partial class ChatPanelViewUiTests
                     window.Arrange(new Rect(window.ClientSize));
                     await PumpAsync(5);
 
+                    Assert.AreEqual(withoutTools, bar.Bounds.Height, 0.01);
+                    Assert.AreEqual(CentreY(flow, bar), CentreY(usage, bar), 0.75);
                     Assert.AreEqual(CentreY(send, toolbar), CentreY(tools, toolbar), 0.75,
                         "工具按钮与发送按钮应在同一条中心线上");
                     Point toolsOrigin = tools.TranslatePoint(default, toolbar)!.Value;

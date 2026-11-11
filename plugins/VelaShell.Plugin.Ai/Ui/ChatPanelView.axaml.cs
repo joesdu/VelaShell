@@ -164,6 +164,8 @@ public partial class ChatPanelView : UserControl
     /// </summary>
     private long _selectionEpoch;
     private readonly Dictionary<string, string> _lastFirstApiKey = [with(StringComparer.Ordinal)];
+    private readonly Dictionary<AssistantBubble, Func<IReadOnlyList<SubagentSnapshot>>> _subagentSnapshotSources = [];
+    private DispatcherTimer? _subagentRefreshTimer;
 
     /// <summary>开跑时固定槽顺序、均摊开关及 active 所有权;每个模型单独排除已试槽。</summary>
     private sealed class ApiKeyTurnState(AiProvider provider, string[] slots)
@@ -1052,8 +1054,11 @@ public partial class ChatPanelView : UserControl
         string modelTip = $"{_loc["Model"]}: {ModelSummary.Text} {ReasoningSummary.Text}".TrimEnd();
         ToolTip.SetTip(ModelButton, windowWarning.Length > 0 ? modelTip + "\n" + windowWarning : modelTip);
         Avalonia.Automation.AutomationProperties.SetHelpText(ModelButton, windowWarning);
-        if (TotalInputTokens == 0 && TotalOutputTokens == 0)
+        bool streamingUsage = Cur.StreamingUsageConversationId == Cur.ConversationId;
+        if (TotalInputTokens == 0 && TotalOutputTokens == 0 && !streamingUsage)
         {
+            TokenFlowText.Text = "";
+            TokenFlowText.IsVisible = false;
             UsageText.Text = "";
             UsageMeterTrack.IsVisible = false;
             ToolTip.SetTip(UsageText, windowWarning.Length > 0 ? _loc["UsageIdle"] + "\n" + windowWarning : _loc["UsageIdle"]);
@@ -1062,16 +1067,28 @@ public partial class ChatPanelView : UserControl
 
         var detail = new StringBuilder();
         var label = new StringBuilder();
-        if (window > 0 && LastInputTokens > 0)
+        string estimate = streamingUsage ? "~" : "";
+        long input = TotalInputTokens + (streamingUsage ? Cur.StreamingInputTokens : 0);
+        long output = TotalOutputTokens + (streamingUsage ? (long)Math.Ceiling(Cur.StreamingOutputTokens) : 0);
+        TokenFlowText.Text = $"{estimate}{ChatFormatting.Compact(input)} tok ↑  {estimate}{ChatFormatting.Compact(output)} tok ↓";
+        TokenFlowText.IsVisible = true;
+        string totals = _loc.F("UsageTotalsLine", $"{TotalInputTokens:N0}", $"{TotalOutputTokens:N0}");
+        ToolTip.SetTip(TokenFlowText, totals);
+        Avalonia.Automation.AutomationProperties.SetName(TokenFlowText,
+            streamingUsage ? $"{TokenFlowText.Text}. {_loc["UsageStreamingEstimate"]}" : totals);
+        long contextTokens = streamingUsage
+            ? Cur.StreamingInputTokens + (long)Math.Ceiling(Cur.StreamingOutputTokens)
+            : LastInputTokens;
+        if (window > 0 && (streamingUsage || contextTokens > 0))
         {
-            int percent = (int)Math.Min(100, Math.Round(LastInputTokens * 100.0 / window));
-            label.Append($"{ChatFormatting.Compact(LastInputTokens)}/{ChatFormatting.Compact(window)} · {percent}%");
-            detail.AppendLine(_loc.F("UsageContextLine", $"{LastInputTokens:N0}", $"{window:N0}", percent));
+            int percent = (int)Math.Min(100, Math.Round(contextTokens * 100.0 / window));
+            label.Append($"{estimate}{ChatFormatting.Compact(contextTokens)}/{ChatFormatting.Compact(window)} · {estimate}{percent}%");
+            detail.AppendLine(_loc.F("UsageContextLine", $"{contextTokens:N0}", $"{window:N0}", percent));
+            if (streamingUsage) detail.AppendLine(_loc["UsageContextStreaming"]);
             SetUsageMeter(percent);
         }
         else
         {
-            label.Append($"↑{ChatFormatting.Compact(TotalInputTokens)} ↓{ChatFormatting.Compact(TotalOutputTokens)}");
             // 不知道窗口多大就画不出占比,整条隐掉(留一根空槽反而像"用量为零")
             UsageMeterTrack.IsVisible = false;
         }
@@ -1079,10 +1096,11 @@ public partial class ChatPanelView : UserControl
         // 命中率 = 缓存读取 / 输入。两家口径实测已被适配器抹平:OpenAI 的 prompt_tokens 本就含
         // cached_tokens;Anthropic 的 input_tokens 原本不含缓存,但适配器把 cache_read 与
         // cache_creation 都并进了 InputTokenCount(200+800+120=1120)。所以同一个式子两边都成立。
-        if (LastCachedInputTokens > 0 && LastInputTokens > 0)
+        if (!streamingUsage && LastCachedInputTokens > 0 && LastInputTokens > 0)
         {
             int hit = (int)Math.Min(100, Math.Round(LastCachedInputTokens * 100.0 / LastInputTokens));
-            label.Append($" · {_loc["CacheShort"]} {hit}%");
+            if (label.Length > 0) label.Append(" · ");
+            label.Append($"{_loc["CacheShort"]} {hit}%");
             detail.AppendLine(_loc.F("UsageCacheLine", $"{LastCachedInputTokens:N0}", $"{LastInputTokens:N0}", hit));
         }
 
@@ -1114,6 +1132,8 @@ public partial class ChatPanelView : UserControl
             if (windowWarning.Length > 0) detail.AppendLine().Append(windowWarning);
         }
         ToolTip.SetTip(UsageText, detail.ToString().TrimEnd());
+        if (streamingUsage) detail.AppendLine().Append(_loc["UsageStreamingEstimate"]);
+        ToolTip.SetTip(TokenFlowText, detail.ToString().TrimEnd());
     }
 
     /// <summary>
@@ -1533,6 +1553,10 @@ public partial class ChatPanelView : UserControl
         }
 
         SetBusy(true);
+        Cur.StreamingUsageConversationId = Cur.ConversationId;
+        Cur.StreamingInputTokens = 0;
+        Cur.StreamingOutputTokens = 0;
+        UpdateUsageText();
         // 输入框/文件选择器/视图切换都是共享控件:只有正显示这份时才动它们,
         // 否则后台续跑会把你正在别份对话里敲的字清掉、把你正看的历史页切走。
         if (IsForeground)
@@ -1568,6 +1592,7 @@ public partial class ChatPanelView : UserControl
         var runCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         conv.RunCompleted = runCompleted;
         AssistantBubble? bubble = null;
+        var mcpLeases = new List<McpManager.ToolLease>();
         long startedAt = Environment.TickCount64;
         bool cancelled = false;
         bool failed = false;
@@ -1692,7 +1717,33 @@ public partial class ChatPanelView : UserControl
                 foreach (ChatResponseUpdate update in batch)
                 {
                     RenderUpdate(bubble, update);
+                    if (conv.StreamingUsageConversationId == conv.ConversationId)
+                    {
+                        if (ReasoningPeek.IsBlank(update)
+                            && ReasoningPeek.TryRead(update.RawRepresentation, out string peeked))
+                        {
+                            foreach (char c in peeked)
+                                conv.StreamingOutputTokens += char.IsAscii(c) ? 0.25 : 1.0 / 1.5;
+                        }
+                        foreach (AIContent content in update.Contents)
+                        {
+                            string? text = content switch
+                            {
+                                TextContent value => value.Text,
+                                TextReasoningContent value => value.Text,
+                                FunctionCallContent call => SerializeArguments(call.Arguments),
+                                _ => null
+                            };
+                            if (text is not null)
+                            {
+                                // 与上下文估算相同的字符权重;保留小数,避免逐帧取整夸大用量。
+                                foreach (char c in text)
+                                    conv.StreamingOutputTokens += char.IsAscii(c) ? 0.25 : 1.0 / 1.5;
+                            }
+                        }
+                    }
                 }
+                UpdateUsageText();
                 RequestAutoScroll();
             }
 
@@ -1853,6 +1904,10 @@ public partial class ChatPanelView : UserControl
                     }
                 }
                 modelLabel = string.IsNullOrWhiteSpace(verifiedModel) ? current.Name : verifiedModel;
+                conv.StreamingUsageConversationId = turnConversationId;
+                conv.StreamingInputTokens = ContextBuilder.Estimate(requestMessages);
+                conv.StreamingOutputTokens = 0;
+                UpdateUsageText();
                 verifiedVersion = _health.Version;
                 verifiedObservation = _health.BeginObservation();
                 try
@@ -1902,6 +1957,8 @@ public partial class ChatPanelView : UserControl
                 }
                 catch
                 {
+                    DrainUpdates();
+                    conv.StreamingUsageConversationId = null;
                     // 各次空流的 usage 属于真实已计费请求；只结算一次，不并入后续回答正文。
                     if (updates.Count > 0)
                     {
@@ -1983,10 +2040,11 @@ public partial class ChatPanelView : UserControl
                 // 纯对话模式不给任何工具;计划模式只给只读工具(见 AgentToolbox.CreateTools)
                 if (usesToolLoop)
                 {
-                    ResolvedModel subagentModel = current;
-                    ProviderCredential subagentCredential = verifiedCredential;
                     subagents ??= new SubagentOrchestrator(async (request, childToken) =>
                     {
+                        (ResolvedModel subagentModel, ProviderCredential subagentCredential) =
+                            await ResolveSubagentModelAsync(request, current,
+                                verifiedCredential, selectedKeyId, childToken);
                         var toolCounts = new Dictionary<string, int>(StringComparer.Ordinal);
                         var toolErrors = new List<string>();
                         string? childSessionId = _toolbox.SessionIdProvider?.Invoke();
@@ -2015,6 +2073,7 @@ public partial class ChatPanelView : UserControl
                         IReadOnlyList<AITool> trackedTools = SubagentOrchestrator.SubagentToolTracker.Wrap(
                             childTools, (name, result) =>
                             {
+                                subagents!.RecordToolUsage(name, result);
                                 toolCounts[name] = toolCounts.GetValueOrDefault(name) + 1;
                                 string? text = result switch
                                 {
@@ -2057,7 +2116,22 @@ public partial class ChatPanelView : UserControl
                             response.Text,
                             toolCounts.Select(pair => new SubagentToolUsage(pair.Key, pair.Value)).ToArray(),
                             toolErrors);
-                    }, token);
+                    }, token)
+                    {
+                        ModelChoices = _settings.Providers.SelectMany(p => p.Models.Select(m => new ResolvedModel(p, m)))
+                            .Where(m => !AiSettingsStore.IsImageModel(m))
+                            .ToDictionary(m => m.Id, m => $"{m.Provider.Name} / {m.Model}", StringComparer.Ordinal)
+                    };
+                    subagents.DefaultModelId = current.Id;
+                    if (bubble is not null && !_subagentSnapshotSources.ContainsKey(bubble))
+                    {
+                        SubagentOrchestrator observed = subagents;
+                        observed.SnapshotsChanged += snapshots =>
+                            Dispatcher.UIThread.Post(() => UpdateSubagentCards(bubble, snapshots));
+                        _subagentSnapshotSources[bubble] = observed.Snapshots;
+                        EnsureSubagentRefreshTimer();
+                        UpdateSubagentCards(bubble, observed.Snapshots());
+                    }
                     _toolbox.Subagents = mode == ChatMode.Agent ? subagents : null;
                     ApplyApprovalMode(); // 挡位推给工具箱与 MCP(中途再改也会经这条路重推)
                     _toolbox.DisabledTools = new HashSet<string>(
@@ -2068,15 +2142,18 @@ public partial class ChatPanelView : UserControl
                     _toolbox.LocalMaxFileBytes = _settings.LocalMaxFileBytes;
                     _toolbox.LocalMaxDirectoryEntries = _settings.LocalMaxDirectoryEntries;
                     IList<AITool> tools = mode == ChatMode.Chat ? [] : _toolbox.CreateTools(mode, nativeSearch, runScope);
-                    if (bubble.ImageTools is { } imageTools)
+                    if (bubble?.ImageTools is { } imageTools)
                         foreach (AITool tool in imageTools.CreateTools()) tools.Add(tool);
                     // 计划模式下不接 MCP:那些工具的副作用由第三方服务器说了算,插件无从判断,
                     // 而"计划"的承诺是这一步不动任何东西。
                     if (mode == ChatMode.Agent && _settings.McpServers.Any(s => s.Enabled))
                     {
                         SetStatus(_loc["McpConnecting"]);
-                        (List<AITool> mcpTools, List<string> mcpErrors) = await _mcp.GetToolsAsync(
+                        McpManager.ToolLease lease = await _mcp.AcquireToolsAsync(
                             _settings.McpServers, _mcpApproval, token, GetActiveLocalWorkspaces());
+                        mcpLeases.Add(lease);
+                        List<AITool> mcpTools = lease.Tools;
+                        List<string> mcpErrors = lease.Errors;
                         subagents.ReadOnlyMcpTools = McpManager.FilterReadOnlyTools(mcpTools);
                         foreach (AITool tool in mcpTools)
                         {
@@ -2152,7 +2229,16 @@ public partial class ChatPanelView : UserControl
                 }
                 // 装配上下文:摘要 + 近几轮原文,按窗口裁剪并把相邻同角色的消息并起来(见 ContextBuilder)
                 RequestContext request = ContextBuilder.Build(
-                    BuildSystemPrompt(current, mode, nativeSearch) + (imageToolsEnabled
+                    BuildSystemPrompt(current, mode, nativeSearch)
+                    + (options.Tools?.OfType<AIFunction>().Any(tool => tool.Name == "delegate_subagent") == true
+                        ? "\nFor requests to use multiple agents or independent parallel analyses, use delegate_subagent for each focused task, " +
+                          "then collect their results with subagent_wait or subagent_status before reporting completion. " +
+                          "Subagents are AI workers, not remote OS processes: run_command and task_status do not create subagents or their UI cards. " +
+                          "Subagents can read authorized files, directories, terminal output and allowed read-only MCP tools, but cannot run shell commands. " +
+                          "If analysis needs command output (for example df, ss or ps), collect it with parent tools first and include it in the delegated prompt. " +
+                          "Do not claim subagents were created unless delegate_subagent succeeded. If the user explicitly wants OS processes, use command tools instead.\n"
+                        : "")
+                    + (imageToolsEnabled
                         ? "\nImage tools are available. For explicit image creation requests, use generate_image with a standalone prompt incorporating the relevant conversation details. " +
                           "For changes to an existing image use edit_image with its exact conversation image ID. Do not claim success before the tool succeeds. " +
                           "Never automatically retry failed image operations. Do not include unrelated terminal content or secrets in image prompts.\n" + ImagesFor(conv).Describe()
@@ -2380,6 +2466,7 @@ public partial class ChatPanelView : UserControl
             DrainUpdates(); // 兜底清空残留批(此处已回到 UI 线程)
 
             var response = updates.ToChatResponse();
+            conv.StreamingUsageConversationId = null;
             RecordUsage(response.Usage, lastRequest: ChatFormatting.LastRequestUsage(updates));
             // 兜底补齐插话:送达回调的 Post 可能还排在队里没跑到,而它必须排在
             // 这一轮的回复之前进历史与库(顺序:原消息 → 插话 → 回复)。
@@ -2449,10 +2536,16 @@ public partial class ChatPanelView : UserControl
                 AiSettingsStore.ApiKeySlotChangedException => _loc["ErrorProviderChanged"],
                 _ => ApiErrorText.Describe(ex, _loc["ErrorUnreachable"], _loc["ErrorEndpointNotFound"])
             };
-            _context.Log.Error($"AI request failed. — {detail}", ex);
-            // 失败不再当成一段 Markdown 追加进正文:它不是模型说的话,混排会让人分不清
-            // 哪句是回答、哪句是故障。改成一张 error 卡挂在这条回复里(见 AddErrorCard)。
-            AddErrorCard(bubble, detail);
+            if (ex.GetBaseException() is AgentPausedException)
+            {
+                _context.Log.Warn($"AI run paused. — {detail}");
+                AddNoticeCard(bubble, detail);
+            }
+            else
+            {
+                _context.Log.Error($"AI request failed. — {detail}", ex);
+                AddErrorCard(bubble, detail);
+            }
             await CommitSteeringAsync(conv);
             if (execution.HasToolCalls)
             {
@@ -2500,8 +2593,13 @@ public partial class ChatPanelView : UserControl
                 if (subagents is not null)
                 {
                     await subagents.DisposeAsync();
-                    AddSubagentCards(bubble, subagents.Snapshots());
+                    if (bubble is not null)
+                    {
+                        UpdateSubagentCards(bubble, subagents.Snapshots());
+                        _subagentSnapshotSources.Remove(bubble);
+                    }
                 }
+                StopSubagentRefreshTimerIfIdle();
                 Cts?.Dispose();
                 Cts = null;
                 ActiveBubble = null;
@@ -2511,6 +2609,8 @@ public partial class ChatPanelView : UserControl
                     StatusText.Classes.Remove("retrying");
                 }
                 SetBusy(false);
+                conv.StreamingUsageConversationId = null;
+                UpdateUsageText();
                 // 一轮到此为止(成功/取消/出错都算):收起思考区,补上"耗时 · 步数"与"时间 · 模型"
                 bubble?.FinishStreaming(
                     modelLabel,
@@ -2521,6 +2621,11 @@ public partial class ChatPanelView : UserControl
             }
             finally
             {
+                foreach (McpManager.ToolLease lease in mcpLeases)
+                {
+                    try { await lease.DisposeAsync(); }
+                    catch (Exception ex) { _context.Log.Warn($"MCP turn cleanup failed ({ex.GetType().Name})."); }
+                }
                 bubble?.Transfers?.Finish();
                 try { await runScope.DisposeAsync(); }
                 finally
@@ -2769,6 +2874,29 @@ public partial class ChatPanelView : UserControl
     }
 
     /// <summary>核对探通的端点与实际鉴权信息;健康代数只负责隔离旧结果写回。</summary>
+    internal async Task<(ResolvedModel Model, ProviderCredential Credential)> ResolveSubagentModelAsync(
+        SubagentRequest request, ResolvedModel parentModel, ProviderCredential parentCredential,
+        string? parentKeyId, CancellationToken token)
+    {
+        string modelId = string.IsNullOrWhiteSpace(request.ModelId) ? parentModel.Id : request.ModelId.Trim();
+        ResolvedModel model = _settings.FindModel(modelId)
+            ?? throw new InvalidOperationException("The requested subagent model is no longer configured.");
+        if (AiSettingsStore.IsImageModel(model))
+        {
+            throw new InvalidOperationException("Image models cannot run subagent tools. Select a chat model with tool support.");
+        }
+        if (model.Id == parentModel.Id)
+        {
+            if (!await StillVerifiedAsync(parentModel, parentCredential, token, parentModel.Model, parentKeyId))
+            {
+                throw new InvalidOperationException("The parent model or credential changed. Start a new turn.");
+            }
+            return (parentModel, parentCredential);
+        }
+        ProviderCredential credential = await _store.ResolveCredentialAsync(model, cancellationToken: token);
+        return (model, credential);
+    }
+
     private async Task<bool> StillVerifiedAsync(ResolvedModel target, ProviderCredential credential,
         CancellationToken token, string? probedModel = null, string? selectedKeyId = null, long? providerVersion = null)
     {
@@ -3301,7 +3429,7 @@ public partial class ChatPanelView : UserControl
         RequestAutoScroll(force: true);
     }
 
-    private void AddSubagentCards(AssistantBubble? bubble, IReadOnlyList<SubagentSnapshot> snapshots)
+    private void UpdateSubagentCards(AssistantBubble? bubble, IReadOnlyList<SubagentSnapshot> snapshots)
     {
         if (snapshots.Count == 0)
         {
@@ -3313,42 +3441,35 @@ public partial class ChatPanelView : UserControl
             return;
         }
 
-        var stack = new StackPanel { Spacing = 6 };
-        stack.Children.Add(BuildCardHeader("Icon.users", "VelaAccent", _loc["SubagentRuns"], null));
-        foreach (SubagentSnapshot snapshot in snapshots)
+        bubble.UpdateSubagents(snapshots);
+        RequestAutoScroll();
+    }
+
+    private void EnsureSubagentRefreshTimer()
+    {
+        _subagentRefreshTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        if (!_subagentRefreshTimer.IsEnabled)
         {
-            string tools = snapshot.ToolsUsed.Count == 0
-                ? $"0 {_loc["SubagentTools"]}"
-                : string.Join(", ", snapshot.ToolsUsed.Select(tool => $"{tool.Name} ×{tool.Count}"));
-            var detail = new StackPanel { Spacing = 3 };
-            detail.Children.Add(new TextBlock
-            {
-                Classes = { "roleHeader" },
-                Text = $"{snapshot.SubagentId} · {snapshot.Role} · {snapshot.Status}"
-            });
-            detail.Children.Add(new TextBlock
-            {
-                Classes = { "dim" },
-                Text = $"{snapshot.Elapsed.TotalSeconds:0.0}s · {tools}",
-                TextWrapping = TextWrapping.Wrap
-            });
-            detail.Children.Add(new SelectableTextBlock
-            {
-                Classes = { "mono" },
-                Text = Truncate(snapshot.Output, 1200)
-            });
-            if (snapshot.Errors.Count > 0)
-            {
-                detail.Children.Add(new SelectableTextBlock
-                {
-                    Classes = { "mono" },
-                    Text = Truncate(string.Join(Environment.NewLine, snapshot.Errors), 800)
-                });
-            }
-            stack.Children.Add(new Border { Classes = { "toolCard" }, Child = detail });
+            _subagentRefreshTimer.Tick += RefreshSubagentCards;
+            _subagentRefreshTimer.Start();
         }
-        bubble.AddCard(new Border { Classes = { "noticeCard" }, Child = stack });
-        RequestAutoScroll(force: true);
+    }
+
+    private void RefreshSubagentCards(object? sender, EventArgs e)
+    {
+        foreach ((AssistantBubble bubble, Func<IReadOnlyList<SubagentSnapshot>> source) in _subagentSnapshotSources.ToArray())
+        {
+            UpdateSubagentCards(bubble, source());
+        }
+    }
+
+    private void StopSubagentRefreshTimerIfIdle()
+    {
+        if (_subagentSnapshotSources.Count == 0 && _subagentRefreshTimer is { } timer)
+        {
+            timer.Stop();
+            timer.Tick -= RefreshSubagentCards;
+        }
     }
 
     private void AddErrorCard(AssistantBubble? bubble, string detail)
@@ -3641,6 +3762,7 @@ public partial class ChatPanelView : UserControl
         // 复制整段回复用的原文:正文按到达顺序原样攒着(Markdown 源码,不是渲染后的可视树)
         private readonly StringBuilder _replyText = new();
         private MarkdownSegment? _currentSegment;
+        private SubagentRunGroup? _subagentGroup;
         private Collapsible? _thinking;
         private bool _thinkingRenderScheduled;
         private string _phaseKey = "";
@@ -3754,6 +3876,20 @@ public partial class ChatPanelView : UserControl
         {
             _stack.Children.Add(card);
             _currentSegment = null; // 卡之后的新文本另起一个 Markdown 段
+        }
+
+        public void UpdateSubagents(IReadOnlyList<SubagentSnapshot> snapshots)
+        {
+            if (_subagentGroup is null)
+            {
+                _subagentGroup = new SubagentRunGroup(_owner);
+                // 后台活动不构成正文边界，首次到达也不能拆开正在流式解析的 Markdown。
+                int index = _currentSegment is null
+                    ? _stack.Children.Count
+                    : _stack.Children.IndexOf(_currentSegment.Host);
+                _stack.Children.Insert(index, _subagentGroup.Root);
+            }
+            _subagentGroup.Update(snapshots);
         }
 
         /// <summary>仅在尚无有效输出、允许重放时丢弃失败尝试留下的空白正文与思考。</summary>

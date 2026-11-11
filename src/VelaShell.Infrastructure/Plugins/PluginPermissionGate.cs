@@ -167,12 +167,25 @@ public sealed class PluginPermissionGate(IAppDataStore? store, IPluginPermission
         }
     }
 
-    /// <summary>逐任务请求可信下载审批;仅 AllowOnce 有效,不复用上传、终端或开会话授权。</summary>
+    /// <summary>默认逐任务请求可信下载审批,不复用其它能力授权；宿主策略可自动批准当前任务。</summary>
     /// <remarks><c>onApproved</c> 与 <see cref="CheckUploadAsync" /> 的同名参数一样:批准生效时在登记批准的同一把锁里调用。</remarks>
     public async Task<bool> CheckDownloadAsync(DownloadPermissionLease lease, string pluginId, string sessionLabel,
         string remotePath, string localPath, bool overwrite, long sizeBytes, CancellationToken cancellationToken,
-        Action? onApproved = null)
+        Action? onApproved = null, bool autoApprove = false)
     {
+        if (autoApprove)
+        {
+            lock (_uploadGate)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                lease.Revocation.ThrowIfCancellationRequested();
+                if (lease.IsRevoked || !_downloads.TryGetValue(pluginId, out HashSet<DownloadPermissionLease>? leases)
+                    || !leases.Contains(lease)) return false;
+                lease.Approved = true;
+                onApproved?.Invoke();
+                return true;
+            }
+        }
         if (prompt is null) return false;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lease.Revocation);
         await _promptGate.WaitAsync(linked.Token).ConfigureAwait(false);
@@ -224,7 +237,7 @@ public sealed class PluginPermissionGate(IAppDataStore? store, IPluginPermission
         }
     }
 
-    /// <summary>逐次请求可信上传审批,明确拒绝 Session/Always 扩大范围,不复用其它能力授权。</summary>
+    /// <summary>默认逐次请求可信上传审批,不复用其它能力授权；宿主策略可自动批准当前任务。</summary>
     /// <remarks>
     /// <c>onApproved</c> 在批准生效时、登记批准的同一把锁里调用,让调用方把任务状态与「已批准」一起推进:插件此刻读到的快照
     /// 要么还在等确认、要么已经批准,不会有「其实批了、快照还说在等」的空当(插件停止时按快照撤等确认的任务,
@@ -233,8 +246,21 @@ public sealed class PluginPermissionGate(IAppDataStore? store, IPluginPermission
     /// </remarks>
     public async Task<bool> CheckUploadAsync(UploadPermissionLease lease, string pluginId, string sessionLabel,
         string localPath, string remotePath, bool overwrite, long sizeBytes, CancellationToken cancellationToken,
-        Action? onApproved = null)
+        Action? onApproved = null, bool autoApprove = false)
     {
+        if (autoApprove)
+        {
+            lock (_uploadGate)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                lease.Revocation.ThrowIfCancellationRequested();
+                if (lease.IsRevoked || !_uploads.TryGetValue(pluginId, out HashSet<UploadPermissionLease>? leases)
+                    || !leases.Contains(lease)) return false;
+                lease.Approved = true;
+                onApproved?.Invoke();
+                return true;
+            }
+        }
         if (prompt is null) return false;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lease.Revocation);
         await _promptGate.WaitAsync(linked.Token).ConfigureAwait(false);

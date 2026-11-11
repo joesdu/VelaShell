@@ -7,7 +7,8 @@ namespace VelaShell.Plugin.Ai.Agent;
 /// <summary>提交给只读子 Agent 的任务请求。</summary>
 /// <param name="Prompt">子 Agent 要执行的分析任务。</param>
 /// <param name="Role">任务角色的显示名称；未指定时使用默认分析角色。</param>
-public sealed record SubagentRequest(string Prompt, string? Role);
+/// <param name="ModelId">已配置模型的标识；未指定时沿用父模型。</param>
+public sealed record SubagentRequest(string Prompt, string? Role, string? ModelId = null);
 
 /// <summary>子 Agent 对某个工具的调用次数。</summary>
 /// <param name="Name">工具名称。</param>
@@ -38,6 +39,8 @@ public sealed record SubagentExecutionResult(
 /// <param name="ToolsUsed">使用过的工具及调用次数。</param>
 /// <param name="Errors">执行期间产生的错误或权限拒绝信息。</param>
 /// <param name="Elapsed">从排队到结束或当前时刻的耗时。</param>
+/// <param name="ModelId">本任务选择的模型配置标识。</param>
+/// <param name="TaskPrompt">创建任务时的请求，用于运行卡片的任务摘要。</param>
 public sealed record SubagentSnapshot(
     string SubagentId,
     string Role,
@@ -46,10 +49,12 @@ public sealed record SubagentSnapshot(
     string Output,
     IReadOnlyList<SubagentToolUsage> ToolsUsed,
     IReadOnlyList<string> Errors,
-    TimeSpan Elapsed);
+    TimeSpan Elapsed,
+    string? ModelId = null,
+    string TaskPrompt = "");
 
 /// <summary>
-/// 管理当前 Agent 委托出去的只读子任务。子任务使用父轮次已经验证过的模型和凭据，
+/// 管理当前 Agent 委托出去的只读子任务。子任务使用父模型或显式指定的已配置模型，
 /// 继承父轮次明确授权的只读工具，但不能递归创建子 Agent。
 /// </summary>
 public sealed class SubagentOrchestrator(
@@ -62,6 +67,7 @@ public sealed class SubagentOrchestrator(
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
     private readonly SemaphoreSlim _slots = new(MaxConcurrent, MaxConcurrent);
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.Ordinal);
+    private readonly AsyncLocal<Entry?> _currentEntry = new();
     private readonly TimeSpan _timeout = timeout ?? DefaultTimeout;
     private int _started;
     private int _disposed;
@@ -72,8 +78,12 @@ public sealed class SubagentOrchestrator(
         public Task<SubagentExecutionResult>? Task { get; set; }
         public string Status { get; set; } = "queued";
         public string? Role { get; set; }
+        public string? ModelId { get; set; }
+        public string TaskPrompt { get; init; } = "";
         public SubagentExecutionResult? Result { get; set; }
         public string? Error { get; set; }
+        public Dictionary<string, int> LiveTools { get; } = new(StringComparer.Ordinal);
+        public List<string> LiveErrors { get; } = [];
         public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
         public DateTimeOffset? FinishedAt { get; set; }
     }
@@ -93,8 +103,17 @@ public sealed class SubagentOrchestrator(
     /// <summary>允许父轮把已发现的只读 MCP 工具注入后续子任务。</summary>
     public IReadOnlyList<AITool> ReadOnlyMcpTools { get; set; } = [];
 
+    /// <summary>未指定模型时使用的父模型配置标识。</summary>
+    public string? DefaultModelId { get; set; }
+
+    /// <summary>可选模型的配置标识与显示名称，不包含凭据或端点。</summary>
+    public IReadOnlyDictionary<string, string> ModelChoices { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>子任务状态或工具使用记录发生变化时触发。</summary>
+    public event Action<IReadOnlyList<SubagentSnapshot>>? SnapshotsChanged;
+
     /// <summary>启动一个受限只读子任务并立即返回任务 id。</summary>
-    public string Start(string prompt, string? role)
+    public string Start(string prompt, string? role, string? modelId = null)
     {
         if (Volatile.Read(ref _disposed) != 0)
         {
@@ -112,9 +131,15 @@ public sealed class SubagentOrchestrator(
 
         string id = $"sub-{Guid.NewGuid():N}"[..12];
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(parentCancellation);
-        var entry = new Entry(cancellation) { Role = role };
+        var entry = new Entry(cancellation)
+        {
+            TaskPrompt = prompt,
+            Role = role,
+            ModelId = string.IsNullOrWhiteSpace(modelId) ? DefaultModelId : modelId.Trim()
+        };
         _entries[id] = entry;
         entry.Task = RunAsync(entry, prompt, role);
+        NotifyChanged();
         return $"Started subagent {id}. Use subagent_status or subagent_wait with this id.";
     }
 
@@ -153,6 +178,31 @@ public sealed class SubagentOrchestrator(
     public IReadOnlyList<SubagentSnapshot> Snapshots()
         => [.. _entries.Select(pair => Snapshot(pair.Key, pair.Value)).OrderBy(item => item.SubagentId)];
 
+    /// <summary>记录当前子任务的工具调用，供运行状态 UI 显示实时计数。</summary>
+    public void RecordToolUsage(string name, object? result)
+    {
+        Entry? entry = _currentEntry.Value;
+        if (entry is null)
+        {
+            return;
+        }
+        lock (entry.LiveTools)
+        {
+            entry.LiveTools[name] = entry.LiveTools.GetValueOrDefault(name) + 1;
+            if (result is Exception exception)
+            {
+                entry.LiveErrors.Add($"{name}: {exception.GetBaseException().Message}");
+            }
+            else if (result is string text
+                     && (text.Contains("DENIED", StringComparison.OrdinalIgnoreCase)
+                         || text.Contains("No approval channel", StringComparison.OrdinalIgnoreCase)))
+            {
+                entry.LiveErrors.Add($"{name}: {text}");
+            }
+        }
+        NotifyChanged();
+    }
+
     /// <summary>请求取消一个子任务。</summary>
     public string Cancel(string id)
     {
@@ -172,38 +222,46 @@ public sealed class SubagentOrchestrator(
             await _slots.WaitAsync(entry.Cancellation.Token).ConfigureAwait(false);
             acquired = true;
             entry.Status = "running";
+            NotifyChanged();
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(entry.Cancellation.Token);
             timeout.CancelAfter(_timeout);
-            entry.Result = await runner(new SubagentRequest(prompt.Trim(), role), timeout.Token)
+            _currentEntry.Value = entry;
+            entry.Result = await runner(new SubagentRequest(prompt.Trim(), role, entry.ModelId), timeout.Token)
                 .ConfigureAwait(false);
             entry.Status = "completed";
+            NotifyChanged();
             return entry.Result;
         }
         catch (OperationCanceledException) when (entry.Cancellation.IsCancellationRequested)
         {
             entry.Status = "cancelled";
             entry.Error = "The subagent was cancelled.";
+            NotifyChanged();
             return new SubagentExecutionResult("", [], [entry.Error]);
         }
         catch (OperationCanceledException)
         {
             entry.Status = "timed_out";
             entry.Error = $"The subagent exceeded {_timeout.TotalSeconds:0.###} seconds.";
+            NotifyChanged();
             return new SubagentExecutionResult("", [], [entry.Error]);
         }
         catch (Exception ex)
         {
             entry.Status = "failed";
             entry.Error = ex.GetBaseException().Message;
+            NotifyChanged();
             return new SubagentExecutionResult("", [], [entry.Error]);
         }
         finally
         {
             entry.FinishedAt = DateTimeOffset.UtcNow;
+            _currentEntry.Value = null;
             if (acquired)
             {
                 _slots.Release();
             }
+            NotifyChanged();
         }
 
     }
@@ -215,6 +273,7 @@ public sealed class SubagentOrchestrator(
         {
             subagentId = snapshot.SubagentId,
             role = snapshot.Role,
+            modelId = snapshot.ModelId,
             status = snapshot.Status,
             summary = snapshot.Summary,
             output = snapshot.Output,
@@ -227,17 +286,35 @@ public sealed class SubagentOrchestrator(
     private static SubagentSnapshot Snapshot(string id, Entry entry)
     {
         TimeSpan elapsed = (entry.FinishedAt ?? DateTimeOffset.UtcNow) - entry.StartedAt;
+        IReadOnlyList<SubagentToolUsage> liveTools;
+        IReadOnlyList<string> liveErrors;
+        lock (entry.LiveTools)
+        {
+            liveTools = [.. entry.LiveTools.Select(pair => new SubagentToolUsage(pair.Key, pair.Value))];
+            liveErrors = [.. entry.LiveErrors];
+        }
+        IReadOnlyList<SubagentToolUsage> tools = entry.Result?.ToolsUsed is { Count: > 0 } resultTools
+            ? resultTools
+            : liveTools;
+        IReadOnlyList<string> errors = entry.Result?.Errors is { } resultErrors
+            ? [.. liveErrors, .. resultErrors]
+            : liveErrors;
         return new(
             id,
             entry.Role ?? "analysis",
             entry.Status,
             Summary(entry.Result?.Output ?? entry.Error),
             entry.Result?.Output ?? "",
-            entry.Result?.ToolsUsed ?? [],
-            entry.Result?.Errors is { } errors
-                ? entry.Error is { } statusError ? [.. errors, statusError] : errors
-                : entry.Error is { } error ? [error] : [],
-            elapsed);
+            tools,
+            entry.Error is { } statusError ? [.. errors, statusError] : errors,
+            elapsed,
+            entry.ModelId,
+            entry.TaskPrompt);
+    }
+
+    private void NotifyChanged()
+    {
+        SnapshotsChanged?.Invoke(Snapshots());
     }
 
     internal static class SubagentToolTracker

@@ -13,6 +13,18 @@ public enum McpTransportType
     Http
 }
 
+/// <summary>本地 MCP 进程继承宿主环境的范围。</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum McpEnvironmentInheritMode
+{
+    /// <summary>仅必要系统变量，加用户显式配置。</summary>
+    Minimal,
+    /// <summary>仅用户显式配置。</summary>
+    None,
+    /// <summary>全部宿主环境，加用户显式配置。</summary>
+    All
+}
+
 /// <summary>
 /// 一个用户自定义的 MCP 服务器配置。文本字段保持"用户所见即所存"
 /// (参数一行命令行、环境变量与请求头每行一条),解析由
@@ -49,6 +61,9 @@ public sealed class McpServerConfig
 
     /// <summary>Stdio:附加环境变量,每行一条 KEY=VALUE。</summary>
     public string EnvironmentVariables { get; set; } = "";
+
+    /// <summary>Stdio 环境继承策略，默认只继承必要系统变量。</summary>
+    public McpEnvironmentInheritMode EnvironmentInheritMode { get; set; } = McpEnvironmentInheritMode.Minimal;
 
     /// <summary>Http:服务器端点 URL。</summary>
     public string Url { get; set; } = "";
@@ -98,7 +113,7 @@ public sealed class McpToolInfo
     /// <summary>一句话说明(取自 MCP 的 description,过长已截断)。</summary>
     public string Description { get; set; } = "";
 
-    /// <summary>MCP 的 <c>readOnlyHint</c> 注解:只读工具不走审批。</summary>
+    /// <summary>MCP 的 <c>readOnlyHint</c> 注解，仅用于筛选与重试，不跳过本地审批。</summary>
     public bool ReadOnly { get; set; }
 }
 

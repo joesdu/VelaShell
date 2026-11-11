@@ -205,6 +205,7 @@ public sealed class BridgeAgentRunner(
                 }
             });
         IChatClient client = new RecoveringChatClient(steering, execution, loc["ContinuationBoundary"]);
+        McpManager.ToolLease? mcpLease = null;
         CancellationToken transferLifetime;
         lock (_transfersGate) transferLifetime = _transferLifetime.Token;
         var transferObserver = new BridgeTransferObserver(runScope.Transfers!, loc,
@@ -256,9 +257,11 @@ public sealed class BridgeAgentRunner(
                 if (mode == ChatMode.Agent && ai.McpServers.Any(s => s.Enabled))
                 {
                     // 审批上下文每轮一份:mcp 是所有聊天共用的,别的聊天的轮次可能正同时在跑
-                    (List<AITool> mcpTools, List<string> errors) = await mcp
-                        .GetToolsAsync(ai.McpServers, new McpApproval(approve, approval), cancellationToken,
+                    mcpLease = await mcp
+                        .AcquireToolsAsync(ai.McpServers, new McpApproval(approve, approval), cancellationToken,
                             ai.LocalWorkspaces).ConfigureAwait(false);
+                    List<AITool> mcpTools = mcpLease.Tools;
+                    List<string> errors = mcpLease.Errors;
                     foreach (AITool tool in mcpTools)
                     {
                         tools.Add(tool);
@@ -363,6 +366,11 @@ public sealed class BridgeAgentRunner(
         }
         finally
         {
+            if (mcpLease is not null)
+            {
+                try { await mcpLease.DisposeAsync().ConfigureAwait(false); }
+                catch (Exception ex) { context.Log.Warn($"MCP turn cleanup failed ({ex.GetType().Name})."); }
+            }
             transferObserver.Finish();
             await runScope.CancelAsync().ConfigureAwait(false);
             client.Dispose();

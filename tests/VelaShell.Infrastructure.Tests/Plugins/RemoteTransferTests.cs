@@ -40,6 +40,62 @@ public sealed partial class RemoteTransferTests
     });
 
     [TestMethod]
+    [DataRow("velashell.ai", RemoteTransferApprovalContext.ExternalMcp, "{}", false, false)]
+    [DataRow("velashell.ai", RemoteTransferApprovalContext.ExternalMcp, """{"AutoApproveUploads":true}""", true, false)]
+    [DataRow("velashell.ai", RemoteTransferApprovalContext.ExternalMcp, """{"AutoApproveDownloads":true}""", false, true)]
+    [DataRow("velashell.ai", RemoteTransferApprovalContext.ExternalMcp, """{"AutoApproveUploads":true,"AutoApproveDownloads":true}""", true, true)]
+    [DataRow("other.plugin", RemoteTransferApprovalContext.ExternalMcp, """{"AutoApproveUploads":true,"AutoApproveDownloads":true}""", false, false)]
+    [DataRow("velashell.ai", RemoteTransferApprovalContext.Default, """{"AutoApproveUploads":true,"AutoApproveDownloads":true}""", false, false)]
+    [DataRow("velashell.ai", (RemoteTransferApprovalContext)99, """{"AutoApproveUploads":true,"AutoApproveDownloads":true}""", false, false)]
+    [DataRow("velashell.ai", RemoteTransferApprovalContext.ExternalMcp, """{"Enabled":false,"AutoApproveUploads":true,"AutoApproveDownloads":true}""", false, false)]
+    public async Task TransferAutoApproval_RequiresHostPolicyForIdentityOriginAndDirection(string pluginId,
+        RemoteTransferApprovalContext origin, string settings, bool uploadApproved, bool downloadApproved)
+    {
+        using var context = new TestPluginContext();
+        await context.Storage.SetAsync("mcp-server", JsonSerializer.Deserialize<JsonElement>(settings));
+        string source = CreateFile(3);
+        string directory = NewDirectory("vela-auto-approval-");
+        string target = Path.Combine(directory, "download");
+        IPluginPermissionPrompt prompt = Substitute.For<IPluginPermissionPrompt>();
+        prompt.RequestFileUploadAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<bool>(), Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(PluginPermissionDecision.Deny);
+        prompt.RequestFileDownloadAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<bool>(), Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(PluginPermissionDecision.Deny);
+        string digest = Convert.ToHexString(SHA256.HashData(new byte[3]));
+        _sftp.ComputeSha256Async(_session, Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IReadOnlyDictionary<string, string?>>(new Dictionary<string, string?>
+            { [call.ArgAt<IReadOnlyList<string>>(1)[0]] = digest }));
+        _sftp.GetFileInfoAsync(_session, "/source", Arg.Any<CancellationToken>()).Returns(SourceInfo(3));
+        _sftp.DownloadStreamAsync(_session, "/source", Arg.Any<Stream>(), Arg.Any<IProgress<TransferProgress>>(), Arg.Any<CancellationToken>())
+            .Returns(async call => await call.ArgAt<Stream>(2).WriteAsync(new byte[3], call.ArgAt<CancellationToken>(4)));
+        using var api = new RemoteFsCapability(_sftp, _connections, pluginId: pluginId,
+            uploadPermissions: new(null, prompt), storage: context.Storage);
+        try
+        {
+            RemoteTransferSnapshot upload = await api.StartUploadAsync(_session.ToString(), source, "/target",
+                new() { OperationId = "auto-upload", ApprovalContext = origin });
+            RemoteTransferSnapshot uploadDone = await Terminal(api, upload.TransferId);
+            Assert.AreEqual(uploadApproved, uploadDone.IsSuccess, uploadDone.ErrorMessage);
+            RemoteTransferSnapshot download = await api.StartDownloadAsync(_session.ToString(), "/source", target,
+                new() { OperationId = "auto-download", ApprovalContext = origin });
+            RemoteTransferSnapshot downloadDone = await Terminal(api, download.TransferId);
+            Assert.AreEqual(downloadApproved, downloadDone.IsSuccess, downloadDone.ErrorMessage);
+            Assert.AreEqual(downloadApproved, File.Exists(target));
+            await prompt.Received(uploadApproved ? 0 : 1).RequestFileUploadAsync(pluginId, Arg.Any<string>(), Arg.Any<string>(),
+                "/target", false, 3, Arg.Any<CancellationToken>());
+            await prompt.Received(downloadApproved ? 0 : 1).RequestFileDownloadAsync(pluginId, Arg.Any<string>(), "/source",
+                target, false, 3, Arg.Any<CancellationToken>());
+
+            // 宿主每次重新读取策略,旧 MCP 连接不能把关闭前的设置缓存成永久授权。
+            await context.Storage.SetAsync("mcp-server", JsonSerializer.Deserialize<JsonElement>("{}"));
+            RemoteTransferSnapshot later = await api.StartUploadAsync(_session.ToString(), source, "/later",
+                new() { OperationId = "after-disable", ApprovalContext = origin });
+            Assert.AreEqual("permission-denied", (await Terminal(api, later.TransferId)).ErrorCode);
+        }
+        finally { await WaitIdle(api); File.Delete(source); Directory.Delete(directory, true); }
+    }
+
+    [TestMethod]
     public async Task ActualManagerContextRequiresUploadGateAndPassesBoundPluginIdentity()
     {
         string file = CreateFile(8);

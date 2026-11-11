@@ -639,7 +639,8 @@ public sealed partial class ChatPanelViewUiTests
                     "候选探活已结束，正式流尚被粘住保存的闸门阻挡");
                 TextBlock usage = Find<TextBlock>(panel, "UsageText");
                 Assert.HasCount(1, healthy.Requests, "当前只有候选探活，没有正式流");
-                Assert.AreEqual("↑11 ↓5", usage.Text, "探活只能累计，不能充当正文的上一轮上下文");
+                Assert.AreEqual("", usage.Text, "探活不能充当正文的上一轮上下文");
+                Assert.AreEqual("11 tok ↑  5 tok ↓", Find<TextBlock>(panel, "TokenFlowText").Text);
                 Assert.Contains("Conversation total: in 11 / out 5", ToolTip.GetTip(usage) as string ?? "");
                 storage.Release.TrySetResult();
                 Assert.IsTrue(await WaitForAsync(() => !Find<Viewbox>(panel, "StopIcon").IsVisible));
@@ -3293,7 +3294,9 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.HasCount(3, failed.Requests, "失败元数据流有限重试两次");
                 Assert.AreEqual("回答", AnswerRenderers(messages).Last().MarkdownBuilder.ToString());
                 TextBlock usage = Find<TextBlock>(panel, "UsageText");
-                Assert.AreEqual("↑71 ↓19", usage.Text, "累计保留50/10与三次7/3,未知正文占窗不能借用历史或失败量");
+                Assert.AreEqual("", usage.Text, "未知正文占窗不能借用历史或失败量");
+                Assert.AreEqual("71 tok ↑  19 tok ↓", Find<TextBlock>(panel, "TokenFlowText").Text,
+                    "累计保留50/10与三次7/3");
                 Assert.Contains("Conversation total: in 71 / out 19", ToolTip.GetTip(usage) as string ?? "");
                 Assert.DoesNotContain("Last turn context:", ToolTip.GetTip(usage) as string ?? "");
             }
@@ -3473,6 +3476,42 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.HasCount(3, endpoint.Requests);
                 Assert.IsNotEmpty(AnswerRenderers(messages));
                 Assert.DoesNotContain(b => b.Classes.Contains("errorCard"), messages.GetVisualDescendants().OfType<Border>());
+            }
+            finally { panel.Detach(); window.Close(); }
+        });
+    }
+
+    [TestMethod]
+    public void AgentRemoteTimeout_PausesWithNoticeWithoutReplayingCommand()
+    {
+        OnUi(async () =>
+        {
+            await using var endpoint = new SseStub(ImageToolCall("run_command", "{\"command\":\"uptime\"}"));
+            using var context = new TestPluginContext();
+            context.FakeSessions.AddConnected();
+            context.FakeRemoteExec.StreamHandler = (_, _) => throw new TimeoutException("Execution deadline expired.");
+            AiProvider provider = StubProvider("agent", endpoint.BaseUrl, "m");
+            await new AiSettingsStore(context).SaveAsync(new AiSettings
+            {
+                Providers = [provider],
+                ActiveModelId = provider.Models[0].Id,
+                Mode = ChatMode.Agent,
+                Approval = ApprovalMode.Bypass,
+                SuggestFollowUps = false
+            });
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                panel.SendExternal("Check uptime");
+                StackPanel messages = Find<StackPanel>(panel, "MessagesPanel");
+                Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count > 0
+                    && !Find<Viewbox>(panel, "StopIcon").IsVisible));
+                Assert.HasCount(1, context.FakeRemoteExec.Streamed);
+                Assert.HasCount(1, endpoint.Requests);
+                Assert.DoesNotContain(b => b.Classes.Contains("errorCard"),
+                    messages.GetVisualDescendants().OfType<Border>());
+                Assert.IsTrue(messages.GetVisualDescendants().OfType<TextBlock>()
+                    .Any(t => t.Text == new Loc(context.Host.Locale)["TaskUnknown"]));
             }
             finally { panel.Detach(); window.Close(); }
         });
