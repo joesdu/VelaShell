@@ -58,7 +58,8 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             => await runContext.Sessions.GetAsync(id, token).ConfigureAwait(false) is { } session
                 && (runAuthorization is null || await runAuthorization.AllowsLiveAsync(session, token).ConfigureAwait(false));
         CommandJobRunScope run = _jobs.BeginRun(ownerId, runId, Authorize, denialEndsRun, cancellationToken);
-        run.Transfers = FileTransferJobRegistry.For(context).BeginRun(ownerId, runId, Authorize, denialEndsRun);
+        run.Transfers = FileTransferJobRegistry.For(context).BeginRun(ownerId, runId, Authorize, denialEndsRun,
+            TransferApprovalContext);
         return run;
     }
 
@@ -125,6 +126,19 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
     /// <summary>审批方式(见 <see cref="ApprovalMode" />)。</summary>
     public ApprovalMode Approval { get; set; } = ApprovalMode.Ask;
+
+    internal RemoteTransferApprovalContext TransferApprovalContext { get; init; }
+    internal bool AutoApproveUploads { get; init; }
+    internal bool AutoApproveDownloads { get; init; }
+
+    private bool AutoApprovesTransfer(RemoteTransferDirection direction)
+        => TransferApprovalContext == RemoteTransferApprovalContext.ExternalMcp
+           && direction switch
+           {
+               RemoteTransferDirection.Upload => AutoApproveUploads,
+               RemoteTransferDirection.Download => AutoApproveDownloads,
+               _ => false
+           };
 
     /// <summary>当前轮次的子 Agent 编排器;为空时不暴露委托工具。</summary>
     public SubagentOrchestrator? Subagents { get; set; }
@@ -1931,7 +1945,10 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     {
         try
         {
-            if (!await ApproveAsync(new ApprovalRequest("transfer_cancel",
+            bool autoApprove = TransferApprovalContext == RemoteTransferApprovalContext.ExternalMcp
+                && (AutoApproveUploads || AutoApproveDownloads)
+                && AutoApprovesTransfer(CurrentRun.Transfers!.GetDirection(transferId));
+            if (!autoApprove && !await ApproveAsync(new ApprovalRequest("transfer_cancel",
                 $"Cancel transfer {transferId}, generation={expectedGeneration}"), cancellationToken).ConfigureAwait(false))
             {
                 return "The user DENIED cancelling this transfer. Do not retry.";
@@ -2076,7 +2093,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             return $"{remotePath} is a directory; archive it first (tar) and download the archive.";
         }
-        // 往用户自己的磁盘上写东西,一律问一次;覆盖意图必须显式传入。
+        // 覆盖意图必须显式传入;MCP 可由用户单独开启下载自动批准。
         if (!await ApproveAsync(new ApprovalRequest("download_remote_file", $"{remotePath}\n→ {target}  ({entry.Size} bytes, overwrite={overwrite})"),
                 cancellationToken).ConfigureAwait(false))
         {
@@ -2418,6 +2435,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
     private async Task<bool> ApproveAsync(ApprovalRequest request, CancellationToken cancellationToken)
     {
+        if ((request.Kind is "upload_local_file" or "transfer_resume" && AutoApprovesTransfer(RemoteTransferDirection.Upload))
+            || (request.Kind == "download_remote_file" && AutoApprovesTransfer(RemoteTransferDirection.Download)))
+        {
+            return true;
+        }
         if (Approval == ApprovalMode.Bypass)
         {
             return true;

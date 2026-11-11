@@ -168,6 +168,11 @@
                   </StackPanel>
                 </Grid>
                 <TextBlock x:Name="McpApprovalHint" Classes="hint" />
+                <StackPanel>
+                  <CheckBox x:Name="McpAutoApproveDownloadsCheck" Classes="host" />
+                  <CheckBox x:Name="McpAutoApproveUploadsCheck" Classes="host" />
+                  <TextBlock x:Name="McpAutoApproveTransfersHint" Classes="hint" TextWrapping="Wrap" />
+                </StackPanel>
 
                 <!-- 范围:与「已授权的聊天」那一段共用勾选框。从前这里是个多行文本框,要用户手打
                      user@host:port —— 打错一个字就是外部 agent 一台机器也碰不到,而界面上看不出哪里错。 -->

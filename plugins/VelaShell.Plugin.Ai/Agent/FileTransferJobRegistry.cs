@@ -54,8 +54,9 @@ public sealed class FileTransferJobRegistry
 
     /// <summary>传输身份能力由入口生成，不接受模型指定 owner/run。</summary>
     public FileTransferRunScope BeginRun(string ownerId, string runId,
-        Func<string, CancellationToken, Task<bool>>? authorize = null, bool denialEndsRun = false)
-        => new(this, ownerId, runId, authorize, denialEndsRun);
+        Func<string, CancellationToken, Task<bool>>? authorize = null, bool denialEndsRun = false,
+        RemoteTransferApprovalContext approvalContext = RemoteTransferApprovalContext.Default)
+        => new(this, ownerId, runId, authorize, denialEndsRun, approvalContext);
 
     internal Task<RemoteTransferSnapshot> StartAsync(FileTransferRunScope scope, string sessionId,
         string localPath, string remotePath, string operationId, bool overwrite, CancellationToken token)
@@ -133,13 +134,13 @@ public sealed class FileTransferJobRegistry
         }
     }
 
-    private async Task<RemoteTransferSnapshot> StartRemoteAsync(RemoteTransferDirection direction, string sessionId,
+    private async Task<RemoteTransferSnapshot> StartRemoteAsync(FileTransferRunScope scope, RemoteTransferDirection direction, string sessionId,
         string localPath, string remotePath, string operationId, bool overwrite)
         => direction == RemoteTransferDirection.Download
             ? await _remoteFs.StartDownloadAsync(sessionId, remotePath, localPath,
-                new RemoteDownloadOptions { OperationId = operationId, Overwrite = overwrite }, _lifetime).ConfigureAwait(false)
+                new RemoteDownloadOptions { OperationId = operationId, Overwrite = overwrite, ApprovalContext = scope.ApprovalContext }, _lifetime).ConfigureAwait(false)
             : await _remoteFs.StartUploadAsync(sessionId, localPath, remotePath,
-                new RemoteUploadOptions { OperationId = operationId, Overwrite = overwrite }, _lifetime).ConfigureAwait(false);
+                new RemoteUploadOptions { OperationId = operationId, Overwrite = overwrite, ApprovalContext = scope.ApprovalContext }, _lifetime).ConfigureAwait(false);
 
     private async Task<RemoteTransferSnapshot> ReceiveStartAsync(FileTransferRunScope scope, RemoteTransferDirection direction, string sessionId,
         string localPath, string remotePath, string operationId, bool overwrite)
@@ -147,12 +148,12 @@ public sealed class FileTransferJobRegistry
         RemoteTransferSnapshot snapshot;
         try
         {
-            snapshot = await StartRemoteAsync(direction, sessionId, localPath, remotePath, operationId, overwrite).ConfigureAwait(false);
+            snapshot = await StartRemoteAsync(scope, direction, sessionId, localPath, remotePath, operationId, overwrite).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or TimeoutException)
         {
             // 短请求回执丢失时只用原 OperationId 重取一次；从不另造 id 重传。
-            snapshot = await StartRemoteAsync(direction, sessionId, localPath, remotePath, operationId, overwrite).ConfigureAwait(false);
+            snapshot = await StartRemoteAsync(scope, direction, sessionId, localPath, remotePath, operationId, overwrite).ConfigureAwait(false);
         }
         Job job;
         lock (_gate)
@@ -219,6 +220,12 @@ public sealed class FileTransferJobRegistry
         catch (TimeoutException) { /* 只是本地等待窗口，不是传输执行死线。 */ }
         await AuthorizeAsync(job, token).ConfigureAwait(false);
         return Deliver(job);
+    }
+
+    internal RemoteTransferDirection GetDirection(FileTransferRunScope scope, string id)
+    {
+        Job job = Find(scope, id);
+        lock (_gate) return job._snapshot.Direction;
     }
 
     internal async Task CancelAsync(FileTransferRunScope scope, string id, long generation, CancellationToken token)
@@ -695,6 +702,7 @@ public sealed class FileTransferRunScope : IAsyncDisposable
     /// 不连带撤掉同一连接里别的上传。
     /// </summary>
     internal bool DenialEndsRun { get; }
+    internal RemoteTransferApprovalContext ApprovalContext { get; }
     /// <summary>入口持有的稳定对话所有者。</summary>
     public string OwnerId { get; }
     /// <summary>入口生成的运行代际。</summary>
@@ -711,11 +719,13 @@ public sealed class FileTransferRunScope : IAsyncDisposable
     public bool HasUnknownOutcome => _registry.HasUnknownOutcome(this);
 
     internal FileTransferRunScope(FileTransferJobRegistry registry, string ownerId, string runId,
-        Func<string, CancellationToken, Task<bool>>? authorize, bool denialEndsRun = false)
+        Func<string, CancellationToken, Task<bool>>? authorize, bool denialEndsRun = false,
+        RemoteTransferApprovalContext approvalContext = RemoteTransferApprovalContext.Default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
         ArgumentException.ThrowIfNullOrWhiteSpace(runId);
         _registry = registry; OwnerId = ownerId; RunId = runId; _authorize = authorize; DenialEndsRun = denialEndsRun;
+        ApprovalContext = approvalContext;
     }
 
     /// <summary>订阅后台进度；调用者切到 UI 线程并显式释放返回的订阅。</summary>
@@ -749,6 +759,8 @@ public sealed class FileTransferRunScope : IAsyncDisposable
     /// <summary>只等本地完成信号，超时或取消本次等待不会取消上传。</summary>
     public Task<RemoteTransferSnapshot> WaitAsync(string transferId, TimeSpan wait,
         CancellationToken cancellationToken = default) => _registry.WaitAsync(this, transferId, wait, cancellationToken);
+    // 取消审批只看本轮缓存的方向,不能因读取授权被撤销而阻止清理。
+    internal RemoteTransferDirection GetDirection(string transferId) => _registry.GetDirection(this, transferId);
     /// <summary>显式取消指定执行代次，不返回撤权后的元数据。</summary>
     public Task CancelAsync(string transferId, long expectedGeneration, CancellationToken cancellationToken = default)
         => _registry.CancelAsync(this, transferId, expectedGeneration, cancellationToken);

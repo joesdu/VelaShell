@@ -50,6 +50,12 @@ public sealed class McpServerSettings
     /// </summary>
     public ApprovalMode Approval { get; set; } = ApprovalMode.ReadOnlyAuto;
 
+    /// <summary>自动批准 MCP 上传(包括显式覆盖);默认关闭,宿主仍独立核对保存的策略。</summary>
+    public bool AutoApproveUploads { get; set; }
+
+    /// <summary>自动批准 MCP 下载(包括显式覆盖);默认关闭,不影响桌面聊天和 IM。</summary>
+    public bool AutoApproveDownloads { get; set; }
+
     /// <summary>不暴露给外部 agent 的工具名,每行一条。</summary>
     public string DisabledTools { get; set; } = "";
 

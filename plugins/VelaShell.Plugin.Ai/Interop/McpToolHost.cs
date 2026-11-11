@@ -4,6 +4,7 @@ using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Bridge;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
+using VelaShell.PluginSdk.RemoteFs;
 using VelaShell.PluginSdk.Sessions;
 
 namespace VelaShell.Plugin.Ai.Interop;
@@ -68,6 +69,9 @@ internal sealed class McpToolHost : IAsyncDisposable
             SessionIdProvider = () => _sessionId,
             Scope = _scope,
             Approval = settings.Approval,
+            TransferApprovalContext = RemoteTransferApprovalContext.ExternalMcp,
+            AutoApproveUploads = settings.AutoApproveUploads,
+            AutoApproveDownloads = settings.AutoApproveDownloads,
             // 提权的人工确认交给宿主的 root 确认框与密码框(见类型注释)
             ElevationConfirmedByHost = true,
             DisabledTools = new HashSet<string>(

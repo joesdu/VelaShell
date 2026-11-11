@@ -8,6 +8,56 @@ namespace VelaShell.Infrastructure.Tests.Plugins;
 [TestCategory("Plugins")]
 public class PluginPermissionGateTests
 {
+    [TestMethod]
+    public async Task AutoApproval_DoesNotWaitForPromptAndKeepsRevocableOwnedLeases()
+    {
+        var asking = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var pending = new CancellationTokenSource();
+        IPluginPermissionPrompt prompt = Substitute.For<IPluginPermissionPrompt>();
+        prompt.RequestFileUploadAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<bool>(), Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            asking.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, call.ArgAt<CancellationToken>(6));
+            return PluginPermissionDecision.Deny;
+        });
+        var gate = new PluginPermissionGate(null, prompt);
+        using UploadPermissionLease waiting = gate.CreateUploadLease("manual");
+        Task<bool> manual = gate.CheckUploadAsync(waiting, "manual", "s", "/local", "/remote", false, 8, pending.Token);
+        try
+        {
+            await asking.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            using UploadPermissionLease upload = gate.CreateUploadLease("p");
+            using DownloadPermissionLease download = gate.CreateDownloadLease("p");
+            int callbacks = 0;
+            Assert.IsFalse(await gate.CheckUploadAsync(upload, "other", "s", "/local", "/remote", false, 8, default,
+                () => callbacks++, autoApprove: true));
+            Assert.IsFalse(await gate.CheckDownloadAsync(download, "other", "s", "/remote", "/local", false, 8, default,
+                () => callbacks++, autoApprove: true));
+            Assert.IsTrue(await gate.CheckUploadAsync(upload, "p", "s", "/local", "/remote", false, 8, default,
+                () => callbacks++, autoApprove: true).WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.IsTrue(await gate.CheckDownloadAsync(download, "p", "s", "/remote", "/local", false, 8, default,
+                () => callbacks++, autoApprove: true).WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.AreEqual(2, callbacks);
+            Assert.IsTrue(upload.Approved);
+            Assert.IsTrue(download.Approved);
+            await gate.RevokeAsync("p");
+            Assert.IsTrue(upload.IsRevoked);
+            Assert.IsTrue(download.IsRevoked);
+            await Assert.ThrowsAsync<OperationCanceledException>(() =>
+                gate.CheckUploadAsync(upload, "p", "s", "/local", "/remote", false, 8, default, autoApprove: true));
+            await Assert.ThrowsAsync<OperationCanceledException>(() =>
+                gate.CheckDownloadAsync(download, "p", "s", "/remote", "/local", false, 8, default, autoApprove: true));
+            await prompt.DidNotReceive().RequestFileDownloadAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<long>(), Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            await pending.CancelAsync();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => manual);
+        }
+    }
+
     /// <summary>内存 IAppDataStore(单文档存取即可)。</summary>
     private sealed class MemoryStore : IAppDataStore
     {

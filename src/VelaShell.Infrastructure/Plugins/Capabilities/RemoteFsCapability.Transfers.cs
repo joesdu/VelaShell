@@ -620,8 +620,9 @@ internal sealed partial class RemoteFsCapability
             ct.ThrowIfCancellationRequested();
             SshSession target = connections.GetSession(session) ?? throw new PluginSessionNotFoundException(Read(op).SessionId);
             string label = $"{target.ConnectionInfo.Username}@{target.ConnectionInfo.Host}:{target.ConnectionInfo.Port}";
+            bool autoApprove = await AutoApproveTransferAsync(options.ApprovalContext, RemoteTransferDirection.Upload, ct).ConfigureAwait(false);
             bool approved = await uploadPermissions.CheckUploadAsync(op._permission, pluginId, label, Read(op).LocalPath,
-                Read(op).RemotePath, options.Overwrite, op._sourceLength, ct, () => EnterTransferPhase(op)).ConfigureAwait(false);
+                Read(op).RemotePath, options.Overwrite, op._sourceLength, ct, () => EnterTransferPhase(op), autoApprove).ConfigureAwait(false);
             if (!approved) throw new PluginPermissionDeniedException("The user denied this upload.");
             ConfirmApprovedOrCancelled(op, ct);
             ValidateSource(op);

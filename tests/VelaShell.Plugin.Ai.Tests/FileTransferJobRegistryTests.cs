@@ -641,7 +641,10 @@ public sealed class FileTransferJobRegistryTests
     }
 
     [TestMethod]
-    public async Task McpUpload_ReturnsQuickly_AndActiveTransferSurvivesCallTimeout()
+    [DataRow(ApprovalMode.Bypass, false)]
+    [DataRow(ApprovalMode.Ask, true)]
+    [DataRow(ApprovalMode.ReadOnlyAuto, true)]
+    public async Task McpUpload_ReturnsQuickly_AndActiveTransferSurvivesCallTimeout(ApprovalMode approval, bool autoApprove)
     {
         using var context = new TestPluginContext();
         SessionInfo session = context.FakeSessions.AddConnected();
@@ -651,9 +654,11 @@ public sealed class FileTransferJobRegistryTests
         context.FakeRemoteFs.StartUploadHandler = (id, source, target, options, _) =>
             Task.FromResult(snapshot = Running(id, source, target, options.OperationId));
         context.FakeRemoteFs.WaitTransferHandler = (_, _, _, ct) => finish.Task.WaitAsync(ct);
-        context.FakeRemoteFs.CancelTransferHandler = (_, _, _) => Task.FromResult(snapshot! with
+        context.FakeRemoteFs.GetTransferHandler = (_, _) => Task.FromResult(snapshot!);
+        context.FakeRemoteFs.CancelTransferHandler = (_, _, _) => Task.FromResult(snapshot = snapshot! with
         { State = RemoteTransferState.Cancelled, Sequence = 2, RemoteStopConfirmed = true });
-        await using var host = new McpToolHost(context, new McpServerSettings { Mode = ChatMode.Agent, Approval = ApprovalMode.Bypass });
+        await using var host = new McpToolHost(context, new McpServerSettings
+        { Mode = ChatMode.Agent, Approval = approval, AutoApproveUploads = autoApprove });
         string local = Source(64L * 1024 * 1024);
         try
         {
@@ -664,9 +669,69 @@ public sealed class FileTransferJobRegistryTests
             await request.CancelAsync();
             Assert.IsTrue(host.HasActiveTransfers);
             Assert.IsEmpty(context.FakeRemoteFs.TransfersCancelled);
-            finish.TrySetResult(snapshot! with { State = RemoteTransferState.Succeeded, Sequence = 2 });
+            Assert.AreEqual(RemoteTransferApprovalContext.ExternalMcp, context.FakeRemoteFs.UploadsStarted.Single().Options.ApprovalContext);
+            if (autoApprove)
+            {
+                context.FakeRemoteFs.GetTransferHandler = (_, _) =>
+                    throw new UnauthorizedAccessException("Read authorization revoked.");
+                await host.CallAsync("transfer_cancel", new Dictionary<string, object?>
+                { ["transferId"] = "transfer", ["expectedGeneration"] = snapshot!.Generation }, default);
+                Assert.HasCount(1, context.FakeRemoteFs.TransfersCancelled);
+            }
+            finish.TrySetResult(autoApprove ? snapshot! : snapshot! with { State = RemoteTransferState.Succeeded, Sequence = 2 });
         }
         finally { File.Delete(local); }
+    }
+
+    [TestMethod]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    public async Task McpTransferApproval_IsIndependentPerDirectionAndDoesNotAuthorizeOtherEntrypoints(bool uploads, bool downloads)
+    {
+        using var context = new TestPluginContext();
+        string session = DownloadableHost(context);
+        context.FakeRemoteFs.StartUploadHandler = (id, local, remote, options, _) =>
+            Task.FromResult(Running(id, local, remote, options.OperationId) with
+            { TransferId = options.OperationId, State = RemoteTransferState.Succeeded, RemoteStopConfirmed = true });
+        context.FakeRemoteFs.StartDownloadHandler = (id, remote, local, options, _) =>
+            Task.FromResult(StartDownloadLikeHost(id, remote, local, options.OperationId) with
+            { TransferId = options.OperationId, State = RemoteTransferState.Succeeded, RemoteStopConfirmed = true });
+        var settings = new McpServerSettings
+        { Mode = ChatMode.Agent, Approval = ApprovalMode.Ask, AutoApproveUploads = uploads, AutoApproveDownloads = downloads };
+        await using var host = new McpToolHost(context, settings);
+        string source = Source(3);
+        try
+        {
+            var uploadArgs = new Dictionary<string, object?> { ["sessionId"] = session, ["localPath"] = source, ["remotePath"] = "/tmp/target" };
+            var downloadArgs = new Dictionary<string, object?> { ["sessionId"] = session, ["remotePath"] = "/var/log/app.log" };
+            await host.CallAsync("upload_local_file", uploadArgs, default);
+            await host.CallAsync("download_remote_file", downloadArgs, default);
+            Assert.HasCount(uploads ? 1 : 0, context.FakeRemoteFs.UploadsStarted);
+            Assert.HasCount(downloads ? 1 : 0, context.FakeRemoteFs.DownloadsStarted);
+            if (downloads)
+                Assert.AreEqual(RemoteTransferApprovalContext.ExternalMcp, context.FakeRemoteFs.DownloadsStarted.Single().Options.ApprovalContext);
+
+            await using var desktop = new AgentToolbox(context) { Approval = ApprovalMode.Ask };
+            await using CommandJobRunScope run = desktop.BeginRun("desktop", "turn", denialEndsRun: false);
+            await Call(desktop, run, "upload_local_file", uploadArgs);
+            await Call(desktop, run, "download_remote_file", downloadArgs);
+            Assert.HasCount(uploads ? 1 : 0, context.FakeRemoteFs.UploadsStarted);
+            Assert.HasCount(downloads ? 1 : 0, context.FakeRemoteFs.DownloadsStarted);
+            desktop.Approval = ApprovalMode.Bypass;
+            string receipt = await Call(desktop, run, "upload_local_file", uploadArgs);
+            Assert.Contains("\"transfer_id\"", receipt);
+            Assert.AreEqual(RemoteTransferApprovalContext.Default, context.FakeRemoteFs.UploadsStarted.Last().Options.ApprovalContext);
+
+            await using var plan = new McpToolHost(context, new McpServerSettings
+            { Mode = ChatMode.Plan, AutoApproveUploads = true, AutoApproveDownloads = true });
+            Assert.IsFalse(plan.Tools.Any(t => t.Name is "upload_local_file" or "download_remote_file"));
+            await using var disabled = new McpToolHost(context, new McpServerSettings
+            { Mode = ChatMode.Agent, AutoApproveUploads = true, DisabledTools = "upload_local_file" });
+            Assert.IsFalse(disabled.Tools.Any(t => t.Name == "upload_local_file"));
+        }
+        finally { File.Delete(source); }
     }
 
     /// <summary>

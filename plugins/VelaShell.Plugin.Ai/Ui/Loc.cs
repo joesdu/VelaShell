@@ -771,12 +771,21 @@ public sealed class Loc(string locale)
             "127.0.0.1에서만 수신하며 모든 요청에 아래 토큰이 필요합니다."
         ],
         ["McpServerPort"] = ["Port", "端口", "連接埠", "ポート", "포트"],
+        ["McpAutoApproveDownloads"] = ["Automatically approve MCP downloads", "自动批准 MCP 下载", "自動批准 MCP 下載", "MCP ダウンロードを自動承認", "MCP 다운로드 자동 승인"],
+        ["McpAutoApproveUploads"] = ["Automatically approve MCP uploads", "自动批准 MCP 上传", "自動批准 MCP 上傳", "MCP アップロードを自動承認", "MCP 업로드 자동 승인"],
+        ["McpAutoApproveTransfersHint"] = [
+            "Off by default. In Agent mode, the selected transfers skip both tool approval and desktop confirmation, including explicitly requested overwrites. Applies only to this MCP server; chat, IM, commands and server restrictions are unchanged. Save to apply; turn off to confirm future transfers again.",
+            "默认关闭。Agent 挡位下,勾选的传输方向跳过工具审批和桌面确认,包括明确要求的覆盖。只对本 MCP 服务端生效;聊天、IM、命令及服务器范围限制不变。保存后生效,取消勾选后新传输恢复确认。",
+            "預設關閉。Agent 檔位下,勾選的傳輸方向跳過工具審批和桌面確認,包括明確要求的覆寫。只對本 MCP 伺服器生效;聊天、IM、命令及伺服器範圍限制不變。儲存後生效,取消勾選後新傳輸恢復確認。",
+            "初期状態はオフです。Agent モードで選んだ方向の転送は、明示的な上書きを含め、ツール承認とデスクトップ確認を省略します。この MCP サーバーだけに適用され、チャット、IM、コマンド、サーバー範囲の制限は変わりません。保存後に有効になり、オフにすると新しい転送で再び確認します。",
+            "기본값은 꺼짐입니다. Agent 모드에서 선택한 방향의 전송은 명시적으로 요청한 덮어쓰기를 포함해 도구 승인과 데스크톱 확인을 건너뜁니다. 이 MCP 서버에만 적용되며 채팅, IM, 명령 및 서버 범위 제한은 유지됩니다. 저장하면 적용되며 끄면 새 전송부터 다시 확인합니다."
+        ],
         ["McpServerApprovalHint"] = [
-            "An external agent has no window to show an approval card in, so \"ask every time\" refuses writes outright. Pick read-only auto or bypass to let it change things. Root commands are the exception: in Agent mode VelaShell itself asks you on this desktop to confirm and enter the sudo password, whichever option is picked here.",
-            "外部 agent 那边没有能弹审批卡的界面,所以「每次询问」在这条路上等于直接拒绝写操作。要让它能改东西,得选只读放行或绕过审批。要 root 的命令例外:Agent 挡位下,不管这里选哪一项,VelaShell 都会在本机弹窗请你确认并输入 sudo 密码。",
-            "外部 agent 那邊沒有能彈審批卡的介面,所以「每次詢問」在這條路上等於直接拒絕寫操作。要讓它能改東西,得選唯讀放行或繞過審批。要 root 的命令例外:Agent 檔位下,不管這裡選哪一項,VelaShell 都會在本機彈窗請你確認並輸入 sudo 密碼。",
-            "外部エージェント側に承認カードを出す画面がないため、「毎回確認」は書き込みを即拒否します。変更を許すには読み取り自動許可かバイパスを選んでください。root が必要なコマンドは例外で、Agent モードではここの選択にかかわらず、VelaShell がこの端末で確認と sudo パスワードの入力を求めます。",
-            "외부 에이전트에는 승인 카드를 띄울 화면이 없어 \"매번 확인\"은 쓰기를 즉시 거부합니다. 변경을 허용하려면 읽기 전용 자동 또는 우회를 선택하세요. root가 필요한 명령은 예외로, Agent 모드에서는 여기서 무엇을 고르든 VelaShell이 이 컴퓨터에서 확인과 sudo 비밀번호 입력을 요청합니다."
+            "External agents have no approval-card UI. Ask rejects ordinary writes; read-only auto permits only recognized read-only commands. Uploads and downloads can be approved separately using their dedicated switches. In Agent mode, root commands always require host confirmation and a sudo password when needed.",
+            "外部 agent 没有审批卡界面。「每次询问」拒绝普通写操作,「只读放行」仅放行识别出的只读命令。上传和下载可通过各自的开关单独自动批准。Agent 挡位下,root 命令始终由宿主确认,需要时再输入 sudo 密码。",
+            "外部 agent 沒有審批卡介面。「每次詢問」拒絕一般寫入操作,「唯讀放行」僅放行識別出的唯讀命令。上傳和下載可透過各自的開關分別自動批准。Agent 檔位下,root 命令一律由宿主確認,需要時再輸入 sudo 密碼。",
+            "外部エージェントには承認カードの画面がありません。都度確認は通常の書き込みを拒否し、読み取り自動許可は認識された読み取り専用コマンドだけを許可します。アップロードとダウンロードはそれぞれのスイッチで個別に自動承認できます。Agent モードの root コマンドは常にホストの確認を受け、必要に応じて sudo パスワードを入力します。",
+            "외부 에이전트에는 승인 카드 화면이 없습니다. 매번 확인은 일반 쓰기를 거부하며 읽기 전용 자동은 인식된 읽기 전용 명령만 허용합니다. 업로드와 다운로드는 각각의 스위치로 자동 승인할 수 있습니다. Agent 모드의 root 명령은 항상 호스트 확인을 거치며 필요하면 sudo 비밀번호를 입력합니다."
         ],
         ["McpServerTargets"] = ["Machines the external agent can operate", "外部 agent 能操作的机器", "外部 agent 能操作的機器", "外部エージェントが操作できるマシン", "외부 에이전트가 조작할 수 있는 머신"],
         ["McpServerTargetsHint"] = ["Ticked machines come from your session tree, and the limit applies to every tool call — not just to picking a session. A session you opened by typing ssh yourself is not in the tree, so a limited scope will not reach it.", "勾选项来自会话树,而且这个限制作用在每一次工具调用上,不只是\"选哪台\"。在终端里手敲 ssh 连出去的会话不在会话树里,受限时碰不到它。", "勾選項來自工作階段樹,而且這個限制作用在每一次工具呼叫上,不只是\"選哪台\"。在終端機裡手敲 ssh 連出去的工作階段不在樹裡,受限時碰不到它。", "チェック項目はセッションツリーから来ており、この制限は「どれを選ぶか」だけでなくすべてのツール呼び出しに効きます。端末で自分で ssh を打って開いたセッションはツリーにないため、範囲を絞ると届きません。", "선택 항목은 세션 트리에서 가져오며, 이 제한은 세션 선택뿐 아니라 모든 도구 호출에 적용됩니다. 터미널에서 직접 ssh로 연 세션은 트리에 없으므로 범위를 제한하면 닿지 않습니다."],

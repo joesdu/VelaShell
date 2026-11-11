@@ -3,6 +3,7 @@ using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
 using VelaShell.PluginSdk;
 using VelaShell.PluginSdk.RemoteFs;
+using VelaShell.PluginSdk.Storage;
 
 namespace VelaShell.Infrastructure.Plugins.Capabilities;
 
@@ -12,7 +13,8 @@ namespace VelaShell.Infrastructure.Plugins.Capabilities;
 /// (吸取大文件传输卡顿的历史教训)。
 /// </summary>
 internal sealed partial class RemoteFsCapability(ISftpService sftp, ISshConnectionService connections,
-    CancellationToken lifetime = default, string? pluginId = null, PluginPermissionGate? uploadPermissions = null) : IRemoteFsApi, IDisposable
+    CancellationToken lifetime = default, string? pluginId = null, PluginPermissionGate? uploadPermissions = null,
+    IPluginStorage? storage = null) : IRemoteFsApi, IDisposable
 {
     // 链接两个字段(SDK 2.1.3)随条目交给插件:进程内直接带,隔离模式 fs/list、fs/stat 的 JSON 自动带上 ——
     // 插件(含 AI 插件)经 IRemoteFsApi 看得到链接,删除、递归时才知道只处理链接本身。
