@@ -398,3 +398,9 @@ A–D 的本轮功能及 E 的本地自动化验证已完成；三平台 Stdio �
 - 本机 Docker Linux 引擎现已启动；本节点复用代码一致的三平台运行及逐项 TRX 证据，没有重复启动容器、推送或触发新流水线。
 - Linux/macOS Stdio 自动化验收项关闭。真实供应商委派、指定第三方 MCP 服务器兼容性和实际桌面主题/DPI 仍保留 §11.11 的验收条件；本次未访问个人凭据或向供应商发送工作区数据。
 
+### 11.13 2026-11-12：外部验收前置检查
+
+- 当前代码重新运行协议与 MCP 回归：`AnthropicWireTests`、`McpHttpTransportTests` 和 `McpStdioTransportTests` 共 **43/43 通过、0 失败、0 跳过**。
+- 仅检查配置是否存在，未读取或输出任何秘密值；当前进程未配置 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`ANTHROPIC_AUTH_TOKEN`、`GEMINI_API_KEY`、`MCP_SERVER_URL` 或测试服务器地址。Docker 引擎可用，但没有运行中的第三方 MCP 服务容器。
+- 因此真实供应商只读委派和指定第三方 MCP 兼容性仍是外部配置阻塞项，不能用本地协议桩或内置测试服务器冒充完成。下一次验收需要用户指定测试供应商/模型、允许发送的最小测试数据、第三方 MCP 镜像或启动配置；桌面主题与 DPI 仍需实际桌面视觉检查。
+
