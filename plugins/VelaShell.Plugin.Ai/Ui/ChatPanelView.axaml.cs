@@ -164,6 +164,8 @@ public partial class ChatPanelView : UserControl
     /// </summary>
     private long _selectionEpoch;
     private readonly Dictionary<string, string> _lastFirstApiKey = [with(StringComparer.Ordinal)];
+    private readonly Dictionary<AssistantBubble, Func<IReadOnlyList<SubagentSnapshot>>> _subagentSnapshotSources = [];
+    private DispatcherTimer? _subagentRefreshTimer;
 
     /// <summary>开跑时固定槽顺序、均摊开关及 active 所有权;每个模型单独排除已试槽。</summary>
     private sealed class ApiKeyTurnState(AiProvider provider, string[] slots)
@@ -2015,6 +2017,7 @@ public partial class ChatPanelView : UserControl
                         IReadOnlyList<AITool> trackedTools = SubagentOrchestrator.SubagentToolTracker.Wrap(
                             childTools, (name, result) =>
                             {
+                                subagents!.RecordToolUsage(name, result);
                                 toolCounts[name] = toolCounts.GetValueOrDefault(name) + 1;
                                 string? text = result switch
                                 {
@@ -2058,6 +2061,15 @@ public partial class ChatPanelView : UserControl
                             toolCounts.Select(pair => new SubagentToolUsage(pair.Key, pair.Value)).ToArray(),
                             toolErrors);
                     }, token);
+                    if (bubble is not null && !_subagentSnapshotSources.ContainsKey(bubble))
+                    {
+                        SubagentOrchestrator observed = subagents;
+                        observed.SnapshotsChanged += snapshots =>
+                            Dispatcher.UIThread.Post(() => UpdateSubagentCards(bubble, snapshots));
+                        _subagentSnapshotSources[bubble] = observed.Snapshots;
+                        EnsureSubagentRefreshTimer();
+                        UpdateSubagentCards(bubble, observed.Snapshots());
+                    }
                     _toolbox.Subagents = mode == ChatMode.Agent ? subagents : null;
                     ApplyApprovalMode(); // 挡位推给工具箱与 MCP(中途再改也会经这条路重推)
                     _toolbox.DisabledTools = new HashSet<string>(
@@ -2068,7 +2080,7 @@ public partial class ChatPanelView : UserControl
                     _toolbox.LocalMaxFileBytes = _settings.LocalMaxFileBytes;
                     _toolbox.LocalMaxDirectoryEntries = _settings.LocalMaxDirectoryEntries;
                     IList<AITool> tools = mode == ChatMode.Chat ? [] : _toolbox.CreateTools(mode, nativeSearch, runScope);
-                    if (bubble.ImageTools is { } imageTools)
+                    if (bubble?.ImageTools is { } imageTools)
                         foreach (AITool tool in imageTools.CreateTools()) tools.Add(tool);
                     // 计划模式下不接 MCP:那些工具的副作用由第三方服务器说了算,插件无从判断,
                     // 而"计划"的承诺是这一步不动任何东西。
@@ -2152,7 +2164,16 @@ public partial class ChatPanelView : UserControl
                 }
                 // 装配上下文:摘要 + 近几轮原文,按窗口裁剪并把相邻同角色的消息并起来(见 ContextBuilder)
                 RequestContext request = ContextBuilder.Build(
-                    BuildSystemPrompt(current, mode, nativeSearch) + (imageToolsEnabled
+                    BuildSystemPrompt(current, mode, nativeSearch)
+                    + (options.Tools?.OfType<AIFunction>().Any(tool => tool.Name == "delegate_subagent") == true
+                        ? "\nFor requests to use multiple agents or independent parallel analyses, use delegate_subagent for each focused task, " +
+                          "then collect their results with subagent_wait or subagent_status before reporting completion. " +
+                          "Subagents are AI workers, not remote OS processes: run_command and task_status do not create subagents or their UI cards. " +
+                          "Subagents can read authorized files, directories, terminal output and allowed read-only MCP tools, but cannot run shell commands. " +
+                          "If analysis needs command output (for example df, ss or ps), collect it with parent tools first and include it in the delegated prompt. " +
+                          "Do not claim subagents were created unless delegate_subagent succeeded. If the user explicitly wants OS processes, use command tools instead.\n"
+                        : "")
+                    + (imageToolsEnabled
                         ? "\nImage tools are available. For explicit image creation requests, use generate_image with a standalone prompt incorporating the relevant conversation details. " +
                           "For changes to an existing image use edit_image with its exact conversation image ID. Do not claim success before the tool succeeds. " +
                           "Never automatically retry failed image operations. Do not include unrelated terminal content or secrets in image prompts.\n" + ImagesFor(conv).Describe()
@@ -2500,8 +2521,13 @@ public partial class ChatPanelView : UserControl
                 if (subagents is not null)
                 {
                     await subagents.DisposeAsync();
-                    AddSubagentCards(bubble, subagents.Snapshots());
+                    if (bubble is not null)
+                    {
+                        UpdateSubagentCards(bubble, subagents.Snapshots());
+                        _subagentSnapshotSources.Remove(bubble);
+                    }
                 }
+                StopSubagentRefreshTimerIfIdle();
                 Cts?.Dispose();
                 Cts = null;
                 ActiveBubble = null;
@@ -3301,7 +3327,7 @@ public partial class ChatPanelView : UserControl
         RequestAutoScroll(force: true);
     }
 
-    private void AddSubagentCards(AssistantBubble? bubble, IReadOnlyList<SubagentSnapshot> snapshots)
+    private void UpdateSubagentCards(AssistantBubble? bubble, IReadOnlyList<SubagentSnapshot> snapshots)
     {
         if (snapshots.Count == 0)
         {
@@ -3347,8 +3373,50 @@ public partial class ChatPanelView : UserControl
             }
             stack.Children.Add(new Border { Classes = { "toolCard" }, Child = detail });
         }
-        bubble.AddCard(new Border { Classes = { "noticeCard" }, Child = stack });
-        RequestAutoScroll(force: true);
+        Border card = new() { Classes = { "noticeCard" }, Child = stack };
+        if (_subagentCards.TryGetValue(bubble, out Border? previous))
+        {
+            int index = bubble.CardHostIndex(previous);
+            if (index >= 0)
+            {
+                bubble.ReplaceCard(index, card);
+            }
+        }
+        else
+        {
+            bubble.AddCard(card);
+        }
+        _subagentCards[bubble] = card;
+        RequestAutoScroll(force: snapshots.Any(snapshot => snapshot.Status is "completed" or "failed" or "cancelled" or "timed_out"));
+    }
+
+    private readonly Dictionary<AssistantBubble, Border> _subagentCards = [];
+
+    private void EnsureSubagentRefreshTimer()
+    {
+        _subagentRefreshTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        if (!_subagentRefreshTimer.IsEnabled)
+        {
+            _subagentRefreshTimer.Tick += RefreshSubagentCards;
+            _subagentRefreshTimer.Start();
+        }
+    }
+
+    private void RefreshSubagentCards(object? sender, EventArgs e)
+    {
+        foreach ((AssistantBubble bubble, Func<IReadOnlyList<SubagentSnapshot>> source) in _subagentSnapshotSources.ToArray())
+        {
+            UpdateSubagentCards(bubble, source());
+        }
+    }
+
+    private void StopSubagentRefreshTimerIfIdle()
+    {
+        if (_subagentSnapshotSources.Count == 0 && _subagentRefreshTimer is { } timer)
+        {
+            timer.Stop();
+            timer.Tick -= RefreshSubagentCards;
+        }
     }
 
     private void AddErrorCard(AssistantBubble? bubble, string detail)
@@ -3754,6 +3822,18 @@ public partial class ChatPanelView : UserControl
         {
             _stack.Children.Add(card);
             _currentSegment = null; // 卡之后的新文本另起一个 Markdown 段
+        }
+
+        public int CardHostIndex(Control card) => _stack.Children.IndexOf(card);
+
+        public void ReplaceCard(int index, Control card)
+        {
+            if (index < 0 || index >= _stack.Children.Count)
+            {
+                return;
+            }
+            _stack.Children[index] = card;
+            _currentSegment = null;
         }
 
         /// <summary>仅在尚无有效输出、允许重放时丢弃失败尝试留下的空白正文与思考。</summary>

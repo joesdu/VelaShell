@@ -85,4 +85,61 @@ public sealed class SubagentOrchestratorTests
 
         Assert.IsTrue(results.All(result => result.Contains("\"status\":\"timed_out\"")));
     }
+
+    [TestMethod]
+    public async Task SnapshotsChanged_ReportsRunningAndCompletedStates()
+    {
+        var running = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        List<IReadOnlyList<SubagentSnapshot>> changes = [];
+        await using var orchestrator = new SubagentOrchestrator(async (_, token) =>
+        {
+            running.SetResult();
+            await release.Task.WaitAsync(token);
+            return new SubagentExecutionResult("done", [new SubagentToolUsage("read_local_file", 1)], []);
+        }, CancellationToken.None);
+        orchestrator.SnapshotsChanged += snapshots => changes.Add(snapshots);
+
+        string started = orchestrator.Start("inspect", "reader");
+        string id = started.Split(' ', StringSplitOptions.RemoveEmptyEntries)[2].TrimEnd('.');
+        await running.Task;
+
+        Assert.IsTrue(changes.SelectMany(snapshot => snapshot)
+            .Any(snapshot => snapshot.SubagentId == id && snapshot.Status == "running"));
+
+        release.SetResult();
+        await orchestrator.WaitAsync(id, 5, CancellationToken.None);
+
+        Assert.IsTrue(changes.SelectMany(snapshot => snapshot)
+            .Any(snapshot => snapshot.SubagentId == id
+                && snapshot.Status == "completed"
+                && snapshot.ToolsUsed.Any(tool => tool.Name == "read_local_file")));
+    }
+
+    [TestMethod]
+    public async Task RecordToolUsage_IsVisibleBeforeCompletion()
+    {
+        var running = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        SubagentOrchestrator? owner = null;
+        owner = new SubagentOrchestrator(async (_, token) =>
+        {
+            owner!.RecordToolUsage("read_local_file", "ok");
+            running.SetResult();
+            await release.Task.WaitAsync(token);
+            return SubagentExecutionResult.FromText("done");
+        }, CancellationToken.None);
+        await using SubagentOrchestrator orchestrator = owner;
+
+        string started = orchestrator.Start("inspect", null);
+        string id = started.Split(' ', StringSplitOptions.RemoveEmptyEntries)[2].TrimEnd('.');
+        await running.Task;
+
+        string status = orchestrator.Status(id);
+        Assert.Contains("\"name\":\"read_local_file\"", status);
+        Assert.Contains("\"count\":1", status);
+
+        release.SetResult();
+        await orchestrator.WaitAsync(id, 5, CancellationToken.None);
+    }
 }
