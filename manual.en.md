@@ -267,7 +267,7 @@ Tailscale mode requires Tailscale installed and signed in locally, a MagicDNS na
 
 **Fingerprint boundary:** Automatic reconnection stops for unknown/changed fingerprints or authentication requiring human intervention. It does not keep a fingerprint dialog waiting or silently trust a key. Recover through manual reconnection, verify the fingerprint independently, and accept only when justified or contact your administrator. **Do not disable fingerprint checking to restore connectivity.**
 
-**Entry point and steps:** General behavior settings control automatic reconnection, maximum attempts, and interval cap. Use the disconnected-session overlay, or press `Enter`/`Ctrl+R` in a disconnected tab. `Esc` closes a disconnected tab.
+**Entry point and steps:** General behavior settings control automatic reconnection, maximum attempts, and interval cap. In the disconnected-session overlay, choose **Reconnect**, or choose **Dismiss Notice** to hide only the overlay while keeping the tab and terminal history. You can also press `Enter`/`Ctrl+R` in a disconnected tab. While the overlay is visible, `Esc` closes the disconnected tab; after dismissing it, use the tab's normal close actions.
 
 **Result and how it works:** Automatic reconnection defaults to on, with at most 3 attempts and a 5-second interval cap; unexpected disconnections use backoff such as 1/2/4 seconds. Initial handshake failure, intentional disconnect, remote `exit`, local shell exit, fingerprint rejection, and authentication requiring intervention are not retried indefinitely. Reconnection creates a new session; it does not restore unsaved state in the previous shell process. Use appropriate server-side session-persistence tools for important long-running work.
 
@@ -1156,7 +1156,7 @@ These are factory defaults; customized bindings in Settings take precedence. Glo
 | Delete previous word | Ctrl+Backspace | Terminal input |
 | Line start / end | Shift+Home / Shift+End | Terminal input |
 | Reconnect | Enter / Ctrl+R | Disconnected only |
-| Close disconnected tab | Esc | Disconnected only |
+| Close disconnected tab | Esc | Only while the disconnected overlay is visible |
 | Clear terminal | Ctrl+Shift+K | Not shared-password filling |
 | Zoom in / out / reset | Ctrl+= / Ctrl+- / Ctrl+0 | Ctrl+- occupies ^_; Ctrl+Shift+- sends that control character |
 | Open suggestions | Alt+Enter | Command suggestions |

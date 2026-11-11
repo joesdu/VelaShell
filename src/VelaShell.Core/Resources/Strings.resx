@@ -687,6 +687,9 @@
   <data name="CloseTab" xml:space="preserve">
     <value>Close Tab</value>
   </data>
+  <data name="DismissOverlay" xml:space="preserve">
+    <value>Dismiss Notice</value>
+  </data>
   <data name="Copy" xml:space="preserve">
     <value>Copy</value>
   </data>

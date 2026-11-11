@@ -295,6 +295,9 @@
   <data name="CloseTab" xml:space="preserve">
     <value>탭 닫기</value>
   </data>
+  <data name="DismissOverlay" xml:space="preserve">
+    <value>알림 닫기</value>
+  </data>
   <data name="Cmd_ClearScreen" xml:space="preserve">
     <value>화면 지우기</value>
   </data>
