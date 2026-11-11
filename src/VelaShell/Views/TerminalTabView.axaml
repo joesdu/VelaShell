@@ -450,7 +450,7 @@
       </Border>
 
       <!-- 标签页内失败/断开覆盖层(设计 yxjmg / dcOverlay):连接失败或掉线时居中显示,
-           提供“重新连接”“关闭标签页”。连接失败不再弹全局对话框,提示只落在所属标签页内。 -->
+           提供“重新连接”“关闭提示”“关闭标签页”。连接失败不再弹全局对话框,提示只落在所属标签页内。 -->
       <Border IsVisible="{Binding ShowDisconnectedOverlay}"
               Background="{DynamicResource VelaScrim}"
               HorizontalAlignment="Stretch"
@@ -565,6 +565,15 @@
                   <TextBlock Text="{loc:Localize Reconnect}" Foreground="{DynamicResource VelaAccentForeground}"
                              FontSize="{DynamicResource VelaFontSize12}" FontWeight="SemiBold" VerticalAlignment="Center" />
                 </StackPanel>
+              </Button>
+              <Button Command="{Binding DismissDisconnectedOverlayCommand}"
+                      Background="Transparent"
+                      BorderBrush="{DynamicResource VelaBorderSecondary}"
+                      BorderThickness="1"
+                      CornerRadius="4" Padding="16,8">
+                <TextBlock Text="{loc:Localize DismissOverlay}"
+                           Foreground="{DynamicResource VelaTextSecondary}"
+                           FontSize="{DynamicResource VelaFontSize12}" FontWeight="Medium" VerticalAlignment="Center" />
               </Button>
               <Button Command="{Binding CloseTabCommand}"
                       Background="Transparent"

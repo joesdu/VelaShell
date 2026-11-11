@@ -295,6 +295,9 @@
   <data name="CloseTab" xml:space="preserve">
     <value>タブを閉じる</value>
   </data>
+  <data name="DismissOverlay" xml:space="preserve">
+    <value>通知を閉じる</value>
+  </data>
   <data name="Cmd_ClearScreen" xml:space="preserve">
     <value>画面をクリア</value>
   </data>
