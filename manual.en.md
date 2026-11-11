@@ -189,7 +189,7 @@ The main window contains a title bar, Explorer, a docking document area, and a b
 
 | Method | Prerequisites and operation | Result, mechanism, and caution |
 | --- | --- | --- |
-| Password | Enter username/password; optionally remember it | The remote SSH server authenticates you; MFA may add a challenge. Basic FTP/plugin authentication is password-based |
+| Password | Enter a username; the password is optional; optionally remember it | The login dialog allows an empty password; the server decides whether to accept it. The remote SSH server authenticates you; MFA may add a challenge. Basic FTP/plugin authentication is password-based |
 | Private key | Select a local private key and supply its passphrase if needed | Supported OpenSSH, PKCS#8, PPK, and other key formats are parsed by the SSH layer. The server must already authorize the public key; selecting a file does not install it |
 | Certificate | Select an SSH certificate and matching private key | The certificate is not the private key. Selecting `-cert.pub` can infer a private-key path; verify existence and matching material |
 | Agent | Start/configure the local SSH Agent and add the required key | The Agent signs authentication requests. Entering a host does not automatically select Agent authentication or search your key directories |

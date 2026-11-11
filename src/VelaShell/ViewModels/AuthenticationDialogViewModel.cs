@@ -137,13 +137,12 @@ public class AuthenticationDialogViewModel : ReactiveObject
         BackCommand = ReactiveCommand.Create(() => { Step = 1; });
         CancelCommand = ReactiveCommand.Create<AuthenticationResult?>(() => null);
         IObservable<bool> canLogin = this.WhenAnyValue(x => x.MethodIndex,
-            x => x.Password,
             x => x.PrivateKeyPath,
             x => x.CertificatePath,
             x => x.Username,
-            (method, password, keyPath, certPath, name) => method switch
+            (method, keyPath, certPath, name) => method switch
             {
-                0 => password is { Length: > 0 },
+                0 => !string.IsNullOrWhiteSpace(name),
                 // 证书那一路要两个文件都齐:证书是 CA 的背书,签名仍旧由私钥出。
                 1 => !string.IsNullOrWhiteSpace(certPath) && !string.IsNullOrWhiteSpace(keyPath),
                 2 => !string.IsNullOrWhiteSpace(keyPath),
