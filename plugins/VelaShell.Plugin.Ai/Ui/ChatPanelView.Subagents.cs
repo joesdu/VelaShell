@@ -51,7 +51,7 @@ public partial class ChatPanelView
     private sealed class SubagentRunCard
     {
         private readonly ChatPanelView _owner;
-        private readonly TextBlock _title = new() { TextWrapping = TextWrapping.Wrap, MaxLines = 2 };
+        private readonly TextBlock _title = new() { TextWrapping = TextWrapping.Wrap, MaxLines = 2, FontWeight = FontWeight.Medium };
         private readonly TextBlock _state = new() { Classes = { "dim" } };
         private readonly TextBlock _metrics = new() { Classes = { "dim" }, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock _model = new() { Classes = { "dim" }, TextWrapping = TextWrapping.Wrap };

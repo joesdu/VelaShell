@@ -1056,6 +1056,8 @@ public partial class ChatPanelView : UserControl
         Avalonia.Automation.AutomationProperties.SetHelpText(ModelButton, windowWarning);
         if (TotalInputTokens == 0 && TotalOutputTokens == 0)
         {
+            TokenFlowText.Text = "";
+            TokenFlowText.IsVisible = false;
             UsageText.Text = "";
             UsageMeterTrack.IsVisible = false;
             ToolTip.SetTip(UsageText, windowWarning.Length > 0 ? _loc["UsageIdle"] + "\n" + windowWarning : _loc["UsageIdle"]);
@@ -1064,6 +1066,11 @@ public partial class ChatPanelView : UserControl
 
         var detail = new StringBuilder();
         var label = new StringBuilder();
+        TokenFlowText.Text = $"{ChatFormatting.Compact(TotalInputTokens)} tok ↑  {ChatFormatting.Compact(TotalOutputTokens)} tok ↓";
+        TokenFlowText.IsVisible = true;
+        string totals = _loc.F("UsageTotalsLine", $"{TotalInputTokens:N0}", $"{TotalOutputTokens:N0}");
+        ToolTip.SetTip(TokenFlowText, totals);
+        Avalonia.Automation.AutomationProperties.SetName(TokenFlowText, totals);
         if (window > 0 && LastInputTokens > 0)
         {
             int percent = (int)Math.Min(100, Math.Round(LastInputTokens * 100.0 / window));
@@ -1073,7 +1080,6 @@ public partial class ChatPanelView : UserControl
         }
         else
         {
-            label.Append($"↑{ChatFormatting.Compact(TotalInputTokens)} ↓{ChatFormatting.Compact(TotalOutputTokens)}");
             // 不知道窗口多大就画不出占比,整条隐掉(留一根空槽反而像"用量为零")
             UsageMeterTrack.IsVisible = false;
         }
@@ -1084,7 +1090,8 @@ public partial class ChatPanelView : UserControl
         if (LastCachedInputTokens > 0 && LastInputTokens > 0)
         {
             int hit = (int)Math.Min(100, Math.Round(LastCachedInputTokens * 100.0 / LastInputTokens));
-            label.Append($" · {_loc["CacheShort"]} {hit}%");
+            if (label.Length > 0) label.Append(" · ");
+            label.Append($"{_loc["CacheShort"]} {hit}%");
             detail.AppendLine(_loc.F("UsageCacheLine", $"{LastCachedInputTokens:N0}", $"{LastInputTokens:N0}", hit));
         }
 
@@ -1116,6 +1123,7 @@ public partial class ChatPanelView : UserControl
             if (windowWarning.Length > 0) detail.AppendLine().Append(windowWarning);
         }
         ToolTip.SetTip(UsageText, detail.ToString().TrimEnd());
+        ToolTip.SetTip(TokenFlowText, detail.ToString().TrimEnd());
     }
 
     /// <summary>
@@ -2481,10 +2489,16 @@ public partial class ChatPanelView : UserControl
                 AiSettingsStore.ApiKeySlotChangedException => _loc["ErrorProviderChanged"],
                 _ => ApiErrorText.Describe(ex, _loc["ErrorUnreachable"], _loc["ErrorEndpointNotFound"])
             };
-            _context.Log.Error($"AI request failed. — {detail}", ex);
-            // 失败不再当成一段 Markdown 追加进正文:它不是模型说的话,混排会让人分不清
-            // 哪句是回答、哪句是故障。改成一张 error 卡挂在这条回复里(见 AddErrorCard)。
-            AddErrorCard(bubble, detail);
+            if (ex.GetBaseException() is AgentPausedException)
+            {
+                _context.Log.Warn($"AI run paused. — {detail}");
+                AddNoticeCard(bubble, detail);
+            }
+            else
+            {
+                _context.Log.Error($"AI request failed. — {detail}", ex);
+                AddErrorCard(bubble, detail);
+            }
             await CommitSteeringAsync(conv);
             if (execution.HasToolCalls)
             {

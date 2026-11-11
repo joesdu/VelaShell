@@ -982,11 +982,13 @@ public sealed partial class ChatPanelViewUiTests
                 Click(panel, "NewChatButton");
                 Assert.IsTrue(await WaitForAsync(() => !Find<Viewbox>(panel, "StopIcon").IsVisible));
                 Assert.IsEmpty(Find<TextBlock>(panel, "UsageText").Text ?? "", "旧流取消结算不属于已重置的新会话");
+                Assert.IsFalse(Find<TextBlock>(panel, "TokenFlowText").IsVisible);
                 target.Release();
                 panel.SendExternal("新会话");
                 Assert.IsTrue(await WaitForAsync(() => !Find<Viewbox>(panel, "StopIcon").IsVisible));
                 string tip = ToolTip.GetTip(Find<TextBlock>(panel, "UsageText")) as string ?? "";
                 Assert.Contains("Conversation total: in 7 / out 3", tip, "新会话只结算自己的真实请求");
+                Assert.AreEqual("7 tok ↑  3 tok ↓", Find<TextBlock>(panel, "TokenFlowText").Text);
             }
             finally { target.Release(); panel.Detach(); window.Close(); }
         });

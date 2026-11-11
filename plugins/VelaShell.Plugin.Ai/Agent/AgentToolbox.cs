@@ -1157,7 +1157,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
     private async Task<string> RunCommandAsync(
         [Description("The shell command to execute (non-interactive, one-shot).")] string command,
-        [Description("Execution deadline in seconds. 0 (default) means no deadline; max 86400. Not the short wait window.")] int timeoutSeconds = 0,
+        [Description("Execution deadline in seconds. 0 (default) means no deadline; max 86400. Leave at 0 for long or unpredictable work; use waitSeconds to return early without cancelling. An expired deadline leaves the remote outcome unknown and pauses the parent turn; it does not prove the process stopped.")] int timeoutSeconds = 0,
         [Description("Optional session id from list_sessions; omit to use the session selected in the panel.")] string? sessionId = null,
         [Description("Seconds to wait before returning taskId (default 2, max 10). Expiry does NOT cancel execution.")] int waitSeconds = 2,
         [Description("True only for deliberately unbounded streams such as tail -f. These do not auto-wake the model.")] bool monitoring = false,

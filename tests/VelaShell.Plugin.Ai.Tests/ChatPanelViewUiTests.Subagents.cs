@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.VisualTree;
 using LiveMarkdown.Avalonia;
 using Microsoft.Extensions.AI;
@@ -52,8 +53,11 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsFalse(card.IsExpanded);
                 Assert.IsTrue(card.GetVisualDescendants().OfType<TextBlock>()
                     .Any(t => t.Text?.Contains("Failed") == true && t.Text.Contains("Errors: 1")));
-                card.IsExpanded = true;
+                ToggleButton header = card.GetVisualDescendants().OfType<ToggleButton>()
+                    .Single(t => t.Name == "PART_Header");
+                header.IsChecked = true;
                 await PumpAsync();
+                Assert.IsTrue(card.IsExpanded, "自定义头部仍须切换原生 Expander 状态。");
                 Assert.IsTrue(card.GetVisualDescendants().OfType<SelectableTextBlock>().Any(t => t.Text == error));
                 Assert.IsTrue(card.GetVisualDescendants().OfType<SelectableTextBlock>().Any(t => t.Text == snapshot.TaskPrompt));
             }

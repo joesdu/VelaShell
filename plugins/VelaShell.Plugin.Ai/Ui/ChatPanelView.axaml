@@ -159,6 +159,13 @@
       <Setter Property="Padding" Value="8,6" />
       <Setter Property="Margin" Value="0,4,0,0" />
     </Style>
+    <Style Selector="Expander.subagentRun">
+      <Setter Property="Theme" Value="{StaticResource AiSubagentExpanderTheme}" />
+    </Style>
+    <Style Selector="Border.subagentGroup">
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+    </Style>
 
     <!-- 历史会话行:整行可点(悬停高亮),右侧删除按钮悬停才显形 -->
     <Style Selector="Border.historyRow">
@@ -831,7 +838,10 @@
       </ComboBox>
       <!-- 命中缓存时这段会长一截(多一个"缓存 80%"),留够宽度;再长由 TextTrimming 收,
            完整明细本来就在悬停提示里。 -->
-      <TextBlock x:Name="UsageText" Grid.Column="2" Classes="meta" MaxWidth="300" Margin="8,0,0,0" HorizontalAlignment="Right" />
+      <Grid Grid.Column="2" ColumnDefinitions="Auto,*" HorizontalAlignment="Right" ClipToBounds="True">
+        <TextBlock x:Name="TokenFlowText" Classes="meta" Margin="8,0,0,0" IsVisible="False" />
+        <TextBlock x:Name="UsageText" Grid.Column="1" Classes="meta" MaxWidth="300" Margin="8,0,0,0" HorizontalAlignment="Right" />
+      </Grid>
       <!-- 上下文占用条:占比是要被瞥见的东西,不该只活在悬停提示里。
            知道窗口大小才画得出来(MaxInputTokens=0 就整条隐掉,见 UpdateUsageText)。 -->
       <Border x:Name="UsageMeterTrack" Grid.Column="3" Width="56" Height="4" CornerRadius="2"
