@@ -1076,11 +1076,15 @@ public partial class ChatPanelView : UserControl
         ToolTip.SetTip(TokenFlowText, totals);
         Avalonia.Automation.AutomationProperties.SetName(TokenFlowText,
             streamingUsage ? $"{TokenFlowText.Text}. {_loc["UsageStreamingEstimate"]}" : totals);
-        if (window > 0 && LastInputTokens > 0)
+        long contextTokens = streamingUsage
+            ? Cur.StreamingInputTokens + (long)Math.Ceiling(Cur.StreamingOutputTokens)
+            : LastInputTokens;
+        if (window > 0 && (streamingUsage || contextTokens > 0))
         {
-            int percent = (int)Math.Min(100, Math.Round(LastInputTokens * 100.0 / window));
-            label.Append($"{ChatFormatting.Compact(LastInputTokens)}/{ChatFormatting.Compact(window)} · {percent}%");
-            detail.AppendLine(_loc.F("UsageContextLine", $"{LastInputTokens:N0}", $"{window:N0}", percent));
+            int percent = (int)Math.Min(100, Math.Round(contextTokens * 100.0 / window));
+            label.Append($"{estimate}{ChatFormatting.Compact(contextTokens)}/{ChatFormatting.Compact(window)} · {estimate}{percent}%");
+            detail.AppendLine(_loc.F("UsageContextLine", $"{contextTokens:N0}", $"{window:N0}", percent));
+            if (streamingUsage) detail.AppendLine(_loc["UsageContextStreaming"]);
             SetUsageMeter(percent);
         }
         else
@@ -1092,7 +1096,7 @@ public partial class ChatPanelView : UserControl
         // 命中率 = 缓存读取 / 输入。两家口径实测已被适配器抹平:OpenAI 的 prompt_tokens 本就含
         // cached_tokens;Anthropic 的 input_tokens 原本不含缓存,但适配器把 cache_read 与
         // cache_creation 都并进了 InputTokenCount(200+800+120=1120)。所以同一个式子两边都成立。
-        if (LastCachedInputTokens > 0 && LastInputTokens > 0)
+        if (!streamingUsage && LastCachedInputTokens > 0 && LastInputTokens > 0)
         {
             int hit = (int)Math.Min(100, Math.Round(LastCachedInputTokens * 100.0 / LastInputTokens));
             if (label.Length > 0) label.Append(" · ");

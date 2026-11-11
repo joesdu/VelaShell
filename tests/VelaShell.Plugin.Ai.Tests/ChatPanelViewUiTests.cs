@@ -1137,9 +1137,13 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(await WaitForAsync(() => flow.IsVisible), "首次请求开始即显示计数");
                 Assert.IsTrue(await WaitForAsync(() => AnswerRenderers(Find<StackPanel>(panel, "MessagesPanel")).Count > 0));
                 Assert.Contains("~4 tok ↓", flow.Text ?? "", "流尚未结束时按文本增量刷新");
+                Assert.IsTrue(Find<Border>(panel, "UsageMeterTrack").IsVisible);
+                Assert.Contains("~", usage.Text ?? "", "首次生成期间已有上下文占比估算");
+                Assert.Contains("/10k", usage.Text ?? "");
                 Assert.IsTrue(Find<Viewbox>(panel, "StopIcon").IsVisible);
                 stub.Release();
-                Assert.IsTrue(await WaitForAsync(() => !string.IsNullOrEmpty(usage.Text)),
+                Assert.IsTrue(await WaitForAsync(() => !string.IsNullOrEmpty(usage.Text)
+                    && !usage.Text.Contains('~')),
                     "一轮结束后应当显示用量");
 
                 // 上下文 1000/10000 = 10%,缓存命中 800/1000 = 80%
