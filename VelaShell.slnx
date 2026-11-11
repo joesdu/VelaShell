@@ -81,6 +81,7 @@
     <Project Path="tests/VelaShell.Controls.Tests/VelaShell.Controls.Tests.csproj" />
     <Project Path="tests/VelaShell.Core.Tests/VelaShell.Core.Tests.csproj" />
     <Project Path="tests/VelaShell.Infrastructure.Tests/VelaShell.Infrastructure.Tests.csproj" />
+    <Project Path="tests/VelaShell.Plugin.Ai.StdioFixture/VelaShell.Plugin.Ai.StdioFixture.csproj" />
     <Project Path="tests/VelaShell.Plugin.Ai.Tests/VelaShell.Plugin.Ai.Tests.csproj" />
     <Project Path="tests/VelaShell.Presentation.Tests/VelaShell.Presentation.Tests.csproj" />
     <Project Path="tests/VelaShell.ShellIntegration.Tests/VelaShell.ShellIntegration.Tests.csproj" />

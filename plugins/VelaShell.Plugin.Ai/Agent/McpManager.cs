@@ -507,11 +507,22 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
             }
             workingDirectory = workspaceRoot.FullPath;
         }
+        string command = server.Command.Trim();
+        List<string> arguments = McpConfigParser.SplitArguments(server.Arguments);
+        if (OperatingSystem.IsWindows() && command.Contains(' '))
+        {
+            if (command.StartsWith('"') && command.EndsWith('"'))
+                command = command[1..^1];
+            // SDK 使用 ArgumentList 包装 cmd /c；首项是带空格的路径时，cmd 会剥掉路径引号。
+            // @ 保留首命令的引号，不引入 call 的二次变量展开；/d 禁止 AutoRun。
+            arguments = ["/d", "/c", "@", command, .. arguments];
+            command = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        }
         return new StdioClientTransportOptions
         {
             // npx/uvx 等脚本命令的 Windows cmd 包装由 SDK 处理
-            Command = server.Command.Trim(),
-            Arguments = McpConfigParser.SplitArguments(server.Arguments),
+            Command = command,
+            Arguments = arguments,
             // 空 = ~/.velashell;~ 要在这儿展开,Process.Start 不认它(见 McpWorkspace)
             WorkingDirectory = workingDirectory,
             InheritEnvironmentVariables = server.EnvironmentInheritMode == McpEnvironmentInheritMode.All,
