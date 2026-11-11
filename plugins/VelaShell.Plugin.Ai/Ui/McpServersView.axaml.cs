@@ -109,6 +109,14 @@ public partial class McpServersView : UserControl
         McpRestartButton.Content = _loc["McpRestart"];
         McpRefreshButton.Content = _loc["McpRefreshRuntime"];
         McpAutoStartCheck.Content = _loc["McpAutoStart"];
+        McpKeepAliveCheck.Content = _loc["McpKeepAlive"];
+        McpEnvironmentModeLabel.Text = _loc["McpEnvironmentMode"];
+        int environmentMode = McpEnvironmentModeCombo.SelectedIndex;
+        McpEnvironmentModeCombo.ItemsSource = new[]
+        {
+            _loc["McpEnvironmentMinimal"], _loc["McpEnvironmentNone"], _loc["McpEnvironmentAll"]
+        };
+        McpEnvironmentModeCombo.SelectedIndex = Math.Max(0, environmentMode);
         RefreshRuntime();
     }
 
@@ -168,6 +176,8 @@ public partial class McpServersView : UserControl
             McpServerConfig? server = Selected;
             McpEnabledCheck.IsChecked = server?.Enabled ?? false;
             McpAutoStartCheck.IsChecked = server?.AutoStart ?? true;
+            McpKeepAliveCheck.IsChecked = server?.KeepAlive ?? true;
+            McpEnvironmentModeCombo.SelectedIndex = (int)(server?.EnvironmentInheritMode ?? McpEnvironmentInheritMode.Minimal);
             McpNameBox.Text = server?.Name ?? "";
             McpTransportCombo.SelectedIndex = server is null ? -1 : (int)server.Transport;
             McpCommandBox.Text = server?.Command ?? "";
@@ -357,6 +367,8 @@ public partial class McpServersView : UserControl
     {
         target.Enabled = McpEnabledCheck.IsChecked == true;
         target.AutoStart = McpAutoStartCheck.IsChecked == true;
+        target.KeepAlive = McpKeepAliveCheck.IsChecked == true;
+        target.EnvironmentInheritMode = (McpEnvironmentInheritMode)Math.Max(0, McpEnvironmentModeCombo.SelectedIndex);
         target.Name = McpNameBox.Text?.Trim() ?? "";
         target.Transport = McpTransportCombo.SelectedIndex == (int)McpTransportType.Http
             ? McpTransportType.Http

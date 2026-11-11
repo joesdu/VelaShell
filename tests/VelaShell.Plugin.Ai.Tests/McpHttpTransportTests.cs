@@ -38,6 +38,60 @@ public sealed class McpHttpTransportTests
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(60);
 
     [TestMethod]
+    public async Task Lifecycle_ProtocolErrorIsDegraded_StopCancelsPendingApproval()
+    {
+        await using var server = new McpTestServer(McpTestServer.Kind.StreamableStateless, 400);
+        using var context = new TestPluginContext();
+        await using var manager = new McpManager(context);
+        var config = new McpServerConfig { Transport = McpTransportType.Http, Url = server.BaseUrl + "/mcp" };
+        await using var lease = await manager.AcquireToolsAsync([config],
+            new McpApproval(null, ApprovalMode.Bypass), CancellationToken.None);
+        await lease.Tools.OfType<AIFunction>().Single().InvokeAsync(new AIFunctionArguments { ["text"] = "__fail__" });
+        Assert.AreEqual("Degraded", manager.GetSnapshot(config.Id).State);
+        var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var approve = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var pending = await manager.AcquireToolsAsync([config], new McpApproval(_ =>
+        {
+            requested.SetResult();
+            return approve.Task;
+        }), CancellationToken.None);
+        Task<object?> invocation = pending.Tools.OfType<AIFunction>().Single()
+            .InvokeAsync(new AIFunctionArguments { ["text"] = "pending" }).AsTask();
+        await requested.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await manager.StopAsync(config.Id);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => invocation.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.AreEqual("Stopped", manager.GetSnapshot(config.Id).State);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task KeepAlive_LastConcurrentLeaseControlsRelease(bool keepAlive)
+    {
+        await using var server = new McpTestServer(McpTestServer.Kind.StreamableStateless, 400);
+        using var context = new TestPluginContext();
+        await using var manager = new McpManager(context);
+        var config = new McpServerConfig
+        {
+            Transport = McpTransportType.Http, Url = server.BaseUrl + "/mcp", KeepAlive = keepAlive
+        };
+        var approval = new McpApproval(null, ApprovalMode.Bypass);
+        await using McpManager.ToolLease first = await manager.AcquireToolsAsync([config], approval, CancellationToken.None);
+        await using McpManager.ToolLease second = await manager.AcquireToolsAsync([config], approval, CancellationToken.None);
+        await first.DisposeAsync();
+        await first.DisposeAsync();
+        Assert.AreEqual("Ready", manager.GetSnapshot(config.Id).State);
+        object? result = await second.Tools.OfType<AIFunction>().Single().InvokeAsync(
+            new AIFunctionArguments { ["text"] = "still-used" }, CancellationToken.None);
+        Assert.IsNotNull(result);
+        await second.DisposeAsync();
+        Assert.AreEqual(keepAlive ? "Ready" : "Stopped", manager.GetSnapshot(config.Id).State);
+        await using McpManager.ToolLease next = await manager.AcquireToolsAsync([config], approval, CancellationToken.None);
+        Assert.AreEqual("Ready", manager.GetSnapshot(config.Id).State);
+        Assert.HasCount(1, next.Tools);
+    }
+
+    [TestMethod]
     public async Task Lifecycle_StopInterruptsStartup_WithoutStoppingOtherServer()
     {
         await using var healthy = new McpTestServer(McpTestServer.Kind.StreamableStateless, 400);
@@ -242,7 +296,8 @@ public sealed class McpHttpTransportTests
             ServerInfo = new Implementation { Name = "vela-test", Version = "1.0" },
             // 老式服务器只认 2024-11-05:按它答 initialize,看客户端肯不肯降级
             ProtocolVersion = _kind == Kind.LegacySse ? "2024-11-05" : null,
-            ToolCollection = [McpServerTool.Create((string text) => "echo:" + text,
+            ToolCollection = [McpServerTool.Create((string text) => text == "__fail__"
+                ? throw new InvalidOperationException("test tool failure") : "echo:" + text,
                 new McpServerToolCreateOptions { Name = "echo", Description = "Echo the text back." })]
         };
 

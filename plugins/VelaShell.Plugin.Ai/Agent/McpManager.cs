@@ -34,6 +34,8 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
         public DateTimeOffset FailedAt;
         public SemaphoreSlim Calls = new(2, 2);
         public CancellationTokenSource Lifetime = new();
+        public int Users;
+        public bool KeepAlive = true;
     }
 
     private readonly Dictionary<string, Connection> _connections = [];
@@ -41,6 +43,69 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
     private readonly ConcurrentDictionary<string, McpServerSnapshot> _states = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _lifetimes = new();
     private readonly HashSet<string> _manuallyStopped = [];
+
+    /// <summary>本轮工具及连接租约；所有调用和子任务结束后释放。</summary>
+    public sealed class ToolLease : IAsyncDisposable
+    {
+        private Func<ValueTask>? _release;
+        internal ToolLease(List<AITool> tools, List<string> errors, Func<ValueTask> release)
+        {
+            Tools = tools;
+            Errors = errors;
+            _release = release;
+        }
+        /// <summary>本轮可见工具。</summary>
+        public List<AITool> Tools { get; }
+        /// <summary>连接错误。</summary>
+        public List<string> Errors { get; }
+        /// <summary>释放本轮持有的连接，最后一轮退出后关闭不保活连接。</summary>
+        public ValueTask DisposeAsync() => Interlocked.Exchange(ref _release, null)?.Invoke() ?? ValueTask.CompletedTask;
+    }
+
+    /// <summary>取得本轮工具并持有连接，防止其它轮次结束时提前关闭。</summary>
+    public async Task<ToolLease> AcquireToolsAsync(IReadOnlyList<McpServerConfig> servers, McpApproval approval,
+        CancellationToken token, IReadOnlyList<LocalWorkspace>? workspaces = null)
+    {
+        var acquired = new List<(string Id, Connection Connection)>();
+        async ValueTask ReleaseAsync()
+        {
+            await _gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                var failures = new List<Exception>();
+                foreach ((string id, Connection connection) in acquired)
+                {
+                    connection.Users--;
+                    if (connection.Users == 0 && !connection.KeepAlive
+                        && _connections.TryGetValue(id, out Connection? current) && ReferenceEquals(current, connection))
+                    {
+                        try
+                        {
+                            await CloseAsync(id, connection).ConfigureAwait(false);
+                            _connections.Remove(id);
+                        }
+                        catch (Exception ex) { failures.Add(ex); }
+                    }
+                }
+                if (failures.Count > 0) throw new AggregateException(failures);
+            }
+            finally { _gate.Release(); }
+        }
+        try
+        {
+            var (tools, errors) = await GetToolsCoreAsync(servers, approval, token, workspaces, (id, connection) =>
+            {
+                connection.Users++;
+                acquired.Add((id, connection));
+            }).ConfigureAwait(false);
+            return new ToolLease(tools, errors, ReleaseAsync);
+        }
+        catch
+        {
+            await ReleaseAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
 
     /// <summary>取得实时状态；从未连接的服务器为 Stopped。</summary>
     public McpServerSnapshot GetSnapshot(string serverId)
@@ -161,7 +226,7 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
         => JsonSerializer.Serialize(new
         {
             server.Transport, server.Command, server.Arguments, server.WorkingDirectory,
-            server.EnvironmentVariables, server.Url, server.Headers, server.WorkspaceId,
+            server.EnvironmentVariables, server.EnvironmentInheritMode, server.Url, server.Headers, server.WorkspaceId,
             server.MaxConcurrentCalls, server.StartupTimeoutSeconds
         });
 
@@ -185,6 +250,7 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
                 && scopeError is null && existing.WorkspaceRoot == workspaceRoot
                 && (existing.Client is not null || (!retry && DateTimeOffset.UtcNow - existing.FailedAt < FailureRetryDelay)))
             {
+                existing.KeepAlive = server.KeepAlive;
                 return existing;
             }
             await CloseAsync(server.Id, existing).ConfigureAwait(false);
@@ -193,6 +259,7 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
         {
             Fingerprint = fingerprint,
             WorkspaceRoot = workspaceRoot,
+            KeepAlive = server.KeepAlive,
             Calls = new SemaphoreSlim(Math.Clamp(server.MaxConcurrentCalls, 1, 32), Math.Clamp(server.MaxConcurrentCalls, 1, 32))
         };
         _connections[server.Id] = connection;
@@ -255,11 +322,16 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
     /// </param>
     /// <param name="cancellationToken">取消。</param>
     /// <param name="localWorkspaces">本地工作区配置;用于校验并绑定 Stdio MCP 的工作目录。</param>
-    public async Task<(List<AITool> Tools, List<string> Errors)> GetToolsAsync(
+    public Task<(List<AITool> Tools, List<string> Errors)> GetToolsAsync(
         IReadOnlyList<McpServerConfig> servers,
         McpApproval approval,
         CancellationToken cancellationToken,
         IReadOnlyList<LocalWorkspace>? localWorkspaces = null)
+        => GetToolsCoreAsync(servers, approval, cancellationToken, localWorkspaces, null);
+
+    private async Task<(List<AITool> Tools, List<string> Errors)> GetToolsCoreAsync(
+        IReadOnlyList<McpServerConfig> servers, McpApproval approval, CancellationToken cancellationToken,
+        IReadOnlyList<LocalWorkspace>? localWorkspaces, Action<string, Connection>? acquire)
     {
         ArgumentNullException.ThrowIfNull(approval);
         var tools = new List<AITool>();
@@ -288,6 +360,7 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
                     .ConfigureAwait(false);
                 if (connection.Client is not null)
                 {
+                    acquire?.Invoke(server.Id, connection);
                     CollectTools(tools, usedNames, server, connection.Tools, approval);
                 }
                 else
@@ -407,11 +480,23 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
                 // TransportMode 默认 AutoDetect:先试 Streamable HTTP,再回落 SSE
             });
         }
+        return new StdioClientTransport(CreateStdioOptions(server, localWorkspaces));
+    }
+
+    internal static StdioClientTransportOptions CreateStdioOptions(McpServerConfig server,
+        IReadOnlyList<LocalWorkspace>? localWorkspaces = null)
+    {
+        if (!Enum.IsDefined(server.EnvironmentInheritMode))
+            throw new InvalidOperationException("Unknown MCP environment inheritance mode.");
         if (string.IsNullOrWhiteSpace(server.Command))
         {
             throw new InvalidOperationException("MCP command is empty.");
         }
-        Dictionary<string, string?> env = McpConfigParser.ParseEnvironmentLines(server.EnvironmentVariables);
+        Dictionary<string, string?> env = server.EnvironmentInheritMode == McpEnvironmentInheritMode.Minimal
+            ? StdioClientTransportOptions.GetDefaultEnvironmentVariables()
+            : new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        foreach (var pair in McpConfigParser.ParseEnvironmentLines(server.EnvironmentVariables))
+            env[pair.Key] = pair.Value;
         string workingDirectory = McpWorkspace.ResolveAndEnsure(server.WorkingDirectory);
         if (!string.IsNullOrWhiteSpace(server.WorkspaceId))
         {
@@ -422,16 +507,17 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
             }
             workingDirectory = workspaceRoot.FullPath;
         }
-        return new StdioClientTransport(new StdioClientTransportOptions
+        return new StdioClientTransportOptions
         {
             // npx/uvx 等脚本命令的 Windows cmd 包装由 SDK 处理
             Command = server.Command.Trim(),
             Arguments = McpConfigParser.SplitArguments(server.Arguments),
             // 空 = ~/.velashell;~ 要在这儿展开,Process.Start 不认它(见 McpWorkspace)
             WorkingDirectory = workingDirectory,
-            EnvironmentVariables = env.Count > 0 ? env : null,
+            InheritEnvironmentVariables = server.EnvironmentInheritMode == McpEnvironmentInheritMode.All,
+            EnvironmentVariables = env,
             Name = DisplayName(server)
-        });
+        };
     }
 
     /// <summary>
@@ -579,7 +665,12 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
                         object? result = await base.InvokeCoreAsync(arguments, timeout.Token).ConfigureAwait(false);
                         if (!connection.Lifetime.IsCancellationRequested)
                         {
-                            owner.SetState(serverId, "Ready", connection.Tools.Count);
+                            bool failed = result is ModelContextProtocol.Protocol.CallToolResult { IsError: true }
+                                || (result is JsonElement { ValueKind: JsonValueKind.Object } json
+                                    && json.TryGetProperty("isError", out JsonElement isError)
+                                    && isError.ValueKind == JsonValueKind.True);
+                            owner.SetState(serverId, failed ? "Degraded" : "Ready", connection.Tools.Count,
+                                failed ? "MCP server reported a tool error." : null);
                         }
                         return result;
                     }

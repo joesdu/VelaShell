@@ -86,6 +86,9 @@
               <Button x:Name="McpRefreshButton" Theme="{DynamicResource VelaOutlineButtonTheme}" Margin="0,0,6,4" />
             </WrapPanel>
             <CheckBox x:Name="McpAutoStartCheck" Theme="{StaticResource AiCheckBoxTheme}" />
+            <CheckBox x:Name="McpKeepAliveCheck" Theme="{StaticResource AiCheckBoxTheme}" />
+            <TextBlock x:Name="McpEnvironmentModeLabel" Classes="dim" />
+            <ComboBox x:Name="McpEnvironmentModeCombo" HorizontalAlignment="Left" />
           </StackPanel>
 
           <!-- 底部操作行:保存/测试在左,删除推到右边 —— 破坏性操作别挨着主操作 -->

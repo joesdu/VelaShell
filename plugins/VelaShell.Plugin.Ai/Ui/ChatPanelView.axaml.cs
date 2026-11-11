@@ -1570,6 +1570,7 @@ public partial class ChatPanelView : UserControl
         var runCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         conv.RunCompleted = runCompleted;
         AssistantBubble? bubble = null;
+        var mcpLeases = new List<McpManager.ToolLease>();
         long startedAt = Environment.TickCount64;
         bool cancelled = false;
         bool failed = false;
@@ -2087,8 +2088,11 @@ public partial class ChatPanelView : UserControl
                     if (mode == ChatMode.Agent && _settings.McpServers.Any(s => s.Enabled))
                     {
                         SetStatus(_loc["McpConnecting"]);
-                        (List<AITool> mcpTools, List<string> mcpErrors) = await _mcp.GetToolsAsync(
+                        McpManager.ToolLease lease = await _mcp.AcquireToolsAsync(
                             _settings.McpServers, _mcpApproval, token, GetActiveLocalWorkspaces());
+                        mcpLeases.Add(lease);
+                        List<AITool> mcpTools = lease.Tools;
+                        List<string> mcpErrors = lease.Errors;
                         subagents.ReadOnlyMcpTools = McpManager.FilterReadOnlyTools(mcpTools);
                         foreach (AITool tool in mcpTools)
                         {
@@ -2547,6 +2551,11 @@ public partial class ChatPanelView : UserControl
             }
             finally
             {
+                foreach (McpManager.ToolLease lease in mcpLeases)
+                {
+                    try { await lease.DisposeAsync(); }
+                    catch (Exception ex) { _context.Log.Warn($"MCP turn cleanup failed ({ex.GetType().Name})."); }
+                }
                 bubble?.Transfers?.Finish();
                 try { await runScope.DisposeAsync(); }
                 finally

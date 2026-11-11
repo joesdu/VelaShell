@@ -34,8 +34,12 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(start.IsEnabled);
                 Assert.IsTrue(view.FindControl<Button>("McpRestartButton")!.IsEnabled);
                 view.FindControl<CheckBox>("McpAutoStartCheck")!.IsChecked = false;
+                view.FindControl<CheckBox>("McpKeepAliveCheck")!.IsChecked = false;
+                view.FindControl<ComboBox>("McpEnvironmentModeCombo")!.SelectedIndex = 1;
                 view.FindControl<Button>("McpSaveButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.IsFalse(config.AutoStart);
+                Assert.IsFalse(config.KeepAlive);
+                Assert.AreEqual(McpEnvironmentInheritMode.None, config.EnvironmentInheritMode);
             }
             finally { window.Close(); }
         });
