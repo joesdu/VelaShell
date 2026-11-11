@@ -40,6 +40,7 @@ public sealed record SubagentExecutionResult(
 /// <param name="Errors">执行期间产生的错误或权限拒绝信息。</param>
 /// <param name="Elapsed">从排队到结束或当前时刻的耗时。</param>
 /// <param name="ModelId">本任务选择的模型配置标识。</param>
+/// <param name="TaskPrompt">创建任务时的请求，用于运行卡片的任务摘要。</param>
 public sealed record SubagentSnapshot(
     string SubagentId,
     string Role,
@@ -49,7 +50,8 @@ public sealed record SubagentSnapshot(
     IReadOnlyList<SubagentToolUsage> ToolsUsed,
     IReadOnlyList<string> Errors,
     TimeSpan Elapsed,
-    string? ModelId = null);
+    string? ModelId = null,
+    string TaskPrompt = "");
 
 /// <summary>
 /// 管理当前 Agent 委托出去的只读子任务。子任务使用父模型或显式指定的已配置模型，
@@ -77,6 +79,7 @@ public sealed class SubagentOrchestrator(
         public string Status { get; set; } = "queued";
         public string? Role { get; set; }
         public string? ModelId { get; set; }
+        public string TaskPrompt { get; init; } = "";
         public SubagentExecutionResult? Result { get; set; }
         public string? Error { get; set; }
         public Dictionary<string, int> LiveTools { get; } = new(StringComparer.Ordinal);
@@ -130,6 +133,7 @@ public sealed class SubagentOrchestrator(
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(parentCancellation);
         var entry = new Entry(cancellation)
         {
+            TaskPrompt = prompt,
             Role = role,
             ModelId = string.IsNullOrWhiteSpace(modelId) ? DefaultModelId : modelId.Trim()
         };
@@ -304,7 +308,8 @@ public sealed class SubagentOrchestrator(
             tools,
             entry.Error is { } statusError ? [.. errors, statusError] : errors,
             elapsed,
-            entry.ModelId);
+            entry.ModelId,
+            entry.TaskPrompt);
     }
 
     private void NotifyChanged()

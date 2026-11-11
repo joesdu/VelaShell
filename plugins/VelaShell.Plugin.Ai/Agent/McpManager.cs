@@ -225,9 +225,17 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
     private static string Fingerprint(McpServerConfig server)
         => JsonSerializer.Serialize(new
         {
-            server.Transport, server.Command, server.Arguments, server.WorkingDirectory,
-            server.EnvironmentVariables, server.EnvironmentInheritMode, server.Url, server.Headers, server.WorkspaceId,
-            server.MaxConcurrentCalls, server.StartupTimeoutSeconds
+            server.Transport,
+            server.Command,
+            server.Arguments,
+            server.WorkingDirectory,
+            server.EnvironmentVariables,
+            server.EnvironmentInheritMode,
+            server.Url,
+            server.Headers,
+            server.WorkspaceId,
+            server.MaxConcurrentCalls,
+            server.StartupTimeoutSeconds
         });
 
     private async Task<Connection> EnsureConnectionAsync(McpServerConfig server, CancellationToken token,

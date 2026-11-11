@@ -136,7 +136,8 @@ public sealed class McpStdioTransportTests
                 "..", "..", "..", OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet"));
             Config = new McpServerConfig
             {
-                Name = "stdio-fixture", Transport = McpTransportType.Stdio,
+                Name = "stdio-fixture",
+                Transport = McpTransportType.Stdio,
                 Command = dotnet,
                 Arguments = $"\"{typeof(FixtureHost).Assembly.Location}\" \"{PidFile}\" {Variable}",
                 WorkingDirectory = Directory

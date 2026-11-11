@@ -73,7 +73,9 @@ public sealed class McpHttpTransportTests
         await using var manager = new McpManager(context);
         var config = new McpServerConfig
         {
-            Transport = McpTransportType.Http, Url = server.BaseUrl + "/mcp", KeepAlive = keepAlive
+            Transport = McpTransportType.Http,
+            Url = server.BaseUrl + "/mcp",
+            KeepAlive = keepAlive
         };
         var approval = new McpApproval(null, ApprovalMode.Bypass);
         await using McpManager.ToolLease first = await manager.AcquireToolsAsync([config], approval, CancellationToken.None);
@@ -117,7 +119,10 @@ public sealed class McpHttpTransportTests
         await using var server = new McpTestServer(McpTestServer.Kind.StreamableStateless, 400);
         var config = new McpServerConfig
         {
-            Name = "lifecycle", Transport = McpTransportType.Http, Url = server.BaseUrl + "/mcp", AutoStart = false
+            Name = "lifecycle",
+            Transport = McpTransportType.Http,
+            Url = server.BaseUrl + "/mcp",
+            AutoStart = false
         };
         using var context = new TestPluginContext();
         await using var manager = new McpManager(context);
@@ -151,7 +156,8 @@ public sealed class McpHttpTransportTests
         await using var manager = new McpManager(context);
         var config = new McpServerConfig
         {
-            Transport = McpTransportType.Http, Url = "invalid-secret-url",
+            Transport = McpTransportType.Http,
+            Url = "invalid-secret-url",
             Headers = "Authorization: Bearer private-value"
         };
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => manager.StartAsync(config, CancellationToken.None));

@@ -15,7 +15,8 @@ public sealed class SubagentOrchestratorTests
             await release.Task.WaitAsync(token);
             models.Add(request.ModelId);
             return SubagentExecutionResult.FromText("done");
-        }, CancellationToken.None) { DefaultModelId = "original" };
+        }, CancellationToken.None)
+        { DefaultModelId = "original" };
         for (int i = 0; i < 5; i++) orchestrator.Start("inspect", null);
         orchestrator.DefaultModelId = "replacement";
         orchestrator.Start("inspect", null);

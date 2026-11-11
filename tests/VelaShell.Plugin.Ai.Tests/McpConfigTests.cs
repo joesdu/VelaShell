@@ -21,7 +21,8 @@ public sealed class McpConfigTests
         {
             var server = new McpServerConfig
             {
-                Command = "unused", WorkingDirectory = Path.GetTempPath(),
+                Command = "unused",
+                WorkingDirectory = Path.GetTempPath(),
                 EnvironmentVariables = "PATH=explicit-path"
             };
             var minimal = McpManager.CreateStdioOptions(server);

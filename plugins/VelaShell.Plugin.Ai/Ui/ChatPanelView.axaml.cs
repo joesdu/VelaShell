@@ -3378,67 +3378,9 @@ public partial class ChatPanelView : UserControl
             return;
         }
 
-        var stack = new StackPanel { Spacing = 6 };
-        stack.Children.Add(BuildCardHeader("Icon.users", "VelaAccent", _loc["SubagentRuns"], null));
-        foreach (SubagentSnapshot snapshot in snapshots)
-        {
-            string tools = snapshot.ToolsUsed.Count == 0
-                ? $"0 {_loc["SubagentTools"]}"
-                : string.Join(", ", snapshot.ToolsUsed.Select(tool => $"{tool.Name} ×{tool.Count}"));
-            var detail = new StackPanel { Spacing = 3 };
-            detail.Children.Add(new TextBlock
-            {
-                Classes = { "roleHeader" },
-                Text = $"{snapshot.SubagentId} · {snapshot.Role} · {snapshot.Status}"
-            });
-            detail.Children.Add(new TextBlock
-            {
-                Classes = { "dim" },
-                Text = $"{snapshot.Elapsed.TotalSeconds:0.0}s · {tools}",
-                TextWrapping = TextWrapping.Wrap
-            });
-            if (snapshot.ModelId is { } modelId)
-            {
-                detail.Children.Add(new TextBlock
-                {
-                    Classes = { "dim" },
-                    Text = $"{_loc["Model"]}: {_settings.FindModel(modelId)?.Model ?? modelId}",
-                    TextWrapping = TextWrapping.Wrap
-                });
-            }
-            detail.Children.Add(new SelectableTextBlock
-            {
-                Classes = { "mono" },
-                Text = Truncate(snapshot.Output, 1200)
-            });
-            if (snapshot.Errors.Count > 0)
-            {
-                detail.Children.Add(new SelectableTextBlock
-                {
-                    Classes = { "mono" },
-                    Text = Truncate(string.Join(Environment.NewLine, snapshot.Errors), 800)
-                });
-            }
-            stack.Children.Add(new Border { Classes = { "toolCard" }, Child = detail });
-        }
-        Border card = new() { Classes = { "noticeCard" }, Child = stack };
-        if (_subagentCards.TryGetValue(bubble, out Border? previous))
-        {
-            int index = bubble.CardHostIndex(previous);
-            if (index >= 0)
-            {
-                bubble.ReplaceCard(index, card);
-            }
-        }
-        else
-        {
-            bubble.AddCard(card);
-        }
-        _subagentCards[bubble] = card;
-        RequestAutoScroll(force: snapshots.Any(snapshot => snapshot.Status is "completed" or "failed" or "cancelled" or "timed_out"));
+        bubble.UpdateSubagents(snapshots);
+        RequestAutoScroll();
     }
-
-    private readonly Dictionary<AssistantBubble, Border> _subagentCards = [];
 
     private void EnsureSubagentRefreshTimer()
     {
@@ -3757,6 +3699,7 @@ public partial class ChatPanelView : UserControl
         // 复制整段回复用的原文:正文按到达顺序原样攒着(Markdown 源码,不是渲染后的可视树)
         private readonly StringBuilder _replyText = new();
         private MarkdownSegment? _currentSegment;
+        private SubagentRunGroup? _subagentGroup;
         private Collapsible? _thinking;
         private bool _thinkingRenderScheduled;
         private string _phaseKey = "";
@@ -3872,16 +3815,18 @@ public partial class ChatPanelView : UserControl
             _currentSegment = null; // 卡之后的新文本另起一个 Markdown 段
         }
 
-        public int CardHostIndex(Control card) => _stack.Children.IndexOf(card);
-
-        public void ReplaceCard(int index, Control card)
+        public void UpdateSubagents(IReadOnlyList<SubagentSnapshot> snapshots)
         {
-            if (index < 0 || index >= _stack.Children.Count)
+            if (_subagentGroup is null)
             {
-                return;
+                _subagentGroup = new SubagentRunGroup(_owner);
+                // 后台活动不构成正文边界，首次到达也不能拆开正在流式解析的 Markdown。
+                int index = _currentSegment is null
+                    ? _stack.Children.Count
+                    : _stack.Children.IndexOf(_currentSegment.Host);
+                _stack.Children.Insert(index, _subagentGroup.Root);
             }
-            _stack.Children[index] = card;
-            _currentSegment = null;
+            _subagentGroup.Update(snapshots);
         }
 
         /// <summary>仅在尚无有效输出、允许重放时丢弃失败尝试留下的空白正文与思考。</summary>

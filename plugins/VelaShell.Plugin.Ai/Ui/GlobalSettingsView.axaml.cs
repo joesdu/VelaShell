@@ -4,7 +4,6 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using Avalonia.Threading;
-using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
 
