@@ -15,7 +15,7 @@
     <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
     <PackageVersion Include="ReactiveUI.Avalonia" Version="12.1.6" />
     <!-- Microsoft.Extensions -->
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0-rc.3.26522.148" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0" />
     <!-- 其它 -->
     <PackageVersion Include="ReactiveUI" Version="26.0.1" />
     <PackageVersion Include="LiveMarkdown.Avalonia" Version="2.5.1" />
@@ -42,8 +42,8 @@
          本仓库 plugins/ 下的插件(AI)不走中央包版本管理
          (根目录没有 Directory.Packages.props),依赖版本写在各自的 csproj 里。 -->
     <PackageVersion Include="VelaShell.PluginSdk" Version="2.1.8" />
-    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="11.0.0-rc.3.26522.148" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" />
     <!-- 构建期工具:SourceLink(见 src/Directory.Build.props) -->
-    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="11.0.100-rc.3.26522.148" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="11.0.100" />
   </ItemGroup>
 </Project>
