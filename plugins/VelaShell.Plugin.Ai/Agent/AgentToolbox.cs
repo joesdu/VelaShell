@@ -43,6 +43,48 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     private readonly AsyncLocal<CommandJobRunScope?> _invocationScope = new();
     internal static readonly AsyncLocal<string?> InvocationIdentity = new();
     private readonly Lock _defaultRunGate = new();
+    private SemaphoreSlim _fileMutationGate = new(1, 1);
+    private AgentToolbox? _parentToolbox;
+
+    private static bool IsFileMutation(string name) => name is
+        "write_local_file" or "patch_local_file" or "make_local_directory"
+        or "rename_local_path" or "delete_local_path"
+        or "write_remote_file" or "patch_remote_file" or "make_remote_directory" or "rename_remote_path";
+
+    /// <summary>复制父轮范围和禁用项；审批策略与文件修改串行锁仍由父工具箱共享。</summary>
+    public AgentToolbox CreateSubagentToolbox()
+    {
+        string? sessionId = SessionIdProvider?.Invoke();
+        return new AgentToolbox(context)
+        {
+            SessionIdProvider = () => sessionId,
+            Scope = Scope,
+            LocalWorkspaces = LocalWorkspaces.Select(workspace => new LocalWorkspace
+            {
+                Id = workspace.Id,
+                Name = workspace.Name,
+                RootPath = workspace.RootPath,
+                AllowRead = workspace.AllowRead,
+                AllowWrite = workspace.AllowWrite
+            }).ToArray(),
+            LocalDefaultWorkspaceId = LocalDefaultWorkspaceId,
+            LocalMaxFileBytes = LocalMaxFileBytes,
+            LocalMaxDirectoryEntries = LocalMaxDirectoryEntries,
+            DisabledTools = new HashSet<string>(DisabledTools, StringComparer.OrdinalIgnoreCase),
+            WebSearch = WebSearch,
+            _fileMutationGate = _fileMutationGate,
+            _parentToolbox = _parentToolbox ?? this
+        };
+    }
+
+    /// <summary>只开放只读工具及显式选择的文件修改工具；沿用父轮取消及拒绝边界。</summary>
+    public IList<AITool> CreateSubagentTools(bool allowWrites, CommandJobRunScope parentRun)
+        => CreateTools(ChatMode.Agent, runScope: parentRun)
+            .Where(tool => (Catalog.Any(item => item.Name == tool.Name && item.ReadOnly)
+                            && tool.Name is not ("task_status" or "task_wait" or "transfer_status" or "transfer_wait"
+                                or "subagent_status" or "subagent_wait"))
+                           || (allowWrites && IsFileMutation(tool.Name)))
+            .ToList();
 
     /// <summary>
     /// 入口提供稳定所有者及唯一轮次;工具列表显式捕获,不同对话不共享 taskId。
@@ -240,7 +282,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         ("download_remote_file", "把远端文件后台拉到本机(交给本地 MCP 工具处理)", false),
         ("write_terminal", "把文本敲进用户可见的终端", false),
         ("send_file", "把已下载的文件当附件发进当前这个 IM 聊天(只有 IM 那条路有)", false),
-        ("delegate_subagent", "委托一个只读子 Agent 并行分析任务", false),
+        ("delegate_subagent", "委托子 Agent，默认只读，可显式允许文件修改", false),
         ("subagent_status", "查看子 Agent 的状态", true),
         ("subagent_wait", "等待子 Agent 完成并取得结果", true),
         ("subagent_cancel", "取消一个仍在运行的子 Agent", false)
@@ -451,9 +493,10 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         if (mode == ChatMode.Agent && Subagents is not null)
         {
             all.Add(("delegate_subagent", AIFunctionFactory.Create(DelegateSubagentAsync, "delegate_subagent",
-                "Delegate a focused read-only analysis task to a parallel subagent. "
-                + "The subagent may use inherited read-only workspace, session, and MCP tools, "
-                + "but cannot write, create sessions, or create more subagents. Returns an id immediately. "
+                "Delegate a focused task to a parallel subagent. Defaults to read-only. "
+                + "Set allowWrites=true explicitly for local/remote file edits under inherited scope and parent approvals. "
+                + "No command execution, session creation, transfers, approval management or recursive delegation. "
+                + "MCP tools remain read-only. File mutations are serialized with the parent; cancellation does not roll back changes. Returns an id immediately. "
                 + "Omit modelId to inherit the parent model, or select a configured model ID from: "
                 + JsonSerializer.Serialize(Subagents.ModelChoices)), false));
             all.Add(("subagent_status", AIFunctionFactory.Create(SubagentStatusAsync, "subagent_status",
@@ -471,8 +514,8 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         ];
     }
 
-    private string DelegateSubagentAsync(string prompt, string? role = null, string? modelId = null)
-        => Subagents?.Start(prompt, role, modelId) ?? "Subagent support is unavailable in this turn.";
+    private string DelegateSubagentAsync(string prompt, string? role = null, string? modelId = null, bool allowWrites = false)
+        => Subagents?.Start(prompt, role, modelId, allowWrites) ?? "Subagent support is unavailable in this turn.";
 
     private string SubagentStatusAsync(string id)
         => Subagents?.Status(id) ?? "Subagent support is unavailable in this turn.";
@@ -504,9 +547,15 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             CommandJobRunScope? previous = toolbox._invocationScope.Value;
             toolbox._invocationScope.Value = scope;
+            bool acquired = false;
             try
             {
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, scope.Token);
+                if (IsFileMutation(Name))
+                {
+                    await toolbox._fileMutationGate.WaitAsync(linked.Token).ConfigureAwait(false);
+                    acquired = true;
+                }
                 linked.Token.ThrowIfCancellationRequested();
                 if (scope.HasDeniedExecution && Name is not ("task_cancel" or "transfer_cancel"))
                     throw new UnauthorizedAccessException("Execution was denied in this run. A new user request is required.");
@@ -514,6 +563,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             }
             finally
             {
+                if (acquired) toolbox._fileMutationGate.Release();
                 toolbox._invocationScope.Value = previous;
             }
         }
@@ -2435,6 +2485,19 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
     private async Task<bool> ApproveAsync(ApprovalRequest request, CancellationToken cancellationToken)
     {
+        if (_parentToolbox is { } parent)
+        {
+            CommandJobRunScope? previous = parent._invocationScope.Value;
+            parent._invocationScope.Value = CurrentRun;
+            try
+            {
+                return await parent.ApproveAsync(request, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                parent._invocationScope.Value = previous;
+            }
+        }
         if ((request.Kind is "upload_local_file" or "transfer_resume" && AutoApprovesTransfer(RemoteTransferDirection.Upload))
             || (request.Kind == "download_remote_file" && AutoApprovesTransfer(RemoteTransferDirection.Download)))
         {

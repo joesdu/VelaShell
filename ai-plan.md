@@ -112,21 +112,23 @@ v1 直接使用插件进程的本地文件 API，但所有工具都必须经过 
 ### 5.2 运行模型
 
 - 新增 `SubagentOrchestrator`，由当前 `AgentToolbox` 持有。
-- 每个子任务拥有唯一 `subagent_id`、独立 `CommandJobRunScope` 和取消令牌。
+- 每个子任务拥有唯一 `subagent_id` 和取消令牌；文件工具绑定父轮 `CommandJobRunScope`，共享取消及审批拒绝停止边界，不提供命令/传输任务工具。
 - 子 Agent 继承父 Agent 的 `LocalPathScope`、`ISessionScope`、MCP 工具筛选和审批模式，不能扩大权限。
 - 默认最多 4 个并发子 Agent、每轮最多 8 个、单个子 Agent 默认 120 秒。
-- 当前阶段子 Agent 仅使用只读工具；`allowWrites=true` 延后，不属于本轮实现范围。
+- 默认只读；每次委派可显式传 `allowWrites=true` 开放现有本地/远端文件修改工具，继承范围、禁用项与父轮实时审批策略，MCP 仍仅只读。
+- 子任务从本轮工具配置快照创建；工作区对象独立复制，排队期间设置变更不会扩大已捕获的范围。
+- 父子内置文件修改共用串行锁，覆盖读取、审批到写入全过程；等待锁可以取消。该锁不协调其它聊天、外部程序或 MCP，取消/失败不保证撤销已经完成的修改。
 - 子 Agent 不允许继续创建子 Agent，避免递归爆炸。
 - 父轮取消时取消全部子 Agent；单个子 Agent 失败不吞掉错误，汇总中保留状态和错误。
 
 ### 5.3 工具契约
 
-- `delegate_subagent(prompt, role?, modelId?)`
+- `delegate_subagent(prompt, role?, modelId?, allowWrites=false)`
 - `subagent_status(id)`
 - `subagent_wait(id, timeoutSeconds?)`
 - `subagent_cancel(id)`
 
-以上为当前实际工具参数。子任务执行上限固定为默认 120 秒，等待参数不修改执行上限；不暴露 `allowWrites`。
+以上为当前实际工具参数。子任务执行上限固定为默认 120 秒，等待参数不修改执行上限；`allowWrites` 不授予进程、终端、会话管理、传输、审批管理或再次委派能力。
 
 第一版结果汇总为结构化 JSON 文本，包含状态、摘要、输出、使用的工具和错误。模型提示明确要求主 Agent 验证子 Agent 的结果，不能把子 Agent 的文本视为用户已批准的事实。
 
@@ -277,7 +279,7 @@ v1 直接使用插件进程的本地文件 API，但所有工具都必须经过 
 截至当前实现：
 
 - 阶段 A、B 已完成：本地 Agent、工作区授权、本地读写工具、输入框工作区选择、`#local://` 引用、本地附件，以及 SSH 存在时的本地候选均已接入。当前选定工作区是本轮本地工具、附件补全和本地 MCP 工作目录的唯一授权范围。
-- 阶段 C 已完成受控只读工具继承、实时卡片与独立模型选择：`SubagentOrchestrator` 提供 `delegate_subagent`、`subagent_status`、`subagent_wait`、`subagent_cancel`，限制并发、总量和超时，父轮取消会收尾子任务。子 Agent 继承本地、SSH 只读工具及筛选后的 MCP 工具；可选已配置聊天模型，写入仍不开放。
+- 阶段 C 已完成受控工具继承、实时卡片与独立模型选择：`SubagentOrchestrator` 提供 `delegate_subagent`、`subagent_status`、`subagent_wait`、`subagent_cancel`，限制并发、总量和超时，父轮取消会收尾子任务。子 Agent 默认继承本地、SSH 只读工具及筛选后的 MCP 工具；可选已配置聊天模型，每次委派显式 `allowWrites=true` 可修改父轮授权文件。
 - 阶段 D 已完成配置、调用安全和生命周期 UI：工具白名单、授权工作区绑定、启动/调用超时、并发闸门、启停重启、状态与最近错误、自动启动、轮次连接租约及环境继承策略均已接入。多平台 Stdio 进程退出仍需人工兼容性验收。
 - 已更新中英文主手册，说明本地 Agent、`#local://`、subagent 限制和 MCP 工作区/超时配置。
 

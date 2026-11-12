@@ -1629,6 +1629,7 @@ public partial class ChatPanelView : UserControl
         long verifiedObservation = 0; // 每次真实流式请求单独取号,同模型的并发结果按起跑顺序结算
         string replyText = "";
         SubagentOrchestrator? subagents = null;
+        AgentToolbox? subagentTemplate = null;
         // 这一轮的故障转移 / 换 Key:合成一张切换提示卡挂在这条回复里(只给人看,不进 History,见 ChatPanelView.SwitchNotice.cs)
         List<ChatProviderSwitch> switches = [];
         try
@@ -2047,25 +2048,8 @@ public partial class ChatPanelView : UserControl
                                 verifiedCredential, selectedKeyId, childToken);
                         var toolCounts = new Dictionary<string, int>(StringComparer.Ordinal);
                         var toolErrors = new List<string>();
-                        string? childSessionId = _toolbox.SessionIdProvider?.Invoke();
-                        await using var childToolbox = new AgentToolbox(_context)
-                        {
-                            SessionIdProvider = () => childSessionId,
-                            ApprovalHandler = _toolbox.ApprovalHandler,
-                            Approval = _toolbox.Approval,
-                            Scope = _toolbox.Scope,
-                            LocalWorkspaces = _toolbox.LocalWorkspaces,
-                            LocalDefaultWorkspaceId = _toolbox.LocalDefaultWorkspaceId,
-                            LocalMaxFileBytes = _toolbox.LocalMaxFileBytes,
-                            LocalMaxDirectoryEntries = _toolbox.LocalMaxDirectoryEntries,
-                            DisabledTools = new HashSet<string>(_toolbox.DisabledTools, StringComparer.OrdinalIgnoreCase),
-                            WebSearch = _toolbox.WebSearch
-                        };
-                        await using CommandJobRunScope childRun = childToolbox.BeginRun(
-                            $"subagent:{Guid.NewGuid():N}", Guid.NewGuid().ToString("N"),
-                            cancellationToken: childToken);
-                        IList<AITool> childTools = childToolbox.CreateTools(
-                            ChatMode.Plan, nativeWebSearch: false, childRun);
+                        await using AgentToolbox childToolbox = subagentTemplate!.CreateSubagentToolbox();
+                        IList<AITool> childTools = childToolbox.CreateSubagentTools(request.AllowWrites, runScope);
                         foreach (AITool mcpTool in subagents!.ReadOnlyMcpTools)
                         {
                             childTools.Add(mcpTool);
@@ -2141,6 +2125,7 @@ public partial class ChatPanelView : UserControl
                     _toolbox.LocalDefaultWorkspaceId = _settings.LocalDefaultWorkspaceId;
                     _toolbox.LocalMaxFileBytes = _settings.LocalMaxFileBytes;
                     _toolbox.LocalMaxDirectoryEntries = _settings.LocalMaxDirectoryEntries;
+                    subagentTemplate ??= _toolbox.CreateSubagentToolbox();
                     IList<AITool> tools = mode == ChatMode.Chat ? [] : _toolbox.CreateTools(mode, nativeSearch, runScope);
                     if (bubble?.ImageTools is { } imageTools)
                         foreach (AITool tool in imageTools.CreateTools()) tools.Add(tool);
@@ -2235,6 +2220,8 @@ public partial class ChatPanelView : UserControl
                           "then collect their results with subagent_wait or subagent_status before reporting completion. " +
                           "Subagents are AI workers, not remote OS processes: run_command and task_status do not create subagents or their UI cards. " +
                           "Subagents can read authorized files, directories, terminal output and allowed read-only MCP tools, but cannot run shell commands. " +
+                          "For user-authorized file changes, explicitly pass allowWrites=true; mutations retain parent approvals and scope. " +
+                          "Assign disjoint files where possible, inspect tool results, and never claim cancellation rolled changes back. " +
                           "If analysis needs command output (for example df, ss or ps), collect it with parent tools first and include it in the delegated prompt. " +
                           "Do not claim subagents were created unless delegate_subagent succeeded. If the user explicitly wants OS processes, use command tools instead.\n"
                         : "")
@@ -2593,6 +2580,7 @@ public partial class ChatPanelView : UserControl
                 if (subagents is not null)
                 {
                     await subagents.DisposeAsync();
+                    if (subagentTemplate is not null) await subagentTemplate.DisposeAsync();
                     if (bubble is not null)
                     {
                         UpdateSubagentCards(bubble, subagents.Snapshots());
