@@ -1,5 +1,4 @@
 using ReactiveUI;
-using ReactiveUI.Primitives;
 using ReactiveUI.Primitives.Concurrency;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
@@ -17,7 +16,6 @@ namespace VelaShell.ViewModels;
 /// </remarks>
 public sealed class MasterPasswordSettingsViewModel : ReactiveObject
 {
-    private readonly IMasterPasswordService? _service;
     private readonly Func<GeneralOptions?> _general;
 
     /// <summary>构造。</summary>
@@ -26,7 +24,7 @@ public sealed class MasterPasswordSettingsViewModel : ReactiveObject
     /// <param name="probe">系统锁屏状态的读法。</param>
     public MasterPasswordSettingsViewModel(IMasterPasswordService? service, Func<GeneralOptions?> general, ISystemSessionLockProbe probe)
     {
-        _service = service;
+        Service = service;
         _general = general ?? throw new ArgumentNullException(nameof(general));
         ArgumentNullException.ThrowIfNull(probe);
         SystemLockSupported = probe.IsSupported;
@@ -40,10 +38,10 @@ public sealed class MasterPasswordSettingsViewModel : ReactiveObject
     }
 
     /// <summary>有主密码服务(没有时整块不显示)。</summary>
-    public bool IsAvailable => _service is not null;
+    public bool IsAvailable => Service is not null;
 
     /// <summary>主密码服务。</summary>
-    internal IMasterPasswordService? Service => _service;
+    internal IMasterPasswordService? Service { get; }
 
     /// <summary>这台电脑读得到系统锁屏状态(读不到就不显示「系统锁屏时锁定」,免得开了却不起作用)。</summary>
     public bool SystemLockSupported { get; }
@@ -86,7 +84,7 @@ public sealed class MasterPasswordSettingsViewModel : ReactiveObject
     /// <summary>现问一遍状态(问之前可能要先解析密钥,放到线程池上)。</summary>
     public async Task RefreshAsync()
     {
-        if (_service is not { } service)
+        if (Service is not { } service)
         {
             return;
         }
@@ -108,7 +106,7 @@ public sealed class MasterPasswordSettingsViewModel : ReactiveObject
 
     /// <summary>给某一种操作准备对话框的视图模型。</summary>
     public MasterPasswordDialogViewModel? CreateDialog(MasterPasswordDialogMode mode) =>
-        _service is { } service ? new MasterPasswordDialogViewModel(service, mode) : null;
+        Service is { } service ? new MasterPasswordDialogViewModel(service, mode) : null;
 
     /// <summary>对话框关了之后:记下结果说明、刷新状态。</summary>
     public async Task AfterDialogAsync(MasterPasswordDialogViewModel dialog)
@@ -124,7 +122,7 @@ public sealed class MasterPasswordSettingsViewModel : ReactiveObject
     /// <summary>解锁(弹解锁框)。</summary>
     public async Task UnlockAsync()
     {
-        if (_service is { } service)
+        if (Service is { } service)
         {
             await service.EnsureUnlockedAsync(interactive: true).ConfigureAwait(true);
             await RefreshAsync().ConfigureAwait(true);
@@ -134,7 +132,7 @@ public sealed class MasterPasswordSettingsViewModel : ReactiveObject
     /// <summary>立即锁定。</summary>
     public async Task LockNowAsync()
     {
-        if (_service?.LockNow() == true)
+        if (Service?.LockNow() == true)
         {
             Notice = Strings.Get("MasterPassword_LockedNow");
         }

@@ -29,7 +29,10 @@ namespace VelaShell.Core.Sftp;
 /// 没有存储(单元测试、无数据库的宿主)时只在内存里记账:本次运行内的暂停 / 继续照常可用。
 /// </para>
 /// </remarks>
-public sealed class TransferQueueJournal
+/// <remarks>以给定的存储构造;<paramref name="store" /> 为 null 时只在内存里记账。</remarks>
+/// <param name="store">SonnetDB 文档存储。</param>
+/// <param name="flushDelay">改动攒多久落一次盘;null = 默认 1 秒。</param>
+public sealed class TransferQueueJournal(IAppDataStore? store, TimeSpan? flushDelay = null)
 {
     /// <summary>文档集合名(SonnetDbEngine 在建库时一并创建,与 <c>recordings</c> 同一种形状)。</summary>
     public const string Collection = "transfer_queue";
@@ -39,27 +42,16 @@ public sealed class TransferQueueJournal
 
     private const string UploadTag = "upload";
     private const string DownloadTag = "download";
-
-    private readonly IAppDataStore? _store;
     private readonly Lock _gate = new();
     private readonly Dictionary<Guid, BatchState> _batches = [];
     private readonly HashSet<(Guid Batch, int Chunk)> _dirty = [];
     // 读不出来、Id 也认不出是哪一批哪一段的文档:下次落盘时按 Id 删掉。
-    private readonly HashSet<string> _orphans = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _orphans = [with(StringComparer.Ordinal)];
     private readonly SemaphoreSlim _flushLock = new(1, 1);
     private bool _flushScheduled;
 
-    /// <summary>以给定的存储构造;<paramref name="store" /> 为 null 时只在内存里记账。</summary>
-    /// <param name="store">SonnetDB 文档存储。</param>
-    /// <param name="flushDelay">改动攒多久落一次盘;null = 默认 1 秒。</param>
-    public TransferQueueJournal(IAppDataStore? store, TimeSpan? flushDelay = null)
-    {
-        _store = store;
-        FlushDelay = flushDelay ?? TimeSpan.FromSeconds(1);
-    }
-
     /// <summary>改动攒多久落一次盘。</summary>
-    public TimeSpan FlushDelay { get; }
+    public TimeSpan FlushDelay { get; } = flushDelay ?? TimeSpan.FromSeconds(1);
 
     /// <summary>这一类传输记不记进队列(只有上传与下载)。</summary>
     public static bool CanPersist(TransferType type) => type is TransferType.Upload or TransferType.Download;
@@ -169,20 +161,20 @@ public sealed class TransferQueueJournal
     /// <returns>按开始时间排的批次。</returns>
     public async Task<IReadOnlyList<PausedTransferBatch>> LoadAsync(CancellationToken cancellationToken = default)
     {
-        if (_store is null)
+        if (store is null)
         {
             return [];
         }
         List<TransferQueueChunk>? chunks;
         List<string> unreadable = [];
-        if (_store is ITolerantAppDataStore tolerant)
+        if (store is ITolerantAppDataStore tolerant)
         {
             // 一行坏的(崩溃时写了一半、或者以后的版本改了字段类型)不能让所有暂停的批次都还原不出来 —— 而且每次启动都这样。
             (chunks, unreadable) = await tolerant.GetAllReadableAsync<TransferQueueChunk>(Collection, cancellationToken).ConfigureAwait(false);
         }
         else
         {
-            chunks = await _store.GetAllAsync<TransferQueueChunk>(Collection, cancellationToken).ConfigureAwait(false);
+            chunks = await store.GetAllAsync<TransferQueueChunk>(Collection, cancellationToken).ConfigureAwait(false);
         }
         var restored = new List<PausedTransferBatch>();
         lock (_gate)
@@ -281,7 +273,7 @@ public sealed class TransferQueueJournal
     /// </summary>
     public async Task FlushAsync()
     {
-        if (_store is null)
+        if (store is null)
         {
             lock (_gate)
             {
@@ -312,11 +304,11 @@ public sealed class TransferQueueJournal
                 {
                     if (document is null)
                     {
-                        await _store.DeleteAsync(Collection, id).ConfigureAwait(false);
+                        await store.DeleteAsync(Collection, id).ConfigureAwait(false);
                     }
                     else
                     {
-                        await _store.UpsertAsync(Collection, id, document).ConfigureAwait(false);
+                        await store.UpsertAsync(Collection, id, document).ConfigureAwait(false);
                     }
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -366,7 +358,7 @@ public sealed class TransferQueueJournal
 
     private void ScheduleFlush()
     {
-        if (_store is null)
+        if (store is null)
         {
             return;
         }
@@ -447,23 +439,15 @@ public sealed class TransferQueueJournal
     }
 
     /// <summary>一批的账:每个槽位一项,落定了就置空。</summary>
-    private sealed class BatchState
+    private sealed class BatchState(TransferQueueOrigin origin, DateTime createdUtc, TransferQueueItem?[] items)
     {
-        public BatchState(TransferQueueOrigin origin, DateTime createdUtc, TransferQueueItem?[] items)
-        {
-            Origin = origin;
-            CreatedUtc = createdUtc;
-            Items = items;
-            Remaining = items.Count(static i => i is not null);
-        }
+        public TransferQueueOrigin Origin { get; } = origin;
 
-        public TransferQueueOrigin Origin { get; }
+        public DateTime CreatedUtc { get; } = createdUtc;
 
-        public DateTime CreatedUtc { get; }
+        public TransferQueueItem?[] Items { get; } = items;
 
-        public TransferQueueItem?[] Items { get; }
-
-        public int Remaining { get; set; }
+        public int Remaining { get; set; } = items.Count(static i => i is not null);
 
         public int ChunkCount => (Items.Length + ChunkSize - 1) / ChunkSize;
 

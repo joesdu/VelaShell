@@ -248,12 +248,12 @@ public sealed class TransferRetryTests
 
         string log = File.ReadAllText(Directory.GetFiles(rig.Directory, "transfer-*.log").Single());
         string diagnostic = log.Split('\n').Single(line => line.Contains("ATTEMPT_FAILED", StringComparison.Ordinal));
-        StringAssert.Contains(diagnostic, "attempt=1");
+        Assert.Contains("attempt=1", diagnostic);
         // 长度不符是永久失败:诊断照样留一条,但如实标成不会再自动重试。
-        StringAssert.Contains(diagnostic, "retry=False");
-        StringAssert.Contains(diagnostic, "kind=Permanent");
-        StringAssert.Contains(diagnostic, nameof(RemoteTransferLengthException));
-        StringAssert.Contains(diagnostic, "expected=1024,actual=0");
+        Assert.Contains("retry=False", diagnostic);
+        Assert.Contains("kind=Permanent", diagnostic);
+        Assert.Contains(nameof(RemoteTransferLengthException), diagnostic);
+        Assert.Contains("expected=1024,actual=0", diagnostic);
         Assert.IsFalse(diagnostic.Contains("secret", StringComparison.Ordinal));
         Assert.IsFalse(diagnostic.Contains("private-path", StringComparison.Ordinal));
         Assert.IsFalse(diagnostic.Contains(RemoteFile, StringComparison.Ordinal));
@@ -288,11 +288,11 @@ public sealed class TransferRetryTests
             TransferLogService.AppendFailure(directory, Guid.NewGuid(), TransferType.Relay, 2, 1024, true, false, failure);
 
             string log = File.ReadAllText(Directory.GetFiles(directory, "transfer-*.log").Single());
-            StringAssert.Contains(log, "durable=4096,refused=False");
-            StringAssert.Contains(log, nameof(TimeoutException));
-            StringAssert.Contains(log, "targetDurable=2048");
-            StringAssert.Contains(log, "cleanup=VelaSftpPermissionDeniedException");
-            StringAssert.Contains(log, "retry=False");
+            Assert.Contains("durable=4096,refused=False", log);
+            Assert.Contains(nameof(TimeoutException), log);
+            Assert.Contains("targetDurable=2048", log);
+            Assert.Contains("cleanup=VelaSftpPermissionDeniedException", log);
+            Assert.Contains("retry=False", log);
             Assert.IsFalse(log.Contains("private", StringComparison.Ordinal));
             Assert.IsFalse(log.Contains("secret", StringComparison.Ordinal));
             Assert.IsFalse(log.Contains("token=", StringComparison.Ordinal));
@@ -318,13 +318,13 @@ public sealed class TransferRetryTests
             TransferLogService.AppendFailure(directory, Guid.NewGuid(), TransferType.Relay, 1, 0, false, false, failure);
 
             string log = File.ReadAllText(Directory.GetFiles(directory, "transfer-*.log").Single());
-            StringAssert.Contains(log, "ATTEMPT_FAILED");
-            StringAssert.Contains(log, "kind=Permanent");
-            StringAssert.Contains(log, "stage=local-cache");
-            StringAssert.Contains(log, "retry=False");
-            StringAssert.Contains(log, nameof(RelayCacheException));
-            StringAssert.Contains(log, nameof(IOException));
-            StringAssert.Contains(log, nameof(TimeoutException));
+            Assert.Contains("ATTEMPT_FAILED", log);
+            Assert.Contains("kind=Permanent", log);
+            Assert.Contains("stage=local-cache", log);
+            Assert.Contains("retry=False", log);
+            Assert.Contains(nameof(RelayCacheException), log);
+            Assert.Contains(nameof(IOException), log);
+            Assert.Contains(nameof(TimeoutException), log);
             foreach (string message in new[] { failure.Message, io.Message, timeout.Message })
             {
                 Assert.IsFalse(log.Contains(message, StringComparison.Ordinal), "诊断不能输出任何一层异常消息。");
@@ -350,9 +350,9 @@ public sealed class TransferRetryTests
             TransferLogService.AppendFailure(directory, Guid.NewGuid(), TransferType.Relay, 1, 0, false, false, error);
 
             string log = File.ReadAllText(Directory.GetFiles(directory, "transfer-*.log").Single());
-            StringAssert.Contains(log, nameof(IOException));
-            StringAssert.Contains(log, nameof(VelaSftpPermissionDeniedException));
-            StringAssert.Contains(log, "kind=Permanent");
+            Assert.Contains(nameof(IOException), log);
+            Assert.Contains(nameof(VelaSftpPermissionDeniedException), log);
+            Assert.Contains("kind=Permanent", log);
             Assert.IsFalse(log.Contains("secret", StringComparison.Ordinal));
             Assert.IsFalse(log.Contains("private", StringComparison.Ordinal));
         }

@@ -18,7 +18,7 @@
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0" />
     <!-- 其它 -->
     <PackageVersion Include="ReactiveUI" Version="26.0.1" />
-    <PackageVersion Include="LiveMarkdown.Avalonia" Version="2.5.1" />
+    <PackageVersion Include="LiveMarkdown.Avalonia" Version="2.6.1" />
     <!-- MMDB 读取器(Apache 2.0)。只是格式读取库,不绑定 MaxMind 的数据 ——
          我们配的是 DB-IP Lite City(CC BY 4.0),同一格式。 -->
     <PackageVersion Include="MaxMind.Db" Version="5.2.0" />

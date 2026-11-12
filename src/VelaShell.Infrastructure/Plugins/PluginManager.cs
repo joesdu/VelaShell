@@ -18,6 +18,7 @@ using VelaShell.PluginSdk.RemoteExec;
 using VelaShell.PluginSdk.RemoteFs;
 using VelaShell.PluginSdk.RemoteTunnel;
 using VelaShell.PluginSdk.Sessions;
+using VelaShell.PluginSdk.Storage;
 using VelaShell.PluginSdk.Versioning;
 using SecretsLockedException = VelaShell.Core.Data.SecretsLockedException;
 
@@ -394,10 +395,16 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             manifest = PluginManifestReader.Load(manifestPath); // 坏清单在此抛 PluginManifestException
             if ((expectedPluginId is not null && !string.Equals(manifest.Id, expectedPluginId, StringComparison.Ordinal))
                 || (expectedVersion is not null && !string.Equals(manifest.Version, expectedVersion, StringComparison.Ordinal)))
+            {
                 throw new PluginManifestException(Strings.Get("PluginMarket_PackageMismatch"));
+            }
+
             if (expectedPluginId is not null
                 && DescribeUpdateBlocker(manifest.ApiLevel, manifest.MinHostVersion, manifest.MinSdkVersion) is { } blocker)
+            {
                 throw new PluginManifestException(Strings.Format("PluginMarket_IncompatiblePackage", blocker));
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
             if (DescribeManifestVersionProblem(manifest) is { } versionProblem)
             {
@@ -2611,7 +2618,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         // 禁用插件后它们照跑,还攥着插件自己的委托,把可收集 ALC 钉在内存里。
         runtime.Lifetime?.Dispose();
         runtime.Lifetime = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
-        var storage = options.DataStore?.CreateStorage(manifest.Id) ?? new JsonFilePluginStorage(dataDirectory);
+        IPluginStorage storage = options.DataStore?.CreateStorage(manifest.Id) ?? new JsonFilePluginStorage(dataDirectory);
         return new()
         {
             PluginId = manifest.Id,

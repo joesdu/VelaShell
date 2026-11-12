@@ -265,7 +265,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
     {
         _credentialResolver = credentialResolver;
         // 可选主密码:连接的构建点之前过闸口、解锁 / 锁定时重读会话树、锁着时挂起的自动重连解锁后重试(MasterPassword 分部)。
-        _masterPassword = masterPassword;
+        MasterPassword = masterPassword;
         WireMasterPassword(masterPassword);
         _backgroundUpdateDownload = backgroundUpdateDownload;
         _masterKeyStatus = masterKeyStatus;
@@ -2252,18 +2252,16 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
     /// </summary>
     public Func<string, string, string, Task<bool>>? RemoteEditDraftConfirmer { get; set; }
 
-    private RemoteEditDraftReuploader? _draftReuploader;
-
     /// <summary>从消息中心重传外部编辑草稿的那一套(按需建,测试可以换掉)。</summary>
     internal RemoteEditDraftReuploader DraftReuploader
     {
-        get => _draftReuploader ??= new(
+        get => field ??= new(
             RemoteEditSessionManager.TempRoot,
             async id => _sessionRepository is null ? null : await _sessionRepository.GetSessionAsync(id).ConfigureAwait(true),
             async profile => (await ResolveFileBrowserForProfileAsync(profile).ConfigureAwait(true))?.EditDraftTarget,
             (title, body, confirmText) => RemoteEditDraftConfirmer is { } confirm ? confirm(title, body, confirmText) : Task.FromResult(false),
             _notificationCenter);
-        set => _draftReuploader = value;
+        set;
     }
 
     /// <summary>
@@ -6662,7 +6660,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
             }
         }
         // 主密码锁着:说的是「锁着」,不是「密钥不在」。
-        bool locked = _masterPassword is { } gate && await gate.IsLockedAsync().ConfigureAwait(true);
+        bool locked = MasterPassword is { } gate && await gate.IsLockedAsync().ConfigureAwait(true);
         return new CredentialProviderException(
             CredentialFailure.UnreadableSecret,
             profile.CredentialSource?.ProviderId ?? string.Empty,

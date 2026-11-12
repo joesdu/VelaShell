@@ -810,7 +810,7 @@ public sealed class UpdateApplier(string applicationDirectory)
 
     private static long CurrentProcessStartUtcTicks()
     {
-        using Process process = Process.GetCurrentProcess();
+        using var process = Process.GetCurrentProcess();
         return process.StartTime.ToUniversalTime().Ticks;
     }
 
@@ -833,7 +833,7 @@ public sealed class UpdateApplier(string applicationDirectory)
         }
         try
         {
-            using Process process = Process.GetProcessById(journal.OwnerProcessId);
+            using var process = Process.GetProcessById(journal.OwnerProcessId);
             return !process.HasExited && (journal.OwnerProcessStartUtcTicks == 0
                 || process.StartTime.ToUniversalTime().Ticks == journal.OwnerProcessStartUtcTicks);
         }

@@ -82,7 +82,7 @@ public sealed class SshAgentEndpointTests
     /// 「SSH Agent」认证连的是这条连接指定的 agent:<c>SSH_AUTH_SOCK</c> 指着一个不存在的套接字,照样登得上,签名出自指定的那个。
     /// </summary>
     [TestMethod]
-    [Timeout(60_000)]
+    [Timeout(60_000, CooperativeCancellation = true)]
     public async Task Agent认证用连接指定的端点_不碰SSH_AUTH_SOCK()
     {
         using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -106,7 +106,7 @@ public sealed class SshAgentEndpointTests
 
     /// <summary>指定的 agent 连不上:提示点名那个端点,不再叫人去起 Windows 的 OpenSSH agent 服务(那多半不是它)。</summary>
     [TestMethod]
-    [Timeout(60_000)]
+    [Timeout(60_000, CooperativeCancellation = true)]
     public async Task 指定的agent连不上时提示点名那个端点()
     {
         string missing = Path.Combine(Path.GetTempPath(), $"vs-gone-{Guid.NewGuid():N}"[..36] + ".sock");
@@ -122,7 +122,7 @@ public sealed class SshAgentEndpointTests
 
     /// <summary>指定的 agent 里一把钥都没有:提示也点名它。</summary>
     [TestMethod]
-    [Timeout(60_000)]
+    [Timeout(60_000, CooperativeCancellation = true)]
     public async Task 指定的agent里没有钥时提示点名那个端点()
     {
         await using var agent = SocketAgent.Start(signer: null);

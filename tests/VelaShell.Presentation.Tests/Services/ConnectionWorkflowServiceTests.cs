@@ -64,7 +64,7 @@ public sealed class ConnectionWorkflowServiceTests
         SessionProfile profile = CreateProfile();
         _sessionRepository.GetSessionAsync(profile.Id).Returns(_ => profile.Clone());
         _sessionRepository.SaveSessionAsync(Arg.Any<SessionProfile>())
-                          .Returns<Task>(_ => lockedMidway ? throw new SecretsLockedException() : throw new IOException("disk full"));
+                          .Returns(_ => lockedMidway ? throw new SecretsLockedException() : throw new IOException("disk full"));
         var session = new SshSession
         {
             ConnectionInfo = new() { Host = profile.Host, Port = profile.Port, Username = profile.Username, AuthMethod = profile.AuthMethod },

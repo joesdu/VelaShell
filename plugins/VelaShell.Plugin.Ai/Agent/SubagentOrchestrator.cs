@@ -126,7 +126,7 @@ public sealed class SubagentOrchestrator(
         public TimeSpan Timeout { get; init; }
         public SubagentExecutionResult? Result { get; set; }
         public string? Error { get; set; }
-        public Dictionary<string, int> LiveTools { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, int> LiveTools { get; } = [with(StringComparer.Ordinal)];
         public List<string> LiveErrors { get; } = [];
         public string LiveOutput { get; set; } = "";
         public string ToolActivity { get; set; } = "";
@@ -166,7 +166,7 @@ public sealed class SubagentOrchestrator(
                 if (_pauses++ > 0) return;
                 _remaining -= Stopwatch.GetElapsedTime(_resumedAt);
                 // 已经用完就让它照常到期；否则停表
-                if (_remaining > TimeSpan.Zero) Arm(System.Threading.Timeout.InfiniteTimeSpan);
+                if (_remaining > TimeSpan.Zero) Arm(Timeout.InfiniteTimeSpan);
             }
         }
 
@@ -605,10 +605,7 @@ public sealed class SubagentOrchestrator(
             entry.AllowWrites);
     }
 
-    private void NotifyChanged()
-    {
-        SnapshotsChanged?.Invoke(Snapshots());
-    }
+    private void NotifyChanged() => SnapshotsChanged?.Invoke(Snapshots());
 
     internal static class SubagentToolTracker
     {

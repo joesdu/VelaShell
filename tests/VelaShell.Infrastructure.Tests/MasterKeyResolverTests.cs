@@ -294,7 +294,7 @@ public sealed class MasterKeyResolverTests
         Assert.IsFalse(protector.TryUnprotect(oldCipher, out _), "拷走的数据目录在别处解不开 —— 这正是这一步的目的");
         Assert.AreEqual("fresh", Protector(elsewhere).Unprotect(protector.Protect("fresh")), "新保存的密码照常可用");
         Assert.IsFalse(File.Exists(_keyFile), "新密钥进了那边的密钥链,不落明文文件");
-        CollectionAssert.Contains(ReferencedIds(), oldId, "旧编号绝不自动丢弃:条目恢复后还能解");
+        Assert.Contains(oldId, ReferencedIds(), "旧编号绝不自动丢弃:条目恢复后还能解");
 
         // 用户把条目恢复回来(或者把数据目录拷回原来的电脑)。
         elsewhere.Entries[oldId] = original.Entries[oldId];
@@ -327,7 +327,7 @@ public sealed class MasterKeyResolverTests
 
         MasterKeyStatus status = Protector(store).GetKeyStatus();
 
-        CollectionAssert.Contains(status.MissingKeyIds.ToArray(), id, "内容对不上编号,不当成那把密钥用");
+        Assert.Contains(id, [.. status.MissingKeyIds], "内容对不上编号,不当成那把密钥用");
         Assert.AreSequenceEqual(tampered, store.Entries[id], "也不动它");
     }
 
@@ -551,7 +551,7 @@ public sealed class MasterKeyResolverTests
             Assert.AreEqual(MasterKeyStoreStatus.Ok, store.Save(id, key).Status, "同编号再存一次是覆盖,不是报错");
             MasterKeyStoreResult loaded = store.Load(id);
             Assert.AreEqual(MasterKeyStoreStatus.Ok, loaded.Status, loaded.Error);
-            Assert.AreSequenceEqual(key, loaded.Key!);
+            Assert.AreSequenceEqual(key, loaded.Key);
         }
     }
 

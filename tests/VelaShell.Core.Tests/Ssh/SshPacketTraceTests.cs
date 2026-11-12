@@ -95,7 +95,7 @@ public sealed class SshPacketTraceTests
 
     /// <summary>走宿主真实的装配路径连环回上的测试服务端:握手、认证的报文都记下了,发出的认证请求没有长度。</summary>
     [TestMethod]
-    [Timeout(60_000)]
+    [Timeout(60_000, CooperativeCancellation = true)]
     public async Task 直连时记下握手与认证()
     {
         await using LoopbackSshHost host = new();
@@ -122,7 +122,7 @@ public sealed class SshPacketTraceTests
 
     /// <summary>经跳板:两跳都记,各标各的;同一份轨迹由最外层的连接信息带下去。</summary>
     [TestMethod]
-    [Timeout(60_000)]
+    [Timeout(60_000, CooperativeCancellation = true)]
     public async Task 经跳板时两跳都记()
     {
         await using LoopbackSshHost jump = new()

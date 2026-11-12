@@ -172,7 +172,7 @@ public sealed class LocalPathPickerMarqueeUiTests
                 File.WriteAllText(Path.Combine(tempRoot, $"a{i}.txt"), new string('x', i + 1));
             }
 
-            var vm = UnwatchedLocalFileSystem.NewPane();
+            LocalFilePaneViewModel vm = UnwatchedLocalFileSystem.NewPane();
             PumpUntil(vm.NavigateToAsync(tempRoot));
 
             var dialog = new LocalPathPickerDialog(vm, loadInitial: false);

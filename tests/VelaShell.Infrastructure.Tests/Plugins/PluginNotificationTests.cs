@@ -82,7 +82,7 @@ public sealed class PluginNotificationTests
         Assert.AreEqual(NotificationSeverity.Critical, item.Severity);
         Assert.AreEqual("Acme Backup", item.Source, "双向控制符去掉,来源那一行伪装不了");
         Assert.AreEqual("备份 失败gnp.exe", item.Title, "标题一行:换行变空格,控制符去掉");
-        StringAssert.StartsWith(item.Body, "第一行\n第二行x");
+        Assert.StartsWith("第一行\n第二行x", item.Body);
         Assert.AreEqual(PluginNotification.MaxBodyLength + 1, item.Body!.Length, "正文截断到上限,带一个省略号");
         Assert.AreEqual(PluginId + ".show-log", item.Link!.CommandId);
         Assert.AreEqual("查看日志", item.Link.Label);

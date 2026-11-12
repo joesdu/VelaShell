@@ -204,7 +204,6 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
     /// <summary>标着 <c>always_display</c> 的 <c>SSH_MSG_DEBUG</c> 的回调（<see cref="SshConnectionOptions.DebugMessageHandler"/>；由 <see cref="InboundDispatcher"/> 在线程池上交给它）。</summary>
     internal Func<string, CancellationToken, ValueTask>? DebugMessageHandler { get; init; }
 
-
     /// <summary>度量的 <c>host</c> 标签（逻辑目标）；<see langword="null"/>（测试里直接建的连接）时不记度量。</summary>
     internal string? MetricsHost { get; init; }
 

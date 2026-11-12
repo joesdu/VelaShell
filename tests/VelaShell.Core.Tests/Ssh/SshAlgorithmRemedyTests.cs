@@ -31,9 +31,8 @@ public sealed class SshAlgorithmRemedyTests
         Assert.IsNull(applied.HostKeyAlgorithms);
         Assert.IsNull(applied.Ciphers);
         Assert.IsNull(applied.Macs);
-        CollectionAssert.Contains(
-            SshAlgorithmPreferences.Build(applied).KeyExchange.ToList(), Group14Sha1, "写进去的清单真能装成库的算法集。");
-        CollectionAssert.DoesNotContain(SshAlgorithmPreferences.Build(applied).HostKey.ToList(), "ssh-rsa", "别的类不动。");
+        Assert.Contains(Group14Sha1, SshAlgorithmPreferences.Build(applied).KeyExchange.ToList(), "写进去的清单真能装成库的算法集。");
+        Assert.DoesNotContain("ssh-rsa", SshAlgorithmPreferences.Build(applied).HostKey.ToList(), "别的类不动。");
     }
 
     [TestMethod]

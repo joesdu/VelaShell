@@ -38,7 +38,7 @@ public sealed class ChangeDirectoryCommandTests
     [DataRow("UTF-8", "/srv/😀 emoji", DisplayName = "代理对")]
     public void NonAsciiName_IsSentAsPrintableAscii_AndCdReceivesTheExactBytes(string encodingName, string directory)
     {
-        Encoding encoding = Encoding.GetEncoding(encodingName);
+        var encoding = Encoding.GetEncoding(encodingName);
         byte[] expected = encoding.GetBytes(directory);
         Assert.IsTrue(Array.Exists(expected, static b => b >= 0x80), "用例本身得有非 ASCII 的字节");
 
@@ -48,7 +48,7 @@ public sealed class ChangeDirectoryCommandTests
 
             Assert.Contains("printf '", command, $"{shell}:{command}");
             AssertWholeInjectedLineIsPrintableAscii(shell, command, encoding);
-            CollectionAssert.AreEqual(expected, DecodeCdArgument(command, shell, encoding), $"{shell}:{command}");
+            Assert.AreSequenceEqual(expected, DecodeCdArgument(command, shell, encoding), $"{shell}:{command}");
         }
     }
 
@@ -67,7 +67,7 @@ public sealed class ChangeDirectoryCommandTests
     [TestMethod]
     public void TheBytes_FollowTheSessionEncoding()
     {
-        Encoding gbk = Encoding.GetEncoding("GBK");
+        var gbk = Encoding.GetEncoding("GBK");
 
         string viaGbk = ChangeDirectoryCommand.Build(RemoteShellKind.Bash, "/报", gbk);
         string viaUtf8 = ChangeDirectoryCommand.Build(RemoteShellKind.Bash, "/报", Encoding.UTF8);
@@ -89,7 +89,7 @@ public sealed class ChangeDirectoryCommandTests
 
             Assert.DoesNotContain("printf", command, $"{shell}:{command}");
             AssertWholeInjectedLineIsPrintableAscii(shell, command, Encoding.UTF8);
-            CollectionAssert.AreEqual(Encoding.UTF8.GetBytes(directory), DecodeCdArgument(command, shell, Encoding.UTF8), $"{shell}:{command}");
+            Assert.AreSequenceEqual(Encoding.UTF8.GetBytes(directory), DecodeCdArgument(command, shell, Encoding.UTF8), $"{shell}:{command}");
         }
         Assert.AreEqual(@"cd '/srv/it'\''s here'", ChangeDirectoryCommand.Build(RemoteShellKind.Bash, "/srv/it's here", Encoding.UTF8));
     }
@@ -281,7 +281,7 @@ public sealed class ChangeDirectoryCommandTests
         for (int i = 0; i < format.Length; i++)
         {
             char c = format[i];
-            Assert.IsLessThan(0x80, (int)c, "格式串里不该有非 ASCII 的字符");
+            Assert.IsLessThan(0x80, c, "格式串里不该有非 ASCII 的字符");
             if (c == '%')
             {
                 Assert.IsTrue(i + 1 < format.Length && format[i + 1] == '%', "格式串里的 % 指令会去吃参数:" + format);
@@ -290,7 +290,7 @@ public sealed class ChangeDirectoryCommandTests
             }
             else if (c == '\\')
             {
-                Assert.IsTrue(i + 1 < format.Length, "格式串以 \\ 结尾");
+                Assert.IsLessThan(format.Length, i + 1, "格式串以 \\ 结尾");
                 char next = format[++i];
                 if (next is >= '0' and <= '7')
                 {

@@ -75,7 +75,7 @@ internal sealed partial class MasterKeyVault
             }
 
             (string Display, byte[] Entropy)? recovery = withRecoveryCode ? RecoveryCode.Generate() : null;
-            MasterPasswordHeader header = MasterPasswordHeader.CreateNew(
+            var header = MasterPasswordHeader.CreateNew(
                 withRecoveryCode ? RandomNumberGenerator.GetBytes(MasterPasswordHeader.SaltSize) : null, MasterPasswordHeaderState.Enabling);
             if (!_resolver.TryWriteHeader(header))
             {
@@ -457,7 +457,7 @@ internal sealed partial class MasterKeyVault
     private MasterPasswordChangeResult RewrapUnderNewHeader(MasterPasswordHeader current, byte[] nextUtf8, List<SlotPlan> plans,
         string? supersededHeaderKept)
     {
-        MasterPasswordHeader next = MasterPasswordHeader.CreateNew(current.RecoverySalt, MasterPasswordHeaderState.Active);
+        var next = MasterPasswordHeader.CreateNew(current.RecoverySalt, MasterPasswordHeaderState.Active);
         byte[] kek = MasterPasswordKdf.DerivePasswordKey(nextUtf8, next);
         try
         {

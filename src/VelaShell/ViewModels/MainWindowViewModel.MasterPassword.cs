@@ -1,7 +1,6 @@
 using ReactiveUI;
 using ReactiveUI.Primitives;
 using ReactiveUI.Primitives.Concurrency;
-using VelaShell.Core.Credentials;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
@@ -29,13 +28,12 @@ namespace VelaShell.ViewModels;
 /// </remarks>
 public partial class MainWindowViewModel
 {
-    private readonly IMasterPasswordGate? _masterPassword;
 
     /// <summary>锁着时被拦下的自动重连:解锁后各重试一次。</summary>
     private readonly HashSet<TerminalTabViewModel> _reconnectAfterUnlock = [];
 
     /// <summary>主密码的闸口(状态栏的锁形入口、设置页用);没有时为 null。</summary>
-    internal IMasterPasswordGate? MasterPassword => _masterPassword;
+    internal IMasterPasswordGate? MasterPassword { get; }
 
     private void WireMasterPassword(IMasterPasswordGate? gate)
     {
@@ -57,7 +55,7 @@ public partial class MainWindowViewModel
     /// </summary>
     internal async Task PromptUnlockAtStartupAsync()
     {
-        if (_masterPassword is not { } gate)
+        if (MasterPassword is not { } gate)
         {
             return;
         }
@@ -78,7 +76,7 @@ public partial class MainWindowViewModel
     /// <summary>状态栏的锁形入口:开没开、锁没锁(问状态可能要等密钥解析,放到线程池上问)。</summary>
     internal async Task RefreshMasterPasswordStatusAsync()
     {
-        if (_masterPassword is not { } gate)
+        if (MasterPassword is not { } gate)
         {
             return;
         }
@@ -91,7 +89,7 @@ public partial class MainWindowViewModel
     /// <summary>点锁形入口:锁着 → 弹解锁框;解着 → 立即锁定。</summary>
     private async Task ToggleMasterPasswordLockAsync()
     {
-        if (_masterPassword is not { } gate)
+        if (MasterPassword is not { } gate)
         {
             return;
         }
@@ -139,7 +137,7 @@ public partial class MainWindowViewModel
     /// </returns>
     private async Task<SessionProfile> UnlockForConnectAsync(SessionProfile profile)
     {
-        if (_masterPassword is not { } gate || !MasterPasswordGuard.UsesSavedSecrets(profile))
+        if (MasterPassword is not { } gate || !MasterPasswordGuard.UsesSavedSecrets(profile))
         {
             return profile;
         }
@@ -172,7 +170,7 @@ public partial class MainWindowViewModel
     private async Task<SessionProfile?> ResolveUnlockedReconnectProfileAsync(TerminalTabViewModel tab, SessionProfile copy, bool automatic)
     {
         SessionProfile profile = await ResolveReconnectProfileAsync(tab, copy).ConfigureAwait(true);
-        if (_masterPassword is not { } gate || !MasterPasswordGuard.UsesSavedSecrets(profile))
+        if (MasterPassword is not { } gate || !MasterPasswordGuard.UsesSavedSecrets(profile))
         {
             return profile;
         }
@@ -207,7 +205,7 @@ public partial class MainWindowViewModel
         {
             return await UnlockForConnectAsync(profile).ConfigureAwait(true);
         }
-        if (_masterPassword is not { } gate || !MasterPasswordGuard.UsesSavedSecrets(profile))
+        if (MasterPassword is not { } gate || !MasterPasswordGuard.UsesSavedSecrets(profile))
         {
             return profile;
         }
@@ -294,7 +292,7 @@ public partial class MainWindowViewModel
         try
         {
             SessionProfile? stored = await _sessionRepository.GetSessionAsync(profileId).ConfigureAwait(true);
-            Dictionary<string, string>? kept = stored?.PluginSecrets?
+            var kept = stored?.PluginSecrets?
                 .Where(static entry => StoredSecret.IsUnreadable(entry.Value))
                 .ToDictionary(static entry => entry.Key, static entry => entry.Value, StringComparer.Ordinal);
             return kept is { Count: > 0 } ? kept : null;

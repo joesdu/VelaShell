@@ -85,8 +85,8 @@ public sealed class RemoteSearchEncodingTests
 
         Assert.AreEqual("f\t" + VelaShell.Ssh.Sftp.SftpNameCodec.Utf8.Decode(path), decoded);
         Assert.AreEqual("f\t/srv/\udcd6\udcd0/中.log", decoded);
-        Assert.AreSequenceEqual(path, RemoteFileNameEncoding.EncodeExact(decoded[2..], null)!, "编回去还是原来那串字节");
-        Assert.AreSequenceEqual(VelaShell.Ssh.Sftp.SftpNameCodec.Utf8.Encode(decoded[2..]), RemoteFileNameEncoding.EncodeExact(decoded[2..], null)!);
+        Assert.AreSequenceEqual(path, RemoteFileNameEncoding.EncodeExact(decoded[2..], null), "编回去还是原来那串字节");
+        Assert.AreSequenceEqual(VelaShell.Ssh.Sftp.SftpNameCodec.Utf8.Encode(decoded[2..]), RemoteFileNameEncoding.EncodeExact(decoded[2..], null));
     }
 
     /// <summary>从一个不是 UTF-8 名字的目录起找(UTF-8 会话):目录名里的 U+DCxx 还原成原始字节交给远端,而不是写成 EF BF BD。</summary>
@@ -110,7 +110,7 @@ public sealed class RemoteSearchEncodingTests
     [DataRow("shift_jis", "ソ[ab]", new byte[] { 0x83, 0x5C, 0x5C, 0x5B, 0x61, 0x62, 0x5D })]
     public void BuildCommand_TrailBytesThatAreFnmatchMetacharacters_AreEscaped(string charset, string pattern, byte[] expected)
     {
-        Encoding encoding = Encoding.GetEncoding(charset);
+        var encoding = Encoding.GetEncoding(charset);
 
         string command = RemoteSearch.BuildCommand(new("/srv", pattern), RemoteShellKind.Bash, encoding);
 

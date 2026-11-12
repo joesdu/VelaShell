@@ -75,13 +75,21 @@ public static class PluginArtifactMaintenance
             string target = Path.Combine(userRoot, id);
             string root = Path.Combine(userRoot, ".upgrade");
             if (!Directory.Exists(root) || PluginArtifactLease.IsLink(root) || !IsValidBackup(target, id)
-                || !string.Equals(PluginContentHash.Compute(target), verifiedHash, StringComparison.Ordinal)) return;
+                || !string.Equals(PluginContentHash.Compute(target), verifiedHash, StringComparison.Ordinal))
+            {
+                return;
+            }
+
             foreach (string marker in Directory.EnumerateFiles(root, "*.owned").Take(PluginArtifactLease.SweepLimit))
             {
                 string backup = marker[..^6];
                 if (!PluginArtifactLease.IsArtifactName(Path.GetFileName(backup), id + "-", "")
                     || PluginArtifactLease.IsLink(backup) || PluginArtifactLease.IsLink(marker)
-                    || File.ReadAllText(marker) != BackupMarker) continue;
+                    || File.ReadAllText(marker) != BackupMarker)
+                {
+                    continue;
+                }
+
                 if (Directory.Exists(backup)) Directory.Delete(backup, recursive: true);
                 RemoveBackupMarker(backup);
             }
@@ -117,7 +125,10 @@ public static class PluginArtifactMaintenance
             string name = Path.GetFileName(backup);
             if (name.Length > 33 && name[^33] == '-'
                 && PluginArtifactLease.IsArtifactName(name, name[..^32], "")
-                && !Directory.Exists(backup) && !File.Exists(backup)) RemoveBackupMarker(backup);
+                && !Directory.Exists(backup) && !File.Exists(backup))
+            {
+                RemoveBackupMarker(backup);
+            }
         }
         var candidates = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         // Do not truncate this scan: an unseen second backup would make recovery ambiguous.
@@ -133,7 +144,7 @@ public static class PluginArtifactMaintenance
         {
             string target = Path.Combine(userRoot, id);
             if (Directory.Exists(target) || File.Exists(target) || PluginArtifactLease.IsLink(target)) continue;
-            string[] valid = paths.Where(path => IsValidBackup(path, id)).ToArray();
+            string[] valid = [.. paths.Where(path => IsValidBackup(path, id))];
             if (valid.Length == 1)
             {
                 Directory.Move(valid[0], target);
@@ -150,7 +161,7 @@ public static class PluginArtifactMaintenance
             if (PluginArtifactLease.IsLink(directory)) return false;
             string manifestPath = Path.Combine(directory, PluginManifestReader.FileName);
             if (PluginArtifactLease.IsLink(manifestPath)) return false;
-            var manifest = PluginManifestReader.Load(manifestPath);
+            PluginManifest manifest = PluginManifestReader.Load(manifestPath);
             string entry = Path.GetFullPath(Path.Combine(directory, manifest.Entry));
             return manifest.Id == id
                 && entry.StartsWith(Path.GetFullPath(directory) + Path.DirectorySeparatorChar,

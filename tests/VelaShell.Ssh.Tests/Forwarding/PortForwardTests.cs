@@ -2160,10 +2160,10 @@ SshProtocolNames.RequestStreamLocalForward, harness.Observed.GlobalRequests);
         try
         {
             Assert.HasCount(2, started);
-            RemotePortForwarder toLocalSocket = (RemotePortForwarder)started[0];
+            var toLocalSocket = (RemotePortForwarder)started[0];
             Assert.IsNull(toLocalSocket.RemoteSocketPath, "服务端在端口上监听");
             Assert.AreEqual(34605, toLocalSocket.BoundPort);
-            RemotePortForwarder fromServerSocket = (RemotePortForwarder)started[1];
+            var fromServerSocket = (RemotePortForwarder)started[1];
             Assert.AreEqual("/tmp/velashell-remote.sock", fromServerSocket.RemoteSocketPath);
             Assert.AreSequenceEqual(["/tmp/velashell-remote.sock"], harness.Observed.StreamLocalForwardBinds);
 

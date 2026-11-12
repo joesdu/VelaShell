@@ -43,7 +43,7 @@ public sealed class PluginArtifactTests
         string user = Path.Combine(_root, "plugins");
         string shadows = Path.Combine(_root, "shadows");
         string staging = PluginManager.PackageStagingRoot(user);
-        using PluginArtifactLease active = PluginArtifactLease.Create(staging, "", "", true);
+        using var active = PluginArtifactLease.Create(staging, "", "", true);
         string abandoned = Path.Combine(shadows, "acme.test", $"gen-{Guid.NewGuid():N}");
         Directory.CreateDirectory(abandoned);
         File.WriteAllText(abandoned + ".lease", "");

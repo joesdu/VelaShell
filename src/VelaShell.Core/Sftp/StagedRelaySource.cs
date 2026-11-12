@@ -145,12 +145,19 @@ public sealed class StagedRelaySource : IAsyncDisposable
             {
                 string name = Path.GetFileName(path);
                 if (name.Length != "velashell-relay-".Length + 32 + ".tmp".Length
-                    || !Guid.TryParseExact(name.AsSpan("velashell-relay-".Length, 32), "N", out _)) continue;
+                    || !Guid.TryParseExact(name.AsSpan("velashell-relay-".Length, 32), "N", out _))
+                {
+                    continue;
+                }
+
                 try
                 {
                     var file = new FileInfo(path);
                     if (file.LinkTarget is not null || (file.Attributes & FileAttributes.ReparsePoint) != 0
-                        || file.LastWriteTimeUtc >= cutoff) continue;
+                        || file.LastWriteTimeUtc >= cutoff)
+                    {
+                        continue;
+                    }
                     // Read/write avoids blocking on a Unix FIFO; non-seekable entries are not caches.
                     // Delete sharing permits unlink while retaining the exclusive read/write lease.
                     using var orphan = new FileStream(path, new FileStreamOptions
@@ -279,7 +286,7 @@ public sealed class StagedRelaySource : IAsyncDisposable
             if (_released) return;
             _released = true;
             if (storage is MemoryStream memory && memory.TryGetBuffer(out ArraySegment<byte> buffer))
-                CryptographicOperations.ZeroMemory(buffer.Array!);
+                CryptographicOperations.ZeroMemory(buffer.Array);
             try { await storage.DisposeAsync().ConfigureAwait(false); }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -291,12 +298,10 @@ public sealed class StagedRelaySource : IAsyncDisposable
 }
 
 /// <summary>A permanent local staging I/O failure, not a retryable remote transport failure.</summary>
-public sealed class RelayCacheException : IOException
+/// <remarks>Create a cache failure without exposing local paths or raw exception messages.</remarks>
+public sealed class RelayCacheException(string operation, Exception innerException) : IOException(Strings.Get("Relay_CacheFailed"), innerException)
 {
-    /// <summary>Create a cache failure without exposing local paths or raw exception messages.</summary>
-    public RelayCacheException(string operation, Exception innerException)
-        : base(Strings.Get("Relay_CacheFailed"), innerException) => Operation = operation;
 
     /// <summary>Nonlocalized operation identifier suitable for structured diagnostics.</summary>
-    public string Operation { get; }
+    public string Operation { get; } = operation;
 }

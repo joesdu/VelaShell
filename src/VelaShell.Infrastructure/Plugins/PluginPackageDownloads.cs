@@ -11,7 +11,7 @@ public static class PluginPackageDownloads
     /// <summary>Reserves a unique package path in the private plugin download directory.</summary>
     public static string CreatePath(string directory)
     {
-        PluginArtifactLease lease = PluginArtifactLease.Create(directory, "market-", ".vpx", directory: false);
+        var lease = PluginArtifactLease.Create(directory, "market-", ".vpx", directory: false);
         Pending[lease.Path] = lease;
         return lease.Path;
     }

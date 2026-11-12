@@ -42,7 +42,7 @@ public sealed class MasterPasswordConnectFlowTests
     public async Task ManualReconnect_WhileLocked_Prompts_AndProceedsOnceUnlocked()
     {
         var gate = new FakeGate { IsLocked = true, UnlockOnPrompt = true };
-        (MainWindowViewModel vm, TerminalTabViewModel tab, IConnectionWorkflowService workflow, TaskCompletionSource called) = DisconnectedTab(gate);
+        (MainWindowViewModel vm, TerminalTabViewModel tab, IConnectionWorkflowService workflow, _) = DisconnectedTab(gate);
 
         await vm.ReconnectTabAsync(tab);
 
@@ -54,7 +54,7 @@ public sealed class MasterPasswordConnectFlowTests
     public async Task ManualReconnect_UnlockCancelled_DoesNotUseThePasswordLeftInMemory()
     {
         var gate = new FakeGate { IsLocked = true };
-        (MainWindowViewModel vm, TerminalTabViewModel tab, IConnectionWorkflowService workflow, TaskCompletionSource called) = DisconnectedTab(gate);
+        (MainWindowViewModel vm, TerminalTabViewModel tab, IConnectionWorkflowService workflow, _) = DisconnectedTab(gate);
 
         await vm.ReconnectTabAsync(tab);
 

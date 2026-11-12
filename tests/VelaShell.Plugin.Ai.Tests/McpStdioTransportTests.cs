@@ -30,14 +30,14 @@ public sealed class McpStdioTransportTests
             await using var manager = new McpManager(context);
             fixture.Config.EnvironmentInheritMode = mode;
             fixture.Config.EnvironmentVariables = explicitValue ? fixture.Variable + "=explicit-value" : "";
-            await using var lease = await manager.AcquireToolsAsync([fixture.Config],
+            await using McpManager.ToolLease lease = await manager.AcquireToolsAsync([fixture.Config],
                 new McpApproval(null, ApprovalMode.Bypass), fixture.Token);
             using JsonDocument data = await InspectAsync(lease, fixture.Token);
             Assert.AreEqual(expected, data.RootElement.GetProperty("value").GetString());
             Assert.AreEqual(CanonicalPath(fixture.Directory),
                 CanonicalPath(data.RootElement.GetProperty("directory").GetString()!));
             Assert.AreEqual("Ready", manager.GetSnapshot(fixture.Config.Id).State);
-            using Process process = Process.GetProcessById(data.RootElement.GetProperty("pid").GetInt32());
+            using var process = Process.GetProcessById(data.RootElement.GetProperty("pid").GetInt32());
             await manager.StopAsync(fixture.Config.Id, fixture.Token);
             await process.WaitForExitAsync(fixture.Token);
             Assert.AreEqual("Stopped", manager.GetSnapshot(fixture.Config.Id).State);
@@ -52,16 +52,16 @@ public sealed class McpStdioTransportTests
         using var context = new TestPluginContext();
         await using var manager = new McpManager(context);
         var approval = new McpApproval(null, ApprovalMode.Bypass);
-        await using var first = await manager.AcquireToolsAsync([fixture.Config], approval, fixture.Token);
+        await using McpManager.ToolLease first = await manager.AcquireToolsAsync([fixture.Config], approval, fixture.Token);
         using JsonDocument firstData = await InspectAsync(first, fixture.Token);
-        using Process oldProcess = Process.GetProcessById(firstData.RootElement.GetProperty("pid").GetInt32());
+        using var oldProcess = Process.GetProcessById(firstData.RootElement.GetProperty("pid").GetInt32());
         await manager.RestartAsync(fixture.Config, fixture.Token);
         await oldProcess.WaitForExitAsync(fixture.Token);
         await Assert.ThrowsAsync<OperationCanceledException>(async () =>
-            await first.Tools.OfType<AIFunction>().Single().InvokeAsync(new AIFunctionArguments(), fixture.Token));
-        await using var second = await manager.AcquireToolsAsync([fixture.Config], approval, fixture.Token);
+            await first.Tools.OfType<AIFunction>().Single().InvokeAsync([], fixture.Token));
+        await using McpManager.ToolLease second = await manager.AcquireToolsAsync([fixture.Config], approval, fixture.Token);
         using JsonDocument secondData = await InspectAsync(second, fixture.Token);
-        using Process replacement = Process.GetProcessById(secondData.RootElement.GetProperty("pid").GetInt32());
+        using var replacement = Process.GetProcessById(secondData.RootElement.GetProperty("pid").GetInt32());
         await first.DisposeAsync();
         Assert.IsFalse(replacement.HasExited, "An old lease must not close the restarted connection.");
         fixture.Config.Enabled = false;
@@ -78,10 +78,10 @@ public sealed class McpStdioTransportTests
         await using var manager = new McpManager(context);
         fixture.Config.KeepAlive = false;
         var approval = new McpApproval(null, ApprovalMode.Bypass);
-        await using var first = await manager.AcquireToolsAsync([fixture.Config], approval, fixture.Token);
-        await using var second = await manager.AcquireToolsAsync([fixture.Config], approval, fixture.Token);
+        await using McpManager.ToolLease first = await manager.AcquireToolsAsync([fixture.Config], approval, fixture.Token);
+        await using McpManager.ToolLease second = await manager.AcquireToolsAsync([fixture.Config], approval, fixture.Token);
         using JsonDocument data = await InspectAsync(first, fixture.Token);
-        using Process process = Process.GetProcessById(data.RootElement.GetProperty("pid").GetInt32());
+        using var process = Process.GetProcessById(data.RootElement.GetProperty("pid").GetInt32());
         await first.DisposeAsync();
         using JsonDocument stillAlive = await InspectAsync(second, fixture.Token);
         Assert.IsFalse(process.HasExited);
@@ -98,14 +98,14 @@ public sealed class McpStdioTransportTests
         await using var manager = new McpManager(context);
         fixture.Config.Arguments += " --hang";
         fixture.Config.StartupTimeoutSeconds = 2;
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => manager.StartAsync(fixture.Config, fixture.Token));
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(() => manager.StartAsync(fixture.Config, fixture.Token));
         Assert.AreEqual("MCP startup timed out.", error.Message);
         Assert.IsFalse(fixture.Token.IsCancellationRequested);
         Assert.IsTrue(File.Exists(fixture.PidFile), "The fixture must have started before the handshake timed out.");
         int pid = int.Parse(await File.ReadAllTextAsync(fixture.PidFile, fixture.Token));
         try
         {
-            using Process process = Process.GetProcessById(pid);
+            using var process = Process.GetProcessById(pid);
             await process.WaitForExitAsync(fixture.Token);
         }
         catch (ArgumentException) { /* The SDK already reaped this test process. */ }
@@ -115,7 +115,7 @@ public sealed class McpStdioTransportTests
     private static async Task<JsonDocument> InspectAsync(McpManager.ToolLease lease, CancellationToken token)
     {
         Assert.HasCount(1, lease.Tools, string.Join(Environment.NewLine, lease.Errors));
-        object? raw = await lease.Tools.OfType<AIFunction>().Single().InvokeAsync(new AIFunctionArguments(), token);
+        object? raw = await lease.Tools.OfType<AIFunction>().Single().InvokeAsync([], token);
         TextContent result = Assert.IsInstanceOfType<TextContent>(raw);
         return JsonDocument.Parse(result.Text);
     }

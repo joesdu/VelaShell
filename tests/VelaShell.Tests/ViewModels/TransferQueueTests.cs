@@ -314,7 +314,7 @@ public sealed class TransferQueueTests
 
         Assert.AreEqual(TransferStatus.Cancelled, rig.Row("a.bin").Status);
         Assert.AreEqual(TransferStatus.Completed, rig.Row("b.bin").Status);
-        CollectionAssert.Contains(rig.Downloaded(rig.First), "/srv/c.bin", "a 停下之后它那个名额接着传 c");
+        Assert.Contains("/srv/c.bin", rig.Downloaded(rig.First), "a 停下之后它那个名额接着传 c");
         // c 断线,整批停下:队列里只剩 c —— a 取消了、b 传完了,都已摘掉。
         // 要是 a 的取消漏成整批取消,这一批就被当成「不要了」整个从队列里删掉,这一行根本不会出现。
         PausedTransferBatchViewModel paused = rig.Sink.PausedBatches.Single();
@@ -407,7 +407,7 @@ public sealed class TransferQueueTests
         Assert.AreEqual(1, result.Succeeded);
         Assert.AreEqual(1, result.Failed);
         Assert.AreSequenceEqual([$"a.bin: {Strings.Get("Sync_Cancelled")}"], [.. result.Errors]);
-        CollectionAssert.Contains(rig.Downloaded(rig.First), "/srv/b.bin");
+        Assert.Contains("/srv/b.bin", rig.Downloaded(rig.First));
 
         // 远端时间精度记成未知:替身不真的写文件,别让「对齐修改时间」去碰一个不存在的本地文件。
         static SyncAction Download(string name) => new(SyncActionKind.Download, name, false, null,

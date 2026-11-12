@@ -147,7 +147,7 @@ public sealed class OpenTerminalHereTests
         // 注入推迟到对端安静下来之后(替身流永远不吐数据,一路等到 3 秒上限),余量给宽。
         string payload = await injected.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Contains(@"cd '/srv/it'\''s here'", payload);
-        StringAssert.EndsWith(payload, "\n");
+        Assert.EndsWith("\n", payload);
         lock (writes)
         {
             Assert.DoesNotContain(write => write.Contains("/srv/old", StringComparison.Ordinal), writes, "配置里的初始目录被这一个压过去,不再 cd 两次。");

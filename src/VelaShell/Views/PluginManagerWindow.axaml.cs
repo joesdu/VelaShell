@@ -259,8 +259,10 @@ public partial class PluginManagerWindow : Window
                 // 装是装上了(它自带的收据钉住了这把公钥),只是没进全局信任库 ——
                 // 失败方向朝着"信任更少",说清楚即可,不必回滚一次用户明确要的安装。
                 if (IsVisible)
+                {
                     await MessageDialog.ShowMessageAsync(this,
                         Strings.Get("PluginManager_UntrustedTitle"), ex.Message, MessageDialogKind.Error);
+                }
             }
         }
     }

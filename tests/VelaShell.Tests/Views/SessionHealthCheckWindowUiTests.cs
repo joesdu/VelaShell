@@ -70,7 +70,7 @@ public sealed class SessionHealthCheckWindowUiTests
                          Strings.Get("Health_StatusUnsupported"), "old-switch", "TCP", vm.Summary,
                      })
             {
-                CollectionAssert.Contains(texts, expected, $"表上找不到「{expected}」");
+                Assert.Contains(expected, texts, $"表上找不到「{expected}」");
             }
             Assert.IsFalse(window.FindControl<Button>("StopButton")!.IsEffectivelyEnabled, "查完了,「停止」灰掉。");
             Assert.IsTrue(window.FindControl<Button>("RerunButton")!.IsEffectivelyEnabled);

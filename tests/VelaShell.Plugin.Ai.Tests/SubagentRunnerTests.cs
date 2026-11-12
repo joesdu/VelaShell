@@ -118,7 +118,7 @@ public sealed class SubagentRunnerTests
             Assert.AreEqual("completed", root.GetProperty("status").GetString(), root.GetRawText());
             Assert.AreEqual("Checking the sessions.", root.GetProperty("output").GetString());
             string[] errors = [.. root.GetProperty("errors").EnumerateArray().Select(e => e.GetString()!)];
-            Assert.IsTrue(errors.Any(e => e.Contains("without writing a final report", StringComparison.Ordinal)),
+            Assert.Contains(e => e.Contains("without writing a final report", StringComparison.Ordinal), errors,
                 "没有最终报告必须在结果里写明,父 Agent 才不会把一句过渡话当结论。");
         }
         Assert.HasCount(3, client.Requests);

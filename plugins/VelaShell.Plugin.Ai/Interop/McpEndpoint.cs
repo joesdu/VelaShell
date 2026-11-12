@@ -362,7 +362,7 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
                         return;
                     }
                     string sessionId = Guid.NewGuid().ToString("n");
-                    var host = await McpToolHost.CreateAsync(context, _settings, aiStore, cancellationToken).ConfigureAwait(false);
+                    McpToolHost host = await McpToolHost.CreateAsync(context, _settings, aiStore, cancellationToken).ConfigureAwait(false);
                     try
                     {
                         await host.AutoSelectAsync(cancellationToken).ConfigureAwait(false);

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Configuration;
+using VelaShell.PluginSdk.Sessions;
 using VelaShell.PluginSdk.Testing;
 
 namespace VelaShell.Plugin.Ai.Tests;
@@ -20,10 +21,10 @@ public sealed class WritableSubagentTests
             LocalWorkspaces = [new LocalWorkspace { Id = "local", RootPath = Environment.CurrentDirectory, AllowWrite = true }],
             DisabledTools = new HashSet<string> { "rename_remote_path" }
         };
-        await using var run = parent.BeginRun("test", "turn");
-        await using var child = parent.CreateSubagentToolbox();
-        string[] readOnly = child.CreateSubagentTools(false, run).Select(t => t.Name).ToArray();
-        string[] writable = child.CreateSubagentTools(true, run).Select(t => t.Name).ToArray();
+        await using CommandJobRunScope run = parent.BeginRun("test", "turn");
+        await using AgentToolbox child = parent.CreateSubagentToolbox();
+        string[] readOnly = [.. child.CreateSubagentTools(false, run).Select(t => t.Name)];
+        string[] writable = [.. child.CreateSubagentTools(true, run).Select(t => t.Name)];
         Assert.DoesNotContain("write_local_file", readOnly);
         Assert.DoesNotContain("write_remote_file", readOnly);
         Assert.Contains("read_local_file", readOnly);
@@ -32,7 +33,9 @@ public sealed class WritableSubagentTests
         foreach (string name in new[] { "rename_remote_path", "run_command", "run_on_sessions", "write_terminal",
                      "open_session", "close_session", "delegate_subagent", "upload_local_file", "download_remote_file",
                      "transfer_resume", "task_status" })
+        {
             Assert.DoesNotContain(name, writable);
+        }
     }
 
     [TestMethod]
@@ -41,14 +44,14 @@ public sealed class WritableSubagentTests
     public async Task RemoteWrite_UsesCurrentParentApprovalAndDenialStopsParent(bool missingHandler)
     {
         using var context = new TestPluginContext();
-        var session = context.FakeSessions.AddConnected();
+        SessionInfo session = context.FakeSessions.AddConnected();
         await using var parent = new AgentToolbox(context)
         {
             SessionIdProvider = () => session.SessionId,
             Approval = ApprovalMode.Bypass
         };
-        await using var run = parent.BeginRun("test", "turn");
-        await using var child = parent.CreateSubagentToolbox();
+        await using CommandJobRunScope run = parent.BeginRun("test", "turn");
+        await using AgentToolbox child = parent.CreateSubagentToolbox();
         AIFunction write = Tool(child.CreateSubagentTools(true, run), "write_remote_file");
         parent.Approval = ApprovalMode.Ask;
         int approvals = 0;
@@ -68,7 +71,7 @@ public sealed class WritableSubagentTests
     public async Task CancelDuringApproval_ReleasesGateWithoutWriting()
     {
         using var context = new TestPluginContext();
-        var session = context.FakeSessions.AddConnected();
+        SessionInfo session = context.FakeSessions.AddConnected();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var approval = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var parent = new AgentToolbox(context)
@@ -76,12 +79,12 @@ public sealed class WritableSubagentTests
             SessionIdProvider = () => session.SessionId,
             ApprovalHandler = _ => { entered.TrySetResult(); return approval.Task; }
         };
-        await using var run = parent.BeginRun("test", "turn");
-        await using var child = parent.CreateSubagentToolbox();
+        await using CommandJobRunScope run = parent.BeginRun("test", "turn");
+        await using AgentToolbox child = parent.CreateSubagentToolbox();
         AIFunction write = Tool(child.CreateSubagentTools(true, run), "write_remote_file");
         using var cancellation = new CancellationTokenSource();
         Task<object?> pending = write.InvokeAsync(new AIFunctionArguments
-            { ["path"] = "/new", ["content"] = "cancelled" }, cancellation.Token).AsTask();
+        { ["path"] = "/new", ["content"] = "cancelled" }, cancellation.Token).AsTask();
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         cancellation.Cancel();
         await Assert.ThrowsAsync<OperationCanceledException>(async () => await pending);
@@ -122,12 +125,12 @@ public sealed class WritableSubagentTests
                     return Task.FromResult(true);
                 }
             };
-            await using var run = parent.BeginRun("test", "turn");
-            await using var first = parent.CreateSubagentToolbox();
-            await using var second = parent.CreateSubagentToolbox();
+            await using CommandJobRunScope run = parent.BeginRun("test", "turn");
+            await using AgentToolbox first = parent.CreateSubagentToolbox();
+            await using AgentToolbox second = parent.CreateSubagentToolbox();
             AIFunction patch = Tool(first.CreateSubagentTools(true, run), "patch_local_file");
             Task<object?> active = patch.InvokeAsync(new AIFunctionArguments
-                { ["path"] = "file.txt", ["oldText"] = "one", ["newText"] = "ONE" }).AsTask();
+            { ["path"] = "file.txt", ["oldText"] = "one", ["newText"] = "ONE" }).AsTask();
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             using var cancelled = new CancellationTokenSource();
             Task<object?> queued = Tool(second.CreateSubagentTools(true, run), "write_local_file")
@@ -135,7 +138,7 @@ public sealed class WritableSubagentTests
                     cancelled.Token).AsTask();
             Task<object?> parentPatch = Tool(parent.CreateTools(ChatMode.Agent, runScope: run), "patch_local_file")
                 .InvokeAsync(new AIFunctionArguments
-                    { ["path"] = "file.txt", ["oldText"] = "two", ["newText"] = "TWO" }).AsTask();
+                { ["path"] = "file.txt", ["oldText"] = "two", ["newText"] = "TWO" }).AsTask();
             Assert.IsFalse(parentPatch.IsCompleted);
             cancelled.Cancel();
             await Assert.ThrowsAsync<OperationCanceledException>(async () => await queued);
@@ -146,16 +149,16 @@ public sealed class WritableSubagentTests
             Assert.AreEqual(2, approvals);
             AIFunction write = Tool(second.CreateSubagentTools(true, run), "write_local_file");
             object? outside = await write.InvokeAsync(new AIFunctionArguments
-                { ["path"] = Path.Combine("..", "outside.txt"), ["content"] = "no" });
+            { ["path"] = Path.Combine("..", "outside.txt"), ["content"] = "no" });
             Assert.Contains("outside", outside?.ToString() ?? "");
             Assert.AreEqual(2, approvals);
             parent.LocalWorkspaces[0].RootPath = Path.GetDirectoryName(root)!;
             object? changedParent = await write.InvokeAsync(new AIFunctionArguments
-                { ["path"] = Path.Combine("..", "outside.txt"), ["content"] = "no" });
+            { ["path"] = Path.Combine("..", "outside.txt"), ["content"] = "no" });
             Assert.Contains("outside", changedParent?.ToString() ?? "");
             Assert.AreEqual(2, approvals);
             object? unavailable = await write.InvokeAsync(new AIFunctionArguments
-                { ["path"] = "file.txt", ["workspaceId"] = "not-authorized", ["content"] = "no" });
+            { ["path"] = "file.txt", ["workspaceId"] = "not-authorized", ["content"] = "no" });
             Assert.AreEqual("ONE TWO", await File.ReadAllTextAsync(file));
             Assert.AreEqual(2, approvals);
             Assert.Contains("not available", unavailable?.ToString() ?? "");
@@ -170,8 +173,8 @@ public sealed class WritableSubagentTests
     public async Task RemoteWrites_InheritSessionScopeAndApprovedWritesSucceed()
     {
         using var context = new TestPluginContext();
-        var allowed = context.FakeSessions.AddConnected(host: "allowed");
-        var blocked = context.FakeSessions.AddConnected(host: "blocked");
+        SessionInfo allowed = context.FakeSessions.AddConnected(host: "allowed");
+        SessionInfo blocked = context.FakeSessions.AddConnected(host: "blocked");
         int approvals = 0;
         await using var parent = new AgentToolbox(context)
         {
@@ -179,11 +182,11 @@ public sealed class WritableSubagentTests
             Scope = new TargetListScope([$"{allowed.Username}@{allowed.Host}:{allowed.Port}"]),
             ApprovalHandler = _ => { approvals++; return Task.FromResult(true); }
         };
-        await using var run = parent.BeginRun("test", "turn");
-        await using var child = parent.CreateSubagentToolbox();
+        await using CommandJobRunScope run = parent.BeginRun("test", "turn");
+        await using AgentToolbox child = parent.CreateSubagentToolbox();
         AIFunction write = Tool(child.CreateSubagentTools(true, run), "write_remote_file");
         await write.InvokeAsync(new AIFunctionArguments
-            { ["path"] = "/new", ["content"] = "blocked", ["sessionId"] = blocked.SessionId });
+        { ["path"] = "/new", ["content"] = "blocked", ["sessionId"] = blocked.SessionId });
         Assert.AreEqual(0, approvals);
         Assert.IsNull(context.FakeRemoteFs.GetFile(blocked.SessionId, "/new"));
         await write.InvokeAsync(new AIFunctionArguments { ["path"] = "/new", ["content"] = "allowed" });

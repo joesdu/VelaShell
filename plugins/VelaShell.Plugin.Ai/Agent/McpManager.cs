@@ -1,5 +1,5 @@
-using System.Net.Sockets;
 using System.Collections.Concurrent;
+using System.Net.Sockets;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
@@ -93,7 +93,7 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
         }
         try
         {
-            var (tools, errors) = await GetToolsCoreAsync(servers, approval, token, workspaces, (id, connection) =>
+            (List<AITool>? tools, List<string>? errors) = await GetToolsCoreAsync(servers, approval, token, workspaces, (id, connection) =>
             {
                 connection.Users++;
                 acquired.Add((id, connection));
@@ -413,7 +413,7 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
     /// 该筛选只决定可见性，工具仍保留本轮的本地审批包装。
     /// </summary>
     public static IReadOnlyList<AITool> FilterReadOnlyTools(IEnumerable<AITool> tools)
-        => tools.Where(static tool => tool is ApprovalGatedFunction gated && gated.ReadOnlyHint).ToArray();
+        => [.. tools.Where(static tool => tool is ApprovalGatedFunction gated && gated.ReadOnlyHint)];
 
     /// <summary>设置页"测试":临时连接,返回工具名列表后即断开。</summary>
     public static async Task<IReadOnlyList<string>> ProbeAsync(McpServerConfig server, CancellationToken cancellationToken)
@@ -526,8 +526,8 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
         }
         Dictionary<string, string?> env = server.EnvironmentInheritMode == McpEnvironmentInheritMode.Minimal
             ? StdioClientTransportOptions.GetDefaultEnvironmentVariables()
-            : new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-        foreach (var pair in McpConfigParser.ParseEnvironmentLines(server.EnvironmentVariables))
+            : [with(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)];
+        foreach (KeyValuePair<string, string?> pair in McpConfigParser.ParseEnvironmentLines(server.EnvironmentVariables))
             env[pair.Key] = pair.Value;
         string workingDirectory = McpWorkspace.ResolveAndEnsure(server.WorkingDirectory);
         if (!string.IsNullOrWhiteSpace(server.WorkspaceId))

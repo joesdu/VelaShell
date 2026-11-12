@@ -242,7 +242,7 @@ public sealed class QuickCommandCompletionVariablesTests
             control.WriteTextInput("ls -la");
             EchoAndSubmit(control, "ls -la");
 
-            Assert.AreSequenceEqual(["ls -la"], history.Entries.ToArray(),
+            Assert.AreSequenceEqual(["ls -la"], [.. history.Entries],
                 "填了密码的那一行不进历史(否则下次敲 mysql 补全就把口令端出来);别的命令照记");
         }
         finally
@@ -275,7 +275,7 @@ public sealed class QuickCommandCompletionVariablesTests
             control.WriteTextInput("uptime");
             EchoAndSubmit(control, "uptime");
 
-            Assert.AreSequenceEqual(["uptime"], history.Entries.ToArray());
+            Assert.AreSequenceEqual(["uptime"], [.. history.Entries]);
         }
         finally
         {

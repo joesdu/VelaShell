@@ -31,7 +31,7 @@ public sealed class SshDisconnectLogTests
             PeerDescription = "idle timeout\r\n[SSH] fake line\u001b[31m"
         };
         string line = SshDisconnectLog.Describe("ops@[2001:db8::1]:2222", reason, ConnectedAt.ToOffset(TimeSpan.FromHours(-4.5)));
-        StringAssert.StartsWith(line, "[SSH] ops@[2001:db8::1]:2222 closed (connected since 2026-10-23 21:45:30 -04:30): ClosedByPeer(Open)");
+        Assert.StartsWith("[SSH] ops@[2001:db8::1]:2222 closed (connected since 2026-10-23 21:45:30 -04:30): ClosedByPeer(Open)", line);
         Assert.Contains("peer DISCONNECT ByApplication(11)", line);
         Assert.Contains("\"idle timeout [SSH] fake line?[31m\"", line, "换行收成一个空格,其余控制字符照库的规矩换成 ?");
         Assert.Contains(" - 对端断开了连接", line);
@@ -63,8 +63,8 @@ public sealed class SshDisconnectLogTests
         var reason = new SshConnectionClosedException(SshFailureReason.KeepAliveTimeout, SshPhase.Open, "保活超时",
             new IOException(new string('x', 1000)));
         string line = SshDisconnectLog.Describe("u@h:22", reason, ConnectedAt);
-        StringAssert.StartsWith(line, "[SSH] u@h:22 closed (connected since 2026-10-24 10:15:30 +08:00): KeepAliveTimeout(Open) - 保活超时 <- IOException: ");
-        StringAssert.EndsWith(line, "…");
+        Assert.StartsWith("[SSH] u@h:22 closed (connected since 2026-10-24 10:15:30 +08:00): KeepAliveTimeout(Open) - 保活超时 <- IOException: ", line);
+        Assert.EndsWith("…", line);
         Assert.IsLessThan(400, line.Length);
     }
 
@@ -83,7 +83,7 @@ public sealed class SshDisconnectLogTests
         await watching;
 
         Assert.HasCount(1, lines);
-        StringAssert.StartsWith(lines[0], "[SSH] deploy@db1:22 closed (connected since 2026-10-24 10:15:30 +08:00): KeepAliveTimeout(Open)");
+        Assert.StartsWith("[SSH] deploy@db1:22 closed (connected since 2026-10-24 10:15:30 +08:00): KeepAliveTimeout(Open)", lines[0]);
         Assert.AreEqual(0, clock.TimestampReads, "不再用单调时钟量时长");
     }
 

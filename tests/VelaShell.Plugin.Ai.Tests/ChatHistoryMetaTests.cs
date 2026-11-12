@@ -68,7 +68,7 @@ public sealed class ChatHistoryMetaTests
         Assert.AreEqual("回答", answer.Text, "正文还是那句回答");
         ChatSwitchNotice restored = answer.Meta!.Switch!;
         Assert.IsTrue(restored.Sticky);
-        Assert.AreSequenceEqual(notice.Hops.ToArray(), restored.Hops.ToArray());
+        Assert.AreSequenceEqual([.. notice.Hops], [.. restored.Hops]);
     }
 
     /// <summary>升级前存下的附加信息没有切换记录:读回来是 null,不是一张空卡。</summary>

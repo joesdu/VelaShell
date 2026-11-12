@@ -1,3 +1,4 @@
+using ModelContextProtocol.Client;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk.Testing;
@@ -25,13 +26,13 @@ public sealed class McpConfigTests
                 WorkingDirectory = Path.GetTempPath(),
                 EnvironmentVariables = "PATH=explicit-path"
             };
-            var minimal = McpManager.CreateStdioOptions(server);
+            StdioClientTransportOptions minimal = McpManager.CreateStdioOptions(server);
             Assert.IsFalse(minimal.InheritEnvironmentVariables);
             Assert.IsFalse(minimal.EnvironmentVariables!.ContainsKey(key));
             Assert.AreEqual("explicit-path", minimal.EnvironmentVariables["PATH"]);
             server.EnvironmentInheritMode = McpEnvironmentInheritMode.None;
             server.EnvironmentVariables = key + "=explicit-secret";
-            var isolated = McpManager.CreateStdioOptions(server);
+            StdioClientTransportOptions isolated = McpManager.CreateStdioOptions(server);
             Assert.IsFalse(isolated.InheritEnvironmentVariables);
             Assert.HasCount(1, isolated.EnvironmentVariables!);
             Assert.AreEqual("explicit-secret", isolated.EnvironmentVariables![key]);

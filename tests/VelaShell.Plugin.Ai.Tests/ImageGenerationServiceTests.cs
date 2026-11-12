@@ -66,7 +66,7 @@ public sealed class ImageGenerationServiceTests
             HttpListenerContext request = await listener.GetContextAsync().WaitAsync(TimeSpan.FromSeconds(10));
             Assert.AreEqual("/v1/images/edits", request.Request.Url!.AbsolutePath);
             Assert.AreEqual("Bearer secret", request.Request.Headers["Authorization"]);
-            StringAssert.StartsWith(request.Request.ContentType!, "multipart/form-data;");
+            Assert.StartsWith("multipart/form-data;", request.Request.ContentType!);
             using var reader = new StreamReader(request.Request.InputStream, Encoding.Latin1);
             string body = await reader.ReadToEndAsync();
             Assert.Contains("image-2", body);

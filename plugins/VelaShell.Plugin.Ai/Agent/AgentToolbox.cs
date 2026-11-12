@@ -59,14 +59,14 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             SessionIdProvider = () => sessionId,
             Scope = Scope,
-            LocalWorkspaces = LocalWorkspaces.Select(workspace => new LocalWorkspace
+            LocalWorkspaces = [.. LocalWorkspaces.Select(workspace => new LocalWorkspace
             {
                 Id = workspace.Id,
                 Name = workspace.Name,
                 RootPath = workspace.RootPath,
                 AllowRead = workspace.AllowRead,
                 AllowWrite = workspace.AllowWrite
-            }).ToArray(),
+            })],
             LocalDefaultWorkspaceId = LocalDefaultWorkspaceId,
             LocalMaxFileBytes = LocalMaxFileBytes,
             LocalMaxDirectoryEntries = LocalMaxDirectoryEntries,
@@ -79,12 +79,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
     /// <summary>只开放只读工具及显式选择的文件修改工具；沿用父轮取消及拒绝边界。</summary>
     public IList<AITool> CreateSubagentTools(bool allowWrites, CommandJobRunScope parentRun)
-        => CreateTools(ChatMode.Agent, runScope: parentRun)
+        => [.. CreateTools(ChatMode.Agent, runScope: parentRun)
             .Where(tool => (Catalog.Any(item => item.Name == tool.Name && item.ReadOnly)
                             && tool.Name is not ("task_status" or "task_wait" or "transfer_status" or "transfer_wait"
                                 or "subagent_status" or "subagent_wait"))
-                           || (allowWrites && IsFileMutation(tool.Name)))
-            .ToList();
+                           || (allowWrites && IsFileMutation(tool.Name)))];
 
     /// <summary>
     /// 入口提供稳定所有者及唯一轮次;工具列表显式捕获,不同对话不共享 taskId。
@@ -895,30 +894,29 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         return sb.Length == 0 ? "No usable local workspace is configured." : sb.ToString();
     }
 
-    private async Task<string> ListLocalDirectoryAsync(
+    private Task<string> ListLocalDirectoryAsync(
         [Description("Relative path inside the workspace, or an absolute path inside it.")] string path = ".",
         [Description("Workspace id from list_local_workspaces. Omit to use the configured default workspace.")] string? workspaceId = null,
         CancellationToken cancellationToken = default)
     {
         if (!TryResolveLocal(workspaceId, path, write: false, out LocalPath localPath, out string error))
         {
-            return error;
+            return Task.FromResult(error);
         }
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!Directory.Exists(localPath.FullPath))
             {
-                return $"No such directory: {path}";
+                return Task.FromResult($"No such directory: {path}");
             }
 
-            FileSystemInfo[] entries = new DirectoryInfo(localPath.FullPath)
+            FileSystemInfo[] entries = [.. new DirectoryInfo(localPath.FullPath)
                 .EnumerateFileSystemInfos()
-                .Take(EffectiveLocalMaxDirectoryEntries + 1)
-                .ToArray();
+                .Take(EffectiveLocalMaxDirectoryEntries + 1)];
             if (entries.Length == 0)
             {
-                return "(directory is empty)";
+                return Task.FromResult("(directory is empty)");
             }
 
             var sb = new StringBuilder();
@@ -930,38 +928,38 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             {
                 sb.AppendLine($"…(more entries omitted; limit is {EffectiveLocalMaxDirectoryEntries})");
             }
-            return sb.ToString();
+            return Task.FromResult(sb.ToString());
         }
         catch (Exception ex)
         {
-            return $"Failed to list local directory: {ex.Message}";
+            return Task.FromResult($"Failed to list local directory: {ex.Message}");
         }
     }
 
-    private async Task<string> StatLocalPathAsync(
+    private Task<string> StatLocalPathAsync(
         [Description("Relative path inside the workspace, or an absolute path inside it.")] string path,
         [Description("Workspace id from list_local_workspaces. Omit to use the configured default workspace.")] string? workspaceId = null,
         CancellationToken cancellationToken = default)
     {
         if (!TryResolveLocal(workspaceId, path, write: false, out LocalPath localPath, out string error))
         {
-            return error;
+            return Task.FromResult(error);
         }
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!File.Exists(localPath.FullPath) && !Directory.Exists(localPath.FullPath))
             {
-                return $"No such path: {path}";
+                return Task.FromResult($"No such path: {path}");
             }
             FileSystemInfo info = Directory.Exists(localPath.FullPath)
                 ? new DirectoryInfo(localPath.FullPath)
                 : new FileInfo(localPath.FullPath);
-            return DescribeLocal(info);
+            return Task.FromResult(DescribeLocal(info));
         }
         catch (Exception ex)
         {
-            return $"Failed to stat local path: {ex.Message}";
+            return Task.FromResult($"Failed to stat local path: {ex.Message}");
         }
     }
 

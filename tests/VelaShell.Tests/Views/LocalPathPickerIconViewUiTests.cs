@@ -285,7 +285,7 @@ public sealed class LocalPathPickerIconViewUiTests
                 File.WriteAllText(Path.Combine(tempRoot, name), "x");
             }
 
-            var vm = UnwatchedLocalFileSystem.NewPane();
+            LocalFilePaneViewModel vm = UnwatchedLocalFileSystem.NewPane();
             PumpUntil(vm.NavigateToAsync(tempRoot));
 
             var dialog = new LocalPathPickerDialog(vm, loadInitial: false);

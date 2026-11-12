@@ -18,7 +18,7 @@ internal static class MasterPasswordTestKit
         MasterPasswordHeaderState state = MasterPasswordHeaderState.Active)
     {
         (string Display, byte[] Entropy)? recovery = withRecovery ? RecoveryCode.Generate() : null;
-        MasterPasswordHeader header = MasterPasswordHeader.CreateNew(
+        var header = MasterPasswordHeader.CreateNew(
             withRecovery ? System.Security.Cryptography.RandomNumberGenerator.GetBytes(MasterPasswordHeader.SaltSize) : null, state);
         Assert.IsTrue(resolver.TryWriteHeader(header));
         byte[] kek = MasterPasswordKdf.DerivePasswordKey(Utf8(password), header);

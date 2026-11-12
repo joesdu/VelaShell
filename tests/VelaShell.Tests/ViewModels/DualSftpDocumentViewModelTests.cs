@@ -260,9 +260,9 @@ public class DualSftpDocumentViewModelTests
             string log = File.ReadAllText(Directory.GetFiles(logDirectory, "transfer-*.log").Single());
             string diagnostic = log.Split('\n').Single(line => line.Contains("ATTEMPT_FAILED", StringComparison.Ordinal));
             // 源读不出来是链路问题:记一条诊断,并如实标出它会自动重试。
-            StringAssert.Contains(diagnostic, "stage=transfer");
-            StringAssert.Contains(diagnostic, "retry=True");
-            StringAssert.Contains(diagnostic, "kind=Transient");
+            Assert.Contains("stage=transfer", diagnostic);
+            Assert.Contains("retry=True", diagnostic);
+            Assert.Contains("kind=Transient", diagnostic);
             Assert.IsFalse(diagnostic.Contains(file.FullPath, StringComparison.Ordinal));
         }
         finally
@@ -320,7 +320,7 @@ public class DualSftpDocumentViewModelTests
             string log = File.ReadAllText(Directory.GetFiles(logDirectory, "transfer-*.log").Single());
             Assert.ContainsSingle(line => line.Contains("ATTEMPT_FAILED", StringComparison.Ordinal),
 log.Split('\n'), "只尝试一次,不再自动重试。");
-            StringAssert.Contains(log, "kind=Permanent");
+            Assert.Contains("kind=Permanent", log);
         }
         finally
         {

@@ -44,13 +44,13 @@ public sealed class McpHttpTransportTests
         using var context = new TestPluginContext();
         await using var manager = new McpManager(context);
         var config = new McpServerConfig { Transport = McpTransportType.Http, Url = server.BaseUrl + "/mcp" };
-        await using var lease = await manager.AcquireToolsAsync([config],
+        await using McpManager.ToolLease lease = await manager.AcquireToolsAsync([config],
             new McpApproval(null, ApprovalMode.Bypass), CancellationToken.None);
         await lease.Tools.OfType<AIFunction>().Single().InvokeAsync(new AIFunctionArguments { ["text"] = "__fail__" });
         Assert.AreEqual("Degraded", manager.GetSnapshot(config.Id).State);
         var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var approve = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var pending = await manager.AcquireToolsAsync([config], new McpApproval(_ =>
+        await using McpManager.ToolLease pending = await manager.AcquireToolsAsync([config], new McpApproval(_ =>
         {
             requested.SetResult();
             return approve.Task;
@@ -132,7 +132,7 @@ public sealed class McpHttpTransportTests
         Assert.IsEmpty(server.Log);
         await manager.StartAsync(config, timeout.Token);
         Assert.AreEqual("Ready", manager.GetSnapshot(config.Id).State);
-        var tools = (await manager.GetToolsAsync([config], approval, timeout.Token)).Tools;
+        List<AITool> tools = (await manager.GetToolsAsync([config], approval, timeout.Token)).Tools;
         AIFunction oldTool = tools.OfType<AIFunction>().Single();
         Assert.HasCount(1, await manager.RefreshServerToolsAsync(config.Id, timeout.Token));
         await manager.StopAsync(config.Id, timeout.Token);
@@ -372,7 +372,7 @@ public sealed class McpHttpTransportTests
                 _owned.Add(transport);
                 _sse[id] = transport;
                 Task pump = transport.RunAsync(_stop.Token);
-                McpServer server = McpServer.Create(transport, Options());
+                var server = McpServer.Create(transport, Options());
                 _owned.Add(server);
                 await server.RunAsync(_stop.Token);
                 await pump;
@@ -413,7 +413,7 @@ public sealed class McpHttpTransportTests
             {
                 transport = new StreamableHttpServerTransport(null) { Stateless = true };
                 _owned.Add(transport);
-                McpServer server = McpServer.Create(transport, Options());
+                var server = McpServer.Create(transport, Options());
                 _owned.Add(server);
                 _ = server.RunAsync(_stop.Token);
             }
@@ -432,7 +432,7 @@ public sealed class McpHttpTransportTests
                 transport = new StreamableHttpServerTransport(null) { SessionId = id };
                 _owned.Add(transport);
                 _sessions[id] = transport;
-                McpServer server = McpServer.Create(transport, Options());
+                var server = McpServer.Create(transport, Options());
                 _owned.Add(server);
                 _ = server.RunAsync(_stop.Token);
                 response.Headers["Mcp-Session-Id"] = id;

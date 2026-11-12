@@ -133,9 +133,6 @@ public sealed class MasterKeyResolver
     private const int KeyIdLength = 32;
     private static ReadOnlySpan<byte> KeyIdDomain => "VelaShell master key id v1\0"u8;
 
-    private readonly string _keyFilePath;
-    private readonly IMasterKeyStore? _store;
-
     /// <summary>构造解析器。</summary>
     /// <param name="keyFilePath">本地密钥文件路径(清单文件与它同目录,名字加 <see cref="ReferenceSuffix" />)。</param>
     /// <param name="store">这个平台的系统密钥链;null = 只用本地密钥文件(Windows,或测试)。</param>
@@ -145,10 +142,10 @@ public sealed class MasterKeyResolver
         {
             throw new ArgumentException(@"Key file path is required.", nameof(keyFilePath));
         }
-        _keyFilePath = keyFilePath;
+        KeyFilePath = keyFilePath;
         ReferenceFilePath = keyFilePath + ReferenceSuffix;
         HeaderFilePath = keyFilePath + HeaderSuffix;
-        _store = store;
+        Store = store;
     }
 
     /// <summary>密钥链条目清单的路径。</summary>
@@ -158,10 +155,10 @@ public sealed class MasterKeyResolver
     public string HeaderFilePath { get; }
 
     /// <summary>本地密钥文件的路径。</summary>
-    internal string KeyFilePath => _keyFilePath;
+    internal string KeyFilePath { get; }
 
     /// <summary>这个平台的系统密钥链;没有时为 null。</summary>
-    internal IMasterKeyStore? Store => _store;
+    internal IMasterKeyStore? Store { get; }
 
     /// <summary>
     /// 由密钥派生它在密钥链里的条目编号:加了域分隔的 SHA-256 取前 128 位,小写十六进制。
@@ -212,7 +209,7 @@ public sealed class MasterKeyResolver
         /// 密钥链此刻能不能用。第一次撞上 <see cref="MasterKeyStoreStatus.Unavailable" /> 之后就不再去问:
         /// 每问一次都可能再弹一次解锁框,而答案不会变。
         /// </summary>
-        private bool _storeUsable = owner._store is not null;
+        private bool _storeUsable = owner.Store is not null;
 
         private string? _storeError;
         private string? _replacedKeyFile;
@@ -248,7 +245,7 @@ public sealed class MasterKeyResolver
                   + (_unavailable.Count > 0 ? $", unavailable: {string.Join(',', _unavailable)}" : "")
                   + (_missing.Count > 0 ? $", missing: {string.Join(',', _missing)}" : "")
                   + (_storeError is null ? "" : $", keychain error: {_storeError}")
-                : $"[Secrets] Master key: {(_keys[0].InKeychain ? owner._store!.Name : OperatingSystem.IsWindows() ? "DPAPI-wrapped key file" : "plain key file")}"
+                : $"[Secrets] Master key: {(_keys[0].InKeychain ? owner.Store!.Name : OperatingSystem.IsWindows() ? "DPAPI-wrapped key file" : "plain key file")}"
                   + $", {_keys.Count} key(s)"
                   + (_migrated ? ", migrated the key file into the keychain" : "")
                   + (_unavailable.Count > 0 ? $", unavailable: {string.Join(',', _unavailable)}" : "")
@@ -262,7 +259,7 @@ public sealed class MasterKeyResolver
             MasterKeyStatus status = new()
             {
                 Protection = ProtectionOfCurrentKey(),
-                KeychainName = owner._store?.Name,
+                KeychainName = owner.Store?.Name,
                 KeychainError = _storeError,
                 UnavailableKeyIds = _unavailable,
                 MissingKeyIds = _missing,
@@ -328,7 +325,7 @@ public sealed class MasterKeyResolver
             _referenced = owner.ReadReference(out _referenceWritable);
             foreach (string id in _referenced)
             {
-                if (owner._store is null)
+                if (owner.Store is null)
                 {
                     // 这台机器上没有密钥链后端(数据目录从 macOS / Linux 拷到了 Windows)。
                     _missing.Add(id);
@@ -339,7 +336,7 @@ public sealed class MasterKeyResolver
                     _unavailable.Add(id);
                     continue;
                 }
-                MasterKeyStoreResult result = owner._store.Load(id);
+                MasterKeyStoreResult result = owner.Store.Load(id);
                 switch (result.Status)
                 {
                     case MasterKeyStoreStatus.Ok when result.Key is { Length: KeySize } key && KeyIdOf(key) == id:
@@ -368,7 +365,7 @@ public sealed class MasterKeyResolver
         /// <summary>第二步:读数据目录里的本地密钥文件(明文的一把、包裹过的一份,或者没有)。</summary>
         private void LoadLocalKeyFile()
         {
-            switch (LoadKeyFile(owner._keyFilePath, out _replacedKeyFile))
+            switch (LoadKeyFile(owner.KeyFilePath, out _replacedKeyFile))
             {
                 case { Length: KeySize } key:
                     _fileKey = key;
@@ -476,7 +473,7 @@ public sealed class MasterKeyResolver
                 {
                     _missing.Remove(id);
                     _unavailable.Remove(id);
-                    _migrated = TryDeleteKeyFile(owner._keyFilePath) || _migrated;
+                    _migrated = TryDeleteKeyFile(owner.KeyFilePath) || _migrated;
                 }
                 else
                 {
@@ -508,7 +505,7 @@ public sealed class MasterKeyResolver
             {
                 // 回落:与引入密钥链之前一样落到本地文件(Windows 上 DPAPI 包裹)。
                 // 这里再失败就是数据目录根本写不进去,照旧抛出 —— 数据库那边也一样起不来。
-                WriteKeyFile(owner._keyFilePath, key);
+                WriteKeyFile(owner.KeyFilePath, key);
             }
             _keys.Add((id, key, inKeychain));
         }
@@ -516,7 +513,7 @@ public sealed class MasterKeyResolver
         /// <summary>把一把密钥存进密钥链并读回核对;已在且一致时什么都不写。</summary>
         private bool Put(string id, byte[] key)
         {
-            IMasterKeyStore store = owner._store!;
+            IMasterKeyStore store = owner.Store!;
             MasterKeyStoreResult existing = store.Load(id);
             switch (existing.Status)
             {
@@ -583,11 +580,11 @@ public sealed class MasterKeyResolver
         }
         foreach (string id in ids)
         {
-            if (_store is null)
+            if (Store is null)
             {
                 continue; // 这台机器上没有密钥链:清单里的条目本来就取不到,不算没问成
             }
-            MasterKeyStoreResult result = _store.Load(id);
+            MasterKeyStoreResult result = Store.Load(id);
             switch (result.Status)
             {
                 case MasterKeyStoreStatus.Ok when result.Key is { Length: > 0 } value:
@@ -598,7 +595,7 @@ public sealed class MasterKeyResolver
                     break;
             }
         }
-        if (File.Exists(_keyFilePath))
+        if (File.Exists(KeyFilePath))
         {
             if (TryReadKeyFile(out byte[]? value))
             {
@@ -617,13 +614,13 @@ public sealed class MasterKeyResolver
     {
         if (slot.IsKeyFile)
         {
-            return File.Exists(_keyFilePath) && TryReadKeyFile(out byte[]? value) ? value : null;
+            return File.Exists(KeyFilePath) && TryReadKeyFile(out byte[]? value) ? value : null;
         }
-        if (_store is null)
+        if (Store is null)
         {
             return null;
         }
-        MasterKeyStoreResult result = _store.Load(slot.KeychainId!);
+        MasterKeyStoreResult result = Store.Load(slot.KeychainId!);
         return result.Status == MasterKeyStoreStatus.Ok ? result.Key : null;
     }
 
@@ -638,9 +635,9 @@ public sealed class MasterKeyResolver
         {
             if (slot.IsKeyFile)
             {
-                WriteKeyFileAtomically(_keyFilePath, value);
+                WriteKeyFileAtomically(KeyFilePath, value);
             }
-            else if (_store is null || _store.Save(slot.KeychainId!, value).Status != MasterKeyStoreStatus.Ok)
+            else if (Store is null || Store.Save(slot.KeychainId!, value).Status != MasterKeyStoreStatus.Ok)
             {
                 return false;
             }
@@ -714,7 +711,7 @@ public sealed class MasterKeyResolver
     {
         string stamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture);
         List<string> kept = [];
-        foreach (string path in new[] { HeaderFilePath, ReferenceFilePath, _keyFilePath })
+        foreach (string path in new[] { HeaderFilePath, ReferenceFilePath, KeyFilePath })
         {
             if (File.Exists(path))
             {
@@ -790,7 +787,7 @@ public sealed class MasterKeyResolver
             return false;
         }
         StringBuilder text = new();
-        text.Append("# VelaShell: the local encryption key is kept in the system keychain (").Append(_store?.Name).Append(").\n");
+        text.Append("# VelaShell: the local encryption key is kept in the system keychain (").Append(Store?.Name).Append(").\n");
         text.Append("# This file only lists keychain entry ids, no key material. Without those entries saved passwords cannot be\n");
         text.Append("# decrypted - copying the data directory to another computer or account does not bring the key along.\n");
         foreach (string id in ids)
@@ -861,7 +858,7 @@ public sealed class MasterKeyResolver
         value = null;
         try
         {
-            byte[] stored = File.ReadAllBytes(_keyFilePath);
+            byte[] stored = File.ReadAllBytes(KeyFilePath);
             if (!OperatingSystem.IsWindows())
             {
                 value = stored;
@@ -937,7 +934,7 @@ public sealed class MasterKeyResolver
     /// <summary>收尾上一次没删完的中转文件(改名之后、删除之前被打断)。</summary>
     private void FinishPendingDelete()
     {
-        string deleting = _keyFilePath + DeletingSuffix;
+        string deleting = KeyFilePath + DeletingSuffix;
         if (File.Exists(deleting))
         {
             ScrubAndDelete(deleting);

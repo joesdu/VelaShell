@@ -76,11 +76,12 @@ public sealed class MasterPasswordDialogUiTests
     public async Task Unlock_WrongThenRight()
     {
         (MasterPasswordService service, _) = await LockedServiceAsync();
-        var vm = new MasterPasswordDialogViewModel(service, MasterPasswordDialogMode.Unlock);
-
-        vm.Password = Secure("not it");
+        var vm = new MasterPasswordDialogViewModel(service, MasterPasswordDialogMode.Unlock)
+        {
+            Password = Secure("not it")
+        };
         Assert.IsFalse(await vm.ConfirmAsync());
-        StringAssert.StartsWith(vm.ErrorText, Strings.Get("MasterPassword_WrongPassword"));
+        Assert.StartsWith(Strings.Get("MasterPassword_WrongPassword"), vm.ErrorText);
         Assert.IsFalse(vm.CanConfirm, "输错之后要等一会儿才能再试(1、2、4… 秒)");
         Assert.IsNull(vm.Password, "输错的那份清掉");
         Assert.IsTrue(service.IsLocked);
@@ -137,7 +138,7 @@ public sealed class MasterPasswordDialogUiTests
         vm.AcknowledgeNoBackdoor = true;
         Assert.IsFalse(await vm.ConfirmAsync(), "开好之后不关框:先抄恢复码");
         Assert.AreEqual(MasterPasswordDialogMode.ShowRecoveryCode, vm.Mode);
-        Assert.AreEqual(7, vm.RecoveryCodeDisplay!.Split('-').Length);
+        Assert.HasCount(7, vm.RecoveryCodeDisplay!.Split('-'));
         Assert.IsTrue(service.IsEnabled);
         Assert.IsTrue(await vm.ConfirmAsync(), "「我已抄下」关框");
         Assert.AreEqual(Strings.Get("MasterPassword_Enabled"), vm.CompletionNotice);
@@ -156,7 +157,7 @@ public sealed class MasterPasswordDialogUiTests
 
         Assert.IsFalse(service.IsEnabled);
         Assert.IsFalse(service.IsLocked);
-        StringAssert.Contains(vm.CompletionNotice, ".forgotten-");
+        Assert.Contains(".forgotten-", vm.CompletionNotice);
     }
 
     [TestMethod]
@@ -199,7 +200,7 @@ public sealed class MasterPasswordDialogUiTests
             Assert.IsTrue(view.FindControl<Button>("ForgotButton")!.IsVisible);
             Assert.IsTrue(view.FindControl<Button>("UseRecoveryButton")!.IsVisible);
             Assert.IsFalse(view.FindControl<Button>("DangerButton")!.IsVisible);
-            Assert.IsTrue(view.GetVisualDescendants().OfType<Button>().Any(b => b.Name == "ConfirmButton" && b.IsVisible));
+            Assert.Contains(b => b.Name == "ConfirmButton" && b.IsVisible, view.GetVisualDescendants().OfType<Button>());
         }
         finally
         {

@@ -715,14 +715,14 @@ public sealed class ChatHistoryStore(IPluginContext context)
             foreach (string conversationId in await series.DistinctTagValuesAsync(ConversationTag, cancellationToken)
                          .ConfigureAwait(false))
             {
-                (HashSet<string> Files, bool Complete) scan =
+                (HashSet<string> conversationFiles, bool complete) =
                     await ScanImageFilesAsync(series, conversationId, cancellationToken).ConfigureAwait(false);
-                if (!scan.Complete)
+                if (!complete)
                 {
                     context.Log.Warn("Skipped releasing generated images: conversation metadata exceeds the query limit.");
                     return 0;
                 }
-                referenced.UnionWith(scan.Files);
+                referenced.UnionWith(conversationFiles);
             }
             return images.Delete(doomed.Where(file => !referenced.Contains(file)));
         }

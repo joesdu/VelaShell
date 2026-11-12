@@ -40,7 +40,6 @@ namespace VelaShell.Ssh.Channels;
 /// </remarks>
 public sealed class SshChannel : IAsyncDisposable
 {
-    private readonly ISshChannelHost _host;
     private readonly Lock _stateLock = new();
 
     private readonly ChannelReceiveWindow _receiveWindow;
@@ -117,7 +116,7 @@ public sealed class SshChannel : IAsyncDisposable
         string channelType,
         SshChannelOptions options)
     {
-        _host = host;
+        Host = host;
         LocalId = localId;
         ChannelType = channelType;
         _mayStillSend = MayStillSend;
@@ -137,7 +136,7 @@ public sealed class SshChannel : IAsyncDisposable
     }
 
     /// <summary>往会话那边发包的出口（协作者发帧用）。</summary>
-    internal ISshChannelHost Host => _host;
+    internal ISshChannelHost Host { get; }
 
     /// <summary>我们给这条通道的编号。</summary>
     public uint LocalId { get; }
@@ -252,7 +251,7 @@ public sealed class SshChannel : IAsyncDisposable
     private bool _activeMetered;
 
     /// <summary>度量的 <c>host</c> 标签（来自会话）；<see langword="null"/> 时不记。</summary>
-    internal string? MetricsHost => _host.MetricsHost;
+    internal string? MetricsHost => Host.MetricsHost;
 
     /// <summary>当前的接收窗口剩余（诊断用）。</summary>
     public uint ReceiveWindowRemaining => _receiveWindow.Remaining;
@@ -386,7 +385,7 @@ public sealed class SshChannel : IAsyncDisposable
         // 读端完成之后，到达的数据在 ChannelDataReceiver.TryDeliver 里就被判为「消费者不读了」：丢弃并立刻回补窗口。
         await StandardOutput.CompleteAsync().ConfigureAwait(false);
 
-        return _host.PeerAcceptsEndOfWrite
+        return Host.PeerAcceptsEndOfWrite
             && await SendRequestAsync(SshProtocolNames.RequestEndOfWrite, default, wantReply: false, cancellationToken)
                 .ConfigureAwait(false);
     }
@@ -433,14 +432,14 @@ public sealed class SshChannel : IAsyncDisposable
     {
         if (Interlocked.Exchange(ref _eofOwed, 0) == 1)
         {
-            await _host.SendIfAsync(SimplePacket(SshMessageNumber.ChannelEof), _mayStillSend, IsInteractive, cancellationToken)
+            await Host.SendIfAsync(SimplePacket(SshMessageNumber.ChannelEof), _mayStillSend, IsInteractive, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
 
     /// <summary>发一帧，入队那一刻 CLOSE 已经入队了就不发（<see cref="MayStillSend"/>），走这条通道自己的道。</summary>
     internal ValueTask SendIfStillOpenAsync(ReadOnlyMemory<byte> packet, CancellationToken cancellationToken) =>
-        _host.SendIfAsync(packet, _mayStillSend, IsInteractive, cancellationToken);
+        Host.SendIfAsync(packet, _mayStillSend, IsInteractive, cancellationToken);
 
     /// <summary>把状态推进到「本端已 EOF」；已经 EOF 过或者通道在关，返回 <see langword="false"/>。</summary>
     /// <remarks>
@@ -525,7 +524,7 @@ public sealed class SshChannel : IAsyncDisposable
             // 「已发」这个标记在入队锁里、与入队同一时刻设上（TryCommitClose）。
             // 曾经是先设标记、后发 —— 发送被取消（释放通道有 5 秒时限）的话，标记已经是真的，
             // CLOSE 却永远不会再发：服务端那条通道一直开着，远端进程也一直跑着。
-            await _host.SendIfAsync(SimplePacket(SshMessageNumber.ChannelClose), TryCommitClose, IsInteractive, cancellationToken)
+            await Host.SendIfAsync(SimplePacket(SshMessageNumber.ChannelClose), TryCommitClose, IsInteractive, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
@@ -760,7 +759,7 @@ public sealed class SshChannel : IAsyncDisposable
     /// <summary>向会话追加预算；号已经还回去（通道收尾了）时不再追加。</summary>
     internal bool TryChargeBudget(int bytes)
     {
-        if (!_host.TryReserveWindowBudget(bytes))
+        if (!Host.TryReserveWindowBudget(bytes))
         {
             return false;
         }
@@ -775,7 +774,7 @@ public sealed class SshChannel : IAsyncDisposable
         }
 
         // 申请与收尾撞在一起：号已经按旧数退过了，这一笔当场还回去。
-        _host.ReleaseWindowBudget(bytes);
+        Host.ReleaseWindowBudget(bytes);
         return false;
     }
 
@@ -791,7 +790,7 @@ public sealed class SshChannel : IAsyncDisposable
             _budgetCharged -= bytes;
         }
 
-        _host.ReleaseWindowBudget(bytes);
+        Host.ReleaseWindowBudget(bytes);
     }
 
     private void MaybeFinishClose(SshChannelCloseReason reason)
@@ -831,7 +830,7 @@ public sealed class SshChannel : IAsyncDisposable
         }
 
         // 退的是**计过的**数，不是此刻的窗口大小（见 _budgetCharged）。
-        _host.OnChannelClosed(LocalId, charged);
+        Host.OnChannelClosed(LocalId, charged);
         _wireClosed.TrySetResult();
     }
 

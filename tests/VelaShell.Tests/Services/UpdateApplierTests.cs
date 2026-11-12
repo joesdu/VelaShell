@@ -157,7 +157,7 @@ public class UpdateApplierTests : IDisposable
             Assert.IsFalse(otherInstance.TryFinalizeStartup());
             Assert.IsFalse(otherInstance.TryRepair());
             Assert.ThrowsExactly<IOException>(() => otherInstance.Stage(archive));
-            Assert.ThrowsExactly<IOException>(() => otherInstance.PrepareStagingDirectory());
+            Assert.ThrowsExactly<IOException>(otherInstance.PrepareStagingDirectory);
             Assert.AreEqual("active extraction", File.ReadAllText(partial));
         }
         Assert.IsTrue(otherInstance.TryFinalizeStartup());

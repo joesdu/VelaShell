@@ -884,7 +884,7 @@ public sealed class SshConfigInteropTests
         Assert.AreEqual("+ssh-rsa,ssh-rsa-cert-v01@openssh.com", ReadBack(export, "old-cert").PubkeyAcceptedAlgorithms);
         Assert.IsNull(ReadBack(export, "modern").PubkeyAcceptedAlgorithms, "没开老算法就不写");
         // 写旧名:新名 PubkeyAcceptedAlgorithms 在 OpenSSH 8.5 之前是不认识的关键字,整份配置都会被拒(Windows 10 自带 8.1)。
-        StringAssert.Contains(export.Content, "PubkeyAcceptedKeyTypes +ssh-rsa");
+        Assert.Contains("PubkeyAcceptedKeyTypes +ssh-rsa", export.Content);
         Assert.DoesNotContain("PubkeyAcceptedAlgorithms", export.Content);
 
         string path = WriteConfig(export.Content);

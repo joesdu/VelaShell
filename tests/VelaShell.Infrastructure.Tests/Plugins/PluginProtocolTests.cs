@@ -3,7 +3,6 @@ using VelaShell.Core.Protocols;
 using VelaShell.Infrastructure.Plugins.Capabilities;
 using VelaShell.Infrastructure.Plugins.Protocols;
 using VelaShell.PluginSdk;
-using VelaShell.PluginSdk.Manifest;
 using VelaShell.PluginSdk.Protocols;
 using VelaShell.PluginSdk.RemoteFs;
 using VelaShell.PluginSdk.Testing;

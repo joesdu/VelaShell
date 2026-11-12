@@ -135,7 +135,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             attempt = null;
             await using FileStream file = File.OpenRead(localPath);
             // 每一次尝试各数各的:只有这一次真从源里读走过字节,才说明数据已经上了数据连接。
-            var source = attempt = new ReadCountingStream(file);
+            ReadCountingStream source = attempt = new ReadCountingStream(file);
             // 续传交给 FluentFTP:Resume 模式下它自己 SIZE 远端、再把本地流 Seek 到同一偏移(起点上面已经核实过)、用 APPE 追加。
             // 不需要 SFTP 那套「回退一个在途写入窗口」—— FTP 单条数据连接顺序写,没有乱序空洞。
             FtpStatus status = await ResumeOrReportUnsupportedAsync(client, resumeOffset > 0, remotePath, () => client.UploadStream(
@@ -189,7 +189,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                 await RunTransferAsync(sessionId, "upload", fileName, async client =>
                 {
                     // 不包外壳的理由见上:Resume 要 Seek 源流。计数这层照样把 Seek 交给它。
-                    var counted = attempt = new ReadCountingStream(source);
+                    ReadCountingStream counted = attempt = new ReadCountingStream(source);
                     FtpStatus resumed = await ResumeOrReportUnsupportedAsync(client, resuming: true, remotePath, () => client.UploadStream(
                         counted,
                         NormalizePath(remotePath),
@@ -1148,7 +1148,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             {
                 FtpReply final = await client.GetReply(deadline.Token).WaitAsync(deadline.Token).ConfigureAwait(false);
                 // GetReply 可能返回空 Code 而不抛超时;又一条预备回复、或 421(服务器正在关控制连接)同样当断了。
-                if (final.Code is not ['2' or '4' or '5', _, _] || final.Code == "421")
+                if (final.Code is not ['2' or '4' or '5', _, _] or "421")
                 {
                     return new(ControlConnectionState.Lost, null);
                 }

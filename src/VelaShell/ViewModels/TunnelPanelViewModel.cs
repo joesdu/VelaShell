@@ -1306,7 +1306,7 @@ public class TunnelPanelViewModel : ReactiveObject, IDisposable, IDraggablePanel
                 ErrorMessage = FriendlyError(ex);
             }
         }
-        catch (Core.Data.SecretsLockedException ex)
+        catch (SecretsLockedException ex)
         {
             // 主密码锁着:自动重建不弹解锁框,也不进退避 —— 解锁后由 RetryAfterUnlock 各重试一次。
             _lockedProfiles.Add(profile.Id);

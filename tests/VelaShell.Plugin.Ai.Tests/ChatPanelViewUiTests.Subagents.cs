@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -15,6 +16,9 @@ namespace VelaShell.Plugin.Ai.Tests;
 
 public sealed partial class ChatPanelViewUiTests
 {
+    [GeneratedRegex(@"sub-[a-f0-9]{8}")]
+    private static partial Regex SubagentIdRegex();
+
     [TestMethod]
     public void SubagentCards_FitNarrowPanelAndKeepErrorsAndReadingPosition()
     {
@@ -25,7 +29,7 @@ public sealed partial class ChatPanelViewUiTests
             try
             {
                 window.Width = 360;
-                var messages = Find<StackPanel>(panel, "MessagesPanel");
+                StackPanel messages = Find<StackPanel>(panel, "MessagesPanel");
                 for (int i = 0; i < 30; i++)
                     messages.Children.Add(new TextBlock { Text = $"line {i}", MinHeight = 40 });
                 var bubble = new ChatPanelView.AssistantBubble(panel);
@@ -43,7 +47,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsGreaterThan(0, card.Bounds.Width);
                 Assert.IsLessThanOrEqualTo(bubble.Root.Bounds.Width, card.Bounds.Width);
                 Assert.IsLessThanOrEqualTo(card.Bounds.Width, ((Control)card.Header!).Bounds.Width);
-                Assert.IsTrue(card.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains("5 tool calls") == true));
+                Assert.Contains(t => t.Text?.Contains("5 tool calls") == true, card.GetVisualDescendants().OfType<TextBlock>());
                 ScrollViewer scroll = Find<ScrollViewer>(panel, "ChatScroll");
                 scroll.Offset = new Vector(0, 0);
                 await PumpAsync();
@@ -51,15 +55,14 @@ public sealed partial class ChatPanelViewUiTests
                 await PumpAsync();
                 Assert.AreEqual(0, scroll.Offset.Y, "后台终态更新不能把阅读位置拉回底部。");
                 Assert.IsFalse(card.IsExpanded);
-                Assert.IsTrue(card.GetVisualDescendants().OfType<TextBlock>()
-                    .Any(t => t.Text?.Contains("Failed") == true && t.Text.Contains("Errors: 1")));
+                Assert.Contains(t => t.Text?.Contains("Failed") == true && t.Text.Contains("Errors: 1"), card.GetVisualDescendants().OfType<TextBlock>());
                 ToggleButton header = card.GetVisualDescendants().OfType<ToggleButton>()
                     .Single(t => t.Name == "PART_Header");
                 header.IsChecked = true;
                 await PumpAsync();
                 Assert.IsTrue(card.IsExpanded, "自定义头部仍须切换原生 Expander 状态。");
-                Assert.IsTrue(card.GetVisualDescendants().OfType<SelectableTextBlock>().Any(t => t.Text == error));
-                Assert.IsTrue(card.GetVisualDescendants().OfType<SelectableTextBlock>().Any(t => t.Text == snapshot.TaskPrompt));
+                Assert.Contains(t => t.Text == error, card.GetVisualDescendants().OfType<SelectableTextBlock>());
+                Assert.Contains(t => t.Text == snapshot.TaskPrompt, card.GetVisualDescendants().OfType<SelectableTextBlock>());
             }
             finally { panel.Detach(); window.Close(); }
         });
@@ -98,7 +101,7 @@ public sealed partial class ChatPanelViewUiTests
                 }
                 update.Invoke(panel, [bubble, new[] { snapshot with { Status = "completed" } }]);
                 await PumpAsync(2);
-                MarkdownRenderer[] renderers = bubble.Root.GetVisualDescendants().OfType<MarkdownRenderer>().ToArray();
+                MarkdownRenderer[] renderers = [.. bubble.Root.GetVisualDescendants().OfType<MarkdownRenderer>()];
                 Assert.HasCount(1, renderers, "状态刷新不能把一条 Markdown 回复拆成多个渲染器。");
                 MarkdownRenderer renderer = renderers[0];
                 Assert.AreEqual(string.Concat(chunks), renderer.MarkdownBuilder!.ToString());
@@ -122,13 +125,13 @@ public sealed partial class ChatPanelViewUiTests
         {
             // 子任务走流式请求(卡片上有实时正文,中途停下也留得住已写的部分)
             await using var childEndpoint = new SseStub(LifecycleAnswer.Replace("回答", "child analysis complete"));
-            var child = StubProvider("child", childEndpoint.BaseUrl, "child-model");
+            AiProvider child = StubProvider("child", childEndpoint.BaseUrl, "child-model");
             using var parentEndpoint = new KeyAuthStub((_, body) =>
             {
-                using JsonDocument document = JsonDocument.Parse(body);
+                using var document = JsonDocument.Parse(body);
                 string messages = document.RootElement.GetProperty("messages").GetRawText();
                 if (messages.Contains("\"subagent_wait\"", StringComparison.Ordinal)) return (200, LifecycleAnswer);
-                var id = System.Text.RegularExpressions.Regex.Match(messages, @"sub-[a-f0-9]{8}");
+                Match id = SubagentIdRegex().Match(messages);
                 return (200, id.Success
                     ? ImageToolCall("subagent_wait", JsonSerializer.Serialize(new { id = id.Value, timeoutSeconds = 5 }))
                     : ImageToolCall("delegate_subagent", JsonSerializer.Serialize(new
@@ -140,7 +143,7 @@ public sealed partial class ChatPanelViewUiTests
                     })));
             });
             using var context = new TestPluginContext();
-            var parent = StubProvider("parent", parentEndpoint.BaseUrl, "parent-model");
+            AiProvider parent = StubProvider("parent", parentEndpoint.BaseUrl, "parent-model");
             var store = new AiSettingsStore(context);
             await store.SaveAsync(new AiSettings
             {
@@ -155,11 +158,11 @@ public sealed partial class ChatPanelViewUiTests
             try
             {
                 panel.SendExternal("Delegate the review to child-model and wait for its result.");
-                var messages = Find<StackPanel>(panel, "MessagesPanel");
+                StackPanel messages = Find<StackPanel>(panel, "MessagesPanel");
                 Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count == 1));
                 Assert.HasCount(1, childEndpoint.Requests);
                 Assert.AreEqual("Bearer child-key", childEndpoint.Authorizations.Single());
-                using JsonDocument request = JsonDocument.Parse(childEndpoint.Requests.Single());
+                using var request = JsonDocument.Parse(childEndpoint.Requests.Single());
                 Assert.AreEqual("child-model", request.RootElement.GetProperty("model").GetString());
                 Assert.IsTrue(request.RootElement.GetProperty("stream").GetBoolean());
                 JsonElement[] childMessages = [.. request.RootElement.GetProperty("messages").EnumerateArray()];
@@ -167,8 +170,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.Contains("Your role: review.", childMessages[0].GetRawText());
                 Assert.Contains(allowWrites ? "You may modify files" : "read-only", childMessages[0].GetRawText());
                 Assert.Contains("Inspect the available read-only tools.", childMessages[1].GetRawText());
-                string[] tools = request.RootElement.GetProperty("tools").EnumerateArray()
-                    .Select(t => t.GetProperty("function").GetProperty("name").GetString()!).ToArray();
+                string[] tools = [.. request.RootElement.GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("function").GetProperty("name").GetString()!)];
                 Assert.Contains("read_remote_file", tools);
                 Assert.AreEqual(allowWrites, tools.Contains("write_remote_file"));
                 Assert.AreEqual(allowWrites, tools.Contains("patch_remote_file"));
@@ -180,19 +182,15 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsFalse(childCard.IsExpanded);
                 childCard.IsExpanded = true;
                 await PumpAsync(2);
-                Assert.IsTrue(childCard.GetVisualDescendants().OfType<MarkdownRenderer>()
-                    .Any(r => r.MarkdownBuilder?.ToString() == "child analysis complete"));
-                Assert.IsTrue(messages.GetVisualDescendants().OfType<TextBlock>()
-                    .Any(t => t.Text?.Contains("Completed") == true));
-                Assert.IsTrue(messages.GetVisualDescendants().OfType<TextBlock>()
-                    .Any(t => t.Text?.Contains("child-model") == true));
+                Assert.Contains(r => r.MarkdownBuilder?.ToString() == "child analysis complete", childCard.GetVisualDescendants().OfType<MarkdownRenderer>());
+                Assert.Contains(t => t.Text?.Contains("Completed") == true, messages.GetVisualDescendants().OfType<TextBlock>());
+                Assert.Contains(t => t.Text?.Contains("child-model") == true, messages.GetVisualDescendants().OfType<TextBlock>());
                 // 取结果的那次调用不另出工具卡(报告已在子任务卡片里);委派那次照出
                 string[] toolTitles = [.. messages.GetVisualDescendants().OfType<TextBlock>()
                     .Select(t => t.Text ?? "").Where(text => text.Contains("subagent", StringComparison.Ordinal))];
-                Assert.IsTrue(toolTitles.Any(text => text.Contains("delegate_subagent", StringComparison.Ordinal)));
-                Assert.IsFalse(toolTitles.Any(text => text.Contains("subagent_wait", StringComparison.Ordinal)));
-                Assert.IsFalse(messages.GetVisualDescendants().OfType<Button>()
-                    .Any(b => b.Name == "SubagentCancel" && b.IsVisible), "收尾之后卡片上不留取消按钮");
+                Assert.Contains(text => text.Contains("delegate_subagent", StringComparison.Ordinal), toolTitles);
+                Assert.DoesNotContain(text => text.Contains("subagent_wait", StringComparison.Ordinal), toolTitles);
+                Assert.DoesNotContain(b => b.Name == "SubagentCancel" && b.IsVisible, messages.GetVisualDescendants().OfType<Button>(), "收尾之后卡片上不留取消按钮");
             }
             finally { panel.Detach(); window.Close(); }
         });
@@ -208,8 +206,8 @@ public sealed partial class ChatPanelViewUiTests
             await using var parentEndpoint = new SseStub(LifecycleAnswer, jsonContent: "parent answer");
             await using var childEndpoint = new SseStub(LifecycleAnswer, jsonContent: "child answer");
             using var context = new TestPluginContext();
-            var parent = StubProvider("parent", parentEndpoint.BaseUrl, "parent-model");
-            var child = StubProvider("child", childEndpoint.BaseUrl, "child-model");
+            AiProvider parent = StubProvider("parent", parentEndpoint.BaseUrl, "parent-model");
+            AiProvider child = StubProvider("child", childEndpoint.BaseUrl, "child-model");
             var store = new AiSettingsStore(context);
             await store.SaveAsync(new AiSettings
             {
@@ -224,12 +222,12 @@ public sealed partial class ChatPanelViewUiTests
             {
                 AiSettings settings = await store.LoadAsync();
                 ResolvedModel parentModel = settings.FindModel(parent.Models[0].Id)!;
-                var parentCredential = await store.ResolveCredentialWithKeyIdAsync(parentModel);
+                (ProviderCredential credential, string? keyId) = await store.ResolveCredentialWithKeyIdAsync(parentModel);
                 await using var orchestrator = new SubagentOrchestrator(async (request, token) =>
                 {
-                    var selected = await panel.ResolveSubagentModelAsync(
-                        request, parentModel, parentCredential.Credential, parentCredential.KeyId, token);
-                    using IChatClient client = store.CreateClient(selected.Model, selected.Credential);
+                    (ResolvedModel selectedModel, ProviderCredential selectedCredential) = await panel.ResolveSubagentModelAsync(
+                        request, parentModel, credential, keyId, token);
+                    using IChatClient client = store.CreateClient(selectedModel, selectedCredential);
                     ChatResponse response = await client.GetResponseAsync(request.Prompt, cancellationToken: token);
                     return SubagentExecutionResult.FromText(response.Text);
                 }, CancellationToken.None)
@@ -241,7 +239,7 @@ public sealed partial class ChatPanelViewUiTests
                 if (selectOther) arguments["modelId"] = child.Models[0].Id;
                 await tool.InvokeAsync(arguments);
                 string result = await orchestrator.WaitAsync(orchestrator.Snapshots().Single().SubagentId, 5, CancellationToken.None);
-                using JsonDocument json = JsonDocument.Parse(result);
+                using var json = JsonDocument.Parse(result);
                 Assert.AreEqual("completed", json.RootElement.GetProperty("status").GetString(), result);
                 Assert.AreEqual(selectOther ? child.Models[0].Id : parent.Models[0].Id,
                     json.RootElement.GetProperty("modelId").GetString());
@@ -252,7 +250,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.HasCount(1, target.Requests);
                 Assert.IsEmpty(unused.Requests);
                 Assert.AreEqual(selectOther ? "Bearer child-key" : "Bearer parent-key", target.Authorizations.Single());
-                using JsonDocument body = JsonDocument.Parse(target.Requests.Single());
+                using var body = JsonDocument.Parse(target.Requests.Single());
                 Assert.AreEqual(selectOther ? "child-model" : "parent-model", body.RootElement.GetProperty("model").GetString());
             }
             finally { panel.Detach(); window.Close(); }
@@ -269,7 +267,7 @@ public sealed partial class ChatPanelViewUiTests
         {
             await using var endpoint = new SseStub(LifecycleAnswer);
             using var context = new TestPluginContext();
-            var provider = StubProvider("test", endpoint.BaseUrl, "m");
+            AiProvider provider = StubProvider("test", endpoint.BaseUrl, "m");
             var image = new AiModelConfig { Model = "image", Protocol = ChatProtocol.OpenAiImages };
             provider.Models.Add(image);
             var store = new AiSettingsStore(context);
@@ -280,19 +278,19 @@ public sealed partial class ChatPanelViewUiTests
             {
                 AiSettings settings = await store.LoadAsync();
                 ResolvedModel parent = settings.FindModel(provider.Models[0].Id)!;
-                var credential = await store.ResolveCredentialWithKeyIdAsync(parent);
+                (ProviderCredential credential, string? keyId) = await store.ResolveCredentialWithKeyIdAsync(parent);
                 if (scenario == "changed-parent") await store.SetApiKeyAsync(provider.Id, "changed-key");
                 await using var orchestrator = new SubagentOrchestrator(async (request, token) =>
                 {
-                    await panel.ResolveSubagentModelAsync(request, parent, credential.Credential, credential.KeyId, token);
+                    await panel.ResolveSubagentModelAsync(request, parent, credential, keyId, token);
                     return SubagentExecutionResult.FromText("unexpected");
                 }, CancellationToken.None)
                 { DefaultModelId = parent.Id };
                 orchestrator.Start("inspect", null, scenario == "image" ? image.Id : scenario == "missing" ? "missing" : null);
                 string result = await orchestrator.WaitAsync(orchestrator.Snapshots().Single().SubagentId, 5, CancellationToken.None);
-                using JsonDocument json = JsonDocument.Parse(result);
+                using var json = JsonDocument.Parse(result);
                 Assert.AreEqual("failed", json.RootElement.GetProperty("status").GetString());
-                Assert.IsTrue(json.RootElement.GetProperty("errors").GetArrayLength() > 0);
+                Assert.IsGreaterThan(0, json.RootElement.GetProperty("errors").GetArrayLength());
                 Assert.IsEmpty(endpoint.Requests);
             }
             finally { panel.Detach(); window.Close(); }
@@ -310,7 +308,7 @@ public sealed partial class ChatPanelViewUiTests
         {
             await using var endpoint = new SseStub(LifecycleAnswer);
             using var context = new TestPluginContext();
-            var provider = StubProvider("test", endpoint.BaseUrl, "m");
+            AiProvider provider = StubProvider("test", endpoint.BaseUrl, "m");
             await new AiSettingsStore(context).SaveAsync(new AiSettings
             {
                 Providers = [provider],
@@ -343,15 +341,15 @@ public sealed partial class ChatPanelViewUiTests
         OnUi(async () =>
         {
             await using var childEndpoint = new SseStub(LifecycleAnswer.Replace("回答", "child report: disk is fine"));
-            var child = StubProvider("child", childEndpoint.BaseUrl, "child-model");
+            AiProvider child = StubProvider("child", childEndpoint.BaseUrl, "child-model");
             using var parentEndpoint = new KeyAuthStub((_, body) =>
             {
-                using JsonDocument document = JsonDocument.Parse(body);
+                using var document = JsonDocument.Parse(body);
                 string messages = document.RootElement.GetProperty("messages").GetRawText();
                 if (messages.Contains("untrusted-subagent-results", StringComparison.Ordinal))
                     return (200, LifecycleAnswer.Replace("回答", "Summary written."));
                 // 回执里有了任务 id 就算委派过了;之后模型只说一句就停,不调任何等待工具
-                return (200, System.Text.RegularExpressions.Regex.IsMatch(messages, @"sub-[a-f0-9]{8}")
+                return (200, SubagentIdRegex().IsMatch(messages)
                     ? LifecycleAnswer.Replace("回答", "Delegated.")
                     : ImageToolCall("delegate_subagent", JsonSerializer.Serialize(new
                     {
@@ -360,7 +358,7 @@ public sealed partial class ChatPanelViewUiTests
                     })));
             });
             using var context = new TestPluginContext();
-            var parent = StubProvider("parent", parentEndpoint.BaseUrl, "parent-model");
+            AiProvider parent = StubProvider("parent", parentEndpoint.BaseUrl, "parent-model");
             var store = new AiSettingsStore(context);
             await store.SaveAsync(new AiSettings
             {
@@ -375,7 +373,7 @@ public sealed partial class ChatPanelViewUiTests
             try
             {
                 panel.SendExternal("Have a subagent check the disk.");
-                var messages = Find<StackPanel>(panel, "MessagesPanel");
+                StackPanel messages = Find<StackPanel>(panel, "MessagesPanel");
                 Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count == 1));
                 string[] chat = [.. parentEndpoint.Requests.Select(r => r.Body)
                     .Where(body => body.Contains("Have a subagent check the disk.", StringComparison.Ordinal))];
@@ -383,10 +381,8 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.Contains("child report: disk is fine", chat[2]);
                 Assert.Contains("\\\"status\\\":\\\"completed\\\"", chat[2]);
                 Assert.HasCount(1, childEndpoint.Requests);
-                Assert.IsTrue(messages.GetVisualDescendants().OfType<TextBlock>()
-                    .Any(t => t.Text?.Contains("Completed") == true), "子任务应跑完,而不是随父轮结束被取消");
-                Assert.IsTrue(messages.GetVisualDescendants().OfType<MarkdownRenderer>()
-                    .Any(r => r.MarkdownBuilder?.ToString().Contains("Summary written.") == true));
+                Assert.Contains(t => t.Text?.Contains("Completed") == true, messages.GetVisualDescendants().OfType<TextBlock>(), "子任务应跑完,而不是随父轮结束被取消");
+                Assert.Contains(r => r.MarkdownBuilder?.ToString().Contains("Summary written.") == true, messages.GetVisualDescendants().OfType<MarkdownRenderer>());
             }
             finally { panel.Detach(); window.Close(); }
         });
@@ -412,26 +408,26 @@ public sealed partial class ChatPanelViewUiTests
                 await PumpAsync(2);
                 Expander card = bubble.Root.GetVisualDescendants().OfType<Expander>().Single(e => e.Classes.Contains("subagentRun"));
                 TextBlock[] Texts() => [.. card.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsVisible)];
-                Assert.IsTrue(Texts().Any(t => t.Text == "read_local_file · src/app.cs"), "运行中要看得到此刻在读什么");
-                Assert.IsTrue(Texts().Any(t => t.Text?.Contains("tok ↑") == true && t.Text.Contains("380 tok ↓")));
+                Assert.Contains(t => t.Text == "read_local_file · src/app.cs", Texts(), "运行中要看得到此刻在读什么");
+                Assert.Contains(t => t.Text?.Contains("tok ↑") == true && t.Text.Contains("380 tok ↓"), Texts());
                 Button cancel = card.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SubagentCancel");
                 Assert.IsTrue(cancel.IsVisible);
 
                 bubble.UpdateSubagents([snapshot with { Activity = SubagentOrchestrator.WaitingForApproval }]);
                 await PumpAsync();
-                Assert.IsTrue(Texts().Any(t => t.Text == "Waiting for your approval"));
+                Assert.Contains(t => t.Text == "Waiting for your approval", Texts());
 
                 cancel.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-                Assert.AreSequenceEqual(["sub-test"], cancelled.ToArray());
+                Assert.AreSequenceEqual(["sub-test"], [.. cancelled]);
                 Assert.IsFalse(card.IsExpanded, "点取消不该顺带展开卡片");
 
                 bubble.UpdateSubagents([snapshot with { Status = "cancelled", Activity = "", Output = "half done" }]);
                 await PumpAsync();
                 Assert.IsFalse(cancel.IsVisible, "终态之后没有可取消的东西");
-                Assert.IsFalse(Texts().Any(t => t.Text == "Waiting for your approval"));
+                Assert.DoesNotContain(t => t.Text == "Waiting for your approval", Texts());
                 card.IsExpanded = true;
                 await PumpAsync(2);
-                Assert.IsTrue(Texts().Any(t => t.Text?.StartsWith("Stopped early", StringComparison.Ordinal) == true),
+                Assert.Contains(t => t.Text?.StartsWith("Stopped early", StringComparison.Ordinal) == true, Texts(),
                     "提前停下时要说明下面只是已写出的部分");
             }
             finally { panel.Detach(); window.Close(); }
@@ -461,11 +457,11 @@ public sealed partial class ChatPanelViewUiTests
                 live.AddToolCall("call-2", "subagent_wait", "{\"id\":\"sub-done\"}");
                 live.AddToolCall("call-3", "subagent_status", "{\"id\":\"sub-live\"}");
 
-                VelaShell.Plugin.Ai.Chat.ChatTurnMeta meta = live.Snapshot("model-a", TimeSpan.FromSeconds(12));
+                Chat.ChatTurnMeta meta = live.Snapshot("model-a", TimeSpan.FromSeconds(12));
 
-                Assert.AreSequenceEqual(["delegate_subagent"], meta.Tools!.Select(t => t.Name).ToArray(),
+                Assert.AreSequenceEqual(["delegate_subagent"], [.. meta.Tools!.Select(t => t.Name)],
                     "取结果的调用不另出工具卡,也就不进历史");
-                Assert.AreSequenceEqual(["completed", "cancelled"], meta.Subagents!.Select(s => s.Status).ToArray(),
+                Assert.AreSequenceEqual(["completed", "cancelled"], [.. meta.Subagents!.Select(s => s.Status)],
                     "入库时还没跑完的按已取消存:翻回历史时它们早就不在跑了");
 
                 var restored = new ChatPanelView.AssistantBubble(panel);
@@ -474,12 +470,11 @@ public sealed partial class ChatPanelViewUiTests
                 await PumpAsync(2);
                 Expander[] cards = [.. restored.Root.GetVisualDescendants().OfType<Expander>().Where(e => e.Classes.Contains("subagentRun"))];
                 Assert.HasCount(2, cards);
-                Assert.IsFalse(restored.Root.GetVisualDescendants().OfType<Button>().Any(b => b.Name == "SubagentCancel" && b.IsVisible));
+                Assert.DoesNotContain(b => b.Name == "SubagentCancel" && b.IsVisible, restored.Root.GetVisualDescendants().OfType<Button>());
                 cards[0].IsExpanded = true;
                 await PumpAsync(2);
-                Assert.IsTrue(cards[0].GetVisualDescendants().OfType<MarkdownRenderer>()
-                    .Any(r => r.MarkdownBuilder?.ToString() == "**/var** is at 91%"));
-                Assert.IsTrue(restored.Root.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "Check the logs"));
+                Assert.Contains(r => r.MarkdownBuilder?.ToString() == "**/var** is at 91%", cards[0].GetVisualDescendants().OfType<MarkdownRenderer>());
+                Assert.Contains(t => t.Text == "Check the logs", restored.Root.GetVisualDescendants().OfType<TextBlock>());
             }
             finally { panel.Detach(); window.Close(); }
         });
@@ -534,7 +529,7 @@ public sealed partial class ChatPanelViewUiTests
                 MethodInfo update = typeof(ChatPanelView).GetMethod("UpdateSubagentCards",
                     BindingFlags.Instance | BindingFlags.NonPublic)!;
                 update.Invoke(panel, [bubble, orchestrator.Snapshots()]);
-                Assert.IsFalse(root.GetVisualDescendants().OfType<Border>().Any(b => b.Classes.Contains("subagentGroup")));
+                Assert.DoesNotContain(b => b.Classes.Contains("subagentGroup"), root.GetVisualDescendants().OfType<Border>());
 
                 orchestrator.Start("inspect disk", "disk");
                 Assert.IsTrue(await WaitForAsync(() => orchestrator.Snapshots().Single().Status == "running"));
@@ -543,11 +538,11 @@ public sealed partial class ChatPanelViewUiTests
                 Expander card = root.GetVisualDescendants().OfType<Expander>()
                     .Single(e => e.Classes.Contains("subagentRun"));
                 Assert.IsFalse(card.IsExpanded);
-                Assert.IsTrue(root.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "inspect disk"));
-                Assert.IsTrue(root.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains("Running") == true));
+                Assert.Contains(t => t.Text == "inspect disk", root.GetVisualDescendants().OfType<TextBlock>());
+                Assert.Contains(t => t.Text?.Contains("Running") == true, root.GetVisualDescendants().OfType<TextBlock>());
                 card.IsExpanded = true;
                 await PumpAsync(2);
-                Assert.IsTrue(root.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains("analysis-model") == true));
+                Assert.Contains(t => t.Text?.Contains("analysis-model") == true, root.GetVisualDescendants().OfType<TextBlock>());
 
                 release.SetResult();
                 await orchestrator.WaitAsync(orchestrator.Snapshots().Single().SubagentId, 5, CancellationToken.None);
@@ -556,9 +551,9 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.HasCount(1, root.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("subagentGroup")).ToList());
                 Assert.AreSame(card, root.GetVisualDescendants().OfType<Expander>().Single(e => e.Classes.Contains("subagentRun")));
                 Assert.IsTrue(card.IsExpanded);
-                Assert.IsTrue(root.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains("Completed") == true));
-                Assert.IsTrue(root.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains("read_remote_file") == true));
-                Assert.IsTrue(root.GetVisualDescendants().OfType<MarkdownRenderer>().Any(r => r.MarkdownBuilder?.ToString() == output),
+                Assert.Contains(t => t.Text?.Contains("Completed") == true, root.GetVisualDescendants().OfType<TextBlock>());
+                Assert.Contains(t => t.Text?.Contains("read_remote_file") == true, root.GetVisualDescendants().OfType<TextBlock>());
+                Assert.Contains(r => r.MarkdownBuilder?.ToString() == output, root.GetVisualDescendants().OfType<MarkdownRenderer>(),
                     "展开后应保留完整结果，不能截断为 1200 字符。");
             }
             finally { release.TrySetResult(); panel.Detach(); window.Close(); }

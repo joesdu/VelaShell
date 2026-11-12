@@ -809,7 +809,7 @@ public sealed class ConnectionProfileViewModelTests
     {
         // Telnet 的登录发生在带内(对端打印 login:)。摆着两个填了也发不出去的框会误导用户,
         // 而"用户名不能为空"这条更会把保存/连接按钮永久灰死 —— 无凭据协议必须两条都免掉。
-        var registry = new Infrastructure.Plugins.Protocols.PluginProtocolRegistry();
+        var registry = new PluginProtocolRegistry();
         using IDisposable handle = registry.Register("test.telnet", new()
         {
             Id = "test.telnet",
@@ -844,10 +844,10 @@ public sealed class ConnectionProfileViewModelTests
     /// 数据库式的工作台:一个页签,「类型」那一栏选 MySQL(3306)/ PostgreSQL(5432)/ SQLite 三档。
     /// SQLite 是磁盘上的一个文件:没有凭据、没有端点,「主机」那一栏改标成「数据库文件」。
     /// </summary>
-    private static Infrastructure.Plugins.Protocols.PluginProtocolRegistry RegisterVariantWorkspace(
+    private static PluginProtocolRegistry RegisterVariantWorkspace(
         string id, out IDisposable handle)
     {
-        var registry = new Infrastructure.Plugins.Protocols.PluginProtocolRegistry();
+        var registry = new PluginProtocolRegistry();
         handle = registry.RegisterWorkspace(id, new()
         {
             Id = id,
@@ -1104,10 +1104,10 @@ public sealed class ConnectionProfileViewModelTests
         }
     }
 
-    private static Infrastructure.Plugins.Protocols.PluginProtocolRegistry RegisterSerial(
+    private static PluginProtocolRegistry RegisterSerial(
         FakeSerialTerminal terminal, out IDisposable handle)
     {
-        var registry = new Infrastructure.Plugins.Protocols.PluginProtocolRegistry();
+        var registry = new PluginProtocolRegistry();
         handle = registry.Register("test.serial", new()
         {
             Id = "test.serial",
@@ -1129,7 +1129,7 @@ public sealed class ConnectionProfileViewModelTests
         // 而且还留着上一个协议的残值。但它的**取值**必须照旧参与按钮判定 ——
         // 收起一栏不该顺手把保存/连接按钮堵死。
         var terminal = new FakeSerialTerminal("COM3");
-        Infrastructure.Plugins.Protocols.PluginProtocolRegistry registry = RegisterSerial(terminal, out IDisposable handle);
+        PluginProtocolRegistry registry = RegisterSerial(terminal, out IDisposable handle);
         using (handle)
         {
             var vm = new ConnectionProfileViewModel(protocolRegistry: registry) { Host = "COM3" };
@@ -1148,7 +1148,7 @@ public sealed class ConnectionProfileViewModelTests
     public async Task PluginProtocol_WithADynamicHostColumn_FetchesTheChoicesWhenTheFormOpens()
     {
         var terminal = new FakeSerialTerminal("COM3", "COM7");
-        Infrastructure.Plugins.Protocols.PluginProtocolRegistry registry = RegisterSerial(terminal, out IDisposable handle);
+        PluginProtocolRegistry registry = RegisterSerial(terminal, out IDisposable handle);
         using (handle)
         {
             var vm = new ConnectionProfileViewModel(protocolRegistry: registry) { Host = "COM3" };
@@ -1168,7 +1168,7 @@ public sealed class ConnectionProfileViewModelTests
     {
         // 这个按钮存在的全部理由:用户很可能是先打开连接对话框、才想起去插线。
         var terminal = new FakeSerialTerminal("COM3");
-        Infrastructure.Plugins.Protocols.PluginProtocolRegistry registry = RegisterSerial(terminal, out IDisposable handle);
+        PluginProtocolRegistry registry = RegisterSerial(terminal, out IDisposable handle);
         using (handle)
         {
             var vm = new ConnectionProfileViewModel(protocolRegistry: registry) { Host = "COM3" };
@@ -1188,7 +1188,7 @@ public sealed class ConnectionProfileViewModelTests
         // 一条存着 COM7 的配置在适配器没插的时候打开,值被悄悄改写成 COM3 再保存下去,
         // 是一次**静默的数据损坏** —— 用户下次插上线才发现配置指到别处去了。
         var terminal = new FakeSerialTerminal("COM3");
-        Infrastructure.Plugins.Protocols.PluginProtocolRegistry registry = RegisterSerial(terminal, out IDisposable handle);
+        PluginProtocolRegistry registry = RegisterSerial(terminal, out IDisposable handle);
         using (handle)
         {
             var vm = new ConnectionProfileViewModel(protocolRegistry: registry) { Host = "COM7" };
@@ -1206,7 +1206,7 @@ public sealed class ConnectionProfileViewModelTests
     public async Task SwitchingBackToSsh_RestoresThePlainHostTextBoxAndThePortColumn()
     {
         var terminal = new FakeSerialTerminal("COM3");
-        Infrastructure.Plugins.Protocols.PluginProtocolRegistry registry = RegisterSerial(terminal, out IDisposable handle);
+        PluginProtocolRegistry registry = RegisterSerial(terminal, out IDisposable handle);
         using (handle)
         {
             var vm = new ConnectionProfileViewModel(protocolRegistry: registry) { Host = "COM3" };

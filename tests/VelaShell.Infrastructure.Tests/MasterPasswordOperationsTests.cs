@@ -55,7 +55,7 @@ public sealed class MasterPasswordOperationsTests
         string second = Protector(store).Protect("second")!;
         store.Unavailable = null;
         _ = Protector(store).GetKeyStatus();
-        Assert.AreEqual(2, store.Entries.Count);
+        Assert.HasCount(2, store.Entries);
         return (first, second);
     }
 
@@ -113,7 +113,7 @@ public sealed class MasterPasswordOperationsTests
     {
         var store = new MemoryKeychain();
         (string, string) cipher = TwoKeys(store);
-        Dictionary<string, byte[]> before = store.Entries.ToDictionary(static e => e.Key, static e => e.Value.ToArray());
+        var before = store.Entries.ToDictionary(static e => e.Key, static e => e.Value.ToArray());
         AesSecretProtector protector = Protector(store);
         store.FailOneSaveAfter = 1; // 第一个条目包上了,第二个写不进去(回滚写得进去)
 
@@ -124,7 +124,7 @@ public sealed class MasterPasswordOperationsTests
         Assert.IsFalse(File.Exists(HeaderFile), "整体回到没开");
         foreach ((string id, byte[] value) in before)
         {
-            CollectionAssert.AreEqual(value, store.Entries[id], "已经包上的那条写回明文");
+            Assert.AreSequenceEqual(value, store.Entries[id], "已经包上的那条写回明文");
         }
         Assert.IsFalse(protector.IsLocked);
         AesSecretProtector next = Protector(store);
@@ -194,7 +194,7 @@ public sealed class MasterPasswordOperationsTests
         var store = new MemoryKeychain();
         _ = TwoKeys(store);
         Assert.AreEqual(MasterPasswordChangeStatus.Done, Protector(store).Vault.Enable(Utf8(Password), false).Status);
-        Dictionary<string, byte[]> before = store.Entries.ToDictionary(static e => e.Key, static e => e.Value.ToArray());
+        var before = store.Entries.ToDictionary(static e => e.Key, static e => e.Value.ToArray());
         var clock = new ManualClock();
         AesSecretProtector locked = new(new MasterKeyResolver(_keyFile, store), clock);
 
@@ -205,7 +205,7 @@ public sealed class MasterPasswordOperationsTests
         Assert.AreEqual(MasterPasswordChangeStatus.Throttled, locked.Vault.Disable(Utf8(Password)).Status);
         foreach ((string id, byte[] value) in before)
         {
-            CollectionAssert.AreEqual(value, store.Entries[id]);
+            Assert.AreSequenceEqual(value, store.Entries[id]);
         }
         Assert.IsTrue(File.Exists(HeaderFile));
     }
@@ -310,7 +310,7 @@ public sealed class MasterPasswordOperationsTests
     {
         MasterPasswordHeader current = MasterPasswordHeader.Parse(File.ReadAllText(HeaderFile))!;
         byte[] oldKek = MasterPasswordKdf.DerivePasswordKey(Utf8(Password), current);
-        MasterPasswordHeader next = MasterPasswordHeader.CreateNew(current.RecoverySalt, MasterPasswordHeaderState.Active);
+        var next = MasterPasswordHeader.CreateNew(current.RecoverySalt, MasterPasswordHeaderState.Active);
         byte[] newKek = MasterPasswordKdf.DerivePasswordKey(Utf8(password), next);
         foreach (string id in store.Entries.Keys.ToArray())
         {
@@ -359,9 +359,9 @@ public sealed class MasterPasswordOperationsTests
     public void Forget_KeepsEverythingAside_AndStartsAFreshKey()
     {
         var store = new MemoryKeychain();
-        (string First, string Second) cipher = TwoKeys(store);
+        (string First, string Second) = TwoKeys(store);
         _ = Protector(store).Vault.Enable(Utf8(Password), false);
-        Dictionary<string, byte[]> wrapped = store.Entries.ToDictionary(static e => e.Key, static e => e.Value.ToArray());
+        var wrapped = store.Entries.ToDictionary(static e => e.Key, static e => e.Value.ToArray());
         AesSecretProtector locked = Protector(store);
 
         MasterPasswordChangeResult result = locked.Vault.Forget();
@@ -369,14 +369,14 @@ public sealed class MasterPasswordOperationsTests
         Assert.AreEqual(MasterPasswordChangeStatus.Done, result.Status);
         Assert.IsFalse(locked.IsLocked);
         Assert.IsFalse(locked.GetKeyStatus().MasterPasswordEnabled, "忘记之后主密码关掉、另起新密钥");
-        Assert.IsFalse(locked.TryUnprotect(cipher.First, out _), "已存的机密作废:没有后门");
+        Assert.IsFalse(locked.TryUnprotect(First, out _), "已存的机密作废:没有后门");
         string fresh = locked.Protect("fresh")!;
         Assert.AreEqual("fresh", Protector(store).Unprotect(fresh));
         Assert.HasCount(1, Directory.GetFiles(_root, "secret.key.mp.forgotten-*"), "头改名保留,不删");
         Assert.HasCount(1, Directory.GetFiles(_root, "secret.key.ref.forgotten-*"), "旧条目的清单也留着");
         foreach ((string id, byte[] value) in wrapped)
         {
-            CollectionAssert.AreEqual(value, store.Entries[id], "密钥链里的旧条目原样不动");
+            Assert.AreSequenceEqual(value, store.Entries[id], "密钥链里的旧条目原样不动");
         }
 
         // 想起来了:把留着的文件改回原名,旧主密码照样解得开。
@@ -386,7 +386,7 @@ public sealed class MasterPasswordOperationsTests
         }
         AesSecretProtector remembered = Protector(store);
         Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, remembered.Vault.Unlock(Utf8(Password)).Status);
-        Assert.AreEqual("first", remembered.Unprotect(cipher.First));
+        Assert.AreEqual("first", remembered.Unprotect(First));
     }
 
     [TestMethod]
@@ -461,10 +461,9 @@ public sealed class MasterPasswordOperationsTests
         Assert.AreEqual(MasterPasswordChangeStatus.Done, (await service.EnableAsync(Utf8(Password), false)).Status);
         Assert.AreEqual(MasterPasswordChangeStatus.Done, (await service.ForgetAsync()).Status);
 
-        CollectionAssert.AreEqual(
+        Assert.AreSequenceEqual(
             new[] { AuditActions.MasterPasswordEnabled, AuditActions.MasterPasswordChanged, AuditActions.MasterPasswordDisabled,
-                AuditActions.MasterPasswordEnabled, AuditActions.MasterPasswordReset },
-            entries.Select(static e => e.Action).ToArray());
+                AuditActions.MasterPasswordEnabled, AuditActions.MasterPasswordReset }, [.. entries.Select(static e => e.Action)]);
         Assert.IsTrue(entries.All(static e => e.Category == AuditCategories.Settings));
         Assert.IsTrue(entries.All(static e => !e.Detail.Contains("horse", StringComparison.Ordinal) && !e.Detail.Contains("passphrase", StringComparison.Ordinal)),
             "只记动作,不记任何口令材料");

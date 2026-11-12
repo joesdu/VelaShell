@@ -29,8 +29,8 @@ public static class BuiltInEditTempFiles
     /// <summary>内置编辑器副本的根目录:%TEMP%/VelaShell/builtin-edit。</summary>
     public static string Root { get; } = RootUnder(TempBase);
 
-    private static readonly Dictionary<string, IDisposable> Opening = new(
-        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    private static readonly Dictionary<string, IDisposable> Opening = [with(
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)];
     private static readonly Lock OwnershipGate = new();
 
     /// <summary>给一次「打开」分一个新的独占子目录(只拼路径,不创建)。</summary>
@@ -195,7 +195,7 @@ internal static class EditDirectoryLease
     // This root-level inode is deliberately retained: concurrent processes must
     // synchronize retirement and recovery on the same lock, including after crashes.
     private static FileStream AcquireCleanupLock(string root) =>
-        new FileStream(Path.Combine(root, ".vela-edit.cleanup.lease"), FileMode.OpenOrCreate,
+        new(Path.Combine(root, ".vela-edit.cleanup.lease"), FileMode.OpenOrCreate,
             FileAccess.ReadWrite, FileShare.None);
 
     internal static int SweepRetired(string root)

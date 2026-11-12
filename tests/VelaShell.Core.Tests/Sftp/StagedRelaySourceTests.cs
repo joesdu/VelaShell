@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using NSubstitute;
 using VelaShell.Core.Models;
@@ -99,11 +100,13 @@ public class StagedRelaySourceTests
         });
         ISftpService target = Target(_ => Task.CompletedTask);
         bool writing = false;
+#pragma warning disable MSTEST0051 // Assert.Throws 应仅包含单个语句/表达式
         IOException error = await Assert.ThrowsExactlyAsync<IOException>(async () =>
         {
             await using StagedRelaySource staged = await StagedRelaySource.PrepareAsync(source, SourceSession, "/source");
             await staged.UploadAsync(target, TargetSession, "/target", writing: () => writing = true);
         });
+#pragma warning restore MSTEST0051 // Assert.Throws 应仅包含单个语句/表达式
         Assert.AreSame(original, error);
         Assert.IsFalse(writing);
         await target.DidNotReceiveWithAnyArgs().UploadStreamAsync(default, null!, null!, 0);
@@ -292,9 +295,9 @@ public class StagedRelaySourceTests
                 link = Path.Combine(root, $"velashell-relay-{Guid.NewGuid():N}.tmp");
                 File.CreateSymbolicLink(link, unrelated);
                 fifo = Path.Combine(root, $"velashell-relay-{Guid.NewGuid():N}.tmp");
-                var start = new System.Diagnostics.ProcessStartInfo("mkfifo") { UseShellExecute = false };
+                var start = new ProcessStartInfo("mkfifo") { UseShellExecute = false };
                 start.ArgumentList.Add(fifo);
-                using var process = System.Diagnostics.Process.Start(start)!;
+                using Process process = Process.Start(start)!;
                 Assert.IsTrue(process.WaitForExit(5000));
                 Assert.AreEqual(0, process.ExitCode);
                 File.SetLastWriteTimeUtc(fifo, now.AddDays(-2));

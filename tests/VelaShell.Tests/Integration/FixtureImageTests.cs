@@ -42,7 +42,7 @@ public sealed class FixtureImageTests
         string? verdict = FixtureImage.Compare("ssh-shells", "ssh-shells", Dockerfile, image);
 
         Assert.IsNotNull(verdict);
-        StringAssert.StartsWith(verdict, "[SKIP]");
+        Assert.StartsWith("[SKIP]", verdict);
         Assert.Contains("docker compose -f docker-compose.test.yml build ssh-shells", verdict);
         Assert.Contains(FixtureImage.ImagePath, verdict);
     }

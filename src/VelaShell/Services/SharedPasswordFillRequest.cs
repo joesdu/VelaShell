@@ -20,7 +20,6 @@ internal sealed class SharedPasswordFillRequest : IDisposable
     private readonly long _inputGeneration;
     private readonly Func<bool> _isActive;
     private readonly (int Row, int Col, int Screen, int Encoding, string Line) _prompt;
-    private readonly bool _submitsWithEnter;
     private bool _expired;
     private bool _sending;
 
@@ -34,7 +33,7 @@ internal sealed class SharedPasswordFillRequest : IDisposable
         _connectionGeneration = tab.ConnectionGeneration;
         _isActive = isActive;
         _prompt = CapturePrompt();
-        _submitsWithEnter = IsPasswordPromptAtCursor(_control) && !_control.IsAtShellPrompt;
+        SubmitsWithEnter = IsPasswordPromptAtCursor(_control) && !_control.IsAtShellPrompt;
         _control.TypedInput += OnInput;
         _control.OutputUpdated += OnOutput;
         _bridge?.InputQueued += OnInputQueued;
@@ -60,7 +59,7 @@ internal sealed class SharedPasswordFillRequest : IDisposable
     /// 那时读输入的是 shell,不是要口令的程序。
     /// </para>
     /// </remarks>
-    internal bool SubmitsWithEnter => _submitsWithEnter;
+    internal bool SubmitsWithEnter { get; }
 
     /// <summary>
     /// 光标所在这一行是不是一条认得出的密码提示:整段逻辑行(窄窗格里折开的 git 提示)或光标行本身认得出都算 ——
@@ -181,7 +180,7 @@ internal sealed class SharedPasswordFillRequest : IDisposable
                 // 两者拼成一段、同一次入队。分两次发的话,用户选完顺手敲的字符会插在密码与回车之间,
                 // 被当成口令的一部分交上去。别处只填不按(见 SubmitsWithEnter);读取期间 shell 集成改口说
                 // 已回到 shell 提示符的,同样不按 —— 宁可少按一次,也不把密码当命令执行。
-                byte[] enter = _submitsWithEnter && !_control.IsAtShellPrompt ? _control.EncodeEnterKey() : [];
+                byte[] enter = SubmitsWithEnter && !_control.IsAtShellPrompt ? _control.EncodeEnterKey() : [];
                 bytes = new byte[secret.Length + enter.Length];
                 secret.CopyTo(bytes, 0);
                 enter.CopyTo(bytes, secret.Length);
