@@ -342,6 +342,10 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// </param>
     /// <param name="expectedPluginId">商店选择的插件 ID;提供时还会校验实际兼容性。</param>
     /// <param name="expectedVersion">商店选择的版本;覆盖旧版前必须与包内版本一致。</param>
+    /// <param name="beforeReplace">
+    /// 所有校验(签名、清单、发布者连续性)都已通过、即将停用旧版时调用,参数为插件 ID。
+    /// 用来在<b>确定会替换</b>之后才断开用户的连接 —— 放在校验之前,被拒或校验失败时连接就白断了。
+    /// </param>
     /// <param name="cancellationToken">取消令牌。</param>
     public async Task<string> InstallFromVpxAsync(
         string vpxPath,
@@ -349,6 +353,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         bool allowPublisherChange = false,
         string? expectedPluginId = null,
         string? expectedVersion = null,
+        Func<string, CancellationToken, Task>? beforeReplace = null,
         CancellationToken cancellationToken = default)
     {
         if (options.UserPluginRoot is not { } userRoot)
@@ -426,6 +431,10 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             // 时序数据(UninstallAsync → PurgePluginDataAsync),那是"用户不要这个插件了"
             // 才该发生的事 —— 升一版就把 API Key 与聊天记录一并抹掉,没有人会预料到。
             // 旁装那条路(vela-plugin update)一直只换文件,两边行为本来就该是一套。
+            if (beforeReplace is not null)
+            {
+                await beforeReplace(manifest.Id, cancellationToken).ConfigureAwait(false);
+            }
             bool upgrade = await DetachForUpgradeAsync(manifest.Id).ConfigureAwait(false);
 
             string target = Path.Combine(userRoot, manifest.Id);
@@ -1981,7 +1990,15 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
         foreach (IPluginConnectionSource source in options.SurfaceSources.OfType<IPluginConnectionSource>())
         {
-            await source.CloseOpenConnectionsAsync(manifest, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await source.CloseOpenConnectionsAsync(manifest, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // 一个来源收尾失败不能让其余来源的连接留着:随后的停用会把它们硬切断。
+                Log($"Closing connections of plugin '{pluginId}' failed: {ex.Message}");
+            }
         }
     }
 

@@ -820,7 +820,9 @@
           </DataTemplate>
         </ComboBox.ItemTemplate>
       </ComboBox>
-      <ComboBox x:Name="WorkspaceCombo" Grid.Column="1" MinWidth="0" Margin="8,0,0,0"
+      <!-- 宽度随内容自适应,但要有上限:未命名工作区显示完整路径,Auto 列里不加上限
+           TextTrimming 永远不会生效,窄面板下会把右侧用量条挤没。 -->
+      <ComboBox x:Name="WorkspaceCombo" Grid.Column="1" MinWidth="0" MaxWidth="200" Margin="8,0,0,0"
                 HorizontalAlignment="Left" HorizontalContentAlignment="Stretch">
         <ComboBox.ItemTemplate>
           <DataTemplate x:DataType="ui:WorkspaceNavItem">

@@ -536,6 +536,7 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
     /// <param name="allowUntrustedPackage">是否单次放行未签名 / 发布者陌生的包。</param>
     /// <param name="allowPublisherChange">是否单次放行"换了发布者"的覆盖安装。</param>
     /// <param name="expectedPackage">商店操作快照;提供时核对包身份与兼容性。</param>
+    /// <param name="beforeReplace">全部校验通过、即将替换旧版前的回调(用于断开该插件的连接)。</param>
     /// <returns>安装成功才返回 true,供界面决定是否记录发布者信任。</returns>
     /// <exception cref="PluginPublisherChangedException">
     /// 发布者与钉住的那一个对不上,而调用方没给授权。**这一条不吞** —— 它不是失败,
@@ -543,13 +544,15 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
     /// 用户看到的就是"装不上",既不知道为什么,也没有回答的机会。
     /// </exception>
     public async Task<bool> InstallFromVpxAsync(string vpxPath, bool allowUntrustedPackage = false,
-        bool allowPublisherChange = false, PluginMarketVersion? expectedPackage = null)
+        bool allowPublisherChange = false, PluginMarketVersion? expectedPackage = null,
+        Func<string, CancellationToken, Task>? beforeReplace = null)
     {
         try
         {
             string id = await _manager
                               .InstallFromVpxAsync(vpxPath, allowUntrustedPackage, allowPublisherChange,
-                                  expectedPluginId: expectedPackage?.Id, expectedVersion: expectedPackage?.Version)
+                                  expectedPluginId: expectedPackage?.Id, expectedVersion: expectedPackage?.Version,
+                                  beforeReplace: beforeReplace)
                               .ConfigureAwait(false);
             SetNotice(Strings.Format("PluginManager_Installed", id));
             return true;

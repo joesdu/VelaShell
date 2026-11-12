@@ -7009,6 +7009,7 @@ A routine key rotation and a hijacked publishing identity look exactly the same 
   <data name="Sc_AiRenameCancel" xml:space="preserve"><value>Cancel the session rename</value></data>
   <data name="Sc_AiClosePanel" xml:space="preserve"><value>Close the AI secondary window</value></data>
   <data name="Sc_NoteDisconnected" xml:space="preserve"><value>Only while the session is disconnected</value></data>
+  <data name="Sc_NoteDisconnectedOverlay" xml:space="preserve"><value>Only while the disconnected overlay is shown</value></data>
   <data name="Sc_NoteMainScreen" xml:space="preserve"><value>Main screen with scrollback only</value></data>
   <data name="Sc_NoteAnyScreen" xml:space="preserve"><value>Works on the alternate screen too</value></data>
   <data name="Sc_NoteCtrlCCopies" xml:space="preserve"><value>Copies instead when the selection-copy option is on and text is selected</value></data>

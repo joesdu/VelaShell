@@ -194,7 +194,9 @@ public partial class PluginManagerWindow : Window
     /// <param name="vm">插件管理视图模型。</param>
     /// <param name="path">包路径。</param>
     /// <param name="expectedPackage">商店安装目标,在所有确认重试中保持一致。</param>
-    private async Task InstallWithPromptsAsync(PluginManagerViewModel vm, string path, PluginMarketVersion? expectedPackage = null)
+    /// <param name="beforeReplace">全部校验通过、即将替换旧版前的回调(用于断开该插件的连接)。</param>
+    private async Task InstallWithPromptsAsync(PluginManagerViewModel vm, string path, PluginMarketVersion? expectedPackage = null,
+        Func<string, CancellationToken, Task>? beforeReplace = null)
     {
         if (!IsVisible || !await EnsureTrustStoreUsableAsync(vm) || !IsVisible)
         {
@@ -208,7 +210,7 @@ public partial class PluginManagerWindow : Window
         catch
         {
             // 让统一安装路径生成本地化错误提示(损坏摘要/错误格式等)。
-            await vm.InstallFromVpxAsync(path, expectedPackage: expectedPackage);
+            await vm.InstallFromVpxAsync(path, expectedPackage: expectedPackage, beforeReplace: beforeReplace);
             return;
         }
         bool allowUntrusted = false;
@@ -242,7 +244,7 @@ public partial class PluginManagerWindow : Window
         // 信任发布者这一步挪到安装之后:这个包可能正是在顶替一个已装插件的发布者身份,
         // 而那一问要等解出包里的 id 才问得出来。先把新公钥收进信任库,等于用户还没被告知
         // "换人了",就已经替这把钥匙签下了"以后它的包一律直接信任"。
-        if (!IsVisible || !await InstallWithPublisherCheckAsync(vm, path, allowUntrusted, expectedPackage))
+        if (!IsVisible || !await InstallWithPublisherCheckAsync(vm, path, allowUntrusted, expectedPackage, beforeReplace))
         {
             return;
         }
@@ -339,6 +341,7 @@ public partial class PluginManagerWindow : Window
         {
             if (!IsVisible) return;
             int openConnections = vm.GetOpenConnectionCount(row.Id);
+            Func<string, CancellationToken, Task>? beforeReplace = null;
             if (openConnections > 0)
             {
                 bool disconnect = await MessageDialog.ConfirmAsync(this,
@@ -350,17 +353,20 @@ public partial class PluginManagerWindow : Window
                 {
                     return;
                 }
-                await vm.CloseOpenConnectionsAsync(row.Id);
+                // 不在这里就断:后面还有发布者变更确认、验签与清单校验,任何一步被拒或失败,
+                // 连接都白断了。交给安装流程,在所有闸都放行、即将替换旧版时再断。
+                beforeReplace = (_, _) => vm.CloseOpenConnectionsAsync(row.Id);
             }
             if (row.PublisherUnchanged)
             {
                 // 同一把私钥签的下一版:发布者连续性那一闸自会放行。这里的 allowUntrustedPackage
                 // 补的是另一种情况 —— 这把公钥本就不在全局信任库里(它当初正是这么装进来的),
                 // 不给放行的话,一个从未换过人的插件反而永远升不了级。
-                await vm.InstallFromVpxAsync(package, allowUntrustedPackage: true, expectedPackage: expected);
+                await vm.InstallFromVpxAsync(package, allowUntrustedPackage: true, expectedPackage: expected,
+                    beforeReplace: beforeReplace);
                 return;
             }
-            await InstallWithPromptsAsync(vm, package, expected);
+            await InstallWithPromptsAsync(vm, package, expected, beforeReplace);
         }
         finally
         {
@@ -380,12 +386,13 @@ public partial class PluginManagerWindow : Window
     /// </remarks>
     /// <returns>是否已经装上。</returns>
     private async Task<bool> InstallWithPublisherCheckAsync(
-        PluginManagerViewModel vm, string path, bool allowUntrusted, PluginMarketVersion? expectedPackage)
+        PluginManagerViewModel vm, string path, bool allowUntrusted, PluginMarketVersion? expectedPackage,
+        Func<string, CancellationToken, Task>? beforeReplace = null)
     {
         if (!IsVisible) return false;
         try
         {
-            return await vm.InstallFromVpxAsync(path, allowUntrusted, expectedPackage: expectedPackage);
+            return await vm.InstallFromVpxAsync(path, allowUntrusted, expectedPackage: expectedPackage, beforeReplace: beforeReplace);
         }
         catch (PluginPublisherChangedException ex)
         {
@@ -401,7 +408,8 @@ public partial class PluginManagerWindow : Window
             {
                 return false;
             }
-            return await vm.InstallFromVpxAsync(path, allowUntrusted, allowPublisherChange: true, expectedPackage: expectedPackage);
+            return await vm.InstallFromVpxAsync(path, allowUntrusted, allowPublisherChange: true, expectedPackage: expectedPackage,
+                beforeReplace: beforeReplace);
         }
     }
 

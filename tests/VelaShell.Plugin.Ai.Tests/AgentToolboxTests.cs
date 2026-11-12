@@ -191,6 +191,150 @@ public sealed class AgentToolboxTests
         }
     }
 
+    private static AgentToolbox CreateLocalToolbox(TestPluginContext context, string root,
+        Func<ApprovalRequest, Task<bool>>? approve = null)
+        => new(context)
+        {
+            LocalWorkspaces =
+            [
+                new LocalWorkspace { Id = "local", RootPath = root, AllowWrite = true }
+            ],
+            LocalDefaultWorkspaceId = "local",
+            Approval = approve is null ? ApprovalMode.Bypass : ApprovalMode.Ask,
+            ApprovalHandler = approve
+        };
+
+    private static string CreateTempWorkspace()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "velashell-ai-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        return root;
+    }
+
+    [TestMethod]
+    public async Task LocalAgent_WritesWithoutBom_AndPatchKeepsExistingBom()
+    {
+        using var context = new TestPluginContext();
+        string root = CreateTempWorkspace();
+        try
+        {
+            AgentToolbox toolbox = CreateLocalToolbox(context, root);
+            await InvokeAsync(toolbox, "write_local_file", new() { ["path"] = "run.sh", ["content"] = "#!/bin/sh\n" });
+            byte[] plain = File.ReadAllBytes(Path.Combine(root, "run.sh"));
+            Assert.AreEqual((byte)'#', plain[0], "新文件不能带 UTF-8 BOM,否则 shebang 失效");
+
+            string bomFile = Path.Combine(root, "bom.txt");
+            File.WriteAllBytes(bomFile, [0xEF, 0xBB, 0xBF, (byte)'a', (byte)'b']);
+            string patch = await InvokeAsync(toolbox, "patch_local_file", new()
+            {
+                ["path"] = "bom.txt", ["oldText"] = "a", ["newText"] = "x"
+            });
+            Assert.Contains("Patched", patch);
+            CollectionAssert.AreEqual(new byte[] { 0xEF, 0xBB, 0xBF, (byte)'x', (byte)'b' }, File.ReadAllBytes(bomFile));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task LocalAgent_RefusesToPatchNonUtf8File()
+    {
+        using var context = new TestPluginContext();
+        string root = CreateTempWorkspace();
+        try
+        {
+            string file = Path.Combine(root, "latin1.txt");
+            byte[] original = [(byte)'a', 0xE9, (byte)'b'];
+            File.WriteAllBytes(file, original);
+            AgentToolbox toolbox = CreateLocalToolbox(context, root);
+            string patch = await InvokeAsync(toolbox, "patch_local_file", new()
+            {
+                ["path"] = "latin1.txt", ["oldText"] = "b", ["newText"] = "c"
+            });
+            Assert.Contains("not valid UTF-8", patch);
+            CollectionAssert.AreEqual(original, File.ReadAllBytes(file));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task LocalAgent_RefusesToDeleteOrRenameWorkspaceRoot()
+    {
+        using var context = new TestPluginContext();
+        string root = CreateTempWorkspace();
+        try
+        {
+            AgentToolbox toolbox = CreateLocalToolbox(context, root);
+            string delete = await InvokeAsync(toolbox, "delete_local_path", new() { ["path"] = "." });
+            Assert.Contains("workspace root", delete);
+            string rename = await InvokeAsync(toolbox, "rename_local_path", new() { ["oldPath"] = ".", ["newPath"] = "moved" });
+            Assert.Contains("workspace root", rename);
+            Assert.IsTrue(Directory.Exists(root));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task LocalAgent_PatchIsAbortedWhenFileChangesWhileWaitingForApproval()
+    {
+        using var context = new TestPluginContext();
+        string root = CreateTempWorkspace();
+        string file = Path.Combine(root, "notes.txt");
+        File.WriteAllText(file, "alpha\n");
+        try
+        {
+            AgentToolbox toolbox = CreateLocalToolbox(context, root, _ =>
+            {
+                // 用户在审批卡挂着时在编辑器里保存了文件
+                File.WriteAllText(file, "alpha\nuser edit\n");
+                return Task.FromResult(true);
+            });
+            string patch = await InvokeAsync(toolbox, "patch_local_file", new()
+            {
+                ["path"] = "notes.txt", ["oldText"] = "alpha", ["newText"] = "beta"
+            });
+            Assert.Contains("changed while waiting for approval", patch);
+            Assert.AreEqual("alpha\nuser edit\n", File.ReadAllText(file));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void LocalPathScope_ActiveWorkspaces_GrantsOnlyTheSelectedOne()
+    {
+        string root = CreateTempWorkspace();
+        string other = CreateTempWorkspace();
+        try
+        {
+            LocalWorkspace[] all =
+            [
+                new LocalWorkspace { Id = "a", RootPath = root },
+                new LocalWorkspace { Id = "b", RootPath = other }
+            ];
+            Assert.IsEmpty(LocalPathScope.ActiveWorkspaces(all, null));
+            Assert.IsEmpty(LocalPathScope.ActiveWorkspaces(all, "missing"));
+            IReadOnlyList<LocalWorkspace> active = LocalPathScope.ActiveWorkspaces(all, "B");
+            Assert.HasCount(1, active);
+            Assert.AreEqual("b", active[0].Id);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+            Directory.Delete(other, recursive: true);
+        }
+    }
+
     /// <summary>
     /// 网络检索默认关(维护者 2026-10-25 决定):开着时检索词会发到 VelaShell 运营的公共 SearXNG 实例,
     /// 要用户自己勾上。升级前存下的开关原样保留(分不清是用户勾的还是出厂值),没存过的才拿新默认值。

@@ -7003,6 +7003,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Sc_AiRenameCancel" xml:space="preserve"><value>세션 이름 변경 취소</value></data>
   <data name="Sc_AiClosePanel" xml:space="preserve"><value>AI 보조 창 닫기</value></data>
   <data name="Sc_NoteDisconnected" xml:space="preserve"><value>세션이 끊긴 동안에만</value></data>
+  <data name="Sc_NoteDisconnectedOverlay" xml:space="preserve"><value>연결 끊김 오버레이가 표시된 동안에만</value></data>
   <data name="Sc_NoteMainScreen" xml:space="preserve"><value>메인 화면이고 스크롤백이 있을 때만</value></data>
   <data name="Sc_NoteAnyScreen" xml:space="preserve"><value>대체 화면에서도 작동</value></data>
   <data name="Sc_NoteCtrlCCopies" xml:space="preserve"><value>선택 시 Ctrl+C 복사가 켜져 있고 선택이 있으면 복사</value></data>

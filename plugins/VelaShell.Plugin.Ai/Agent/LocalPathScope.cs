@@ -88,6 +88,24 @@ public sealed class LocalPathScope(IReadOnlyList<LocalWorkspace> workspaces)
             string.Equals(workspace.Id, workspaceId, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// 按“当前选中的工作区”收窄授权范围：未选中（None）时不授予任何本地目录；
+    /// 聊天面板与 IM 桥接共用这一规则，避免桥接绕过面板上的选择拿到全部工作区。
+    /// </summary>
+    public static IReadOnlyList<LocalWorkspace> ActiveWorkspaces(
+        IReadOnlyList<LocalWorkspace>? workspaces,
+        string? activeWorkspaceId)
+    {
+        if (workspaces is null || string.IsNullOrWhiteSpace(activeWorkspaceId))
+        {
+            return [];
+        }
+        LocalWorkspace? workspace = workspaces.FirstOrDefault(item =>
+            string.Equals(item.Id, activeWorkspaceId, StringComparison.OrdinalIgnoreCase)
+            && IsConfigured(item));
+        return workspace is null ? [] : [workspace];
+    }
+
     /// <summary>判断工作区根目录是否为绝对且已存在的目录。</summary>
     public static bool IsConfigured(LocalWorkspace workspace)
         => !string.IsNullOrWhiteSpace(workspace.RootPath)
@@ -135,7 +153,16 @@ public sealed class LocalPathScope(IReadOnlyList<LocalWorkspace> workspaces)
         try
         {
             FileAttributes attributes = File.GetAttributes(path);
-            return attributes.HasFlag(FileAttributes.ReparsePoint);
+            if (!attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                return false;
+            }
+            // OneDrive / Cloud Files 占位符、重复数据删除等也带 ReparsePoint 标志，但不是链接。
+            // 只拒绝名称代理类重解析点（符号链接、目录联接），LinkTarget 仅对这两类返回非 null。
+            FileSystemInfo info = attributes.HasFlag(FileAttributes.Directory)
+                ? new DirectoryInfo(path)
+                : new FileInfo(path);
+            return info.LinkTarget is not null;
         }
         catch (FileNotFoundException)
         {
@@ -144,6 +171,10 @@ public sealed class LocalPathScope(IReadOnlyList<LocalWorkspace> workspaces)
         catch (DirectoryNotFoundException)
         {
             return false;
+        }
+        catch (IOException)
+        {
+            return true;
         }
         catch (UnauthorizedAccessException)
         {

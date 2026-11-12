@@ -591,52 +591,60 @@ public partial class ChatPanelView : UserControl
     }
 
     private IReadOnlyList<LocalWorkspace> GetActiveLocalWorkspaces()
-    {
-        if (string.IsNullOrWhiteSpace(_settings.LocalDefaultWorkspaceId))
-        {
-            return [];
-        }
-
-        LocalWorkspace? workspace = _settings.LocalWorkspaces.FirstOrDefault(item =>
-            string.Equals(item.Id, _settings.LocalDefaultWorkspaceId, StringComparison.OrdinalIgnoreCase)
-            && LocalPathScope.IsConfigured(item));
-        return workspace is null ? [] : [workspace];
-    }
+        => LocalPathScope.ActiveWorkspaces(_settings.LocalWorkspaces, _settings.LocalDefaultWorkspaceId);
 
     private async Task AddWorkspaceAsync()
     {
-        TopLevel? top = TopLevel.GetTopLevel(this);
-        if (top?.StorageProvider is not { } storage)
+        // 无论选中、取消还是出错,都要把下拉框还原到真实设置;否则会一直停在“选择文件夹…”上,
+        // 再点同一项也不触发 SelectionChanged,对话框就再也打不开了。
+        bool persisted = false;
+        try
         {
-            return;
-        }
-        IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(new()
-        {
-            Title = _loc["WorkspaceChoose"],
-            AllowMultiple = false
-        });
-        if (folders.Count == 0 || folders[0].TryGetLocalPath() is not { } rootPath
-            || !Directory.Exists(rootPath))
-        {
-            return;
-        }
-        LocalWorkspace? existing = _settings.LocalWorkspaces.FirstOrDefault(workspace =>
-            string.Equals(Path.GetFullPath(workspace.RootPath), Path.GetFullPath(rootPath),
-                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
-        if (existing is null)
-        {
-            existing = new LocalWorkspace
+            TopLevel? top = TopLevel.GetTopLevel(this);
+            if (top?.StorageProvider is not { } storage)
             {
-                Name = Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
-                RootPath = rootPath,
-                AllowRead = true,
-                AllowWrite = true
-            };
-            _settings.LocalWorkspaces.Add(existing);
+                return;
+            }
+            IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(new()
+            {
+                Title = _loc["WorkspaceChoose"],
+                AllowMultiple = false
+            });
+            if (folders.Count == 0 || folders[0].TryGetLocalPath() is not { } rootPath
+                || !Directory.Exists(rootPath))
+            {
+                return;
+            }
+            LocalWorkspace? existing = _settings.LocalWorkspaces.FirstOrDefault(workspace =>
+                string.Equals(Path.GetFullPath(workspace.RootPath), Path.GetFullPath(rootPath),
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
+            if (existing is null)
+            {
+                existing = new LocalWorkspace
+                {
+                    Name = Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+                    RootPath = rootPath,
+                    AllowRead = true,
+                    AllowWrite = true
+                };
+                _settings.LocalWorkspaces.Add(existing);
+            }
+            _settings.LocalDefaultWorkspaceId = existing.Id;
+            RefreshWorkspaceSelector();
+            persisted = true;
+            await PersistSettingsAsync();
         }
-        _settings.LocalDefaultWorkspaceId = existing.Id;
-        RefreshWorkspaceSelector();
-        await PersistSettingsAsync();
+        catch (Exception ex)
+        {
+            SetStatus(ex.Message);
+        }
+        finally
+        {
+            if (!persisted)
+            {
+                RefreshWorkspaceSelector();
+            }
+        }
     }
 
     /// <summary>
@@ -2046,8 +2054,6 @@ public partial class ChatPanelView : UserControl
                         (ResolvedModel subagentModel, ProviderCredential subagentCredential) =
                             await ResolveSubagentModelAsync(request, current,
                                 verifiedCredential, selectedKeyId, childToken);
-                        var toolCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-                        var toolErrors = new List<string>();
                         await using AgentToolbox childToolbox = subagentTemplate!.CreateSubagentToolbox();
                         IList<AITool> childTools = childToolbox.CreateSubagentTools(request.AllowWrites, runScope);
                         foreach (AITool mcpTool in subagents!.ReadOnlyMcpTools)
@@ -2055,24 +2061,7 @@ public partial class ChatPanelView : UserControl
                             childTools.Add(mcpTool);
                         }
                         IReadOnlyList<AITool> trackedTools = SubagentOrchestrator.SubagentToolTracker.Wrap(
-                            childTools, (name, result) =>
-                            {
-                                subagents!.RecordToolUsage(name, result);
-                                toolCounts[name] = toolCounts.GetValueOrDefault(name) + 1;
-                                string? text = result switch
-                                {
-                                    Exception exception => exception.GetBaseException().Message,
-                                    string value => value,
-                                    _ => null
-                                };
-                                if (result is Exception
-                                    || (text is not null
-                                        && (text.Contains("DENIED", StringComparison.OrdinalIgnoreCase)
-                                            || text.Contains("No approval channel", StringComparison.OrdinalIgnoreCase))))
-                                {
-                                    toolErrors.Add($"{name}: {text}");
-                                }
-                            });
+                            childTools, (name, result) => subagents!.RecordToolUsage(name, result));
                         var childOptions = new ChatOptions
                         {
                             MaxOutputTokens = Math.Min(subagentModel.MaxTokens, 2048),
@@ -2096,10 +2085,9 @@ public partial class ChatPanelView : UserControl
                             : $"You are a specialist subagent focused on {request.Role.Trim()}.\n\n{request.Prompt}";
                         ChatResponse response = await childClient.GetResponseAsync(
                             instruction, childOptions, childToken).ConfigureAwait(false);
-                        return new SubagentExecutionResult(
-                            response.Text,
-                            toolCounts.Select(pair => new SubagentToolUsage(pair.Key, pair.Value)).ToArray(),
-                            toolErrors);
+                        // 工具计数与错误已由 RecordToolUsage 实时记在条目上;这里再带一份,
+                        // 快照合并时每条错误就会出现两次。
+                        return SubagentExecutionResult.FromText(response.Text);
                     }, token)
                     {
                         ModelChoices = _settings.Providers.SelectMany(p => p.Models.Select(m => new ResolvedModel(p, m)))
@@ -2424,7 +2412,10 @@ public partial class ChatPanelView : UserControl
                     // 刚断流的接入当没试过的端上来。
                     if (selectedKeyId is { } key && TransientFailure.IsApiKeyFailure(ex))
                         _health.RecordKeyFailure(key, current.Id, TransientFailure.IsKeyRejected(ex), verifiedVersion, verifiedObservation);
-                    else if (ex is not ProviderConfigurationChangedException and not AiSettingsStore.ApiKeySlotChangedException)
+                    // 只有供应商侧故障(网络/超时/429/5xx/鉴权)才算健康数据;用户拒绝工具、Agent 暂停、
+                    // 400 之类与这条接入的好坏无关,记成失败会让它无辜冷却、被故障转移跳过。
+                    else if (TransientFailure.IsWorthSwitching(ex)
+                             && ex is not ProviderConfigurationChangedException and not AiSettingsStore.ApiKeySlotChangedException)
                         _health.Record(current.Id, false, verifiedVersion, verifiedObservation);
                     throw;
                 }
@@ -2576,7 +2567,8 @@ public partial class ChatPanelView : UserControl
                 try { await runScope.CancelAsync(); }
                 catch (ObjectDisposedException) { }
                 conv.RunScope = null;
-                _toolbox.Subagents = null;
+                // 只清自己这一轮设上去的:并发的另一个对话可能已经换成了它的编排器。
+                if (ReferenceEquals(_toolbox.Subagents, subagents)) _toolbox.Subagents = null;
                 if (subagents is not null)
                 {
                     await subagents.DisposeAsync();
@@ -3749,6 +3741,9 @@ public partial class ChatPanelView : UserControl
         private readonly StringBuilder _thinkingText = new();
         // 复制整段回复用的原文:正文按到达顺序原样攒着(Markdown 源码,不是渲染后的可视树)
         private readonly StringBuilder _replyText = new();
+        // 正文开始前收到的纯空白片段:不立刻显示(多半是噪声),但第一行的缩进要留给下一个非空白片段,
+        // 否则以缩进代码块开头的回复会被渲染成普通段落,与持久化的文本对不上。
+        private readonly StringBuilder _leadingWhitespace = new();
         private MarkdownSegment? _currentSegment;
         private SubagentRunGroup? _subagentGroup;
         private Collapsible? _thinking;
@@ -3890,6 +3885,7 @@ public partial class ChatPanelView : UserControl
                     _stack.Children.RemoveAt(i);
             }
             _replyText.Clear();
+            _leadingWhitespace.Clear();
             _thinkingText.Clear();
             _currentSegment = null;
             _thinking = null;
@@ -3904,9 +3900,25 @@ public partial class ChatPanelView : UserControl
             {
                 return;
             }
-            if (_replyText.Length == 0 && string.IsNullOrWhiteSpace(text))
+            if (_replyText.Length == 0)
             {
-                return;
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    _leadingWhitespace.Append(text);
+                    return;
+                }
+                if (_leadingWhitespace.Length > 0)
+                {
+                    // 只在构成 Markdown 缩进代码块(≥4 个空格或制表符)时补回首行缩进;
+                    // 前导空行与零星空格仍按噪声丢掉
+                    string pending = _leadingWhitespace.ToString();
+                    string indent = pending[(pending.LastIndexOf('\n') + 1)..];
+                    if (indent.Contains('\t') || indent.Length >= 4)
+                    {
+                        text = indent + text;
+                    }
+                    _leadingWhitespace.Clear();
+                }
             }
             // 正文开始 = 思考结束,但<b>不在这里收起来</b>:
             // 思考往往刚吐完正文就跟上,立刻折叠等于让人根本没机会读(用户反馈的
