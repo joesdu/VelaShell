@@ -7445,6 +7445,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Sc_NoteDisconnected" xml:space="preserve">
     <value>僅在工作階段已中斷時</value>
   </data>
+  <data name="Sc_NoteDisconnectedOverlay" xml:space="preserve">
+    <value>僅在中斷遮罩顯示時</value>
+  </data>
   <data name="Sc_NoteMainScreen" xml:space="preserve">
     <value>僅主畫面且有捲動歷程</value>
   </data>

@@ -194,17 +194,27 @@ public sealed class SubagentOrchestrator(
             entry.LiveTools[name] = entry.LiveTools.GetValueOrDefault(name) + 1;
             if (result is Exception exception)
             {
-                entry.LiveErrors.Add($"{name}: {exception.GetBaseException().Message}");
+                entry.LiveErrors.Add($"{name}: {ClipError(exception.GetBaseException().Message)}");
             }
-            else if (result is string text
-                     && (text.Contains("DENIED", StringComparison.OrdinalIgnoreCase)
-                         || text.Contains("No approval channel", StringComparison.OrdinalIgnoreCase)))
+            else if (result is string text && IsDenialResult(text))
             {
-                entry.LiveErrors.Add($"{name}: {text}");
+                entry.LiveErrors.Add($"{name}: {ClipError(text)}");
             }
         }
         NotifyChanged();
     }
+
+    /// <summary>
+    /// 工具返回的是不是"被拒/无审批通道"那几句固定话术。只认开头:读到的文件或终端输出里
+    /// 出现 "Permission denied" 之类再正常不过,按包含匹配会把整段内容当错误塞回父 Agent。
+    /// </summary>
+    /// <param name="text">工具的字符串结果。</param>
+    public static bool IsDenialResult(string text)
+        => text.StartsWith("The user DENIED ", StringComparison.Ordinal)
+           || text.StartsWith("The host DENIED ", StringComparison.Ordinal)
+           || text.StartsWith("No approval channel", StringComparison.Ordinal);
+
+    private static string ClipError(string text) => text.Length <= 300 ? text : text[..300] + "…";
 
     /// <summary>请求取消一个子任务。</summary>
     public string Cancel(string id)

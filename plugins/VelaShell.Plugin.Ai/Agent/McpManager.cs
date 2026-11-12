@@ -130,6 +130,11 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
                 .ConfigureAwait(false);
             if (connection.Client is null)
             {
+                // 显式启动途中被手动停止:对发起启动的界面而言这就是一次取消
+                if (connection.Lifetime.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(connection.Error, connection.Lifetime.Token);
+                }
                 throw new InvalidOperationException(connection.Error);
             }
         }
@@ -261,6 +266,18 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
                 existing.KeepAlive = server.KeepAlive;
                 return existing;
             }
+            if (existing.Users > 0 && existing.Client is not null
+                && existing.Fingerprint == fingerprint && !existing.Lifetime.IsCancellationRequested
+                && existing.WorkspaceRoot != workspaceRoot)
+            {
+                // 另一个对话正拿着这条连接(绑定的是另一个工作区)。关掉它会打断那边进行中的调用,
+                // 两个对话还会轮流把对方的进程重启;这一轮只报这一台不可用。
+                return new Connection
+                {
+                    Error = "MCP server is in use by another chat bound to a different workspace; try again after it finishes.",
+                    FailedAt = DateTimeOffset.UtcNow
+                };
+            }
             await CloseAsync(server.Id, existing).ConfigureAwait(false);
         }
         var connection = new Connection
@@ -281,10 +298,17 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
                 () => ConnectAsync(server, linked.Token, workspaces), linked.Token).ConfigureAwait(false);
             SetState(server.Id, "Ready", connection.Tools.Count);
         }
-        catch (OperationCanceledException) when (linked.IsCancellationRequested)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             SetState(server.Id, "Stopped");
             throw;
+        }
+        catch (OperationCanceledException) when (connection.Lifetime.IsCancellationRequested)
+        {
+            // 用户在启动途中手动停止了这台服务器:只影响这一台,不能把整轮的工具获取当成用户取消。
+            connection.Error = "MCP server was stopped.";
+            connection.FailedAt = DateTimeOffset.UtcNow;
+            SetState(server.Id, "Stopped");
         }
         catch (Exception ex)
         {
@@ -607,6 +631,9 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
     {
         SetState(id, "Stopping");
         await connection.Lifetime.CancelAsync().ConfigureAwait(false);
+        // 换代的连接不再需要这份登记;只摘仍指向自己的那一条,免得删掉新连接的
+        ((ICollection<KeyValuePair<string, CancellationTokenSource>>)_lifetimes)
+            .Remove(new KeyValuePair<string, CancellationTokenSource>(id, connection.Lifetime));
         if (connection.Client is { } client)
         {
             try

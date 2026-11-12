@@ -155,7 +155,8 @@ public sealed class BridgeAgentRunner(
                 (ai.DisabledBuiltinTools ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
                 StringComparer.OrdinalIgnoreCase),
             WebSearch = ai.WebSearch,
-            LocalWorkspaces = ai.LocalWorkspaces,
+            // 与聊天面板一致:只授予当前选中的工作区,选“无”时不授予本地目录
+            LocalWorkspaces = LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId),
             LocalDefaultWorkspaceId = ai.LocalDefaultWorkspaceId,
             LocalMaxFileBytes = ai.LocalMaxFileBytes,
             LocalMaxDirectoryEntries = ai.LocalMaxDirectoryEntries
@@ -259,7 +260,7 @@ public sealed class BridgeAgentRunner(
                     // 审批上下文每轮一份:mcp 是所有聊天共用的,别的聊天的轮次可能正同时在跑
                     mcpLease = await mcp
                         .AcquireToolsAsync(ai.McpServers, new McpApproval(approve, approval), cancellationToken,
-                            ai.LocalWorkspaces).ConfigureAwait(false);
+                            LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId)).ConfigureAwait(false);
                     List<AITool> mcpTools = mcpLease.Tools;
                     List<string> errors = mcpLease.Errors;
                     foreach (AITool tool in mcpTools)

@@ -264,7 +264,7 @@ public static class ShortcutCatalog
                     Item("Sc_LineEnd", [Shift, "End"]),
                     Item("Sc_Reconnect", ["Enter"], "Sc_NoteDisconnected"),
                     Item("Sc_ReconnectAlt", [Ctrl, "R"], "Sc_NoteDisconnected"),
-                    Item("Sc_CloseDisconnectedTab", ["Esc"], "Sc_NoteDisconnected"),
+                    Item("Sc_CloseDisconnectedTab", ["Esc"], "Sc_NoteDisconnectedOverlay"),
                     Bound(keymap, "edit.clear"),
                     Bound(keymap, "view.zoom.in"),
                     Bound(keymap, "view.zoom.out"),

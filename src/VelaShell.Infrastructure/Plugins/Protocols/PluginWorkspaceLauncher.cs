@@ -97,7 +97,24 @@ public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry) : I
             RaiseSurfacesChanged();
             if (CloseSessionRequested is { } close)
             {
-                await close(pair.Key, pair.Value.Document).ConfigureAwait(false);
+                try
+                {
+                    await close(pair.Key, pair.Value.Document).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    // 会话已经从登记里摘掉了;不通知的话,随后停用插件时它不会再收到 SessionAbandoned,
+                    // 标签页就挂在一个已死的插件上。继续关剩下的会话。
+                    Trace.WriteLine($"[PluginWorkspace] Close callback for '{pair.Value.TypeId}' threw: {ex.Message}");
+                    try
+                    {
+                        SessionAbandoned?.Invoke(pair.Key);
+                    }
+                    catch (Exception abandonEx)
+                    {
+                        Trace.WriteLine($"[PluginWorkspace] Abandon handler for '{pair.Value.TypeId}' threw: {abandonEx.Message}");
+                    }
+                }
             }
             else
             {
@@ -109,7 +126,14 @@ public sealed class PluginWorkspaceLauncher(PluginProtocolRegistry registry) : I
                 {
                     Trace.WriteLine($"[PluginWorkspace] Close handler for '{pair.Value.TypeId}' threw: {ex.Message}");
                 }
-                await pair.Value.Document.DisposeAsync().ConfigureAwait(false);
+                try
+                {
+                    await pair.Value.Document.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Trace.WriteLine($"[PluginWorkspace] Dispose for '{pair.Value.TypeId}' threw: {ex.Message}");
+                }
             }
         }
     }

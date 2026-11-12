@@ -205,4 +205,15 @@ public sealed class SubagentOrchestratorTests
         release.SetResult();
         await orchestrator.WaitAsync(id, 5, CancellationToken.None);
     }
+
+    [TestMethod]
+    public void IsDenialResult_MatchesOnlyToolDenialSentences()
+    {
+        Assert.IsTrue(SubagentOrchestrator.IsDenialResult("The user DENIED this local edit. Do not retry."));
+        Assert.IsTrue(SubagentOrchestrator.IsDenialResult("The host DENIED this connection (x)."));
+        Assert.IsTrue(SubagentOrchestrator.IsDenialResult("No approval channel available; the call was not executed."));
+        // 读到的文件/终端内容里出现 denied 很常见,不能当成错误
+        Assert.IsFalse(SubagentOrchestrator.IsDenialResult("sshd[1]: Permission denied (publickey)."));
+        Assert.IsFalse(SubagentOrchestrator.IsDenialResult("log line\nThe user DENIED nothing"));
+    }
 }

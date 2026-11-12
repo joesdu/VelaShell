@@ -490,20 +490,23 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 + "Same-host redirects are followed; a cross-host redirect is reported back instead of followed, "
                 + "so call web_fetch again with the new URL if that is where you want to go."), true));
         }
-        if (mode == ChatMode.Agent && Subagents is not null)
+        if (mode == ChatMode.Agent && Subagents is { } orchestrator)
         {
-            all.Add(("delegate_subagent", AIFunctionFactory.Create(DelegateSubagentAsync, "delegate_subagent",
+            // 编排器绑在这一轮的工具上,而不是在调用时读可变属性:同一个工具箱被多个对话并发使用时,
+            // 另一个对话会改写/清空 Subagents,读属性会把子任务派进别人的编排器。
+            var bound = new SubagentToolBinding(orchestrator);
+            all.Add(("delegate_subagent", AIFunctionFactory.Create(bound.DelegateSubagentAsync, "delegate_subagent",
                 "Delegate a focused task to a parallel subagent. Defaults to read-only. "
                 + "Set allowWrites=true explicitly for local/remote file edits under inherited scope and parent approvals. "
                 + "No command execution, session creation, transfers, approval management or recursive delegation. "
                 + "MCP tools remain read-only. File mutations are serialized with the parent; cancellation does not roll back changes. Returns an id immediately. "
                 + "Omit modelId to inherit the parent model, or select a configured model ID from: "
-                + JsonSerializer.Serialize(Subagents.ModelChoices)), false));
-            all.Add(("subagent_status", AIFunctionFactory.Create(SubagentStatusAsync, "subagent_status",
+                + JsonSerializer.Serialize(orchestrator.ModelChoices)), false));
+            all.Add(("subagent_status", AIFunctionFactory.Create(bound.SubagentStatusAsync, "subagent_status",
                 "Get the status of a delegated subagent by id."), true));
-            all.Add(("subagent_wait", AIFunctionFactory.Create(SubagentWaitAsync, "subagent_wait",
+            all.Add(("subagent_wait", AIFunctionFactory.Create(bound.SubagentWaitAsync, "subagent_wait",
                 "Wait briefly for a delegated subagent and return its result if complete."), true));
-            all.Add(("subagent_cancel", AIFunctionFactory.Create(SubagentCancelAsync, "subagent_cancel",
+            all.Add(("subagent_cancel", AIFunctionFactory.Create(bound.SubagentCancelAsync, "subagent_cancel",
                 "Cancel a delegated subagent by id."), false));
         }
         return
@@ -514,19 +517,22 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         ];
     }
 
-    private string DelegateSubagentAsync(string prompt, string? role = null, string? modelId = null, bool allowWrites = false)
-        => Subagents?.Start(prompt, role, modelId, allowWrites) ?? "Subagent support is unavailable in this turn.";
+    /// <summary>把子 Agent 工具绑定到创建它们那一轮的编排器。</summary>
+    private sealed class SubagentToolBinding(SubagentOrchestrator orchestrator)
+    {
+        public string DelegateSubagentAsync(string prompt, string? role = null, string? modelId = null, bool allowWrites = false)
+            => orchestrator.Start(prompt, role, modelId, allowWrites);
 
-    private string SubagentStatusAsync(string id)
-        => Subagents?.Status(id) ?? "Subagent support is unavailable in this turn.";
+        public string SubagentStatusAsync(string id)
+            => orchestrator.Status(id);
 
-    private Task<string> SubagentWaitAsync(string id, int timeout_seconds = 30,
-        CancellationToken cancellationToken = default)
-        => Subagents?.WaitAsync(id, timeout_seconds, cancellationToken)
-            ?? Task.FromResult("Subagent support is unavailable in this turn.");
+        public Task<string> SubagentWaitAsync(string id, int timeout_seconds = 30,
+            CancellationToken cancellationToken = default)
+            => orchestrator.WaitAsync(id, timeout_seconds, cancellationToken);
 
-    private string SubagentCancelAsync(string id)
-        => Subagents?.Cancel(id) ?? "Subagent support is unavailable in this turn.";
+        public string SubagentCancelAsync(string id)
+            => orchestrator.Cancel(id);
+    }
 
     private static bool IsLocalToolName(string name)
         => name is "list_local_workspaces"
@@ -827,6 +833,59 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         return CreateLocalScope().TryResolve(selectedWorkspace, path, write, out localPath, out error);
     }
 
+    /// <summary>
+    /// 审批等待可能持续很久，期间路径中的目录可能被替换为链接；动手前重新校验一次。
+    /// </summary>
+    private bool RevalidateLocal(LocalPath localPath, out string error)
+    {
+        if (!CreateLocalScope().TryResolve(localPath.Workspace.Id, localPath.FullPath, write: true,
+                out LocalPath again, out error))
+        {
+            return false;
+        }
+        if (!string.Equals(again.FullPath, localPath.FullPath, StringComparison.Ordinal))
+        {
+            error = "The local path changed while waiting for approval.";
+            return false;
+        }
+        return true;
+    }
+
+    private static bool IsLocalWorkspaceRoot(LocalPath localPath)
+        => string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(localPath.Workspace.RootPath)),
+            Path.TrimEndingDirectorySeparator(localPath.FullPath),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    private static readonly UTF8Encoding LocalUtf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+    private static readonly UTF8Encoding LocalUtf8Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    /// <summary>严格按 UTF-8 读取本地文件；非 UTF-8 内容抛出 <see cref="DecoderFallbackException" />，避免改写时损坏字节。</summary>
+    private static async Task<(string Text, bool HasBom)> ReadLocalUtf8StrictAsync(string fullPath, CancellationToken cancellationToken)
+    {
+        byte[] bytes = await File.ReadAllBytesAsync(fullPath, cancellationToken).ConfigureAwait(false);
+        bool bom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+        int offset = bom ? 3 : 0;
+        return (LocalUtf8Strict.GetString(bytes, offset, bytes.Length - offset), bom);
+    }
+
+    private static bool LocalFileHasUtf8Bom(string fullPath)
+    {
+        try
+        {
+            using FileStream stream = new(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            Span<byte> head = stackalloc byte[3];
+            return stream.Read(head) == 3 && head[0] == 0xEF && head[1] == 0xBB && head[2] == 0xBF;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static Task WriteLocalTextAsync(string fullPath, string content, bool withBom, CancellationToken cancellationToken)
+        => File.WriteAllTextAsync(fullPath, content, withBom ? Encoding.UTF8 : LocalUtf8NoBom, cancellationToken);
+
     private int EffectiveLocalMaxFileBytes
         => LocalMaxFileBytes > 0 ? LocalMaxFileBytes : MaxFileBytes;
 
@@ -984,12 +1043,17 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!RevalidateLocal(localPath, out error))
+            {
+                return error;
+            }
             string? parent = Path.GetDirectoryName(localPath.FullPath);
             if (parent is null || !Directory.Exists(parent))
             {
                 return $"Parent directory does not exist: {path}";
             }
-            await File.WriteAllTextAsync(localPath.FullPath, content, Encoding.UTF8, cancellationToken)
+            bool keepBom = File.Exists(localPath.FullPath) && LocalFileHasUtf8Bom(localPath.FullPath);
+            await WriteLocalTextAsync(localPath.FullPath, content, keepBom, cancellationToken)
                 .ConfigureAwait(false);
             return $"Wrote {byteCount} bytes to {localPath.RelativePath}.";
         }
@@ -1025,8 +1089,17 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             {
                 return $"File is larger than {EffectiveLocalMaxFileBytes / 1024} KB; patch a smaller file.";
             }
-            string original = await File.ReadAllTextAsync(localPath.FullPath, Encoding.UTF8, cancellationToken)
-                .ConfigureAwait(false);
+            string original;
+            bool hasBom;
+            try
+            {
+                (original, hasBom) = await ReadLocalUtf8StrictAsync(localPath.FullPath, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (DecoderFallbackException)
+            {
+                return $"{localPath.RelativePath} is not valid UTF-8; refusing to patch it to avoid corrupting the file.";
+            }
             int occurrences = CountOccurrences(original, oldText);
             if (occurrences == 0)
             {
@@ -1047,7 +1120,18 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             {
                 return "The user DENIED this local edit. Do not retry; ask the user how to proceed.";
             }
-            await File.WriteAllTextAsync(localPath.FullPath, patched, Encoding.UTF8, cancellationToken)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!RevalidateLocal(localPath, out error))
+            {
+                return error;
+            }
+            (string current, bool currentBom) = await ReadLocalUtf8StrictAsync(localPath.FullPath, cancellationToken)
+                .ConfigureAwait(false);
+            if (!string.Equals(current, original, StringComparison.Ordinal) || currentBom != hasBom)
+            {
+                return $"{localPath.RelativePath} changed while waiting for approval; the patch was not applied. Read the file again before retrying.";
+            }
+            await WriteLocalTextAsync(localPath.FullPath, patched, hasBom, cancellationToken)
                 .ConfigureAwait(false);
             return $"Patched {localPath.RelativePath} ({original.Length} → {patched.Length} chars).";
         }
@@ -1074,6 +1158,10 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!RevalidateLocal(localPath, out error))
+            {
+                return error;
+            }
             Directory.CreateDirectory(localPath.FullPath);
             return $"Directory ready: {localPath.RelativePath}";
         }
@@ -1097,6 +1185,10 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             return error;
         }
+        if (IsLocalWorkspaceRoot(source) || IsLocalWorkspaceRoot(destination))
+        {
+            return "Refusing to rename the workspace root itself.";
+        }
         if (!File.Exists(source.FullPath) && !Directory.Exists(source.FullPath))
         {
             return $"No such path: {oldPath}";
@@ -1113,6 +1205,10 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!RevalidateLocal(source, out error) || !RevalidateLocal(destination, out error))
+            {
+                return error;
+            }
             string? parent = Path.GetDirectoryName(destination.FullPath);
             if (parent is null || !Directory.Exists(parent))
             {
@@ -1143,6 +1239,10 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             return error;
         }
+        if (IsLocalWorkspaceRoot(localPath))
+        {
+            return "Refusing to delete the workspace root itself.";
+        }
         if (!File.Exists(localPath.FullPath) && !Directory.Exists(localPath.FullPath))
         {
             return $"No such path: {path}";
@@ -1155,6 +1255,10 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!RevalidateLocal(localPath, out error))
+            {
+                return error;
+            }
             if (Directory.Exists(localPath.FullPath))
             {
                 if (Directory.EnumerateFileSystemEntries(localPath.FullPath).Any())

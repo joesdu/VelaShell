@@ -7003,6 +7003,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Sc_AiRenameCancel" xml:space="preserve"><value>セッション名の変更を取消</value></data>
   <data name="Sc_AiClosePanel" xml:space="preserve"><value>AI サブウィンドウを閉じる</value></data>
   <data name="Sc_NoteDisconnected" xml:space="preserve"><value>セッション切断中のみ</value></data>
+  <data name="Sc_NoteDisconnectedOverlay" xml:space="preserve"><value>切断オーバーレイの表示中のみ</value></data>
   <data name="Sc_NoteMainScreen" xml:space="preserve"><value>メイン画面かつスクロールバックがある場合のみ</value></data>
   <data name="Sc_NoteAnyScreen" xml:space="preserve"><value>代替画面でも有効</value></data>
   <data name="Sc_NoteCtrlCCopies" xml:space="preserve"><value>選択時に Ctrl+C でコピーが有効かつ選択があればコピー</value></data>

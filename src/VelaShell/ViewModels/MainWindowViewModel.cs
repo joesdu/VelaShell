@@ -105,7 +105,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
 
     /// <summary>工作台会话 id → 已打开的停靠文档(插件被停用时要按 id 找到它并关掉)。</summary>
     private readonly ConcurrentDictionary<Guid, PluginWorkspaceDocument> _workspaceDocuments = new();
-    private readonly ConcurrentDictionary<Guid, byte> _workspaceCloseInProgress = new();
+    private readonly ConcurrentDictionary<Guid, Task> _workspaceCloseInProgress = new();
 
     /// <summary>
     /// 每条配置名下都有谁活着,以及树上那个圆点该显示什么状态(见 <see cref="SessionStatusRegistry" />)。
@@ -6347,13 +6347,24 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
         }
     }
 
-    /// <summary>工作台文档关闭:摘登记、退订状态、拆隧道、释放插件那边的连接。幂等。</summary>
-    private async Task CloseWorkspaceDocumentAsync(PluginWorkspaceDocument document)
+    /// <summary>
+    /// 工作台文档关闭:摘登记、退订状态、拆隧道、释放插件那边的连接。幂等:
+    /// 已有关闭在进行时返回<b>那一次</b>的任务,而不是立即完成 —— 插件更新要等它真正收尾。
+    /// </summary>
+    private Task CloseWorkspaceDocumentAsync(PluginWorkspaceDocument document)
     {
-        if (!_workspaceCloseInProgress.TryAdd(document.SessionId, 0))
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task running = _workspaceCloseInProgress.GetOrAdd(document.SessionId, completion.Task);
+        if (!ReferenceEquals(running, completion.Task))
         {
-            return;
+            return running;
         }
+        _ = CloseWorkspaceDocumentCoreAsync(document, completion);
+        return completion.Task;
+    }
+
+    private async Task CloseWorkspaceDocumentCoreAsync(PluginWorkspaceDocument document, TaskCompletionSource completion)
+    {
         try
         {
             document.Workspace.StatusChanged -= OnWorkspaceStatusChanged;
@@ -6368,6 +6379,11 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
             {
                 await RemoveWorkspaceTunnelAsync(tunnelId).ConfigureAwait(true);
             }
+            completion.TrySetResult();
+        }
+        catch (Exception ex)
+        {
+            completion.TrySetException(ex);
         }
         finally
         {
@@ -6388,7 +6404,11 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
                     Layout.CloseDocument(document);
                     await CloseWorkspaceDocumentAsync(document).ConfigureAwait(true);
                 }
-                else if (!_workspaceCloseInProgress.ContainsKey(sessionId))
+                else if (_workspaceCloseInProgress.TryGetValue(sessionId, out Task? closing))
+                {
+                    await closing.ConfigureAwait(true);
+                }
+                else
                 {
                     await launcherDocument.DisposeAsync().ConfigureAwait(true);
                     if (_workspaceTunnels.TryRemove(sessionId, out Guid tunnelId))

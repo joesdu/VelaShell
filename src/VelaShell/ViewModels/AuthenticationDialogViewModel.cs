@@ -417,7 +417,9 @@ public class AuthenticationDialogViewModel : ReactiveObject
             IsCertificateMethod ? CertificatePath : null,
             // 临时连接:另存为连接才记住(存不进库的配置,记住了也落不了盘);其余照「记住密码」那一勾。
             !IsTailscaleMethod && (IsTemporaryProfile ? SaveAsConnection : RememberPassword),
-            CanUpdateSharedCredential && UpdateSharedCredential,
+            // 允许空密码登录(有的服务器就是空密码),但空密码不回写共享凭据:那份可能只是这台设备
+            // 暂时解不开,连接还没试就把它写空,所有引用它的连接都会一起丢掉密码。
+            CanUpdateSharedCredential && UpdateSharedCredential && !(IsPasswordMethod && Password is not { Length: > 0 }),
             IsTemporaryProfile && SaveAsConnection);
     }
 
