@@ -452,7 +452,9 @@ Thanks to everyone below for supporting VelaShell (newest first; donors who left
 
 | Donor ID | Amount | Channel |
 | :---: | :---: | :---: |
+| 天真i | ￥50 | QQ Pay |
 | s*y | ￥10 | WeChatPay |
+
 
 Put the ID you'd like shown in your Afdian message or transfer note. To stay off the list, change your name, or be removed, email <dygood@outlook.com>.
 
