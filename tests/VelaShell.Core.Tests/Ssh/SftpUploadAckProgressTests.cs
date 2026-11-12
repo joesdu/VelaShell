@@ -353,9 +353,10 @@ public sealed class SftpUploadAckProgressTests
                 Assert.AreSequenceEqual(SHA256.HashData(file.Data), SHA256.HashData(actual), file.Name);
             }
             Assert.AreEqual(1, server.AcceptedConnections, "Reverse relays must queue on the only FTP client.");
+            // Read-only SFTP streams send CLOSE in the background, after DisposeAsync returns.
+            await EventuallyAsync(() => harness.SftpServer.OpenHandleCount == 0);
             Assert.AreEqual(files.Length, harness.SftpServer.ReceivedTypes.Count(t => t == SftpMessageType.Open),
                 "Each SFTP source must be opened once, without a retry or staging download.");
-            Assert.AreEqual(0, harness.SftpServer.OpenHandleCount);
         }
         finally
         {
