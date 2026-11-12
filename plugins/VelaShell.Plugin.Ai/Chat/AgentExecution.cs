@@ -49,7 +49,8 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
     /// 结果原样不变才累计。有副作用的工具仍按签名拦,不看结果。
     /// </summary>
     private static readonly HashSet<string> ObservationTools =
-        [with(StringComparer.Ordinal), "task_status", "task_wait", "transfer_status", "transfer_wait"];
+        [with(StringComparer.Ordinal), "task_status", "task_wait", "transfer_status", "transfer_wait",
+            "subagent_status", "subagent_wait"];
     internal bool HasToolCalls { get { lock (_gate) return _calls.Count > 0; } }
 
     /// <summary>

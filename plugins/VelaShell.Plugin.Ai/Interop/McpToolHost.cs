@@ -44,6 +44,8 @@ internal sealed class McpToolHost : IAsyncDisposable
     private readonly McpServerSettings _settings;
     private readonly AgentToolbox _toolbox;
     private readonly ISessionScope? _scope;
+    private readonly SubagentOrchestrator? _subagents;
+    private readonly AgentToolbox? _subagentTemplate;
     private string? _sessionId;
     private string _target = "";
 
@@ -59,7 +61,33 @@ internal sealed class McpToolHost : IAsyncDisposable
     /// </summary>
     public bool HasActiveTransfers => _runScope.Transfers?.HasUnfinishedTransfers == true;
 
+    /// <summary>还有子任务在跑:外部 agent 多半正等着取结果,这条连接不按闲置回收。</summary>
+    public bool HasActiveSubagents => _subagents?.HasActive == true;
+
+    /// <summary>一条连接最多委派多少个子任务。连接比桌面的一轮长得多,上限放宽;并发仍是 4。</summary>
+    private const int MaxSubagentsPerConnection = 32;
+
+    /// <summary>
+    /// 建一个会话。给了 <paramref name="aiStore" /> 且是 Agent 模式时,外部 agent 也能用
+    /// <c>delegate_subagent</c> 把任务交给 VelaShell 里配置的模型 —— 那会消耗用户的模型额度,
+    /// 并把子任务读到的内容发给该供应商;不想给就在「配置工具」里停用 <c>delegate_subagent</c>。
+    /// </summary>
+    public static async Task<McpToolHost> CreateAsync(IPluginContext context, McpServerSettings settings,
+        AiSettingsStore? aiStore, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        AiSettings? ai = aiStore is not null && settings.Mode == ChatMode.Agent
+            ? await aiStore.LoadAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+        return new McpToolHost(context, settings, aiStore, ai);
+    }
+
     public McpToolHost(IPluginContext context, McpServerSettings settings)
+        : this(context, settings, null, null)
+    {
+    }
+
+    private McpToolHost(IPluginContext context, McpServerSettings settings, AiSettingsStore? aiStore, AiSettings? ai)
     {
         _context = context;
         _settings = settings;
@@ -84,6 +112,30 @@ internal sealed class McpToolHost : IAsyncDisposable
         // 停不停由 MCP 客户端决定(桌面与 IM 的轮次才在拒绝后强制暂停)。
         _runScope = _toolbox.BeginRun(Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N"),
             denialEndsRun: false, cancellationToken: _lifetime.Token);
+        // 一个聊天模型都没配时不摆委派工具:摆了也只会每次失败
+        if (aiStore is not null && ai is not null && Chat.SubagentRunner.ModelChoices(ai) is { Count: > 0 } models)
+        {
+            // 外部 agent 自己就是模型:这里没有"父模型",子任务用 VelaShell 当前选中的那个,每次按当下设置现取凭据。
+            // 子任务的工具与这条连接同一套范围与挡位;没有审批界面,所以 allowWrites 只在绕过审批时写得进去。
+            _subagentTemplate = _toolbox.CreateSubagentToolbox();
+            var runner = new Chat.SubagentRunner(
+                (request, token) => Chat.SubagentRunner.ResolveFromSettingsAsync(aiStore, request.ModelId, null, token),
+                (model, credential) => aiStore.CreateClient(model, credential, callerCountsRetries: true),
+                () => _subagentTemplate, _runScope, context.Host.Locale);
+            SubagentOrchestrator created = null!;
+            created = new SubagentOrchestrator((request, token) => runner.RunAsync(created, request, token), _lifetime.Token)
+            {
+                ModelChoices = models,
+                // 没指定模型时用 VelaShell 当前选中的;选中的是图片模型就退到第一个聊天模型。
+                // 在这里定下来,结果里才说得清实际用的是哪个模型。
+                DefaultModelId = ai.ActiveModelId is { } active && models.ContainsKey(active) ? active : models.Keys.First(),
+                MaxTotal = MaxSubagentsPerConnection,
+                // 这条路唤不醒外部模型:结果得它自己用 subagent_wait 来取
+                DeliversResults = false
+            };
+            _subagents = created;
+            _toolbox.Subagents = created;
+        }
         var tools = new List<AIFunction>
         {
             AIFunctionFactory.Create(UseSessionAsync, "use_session",
@@ -116,7 +168,8 @@ internal sealed class McpToolHost : IAsyncDisposable
         }
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         // 查询与等待有上限且绑定所有者；不能占写操作锁挡住显式取消。
-        bool serialize = name is not ("transfer_wait" or "transfer_status" or "task_wait" or "task_status");
+        bool serialize = name is not ("transfer_wait" or "transfer_status" or "task_wait" or "task_status"
+            or "subagent_wait" or "subagent_status" or "subagent_cancel");
         if (serialize) await _calls.WaitAsync(linked.Token).ConfigureAwait(false);
         string? previous = AgentToolbox.InvocationIdentity.Value;
         AgentToolbox.InvocationIdentity.Value = invocationId ?? Guid.NewGuid().ToString("N");
@@ -145,6 +198,8 @@ internal sealed class McpToolHost : IAsyncDisposable
         await _calls.WaitAsync().ConfigureAwait(false);
         try
         {
+            if (_subagents is not null) await _subagents.DisposeAsync().ConfigureAwait(false);
+            if (_subagentTemplate is not null) await _subagentTemplate.DisposeAsync().ConfigureAwait(false);
             if (_runScope.Transfers is { } transfers) await transfers.CancelAllAsync().ConfigureAwait(false);
             await _runScope.DisposeAsync().ConfigureAwait(false);
             await _toolbox.DisposeAsync().ConfigureAwait(false);
@@ -210,7 +265,7 @@ internal sealed class McpToolHost : IAsyncDisposable
 
     /// <summary>给 <c>initialize</c> 的服务端说明里带一句"现在对着哪台机器"。</summary>
     public string Describe()
-        => DescribeTarget() + Elevation + " Background tasks can be queried, waited on, or cancelled with task tools. "
+        => DescribeTarget() + Elevation + Delegation + " Background tasks can be queried, waited on, or cancelled with task tools. "
             + "This server does not wake external models; continuation is the MCP client's responsibility.";
 
     /// <summary>
@@ -223,6 +278,13 @@ internal sealed class McpToolHost : IAsyncDisposable
               + " (a plain sudo has no terminal here and fails as soon as it wants a password)."
               + " VelaShell then shows the user its own root confirmation and sudo password dialog on their desktop;"
               + " until they answer the task reports AwaitingUser, so tell the user to switch to VelaShell and use task_wait."
+            : "";
+
+    /// <summary>委派工具在这条路上的用法:结果不会推过来,得自己取;用的是用户在 VelaShell 里配置的模型。</summary>
+    private string Delegation
+        => Tools.Any(t => string.Equals(t.Name, "delegate_subagent", StringComparison.Ordinal))
+            ? " delegate_subagent hands a self-contained, read-focused task to a model configured in VelaShell (it uses the user's model quota);"
+              + " collect each result with subagent_wait."
             : "";
 
     private string DescribeTarget()

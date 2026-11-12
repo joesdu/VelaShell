@@ -15,8 +15,12 @@ public partial class ChatPanelView
         private readonly TextBlock _progress = new() { Classes = { "dim" } };
         private readonly StackPanel _rows = new() { Spacing = 4 };
         private readonly Dictionary<string, SubagentRunCard> _cards = [];
+        private IReadOnlyList<SubagentSnapshot> _latest = [];
 
         public Border Root { get; }
+
+        /// <summary>取消单个子任务;历史回放的卡片没有可取消的东西,保持 null。</summary>
+        public Action<string>? Cancel { get; set; }
 
         public SubagentRunGroup(ChatPanelView owner)
         {
@@ -31,19 +35,24 @@ public partial class ChatPanelView
             Root = new Border { Classes = { "toolCard", "subagentGroup" }, Child = stack };
         }
 
+        /// <summary>最近一次的快照,入库用。还没落到终态的按"已取消"存:翻回历史时它们早就不在跑了。</summary>
+        public IReadOnlyList<SubagentSnapshot> Snapshot()
+            => [.. _latest.Select(s => s.IsTerminal ? s : s with { Status = "cancelled", Activity = "" })];
+
         public void Update(IReadOnlyList<SubagentSnapshot> snapshots)
         {
-            int finished = snapshots.Count(s => s.Status is not ("queued" or "running"));
+            _latest = snapshots;
+            int finished = snapshots.Count(s => s.IsTerminal);
             _progress.Text = _owner._loc.F("SubagentProgress", finished, snapshots.Count);
             foreach (SubagentSnapshot snapshot in snapshots)
             {
                 if (!_cards.TryGetValue(snapshot.SubagentId, out SubagentRunCard? card))
                 {
-                    card = new SubagentRunCard(_owner);
+                    card = new SubagentRunCard(_owner, id => Cancel?.Invoke(id));
                     _cards.Add(snapshot.SubagentId, card);
                     _rows.Children.Add(card.Root);
                 }
-                card.Update(snapshot);
+                card.Update(snapshot, Cancel is not null);
             }
         }
     }
@@ -54,17 +63,23 @@ public partial class ChatPanelView
         private readonly TextBlock _title = new() { TextWrapping = TextWrapping.Wrap, MaxLines = 2, FontWeight = FontWeight.Medium };
         private readonly TextBlock _state = new() { Classes = { "dim" } };
         private readonly TextBlock _metrics = new() { Classes = { "dim" }, TextWrapping = TextWrapping.Wrap };
+        // 运行中"此刻在做什么":正在调的工具及其目标,或在等审批 / 等文件锁
+        private readonly TextBlock _activity = new() { Classes = { "dim" }, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 };
         private readonly TextBlock _model = new() { Classes = { "dim" }, TextWrapping = TextWrapping.Wrap };
         private readonly TextBlock _tools = new() { Classes = { "dim" }, TextWrapping = TextWrapping.Wrap };
+        private readonly TextBlock _partial = new() { Classes = { "dim" }, TextWrapping = TextWrapping.Wrap };
         private readonly SelectableTextBlock _task = new() { TextWrapping = TextWrapping.Wrap };
         private readonly SelectableTextBlock _errors = new() { Classes = { "mono" }, TextWrapping = TextWrapping.Wrap };
         private readonly Border _output = new();
+        private readonly Button _cancel;
+        private MarkdownSegment? _segment;
         private string _lastOutput = "";
         private string? _lastTone;
+        private string _id = "";
 
         public Expander Root { get; }
 
-        public SubagentRunCard(ChatPanelView owner)
+        public SubagentRunCard(ChatPanelView owner, Action<string> cancel)
         {
             _owner = owner;
             var header = new StackPanel { Spacing = 3 };
@@ -74,17 +89,43 @@ public partial class ChatPanelView
             metadata.Children.Add(_state);
             metadata.Children.Add(_metrics);
             header.Children.Add(metadata);
+            header.Children.Add(_activity);
+            _cancel = new Button
+            {
+                Name = "SubagentCancel",
+                Content = owner._loc["Cancel"],
+                Height = 22,
+                Padding = new Thickness(8, 0),
+                VerticalAlignment = VerticalAlignment.Top,
+                IsVisible = false
+            };
+            _cancel[!ThemeProperty] = new DynamicResourceExtension("VelaOutlineButtonTheme");
+            ToolTip.SetTip(_cancel, owner._loc["SubagentCancel"]);
+            _cancel.Click += (_, e) =>
+            {
+                // 按钮长在可折叠的头部里:点它是取消任务,不该顺带把卡片展开或收起
+                e.Handled = true;
+                _cancel.IsEnabled = false;
+                cancel(_id);
+            };
+            var headerRow = new Grid { ColumnDefinitions = [with("*,Auto")], ColumnSpacing = 6 };
+            headerRow.Children.Add(header);
+            Grid.SetColumn(_cancel, 1);
+            headerRow.Children.Add(_cancel);
             var details = new StackPanel { Spacing = 6 };
             details.Children.Add(_task);
             details.Children.Add(_model);
             details.Children.Add(_tools);
             details.Children.Add(_errors);
+            details.Children.Add(_partial);
             details.Children.Add(_output);
             _errors[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("VelaError");
+            _activity[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("VelaTextTertiary");
+            _partial.Text = owner._loc["SubagentPartial"];
             Root = new Expander
             {
                 Classes = { "subagentRun" },
-                Header = header,
+                Header = headerRow,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 Content = new ScrollViewer
@@ -96,14 +137,18 @@ public partial class ChatPanelView
             };
         }
 
-        public void Update(SubagentSnapshot snapshot)
+        public void Update(SubagentSnapshot snapshot, bool cancellable)
         {
+            _id = snapshot.SubagentId;
             _title.Text = ChatFormatting.OneLine(
                 snapshot.TaskPrompt.Length > 0 ? snapshot.TaskPrompt : snapshot.Role, 160);
             _task.Text = snapshot.TaskPrompt;
             _task.IsVisible = snapshot.TaskPrompt.Length > 0;
             _metrics.Text = $"{snapshot.Role} · {ChatFormatting.Duration(snapshot.Elapsed)} · "
-                + _owner._loc.F("SubagentToolCalls", snapshot.ToolsUsed.Sum(t => t.Count));
+                + _owner._loc.F("SubagentToolCalls", snapshot.ToolsUsed.Sum(t => t.Count))
+                + (snapshot.InputTokens + snapshot.OutputTokens > 0
+                    ? $" · {ChatFormatting.Compact(snapshot.InputTokens)} tok ↑ {ChatFormatting.Compact(snapshot.OutputTokens)} tok ↓"
+                    : "");
             string stateKey = snapshot.Status switch
             {
                 "queued" => "SubagentQueued",
@@ -117,10 +162,11 @@ public partial class ChatPanelView
             _state.Text = stateKey.Length > 0 ? _owner._loc[stateKey] : snapshot.Status;
             if (snapshot.Errors.Count > 0)
                 _state.Text += $" · {_owner._loc.F("SubagentErrors", snapshot.Errors.Count)}";
+            bool waitingForUser = snapshot.Activity == SubagentOrchestrator.WaitingForApproval;
             string tone = snapshot.Status switch
             {
                 "failed" or "timed_out" => "VelaError",
-                _ when snapshot.Errors.Count > 0 => "VelaWarning",
+                _ when snapshot.Errors.Count > 0 || waitingForUser => "VelaWarning",
                 "completed" => "VelaStatusConnected",
                 "running" => "VelaAccent",
                 _ => "VelaTextTertiary"
@@ -130,18 +176,37 @@ public partial class ChatPanelView
                 _state[!TextBlock.ForegroundProperty] = new DynamicResourceExtension(tone);
                 _lastTone = tone;
             }
+            _activity.Text = snapshot.Activity switch
+            {
+                SubagentOrchestrator.WaitingForApproval => _owner._loc["SubagentWaitingApproval"],
+                SubagentOrchestrator.WaitingForFileLock => _owner._loc["SubagentWaitingLock"],
+                _ => snapshot.Activity
+            };
+            _activity.IsVisible = !snapshot.IsTerminal && snapshot.Activity.Length > 0;
+            _cancel.IsVisible = cancellable && !snapshot.IsTerminal;
             _model.Text = $"{snapshot.SubagentId}"
-                + (snapshot.ModelId is { } modelId ? $" · {_owner._loc["Model"]}: {_owner._settings.FindModel(modelId)?.Model ?? modelId}" : "");
+                + (snapshot.ModelId is { } modelId ? $" · {_owner._loc["Model"]}: {_owner._settings.FindModel(modelId)?.Model ?? modelId}" : "")
+                + (snapshot.AllowWrites ? $" · {_owner._loc["SubagentWritable"]}" : "");
             _tools.Text = snapshot.ToolsUsed.Count == 0
                 ? _owner._loc.F("SubagentToolCalls", 0)
                 : string.Join(Environment.NewLine, snapshot.ToolsUsed.Select(t => $"{t.Name} ×{t.Count}"));
             _errors.Text = string.Join(Environment.NewLine, snapshot.Errors);
             _errors.IsVisible = snapshot.Errors.Count > 0;
+            _partial.IsVisible = snapshot.Status is "failed" or "cancelled" or "timed_out" && snapshot.Output.Length > 0;
             if (_lastOutput != snapshot.Output)
             {
-                var segment = new MarkdownSegment(_owner);
-                segment.Append(snapshot.Output);
-                _output.Child = segment.Host;
+                // 流式正文只会往后长:接着上一段追加,Markdown 才不会每次刷新都从头重排
+                if (_segment is not null && _lastOutput.Length > 0
+                    && snapshot.Output.StartsWith(_lastOutput, StringComparison.Ordinal))
+                {
+                    _segment.Append(snapshot.Output[_lastOutput.Length..]);
+                }
+                else
+                {
+                    _segment = new MarkdownSegment(_owner);
+                    _segment.Append(snapshot.Output);
+                    _output.Child = _segment.Host;
+                }
                 _lastOutput = snapshot.Output;
             }
         }

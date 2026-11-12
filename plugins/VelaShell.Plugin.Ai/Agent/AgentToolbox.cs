@@ -336,20 +336,6 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             ("get_working_directory", AIFunctionFactory.Create(GetWorkingDirectoryAsync, "get_working_directory",
                 "Get the current working directory of an SSH session. Resolve relative paths against it instead of guessing."), true),
 
-            ("list_local_workspaces", AIFunctionFactory.Create(ListLocalWorkspacesAsync, "list_local_workspaces",
-                "List the local workspaces explicitly authorized for this Agent. "
-                + "These are the only local roots that local file tools may access."), true),
-
-            ("list_local_directory", AIFunctionFactory.Create(ListLocalDirectoryAsync, "list_local_directory",
-                "List entries in an authorized local workspace directory. "
-                + "Use workspace_id from list_local_workspaces and a relative path when possible."), true),
-
-            ("stat_local_path", AIFunctionFactory.Create(StatLocalPathAsync, "stat_local_path",
-                "Inspect an authorized local file or directory without changing it."), true),
-
-            ("read_local_file", AIFunctionFactory.Create(ReadLocalFileAsync, "read_local_file",
-                "Read a UTF-8 text file from an authorized local workspace, subject to the configured size limit."), true),
-
             ("system_overview", AIFunctionFactory.Create(SystemOverviewAsync, "system_overview",
                 "Collect a read-only snapshot of the server in one call: kernel, distribution, uptime and load, CPU count, "
                 + "memory and disk usage. Start troubleshooting here instead of issuing five separate commands."), true),
@@ -403,22 +389,6 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 "Rename or move a remote file or directory. Requires user approval. "
                 + "Use it to back a config file up (foo.conf → foo.conf.bak) before editing it."), false),
 
-            ("write_local_file", AIFunctionFactory.Create(WriteLocalFileAsync, "write_local_file",
-                "Create or overwrite a UTF-8 text file in an authorized local workspace. Requires user approval. "
-                + "Use patch_local_file for a small change to an existing file."), false),
-
-            ("patch_local_file", AIFunctionFactory.Create(PatchLocalFileAsync, "patch_local_file",
-                "Replace one exact, unique text snippet in an authorized local UTF-8 file. Requires user approval."), false),
-
-            ("make_local_directory", AIFunctionFactory.Create(MakeLocalDirectoryAsync, "make_local_directory",
-                "Create a directory and its missing parents in an authorized local workspace. Requires user approval."), false),
-
-            ("rename_local_path", AIFunctionFactory.Create(RenameLocalPathAsync, "rename_local_path",
-                "Rename or move a file or directory inside authorized local workspaces. Requires user approval."), false),
-
-            ("delete_local_path", AIFunctionFactory.Create(DeleteLocalPathAsync, "delete_local_path",
-                "Delete an authorized local file or empty directory. Recursive deletion is not supported. Requires user approval."), false),
-
             ("upload_local_file", AIFunctionFactory.Create(UploadLocalFileAsync, "upload_local_file",
                 "Upload a file from the USER'S OWN MACHINE to the SSH server via SFTP. Requires user approval. "
                 + "No fixed upload size limit. Returns transfer_id and a JSON snapshot promptly; host-owned uploads survive request timeout and model Stop. "
@@ -441,27 +411,29 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 "Type text into the user's visible terminal of an SSH session, as if the user typed it. A trailing newline executes the command. "
                 + "The host will additionally ask the user for permission. Use only when the user explicitly wants something typed into their terminal."), false)
         };
-        all = all.Where(item => !IsLocalToolName(item.Name)).ToList();
+        // 本地文件工具只在输入框选定了有效工作区时才注册:没有授权范围时摆出来,模型只会反复去试。
         if (new LocalPathScope(LocalWorkspaces).HasUsableWorkspace)
         {
             all.Add(("list_local_workspaces", AIFunctionFactory.Create(ListLocalWorkspacesAsync, "list_local_workspaces",
-                "List the local workspaces explicitly authorized for this Agent."), true));
+                "List the local workspaces explicitly authorized for this Agent. "
+                + "These are the only local roots that local file tools may access."), true));
             all.Add(("list_local_directory", AIFunctionFactory.Create(ListLocalDirectoryAsync, "list_local_directory",
                 "List entries in an authorized local workspace directory."), true));
             all.Add(("stat_local_path", AIFunctionFactory.Create(StatLocalPathAsync, "stat_local_path",
-                "Inspect an authorized local file or directory."), true));
+                "Inspect an authorized local file or directory without changing it."), true));
             all.Add(("read_local_file", AIFunctionFactory.Create(ReadLocalFileAsync, "read_local_file",
-                "Read a UTF-8 text file from an authorized local workspace."), true));
+                "Read a UTF-8 text file from an authorized local workspace, subject to the configured size limit."), true));
             all.Add(("write_local_file", AIFunctionFactory.Create(WriteLocalFileAsync, "write_local_file",
-                "Create or overwrite a UTF-8 text file in an authorized local workspace. Requires approval."), false));
+                "Create or overwrite a UTF-8 text file in an authorized local workspace. Requires approval. "
+                + "Use patch_local_file for a small change to an existing file."), false));
             all.Add(("patch_local_file", AIFunctionFactory.Create(PatchLocalFileAsync, "patch_local_file",
-                "Replace one exact, unique text snippet in an authorized local file. Requires approval."), false));
+                "Replace one exact, unique text snippet in an authorized local UTF-8 file. Requires approval."), false));
             all.Add(("make_local_directory", AIFunctionFactory.Create(MakeLocalDirectoryAsync, "make_local_directory",
-                "Create a directory in an authorized local workspace. Requires approval."), false));
+                "Create a directory and its missing parents in an authorized local workspace. Requires approval."), false));
             all.Add(("rename_local_path", AIFunctionFactory.Create(RenameLocalPathAsync, "rename_local_path",
-                "Rename or move an authorized local path. Requires approval."), false));
+                "Rename or move a file or directory inside authorized local workspaces. Requires approval."), false));
             all.Add(("delete_local_path", AIFunctionFactory.Create(DeleteLocalPathAsync, "delete_local_path",
-                "Delete an authorized local file or empty directory. Requires approval."), false));
+                "Delete an authorized local file or empty directory. Recursive deletion is not supported. Requires approval."), false));
         }
         // 两个网络工具受"网络检索"总闸控制;开着才注册。都是只读的,所以计划模式也给 ——
         // "先查清楚再说怎么做"本来就是计划该干的事。
@@ -497,17 +469,27 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             var bound = new SubagentToolBinding(orchestrator);
             all.Add(("delegate_subagent", AIFunctionFactory.Create(bound.DelegateSubagentAsync, "delegate_subagent",
                 "Delegate a focused task to a parallel subagent. Defaults to read-only. "
+                + "The subagent starts with NO conversation context: put everything it needs (goal, paths, session, constraints, expected report) in prompt. "
                 + "Set allowWrites=true explicitly for local/remote file edits under inherited scope and parent approvals. "
                 + "No command execution, session creation, transfers, approval management or recursive delegation. "
-                + "MCP tools remain read-only. File mutations are serialized with the parent; cancellation does not roll back changes. Returns an id immediately. "
+                + "MCP tools remain read-only. File mutations are serialized with the parent; cancellation does not roll back changes. "
+                + (orchestrator.DeliversResults
+                    ? "Returns an id immediately; the final result is delivered to you automatically when the subagent finishes, so do not poll. "
+                    : "Returns an id immediately; results are not pushed, so collect each one with subagent_wait. ")
+                + $"timeoutSeconds sets the execution limit ({SubagentOrchestrator.MinTimeoutSeconds}-{SubagentOrchestrator.MaxTimeoutSeconds}, default 120; "
+                + "time spent waiting for user approval is not counted). "
                 + "Omit modelId to inherit the parent model, or select a configured model ID from: "
                 + JsonSerializer.Serialize(orchestrator.ModelChoices)), false));
             all.Add(("subagent_status", AIFunctionFactory.Create(bound.SubagentStatusAsync, "subagent_status",
-                "Get the status of a delegated subagent by id."), true));
+                "Get the current status of a delegated subagent by id without waiting."
+                + (orchestrator.DeliversResults ? " Not needed in the normal flow: finished results are delivered automatically." : "")), true));
             all.Add(("subagent_wait", AIFunctionFactory.Create(bound.SubagentWaitAsync, "subagent_wait",
-                "Wait briefly for a delegated subagent and return its result if complete."), true));
+                "Block for up to timeoutSeconds (default 30, max 120) until a delegated subagent finishes and return its result. "
+                + (orchestrator.DeliversResults
+                    ? "Use it only when you need that result before your next action; otherwise just end your step and the result will be delivered."
+                    : "If it is still running, call again.")), true));
             all.Add(("subagent_cancel", AIFunctionFactory.Create(bound.SubagentCancelAsync, "subagent_cancel",
-                "Cancel a delegated subagent by id."), false));
+                "Cancel a delegated subagent by id. Changes it already made are not rolled back."), false));
         }
         return
         [
@@ -520,30 +502,21 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     /// <summary>把子 Agent 工具绑定到创建它们那一轮的编排器。</summary>
     private sealed class SubagentToolBinding(SubagentOrchestrator orchestrator)
     {
-        public string DelegateSubagentAsync(string prompt, string? role = null, string? modelId = null, bool allowWrites = false)
-            => orchestrator.Start(prompt, role, modelId, allowWrites);
+        public string DelegateSubagentAsync(string prompt, string? role = null, string? modelId = null,
+            bool allowWrites = false, int timeoutSeconds = 0)
+            => orchestrator.Start(prompt, role, modelId, allowWrites, timeoutSeconds);
 
         public string SubagentStatusAsync(string id)
             => orchestrator.Status(id);
 
-        public Task<string> SubagentWaitAsync(string id, int timeout_seconds = 30,
+        // 参数名与同组工具一致用 camelCase:写成 timeout_seconds 时模型按 timeoutSeconds 传会被静默忽略
+        public Task<string> SubagentWaitAsync(string id, int timeoutSeconds = 30,
             CancellationToken cancellationToken = default)
-            => orchestrator.WaitAsync(id, timeout_seconds, cancellationToken);
+            => orchestrator.WaitAsync(id, timeoutSeconds, cancellationToken);
 
         public string SubagentCancelAsync(string id)
             => orchestrator.Cancel(id);
     }
-
-    private static bool IsLocalToolName(string name)
-        => name is "list_local_workspaces"
-            or "list_local_directory"
-            or "stat_local_path"
-            or "read_local_file"
-            or "write_local_file"
-            or "patch_local_file"
-            or "make_local_directory"
-            or "rename_local_path"
-            or "delete_local_path";
 
     /// <summary>scope 由工具列表捕获,不是模型参数;AsyncLocal 仅在一次工具调用内部传递。</summary>
     private sealed class RunScopedFunction(AIFunction inner, AgentToolbox toolbox, CommandJobRunScope scope)
@@ -559,7 +532,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, scope.Token);
                 if (IsFileMutation(Name))
                 {
-                    await toolbox._fileMutationGate.WaitAsync(linked.Token).ConfigureAwait(false);
+                    // 排队等别人改完(对方多半正停在审批上)不是子任务自己在跑,不计入它的执行期限
+                    using (SubagentOrchestrator.SuspendCurrentTimeout(SubagentOrchestrator.WaitingForFileLock))
+                    {
+                        await toolbox._fileMutationGate.WaitAsync(linked.Token).ConfigureAwait(false);
+                    }
                     acquired = true;
                 }
                 linked.Token.ThrowIfCancellationRequested();
@@ -2593,9 +2570,13 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             CommandJobRunScope? previous = parent._invocationScope.Value;
             parent._invocationScope.Value = CurrentRun;
+            // 等用户点头的时间不计入子任务的执行期限;审批卡标明是哪个子任务要的
+            using IDisposable? suspended = SubagentOrchestrator.SuspendCurrentTimeout(SubagentOrchestrator.WaitingForApproval);
             try
             {
-                return await parent.ApproveAsync(request, cancellationToken).ConfigureAwait(false);
+                return await parent.ApproveAsync(
+                    request with { Origin = request.Origin ?? SubagentOrchestrator.CurrentLabel },
+                    cancellationToken).ConfigureAwait(false);
             }
             finally
             {

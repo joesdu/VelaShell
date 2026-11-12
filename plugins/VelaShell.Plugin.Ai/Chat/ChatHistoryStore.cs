@@ -39,6 +39,7 @@ public sealed record ChatGeneratedImage(string FileName, string MediaType);
 /// <param name="Tools">这一轮调用过的工具。</param>
 /// <param name="Images">这一轮生成的图片引用。</param>
 /// <param name="Switch">这一轮的故障转移 / 换 Key 记录(界面上那张切换提示卡);没切过为 null。</param>
+/// <param name="Subagents">这一轮委派出去的子 Agent 的终态快照(界面上那组运行卡片);没委派过为 null。</param>
 public sealed record ChatTurnMeta(
     string Model = "",
     long ElapsedMs = 0,
@@ -46,11 +47,12 @@ public sealed record ChatTurnMeta(
     long ThinkingMs = 0,
     IReadOnlyList<ChatToolCall>? Tools = null,
     IReadOnlyList<ChatGeneratedImage>? Images = null,
-    ChatSwitchNotice? Switch = null)
+    ChatSwitchNotice? Switch = null,
+    IReadOnlyList<Agent.SubagentSnapshot>? Subagents = null)
 {
     /// <summary>这一轮有没有值得存的东西 —— 全空就别白占一行。</summary>
     public bool HasContent => Model.Length > 0 || ElapsedMs > 0 || Thinking.Length > 0 || Tools is { Count: > 0 } || Images is { Count: > 0 }
-                              || Switch is { Hops.Count: > 0 };
+                              || Switch is { Hops.Count: > 0 } || Subagents is { Count: > 0 };
 }
 
 /// <summary>切换提示里点名的那一把 Key:与设置页 Key 行同一种写法(「第 N 把 Key · ●●●●末四位」),不存 Key 本身。</summary>
@@ -249,7 +251,8 @@ public sealed class ChatHistoryStore(IPluginContext context)
                            Truncate(t.Result, MaxToolResultChars)))
                 ],
                 [.. (meta.Images ?? []).Where(GeneratedImageStore.IsValidReference).Take(GeneratedImageStore.MaxImagesPerTurn)],
-                StoredSwitch.From(meta.Switch));
+                StoredSwitch.From(meta.Switch),
+                StoredSubagent.From(meta.Subagents));
             await series.WriteAsync(new(_clock.Next(),
                 new Dictionary<string, string> { [ConversationTag] = conversationId },
                 new Dictionary<string, TimeSeriesValue>
@@ -512,7 +515,8 @@ public sealed class ChatHistoryStore(IPluginContext context)
                     stored.Model ?? "", stored.ElapsedMs, stored.Thinking ?? "", stored.ThinkingMs,
                     [.. (stored.Tools ?? []).Select(t => new ChatToolCall(t.Name ?? "", t.Arguments ?? "", t.Result ?? ""))],
                     stored.Images is null ? null : [.. stored.Images.Where(GeneratedImageStore.IsValidReference).Take(GeneratedImageStore.MaxImagesPerTurn)],
-                    stored.Switch?.ToNotice());
+                    stored.Switch?.ToNotice(),
+                    StoredSubagent.ToSnapshots(stored.Subagents));
             }
         }
         catch (Exception ex)
@@ -525,9 +529,47 @@ public sealed class ChatHistoryStore(IPluginContext context)
 
     // 落盘用的形状(与对外的记录分开:对外那套将来可以改,存量 JSON 不受影响)
     private sealed record StoredMeta(string? Model, long ElapsedMs, string? Thinking, long ThinkingMs, StoredTool[]? Tools,
-        ChatGeneratedImage[]? Images = null, StoredSwitch? Switch = null);
+        ChatGeneratedImage[]? Images = null, StoredSwitch? Switch = null, StoredSubagent[]? Subagents = null);
 
     private sealed record StoredTool(string? Name, string? Arguments, string? Result);
+
+    /// <summary>
+    /// 子任务卡片的落盘形状。报告比普通工具结果长得多、也正是翻历史时要看的东西,给的额度宽一些;
+    /// 任务数由编排器封顶(每轮 8 个),这里再守一道。
+    /// </summary>
+    private sealed record StoredSubagent(string? Id, string? Role, string? Status, string? Output, StoredSubagentTool[]? Tools,
+        string[]? Errors, long ElapsedMs, string? ModelId, string? Task, long InputTokens, long OutputTokens, bool AllowWrites)
+    {
+        private const int MaxRuns = 8, MaxOutputChars = 16 * 1024, MaxTaskChars = 4 * 1024, MaxErrors = 12, MaxErrorChars = 600;
+
+        public static StoredSubagent[]? From(IReadOnlyList<Agent.SubagentSnapshot>? runs)
+            => runs is not { Count: > 0 } ? null :
+            [
+                .. runs.Take(MaxRuns).Select(run => new StoredSubagent(
+                    run.SubagentId, run.Role, run.Status, Truncate(run.Output, MaxOutputChars),
+                    [.. run.ToolsUsed.Select(tool => new StoredSubagentTool(tool.Name, tool.Count))],
+                    [.. run.Errors.Take(MaxErrors).Select(error => Truncate(error, MaxErrorChars))],
+                    (long)run.Elapsed.TotalMilliseconds, run.ModelId, Truncate(run.TaskPrompt, MaxTaskChars),
+                    run.InputTokens, run.OutputTokens, run.AllowWrites))
+            ];
+
+        public static IReadOnlyList<Agent.SubagentSnapshot>? ToSnapshots(StoredSubagent[]? stored)
+            => stored is not { Length: > 0 } ? null :
+            [
+                .. stored.Take(MaxRuns).Where(run => !string.IsNullOrEmpty(run.Id)).Select(run => new Agent.SubagentSnapshot(
+                    run.Id!, run.Role ?? "analysis",
+                    // 存下来的只会是终态;认不出的状态(将来的版本写的)按已取消显示,不让卡片显示成还在跑
+                    run.Status is "completed" or "failed" or "cancelled" or "timed_out" ? run.Status : "cancelled",
+                    "", run.Output ?? "",
+                    [.. (run.Tools ?? []).Where(tool => !string.IsNullOrEmpty(tool.Name))
+                        .Select(tool => new Agent.SubagentToolUsage(tool.Name!, tool.Count))],
+                    [.. (run.Errors ?? []).Where(error => !string.IsNullOrEmpty(error))],
+                    TimeSpan.FromMilliseconds(Math.Max(0, run.ElapsedMs)), run.ModelId, run.Task ?? "",
+                    InputTokens: run.InputTokens, OutputTokens: run.OutputTokens, AllowWrites: run.AllowWrites))
+            ];
+    }
+
+    private sealed record StoredSubagentTool(string? Name, int Count);
 
     /// <summary>切换提示的落盘形状。站名截短、跳数封顶:历史是给人翻的,一整个 Key 池挨个限流也不该撑出一大行。</summary>
     private sealed record StoredSwitch(StoredHop[]? Hops, bool Sticky)

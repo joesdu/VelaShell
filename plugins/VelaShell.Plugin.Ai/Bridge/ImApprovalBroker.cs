@@ -62,8 +62,12 @@ public sealed class ImApprovalBroker(ChannelHub hub, IPluginContext context)
             _pending[conversation.ChatKey] = pending;
         }
         string always = request.RepeatKey is null ? "" : loc["BridgeApprovalAlways"];
+        // 子任务发起的审批:几个并行时,得说清是谁要动这个文件
+        string detail = request.Origin is { Length: > 0 } origin
+            ? $"[{loc.F("ApprovalOrigin", origin)}] {request.Detail}"
+            : request.Detail;
         await hub.SendAsync(conversation.ChannelId, conversation.Reply,
-            loc.F("BridgeApprovalAsk", request.Kind, Trim(request.Detail), always, timeoutSeconds),
+            loc.F("BridgeApprovalAsk", request.Kind, Trim(detail), always, timeoutSeconds),
             cancellationToken).ConfigureAwait(false);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, 10, 3600)));
