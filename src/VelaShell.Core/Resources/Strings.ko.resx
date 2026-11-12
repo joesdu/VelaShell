@@ -9994,4 +9994,16 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="PluginMarket_PackageMismatch" xml:space="preserve"><value>다운로드한 패키지가 선택한 플러그인 또는 버전과 일치하지 않아 설치를 중지했습니다.</value></data>
   <data name="PluginMarket_IncompatiblePackage" xml:space="preserve"><value>이 패키지에는 {0}이(가) 필요합니다. VelaShell을 먼저 업데이트하세요.</value></data>
   <data name="PluginManager_UpgradeDirectoryLocked" xml:space="preserve"><value>플러그인 &apos;{0}&apos;의 파일을 교체할 수 없습니다. 다른 프로그램이 사용 중입니다({1}). 이전 버전은 그대로 유지되며 계속 사용할 수 있습니다. 플러그인 폴더를 사용 중인 프로그램(바이러스 검사, 파일 탐색기 등)을 닫은 뒤 다시 시도하세요.</value></data>
+  <data name="PluginManager_HostModeInProcess" xml:space="preserve"><value>인프로세스</value></data>
+  <data name="PluginManager_HostModeIsolated" xml:space="preserve"><value>격리</value></data>
+  <data name="PluginManager_HostModeInProcessTip" xml:space="preserve"><value>VelaShell 프로세스 안에서 실행됩니다. 가장 빠르게 시작되지만 플러그인의 충돌이나 누수가 VelaShell 자체에 영향을 줍니다.</value></data>
+  <data name="PluginManager_HostModeIsolatedTip" xml:space="preserve"><value>별도 프로세스에서 실행됩니다. 플러그인이 충돌해도 VelaShell은 멈추지 않으며 자동으로 다시 시작됩니다.</value></data>
+  <data name="PluginManager_GrantBadge" xml:space="preserve"><value>민감한 권한</value></data>
+  <data name="PluginManager_GrantBadgeTip" xml:space="preserve"><value>이 플러그인은 현재 민감한 권한(터미널 입력 또는 업로드)을 가지고 있습니다. &quot;…&quot; 메뉴에서 취소할 수 있습니다.</value></data>
+  <data name="PluginManager_MoreActions" xml:space="preserve"><value>추가 작업</value></data>
+  <data name="PluginManager_FilterHint" xml:space="preserve"><value>이름, ID 또는 작성자로 필터</value></data>
+  <data name="PluginManager_NoMatches" xml:space="preserve"><value>&quot;{0}&quot;과(와) 일치하는 플러그인이 없습니다.</value></data>
+  <data name="PluginManager_Summary" xml:space="preserve"><value>플러그인 {0}개 · 실행 중 {1}개</value></data>
+  <data name="PluginManager_SummaryWithUpdates" xml:space="preserve"><value>플러그인 {0}개 · 실행 중 {1}개 · 업데이트 가능 {2}개</value></data>
+  <data name="PluginManager_DismissNotice" xml:space="preserve"><value>닫기</value></data>
 </root>

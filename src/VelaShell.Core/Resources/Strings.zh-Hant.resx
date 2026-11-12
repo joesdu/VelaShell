@@ -10479,4 +10479,16 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="PluginMarket_PackageMismatch" xml:space="preserve"><value>下載的套件與所選外掛或版本不符，已停止安裝。</value></data>
   <data name="PluginMarket_IncompatiblePackage" xml:space="preserve"><value>此外掛套件需要 {0}，請先更新 VelaShell。</value></data>
   <data name="PluginManager_UpgradeDirectoryLocked" xml:space="preserve"><value>無法取代外掛「{0}」的檔案:它們仍被其他程式佔用({1})。已保留舊版本,仍可繼續使用。請關閉正在使用該外掛目錄的程式(如防毒掃描、檔案總管)後再試一次。</value></data>
+  <data name="PluginManager_HostModeInProcess" xml:space="preserve"><value>處理程序內</value></data>
+  <data name="PluginManager_HostModeIsolated" xml:space="preserve"><value>隔離</value></data>
+  <data name="PluginManager_HostModeInProcessTip" xml:space="preserve"><value>在 VelaShell 處理程序內執行:啟動最快,但外掛當機或洩漏會影響 VelaShell 本身。</value></data>
+  <data name="PluginManager_HostModeIsolatedTip" xml:space="preserve"><value>在獨立處理程序中執行:外掛當機不會拖垮 VelaShell,並會自動重新啟動。</value></data>
+  <data name="PluginManager_GrantBadge" xml:space="preserve"><value>敏感權限</value></data>
+  <data name="PluginManager_GrantBadgeTip" xml:space="preserve"><value>此外掛目前持有敏感能力授權(終端輸入或上傳)。可在「…」選單中撤銷。</value></data>
+  <data name="PluginManager_MoreActions" xml:space="preserve"><value>更多操作</value></data>
+  <data name="PluginManager_FilterHint" xml:space="preserve"><value>依名稱、ID 或作者篩選</value></data>
+  <data name="PluginManager_NoMatches" xml:space="preserve"><value>沒有與「{0}」相符的外掛。</value></data>
+  <data name="PluginManager_Summary" xml:space="preserve"><value>共 {0} 個外掛 · {1} 個執行中</value></data>
+  <data name="PluginManager_SummaryWithUpdates" xml:space="preserve"><value>共 {0} 個外掛 · {1} 個執行中 · {2} 個可更新</value></data>
+  <data name="PluginManager_DismissNotice" xml:space="preserve"><value>關閉提示</value></data>
 </root>

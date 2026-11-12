@@ -9994,4 +9994,16 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="PluginMarket_PackageMismatch" xml:space="preserve"><value>ダウンロードしたパッケージが選択したプラグインまたはバージョンと一致しないため、インストールを停止しました。</value></data>
   <data name="PluginMarket_IncompatiblePackage" xml:space="preserve"><value>このパッケージには {0} が必要です。先に VelaShell を更新してください。</value></data>
   <data name="PluginManager_UpgradeDirectoryLocked" xml:space="preserve"><value>プラグイン「{0}」のファイルを置き換えられませんでした。ほかのプログラムが使用中です({1})。以前のバージョンはそのまま残っており、引き続き使用できます。プラグインのフォルダーを開いているプログラム(ウイルス スキャン、エクスプローラーなど)を閉じてから、もう一度お試しください。</value></data>
+  <data name="PluginManager_HostModeInProcess" xml:space="preserve"><value>インプロセス</value></data>
+  <data name="PluginManager_HostModeIsolated" xml:space="preserve"><value>分離</value></data>
+  <data name="PluginManager_HostModeInProcessTip" xml:space="preserve"><value>VelaShell のプロセス内で実行されます。起動は最も速いですが、プラグインのクラッシュやリークは VelaShell 自体に影響します。</value></data>
+  <data name="PluginManager_HostModeIsolatedTip" xml:space="preserve"><value>独立したプロセスで実行されます。プラグインがクラッシュしても VelaShell は停止せず、自動的に再起動されます。</value></data>
+  <data name="PluginManager_GrantBadge" xml:space="preserve"><value>機密アクセス</value></data>
+  <data name="PluginManager_GrantBadgeTip" xml:space="preserve"><value>このプラグインは現在、機密性の高い権限(端末入力またはアップロード)を持っています。「…」メニューから取り消せます。</value></data>
+  <data name="PluginManager_MoreActions" xml:space="preserve"><value>その他の操作</value></data>
+  <data name="PluginManager_FilterHint" xml:space="preserve"><value>名前、ID、作成者で絞り込み</value></data>
+  <data name="PluginManager_NoMatches" xml:space="preserve"><value>「{0}」に一致するプラグインはありません。</value></data>
+  <data name="PluginManager_Summary" xml:space="preserve"><value>プラグイン {0} 個 · 実行中 {1} 個</value></data>
+  <data name="PluginManager_SummaryWithUpdates" xml:space="preserve"><value>プラグイン {0} 個 · 実行中 {1} 個 · 更新あり {2} 個</value></data>
+  <data name="PluginManager_DismissNotice" xml:space="preserve"><value>閉じる</value></data>
 </root>

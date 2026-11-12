@@ -12,7 +12,9 @@
         WindowStartupLocation="CenterOwner">
 
   <!-- 插件管理窗口:与资源监视/链路追踪同规格(按平台的卡片外框,见 WindowChrome;
-       28px 标题栏(window-titlebar)+ min/max/close 三连按钮 + 自绘缩放抓取区)。 -->
+       28px 标题栏(window-titlebar)+ min/max/close 三连按钮 + 自绘缩放抓取区)。
+       窗口级动作(安装 .vpx、检查更新)按 DESIGN.md §4.2 放进标题栏的动作组,
+       标题栏下面那一行只留副标题(安全须知)。 -->
 
   <Window.Styles>
     <Style Selector="Button.caption">
@@ -34,12 +36,11 @@
 
     <Style Selector="Button.row-action">
       <Setter Property="Theme" Value="{StaticResource VelaOutlineButtonTheme}" />
-      <Setter Property="Margin" Value="0,0,6,6" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
       <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="CornerRadius" Value="3" />
       <Setter Property="Height" Value="26" />
       <Setter Property="Padding" Value="10,0" />
       <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
@@ -56,24 +57,20 @@
       <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
       <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
     </Style>
-    <Style Selector="Button.row-danger">
-      <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource VelaError}" />
+    <!-- 「更多」按钮:与行内按钮同高的方块,只放一个省略号图标。 -->
+    <Style Selector="Button.row-more">
+      <Setter Property="Width" Value="26" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
     </Style>
-    <Style Selector="Button.row-danger:pointerover">
-      <Setter Property="Background" Value="{DynamicResource VelaDangerHover}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource VelaError}" />
+
+    <Style Selector="MenuItem.danger">
       <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
-    </Style>
-    <Style Selector="Button.row-danger:pressed">
-      <Setter Property="Background" Value="{DynamicResource VelaError}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource VelaError}" />
-      <Setter Property="Foreground" Value="{DynamicResource VelaErrorForeground}" />
     </Style>
 
     <Style Selector="Ellipse.dot">
-      <Setter Property="Width" Value="8" />
-      <Setter Property="Height" Value="8" />
+      <Setter Property="Width" Value="7" />
+      <Setter Property="Height" Value="7" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Ellipse.dot.ok">
@@ -87,6 +84,84 @@
     </Style>
     <Style Selector="Ellipse.dot.idle">
       <Setter Property="Fill" Value="{DynamicResource VelaTextTertiary}" />
+    </Style>
+
+    <!-- 状态文字跟着状态点着色:只有出问题时才上色,正常运行不用绿字喊人。 -->
+    <Style Selector="TextBlock.status">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+    </Style>
+    <Style Selector="TextBlock.status.warn">
+      <Setter Property="Foreground" Value="{DynamicResource VelaWarning}" />
+    </Style>
+    <Style Selector="TextBlock.status.err">
+      <Setter Property="Foreground" Value="{DynamicResource VelaError}" />
+    </Style>
+
+    <!-- 插件卡片:悬停时边框提亮一级,告诉用户这一整块是一个对象。 -->
+    <Style Selector="Border.plugin-card">
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="14,12" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style Selector="Border.plugin-card:pointerover">
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
+    </Style>
+
+    <!-- 首字母图标块:没有插件图标可用,用显示名的首字给每一行一个能一眼认出的锚点。 -->
+    <Style Selector="Border.avatar">
+      <Setter Property="Width" Value="36" />
+      <Setter Property="Height" Value="36" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+    <Style Selector="Border.avatar TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize14}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.avatar.idle">
+      <Setter Property="Background" Value="{DynamicResource VelaBgActive}" />
+    </Style>
+    <Style Selector="Border.avatar.idle TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+    </Style>
+
+    <!-- 标签(DESIGN.md §5.2 StatusTag):CornerRadius 2、Padding [6,1]、9px Medium。 -->
+    <Style Selector="Border.tag">
+      <Setter Property="Background" Value="{DynamicResource VelaBgActive}" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="Margin" Value="0,0,6,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.tag TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiFont}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize9}" />
+      <Setter Property="FontWeight" Value="Medium" />
+    </Style>
+    <Style Selector="Border.tag.warn TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource VelaWarning}" />
+    </Style>
+
+    <Style Selector="TextBlock.meta">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.sep">
+      <Setter Property="Text" Value="·" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="Margin" Value="6,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
   </Window.Styles>
 
@@ -103,7 +178,7 @@
                 BorderBrush="{DynamicResource VelaBorderPrimary}"
                 BorderThickness="0,0,0,1" Classes="window-card-top window-titlebar"
                 PointerPressed="Header_PointerPressed">
-          <Grid ColumnDefinitions="*,Auto" Margin="14,0,0,0">
+          <Grid ColumnDefinitions="*,Auto,Auto" Margin="14,0,0,0">
             <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
               <Panel Classes="traffic-light-spacer" />
               <pc:LucideIcon Width="14" Height="14" Data="{StaticResource Icon.plug}"
@@ -114,7 +189,22 @@
                          FontSize="{DynamicResource VelaFontSize12}" FontWeight="SemiBold"
                          VerticalAlignment="Center" />
             </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+            <!-- 窗口级动作组(DESIGN.md §4.2):图标按钮 + 悬停说明 + 无障碍名。 -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" Margin="0,0,6,0">
+              <Button x:Name="CheckUpdatesButton" Theme="{StaticResource VelaTitleActionButtonTheme}"
+                      Click="CheckUpdates_Click" IsVisible="{Binding CanCheckUpdates}" IsEnabled="{Binding !IsPackageBusy}"
+                      ToolTip.Tip="{Binding CheckUpdatesText}" AutomationProperties.Name="{Binding CheckUpdatesText}">
+                <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.refresh-cw}"
+                               Foreground="{DynamicResource VelaTextMuted}" />
+              </Button>
+              <Button x:Name="InstallVpxButton" Theme="{StaticResource VelaTitleActionButtonTheme}"
+                      Click="Install_Click" IsVisible="{Binding CanInstall}" IsEnabled="{Binding !IsPackageBusy}"
+                      ToolTip.Tip="{Binding InstallText}" AutomationProperties.Name="{Binding InstallText}">
+                <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.file-up}"
+                               Foreground="{DynamicResource VelaTextMuted}" />
+              </Button>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
               <Button Classes="caption window-caption" Click="Minimize_Click">
                 <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.minus}"
                                Foreground="{DynamicResource VelaTextSecondary}" />
@@ -131,24 +221,47 @@
           </Grid>
         </Border>
 
-        <Border Grid.Row="1" Padding="14,10" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-            <TextBlock Text="{Binding SecurityTipText}" TextWrapping="Wrap" Foreground="{DynamicResource VelaTextSecondary}"
+        <!-- 副标题:安全须知。安装是本页唯一会引入外部代码的动作,风险说明常驻在这里。 -->
+        <Border Grid.Row="1" Padding="14,9" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.shield}"
+                           Foreground="{DynamicResource VelaWarning}" VerticalAlignment="Top" Margin="0,1,0,0" />
+            <TextBlock Grid.Column="1" Text="{Binding SecurityTipText}" TextWrapping="Wrap"
+                       Foreground="{DynamicResource VelaTextTertiary}"
                        FontSize="{DynamicResource VelaFontSize11}" VerticalAlignment="Center" />
-            <Button Grid.Column="1" Theme="{StaticResource VelaOutlineButtonTheme}" Content="{Binding InstallText}"
-                    Click="Install_Click" IsVisible="{Binding CanInstall}" IsEnabled="{Binding !IsPackageBusy}" />
           </Grid>
         </Border>
+
         <TabControl x:Name="ManagerTabs" Grid.Row="2" SelectionChanged="ManagerTabs_SelectionChanged">
           <TabItem Header="{loc:Localize PluginMarket_InstalledTab}" FontSize="{DynamicResource VelaFontSize11}">
             <Grid RowDefinitions="Auto,*" IsEnabled="{Binding !IsPackageBusy}">
-              <WrapPanel Margin="14,10,14,0">
-                <Button Theme="{StaticResource VelaOutlineButtonTheme}" Content="{Binding CheckUpdatesText}"
-                        Click="CheckUpdates_Click" IsVisible="{Binding CanCheckUpdates}" Margin="0,0,8,0" />
-                <Button Theme="{StaticResource VelaAccentPillButtonTheme}" Content="{Binding UpdateAllText}"
-                        Click="UpdateAll_Click" IsVisible="{Binding HasUpdates}" />
-              </WrapPanel>
-              <!-- 列表 / 空态 -->
+              <!-- 工具条:筛选 + 概况 | 全部更新 -->
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="14,10,20,0"
+                    IsVisible="{Binding !IsEmpty}">
+                <TextBox x:Name="FilterBox" Width="240" Height="28" MinHeight="28"
+                         FontSize="{DynamicResource VelaFontSize11}"
+                         Text="{Binding FilterText, Mode=TwoWay}"
+                         PlaceholderText="{Binding FilterHintText}"
+                         AutomationProperties.Name="{Binding FilterHintText}">
+                  <TextBox.InnerLeftContent>
+                    <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.search}" Margin="8,0,0,0"
+                                   Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
+                  </TextBox.InnerLeftContent>
+                </TextBox>
+                <TextBlock Grid.Column="1" Text="{Binding SummaryText}" Classes="meta"
+                           TextTrimming="CharacterEllipsis" />
+                <Button Grid.Column="2" Theme="{StaticResource VelaAccentPillButtonTheme}" Height="28"
+                        FontSize="{DynamicResource VelaFontSize11}"
+                        Click="UpdateAll_Click" IsVisible="{Binding HasUpdates}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.download}"
+                                   Foreground="{Binding $parent[Button].Foreground}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding UpdateAllText}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+              </Grid>
+
+              <!-- 列表 / 空态 / 无匹配 -->
               <Panel Grid.Row="1">
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10"
                             IsVisible="{Binding IsEmpty}">
@@ -157,96 +270,158 @@
                   <TextBlock Text="{Binding EmptyText}" Foreground="{DynamicResource VelaTextMuted}"
                              FontSize="{DynamicResource VelaFontSize12}" HorizontalAlignment="Center" />
                 </StackPanel>
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10"
+                            IsVisible="{Binding HasNoMatches}">
+                  <pc:LucideIcon Width="26" Height="26" Data="{StaticResource Icon.search}"
+                                 Foreground="{DynamicResource VelaTextMuted}" HorizontalAlignment="Center" />
+                  <TextBlock Text="{Binding NoMatchesText}" Foreground="{DynamicResource VelaTextMuted}"
+                             FontSize="{DynamicResource VelaFontSize12}" HorizontalAlignment="Center" />
+                </StackPanel>
 
-                <ScrollViewer IsVisible="{Binding !IsEmpty}" Padding="14,12">
+                <ScrollViewer IsVisible="{Binding !IsEmpty}" Padding="14,10">
                   <!-- 右侧再补 6(合计 20)> 滚动条展开宽 16(VelaScrollBarSize):滚动条是覆盖式的,
-                       只有 14 时展开的滑道会压住卡片右沿的启停/设置按钮。这 6 走内容的 Margin
+                       只有 14 时展开的滑道会压住卡片右沿的按钮。这 6 走内容的 Margin
                        而不是把 ScrollViewer.Padding 改成不对称值 —— 后者会让子项按视口宽排布、
                        按视口宽减留白报告宽度,右边反而被裁。 -->
-                  <ItemsControl ItemsSource="{Binding Plugins}" Margin="0,0,6,0">
+                  <ItemsControl x:Name="PluginList" ItemsSource="{Binding Plugins}" Margin="0,0,6,0">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:PluginRowViewModel">
-                        <Border Background="{DynamicResource VelaBgInput}"
-                                BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="1"
-                                CornerRadius="6" Padding="14,11" Margin="0,0,0,8">
-                          <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
-                            <Ellipse Grid.Column="0" Classes="dot"
-                                     Classes.ok="{Binding IsOk}" Classes.warn="{Binding IsWarn}"
-                                     Classes.err="{Binding IsErr}" Classes.idle="{Binding IsIdle}"
-                                     Margin="0,0,12,0" VerticalAlignment="Top" />
-                            <StackPanel Grid.Column="1" Spacing="3">
+                        <Border Classes="plugin-card">
+                          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                            <Border Classes="avatar" Classes.idle="{Binding !IsOk}">
+                              <TextBlock Text="{Binding Initial}" />
+                            </Border>
+
+                            <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                              <!-- 第一行:名称 · 版本 · 标签 -->
                               <WrapPanel>
-                                <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" Margin="0,0,10,0" Foreground="{DynamicResource VelaTextPrimary}"
+                                <TextBlock Text="{Binding DisplayName}" TextWrapping="Wrap" Margin="0,0,8,0"
+                                           Foreground="{DynamicResource VelaTextPrimary}"
                                            FontFamily="{DynamicResource VelaUiFont}"
-                                           FontSize="{DynamicResource VelaFontSize12}" FontWeight="Medium" />
-                                <TextBlock Text="{Binding Version}" Margin="0,0,10,0" Foreground="{DynamicResource VelaTextMuted}"
+                                           FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Version}" Margin="0,0,8,0"
+                                           Foreground="{DynamicResource VelaTextTertiary}"
                                            FontFamily="{DynamicResource VelaUiMonoFont}"
-                                           FontSize="{DynamicResource VelaFontSize10}" VerticalAlignment="Center" />
-                                <Border Background="{DynamicResource VelaBgActive}" CornerRadius="3" Padding="5,1"
-                                        VerticalAlignment="Center">
-                                  <TextBlock Text="{Binding HostMode}" Foreground="{DynamicResource VelaTextTertiary}"
-                                             FontFamily="{DynamicResource VelaUiMonoFont}" FontSize="{DynamicResource VelaFontSize9}" />
+                                           FontSize="{DynamicResource VelaFontSize11}" VerticalAlignment="Center" />
+                                <Border Classes="tag" IsVisible="{Binding HasHostMode}" ToolTip.Tip="{Binding HostModeTip}">
+                                  <TextBlock Text="{Binding HostModeText}" />
                                 </Border>
                                 <!-- 开发期挂载(plugins.dev.txt / VELA_PLUGIN_DEV_ROOT):未经打包与安装,
                                      直接挂的是插件工程输出目录 —— 标出来免得误当成已安装的正式插件。 -->
-                                <Border Background="{DynamicResource VelaBgActive}" CornerRadius="3" Padding="5,1"
-                                        VerticalAlignment="Center" IsVisible="{Binding IsDevelopment}">
-                                  <TextBlock Text="DEV" Foreground="{DynamicResource VelaWarning}"
-                                             FontFamily="{DynamicResource VelaUiMonoFont}" FontSize="{DynamicResource VelaFontSize9}" />
+                                <Border Classes="tag warn" IsVisible="{Binding IsDevelopment}">
+                                  <TextBlock Text="DEV" FontFamily="{DynamicResource VelaUiMonoFont}" />
+                                </Border>
+                                <!-- 撤销入口收进了「更多」菜单,授权本身不能跟着藏起来。 -->
+                                <Border Classes="tag warn" IsVisible="{Binding HasTerminalGrant}" ToolTip.Tip="{Binding GrantBadgeTip}">
+                                  <TextBlock Text="{Binding GrantBadgeText}" />
                                 </Border>
                               </WrapPanel>
+
+                              <!-- 第二行:状态 · id · 作者 -->
                               <WrapPanel>
-                                <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource VelaTextSecondary}"
-                                           FontSize="{DynamicResource VelaFontSize10}" />
-                                <TextBlock Text="{Binding Id}" TextWrapping="Wrap" Margin="8,0" Foreground="{DynamicResource VelaTextMuted}"
-                                           FontFamily="{DynamicResource VelaUiMonoFont}" FontSize="{DynamicResource VelaFontSize9}"
-                                           VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding AuthorText}" IsVisible="{Binding HasAuthor}"
-                                           Foreground="{DynamicResource VelaTextMuted}"
-                                           FontSize="{DynamicResource VelaFontSize9}" VerticalAlignment="Center"
+                                <Ellipse Classes="dot"
+                                         Classes.ok="{Binding IsOk}" Classes.warn="{Binding IsWarn}"
+                                         Classes.err="{Binding IsErr}" Classes.idle="{Binding IsIdle}"
+                                         Margin="0,0,6,0" />
+                                <TextBlock Text="{Binding StatusText}" Classes="status"
+                                           Classes.warn="{Binding IsWarn}" Classes.err="{Binding IsErr}"
+                                           FontSize="{DynamicResource VelaFontSize11}" VerticalAlignment="Center" />
+                                <TextBlock Classes="sep" />
+                                <TextBlock Text="{Binding Id}" Classes="meta"
+                                           FontFamily="{DynamicResource VelaUiMonoFont}" />
+                                <TextBlock Classes="sep" IsVisible="{Binding HasAuthor}" />
+                                <TextBlock Text="{Binding AuthorText}" Classes="meta" IsVisible="{Binding HasAuthor}"
                                            TextTrimming="CharacterEllipsis" />
                               </WrapPanel>
+
                               <!-- 安装时钉住的发布者指纹。清单里的 author 是插件自己写的一行字,谁都能写;
                                    这一行是密码学身份 —— 后续版本换了签名者就装不上去,除非用户再点一次头。
-                                   截断只发生在显示上,完整指纹在悬停提示里(截短的指纹核对不了,却看着像能核对)。 -->
-                              <TextBlock Text="{Binding PublisherText}" IsVisible="{Binding HasPublisher}"
-                                         ToolTip.Tip="{Binding PublisherFingerprint}"
-                                         Foreground="{DynamicResource VelaTextMuted}"
-                                         FontFamily="{DynamicResource VelaUiMonoFont}"
-                                         FontSize="{DynamicResource VelaFontSize9}"
-                                         TextTrimming="CharacterEllipsis" />
-                              <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                         Foreground="{DynamicResource VelaError}" FontSize="{DynamicResource VelaFontSize10}"
-                                         TextWrapping="Wrap" Margin="0,2,0,0" />
+                                   卡片上保留头尾、中间省略(人核对指纹习惯对头和尾),完整指纹在悬停提示里。 -->
+                              <StackPanel Orientation="Horizontal" Spacing="5" IsVisible="{Binding HasPublisher}"
+                                          ToolTip.Tip="{Binding PublisherFingerprint}">
+                                <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.shield}"
+                                               Foreground="{DynamicResource VelaTextMuted}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding PublisherShortText}"
+                                           Foreground="{DynamicResource VelaTextMuted}"
+                                           FontFamily="{DynamicResource VelaUiMonoFont}"
+                                           FontSize="{DynamicResource VelaFontSize10}" VerticalAlignment="Center" />
+                              </StackPanel>
+
+                              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,2,0,0"
+                                    IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.circle-alert}"
+                                               Foreground="{DynamicResource VelaError}" VerticalAlignment="Top" Margin="0,1,0,0" />
+                                <TextBlock Grid.Column="1" Text="{Binding Error}" Foreground="{DynamicResource VelaError}"
+                                           FontSize="{DynamicResource VelaFontSize11}" TextWrapping="Wrap" />
+                              </Grid>
                               <!-- 商店上有新版,但这台宿主装不上(apiLevel / minHostVersion / minSdkVersion
                                    有一样没够)。这时只给提示、不给按钮:摆一个按下去必然失败的按钮,
                                    比不摆更糟 —— 用户会反复点它,而失败的原因跟插件一点关系都没有。 -->
-                              <TextBlock Text="{Binding UpdateBlockedText}" IsVisible="{Binding IsUpdateBlocked}"
-                                         ToolTip.Tip="{Binding UpdateBlocker}"
-                                         Foreground="{DynamicResource VelaWarning}"
-                                         FontSize="{DynamicResource VelaFontSize10}"
-                                         TextWrapping="Wrap" Margin="0,2,0,0" />
+                              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,2,0,0"
+                                    IsVisible="{Binding IsUpdateBlocked}" ToolTip.Tip="{Binding UpdateBlocker}">
+                                <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.triangle-alert}"
+                                               Foreground="{DynamicResource VelaWarning}" VerticalAlignment="Top" Margin="0,1,0,0" />
+                                <TextBlock Grid.Column="1" Text="{Binding UpdateBlockedText}" Foreground="{DynamicResource VelaWarning}"
+                                           FontSize="{DynamicResource VelaFontSize11}" TextWrapping="Wrap" />
+                              </Grid>
                             </StackPanel>
-                            <StackPanel Grid.Column="2" Grid.RowSpan="2" Orientation="Horizontal" Spacing="6"
-                                        VerticalAlignment="Center" Margin="12,0,0,0">
-                              <!-- 用户报「插件不工作」时第一件要看的:这个插件自己那份日志的尾部(只读窗口)。 -->
-                              <Button Classes="row-action" Content="{Binding ViewLogText}"
-                                      IsVisible="{Binding CanViewLog}" Click="ViewLog_Click" />
-                              <Button Classes="row-action" Content="{Binding RevokeText}"
-                                      IsVisible="{Binding HasTerminalGrant}" Click="Revoke_Click" />
-                              <!-- 插件往消息中心发通知的开关:只在它发过(列表里还有)或已经静音时出现。 -->
-                              <Button Classes="row-action" Content="{Binding NotificationsToggleText}"
-                                      ToolTip.Tip="{Binding NotificationsToggleTip}"
-                                      IsVisible="{Binding CanToggleNotifications}" Click="ToggleNotifications_Click" />
+
+                            <!-- 动作:更新(主操作,强调)/ 重新加载(开发期)/ 启停,其余收进「更多」。 -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                              <Button Theme="{StaticResource VelaAccentPillButtonTheme}" Height="26"
+                                      FontSize="{DynamicResource VelaFontSize11}"
+                                      IsVisible="{Binding CanUpdate}" Click="Update_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                  <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.download}"
+                                                 Foreground="{Binding $parent[Button].Foreground}" VerticalAlignment="Center" />
+                                  <TextBlock Text="{Binding UpdateText}" VerticalAlignment="Center" />
+                                </StackPanel>
+                              </Button>
                               <!-- 开发内环:重编后点这里就跑上新代码(开发期挂载的插件才有)。 -->
                               <Button Classes="row-action" Content="{Binding ReloadText}"
                                       IsVisible="{Binding CanReload}" Click="Reload_Click" />
-                              <Button Classes="row-action" Content="{Binding UpdateText}"
-                                      IsVisible="{Binding CanUpdate}" Click="Update_Click" />
                               <Button Classes="row-action" Content="{Binding ToggleText}"
                                       IsVisible="{Binding CanToggle}" Click="Toggle_Click" />
-                              <Button Classes="row-action row-danger" Content="{Binding UninstallText}"
-                                      IsVisible="{Binding CanUninstall}" Click="Uninstall_Click" />
+                              <Button Classes="row-action row-more" IsVisible="{Binding HasMoreActions}"
+                                      ToolTip.Tip="{Binding MoreActionsText}"
+                                      AutomationProperties.Name="{Binding MoreActionsText}">
+                                <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.ellipsis}"
+                                               Foreground="{Binding $parent[Button].Foreground}" />
+                                <Button.Flyout>
+                                  <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                    <!-- 用户报「插件不工作」时第一件要看的:这个插件自己那份日志的尾部(只读窗口)。 -->
+                                    <MenuItem Header="{Binding ViewLogText}" IsVisible="{Binding CanViewLog}" Click="ViewLog_Click">
+                                      <MenuItem.Icon>
+                                        <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.file-text}"
+                                                       Foreground="{DynamicResource VelaTextSecondary}" />
+                                      </MenuItem.Icon>
+                                    </MenuItem>
+                                    <!-- 插件往消息中心发通知的开关:只在它发过(列表里还有)或已经静音时出现。 -->
+                                    <MenuItem Header="{Binding NotificationsToggleText}" IsVisible="{Binding CanToggleNotifications}"
+                                              ToolTip.Tip="{Binding NotificationsToggleTip}" Click="ToggleNotifications_Click">
+                                      <MenuItem.Icon>
+                                        <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.bell}"
+                                                       Foreground="{DynamicResource VelaTextSecondary}" />
+                                      </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="{Binding RevokeText}" IsVisible="{Binding HasTerminalGrant}" Click="Revoke_Click">
+                                      <MenuItem.Icon>
+                                        <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.lock}"
+                                                       Foreground="{DynamicResource VelaTextSecondary}" />
+                                      </MenuItem.Icon>
+                                    </MenuItem>
+                                    <Separator IsVisible="{Binding CanUninstall}" />
+                                    <MenuItem Classes="danger" Header="{Binding UninstallText}" IsVisible="{Binding CanUninstall}"
+                                              Click="Uninstall_Click">
+                                      <MenuItem.Icon>
+                                        <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.trash-2}"
+                                                       Foreground="{DynamicResource VelaError}" />
+                                      </MenuItem.Icon>
+                                    </MenuItem>
+                                  </MenuFlyout>
+                                </Button.Flyout>
+                              </Button>
                             </StackPanel>
                           </Grid>
                         </Border>
@@ -262,18 +437,32 @@
             <views:PluginMarketView DataContext="{Binding Store}" InstallRequested="MarketInstall_Click" />
           </TabItem>
         </TabControl>
-        <Border Grid.Row="3" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,1,0,0" Padding="14,8">
-          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-            <pc:CircularProgressRing IsVisible="{Binding IsPackageBusy}" IsIndeterminate="{Binding !Store.HasDownloadProgress}"
-                                     Value="{Binding Store.DownloadFraction}" Width="20" Height="20" />
-            <StackPanel Grid.Column="1" Spacing="3">
+
+        <!-- 状态栏:只在有话要说时出现(进度、结果、商店操作提示);失败用错误色,可手动收起。 -->
+        <Border Grid.Row="3" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,1,0,0" Padding="14,8"
+                IsVisible="{Binding HasStatus}">
+          <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+            <Panel VerticalAlignment="Top">
+              <pc:CircularProgressRing IsVisible="{Binding IsPackageBusy}" IsIndeterminate="{Binding !Store.HasDownloadProgress}"
+                                       Value="{Binding Store.DownloadFraction}" Width="16" Height="16" StrokeThickness="2" />
+              <pc:LucideIcon Width="14" Height="14" Data="{StaticResource Icon.circle-alert}" Margin="0,1,0,0"
+                             Foreground="{DynamicResource VelaError}" IsVisible="{Binding IsNoticeError}" />
+            </Panel>
+            <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
               <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" Foreground="{DynamicResource VelaTextSecondary}"
-                         FontSize="{DynamicResource VelaFontSize11}" />
+                         FontSize="{DynamicResource VelaFontSize11}"
+                         IsVisible="{Binding Notice, Converter={x:Static ObjectConverters.IsNotNull}}" />
               <TextBlock Text="{Binding Store.OperationNotice}" TextWrapping="Wrap" Foreground="{DynamicResource VelaTextSecondary}"
-                         FontSize="{DynamicResource VelaFontSize11}" />
+                         FontSize="{DynamicResource VelaFontSize11}"
+                         IsVisible="{Binding Store.OperationNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
             <Button Grid.Column="2" Theme="{StaticResource VelaOutlineButtonTheme}" Content="{loc:Localize PluginMarket_CancelDownload}"
                     Click="CancelDownload_Click" IsVisible="{Binding Store.IsDownloading}" />
+            <Button Grid.Column="3" Theme="{StaticResource VelaTitleActionButtonTheme}" VerticalAlignment="Top"
+                    Click="DismissNotice_Click" IsVisible="{Binding Notice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    ToolTip.Tip="{Binding DismissNoticeText}" AutomationProperties.Name="{Binding DismissNoticeText}">
+              <pc:LucideIcon Width="11" Height="11" Data="{StaticResource Icon.x}" Foreground="{DynamicResource VelaTextMuted}" />
+            </Button>
           </Grid>
         </Border>
       </Grid>

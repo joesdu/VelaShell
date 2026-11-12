@@ -10000,4 +10000,16 @@ Send anyway?</value>
   <data name="PluginMarket_PackageMismatch" xml:space="preserve"><value>The downloaded package does not match the selected plugin and version. Installation was stopped.</value></data>
   <data name="PluginMarket_IncompatiblePackage" xml:space="preserve"><value>This package requires {0}. Update VelaShell before installing it.</value></data>
   <data name="PluginManager_UpgradeDirectoryLocked" xml:space="preserve"><value>Could not replace the files of plugin &apos;{0}&apos;: they are still in use by another program ({1}). The previous version was kept and can still be used. Close any program that has the plugin folder open (an antivirus scan, File Explorer) and try again.</value></data>
+  <data name="PluginManager_HostModeInProcess" xml:space="preserve"><value>In-process</value></data>
+  <data name="PluginManager_HostModeIsolated" xml:space="preserve"><value>Isolated</value></data>
+  <data name="PluginManager_HostModeInProcessTip" xml:space="preserve"><value>Runs inside the VelaShell process: starts fastest, but a crash or leak in the plugin affects VelaShell itself.</value></data>
+  <data name="PluginManager_HostModeIsolatedTip" xml:space="preserve"><value>Runs in its own process: a crash in the plugin cannot take VelaShell down, and it is restarted automatically.</value></data>
+  <data name="PluginManager_GrantBadge" xml:space="preserve"><value>Sensitive access</value></data>
+  <data name="PluginManager_GrantBadgeTip" xml:space="preserve"><value>This plugin currently holds sensitive access (terminal input or uploads). Revoke it from the &quot;…&quot; menu.</value></data>
+  <data name="PluginManager_MoreActions" xml:space="preserve"><value>More actions</value></data>
+  <data name="PluginManager_FilterHint" xml:space="preserve"><value>Filter by name, ID or author</value></data>
+  <data name="PluginManager_NoMatches" xml:space="preserve"><value>No plugins match &quot;{0}&quot;.</value></data>
+  <data name="PluginManager_Summary" xml:space="preserve"><value>{0} plugins · {1} running</value></data>
+  <data name="PluginManager_SummaryWithUpdates" xml:space="preserve"><value>{0} plugins · {1} running · {2} updates available</value></data>
+  <data name="PluginManager_DismissNotice" xml:space="preserve"><value>Dismiss</value></data>
 </root>

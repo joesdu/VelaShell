@@ -79,6 +79,8 @@ public partial class PluginManagerWindow : Window
 
     private void Close_Click(object? sender, RoutedEventArgs e) => this.PostClose();
 
+    private void DismissNotice_Click(object? sender, RoutedEventArgs e) => ViewModel?.DismissNotice();
+
     private void ToggleMaximize() =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
