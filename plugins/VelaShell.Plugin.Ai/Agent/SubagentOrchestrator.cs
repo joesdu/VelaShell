@@ -4,11 +4,12 @@ using Microsoft.Extensions.AI;
 
 namespace VelaShell.Plugin.Ai.Agent;
 
-/// <summary>提交给只读子 Agent 的任务请求。</summary>
+/// <summary>提交给受限子 Agent 的任务请求。</summary>
 /// <param name="Prompt">子 Agent 要执行的分析任务。</param>
 /// <param name="Role">任务角色的显示名称；未指定时使用默认分析角色。</param>
 /// <param name="ModelId">已配置模型的标识；未指定时沿用父模型。</param>
-public sealed record SubagentRequest(string Prompt, string? Role, string? ModelId = null);
+/// <param name="AllowWrites">显式允许继承父轮授权的文件修改工具，默认只读。</param>
+public sealed record SubagentRequest(string Prompt, string? Role, string? ModelId = null, bool AllowWrites = false);
 
 /// <summary>子 Agent 对某个工具的调用次数。</summary>
 /// <param name="Name">工具名称。</param>
@@ -54,8 +55,8 @@ public sealed record SubagentSnapshot(
     string TaskPrompt = "");
 
 /// <summary>
-/// 管理当前 Agent 委托出去的只读子任务。子任务使用父模型或显式指定的已配置模型，
-/// 继承父轮次明确授权的只读工具，但不能递归创建子 Agent。
+/// 管理当前 Agent 委托出去的受限子任务。子任务使用父模型或显式指定的已配置模型，
+/// 继承父轮次授权，默认只读，不能递归创建子 Agent。
 /// </summary>
 public sealed class SubagentOrchestrator(
     Func<SubagentRequest, CancellationToken, Task<SubagentExecutionResult>> runner,
@@ -80,6 +81,7 @@ public sealed class SubagentOrchestrator(
         public string? Role { get; set; }
         public string? ModelId { get; set; }
         public string TaskPrompt { get; init; } = "";
+        public bool AllowWrites { get; init; }
         public SubagentExecutionResult? Result { get; set; }
         public string? Error { get; set; }
         public Dictionary<string, int> LiveTools { get; } = new(StringComparer.Ordinal);
@@ -112,8 +114,8 @@ public sealed class SubagentOrchestrator(
     /// <summary>子任务状态或工具使用记录发生变化时触发。</summary>
     public event Action<IReadOnlyList<SubagentSnapshot>>? SnapshotsChanged;
 
-    /// <summary>启动一个受限只读子任务并立即返回任务 id。</summary>
-    public string Start(string prompt, string? role, string? modelId = null)
+    /// <summary>启动一个受限子任务并立即返回任务 id；文件写入须显式开启。</summary>
+    public string Start(string prompt, string? role, string? modelId = null, bool allowWrites = false)
     {
         if (Volatile.Read(ref _disposed) != 0)
         {
@@ -134,6 +136,7 @@ public sealed class SubagentOrchestrator(
         var entry = new Entry(cancellation)
         {
             TaskPrompt = prompt,
+            AllowWrites = allowWrites,
             Role = role,
             ModelId = string.IsNullOrWhiteSpace(modelId) ? DefaultModelId : modelId.Trim()
         };
@@ -226,8 +229,9 @@ public sealed class SubagentOrchestrator(
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(entry.Cancellation.Token);
             timeout.CancelAfter(_timeout);
             _currentEntry.Value = entry;
-            entry.Result = await runner(new SubagentRequest(prompt.Trim(), role, entry.ModelId), timeout.Token)
+            entry.Result = await runner(new SubagentRequest(prompt.Trim(), role, entry.ModelId, entry.AllowWrites), timeout.Token)
                 .ConfigureAwait(false);
+            timeout.Token.ThrowIfCancellationRequested();
             entry.Status = "completed";
             NotifyChanged();
             return entry.Result;
@@ -274,6 +278,7 @@ public sealed class SubagentOrchestrator(
             subagentId = snapshot.SubagentId,
             role = snapshot.Role,
             modelId = snapshot.ModelId,
+            allowWrites = entry.AllowWrites,
             status = snapshot.Status,
             summary = snapshot.Summary,
             output = snapshot.Output,

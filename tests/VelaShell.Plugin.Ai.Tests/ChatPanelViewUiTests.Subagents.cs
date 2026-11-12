@@ -114,7 +114,9 @@ public sealed partial class ChatPanelViewUiTests
     }
 
     [TestMethod]
-    public void SubagentModelSelection_ChatDelegatesAndShowsSelectedModel()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void SubagentModelSelection_ChatDelegatesAndShowsSelectedModel(bool allowWrites)
     {
         OnUi(async () =>
         {
@@ -132,7 +134,8 @@ public sealed partial class ChatPanelViewUiTests
                     {
                         prompt = "Inspect the available read-only tools.",
                         role = "review",
-                        modelId = child.Models[0].Id
+                        modelId = child.Models[0].Id,
+                        allowWrites
                     })));
             });
             using var context = new TestPluginContext();
@@ -160,6 +163,8 @@ public sealed partial class ChatPanelViewUiTests
                 string[] tools = request.RootElement.GetProperty("tools").EnumerateArray()
                     .Select(t => t.GetProperty("function").GetProperty("name").GetString()!).ToArray();
                 Assert.Contains("read_remote_file", tools);
+                Assert.AreEqual(allowWrites, tools.Contains("write_remote_file"));
+                Assert.AreEqual(allowWrites, tools.Contains("patch_remote_file"));
                 Assert.DoesNotContain("write_local_file", tools);
                 Assert.DoesNotContain("delegate_subagent", tools);
                 Assert.DoesNotContain("run_command", tools);

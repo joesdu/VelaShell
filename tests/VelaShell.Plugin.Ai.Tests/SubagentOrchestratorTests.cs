@@ -6,6 +6,44 @@ namespace VelaShell.Plugin.Ai.Tests;
 public sealed class SubagentOrchestratorTests
 {
     [TestMethod]
+    public async Task AllowWrites_IsExplicitAndReported()
+    {
+        var requests = new List<SubagentRequest>();
+        await using var orchestrator = new SubagentOrchestrator((request, _) =>
+        {
+            requests.Add(request);
+            return Task.FromResult(SubagentExecutionResult.FromText("done"));
+        }, CancellationToken.None);
+        orchestrator.Start("read", null);
+        orchestrator.Start("edit", null, allowWrites: true);
+        foreach (SubagentSnapshot snapshot in orchestrator.Snapshots())
+            await orchestrator.WaitAsync(snapshot.SubagentId, 5, CancellationToken.None);
+        Assert.IsFalse(requests.Single(r => r.Prompt == "read").AllowWrites);
+        Assert.IsTrue(requests.Single(r => r.Prompt == "edit").AllowWrites);
+        string id = orchestrator.Snapshots().Single(s => s.TaskPrompt == "edit").SubagentId;
+        Assert.Contains("\"allowWrites\":true", orchestrator.Status(id));
+    }
+
+    [TestMethod]
+    public async Task CancellationAfterWrite_PreservesUsageAndDoesNotReportCompletion()
+    {
+        using var cancellation = new CancellationTokenSource();
+        SubagentOrchestrator? owner = null;
+        owner = new SubagentOrchestrator((_, _) =>
+        {
+            owner!.RecordToolUsage("write_local_file", "Wrote 3 bytes.");
+            cancellation.Cancel();
+            return Task.FromResult(SubagentExecutionResult.FromText("changed"));
+        }, cancellation.Token);
+        await using var orchestrator = owner;
+        orchestrator.Start("edit", null, allowWrites: true);
+        SubagentSnapshot snapshot = orchestrator.Snapshots().Single();
+        string result = await orchestrator.WaitAsync(snapshot.SubagentId, 5, CancellationToken.None);
+        Assert.Contains("\"status\":\"cancelled\"", result);
+        Assert.Contains("\"name\":\"write_local_file\"", result);
+    }
+
+    [TestMethod]
     public async Task DefaultModelChange_DoesNotRerouteQueuedTasks()
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
