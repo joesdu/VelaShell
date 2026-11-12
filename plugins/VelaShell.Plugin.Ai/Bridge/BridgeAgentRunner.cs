@@ -234,6 +234,24 @@ public sealed class BridgeAgentRunner(
             catch (Exception ex) { context.Log.Warn($"Bridge upload report failed: {ex.Message}"); }
         }
         lock (_transfersGate) { _transfers.Add(transferObserver); _transferCleanupScopes.Add(runScope.Transfers!); }
+        // 子 Agent(仅 Agent 模式):IM 没有运行卡片,进度靠同一条消息末尾的一行「已结束 n/m」。
+        SubagentOrchestrator? subagents = null;
+        AgentToolbox? subagentTemplate = null;
+        // 到目前为止的正文;子任务的进度回调跑在别的线程上,读这份而不去碰正在追加的 StringBuilder
+        string visible = "";
+        (int Finished, int Total) reportedSubagents = default;
+        var subagentProgressGate = new Lock();
+        void ReportSubagents(IReadOnlyList<SubagentSnapshot> snapshots)
+        {
+            (int, int) state = (snapshots.Count(s => s.IsTerminal), snapshots.Count);
+            lock (subagentProgressGate)
+            {
+                // 工具计数之类的变化不值得改一次消息,只在个数变了时说
+                if (snapshots.Count == 0 || state == reportedSubagents) return;
+                reportedSubagents = state;
+            }
+            progress?.Invoke($"{visible}\n\n_{loc["SubagentRuns"]}: {loc.F("SubagentProgress", state.Item1, state.Item2)}_");
+        }
         try
         {
             var options = new ChatOptions
@@ -254,6 +272,30 @@ public sealed class BridgeAgentRunner(
                                 && NativeWebSearch.IsSupported(model.Protocol);
             if (mode != ChatMode.Chat)
             {
+                if (mode == ChatMode.Agent)
+                {
+                    subagentTemplate = toolbox.CreateSubagentToolbox();
+                    AgentToolbox template = subagentTemplate;
+                    var subagentRunner = new SubagentRunner(
+                        // 沿用父模型时用这一轮正在用的凭据(令牌续期后是续期过的那份);另选模型按当下设置现取
+                        async (request, token) => string.IsNullOrWhiteSpace(request.ModelId) || request.ModelId == model.Id
+                            ? (model, fixedCredential)
+                            : await SubagentRunner.ResolveFromSettingsAsync(store, request.ModelId, null, token).ConfigureAwait(false),
+                        (target, credential) => store.CreateClient(target, credential, callerCountsRetries: true),
+                        () => template, runScope, context.Host.Locale);
+                    SubagentOrchestrator created = null!;
+                    created = new SubagentOrchestrator(
+                        (request, token) => subagentRunner.RunAsync(created, request, token), cancellationToken)
+                    {
+                        ModelChoices = SubagentRunner.ModelChoices(ai),
+                        DefaultModelId = model.Id
+                    };
+                    created.SnapshotsChanged += ReportSubagents;
+                    subagents = created;
+                    toolbox.Subagents = created;
+                    // 模型委派完就停下时,由协调器等子任务跑完、把结果当通知送回去
+                    coordinator.Subagents = created;
+                }
                 IList<AITool> tools = toolbox.CreateTools(mode, nativeSearch, runScope);
                 if (mode == ChatMode.Agent && ai.McpServers.Any(s => s.Enabled))
                 {
@@ -263,6 +305,7 @@ public sealed class BridgeAgentRunner(
                             LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId)).ConfigureAwait(false);
                     List<AITool> mcpTools = mcpLease.Tools;
                     List<string> errors = mcpLease.Errors;
+                    subagents?.ReadOnlyMcpTools = McpManager.FilterReadOnlyTools(mcpTools);
                     foreach (AITool tool in mcpTools)
                     {
                         tools.Add(tool);
@@ -286,7 +329,8 @@ public sealed class BridgeAgentRunner(
             await PersistAsync(conversation, "user", message.Text, cancellationToken).ConfigureAwait(false);
 
             RequestContext request = ContextBuilder.Build(
-                BuildSystemPrompt(ai, bridge, mode, message, session, nativeSearch),
+                BuildSystemPrompt(ai, bridge, mode, message, session, nativeSearch)
+                + (SubagentRunner.HasDelegation(options.Tools) ? SubagentRunner.DelegationGuidance : ""),
                 conversation.History, model.MaxInputTokens, model.MaxTokens);
             // 有的订阅型端点不收 system 角色(ChatGPT 的 Codex 后端会回
             // 400 {"detail":"System messages are not allowed"})。那时把系统提示词挪到
@@ -314,8 +358,9 @@ public sealed class BridgeAgentRunner(
                         {
                             case TextContent { Text.Length: > 0 } text:
                                 accumulated.Append(text.Text);
-                                transferObserver.Text(accumulated.ToString());
-                                progress?.Invoke(accumulated.ToString());
+                                visible = accumulated.ToString();
+                                transferObserver.Text(visible);
+                                progress?.Invoke(visible);
                                 break;
 
                             case FunctionCallContent call:
@@ -373,6 +418,14 @@ public sealed class BridgeAgentRunner(
                 catch (Exception ex) { context.Log.Warn($"MCP turn cleanup failed ({ex.GetType().Name})."); }
             }
             transferObserver.Finish();
+            if (subagents is not null)
+            {
+                // 这一轮到此为止:还在跑的子任务一并取消并等它们收尾,不留到下一轮
+                subagents.SnapshotsChanged -= ReportSubagents;
+                try { await subagents.DisposeAsync().ConfigureAwait(false); }
+                catch (Exception ex) { context.Log.Warn($"Bridge subagent cleanup failed ({ex.GetType().Name})."); }
+            }
+            if (subagentTemplate is not null) await subagentTemplate.DisposeAsync().ConfigureAwait(false);
             await runScope.CancelAsync().ConfigureAwait(false);
             client.Dispose();
         }

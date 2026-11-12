@@ -25,7 +25,8 @@ namespace VelaShell.Plugin.Ai.Interop;
 /// <c>claude mcp add --transport http velashell http://127.0.0.1:8391/mcp --header "Authorization: Bearer &lt;令牌&gt;"</c>
 /// </para>
 /// </remarks>
-public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore store) : IAsyncDisposable
+public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore store,
+    Configuration.AiSettingsStore? aiStore = null) : IAsyncDisposable
 {
     /// <summary>本实现对齐的协议版本。客户端要更老的版本时按它要的回。</summary>
     private const string ProtocolVersion = "2025-06-18";
@@ -361,7 +362,7 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
                         return;
                     }
                     string sessionId = Guid.NewGuid().ToString("n");
-                    var host = new McpToolHost(context, _settings);
+                    var host = await McpToolHost.CreateAsync(context, _settings, aiStore, cancellationToken).ConfigureAwait(false);
                     try
                     {
                         await host.AutoSelectAsync(cancellationToken).ConfigureAwait(false);
@@ -493,7 +494,7 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
         DateTimeOffset cutoff = DateTimeOffset.UtcNow - SessionIdleTimeout;
         foreach (KeyValuePair<string, McpToolHost> entry in _sessions)
         {
-            if (entry.Value.LastActivity < cutoff && !entry.Value.HasActiveTransfers)
+            if (entry.Value.LastActivity < cutoff && !entry.Value.HasActiveTransfers && !entry.Value.HasActiveSubagents)
             {
                 if (_sessions.TryRemove(entry.Key, out McpToolHost? host))
                     await host.DisposeAsync().ConfigureAwait(false);

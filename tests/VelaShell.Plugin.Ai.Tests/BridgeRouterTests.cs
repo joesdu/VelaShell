@@ -22,6 +22,36 @@ namespace VelaShell.Plugin.Ai.Tests;
 public sealed class BridgeRouterTests
 {
     /// <summary>一个只记录发了什么的渠道。<c>RunAsync</c> 挂着不动,直到被停掉。</summary>
+    /// <summary>子任务发起的审批:群里那条审批消息要说清是哪个子任务要的;主 Agent 自己发起的不带这句。</summary>
+    [TestMethod]
+    public async Task ApprovalMessage_NamesTheSubagentThatAskedForIt()
+    {
+        await using var harness = new Harness();
+        await harness.StartAsync();
+        var broker = new ImApprovalBroker(harness.Hub, harness.Context);
+        var conversation = new BridgeConversation("ch1", "chat-1");
+        var loc = new Loc("en");
+
+        Task<bool> fromSubagent = broker.RequestAsync(conversation, harness.Settings.Channels[0],
+            new VelaShell.Plugin.Ai.Agent.ApprovalRequest("write_local_file", "notes.txt", Origin: "sub-1a2b3c4d · editor"),
+            30, loc, CancellationToken.None);
+        for (int i = 0; i < 200 && harness.Channel.Snapshot().Count == 0; i++) await Task.Delay(10);
+        broker.Resolve(conversation.ChatKey, false);
+        Assert.IsFalse(await fromSubagent.WaitAsync(TimeSpan.FromSeconds(10)));
+
+        Task<bool> fromParent = broker.RequestAsync(conversation, harness.Settings.Channels[0],
+            new VelaShell.Plugin.Ai.Agent.ApprovalRequest("write_local_file", "other.txt"), 30, loc, CancellationToken.None);
+        for (int i = 0; i < 200 && harness.Channel.Snapshot().Count == 1; i++) await Task.Delay(10);
+        broker.Resolve(conversation.ChatKey, false);
+        Assert.IsFalse(await fromParent.WaitAsync(TimeSpan.FromSeconds(10)));
+
+        List<string> sent = harness.Channel.Snapshot();
+        Assert.Contains("Requested by subagent sub-1a2b3c4d · editor", sent[0]);
+        Assert.Contains("notes.txt", sent[0]);
+        Assert.Contains("other.txt", sent[1]);
+        Assert.DoesNotContain("Requested by subagent", sent[1]);
+    }
+
     private sealed class FakeChannel(string id) : IMessageChannel
     {
         public List<string> Sent { get; } = [];

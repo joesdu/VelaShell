@@ -84,6 +84,44 @@ public sealed class ChatHistoryMetaTests
     }
 
     /// <summary>老会话(那时还没有 chat_meta)照样能读出来,只是没有附加信息。</summary>
+    /// <summary>子任务卡片随附加信息入库:翻回旧会话时,委派给谁、读了什么、报告写了什么都还在。</summary>
+    [TestMethod]
+    public async Task SubagentRuns_RoundTripInTheMeta()
+    {
+        using var context = new TestPluginContext();
+        (ChatHistoryStore store, string id, DateTimeOffset created) = await NewStoreAsync(context);
+        await store.AppendAsync(id, created, 0, "assistant", "两个子任务都查完了。");
+        await store.AppendMetaAsync(id, 0, new ChatTurnMeta(Subagents:
+        [
+            new Agent.SubagentSnapshot("sub-11111111", "disk", "completed", "", "## 磁盘\n/var 用了 91%",
+                [new("read_remote_file", 3), new("system_overview", 1)], [], TimeSpan.FromSeconds(42),
+                "model-a", "检查磁盘占用", InputTokens: 5200, OutputTokens: 310),
+            new Agent.SubagentSnapshot("sub-22222222", "editor", "timed_out", "", "改到一半",
+                [new("patch_local_file", 1)], ["The subagent exceeded 120 seconds."], TimeSpan.FromSeconds(120),
+                TaskPrompt: "修正配置", AllowWrites: true)
+        ]));
+
+        ChatTurnMeta meta = (await store.LoadAsync(id))[0].Meta!;
+
+        Assert.HasCount(2, meta.Subagents!);
+        Agent.SubagentSnapshot disk = meta.Subagents![0];
+        Assert.AreEqual("sub-11111111", disk.SubagentId);
+        Assert.AreEqual("disk", disk.Role);
+        Assert.AreEqual("completed", disk.Status);
+        Assert.Contains("91%", disk.Output);
+        Assert.AreEqual(3, disk.ToolsUsed.Single(t => t.Name == "read_remote_file").Count);
+        Assert.AreEqual(TimeSpan.FromSeconds(42), disk.Elapsed);
+        Assert.AreEqual("model-a", disk.ModelId);
+        Assert.AreEqual("检查磁盘占用", disk.TaskPrompt);
+        Assert.AreEqual(5200, disk.InputTokens);
+        Assert.AreEqual(310, disk.OutputTokens);
+        Agent.SubagentSnapshot editor = meta.Subagents[1];
+        Assert.AreEqual("timed_out", editor.Status);
+        Assert.IsTrue(editor.AllowWrites);
+        Assert.Contains("120 seconds", editor.Errors.Single());
+        Assert.IsNull(meta.Tools is { Count: > 0 } ? meta.Tools : null);
+    }
+
     [TestMethod]
     public async Task Load_WithoutAnyMeta_StillReturnsMessages()
     {

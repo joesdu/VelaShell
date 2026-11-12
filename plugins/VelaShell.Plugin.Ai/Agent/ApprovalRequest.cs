@@ -8,7 +8,11 @@ namespace VelaShell.Plugin.Ai.Agent;
 /// 只有可重复、且重复起来语义稳定的操作才给键 —— 比如同一个命令名的只读排查命令;
 /// 写文件、往终端里敲字这类每次目标都不同的,必须一次一问。
 /// </param>
-public readonly record struct ApprovalRequest(string Kind, string Detail, string? RepeatKey = null)
+/// <param name="Origin">
+/// 发起这次操作的子 Agent(<c>id · 角色</c>);主 Agent 自己发起的为 null。
+/// 几个子任务并行时,审批卡靠它说清"是谁要动这个文件"。
+/// </param>
+public readonly record struct ApprovalRequest(string Kind, string Detail, string? RepeatKey = null, string? Origin = null)
 {
     /// <summary>审批卡上显示的那段文字。</summary>
     public string Summary => Detail.Length > 0 ? $"{Kind}: {Detail}" : Kind;

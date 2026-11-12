@@ -1637,6 +1637,7 @@ public partial class ChatPanelView : UserControl
         long verifiedObservation = 0; // 每次真实流式请求单独取号,同模型的并发结果按起跑顺序结算
         string replyText = "";
         SubagentOrchestrator? subagents = null;
+        SubagentRunner? subagentRunner = null;
         AgentToolbox? subagentTemplate = null;
         // 这一轮的故障转移 / 换 Key:合成一张切换提示卡挂在这条回复里(只给人看,不进 History,见 ChatPanelView.SwitchNotice.cs)
         List<ChatProviderSwitch> switches = [];
@@ -2049,50 +2050,19 @@ public partial class ChatPanelView : UserControl
                 // 纯对话模式不给任何工具;计划模式只给只读工具(见 AgentToolbox.CreateTools)
                 if (usesToolLoop)
                 {
-                    subagents ??= new SubagentOrchestrator(async (request, childToken) =>
+                    // 子任务的执行细节在 SubagentRunner 里(与界面无关);这里只交代模型解析、客户端与工具箱从哪来。
+                    // 模型解析读的是换站后的 current / 凭据,所以用闭包而不是开跑时的快照。
+                    subagentRunner ??= new SubagentRunner(
+                        (request, childToken) => ResolveSubagentModelAsync(request, current,
+                            verifiedCredential, selectedKeyId, childToken),
+                        (model, credential) => _store.CreateClient(model, credential, callerCountsRetries: true),
+                        () => subagentTemplate!, runScope, _context.Host.Locale,
+                        // 子任务的请求同样是已计费的真实用量,并进这段对话的收发计数(不算进上下文占用)
+                        usage => Dispatcher.UIThread.Post(() => RecordUsage(usage, isContext: false)));
+                    subagents ??= new SubagentOrchestrator(
+                        (request, childToken) => subagentRunner!.RunAsync(subagents!, request, childToken), token)
                     {
-                        (ResolvedModel subagentModel, ProviderCredential subagentCredential) =
-                            await ResolveSubagentModelAsync(request, current,
-                                verifiedCredential, selectedKeyId, childToken);
-                        await using AgentToolbox childToolbox = subagentTemplate!.CreateSubagentToolbox();
-                        IList<AITool> childTools = childToolbox.CreateSubagentTools(request.AllowWrites, runScope);
-                        foreach (AITool mcpTool in subagents!.ReadOnlyMcpTools)
-                        {
-                            childTools.Add(mcpTool);
-                        }
-                        IReadOnlyList<AITool> trackedTools = SubagentOrchestrator.SubagentToolTracker.Wrap(
-                            childTools, (name, result) => subagents!.RecordToolUsage(name, result));
-                        var childOptions = new ChatOptions
-                        {
-                            MaxOutputTokens = Math.Min(subagentModel.MaxTokens, 2048),
-                            Temperature = subagentModel.Temperature,
-                            TopP = subagentModel.TopP,
-                            Tools = trackedTools.ToList()
-                        };
-                        AiSettingsStore.ApplyReasoning(childOptions, subagentModel);
-                        AiSettingsStore.ApplyEndpointQuirks(childOptions, subagentModel);
-                        using IChatClient rawChildClient = _store.CreateClient(subagentModel, subagentCredential);
-                        using IChatClient childClient = rawChildClient.AsBuilder()
-                            .UseFunctionInvocation(configure: c =>
-                            {
-                                c.MaximumIterationsPerRequest = 30;
-                                c.MaximumConsecutiveErrorsPerRequest = 0;
-                                c.AllowConcurrentInvocation = false;
-                            })
-                            .Build();
-                        string instruction = string.IsNullOrWhiteSpace(request.Role)
-                            ? request.Prompt
-                            : $"You are a specialist subagent focused on {request.Role.Trim()}.\n\n{request.Prompt}";
-                        ChatResponse response = await childClient.GetResponseAsync(
-                            instruction, childOptions, childToken).ConfigureAwait(false);
-                        // 工具计数与错误已由 RecordToolUsage 实时记在条目上;这里再带一份,
-                        // 快照合并时每条错误就会出现两次。
-                        return SubagentExecutionResult.FromText(response.Text);
-                    }, token)
-                    {
-                        ModelChoices = _settings.Providers.SelectMany(p => p.Models.Select(m => new ResolvedModel(p, m)))
-                            .Where(m => !AiSettingsStore.IsImageModel(m))
-                            .ToDictionary(m => m.Id, m => $"{m.Provider.Name} / {m.Model}", StringComparer.Ordinal)
+                        ModelChoices = SubagentRunner.ModelChoices(_settings)
                     };
                     subagents.DefaultModelId = current.Id;
                     if (bubble is not null && !_subagentSnapshotSources.ContainsKey(bubble))
@@ -2101,10 +2071,13 @@ public partial class ChatPanelView : UserControl
                         observed.SnapshotsChanged += snapshots =>
                             Dispatcher.UIThread.Post(() => UpdateSubagentCards(bubble, snapshots));
                         _subagentSnapshotSources[bubble] = observed.Snapshots;
+                        bubble.CancelSubagent = id => observed.Cancel(id);
                         EnsureSubagentRefreshTimer();
                         UpdateSubagentCards(bubble, observed.Snapshots());
                     }
                     _toolbox.Subagents = mode == ChatMode.Agent ? subagents : null;
+                    // 父模型停下时还有子任务没交回结果,由协调器等到终态再送回去(计划 / 对话模式没有委派工具)
+                    coordinator.Subagents = mode == ChatMode.Agent ? subagents : null;
                     ApplyApprovalMode(); // 挡位推给工具箱与 MCP(中途再改也会经这条路重推)
                     _toolbox.DisabledTools = new HashSet<string>(
                         SplitLines(_settings.DisabledBuiltinTools) ?? [], StringComparer.OrdinalIgnoreCase);
@@ -2203,16 +2176,7 @@ public partial class ChatPanelView : UserControl
                 // 装配上下文:摘要 + 近几轮原文,按窗口裁剪并把相邻同角色的消息并起来(见 ContextBuilder)
                 RequestContext request = ContextBuilder.Build(
                     BuildSystemPrompt(current, mode, nativeSearch)
-                    + (options.Tools?.OfType<AIFunction>().Any(tool => tool.Name == "delegate_subagent") == true
-                        ? "\nFor requests to use multiple agents or independent parallel analyses, use delegate_subagent for each focused task, " +
-                          "then collect their results with subagent_wait or subagent_status before reporting completion. " +
-                          "Subagents are AI workers, not remote OS processes: run_command and task_status do not create subagents or their UI cards. " +
-                          "Subagents can read authorized files, directories, terminal output and allowed read-only MCP tools, but cannot run shell commands. " +
-                          "For user-authorized file changes, explicitly pass allowWrites=true; mutations retain parent approvals and scope. " +
-                          "Assign disjoint files where possible, inspect tool results, and never claim cancellation rolled changes back. " +
-                          "If analysis needs command output (for example df, ss or ps), collect it with parent tools first and include it in the delegated prompt. " +
-                          "Do not claim subagents were created unless delegate_subagent succeeded. If the user explicitly wants OS processes, use command tools instead.\n"
-                        : "")
+                    + (SubagentRunner.HasDelegation(options.Tools) ? SubagentRunner.DelegationGuidance : "")
                     + (imageToolsEnabled
                         ? "\nImage tools are available. For explicit image creation requests, use generate_image with a standalone prompt incorporating the relevant conversation details. " +
                           "For changes to an existing image use edit_image with its exact conversation image ID. Do not claim success before the tool succeeds. " +
@@ -2575,6 +2539,7 @@ public partial class ChatPanelView : UserControl
                     if (subagentTemplate is not null) await subagentTemplate.DisposeAsync();
                     if (bubble is not null)
                     {
+                        bubble.CancelSubagent = null; // 编排器已收尾,卡片上不再留取消按钮
                         UpdateSubagentCards(bubble, subagents.Snapshots());
                         _subagentSnapshotSources.Remove(bubble);
                     }
@@ -3022,9 +2987,11 @@ public partial class ChatPanelView : UserControl
             await _historyStore.AppendMetaAsync(ConversationId, sequence,
                 bubble.Snapshot(modelLabel, TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt)));
         }
-        else if (bubble.SwitchNotice is { } notice)
+        else if (bubble.SwitchNotice is not null || bubble.HasSubagents)
         {
-            await _historyStore.AppendMetaAsync(ConversationId, sequence, new ChatTurnMeta(Switch: notice));
+            // 中断的一轮照旧不存思考与工具卡;切换提示与子任务卡片是这一轮"发生过什么"的仅有记录,留下
+            await _historyStore.AppendMetaAsync(ConversationId, sequence,
+                new ChatTurnMeta(Switch: bubble.SwitchNotice, Subagents: bubble.SubagentRuns));
         }
     }
 
@@ -3483,6 +3450,17 @@ public partial class ChatPanelView : UserControl
         var headerIcon = (Decorator)header.Children[0];
         var headerTitle = (TextBlock)header.Children[1];
         stack.Children.Add(header);
+        // 子任务发起的审批:几个子任务并行时,得说清是谁要动这个文件
+        if (request.Origin is { Length: > 0 } origin)
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Name = "ApprovalOrigin",
+                Classes = { "dim" },
+                Text = _loc.F("ApprovalOrigin", origin),
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
         // 命令原文压在输入底色上:它是要被逐字读的东西,不该和说明文字一个背景
         stack.Children.Add(new Border
         {
@@ -3738,6 +3716,8 @@ public partial class ChatPanelView : UserControl
         private readonly TextBlock _phaseText;
         private readonly Border _phaseChip;
         private readonly Dictionary<string, ToolCard> _toolCards = [];
+        // 见过的调用 id:不出卡的调用(见 AddToolCall)也要去重,否则同一帧重放会多数一步
+        private readonly HashSet<string> _seenToolCalls = [with(StringComparer.Ordinal)];
         private readonly StringBuilder _thinkingText = new();
         // 复制整段回复用的原文:正文按到达顺序原样攒着(Markdown 源码,不是渲染后的可视树)
         private readonly StringBuilder _replyText = new();
@@ -3769,7 +3749,8 @@ public partial class ChatPanelView : UserControl
             (long)(_thinkingElapsed?.TotalMilliseconds ?? 0),
             [.. _toolCards.Values.Select(c => c.Snapshot())],
             [.. _images],
-            SwitchNotice);
+            SwitchNotice,
+            SubagentRuns);
 
         /// <summary>从历史回放:先摆切换提示与思考,再摆工具卡,最后才是正文(与直播时的先后一致)。</summary>
         public void Restore(ChatTurnMeta meta)
@@ -3794,6 +3775,11 @@ public partial class ChatPanelView : UserControl
                 string id = Guid.NewGuid().ToString("N");
                 AddToolCall(id, tool.Name, tool.Arguments);
                 CompleteToolCall(id, tool.Result);
+            }
+            // 子任务卡片照存下来的终态摆回去:没有可取消的东西,所以不带取消按钮
+            if (meta.Subagents is { Count: > 0 } runs)
+            {
+                UpdateSubagents(runs);
             }
             RestoreImages(meta);
         }
@@ -3861,11 +3847,28 @@ public partial class ChatPanelView : UserControl
             _currentSegment = null; // 卡之后的新文本另起一个 Markdown 段
         }
 
+        /// <summary>取消这条回复里的某个子任务;只在这一轮还在跑时有值,历史回放与收尾之后为 null。</summary>
+        public Action<string>? CancelSubagent
+        {
+            get;
+            set
+            {
+                field = value;
+                _subagentGroup?.Cancel = value;
+            }
+        }
+
+        /// <summary>这条回复委派过子任务。</summary>
+        public bool HasSubagents => _subagentGroup is not null;
+
+        /// <summary>子任务卡片的入库快照;没有委派过时为 null。</summary>
+        public IReadOnlyList<SubagentSnapshot>? SubagentRuns => _subagentGroup?.Snapshot();
+
         public void UpdateSubagents(IReadOnlyList<SubagentSnapshot> snapshots)
         {
             if (_subagentGroup is null)
             {
-                _subagentGroup = new SubagentRunGroup(_owner);
+                _subagentGroup = new SubagentRunGroup(_owner) { Cancel = CancelSubagent };
                 // 后台活动不构成正文边界，首次到达也不能拆开正在流式解析的 Markdown。
                 int index = _currentSegment is null
                     ? _stack.Children.Count
@@ -3966,13 +3969,19 @@ public partial class ChatPanelView : UserControl
 
         public void AddToolCall(string callId, string name, string argumentsJson)
         {
-            if (_toolCards.ContainsKey(callId))
+            if (_toolCards.ContainsKey(callId) || !_seenToolCalls.Add(callId))
             {
                 return;
             }
             MarkThinkingDone();
             SetPhase("PhaseTool");
             _steps++;
+            // 取子任务结果的两个工具不另出工具卡:状态、工具明细与完整报告都在子任务卡片里,
+            // 再摆一张装着同一份 JSON 的卡只是把一件事显示两遍。
+            if (name is "subagent_wait" or "subagent_status" && _subagentGroup is not null)
+            {
+                return;
+            }
             var card = new ToolCard(_owner, name, argumentsJson);
             _toolCards[callId] = card;
             _stack.Children.Add(card.Root);

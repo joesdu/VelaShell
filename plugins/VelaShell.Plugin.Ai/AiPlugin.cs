@@ -60,7 +60,7 @@ public sealed class AiPlugin : IVelaPlugin
     private void StartServices(IPluginContext context, CancellationToken cancellationToken)
     {
         Bridge = new BridgeService(context, _store!);
-        McpServer = new McpEndpoint(context, new McpServerSettingsStore(context));
+        McpServer = new McpEndpoint(context, new McpServerSettingsStore(context), _store);
         _ = Task.Run(async () =>
         {
             try
