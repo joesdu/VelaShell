@@ -139,6 +139,9 @@ public sealed class RemoteEditDraftsTests
             // 反证:真改了照样传。
             await File.WriteAllTextAsync(localPath, "edited");
             await WaitUntilAsync(() => Volatile.Read(ref uploads) == 1 && !session.HasPendingChange && session.State == RemoteEditState.Watching);
+            // Watching 先于上传闸释放;收尾必须等上传真正结束,否则 Dispose 会保守保留草稿。
+            Assert.IsTrue(await session.ShutdownAsync(TimeSpan.FromSeconds(30)), "上传必须完成后才能清理副本");
+            Assert.AreEqual(1, Volatile.Read(ref uploads), "收尾不应重复上传已传回的副本");
         }
         finally
         {
