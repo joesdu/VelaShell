@@ -48,8 +48,10 @@ jobs:
           # Linux 上 UsePlatformDetect 落到 X11,没有显示服务器就 XOpenDisplay failed
           # 直接 abort(退出码 134),插件连管道都来不及连。本进程内的 UI 测试走
           # Avalonia.Headless 不受影响,子进程不吃这套 —— 给它一块虚拟屏。
+          # 短命的 X11 客户端之间可能暂时没有连接;禁止此时重置显示,避免下一个
+          # PluginHost 撞上重置窗口。Xvfb 错误写入作业日志,不再默认丢到 /dev/null。
           - os: ubuntu-latest
-            launcher: "xvfb-run -a"
+            launcher: 'xvfb-run -a -e /dev/stderr -s "-screen 0 1280x1024x24 -noreset"'
           # macOS 上路径、进程与文件系统的行为都自成一套(大小写不敏感但保留大小写的卷、
           # 应用包结构、`open -a` 起编辑器、区分 /tmp 与 /private/tmp 的真实路径)。
           # release.yml 早就在 macos-latest 上完整构建并打包 osx-x64/osx-arm64,
