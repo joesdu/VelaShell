@@ -62,6 +62,9 @@ public static class PluginServiceCollectionExtensions
                 // 开发期插件从影子副本装载:工程的 bin 因此不被运行中的宿主锁住,
                 // 可以边跑边重编,改完在管理页点"重新加载"即可(Windows 上尤其关键)。
                 DevShadowRootDirectory = paths.DevPluginShadowDirectory,
+                // 已安装的进程内插件同样从副本装载:插件漏了引用、ALC 收不回来时,
+                // 被锁住的是副本而不是安装目录,更新/卸载不必重启宿主。
+                InstalledShadowRootDirectory = paths.PluginShadowDirectory,
                 DevDisabledStateFile = paths.DevPluginDisabledFile,
                 DisabledStateFile = paths.PluginDisabledFile,
                 DevAutoReload = Startup.VelaShellStartupArguments.Current.DevWatch,

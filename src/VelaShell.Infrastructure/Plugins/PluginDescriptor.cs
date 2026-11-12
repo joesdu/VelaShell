@@ -52,9 +52,9 @@ public sealed class PluginDescriptor
     public bool IsDevelopment { get; internal set; }
 
     /// <summary>
-    /// 实际装载所用的目录。通常与 <see cref="Directory" /> 相同;开发期插件启用影子拷贝时
-    /// 指向 <c>&lt;数据根&gt;/dev-shadow/&lt;id&gt;/gen-N</c>(见
-    /// <see cref="PluginManagerOptions.DevShadowRootDirectory" />)。未激活时为 <see langword="null" />。
+    /// 实际装载所用的目录。通常与 <see cref="Directory" /> 相同;开发期插件或已安装的进程内插件启用影子拷贝时
+    /// 指向 <c>&lt;数据根&gt;/dev-shadow</c> 或 <c>&lt;数据根&gt;/plugin-shadow</c> 下的 <c>&lt;id&gt;/gen-GUID</c>(见
+    /// <see cref="PluginManagerOptions.DevShadowRootDirectory" /> 与 <see cref="PluginManagerOptions.InstalledShadowRootDirectory" />)。未激活时为 <see langword="null" />。
     /// </summary>
     public string? LoadDirectory { get; internal set; }
 

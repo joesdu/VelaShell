@@ -49,6 +49,19 @@ public sealed class PluginManagerOptions
     public string? DevShadowRootDirectory { get; init; }
 
     /// <summary>
+    /// 已安装(<see cref="UserPluginRoot" /> 下)进程内插件的影子副本根目录。非空时,这类插件在装载前
+    /// 被整份复制到 <c>&lt;root&gt;/&lt;pluginId&gt;/gen-GUID</c> 再从副本加载。
+    /// <para>
+    /// 与 <see cref="DevShadowRootDirectory" /> 同一个理由,只是锁的是安装目录:ALC 的卸载要等 GC 真正回收才放句柄,
+    /// 而插件只要漏一个静态事件 / 计时器,它的 ALC 就永远收不回来 —— 安装目录随之被锁到宿主退出,
+    /// 表现为「停用了、连接也断了,更新仍报 Access denied,必须重启宿主」。从副本装载后,
+    /// 安装目录在任何时刻都可以被整体换名(升级)或删除(卸载),不再取决于插件有没有漏引用。
+    /// </para>
+    /// <para>隔离插件不走这条:它的进程被杀掉时句柄随之释放。缺省(<see langword="null" />)时就地装载。</para>
+    /// </summary>
+    public string? InstalledShadowRootDirectory { get; init; }
+
+    /// <summary>
     /// 开发期插件的禁用登记文件(每行一个插件 id)。已安装插件的禁用标记写在插件目录里,
     /// 但开发期插件的目录是构建产物目录,写进去只会让人困惑(重编后标记还在)。
     /// 缺省时开发期插件的禁用状态不持久(仅本次运行有效)。

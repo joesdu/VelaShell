@@ -86,11 +86,16 @@ public class PluginInstallUninstallTests
         });
 
     /// <summary>把夹具插件摊成一个待打包目录(plugin.json + dll)。</summary>
-    private static string StagePlugin(string id, string manifestExtras = "", string version = "1.0.0")
+    private static string StagePlugin(string id, string manifestExtras = "", string version = "1.0.0", bool withSymbols = false)
     {
         string stage = Path.Combine(Path.GetTempPath(), "velashell-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(stage);
         File.Copy(typeof(TestFixturePlugin).Assembly.Location, Path.Combine(stage, "VelaShell.TestPlugin.dll"));
+        if (withSymbols)
+        {
+            File.Copy(Path.ChangeExtension(typeof(TestFixturePlugin).Assembly.Location, ".pdb"),
+                Path.Combine(stage, "VelaShell.TestPlugin.pdb"));
+        }
         File.WriteAllText(Path.Combine(stage, "plugin.json"), $$"""
             { "id": "{{id}}", "version": "{{version}}", "displayName": "Packaged", "author": "Test Author",
               "entry": "VelaShell.TestPlugin.dll"{{manifestExtras}} }
@@ -99,9 +104,10 @@ public class PluginInstallUninstallTests
     }
 
     /// <summary>打一个真正的 .vpx(专属容器:魔数 + 摘要 + 掩码)。</summary>
-    private static string BuildVpx(string id = "acme.packaged", string manifestExtras = "", string version = "1.0.0")
+    private static string BuildVpx(string id = "acme.packaged", string manifestExtras = "", string version = "1.0.0",
+        bool withSymbols = false)
     {
-        string stage = StagePlugin(id, manifestExtras, version);
+        string stage = StagePlugin(id, manifestExtras, version, withSymbols);
         string vpx = stage + ".vpx";
         VpxContainer.Pack(stage, vpx);
         return vpx;
@@ -572,6 +578,85 @@ public class PluginInstallUninstallTests
         Assert.ContainsSingle(p => p.Id == "acme.dup", manager.Plugins);
         Assert.AreEqual(PluginState.Active, manager.Plugins.Single(p => p.Id == id).State);
         await manager.DisposeAsync();
+    }
+
+    /// <summary>
+    /// 插件漏了引用(静态事件、计时器、界面元素)时它的 ALC 永远收不回来。只要插件的异常堆栈被格式化过一次
+    /// (宿主与插件写日志都会 <c>ex.ToString()</c>),运行时就以 <c>FileShare.Read</c> 打开它的 <c>.pdb</c>
+    /// 并按程序集缓存读取器 —— 这个句柄随 ALC 活多久就开多久,而不带共享删除的句柄会挡住整个目录的换名。
+    /// 就地装载时这把安装目录锁到宿主退出:更新报 Access denied,卸载留下删不掉的目录。
+    /// 从影子副本装载后,被锁的是副本 —— 升级与卸载照常完成。
+    /// </summary>
+    [TestMethod]
+    public async Task LeakedInProcessPlugin_LoadedFromShadow_CanStillBeUpgradedAndUninstalled()
+    {
+        const string id = "acme.leaky";
+        string shadowRoot = Path.Combine(Path.GetDirectoryName(_appRoot)!, "plugin-shadow");
+        await using PluginManager manager = new(new()
+        {
+            PluginRoots = [_appRoot, _userRoot],
+            DataRootDirectory = _dataRoot,
+            UserPluginRoot = _userRoot,
+            InstalledShadowRootDirectory = shadowRoot,
+            HostVersion = "1.0.0",
+            CommandsFactory = (_, _) => new RecordingCommands(),
+            DataStore = _dataStore
+        });
+        await manager.StartAsync();
+        await manager.InstallFromVpxAsync(BuildVpx(id, withSymbols: true), allowUntrustedPackage: true);
+        PluginDescriptor first = manager.Plugins.Single(p => p.Id == id);
+        Assert.AreEqual(PluginState.Active, first.State, first.Error);
+        Assert.StartsWith(shadowRoot, first.LoadDirectory!, StringComparison.OrdinalIgnoreCase,
+            "已安装的进程内插件应从影子副本装载。");
+
+        // 模拟泄漏:攥住旧版的 ALC,它就永远不会被 GC 收走。
+        System.Runtime.Loader.AssemblyLoadContext leaked = System.Runtime.Loader.AssemblyLoadContext.All
+            .Single(alc => alc.Name == $"plugin:{id}");
+        // 让插件代码抛一次并格式化堆栈:运行时由此打开并缓存它的 .pdb(就是 RDP 插件锁住安装目录的那条路)。
+        Type entry = leaked.Assemblies.Single().GetType(typeof(TestFixturePlugin).FullName!)!;
+        var probe = (PluginSdk.IVelaPlugin)Activator.CreateInstance(entry)!;
+        ArgumentNullException thrown = await Assert.ThrowsExactlyAsync<ArgumentNullException>(
+            () => probe.ActivateAsync(null!, CancellationToken.None));
+        Assert.Contains(":line", thrown.ToString(), "堆栈应带上行号,即确实读了 .pdb。");
+
+        await manager.InstallFromVpxAsync(BuildVpx(id, version: "2.0.0"), allowUntrustedPackage: true);
+        PluginDescriptor upgraded = manager.Plugins.Single(p => p.Id == id);
+        Assert.AreEqual("2.0.0", upgraded.Manifest!.Version);
+        Assert.AreEqual(PluginState.Active, upgraded.State, upgraded.Error);
+
+        Assert.IsTrue(await manager.UninstallAsync(id));
+        Assert.IsFalse(Directory.Exists(Path.Combine(_userRoot, id)), "旧 ALC 仍活着,安装目录也必须删得掉。");
+        GC.KeepAlive(leaked);
+    }
+
+    /// <summary>
+    /// 旧版目录换名失败(被占用)时,旧版已经从运行时摘下来了 —— 必须原样挂回去,
+    /// 否则插件从管理页与连接页上消失,直到重启宿主。错误信息要说清楚是占用、旧版还在。
+    /// </summary>
+    [TestMethod]
+    public async Task Upgrade_WhenTheInstalledDirectoryIsLocked_KeepsTheOldVersionAttached()
+    {
+        const string id = "acme.locked";
+        await using PluginManager manager = CreateManager(); // 不配影子根:就地装载
+        await manager.StartAsync();
+        await manager.InstallFromVpxAsync(BuildVpx(id), allowUntrustedPackage: true);
+
+        // 用一个不带共享删除的句柄占住目录里的文件 —— 与杀毒软件扫描、.pdb 读取器缓存同一种锁。
+        string target = Path.Combine(_userRoot, id);
+        using (new FileStream(Path.Combine(target, "plugin.json"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            IOException ex = await Assert.ThrowsAsync<IOException>(() =>
+                manager.InstallFromVpxAsync(BuildVpx(id, version: "2.0.0"), allowUntrustedPackage: true));
+            Assert.Contains(id, ex.Message);
+        }
+
+        PluginDescriptor kept = manager.Plugins.Single(p => p.Id == id);
+        Assert.AreEqual("1.0.0", kept.Manifest!.Version, "旧版必须还挂在运行时上。");
+        Assert.AreEqual(PluginState.Active, kept.State, kept.Error);
+        Assert.IsTrue(File.Exists(Path.Combine(target, "plugin.json")), "旧版目录原封不动。");
+        Assert.IsFalse(Directory.Exists(Path.Combine(_userRoot, ".upgrade"))
+                       && Directory.EnumerateFileSystemEntries(Path.Combine(_userRoot, ".upgrade"), "*.owned").Any(),
+            "没挪成的备份不该留下认领标记。");
     }
 
     [TestMethod]

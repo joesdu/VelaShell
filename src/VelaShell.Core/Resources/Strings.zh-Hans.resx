@@ -10478,4 +10478,5 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="PluginMarket_OpenWeb" xml:space="preserve"><value>在网站查看</value></data>
   <data name="PluginMarket_PackageMismatch" xml:space="preserve"><value>下载的包与所选插件或版本不符，已停止安装。</value></data>
   <data name="PluginMarket_IncompatiblePackage" xml:space="preserve"><value>此插件包需要 {0}，请先更新 VelaShell。</value></data>
+  <data name="PluginManager_UpgradeDirectoryLocked" xml:space="preserve"><value>无法替换插件“{0}”的文件:它们仍被其他程序占用({1})。已保留旧版本,仍可继续使用。请关闭正在使用该插件目录的程序(如杀毒扫描、资源管理器)后重试。</value></data>
 </root>

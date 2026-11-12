@@ -10478,4 +10478,5 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="PluginMarket_OpenWeb" xml:space="preserve"><value>在網站查看</value></data>
   <data name="PluginMarket_PackageMismatch" xml:space="preserve"><value>下載的套件與所選外掛或版本不符，已停止安裝。</value></data>
   <data name="PluginMarket_IncompatiblePackage" xml:space="preserve"><value>此外掛套件需要 {0}，請先更新 VelaShell。</value></data>
+  <data name="PluginManager_UpgradeDirectoryLocked" xml:space="preserve"><value>無法取代外掛「{0}」的檔案:它們仍被其他程式佔用({1})。已保留舊版本,仍可繼續使用。請關閉正在使用該外掛目錄的程式(如防毒掃描、檔案總管)後再試一次。</value></data>
 </root>

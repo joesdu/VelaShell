@@ -42,6 +42,10 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     {
         public required PluginDescriptor Descriptor { get; init; }
         public PluginAssemblyLoadContext? LoadContext { get; set; }
+
+        /// <summary>这一次激活所用影子副本的租约;就地装载时为 null。ALC 被回收后才释放(删副本)。</summary>
+        public PluginArtifactLease? ShadowLease { get; set; }
+
         public IVelaPlugin? Instance { get; set; }
         public PluginContext? Context { get; set; }
 
@@ -446,7 +450,21 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
 
             string target = Path.Combine(userRoot, manifest.Id);
             Directory.CreateDirectory(userRoot);
-            string? backup = MoveAsideForUpgrade(userRoot, manifest.Id);
+            string? backup;
+            try
+            {
+                backup = await MoveAsideForUpgradeAsync(userRoot, manifest.Id, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 旧目录没挪动:它原封不动地还在原位,但运行时已经把它摘下来了 —— 必须挂回去,
+                // 否则插件从管理页与连接页上消失,直到重启宿主。
+                if (upgrade && Directory.Exists(target))
+                {
+                    await AttachAsync(target, CancellationToken.None).ConfigureAwait(false);
+                }
+                throw new IOException(Strings.Format("PluginManager_UpgradeDirectoryLocked", manifest.Id, ex.Message), ex);
+            }
             try
             {
                 Directory.Move(staging, target);
@@ -1061,7 +1079,8 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// </summary>
     /// <param name="userRoot">用户插件安装根。</param>
     /// <param name="pluginId">插件 id。</param>
-    private static string? MoveAsideForUpgrade(string userRoot, string pluginId)
+    /// <param name="cancellationToken">取消令牌(只打断重试之间的等待)。</param>
+    private static async Task<string?> MoveAsideForUpgradeAsync(string userRoot, string pluginId, CancellationToken cancellationToken)
     {
         string backupRoot = Path.Combine(userRoot, UpgradeBackupDirectoryName);
         string target = Path.Combine(userRoot, pluginId);
@@ -1072,12 +1091,40 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         Directory.CreateDirectory(backupRoot);
         string backup = Path.Combine(backupRoot, $"{pluginId}-{Guid.CreateVersion7():n}");
         PluginArtifactMaintenance.MarkBackup(backup);
-        Directory.Move(target, backup);
-        return backup;
+        // 换名失败多半是短暂的占用(杀毒软件正在扫刚落盘的 dll、资源管理器开着这个目录),
+        // 或者就地装载的旧 ALC 刚 Unload 还没被回收。逼一轮 GC、稍等片刻再试几次;
+        // 仍不成就把标记收回去并照原样抛出,由调用方把旧版挂回去。
+        try
+        {
+            for (int attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    Directory.Move(target, backup);
+                    return backup;
+                }
+                catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && attempt < UpgradeMoveAttempts)
+                {
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                }
+                await Task.Delay(UpgradeMoveRetryDelay, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            PluginArtifactMaintenance.RemoveBackupMarker(backup);
+            throw;
+        }
     }
 
+    /// <summary>旧版目录换名的重试次数与间隔:合计约两秒,够短暂占用自行退去,又不至于让安装看起来卡死。</summary>
+    private const int UpgradeMoveAttempts = 4;
+
+    private static readonly TimeSpan UpgradeMoveRetryDelay = TimeSpan.FromMilliseconds(500);
+
     /// <summary>删掉换名成功后的备份,顺带收掉空了的备份窝 —— 插件根下不留看不懂的空目录。</summary>
-    /// <param name="backup"><see cref="MoveAsideForUpgrade" /> 给出的备份路径;<see langword="null" /> 时什么都不做。</param>
+    /// <param name="backup"><see cref="MoveAsideForUpgradeAsync" /> 给出的备份路径;<see langword="null" /> 时什么都不做。</param>
     private static void CleanUpgradeBackup(string? backup)
     {
         if (backup is null)
@@ -1104,7 +1151,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// 升级失败后把旧版搬回原位并重新挂上。搬不回去只记一行 —— 这已经是失败路径,
     /// 再抛一个异常只会盖掉用户真正该看到的那个原因。
     /// </summary>
-    /// <param name="backup"><see cref="MoveAsideForUpgrade" /> 给出的备份路径;<see langword="null" /> 表示本次是全新安装。</param>
+    /// <param name="backup"><see cref="MoveAsideForUpgradeAsync" /> 给出的备份路径;<see langword="null" /> 表示本次是全新安装。</param>
     /// <param name="target">插件的正式目录。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     private async Task RestoreUpgradeBackupAsync(string? backup, string target, CancellationToken cancellationToken)
@@ -1339,6 +1386,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
         // 主密码锁着时不在这里等:发现、应用自带插件照常;用户目录里的插件要校验收据,校验那一步自己等解锁(EnsureVerifiedAsync)。
         PluginArtifactMaintenance.Sweep(options.UserPluginRoot, options.DevShadowRootDirectory);
+        PluginArtifactMaintenance.SweepShadows(options.InstalledShadowRootDirectory);
         await EnsureTrustInitializedAsync(cancellationToken, TrustUnlock.DontWait).ConfigureAwait(false);
         Discover();
         List<PluginRuntime> discovered;
@@ -2354,7 +2402,8 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             Strings.Get("Msg_PluginLoading"), DisplayNameOf(descriptor));
         try
         {
-            // 开发期插件先落一份影子副本再装载:否则运行中的插件锁住工程 bin 里的 dll,
+            // 开发期插件与已安装的进程内插件先落一份影子副本再装载:否则运行中的插件锁住工程 bin
+            // 或安装目录里的 dll(插件漏了引用时一锁就是到宿主退出),
             // Windows 上就没法边跑边重编(见 PrepareLoadDirectory)。
             string sourceEntry = Path.GetFullPath(Path.Combine(descriptor.Directory, manifest.Entry));
             if (!File.Exists(sourceEntry))
@@ -2362,7 +2411,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                 throw new FileNotFoundException($"Entry assembly '{manifest.Entry}' not found in plugin directory.");
             }
             descriptor.EntryTimestampUtc = TryGetWriteTimeUtc(sourceEntry);
-            string loadDirectory = PrepareLoadDirectory(descriptor);
+            string loadDirectory = PrepareLoadDirectory(runtime);
             descriptor.LoadDirectory = loadDirectory;
             string entryPath = Path.GetFullPath(Path.Combine(loadDirectory, manifest.Entry));
             if (!File.Exists(entryPath))
@@ -2817,18 +2866,28 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         runtime.Instance = null;
         // 命令能力随上下文释放(占位/真实注册全部注销);置空使重启/回挂重建新实例。
         runtime.CommandsApi = null;
+        // 影子副本跟着 ALC 走:ALC 还没被 GC 收走时副本里的 dll 仍被映射着,删不掉,
+        // 所以交给卸载观察 —— 收走了再删;一直收不走就留到退出 / 下次启动清扫。
+        PluginArtifactLease? shadow = runtime.ShadowLease;
+        runtime.ShadowLease = null;
         if (runtime.LoadContext is { } loadContext)
         {
             runtime.LoadContext = null;
             try
             {
                 loadContext.Unload();
-                ObserveUnload(runtime.Descriptor.Id, new WeakReference(loadContext));
+                ObserveUnload(runtime.Descriptor.Id, new WeakReference(loadContext), shadow);
+                shadow = null;
             }
             catch
             {
                 // 已卸载或不可卸载:忽略。
             }
+        }
+        if (shadow is not null && !_shutdown.IsCancellationRequested)
+        {
+            // 没有 ALC(隔离模式的开发期插件、或激活在建 ALC 之前就失败了):副本没人映射,立即删。
+            ReleaseShadowLease(shadow);
         }
     }
 
@@ -2865,11 +2924,11 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// 没摘干净的界面元素),那份内存在进程结束前都回不来 —— 这一行日志就是排查的起点。
     /// </para>
     /// </summary>
-    private void ObserveUnload(string pluginId, WeakReference loadContext)
+    private void ObserveUnload(string pluginId, WeakReference loadContext, PluginArtifactLease? shadow)
     {
         if (_shutdown.IsCancellationRequested)
         {
-            return; // 退出路径:进程马上就没了,逼 GC 只会拖慢退出。
+            return; // 退出路径:进程马上就没了,逼 GC 只会拖慢退出;副本由 DisposeAsync / 下次启动清扫。
         }
         _ = Task.Run(async () =>
         {
@@ -2886,6 +2945,10 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                     if (!loadContext.IsAlive)
                     {
                         GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+                        if (shadow is not null)
+                        {
+                            ReleaseShadowLease(shadow);
+                        }
                         Log($"Plugin '{pluginId}' unloaded; its assemblies were collected after {attempt} GC pass(es).");
                         UnloadObserved?.Invoke(pluginId, true);
                         return;
@@ -2893,7 +2956,10 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                 }
                 Log($"Plugin '{pluginId}' was deactivated but its load context is still alive after "
                     + $"{UnloadCollectAttempts} GC passes: something still references the plugin's types "
-                    + "(static event, cache, timer or UI element), so its memory cannot be reclaimed until restart.");
+                    + "(static event, cache, timer or UI element), so its memory cannot be reclaimed until restart. "
+                    + (shadow is not null
+                        ? "It was loaded from a shadow copy, so its installation directory stays free for updates and uninstall."
+                        : "Its files stay locked until restart."));
                 UnloadObserved?.Invoke(pluginId, false);
             }
             catch (ObjectDisposedException)
@@ -2910,19 +2976,23 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     // ---- 开发内环:影子拷贝 / 重新加载 / 自动重载 --------------------------------
 
     /// <summary>
-    /// 决定从哪个目录装载。已安装插件就地装载;开发期插件在配置了
-    /// <see cref="PluginManagerOptions.DevShadowRootDirectory" /> 时先整份复制到
-    /// <c>&lt;影子根&gt;/&lt;id&gt;/gen-GUID</c> 再从副本装载。
+    /// 决定从哪个目录装载(见 <see cref="ShadowRootFor" />)。开发期插件在配置了
+    /// <see cref="PluginManagerOptions.DevShadowRootDirectory" /> 时、用户安装的进程内插件在配置了
+    /// <see cref="PluginManagerOptions.InstalledShadowRootDirectory" /> 时,先整份复制到
+    /// <c>&lt;影子根&gt;/&lt;id&gt;/gen-GUID</c> 再从副本装载;其余就地装载。
     /// <para>
     /// 用"新一代目录"而不是"覆盖同一个目录":ALC 的卸载是异步的(要等 GC 真正回收才放句柄),
-    /// 刚停用的那一代很可能还锁着,覆盖必然时灵时不灵。换个代号目录则永远成功,
-    /// 旧代能删则删、删不掉留着下次再清。
+    /// 刚停用的那一代很可能还锁着,覆盖必然时灵时不灵。换个代号目录则永远成功;
+    /// 旧代在它的 ALC 被 GC 收走后删除(见 <see cref="ObserveUnload" />),收不走的留到退出或下次启动清扫。
     /// </para>
     /// <para>拷贝失败绝不阻断激活:退回就地装载(等于影子拷贝引入前的行为)并记一行日志。</para>
     /// </summary>
-    private string PrepareLoadDirectory(PluginDescriptor descriptor)
+    private string PrepareLoadDirectory(PluginRuntime runtime)
     {
-        if (!descriptor.IsDevelopment || options.DevShadowRootDirectory is not { } shadowRoot)
+        PluginDescriptor descriptor = runtime.Descriptor;
+        // 上一次激活的副本若还挂在运行时上(激活失败、ALC 从未建起来),先放掉 —— 一次激活只配一份副本。
+        ReleaseShadowLease(runtime);
+        if (ShadowRootFor(descriptor) is not { } shadowRoot)
         {
             return descriptor.Directory;
         }
@@ -2938,6 +3008,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                     if (_disposed) throw new IOException("The plugin manager is stopping.");
                     _shadowLeases.Add(lease);
                 }
+                runtime.ShadowLease = lease;
                 return lease.Path;
             }
             catch
@@ -2948,9 +3019,49 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            Log($"Could not shadow-copy development plugin '{descriptor.Id}' ({ex.Message}); loading in place.");
+            Log($"Could not shadow-copy plugin '{descriptor.Id}' ({ex.Message}); loading in place.");
             return descriptor.Directory;
         }
+    }
+
+    /// <summary>
+    /// 该插件该从哪个影子根装载;<see langword="null" /> 表示就地装载。
+    /// 开发期插件(任何宿主模式)防的是锁住工程 <c>bin</c>;已安装的进程内插件防的是锁住安装目录 ——
+    /// 隔离插件的句柄在宿主进程之外,进程一杀就放,不需要副本。应用自带插件不随商店更新,也不需要。
+    /// </summary>
+    private string? ShadowRootFor(PluginDescriptor descriptor)
+    {
+        if (descriptor.IsDevelopment)
+        {
+            return options.DevShadowRootDirectory;
+        }
+        return descriptor.Manifest?.HostMode == PluginHostMode.InProcess && IsUserPluginDirectory(descriptor.Directory)
+            ? options.InstalledShadowRootDirectory
+            : null;
+    }
+
+    /// <summary>立即放掉运行时挂着的影子副本(删目录;删不掉时租约文件留给下次启动清扫)。</summary>
+    private void ReleaseShadowLease(PluginRuntime runtime)
+    {
+        if (runtime.ShadowLease is not { } lease)
+        {
+            return;
+        }
+        runtime.ShadowLease = null;
+        ReleaseShadowLease(lease);
+    }
+
+    private void ReleaseShadowLease(PluginArtifactLease lease)
+    {
+        lock (_gate)
+        {
+            // 已在退出路径上:DisposeAsync 会统一处理,这里不再碰集合。
+            if (!_shadowLeases.Remove(lease))
+            {
+                return;
+            }
+        }
+        lease.Dispose();
     }
 
     /// <summary>把插件目录整份复制到目标(递归)。<c>.disabled</c> 标记不带过去。</summary>

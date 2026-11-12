@@ -60,6 +60,7 @@ public class HostRegistrationServiceTests
         Assert.AreEqual(Path.Combine(paths.RootDirectory, HostRegistry.FileName), paths.HostRegistryFile);
         Assert.AreEqual(Path.Combine(paths.RootDirectory, "sonnetdb"), paths.SonnetDbDirectory);
         Assert.AreEqual(Path.Combine(paths.RootDirectory, "dev-shadow"), paths.DevPluginShadowDirectory);
+        Assert.AreEqual(Path.Combine(paths.RootDirectory, "plugin-shadow"), paths.PluginShadowDirectory);
     }
 
     [TestMethod]
