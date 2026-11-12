@@ -600,7 +600,7 @@ public partial class ChatPanelView : UserControl
         bool persisted = false;
         try
         {
-            TopLevel? top = TopLevel.GetTopLevel(this);
+            var top = TopLevel.GetTopLevel(this);
             if (top?.StorageProvider is not { } storage)
             {
                 return;
@@ -2375,12 +2375,17 @@ public partial class ChatPanelView : UserControl
                     // 不切不等于没发生:这次失败仍是健康数据,不记的话下一轮仍会把这个
                     // 刚断流的接入当没试过的端上来。
                     if (selectedKeyId is { } key && TransientFailure.IsApiKeyFailure(ex))
+                    {
                         _health.RecordKeyFailure(key, current.Id, TransientFailure.IsKeyRejected(ex), verifiedVersion, verifiedObservation);
+                    }
                     // 只有供应商侧故障(网络/超时/429/5xx/鉴权)才算健康数据;用户拒绝工具、Agent 暂停、
                     // 400 之类与这条接入的好坏无关,记成失败会让它无辜冷却、被故障转移跳过。
                     else if (TransientFailure.IsWorthSwitching(ex)
                              && ex is not ProviderConfigurationChangedException and not AiSettingsStore.ApiKeySlotChangedException)
+                    {
                         _health.Record(current.Id, false, verifiedVersion, verifiedObservation);
+                    }
+
                     throw;
                 }
                 finally

@@ -36,7 +36,7 @@ public sealed class SubagentOrchestratorTests
             cancellation.Cancel();
             return Task.FromResult(SubagentExecutionResult.FromText("changed"));
         }, cancellation.Token);
-        await using var orchestrator = owner;
+        await using SubagentOrchestrator orchestrator = owner;
         orchestrator.Start("edit", null, allowWrites: true);
         SubagentSnapshot snapshot = orchestrator.Snapshots().Single();
         string result = await orchestrator.WaitAsync(snapshot.SubagentId, 5, CancellationToken.None);
@@ -64,8 +64,8 @@ public sealed class SubagentOrchestratorTests
         await Task.WhenAll(orchestrator.Snapshots().Select(s =>
             orchestrator.WaitAsync(s.SubagentId, 5, CancellationToken.None)));
         Assert.AreEqual(5, models.Count(m => m == "original"));
-        Assert.AreEqual(1, models.Count(m => m == "replacement"));
-        Assert.AreEqual(1, models.Count(m => m == "explicit"));
+        Assert.ContainsSingle(m => m == "replacement", models);
+        Assert.ContainsSingle(m => m == "explicit", models);
         Assert.IsTrue(orchestrator.Snapshots().All(s => s.Status == "completed"));
     }
 
@@ -139,11 +139,10 @@ public sealed class SubagentOrchestratorTests
             CancellationToken.None,
             TimeSpan.FromMilliseconds(30));
 
-        string[] ids = Enumerable.Range(0, 5)
+        string[] ids = [.. Enumerable.Range(0, 5)
             .Select(_ => orchestrator.Start("wait", "timeout")
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries)[2]
-                .TrimEnd('.'))
-            .ToArray();
+                .TrimEnd('.'))];
 
         string[] results = await Task.WhenAll(ids.Select(id => orchestrator.WaitAsync(id, 5, CancellationToken.None)));
 
@@ -162,22 +161,20 @@ public sealed class SubagentOrchestratorTests
             await release.Task.WaitAsync(token);
             return new SubagentExecutionResult("done", [new SubagentToolUsage("read_local_file", 1)], []);
         }, CancellationToken.None);
-        orchestrator.SnapshotsChanged += snapshots => changes.Add(snapshots);
+        orchestrator.SnapshotsChanged += changes.Add;
 
         string started = orchestrator.Start("inspect", "reader");
         string id = started.Split(' ', StringSplitOptions.RemoveEmptyEntries)[2].TrimEnd('.');
         await running.Task;
 
-        Assert.IsTrue(changes.SelectMany(snapshot => snapshot)
-            .Any(snapshot => snapshot.SubagentId == id && snapshot.Status == "running"));
+        Assert.Contains(snapshot => snapshot.SubagentId == id && snapshot.Status == "running", changes.SelectMany(snapshot => snapshot));
 
         release.SetResult();
         await orchestrator.WaitAsync(id, 5, CancellationToken.None);
 
-        Assert.IsTrue(changes.SelectMany(snapshot => snapshot)
-            .Any(snapshot => snapshot.SubagentId == id
+        Assert.Contains(snapshot => snapshot.SubagentId == id
                 && snapshot.Status == "completed"
-                && snapshot.ToolsUsed.Any(tool => tool.Name == "read_local_file")));
+                && snapshot.ToolsUsed.Any(tool => tool.Name == "read_local_file"), changes.SelectMany(snapshot => snapshot));
     }
 
     [TestMethod]
@@ -266,7 +263,7 @@ public sealed class SubagentOrchestratorTests
         orchestrator.Start("inspect", null);
         string id = orchestrator.Snapshots().Single().SubagentId;
 
-        using JsonDocument running = JsonDocument.Parse(await orchestrator.WaitAsync(id, 1, CancellationToken.None));
+        using var running = JsonDocument.Parse(await orchestrator.WaitAsync(id, 1, CancellationToken.None));
 
         Assert.AreEqual("running", running.RootElement.GetProperty("status").GetString());
         Assert.AreEqual("read_local_file · src/app.cs", running.RootElement.GetProperty("activity").GetString());
@@ -324,7 +321,7 @@ public sealed class SubagentOrchestratorTests
         orchestrator.Start("inspect", null);
         string id = orchestrator.Snapshots().Single().SubagentId;
 
-        using JsonDocument result = JsonDocument.Parse(await orchestrator.WaitAsync(id, 10, CancellationToken.None));
+        using var result = JsonDocument.Parse(await orchestrator.WaitAsync(id, 10, CancellationToken.None));
 
         Assert.AreEqual("timed_out", result.RootElement.GetProperty("status").GetString());
         Assert.AreEqual("found two issues so far", result.RootElement.GetProperty("output").GetString());
@@ -345,7 +342,7 @@ public sealed class SubagentOrchestratorTests
 
         Assert.Contains("\"status\":\"timed_out\"", await orchestrator.WaitAsync(ids[0], 5, CancellationToken.None));
         // 请求 1 秒被夹到下限 30 秒:默认那个已经超时,它还在跑
-        using JsonDocument longer = JsonDocument.Parse(await orchestrator.WaitAsync(ids[1], 1, CancellationToken.None));
+        using var longer = JsonDocument.Parse(await orchestrator.WaitAsync(ids[1], 1, CancellationToken.None));
         Assert.AreEqual("running", longer.RootElement.GetProperty("status").GetString());
         Assert.Contains("already finished", orchestrator.Cancel(ids[0]));
         Assert.Contains("Cancellation requested", orchestrator.Cancel(ids[1]));

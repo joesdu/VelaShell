@@ -262,7 +262,7 @@ public sealed class PluginMarketViewModel(PluginManager manager, IPluginMarketCl
         OperationNotice = Strings.Get("PluginMarket_Downloading");
         try
         {
-            path = Infrastructure.Plugins.PluginPackageDownloads.CreatePath(
+            path = PluginPackageDownloads.CreatePath(
                 downloadDirectory ?? new Infrastructure.Persistence.VelaShellStoragePaths().PluginUpdateDirectory);
             await market.DownloadAsync(package.Id, package.Version, path,
                 new Progress<int>(value => { if (!_disposed && ReferenceEquals(_download, request)) DownloadProgress = value; }), request.Token);
@@ -310,7 +310,10 @@ public sealed class PluginMarketViewModel(PluginManager manager, IPluginMarketCl
         foreach (string name in new[] { nameof(HasDetail), nameof(DetailDisplayName), nameof(DetailId), nameof(DetailSummary),
             nameof(ShowDetailPlaceholder), nameof(Description), nameof(VersionText), nameof(SizeText), nameof(AuthorText),
             nameof(LicenseText), nameof(DetailUrl), nameof(Blocker) })
+        {
             this.RaisePropertyChanged(name);
+        }
+
         RefreshInstalledState();
     }
 

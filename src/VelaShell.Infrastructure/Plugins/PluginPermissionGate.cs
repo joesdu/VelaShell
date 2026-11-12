@@ -180,7 +180,11 @@ public sealed class PluginPermissionGate(IAppDataStore? store, IPluginPermission
                 cancellationToken.ThrowIfCancellationRequested();
                 lease.Revocation.ThrowIfCancellationRequested();
                 if (lease.IsRevoked || !_downloads.TryGetValue(pluginId, out HashSet<DownloadPermissionLease>? leases)
-                    || !leases.Contains(lease)) return false;
+                    || !leases.Contains(lease))
+                {
+                    return false;
+                }
+
                 lease.Approved = true;
                 onApproved?.Invoke();
                 return true;
@@ -255,7 +259,11 @@ public sealed class PluginPermissionGate(IAppDataStore? store, IPluginPermission
                 cancellationToken.ThrowIfCancellationRequested();
                 lease.Revocation.ThrowIfCancellationRequested();
                 if (lease.IsRevoked || !_uploads.TryGetValue(pluginId, out HashSet<UploadPermissionLease>? leases)
-                    || !leases.Contains(lease)) return false;
+                    || !leases.Contains(lease))
+                {
+                    return false;
+                }
+
                 lease.Approved = true;
                 onApproved?.Invoke();
                 return true;

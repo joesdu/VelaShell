@@ -2,6 +2,7 @@ using NSubstitute;
 using VelaShell.Core.Models;
 using VelaShell.Core.Notifications;
 using VelaShell.Core.Sftp;
+using VelaShell.Infrastructure.Notifications;
 using VelaShell.Services;
 
 namespace VelaShell.Tests.Services;
@@ -251,7 +252,7 @@ public sealed class RemoteEditDraftsTests
             "/etc/app.conf", "prod-web", Old, profile);
         var quick = new RemoteEditDraft(Path.Combine(_root, "0000000b"), Path.Combine(_root, "0000000b", "app.conf"), "app.conf",
             "/etc/app.conf", "10.0.0.5", Old, ProfileId: null);
-        var emptyProfile = known with { Directory = Path.Combine(_root, "0000000c"), ProfileId = Guid.Empty };
+        RemoteEditDraft emptyProfile = known with { Directory = Path.Combine(_root, "0000000c"), ProfileId = Guid.Empty };
 
         IReadOnlyList<NotificationItem> items = NotificationSources.BuildRemoteEditDraftNotifications([known, quick, emptyProfile]);
 
@@ -260,14 +261,14 @@ public sealed class RemoteEditDraftsTests
         Assert.AreEqual("0000000a", first.Link?.CommandParameter);
         Assert.AreEqual(NotificationSources.OpenRemoteEditDraftsCommandId, first.SecondaryLink?.CommandId);
         Assert.AreEqual("0000000a", first.SecondaryLink?.CommandParameter);
-        Assert.AreEqual(VelaShell.Core.Resources.Strings.Format("Notify_RemoteEditDraftBodyReupload", "app.conf", "prod-web:/etc/app.conf", known.LocalPath),
+        Assert.AreEqual(Core.Resources.Strings.Format("Notify_RemoteEditDraftBodyReupload", "app.conf", "prod-web:/etc/app.conf", known.LocalPath),
             first.Body, "能重传的草稿正文说的是「重新上传」");
         foreach (NotificationItem item in items.Skip(1))
         {
             Assert.AreEqual(NotificationSources.OpenRemoteEditDraftsCommandId, item.Link?.CommandId, item.Id);
             Assert.AreEqual(item.Id[NotificationSources.RemoteEditDraftIdPrefix.Length..], item.Link?.CommandParameter, item.Id);
             Assert.IsNull(item.SecondaryLink, item.Id);
-            Assert.AreEqual(VelaShell.Core.Resources.Strings.Format("Notify_RemoteEditDraftBody", "app.conf",
+            Assert.AreEqual(Core.Resources.Strings.Format("Notify_RemoteEditDraftBody", "app.conf",
                 item == items[1] ? "10.0.0.5:/etc/app.conf" : "prod-web:/etc/app.conf", item == items[1] ? quick.LocalPath : emptyProfile.LocalPath), item.Body);
         }
     }
@@ -281,7 +282,7 @@ public sealed class RemoteEditDraftsTests
     {
         string directory = Copy("00000003", Old, RemoteEditDrafts.Dirty);
         RemoteEditDrafts.Write(directory, new RemoteEditMarker(RemoteEditDrafts.Dirty, "app.conf", "/etc/app.conf", "prod-web", Guid.NewGuid(), 0, default));
-        var center = new VelaShell.Infrastructure.Notifications.NotificationCenter();
+        var center = new NotificationCenter();
         string id = NotificationSources.RemoteEditDraftIdPrefix + "00000003";
         await center.PublishAsync([new NotificationItem
         {

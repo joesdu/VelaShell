@@ -145,7 +145,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsFalse(Find<WrapPanel>(panel, "QueuedBar").IsVisible, "回到输入框了就不该还排着");
                 Assert.IsTrue(Find<Viewbox>(panel, "SendIcon").IsVisible);
                 Assert.IsFalse(Find<Viewbox>(panel, "StopIcon").IsVisible);
-                Assert.AreEqual(new VelaShell.Plugin.Ai.Ui.Loc("en")["Send"],
+                Assert.AreEqual(new Loc("en")["Send"],
                     Avalonia.Automation.AutomationProperties.GetName(stop));
                 Assert.HasCount(1, stub.Requests, "停掉之后不许再自动发一次");
             }

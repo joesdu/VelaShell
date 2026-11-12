@@ -6,7 +6,6 @@ using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
 using VelaShell.Infrastructure.Plugins.Protocols;
 using VelaShell.PluginSdk.Protocols;
-using VelaShell.PluginSdk.RemoteFs;
 using VelaShell.PluginSdk.Workspaces;
 using VelaShell.Terminal;
 using VelaShell.ViewModels;

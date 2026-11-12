@@ -726,10 +726,10 @@ public sealed class FileTransferJobRegistryTests
 
             await using var plan = new McpToolHost(context, new McpServerSettings
             { Mode = ChatMode.Plan, AutoApproveUploads = true, AutoApproveDownloads = true });
-            Assert.IsFalse(plan.Tools.Any(t => t.Name is "upload_local_file" or "download_remote_file"));
+            Assert.DoesNotContain(t => t.Name is "upload_local_file" or "download_remote_file", plan.Tools);
             await using var disabled = new McpToolHost(context, new McpServerSettings
             { Mode = ChatMode.Agent, AutoApproveUploads = true, DisabledTools = "upload_local_file" });
-            Assert.IsFalse(disabled.Tools.Any(t => t.Name == "upload_local_file"));
+            Assert.DoesNotContain(t => t.Name == "upload_local_file", disabled.Tools);
         }
         finally { File.Delete(source); }
     }
@@ -1400,14 +1400,14 @@ public sealed class FileTransferJobRegistryTests
                 await UploadAsync(toolbox, run, session, local, "/tmp/b");
                 using var barrier = new Barrier(2);
                 // 停止那条路要先经线程池跑停止回调、再发撤回,比点一下「批准」慢:批准逐轮往后错开 0 – 0.5 ms,两种先后都撞得到。
-                TimeSpan lag = TimeSpan.FromMilliseconds(0.5 * i / rounds);
+                var lag = TimeSpan.FromMilliseconds(0.5 * i / rounds);
                 Task<bool> approve = Task.Run(() =>
                 {
                     barrier.SignalAndWait();
                     for (var clock = System.Diagnostics.Stopwatch.StartNew(); clock.Elapsed < lag;) Thread.SpinWait(20);
                     return host.Approve("t1");
                 });
-                Task stopping = Task.Run(async () => { barrier.SignalAndWait(); await stop.CancelAsync(); });
+                var stopping = Task.Run(async () => { barrier.SignalAndWait(); await stop.CancelAsync(); });
                 await Task.WhenAll(approve, stopping);
 
                 await WaitUntilAsync(() => host.State("t2") == RemoteTransferState.Cancelled);

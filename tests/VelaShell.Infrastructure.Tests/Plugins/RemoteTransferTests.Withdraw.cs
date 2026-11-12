@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using NSubstitute;
 using VelaShell.Core.Models;
-using VelaShell.Core.Sftp;
 using VelaShell.Infrastructure.Plugins;
 using VelaShell.Infrastructure.Plugins.Capabilities;
 using VelaShell.Infrastructure.Plugins.Isolated;
@@ -108,7 +107,7 @@ public sealed partial class RemoteTransferTests
             RemoteTransferSnapshot done = await Terminal(api, start.TransferId);
             Assert.AreEqual(RemoteTransferState.Succeeded, done.State, done.ErrorMessage);
             Assert.IsFalse(done.CancellationRequested);
-            if (download) CollectionAssert.AreEqual(content, await File.ReadAllBytesAsync(target));
+            if (download) Assert.AreSequenceEqual(content, await File.ReadAllBytesAsync(target));
             else await _sftp.Received(1).CommitUploadAsync(_session, Arg.Any<string>(), "/approved", false, Arg.Any<CancellationToken>());
             Assert.AreEqual(RemoteTransferWithdrawOutcome.PastApproval,
                 (await api.WithdrawPendingTransferAsync(start.TransferId, done.Generation)).Outcome, "批准之后已到终态的也是 PastApproval");
@@ -372,7 +371,7 @@ public sealed partial class RemoteTransferTests
                     : await api.StartUploadAsync(_session.ToString(), file, destination, new() { OperationId = $"race-{i}" });
                 Shown shown = await prompts.NextAsync();
                 using var barrier = new Barrier(2);
-                Task approve = Task.Run(() =>
+                var approve = Task.Run(() =>
                 {
                     barrier.SignalAndWait();
                     shown.Decision.TrySetResult(PluginPermissionDecision.AllowOnce);
@@ -449,8 +448,8 @@ public sealed partial class RemoteTransferTests
         RemoteTransferWithdrawResult unknown = await proxy.WithdrawPendingTransferAsync("future", 1);
         Assert.AreEqual((RemoteTransferWithdrawOutcome)42, unknown.Outcome);
         Assert.IsFalse(unknown.IsWithdrawn, "不认识的结论不算撤下");
-        Assert.IsTrue(methods.Contains(PluginRpc.FsTransferWithdraw));
-        Assert.IsFalse(methods.Contains(PluginRpc.FsTransferCancel), "条件撤回不改发无条件取消");
+        Assert.Contains(PluginRpc.FsTransferWithdraw, methods);
+        Assert.DoesNotContain(PluginRpc.FsTransferCancel, methods, "条件撤回不改发无条件取消");
         await fake.DidNotReceive().CancelTransferAsync(Arg.Any<string>(), Arg.Any<long>(), Arg.Any<CancellationToken>());
     }
 

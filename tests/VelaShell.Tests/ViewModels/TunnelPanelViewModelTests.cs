@@ -928,8 +928,8 @@ public class TunnelPanelViewModelTests
         Assert.AreEqual(Strings.Get("Tunnel_LocalSocketPathNotAbsolute"), _vm.LocalSocketPathError);
         Assert.IsFalse(_vm.IsFormValid);
         _vm.NewLocalSocketPath = Path.Combine(Path.GetTempPath(), new string('a', 200) + ".sock");
-        StringAssert.StartsWith(_vm.LocalSocketPathError, Strings.Format("Tunnel_LocalSocketPathTooLong",
-            System.Text.Encoding.UTF8.GetByteCount(_vm.NewLocalSocketPath), TunnelPanelViewModel.MaxLocalSocketPathBytes));
+        Assert.StartsWith(Strings.Format("Tunnel_LocalSocketPathTooLong",
+            System.Text.Encoding.UTF8.GetByteCount(_vm.NewLocalSocketPath), TunnelPanelViewModel.MaxLocalSocketPathBytes), _vm.LocalSocketPathError);
         _vm.NewLocalSocketPath = LocalSocket;
         Assert.IsNull(_vm.LocalSocketPathError);
         Assert.IsFalse(_vm.IsLocalPortEditable);
@@ -1121,8 +1121,8 @@ public class TunnelPanelViewModelTests
         _vm.RefreshTraffic();
 
         _workflowService.Received(1).RefreshStatistics();
-        CollectionAssert.Contains(changed, nameof(TunnelItemViewModel.TrafficText));
-        CollectionAssert.Contains(changed, nameof(TunnelItemViewModel.ConnectionRows));
+        Assert.Contains(nameof(TunnelItemViewModel.TrafficText), changed);
+        Assert.Contains(nameof(TunnelItemViewModel.ConnectionRows), changed);
         Assert.AreEqual("↑ 2.0 KB/s  ↓ 0 B/s", item.TrafficText);
     }
 

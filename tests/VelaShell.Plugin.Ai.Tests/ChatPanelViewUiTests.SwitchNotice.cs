@@ -50,7 +50,7 @@ public sealed partial class ChatPanelViewUiTests
                 string reason = loc.F("SwitchReasonWithStatus", loc["SwitchReasonRateLimit"], 429);
                 Assert.AreSequenceEqual(
                     [loc.F("SwitchNoticeTo", "beta·m"), loc.F("SwitchNoticeHop", "alpha·m", reason), loc["SwitchNoticeSticky"]],
-                    SwitchLines(messages).ToArray());
+                    [.. SwitchLines(messages)]);
                 Assert.AreEqual(second.Models[0].Id, (await new AiSettingsStore(context).LoadAsync()).ActiveModelId, "粘住了,卡上那句「之后也发到这里」才成立");
 
                 int before = backup.Requests.Count;
@@ -116,9 +116,9 @@ public sealed partial class ChatPanelViewUiTests
                     loc.F("SwitchNoticeHop", KeyOf(1, "1111"), loc.F("SwitchReasonWithStatus", loc["SwitchReasonAuth"], 401))
                 ];
                 if (!balanced) expected.Add(loc["SwitchNoticeSticky"]);
-                Assert.AreSequenceEqual(expected.ToArray(), SwitchLines(messages).ToArray());
-                Assert.IsFalse(SwitchLines(messages).Any(line => line.Contains("key-a-1111", StringComparison.Ordinal)
-                    || line.Contains("key-b-2222", StringComparison.Ordinal)), "只露末四位");
+                Assert.AreSequenceEqual([.. expected], [.. SwitchLines(messages)]);
+                Assert.DoesNotContain(line => line.Contains("key-a-1111", StringComparison.Ordinal)
+                    || line.Contains("key-b-2222", StringComparison.Ordinal), SwitchLines(messages), "只露末四位");
                 Assert.AreEqual("Bearer key-b-2222", endpoint.Requests[^1].Auth);
             }
             finally { panel.Detach(); window.Close(); }
@@ -166,7 +166,7 @@ public sealed partial class ChatPanelViewUiTests
                     loc.F("SwitchNoticeHop", "chain·m-d", server),
                     loc.F("SwitchNoticeHop", "chain·m-e", server),
                     loc["SwitchNoticeSticky"]
-                ], SwitchLines(messages).ToArray());
+                ], [.. SwitchLines(messages)]);
             }
             finally { panel.Detach(); window.Close(); }
         });
@@ -209,7 +209,7 @@ public sealed partial class ChatPanelViewUiTests
                 await (Task)typeof(ChatPanelView).GetMethod("LoadConversationAsync", SwitchFlags)!.Invoke(panel, [saved])!;
                 messages = Find<StackPanel>(panel, "MessagesPanel");
                 Assert.HasCount(1, SwitchCards(messages), "重开会话后卡片还在");
-                Assert.AreSequenceEqual(live, SwitchLines(messages).ToArray(), "恢复出来的与当时那张一字不差");
+                Assert.AreSequenceEqual(live, [.. SwitchLines(messages)], "恢复出来的与当时那张一字不差");
                 foreach (ChatMessage message in PanelHistory(panel)) AssertNoNotice(message.Text, loc);
 
                 panel.SendExternal("after reload");
@@ -262,7 +262,7 @@ public sealed partial class ChatPanelViewUiTests
                 [
                     loc.F("SwitchNoticeTo", "beta·m"),
                     loc.F("SwitchNoticeHop", "alpha·m", loc.F("SwitchReasonWithStatus", loc["SwitchReasonAuth"], 401))
-                ], SwitchLines(messages).ToArray());
+                ], [.. SwitchLines(messages)]);
                 Assert.AreEqual(first.Models[0].Id, (await new AiSettingsStore(context).LoadAsync()).ActiveModelId, "没答完,退回原站");
             }
             finally { panel.Detach(); window.Close(); }

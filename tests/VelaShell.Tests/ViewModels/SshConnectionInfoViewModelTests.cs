@@ -202,9 +202,9 @@ public sealed class SshConnectionInfoViewModelTests
             Assert.AreEqual(Strings.Get("SshInfo_Refresh"), Avalonia.Automation.AutomationProperties.GetName(refresh));
             Assert.IsTrue(copy.IsEffectivelyEnabled);
             string[] texts = [.. window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? string.Empty)];
-            CollectionAssert.Contains(texts, Strings.Get("SshInfo_SecPeer"));
-            CollectionAssert.Contains(texts, Strings.Format("SshInfo_SecChannels", 2));
-            CollectionAssert.Contains(texts, Strings.Get("SshInfo_SecRoute"));
+            Assert.Contains(Strings.Get("SshInfo_SecPeer"), texts);
+            Assert.Contains(Strings.Format("SshInfo_SecChannels", 2), texts);
+            Assert.Contains(Strings.Get("SshInfo_SecRoute"), texts);
         }
         finally
         {

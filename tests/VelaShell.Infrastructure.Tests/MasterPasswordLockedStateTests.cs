@@ -10,6 +10,7 @@ using VelaShell.Infrastructure.Persistence;
 using VelaShell.Infrastructure.Plugins.Capabilities;
 using VelaShell.Infrastructure.Sync;
 using VelaShell.PluginSdk;
+using VelaShell.PluginSdk.Secrets;
 using VelaShell.PluginSdk.Testing;
 using static VelaShell.Infrastructure.Tests.MasterPasswordTestKit;
 using SecretsLockedException = VelaShell.Core.Data.SecretsLockedException;
@@ -421,7 +422,7 @@ public sealed class MasterPasswordLockedStateTests : IDisposable
         inner.Values["token"] = "saved";
         IMasterPasswordGate gate = Substitute.For<IMasterPasswordGate>();
         gate.EnsureUnlockedAsync(true, Arg.Any<CancellationToken>()).Returns(false);
-        var secrets = MasterPasswordGatedSecrets.Wrap(inner, gate);
+        ISecretsApi secrets = MasterPasswordGatedSecrets.Wrap(inner, gate);
 
         await Assert.ThrowsExactlyAsync<PluginPermissionDeniedException>(() => secrets.GetAsync("token"),
             "取消了解锁:不交回 null(插件会以为不存在、让用户重填覆盖旧值)");

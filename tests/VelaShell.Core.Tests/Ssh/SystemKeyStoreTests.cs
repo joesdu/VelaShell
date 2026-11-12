@@ -75,8 +75,8 @@ public sealed class SystemKeyStoreTests
         Assert.IsFalse(found.Reference.MachineKey);
         Assert.AreEqual("ecdsa-sha2-nistp256", found.KeyType);
         Assert.AreEqual(256, found.KeyBits);
-        StringAssert.StartsWith(found.Reference.PublicKey, "ecdsa-sha2-nistp256 ");
-        Assert.AreEqual(key.PublicKeyBlob, Convert.ToBase64String(VelaShell.Ssh.HostKeys.SshPublicKey.Parse(found.Reference.PublicKey!).Blob.Span));
+        Assert.StartsWith("ecdsa-sha2-nistp256 ", found.Reference.PublicKey);
+        Assert.AreEqual(key.PublicKeyBlob, Convert.ToBase64String(VelaShell.Ssh.HostKeys.SshPublicKey.Parse(found.Reference.PublicKey).Blob.Span));
     }
 
     /// <summary>
@@ -84,7 +84,7 @@ public sealed class SystemKeyStoreTests
     /// 钥是不可导出的 —— 能登上就说明签名是密钥库做的,而不是把私钥读进了本进程。
     /// </summary>
     [TestMethod]
-    [Timeout(60_000)]
+    [Timeout(60_000, CooperativeCancellation = true)]
     public async Task 用密钥库里的钥登得上()
     {
         if (!WindowsOrSkip())
@@ -110,7 +110,7 @@ public sealed class SystemKeyStoreTests
     /// 配了证书:出示的是 CA 给这把钥签的用户证书(服务端只认证书 blob,不认那把裸公钥),签名照旧由密钥库做。
     /// </summary>
     [TestMethod]
-    [Timeout(60_000)]
+    [Timeout(60_000, CooperativeCancellation = true)]
     public async Task 配了证书时出示证书登录()
     {
         if (!WindowsOrSkip())
@@ -145,7 +145,7 @@ public sealed class SystemKeyStoreTests
 
     /// <summary>证书签的不是这把钥:建连之前就如实说「证书与钥不是一对」,不去连服务器(而不是换来一句笼统的 publickey 被拒)。</summary>
     [TestMethod]
-    [Timeout(60_000)]
+    [Timeout(60_000, CooperativeCancellation = true)]
     public async Task 证书与密钥库里的钥不是一对时如实说()
     {
         if (!WindowsOrSkip())
@@ -179,7 +179,7 @@ public sealed class SystemKeyStoreTests
     /// 用不着问人的钥照样登得上;要 PIN / 确认的钥打开或签名时直接失败,而不是一台一个系统框。
     /// </summary>
     [TestMethod]
-    [Timeout(60_000)]
+    [Timeout(60_000, CooperativeCancellation = true)]
     public async Task 巡检以不弹框的方式打开密钥库里的钥_用不着问人的照样登得上()
     {
         SystemKeyReference reference = new() { Provider = SystemKeyReference.SoftwareProvider, KeyName = "k", MachineKey = true };
@@ -207,7 +207,7 @@ public sealed class SystemKeyStoreTests
 
     /// <summary>引用的钥在这台电脑上不在(别的电脑上建的、卡没插):如实说「打不开系统密钥库里的这把钥」,不去连服务器。</summary>
     [TestMethod]
-    [Timeout(60_000)]
+    [Timeout(60_000, CooperativeCancellation = true)]
     public async Task 钥不在时如实说打不开()
     {
         if (!WindowsOrSkip())

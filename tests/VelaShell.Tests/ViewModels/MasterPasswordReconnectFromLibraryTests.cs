@@ -162,7 +162,7 @@ public sealed class MasterPasswordReconnectFromLibraryTests
         foreach (ProtocolConnectRequest request in requests)
         {
             Assert.IsFalse(StoredSecret.IsUnreadable(request.Password));
-            Assert.IsFalse(request.Settings.Values.Any(StoredSecret.IsUnreadable), "交给插件的设置里从来没有密文");
+            Assert.DoesNotContain(StoredSecret.IsUnreadable, request.Settings.Values, "交给插件的设置里从来没有密文");
         }
     }
 

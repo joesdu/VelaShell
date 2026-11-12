@@ -24,6 +24,10 @@ public sealed class GistSyncLayoutTemplatesTests
 {
     private const string SyncFile = "velashell-sync.json";
     private static readonly DateTimeOffset Now = new(2026, 10, 25, 12, 0, 0, TimeSpan.Zero);
+    private static readonly JsonSerializerOptions CamelCaseJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
 
     private sealed class MemoryStore : IAppDataStore
     {
@@ -343,7 +347,7 @@ public sealed class GistSyncLayoutTemplatesTests
     /// </summary>
     private sealed class FakeGistApi : HttpMessageHandler
     {
-        public Dictionary<string, string> Files { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, string> Files { get; } = [with(StringComparer.Ordinal)];
 
         public int Revision { get; set; } = 1;
 
@@ -356,7 +360,7 @@ public sealed class GistSyncLayoutTemplatesTests
         {
             if (request.Method == HttpMethod.Patch)
             {
-                using JsonDocument body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
                 var written = new List<string>();
                 foreach (JsonProperty file in body.RootElement.GetProperty("files").EnumerateObject())
                 {
@@ -466,7 +470,7 @@ public sealed class GistSyncLayoutTemplatesTests
     {
         SyncSettings stored = JsonSerializer.Deserialize<SyncSettings>(
             """{"enabled":true,"syncAppSettings":true,"syncProfiles":true,"syncSnippets":false}""",
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!;
+            CamelCaseJsonOptions)!;
 
         Assert.IsTrue(stored.SyncLayoutTemplates, "与其余同步范围一样默认开;旧配置里没有这个字段");
     }

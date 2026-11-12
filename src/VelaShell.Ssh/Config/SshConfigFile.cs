@@ -251,7 +251,6 @@ public static partial class SshConfigFile
         return new SshConfigMatchCriteria(conditions);
     }
 
-
     /// <summary><c>Include</c> 的最大嵌套深度。</summary>
     /// <remarks>
     /// 与 OpenSSH 一致。环检测已经挡住了「互相 include」，

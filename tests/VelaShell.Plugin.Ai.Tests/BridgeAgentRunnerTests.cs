@@ -311,7 +311,7 @@ public sealed class BridgeAgentRunnerTests
         Assert.AreEqual("first done", firstResult.Text);
         Assert.AreEqual("second done", secondTurn.Text);
         Assert.HasCount(1, askedFirst, "第一个聊天的 MCP 调用要在第一个聊天自己这里问一次");
-        StringAssert.StartsWith(askedFirst[0].Kind, "mcp:vela");
+        Assert.StartsWith("mcp:vela", askedFirst[0].Kind);
         Assert.HasCount(secondApproval == ApprovalMode.Ask ? 1 : 0, askedSecond,
             "第二个聊天只为自己的那次调用被问(全部自动时一次都不问)");
 

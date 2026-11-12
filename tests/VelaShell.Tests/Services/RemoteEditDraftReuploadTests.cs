@@ -1,5 +1,4 @@
 using VelaShell.Core.Models;
-using VelaShell.Core.Notifications;
 using VelaShell.Infrastructure.Notifications;
 using VelaShell.Services;
 
@@ -208,7 +207,7 @@ public sealed class RemoteEditDraftReuploadTests
         RemoteEditDraftReuploadOutcome outcome = await Reuploader(new FakeTarget(), []).ReuploadAsync(Key);
 
         Assert.AreEqual(RemoteEditDraftReuploadResult.DraftGone, outcome.Result);
-        Assert.AreEqual(VelaShell.Core.Resources.Strings.Get("RemoteEditDraft_Gone"), outcome.Message);
+        Assert.AreEqual(Core.Resources.Strings.Get("RemoteEditDraft_Gone"), outcome.Message);
         Assert.IsFalse(MessageStillThere);
         Assert.AreEqual(RemoteEditDraftReuploadResult.DraftGone, (await Reuploader(new FakeTarget(), []).ReuploadAsync("../x")).Result);
     }
@@ -306,7 +305,7 @@ public sealed class RemoteEditDraftReuploadTests
         };
 
     private Task<SessionProfile?> FindProfile(Guid id) =>
-        Task.FromResult<SessionProfile?>(id == _profileId ? new SessionProfile { Id = _profileId, Name = "prod-web", Host = "10.0.0.5" } : null);
+        Task.FromResult(id == _profileId ? new SessionProfile { Id = _profileId, Name = "prod-web", Host = "10.0.0.5" } : null);
 
     private void WriteDraft(long? remoteLength, DateTime? remoteModified, bool profile = true) =>
         WriteDraft(remoteLength, remoteModified, profile ? _profileId : null);
@@ -319,7 +318,7 @@ public sealed class RemoteEditDraftReuploadTests
             remoteLength, remoteModified));
     }
 
-    private static string Format(string key, params object?[] args) => VelaShell.Core.Resources.Strings.Format(key, args);
+    private static string Format(string key, params object?[] args) => Core.Resources.Strings.Format(key, args);
 
     private static RemoteFileInfo Remote(long size, DateTime modifiedUtc, bool isDirectory = false) => new()
     {

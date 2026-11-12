@@ -113,7 +113,7 @@ public sealed class RemoteEditDraftReuploader
     private readonly Func<SessionProfile, Task<IRemoteEditDraftTarget?>> _connect;
     private readonly Func<string, string, string, Task<bool>>? _confirm;
     private readonly Func<Guid, Task<SessionProfile?>> _findProfile;
-    private readonly HashSet<string> _inFlight = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _inFlight = [with(StringComparer.Ordinal)];
     private readonly Func<IReadOnlyCollection<string>> _activeDirectories;
     private readonly INotificationCenter? _notifications;
     private readonly string _root;

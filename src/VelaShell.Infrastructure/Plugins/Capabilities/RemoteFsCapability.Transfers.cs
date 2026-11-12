@@ -78,7 +78,7 @@ internal sealed partial class RemoteFsCapability
         internal bool _approvalEffective;
 
         /// <summary>
-        /// 批准生效之前、收尾之前登记过取消意图(条件撤回,或批准前的 <see cref="RemoteFsCapability.CancelTransferAsync" />)。
+        /// 批准生效之前、收尾之前登记过取消意图(条件撤回,或批准前的 <see cref="CancelTransferAsync" />)。
         /// 由 <see cref="_gate" /> 保护。与 <see cref="_approvalEffective" /> 互斥:登记它时一并登记取消意图,批准随后就推进不了。
         /// </summary>
         internal bool _cancelledBeforeApproval;

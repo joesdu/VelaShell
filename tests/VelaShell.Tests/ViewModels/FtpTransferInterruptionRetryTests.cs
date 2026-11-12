@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using Avalonia.Headless;
 using VelaShell.Core.Ftp;
 using VelaShell.Core.Models;
-using VelaShell.Core.Sftp;
 using VelaShell.Infrastructure.Ftp;
 using VelaShell.Infrastructure.Tests.Ftp;
 using VelaShell.Tests.TestSupport;

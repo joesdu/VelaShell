@@ -75,7 +75,7 @@ public class RemoteRelayCommitTests
         Assert.IsTrue(await RemoteRelay.TryCopyFileWithRemoteCommitAsync(source, SourceSession, SourcePath, target, TargetSession, TargetPath, progress));
         Assert.IsTrue(committed);
         Assert.IsNotNull(uploadedPath);
-        StringAssert.StartsWith(uploadedPath, "/destination/.vela-relay-");
+        Assert.StartsWith("/destination/.vela-relay-", uploadedPath);
         Assert.AreNotEqual(TargetPath, uploadedPath);
         Assert.HasCount(1, progress.Items.Where(p => p.Percentage >= 100).ToList());
         await target.DidNotReceiveWithAnyArgs().DeleteAsync(default, null!);
@@ -280,9 +280,9 @@ public class RemoteRelayCommitTests
     public async Task DefiniteCommitRefusal_PreservesErrorAndCleansTemporary()
     {
         (ISftpService source, ISftpService target) = Services(new TrackingStream(new byte[4]), 4);
-        var refusal = new VelaShell.Core.Ssh.VelaSftpPermissionDeniedException("rename denied");
+        var refusal = new Core.Ssh.VelaSftpPermissionDeniedException("rename denied");
         target.CommitUploadAsync(default, null!, null!, false).ReturnsForAnyArgs(Task.FromException(refusal));
-        Exception actual = await Assert.ThrowsExactlyAsync<VelaShell.Core.Ssh.VelaSftpPermissionDeniedException>(() =>
+        Exception actual = await Assert.ThrowsExactlyAsync<Core.Ssh.VelaSftpPermissionDeniedException>(() =>
             RemoteRelay.TryCopyFileWithRemoteCommitAsync(source, SourceSession, SourcePath, target, TargetSession, TargetPath));
         Assert.AreSame(refusal, actual);
         await target.Received(1).DeleteAsync(TargetSession, Arg.Is<string>(p => p.StartsWith("/destination/.vela-relay-")),

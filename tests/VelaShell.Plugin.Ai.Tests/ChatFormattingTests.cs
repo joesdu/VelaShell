@@ -1,5 +1,6 @@
 using System.ClientModel;
 using System.ClientModel.Primitives;
+using Anthropic.Exceptions;
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.Plugin.Ai.Ui;
@@ -209,13 +210,13 @@ public sealed class TransientFailureTests
     [DataRow(null, false, TransientFailure.SwitchOther)]
     public void AnthropicInStreamErrorsAreJudgedByType(string? type, bool transient, string reason)
     {
-        var error = Sse(type);
+        AnthropicSseException error = Sse(type);
         Assert.AreEqual(transient, TransientFailure.IsTransient(error));
         Assert.AreEqual(transient, TransientFailure.IsWorthSwitching(error));
         Assert.AreEqual((reason, 0), TransientFailure.SwitchReason(error));
     }
 
-    private static Anthropic.Exceptions.AnthropicSseException Sse(string? type) => new("stream error", null)
+    private static AnthropicSseException Sse(string? type) => new("stream error", null)
     {
         Body = System.Text.Json.JsonSerializer.SerializeToElement(new { type = "error", error = new { type } })
     };
@@ -270,7 +271,7 @@ public sealed class TransientFailureTests
 
         // 码为 0(网络层失败被它包了进来):真实原因在 InnerException 那层,要走得到
         Assert.IsTrue(TransientFailure.IsTransient(
-            new Anthropic.Exceptions.AnthropicApiException("wrapped", new HttpRequestException("offline"))
+            new AnthropicApiException("wrapped", new HttpRequestException("offline"))
             {
                 StatusCode = 0,
                 ResponseBody = ""
@@ -278,7 +279,7 @@ public sealed class TransientFailureTests
     }
 
     /// <summary>造一个 Anthropic SDK 形态的异常(状态码用对象初始化器摆上)。</summary>
-    private static Anthropic.Exceptions.AnthropicApiException Api(int status)
+    private static AnthropicApiException Api(int status)
         => new("api error", new HttpRequestException("inner"))
         {
             StatusCode = (System.Net.HttpStatusCode)status,
@@ -388,9 +389,9 @@ public sealed class TransientFailureTests
     {
         var inner = new HttpRequestException("auth", null, System.Net.HttpStatusCode.Unauthorized);
         Assert.IsFalse(TransientFailure.IsApiKeyFailure(new HttpRequestException("parameters", inner, System.Net.HttpStatusCode.BadRequest)));
-        Assert.IsFalse(TransientFailure.IsApiKeyFailure(new Anthropic.Exceptions.AnthropicApiException("model", inner)
+        Assert.IsFalse(TransientFailure.IsApiKeyFailure(new AnthropicApiException("model", inner)
         { StatusCode = System.Net.HttpStatusCode.NotFound, ResponseBody = "" }));
-        Assert.IsTrue(TransientFailure.IsApiKeyFailure(new Anthropic.Exceptions.AnthropicApiException("transport", inner)
+        Assert.IsTrue(TransientFailure.IsApiKeyFailure(new AnthropicApiException("transport", inner)
         { StatusCode = 0, ResponseBody = "" }));
         Assert.IsFalse(TransientFailure.IsApiKeyFailure(new HttpRequestException("offline")));
         Assert.IsFalse(TransientFailure.IsApiKeyFailure(new TimeoutException()));

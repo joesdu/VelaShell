@@ -1,4 +1,5 @@
 using ReactiveUI.Primitives;
+using VelaShell.Core.Models;
 using VelaShell.Infrastructure.Plugins.Protocols;
 using VelaShell.PluginSdk.Protocols;
 using VelaShell.PluginSdk.Workspaces;
@@ -47,7 +48,7 @@ public sealed class ConnectionProfilePluginPagesTests
             PluginFormRow[] groups = [.. vm.PluginFieldRows.Where(row => !row.IsField)];
             Assert.HasCount(2, groups, "The same group key on different pages must stay separate.");
             Assert.HasCount(2, groups[0].Group!.Children, "Hidden fields must not enter the tree.");
-            Assert.IsTrue(vm.PluginFieldRows.Any(row => row.Field?.Key == "folders"), "Non-Boolean fields retain their editor.");
+            Assert.Contains(row => row.Field?.Key == "folders", vm.PluginFieldRows, "Non-Boolean fields retain their editor.");
             Assert.IsTrue(groups.All(row => !row.IsGroupVisible));
 
             vm.SelectPluginPageCommand.Execute(DatabasePage).Subscribe();
@@ -58,7 +59,7 @@ public sealed class ConnectionProfilePluginPagesTests
             Assert.AreEqual("1/2", drives.SelectionCount);
             Assert.IsFalse(drives.IsExpanded);
             await drives.ToggleCommand.Execute().FirstAsync();
-            Assert.AreEqual(true, drives.IsChecked, "Clicking a partial selection must select all.");
+            Assert.IsTrue(drives.IsChecked, "Clicking a partial selection must select all.");
             Assert.AreEqual("true", Row(vm, "drive:D").Text);
 
             Row(vm, "showSecond").Toggle = false;
@@ -76,7 +77,7 @@ public sealed class ConnectionProfilePluginPagesTests
             Assert.IsTrue(drives.IsExpanded);
             Assert.IsNull(drives.IsChecked);
 
-            var saved = await vm.SaveCommand.Execute().FirstAsync();
+            SessionProfile? saved = await vm.SaveCommand.Execute().FirstAsync();
             Assert.IsNotNull(saved?.PluginSettings);
             Assert.AreEqual("false", saved.PluginSettings["drive:C"]);
             Assert.AreEqual("true", saved.PluginSettings["drive:D"]);
@@ -103,15 +104,15 @@ public sealed class ConnectionProfilePluginPagesTests
     [TestMethod]
     public void SelectionGroups_IgnoreBlankKeys_UseOrdinalKeys_AndDetachObservers()
     {
-        PluginProtocolFieldViewModel Field(string key, string group, string label) => new(new()
+        static PluginProtocolFieldViewModel Field(string key, string group, string label) => new(new()
         {
             Key = key,
             Label = key,
             Kind = ProtocolSettingKind.Boolean,
             SelectionGroup = new(group, label)
         }, "false");
-        var first = Field("one", "devices", "First label");
-        var second = Field("two", "devices", "Ignored label");
+        PluginProtocolFieldViewModel first = Field("one", "devices", "First label");
+        PluginProtocolFieldViewModel second = Field("two", "devices", "Ignored label");
         IReadOnlyList<PluginFormRow> rows = PluginFormRow.Build([first, second, Field("three", "Devices", "Other"), Field("four", " ", "Blank")]);
         Assert.HasCount(3, rows);
         Assert.AreEqual("First label", rows[0].Group!.Label);
@@ -120,7 +121,7 @@ public sealed class ConnectionProfilePluginPagesTests
         int notifications = 0;
         rows[0].Group!.PropertyChanged += (_, _) => notifications++;
         first.Toggle = true;
-        Assert.IsTrue(notifications > 0);
+        Assert.IsGreaterThan(0, notifications);
         foreach (PluginFormRow row in rows) { row.Dispose(); }
         notifications = 0;
         second.Toggle = true;

@@ -111,7 +111,7 @@ public sealed class PluginTerminalReconnectProfileTests
         Assert.AreEqual("crlf", _terminal.Requests[^1].GetString("enterMode"));
         Assert.AreEqual("typed-now", _terminal.Requests[^1].Password);
         string notice = Strings.Format("Msg_ReconnectProfileDeleted", "switch-01");
-        Assert.AreEqual(1, vm.Toasts.Toasts.Count(t => t.Message == notice));
+        Assert.ContainsSingle(t => t.Message == notice, vm.Toasts.Toasts);
         Assert.IsEmpty(await _repository.GetAllSessionsAsync());
     }
 

@@ -129,7 +129,7 @@ internal sealed class MasterPasswordHeader
     /// <summary>解析;任何一项缺失、重复、超出范围都返回 null(当成读不出来)。</summary>
     public static MasterPasswordHeader? Parse(string text)
     {
-        Dictionary<string, string> values = new(StringComparer.Ordinal);
+        Dictionary<string, string> values = [with(StringComparer.Ordinal)];
         foreach (string raw in text.Split('\n'))
         {
             string line = raw.Trim();

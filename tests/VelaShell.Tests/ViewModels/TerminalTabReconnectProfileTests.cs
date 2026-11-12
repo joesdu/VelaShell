@@ -102,7 +102,7 @@ public sealed class TerminalTabReconnectProfileTests
         Assert.AreEqual(SessionStatus.Connected, tab.ConnectionStatus);
         Assert.AreEqual("typed-now", _connected[^1].Password);
         string notice = Strings.Format("Msg_ReconnectProfileDeleted", "prod");
-        Assert.AreEqual(1, vm.Toasts.Toasts.Count(t => t.Message == notice), "提示一句,不是每次重连都提示");
+        Assert.ContainsSingle(t => t.Message == notice, vm.Toasts.Toasts, "提示一句,不是每次重连都提示");
         Assert.IsEmpty(await _repository.GetAllSessionsAsync(), "删掉的配置不会被一次重连写回来");
     }
 

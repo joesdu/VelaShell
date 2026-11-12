@@ -3510,8 +3510,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.HasCount(1, endpoint.Requests);
                 Assert.DoesNotContain(b => b.Classes.Contains("errorCard"),
                     messages.GetVisualDescendants().OfType<Border>());
-                Assert.IsTrue(messages.GetVisualDescendants().OfType<TextBlock>()
-                    .Any(t => t.Text == new Loc(context.Host.Locale)["TaskUnknown"]));
+                Assert.Contains(t => t.Text == new Loc(context.Host.Locale)["TaskUnknown"], messages.GetVisualDescendants().OfType<TextBlock>());
             }
             finally { panel.Detach(); window.Close(); }
         });

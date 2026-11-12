@@ -528,7 +528,7 @@ public class TunnelServiceTests
 
         // 服务器上的套接字回连到本机的端口:目的端是本机的主机与端口。
         Assert.AreEqual((PortForwardKind.Remote, "/tmp/app.sock", null), (requests[2].Kind, requests[2].BoundSocketPath, requests[2].TargetSocketPath));
-        Assert.AreEqual(("127.0.0.1", (uint?)8080u), (requests[2].TargetHost, requests[2].TargetPort));
+        Assert.AreEqual(("127.0.0.1", 8080u), (requests[2].TargetHost, requests[2].TargetPort));
     }
 
     private static TunnelConfig LocalConfig(uint port) =>

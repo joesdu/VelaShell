@@ -465,7 +465,7 @@ public sealed class SessionImportPlannerTests
         Assert.IsNull(written.CredentialSource, "不能把非法来源自动改指同 ID 或同名的正常凭据");
         Assert.IsNull(written.Password);
         Assert.IsEmpty(writes.SharedCredentials, "既不能补写本机密码,也不能新建非法共享条目");
-        CollectionAssert.Contains(plan.Items.Single().Warnings, Strings.Get("SharedCred_ErrTailscaleUnsupported"));
+        Assert.Contains(Strings.Get("SharedCred_ErrTailscaleUnsupported"), plan.Items.Single().Warnings);
         Assert.Contains(w => w.Contains(Strings.Get("SharedCred_ErrTailscaleUnsupported"), StringComparison.Ordinal), writes.Warnings);
         Assert.AreEqual(hasLocalSecret ? "local-secret" : null, local.Password);
         Assert.AreEqual(AuthMethod.Password, local.AuthMethod);
@@ -503,7 +503,7 @@ public sealed class SessionImportPlannerTests
 
         Assert.IsNull(writes.Sessions.Single().CredentialSource);
         Assert.IsEmpty(writes.SharedCredentials);
-        CollectionAssert.Contains(plan.Items.Single().Warnings, Strings.Get("SharedCred_ErrTailscaleUnsupported"));
+        Assert.Contains(Strings.Get("SharedCred_ErrTailscaleUnsupported"), plan.Items.Single().Warnings);
         Assert.Contains(w => w.Contains(Strings.Get("SharedCred_ErrTailscaleUnsupported"), StringComparison.Ordinal), writes.Warnings);
         Assert.AreEqual(AuthMethod.Tailscale, local.AuthMethod);
         Assert.AreEqual("local-stale-secret", local.Password);

@@ -542,7 +542,7 @@ public sealed class LayoutTemplatesViewModelTests
         {
             Assert.AreEqual(2, await scene.ViewModel.ImportAsync());
 
-            Assert.AreSequenceEqual(["prod", "prod-old"], scene.ViewModel.Templates.Select(t => t.Name).ToArray());
+            Assert.AreSequenceEqual(["prod", "prod-old"], [.. scene.ViewModel.Templates.Select(t => t.Name)]);
             LayoutTemplate old = scene.ViewModel.Templates.Single(t => t.Name == "prod-old").Template;
             Assert.AreEqual((prod.Template.Id, prod.Template.CreatedAt, 2), (old.Id, old.CreatedAt, LayoutTree.Documents(old.Root).Count()),
                 "同 Id 的替换本机那一条");

@@ -141,10 +141,9 @@ public partial class SettingsViewModel : ReactiveObject
     private readonly ISessionRepository? _sessionRepository;
     private readonly ISharedCredentialRepository? _sharedCredentialRepository;
     private readonly Infrastructure.Plugins.PluginManager? _pluginManager;
-    private readonly IMasterPasswordService? _masterPassword;
 
     /// <summary>主密码的状态与解锁 / 锁定(设置 → 常规 → 隐私与安全);没有时为 null。</summary>
-    internal IMasterPasswordService? MasterPasswordService => _masterPassword;
+    internal IMasterPasswordService? MasterPasswordService { get; }
 
     /// <summary>设置 → 常规 → 隐私与安全里的主密码那几行。</summary>
     public MasterPasswordSettingsViewModel MasterPasswordSettings { get; }
@@ -183,7 +182,7 @@ public partial class SettingsViewModel : ReactiveObject
         IMasterPasswordService? masterPassword = null
     )
     {
-        _masterPassword = masterPassword;
+        MasterPasswordService = masterPassword;
         SharedCredentials = new(sharedCredentials, sharedCredentialService, sessionRepository) { MasterPassword = masterPassword };
         // 输出规则页:色块与测试预览取当前配色方案的 16 色(随外观页的方案切换现取,见 RebuildPalette 的两处调用)。
         OutputRules = new(sessionRepository, () => TerminalSchemeSwatches);

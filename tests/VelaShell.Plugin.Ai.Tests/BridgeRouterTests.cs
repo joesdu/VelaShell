@@ -33,14 +33,14 @@ public sealed class BridgeRouterTests
         var loc = new Loc("en");
 
         Task<bool> fromSubagent = broker.RequestAsync(conversation, harness.Settings.Channels[0],
-            new VelaShell.Plugin.Ai.Agent.ApprovalRequest("write_local_file", "notes.txt", Origin: "sub-1a2b3c4d · editor"),
+            new ApprovalRequest("write_local_file", "notes.txt", Origin: "sub-1a2b3c4d · editor"),
             30, loc, CancellationToken.None);
         for (int i = 0; i < 200 && harness.Channel.Snapshot().Count == 0; i++) await Task.Delay(10);
         broker.Resolve(conversation.ChatKey, false);
         Assert.IsFalse(await fromSubagent.WaitAsync(TimeSpan.FromSeconds(10)));
 
         Task<bool> fromParent = broker.RequestAsync(conversation, harness.Settings.Channels[0],
-            new VelaShell.Plugin.Ai.Agent.ApprovalRequest("write_local_file", "other.txt"), 30, loc, CancellationToken.None);
+            new ApprovalRequest("write_local_file", "other.txt"), 30, loc, CancellationToken.None);
         for (int i = 0; i < 200 && harness.Channel.Snapshot().Count == 1; i++) await Task.Delay(10);
         broker.Resolve(conversation.ChatKey, false);
         Assert.IsFalse(await fromParent.WaitAsync(TimeSpan.FromSeconds(10)));

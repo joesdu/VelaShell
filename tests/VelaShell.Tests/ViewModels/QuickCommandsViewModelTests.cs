@@ -240,7 +240,7 @@ public class QuickCommandsViewModelTests : IDisposable
         await _repository.SaveAsync(old);
         QuickCommandsViewModel reloaded = await ReloadAsync();
         var runner = new QuickCommandRunnerViewModel(reloaded);
-        Guid target = Guid.NewGuid();
+        var target = Guid.NewGuid();
         runner.UpdateTargets([(target, "terminal")]);
         runner.SetCurrentTarget(target);
         QuickCommandExecutionRequest? request = null;

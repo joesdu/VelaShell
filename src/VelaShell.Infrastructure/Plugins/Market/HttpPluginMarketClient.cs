@@ -54,7 +54,10 @@ public sealed class HttpPluginMarketClient(string? baseUrl = null, HttpClient? h
         if (result.Items is null || result.Total < 0 || result.Page != page || result.Size is < 1 or > 100
             || result.Items.Any(item => item is null || string.IsNullOrWhiteSpace(item.Id)
                 || string.IsNullOrWhiteSpace(item.DisplayName)))
+        {
             throw new JsonException("Invalid marketplace catalog.");
+        }
+
         return result;
     }
 
@@ -66,7 +69,10 @@ public sealed class HttpPluginMarketClient(string? baseUrl = null, HttpClient? h
             $"{BaseUrl}/api/plugins/{Uri.EscapeDataString(pluginId)}", cancellationToken).ConfigureAwait(false);
         if (!string.Equals(result.Id, pluginId, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(result.DisplayName)
             || result.Versions is null || result.Versions.Any(version => version is null || string.IsNullOrWhiteSpace(version.Version)))
+        {
             throw new JsonException("Invalid marketplace detail.");
+        }
+
         return result;
     }
 

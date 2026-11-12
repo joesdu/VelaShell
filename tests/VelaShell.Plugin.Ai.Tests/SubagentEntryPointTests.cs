@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Bridge;
 using VelaShell.Plugin.Ai.Chat;
@@ -11,9 +12,12 @@ namespace VelaShell.Plugin.Ai.Tests;
 
 /// <summary>聊天面板之外的两个入口(IM 桥接、对外 MCP)上的子 Agent。</summary>
 [TestClass]
-public sealed class SubagentEntryPointTests
+public sealed partial class SubagentEntryPointTests
 {
     private static readonly Loc English = new("en");
+
+    [GeneratedRegex("sub-[a-f0-9]{8}")]
+    private static partial Regex SubagentIdRegex();
 
     private static string Answer(string text)
         => "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":"
@@ -85,7 +89,7 @@ public sealed class SubagentEntryPointTests
         Assert.Contains("untrusted-subagent-results", parentEndpoint.Requests[2]);
         Assert.Contains("child report: disk is fine", parentEndpoint.Requests[2]);
         Assert.HasCount(1, childEndpoint.Requests);
-        using (JsonDocument request = JsonDocument.Parse(childEndpoint.Requests[0]))
+        using (var request = JsonDocument.Parse(childEndpoint.Requests[0]))
         {
             Assert.AreEqual("child-model", request.RootElement.GetProperty("model").GetString());
             string[] tools = [.. request.RootElement.GetProperty("tools").EnumerateArray()
@@ -95,8 +99,8 @@ public sealed class SubagentEntryPointTests
             Assert.DoesNotContain("delegate_subagent", tools);
             Assert.DoesNotContain("send_file", tools);
         }
-        Assert.IsTrue(progress.Any(text => text.Contains("0/1 finished", StringComparison.Ordinal)), string.Join(" | ", progress));
-        Assert.IsTrue(progress.Any(text => text.Contains("1/1 finished", StringComparison.Ordinal)), string.Join(" | ", progress));
+        Assert.Contains(text => text.Contains("0/1 finished", StringComparison.Ordinal), progress, string.Join(" | ", progress));
+        Assert.Contains(text => text.Contains("1/1 finished", StringComparison.Ordinal), progress, string.Join(" | ", progress));
     }
 
     [TestMethod]
@@ -136,7 +140,7 @@ public sealed class SubagentEntryPointTests
         await using McpToolHost host = await McpToolHost.CreateAsync(context,
             new McpServerSettings { Mode = ChatMode.Agent, Approval = ApprovalMode.ReadOnlyAuto }, store, CancellationToken.None);
 
-        Assert.IsTrue(host.Tools.Any(t => t.Name == "delegate_subagent"));
+        Assert.Contains(t => t.Name == "delegate_subagent", host.Tools);
         Assert.Contains("subagent_wait", host.Tools.Single(t => t.Name == "delegate_subagent").Description);
         Assert.DoesNotContain("delivered to you automatically", host.Tools.Single(t => t.Name == "delegate_subagent").Description);
         Assert.Contains("delegate_subagent", host.Instructions);
@@ -144,16 +148,16 @@ public sealed class SubagentEntryPointTests
         string started = await host.CallAsync("delegate_subagent",
             new Dictionary<string, object?> { ["prompt"] = "List the sessions." }, CancellationToken.None);
         Assert.Contains("NOT pushed", started);
-        string id = System.Text.RegularExpressions.Regex.Match(started, "sub-[a-f0-9]{8}").Value;
+        string id = SubagentIdRegex().Match(started).Value;
         string result = await host.CallAsync("subagent_wait",
             new Dictionary<string, object?> { ["id"] = id, ["timeoutSeconds"] = 30 }, CancellationToken.None);
 
-        using JsonDocument json = JsonDocument.Parse(result);
+        using var json = JsonDocument.Parse(result);
         Assert.AreEqual("completed", json.RootElement.GetProperty("status").GetString(), result);
         Assert.AreEqual("report: two sessions connected", json.RootElement.GetProperty("output").GetString());
         Assert.AreEqual(provider.Models[0].Id, json.RootElement.GetProperty("modelId").GetString());
         Assert.IsFalse(host.HasActiveSubagents);
-        using JsonDocument request = JsonDocument.Parse(endpoint.Requests.Single());
+        using var request = JsonDocument.Parse(endpoint.Requests.Single());
         string[] tools = [.. request.RootElement.GetProperty("tools").EnumerateArray()
             .Select(t => t.GetProperty("function").GetProperty("name").GetString()!)];
         Assert.Contains("list_sessions", tools);
@@ -173,7 +177,7 @@ public sealed class SubagentEntryPointTests
             new McpServerSettings { Mode = ChatMode.Agent }, store, CancellationToken.None);
         string started = await host.CallAsync("delegate_subagent",
             new Dictionary<string, object?> { ["prompt"] = "Wait." }, CancellationToken.None);
-        string id = System.Text.RegularExpressions.Regex.Match(started, "sub-[a-f0-9]{8}").Value;
+        string id = SubagentIdRegex().Match(started).Value;
 
         Assert.IsTrue(host.HasActiveSubagents, "子任务在跑时这条连接不该被当成闲置回收");
         // 查询与取消不排在写操作锁后面
@@ -196,24 +200,24 @@ public sealed class SubagentEntryPointTests
         await using (McpToolHost noModel = await McpToolHost.CreateAsync(context,
                          new McpServerSettings { Mode = ChatMode.Agent }, store, CancellationToken.None))
         {
-            Assert.IsFalse(noModel.Tools.Any(t => t.Name == "delegate_subagent"), "一个聊天模型都没配时不摆委派工具");
+            Assert.DoesNotContain(t => t.Name == "delegate_subagent", noModel.Tools, "一个聊天模型都没配时不摆委派工具");
         }
 
         await store.SaveAsync(new AiSettings { Providers = [provider], ActiveModelId = provider.Models[0].Id });
         await using (McpToolHost plan = await McpToolHost.CreateAsync(context,
                          new McpServerSettings { Mode = ChatMode.Plan }, store, CancellationToken.None))
         {
-            Assert.IsFalse(plan.Tools.Any(t => t.Name.Contains("subagent", StringComparison.Ordinal)));
+            Assert.DoesNotContain(t => t.Name.Contains("subagent", StringComparison.Ordinal), plan.Tools);
         }
         await using (McpToolHost disabled = await McpToolHost.CreateAsync(context,
                          new McpServerSettings { Mode = ChatMode.Agent, DisabledTools = "delegate_subagent" }, store, CancellationToken.None))
         {
-            Assert.IsFalse(disabled.Tools.Any(t => t.Name == "delegate_subagent"), "用户在「配置工具」里停用后不再暴露");
+            Assert.DoesNotContain(t => t.Name == "delegate_subagent", disabled.Tools, "用户在「配置工具」里停用后不再暴露");
         }
         await using (McpToolHost withoutStore = await McpToolHost.CreateAsync(context,
                          new McpServerSettings { Mode = ChatMode.Agent }, null, CancellationToken.None))
         {
-            Assert.IsFalse(withoutStore.Tools.Any(t => t.Name == "delegate_subagent"));
+            Assert.DoesNotContain(t => t.Name == "delegate_subagent", withoutStore.Tools);
         }
         Assert.IsEmpty(endpoint.Requests);
     }

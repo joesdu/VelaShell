@@ -10,7 +10,7 @@ public static class FixtureHost
         if (args.Contains("--hang")) await Task.Delay(Timeout.InfiniteTimeSpan);
         while (await Console.In.ReadLineAsync() is { } line)
         {
-            using JsonDocument request = JsonDocument.Parse(line);
+            using var request = JsonDocument.Parse(line);
             if (!request.RootElement.TryGetProperty("id", out JsonElement id)) continue;
             string? method = request.RootElement.GetProperty("method").GetString();
             object? result = method switch

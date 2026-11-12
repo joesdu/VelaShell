@@ -393,7 +393,7 @@ public sealed class FilePaneKeyboardUiTests
                 File.WriteAllText(Path.Combine(tempRoot, name), "x");
             }
 
-            var vm = UnwatchedLocalFileSystem.NewPane();
+            LocalFilePaneViewModel vm = UnwatchedLocalFileSystem.NewPane();
             PumpUntil(vm.NavigateToAsync(tempRoot));
             var view = new LocalFilePaneView { DataContext = vm };
             var window = new Window { Width = 600, Height = 400, Content = view };

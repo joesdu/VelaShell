@@ -126,7 +126,7 @@ public class QuickCommandVariableMemoryTests
             ["otp"] = "  ",
         });
 
-        Assert.AreSequenceEqual(["changeme", "12", "34"], secrets.ToArray(),
+        Assert.AreSequenceEqual(["changeme", "12", "34"], [.. secrets],
             "没给的用默认值(与替换同一口径);值里的换行替换时成了空格,按段认;空白的不算;普通变量不算");
     }
 

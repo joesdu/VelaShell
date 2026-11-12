@@ -845,8 +845,7 @@ public sealed class ConnectionProfileViewUiTests
                 Click(window, window.FindControl<Button>("NextButton")!);
                 Assert.IsFalse(vm.IsPickingType, "前提:点了「下一步」应进表单。");
                 Assert.AreEqual("SQLite", window.FindControl<TextBlock>("TypeHeaderValue")!.Text, "前提:选的是 SQLite。");
-                Assert.IsTrue(window.GetVisualDescendants().OfType<TextBox>()
-                        .Any(box => box.Text == "10.0.0.9" && box.IsEffectivelyVisible),
+                Assert.Contains(box => box.Text == "10.0.0.9" && box.IsEffectivelyVisible, window.GetVisualDescendants().OfType<TextBox>(),
                     "前提:「常规」页在显示,主机那一栏看得见 —— 否则跳板行看不见可能只是整页没显示。");
 
                 ComboBox jumpHost = JumpHostBox(window, vm);
@@ -1163,7 +1162,7 @@ public sealed class ConnectionProfileViewUiTests
             Assert.HasCount(1, tree.GetVisualDescendants().OfType<CheckBox>().Where(box => box.IsEffectivelyVisible));
             Click(window, Header());
             Assert.IsTrue(vm.PluginFields.All(field => field.Toggle));
-            Assert.AreEqual(true, Header().IsChecked);
+            Assert.IsTrue(Header().IsChecked);
 
             group.IsExpanded = true;
             Layout(window);
@@ -1172,7 +1171,7 @@ public sealed class ConnectionProfileViewUiTests
             Click(window, first);
             Assert.IsFalse(vm.PluginFields[0].Toggle);
             Assert.IsNull(Header().IsChecked);
-            Assert.IsTrue(tree.Bounds.Height <= 280, "A long device list must scroll inside a bounded tree.");
+            Assert.IsLessThanOrEqualTo(280, tree.Bounds.Height, "A long device list must scroll inside a bounded tree.");
             SaveOptionalFrame(window, "plugin-resource-tree.png");
             group.IsExpanded = false;
             Layout(window);

@@ -125,7 +125,7 @@ public sealed partial class ChatPanelViewUiTests
                 MethodInfo copy = typeof(ChatPanelView.AssistantBubble).GetMethod("CopyImageAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
                 await (Task)copy.Invoke(bubble, [new ChatGeneratedImage(new string('a', 32) + ".png", "image/png"), panel])!;
                 Assert.AreEqual("keep clipboard", await window.Clipboard.TryGetTextAsync());
-                Assert.AreEqual(true, Find<TextBlock>(panel, "StatusText").Text?.StartsWith(new Loc("en")["Error"] + ":", StringComparison.Ordinal));
+                Assert.IsTrue(Find<TextBlock>(panel, "StatusText").Text?.StartsWith(new Loc("en")["Error"] + ":", StringComparison.Ordinal));
             }
             finally { await window.Clipboard!.ClearAsync(); panel.Detach(); window.Close(); }
         });

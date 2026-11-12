@@ -68,13 +68,9 @@ public sealed class BuiltInEditTempFilesTests
     }
 
     [TestMethod]
+    [OSCondition(ConditionMode.Exclude, OperatingSystems.Windows)]
     public void SweepStale_ResumesRetiredCleanupOnlyAfterLeaseIsReleased()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Directory retirement is Unix-only; Windows deletes under the held lease.");
-            return;
-        }
         string directory = Copy("builtin-edit", "1234abcd", "app.conf", Now);
         string retired = directory + ".deleting-" + Guid.NewGuid().ToString("N");
         using (EditDirectoryLease.Acquire(directory))
@@ -139,7 +135,7 @@ public sealed class BuiltInEditTempFilesTests
     {
         Assert.AreEqual(Path.Combine(BuiltInEditTempFiles.TempBase, "builtin-edit"), BuiltInEditTempFiles.Root);
         Assert.AreEqual(Path.Combine(BuiltInEditTempFiles.TempBase, "remote-edit"), RemoteEditSessionManager.TempRoot);
-        StringAssert.StartsWith(BuiltInEditTempFiles.NewDirectory(), BuiltInEditTempFiles.Root + Path.DirectorySeparatorChar);
+        Assert.StartsWith(BuiltInEditTempFiles.Root + Path.DirectorySeparatorChar, BuiltInEditTempFiles.NewDirectory());
     }
 
     /// <summary>建一个带文件的子目录,文件与目录的修改时间都设成 <paramref name="touchedAt" />。</summary>

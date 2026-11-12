@@ -262,10 +262,10 @@ public sealed class PluginMarketTests
             Assert.IsTrue(install.IsEnabled);
             GridSplitter splitter = view.FindControl<GridSplitter>("MarketSplitter")!;
             Assert.IsTrue(splitter.IsEffectivelyVisible);
-            Avalonia.Point position = install.TranslatePoint(default, window)!.Value;
+            Point position = install.TranslatePoint(default, window)!.Value;
             Assert.IsTrue(position.X >= 0 && position.X + install.Bounds.Width <= window.Bounds.Width);
             Assert.IsTrue(position.Y >= 0 && position.Y + install.Bounds.Height <= window.Bounds.Height);
-            Assert.IsTrue(view.FindControl<ListBox>("CatalogList")!.Bounds.Width > 150);
+            Assert.IsGreaterThan(150, view.FindControl<ListBox>("CatalogList")!.Bounds.Width);
         }
         finally { window.Close(); }
     });

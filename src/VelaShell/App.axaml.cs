@@ -54,7 +54,7 @@ public class App : Application
     private readonly SyncDebounceLifecycle _syncDebounce = new();
     private IThemeService? _themeService;
     private TrayIconService? _trayIconService;
-    private VelaShell.Services.MasterPassword.MasterPasswordAutoLock? _autoLock;
+    private Services.MasterPassword.MasterPasswordAutoLock? _autoLock;
     private SingleInstanceLaunchChannel? _launchChannel;
 
     /// <summary>当前应用的 DI 服务容器;在 <see cref="Initialize" /> 完成前为 <c>null</c>。</summary>
@@ -145,7 +145,7 @@ public class App : Application
             .AddSingleton<ISudoPrompt, SudoPromptDialogService>()
             // 主密码的交互式解锁框(启动时、主动连接、手动重连、插件读机密…):模态于此刻活动的窗口。
             // 「忘了主密码」之后的那句说明投成主窗口的浮层提示。
-            .AddSingleton<IMasterPasswordPrompt>(sp => new VelaShell.Services.MasterPassword.MasterPasswordPromptDialogService(
+            .AddSingleton<IMasterPasswordPrompt>(sp => new Services.MasterPassword.MasterPasswordPromptDialogService(
                 () => sp.GetService<IMasterPasswordService>(),
                 notice => sp.GetService<MainWindowViewModel>()?.Toasts.Info(notice)))
             .AddSingleton(_ => new TailscaleSshCheckDialogService(() =>
@@ -327,7 +327,7 @@ public class App : Application
                 if (_serviceProvider?.GetService<Infrastructure.Persistence.VelaShellStoragePaths>() is { } storagePaths)
                     Infrastructure.Plugins.PluginPackageDownloads.Sweep(storagePaths.PluginUpdateDirectory);
                 StagedRelaySource.SweepStale();
-                VelaShell.Infrastructure.XServer.SftpXServerDragDownloader.CleanupStaleDownloads();
+                Infrastructure.XServer.SftpXServerDragDownloader.CleanupStaleDownloads();
                 // 内置编辑器崩溃留下的临时副本(关窗才删,进程没了就没人删):7 天没碰过的清掉。
                 BuiltInEditTempFiles.SweepStale(BuiltInEditTempFiles.TempBase, DateTime.UtcNow);
                 // 外部编辑的副本按状态标记分:干净的同样 7 天后清;有未传改动的(含没有标记的旧副本)是草稿,

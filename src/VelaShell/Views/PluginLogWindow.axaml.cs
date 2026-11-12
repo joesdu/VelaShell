@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using AvaloniaEdit.Highlighting;
 using Microsoft.Extensions.DependencyInjection;
 using VelaShell.Core.Models;
 using VelaShell.Core.Services;
@@ -54,7 +55,7 @@ public partial class PluginLogWindow : Window
     {
         try
         {
-            var definition = SyntaxHighlightingService.Resolve(
+            IHighlightingDefinition? definition = SyntaxHighlightingService.Resolve(
                 ".log", FirstLineOf(LogText.Text), ActiveUiTheme());
             LogText.SyntaxHighlighting = null;
             LogText.SyntaxHighlighting = definition;

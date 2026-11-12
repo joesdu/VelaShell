@@ -1,3 +1,4 @@
+using System.Security;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
@@ -108,10 +109,10 @@ public sealed class AuthenticationDialogViewModelTests
             Password = "old-password"
         };
         var vm = new AuthenticationDialogViewModel("h", 22, "root", connectionType: type);
-        using var emptyPassword = new System.Security.SecureString();
+        using var emptyPassword = new SecureString();
         if (cleared)
         {
-            using var previousPassword = SecureStringConvert.FromPlaintext("previous-input");
+            using SecureString? previousPassword = SecureStringConvert.FromPlaintext("previous-input");
             vm.Password = previousPassword;
             vm.Password = emptyPassword;
         }

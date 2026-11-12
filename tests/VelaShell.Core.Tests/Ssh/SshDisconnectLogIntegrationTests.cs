@@ -57,7 +57,7 @@ public class SshDisconnectLogIntegrationTests
             Assert.AreEqual("testuser", (await closed.RunCommandAsync("whoami", TestContext.CancellationToken)).Trim());
             await closed.DisposeAsync();
             string localLine = await log.WaitForAsync(line => line.EndsWith("closed locally", StringComparison.Ordinal), skip: before);
-            StringAssert.StartsWith(localLine, $"[SSH] {Target} closed (connected since ");
+            Assert.StartsWith($"[SSH] {Target} closed (connected since ", localLine);
             TestContext.WriteLine(peerLine);
             TestContext.WriteLine(localLine);
         }

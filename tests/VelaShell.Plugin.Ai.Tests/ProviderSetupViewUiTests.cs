@@ -1171,7 +1171,7 @@ public sealed class ProviderSetupViewUiTests
                 AiProvider created = settings.Providers.Single(provider => provider.Id != source.Id);
                 Assert.AreSequenceEqual(["new-only", "shared"], created.AvailableModels);
                 Assert.AreSequenceEqual(["new-only", "shared"], [.. created.Models.Select(model => model.Model)]);
-                Assert.AreSequenceEqual(created.AvailableModels, Find<ComboBox>(view, "SetupModelPicker").Items.Cast<string>().ToArray());
+                Assert.AreSequenceEqual(created.AvailableModels, [.. Find<ComboBox>(view, "SetupModelPicker").Items.Cast<string>()]);
                 Assert.AreEqual("Bearer sk-new", endpoint.Authorization);
                 Assert.AreEqual(sourceJson, System.Text.Json.JsonSerializer.Serialize(source));
                 AiSettings persisted = await store.LoadAsync();
@@ -1179,7 +1179,7 @@ public sealed class ProviderSetupViewUiTests
                 Assert.AreEqual(sourceJson, System.Text.Json.JsonSerializer.Serialize(persisted.Providers.Single(provider => provider.Id == source.Id)));
                 view.FocusEntry(source.CatalogId, source.Id);
                 Find<ToggleButton>(view, "SetupAdvancedToggle").IsChecked = true;
-                Assert.AreSequenceEqual(source.AvailableModels, Find<ComboBox>(view, "SetupModelPicker").Items.Cast<string>().ToArray());
+                Assert.AreSequenceEqual(source.AvailableModels, [.. Find<ComboBox>(view, "SetupModelPicker").Items.Cast<string>()]);
             }
             finally { window.Close(); }
         });

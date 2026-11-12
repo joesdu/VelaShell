@@ -239,26 +239,24 @@ public partial class ChatPanelView
         LocalPathScope scope = new(GetActiveLocalWorkspaces());
         if (!FileReference.IsLocal(reference))
         {
-            IReadOnlyList<RemoteFileEntry> workspaces = scope.Workspaces
+            IReadOnlyList<RemoteFileEntry> workspaces = [.. scope.Workspaces
                 .Where(LocalPathScope.IsConfigured)
                 .Select(workspace => new RemoteFileEntry(
                     string.IsNullOrWhiteSpace(workspace.Name) ? workspace.Id : workspace.Name,
                     $"local://{workspace.Id}/",
-                    true, 0, DateTimeOffset.MinValue, "local", "", ""))
-                .ToArray();
+                    true, 0, DateTimeOffset.MinValue, "local", "", ""))];
             return Task.FromResult(workspaces);
         }
 
         string payload = reference["local://".Length..];
         if (payload.Length == 0)
         {
-            IReadOnlyList<RemoteFileEntry> roots = scope.Workspaces
+            IReadOnlyList<RemoteFileEntry> roots = [.. scope.Workspaces
                 .Where(LocalPathScope.IsConfigured)
                 .Select(workspace => new RemoteFileEntry(
                     string.IsNullOrWhiteSpace(workspace.Name) ? workspace.Id : workspace.Name,
                     $"local://{workspace.Id}/",
-                    true, 0, DateTimeOffset.MinValue, "local", "", ""))
-                .ToArray();
+                    true, 0, DateTimeOffset.MinValue, "local", "", ""))];
             return Task.FromResult(roots);
         }
         int slash = payload.IndexOf('/');
@@ -276,7 +274,7 @@ public partial class ChatPanelView
             return Task.FromResult<IReadOnlyList<RemoteFileEntry>>([]);
         }
 
-        IReadOnlyList<RemoteFileEntry> entries = new DirectoryInfo(localPath.FullPath)
+        IReadOnlyList<RemoteFileEntry> entries = [.. new DirectoryInfo(localPath.FullPath)
             .EnumerateFileSystemInfos()
             .Take(Math.Max(1, _settings.LocalMaxDirectoryEntries))
             .Select(entry =>
@@ -292,8 +290,7 @@ public partial class ChatPanelView
                     size,
                     entry.LastWriteTimeUtc,
                     "local", "", "");
-            })
-            .ToArray();
+            })];
         return Task.FromResult(entries);
     }
 

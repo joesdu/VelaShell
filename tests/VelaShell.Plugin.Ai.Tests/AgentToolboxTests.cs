@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Configuration;
@@ -227,10 +228,12 @@ public sealed class AgentToolboxTests
             File.WriteAllBytes(bomFile, [0xEF, 0xBB, 0xBF, (byte)'a', (byte)'b']);
             string patch = await InvokeAsync(toolbox, "patch_local_file", new()
             {
-                ["path"] = "bom.txt", ["oldText"] = "a", ["newText"] = "x"
+                ["path"] = "bom.txt",
+                ["oldText"] = "a",
+                ["newText"] = "x"
             });
             Assert.Contains("Patched", patch);
-            CollectionAssert.AreEqual(new byte[] { 0xEF, 0xBB, 0xBF, (byte)'x', (byte)'b' }, File.ReadAllBytes(bomFile));
+            Assert.AreSequenceEqual(new byte[] { 0xEF, 0xBB, 0xBF, (byte)'x', (byte)'b' }, File.ReadAllBytes(bomFile));
         }
         finally
         {
@@ -251,10 +254,12 @@ public sealed class AgentToolboxTests
             AgentToolbox toolbox = CreateLocalToolbox(context, root);
             string patch = await InvokeAsync(toolbox, "patch_local_file", new()
             {
-                ["path"] = "latin1.txt", ["oldText"] = "b", ["newText"] = "c"
+                ["path"] = "latin1.txt",
+                ["oldText"] = "b",
+                ["newText"] = "c"
             });
             Assert.Contains("not valid UTF-8", patch);
-            CollectionAssert.AreEqual(original, File.ReadAllBytes(file));
+            Assert.AreSequenceEqual(original, File.ReadAllBytes(file));
         }
         finally
         {
@@ -299,7 +304,9 @@ public sealed class AgentToolboxTests
             });
             string patch = await InvokeAsync(toolbox, "patch_local_file", new()
             {
-                ["path"] = "notes.txt", ["oldText"] = "alpha", ["newText"] = "beta"
+                ["path"] = "notes.txt",
+                ["oldText"] = "alpha",
+                ["newText"] = "beta"
             });
             Assert.Contains("changed while waiting for approval", patch);
             Assert.AreEqual("alpha\nuser edit\n", File.ReadAllText(file));
@@ -348,10 +355,10 @@ public sealed class AgentToolboxTests
         Assert.DoesNotContain("web_search", names);
         Assert.DoesNotContain("web_fetch", names);
 
-        await context.Storage.SetAsync("settings", System.Text.Json.JsonDocument.Parse("""{"Providers":[]}""").RootElement);
+        await context.Storage.SetAsync("settings", JsonElement.Parse("""{"Providers":[]}"""));
         Assert.IsFalse((await new AiSettingsStore(context).LoadAsync()).WebSearch.Enabled, "没存过这一项:新默认值");
-        await context.Storage.SetAsync("settings", System.Text.Json.JsonDocument.Parse(
-            """{"Providers":[],"WebSearch":{"Enabled":true,"SearxngBaseUrl":"https://searxng.easilynet.top"}}""").RootElement);
+        await context.Storage.SetAsync("settings", JsonElement.Parse(
+            """{"Providers":[],"WebSearch":{"Enabled":true,"SearxngBaseUrl":"https://searxng.easilynet.top"}}"""));
         Assert.IsTrue((await new AiSettingsStore(context).LoadAsync()).WebSearch.Enabled, "升级前存下的开着照旧开着");
     }
 
@@ -772,8 +779,8 @@ public sealed class AgentToolboxTests
 
         string result = await InvokeAsync(toolbox, "run_command", new() { ["command"] = "sudo systemctl restart nginx" });
 
-        using var json = System.Text.Json.JsonDocument.Parse(result);
-        Assert.IsTrue(json.RootElement.TryGetProperty("hint", out System.Text.Json.JsonElement hint), result);
+        using var json = JsonDocument.Parse(result);
+        Assert.IsTrue(json.RootElement.TryGetProperty("hint", out JsonElement hint), result);
         Assert.Contains("elevated=true", hint.GetString()!);
         Assert.Contains(stderr, json.RootElement.GetProperty("output")[0].GetProperty("Text").GetString()!,
             "原始 stderr 照旧交给模型,提示只是附加");
@@ -799,7 +806,7 @@ public sealed class AgentToolboxTests
 
         string result = await InvokeAsync(toolbox, "run_command", new() { ["command"] = "do-something" });
 
-        using var json = System.Text.Json.JsonDocument.Parse(result);
+        using var json = JsonDocument.Parse(result);
         Assert.IsFalse(json.RootElement.TryGetProperty("hint", out _), result);
     }
 

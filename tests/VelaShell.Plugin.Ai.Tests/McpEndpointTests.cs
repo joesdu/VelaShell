@@ -386,7 +386,7 @@ public sealed class McpEndpointTests
                 new { command = "apt-get update", elevated = true, waitSeconds = 0 });
             Assert.DoesNotContain("Succeeded", pending, "密码框还开着,不能先报完成");
             string taskId;
-            using (JsonDocument receipt = JsonDocument.Parse(pending))
+            using (var receipt = JsonDocument.Parse(pending))
             {
                 taskId = receipt.RootElement.GetProperty("taskId").GetString()!;
             }

@@ -223,13 +223,13 @@ public sealed partial class SessionMetrics
         }
         var old = previous.ToDictionary(c => c.Card, StringComparer.Ordinal);
         var current = GpuUsageCounters.ToDictionary(c => c.Card, StringComparer.Ordinal);
-        Gpus = Gpus.Select(gpu =>
+        Gpus = [.. Gpus.Select(gpu =>
             gpu.Card.Length > 0 &&
             current.TryGetValue(gpu.Card, out GpuUsageCounter? now) &&
             old.TryGetValue(gpu.Card, out GpuUsageCounter? before) &&
             Utilization(before, now, seconds) is { } utilization
                 ? gpu with { UtilPercent = utilization }
-                : gpu).ToArray();
+                : gpu)];
     }
 
     /// <summary>

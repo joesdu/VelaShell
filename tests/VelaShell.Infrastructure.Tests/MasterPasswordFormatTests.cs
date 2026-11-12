@@ -50,9 +50,9 @@ public sealed class MasterPasswordFormatTests
     [TestMethod]
     public void Header_RoundTrips_AndRejectsDamagedOrOutOfRangeValues()
     {
-        MasterPasswordHeader header = MasterPasswordHeader.CreateNew(RandomNumberGenerator.GetBytes(16), MasterPasswordHeaderState.Enabling);
+        var header = MasterPasswordHeader.CreateNew(RandomNumberGenerator.GetBytes(16), MasterPasswordHeaderState.Enabling);
 
-        MasterPasswordHeader? read = MasterPasswordHeader.Parse(header.Serialize());
+        var read = MasterPasswordHeader.Parse(header.Serialize());
 
         Assert.IsNotNull(read);
         Assert.AreEqual(64 * 1024, read.MemoryKiB, "出厂参数 m = 64 MiB(维护者 2026-10-31 定)");
@@ -75,14 +75,14 @@ public sealed class MasterPasswordFormatTests
     public void Envelope_RoundTrips_AndTheTagIsThePasswordCheck()
     {
         byte[] dek = RandomNumberGenerator.GetBytes(32);
-        MasterPasswordHeader header = MasterPasswordHeader.CreateNew(RandomNumberGenerator.GetBytes(16), MasterPasswordHeaderState.Active);
+        var header = MasterPasswordHeader.CreateNew(RandomNumberGenerator.GetBytes(16), MasterPasswordHeaderState.Active);
         byte[] kek = MasterPasswordKdf.DerivePasswordKey(Utf8(Password), header);
         byte[] wrongKek = MasterPasswordKdf.DerivePasswordKey(Utf8(Password + "!"), header);
         WrapRecord record = MasterKeyEnvelope.Wrap(WrapKind.Password, header.PasswordWrapId, kek, dek);
         byte[] bytes = new MasterKeyEnvelope([record]).ToBytes();
 
         Assert.IsTrue(MasterKeyEnvelope.TryParse(bytes, out MasterKeyEnvelope? parsed));
-        Assert.AreEqual(5 + 69, bytes.Length, "VSMP1 ‖ 一条记录");
+        Assert.HasCount(5 + 69, bytes, "VSMP1 ‖ 一条记录");
         Assert.IsTrue(MasterKeyEnvelope.TryUnwrap(parsed!.Records[0], kek, out byte[] unwrapped));
         Assert.AreSequenceEqual(dek, unwrapped);
         Assert.IsFalse(MasterKeyEnvelope.TryUnwrap(parsed.Records[0], wrongKek, out _), "主密码不对:GCM 标签对不上,不另存校验值");
@@ -98,7 +98,7 @@ public sealed class MasterPasswordFormatTests
     {
         (string display, byte[] entropy) = RecoveryCode.Generate();
 
-        Assert.AreEqual(7, display.Split('-').Length, "28 个字符、每 4 个一组");
+        Assert.HasCount(7, display.Split('-'), "28 个字符、每 4 个一组");
         Assert.IsTrue(display.Split('-').All(static g => g.Length == 4));
         Assert.IsTrue(RecoveryCode.TryParse(display, out byte[] parsed));
         Assert.AreSequenceEqual(entropy, parsed);
@@ -133,7 +133,7 @@ public sealed class MasterPasswordFormatTests
         Assert.ThrowsExactly<SecretsLockedException>(() => locked.Protect("new password"));
         Assert.AreEqual(cipher, locked.Protect(cipher), "已经是密文的值照旧原样交回(幂等,锁着也不抛)");
         Assert.IsNull(locked.Protect(null));
-        Assert.AreEqual(entries, store.Entries.Count, "锁着时不另起主密码管不到的新密钥");
+        Assert.HasCount(entries, store.Entries, "锁着时不另起主密码管不到的新密钥");
         Assert.AreEqual(saves, store.SaveCount);
         Assert.IsFalse(File.Exists(_keyFile), "也不回落到本地密钥文件");
         Assert.IsTrue(store.Entries.Values.All(static v => MasterKeyEnvelope.IsEnvelope(v)));
@@ -162,7 +162,7 @@ public sealed class MasterPasswordFormatTests
         var store = new MemoryKeychain();
         _ = Protector(store).Protect("hunter2");
         WrapEverything(Resolver(store), Password, withRecovery: false);
-        Dictionary<string, byte[]> before = store.Entries.ToDictionary(static e => e.Key, static e => e.Value.ToArray());
+        var before = store.Entries.ToDictionary(static e => e.Key, static e => e.Value.ToArray());
         File.Delete(HeaderFile);
 
         AesSecretProtector protector = Protector(store);
@@ -171,7 +171,7 @@ public sealed class MasterPasswordFormatTests
         Assert.AreEqual(MasterPasswordProblem.HeaderMissing, protector.GetKeyStatus().MasterPasswordProblem);
         Assert.AreEqual(MasterPasswordUnlockStatus.NothingToUnlock, protector.Vault.Unlock(Utf8(Password)).Status);
         Assert.ThrowsExactly<SecretsLockedException>(() => protector.Protect("x"));
-        Assert.AreEqual(before.Count, store.Entries.Count);
+        Assert.HasCount(before.Count, store.Entries);
         foreach ((string id, byte[] value) in before)
         {
             Assert.AreSequenceEqual(value, store.Entries[id], "包裹过的条目一字不动");
@@ -218,7 +218,7 @@ public sealed class MasterPasswordFormatTests
             clock.Advance(wrong.RetryAfter);
         }
 
-        Assert.AreSequenceEqual(new double[] { 1, 2, 4, 8, 16, 30, 30 }, waits.ToArray());
+        Assert.AreSequenceEqual(new double[] { 1, 2, 4, 8, 16, 30, 30 }, [.. waits]);
         Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status, "不锁死:等过之后输对照常解开");
         Assert.AreEqual("hunter2", protector.Unprotect(cipher));
         Assert.AreEqual(TimeSpan.Zero, protector.Vault.RetryAfter, "解开之后计数清零");
@@ -228,7 +228,7 @@ public sealed class MasterPasswordFormatTests
     public void RecoveryCode_AlsoUnlocks_AndATypoIsNotCountedAsAFailure()
     {
         var store = new MemoryKeychain();
-        string cipher = Protector(store).Protect("hunter2")!;
+        _ = Protector(store).Protect("hunter2")!;
         string code = WrapEverything(Resolver(store), Password, withRecovery: true)!;
         AesSecretProtector protector = Protector(store);
 
@@ -346,7 +346,7 @@ public sealed class MasterPasswordFormatTests
         string stopGap = Protector(store).Protect("from the stop-gap key")!; // 密钥链用不了的那一轮另起的本地那把
         store.Unavailable = null;
         _ = Protector(store).GetKeyStatus(); // 密钥链回来:本地那把并进去
-        Assert.AreEqual(2, store.Entries.Count);
+        Assert.HasCount(2, store.Entries);
         WrapEverything(Resolver(store), Password, withRecovery: false, MasterPasswordHeaderState.Enabling);
         // 只包上了第一条就断了:第二条还是明文。
         string plainId = store.Entries.Keys.Last();
@@ -379,7 +379,7 @@ public sealed class MasterPasswordFormatTests
 
         Assert.IsFalse(protector.GetKeyStatus().MasterPasswordEnabled, "关闭做到一半:解开之后接着关完");
         Assert.IsFalse(File.Exists(HeaderFile));
-        Assert.AreEqual(MasterKeyResolver.KeySize, store.Entries.Values.Single().Length, "写回第一步的明文形态");
+        Assert.HasCount(MasterKeyResolver.KeySize, store.Entries.Values.Single(), "写回第一步的明文形态");
         Assert.AreEqual("hunter2", Protector(store).Unprotect(cipher), "下次启动不用主密码");
     }
 
@@ -391,7 +391,7 @@ public sealed class MasterPasswordFormatTests
         var store = new MemoryKeychain();
         string before = Protector(store).Protect("saved before the downgrade")!;
         WrapEverything(Resolver(store), Password, withRecovery: false);
-        Dictionary<string, byte[]> wrapped = store.Entries.ToDictionary(static e => e.Key, static e => e.Value.ToArray());
+        var wrapped = store.Entries.ToDictionary(static e => e.Key, static e => e.Value.ToArray());
 
         // 旧版本(第一步)启动:认不出 VSMP1,当成「对不上编号」,另起一把新密钥。
         LegacyMasterKeyRing legacy = new LegacyMasterKeyResolver(_keyFile, store).Resolve();
@@ -401,7 +401,7 @@ public sealed class MasterPasswordFormatTests
         {
             Assert.AreSequenceEqual(value, store.Entries[id], "旧版本不覆盖包裹过的条目");
         }
-        Assert.AreEqual(wrapped.Count + 1, store.Entries.Count);
+        Assert.HasCount(wrapped.Count + 1, store.Entries);
 
         // 升回来:锁着;解锁后新旧两把都在,旧版本另起的那把被包上。
         AesSecretProtector protector = Protector(store);

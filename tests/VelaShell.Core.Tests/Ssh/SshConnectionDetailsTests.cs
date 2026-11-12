@@ -31,7 +31,7 @@ public sealed class SshConnectionDetailsTests
         Assert.IsTrue(details.IsAlive);
         Assert.AreEqual("SSH-2.0-TargetServer_9.9", details.PeerVersion);
         Assert.AreEqual("ssh-ed25519", details.HostKey.Type);
-        StringAssert.StartsWith(details.HostKey.Fingerprint, "SHA256:");
+        Assert.StartsWith("SHA256:", details.HostKey.Fingerprint);
         Assert.IsFalse(details.HostKey.IsCertificate);
         Assert.AreEqual(64, details.SessionId.Length, "会话 ID 是 SHA-256 交换哈希的十六进制。");
         Assert.AreEqual("password", details.AuthenticationMethod);

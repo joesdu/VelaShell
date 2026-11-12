@@ -69,7 +69,7 @@ public sealed class SnippetsPageRowActionsTests
                 .First(toggle => toggle.IsEffectivelyVisible
                     && Equals(toggle.Content, Strings.Get("SetSnippets_ExecuteAfterSend")));
 
-            Assert.AreEqual(false, Toggle().IsChecked);
+            Assert.IsFalse(Toggle().IsChecked);
             snippets.NewName = "execute-toggle";
             snippets.NewCommandText = "echo hello";
             Toggle().IsChecked = true;
@@ -79,7 +79,7 @@ public sealed class SnippetsPageRowActionsTests
 
             RaiseClick(page, "EditSnippet_Click", added);
             Dispatcher.UIThread.RunJobs();
-            Assert.AreEqual(true, Toggle().IsChecked);
+            Assert.IsTrue(Toggle().IsChecked);
             Toggle().IsChecked = false;
             await snippets.SaveEditCommand.Execute().FirstAsync();
             Assert.IsFalse(added.ExecuteAfterSend);

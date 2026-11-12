@@ -136,7 +136,7 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
             {
                 if (StoredSecret.IsUnreadable(value))
                 {
-                    (secrets ??= new(StringComparer.Ordinal))[name] = value;
+                    (secrets ??= [with(StringComparer.Ordinal)])[name] = value;
                 }
             }
         }
