@@ -21,6 +21,12 @@ namespace VelaShell.Infrastructure.Persistence;
 /// keyring 锁着时用户也可能取消解锁框。所有这些一律以「用不了」交回,上层回落到本地密钥文件并在日志里写明原因。
 /// </para>
 /// <para>
+/// <b>两种看上去「好好的」情形也算用不了</b>(#750):一是钥匙环锁着、解锁框被取消或没弹出来 —— libsecret 的 lookup
+/// 这时交回 NULL 而不带错误,与「条目不在」分不开,所以 NULL 之后不弹框地再搜一遍,条目在而锁着就报用不了;
+/// 二是默认集合指向 session 集合(只在内存里,重启即清空)—— 写进去、读回核对都过得去,重启后密钥就没了,
+/// 所以写之前先看默认别名指向哪个集合。
+/// </para>
+/// <para>
 /// 只用 libsecret 里不带变参的 <c>*v_sync</c> 版本:变参函数经 P/Invoke 调用在 x86-64 上要额外设 <c>%al</c>,
 /// 照普通函数声明属于未定义行为。属性表用 GLib 的 <c>GHashTable</c> 传。sync 版本自带 main context,任何线程上都能调,
 /// 但 keyring 锁着时会等用户在系统解锁框里作答 —— 所以只在启动时的后台线程上解析一次。
@@ -38,6 +44,18 @@ internal sealed unsafe partial class SecretServiceMasterKeyStore : IMasterKeySto
     private const string KeyIdAttribute = "key-id";
     private const int SchemaAttributeString = 0; // SECRET_SCHEMA_ATTRIBUTE_STRING
     private const int MaxBase64ValueLength = 4096; // 32 字节的密钥是 44 个字符,包裹过的那份也只有几百个
+    private const int SearchAll = 1 << 1; // SECRET_SEARCH_ALL:锁着的条目也列出来;不带 UNLOCK / LOAD_SECRETS,不弹框
+    private const string DefaultAlias = "default";
+    private const string SessionCollectionSuffix = "/collection/session";
+    private const string LibGio = "libgio-2.0.so.0";
+    private const string LibGobject = "libgobject-2.0.so.0";
+
+    /// <summary>条目在、钥匙环锁着(解锁框被取消或没弹出来)时交回的原因。</summary>
+    internal const string LockedReason = "the keyring holding the key is locked (the unlock prompt was dismissed or could not be shown)";
+
+    /// <summary>默认集合是 session 集合时交回的原因。</summary>
+    internal const string SessionCollectionReason =
+        "the default keyring is the session keyring, which is kept only in memory and cleared on restart";
 
     private static readonly Lazy<nint> Schema = new(BuildSchema, LazyThreadSafetyMode.ExecutionAndPublication);
     private static readonly Lazy<(nint Hash, nint Equal)> StringFunctions = new(LoadStringFunctions, LazyThreadSafetyMode.ExecutionAndPublication);
@@ -146,7 +164,12 @@ internal sealed unsafe partial class SecretServiceMasterKeyStore : IMasterKeySto
             }
             if (password == 0)
             {
-                return MasterKeyStoreResult.Missing;
+                // 钥匙环锁着、解锁框被取消(或根本没弹出来)时 libsecret 同样交回 NULL 而不带错误(#750:自动登录的机器
+                // 重启后登录钥匙环不会自动解锁)。不弹框地再查一遍:条目在、只是锁着,就是「这次用不了」而不是「没有」——
+                // 报成「没有」的话上层会另起一把新密钥,已存的密码在这一轮全都解不开。
+                return HasLockedEntry(attributes)
+                    ? MasterKeyStoreResult.Unavailable(LockedReason)
+                    : MasterKeyStoreResult.Missing;
             }
             try
             {
@@ -186,6 +209,12 @@ internal sealed unsafe partial class SecretServiceMasterKeyStore : IMasterKeySto
 
     private MasterKeyStoreResult SaveCore(string keyId, ReadOnlySpan<byte> key)
     {
+        if (DefaultCollectionIsSession())
+        {
+            // 默认集合指向 gnome-keyring 的 session 集合(没有「登录」钥匙环、或默认钥匙环被设成了它):
+            // 那里的条目只在内存里,写进去、读回核对都没问题,重启之后就没了(#750)。当成用不了,上层回落到本地密钥文件。
+            return MasterKeyStoreResult.Unavailable(SessionCollectionReason);
+        }
         nint attributes = NewAttributes(keyId, out nint name, out nint value);
         nint label = Marshal.StringToCoTaskMemUTF8(_label);
         int encodedLength = Base64.GetMaxEncodedToUtf8Length(key.Length);
@@ -222,6 +251,94 @@ internal sealed unsafe partial class SecretServiceMasterKeyStore : IMasterKeySto
     }
 
     /// <summary>
+    /// 不解锁、不弹框地按同样的属性搜一遍(<c>SECRET_SEARCH_ALL</c>,锁着的条目也列出来),有锁着的就为 true。
+    /// 搜不成(出错、旧版 libsecret 没有这几个入口)时为 false —— 说不准就照旧按「没有」处理。
+    /// </summary>
+    private static bool HasLockedEntry(nint attributes)
+    {
+        nint error = 0;
+        nint list = 0;
+        try
+        {
+            list = secret_service_search_sync(0, Schema.Value, attributes, SearchAll, 0, &error);
+            if (error != 0)
+            {
+                return false;
+            }
+            for (var node = (GList*)list; node is not null; node = node->Next)
+            {
+                if (node->Data != 0 && secret_item_get_locked(node->Data) != 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return false;
+        }
+        finally
+        {
+            for (var node = (GList*)list; node is not null; node = node->Next)
+            {
+                if (node->Data != 0)
+                {
+                    g_object_unref(node->Data);
+                }
+            }
+            if (list != 0)
+            {
+                g_list_free(list);
+            }
+            if (error != 0)
+            {
+                g_error_free(error);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 默认集合(别名 <c>default</c>)是不是 session 集合 —— gnome-keyring 只放在内存里、重启就清空的那个。
+    /// 别名不存在、查不成、旧版 libsecret 没有这个入口时为 false(交给存的那一步自己成败)。
+    /// </summary>
+    private static bool DefaultCollectionIsSession()
+    {
+        nint alias = Marshal.StringToCoTaskMemUTF8(DefaultAlias);
+        nint error = 0;
+        nint collection = 0;
+        try
+        {
+            collection = secret_collection_for_alias_sync(0, alias, 0, 0, &error);
+            if (error != 0 || collection == 0)
+            {
+                return false;
+            }
+            return IsSessionCollectionPath(Marshal.PtrToStringUTF8(g_dbus_proxy_get_object_path(collection)));
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (collection != 0)
+            {
+                g_object_unref(collection);
+            }
+            if (error != 0)
+            {
+                g_error_free(error);
+            }
+            Marshal.FreeCoTaskMem(alias);
+        }
+    }
+
+    /// <summary>D-Bus 对象路径指的是 session 集合(<c>/org/freedesktop/secrets/collection/session</c>)。</summary>
+    internal static bool IsSessionCollectionPath(string? objectPath) =>
+        objectPath is not null && objectPath.EndsWith(SessionCollectionSuffix, StringComparison.Ordinal);
+
+    /// <summary>
     /// 属性表 <c>{ "key-id": 编号 }</c>。表不带销毁回调,键与值由调用方在 unref 之后自己释放。
     /// </summary>
     private static nint NewAttributes(string keyId, out nint name, out nint value)
@@ -255,6 +372,13 @@ internal sealed unsafe partial class SecretServiceMasterKeyStore : IMasterKeySto
             sizeof(SecretSchemaAttribute), (int)((byte*)&error.Message - errorBase));
     }
 
+    /// <summary><c>GList</c> 的布局自检(测试用):64 位上 24 字节,<c>next</c> 在偏移 8。</summary>
+    internal static (int Size, int NextOffset) ListLayout()
+    {
+        GList node = default;
+        return (sizeof(GList), (int)((byte*)&node.Next - (byte*)&node));
+    }
+
     private static (nint, nint) LoadStringFunctions()
     {
         nint glib = NativeLibrary.Load(LibGlib);
@@ -281,6 +405,15 @@ internal sealed unsafe partial class SecretServiceMasterKeyStore : IMasterKeySto
         public uint Domain;
         public int Code;
         public byte* Message;
+    }
+
+    /// <summary><c>GList</c>:<c>{ gpointer data; GList *next; GList *prev; }</c>。</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GList
+    {
+        public nint Data;
+        public GList* Next;
+        public GList* Prev;
     }
 
     /// <summary><c>SecretSchemaAttribute</c>:<c>{ const gchar *name; SecretSchemaAttributeType type; }</c>。</summary>
@@ -328,6 +461,28 @@ internal sealed unsafe partial class SecretServiceMasterKeyStore : IMasterKeySto
 
     [LibraryImport(LibSecret)]
     private static partial void secret_password_free(nint password);
+
+    /// <remarks><paramref name="service" /> 传 0:libsecret 自己取默认的 <c>SecretService</c>(同 lookup / store 的做法)。</remarks>
+    [LibraryImport(LibSecret)]
+    private static partial nint secret_service_search_sync(nint service, nint schema, nint attributes, int flags,
+        nint cancellable, nint* error);
+
+    [LibraryImport(LibSecret)]
+    private static partial int secret_item_get_locked(nint item);
+
+    /// <remarks>别名不存在时交回 NULL 且不带错误。<paramref name="service" /> 传 0 同上。</remarks>
+    [LibraryImport(LibSecret)]
+    private static partial nint secret_collection_for_alias_sync(nint service, nint alias, int flags, nint cancellable,
+        nint* error);
+
+    [LibraryImport(LibGio)]
+    private static partial nint g_dbus_proxy_get_object_path(nint proxy);
+
+    [LibraryImport(LibGobject)]
+    private static partial void g_object_unref(nint instance);
+
+    [LibraryImport(LibGlib)]
+    private static partial void g_list_free(nint list);
 
     [LibraryImport(LibGlib)]
     private static partial nint g_hash_table_new(nint hashFunc, nint keyEqualFunc);

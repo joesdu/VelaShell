@@ -3621,3 +3621,11 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **验证**:新增 `Disable_InProcessPlugin_HandsItsOwnTypesToTheSharedStateReleaser`(交出去的是插件 ALC 里那份类型)。插件仓库的 `RdpUnloadTests` 模拟同一步骤:两处修复都在时连续 3 次通过,去掉任何一处都稳定失败。Windows Debug 解决方案 `-warnaserror` 构建通过;`VelaShell.Infrastructure.Tests` 1440 条:1407 通过、33 跳过;`VelaShell.Tests` 3501 条:3477 通过、24 跳过;0 失败。
 - **仍待处理**:Docker 面板与 MongoDB 插件同样用 `AvaloniaProperty.Register` 等登记了属性,停用后同样回收不掉,需要按 RDP 的做法改。
 - **文档**:velashell-docs 开发指南 §4(中英文)补充「进程内插件不要往 Avalonia 全局属性系统登记东西」。
+
+## 320. 2026-11-13 Linux 重启后已存密码解不开(#750):钥匙环锁着与 session 集合不再报成「密钥不在」
+
+- **现象**(#750,Ubuntu 26.04 / Wayland,1.7.9 deb):勾了记住密码,重启系统后连接时登录框说「加密它的本机密钥不在这里」,每次重启都要重输;Windows 上正常。
+- **根因**(按代码推断,没在真机上复现):这句文案对应解析结果里的 `MissingKeyIds`,即 `SecretServiceMasterKeyStore.Load` 交回了 NotFound —— libsecret 的 lookup 交回 NULL 而不带错误。有两种情形会这样,而它们都不是「密钥不在」:① 钥匙环锁着(自动登录的机器重启后登录钥匙环不会自动解锁),解锁框被取消或没弹出来 —— 原来记在 `feature-plan.md` 的 P3 欠账;② 默认别名指向 gnome-keyring 的 session 集合(只在内存里)—— 写进去、读回核对都通过,重启就没了。②更符合「每次重启都丢」:解析器见旧条目「不在」就另起一把新密钥写进同一个集合,重输的密码下次重启又解不开,一直这样循环。
+- **修复**(`SecretServiceMasterKeyStore`):lookup 交回 NULL 后,用 `secret_service_search_sync` 带 `SECRET_SEARCH_ALL`(不带 UNLOCK / LOAD_SECRETS,不弹框)再搜一遍,条目在而锁着(`secret_item_get_locked`)就报「用不了」:旧编号记为这次没取到,新密码先用本地临时密钥,解锁后重启照常取回并合并,也不再连弹几次解锁框。写之前用 `secret_collection_for_alias_sync("default")` 查默认集合的对象路径,以 `/collection/session` 结尾就报「用不了」,本机密钥回落到 `secret.key`(明文 + 0600,与没有密钥链时一样),之后每次启动都不会把它迁走。两处查询出错、或者旧版 libsecret 没有这些入口时,一律当作「说不准」,按原来的方式处理。新增的原生绑定都是 `LibraryImport`、不带变参;`GList` 布局并入布局自检。
+- **验证**:新增 `SecretService_RecognisesTheInMemorySessionCollection`(5 组路径)、`SessionOnlyKeychain_KeepsNewPasswordsInTheKeyFile_AcrossRestarts`(写入被拒时新密钥落到本地文件,再重启仍能解开),布局自检加 `GList`(24 / 8)。Windows Debug `-warnaserror` 构建 Infrastructure 测试工程 0 警告;`MasterKeyResolverTests` 与主密码相关用例 89 通过、1 跳过(`SystemKeychain_RoundTrip` 需 `VELASHELL_KEYCHAIN_TESTS=1`)。⚠️ 新增的 libsecret / GIO 调用只经过编译,没在 Linux 真机钥匙环上跑过,已经丢掉的旧密钥也找不回来:受影响的用户升级后重输一次密码,之后就能保留下来。
+- **文档**:手册中英「原理」与排障表改写钥匙环锁着 / session 钥匙环两种情形;`feature-plan.md` 划掉「钥匙环解锁框被取消时报成找不到」。

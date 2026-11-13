@@ -302,6 +302,28 @@ public sealed class MasterKeyResolverTests
     }
 
     [TestMethod]
+    public void SessionOnlyKeychain_KeepsNewPasswordsInTheKeyFile_AcrossRestarts()
+    {
+        // #750:默认集合是 session 集合,上一次写进去的条目重启后全没了;SecretServiceMasterKeyStore 写之前认出它、拒写。
+        var beforeRestart = new FakeKeychain();
+        string lostCipher = Protector(beforeRestart).Protect("lost")!;
+        string lostId = Assert.ContainsSingle(ReferencedIds());
+
+        var afterRestart = new FakeKeychain { SaveError = "the default keyring is the session keyring" };
+        AesSecretProtector protector = Protector(afterRestart);
+        Assert.AreSequenceEqual([lostId], [.. protector.GetKeyStatus().MissingKeyIds]);
+        Assert.IsFalse(protector.TryUnprotect(lostCipher, out _));
+        string kept = protector.Protect("kept")!;
+        Assert.IsTrue(File.Exists(_keyFile), "新密钥回落到本地密钥文件,不进会被清空的集合");
+
+        // 再重启一次:密钥链照旧只有 session 集合,本地文件既不被迁走也不被删,重新输入的密码还在。
+        var nextRestart = new FakeKeychain { SaveError = "the default keyring is the session keyring" };
+        Assert.AreEqual("kept", Protector(nextRestart).Unprotect(kept));
+        Assert.IsTrue(File.Exists(_keyFile));
+        Assert.AreSequenceEqual([lostId], ReferencedIds());
+    }
+
+    [TestMethod]
     public void ReferenceOnAPlatformWithoutAKeychain_ReportsTheKeysAsMissing()
     {
         // 数据目录从 macOS / Linux 拷到了 Windows:这边没有密钥链后端。
@@ -470,6 +492,19 @@ public sealed class MasterKeyResolverTests
             Assert.Inconclusive("[SKIP] 布局数字按 64 位写的");
         }
         Assert.AreEqual((592, 16, 528, 16, 8), SecretServiceMasterKeyStore.Layout());
+        Assert.AreEqual((24, 8), SecretServiceMasterKeyStore.ListLayout());
+    }
+
+    [TestMethod]
+    [DataRow("/org/freedesktop/secrets/collection/session", true)]
+    [DataRow("/org/freedesktop/secrets/collection/login", false)]
+    [DataRow("/org/freedesktop/secrets/collection/session_2", false)]
+    [DataRow("/org/freedesktop/secrets/collection/mysession", false)]
+    [DataRow(null, false)]
+    public void SecretService_RecognisesTheInMemorySessionCollection(string? objectPath, bool expected)
+    {
+        // #750:默认别名指向 session 集合时,写进去的密钥重启即丢,要当成用不了回落到本地密钥文件。
+        Assert.AreEqual(expected, SecretServiceMasterKeyStore.IsSessionCollectionPath(objectPath));
     }
 
     [TestMethod]
