@@ -632,8 +632,11 @@ public class PluginInstallUninstallTests
     /// <summary>
     /// 旧版目录换名失败(被占用)时,旧版已经从运行时摘下来了 —— 必须原样挂回去,
     /// 否则插件从管理页与连接页上消失,直到重启宿主。错误信息要说清楚是占用、旧版还在。
+    /// 只在 Windows 上跑:用「不带共享删除的打开句柄」挡住目录换名是 Windows 的共享模式语义,
+    /// Linux / macOS 没有强制共享锁,换名照样成功 —— 这类占用在那两个平台上本来就不会发生。
     /// </summary>
     [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public async Task Upgrade_WhenTheInstalledDirectoryIsLocked_KeepsTheOldVersionAttached()
     {
         const string id = "acme.locked";
