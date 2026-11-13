@@ -90,6 +90,8 @@ public class App : Application
                     () => sp.GetService<MainWindowViewModel>(),
                     sp.GetService<IBackgroundActivityService>(),
                     sp.GetService<Infrastructure.Plugins.PluginNotificationService>()))
+            // 进程内插件卸载前清掉 Avalonia 里按插件类型缓存的状态,否则插件的 ALC 停用后也回收不掉。
+            .AddSingleton<Infrastructure.Plugins.IPluginSharedStateReleaser, Services.Plugins.AvaloniaPluginStateReleaser>()
             // 隔离插件的主题令牌快照:Vela* 资源按当前明暗变体解析后经 RPC 下发,
             // 插件的 {DynamicResource VelaXxx} 跨进程同样生效(进程内天然可用)。
             .AddSingleton<Func<Task<IReadOnlyList<PluginSdk.Rpc.ThemeTokenDto>>>>(_ =>

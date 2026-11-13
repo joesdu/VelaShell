@@ -3612,3 +3612,12 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **组件**:DESIGN.md §5.2 新增「Plugin card」条目。
 - **验证**:新增 `PluginManagerWindowLayoutTests`(Skia 渲染下更新按钮不越界、每行有「更多」按钮、筛选与无匹配空态、指纹中间省略);用同一用例在 980 与 740 宽下截图人工核对。Windows Debug 解决方案 `-warnaserror` 构建通过,`VelaShell.Tests` 全量 3505 条:3481 通过、24 跳过(环境早退)、0 失败。
 - **文档**:用户手册中英文同步按钮位置与筛选;velashell-docs 的交互与界面规格 §11A(中英文)按新布局重写,并订正过期的窗口默认 / 最小尺寸。
+
+## 319. 2026-11-13 进程内插件卸载前清掉 Avalonia 按插件类型的缓存(插件 ALC 停用后回收不掉)
+
+- **现象**:远程桌面插件停用 / 断开后,宿主日志一直报「load context is still alive after 10 GC passes」,插件程序集与它占的内存留到重启。
+- **根因**(堆转储逐条 gcroot 确认,复现见 velashell-plugins 的 `RdpUnloadTests`):插件 ALC 与宿主共用 Avalonia,Avalonia 的属性系统是进程级的。① 插件控件被渲染过之后,宿主属性(实测 `Visual.ClipToBounds`)的 `_metadataCache` 多了一条以插件类型为键的记录;② 插件自己 `AvaloniaProperty.Register` 的属性留在全局 `_properties` 表里。两者都经 `LoaderAllocator` 拽住整个 ALC。① 是所有带自绘控件的进程内插件都会撞上的宿主侧问题;② 是插件侧问题(RDP 的 `RdpGlyph`,已在插件仓库修掉)。
+- **修复**:新增 `IPluginSharedStateReleaser`(Infrastructure 不引用 Avalonia,由 UI 层实现)与 `PluginManagerOptions.SharedStateReleaser`。`PluginManager` 在 `Unload()` 之前把插件 ALC 里全部类型交给它;`AvaloniaPluginStateReleaser` 在 UI 线程上调用 Avalonia 公开的 `AvaloniaPropertyRegistry.UnregisterByModule`(这些字典 UI 线程读属性时会写,不能跨线程改)。退出路径跳过。
+- **验证**:新增 `Disable_InProcessPlugin_HandsItsOwnTypesToTheSharedStateReleaser`(交出去的是插件 ALC 里那份类型)。插件仓库的 `RdpUnloadTests` 模拟同一步骤:两处修复都在时连续 3 次通过,去掉任何一处都稳定失败。Windows Debug 解决方案 `-warnaserror` 构建通过;`VelaShell.Infrastructure.Tests` 1440 条:1407 通过、33 跳过;`VelaShell.Tests` 3501 条:3477 通过、24 跳过;0 失败。
+- **仍待处理**:Docker 面板与 MongoDB 插件同样用 `AvaloniaProperty.Register` 等登记了属性,停用后同样回收不掉,需要按 RDP 的做法改。
+- **文档**:velashell-docs 开发指南 §4(中英文)补充「进程内插件不要往 Avalonia 全局属性系统登记东西」。

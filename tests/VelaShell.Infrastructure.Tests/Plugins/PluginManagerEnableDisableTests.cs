@@ -136,6 +136,45 @@ public class PluginManagerEnableDisableTests
         await manager.DisposeAsync();
     }
 
+    private sealed class RecordingReleaser : IPluginSharedStateReleaser
+    {
+        public List<(string PluginId, IReadOnlyList<Type> Types)> Calls { get; } = [];
+
+        public void Release(string pluginId, IReadOnlyList<Type> types) => Calls.Add((pluginId, types));
+    }
+
+    /// <summary>
+    /// 卸载 ALC 之前,宿主要把插件 ALC 里的类型交给 UI 层去清 Avalonia 的按类型缓存(插件控件被渲染过,
+    /// 宿主属性的元数据缓存就以插件类型为键拽住整个 ALC)。交出去的必须是插件自己那份程序集的类型,
+    /// 而不是默认上下文里同名的那一份 —— 否则清的是别人的键,插件照样回收不掉。
+    /// </summary>
+    [TestMethod]
+    public async Task Disable_InProcessPlugin_HandsItsOwnTypesToTheSharedStateReleaser()
+    {
+        StageFixture();
+        var releaser = new RecordingReleaser();
+        PluginManager manager = new(new()
+        {
+            PluginRoots = [_root],
+            DataRootDirectory = _dataRoot,
+            HostVersion = "1.0.0",
+            CommandsFactory = (_, _) => new RecordingCommands(),
+            SharedStateReleaser = releaser
+        });
+        await manager.StartAsync();
+        Assert.AreEqual(PluginState.Active, manager.Plugins.Single().State, manager.Plugins.Single().Error);
+        Assert.IsEmpty(releaser.Calls);
+
+        await manager.DisableAsync(TestFixturePlugin.Id);
+
+        (string pluginId, IReadOnlyList<Type> types) = releaser.Calls.Single();
+        Assert.AreEqual(TestFixturePlugin.Id, pluginId);
+        Type entry = types.Single(t => t.FullName == typeof(TestFixturePlugin).FullName);
+        Assert.AreNotSame(typeof(TestFixturePlugin), entry, "应是插件 ALC 里装载的那份类型");
+        Assert.IsTrue(System.Runtime.Loader.AssemblyLoadContext.GetLoadContext(entry.Assembly)!.IsCollectible);
+        await manager.DisposeAsync();
+    }
+
     /// <summary>可控的界面数来源:测试直接拨数字、手动发变化通知。</summary>
     private sealed class FakeSurfaceSource : IPluginSurfaceSource
     {
