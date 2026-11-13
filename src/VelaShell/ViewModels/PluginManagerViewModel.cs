@@ -42,6 +42,35 @@ public sealed class PluginRowViewModel(PluginDescriptor descriptor, bool hasTerm
     public string HostMode => descriptor.Manifest?.HostMode.ToString() ?? "";
 
     /// <summary>
+    /// 本地化的宿主模式标签(「进程内」/「隔离」)。原先直接显示枚举名 <c>InProcess</c>,
+    /// 中文界面里夹一个英文标识符,用户既读不懂,也不知道它意味着什么 —— 含义放在 <see cref="HostModeTip" /> 里。
+    /// </summary>
+    public string HostModeText => descriptor.Manifest?.HostMode switch
+    {
+        PluginSdk.PluginHostMode.InProcess => Strings.Get("PluginManager_HostModeInProcess"),
+        PluginSdk.PluginHostMode.Isolated => Strings.Get("PluginManager_HostModeIsolated"),
+        _ => ""
+    };
+
+    /// <summary>宿主模式的悬停说明:对用户而言它只关乎一件事 —— 插件崩了会不会带走 VelaShell。</summary>
+    public string HostModeTip => descriptor.Manifest?.HostMode switch
+    {
+        PluginSdk.PluginHostMode.InProcess => Strings.Get("PluginManager_HostModeInProcessTip"),
+        PluginSdk.PluginHostMode.Isolated => Strings.Get("PluginManager_HostModeIsolatedTip"),
+        _ => ""
+    };
+
+    /// <summary>是否显示宿主模式标签(清单读不出来时没有可显示的)。</summary>
+    public bool HasHostMode => descriptor.Manifest is not null;
+
+    /// <summary>卡片左侧图标块里的字:显示名的第一个字母或汉字(大写)。</summary>
+    public string Initial => DisplayName.Length == 0
+        ? "?"
+        : char.IsSurrogate(DisplayName[0]) && DisplayName.Length > 1
+            ? DisplayName[..2]
+            : char.ToUpperInvariant(DisplayName[0]).ToString();
+
+    /// <summary>
     /// 作者展示文案(如 <c>作者:Joe</c>)。清单的 <c>author</c> 缺省时退回 <c>publisher</c> ——
     /// 老插件只填了 publisher,不该因为新增字段就显示成"无作者"。
     /// </summary>
@@ -96,12 +125,34 @@ public sealed class PluginRowViewModel(PluginDescriptor descriptor, bool hasTerm
     public bool HasTerminalGrant
     {
         get;
-        internal set => this.RaiseAndSetIfChanged(ref field, value);
+        internal set
+        {
+            this.RaiseAndSetIfChanged(ref field, value);
+            this.RaisePropertyChanged(nameof(HasMoreActions));
+        }
     } = hasTerminalGrant;
 
     /// <summary>撤销敏感能力授权按钮文案。</summary>
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
     public string RevokeText => Strings.Get("PluginManager_RevokePermission");
+
+    /// <summary>
+    /// 「已授予敏感权限」标签。撤销入口收进了「更多」菜单,授权这件事本身却不能跟着藏起来 ——
+    /// 用户扫一眼列表就该知道哪个插件此刻拿着终端 / 上传这类能力。
+    /// </summary>
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
+    public string GrantBadgeText => Strings.Get("PluginManager_GrantBadge");
+
+    /// <summary>「已授予敏感权限」标签的悬停说明(去哪里撤销)。</summary>
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
+    public string GrantBadgeTip => Strings.Get("PluginManager_GrantBadgeTip");
+
+    /// <summary>「更多」菜单按钮的悬停说明与无障碍名。</summary>
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
+    public string MoreActionsText => Strings.Get("PluginManager_MoreActions");
+
+    /// <summary>「更多」菜单里是否有东西(没有就不摆那个按钮)。</summary>
+    public bool HasMoreActions => CanViewLog || HasTerminalGrant || CanToggleNotifications || CanUninstall;
 
     /// <summary>
     /// 是否可"重新加载"。只对开发期挂载的插件出现:它的意义是"我刚重编了,跑新代码",
@@ -163,6 +214,23 @@ public sealed class PluginRowViewModel(PluginDescriptor descriptor, bool hasTerm
     public string PublisherText =>
         HasPublisher ? Strings.Format("PluginManager_PublisherPinned", PublisherFingerprint) : "";
 
+    /// <summary>
+    /// 卡片上显示的发布者文案:指纹保留头尾、中间省略(<c>SHA256:f4aabc…121b97</c>)。
+    /// 末尾截断只剩前缀,而人核对指纹习惯对头和尾;完整指纹仍在悬停提示 <see cref="PublisherFingerprint" /> 里。
+    /// </summary>
+    public string PublisherShortText =>
+        HasPublisher ? Strings.Format("PluginManager_PublisherPinned", ShortenFingerprint(PublisherFingerprint!)) : "";
+
+    /// <summary>指纹的中间省略形式;够短时原样返回。</summary>
+    internal static string ShortenFingerprint(string fingerprint)
+    {
+        const int head = 6, tail = 6;
+        int colon = fingerprint.IndexOf(':');
+        string prefix = colon >= 0 ? fingerprint[..(colon + 1)] : "";
+        string body = fingerprint[prefix.Length..];
+        return body.Length <= head + tail + 1 ? fingerprint : $"{prefix}{body[..head]}…{body[^tail..]}";
+    }
+
     /// <summary>商店上的最新版本号;没有比本地更新的版本时为 <see langword="null" />。</summary>
     public string? AvailableVersion { get; init; }
 
@@ -221,8 +289,68 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
     private readonly Action _onChanged;
     private readonly Action<string, int> _onDebugAttach;
 
-    /// <summary>插件行集合(UI 线程更新)。</summary>
+    /// <summary>插件行集合(按 <see cref="FilterText" /> 过滤后的;UI 线程更新)。</summary>
     public ObservableCollection<PluginRowViewModel> Plugins { get; } = [];
+
+    /// <summary>全部插件行(未过滤),按显示名排好序。</summary>
+    private List<PluginRowViewModel> _allRows = [];
+
+    /// <summary>列表过滤词:按显示名、id、作者做不区分大小写的包含匹配。</summary>
+    public string? FilterText
+    {
+        get;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref field, value);
+            ApplyFilter();
+        }
+    }
+
+    /// <summary>过滤框的占位提示。</summary>
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
+    public string FilterHintText => Strings.Get("PluginManager_FilterHint");
+
+    /// <summary>有插件、但过滤词一个都没匹配上(与「一个插件都没装」的空态分开)。</summary>
+    public bool HasNoMatches
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>过滤无结果时的文案。</summary>
+    public string NoMatchesText => Strings.Format("PluginManager_NoMatches", FilterText?.Trim() ?? "");
+
+    /// <summary>列表上方的概况:共几个、几个在跑、几个可更新。</summary>
+    public string SummaryText
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    } = "";
+
+    /// <summary>底部提示是否为失败(决定图标与颜色)。</summary>
+    public bool IsNoticeError
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>底部状态栏要不要露面:有提示、有操作在进行、或商店那边有话要说。空着时整条收起。</summary>
+    public bool HasStatus
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>「关闭提示」按钮的悬停说明与无障碍名。</summary>
+    [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "XAML 绑定只解析实例成员。")]
+    public string DismissNoticeText => Strings.Get("PluginManager_DismissNotice");
+
+    /// <summary>收起底部提示(用户点了 ×)。</summary>
+    public void DismissNotice()
+    {
+        Notice = null;
+        IsNoticeError = false;
+    }
 
     /// <summary>与已安装列表共享管理器的商店浏览状态。</summary>
     public PluginMarketViewModel Store { get; }
@@ -234,8 +362,9 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         set
         {
             this.RaiseAndSetIfChanged(ref field, value);
-            if (value) Notice = null;
+            if (value) DismissNotice();
             Store.IsInstalling = value;
+            UpdateHasStatus();
         }
     }
 
@@ -295,8 +424,15 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
     public string? Notice
     {
         get;
-        private set => this.RaiseAndSetIfChanged(ref field, value);
+        private set
+        {
+            this.RaiseAndSetIfChanged(ref field, value);
+            UpdateHasStatus();
+        }
     }
+
+    private void UpdateHasStatus() =>
+        HasStatus = Notice is not null || IsPackageBusy || !string.IsNullOrEmpty(Store.OperationNotice);
 
     /// <summary>是否无插件(空态)。</summary>
     public bool IsEmpty
@@ -320,6 +456,10 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         _market = market;
         _notifications = notifications;
         Store = new(manager, market);
+        Store.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(PluginMarketViewModel.OperationNotice)) UpdateHasStatus();
+        };
         _onChanged = () => Dispatcher.UIThread.Post(() => _ = ReloadAsync());
         // 等待调试器的隔离插件:把 pid 摆到管理页上。它同时进日志、落 pid 文件,
         // 但开发者此刻多半正开着这个页面,让他去翻日志属于本可以省掉的一步。
@@ -495,7 +635,7 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         catch (Exception ex)
         {
             if (destination is not null) PluginPackageDownloads.Discard(destination);
-            SetNotice(Strings.Format("PluginManager_UpdateFailed", ex.Message));
+            SetNotice(Strings.Format("PluginManager_UpdateFailed", ex.Message), error: true);
             return null;
         }
     }
@@ -526,7 +666,7 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         }
         catch (Exception ex)
         {
-            SetNotice(Strings.Format("PluginManager_TrustStoreResetFailed", ex.Message));
+            SetNotice(Strings.Format("PluginManager_TrustStoreResetFailed", ex.Message), error: true);
             return false;
         }
     }
@@ -563,13 +703,17 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         }
         catch (Exception ex)
         {
-            SetNotice(Strings.Format("PluginManager_InstallFailed", ex.Message));
+            SetNotice(Strings.Format("PluginManager_InstallFailed", ex.Message), error: true);
             return false;
         }
     }
 
-    private void SetNotice(string text) =>
-        Dispatcher.UIThread.Post(() => Notice = text);
+    private void SetNotice(string text, bool error = false) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            IsNoticeError = error;
+            Notice = text;
+        });
 
     private async Task ReloadAsync()
     {
@@ -602,13 +746,15 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         {
             if (_disposed) return;
             Store.RefreshInstalledState();
-            Plugins.Clear();
-            foreach (PluginRowViewModel row in rows.OrderBy(r => r.DisplayName, StringComparer.CurrentCultureIgnoreCase))
-            {
-                Plugins.Add(row);
-            }
-            IsEmpty = Plugins.Count == 0;
-            HasUpdates = Plugins.Any(p => p.CanUpdate);
+            _allRows = [.. rows.OrderBy(r => r.DisplayName, StringComparer.CurrentCultureIgnoreCase)];
+            IsEmpty = _allRows.Count == 0;
+            int updates = _allRows.Count(p => p.CanUpdate);
+            HasUpdates = updates > 0;
+            int running = _allRows.Count(p => p.IsOk);
+            SummaryText = updates > 0
+                ? Strings.Format("PluginManager_SummaryWithUpdates", _allRows.Count, running, updates)
+                : Strings.Format("PluginManager_Summary", _allRows.Count, running);
+            ApplyFilter();
         }
         if (Dispatcher.UIThread.CheckAccess())
         {
@@ -618,6 +764,27 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
         {
             await Dispatcher.UIThread.InvokeAsync(Apply);
         }
+    }
+
+    /// <summary>按 <see cref="FilterText" /> 把 <see cref="_allRows" /> 投到 <see cref="Plugins" />(UI 线程)。</summary>
+    private void ApplyFilter()
+    {
+        string? filter = FilterText?.Trim();
+        Plugins.Clear();
+        foreach (PluginRowViewModel row in _allRows)
+        {
+            if (string.IsNullOrEmpty(filter) || Matches(row, filter))
+            {
+                Plugins.Add(row);
+            }
+        }
+        HasNoMatches = !IsEmpty && Plugins.Count == 0;
+        this.RaisePropertyChanged(nameof(NoMatchesText));
+
+        static bool Matches(PluginRowViewModel row, string filter) =>
+            row.DisplayName.Contains(filter, StringComparison.CurrentCultureIgnoreCase)
+            || row.Id.Contains(filter, StringComparison.OrdinalIgnoreCase)
+            || row.AuthorText.Contains(filter, StringComparison.CurrentCultureIgnoreCase);
     }
 
     /// <summary>把「商店上那一版」与「本地这一版」对起来:该不该升、升不升得上去。</summary>

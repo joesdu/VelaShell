@@ -371,6 +371,18 @@ Guarded by `DialogButtonStyleTests`.
   `RailLinkTheme` **Change** link back to the tiles. No colon between label and value: it differs per language
   ("类型：" / "Type:"), and a literal in XAML would be wrong in all but one.
 
+#### Plugin card (`Border.plugin-card` in `PluginManagerWindow.axaml`)
+- One installed plugin per card: `VelaBgInput` fill, 1px `VelaBorderPrimary`, `CornerRadius:6`, padding `[14,12]`, 8px
+  between cards; the border steps up to `VelaBorderSecondary` on hover so the whole card reads as one object.
+- Left: a 36×36 initial tile (`CornerRadius:6`, the display name's first letter in 14px SemiBold). Active =
+  `VelaAccentDim` fill + `VelaAccent` letter; any other state = `VelaBgActive` + `VelaTextTertiary`.
+- Middle: name 13px SemiBold `VelaTextPrimary` + version mono 11px `VelaTextTertiary` + StatusTags (localized host mode,
+  `DEV`, sensitive access); then the status line (7px dot + 11px text, coloured only for warning / error, `·`-separated
+  id and author in `VelaTextTertiary`); then the publisher fingerprint, elided in the middle, full value in the tooltip.
+- Right: at most one primary action (`VelaAccentPillButtonTheme`, the update), the frequent outline actions (26 high),
+  and a 26×26 `ellipsis` button whose `MenuFlyout` holds the rest — the destructive item last, after a separator, in
+  `VelaError`. Never more than three visible buttons plus the menu: a row of six equal outline buttons hides the one
+  action that matters.
 #### StatusDot (`Ellipse`)
 - 7x7 circle, fill driven by connection state
 - Classes: `.dot` (default=disconnected), `.dot.connected` (`VelaStatusConnected`), `.dot.connecting` (`VelaStatusConnecting`)
