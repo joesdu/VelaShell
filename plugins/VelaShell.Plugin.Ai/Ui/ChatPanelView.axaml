@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ae="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
              xmlns:aee="clr-namespace:AvaloniaEdit.Editing;assembly=AvaloniaEdit"
+             xmlns:p="clr-namespace:Avalonia.Controls.Presenters;assembly=Avalonia.Controls"
              xmlns:md="clr-namespace:LiveMarkdown.Avalonia;assembly=LiveMarkdown.Avalonia"
              xmlns:mdm="clr-namespace:LiveMarkdown.Avalonia;assembly=LiveMarkdown.Avalonia.Mermaid"
              xmlns:ui="clr-namespace:VelaShell.Plugin.Ai.Ui"
@@ -891,6 +892,14 @@
           <TextBlock x:Name="InputPlaceholder" Classes="placeholder"
                      Margin="12,8" IsHitTestVisible="False"
                      VerticalAlignment="Top" TextWrapping="Wrap" />
+          <Canvas x:Name="InputPreeditLayer" IsHitTestVisible="False" ClipToBounds="True">
+            <p:TextPresenter x:Name="InputPreedit" IsVisible="False" TextWrapping="Wrap"
+                             TextElement.FontFamily="{DynamicResource VelaUiFont}"
+                             TextElement.FontSize="{DynamicResource VelaFontSize13}"
+                             TextElement.Foreground="{DynamicResource VelaTextPrimary}"
+                             Background="{DynamicResource VelaBgInput}"
+                             CaretBrush="{DynamicResource VelaTextPrimary}" />
+          </Canvas>
         </Panel>
 
         <Grid x:Name="InputToolbar" Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" Margin="6,0,5,5">

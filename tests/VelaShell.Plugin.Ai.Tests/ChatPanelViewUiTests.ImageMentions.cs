@@ -13,16 +13,18 @@ namespace VelaShell.Plugin.Ai.Tests;
 
 public sealed partial class ChatPanelViewUiTests
 {
-    private static async Task<ChatPanelView> ImageMentionPanel(TestPluginContext context, bool configured = true)
+    private static async Task<ChatPanelView> ImageMentionPanel(TestPluginContext context, bool configured = true, bool automatic = false)
     {
         var store = new AiSettingsStore(context);
         AiProvider chat = StubProvider("chat", "http://127.0.0.1:1/v1", "text");
         AiProvider image = StubProvider("image", "http://127.0.0.1:1/v1", "gpt-image-2");
+        if (automatic) chat.Models.Add(image.Models[0]);
         await store.SaveAsync(new AiSettings
         {
-            Providers = [chat, image],
+            Providers = automatic ? [chat] : [chat, image],
             ActiveModelId = chat.Models[0].Id,
-            ImageModelId = configured ? image.Models[0].Id : null,
+            ImageModelId = configured && !automatic ? image.Models[0].Id : null,
+            ImageGenerationEnabled = automatic ? true : null,
             Mode = ChatMode.Chat,
             SuggestFollowUps = false
         });
@@ -110,17 +112,21 @@ public sealed partial class ChatPanelViewUiTests
     }
 
     [TestMethod]
-    public void ImageMention_ExpandsAsToolIntentNotRemoteFileAndRespectsPlanMode()
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(true, true)]
+    public void ImageMention_ExpandsAsToolIntentNotRemoteFileAndRespectsPlanMode(bool automatic, bool missingDefault)
     {
         OnUi(async () =>
         {
             using var context = new TestPluginContext();
-            ChatPanelView panel = await ImageMentionPanel(context);
+            ChatPanelView panel = await ImageMentionPanel(context, automatic: automatic);
             var window = new Window { Content = panel };
             window.Show();
             try
             {
                 await PumpAsync();
+                if (missingDefault) PanelSettings(panel).ImageModelId = "removed-default";
                 MethodInfo resolve = typeof(ChatPanelView).GetMethod("ResolveAttachmentsAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
                 var task = (Task<(string Text, IReadOnlyList<string> Attached, IReadOnlyList<string> Failed)>)resolve.Invoke(panel,
                     ["@imagegen draw a cat", CancellationToken.None])!;

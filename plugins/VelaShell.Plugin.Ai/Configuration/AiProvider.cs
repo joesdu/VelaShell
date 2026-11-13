@@ -509,7 +509,14 @@ public sealed class AiSettings
         ActiveProviderId = null;
     }
 
-    /// <summary>对话作图绑定的模型 id；null 表示关闭，不自动回落到其他模型。</summary>
+    /// <summary>对话作图开关；旧配置未保存此字段时沿用是否指定了图片模型。</summary>
+    public bool? ImageGenerationEnabled { get; set; }
+
+    /// <summary>兼容旧配置后的对话作图开关。</summary>
+    [JsonIgnore]
+    public bool ImageToolsEnabled => ImageGenerationEnabled ?? ImageModelId is not null;
+
+    /// <summary>可选的默认图片模型；启用且为空时由主模型选择当前供应商下的图片模型。</summary>
     public string? ImageModelId { get; set; }
 
     /// <summary>自定义系统提示词(空 = 用内置默认)。</summary>

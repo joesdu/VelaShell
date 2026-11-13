@@ -280,14 +280,14 @@ public sealed class BridgeAgentRunner(
                         // 沿用父模型时用这一轮正在用的凭据(令牌续期后是续期过的那份);另选模型按当下设置现取
                         async (request, token) => string.IsNullOrWhiteSpace(request.ModelId) || request.ModelId == model.Id
                             ? (model, fixedCredential)
-                            : await SubagentRunner.ResolveFromSettingsAsync(store, request.ModelId, null, token).ConfigureAwait(false),
+                            : await SubagentRunner.ResolveFromSettingsAsync(store, request.ModelId, model.Id, token, model.Provider.Id).ConfigureAwait(false),
                         (target, credential) => store.CreateClient(target, credential, callerCountsRetries: true),
                         () => template, runScope, context.Host.Locale);
                     SubagentOrchestrator created = null!;
                     created = new SubagentOrchestrator(
                         (request, token) => subagentRunner.RunAsync(created, request, token), cancellationToken)
                     {
-                        ModelChoices = SubagentRunner.ModelChoices(ai),
+                        ModelChoices = SubagentRunner.ModelChoices(ai, model.Provider.Id),
                         DefaultModelId = model.Id
                     };
                     created.SnapshotsChanged += ReportSubagents;

@@ -235,6 +235,7 @@ public sealed class AiSettingsStore(IPluginContext context)
                 settings.SystemPrompt = fresh.SystemPrompt;
                 settings.SuggestFollowUps = fresh.SuggestFollowUps;
                 settings.ImageModelId = fresh.ImageModelId;
+                settings.ImageGenerationEnabled = fresh.ImageGenerationEnabled;
                 settings.CompactContext = fresh.CompactContext;
                 settings.PanelWidthPercent = fresh.PanelWidthPercent;
                 settings.McpServers = fresh.McpServers;
@@ -738,6 +739,7 @@ public sealed class AiSettingsStore(IPluginContext context)
             settings.CompactContext = detached.CompactContext;
             settings.SuggestFollowUps = detached.SuggestFollowUps;
             settings.ImageModelId = detached.ImageModelId;
+            settings.ImageGenerationEnabled = detached.ImageGenerationEnabled;
             CopyEditableWebSearch(settings.WebSearch, detached.WebSearch);
             settings.FailoverChain = detached.FailoverChain;
             settings.AutoFailoverAcrossAccounts = detached.AutoFailoverAcrossAccounts;
@@ -752,6 +754,7 @@ public sealed class AiSettingsStore(IPluginContext context)
         target.CompactContext = draft.CompactContext;
         target.SuggestFollowUps = draft.SuggestFollowUps;
         target.ImageModelId = draft.ImageModelId;
+        target.ImageGenerationEnabled = draft.ImageGenerationEnabled;
         CopyEditableWebSearch(target.WebSearch, draft.WebSearch);
         target.FailoverChain = [.. draft.FailoverChain.Where(entry => target.FindModel(entry.ModelId) is not null).Select(entry => new FailoverEntry { ModelId = entry.ModelId })];
         target.AutoFailoverAcrossAccounts = draft.AutoFailoverAcrossAccounts;

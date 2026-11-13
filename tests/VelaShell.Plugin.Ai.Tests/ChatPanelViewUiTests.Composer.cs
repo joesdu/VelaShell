@@ -2,9 +2,12 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Presenters;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Input.TextInput;
 using Avalonia.VisualTree;
+using AvaloniaEdit;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.Plugin.Ai.Ui;
 using VelaShell.PluginSdk.Testing;
@@ -13,6 +16,177 @@ namespace VelaShell.Plugin.Ai.Tests;
 
 public sealed partial class ChatPanelViewUiTests
 {
+    [TestMethod]
+    [DataRow("")]
+    [DataRow("已有正文")]
+    [DataRow("#/root/notes.txt ")]
+    public void Composer_ImePreedit_IsVisibleWithoutChangingTheDocument(string draft)
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                TextEditor input = Find<TextEditor>(panel, "InputBox");
+                input.Text = draft;
+                input.CaretOffset = draft.Length;
+                input.TextArea.Focus();
+                await PumpAsync(3);
+                TextInputMethodClient client = RequestComposerIme(input);
+                Assert.IsTrue(client.SupportsPreedit, "Win32 只有在客户端支持预编辑时才交付拼音");
+                bool canUndo = input.CanUndo;
+                client.SetPreeditText("ce'shi", 2);
+                await PumpAsync(3);
+
+                TextPresenter preedit = Find<TextPresenter>(panel, "InputPreedit");
+                Assert.IsTrue(preedit.IsEffectivelyVisible);
+                Assert.AreEqual("ce'shi", preedit.PreeditText);
+                Assert.IsGreaterThan(0, preedit.TextLayout.Width);
+                Assert.IsGreaterThan(0, preedit.Bounds.Height);
+                Assert.IsFalse(Find<TextBlock>(panel, "InputPlaceholder").IsVisible);
+                Assert.AreEqual(draft, input.Text);
+                Assert.AreEqual(canUndo, input.CanUndo, "预编辑不得进入撤销栈");
+                double cursorAtTwo = client.CursorRectangle.X;
+                client.SetPreeditText("ce'shi", 6);
+                Assert.IsGreaterThan(cursorAtTwo, client.CursorRectangle.X, "候选窗跟随拼音串内光标");
+                client.SetPreeditText("ce'shi");
+                Assert.AreEqual(6, preedit.PreeditText!.Length);
+                Assert.IsGreaterThan(cursorAtTwo, client.CursorRectangle.X, "无光标参数时定位到末尾");
+
+                client.SetPreeditText(null, null);
+                await PumpAsync(3);
+                Assert.IsFalse(preedit.IsVisible);
+                Assert.AreEqual(draft.Length == 0, Find<TextBlock>(panel, "InputPlaceholder").IsVisible);
+                Assert.AreEqual(draft, input.Text);
+
+                client.SetPreeditText("ce", 2);
+                client.SetPreeditText("", 0);
+                Assert.IsFalse(preedit.IsVisible, "空串与 null 都结束组字");
+                client.SetPreeditText("ce'shi", 6);
+                window.KeyTextInput("测试");
+                await PumpAsync(3);
+                Assert.AreEqual(draft + "测试", input.Text, "确认后的中文沿编辑器原路径提交一次");
+                Assert.IsFalse(preedit.IsVisible);
+                input.Undo();
+                Assert.AreEqual(draft, input.Text, "一次撤销只撤销提交的中文");
+            }
+            finally { panel.Detach(); window.Close(); }
+        });
+    }
+
+    [TestMethod]
+    public void Composer_ImeCommit_ReplacesSelectionAndPreservesUndo()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                TextEditor input = Find<TextEditor>(panel, "InputBox");
+                input.Text = "前文旧字后文";
+                input.Select(2, 2);
+                input.TextArea.Focus();
+                TextInputMethodClient client = RequestComposerIme(input);
+                client.SetPreeditText("xin'zi", 6);
+                Assert.AreEqual("前文旧字后文", input.Text);
+                Assert.AreEqual("旧字", input.SelectedText);
+                window.KeyTextInput("新字");
+                await PumpAsync(3);
+                Assert.AreEqual("前文新字后文", input.Text);
+                input.Undo();
+                Assert.AreEqual("前文旧字后文", input.Text);
+            }
+            finally { panel.Detach(); window.Close(); }
+        });
+    }
+
+    [TestMethod]
+    public void Composer_ImePreedit_OwnsKeysAndClearsOnFocusLoss()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                TextEditor input = Find<TextEditor>(panel, "InputBox");
+                input.Text = "#/root/notes.txt ";
+                input.CaretOffset = input.Text.Length;
+                input.TextArea.Focus();
+                TextInputMethodClient client = RequestComposerIme(input);
+                client.SetPreeditText("ce", 2);
+                foreach (PhysicalKey key in new[] { PhysicalKey.Enter, PhysicalKey.ArrowUp, PhysicalKey.ArrowDown,
+                             PhysicalKey.Backspace, PhysicalKey.Delete, PhysicalKey.Tab, PhysicalKey.Escape })
+                {
+                    window.KeyPressQwerty(key, RawInputModifiers.None);
+                    window.KeyReleaseQwerty(key, RawInputModifiers.None);
+                }
+                await PumpAsync(3);
+                Assert.AreEqual("#/root/notes.txt ", input.Text);
+                Assert.AreEqual(input.Text.Length, input.CaretOffset);
+                Assert.IsEmpty(Find<StackPanel>(panel, "MessagesPanel").Children);
+                Assert.IsTrue(input.TextArea.IsFocused);
+                Find<Button>(panel, "ModelButton").Focus();
+                await PumpAsync(3);
+                Assert.IsFalse(Find<TextPresenter>(panel, "InputPreedit").IsVisible);
+                input.TextArea.Focus();
+                window.KeyPressQwerty(PhysicalKey.Backspace, RawInputModifiers.None);
+                await PumpAsync(3);
+                Assert.AreEqual("", input.Text, "组字结束后恢复引用整块删除");
+            }
+            finally { panel.Detach(); window.Close(); }
+        });
+    }
+
+    [TestMethod]
+    public void Composer_ImePreedit_FitsNarrowScrolledInput_AndClearsOnDetach()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                window.Width = 300;
+                TextEditor input = Find<TextEditor>(panel, "InputBox");
+                input.Text = string.Join("\n", Enumerable.Repeat("已有正文，继续输入测试", 30));
+                input.CaretOffset = input.Text.Length;
+                input.TextArea.Focus();
+                input.TextArea.Caret.BringCaretToView();
+                await PumpAsync(5);
+                TextInputMethodClient client = RequestComposerIme(input);
+                client.SetPreeditText("zhong'wen'shu'ru'ce'shi", 5);
+                await PumpAsync(5);
+                TextPresenter preedit = Find<TextPresenter>(panel, "InputPreedit");
+                Canvas layer = Find<Canvas>(panel, "InputPreeditLayer");
+                Point origin = preedit.TranslatePoint(default, layer)!.Value;
+                Assert.IsGreaterThan(0, input.TextArea.TextView.ScrollOffset.Y);
+                Assert.IsTrue(origin.X >= 0 && origin.X + preedit.Bounds.Width <= layer.Bounds.Width + 1);
+                Assert.IsTrue(origin.Y >= 0 && origin.Y + preedit.Bounds.Height <= layer.Bounds.Height + 1);
+                int cursorChanges = 0;
+                client.CursorRectangleChanged += (_, _) => cursorChanges++;
+                window.Width = 500;
+                await PumpAsync(5);
+                Assert.IsGreaterThan(0, cursorChanges, "布局变化应重新定位候选窗");
+                panel.Detach();
+                Assert.IsFalse(preedit.IsVisible);
+            }
+            finally { panel.Detach(); window.Close(); }
+        });
+    }
+
+    private static TextInputMethodClient RequestComposerIme(TextEditor input)
+    {
+        var request = new TextInputMethodClientRequestedEventArgs
+        {
+            RoutedEvent = InputElement.TextInputMethodClientRequestedEvent
+        };
+        input.TextArea.RaiseEvent(request);
+        return request.Client ?? throw new AssertFailedException("输入框未提供 IME 客户端");
+    }
+
     [TestMethod]
     [DataRow("ModeCombo")]
     [DataRow("ApprovalCombo")]

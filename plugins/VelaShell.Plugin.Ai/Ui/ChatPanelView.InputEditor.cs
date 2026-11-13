@@ -30,6 +30,7 @@ public partial class ChatPanelView
     /// <summary>把着色与芯片接到输入框上;主题切换时重上色。</summary>
     private void SetUpInputEditor()
     {
+        SetUpInputMethod();
         InputBox.SyntaxHighlighting = LoadMarkdownDefinition();
         ApplyInputHighlightPalette();
         InputBox.TextArea.TextView.ElementGenerators.Add(new FileReferenceChipGenerator());

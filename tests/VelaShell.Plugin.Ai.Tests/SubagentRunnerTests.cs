@@ -32,6 +32,29 @@ public sealed class SubagentRunnerTests
 
     private static ChatResponseUpdate End(ChatFinishReason reason) => new() { FinishReason = reason };
 
+    [TestMethod]
+    public async Task ModelSelectionIsScopedByProviderInstanceBeforeCredentialResolution()
+    {
+        using var context = new TestPluginContext();
+        var parent = Model();
+        var child = new AiModelConfig { Model = "child" };
+        var image = new AiModelConfig { Model = "gpt-image-test" };
+        parent.Provider.Models.AddRange([child, image]);
+        var other = Model();
+        var settings = new AiSettings { Providers = [parent.Provider, other.Provider], ActiveModelId = parent.Id };
+        var store = new AiSettingsStore(context);
+        await store.SaveAsync(settings);
+        Dictionary<string, string> choices = SubagentRunner.ModelChoices(settings, parent.Provider.Id);
+        CollectionAssert.AreEquivalent(new[] { parent.Id, child.Id }, choices.Keys.ToArray());
+        (ResolvedModel selected, _) = await SubagentRunner.ResolveFromSettingsAsync(store, child.Id, parent.Id,
+            CancellationToken.None, parent.Provider.Id);
+        Assert.AreEqual(child.Id, selected.Id);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => SubagentRunner.ResolveFromSettingsAsync(
+            store, other.Id, parent.Id, CancellationToken.None, parent.Provider.Id));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => SubagentRunner.ResolveFromSettingsAsync(
+            store, image.Id, parent.Id, CancellationToken.None, parent.Provider.Id));
+    }
+
     private static ChatResponseUpdate Usage(long input, long output) => new()
     {
         Contents = [new UsageContent(new UsageDetails { InputTokenCount = input, OutputTokenCount = output })]

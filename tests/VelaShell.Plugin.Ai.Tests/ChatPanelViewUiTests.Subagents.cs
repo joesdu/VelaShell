@@ -144,16 +144,19 @@ public sealed partial class ChatPanelViewUiTests
             });
             using var context = new TestPluginContext();
             AiProvider parent = StubProvider("parent", parentEndpoint.BaseUrl, "parent-model");
+            child.Models[0].BaseUrlOverride = childEndpoint.BaseUrl;
+            child.Models[0].HasOwnApiKey = true;
+            parent.Models.Add(child.Models[0]);
             var store = new AiSettingsStore(context);
             await store.SaveAsync(new AiSettings
             {
-                Providers = [parent, child],
+                Providers = [parent],
                 ActiveModelId = parent.Models[0].Id,
                 Mode = ChatMode.Agent,
                 SuggestFollowUps = false
             });
             await store.SetApiKeyAsync(parent.Id, "parent-key");
-            await store.SetApiKeyAsync(child.Id, "child-key");
+            await store.SetApiKeyAsync(child.Models[0].Id, "child-key");
             (Window window, ChatPanelView panel) = await ShowAsync(context);
             try
             {
@@ -208,15 +211,18 @@ public sealed partial class ChatPanelViewUiTests
             using var context = new TestPluginContext();
             AiProvider parent = StubProvider("parent", parentEndpoint.BaseUrl, "parent-model");
             AiProvider child = StubProvider("child", childEndpoint.BaseUrl, "child-model");
+            child.Models[0].BaseUrlOverride = childEndpoint.BaseUrl;
+            child.Models[0].HasOwnApiKey = true;
+            parent.Models.Add(child.Models[0]);
             var store = new AiSettingsStore(context);
             await store.SaveAsync(new AiSettings
             {
-                Providers = [parent, child],
+                Providers = [parent],
                 ActiveModelId = parent.Models[0].Id,
                 SuggestFollowUps = false
             });
             await store.SetApiKeyAsync(parent.Id, "parent-key");
-            await store.SetApiKeyAsync(child.Id, "child-key");
+            await store.SetApiKeyAsync(child.Models[0].Id, "child-key");
             (Window window, ChatPanelView panel) = await ShowAsync(context);
             try
             {
@@ -261,6 +267,7 @@ public sealed partial class ChatPanelViewUiTests
     [DataRow("missing")]
     [DataRow("image")]
     [DataRow("changed-parent")]
+    [DataRow("foreign")]
     public void SubagentModelSelection_InvalidSelectionFailsWithoutFallback(string scenario)
     {
         OnUi(async () =>
@@ -270,8 +277,9 @@ public sealed partial class ChatPanelViewUiTests
             AiProvider provider = StubProvider("test", endpoint.BaseUrl, "m");
             var image = new AiModelConfig { Model = "image", Protocol = ChatProtocol.OpenAiImages };
             provider.Models.Add(image);
+            AiProvider foreign = StubProvider("test", endpoint.BaseUrl, "foreign");
             var store = new AiSettingsStore(context);
-            await store.SaveAsync(new AiSettings { Providers = [provider], ActiveModelId = provider.Models[0].Id });
+            await store.SaveAsync(new AiSettings { Providers = [provider, foreign], ActiveModelId = provider.Models[0].Id });
             await store.SetApiKeyAsync(provider.Id, "original-key");
             (Window window, ChatPanelView panel) = await ShowAsync(context);
             try
@@ -286,7 +294,10 @@ public sealed partial class ChatPanelViewUiTests
                     return SubagentExecutionResult.FromText("unexpected");
                 }, CancellationToken.None)
                 { DefaultModelId = parent.Id };
-                orchestrator.Start("inspect", null, scenario == "image" ? image.Id : scenario == "missing" ? "missing" : null);
+                orchestrator.Start("inspect", null, scenario switch
+                {
+                    "image" => image.Id, "missing" => "missing", "foreign" => foreign.Models[0].Id, _ => null
+                });
                 string result = await orchestrator.WaitAsync(orchestrator.Snapshots().Single().SubagentId, 5, CancellationToken.None);
                 using var json = JsonDocument.Parse(result);
                 Assert.AreEqual("failed", json.RootElement.GetProperty("status").GetString());
@@ -359,16 +370,19 @@ public sealed partial class ChatPanelViewUiTests
             });
             using var context = new TestPluginContext();
             AiProvider parent = StubProvider("parent", parentEndpoint.BaseUrl, "parent-model");
+            child.Models[0].BaseUrlOverride = childEndpoint.BaseUrl;
+            child.Models[0].HasOwnApiKey = true;
+            parent.Models.Add(child.Models[0]);
             var store = new AiSettingsStore(context);
             await store.SaveAsync(new AiSettings
             {
-                Providers = [parent, child],
+                Providers = [parent],
                 ActiveModelId = parent.Models[0].Id,
                 Mode = ChatMode.Agent,
                 SuggestFollowUps = false
             });
             await store.SetApiKeyAsync(parent.Id, "parent-key");
-            await store.SetApiKeyAsync(child.Id, "child-key");
+            await store.SetApiKeyAsync(child.Models[0].Id, "child-key");
             (Window window, ChatPanelView panel) = await ShowAsync(context);
             try
             {

@@ -80,7 +80,7 @@ public partial class GlobalSettingsView : UserControl
     {
         SystemPromptBox, CompactContextCheck, SuggestFollowUpsCheck, WebEnabledCheck,
         WebSearxUrlBox, WebMaxResultsBox, WebNativeCheck, WebPrivateCheck, WebAllowedHostsBox,
-        ImageModelCombo
+        ImageEnabledCheck, ImageModelCombo
     }.Append(FailoverAcrossAccountsCheck).ToDictionary(control => control, ReadFormValue);
 
     private static object? ReadFormValue(Control control) => control switch
@@ -106,6 +106,7 @@ public partial class GlobalSettingsView : UserControl
         UpdateWebVisibility();
         FailoverAcrossAccountsCheck.IsChecked = _settings.AutoFailoverAcrossAccounts;
         RebuildImageModels(_settings.ImageModelId);
+        ImageEnabledCheck.IsChecked = _settings.ImageToolsEnabled;
     }
 
     private async Task RecoverSettingsConflictAsync()
@@ -190,6 +191,7 @@ public partial class GlobalSettingsView : UserControl
         SuggestFollowUpsHintText.Text = _loc["SuggestFollowUpsHint"];
 
         SectionImageTitle.Text = _loc["SecImageGeneration"];
+        ImageEnabledCheck.Content = _loc["ImageGenerationEnabled"];
         ImageModelLabel.Text = _loc["ImageGenerationModel"];
         ImageModelHintText.Text = _loc["ImageGenerationHint"];
         Avalonia.Automation.AutomationProperties.SetName(ImageModelCombo, _loc["ImageGenerationModel"]);
@@ -820,6 +822,7 @@ public partial class GlobalSettingsView : UserControl
             var draft = new AiSettings
             {
                 ImageModelId = SelectedImageModelId,
+                ImageGenerationEnabled = ImageEnabledCheck.IsChecked == true,
                 SystemPrompt = string.IsNullOrWhiteSpace(SystemPromptBox.Text) ? null : SystemPromptBox.Text,
                 CompactContext = CompactContextCheck.IsChecked == true,
                 SuggestFollowUps = SuggestFollowUpsCheck.IsChecked == true,

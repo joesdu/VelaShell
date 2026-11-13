@@ -166,7 +166,10 @@ internal sealed class SubagentRunner(
     /// (见 <see cref="HasDelegation" />),桌面与 IM 共用。
     /// </summary>
     internal const string DelegationGuidance =
-        "\nFor requests to use multiple agents or independent parallel analyses, use delegate_subagent for each focused task. "
+        "\nUse delegate_subagent when the user requests multiple agents or when a substantial, self-contained subtask benefits from another model or independent parallel work. "
+        + "Choose modelId only from the current provider's listed chat models; honor explicit user choices, otherwise inherit the parent when no supported reason favors another model. "
+        + "Do not infer expertise, speed, quality or price from model names. Handle small tasks directly and avoid unnecessary delegation costs. "
+        + "Image generation and editing use image tools, not chat subagents. "
         + "A subagent starts with no knowledge of this conversation, so write a self-contained prompt. "
         + "Each result is delivered to you automatically as a notification when its subagent finishes: after delegating, "
         + "either continue with other work or simply end your step and wait — do not poll with subagent_status, "
@@ -184,10 +187,11 @@ internal sealed class SubagentRunner(
         => tools?.OfType<AIFunction>().Any(tool => tool.Name == "delegate_subagent") == true;
 
     /// <summary>可供委派选择的聊天模型:配置标识 → 显示名,不含凭据或端点。</summary>
-    internal static Dictionary<string, string> ModelChoices(AiSettings settings)
-        => settings.Providers.SelectMany(p => p.Models.Select(m => new ResolvedModel(p, m)))
+    internal static Dictionary<string, string> ModelChoices(AiSettings settings, string providerId)
+        => settings.Providers.Where(p => p.Id == providerId)
+            .SelectMany(p => p.Models.Select(m => new ResolvedModel(p, m)))
             .Where(m => !AiSettingsStore.IsImageModel(m))
-            .ToDictionary(m => m.Id, m => $"{m.Provider.Name} / {m.Model}", StringComparer.Ordinal);
+            .ToDictionary(m => m.Id, m => $"{m.Provider.Name} / {m.Name} ({m.Model})", StringComparer.Ordinal);
 
     /// <summary>
     /// 没有界面的入口(IM 桥接、对外 MCP)用的模型解析:按<b>当下</b>的设置找模型、现取凭据。
@@ -197,8 +201,10 @@ internal sealed class SubagentRunner(
     /// <param name="modelId">请求指定的模型;为空时用 <paramref name="fallbackModelId" />。</param>
     /// <param name="fallbackModelId">没指定时用哪个;仍为空则用设置里的当前模型。</param>
     /// <param name="cancellationToken">取消。</param>
+    /// <param name="providerId">当前供应商实例；禁止跨供应商委派。</param>
     internal static async Task<(ResolvedModel Model, ProviderCredential Credential)> ResolveFromSettingsAsync(
-        AiSettingsStore store, string? modelId, string? fallbackModelId, CancellationToken cancellationToken)
+        AiSettingsStore store, string? modelId, string? fallbackModelId, CancellationToken cancellationToken,
+        string providerId)
     {
         AiSettings settings = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
         string? id = !string.IsNullOrWhiteSpace(modelId) ? modelId.Trim()
@@ -211,6 +217,8 @@ internal sealed class SubagentRunner(
         {
             throw new InvalidOperationException("Image models cannot run subagent tools. Select a chat model with tool support.");
         }
+        if (model.Provider.Id != providerId)
+            throw new InvalidOperationException("Subagents must use a model from the current provider.");
         ProviderCredential credential = await store.ResolveCredentialAsync(model, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
         return (model, credential);
