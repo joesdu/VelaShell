@@ -49,6 +49,11 @@ public sealed class TerminalEmulator : IVtActions
     private int _singleShift = -1;
     private bool[] _tabStops;
 
+    // 最近一次落到屏幕上的图形字符(已过字符集翻译),供 REP(CSI Ps b)重复;-1 表示还没有。
+    // ncurses 在 terminfo 带 rep 时(xterm-256color 就带)会把整行横线、整段空白压成
+    // "字符 + CSI n b" —— 不认 REP,menuconfig 的框线只剩一格,其后内容整体左移(#749)。
+    private int _lastGraphic = -1;
+
     /// <summary>以给定的屏幕尺寸、终端类型与回滚容量创建仿真器。</summary>
     public TerminalEmulator(int columns = 80, int rows = 24, TerminalType type = TerminalType.XtermColor256, int scrollback = 10_000)
     {
@@ -150,6 +155,12 @@ public sealed class TerminalEmulator : IVtActions
         {
             rune = Charsets.MapDecSpecial(rune);
         }
+        PrintGlyph(rune);
+    }
+
+    /// <summary>写入一个已完成字符集翻译的字符:Print 与 REP 共用。</summary>
+    private void PrintGlyph(int rune)
+    {
         int width = CharWidth.Of(rune);
 
         // 组合标记附加到前一个单元格,且不移动光标。
@@ -158,6 +169,7 @@ public sealed class TerminalEmulator : IVtActions
             AttachCombining(rune);
             return;
         }
+        _lastGraphic = rune;
         if (_pendingWrap)
         {
             Screen.ActiveLine(Screen.CursorY).Wrapped = true;
@@ -244,6 +256,11 @@ public sealed class TerminalEmulator : IVtActions
             }
             return;
         }
+        if (text.IsEmpty)
+        {
+            return;
+        }
+        _lastGraphic = text[^1];
         TerminalCell template = new() { Foreground = _fg, Background = _bg, Flags = _flags };
         int i = 0;
         while (i < text.Length)
@@ -507,6 +524,9 @@ public sealed class TerminalEmulator : IVtActions
             case 'X':
                 Screen.EraseChars(P(0), Blank());
                 break; // ECH
+            case 'b':
+                RepeatLastGraphic(P(0));
+                break; // REP
             case 'S':
                 Screen.ScrollUp(P(0), Blank());
                 break; // SU
@@ -1560,6 +1580,24 @@ public sealed class TerminalEmulator : IVtActions
         }
     }
 
+    /// <summary>REP:把最近一个图形字符按当前笔刷再写 <paramref name="count" /> 次。</summary>
+    /// <remarks>
+    /// 重复的是翻译后的字形,不再过一遍字符集 —— 期间切换了 G 集也不会把 "─" 变回 "q",
+    /// 也不消费单次移位。之前还没写过图形字符时按 ECMA-48 的「未定义」处理为空操作。
+    /// 次数已由解析器钳到 65535 以内,逐格走 PrintGlyph 足够,换行、插入模式、宽字符语义都与正常打印一致。
+    /// </remarks>
+    private void RepeatLastGraphic(int count)
+    {
+        if (_lastGraphic < 0)
+        {
+            return;
+        }
+        for (int i = 0; i < count; i++)
+        {
+            PrintGlyph(_lastGraphic);
+        }
+    }
+
     private void SoftReset()
     {
         Modes.Reset();
@@ -1585,6 +1623,7 @@ public sealed class TerminalEmulator : IVtActions
         // RIS 之后整个缓冲区(含回滚)已被清空,没有任何格还引用旧句柄 ——
         // 这是唯一能安全整表回收 OSC 8 链接的时机。
         _link = 0;
+        _lastGraphic = -1;
         Hyperlinks.Clear();
         _promptRow = null;
         HasPromptMarks = false;

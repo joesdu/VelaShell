@@ -3629,3 +3629,10 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **修复**(`SecretServiceMasterKeyStore`):lookup 交回 NULL 后,用 `secret_service_search_sync` 带 `SECRET_SEARCH_ALL`(不带 UNLOCK / LOAD_SECRETS,不弹框)再搜一遍,条目在而锁着(`secret_item_get_locked`)就报「用不了」:旧编号记为这次没取到,新密码先用本地临时密钥,解锁后重启照常取回并合并,也不再连弹几次解锁框。写之前用 `secret_collection_for_alias_sync("default")` 查默认集合的对象路径,以 `/collection/session` 结尾就报「用不了」,本机密钥回落到 `secret.key`(明文 + 0600,与没有密钥链时一样),之后每次启动都不会把它迁走。两处查询出错、或者旧版 libsecret 没有这些入口时,一律当作「说不准」,按原来的方式处理。新增的原生绑定都是 `LibraryImport`、不带变参;`GList` 布局并入布局自检。
 - **验证**:新增 `SecretService_RecognisesTheInMemorySessionCollection`(5 组路径)、`SessionOnlyKeychain_KeepsNewPasswordsInTheKeyFile_AcrossRestarts`(写入被拒时新密钥落到本地文件,再重启仍能解开),布局自检加 `GList`(24 / 8)。Windows Debug `-warnaserror` 构建 Infrastructure 测试工程 0 警告;`MasterKeyResolverTests` 与主密码相关用例 89 通过、1 跳过(`SystemKeychain_RoundTrip` 需 `VELASHELL_KEYCHAIN_TESTS=1`)。⚠️ 新增的 libsecret / GIO 调用只经过编译,没在 Linux 真机钥匙环上跑过,已经丢掉的旧密钥也找不回来:受影响的用户升级后重输一次密码,之后就能保留下来。
 - **文档**:手册中英「原理」与排障表改写钥匙环锁着 / session 钥匙环两种情形;`feature-plan.md` 划掉「钥匙环解锁框被取消时报成找不到」。
+
+## 321. 2026-11-13 终端支持 REP(CSI Ps b):menuconfig 框线不再只剩一格、内容不再错位(#749)
+
+- **现象**(#749,1.8.0 / Windows 11 / MSIX):OpenWrt `make menuconfig` 的对话框画歪:标题下的横线只剩左端一格,框的顶边、底边缩成一截,右边框与阴影、按钮整体左移;同一会话在 Windows Terminal 里正常。
+- **根因**:默认 TERM=xterm-256color,它的 terminfo 带 `rep`。ncurses 据此把连续相同的字符(横线 `q`、成段空白)压成「一个字符 + `CSI n b`」。`TerminalEmulator.CsiDispatch` 没有 `b` 分支,REP 被静默丢掉:那 n 个字符没写、光标也没前进,于是横线只剩一格,同一行其后的内容全部左移 n 格。
+- **修复**:`TerminalEmulator` 记住最近一个落到屏幕上的图形字符(`_lastGraphic`,已过 DEC 线绘翻译;`Print` 与 `PrintRun` 快路径都更新,组合标记不算),`CSI Ps b` 按当前笔刷把它再写 Ps 次(默认 1)。`Print` 拆出 `PrintGlyph` 供 REP 复用,换行、插入模式、宽字符语义与正常打印一致;重复的是翻译后的字形,中途切回 ASCII 集也不会变回 `q`,也不消费单次移位。之前没写过图形字符、或 RIS 之后,REP 是空操作。
+- **验证**:新增 `RepeatCharacterTests`(10 条:ASCII、默认次数、menuconfig 实际字节形状的线绘框、出图形集后重复、宽字符、行尾换行、沿用当前背景色、无前驱 / RIS 后忽略、不重复组合标记)。`VelaShell.Terminal.Tests` 全量 658 条通过。没在真机上跑 menuconfig,按 issue 截图与 ncurses 的输出形状推断。
