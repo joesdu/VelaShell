@@ -9999,4 +9999,5 @@ Send anyway?</value>
   <data name="PluginMarket_OpenWeb" xml:space="preserve"><value>View on website</value></data>
   <data name="PluginMarket_PackageMismatch" xml:space="preserve"><value>The downloaded package does not match the selected plugin and version. Installation was stopped.</value></data>
   <data name="PluginMarket_IncompatiblePackage" xml:space="preserve"><value>This package requires {0}. Update VelaShell before installing it.</value></data>
+  <data name="PluginManager_UpgradeDirectoryLocked" xml:space="preserve"><value>Could not replace the files of plugin &apos;{0}&apos;: they are still in use by another program ({1}). The previous version was kept and can still be used. Close any program that has the plugin folder open (an antivirus scan, File Explorer) and try again.</value></data>
 </root>

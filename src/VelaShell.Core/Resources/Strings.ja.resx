@@ -9993,4 +9993,5 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="PluginMarket_OpenWeb" xml:space="preserve"><value>Web サイトで表示</value></data>
   <data name="PluginMarket_PackageMismatch" xml:space="preserve"><value>ダウンロードしたパッケージが選択したプラグインまたはバージョンと一致しないため、インストールを停止しました。</value></data>
   <data name="PluginMarket_IncompatiblePackage" xml:space="preserve"><value>このパッケージには {0} が必要です。先に VelaShell を更新してください。</value></data>
+  <data name="PluginManager_UpgradeDirectoryLocked" xml:space="preserve"><value>プラグイン「{0}」のファイルを置き換えられませんでした。ほかのプログラムが使用中です({1})。以前のバージョンはそのまま残っており、引き続き使用できます。プラグインのフォルダーを開いているプログラム(ウイルス スキャン、エクスプローラーなど)を閉じてから、もう一度お試しください。</value></data>
 </root>

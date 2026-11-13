@@ -30,6 +30,7 @@ public sealed class VelaShellStoragePaths
         DevPluginDisabledFile = Path.Combine(root, "plugins.dev.disabled");
         PluginDisabledFile = Path.Combine(root, "plugins.disabled");
         DevPluginShadowDirectory = Path.Combine(root, "dev-shadow");
+        PluginShadowDirectory = Path.Combine(root, "plugin-shadow");
         LogsDirectory = Path.Combine(root, "logs");
         SettingsFile = Path.Combine(root, "settings.json");
         StateFile = Path.Combine(root, "state.json");
@@ -82,6 +83,12 @@ public sealed class VelaShellStoragePaths
     /// 于是 Windows 上宿主运行时不再锁住工程的 <c>bin</c>,可以边跑边重编。
     /// </summary>
     public string DevPluginShadowDirectory { get; } = "";
+
+    /// <summary>
+    /// 已安装进程内插件的影子副本目录。从副本装载后,插件即便漏了引用、ALC 收不回来,
+    /// 也锁不住安装目录 —— 升级与卸载因此不必重启宿主。
+    /// </summary>
+    public string PluginShadowDirectory { get; } = "";
 
     /// <summary>日志目录(会话日志、传输日志与调试期的插件进程 pid 文件)。</summary>
     public string LogsDirectory { get; } = "";

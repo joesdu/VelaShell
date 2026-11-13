@@ -3594,3 +3594,13 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **原因**:CI `43162200970` 的 `WatcherEvent_OnAnUnchangedCopy_UploadsNothing` 在清理目录断言失败。用例等到 `Watching` 就调用 `Dispose`,但上传闸此时可能尚未释放,收尾会保守保留草稿。
 - **修复**:保留未修改副本不回传、真实修改自动回传的断言,再等待 `ShutdownAsync` 成功后释放会话,并确认收尾没有重复上传。沿用已有收尾协议,不增加固定延时、不改变运行时草稿保护行为;无需修改用户手册或外部设计文档。
 - **验证**:Windows Debug 严格构建与 `RemoteEditDraftsTests` / `RemoteEditSessionManagerTests` 共 32 条测试通过,无失败或跳过;修改文件的格式检查通过。Linux 修复效果留待 CI 确认。
+
+## 317. 2026-11-13 已安装的进程内插件从影子副本装载:打开过的插件不必重启宿主即可更新
+
+- **现象**:用户打开过远程桌面插件(进程内)后,在插件管理里「更新到 2.1.5」报 `Access to the path '…\plugins\velashell.rdp' is denied`;断开连接、插件停用后仍然如此,只能重启宿主再更新。宿主日志同时记着该插件「load context is still alive after 10 GC passes」与停用超时。
+- **根因**:进程内插件就地 `LoadFromAssemblyPath`。单纯映射 dll 不挡目录换名;但插件异常的堆栈一旦被格式化(宿主与插件写日志都会 `ex.ToString()`),运行时就以 `FileShare.Read` 打开插件的 `.pdb` 并按程序集缓存读取器,句柄随 ALC 存活。插件漏了引用、ALC 收不回来时,这个不带共享删除的句柄把安装目录锁到宿主退出,升级的 `Directory.Move` 与卸载的删目录都失败(卸载此前还是静默失败)。
+- **修复**:新增 `PluginManagerOptions.InstalledShadowRootDirectory`(`<数据根>/plugin-shadow`),用户目录下的进程内插件与开发期插件一样先整份复制到 `<id>/gen-GUID` 再装载;副本租约挂在运行时上,卸载观察确认 ALC 被回收后即删,收不回来的留到退出或下次启动清扫(启动时一并清扫 `plugin-shadow`)。隔离插件与应用自带插件仍就地装载。
+- **顺带修复**:升级时旧版目录换名放在 try 之外,失败后旧版已从运行时摘下却不挂回,插件会从管理页与连接页消失到重启。现在换名先带 GC 重试约两秒(杀毒扫描等短暂占用),仍失败则收回备份认领标记、把旧版重新挂回,并以五语种文案 `PluginManager_UpgradeDirectoryLocked` 说明是占用、旧版仍可用。
+- **仍待处理**:RDP 插件自身的 ALC 泄漏与停用超时属于插件仓库的问题,本次只保证它不再阻塞更新;内存仍要到重启才回收。
+- **验证**:新增 `LeakedInProcessPlugin_LoadedFromShadow_CanStillBeUpgradedAndUninstalled`(攥住旧 ALC 并格式化一次带行号的插件堆栈,去掉影子根时稳定复现同一个 Access denied)与 `Upgrade_WhenTheInstalledDirectoryIsLocked_KeepsTheOldVersionAttached`。Windows Debug 解决方案 `-warnaserror` 构建通过;`VelaShell.Infrastructure.Tests` 插件相关 541 条:517 通过、24 跳过(环境早退)、0 失败;本地化 / 宿主路径 / 插件商店相关 21 条通过。
+- **文档**:velashell-docs 同步更新 SDK 参考、开发指南与打包分发三篇(中英文)。
