@@ -24,6 +24,52 @@ public sealed partial class ChatPanelViewUiTests
         }) + "\n\ndata: [DONE]\n\n";
 
     [TestMethod]
+    [DataRow(ChatMode.Chat, true)]
+    [DataRow(ChatMode.Agent, true)]
+    [DataRow(ChatMode.Plan, true)]
+    [DataRow(ChatMode.Chat, false)]
+    public void ContextImageTool_AutomaticSelectionNeedsNoDefault(ChatMode mode, bool enabled)
+    {
+        OnUi(async () =>
+        {
+            bool available = enabled && mode != ChatMode.Plan;
+            using var images = new KeyAuthStub((_, _) => (200,
+                "{\"created\":1,\"data\":[{\"b64_json\":\"" + GeneratedPng + "\"}]}"));
+            var image = new AiModelConfig { Model = "gpt-image-selected", BaseUrlOverride = images.BaseUrl + "/v1" };
+            using var chat = new KeyAuthStub((_, body) => (200,
+                !available || body.Contains("\"role\":\"tool\"", StringComparison.Ordinal) ? LifecycleAnswer
+                    : ImageToolCall("generate_image", JsonSerializer.Serialize(new { prompt = "雨后咖啡", modelId = image.Id }))));
+            using var context = new TestPluginContext();
+            var store = new AiSettingsStore(context);
+            AiProvider provider = StubProvider("current", chat.BaseUrl, "chat-model");
+            provider.Models.Add(image);
+            await store.SaveAsync(new AiSettings
+            {
+                Providers = [provider], ActiveModelId = provider.Models[0].Id,
+                ImageGenerationEnabled = enabled, Mode = mode,
+                Approval = ApprovalMode.Bypass, SuggestFollowUps = false
+            });
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                panel.SendExternal("生成海报");
+                Assert.IsTrue(await WaitForAsync(() => chat.Requests.Count > 0 && !Find<Viewbox>(panel, "StopIcon").IsVisible));
+                Assert.AreEqual(available ? 1 : 0, images.Requests.Count);
+                Assert.AreEqual(available, chat.Requests[0].Body.Contains("generate_image", StringComparison.Ordinal));
+                Assert.IsNull(PanelSettings(panel).ImageModelId);
+                Assert.AreEqual(provider.Models[0].Id, PanelSettings(panel).ActiveModelId);
+                if (available)
+                {
+                    using var request = JsonDocument.Parse(images.Requests[0].Body);
+                    Assert.AreEqual(image.Model, request.RootElement.GetProperty("model").GetString());
+                    Assert.Contains(image.Id, chat.Requests[0].Body);
+                }
+            }
+            finally { panel.Detach(); window.Close(); }
+        });
+    }
+
+    [TestMethod]
     [DataRow(ChatMode.Chat)]
     [DataRow(ChatMode.Agent)]
     public void ContextImageTool_KeepsChatModelAndDisplaysSavedImage(ChatMode mode)

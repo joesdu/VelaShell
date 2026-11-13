@@ -28,8 +28,10 @@ public partial class ChatPanelView
     }
 
     private bool CanMentionImages => _settings.Mode != ChatMode.Plan
-        && _settings.FindModel(_settings.ImageModelId) is { } image && AiSettingsStore.IsImageModel(image)
-        && ActiveProviderForRequest is { } chat && !AiSettingsStore.IsImageModel(chat);
+        && _settings.ImageToolsEnabled
+        && ActiveProviderForRequest is { } chat && !AiSettingsStore.IsImageModel(chat)
+        && ((_settings.FindModel(_settings.ImageModelId) is { } image && AiSettingsStore.IsImageModel(image))
+            || _settings.ResolveModels().Any(model => model.Provider.Id == chat.Provider.Id && AiSettingsStore.IsImageModel(model)));
 
     private void UpdateImageMentionCandidates(string query)
     {

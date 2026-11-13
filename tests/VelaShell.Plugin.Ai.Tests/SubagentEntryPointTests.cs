@@ -71,9 +71,11 @@ public sealed partial class SubagentEntryPointTests
             _ => Answer(" Disk is fine.")
         });
         AiProvider parent = Provider("parent", parentEndpoint.BaseUrl);
+        child.Models[0].BaseUrlOverride = childEndpoint.BaseUrl;
+        parent.Models.Add(child.Models[0]);
         using var context = new TestPluginContext();
         var store = new AiSettingsStore(context);
-        await store.SaveAsync(new AiSettings { Providers = [parent, child], ActiveModelId = parent.Models[0].Id });
+        await store.SaveAsync(new AiSettings { Providers = [parent], ActiveModelId = parent.Models[0].Id });
         var runner = new BridgeAgentRunner(context, store, new ChatHistoryStore(context), new McpManager(context));
         var progress = new System.Collections.Concurrent.ConcurrentQueue<string>();
 
@@ -163,6 +165,49 @@ public sealed partial class SubagentEntryPointTests
         Assert.Contains("list_sessions", tools);
         Assert.DoesNotContain("run_command", tools);
         Assert.DoesNotContain("write_remote_file", tools);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task EntryPointsRejectModelsUnderAnotherProvider(bool bridge)
+    {
+        await using var foreignEndpoint = new SseStub(Answer("must not run"));
+        AiProvider foreign = Provider("same-name", foreignEndpoint.BaseUrl);
+        await using var parentEndpoint = new SseStub("", streamingReply: n => n == 1
+            ? ToolCall("delegate_subagent", new { prompt = "Inspect.", modelId = foreign.Models[0].Id })
+            : Answer("Cannot delegate to that provider."));
+        AiProvider parent = Provider("same-name", parentEndpoint.BaseUrl);
+        using var context = new TestPluginContext();
+        var store = new AiSettingsStore(context);
+        await store.SaveAsync(new AiSettings { Providers = [parent, foreign], ActiveModelId = parent.Models[0].Id });
+
+        if (bridge)
+        {
+            var runner = new BridgeAgentRunner(context, store, new ChatHistoryStore(context), new McpManager(context));
+            await runner.RunAsync(new BridgeConversation("ch1", "chat-1"),
+                new BridgeSettings { Mode = ChatMode.Agent },
+                new InboundMessage("ch1", "chat-1", false, "u1", "Ann", "Delegate the inspection.", "m1", true),
+                _ => Task.FromResult(false), English, null, null, CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.DoesNotContain(foreign.Models[0].Id, parentEndpoint.Requests[0]);
+            Assert.Contains("current provider", parentEndpoint.Requests[1]);
+        }
+        else
+        {
+            await using McpToolHost host = await McpToolHost.CreateAsync(context,
+                new McpServerSettings { Mode = ChatMode.Agent }, store, CancellationToken.None);
+            string description = host.Tools.Single(t => t.Name == "delegate_subagent").Description!;
+            Assert.Contains(parent.Models[0].Id, description);
+            Assert.DoesNotContain(foreign.Models[0].Id, description);
+            string result = await host.CallAsync("delegate_subagent",
+                new Dictionary<string, object?> { ["prompt"] = "Inspect.", ["modelId"] = foreign.Models[0].Id },
+                CancellationToken.None);
+            Assert.Contains("current provider", result);
+            Assert.IsFalse(host.HasActiveSubagents);
+            Assert.IsEmpty(parentEndpoint.Requests);
+        }
+        Assert.IsEmpty(foreignEndpoint.Requests);
     }
 
     [TestMethod]

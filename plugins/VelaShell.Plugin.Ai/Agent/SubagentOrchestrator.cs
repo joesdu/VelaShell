@@ -234,7 +234,7 @@ public sealed class SubagentOrchestrator(
     public string? DefaultModelId { get; set; }
 
     /// <summary>可选模型的配置标识与显示名称，不包含凭据或端点。</summary>
-    public IReadOnlyDictionary<string, string> ModelChoices { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyDictionary<string, string> ModelChoices { get; set; } = new Dictionary<string, string>();
 
     /// <summary>子任务状态或工具使用记录发生变化时触发。</summary>
     public event Action<IReadOnlyList<SubagentSnapshot>>? SnapshotsChanged;
@@ -282,6 +282,9 @@ public sealed class SubagentOrchestrator(
         {
             return "A non-empty subagent prompt is required.";
         }
+        string? selectedModelId = string.IsNullOrWhiteSpace(modelId) ? DefaultModelId : modelId.Trim();
+        if (ModelChoices.Count > 0 && (selectedModelId is null || !ModelChoices.ContainsKey(selectedModelId)))
+            return "Select a subagent model ID from the current provider's allowed list.";
         int sequence = Interlocked.Increment(ref _started);
         if (sequence > MaxTotal)
         {
@@ -296,7 +299,7 @@ public sealed class SubagentOrchestrator(
             TaskPrompt = prompt,
             AllowWrites = allowWrites,
             Role = role,
-            ModelId = string.IsNullOrWhiteSpace(modelId) ? DefaultModelId : modelId.Trim(),
+            ModelId = selectedModelId,
             Timeout = timeoutSeconds > 0
                 ? TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, MinTimeoutSeconds, MaxTimeoutSeconds))
                 : _timeout

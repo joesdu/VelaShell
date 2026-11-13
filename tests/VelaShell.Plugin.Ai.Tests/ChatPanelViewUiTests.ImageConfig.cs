@@ -28,6 +28,8 @@ public sealed partial class ChatPanelViewUiTests
             {
                 await PumpAsync(5);
                 ComboBox combo = FindIn<ComboBox>(view, "ImageModelCombo");
+                CheckBox enabled = FindIn<CheckBox>(view, "ImageEnabledCheck");
+                Assert.IsTrue(enabled.IsChecked);
                 Assert.AreEqual(3, combo.ItemCount);
                 Assert.Contains("Second", combo.SelectedItem!.ToString());
                 provider.Models.Remove(first);
@@ -46,6 +48,10 @@ public sealed partial class ChatPanelViewUiTests
                 combo.SelectedIndex = 0;
                 RaiseClick(FindIn<Button>(view, "SaveButton"));
                 Assert.IsTrue(await WaitForAsync(() => submitted!.ImageModelId is null));
+                Assert.IsTrue(submitted!.ImageToolsEnabled, "Automatic mode must remain enabled without a default.");
+                enabled.IsChecked = false;
+                RaiseClick(FindIn<Button>(view, "SaveButton"));
+                Assert.IsTrue(await WaitForAsync(() => !submitted!.ImageToolsEnabled));
             }
             finally { window.Close(); }
         });

@@ -292,7 +292,7 @@ public partial class ChatPanelView : UserControl
         InputBox.AddHandler(KeyDownEvent, OnInputKeyDown, RoutingStrategies.Tunnel);
         InputBox.TextChanged += (_, _) =>
         {
-            InputPlaceholder.IsVisible = InputBox.Document.TextLength == 0;
+            UpdateInputPlaceholder();
             OnInputTextChanged();
         };
         SetUpInputEditor();
@@ -408,6 +408,7 @@ public partial class ChatPanelView : UserControl
     {
         if (_detached) return;
         _detached = true;
+        _inputImeClient?.Dispose();
         CloseModelPopup();
         _context.Events.SessionConnected -= OnSessionEvent;
         _context.Events.SessionDisconnected -= OnSessionEvent;
@@ -1391,6 +1392,12 @@ public partial class ChatPanelView : UserControl
     /// </summary>
     private void OnInputKeyDown(object? sender, KeyEventArgs e)
     {
+        if (IsInputComposing)
+        {
+            // 平台先处理选词;漏到控件的按键也不能发送、翻历史或改动已提交文本。
+            e.Handled = true;
+            return;
+        }
         // 已完成的 @ 引用是一整块:退格/删除整块带走(见 HandleReferenceBlockDelete)
         if (HandleReferenceBlockDelete(e))
         {
@@ -1686,12 +1693,12 @@ public partial class ChatPanelView : UserControl
             // 前后带的工具不一致,甚至给本该只读的对话补上能动手的。
             ChatMode mode = _settings.Mode;
             string? imageModelId = _settings.ImageModelId;
-            bool imageToolsEnabled = mode != ChatMode.Plan && imageModelId is not null && !AiSettingsStore.IsImageModel(provider);
+            bool imageToolsEnabled = mode != ChatMode.Plan && _settings.ImageToolsEnabled && !AiSettingsStore.IsImageModel(provider);
             bool usesToolLoop = !AiSettingsStore.IsImageModel(provider) && (mode != ChatMode.Chat || imageToolsEnabled);
             ApprovalMode imageApproval = _settings.Approval;
             if (imageToolsEnabled)
             {
-                bubble.ImageTools = ImagesFor(conv).BeginTurn(_store, imageModelId!,
+                bubble.ImageTools = ImagesFor(conv).BeginTurn(_store, imageModelId,
                     (detail, ct) => ApproveImageAsync(runScope, imageApproval, detail, ct), token);
             }
 
@@ -2060,10 +2067,8 @@ public partial class ChatPanelView : UserControl
                         // 子任务的请求同样是已计费的真实用量,并进这段对话的收发计数(不算进上下文占用)
                         usage => Dispatcher.UIThread.Post(() => RecordUsage(usage, isContext: false)));
                     subagents ??= new SubagentOrchestrator(
-                        (request, childToken) => subagentRunner!.RunAsync(subagents!, request, childToken), token)
-                    {
-                        ModelChoices = SubagentRunner.ModelChoices(_settings)
-                    };
+                        (request, childToken) => subagentRunner!.RunAsync(subagents!, request, childToken), token);
+                    subagents.ModelChoices = SubagentRunner.ModelChoices(_settings, current.Provider.Id);
                     subagents.DefaultModelId = current.Id;
                     if (bubble is not null && !_subagentSnapshotSources.ContainsKey(bubble))
                     {
@@ -2089,7 +2094,7 @@ public partial class ChatPanelView : UserControl
                     subagentTemplate ??= _toolbox.CreateSubagentToolbox();
                     IList<AITool> tools = mode == ChatMode.Chat ? [] : _toolbox.CreateTools(mode, nativeSearch, runScope);
                     if (bubble?.ImageTools is { } imageTools)
-                        foreach (AITool tool in imageTools.CreateTools()) tools.Add(tool);
+                        foreach (AITool tool in imageTools.CreateTools(_settings, current.Provider.Id)) tools.Add(tool);
                     // 计划模式下不接 MCP:那些工具的副作用由第三方服务器说了算,插件无从判断,
                     // 而"计划"的承诺是这一步不动任何东西。
                     if (mode == ChatMode.Agent && _settings.McpServers.Any(s => s.Enabled))
@@ -2835,6 +2840,8 @@ public partial class ChatPanelView : UserControl
         {
             throw new InvalidOperationException("Image models cannot run subagent tools. Select a chat model with tool support.");
         }
+        if (model.Provider.Id != parentModel.Provider.Id)
+            throw new InvalidOperationException("Subagents must use a model from the current provider.");
         if (model.Id == parentModel.Id)
         {
             if (!await StillVerifiedAsync(parentModel, parentCredential, token, parentModel.Model, parentKeyId))
@@ -3147,7 +3154,7 @@ public partial class ChatPanelView : UserControl
                 "You must NOT change anything, and no tool that could change anything is available to you. " +
                 "Produce a concrete, ordered plan: what to check, what to change, the exact commands you would run, what could go wrong, and how to roll back. " +
                 "End by telling the user to switch to Agent mode if they want you to carry it out.",
-            _ when _settings.ImageModelId is not null =>
+            _ when _settings.ImageToolsEnabled =>
                 " You may use the configured image tools when the user explicitly requests creating or editing an image. " +
                 "You have no server-operation tools in chat mode. Do not claim you inspected or changed a server.",
             _ =>

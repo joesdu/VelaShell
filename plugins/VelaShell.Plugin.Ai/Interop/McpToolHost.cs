@@ -113,13 +113,18 @@ internal sealed class McpToolHost : IAsyncDisposable
         _runScope = _toolbox.BeginRun(Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N"),
             denialEndsRun: false, cancellationToken: _lifetime.Token);
         // 一个聊天模型都没配时不摆委派工具:摆了也只会每次失败
-        if (aiStore is not null && ai is not null && Chat.SubagentRunner.ModelChoices(ai) is { Count: > 0 } models)
+        ResolvedModel? anchor = ai?.FindModel(ai.ActiveModelId)
+            ?? ai?.ResolveModels().FirstOrDefault(model => !AiSettingsStore.IsImageModel(model));
+        if (aiStore is not null && ai is not null && anchor is not null
+            && Chat.SubagentRunner.ModelChoices(ai, anchor.Provider.Id) is { Count: > 0 } models)
         {
             // 外部 agent 自己就是模型:这里没有"父模型",子任务用 VelaShell 当前选中的那个,每次按当下设置现取凭据。
             // 子任务的工具与这条连接同一套范围与挡位;没有审批界面,所以 allowWrites 只在绕过审批时写得进去。
             _subagentTemplate = _toolbox.CreateSubagentToolbox();
+            string defaultModelId = models.ContainsKey(anchor.Id) ? anchor.Id : models.Keys.First();
+            string providerId = anchor.Provider.Id;
             var runner = new Chat.SubagentRunner(
-                (request, token) => Chat.SubagentRunner.ResolveFromSettingsAsync(aiStore, request.ModelId, null, token),
+                (request, token) => Chat.SubagentRunner.ResolveFromSettingsAsync(aiStore, request.ModelId, defaultModelId, token, providerId),
                 (model, credential) => aiStore.CreateClient(model, credential, callerCountsRetries: true),
                 () => _subagentTemplate, _runScope, context.Host.Locale);
             SubagentOrchestrator created = null!;
@@ -128,7 +133,7 @@ internal sealed class McpToolHost : IAsyncDisposable
                 ModelChoices = models,
                 // 没指定模型时用 VelaShell 当前选中的;选中的是图片模型就退到第一个聊天模型。
                 // 在这里定下来,结果里才说得清实际用的是哪个模型。
-                DefaultModelId = ai.ActiveModelId is { } active && models.ContainsKey(active) ? active : models.Keys.First(),
+                DefaultModelId = defaultModelId,
                 MaxTotal = MaxSubagentsPerConnection,
                 // 这条路唤不醒外部模型:结果得它自己用 subagent_wait 来取
                 DeliversResults = false

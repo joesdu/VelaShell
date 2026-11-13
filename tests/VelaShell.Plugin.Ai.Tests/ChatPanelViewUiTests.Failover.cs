@@ -4106,7 +4106,7 @@ public sealed partial class ChatPanelViewUiTests
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(panel)!;
 
     /// <summary>按真实 Authorization 应答,可只挂起指定槽的探活,不阻塞其它会话。</summary>
-    private sealed class KeyAuthStub : IDisposable
+    internal sealed class KeyAuthStub : IDisposable
     {
         private readonly HttpListener _listener;
         private readonly Lock _gate = new();

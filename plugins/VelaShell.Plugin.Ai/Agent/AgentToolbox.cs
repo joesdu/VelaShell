@@ -477,7 +477,8 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                     : "Returns an id immediately; results are not pushed, so collect each one with subagent_wait. ")
                 + $"timeoutSeconds sets the execution limit ({SubagentOrchestrator.MinTimeoutSeconds}-{SubagentOrchestrator.MaxTimeoutSeconds}, default 120; "
                 + "time spent waiting for user approval is not counted). "
-                + "Omit modelId to inherit the parent model, or select a configured model ID from: "
+                + "Omit modelId to inherit the parent model, or select a configured chat model ID from the current provider's list. "
+                + "Use delegation for substantial independent tasks, not trivial steps; do not invent model capabilities or prices. Allowed models: "
                 + JsonSerializer.Serialize(orchestrator.ModelChoices)), false));
             all.Add(("subagent_status", AIFunctionFactory.Create(bound.SubagentStatusAsync, "subagent_status",
                 "Get the current status of a delegated subagent by id without waiting."
