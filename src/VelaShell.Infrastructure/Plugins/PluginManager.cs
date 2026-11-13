@@ -2873,6 +2873,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         if (runtime.LoadContext is { } loadContext)
         {
             runtime.LoadContext = null;
+            ReleaseSharedState(runtime.Descriptor.Id, loadContext);
             try
             {
                 loadContext.Unload();
@@ -2888,6 +2889,39 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         {
             // 没有 ALC(隔离模式的开发期插件、或激活在建 ALC 之前就失败了):副本没人映射,立即删。
             ReleaseShadowLease(shadow);
+        }
+    }
+
+    /// <summary>
+    /// 卸载 ALC 之前,请 UI 层释放 Avalonia 里按插件类型缓存的状态(见 <see cref="IPluginSharedStateReleaser" />)。
+    /// 不做的话,插件控件只要被渲染过,宿主属性的元数据缓存就以插件类型为键拽住整个 ALC,停用了也回收不掉。
+    /// 退出路径上跳过:进程马上就没了。失败只记一行 —— 最坏不过是这一次回收不掉,与没有这一步时一样。
+    /// </summary>
+    private void ReleaseSharedState(string pluginId, PluginAssemblyLoadContext loadContext)
+    {
+        if (options.SharedStateReleaser is not { } releaser || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+        try
+        {
+            List<Type> types = [];
+            foreach (Assembly assembly in loadContext.Assemblies)
+            {
+                try
+                {
+                    types.AddRange(assembly.GetTypes());
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    types.AddRange(ex.Types.OfType<Type>());
+                }
+            }
+            releaser.Release(pluginId, types);
+        }
+        catch (Exception ex)
+        {
+            Log($"Releasing shared UI state of plugin '{pluginId}' failed: {ex.Message}");
         }
     }
 

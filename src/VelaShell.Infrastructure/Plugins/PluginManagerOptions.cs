@@ -174,6 +174,12 @@ public sealed class PluginManagerOptions
     public Func<string, IPluginLogger, IUiApi>? UiFactory { get; init; }
 
     /// <summary>
+    /// 进程内插件卸载 ALC 之前,释放共享框架(Avalonia)里按插件类型缓存的状态(由 UI 层提供)。
+    /// 缺席时(headless 宿主)不做 —— 那里没有 Avalonia,也就没有这类缓存。
+    /// </summary>
+    public IPluginSharedStateReleaser? SharedStateReleaser { get; init; }
+
+    /// <summary>
     /// 主题令牌快照提供者(由 UI 层提供,按当前明暗变体解析 <c>Vela*</c> 资源):
     /// 隔离插件握手后与每次主题切换时下发,使 <c>{DynamicResource VelaXxx}</c>
     /// 跨进程同样生效。缺席时隔离插件只拿到明暗变体跟随。
