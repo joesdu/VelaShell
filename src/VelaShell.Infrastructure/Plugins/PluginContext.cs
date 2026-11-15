@@ -32,6 +32,7 @@ internal sealed class PluginContext : IPluginContext, IDisposable
     public required IRemoteFsApi RemoteFs { get; init; }
     public required IRemoteExecApi RemoteExec { get; init; }
     public required IRemoteTunnelApi RemoteTunnel { get; init; }
+    public required PluginSdk.Network.INetworkApi Network { get; init; }
     public required ICommandsApi Commands { get; init; }
     public required IHostEvents Events { get; init; }
     public required PluginSdk.Theming.IHostThemeApi Theme { get; init; }

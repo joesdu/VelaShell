@@ -86,6 +86,7 @@ public class SessionRoutingTests
             RemoteFs = new FakeRemoteFs(),
             RemoteExec = new FakeRemoteExec(),
             RemoteTunnel = new FakeRemoteTunnel(),
+            Network = new FakeNetwork(),
             TerminalView = new FakeTerminalViewApi(),
             Commands = new RecordingCommands(),
             Events = new PluginEventHub(new CollectingLogger(), null, null, null),
