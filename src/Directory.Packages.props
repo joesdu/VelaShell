@@ -17,8 +17,8 @@
     <!-- Microsoft.Extensions -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0" />
     <!-- 其它 -->
-    <PackageVersion Include="ReactiveUI" Version="26.0.1" />
-    <PackageVersion Include="LiveMarkdown.Avalonia" Version="2.6.1" />
+    <PackageVersion Include="ReactiveUI" Version="27.0.0" />
+    <PackageVersion Include="LiveMarkdown.Avalonia" Version="2.7.0" />
     <!-- MMDB 读取器(Apache 2.0)。只是格式读取库,不绑定 MaxMind 的数据 ——
          我们配的是 DB-IP Lite City(CC BY 4.0),同一格式。 -->
     <PackageVersion Include="MaxMind.Db" Version="5.2.0" />
@@ -41,7 +41,7 @@
          (VelaShellLabs/velashell-plugins)里,版本由那边的中央包管理登记,别再加回来。
          本仓库 plugins/ 下的插件(AI)不走中央包版本管理
          (根目录没有 Directory.Packages.props),依赖版本写在各自的 csproj 里。 -->
-    <PackageVersion Include="VelaShell.PluginSdk" Version="2.1.9" />
+    <PackageVersion Include="VelaShell.PluginSdk" Version="2.2.0" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" />
     <!-- 构建期工具:SourceLink(见 src/Directory.Build.props) -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="11.0.100" />

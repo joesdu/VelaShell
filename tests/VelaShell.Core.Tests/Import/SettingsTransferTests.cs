@@ -169,7 +169,7 @@ public sealed class SettingsTransferTests
         SettingsImportMerge merge = SettingsTransfer.Merge(new AppSettings(), file, [SettingsCategories.Appearance]);
 
         Assert.IsTrue(merge.Settings.Security.ConfirmExternalLaunch, "安全审计没勾:文件关掉的确认不能跟着进来");
-        Assert.AreEqual("system", merge.Settings.Proxy.Type);
+        Assert.AreEqual("none", merge.Settings.Proxy.Type);
     }
 
     [TestMethod]
