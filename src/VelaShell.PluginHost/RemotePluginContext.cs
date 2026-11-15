@@ -112,6 +112,15 @@ internal sealed class RemotePluginContext : IPluginContext, IDisposable
     public PluginSdk.RemoteTunnel.IRemoteTunnelApi RemoteTunnel { get; } = new IsolatedRemoteTunnel();
 
     /// <summary>
+    /// 出站网络能力在隔离进程里**不可用**,理由同隧道:它交出去的是一条活的 <see cref="Stream" />,
+    /// 跨进程代理一条裸流只是把每个字节多搬一次。接口默认实现即报 <see cref="NotSupportedException" />。
+    /// </summary>
+    public PluginSdk.Network.INetworkApi Network { get; } = new IsolatedNetwork();
+
+    /// <summary>隔离进程的出站网络能力:沿用接口默认实现(调用即报不支持)。</summary>
+    private sealed class IsolatedNetwork : PluginSdk.Network.INetworkApi;
+
+    /// <summary>
     /// 终端视图在隔离进程里**不可用**:它交出去的是一个活的原生控件,嵌不进另一个进程的窗口。
     /// (本进程确实有自己的 Avalonia,但那是用来画插件自己的界面的;终端仿真器归宿主进程,
     /// 跨进程把每一帧屏幕搬过来既慢又会丢输入时序。)

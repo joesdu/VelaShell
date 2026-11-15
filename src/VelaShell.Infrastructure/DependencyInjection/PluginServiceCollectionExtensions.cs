@@ -77,6 +77,8 @@ public static class PluginServiceCollectionExtensions
                 TrustRepository = sp.GetRequiredService<PluginTrustRepository>(),
                 HostVersion = hostVersion,
                 Connections = sp.GetService<ISshConnectionService>(),
+                // 插件出站 TCP 的代理选路:与 SSH / FTP / HTTP 共用这一个解析器。
+                ProxyResolver = sp.GetService<Core.Net.IProxyResolver>(),
                 // 已保存配置 + 开会话的实现:插件"自己按保存的配置连一台"这条路
                 // (蓝图 §Sessions)所需的两块。后者由 UI 层注册,headless 宿主没有,
                 // 于是开会话一律拒绝。

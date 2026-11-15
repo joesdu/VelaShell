@@ -134,7 +134,7 @@ internal sealed class ProxyTransportDialer(IProxyResolver? proxyResolver, SshRou
     /// </para>
     /// <para>后缀 <c>(via …)</c> 是纯技术信息(代理与目标的地址),不本地化。</para>
     /// </remarks>
-    private static string DescribeProxyFailure(ProxyRoute route, string host, int port, Exception error)
+    internal static string DescribeProxyFailure(ProxyRoute route, string host, int port, Exception error)
     {
         string via = $" (via {(route.Kind == ProxyKind.Socks5 ? "socks5" : "http")} {HostAddress.FormatEndPoint(route.Host, route.Port)} → {HostAddress.FormatEndPoint(host, port)})";
         if (error is SshConnectException { Reason: SshFailureReason.ProxyAuthRequired or SshFailureReason.ProxyAuthFailed } auth)

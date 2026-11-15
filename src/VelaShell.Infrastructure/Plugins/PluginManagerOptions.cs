@@ -138,6 +138,12 @@ public sealed class PluginManagerOptions
     public ISshConnectionService? Connections { get; init; }
 
     /// <summary>
+    /// 代理解析器(出站网络能力 <c>IPluginContext.Network</c> 按它选路,与 SSH / FTP 同一个)。
+    /// 缺席时插件的出站连接一律直连(只装了插件运行时的测试宿主)。
+    /// </summary>
+    public Core.Net.IProxyResolver? ProxyResolver { get; init; }
+
+    /// <summary>
     /// 已保存连接配置的仓储(<c>ISessionsApi.ListSavedAsync</c> 与
     /// <c>OpenAsync</c> 的 id 解析)。缺席时已保存列表为空、开会话一律报"找不到这条配置"。
     /// </summary>
