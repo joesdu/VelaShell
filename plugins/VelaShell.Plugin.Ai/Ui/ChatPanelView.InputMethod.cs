@@ -1,8 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Input;
+using Avalonia.Controls.Presenters;
 using Avalonia.Input.TextInput;
 using Avalonia.Interactivity;
+using AvaloniaEdit.Rendering;
 
 namespace VelaShell.Plugin.Ai.Ui;
 
@@ -59,10 +60,12 @@ public partial class ChatPanelView
     private void PositionInputPreedit()
     {
         if (!IsInputComposing || _inputImeClient is not { } client) return;
-        var view = InputBox.TextArea.TextView;
+        TextView view = InputBox.TextArea.TextView;
         if (view.TranslatePoint(default, InputPreeditLayer) is not { } origin
             || client.Inner.TextViewVisual.TranslatePoint(client.Inner.CursorRectangle.Position, InputPreeditLayer) is not { } caret)
+        {
             return;
+        }
 
         // 同终端:拼音只叠画,不写进文档/撤销栈;贴近右边缘时向左让位,候选窗跟随串内光标。
         double width = Math.Max(1, view.Bounds.Width);
@@ -111,7 +114,7 @@ public partial class ChatPanelView
             get
             {
                 if (!_owner.IsInputComposing) return Inner.CursorRectangle;
-                var presenter = _owner.InputPreedit;
+                TextPresenter presenter = _owner.InputPreedit;
                 int length = presenter.PreeditText!.Length;
                 int cursor = presenter.PreeditTextCursorPosition is { } position && position >= 0 && position <= length
                     ? position : length;

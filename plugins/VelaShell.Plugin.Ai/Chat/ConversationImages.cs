@@ -59,7 +59,7 @@ internal sealed class ImageToolTurn(ConversationImages conversation, GeneratedIm
     {
         ResolvedModel[] models = [.. settings.ResolveModels().Where(model =>
             (model.Provider.Id == providerId || model.Id == defaultModelId) && AiSettingsStore.IsImageModel(model))];
-        var targets = models.ToDictionary(model => model.Id, Target.From, StringComparer.Ordinal);
+        Dictionary<string, Target> targets = models.ToDictionary(model => model.Id, Target.From, StringComparer.Ordinal);
         string selection = " Optional modelId is a configured ID from this list: " +
             JsonSerializer.Serialize(models.Select(model => new { modelId = model.Id, name = model.Name, provider = model.ProviderName, model = model.Model })) +
             ". Honor the user's explicit model request. Otherwise use the default when configured; " +
