@@ -114,6 +114,40 @@
     <PublishReadyToRun Condition="'$(RuntimeIdentifier)' != '' and '$(VelaShellReadyToRun)' == 'true'">true</PublishReadyToRun>
   </PropertyGroup>
 
+  <!--
+    ======================= 2026-11-16:上面那个判决性实验的结果 =======================
+    同一份 win-x64 二进制、热态、交替各 6 次(丢掉第一轮):
+      · R2R 生效            首帧中位数   988 ms
+      · DOTNET_ReadyToRun=0 首帧中位数 1,951 ms
+    R2R 每次启动省 ~960 ms JIT,远高于上面的 560 ms 门槛 —— 保留 R2R。
+
+    但 R2R 的 60 MB 膨胀里有 ~10 MB 落在**冷启动根本不装载**的程序集上(启动后按进程模块清单核对),
+    这部分既不省首帧、又要多付包体与 Defender 扫描。按程序集排除(不是凭直觉:清单来自实测的装载集合):
+
+    · 别的操作系统的 Avalonia 后端:在这个平台上一行都不执行,排除零代价。
+      Windows 上 Avalonia.X11 会被装载(UsePlatformDetect 引用了它),保守起见不排除。
+    · Avalonia.DesignerSupport / Avalonia.Remote.Protocol:设计器与远程预览才用。
+    · BouncyCastle.Cryptography(R2R 12.4 MB / IL 5.2 MB):只在 SSH 握手、私钥解析与主密码解锁时装载。
+      首次调用实测(全新进程,5 次中位数,IL → R2R):一次常规握手(X25519 + Ed25519 + ChaCha20)
+      ~76 → ~27 ms;sntrup761 35 → 21 ms;ML-KEM-768 32 → 13 ms;Argon2id 主密码解锁 482 → 366 ms。
+      即每个进程第一次连接多 ~50 ms、开了主密码的启动解锁多 ~116 ms;换来 7.2 MB 包体,以及冷装载时
+      少扫 ~200 ms(7.2 MB × 27.9 ms/MB)—— 冷态反而更快。之后各自进 tier-1,稳态不受影响。
+    · FluentFTP:只在 FTP / FTPS 会话里用。
+
+    刻意**不**排除 VelaShell.PluginHost:它同样不在主程序启动路径上,但它是隔离插件宿主进程的入口,
+    那个进程的冷启动(此前实测 ~1 s)就靠它与运行时的 R2R。
+
+    方法级的 partial R2R(crossgen2 - -partial + 启动 .mibc)能再削启动路径上那 48 MB,但生成 .mibc 的
+    dotnet-pgo 没有官方发布的 .NET 11 版本(nuget.org 没有,dnceng 公开 feed 只有 2022 年的实验构建),
+    暂不做。
+  -->
+  <ItemGroup Condition="'$(PublishReadyToRun)' == 'true'">
+    <PublishReadyToRunExclude Include="BouncyCastle.Cryptography.dll;FluentFTP.dll;Avalonia.DesignerSupport.dll;Avalonia.Remote.Protocol.dll" />
+    <PublishReadyToRunExclude Condition="$(RuntimeIdentifier.StartsWith('win-'))" Include="Avalonia.Native.dll;Avalonia.FreeDesktop.dll;Avalonia.FreeDesktop.AtSpi.dll;Tmds.DBus.Protocol.dll" />
+    <PublishReadyToRunExclude Condition="$(RuntimeIdentifier.StartsWith('osx-'))" Include="Avalonia.Win32.dll;Avalonia.Win32.Automation.dll;Avalonia.X11.dll;Avalonia.FreeDesktop.dll;Avalonia.FreeDesktop.AtSpi.dll;Tmds.DBus.Protocol.dll" />
+    <PublishReadyToRunExclude Condition="$(RuntimeIdentifier.StartsWith('linux-'))" Include="Avalonia.Win32.dll;Avalonia.Win32.Automation.dll;Avalonia.Native.dll" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
@@ -304,6 +338,24 @@
          正常路径靠①兜底:②不进发行包之后,这条只会在本仓库的插件也全军覆没时才响。 -->
     <Error Condition="'@(_VelaLocalPluginPayload)' == '' and '@(_VelaStagedPluginPayload)' == ''" Text="发布产物里没有任何插件:plugins/ 下没有 &lt;VelaPluginShip&gt;true&lt;/VelaPluginShip&gt; 的插件工程,插件暂存目录 '$(VelaPluginsStageDir)' 也是空的或不存在。发行包里的插件本该来自 plugins/ 下的插件工程 —— 先查那边为什么没产出;确实想把插件仓库侧的插件一并打进去,把它们铺进暂存目录再发布。" />
 
+    <!-- ③ 只留目标平台的原生库。插件工程不带 RID 构建(见上面 RemoveProperties),输出里的
+         runtimes/ 下是依赖包支持的**全部**平台 —— AI 插件的 ratex_ffi 五份、libonigwrap 十三份,
+         Windows 包里躺着 linux-musl 与 maccatalyst 的 .so/.dylib,每个包白占约 18 MB(压缩后约 7 MB)。
+         宿主是带 RID 的自包含发布,运行时只会按这个 RID 的回退链(rid → 操作系统 → unix → any)
+         在 deps.json 的 runtimeTargets 里选资产;别的 RID 的条目不会被解析,文件不在也无妨。
+         不带 RID 的发布(本机随手 publish)不过滤。 -->
+    <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+      <_VelaPublishRidOs>$(RuntimeIdentifier)</_VelaPublishRidOs>
+      <_VelaPublishRidOs Condition="$(RuntimeIdentifier.Contains('-'))">$(RuntimeIdentifier.Substring(0, $(RuntimeIdentifier.IndexOf('-'))))</_VelaPublishRidOs>
+      <_VelaPublishRidKeep>$(RuntimeIdentifier)|$(_VelaPublishRidOs)|any</_VelaPublishRidKeep>
+      <_VelaPublishRidKeep Condition="'$(_VelaPublishRidOs)' != 'win'">$(_VelaPublishRidKeep)|unix</_VelaPublishRidKeep>
+      <_VelaForeignRuntimePattern>[\\/]runtimes[\\/](?!(?:$(_VelaPublishRidKeep.Replace('.', '\.')))[\\/])[^\\/]+[\\/]</_VelaForeignRuntimePattern>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
+      <_VelaLocalPluginPayload Remove="@(_VelaLocalPluginPayload)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_VelaLocalPluginPayload.VelaPluginRelativePath)', '$(_VelaForeignRuntimePattern)'))" />
+      <_VelaStagedPluginPayload Remove="@(_VelaStagedPluginPayload)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_VelaStagedPluginPayload.RecursiveDir)', '$(_VelaForeignRuntimePattern)'))" />
+    </ItemGroup>
+
     <ItemGroup>
       <ResolvedFileToPublish Include="@(_VelaLocalPluginPayload)">
         <RelativePath>plugins\%(_VelaLocalPluginPayload.VelaPluginRelativePath)</RelativePath>
@@ -342,5 +394,38 @@
       <_VelaAppPublishAssetDropped Include="@(_VelaAppPublishAssetBefore)" Exclude="@(_ResolvedCopyLocalPublishAssets)" />
     </ItemGroup>
     <Error Condition="'@(_VelaAppPublishAssetDropped)' != ''" Text="发布产物缺少应用自身的依赖(被发布期文件名冲突消重删掉了):@(_VelaAppPublishAssetDropped->'%(Filename)%(Extension)', ', ')。多半是又有 target 在 ComputeResolvedFilesToPublishList **之前**往 ResolvedFileToPublish 里登记了同名文件(见 AddVelaPluginsToPublish 的注释,#181)。" />
+  </Target>
+
+  <!--
+    插件声明「由宿主提供」的包(VelaHostSharedPackage,见 plugins/Directory.Build.targets)不随插件分发,
+    运行时用的是宿主根目录那份。这里把「宿主发行包里真有这个包、而且版本一字不差」从约定变成硬约束:
+    哪天宿主升级了 LiveMarkdown.Avalonia 把 Markdig 带到新版本、插件这边没跟,或者宿主不再间接引它,
+    构建全绿、包也照出,插件却在用户机器上 MissingMethodException / FileNotFoundException。
+  -->
+  <Target Name="VerifyVelaHostSharedPackages" AfterTargets="AddVelaPluginsToPublish">
+    <MSBuild Projects="@(_VelaLocalPluginProject)" Targets="GetVelaHostSharedPackages" Properties="Configuration=$(Configuration)" RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishTrimmed;PublishReadyToRun;PublishAot;PublishDir">
+      <Output TaskParameter="TargetOutputs" ItemName="_VelaHostSharedPackageRequest" />
+    </MSBuild>
+    <ItemGroup>
+      <_VelaHostPackageKey Include="@(RuntimeCopyLocalItems->'%(NuGetPackageId)/%(NuGetPackageVersion)');@(NativeCopyLocalItems->'%(NuGetPackageId)/%(NuGetPackageVersion)')" />
+      <_VelaHostSharedPackageKey Include="@(_VelaHostSharedPackageRequest->'%(Identity)/%(Version)')" />
+      <_VelaHostSharedPackageMissing Include="@(_VelaHostSharedPackageKey)" Exclude="@(_VelaHostPackageKey)" />
+    </ItemGroup>
+    <Error Condition="'@(_VelaHostSharedPackageMissing)' != ''" Text="插件声明由宿主提供的包在宿主发行包里不存在或版本不一致:@(_VelaHostSharedPackageMissing->'%(VelaPluginId) 要 %(Identity)', ', ')。把插件 csproj 里 VelaHostSharedPackage 的版本改成宿主实际带的版本(看 VelaShell.deps.json),或者把这一条改回普通 PackageReference 让插件自带。" />
+  </Target>
+
+  <!--
+    原生调试符号不进发行包。osx 的运行时包会把 libcoreclr / libclrjit / libmscordaccore / libmscordbi 等的
+    .dwarf 一起交给 publish —— 8 个文件 106 MB,压缩后约 37 MB,占 macOS 包体的四分之一,
+    而 DebugType=None 与流水线里的删 *.pdb 都管不到它们(Linux 运行时包的 .dbg 同理,当前没有,一并挡住)。
+    要分析用户的崩溃转储时,符号按运行时版本从微软符号服务器取,不需要随包分发。
+    .pdb 也在这里挡:DebugType=None 只管本仓库的程序集,依赖包自带的原生 pdb(libSkiaSharp.pdb 84 MB、
+    libHarfBuzzSharp.pdb 21 MB)照样进发布目录 —— 流水线与 publish-all.ps1 发布后再删一遍 *.pdb 就是为此,
+    这里挡在前面,本机直接 dotnet publish 出来的目录也与发行包一致。只在 Release 发布时生效。
+  -->
+  <Target Name="RemoveVelaNativeDebugSymbolsFromPublish" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(Configuration)' == 'Release'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.dwarf' or '%(Extension)' == '.dbg' or '%(Extension)' == '.pdb'" />
+    </ItemGroup>
   </Target>
 </Project>
