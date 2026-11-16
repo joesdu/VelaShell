@@ -66,7 +66,8 @@ public partial class ChatPanelView
         };
         avatar[!Border.BorderBrushProperty] = new DynamicResourceExtension(MemberColor(member.Color));
         avatar[!Border.BackgroundProperty] = new DynamicResourceExtension(MemberColor(member.Color) + "Dim");
-        ToolTip.SetTip(avatar, $"{member.Name} · {member.Role}" + (member.AllowWrites ? " · ✎" : ""));
+        // ✎ = 可改文件,>_ = 可执行命令(两者都要主控显式开,执行时照旧审批)
+        ToolTip.SetTip(avatar, $"{member.Name} · {member.Role}" + (member.AllowWrites ? " · ✎" : "") + (member.AllowCommands ? " · >_" : ""));
         return avatar;
     }
 

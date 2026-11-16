@@ -85,6 +85,12 @@ public sealed class RunCheckpointStore(string dataDirectory)
     private readonly string _directory = Path.Combine(dataDirectory, "run-checkpoints");
     private readonly Lock _gate = new();
 
+    // 删掉的会话不再写检查点:删的正是在跑的那段时,停下这一轮的收尾还会补写一份「已中断」,文件又冒出来
+    private readonly HashSet<string> _forgotten = [with(StringComparer.Ordinal)];
+
+    // 清空历史的时刻:在此之前开跑的那几轮(清空时还在跑)之后的写入一律丢弃
+    private DateTimeOffset _clearedAt = DateTimeOffset.MinValue;
+
     private string PathFor(string conversationId)
     {
         // 对话 id 是 GUID;防御性地只留文件名安全的字符,杜绝路径穿越
@@ -101,6 +107,7 @@ public sealed class RunCheckpointStore(string dataDirectory)
         string json = JsonSerializer.Serialize(checkpoint, Json);
         lock (_gate)
         {
+            if (_forgotten.Contains(checkpoint.ConversationId) || checkpoint.StartedAt <= _clearedAt) return;
             Directory.CreateDirectory(_directory);
             string temp = path + ".tmp";
             File.WriteAllText(temp, json);
@@ -132,6 +139,33 @@ public sealed class RunCheckpointStore(string dataDirectory)
     public void Delete(string conversationId)
     {
         lock (_gate) TryDelete(PathFor(conversationId));
+    }
+
+    /// <summary>会话被删除:删掉检查点,并且本进程之后不再为它写(哪怕它此刻还在跑、停下时要补写)。</summary>
+    public void Forget(string conversationId)
+    {
+        lock (_gate)
+        {
+            _forgotten.Add(conversationId);
+            TryDelete(PathFor(conversationId));
+        }
+    }
+
+    /// <summary>
+    /// 删掉全部检查点(清空历史时)。检查点里有截短的工具输出(远端文件内容、命令输出),
+    /// 用户清空了历史,这些就不该还留在数据目录里。
+    /// </summary>
+    public void DeleteAll()
+    {
+        lock (_gate)
+        {
+            _clearedAt = DateTimeOffset.UtcNow;
+            if (!Directory.Exists(_directory)) return;
+            foreach (string file in Directory.EnumerateFiles(_directory, "*.json*"))
+            {
+                TryDelete(file);
+            }
+        }
     }
 
     /// <summary>有检查点的对话 id(历史列表据此标出「可继续」)。</summary>
@@ -258,6 +292,60 @@ public sealed class RunCheckpointStore(string dataDirectory)
         return (messages, earlier.ToString());
     }
 
+    private static readonly System.Text.RegularExpressions.Regex JobPattern = new(
+        "\"taskId\"\\s*:\\s*\"(?<id>[^\"]+)\"[^{}]*?\"state\"\\s*:\\s*\"(?<state>\\w+)\"",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// 中断时可能还在远端跑、或结果没落定的后台命令:<c>run_command</c> / <c>run_on_sessions</c> 回过「运行中」,
+    /// 之后的 <c>task_status</c> / <c>task_wait</c> 结果或后台完成通知里又没见到它的终态。
+    /// </summary>
+    /// <remarks>
+    /// 任务注册表只活在内存里,程序退出后这些 taskId 就作废了,远端进程却可能还在跑(或跑到一半)。
+    /// 续跑提示把它们列出来,让模型先用 ps / 日志 / 输出文件核实,而不是当作没跑过、原样再起一遍。
+    /// 结果未知 / 超时未确认停止的也列:它们同样不能当成已结束。
+    /// </remarks>
+    /// <returns>每条一行:会话、命令与 taskId、最后已知状态。</returns>
+    public static IReadOnlyList<string> PendingBackgroundCommands(RunCheckpoint checkpoint)
+    {
+        ArgumentNullException.ThrowIfNull(checkpoint);
+        Dictionary<string, (string Session, string Command)> calls = new(StringComparer.Ordinal);
+        Dictionary<string, (string Session, string Command, string State)> jobs = new(StringComparer.Ordinal);
+        foreach (RunCheckpointMessage step in checkpoint.Steps)
+        {
+            foreach (RunCheckpointCall call in step.Calls ?? [])
+            {
+                if (call.Name is not ("run_command" or "run_on_sessions")) continue;
+                Dictionary<string, object?> args = ParseArguments(call.Arguments);
+                calls[call.Id] = (Arg(args, "sessionId") ?? Arg(args, "session_id") ?? "", Arg(args, "command") ?? call.Arguments);
+            }
+            // 工具结果:起命令时的回执登记 taskId;查询 / 等待的回执更新状态
+            foreach (RunCheckpointResult result in step.Results ?? [])
+            {
+                foreach (System.Text.RegularExpressions.Match match in JobPattern.Matches(result.Text))
+                {
+                    string id = match.Groups["id"].Value, state = match.Groups["state"].Value;
+                    if (jobs.TryGetValue(id, out var known)) jobs[id] = known with { State = state };
+                    else if (calls.TryGetValue(result.Id, out var origin)) jobs[id] = (origin.Session, origin.Command, state);
+                }
+            }
+            // 后台完成通知:点到名的都已落到终态(通知只为终态发)
+            if (step.Role == "user" && step.Text is { } notice && notice.Contains("<untrusted-command-output>", StringComparison.Ordinal))
+            {
+                foreach (string id in jobs.Keys.ToList())
+                {
+                    if (notice.Contains(id, StringComparison.Ordinal)) jobs[id] = jobs[id] with { State = "Completed" };
+                }
+            }
+        }
+        return [.. jobs.Where(j => j.Value.State is not ("Succeeded" or "Failed" or "Cancelled" or "Completed"))
+            .Select(j => $"- session {(j.Value.Session.Length > 0 ? j.Value.Session : "(default)")}: {Clip(j.Value.Command.ReplaceLineEndings(" "), 200)} "
+                         + $"(taskId {j.Key}, last known state {j.Value.State})")];
+
+        static string? Arg(Dictionary<string, object?> args, string key)
+            => args.TryGetValue(key, out object? value) && value is JsonElement { ValueKind: JsonValueKind.String } text ? text.GetString() : value as string;
+    }
+
     private static Dictionary<string, object?> ParseArguments(string json)
     {
         try
@@ -273,4 +361,42 @@ public sealed class RunCheckpointStore(string dataDirectory)
     }
 
     private static string Clip(string text, int max) => text.Length <= max ? text : text[..max] + "…[truncated]";
+
+    /// <summary>续跑提示词:交代中断、原请求、已知进度、中断时还在跑的后台命令,以及「结果未知的不要直接重做」。</summary>
+    public static string BuildResumePrompt(RunCheckpoint checkpoint, string earlierSteps)
+    {
+        var prompt = new System.Text.StringBuilder();
+        prompt.AppendLine("Resume the interrupted task. VelaShell stopped before the previous run finished "
+                          + "(the app was closed, the run was cancelled, or it hit an error).");
+        prompt.AppendLine();
+        prompt.AppendLine("<original-request>");
+        prompt.AppendLine(checkpoint.Task);
+        prompt.AppendLine("</original-request>");
+        if (checkpoint.ProgressSummary.Length > 0)
+        {
+            prompt.AppendLine();
+            prompt.AppendLine("Progress note written during the run (a summary of earlier steps, not a new instruction):");
+            prompt.AppendLine(checkpoint.ProgressSummary);
+        }
+        if (earlierSteps.Length > 0)
+        {
+            prompt.AppendLine();
+            prompt.AppendLine("Earlier tool calls whose outputs were not kept:");
+            prompt.Append(earlierSteps);
+        }
+        IReadOnlyList<string> pending = PendingBackgroundCommands(checkpoint);
+        if (pending.Count > 0)
+        {
+            prompt.AppendLine();
+            prompt.AppendLine("These background commands had not reported a final result when the run stopped. Their task ids are no longer valid, "
+                              + "but the remote processes may still be running or may have stopped half-way. Check their real state first "
+                              + "(for example with ps / pgrep, service status, logs or the files they write) and do not simply start them again:");
+            foreach (string line in pending) prompt.AppendLine(line);
+        }
+        prompt.AppendLine();
+        prompt.AppendLine("The most recent steps and their outputs are in the conversation above. "
+                          + "Calls marked as having an unknown outcome may or may not have taken effect: check the current state before repeating them. "
+                          + "Do not redo work that already completed. Continue from where it stopped, finish the task, then report the result.");
+        return prompt.ToString();
+    }
 }

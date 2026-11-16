@@ -568,7 +568,7 @@ public sealed class ChatHistoryStore(IPluginContext context)
     /// </summary>
     private sealed record StoredSubagent(string? Id, string? Role, string? Status, string? Output, StoredSubagentTool[]? Tools,
         string[]? Errors, long ElapsedMs, string? ModelId, string? Task, long InputTokens, long OutputTokens, bool AllowWrites,
-        string? TeamTaskId = null)
+        string? TeamTaskId = null, bool AllowCommands = false)
     {
         // 团队一轮最多 12 个任务、各可返工一次:24 次运行
         private const int MaxRuns = 24, MaxOutputChars = 16 * 1024, MaxTaskChars = 4 * 1024, MaxErrors = 12, MaxErrorChars = 600;
@@ -581,7 +581,7 @@ public sealed class ChatHistoryStore(IPluginContext context)
                     [.. run.ToolsUsed.Select(tool => new StoredSubagentTool(tool.Name, tool.Count))],
                     [.. run.Errors.Take(MaxErrors).Select(error => Truncate(error, MaxErrorChars))],
                     (long)run.Elapsed.TotalMilliseconds, run.ModelId, Truncate(run.TaskPrompt, MaxTaskChars),
-                    run.InputTokens, run.OutputTokens, run.AllowWrites, run.TeamTaskId))
+                    run.InputTokens, run.OutputTokens, run.AllowWrites, run.TeamTaskId, run.AllowCommands))
             ];
 
         public static IReadOnlyList<Agent.SubagentSnapshot>? ToSnapshots(StoredSubagent[]? stored)
@@ -597,7 +597,7 @@ public sealed class ChatHistoryStore(IPluginContext context)
                     [.. (run.Errors ?? []).Where(error => !string.IsNullOrEmpty(error))],
                     TimeSpan.FromMilliseconds(Math.Max(0, run.ElapsedMs)), run.ModelId, run.Task ?? "",
                     InputTokens: run.InputTokens, OutputTokens: run.OutputTokens, AllowWrites: run.AllowWrites,
-                    TeamTaskId: run.TeamTaskId))
+                    TeamTaskId: run.TeamTaskId, AllowCommands: run.AllowCommands))
             ];
     }
 

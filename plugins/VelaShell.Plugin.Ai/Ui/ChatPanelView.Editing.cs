@@ -125,6 +125,8 @@ public partial class ChatPanelView
             surviving.Add((i, role, History[i].Text));
         }
         await _historyStore.RewriteAsync(ConversationId, ConversationStartedAt, surviving);
+        // 检查点总是属于最后中断的那一轮,截断必然连它一起删掉:留着的话重开会话还会冒出续跑卡,接着一个已不存在的任务跑
+        DeleteCheckpoint(ConversationId);
 
         // 新消息从旧的最大序号之后续,别复用可能还挂着附加信息的旧号
         SequenceHighWater = Math.Max(SequenceHighWater, PersistedCount);

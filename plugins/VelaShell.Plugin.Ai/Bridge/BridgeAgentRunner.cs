@@ -45,6 +45,83 @@ public sealed class BridgeAgentRunner(
     private readonly HashSet<FileTransferRunScope> _transferCleanupScopes = [];
     private CancellationTokenSource _transferLifetime = new();
 
+    private RunCheckpointStore Checkpoints => field ??= new RunCheckpointStore(context.DataDirectory);
+
+    /// <summary>
+    /// IM 聊天的检查点键:按聊天(渠道 + 会话)而不是本进程里的对话 id —— 程序重启后对话对象是新建的,
+    /// 聊天还是那个聊天。前缀与桌面会话的 GUID 分开。
+    /// </summary>
+    internal static string CheckpointKey(BridgeConversation conversation) => "bridge-" + conversation.ChatKey;
+
+    /// <summary>这个聊天有没有没跑完、可以 /continue 的一轮。</summary>
+    public bool HasResumable(BridgeConversation conversation)
+    {
+        ArgumentNullException.ThrowIfNull(conversation);
+        try { return Checkpoints.Load(CheckpointKey(conversation)) is not null; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { return false; }
+    }
+
+    /// <summary>
+    /// IM 进度消息里的团队一行:「团队 · 执行中 · 2/4 任务 · 1 进行中 · scout:梳理配置」。
+    /// 只列在跑的成员和他们的任务(标题截短),消息不至于随团队变大而刷屏。
+    /// </summary>
+    internal static string TeamProgressLine(TeamBoardSnapshot team, Loc loc)
+    {
+        int done = team.Tasks.Count(t => t.Status == "completed");
+        int running = team.Tasks.Count(t => t.Status == "running");
+        string phase = loc[team.Phase switch
+        {
+            "completed" => "TeamPhaseCompleted",
+            "failed" => "TeamPhaseFailed",
+            "cancelled" => "Cancelled",
+            _ => "TeamPhaseRunning"
+        }];
+        string busy = string.Join(", ", team.Tasks.Where(t => t.Status == "running")
+            .Select(t => $"{t.Assignee}: {(t.Title.Length <= 20 ? t.Title : t.Title[..20] + "…")}"));
+        return $"{loc["BridgeTeam"]} · {phase} · {loc.F("TeamProgress", done, team.Tasks.Count, running)}"
+               + (busy.Length > 0 ? " · " + busy : "");
+    }
+
+    /// <summary>丢掉这个聊天的检查点(/new 开新对话时)。</summary>
+    public void DiscardResumable(BridgeConversation conversation)
+    {
+        ArgumentNullException.ThrowIfNull(conversation);
+        try { Checkpoints.Delete(CheckpointKey(conversation)); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            context.Log.Warn($"Bridge: discarding a run checkpoint failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 准备续跑:取出检查点(并删掉,新的一轮写它自己的),需要时把步骤放回这个聊天的上下文,返回交给模型的续跑说明;
+    /// 没有可续的返回 null。
+    /// </summary>
+    /// <remarks>
+    /// 同一进程里被停下的那一轮,步骤已经由 InterruptedHistory 放进了上下文,不重放;
+    /// 程序重启后上下文是空的,先补回原请求那条用户消息再放回步骤 —— 否则上下文装配会把开头的 assistant 步骤当成半截丢掉。
+    /// </remarks>
+    public string? PrepareResume(BridgeConversation conversation)
+    {
+        ArgumentNullException.ThrowIfNull(conversation);
+        RunCheckpoint? checkpoint;
+        try { checkpoint = Checkpoints.Load(CheckpointKey(conversation)); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { return null; }
+        if (checkpoint is null) return null;
+        Checkpoints.Delete(CheckpointKey(conversation));
+        string? firstCall = checkpoint.Steps.SelectMany(s => s.Calls ?? []).Select(c => c.Id).FirstOrDefault();
+        bool alreadyInContext = firstCall is not null && conversation.History
+            .SelectMany(m => m.Contents).OfType<FunctionCallContent>().Any(c => c.CallId == firstCall);
+        string earlier = "";
+        if (!alreadyInContext)
+        {
+            (List<ChatMessage> messages, earlier) = RunCheckpointStore.Restore(checkpoint);
+            conversation.History.Add(new ChatMessage(ChatRole.User, checkpoint.Task));
+            conversation.History.AddRange(messages);
+        }
+        return RunCheckpointStore.BuildResumePrompt(checkpoint, earlier);
+    }
+
     /// <summary>入口销毁或授权重载时取消上传，不用于模型Stop。</summary>
     public void CancelTransfers()
     {
@@ -213,6 +290,11 @@ public sealed class BridgeAgentRunner(
                     o => AiSettingsStore.ApplyEndpointQuirks(o, model)).ConfigureAwait(false)).Summary)
             : null;
         IChatClient client = new RecoveringChatClient((IChatClient?)runCompactor ?? steering, execution, loc["ContinuationBoundary"]);
+        // 断点续跑(见 RunCheckpointStore):Agent 一轮有进展就落盘;停下 / 超时 / 出错时留着,聊天里发 /continue 接着跑
+        using RunCheckpointWriter? checkpoints = mode == ChatMode.Agent
+            ? new RunCheckpointWriter(Checkpoints, execution, CheckpointKey(conversation), runId, message.Text,
+                $"{model.ProviderName} / {model.Name}", () => runCompactor?.Summary ?? "")
+            : null;
         McpManager.ToolLease? mcpLease = null;
         CancellationToken transferLifetime;
         lock (_transfersGate) transferLifetime = _transferLifetime.Token;
@@ -247,9 +329,22 @@ public sealed class BridgeAgentRunner(
         // 到目前为止的正文;子任务的进度回调跑在别的线程上,读这份而不去碰正在追加的 StringBuilder
         string visible = "";
         (int Finished, int Total) reportedSubagents = default;
+        string reportedTeam = "";
         var subagentProgressGate = new Lock();
         void ReportSubagents(IReadOnlyList<SubagentSnapshot> snapshots)
         {
+            // IM 里没有团队卡:有团队时报团队这一行(阶段、任务进度、谁在做哪个任务),否则报子任务个数
+            if (subagents?.Team?.Snapshot() is { } team)
+            {
+                string line = TeamProgressLine(team, loc);
+                lock (subagentProgressGate)
+                {
+                    if (line == reportedTeam) return;
+                    reportedTeam = line;
+                }
+                progress?.Invoke($"{visible}\n\n_{line}_");
+                return;
+            }
             (int, int) state = (snapshots.Count(s => s.IsTerminal), snapshots.Count);
             lock (subagentProgressGate)
             {
@@ -289,7 +384,7 @@ public sealed class BridgeAgentRunner(
                             ? (model, fixedCredential)
                             : await SubagentRunner.ResolveFromSettingsAsync(store, request.ModelId, model.Id, token, model.Provider.Id).ConfigureAwait(false),
                         (target, credential) => store.CreateClient(target, credential, callerCountsRetries: true),
-                        () => template, runScope, context.Host.Locale);
+                        () => template, runScope, context.Host.Locale, compactContext: ai.CompactContext);
                     SubagentOrchestrator created = null!;
                     created = new SubagentOrchestrator(
                         (request, token) => subagentRunner.RunAsync(created, request, token), cancellationToken)
@@ -385,11 +480,13 @@ public sealed class BridgeAgentRunner(
             catch (OperationCanceledException)
             {
                 conversation.History.AddRange(execution.InterruptedHistory(accumulated.ToString()));
+                checkpoints?.Keep();
                 throw;
             }
             catch (Exception ex)
             {
                 conversation.History.AddRange(execution.InterruptedHistory(accumulated.ToString()));
+                checkpoints?.Keep();
                 // 把<b>哪个模型</b>带进错误里。群里只看到一句 "401 Unauthorized" 时,
                 // 人第一反应会去查飞书的凭证 —— 而这条 401 来自模型服务商,两者差着十万八千里。
                 // ApiErrorText 顺带把 Anthropic 那种"只有一句 Status Code"的异常展开成服务端原话。
@@ -405,6 +502,7 @@ public sealed class BridgeAgentRunner(
 
             var response = updates.ToChatResponse();
             conversation.History.AddRange(execution.CompletedMessages);
+            checkpoints?.Discard(); // 跑完了,不需要续
             string reply = response.Text.Trim();
             if (reply.Length > 0)
             {

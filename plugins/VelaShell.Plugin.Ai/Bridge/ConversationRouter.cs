@@ -115,6 +115,22 @@ public sealed class ConversationRouter(
         BridgeConversation conversation = GetOrCreate(config, message);
         conversation.LastActivity = DateTimeOffset.UtcNow;
         string text = message.Text.Trim();
+        // 续跑:上一轮被停下 / 超时 / 出错、或程序重启前没跑完 —— 把步骤放回上下文,以续跑说明开新的一轮
+        if (text.ToLowerInvariant() is "/continue" or "/resume")
+        {
+            if (conversation.Running is not null)
+            {
+                await hub.SendAsync(message.ChannelId, conversation.Reply, Loc["BridgeContinueBusy"], CancellationToken.None).ConfigureAwait(false);
+                return;
+            }
+            if (runner.PrepareResume(conversation) is not { } prompt)
+            {
+                await hub.SendAsync(message.ChannelId, conversation.Reply, Loc["BridgeNothingToContinue"], CancellationToken.None).ConfigureAwait(false);
+                return;
+            }
+            await RunTurnAsync(conversation, config, grant, message with { Text = prompt }).ConfigureAwait(false);
+            return;
+        }
         if (text.StartsWith('/') && await TryCommandAsync(conversation, config, grant, message, text).ConfigureAwait(false))
         {
             return;
@@ -425,12 +441,13 @@ public sealed class ConversationRouter(
         {
             // 生命周期取消可能来自撤权；此时不再向旧聊天泄露结果。
             if (!lifetime.IsCancellationRequested)
-                await DeliverAsync(conversation, placeholder, Loc[turn.IsCancellationRequested ? "BridgeStopped" : "BridgeTimeout"], CancellationToken.None).ConfigureAwait(false);
+                await DeliverAsync(conversation, placeholder, Loc[turn.IsCancellationRequested ? "BridgeStopped" : "BridgeTimeout"] + ResumeHint(conversation),
+                    CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             context.Log.Error($"Bridge: a turn in {conversation.ChatKey} failed: {ex}");
-            await DeliverAsync(conversation, placeholder, Loc.F("BridgeTurnFailed", ex.Message), CancellationToken.None)
+            await DeliverAsync(conversation, placeholder, Loc.F("BridgeTurnFailed", ex.Message) + ResumeHint(conversation), CancellationToken.None)
                 .ConfigureAwait(false);
         }
         finally
@@ -498,11 +515,17 @@ public sealed class ConversationRouter(
         return true;
     }
 
+    /// <summary>这一轮没跑完、留了检查点:回复末尾提示可以 /continue。</summary>
+    private string ResumeHint(BridgeConversation conversation)
+        => runner.HasResumable(conversation) ? "\n\n" + Loc["BridgeResumeHint"] : "";
+
     private string Reset(BridgeConversation conversation)
     {
         conversation.Running?.Cancel();
         approvals.Cancel(conversation.ChatKey);
         conversation.Reset();
+        // 开了新对话,上一段没跑完的那一轮也不再续(检查点里还有截短的工具输出,不留)
+        runner.DiscardResumable(conversation);
         return Loc["BridgeNewChat"];
     }
 

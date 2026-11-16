@@ -186,7 +186,8 @@ public partial class ChatPanelView
             _cancel.IsVisible = cancellable && !snapshot.IsTerminal;
             _model.Text = $"{snapshot.SubagentId}"
                 + (snapshot.ModelId is { } modelId ? $" · {_owner._loc["Model"]}: {_owner._settings.FindModel(modelId)?.Model ?? modelId}" : "")
-                + (snapshot.AllowWrites ? $" · {_owner._loc["SubagentWritable"]}" : "");
+                + (snapshot.AllowWrites ? $" · {_owner._loc["SubagentWritable"]}" : "")
+                + (snapshot.AllowCommands ? $" · {_owner._loc["SubagentCommands"]}" : "");
             _tools.Text = snapshot.ToolsUsed.Count == 0
                 ? _owner._loc.F("SubagentToolCalls", 0)
                 : string.Join(Environment.NewLine, snapshot.ToolsUsed.Select(t => $"{t.Name} ×{t.Count}"));

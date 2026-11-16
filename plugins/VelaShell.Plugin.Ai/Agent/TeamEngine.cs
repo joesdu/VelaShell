@@ -10,11 +10,13 @@ namespace VelaShell.Plugin.Ai.Agent;
 /// <param name="Role">角色:researcher / engineer / reviewer / tester / writer,或一句自由描述。</param>
 /// <param name="ModelId">已配置模型的标识;为空沿用父模型。</param>
 /// <param name="AllowWrites">是否开放文件修改工具(须显式开启)。</param>
+/// <param name="AllowCommands">是否开放执行命令(须显式开启,每条命令照旧审批)。</param>
 public sealed record TeamMemberSpec(
     [property: Description("Unique short name, e.g. \"scout\" or \"fixer\". Messages are addressed by it.")] string Name,
     [property: Description("researcher, engineer, reviewer, tester, writer, or a short free-form role description.")] string Role,
     [property: Description("Optional configured model ID; omit to inherit the lead's model.")] string? ModelId = null,
-    [property: Description("Explicitly allow file edits for this member. Default false (read-only).")] bool AllowWrites = false);
+    [property: Description("Explicitly allow file edits for this member. Default false (read-only).")] bool AllowWrites = false,
+    [property: Description("Explicitly allow this member to run shell commands with run_command; each command still needs the user's approval. Default false.")] bool AllowCommands = false);
 
 /// <summary>团队任务:谁做、依赖谁、是否在审查另一个任务。</summary>
 /// <param name="Id">任务 id(团队内唯一,依赖按它引用)。</param>
@@ -32,7 +34,7 @@ public sealed record TeamTaskSpec(
     [property: Description("Id of a task this one reviews. The reviewer must end with VERDICT: PASS or VERDICT: FAIL; a FAIL sends the reviewed task back once with the feedback.")] string? Verifies = null);
 
 /// <summary>团队面板上的一个成员。</summary>
-public sealed record TeamMemberInfo(string Name, string Role, string? ModelId, bool AllowWrites, int Color);
+public sealed record TeamMemberInfo(string Name, string Role, string? ModelId, bool AllowWrites, int Color, bool AllowCommands = false);
 
 /// <summary>
 /// 团队面板上的一个任务。<c>Status</c> 取 pending / running / completed / failed / blocked / cancelled;
@@ -150,6 +152,41 @@ public sealed partial class TeamEngine
     /// <summary>组建团队并开跑。校验失败时什么都不启动,返回原因。</summary>
     public string Run(string goal, IReadOnlyList<TeamMemberSpec> members, IReadOnlyList<TeamTaskSpec> tasks, int timeoutSeconds = 0)
     {
+        if (Validate(goal, members, tasks) is { } invalid) return invalid;
+        return Start(goal, members, tasks, timeoutSeconds);
+    }
+
+    /// <summary>
+    /// 计划给人看的摘要(开跑前的确认卡用):目标、成员(角色、模型、✎ 可改文件、>_ 可执行命令)、
+    /// 任务(负责人、依赖 ←、审查 ⟲)。是给用户读的,不进模型上下文。
+    /// </summary>
+    public static string DescribePlan(string goal, IReadOnlyList<TeamMemberSpec> members, IReadOnlyList<TeamTaskSpec> tasks)
+    {
+        var text = new StringBuilder();
+        text.Append("goal: ").AppendLine(goal.Trim());
+        text.AppendLine("members:");
+        foreach (TeamMemberSpec m in members)
+        {
+            text.Append("  ").Append(m.Name).Append(" (").Append(m.Role)
+                .Append(m.ModelId is { Length: > 0 } model ? ", " + model : "")
+                .Append(m.AllowWrites ? ", ✎" : "")
+                .Append(m.AllowCommands ? ", >_" : "")
+                .AppendLine(")");
+        }
+        text.AppendLine("tasks:");
+        foreach (TeamTaskSpec t in tasks)
+        {
+            text.Append("  ").Append(t.Id).Append(" [").Append(t.Assignee).Append("] ").Append(t.Title);
+            if (t.DependsOn is { Length: > 0 } deps) text.Append("  ← ").Append(string.Join(", ", deps));
+            if (t.Verifies is { Length: > 0 } verified) text.Append("  ⟲ ").Append(verified);
+            text.AppendLine();
+        }
+        return text.ToString().TrimEnd();
+    }
+
+    /// <summary>校验计划;没问题返回 null。确认卡弹出之前先校验,免得用户批了一个根本跑不起来的计划。</summary>
+    public string? Validate(string goal, IReadOnlyList<TeamMemberSpec> members, IReadOnlyList<TeamTaskSpec> tasks)
+    {
         if (string.IsNullOrWhiteSpace(goal)) return "A team goal is required.";
         if (members is not { Count: > 0 }) return "Define at least one team member.";
         if (tasks is not { Count: > 0 }) return "Define at least one task.";
@@ -187,7 +224,15 @@ public sealed partial class TeamEngine
             }
         }
         if (HasCycle(tasks)) return "Task dependencies contain a cycle.";
+        lock (_gate)
+        {
+            if (_started && _finishedAt is null) return "A team is already running in this turn. Use team_status, team_message or team_cancel.";
+        }
+        return null;
+    }
 
+    private string Start(string goal, IReadOnlyList<TeamMemberSpec> members, IReadOnlyList<TeamTaskSpec> tasks, int timeoutSeconds)
+    {
         lock (_gate)
         {
             if (_started && _finishedAt is null) return "A team is already running in this turn. Use team_status, team_message or team_cancel.";
@@ -417,7 +462,8 @@ public sealed partial class TeamEngine
         string memberName = member.Spec.Name;
         var request = new SubagentRequest(prompt, $"{memberName} · {member.Spec.Role}", member.Spec.ModelId,
             member.Spec.AllowWrites, RoleInstructions(member.Spec.Role), MemberTools(memberName),
-            () => [.. DrainInbox(memberName).Select(m => $"<team-message>\n{m}\n</team-message>")], MemberMaxSteps);
+            () => [.. DrainInbox(memberName).Select(m => $"<team-message>\n{m}\n</team-message>")], MemberMaxSteps,
+            member.Spec.AllowCommands);
         // 先把「在跑、对应哪个子任务」记好再启动:子任务可能同步就落定,
         // 完成回调(OnEntryFinished)会赶在 StartCore 返回之前进来,那时这条任务必须已经认得出它
         string id = SubagentOrchestrator.NewId();
@@ -534,7 +580,7 @@ public sealed partial class TeamEngine
             if (!_started) return null;
             DateTimeOffset now = DateTimeOffset.UtcNow;
             return new TeamBoardSnapshot(_teamId, _goal, Phase(),
-                [.. _members.Select(m => new TeamMemberInfo(m.Spec.Name, m.Spec.Role, m.Spec.ModelId, m.Spec.AllowWrites, m.Color))],
+                [.. _members.Select(m => new TeamMemberInfo(m.Spec.Name, m.Spec.Role, m.Spec.ModelId, m.Spec.AllowWrites, m.Color, m.Spec.AllowCommands))],
                 [.. _tasks.Select(t => new TeamTaskInfo(t.Spec.Id, t.Spec.Title, t.Spec.Assignee, t.Status, t.DependsOn,
                     t.Spec.Verifies, t.Attempts, t.Verdict, t.SubagentId, t.Report, t.Note,
                     t.StartedAt is { } s ? (t.FinishedAt ?? now) - s : TimeSpan.Zero))],

@@ -2076,7 +2076,8 @@ public partial class ChatPanelView : UserControl
                         (model, credential) => _store.CreateClient(model, credential, callerCountsRetries: true),
                         () => subagentTemplate!, runScope, _context.Host.Locale,
                         // 子任务的请求同样是已计费的真实用量,并进这段对话的收发计数(不算进上下文占用)
-                        usage => Dispatcher.UIThread.Post(() => RecordUsage(usage, isContext: false)));
+                        usage => Dispatcher.UIThread.Post(() => RecordUsage(usage, isContext: false)),
+                        compactContext: _settings.CompactContext);
                     subagents ??= new SubagentOrchestrator(
                         (request, childToken) => subagentRunner!.RunAsync(subagents!, request, childToken), token);
                     subagents.ModelChoices = SubagentRunner.ModelChoices(_settings, current.Provider.Id);
@@ -3336,6 +3337,10 @@ public partial class ChatPanelView : UserControl
     /// </summary>
     private string RiskLabel(string kind)
     {
+        if (kind == "team_run")
+        {
+            return _loc["RiskTeam"];
+        }
         if (kind.StartsWith("mcp", StringComparison.OrdinalIgnoreCase))
         {
             return _loc["RiskMcp"];
@@ -3511,7 +3516,8 @@ public partial class ChatPanelView : UserControl
         stack.Children.Add(new Border
         {
             Classes = { "cardCode" },
-            Child = new SelectableTextBlock { Classes = { "mono" }, Text = Truncate(request.Summary, 600) }
+            // 团队计划比一条命令长得多(成员 + 任务 + 依赖),放宽到能看全
+            Child = new SelectableTextBlock { Classes = { "mono" }, Text = Truncate(request.Summary, request.Kind == "team_run" ? 2000 : 600) }
         });
         // 主/次操作对齐宿主按钮方案:批准 = 强调药丸,拒绝 = 描边换危险色
         var approveButton = new Button { Content = _loc["Approve"], Height = 24, Padding = new Thickness(12, 0) };
