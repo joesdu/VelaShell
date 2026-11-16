@@ -234,6 +234,30 @@ public sealed class SubagentOrchestrator(
     /// <summary>已经启动过的子任务数(含团队任务)。</summary>
     internal int StartedCount => Volatile.Read(ref _started);
 
+    // 本轮确认在这个账号上用不了的模型(服务端回了 model_not_found 一类):之后选到它的子任务直接改用父模型,不再撞一遍
+    private readonly ConcurrentDictionary<string, byte> _unavailableModels = new(StringComparer.Ordinal);
+
+    /// <summary>记下这个模型在本轮用不了。</summary>
+    internal void MarkModelUnavailable(string modelId) => _unavailableModels.TryAdd(modelId, 0);
+
+    /// <summary>这个模型本轮已确认用不了。</summary>
+    internal bool IsModelUnavailable(string? modelId) => modelId is not null && _unavailableModels.ContainsKey(modelId);
+
+    /// <summary>
+    /// 当前子任务从 <paramref name="from" /> 换到了 <paramref name="to" />(父模型或同供应商的其它聊天模型):卡片改显示实际用的模型,
+    /// 并在错误栏留一句说明(主控读结果时也看得到,不会以为任务是用它选的那个模型做的)。
+    /// </summary>
+    internal void ReportModelFallback(string from, string to, string reason)
+    {
+        if (CurrentEntry.Value is not { } entry || !ReferenceEquals(entry.Owner, this)) return;
+        entry.ModelId = to;
+        lock (entry.LiveTools)
+        {
+            entry.LiveErrors.Add($"Model {from} is not available for this account ({ClipError(reason)}); switched to model {to}.");
+        }
+        NotifyChanged();
+    }
+
     /// <summary>这一轮的团队(调过 team_run 才有)。</summary>
     public TeamEngine? Team { get; private set; }
 

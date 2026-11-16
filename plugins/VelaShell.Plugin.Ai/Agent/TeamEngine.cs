@@ -677,10 +677,10 @@ public sealed partial class TeamEngine
 
     private static bool HasCycle(IReadOnlyList<TeamTaskSpec> tasks)
     {
-        Dictionary<string, string[]> edges = tasks.ToDictionary(t => t.Id.Trim(),
+        var edges = tasks.ToDictionary(t => t.Id.Trim(),
             t => (t.DependsOn ?? []).Append(t.Verifies ?? "").Where(d => d.Length > 0).Select(d => d.Trim()).ToArray(),
             StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, int> state = new(StringComparer.OrdinalIgnoreCase); // 1 = 访问中,2 = 完成
+        Dictionary<string, int> state = [with(StringComparer.OrdinalIgnoreCase)]; // 1 = 访问中,2 = 完成
         bool Visit(string id)
         {
             if (state.TryGetValue(id, out int s)) return s == 1;

@@ -214,7 +214,7 @@ public partial class ChatPanelView
 
             var byId = runs.ToDictionary(r => r.SubagentId, StringComparer.Ordinal);
             // 第二行引用别的任务(等待谁、审查谁)时写对方的标题而不是 id,过长截短
-            Dictionary<string, string> titles = team.Tasks.ToDictionary(t => t.Id, t => t.Title, StringComparer.OrdinalIgnoreCase);
+            var titles = team.Tasks.ToDictionary(t => t.Id, t => t.Title, StringComparer.OrdinalIgnoreCase);
             string Refer(string id) => titles.TryGetValue(id, out string? title)
                 ? "「" + (title.Length <= 14 ? title : title[..14] + "…") + "」"
                 : "#" + id;

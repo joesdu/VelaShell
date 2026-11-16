@@ -185,6 +185,172 @@ public sealed class SubagentRunnerTests
         }
     }
 
+    /// <summary>Codex 用 ChatGPT 账号时真实回过的那句:这个型号在这个账号上用不了。</summary>
+    private static HttpRequestException ModelNotFound(string model) => new(
+        $"HTTP 400 (invalid_request_error: model_not_found) The '{model}' model is not supported when using Codex with a ChatGPT account.",
+        null, System.Net.HttpStatusCode.BadRequest);
+
+    /// <summary>每次请求都回「模型用不了」的假客户端。</summary>
+    private sealed class Rejecting(string model) : IChatClient
+    {
+        public int Requests;
+
+        /// <summary>第一次请求先正常调一个工具,之后才回「模型用不了」。</summary>
+        public bool CallFirst { get; set; }
+
+        public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null, CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            int request = Interlocked.Increment(ref Requests);
+            await Task.CompletedTask;
+            if (CallFirst && request == 1)
+            {
+                yield return Call("c1", "list_sessions");
+                yield return End(ChatFinishReason.ToolCalls);
+                yield break;
+            }
+            throw ModelNotFound(model);
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    /// <summary>同一供应商下三个模型:parent(父模型)、bad(这个账号用不了)、spare(备用)。</summary>
+    private static async Task<(SubagentOrchestrator Orchestrator, Rejecting Bad, Scripted Good, AgentToolbox Toolbox, CommandJobRunScope Run, AgentToolbox Template)>
+        FallbackSetupAsync(TestPluginContext context, string parentModel, params IReadOnlyList<ChatResponseUpdate>[] goodScript)
+    {
+        ResolvedModel parent = Model();
+        parent.Provider.Models[0].Id = "parent";
+        parent.Provider.Models[0].Model = parentModel;
+        parent.Provider.Models.Add(new AiModelConfig { Id = "bad", Model = "gpt-5.4" });
+        parent.Provider.Models.Add(new AiModelConfig { Id = "spare", Model = "gpt-5.2" });
+        var settings = new AiSettings { Providers = [parent.Provider] };
+        var bad = new Rejecting("gpt-5.4");
+        var good = new Scripted(goodScript);
+        var toolbox = new AgentToolbox(context);
+        CommandJobRunScope run = toolbox.BeginRun("test", "turn");
+        AgentToolbox template = toolbox.CreateSubagentToolbox();
+        var runner = new SubagentRunner(
+            (request, _) => Task.FromResult((settings.FindModel(request.ModelId!)!, default(ProviderCredential))),
+            (model, _) => model.Model == "gpt-5.4" || model.Model == parentModel && parentModel == "gpt-5.4" ? bad : good,
+            () => template, run, "en");
+        SubagentOrchestrator? owner = null;
+        owner = new SubagentOrchestrator((request, token) => runner.RunAsync(owner!, request, token), CancellationToken.None)
+        {
+            DefaultModelId = "parent",
+            ModelChoices = new Dictionary<string, string> { ["parent"] = "parent", ["bad"] = "bad", ["spare"] = "spare" }
+        };
+        return (owner, bad, good, toolbox, run, template);
+    }
+
+    /// <summary>
+    /// 主模型给子任务选的型号在这个账号上用不了:改用父模型跑完,卡片与结果写明换过;
+    /// 同一轮再选它的子任务直接用父模型,不再撞一遍。
+    /// </summary>
+    [TestMethod]
+    public async Task UnavailableModel_FallsBackToTheParentAndIsSkippedForTheRestOfTheTurn()
+    {
+        using var context = new TestPluginContext();
+        (SubagentOrchestrator orchestrator, Rejecting bad, Scripted good, AgentToolbox toolbox, CommandJobRunScope run, AgentToolbox template) =
+            await FallbackSetupAsync(context, "gpt-5.3", [Text("first report"), End(ChatFinishReason.Stop)], [Text("second report"), End(ChatFinishReason.Stop)]);
+        await using (toolbox)
+        await using (run)
+        await using (template)
+        await using (orchestrator)
+        {
+            orchestrator.Start("task one", "r", modelId: "bad");
+            string first = orchestrator.Snapshots()[0].SubagentId;
+            using JsonDocument one = JsonDocument.Parse(await orchestrator.WaitAsync(first, 30, CancellationToken.None));
+            orchestrator.Start("task two", "r", modelId: "bad");
+            string second = orchestrator.Snapshots()[1].SubagentId;
+            using JsonDocument two = JsonDocument.Parse(await orchestrator.WaitAsync(second, 30, CancellationToken.None));
+
+            Assert.AreEqual("completed", one.RootElement.GetProperty("status").GetString(), one.RootElement.GetRawText());
+            Assert.AreEqual("first report", one.RootElement.GetProperty("output").GetString());
+            Assert.AreEqual("parent", one.RootElement.GetProperty("modelId").GetString(), "卡片显示实际用的模型");
+            Assert.Contains(e => e!.Contains("Model bad is not available", StringComparison.Ordinal) && e.Contains("switched to model parent", StringComparison.Ordinal),
+                one.RootElement.GetProperty("errors").EnumerateArray().Select(e => e.GetString()));
+            Assert.AreEqual("completed", two.RootElement.GetProperty("status").GetString());
+            Assert.AreEqual(1, bad.Requests, "同一轮第二次选到它,不再发请求去撞");
+            Assert.HasCount(2, good.Requests);
+        }
+    }
+
+    /// <summary>父模型自己用不了时,换到候选里的其它聊天模型(同一供应商,委派本来就允许选它)。</summary>
+    [TestMethod]
+    public async Task UnavailableParent_FallsBackToAnotherCandidate()
+    {
+        using var context = new TestPluginContext();
+        (SubagentOrchestrator orchestrator, Rejecting bad, Scripted good, AgentToolbox toolbox, CommandJobRunScope run, AgentToolbox template) =
+            await FallbackSetupAsync(context, "gpt-5.4", [Text("spare report"), End(ChatFinishReason.Stop)]);
+        await using (toolbox)
+        await using (run)
+        await using (template)
+        await using (orchestrator)
+        {
+            orchestrator.Start("task", "r");
+            string id = orchestrator.Snapshots()[0].SubagentId;
+            using JsonDocument result = JsonDocument.Parse(await orchestrator.WaitAsync(id, 30, CancellationToken.None));
+
+            Assert.AreEqual("completed", result.RootElement.GetProperty("status").GetString(), result.RootElement.GetRawText());
+            Assert.AreEqual("spare", result.RootElement.GetProperty("modelId").GetString());
+            Assert.AreEqual(2, bad.Requests, "父模型与 bad 都是 gpt-5.4,各试一次后换到 spare");
+        }
+    }
+
+    /// <summary>已经调过工具之后才失败:不换模型重跑(副作用可能做两遍),照常报错。</summary>
+    [TestMethod]
+    public async Task UnavailableAfterToolCalls_IsNotRetriedOnAnotherModel()
+    {
+        using var context = new TestPluginContext();
+        context.FakeSessions.AddConnected();
+        (SubagentOrchestrator orchestrator, Rejecting bad, Scripted good, AgentToolbox toolbox, CommandJobRunScope run, AgentToolbox template) =
+            await FallbackSetupAsync(context, "gpt-5.3", [Text("must not run"), End(ChatFinishReason.Stop)]);
+        bad.CallFirst = true;
+        await using (toolbox)
+        await using (run)
+        await using (template)
+        await using (orchestrator)
+        {
+            orchestrator.Start("task", "r", modelId: "bad");
+            string id = orchestrator.Snapshots()[0].SubagentId;
+            using JsonDocument result = JsonDocument.Parse(await orchestrator.WaitAsync(id, 30, CancellationToken.None));
+
+            Assert.AreEqual("failed", result.RootElement.GetProperty("status").GetString(), result.RootElement.GetRawText());
+            Assert.IsEmpty(good.Requests, "调过工具之后不换模型重跑");
+        }
+    }
+
+    /// <summary>只认点名模型的 400 / 404;普通参数错、裸 404 不算。主模型那条路按 403 同样处理:换 Key / 换站、只冷这个模型。</summary>
+    [TestMethod]
+    public void ModelUnavailableDetection_OnlyMatchesModelSpecificErrors()
+    {
+        Assert.IsTrue(Ui.TransientFailure.IsModelUnavailable(ModelNotFound("gpt-5.4")));
+        Assert.IsTrue(Ui.TransientFailure.IsModelUnavailable(new InvalidOperationException("wrapped", ModelNotFound("x"))));
+        Assert.IsTrue(Ui.TransientFailure.IsModelUnavailable(new HttpRequestException(
+            "not_found_error: model: claude-x does not exist", null, System.Net.HttpStatusCode.NotFound)));
+        Assert.IsFalse(Ui.TransientFailure.IsModelUnavailable(new HttpRequestException(
+            "Not Found", null, System.Net.HttpStatusCode.NotFound)), "裸 404 多半是 Base URL 填错,不是模型问题");
+        Assert.IsFalse(Ui.TransientFailure.IsModelUnavailable(new HttpRequestException(
+            "invalid_request_error: max_tokens is too large", null, System.Net.HttpStatusCode.BadRequest)), "普通参数错不算");
+        Assert.IsFalse(Ui.TransientFailure.IsModelUnavailable(new HttpRequestException(
+            "model_not_found", null, System.Net.HttpStatusCode.TooManyRequests)), "只认 400 / 404");
+        Assert.IsTrue(Ui.TransientFailure.IsWorthSwitching(ModelNotFound("gpt-5.4")), "换一站可能就好");
+        Assert.IsTrue(Ui.TransientFailure.IsApiKeyFailure(ModelNotFound("gpt-5.4")), "按 403 同样只冷这把 Key 用在这个模型上");
+        Assert.IsFalse(Ui.TransientFailure.IsKeyRejected(ModelNotFound("gpt-5.4")), "不冷整把 Key");
+        Assert.AreEqual(Ui.TransientFailure.SwitchModel, Ui.TransientFailure.SwitchReason(ModelNotFound("gpt-5.4")).Reason);
+        Assert.IsFalse(Ui.TransientFailure.IsWorthSwitching(new HttpRequestException(
+            "invalid_request_error: bad parameter", null, System.Net.HttpStatusCode.BadRequest)), "普通 400 照旧不换站");
+    }
+
     /// <summary>按脚本逐次作答的假客户端,留下每次请求的消息与工具名。</summary>
     private sealed class Scripted(params IReadOnlyList<ChatResponseUpdate>[] script) : IChatClient
     {

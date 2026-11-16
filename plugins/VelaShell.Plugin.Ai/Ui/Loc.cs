@@ -667,6 +667,7 @@ public sealed class Loc(string locale)
         ["SwitchReasonNetwork"] = ["could not connect", "连不上", "連不上", "接続できません", "연결할 수 없음"],
         ["SwitchReasonEmpty"] = ["empty reply", "空回复", "空回覆", "空の応答", "빈 응답"],
         ["SwitchReasonConfig"] = ["connection settings changed", "接入配置已变", "接入設定已變更", "接続設定が変更されました", "연결 설정이 변경됨"],
+        ["SwitchReasonModel"] = ["model not available for this account", "该账号不可用此模型", "該帳號不可用此模型", "このアカウントではこのモデルを利用できません", "이 계정에서 사용할 수 없는 모델"],
         ["SwitchReasonOther"] = ["request failed", "请求失败", "請求失敗", "リクエスト失敗", "요청 실패"],
         ["SwitchReasonWithStatus"] = ["{0} (HTTP {1})", "{0}(HTTP {1})", "{0}(HTTP {1})", "{0}(HTTP {1})", "{0} (HTTP {1})"],
         ["FailoverEmpty"] = ["No models left to add.", "暂无可添加的模型。", "暫無可新增的模型。", "追加できるモデルがありません。", "추가할 모델이 없습니다."],

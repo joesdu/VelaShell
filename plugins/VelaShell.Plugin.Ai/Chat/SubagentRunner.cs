@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Configuration;
+using VelaShell.Plugin.Ai.Ui;
 
 namespace VelaShell.Plugin.Ai.Chat;
 
@@ -47,7 +49,7 @@ internal sealed class SubagentRunner(
         ArgumentNullException.ThrowIfNull(request);
         try
         {
-            return await RunCoreAsync(owner, request, cancellationToken).ConfigureAwait(false);
+            return await RunWithModelFallbackAsync(owner, request, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -74,8 +76,72 @@ internal sealed class SubagentRunner(
         }
     }
 
-    private async Task<SubagentExecutionResult> RunCoreAsync(SubagentOrchestrator owner, SubagentRequest request,
+    /// <summary>
+    /// 选定的模型在这个账号上用不了(<see cref="TransientFailure.IsModelUnavailable" />)时改用父模型重跑一次。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 只在<b>还什么都没发生</b>时替补(模型一个字没吐、一个工具没调):已经调过工具再重跑,副作用可能做两遍。
+    /// 父模型本来就在跑这一轮,用它不会把任务内容发给新的接收方;父模型自己用不了、或没指定别的模型时不替补,照常报错。
+    /// </para>
+    /// <para>
+    /// 替补不是静默的:卡片换成实际用的模型,错误栏与交回主控的结果里都写明换过。这个模型在本轮记为不可用,
+    /// 之后选到它的子任务(比如团队里分给同一模型的几个成员)直接用父模型,不再一个接一个地撞同一个 400。
+    /// </para>
+    /// </remarks>
+    private async Task<SubagentExecutionResult> RunWithModelFallbackAsync(SubagentOrchestrator owner, SubagentRequest request,
         CancellationToken cancellationToken)
+    {
+        // 替补顺序:选定的模型 → 父模型 → 委派候选里的其它聊天模型(都在当前供应商实例内,委派本来就允许选它们);
+        // 本轮已确认用不了的跳过
+        List<string> order = [.. new[] { request.ModelId ?? owner.DefaultModelId, owner.DefaultModelId }
+            .Concat(owner.ModelChoices.Keys)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)];
+        if (order.Count == 0)
+        {
+            return await RunCoreAsync(owner, request, new StrongBox<bool>(), cancellationToken).ConfigureAwait(false);
+        }
+        int index = 0;
+        // 选定的模型本轮已经被拒过:直接从下一个可用的开始(全都被拒过就照常用它,让真实错误报出来)
+        if (owner.IsModelUnavailable(order[0]) && NextUsable(0) is { } skipTo)
+        {
+            owner.ReportModelFallback(order[0], order[skipTo], "already rejected earlier in this turn");
+            index = skipTo;
+        }
+        while (true)
+        {
+            var progressed = new StrongBox<bool>();
+            try
+            {
+                return await RunCoreAsync(owner, request with { ModelId = order[index] }, progressed, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!progressed.Value && TransientFailure.IsModelUnavailable(ex) && NextUsable(index) is { } next)
+            {
+                owner.MarkModelUnavailable(order[index]);
+                owner.ReportModelFallback(order[index], order[next], ApiErrorText.Describe(ex));
+                index = next;
+            }
+            catch (Exception ex) when (!progressed.Value && TransientFailure.IsModelUnavailable(ex))
+            {
+                owner.MarkModelUnavailable(order[index]); // 没有替补了:照常报错,但本轮之后的子任务不再撞它
+                throw;
+            }
+        }
+
+        int? NextUsable(int from)
+        {
+            for (int j = from + 1; j < order.Count; j++)
+            {
+                if (!owner.IsModelUnavailable(order[j])) return j;
+            }
+            return null;
+        }
+    }
+
+    private async Task<SubagentExecutionResult> RunCoreAsync(SubagentOrchestrator owner, SubagentRequest request,
+        StrongBox<bool> progressed, CancellationToken cancellationToken)
     {
         (ResolvedModel model, ProviderCredential credential) =
             await resolveModel(request, cancellationToken).ConfigureAwait(false);
@@ -134,6 +200,11 @@ internal sealed class SubagentRunner(
             bool changed = false;
             foreach (AIContent content in update.Contents)
             {
+                // 吐过正文或发起过工具调用:之后再失败就不能换模型重跑了(副作用可能做两遍)
+                if (content is TextContent { Text.Length: > 0 } or FunctionCallContent or FunctionResultContent)
+                {
+                    progressed.Value = true;
+                }
                 switch (content)
                 {
                     case TextContent { Text.Length: > 0 } text:

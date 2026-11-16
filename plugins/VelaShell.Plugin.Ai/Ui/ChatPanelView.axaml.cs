@@ -1715,7 +1715,8 @@ public partial class ChatPanelView : UserControl
             ResolvedModel WithTurn(ResolvedModel model)
                 => model.WithReasoning(model.ReasoningAdjustable ? turnOverride : ReasoningLevel.Default);
             // 最多能换几站:开跑时数一次(链上除自己以外的站数),作为硬上限
-            int maxHops = _settings.FailoverCandidates(current).Count;
+            // 按「含同账号其它模型」数:模型不可用时候选更多,上限不能把它们卡掉;实际候选每次按失败原因现算
+            int maxHops = _settings.FailoverCandidates(current, includeSiblingModels: true).Count;
             IChatClient client = null!;
             ChatOptions options = null!;
             List<ChatMessage> requestMessages = [];
@@ -2357,7 +2358,8 @@ public partial class ChatPanelView : UserControl
                     // 只比 id 认不出"选到 C 又选回 A/B"这种改了等于没改的手动操作。
                     long epochBeforeProbe = _selectionEpoch;
                     (ResolvedModel Model, ProviderCredential Credential, string ProbedModel, string? KeyId, long ProviderVersion)? nextStop =
-                        await PickNextAsync(current, turnOverride, triedThisTurn, keyStates, RecordProbeUsage, token);
+                        await PickNextAsync(current, turnOverride, triedThisTurn, keyStates, RecordProbeUsage,
+                            TransientFailure.IsModelUnavailable(ex), token);
                     if (nextStop is null)
                     {
                         throw; // 候选配置失效不是首站401/429的新诊断;原错误和取消各自保留。
@@ -2684,15 +2686,18 @@ public partial class ChatPanelView : UserControl
     /// 候选整轮排除,免得冷却过期后又排回原地打转的上家。</param>
     /// <param name="keyStates">本回合固定的供应商槽顺序、开关和已试槽。</param>
     /// <param name="recordProbeUsage">只累加所属会话的探测费用，不改变正文上下文占窗读数。</param>
+    /// <param name="modelUnavailable">失败原因是这个模型在这个账号上用不了:候选里追加同账号的其它聊天模型。</param>
     /// <param name="token">取消令牌(探测超时之外的整轮取消也走它)。</param>
     /// <returns>探通的模型、固定凭据、实际型号和槽 ID;整链不可用时返回 null。</returns>
     private async Task<(ResolvedModel Model, ProviderCredential Credential, string ProbedModel, string? KeyId, long ProviderVersion)?> PickNextAsync(
         ResolvedModel failed, ReasoningLevel? turnOverride, HashSet<string> triedThisTurn,
-        Dictionary<string, ApiKeyTurnState> keyStates, Action<UsageDetails> recordProbeUsage, CancellationToken token)
+        Dictionary<string, ApiKeyTurnState> keyStates, Action<UsageDetails> recordProbeUsage, bool modelUnavailable,
+        CancellationToken token)
     {
         ResolvedModel WithTurn(ResolvedModel m)
             => m.WithReasoning(m.ReasoningAdjustable ? turnOverride : ReasoningLevel.Default);
-        foreach (ResolvedModel candidate in _settings.FailoverCandidates(failed, triedThisTurn))
+        // 模型在这个账号上用不了:同账号的其它聊天模型也可以接手(见 FailoverCandidates 的 includeSiblingModels)
+        foreach (ResolvedModel candidate in _settings.FailoverCandidates(failed, triedThisTurn, modelUnavailable))
         {
             ResolvedModel target = WithTurn(candidate);
             if (AiSettingsStore.IsImageModel(target) || _health.IsCooling(target.Id)) continue;
