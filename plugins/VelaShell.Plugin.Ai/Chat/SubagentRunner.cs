@@ -34,6 +34,8 @@ internal sealed class SubagentRunner(
     /// <summary>运行卡片上的实时正文最快多久刷一次。</summary>
     private static readonly TimeSpan OutputInterval = TimeSpan.FromMilliseconds(150);
 
+    private static int StepsFor(SubagentRequest request) => request.MaxSteps > 0 ? request.MaxSteps : MaxSteps;
+
     /// <summary>执行一个子任务。取消与超时以 <see cref="OperationCanceledException" /> 原样抛出,由编排器定终态。</summary>
     /// <param name="owner">发起任务的编排器:工具计数、实时正文与用量都记到它当前的条目上。</param>
     /// <param name="request">任务请求。</param>
@@ -54,7 +56,7 @@ internal sealed class SubagentRunner(
         catch (AgentBatchBoundaryException)
         {
             throw new InvalidOperationException(
-                $"The subagent reached its limit of {MaxSteps} steps before writing a final report.");
+                $"The subagent reached its limit of {StepsFor(request)} steps before writing a final report.");
         }
         catch (Exception ex) when (ex.GetBaseException() is AgentPausedException paused)
         {
@@ -83,6 +85,11 @@ internal sealed class SubagentRunner(
         {
             tools.Add(mcpTool);
         }
+        // 团队成员多两件工具:给队友 / 主控发消息、看团队看板
+        foreach (AITool extra in request.ExtraTools ?? [])
+        {
+            tools.Add(extra);
+        }
         var options = new ChatOptions
         {
             MaxOutputTokens = model.MaxTokens,
@@ -107,8 +114,14 @@ internal sealed class SubagentRunner(
         messages.Add(new ChatMessage(ChatRole.User, request.Prompt));
 
         var execution = new AgentExecution("subagent-" + Guid.NewGuid().ToString("N"));
-        using IChatClient client = new RecoveringChatClient(createClient(model, credential), execution, "")
-            .AsBuilder().UseFunctionInvocation(configure: c => execution.Configure(c, MaxSteps)).Build();
+        IChatClient transport = createClient(model, credential);
+        // 团队成员的收件箱:队友发来的消息赶在它下一步之前进上下文(与插话通道同一套做法)
+        if (request.DrainInbox is { } drain)
+        {
+            transport = new InboxChatClient(transport, drain);
+        }
+        using IChatClient client = new RecoveringChatClient(transport, execution, "")
+            .AsBuilder().UseFunctionInvocation(configure: c => execution.Configure(c, StepsFor(request))).Build();
 
         // 最终报告 = 最后一次工具调用之后的那段正文。工具调用之间的过渡话("我先看看配置")不算报告,
         // 但中途停下、或模型最后一步没话说时,它是仅有的可用内容,留作兜底。
@@ -180,7 +193,11 @@ internal sealed class SubagentRunner(
         + "For user-authorized file changes, explicitly pass allowWrites=true; mutations retain parent approvals and scope. "
         + "Assign disjoint files where possible, inspect tool results, and never claim cancellation rolled changes back. "
         + "If analysis needs command output (for example df, ss or ps), collect it with parent tools first and include it in the delegated prompt. "
-        + "Do not claim subagents were created unless delegate_subagent succeeded. If the user explicitly wants OS processes, use command tools instead.\n";
+        + "Do not claim subagents were created unless delegate_subagent succeeded. If the user explicitly wants OS processes, use command tools instead.\n"
+        + "When the user asks for a team, or a large task splits into specialist steps that build on each other (investigate → change → review), "
+        + "use team_run instead of several delegate_subagent calls: give each member a clear role, make every task self-contained, "
+        + "chain them with dependsOn so results flow downstream, and add a reviewer task with verifies for work that must be checked. "
+        + "After team_run, end your step: one consolidated team report arrives when the team finishes. Verify what matters, then report to the user.\n";
 
     /// <summary>这一轮的工具里有没有委派工具(被禁用、非 Agent 模式时没有)。</summary>
     internal static bool HasDelegation(IEnumerable<AITool>? tools)
@@ -234,6 +251,10 @@ internal sealed class SubagentRunner(
         if (!string.IsNullOrWhiteSpace(request.Role))
         {
             prompt.Append("Your role: ").Append(request.Role.Trim()).Append(".\n");
+        }
+        if (!string.IsNullOrWhiteSpace(request.Instructions))
+        {
+            prompt.Append(request.Instructions.Trim()).Append('\n');
         }
         prompt.Append(
             "Rules:\n"

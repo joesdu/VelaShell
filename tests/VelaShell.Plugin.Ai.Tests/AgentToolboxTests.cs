@@ -60,7 +60,8 @@ public sealed class AgentToolboxTests
 
         Assert.AreSequenceEqual(
             AgentToolbox.Catalog.Where(t => t.ReadOnly && !t.Name.Contains("_local_", StringComparison.Ordinal))
-                .Where(t => t.Name is not ("subagent_status" or "subagent_wait"))
+                // 这几个只在有编排器的 Agent 轮才有(团队看板同理)
+                .Where(t => t.Name is not ("subagent_status" or "subagent_wait" or "team_status"))
                 .Select(t => t.Name),
             names,
             SequenceOrder.InAnyOrder);
@@ -70,7 +71,7 @@ public sealed class AgentToolboxTests
                  {
                      "open_session", "close_session", "task_cancel", "write_local_file", "patch_local_file",
                      "make_local_directory", "rename_local_path", "delete_local_path", "delegate_subagent",
-                     "subagent_cancel"
+                     "subagent_cancel", "team_run", "team_message", "team_cancel"
                  })
         {
             Assert.DoesNotContain(forbidden, names, $"计划模式不该暴露 {forbidden}");

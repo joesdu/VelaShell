@@ -205,7 +205,14 @@ public sealed class BridgeAgentRunner(
                     account = renewed;
                 }
             });
-        IChatClient client = new RecoveringChatClient(steering, execution, loc["ContinuationBoundary"]);
+        // 运行中的上下文管理(见 RunContextCompactor):IM 那头的长任务同样会撑爆窗口
+        RunContextCompactor? runCompactor = ai.CompactContext && model.MaxInputTokens > 0
+            ? new RunContextCompactor(steering, model.MaxInputTokens, model.MaxTokens,
+                async (previous, steps, token) => (await ContextCompactor.SummarizeRunAsync(steering.RequestClient,
+                    previous, steps, context.Host.Locale, token,
+                    o => AiSettingsStore.ApplyEndpointQuirks(o, model)).ConfigureAwait(false)).Summary)
+            : null;
+        IChatClient client = new RecoveringChatClient((IChatClient?)runCompactor ?? steering, execution, loc["ContinuationBoundary"]);
         McpManager.ToolLease? mcpLease = null;
         CancellationToken transferLifetime;
         lock (_transfersGate) transferLifetime = _transferLifetime.Token;
@@ -339,6 +346,7 @@ public sealed class BridgeAgentRunner(
             {
                 options.Instructions = ContextBuilder.MoveSystemPromptOut(request.Messages);
             }
+            if (runCompactor is not null) runCompactor.PrefixCount = request.Messages.Count;
 
             var accumulated = new StringBuilder();
             var updates = new List<ChatResponseUpdate>();

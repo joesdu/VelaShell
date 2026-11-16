@@ -10,7 +10,13 @@ namespace VelaShell.Plugin.Ai.Agent;
 /// <param name="Role">任务角色的显示名称；未指定时使用默认分析角色。</param>
 /// <param name="ModelId">已配置模型的标识；未指定时沿用父模型。</param>
 /// <param name="AllowWrites">显式允许继承父轮授权的文件修改工具，默认只读。</param>
-public sealed record SubagentRequest(string Prompt, string? Role, string? ModelId = null, bool AllowWrites = false);
+/// <param name="Instructions">追加到子 Agent 系统提示词里的角色说明(团队成员用);为空不加。</param>
+/// <param name="ExtraTools">额外交给子 Agent 的工具(团队成员的 team_message / team_board)。</param>
+/// <param name="DrainInbox">每次请求模型之前取走发给它的新消息(团队成员之间的消息);为空表示没有收件箱。</param>
+/// <param name="MaxSteps">最多走多少步;不大于 0 用默认值。</param>
+public sealed record SubagentRequest(string Prompt, string? Role, string? ModelId = null, bool AllowWrites = false,
+    string? Instructions = null, IReadOnlyList<AITool>? ExtraTools = null,
+    Func<IReadOnlyList<string>>? DrainInbox = null, int MaxSteps = 0);
 
 /// <summary>子 Agent 对某个工具的调用次数。</summary>
 /// <param name="Name">工具名称。</param>
@@ -47,6 +53,7 @@ public sealed record SubagentExecutionResult(
 /// <param name="InputTokens">供应商已报告的输入 token 累计。</param>
 /// <param name="OutputTokens">供应商已报告的输出 token 累计。</param>
 /// <param name="AllowWrites">本次委派是否开放了文件修改工具。</param>
+/// <param name="TeamTaskId">属于团队的哪个任务;普通委派为 null。团队任务的结果由 <see cref="TeamEngine" /> 汇总,不逐个送回父 Agent。</param>
 public sealed record SubagentSnapshot(
     string SubagentId,
     string Role,
@@ -61,7 +68,8 @@ public sealed record SubagentSnapshot(
     string Activity = "",
     long InputTokens = 0,
     long OutputTokens = 0,
-    bool AllowWrites = false)
+    bool AllowWrites = false,
+    string? TeamTaskId = null)
 {
     /// <summary>已经落到终态（完成、失败、取消或超时）。</summary>
     public bool IsTerminal => Status is not ("queued" or "running");
@@ -124,6 +132,8 @@ public sealed class SubagentOrchestrator(
         public string TaskPrompt { get; init; } = "";
         public bool AllowWrites { get; init; }
         public TimeSpan Timeout { get; init; }
+        public SubagentRequest? Request { get; init; }
+        public string? TeamTaskId { get; init; }
         public SubagentExecutionResult? Result { get; set; }
         public string? Error { get; set; }
         public Dictionary<string, int> LiveTools { get; } = [with(StringComparer.Ordinal)];
@@ -219,7 +229,22 @@ public sealed class SubagentOrchestrator(
     /// 这个编排器一共能启动多少个子任务。桌面与 IM 一轮一个编排器,用默认值;
     /// 对外 MCP 一条连接一个编排器,连接比一轮长得多,由入口另给上限。
     /// </summary>
-    public int MaxTotal { get; init; } = DefaultMaxTotal;
+    public int MaxTotal { get; set; } = DefaultMaxTotal;
+
+    /// <summary>已经启动过的子任务数(含团队任务)。</summary>
+    internal int StartedCount => Volatile.Read(ref _started);
+
+    /// <summary>这一轮的团队(调过 team_run 才有)。</summary>
+    public TeamEngine? Team { get; private set; }
+
+    /// <summary>取这一轮的团队,没有就建一个。</summary>
+    internal TeamEngine EnsureTeam()
+    {
+        lock (_completionGate) return Team ??= new TeamEngine(this);
+    }
+
+    /// <summary>一个子任务落到终态(在完成信号之前、任意线程上触发)。团队引擎据此推进依赖它的任务。</summary>
+    internal event Action<SubagentSnapshot>? EntryFinished;
 
     /// <summary>
     /// 结果会不会在终态后自动送回发起方(桌面与 IM 由 <see cref="Chat.AgentRunCoordinator" /> 送)。
@@ -228,7 +253,7 @@ public sealed class SubagentOrchestrator(
     public bool DeliversResults { get; init; } = true;
 
     /// <summary>还有子任务在排队或运行(对外 MCP 据此不回收仍在干活的连接)。</summary>
-    public bool HasActive => _entries.Values.Any(entry => entry.FinishedAt is null);
+    public bool HasActive => _entries.Values.Any(entry => entry.FinishedAt is null) || Team?.IsActive == true;
 
     /// <summary>未指定模型时使用的父模型配置标识。</summary>
     public string? DefaultModelId { get; set; }
@@ -240,7 +265,7 @@ public sealed class SubagentOrchestrator(
     public event Action<IReadOnlyList<SubagentSnapshot>>? SnapshotsChanged;
 
     /// <summary>还有没交回父 Agent 的结果：仍在排队 / 运行，或已到终态但没人取走。</summary>
-    public bool HasPendingResults => _entries.Values.Any(entry => !entry.Reported);
+    public bool HasPendingResults => _entries.Values.Any(entry => !entry.Reported) || Team?.HasPendingReport == true;
 
     /// <summary>当前异步流所属子任务的标签（<c>id · 角色</c>）；不在子任务里时为 null。审批卡用它标明来源。</summary>
     public static string? CurrentLabel
@@ -282,36 +307,65 @@ public sealed class SubagentOrchestrator(
         {
             return "A non-empty subagent prompt is required.";
         }
-        string? selectedModelId = string.IsNullOrWhiteSpace(modelId) ? DefaultModelId : modelId.Trim();
-        if (ModelChoices.Count > 0 && (selectedModelId is null || !ModelChoices.ContainsKey(selectedModelId)))
-            return "Select a subagent model ID from the current provider's allowed list.";
-        int sequence = Interlocked.Increment(ref _started);
-        if (sequence > MaxTotal)
-        {
-            Interlocked.Decrement(ref _started);
-            return $"The maximum of {MaxTotal} subagents has been reached.";
-        }
-
-        string id = $"sub-{Guid.NewGuid():N}"[..12];
-        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(parentCancellation);
-        var entry = new Entry(this, id, sequence, cancellation)
-        {
-            TaskPrompt = prompt,
-            AllowWrites = allowWrites,
-            Role = role,
-            ModelId = selectedModelId,
-            Timeout = timeoutSeconds > 0
+        (string? id, string? error) = StartCore(new SubagentRequest(prompt, role, modelId, allowWrites),
+            timeoutSeconds > 0
                 ? TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, MinTimeoutSeconds, MaxTimeoutSeconds))
-                : _timeout
-        };
-        _entries[id] = entry;
-        entry.Task = RunAsync(entry, prompt, role);
-        NotifyChanged();
+                : _timeout,
+            teamTaskId: null);
+        if (error is not null) return error;
         return DeliversResults
             ? $"Started subagent {id}. Its result is delivered to you automatically when it finishes, so do not poll. "
               + "Call subagent_wait with this id only if you need the result before doing anything else."
             : $"Started subagent {id}. Results are NOT pushed to you: call subagent_wait with this id to collect the result.";
     }
+
+    /// <summary>
+    /// 真正登记并启动一个子任务。<paramref name="teamTaskId" /> 不为空时是团队任务:结果由团队引擎汇总,
+    /// 不逐个送回父 Agent(一开始就记为已交回)。
+    /// </summary>
+    /// <returns>任务 id,或一句拒绝的原因。</returns>
+    /// <param name="request">任务请求。</param>
+    /// <param name="timeout">执行期限。</param>
+    /// <param name="teamTaskId">团队任务 id;普通委派为 null。</param>
+    /// <param name="presetId">
+    /// 调用方预先定好的任务 id(<see cref="NewId" />)。团队引擎要在启动<b>之前</b>记下它:
+    /// 子任务可能同步就落定(比如模型解析当场失败),完成回调会赶在这里返回之前进来。
+    /// </param>
+    internal (string? Id, string? Error) StartCore(SubagentRequest request, TimeSpan timeout, string? teamTaskId,
+        string? presetId = null)
+    {
+        if (Volatile.Read(ref _disposed) != 0) return (null, "Subagent service is shutting down.");
+        string? selectedModelId = string.IsNullOrWhiteSpace(request.ModelId) ? DefaultModelId : request.ModelId.Trim();
+        if (ModelChoices.Count > 0 && (selectedModelId is null || !ModelChoices.ContainsKey(selectedModelId)))
+            return (null, "Select a subagent model ID from the current provider's allowed list.");
+        int sequence = Interlocked.Increment(ref _started);
+        if (sequence > MaxTotal)
+        {
+            Interlocked.Decrement(ref _started);
+            return (null, $"The maximum of {MaxTotal} subagents has been reached.");
+        }
+
+        string id = presetId ?? NewId();
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(parentCancellation);
+        var entry = new Entry(this, id, sequence, cancellation)
+        {
+            TaskPrompt = request.Prompt,
+            AllowWrites = request.AllowWrites,
+            Role = request.Role,
+            ModelId = selectedModelId,
+            Timeout = timeout,
+            Request = request with { Prompt = request.Prompt.Trim(), ModelId = selectedModelId },
+            TeamTaskId = teamTaskId,
+            Reported = teamTaskId is not null
+        };
+        _entries[id] = entry;
+        entry.Task = RunAsync(entry);
+        NotifyChanged();
+        return (id, null);
+    }
+
+    /// <summary>新的子任务 id。</summary>
+    internal static string NewId() => $"sub-{Guid.NewGuid():N}"[..12];
 
     /// <summary>取得子任务当前状态和已完成结果。</summary>
     public string Status(string id)
@@ -369,6 +423,12 @@ public sealed class SubagentOrchestrator(
                         entry.Reported = true;
                         finished.Add(Snapshot(entry));
                     }
+                }
+                // 团队:任务都落定后汇成一份报告送回去;还有任务在等依赖 / 等返工时也算在途
+                if (Team is { } team)
+                {
+                    if (team.TakeReport() is { } report) finished.Add(report);
+                    else if (team.IsActive) active = true;
                 }
                 if (finished.Count > 0 || !active)
                 {
@@ -472,7 +532,7 @@ public sealed class SubagentOrchestrator(
         return $"Cancellation requested for subagent {id}. Changes it already made are not rolled back.";
     }
 
-    private async Task<SubagentExecutionResult> RunAsync(Entry entry, string prompt, string? role)
+    private async Task<SubagentExecutionResult> RunAsync(Entry entry)
     {
         bool acquired = false;
         try
@@ -486,8 +546,7 @@ public sealed class SubagentOrchestrator(
             entry.Clock = clock;
             clock.Start();
             CurrentEntry.Value = entry;
-            entry.Result = await runner(new SubagentRequest(prompt.Trim(), role, entry.ModelId, entry.AllowWrites), timeout.Token)
-                .ConfigureAwait(false);
+            entry.Result = await runner(entry.Request!, timeout.Token).ConfigureAwait(false);
             timeout.Token.ThrowIfCancellationRequested();
             entry.Status = "completed";
             return entry.Result;
@@ -520,14 +579,15 @@ public sealed class SubagentOrchestrator(
             {
                 _slots.Release();
             }
-            TaskCompletionSource signal;
             lock (_completionGate)
             {
                 entry.FinishedAt = DateTimeOffset.UtcNow;
-                signal = _completionSignal;
-                _completionSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
             }
-            signal.TrySetResult();
+            // 先让团队引擎推进依赖它的任务,再发完成信号:等待方醒来时下一批已经登记在案,
+            // 不会误以为「没有在途任务」而提前收尾
+            try { EntryFinished?.Invoke(Snapshot(entry)); }
+            catch (Exception) { } // 引擎的问题不能卡住这一条的收尾
+            SignalCompletion();
             NotifyChanged();
         }
     }
@@ -544,7 +604,7 @@ public sealed class SubagentOrchestrator(
                 entry.Reported = true;
             }
         }
-        return JsonSerializer.Serialize(ModelView(snapshot));
+        return AgentJson.Serialize(ModelView(snapshot));
     }
 
     /// <summary>交给父模型的结构化结果：状态、正文、工具、错误与耗时。</summary>
@@ -605,10 +665,23 @@ public sealed class SubagentOrchestrator(
             entry.WaitActivity.Length > 0 ? entry.WaitActivity : entry.ToolActivity,
             Interlocked.Read(ref entry.InputTokens),
             Interlocked.Read(ref entry.OutputTokens),
-            entry.AllowWrites);
+            entry.AllowWrites,
+            entry.TeamTaskId);
     }
 
-    private void NotifyChanged() => SnapshotsChanged?.Invoke(Snapshots());
+    internal void NotifyChanged() => SnapshotsChanged?.Invoke(Snapshots());
+
+    /// <summary>叫醒 <see cref="WaitForCompletionAsync" />(子任务落定、团队报告备好时)。</summary>
+    internal void SignalCompletion()
+    {
+        TaskCompletionSource signal;
+        lock (_completionGate)
+        {
+            signal = _completionSignal;
+            _completionSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        signal.TrySetResult();
+    }
 
     internal static class SubagentToolTracker
     {
@@ -670,6 +743,7 @@ public sealed class SubagentOrchestrator(
         {
             return;
         }
+        Team?.Shutdown();
         foreach (Entry entry in _entries.Values)
         {
             entry.Cancellation.Cancel();

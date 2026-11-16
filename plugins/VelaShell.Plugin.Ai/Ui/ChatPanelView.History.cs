@@ -276,6 +276,8 @@ public partial class ChatPanelView
             SequenceHighWater = PersistedCount;
             // 上次压过的摘要一并恢复,免得一进来就重压一次(那是一次白花的请求)
             await RestoreSummaryAsync();
+            // 上次这段对话里有没跑完的一轮(程序退出 / 被停下 / 出错):末尾挂一张续跑卡
+            ShowResumeCardIfAny();
             StatusText.Text = _loc.F("HistoryLoaded", entries.Count);
             SetActiveView(PanelView.Chat);
             // 载进来的会话把消息流填上了,空状态得退场(一个模型都没配时也照样能翻旧会话)
