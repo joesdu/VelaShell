@@ -345,7 +345,7 @@ Packages go to `publish/` for all three platforms on x64 / arm64, including the 
 | Pipeline | Triggers and responsibilities |
 | --- | --- |
 | [`ci.yml`](.github/workflows/ci.yml) | Pushes to `main`, PRs or manual runs; three-platform Debug builds and tests with warnings as errors; an additional Linux build with `runtime-async=off` checks spans across `await` |
-| [`release.yml`](.github/workflows/release.yml) | Release publication or editing; packages all three platforms and produces `SHA256SUMS.txt`, `latest.json` and an MSIX for Store submission |
+| [`release.yml`](.github/workflows/release.yml) | Release publication or editing; packages all three platforms and produces `SHA256SUMS.txt`, `latest.json` and an MSIX for Store submission; before packaging it takes one models.dev spec snapshot and bundles it into the AI plugin ([`scripts/Update-ModelsDevSnapshot.ps1`](scripts/Update-ModelsDevSnapshot.ps1); a failed fetch only warns) |
 
 CI uses Debug to avoid requiring the Release strong-name key, and filters out the `DockerIntegration` / `CrossPlatform` / `Interop` categories that need extra infrastructure.
 Shortcut documentation checks need `velashell-docs` checked out alongside this repository. Versions come from Release tags through `-p:Version`; `0.0.1-dev` is only a development placeholder.

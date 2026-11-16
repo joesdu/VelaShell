@@ -382,3 +382,7 @@ tests/**/interop.local.json
 
 # CodeGraph 本机索引(数据库与守护进程文件,各机器一份)
 .codegraph/
+
+# models.dev 规格快照:发版流水线生成(scripts/Update-ModelsDevSnapshot.ps1),不进版本库
+plugins/VelaShell.Plugin.Ai/Assets/models-dev.json.gz
+plugins/VelaShell.Plugin.Ai/Assets/models-dev.stamp

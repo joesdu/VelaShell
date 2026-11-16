@@ -118,6 +118,67 @@ public sealed class ModelPullCatalogueTests
         Assert.IsFalse(updated);
     }
 
+    /// <summary>发版时打进插件的快照(gzip 后的 api.json 子集,与 scripts/Update-ModelsDevSnapshot.ps1 产出同形)。</summary>
+    private static Func<(Func<Stream> Open, DateTimeOffset At)?> Bundle(DateTimeOffset at, string json = """
+        {"openai":{"models":{"gpt-5":{"id":"gpt-5","name":"GPT-5","reasoning":true,"limit":{"context":400000,"output":128000},"cost":{"input":1.25,"output":10}}}}}
+        """)
+    {
+        byte[] gz;
+        using (var buffer = new MemoryStream())
+        {
+            using (var gzip = new System.IO.Compression.GZipStream(buffer, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
+                gzip.Write(Encoding.UTF8.GetBytes(json));
+            gz = buffer.ToArray();
+        }
+        return () => (() => new MemoryStream(gz), at);
+    }
+
+    /// <summary>没有外网的新装用户:没有缓存,用内置快照;快照还新鲜时不必联网刷新。</summary>
+    [TestMethod]
+    public void BundledSnapshot_IsUsedWhenThereIsNoCache()
+    {
+        using var context = new TestPluginContext();
+        var catalogue = new ModelsDevCatalog(context) { BundledSource = Bundle(DateTimeOffset.UtcNow.AddDays(-1)) };
+
+        ModelSpec spec = catalogue.ForProvider("openai").Single();
+
+        Assert.AreEqual("gpt-5", spec.Id);
+        Assert.AreEqual(400000, spec.ContextTokens);
+        Assert.IsFalse(catalogue.IsStale, "内置快照还在新鲜期内,拉取时不必先去连 models.dev");
+    }
+
+    /// <summary>本地缓存比内置快照新(升级后又联网刷过)就用缓存;快照比缓存新(刚升级)就用快照。</summary>
+    [TestMethod]
+    public async Task NewerOfCacheAndSnapshot_Wins()
+    {
+        using var context = new TestPluginContext();
+        string cacheFile = Path.Combine(context.DataDirectory, "models-dev.json");
+        await File.WriteAllTextAsync(cacheFile, """{"openai":{"gpt-cached":{"name":"cached","ctx":1000,"max":100}}}""");
+        File.SetLastWriteTimeUtc(cacheFile, DateTime.UtcNow.AddDays(-3));
+
+        var olderSnapshot = new ModelsDevCatalog(context) { BundledSource = Bundle(DateTimeOffset.UtcNow.AddDays(-10)) };
+        var newerSnapshot = new ModelsDevCatalog(context) { BundledSource = Bundle(DateTimeOffset.UtcNow.AddDays(-1)) };
+
+        Assert.AreEqual("gpt-cached", olderSnapshot.ForProvider("openai").Single().Id);
+        Assert.AreEqual("gpt-5", newerSnapshot.ForProvider("openai").Single().Id);
+    }
+
+    /// <summary>快照过期(装的是很久以前的版本):仍拿它兜底,但标为该刷新;快照损坏时退回缓存。</summary>
+    [TestMethod]
+    public void OldOrBrokenSnapshot_FallsBackSensibly()
+    {
+        using var context = new TestPluginContext();
+        var old = new ModelsDevCatalog(context) { BundledSource = Bundle(DateTimeOffset.UtcNow.AddDays(-30)) };
+        Assert.IsTrue(old.IsStale, "过期了就该在拉取时尝试刷新");
+        Assert.AreEqual("gpt-5", old.ForProvider("openai").Single().Id, "刷新之前(或刷新失败时)仍有快照可用");
+
+        var broken = new ModelsDevCatalog(context)
+        {
+            BundledSource = () => (() => new MemoryStream([1, 2, 3, 4]), DateTimeOffset.UtcNow)
+        };
+        Assert.IsEmpty(broken.ForProvider("openai"), "快照解不开:退回缓存(这里没有缓存),不抛异常");
+    }
+
     /// <summary>调用方自己取消时照旧抛出:那是用户关了窗口,不是 models.dev 的问题。</summary>
     [TestMethod]
     public async Task CallerCancellation_StillPropagates()
