@@ -309,8 +309,8 @@ public sealed class RunCheckpointStore(string dataDirectory)
     public static IReadOnlyList<string> PendingBackgroundCommands(RunCheckpoint checkpoint)
     {
         ArgumentNullException.ThrowIfNull(checkpoint);
-        Dictionary<string, (string Session, string Command)> calls = new(StringComparer.Ordinal);
-        Dictionary<string, (string Session, string Command, string State)> jobs = new(StringComparer.Ordinal);
+        Dictionary<string, (string Session, string Command)> calls = [with(StringComparer.Ordinal)];
+        Dictionary<string, (string Session, string Command, string State)> jobs = [with(StringComparer.Ordinal)];
         foreach (RunCheckpointMessage step in checkpoint.Steps)
         {
             foreach (RunCheckpointCall call in step.Calls ?? [])
@@ -325,8 +325,8 @@ public sealed class RunCheckpointStore(string dataDirectory)
                 foreach (System.Text.RegularExpressions.Match match in JobPattern.Matches(result.Text))
                 {
                     string id = match.Groups["id"].Value, state = match.Groups["state"].Value;
-                    if (jobs.TryGetValue(id, out var known)) jobs[id] = known with { State = state };
-                    else if (calls.TryGetValue(result.Id, out var origin)) jobs[id] = (origin.Session, origin.Command, state);
+                    if (jobs.TryGetValue(id, out (string Session, string Command, string State) known)) jobs[id] = known with { State = state };
+                    else if (calls.TryGetValue(result.Id, out (string Session, string Command) origin)) jobs[id] = (origin.Session, origin.Command, state);
                 }
             }
             // 后台完成通知:点到名的都已落到终态(通知只为终态发)

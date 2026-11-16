@@ -442,7 +442,7 @@ public sealed class BridgeAgentRunner(
             {
                 options.Instructions = ContextBuilder.MoveSystemPromptOut(request.Messages);
             }
-            if (runCompactor is not null) runCompactor.PrefixCount = request.Messages.Count;
+            runCompactor?.PrefixCount = request.Messages.Count;
 
             var accumulated = new StringBuilder();
             var updates = new List<ChatResponseUpdate>();

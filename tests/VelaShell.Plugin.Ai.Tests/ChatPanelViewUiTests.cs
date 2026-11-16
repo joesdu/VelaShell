@@ -325,6 +325,56 @@ public sealed partial class ChatPanelViewUiTests
     }
 
     /// <summary>
+    /// 一段没有换行、但长到自动折行的输入:光标不在显示的首行时 ↑ 是上移一行,
+    /// 只有到了首行才翻历史;↓ 同理(末行才往回翻)。
+    /// </summary>
+    [TestMethod]
+    public void ArrowUp_InWrappedLongInput_MovesCaretUntilFirstVisualRow()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            var store = new ChatHistoryStore(context);
+            await store.InitAsync();
+            string id = ChatHistoryStore.NewConversationId();
+            await store.AppendAsync(id, DateTimeOffset.UtcNow, 0, "user", "旧消息");
+
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                TextEditor input = Find<TextEditor>(panel, "InputBox");
+                input.TextArea.Focus();
+                string longText = string.Concat(Enumerable.Repeat("很长的一段输入内容 ", 40));
+                input.Text = longText;
+                input.CaretOffset = longText.Length;
+                await PumpAsync(3);
+                Assert.IsTrue(input.TextArea.TextView.GetOrConstructVisualLine(input.Document.GetLineByNumber(1)).TextLines.Count > 1,
+                    "前提:内容要真的折成了多行");
+
+                window.KeyPressQwerty(PhysicalKey.ArrowUp, RawInputModifiers.None);
+                await PumpAsync(3);
+                Assert.AreEqual(longText, input.Text, "光标不在显示首行时 ↑ 只移动光标,不该换成历史消息");
+                Assert.IsTrue(input.CaretOffset < longText.Length, "↑ 应把光标上移一行");
+
+                window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+                await PumpAsync(3);
+                Assert.AreEqual(longText, input.Text);
+
+                input.CaretOffset = 0;
+                await PumpAsync(3);
+                window.KeyPressQwerty(PhysicalKey.ArrowUp, RawInputModifiers.None);
+                await PumpAsync(3);
+                Assert.AreEqual("旧消息", input.Text, "在显示首行时 ↑ 才翻历史");
+            }
+            finally
+            {
+                panel.Detach();
+                window.Close();
+            }
+        });
+    }
+
+    /// <summary>
     /// 同一个目录里继续敲过滤词,不该再发列目录请求 —— 列目录在真机上是一次 SFTP 往返,
     /// "敲一个字符列一次、还要取消上一次"正是输入卡顿与调试输出刷屏的来源。
     /// </summary>
