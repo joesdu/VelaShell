@@ -1757,7 +1757,8 @@ public sealed class ProviderSetupView : UserControl
             ModelsChanged?.Invoke();
             // 只更新正在编辑的这一实例的候选,不覆写未保存字段或新实例草稿。
             if (ShowsCandidates()) UpdateModelPicker(provider);
-            if (OwnsForm() && !_addingAnother) progress.Text = _loc.F("ModelsPulled", added);
+            if (OwnsForm() && !_addingAnother)
+                progress.Text = _loc.F("ModelsPulled", added) + (result.CatalogueUnavailable ? " " + _loc["ModelsSpecsUnavailable"] : "");
         }
         catch (AiSettingsStore.ApiKeySlotChangedException)
         {

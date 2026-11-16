@@ -20,7 +20,11 @@ public enum ModelSource
 /// <param name="Source">清单是从哪儿来的。</param>
 /// <param name="Listed">这一次拉到多少个模型 id。</param>
 /// <param name="Total">拉完之后这一家共有多少个模型配置。</param>
-public readonly record struct ModelPullResult(ModelSource Source, int Listed, int Total);
+/// <param name="CatalogueUnavailable">
+/// 这次该刷新 models.dev 却没连上(超时、没网、被墙):清单照常按上游落成模型,
+/// 窗口与单价用的是旧缓存或默认值。界面据此补一句说明。
+/// </param>
+public readonly record struct ModelPullResult(ModelSource Source, int Listed, int Total, bool CatalogueUnavailable = false);
 
 /// <summary>
 /// 「拉取模型」这一件事本身:问清单 → 配规格 → 落成可选的模型。
@@ -40,6 +44,12 @@ public static class ModelPull
 {
     /// <summary>拉取用的超时。列表接口都是小回应,慢过这个数基本就是不通。</summary>
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// models.dev 刷新单独的期限。它只负责补规格,连不上(常见于被墙或没有外网的内网环境)时
+    /// 不该让拉取一直挂着 —— 上游清单早就到手了。
+    /// </summary>
+    internal static TimeSpan CatalogueTimeout { get; set; } = TimeSpan.FromSeconds(12);
 
     /// <summary>
     /// 给一家供应商拉一次模型清单。
@@ -80,18 +90,21 @@ public static class ModelPull
             await store.ValidateProviderCredentialScopeAsync(provider, cancellationToken).ConfigureAwait(false);
 
         using var http = new HttpClient { Timeout = Timeout };
+        // 规格库与上游清单并行:models.dev 只负责补窗口与单价,它连不上(超时、没网、被墙)
+        // 绝不能挡住上游清单 —— 以前两步串行,models.dev 一超时整次拉取就失败了。
         // 规格缓存:没点拉取时只在过期了才重下(见 ModelsDevCatalog.CacheLifetime)——
         // 各家出新模型是以周计的事,为一次登录拖四百万字节下来纯属浪费
-        await catalogue.RefreshAsync(catalogueHttp ?? http, force, cancellationToken).ConfigureAwait(false);
+        Task<bool> refreshed = TryRefreshCatalogueAsync(catalogue, catalogueHttp ?? http, force, cancellationToken);
 
         IReadOnlyList<(string Id, int ContextTokens)> models = await ListAsync(provider, store, apiKeyOverride, http, cancellationToken)
             .ConfigureAwait(false);
+        bool catalogueUnavailable = !await refreshed.ConfigureAwait(false);
         IReadOnlyList<ModelSpec> specs = models.Count > 0
             ? catalogue.Describe(modelsDevId, models)
             : catalogue.ForProvider(modelsDevId);
         if (specs.Count == 0)
         {
-            return new ModelPullResult(ModelSource.None, 0, target.Models.Count);
+            return new ModelPullResult(ModelSource.None, 0, target.Models.Count, catalogueUnavailable);
         }
 
         // 网络在途期间用户可能已保存新配置；只能比较实际应用规格的同步前后。
@@ -119,7 +132,29 @@ public static class ModelPull
         }
         // 新清单恢复默认折叠：上次展开时面对的可能只有出厂那一条，拉取后可能有几百个。
         target.ModelsExpanded = null;
-        return new ModelPullResult(models.Count > 0 ? ModelSource.Endpoint : ModelSource.Catalogue, specs.Count, target.Models.Count);
+        return new ModelPullResult(models.Count > 0 ? ModelSource.Endpoint : ModelSource.Catalogue, specs.Count, target.Models.Count,
+            catalogueUnavailable);
+    }
+
+    /// <summary>
+    /// 需要时刷新 models.dev(缓存还新鲜且没点拉取就不发请求),带自己的短期限;任何失败都只记一句、返回 false。
+    /// 只有调用方取消才往外抛。
+    /// </summary>
+    /// <returns>规格库可用(没必要刷新,或刷新成功)为 true;该刷新却没连上为 false。</returns>
+    private static async Task<bool> TryRefreshCatalogueAsync(ModelsDevCatalog catalogue, HttpClient http, bool force,
+        CancellationToken cancellationToken)
+    {
+        if (!force && !catalogue.IsStale) return true;
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        limit.CancelAfter(CatalogueTimeout);
+        try
+        {
+            return await catalogue.RefreshAsync(http, force, limit.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
     }
 
     /// <summary>仍被引用的模型配置 id:当前选中、故障转移链,以及 IM 桥接指定的模型。</summary>

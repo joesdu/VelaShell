@@ -295,9 +295,12 @@ public sealed class ModelsDevCatalog(IPluginContext context)
             context.Log.Info($"models.dev: cached {parsed.Count} providers.");
             return true;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            // 没网/被墙/对方改版 —— 退回已有缓存,连接流程照常
+            // 没网/被墙/对方改版 —— 退回已有缓存,连接流程照常。
+            // 超时也在这里:HttpClient.Timeout 到期抛的是 TaskCanceledException(取消异常的一种),
+            // 以前「不是取消才吞」让它一路冒上去,models.dev 连不上就把整次拉取(连同上游清单)打断了。
+            // 只有调用方自己的令牌取消才往外抛。
             context.Log.Warn($"models.dev: refresh failed, keeping the cached copy: {ex.Message}");
             return false;
         }
