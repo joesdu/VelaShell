@@ -2694,7 +2694,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                 ? new RemoteTunnelCapability(tunnelConnections)
                 : new UnavailableRemoteTunnel(),
             // 出站 TCP 按宿主代理设置拨号;没有解析器(测试宿主)时直连。
-            Network = new Capabilities.NetworkCapability(options.ProxyResolver),
+            Network = new NetworkCapability(options.ProxyResolver),
             Commands = GetOrCreateCommandsApi(runtime),
             Events = new PluginEventHub(log, options.Connections, options.Theme, options.Localization),
             // 主题能力挂在共享采集点上(每次换肤只采一份快照,全部插件共用)。

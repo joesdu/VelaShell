@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -1387,7 +1386,7 @@ public partial class ChatPanelView : UserControl
 
     /// <summary>
     /// 输入框按键(隧道阶段,先于 TextBox 自己的处理):
-    /// @ 选择弹层开着时键盘归它;否则 ↑↓ 调取历史消息(仅当光标在首/末行,
+    /// @ 选择弹层开着时键盘归它;否则 ↑↓ 调取历史消息(仅当光标在显示的首/末行 —— 按折行后的视觉行算,
     /// 多行编辑时的上下移动不受影响),回车发送。
     /// </summary>
     private void OnInputKeyDown(object? sender, KeyEventArgs e)
@@ -2232,7 +2231,7 @@ public partial class ChatPanelView : UserControl
                     options.Instructions = ContextBuilder.MoveSystemPromptOut(requestMessages);
                 }
                 // 这一段(系统提示词、历史、这次的用户消息)运行内压缩不清不折
-                if (runCompactor is not null) runCompactor.PrefixCount = requestMessages.Count;
+                runCompactor?.PrefixCount = requestMessages.Count;
                 // Anthropic 的提示词缓存断点(其它协议不认这个标记,打了也只是多一个被忽略的字段)
                 if (current.Protocol == ChatProtocol.AnthropicMessages && current.PromptCaching)
                 {

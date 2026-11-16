@@ -1,6 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
+using Avalonia.Media.TextFormatting;
+using AvaloniaEdit.Document;
+using AvaloniaEdit.Editing;
+using AvaloniaEdit.Rendering;
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Chat;
 
@@ -367,19 +371,53 @@ public partial class ChatPanelView
         return true;
     }
 
-    /// <summary>光标是否在第一行(其前没有换行)—— 多行编辑时 ↑ 仍归 TextBox。</summary>
-    private bool CaretOnFirstLine()
-    {
-        string text = InputBox.Text ?? "";
-        int caret = Math.Clamp(InputBox.CaretOffset, 0, text.Length);
-        return text.AsSpan(0, caret).IndexOf('\n') < 0;
-    }
+    /// <summary>
+    /// 光标是否在<b>显示</b>的第一行 —— 按自动折行后的视觉行算,而不只看 '\n':
+    /// 长内容折成多行时,光标不在最上面那一行,↑ 仍归编辑器(上移一行)。
+    /// </summary>
+    private bool CaretOnFirstLine() => CaretVisualRowEdges().First;
 
-    /// <summary>光标是否在最后一行(其后没有换行)。</summary>
-    private bool CaretOnLastLine()
+    /// <summary>光标是否在显示的最后一行(同上,按折行后的视觉行算)。</summary>
+    private bool CaretOnLastLine() => CaretVisualRowEdges().Last;
+
+    /// <summary>
+    /// 光标所在的视觉行是不是整个输入框的首行 / 末行。
+    /// 视觉行取不到(尚未布局等)时退回按逻辑行('\n')判断。
+    /// </summary>
+    private (bool First, bool Last) CaretVisualRowEdges()
     {
-        string text = InputBox.Text ?? "";
-        int caret = Math.Clamp(InputBox.CaretOffset, 0, text.Length);
-        return text.AsSpan(caret).IndexOf('\n') < 0;
+        TextDocument? document = InputBox.Document;
+        if (document is null || document.TextLength == 0)
+        {
+            return (true, true);
+        }
+        Caret caret = InputBox.TextArea.Caret;
+        int offset = Math.Clamp(caret.Offset, 0, document.TextLength);
+        DocumentLine line = document.GetLineByOffset(offset);
+        bool firstLogical = line.LineNumber == 1;
+        bool lastLogical = line.LineNumber == document.LineCount;
+        if (!firstLogical && !lastLogical)
+        {
+            return (false, false);
+        }
+        try
+        {
+            TextView view = InputBox.TextArea.TextView;
+            view.EnsureVisualLines();
+            VisualLine visual = view.GetOrConstructVisualLine(line);
+            TextLine row = visual.GetTextLine(caret.VisualColumn, caret.Position.IsAtEndOfLine);
+            int index = visual.TextLines.IndexOf(row);
+            if (index < 0)
+            {
+                return (firstLogical, lastLogical);
+            }
+            return (visual.FirstDocumentLine.LineNumber == 1 && index == 0,
+                    visual.LastDocumentLine.LineNumber == document.LineCount && index == visual.TextLines.Count - 1);
+        }
+        catch (InvalidOperationException)
+        {
+            // 编辑器还没布局(没有可用宽度)时构造不出视觉行。
+            return (firstLogical, lastLogical);
+        }
     }
 }

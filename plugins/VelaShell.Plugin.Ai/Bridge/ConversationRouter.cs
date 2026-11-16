@@ -441,8 +441,10 @@ public sealed class ConversationRouter(
         {
             // 生命周期取消可能来自撤权；此时不再向旧聊天泄露结果。
             if (!lifetime.IsCancellationRequested)
+            {
                 await DeliverAsync(conversation, placeholder, Loc[turn.IsCancellationRequested ? "BridgeStopped" : "BridgeTimeout"] + ResumeHint(conversation),
                     CancellationToken.None).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {

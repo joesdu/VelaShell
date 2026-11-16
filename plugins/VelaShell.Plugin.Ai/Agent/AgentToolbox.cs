@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Agent.Web;
@@ -554,9 +553,9 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             => orchestrator.Cancel(id);
 
         public Task<string> TeamRun(
-            [System.ComponentModel.Description("What the whole team must achieve.")] string goal,
-            [System.ComponentModel.Description("Team members.")] TeamMemberSpec[] members,
-            [System.ComponentModel.Description("Tasks with assignee, dependencies and optional review relations.")] TeamTaskSpec[] tasks,
+            [Description("What the whole team must achieve.")] string goal,
+            [Description("Team members.")] TeamMemberSpec[] members,
+            [Description("Tasks with assignee, dependencies and optional review relations.")] TeamTaskSpec[] tasks,
             int timeoutSeconds = 0, CancellationToken cancellationToken = default)
             => TeamRunCoreAsync(goal, members, tasks, timeoutSeconds, cancellationToken);
 
@@ -581,7 +580,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             => orchestrator.Team?.Status() ?? "No team has been started in this turn. Use team_run first.";
 
         public string TeamMessage(
-            [System.ComponentModel.Description("A member name, or \"all\".")] string to,
+            [Description("A member name, or \"all\".")] string to,
             string message)
             => orchestrator.Team?.Message("lead", to, message) ?? "No team is running.";
 

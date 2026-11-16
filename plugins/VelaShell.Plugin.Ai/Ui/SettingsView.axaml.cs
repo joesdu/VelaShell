@@ -1074,8 +1074,10 @@ public partial class SettingsView : UserControl
             RefreshCatalogModels();
             ModelsChanged?.Invoke();
             if (run == _editorRun && ReferenceEquals(SelectedProvider, provider))
+            {
                 StatusText.Text = _loc.F("ModelsPulled", provider.Models.Count)
                                   + (result.CatalogueUnavailable ? " " + _loc["ModelsSpecsUnavailable"] : "");
+            }
         }
         catch (AiSettingsStore.ApiKeySlotChangedException)
         {
