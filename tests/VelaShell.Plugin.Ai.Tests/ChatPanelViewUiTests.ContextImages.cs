@@ -54,7 +54,7 @@ public sealed partial class ChatPanelViewUiTests
             {
                 panel.SendExternal("生成海报");
                 Assert.IsTrue(await WaitForAsync(() => chat.Requests.Count > 0 && !Find<Viewbox>(panel, "StopIcon").IsVisible));
-                Assert.AreEqual(available ? 1 : 0, images.Requests.Count);
+                Assert.HasCount(available ? 1 : 0, images.Requests);
                 Assert.AreEqual(available, chat.Requests[0].Body.Contains("generate_image", StringComparison.Ordinal));
                 Assert.IsNull(PanelSettings(panel).ImageModelId);
                 Assert.AreEqual(provider.Models[0].Id, PanelSettings(panel).ActiveModelId);

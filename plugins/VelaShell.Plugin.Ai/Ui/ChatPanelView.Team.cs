@@ -69,7 +69,7 @@ public partial class ChatPanelView
         private readonly StackPanel _messages = new() { Spacing = 3, IsVisible = false };
         private readonly TextBlock _messagesTitle = new() { Classes = { "dim" } };
         private readonly Avalonia.Controls.Shapes.Path _messagesChevron;
-        private readonly Dictionary<string, TeamTaskRow> _rows = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, TeamTaskRow> _rows = [with(StringComparer.Ordinal)];
         private int _renderedMessages = -1;
         private string _membersKey = "";
 
@@ -168,7 +168,7 @@ public partial class ChatPanelView
             _progress.Text = _owner._loc.F("TeamProgress", done, team.Tasks.Count, running)
                              + " · " + ChatFormatting.Duration(team.Elapsed);
 
-            Dictionary<string, SubagentSnapshot> byId = runs.ToDictionary(r => r.SubagentId, StringComparer.Ordinal);
+            var byId = runs.ToDictionary(r => r.SubagentId, StringComparer.Ordinal);
             foreach (TeamTaskInfo task in team.Tasks)
             {
                 if (!_rows.TryGetValue(task.Id, out TeamTaskRow? row))

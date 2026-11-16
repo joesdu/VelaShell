@@ -45,7 +45,7 @@ public sealed class SubagentRunnerTests
         var store = new AiSettingsStore(context);
         await store.SaveAsync(settings);
         Dictionary<string, string> choices = SubagentRunner.ModelChoices(settings, parent.Provider.Id);
-        CollectionAssert.AreEquivalent(new[] { parent.Id, child.Id }, choices.Keys.ToArray());
+        Assert.AreSequenceEqual(new[] { parent.Id, child.Id }, [.. choices.Keys], SequenceOrder.InAnyOrder);
         (ResolvedModel selected, _) = await SubagentRunner.ResolveFromSettingsAsync(store, child.Id, parent.Id,
             CancellationToken.None, parent.Provider.Id);
         Assert.AreEqual(child.Id, selected.Id);
