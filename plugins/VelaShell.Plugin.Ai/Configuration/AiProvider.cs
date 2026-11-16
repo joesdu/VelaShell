@@ -632,7 +632,14 @@ public sealed class AiSettings
     /// </remarks>
     /// <param name="failed">刚失败的那一站。</param>
     /// <param name="triedBefore">本回合(含最初那站)已经失败过的其它站 id;null = 没有。</param>
-    public List<ResolvedModel> FailoverCandidates(ResolvedModel failed, IEnumerable<string>? triedBefore = null)
+    /// <param name="includeSiblingModels">
+    /// 失败原因是「这个模型在这个账号上用不了」(<c>TransientFailure.IsModelUnavailable</c>)时为 true:
+    /// 自动发现在同型号的其它接入之后,再追加<b>同一供应商实例、同一份凭据</b>下的其它聊天模型(按配置顺序)。
+    /// 还是同一个账号,计费与数据归属不变,所以不需要 <see cref="AutoFailoverAcrossAccounts" />;
+    /// 换了型号会在切换提示卡上写明。用户排过的链照旧按链走,不受它影响。
+    /// </param>
+    public List<ResolvedModel> FailoverCandidates(ResolvedModel failed, IEnumerable<string>? triedBefore = null,
+        bool includeSiblingModels = false)
     {
         ArgumentNullException.ThrowIfNull(failed);
         List<ResolvedModel> all = ResolveModels();
@@ -647,7 +654,7 @@ public sealed class AiSettings
         // 链里只要还有一个活条目就仍按链走:那是用户的排布,被排除后为空 = 就地停下。
         if (FailoverChain.All(entry => FindModel(entry.ModelId) is null))
         {
-            return [.. all
+            List<ResolvedModel> sameModel = [.. all
                 .Where(m => !excluded.Contains(m.Id)
                             && (m.ApiKeyOwnerId != failed.ApiKeyOwnerId || m.Protocol != failed.Protocol
                                 || !SameRequestEndpoint(m.BaseUrl, failed.BaseUrl, m.Protocol))
@@ -658,6 +665,16 @@ public sealed class AiSettings
                             && string.Equals(m.Model, failed.Model, StringComparison.OrdinalIgnoreCase)
                             // 另一个实例 = 另一个账号:整段对话发给它要用户开了开关(企业与个人 Copilot 不能悄悄互相重放)
                             && (AutoFailoverAcrossAccounts || SameAccount(m, failed)))];
+            if (includeSiblingModels)
+            {
+                // 同一账号下的其它聊天模型:型号不同、不是图片模型,排在同型号的接入之后
+                sameModel.AddRange(all.Where(m => !excluded.Contains(m.Id)
+                                                  && !sameModel.Contains(m)
+                                                  && SameAccount(m, failed)
+                                                  && !string.Equals(m.Model, failed.Model, StringComparison.OrdinalIgnoreCase)
+                                                  && !AiSettingsStore.IsImageModel(m)));
+            }
+            return sameModel;
         }
 
         var ordered = new List<ResolvedModel>();

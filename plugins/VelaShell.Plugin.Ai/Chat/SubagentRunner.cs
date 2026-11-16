@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Configuration;
+using VelaShell.Plugin.Ai.Ui;
 
 namespace VelaShell.Plugin.Ai.Chat;
 
@@ -34,6 +36,8 @@ internal sealed class SubagentRunner(
     /// <summary>运行卡片上的实时正文最快多久刷一次。</summary>
     private static readonly TimeSpan OutputInterval = TimeSpan.FromMilliseconds(150);
 
+    private static int StepsFor(SubagentRequest request) => request.MaxSteps > 0 ? request.MaxSteps : MaxSteps;
+
     /// <summary>执行一个子任务。取消与超时以 <see cref="OperationCanceledException" /> 原样抛出,由编排器定终态。</summary>
     /// <param name="owner">发起任务的编排器:工具计数、实时正文与用量都记到它当前的条目上。</param>
     /// <param name="request">任务请求。</param>
@@ -45,7 +49,7 @@ internal sealed class SubagentRunner(
         ArgumentNullException.ThrowIfNull(request);
         try
         {
-            return await RunCoreAsync(owner, request, cancellationToken).ConfigureAwait(false);
+            return await RunWithModelFallbackAsync(owner, request, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -54,7 +58,7 @@ internal sealed class SubagentRunner(
         catch (AgentBatchBoundaryException)
         {
             throw new InvalidOperationException(
-                $"The subagent reached its limit of {MaxSteps} steps before writing a final report.");
+                $"The subagent reached its limit of {StepsFor(request)} steps before writing a final report.");
         }
         catch (Exception ex) when (ex.GetBaseException() is AgentPausedException paused)
         {
@@ -72,8 +76,72 @@ internal sealed class SubagentRunner(
         }
     }
 
-    private async Task<SubagentExecutionResult> RunCoreAsync(SubagentOrchestrator owner, SubagentRequest request,
+    /// <summary>
+    /// 选定的模型在这个账号上用不了(<see cref="TransientFailure.IsModelUnavailable" />)时改用父模型重跑一次。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 只在<b>还什么都没发生</b>时替补(模型一个字没吐、一个工具没调):已经调过工具再重跑,副作用可能做两遍。
+    /// 父模型本来就在跑这一轮,用它不会把任务内容发给新的接收方;父模型自己用不了、或没指定别的模型时不替补,照常报错。
+    /// </para>
+    /// <para>
+    /// 替补不是静默的:卡片换成实际用的模型,错误栏与交回主控的结果里都写明换过。这个模型在本轮记为不可用,
+    /// 之后选到它的子任务(比如团队里分给同一模型的几个成员)直接用父模型,不再一个接一个地撞同一个 400。
+    /// </para>
+    /// </remarks>
+    private async Task<SubagentExecutionResult> RunWithModelFallbackAsync(SubagentOrchestrator owner, SubagentRequest request,
         CancellationToken cancellationToken)
+    {
+        // 替补顺序:选定的模型 → 父模型 → 委派候选里的其它聊天模型(都在当前供应商实例内,委派本来就允许选它们);
+        // 本轮已确认用不了的跳过
+        List<string> order = [.. new[] { request.ModelId ?? owner.DefaultModelId, owner.DefaultModelId }
+            .Concat(owner.ModelChoices.Keys)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)];
+        if (order.Count == 0)
+        {
+            return await RunCoreAsync(owner, request, new StrongBox<bool>(), cancellationToken).ConfigureAwait(false);
+        }
+        int index = 0;
+        // 选定的模型本轮已经被拒过:直接从下一个可用的开始(全都被拒过就照常用它,让真实错误报出来)
+        if (owner.IsModelUnavailable(order[0]) && NextUsable(0) is { } skipTo)
+        {
+            owner.ReportModelFallback(order[0], order[skipTo], "already rejected earlier in this turn");
+            index = skipTo;
+        }
+        while (true)
+        {
+            var progressed = new StrongBox<bool>();
+            try
+            {
+                return await RunCoreAsync(owner, request with { ModelId = order[index] }, progressed, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!progressed.Value && TransientFailure.IsModelUnavailable(ex) && NextUsable(index) is { } next)
+            {
+                owner.MarkModelUnavailable(order[index]);
+                owner.ReportModelFallback(order[index], order[next], ApiErrorText.Describe(ex));
+                index = next;
+            }
+            catch (Exception ex) when (!progressed.Value && TransientFailure.IsModelUnavailable(ex))
+            {
+                owner.MarkModelUnavailable(order[index]); // 没有替补了:照常报错,但本轮之后的子任务不再撞它
+                throw;
+            }
+        }
+
+        int? NextUsable(int from)
+        {
+            for (int j = from + 1; j < order.Count; j++)
+            {
+                if (!owner.IsModelUnavailable(order[j])) return j;
+            }
+            return null;
+        }
+    }
+
+    private async Task<SubagentExecutionResult> RunCoreAsync(SubagentOrchestrator owner, SubagentRequest request,
+        StrongBox<bool> progressed, CancellationToken cancellationToken)
     {
         (ResolvedModel model, ProviderCredential credential) =
             await resolveModel(request, cancellationToken).ConfigureAwait(false);
@@ -82,6 +150,11 @@ internal sealed class SubagentRunner(
         foreach (AITool mcpTool in owner.ReadOnlyMcpTools)
         {
             tools.Add(mcpTool);
+        }
+        // 团队成员多两件工具:给队友 / 主控发消息、看团队看板
+        foreach (AITool extra in request.ExtraTools ?? [])
+        {
+            tools.Add(extra);
         }
         var options = new ChatOptions
         {
@@ -107,8 +180,14 @@ internal sealed class SubagentRunner(
         messages.Add(new ChatMessage(ChatRole.User, request.Prompt));
 
         var execution = new AgentExecution("subagent-" + Guid.NewGuid().ToString("N"));
-        using IChatClient client = new RecoveringChatClient(createClient(model, credential), execution, "")
-            .AsBuilder().UseFunctionInvocation(configure: c => execution.Configure(c, MaxSteps)).Build();
+        IChatClient transport = createClient(model, credential);
+        // 团队成员的收件箱:队友发来的消息赶在它下一步之前进上下文(与插话通道同一套做法)
+        if (request.DrainInbox is { } drain)
+        {
+            transport = new InboxChatClient(transport, drain);
+        }
+        using IChatClient client = new RecoveringChatClient(transport, execution, "")
+            .AsBuilder().UseFunctionInvocation(configure: c => execution.Configure(c, StepsFor(request))).Build();
 
         // 最终报告 = 最后一次工具调用之后的那段正文。工具调用之间的过渡话("我先看看配置")不算报告,
         // 但中途停下、或模型最后一步没话说时,它是仅有的可用内容,留作兜底。
@@ -121,6 +200,11 @@ internal sealed class SubagentRunner(
             bool changed = false;
             foreach (AIContent content in update.Contents)
             {
+                // 吐过正文或发起过工具调用:之后再失败就不能换模型重跑了(副作用可能做两遍)
+                if (content is TextContent { Text.Length: > 0 } or FunctionCallContent or FunctionResultContent)
+                {
+                    progressed.Value = true;
+                }
                 switch (content)
                 {
                     case TextContent { Text.Length: > 0 } text:
@@ -182,9 +266,36 @@ internal sealed class SubagentRunner(
         + "If analysis needs command output (for example df, ss or ps), collect it with parent tools first and include it in the delegated prompt. "
         + "Do not claim subagents were created unless delegate_subagent succeeded. If the user explicitly wants OS processes, use command tools instead.\n";
 
+    /// <summary>
+    /// 主 Agent 系统提示词里关于团队模式的那一段:只在这一轮真的暴露了 <c>team_run</c> 时追加(见 <see cref="HasTeam" />),
+    /// 用户在工具配置里停用了它就不提。
+    /// </summary>
+    /// <remarks>
+    /// 团队模式是<b>自适应</b>的:由主模型按任务形状自己决定,不需要用户点名「组团队」。这里给出用与不用的具体判据 ——
+    /// 只说一句「大任务可以用团队」时,模型多半要么自己从头做到尾,要么连着发几个互不知情的子任务;
+    /// 反过来不写「不该用」的情形,又会为一个小问题拉起好几个并行请求。
+    /// </remarks>
+    internal const string TeamGuidance =
+        "\nTeam mode (team_run) is yours to choose: decide from the shape of the task, without waiting for the user to ask for a team. "
+        + "Prefer team_run when at least two of these hold: "
+        + "(1) the work splits into 3 or more substantial steps that need different expertise (for example investigate → change → verify, or security / network / operations reviews); "
+        + "(2) later steps depend on findings from earlier ones; "
+        + "(3) independent investigations can run in parallel and then be combined; "
+        + "(4) the result is risky or important enough that an independent reviewer should check it before you report (config changes, security conclusions, multi-file edits). "
+        + "Do NOT form a team for questions you can answer in a few tool calls, single-file edits, simple lookups, or work that is mostly running shell commands (members cannot run commands — collect command output yourself and include it in task details). "
+        + "A team costs several parallel model requests, so keep it small: usually 2–4 members, one task per member per stage. "
+        + "When you use it: give each member a distinct role, make every task's detail self-contained (members do not see this conversation), "
+        + "chain tasks with dependsOn so results flow downstream, and add a reviewer task with verifies when correctness matters. "
+        + "Briefly tell the user you are forming a team and why, then call team_run and end your step: one consolidated team report arrives when the team finishes. "
+        + "Verify what matters in that report, then give the user the final answer.\n";
+
     /// <summary>这一轮的工具里有没有委派工具(被禁用、非 Agent 模式时没有)。</summary>
     internal static bool HasDelegation(IEnumerable<AITool>? tools)
         => tools?.OfType<AIFunction>().Any(tool => tool.Name == "delegate_subagent") == true;
+
+    /// <summary>这一轮的工具里有没有团队工具(被停用、非 Agent 模式、对外 MCP 时没有)。</summary>
+    internal static bool HasTeam(IEnumerable<AITool>? tools)
+        => tools?.OfType<AIFunction>().Any(tool => tool.Name == "team_run") == true;
 
     /// <summary>可供委派选择的聊天模型:配置标识 → 显示名,不含凭据或端点。</summary>
     internal static Dictionary<string, string> ModelChoices(AiSettings settings, string providerId)
@@ -234,6 +345,10 @@ internal sealed class SubagentRunner(
         if (!string.IsNullOrWhiteSpace(request.Role))
         {
             prompt.Append("Your role: ").Append(request.Role.Trim()).Append(".\n");
+        }
+        if (!string.IsNullOrWhiteSpace(request.Instructions))
+        {
+            prompt.Append(request.Instructions.Trim()).Append('\n');
         }
         prompt.Append(
             "Rules:\n"

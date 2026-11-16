@@ -25,6 +25,32 @@ public sealed class FailoverChainTests
     private static ResolvedModel Resolved(AiSettings settings, string id)
         => settings.FindModel(id) ?? throw new InvalidOperationException($"fixture: {id}");
 
+    /// <summary>
+    /// 模型在这个账号上用不了(model_not_found)时,自动发现在同型号接入之后追加同一账号下的其它聊天模型;
+    /// 其它失败原因不追加(换个型号救不了 429 或 401)。图片模型、别的账号的模型不算。
+    /// </summary>
+    [TestMethod]
+    public void ModelUnavailable_AlsoOffersOtherChatModelsOfTheSameAccount()
+    {
+        AiProvider provider = Provider("codex", "openai", ("a", "gpt-5.4"), ("b", "gpt-5.3-codex"), ("img", "gpt-image-1"), ("c", "gpt-5.2"));
+        AiProvider other = Provider("other", "openai", ("x", "gpt-5.2"));
+        var settings = new AiSettings { Providers = [provider, other] };
+        ResolvedModel failed = Resolved(settings, "a");
+
+        Assert.IsEmpty(settings.FailoverCandidates(failed), "普通失败不换型号");
+        Assert.AreSequenceEqual(["b", "c"],
+            [.. settings.FailoverCandidates(failed, includeSiblingModels: true).Select(m => m.Id)],
+            "同账号的其它聊天模型按配置顺序接手;图片模型与别的账号不算");
+        Assert.AreSequenceEqual(["c"],
+            [.. settings.FailoverCandidates(failed, ["b"], includeSiblingModels: true).Select(m => m.Id)],
+            "本轮试过的照样排除");
+
+        settings.FailoverChain = [new FailoverEntry { ModelId = "x" }];
+        Assert.AreSequenceEqual(["x"],
+            [.. settings.FailoverCandidates(failed, includeSiblingModels: true).Select(m => m.Id)],
+            "用户排的链照旧按链走");
+    }
+
     [TestMethod]
     [DataRow(false, false, false)]
     [DataRow(true, false, false)]

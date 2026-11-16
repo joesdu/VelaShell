@@ -63,6 +63,18 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
     internal bool EmptyAfterTools { get; set; }
     internal IReadOnlyList<ChatMessage> Checkpoint { get { lock (_gate) return [.. _checkpoint]; } }
 
+    /// <summary>
+    /// 有了新进展(一步完成、拿到一份工具结果、收到一条后台通知)。入口据此把运行检查点落盘(见 RunCheckpointStore);
+    /// 在锁外、任意线程上触发。
+    /// </summary>
+    internal event Action? Progressed;
+
+    private void RaiseProgressed()
+    {
+        try { Progressed?.Invoke(); }
+        catch (Exception) { } // 落盘失败不能连累这一轮
+    }
+
     internal void Configure(FunctionInvokingChatClient client, int batchSize)
     {
         // 批次边界由外层协调器续接,不能让MEAI静默结束。
@@ -144,6 +156,7 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
                 }
             }
             completion.TrySetResult(value);
+            RaiseProgressed();
         }
         catch (OperationCanceledException ex)
         {
@@ -202,6 +215,7 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
     internal void RecordNotification(ChatMessage notification)
     {
         lock (_gate) { _completed.Add(notification); _checkpoint.Add(notification); }
+        RaiseProgressed();
     }
 
     internal IReadOnlyList<ChatMessage> InterruptedHistory(string visibleText)
@@ -238,6 +252,7 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
             _checkpoint.AddRange(response.Messages);
             _completed.AddRange(response.Messages);
         }
+        RaiseProgressed();
     }
 
     /// <summary>

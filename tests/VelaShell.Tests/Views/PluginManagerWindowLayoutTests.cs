@@ -99,13 +99,13 @@ public sealed class PluginManagerWindowLayoutTests
 
             Assert.HasCount(3, vm.Plugins);
             Assert.IsTrue(vm.HasUpdates, string.Join("; ", vm.Plugins.Select(p => $"{p.Id}: {p.Error}")));
-            StringAssert.Contains(vm.SummaryText, "3");
+            Assert.Contains("3", vm.SummaryText);
 
             Button[] buttons = [.. window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible)];
             Button update = buttons.Single(b => b.DataContext is PluginRowViewModel { Id: "acme.rdp" }
                                                 && b.Theme == window.FindResource("VelaAccentPillButtonTheme"));
             Point position = update.TranslatePoint(default, window)!.Value;
-            Assert.IsTrue(position.X + update.Bounds.Width <= window.Bounds.Width, "更新按钮不该被挤出窗口。");
+            Assert.IsLessThanOrEqualTo(window.Bounds.Width, position.X + update.Bounds.Width, "更新按钮不该被挤出窗口。");
             Assert.HasCount(3, buttons.Where(b => b.Classes.Contains("row-more")),
                 "每一行都应有「更多」按钮(查看日志、卸载都收在里面)。");
 

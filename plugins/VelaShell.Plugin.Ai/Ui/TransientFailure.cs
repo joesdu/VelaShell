@@ -28,7 +28,7 @@ internal sealed class ModelResponseTerminatedException(string reasonKey)
 /// 以及还没开口就结束的空回复。参数错、鉴权失败重试一万次也一样。
 /// </para>
 /// </remarks>
-public static class TransientFailure
+public static partial class TransientFailure
 {
     internal static bool HasMeaningfulOutput(IEnumerable<ChatResponseUpdate> updates)
         => updates.Any(update => update.Contents.Any(content => content switch
@@ -158,9 +158,56 @@ public static class TransientFailure
         return false;
     }
 
-    /// <summary>只把服务端 401/403/429 当作某一把 Key 的鉴权或额度失败。</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"model_not_found|model_not_supported|unsupported_model|invalid_model|model_not_available"
+        + @"|\bmodel\b[^\r\n]{0,120}?\b(?:is not supported|not supported|not found|does not exist|is not available|not available|unavailable|not enabled)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex ModelUnavailablePattern();
+
+    /// <summary>
+    /// 服务端明说<b>这个模型</b>在这个账号 / 端点上用不了(400 / 404 + model_not_found 一类错误码或原话)。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与普通的 400 参数错不同:它只取决于「账号 + 模型」,换一把 Key(另一个账号)、换链上的下一站、
+    /// 或子任务改用父模型都可能就好了。比如 ChatGPT 账号走 Codex 后端时,目录里有的型号并非都能用
+    /// (「The 'gpt-5.4' model is not supported when using Codex with a ChatGPT account」)。
+    /// </para>
+    /// <para>
+    /// 只认错误码或原话里明确点名模型的:裸 404 常常是 Base URL 填错了路径(见 ErrorEndpointNotFound),
+    /// 那换哪个模型都一样,不能当成模型不可用。
+    /// </para>
+    /// </remarks>
+    public static bool IsModelUnavailable(Exception? exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            int status = current switch
+            {
+                HttpRequestException { StatusCode: { } code } => (int)code,
+                AnthropicApiException { StatusCode: { } apiCode } when apiCode != 0 => (int)apiCode,
+                System.ClientModel.ClientResultException { Status: > 0 } result => result.Status,
+                _ => 0
+            };
+            if (status is 400 or 404 && ModelUnavailablePattern().IsMatch(current.Message))
+            {
+                return true;
+            }
+            if (status > 0)
+            {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 只把服务端 401/403/429 当作某一把 Key 的鉴权或额度失败;模型在这个账号上用不了(<see cref="IsModelUnavailable" />)
+    /// 按 403 同样处理 —— 另一把 Key 背后的账号可能开通了这个型号。
+    /// </summary>
     public static bool IsApiKeyFailure(Exception? exception)
     {
+        if (IsModelUnavailable(exception)) return true;
         for (Exception? current = exception; current is not null; current = current.InnerException)
         {
             switch (current)
@@ -206,9 +253,26 @@ public static class TransientFailure
         return false;
     }
 
+    private static int StatusOf(Exception? exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            int status = current switch
+            {
+                HttpRequestException { StatusCode: { } code } => (int)code,
+                AnthropicApiException { StatusCode: { } apiCode } when apiCode != 0 => (int)apiCode,
+                System.ClientModel.ClientResultException { Status: > 0 } result => result.Status,
+                _ => 0
+            };
+            if (status > 0) return status;
+        }
+        return 0;
+    }
+
     // 切换提示里的原因代码(会落进会话历史的附加信息,改名就是改存量数据的口径)
     internal const string SwitchRateLimit = "rate_limit", SwitchAuth = "auth", SwitchTimeout = "timeout",
-        SwitchServer = "server", SwitchNetwork = "network", SwitchEmpty = "empty", SwitchConfig = "config", SwitchOther = "other";
+        SwitchServer = "server", SwitchNetwork = "network", SwitchEmpty = "empty", SwitchConfig = "config", SwitchOther = "other",
+        SwitchModel = "model";
 
     /// <summary>
     /// 故障转移 / 换 Key 那一跳<b>因为什么</b>,给聊天记录里的切换提示用 —— 只管怎么说,切不切仍由
@@ -222,6 +286,10 @@ public static class TransientFailure
     /// <returns>原因代码与 HTTP 状态码(没有时为 0)。</returns>
     internal static (string Reason, int Status) SwitchReason(Exception? exception)
     {
+        if (IsModelUnavailable(exception))
+        {
+            return (SwitchModel, StatusOf(exception));
+        }
         bool network = false;
         for (Exception? current = exception; current is not null; current = current.InnerException)
         {
@@ -284,6 +352,8 @@ public static class TransientFailure
     /// <returns>值得换一家时为 true。</returns>
     public static bool IsWorthSwitching(Exception? exception)
     {
+        // 模型在这个账号上用不了:换一站(别的账号 / 别的模型)正是解法,与普通 400 不同
+        if (IsModelUnavailable(exception)) return true;
         for (Exception? current = exception; current is not null; current = current.InnerException)
         {
             if (current is HttpRequestException { StatusCode: { } status })

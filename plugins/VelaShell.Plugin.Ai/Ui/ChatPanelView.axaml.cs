@@ -1648,6 +1648,9 @@ public partial class ChatPanelView : UserControl
         AgentToolbox? subagentTemplate = null;
         // 这一轮的故障转移 / 换 Key:合成一张切换提示卡挂在这条回复里(只给人看,不进 History,见 ChatPanelView.SwitchNotice.cs)
         List<ChatProviderSwitch> switches = [];
+        // 运行内压缩(换站重装配时换新的)与断点续跑的检查点写手
+        RunContextCompactor? activeCompactor = null;
+        RunCheckpointWriter? checkpointWriter = null;
         try
         {
             TurnHistoryStart = History.Count; // 消息准备若失败,不能误删上轮的历史
@@ -1701,12 +1704,19 @@ public partial class ChatPanelView : UserControl
                 bubble.ImageTools = ImagesFor(conv).BeginTurn(_store, imageModelId,
                     (detail, ct) => ApproveImageAsync(runScope, imageApproval, detail, ct), token);
             }
+            // 带工具的一轮才有「步骤」可续:有进展就把检查点落盘,中断后可从这里接着跑(见 ChatPanelView.Resume.cs)
+            if (usesToolLoop && mode == ChatMode.Agent)
+            {
+                checkpointWriter = new RunCheckpointWriter(Checkpoints, execution, turnConversationId, runId,
+                    userMessage.Text, modelLabel, () => activeCompactor?.Summary ?? "");
+            }
 
             ReasoningLevel? turnOverride = provider.ReasoningOverride;
             ResolvedModel WithTurn(ResolvedModel model)
                 => model.WithReasoning(model.ReasoningAdjustable ? turnOverride : ReasoningLevel.Default);
             // 最多能换几站:开跑时数一次(链上除自己以外的站数),作为硬上限
-            int maxHops = _settings.FailoverCandidates(current).Count;
+            // 按「含同账号其它模型」数:模型不可用时候选更多,上限不能把它们卡掉;实际候选每次按失败原因现算
+            int maxHops = _settings.FailoverCandidates(current, includeSiblingModels: true).Count;
             IChatClient client = null!;
             ChatOptions options = null!;
             List<ChatMessage> requestMessages = [];
@@ -1991,6 +2001,7 @@ public partial class ChatPanelView : UserControl
             {
                 client?.Dispose();
                 client = null!;
+                RunContextCompactor? runCompactor = null;
                 // 上一站可能留下半拍增量或一个在途的封送,先清干净
                 if (assembled) bubble.ResetUnopenedContent();
                 assembled = true;
@@ -2076,6 +2087,7 @@ public partial class ChatPanelView : UserControl
                         observed.SnapshotsChanged += snapshots =>
                             Dispatcher.UIThread.Post(() => UpdateSubagentCards(bubble, snapshots));
                         _subagentSnapshotSources[bubble] = observed.Snapshots;
+                        bubble.TeamSource = () => observed.Team?.Snapshot();
                         bubble.CancelSubagent = id => observed.Cancel(id);
                         EnsureSubagentRefreshTimer();
                         UpdateSubagentCards(bubble, observed.Snapshots());
@@ -2142,6 +2154,26 @@ public partial class ChatPanelView : UserControl
                     options.Tools = tools;
                     // 空答不是连接失败,分开说;补试的这一步答上后,状态行仍是这条提示就撤掉,不挂到整轮结束
                     string? retryStatus = null;
+                    // 运行中的上下文管理垫在补试层之内:检查点与补试拿的仍是完整消息,每次发出去之前才按窗口余量清理 / 折叠
+                    if (_settings.CompactContext && current.MaxInputTokens > 0)
+                    {
+                        ResolvedModel compactModel = current;
+                        AssistantBubble? compactBubble = bubble;
+                        runCompactor = new RunContextCompactor(client, current.MaxInputTokens, current.MaxTokens,
+                            async (previous, steps, ct) =>
+                            {
+                                await VerifyFixedRequestAsync(ct);
+                                (string? summary, UsageDetails? usage) = await ContextCompactor.SummarizeRunAsync(
+                                    Steering!.RequestClient, previous, steps, _context.Host.Locale, ct,
+                                    o => AiSettingsStore.ApplyEndpointQuirks(o, compactModel));
+                                if (usage is not null) Dispatcher.UIThread.Post(() => RecordUsage(usage, isContext: false));
+                                return summary;
+                            },
+                            compaction => Dispatcher.UIThread.Post(() => compactBubble?.AddRunCompaction(compaction)),
+                            busy => Dispatcher.UIThread.Post(() => SetStatus(busy ? _loc["Compacting"] : "")));
+                        client = runCompactor;
+                        activeCompactor = runCompactor;
+                    }
                     client = new RecoveringChatClient(client, execution, _loc["ContinuationBoundary"],
                             (attempt, failure) => Dispatcher.UIThread.Post(() => SetStatus(retryStatus = _loc.F(
                                 failure is HealthProbe.EmptyReplyException ? "RetryingEmptyReply" : "Retrying", attempt))),
@@ -2182,6 +2214,7 @@ public partial class ChatPanelView : UserControl
                 RequestContext request = ContextBuilder.Build(
                     BuildSystemPrompt(current, mode, nativeSearch)
                     + (SubagentRunner.HasDelegation(options.Tools) ? SubagentRunner.DelegationGuidance : "")
+                    + (SubagentRunner.HasTeam(options.Tools) ? SubagentRunner.TeamGuidance : "")
                     + (imageToolsEnabled
                         ? "\nImage tools are available. For explicit image creation requests, use generate_image with a standalone prompt incorporating the relevant conversation details. " +
                           "For changes to an existing image use edit_image with its exact conversation image ID. Do not claim success before the tool succeeds. " +
@@ -2197,6 +2230,8 @@ public partial class ChatPanelView : UserControl
                 {
                     options.Instructions = ContextBuilder.MoveSystemPromptOut(requestMessages);
                 }
+                // 这一段(系统提示词、历史、这次的用户消息)运行内压缩不清不折
+                if (runCompactor is not null) runCompactor.PrefixCount = requestMessages.Count;
                 // Anthropic 的提示词缓存断点(其它协议不认这个标记,打了也只是多一个被忽略的字段)
                 if (current.Protocol == ChatProtocol.AnthropicMessages && current.PromptCaching)
                 {
@@ -2323,7 +2358,8 @@ public partial class ChatPanelView : UserControl
                     // 只比 id 认不出"选到 C 又选回 A/B"这种改了等于没改的手动操作。
                     long epochBeforeProbe = _selectionEpoch;
                     (ResolvedModel Model, ProviderCredential Credential, string ProbedModel, string? KeyId, long ProviderVersion)? nextStop =
-                        await PickNextAsync(current, turnOverride, triedThisTurn, keyStates, RecordProbeUsage, token);
+                        await PickNextAsync(current, turnOverride, triedThisTurn, keyStates, RecordProbeUsage,
+                            TransientFailure.IsModelUnavailable(ex), token);
                     if (nextStop is null)
                     {
                         throw; // 候选配置失效不是首站401/429的新诊断;原错误和取消各自保留。
@@ -2425,6 +2461,7 @@ public partial class ChatPanelView : UserControl
             await CommitSteeringAsync(conv);
             if (!usesToolLoop) History.AddMessages(response);
             else History.AddRange(execution.CompletedMessages);
+            checkpointWriter?.Discard(); // 跑完了,不需要续
             string persistedReply = string.IsNullOrWhiteSpace(response.Text) && bubble.HasImages
                 ? _loc["GeneratedImage"] : response.Text;
             int sequence = await PersistAsync("assistant", persistedReply);
@@ -2464,9 +2501,11 @@ public partial class ChatPanelView : UserControl
                 History.AddRange(execution.InterruptedHistory(partial));
                 int interruptedSequence = await PersistAsync("assistant", partial);
                 await PersistInterruptedMetaAsync(interruptedSequence, bubble, modelLabel, startedAt);
+                KeepCheckpoint(checkpointWriter, bubble);
             }
             else
             {
+                checkpointWriter?.Discard();
                 await SettleUnfinishedTurnAsync(bubble);
             }
         }
@@ -2506,14 +2545,17 @@ public partial class ChatPanelView : UserControl
                 History.AddRange(execution.InterruptedHistory(partial));
                 int interruptedSequence = await PersistAsync("assistant", partial);
                 await PersistInterruptedMetaAsync(interruptedSequence, bubble, modelLabel, startedAt);
+                KeepCheckpoint(checkpointWriter, bubble);
             }
             else
             {
+                checkpointWriter?.Discard();
                 await SettleUnfinishedTurnAsync(bubble);
             }
         }
         finally
         {
+            checkpointWriter?.Dispose();
             try
             {
                 // 故障转移这一轮没答完(取消/整链都挂):退回原来那一站。
@@ -2551,6 +2593,7 @@ public partial class ChatPanelView : UserControl
                     {
                         bubble.CancelSubagent = null; // 编排器已收尾,卡片上不再留取消按钮
                         UpdateSubagentCards(bubble, subagents.Snapshots());
+                        bubble.TeamSource = null; // 团队卡停在最后一版
                         _subagentSnapshotSources.Remove(bubble);
                     }
                 }
@@ -2643,15 +2686,18 @@ public partial class ChatPanelView : UserControl
     /// 候选整轮排除,免得冷却过期后又排回原地打转的上家。</param>
     /// <param name="keyStates">本回合固定的供应商槽顺序、开关和已试槽。</param>
     /// <param name="recordProbeUsage">只累加所属会话的探测费用，不改变正文上下文占窗读数。</param>
+    /// <param name="modelUnavailable">失败原因是这个模型在这个账号上用不了:候选里追加同账号的其它聊天模型。</param>
     /// <param name="token">取消令牌(探测超时之外的整轮取消也走它)。</param>
     /// <returns>探通的模型、固定凭据、实际型号和槽 ID;整链不可用时返回 null。</returns>
     private async Task<(ResolvedModel Model, ProviderCredential Credential, string ProbedModel, string? KeyId, long ProviderVersion)?> PickNextAsync(
         ResolvedModel failed, ReasoningLevel? turnOverride, HashSet<string> triedThisTurn,
-        Dictionary<string, ApiKeyTurnState> keyStates, Action<UsageDetails> recordProbeUsage, CancellationToken token)
+        Dictionary<string, ApiKeyTurnState> keyStates, Action<UsageDetails> recordProbeUsage, bool modelUnavailable,
+        CancellationToken token)
     {
         ResolvedModel WithTurn(ResolvedModel m)
             => m.WithReasoning(m.ReasoningAdjustable ? turnOverride : ReasoningLevel.Default);
-        foreach (ResolvedModel candidate in _settings.FailoverCandidates(failed, triedThisTurn))
+        // 模型在这个账号上用不了:同账号的其它聊天模型也可以接手(见 FailoverCandidates 的 includeSiblingModels)
+        foreach (ResolvedModel candidate in _settings.FailoverCandidates(failed, triedThisTurn, modelUnavailable))
         {
             ResolvedModel target = WithTurn(candidate);
             if (AiSettingsStore.IsImageModel(target) || _health.IsCooling(target.Id)) continue;
@@ -2999,11 +3045,11 @@ public partial class ChatPanelView : UserControl
             await _historyStore.AppendMetaAsync(ConversationId, sequence,
                 bubble.Snapshot(modelLabel, TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt)));
         }
-        else if (bubble.SwitchNotice is not null || bubble.HasSubagents)
+        else if (bubble.SwitchNotice is not null || bubble.HasSubagents || bubble.HasTeam)
         {
-            // 中断的一轮照旧不存思考与工具卡;切换提示与子任务卡片是这一轮"发生过什么"的仅有记录,留下
+            // 中断的一轮照旧不存思考与工具卡;切换提示、子任务卡片与团队卡是这一轮"发生过什么"的仅有记录,留下
             await _historyStore.AppendMetaAsync(ConversationId, sequence,
-                new ChatTurnMeta(Switch: bubble.SwitchNotice, Subagents: bubble.SubagentRuns));
+                new ChatTurnMeta(Switch: bubble.SwitchNotice, Subagents: bubble.SubagentRuns, Team: bubble.TeamRun));
         }
     }
 
@@ -3081,21 +3127,9 @@ public partial class ChatPanelView : UserControl
         }
     }
 
+    // 显示与入库用:不转义中文与 < ' +(见 ToolDisplay)
     private static string SerializeArguments(IDictionary<string, object?>? arguments)
-    {
-        if (arguments is null || arguments.Count == 0)
-        {
-            return "{}";
-        }
-        try
-        {
-            return JsonSerializer.Serialize(arguments);
-        }
-        catch
-        {
-            return string.Join(", ", arguments.Keys);
-        }
-    }
+        => ToolDisplay.SerializeArguments(arguments);
 
     /// <summary>非空行拆成数组;全空返回 null(<c>ChatOptions</c> 上 null 才表示"不发这个参数")。</summary>
     private static string[]? SplitLines(string? text)
@@ -3762,7 +3796,8 @@ public partial class ChatPanelView : UserControl
             [.. _toolCards.Values.Select(c => c.Snapshot())],
             [.. _images],
             SwitchNotice,
-            SubagentRuns);
+            SubagentRuns,
+            TeamRun);
 
         /// <summary>从历史回放:先摆切换提示与思考,再摆工具卡,最后才是正文(与直播时的先后一致)。</summary>
         public void Restore(ChatTurnMeta meta)
@@ -3788,7 +3823,11 @@ public partial class ChatPanelView : UserControl
                 AddToolCall(id, tool.Name, tool.Arguments);
                 CompleteToolCall(id, tool.Result);
             }
-            // 子任务卡片照存下来的终态摆回去:没有可取消的东西,所以不带取消按钮
+            // 团队卡与子任务卡片照存下来的终态摆回去:没有可取消的东西,所以不带取消按钮
+            if (meta.Team is { } team)
+            {
+                UpdateTeam(team, meta.Subagents ?? []);
+            }
             if (meta.Subagents is { Count: > 0 } runs)
             {
                 UpdateSubagents(runs);
@@ -3855,6 +3894,7 @@ public partial class ChatPanelView : UserControl
         /// </summary>
         public void AddCard(Control card)
         {
+            SealToolGroup(); // 审批 / 失败卡隔开了前后两串工具调用
             _stack.Children.Add(card);
             _currentSegment = null; // 卡之后的新文本另起一个 Markdown 段
         }
@@ -3867,6 +3907,7 @@ public partial class ChatPanelView : UserControl
             {
                 field = value;
                 _subagentGroup?.Cancel = value;
+                _teamView?.Cancel = value;
             }
         }
 
@@ -3878,6 +3919,16 @@ public partial class ChatPanelView : UserControl
 
         public void UpdateSubagents(IReadOnlyList<SubagentSnapshot> snapshots)
         {
+            // 团队任务的运行卡长在团队卡的任务行里;子任务组只放普通委派
+            if (TeamSource?.Invoke() is { } team)
+            {
+                UpdateTeam(team, snapshots);
+            }
+            if (snapshots.Any(s => s.TeamTaskId is not null))
+            {
+                snapshots = [.. snapshots.Where(s => s.TeamTaskId is null)];
+                if (snapshots.Count == 0) return;
+            }
             if (_subagentGroup is null)
             {
                 _subagentGroup = new SubagentRunGroup(_owner) { Cancel = CancelSubagent };
@@ -3944,6 +3995,7 @@ public partial class ChatPanelView : UserControl
             // 工具卡片之后的新一轮文本另起 Markdown 段
             if (_currentSegment is null || !ReferenceEquals(_stack.Children[^1], _currentSegment.Host))
             {
+                SealToolGroup(); // 模型开始写字:前面那串工具调用收成一行
                 _currentSegment = new MarkdownSegment(_owner);
                 _stack.Children.Add(_currentSegment.Host);
             }
@@ -3996,7 +4048,7 @@ public partial class ChatPanelView : UserControl
             }
             var card = new ToolCard(_owner, name, argumentsJson);
             _toolCards[callId] = card;
-            _stack.Children.Add(card.Root);
+            PlaceToolCard(card, name);
             _currentSegment = null;
         }
 
@@ -4008,6 +4060,7 @@ public partial class ChatPanelView : UserControl
             if (_toolCards.TryGetValue(callId, out ToolCard? card))
             {
                 if (Transfers?.Bind(card, result) != true) card.Complete(result);
+                card.Group?.Refresh();
             }
             _currentSegment = null;
         }
@@ -4041,6 +4094,9 @@ public partial class ChatPanelView : UserControl
                 head.Append(" · ").Append(_owner._loc["Cancelled"]);
             }
             _header.Text = head.ToString();
+
+            SealToolGroup();
+            FoldProcess(cancelled, elapsed);
 
             if (at is not null || modelLabel is not null || elapsed is not null)
             {
@@ -4336,7 +4392,7 @@ public partial class ChatPanelView : UserControl
             TextBlock argsText = _argsText = new TextBlock
             {
                 Classes = { "toolArgs" },
-                Text = ChatFormatting.OneLine(argumentsJson, 160),
+                Text = ToolDisplay.Summary(argumentsJson, 160),
                 Margin = new Thickness(8, 0, 8, 0)
             };
             Grid.SetColumn(argsText, 2);
@@ -4372,7 +4428,7 @@ public partial class ChatPanelView : UserControl
             var stack = new StackPanel();
             stack.Children.Add(header);
             stack.Children.Add(_details);
-            Root = new Border { Classes = { "toolCard" }, Child = stack };
+            Root = new Border { Classes = { "toolCard", "toolItem" }, Child = stack };
         }
 
         /// <summary>入库用的存档。</summary>
@@ -4381,6 +4437,7 @@ public partial class ChatPanelView : UserControl
         public void Complete(string result)
         {
             _result = result;
+            IsRunning = true;
             if (RestoreTransfer(result)) return;
             // 传输工具没给出快照(被拒、启动前就挡下、回执丢失的 {"state":"Unknown"}):不是"做完了",
             // 打勾会让人以为文件已经传好。名单与 RestoreTransfer / TransferBinding.Bind 一致。
@@ -4389,6 +4446,13 @@ public partial class ChatPanelView : UserControl
             {
                 _statusIconHost.Child = MakeIcon("Icon.circle-alert", "VelaWarning", 11);
                 ToolTip.SetTip(_statusIconHost, _owner._loc["TransferUnknown"]);
+                return;
+            }
+            if (IsFailedToolResult(result))
+            {
+                IsFailed = true;
+                _statusIconHost.Child = MakeIcon("Icon.circle-alert", "VelaWarning", 11);
+                ToolTip.SetTip(_statusIconHost, ChatFormatting.OneLine(result, 200));
                 return;
             }
             _statusIconHost.Child = MakeIcon("Icon.circle-check", "VelaStatusConnected", 11);
@@ -4400,12 +4464,13 @@ public partial class ChatPanelView : UserControl
             if (_transferWithheld) return;
             if (!_details.IsVisible)
             {
+                // 解开 JSON 逐行排:中文与 < ' + 不再是 \uXXXX,脚本里的换行真的换行(见 ToolDisplay)
                 var sb = new StringBuilder();
-                sb.Append(_argumentsJson);
+                sb.Append(ToolDisplay.Readable(_argumentsJson));
                 if (_result.Length > 0)
                 {
                     sb.Append("\n────────\n");
-                    sb.Append(Truncate(_result, 4000));
+                    sb.Append(Truncate(ToolDisplay.Readable(_result), 8000));
                 }
                 _detailsText.Text = sb.ToString();
             }

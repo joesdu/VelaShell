@@ -107,6 +107,7 @@ public partial class ChatPanelView
             TransientFailure.SwitchNetwork => "SwitchReasonNetwork",
             TransientFailure.SwitchEmpty => "SwitchReasonEmpty",
             TransientFailure.SwitchConfig => "SwitchReasonConfig",
+            TransientFailure.SwitchModel => "SwitchReasonModel",
             _ => "SwitchReasonOther"
         }];
         if (hop.Status > 0)

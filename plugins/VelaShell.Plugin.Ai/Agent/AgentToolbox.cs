@@ -82,7 +82,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         => [.. CreateTools(ChatMode.Agent, runScope: parentRun)
             .Where(tool => (Catalog.Any(item => item.Name == tool.Name && item.ReadOnly)
                             && tool.Name is not ("task_status" or "task_wait" or "transfer_status" or "transfer_wait"
-                                or "subagent_status" or "subagent_wait"))
+                                or "subagent_status" or "subagent_wait" or "team_status"))
                            || (allowWrites && IsFileMutation(tool.Name)))];
 
     /// <summary>
@@ -284,7 +284,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         ("delegate_subagent", "委托子 Agent，默认只读，可显式允许文件修改", false),
         ("subagent_status", "查看子 Agent 的状态", true),
         ("subagent_wait", "等待子 Agent 完成并取得结果", true),
-        ("subagent_cancel", "取消一个仍在运行的子 Agent", false)
+        ("subagent_cancel", "取消一个仍在运行的子 Agent", false),
+        ("team_run", "组建多 Agent 团队:分角色、按依赖调度、审查返工,汇成一份报告", false),
+        ("team_status", "查看团队看板与成员发给主控的消息", true),
+        ("team_message", "给团队成员发消息", false),
+        ("team_cancel", "停下正在运行的团队", false)
     ];
 
     /// <summary>
@@ -479,7 +483,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 + "time spent waiting for user approval is not counted). "
                 + "Omit modelId to inherit the parent model, or select a configured chat model ID from the current provider's list. "
                 + "Use delegation for substantial independent tasks, not trivial steps; do not invent model capabilities or prices. Allowed models: "
-                + JsonSerializer.Serialize(orchestrator.ModelChoices)), false));
+                + AgentJson.Serialize(orchestrator.ModelChoices)), false));
             all.Add(("subagent_status", AIFunctionFactory.Create(bound.SubagentStatusAsync, "subagent_status",
                 "Get the current status of a delegated subagent by id without waiting."
                 + (orchestrator.DeliversResults ? " Not needed in the normal flow: finished results are delivered automatically." : "")), true));
@@ -490,6 +494,30 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                     : "If it is still running, call again.")), true));
             all.Add(("subagent_cancel", AIFunctionFactory.Create(bound.SubagentCancelAsync, "subagent_cancel",
                 "Cancel a delegated subagent by id. Changes it already made are not rolled back."), false));
+        }
+        // 团队模式:成员分角色、任务带依赖与审查,由引擎调度并汇成一份报告(见 TeamEngine)。
+        // 汇总报告只能经协调器推回去;对外 MCP 唤不醒外部模型(DeliversResults=false),那条路不给团队工具
+        if (mode == ChatMode.Agent && Subagents is { DeliversResults: true } teamOrchestrator)
+        {
+            var teamTools = new SubagentToolBinding(teamOrchestrator);
+            all.Add(("team_run", AIFunctionFactory.Create(teamTools.TeamRun, "team_run",
+                "Run a team of AI members on a larger task that benefits from specialists building on each other's work. "
+                + $"Define up to {TeamEngine.MaxMembers} members (name, role such as researcher/engineer/reviewer/tester/writer, optional modelId, allowWrites) "
+                + $"and up to {TeamEngine.MaxTasks} tasks (id, title, self-contained detail, assignee, dependsOn, optional verifies). "
+                + "The engine starts each task when its dependencies are done, hands upstream reports to dependents, lets members message each other, "
+                + $"sends a task back once (max {TeamEngine.MaxReworks} rework) when its reviewer ends with VERDICT: FAIL, "
+                + "and delivers ONE consolidated team report to you when everything has finished — do not poll. "
+                + "Members have the same limits as subagents: read-only unless allowWrites=true, no command execution. "
+                + $"timeoutSeconds is per task ({SubagentOrchestrator.MinTimeoutSeconds}-{TeamEngine.MaxTaskTimeoutSeconds}, default {TeamEngine.DefaultTaskTimeoutSeconds}). "
+                + "Allowed models: " + AgentJson.Serialize(teamOrchestrator.ModelChoices)), false));
+            all.Add(("team_status", AIFunctionFactory.Create(teamTools.TeamStatus, "team_status",
+                "Show the team board (task status, owners, finished reports) and unread messages members sent to you. "
+                + "Not needed in the normal flow: the final team report is delivered automatically."), true));
+            all.Add(("team_message", AIFunctionFactory.Create(teamTools.TeamMessage, "team_message",
+                "Send a message to a team member by name, or to \"all\". Running members get it before their next step; "
+                + "idle members get it when their next task starts."), false));
+            all.Add(("team_cancel", AIFunctionFactory.Create(teamTools.TeamCancel, "team_cancel",
+                "Stop the running team: running tasks are cancelled and pending ones never start. Changes already made are not rolled back."), false));
         }
         return
         [
@@ -516,6 +544,24 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
         public string SubagentCancelAsync(string id)
             => orchestrator.Cancel(id);
+
+        public string TeamRun(
+            [System.ComponentModel.Description("What the whole team must achieve.")] string goal,
+            [System.ComponentModel.Description("Team members.")] TeamMemberSpec[] members,
+            [System.ComponentModel.Description("Tasks with assignee, dependencies and optional review relations.")] TeamTaskSpec[] tasks,
+            int timeoutSeconds = 0)
+            => orchestrator.EnsureTeam().Run(goal, members, tasks, timeoutSeconds);
+
+        public string TeamStatus()
+            => orchestrator.Team?.Status() ?? "No team has been started in this turn. Use team_run first.";
+
+        public string TeamMessage(
+            [System.ComponentModel.Description("A member name, or \"all\".")] string to,
+            string message)
+            => orchestrator.Team?.Message("lead", to, message) ?? "No team is running.";
+
+        public string TeamCancel()
+            => orchestrator.Team?.Cancel() ?? "No team is running.";
     }
 
     /// <summary>scope 由工具列表捕获,不是模型参数;AsyncLocal 仅在一次工具调用内部传递。</summary>
@@ -568,7 +614,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         var sb = new StringBuilder();
         foreach (SessionInfo s in sessions)
         {
-            sb.AppendLine(JsonSerializer.Serialize(new
+            sb.AppendLine(AgentJson.Serialize(new
             {
                 id = s.SessionId,
                 host = s.Host,
@@ -612,7 +658,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 && string.Equals(c.Host, s.Host, StringComparison.OrdinalIgnoreCase)
                 && c.Port == s.Port
                 && (s.Username.Length == 0 || string.Equals(c.Username, s.Username, StringComparison.Ordinal)));
-            sb.AppendLine(JsonSerializer.Serialize(new
+            sb.AppendLine(AgentJson.Serialize(new
             {
                 saved_session_id = s.SavedSessionId,
                 name = s.Name,
@@ -882,7 +928,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         var sb = new StringBuilder();
         foreach (LocalWorkspace workspace in scope.Workspaces.Where(LocalPathScope.IsConfigured))
         {
-            sb.AppendLine(JsonSerializer.Serialize(new
+            sb.AppendLine(AgentJson.Serialize(new
             {
                 workspace_id = workspace.Id,
                 name = workspace.Name,
@@ -1259,7 +1305,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     {
         bool directory = info is DirectoryInfo;
         long size = directory ? 0 : (info as FileInfo)?.Length ?? 0;
-        return JsonSerializer.Serialize(new
+        return AgentJson.Serialize(new
         {
             name = info.Name,
             path = info.FullName,
@@ -1405,7 +1451,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         try
         {
             await _jobs.CancelAsync(CurrentRun, taskId).ConfigureAwait(false);
-            return JsonSerializer.Serialize(new { taskId, cancellationRequested = true, remoteStopConfirmed = false });
+            return AgentJson.Serialize(new { taskId, cancellationRequested = true, remoteStopConfirmed = false });
         }
         catch (Exception ex) { return $"Cannot cancel task: {ex.Message}"; }
     }
@@ -1461,7 +1507,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         return false;
     }
 
-    private static string FormatJobCore(CommandJobSnapshot snapshot) => JsonSerializer.Serialize(new
+    private static string FormatJobCore(CommandJobSnapshot snapshot) => AgentJson.Serialize(new
     {
         taskId = snapshot.TaskId,
         sessionId = snapshot.SessionId,
@@ -1548,7 +1594,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             ExecResult result = await context.RemoteExec.RunAsync(sessionId, command,
                 new ExecOptions { Timeout = TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, 1, 600)) },
                 cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Serialize(new
+            return AgentJson.Serialize(new
             {
                 stdout = result.Output[..Math.Min(result.Output.Length, MaxCommandOutput)],
                 stderr = result.Error[..Math.Min(result.Error.Length, MaxCommandOutput)],
@@ -1563,7 +1609,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         }
         catch (TimeoutException)
         {
-            return JsonSerializer.Serialize(new
+            return AgentJson.Serialize(new
             {
                 timedOut = true,
                 exitCode = (int?)null,
@@ -2036,7 +2082,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         catch (Exception)
         {
             run.Transfers!._uncertainStart = true;
-            return JsonSerializer.Serialize(new
+            return AgentJson.Serialize(new
             {
                 operationId,
                 state = "Unknown",
@@ -2085,7 +2131,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             }
 
             await CurrentRun.Transfers!.CancelAsync(transferId, expectedGeneration, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Serialize(new
+            return AgentJson.Serialize(new
             {
                 transfer_id = transferId,
                 cancellationRequested = true,
@@ -2126,7 +2172,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     }
 
     /// <summary>用于工具卡关联与模型读取的结构化回执；字节满格不代表成功。</summary>
-    public static string FormatTransfer(RemoteTransferSnapshot snapshot) => JsonSerializer.Serialize(new
+    public static string FormatTransfer(RemoteTransferSnapshot snapshot) => AgentJson.Serialize(new
     {
         transfer_id = snapshot.TransferId,
         transferId = snapshot.TransferId,
@@ -2261,7 +2307,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         catch (Exception)
         {
             run.Transfers!._uncertainStart = true;
-            return JsonSerializer.Serialize(new
+            return AgentJson.Serialize(new
             {
                 operationId,
                 state = "Unknown",
@@ -2533,7 +2579,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         return kept;
     }
 
-    private static string Describe(RemoteFileEntry entry) => JsonSerializer.Serialize(new
+    private static string Describe(RemoteFileEntry entry) => AgentJson.Serialize(new
     {
         name = entry.Name,
         path = entry.FullPath,

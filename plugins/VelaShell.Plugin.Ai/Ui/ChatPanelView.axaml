@@ -168,6 +168,62 @@
       <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
     </Style>
 
+    <!-- 工具组:只有一张卡时组本身不画框(看上去就是那张卡);两张起组画框,组内的卡压成无框紧凑行 -->
+    <Style Selector="Border.toolGroup">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0" />
+    </Style>
+    <Style Selector="Border.toolGroup.grouped">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="8,6" />
+      <Setter Property="Margin" Value="0,4,0,0" />
+    </Style>
+    <Style Selector="Border.toolGroup.grouped Border.toolItem">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0,3" />
+      <Setter Property="Margin" Value="0" />
+    </Style>
+
+    <!-- 团队卡:与子任务组同一底色;任务行之间不画框,只在悬停时提亮 -->
+    <Style Selector="Border.teamBoard">
+      <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="Padding" Value="10,8" />
+    </Style>
+    <Style Selector="Border.teamDivider">
+      <Setter Property="Height" Value="1" />
+      <Setter Property="Background" Value="{DynamicResource VelaBorderSecondary}" />
+    </Style>
+    <Style Selector="Border.teamTask">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Padding" Value="4,3" />
+    </Style>
+    <Style Selector="Border.teamTask:pointerover">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="Border.teamTag">
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Padding" Value="4,0" />
+      <Setter Property="Margin" Value="0,1,0,0" />
+    </Style>
+
+    <!-- 工作过程:整轮收尾后把过程收成一行,展开后左侧一条细线当时间线 -->
+    <Style Selector="Border.processFold">
+      <Setter Property="Margin" Value="0,4,0,2" />
+    </Style>
+    <Style Selector="Border.processBody">
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
+      <Setter Property="BorderThickness" Value="1,0,0,0" />
+      <Setter Property="Padding" Value="10,0,0,0" />
+      <Setter Property="Margin" Value="4,4,0,0" />
+    </Style>
+
     <!-- 历史会话行:整行可点(悬停高亮),右侧删除按钮悬停才显形 -->
     <Style Selector="Border.historyRow">
       <Setter Property="Background" Value="{DynamicResource VelaBgSurface}" />

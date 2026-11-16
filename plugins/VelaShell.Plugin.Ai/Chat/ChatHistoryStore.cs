@@ -40,6 +40,7 @@ public sealed record ChatGeneratedImage(string FileName, string MediaType);
 /// <param name="Images">这一轮生成的图片引用。</param>
 /// <param name="Switch">这一轮的故障转移 / 换 Key 记录(界面上那张切换提示卡);没切过为 null。</param>
 /// <param name="Subagents">这一轮委派出去的子 Agent 的终态快照(界面上那组运行卡片);没委派过为 null。</param>
+/// <param name="Team">这一轮团队的终态看板(界面上那张团队卡);没组过团队为 null。</param>
 public sealed record ChatTurnMeta(
     string Model = "",
     long ElapsedMs = 0,
@@ -48,11 +49,12 @@ public sealed record ChatTurnMeta(
     IReadOnlyList<ChatToolCall>? Tools = null,
     IReadOnlyList<ChatGeneratedImage>? Images = null,
     ChatSwitchNotice? Switch = null,
-    IReadOnlyList<Agent.SubagentSnapshot>? Subagents = null)
+    IReadOnlyList<Agent.SubagentSnapshot>? Subagents = null,
+    Agent.TeamBoardSnapshot? Team = null)
 {
     /// <summary>这一轮有没有值得存的东西 —— 全空就别白占一行。</summary>
     public bool HasContent => Model.Length > 0 || ElapsedMs > 0 || Thinking.Length > 0 || Tools is { Count: > 0 } || Images is { Count: > 0 }
-                              || Switch is { Hops.Count: > 0 } || Subagents is { Count: > 0 };
+                              || Switch is { Hops.Count: > 0 } || Subagents is { Count: > 0 } || Team is not null;
 }
 
 /// <summary>切换提示里点名的那一把 Key:与设置页 Key 行同一种写法(「第 N 把 Key · ●●●●末四位」),不存 Key 本身。</summary>
@@ -108,8 +110,13 @@ public sealed class ChatHistoryStore(IPluginContext context)
     /// <summary>思考过程入库的上限(字符)。它常常比正文还长,不值得原样留档。</summary>
     private const int MaxThinkingChars = 8 * 1024;
 
-    /// <summary>单次工具返回值入库的上限(字符),以及一轮最多存几次调用。</summary>
-    private const int MaxToolResultChars = 4 * 1024, MaxToolCalls = 12;
+    /// <summary>
+    /// 单次工具参数 / 返回值入库的上限(字符),以及一轮最多存几次调用。
+    /// 长任务一轮几十上百次调用,只存前 12 次的话翻回历史时工具组就残缺了;
+    /// 改为一轮总预算 <see cref="ToolCharBudget" /> 均摊,每次至少 512、至多 4K 字符。
+    /// </summary>
+    private const int MaxToolResultChars = 4 * 1024, MinToolResultChars = 512, MaxToolCalls = 200,
+        ToolCharBudget = 160 * 1024;
 
     private const string MessagesName = "chat_messages";
     private const string SessionsName = "chat_sessions";
@@ -238,6 +245,9 @@ public sealed class ChatHistoryStore(IPluginContext context)
         {
             return;
         }
+        int toolCount = Math.Min(meta.Tools?.Count ?? 0, MaxToolCalls);
+        int perTool = toolCount == 0 ? MaxToolResultChars
+            : Math.Clamp(ToolCharBudget / (toolCount * 2), MinToolResultChars, MaxToolResultChars);
         try
         {
             var payload = new StoredMeta(
@@ -247,12 +257,13 @@ public sealed class ChatHistoryStore(IPluginContext context)
                 meta.ThinkingMs,
                 [
                     .. (meta.Tools ?? []).Take(MaxToolCalls)
-                       .Select(t => new StoredTool(t.Name, Truncate(t.Arguments, MaxToolResultChars),
-                           Truncate(t.Result, MaxToolResultChars)))
+                       .Select(t => new StoredTool(t.Name, Truncate(t.Arguments, perTool),
+                           Truncate(t.Result, perTool)))
                 ],
                 [.. (meta.Images ?? []).Where(GeneratedImageStore.IsValidReference).Take(GeneratedImageStore.MaxImagesPerTurn)],
                 StoredSwitch.From(meta.Switch),
-                StoredSubagent.From(meta.Subagents));
+                StoredSubagent.From(meta.Subagents),
+                ClipTeam(meta.Team));
             await series.WriteAsync(new(_clock.Next(),
                 new Dictionary<string, string> { [ConversationTag] = conversationId },
                 new Dictionary<string, TimeSeriesValue>
@@ -516,7 +527,8 @@ public sealed class ChatHistoryStore(IPluginContext context)
                     [.. (stored.Tools ?? []).Select(t => new ChatToolCall(t.Name ?? "", t.Arguments ?? "", t.Result ?? ""))],
                     stored.Images is null ? null : [.. stored.Images.Where(GeneratedImageStore.IsValidReference).Take(GeneratedImageStore.MaxImagesPerTurn)],
                     stored.Switch?.ToNotice(),
-                    StoredSubagent.ToSnapshots(stored.Subagents));
+                    StoredSubagent.ToSnapshots(stored.Subagents),
+                    stored.Team);
             }
         }
         catch (Exception ex)
@@ -529,7 +541,24 @@ public sealed class ChatHistoryStore(IPluginContext context)
 
     // 落盘用的形状(与对外的记录分开:对外那套将来可以改,存量 JSON 不受影响)
     private sealed record StoredMeta(string? Model, long ElapsedMs, string? Thinking, long ThinkingMs, StoredTool[]? Tools,
-        ChatGeneratedImage[]? Images = null, StoredSwitch? Switch = null, StoredSubagent[]? Subagents = null);
+        ChatGeneratedImage[]? Images = null, StoredSwitch? Switch = null, StoredSubagent[]? Subagents = null,
+        Agent.TeamBoardSnapshot? Team = null);
+
+    /// <summary>团队看板落盘前截短:报告与消息都可能很长,历史里留够翻看的量即可。</summary>
+    private static Agent.TeamBoardSnapshot? ClipTeam(Agent.TeamBoardSnapshot? team)
+        => team is null ? null : team with
+        {
+            Goal = Truncate(team.Goal, 2000),
+            Tasks = [.. team.Tasks.Take(Agent.TeamEngine.MaxTasks).Select(t => t with
+            {
+                Report = Truncate(t.Report, 8 * 1024),
+                Note = Truncate(t.Note, 600),
+                // 存下来的只会是终态:还在跑的按已取消存,翻回历史时它们早就不在跑了
+                Status = t.Status is "pending" or "running" ? "cancelled" : t.Status
+            })],
+            Messages = [.. team.Messages.TakeLast(100).Select(m => m with { Text = Truncate(m.Text, 600) })],
+            Phase = team.Phase == "running" ? "cancelled" : team.Phase
+        };
 
     private sealed record StoredTool(string? Name, string? Arguments, string? Result);
 
@@ -538,9 +567,11 @@ public sealed class ChatHistoryStore(IPluginContext context)
     /// 任务数由编排器封顶(每轮 8 个),这里再守一道。
     /// </summary>
     private sealed record StoredSubagent(string? Id, string? Role, string? Status, string? Output, StoredSubagentTool[]? Tools,
-        string[]? Errors, long ElapsedMs, string? ModelId, string? Task, long InputTokens, long OutputTokens, bool AllowWrites)
+        string[]? Errors, long ElapsedMs, string? ModelId, string? Task, long InputTokens, long OutputTokens, bool AllowWrites,
+        string? TeamTaskId = null)
     {
-        private const int MaxRuns = 8, MaxOutputChars = 16 * 1024, MaxTaskChars = 4 * 1024, MaxErrors = 12, MaxErrorChars = 600;
+        // 团队一轮最多 12 个任务、各可返工一次:24 次运行
+        private const int MaxRuns = 24, MaxOutputChars = 16 * 1024, MaxTaskChars = 4 * 1024, MaxErrors = 12, MaxErrorChars = 600;
 
         public static StoredSubagent[]? From(IReadOnlyList<Agent.SubagentSnapshot>? runs)
             => runs is not { Count: > 0 } ? null :
@@ -550,7 +581,7 @@ public sealed class ChatHistoryStore(IPluginContext context)
                     [.. run.ToolsUsed.Select(tool => new StoredSubagentTool(tool.Name, tool.Count))],
                     [.. run.Errors.Take(MaxErrors).Select(error => Truncate(error, MaxErrorChars))],
                     (long)run.Elapsed.TotalMilliseconds, run.ModelId, Truncate(run.TaskPrompt, MaxTaskChars),
-                    run.InputTokens, run.OutputTokens, run.AllowWrites))
+                    run.InputTokens, run.OutputTokens, run.AllowWrites, run.TeamTaskId))
             ];
 
         public static IReadOnlyList<Agent.SubagentSnapshot>? ToSnapshots(StoredSubagent[]? stored)
@@ -565,7 +596,8 @@ public sealed class ChatHistoryStore(IPluginContext context)
                         .Select(tool => new Agent.SubagentToolUsage(tool.Name!, tool.Count))],
                     [.. (run.Errors ?? []).Where(error => !string.IsNullOrEmpty(error))],
                     TimeSpan.FromMilliseconds(Math.Max(0, run.ElapsedMs)), run.ModelId, run.Task ?? "",
-                    InputTokens: run.InputTokens, OutputTokens: run.OutputTokens, AllowWrites: run.AllowWrites))
+                    InputTokens: run.InputTokens, OutputTokens: run.OutputTokens, AllowWrites: run.AllowWrites,
+                    TeamTaskId: run.TeamTaskId))
             ];
     }
 
