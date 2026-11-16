@@ -57,6 +57,20 @@
 		      Condition="'$(VelaDevAppDir)' != ''" />
 	</Target>
 
+	<!-- 由宿主提供运行时的传递依赖(插件 csproj 里的 VelaHostSharedPackage,说明见 AI 插件 csproj):
+	     展开成只要编译期的 PackageReference。native 也排除 —— 程序集走宿主那份,它 P/Invoke 的
+	     原生库自然在默认 ALC 里按宿主根目录解析。 -->
+	<ItemGroup>
+		<PackageReference Include="@(VelaHostSharedPackage)" ExcludeAssets="runtime;native" />
+	</ItemGroup>
+
+	<!-- 发布期由宿主调用:交出本插件声明的共享包(Identity + Version),宿主拿自己发行包里的版本逐个核对。 -->
+	<Target Name="GetVelaHostSharedPackages" Returns="@(_VelaHostSharedPackageOut)">
+		<ItemGroup Condition="'$(VelaPluginShip)' == 'true' and '$(VelaPluginId)' != ''">
+			<_VelaHostSharedPackageOut Include="@(VelaHostSharedPackage)" VelaPluginId="$(VelaPluginId)" />
+		</ItemGroup>
+	</Target>
+
 	<!-- 发布期契约:由 src/VelaShell/VelaShell.csproj 的 AddVelaPluginsToPublish 调用,
 	     返回"该随应用分发的文件 + 它在安装包 plugins/ 下的相对路径"。
 	     VelaPluginShip=false 的插件返回空集 —— 于是它整个不进发行产物。

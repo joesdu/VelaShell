@@ -3651,3 +3651,21 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **修复**:包装编辑器的 IME 客户端,同终端声明 `SupportsPreedit` 并处理 `SetPreeditText`;主题化 `TextPresenter` 在光标附近叠画拼音与组字光标,不写入正文或撤销记录,确认后的中文仍由编辑器正常提交。位置随布局和滚动调整,候选窗跟随串内光标。组字期间隐藏占位提示并阻止发送、历史回溯、文件引用删除等快捷键介入;取消、失焦与关闭面板清除叠加层,保留 Markdown 高亮和文件引用芯片。
 - **验证**:AI 测试工程 `--no-restore -warnaserror` 通过 24 项输入框相关测试,包含 6 项新增 IME 用例,覆盖空白/已有正文/引用后输入、选区替换、提交与撤销、取消、失焦、窄面板滚动及关闭。会话内临时 Skia headless 校验确认深浅主题下拼音确实产生字形像素,取消后区域恢复原像素;未人工验收真实 Windows 输入法候选窗交互。
 - **文档**:同步中英手册输入框说明与 velashell-docs 中英自动化设计 §1.11。
+
+## 324. 2026-11-15 发行包瘦身:原生调试符号、插件的异平台原生库与重复程序集
+
+- **调试符号**:osx 运行时包把 `libcoreclr` / `libclrjit` / `libmscordaccore` / `libmscordbi` 等 8 个 `.dwarf`(106 MB,压缩后约 37 MB)交给 publish,`DebugType=None` 与发布后删 `*.pdb` 都管不到,macOS 的 tar.gz 与 dmg 一直带着。`VelaShell.csproj` 新增 `RemoveVelaNativeDebugSymbolsFromPublish`,Release 发布时从 `ResolvedFileToPublish` 去掉 `.dwarf` / `.dbg` / `.pdb`(后者含依赖包的 `libSkiaSharp.pdb` 84 MB、`libHarfBuzzSharp.pdb` 21 MB,流水线原本发布后再删,本机直接 publish 的目录现在也与发行包一致)。
+- **插件的异平台原生库**:插件工程不带 RID 构建,AI 插件输出里的 `ratex_ffi` 5 份、`libonigwrap` 13 份全部进了每个平台的包。`AddVelaPluginsToPublish` 带 RID 发布时只留 `runtimes/` 下目标 RID 回退链(rid → 操作系统 → unix → any)上的目录,本仓库插件与暂存插件同样处理。`AssemblyDependencyResolver` 只解析当前 RID 的 runtimeTargets,别的 RID 的条目文件缺席不影响构造与解析(已在裁剪后的发布目录上实测)。
+- **重复程序集**:AI 插件目录重复带着宿主根目录已有的同版本 Markdig、TextMateSharp(含 6.8 MB 的 Grammars)、Onigwrap(含原生库)、MicroCom.Runtime、Avalonia.Remote.Protocol,装载后在插件 ALC 里还多一份。新增 `VelaHostSharedPackage`(`plugins/Directory.Build.targets` 展开成 `ExcludeAssets="runtime;native"` 的 PackageReference),插件目录与 deps.json 里不再有它们,插件 ALC 回落默认 ALC 用宿主那份。只共享纯函数库:LiveMarkdown.Avalonia 留在插件 ALC(扩展注册在它的渲染管线上,共享会让宿主攥住插件类型);System.Numerics.Tensors 两边版本不同(宿主 10.0.14 / 插件 11.0.0),不共享。发布期 `VerifyVelaHostSharedPackages` 拿宿主的 `RuntimeCopyLocalItems` / `NativeCopyLocalItems` 逐个核对包名与版本,不一致断掉发布。
+- **效果**:win-x64 发布目录 344 文件 / 292 MB → 305 文件 / 268 MB,`Compress-Archive` 的 zip 118.0 → 111.8 MiB;osx 另去掉 dwarf,包体估计少四分之一以上(本机不能跨 OS 做 R2R,未出与发行包可比的 osx 归档)。
+- **验证**:Release 发布 win-x64(R2R)与 osx-arm64 / linux-x64(关 R2R)各一次,插件 `runtimes/` 只剩目标 RID、无 `.dwarf` / `.dbg` / `.pdb`;对裁剪后的插件目录用 `AssemblyDependencyResolver` 解析:`ratex_ffi` 落在 `runtimes/win-x64`,TextMateSharp / Markdig / libonigwrap 返回 null(回落宿主),LiveMarkdown / Anthropic / Tensors 仍在插件目录;把 Markdig 故意改成 1.3.2 时发布按预期报错。AI 测试工程 Debug 2199 项通过。未启动发布版 GUI 实际打开 AI 面板渲染 Markdown 与代码高亮,未在 macOS / Linux 真机运行。
+
+## 325. 2026-11-16 R2R 的判决性实验与按程序集排除
+
+- **实验**(`VelaShell.csproj` 2026-09-17 注释里留的那一步):同一份 win-x64 发布、`--data-root` 指向临时目录、热态交替各 6 次丢第一轮。R2R 生效首帧中位数 988 ms,`DOTNET_ReadyToRun=0` 为 1,951 ms —— R2R 每次启动省 ~960 ms JIT,高于注释里 560 ms 的门槛,**保留 R2R**。AI 插件激活 54 / 61 ms(插件本身一直是 JIT,差值来自它调的宿主代码)。
+- **膨胀分布**:与关 R2R 的发布逐个比,R2R 共多 60 MB;按启动后进程模块清单拆,48 MB 在冷启动就装载的程序集上,~10 MB 在根本不装载的程序集上(BouncyCastle 6.9、AtSpi 1.1、FluentFTP 0.9、Tmds.DBus、Avalonia.Native / FreeDesktop、DesignerSupport、Remote.Protocol,以及 PluginHost)。框架程序集(System.*)来自运行时包、本来就是微软 R2R 过的,发布不重编,两份发布里体积一致。
+- **排除**:`PublishReadyToRunExclude` 按实测装载集合列出 BouncyCastle、FluentFTP、DesignerSupport、Remote.Protocol,以及各平台用不到的 Avalonia 后端(Windows 上 Native / FreeDesktop / AtSpi / DBus;osx 上 Win32 / X11 / FreeDesktop / AtSpi / DBus;linux 上 Win32 / Native)。Windows 上 Avalonia.X11 会被装载(UsePlatformDetect 引用),不排除。**PluginHost 刻意保留 R2R**:它是隔离插件宿主进程的入口,冷启动靠它。
+- **BouncyCastle 的代价**(全新进程首次调用、5 次中位数,IL → R2R):X25519 + Ed25519 + ChaCha20 一次常规握手 ~76 → ~27 ms,sntrup761 35 → 21 ms,ML-KEM-768 32 → 13 ms,Argon2id 主密码解锁 482 → 366 ms。即热态下每个进程第一次连接多 ~50 ms、开了主密码的解锁多 ~116 ms;冷装载少扫 7.2 MB(按 27.9 ms/MB 约 200 ms),冷态反而更快。稳态各自进 tier-1 不受影响。
+- **对插件系统**:正确性无影响(R2R 不改 IL / 元数据,类型同一性、ALC 回落、SDK 契约与 apiLevel 都不涉及;没收录的方法一律回退 JIT)。插件程序集本来就不做 R2R;共享给插件的宿主程序集(Avalonia*、AvaloniaEdit、PluginSdk、ReactiveUI、TextMateSharp / Markdig)都在启动装载集合里,本轮一个没动。§324 之后 AI 插件改用宿主那份已 R2R 的 TextMateSharp / Markdig,比原先插件自带的 IL 副本还少一段 JIT。
+- **方法级 partial R2R 暂不做**:能削的是启动路径上那 48 MB,但要 crossgen2 `--partial` + 启动 `.mibc`,而 `dotnet-pgo` 没有官方发布的 .NET 11 构建(nuget.org 无,dnceng 公开 feed 只有 2022 年的 8.0 实验构建)。真要做,得从 dotnet/runtime v11 源码构建工具、为启动 / 各第一方插件面板 / PluginHost 分别录场景并合并,profile 要随代码定期重录 —— 否则共享给插件、启动时不走的 Avalonia / AvaloniaEdit 路径与 PluginHost 会失去预编译。
+- **效果**:win-x64 发布目录 268.2 → 257.5 MB,zip 111.8 → 106.9 MiB(相对 §324 之前的 118.0 MiB 合计 -11.1 MiB)。改动前后同条件交替测首帧,中位数 975.7 / 971.4 ms,无回退。osx / linux 的 R2R 只能在各自 runner 上编,排除项未在本机实编,由发版流水线覆盖。
