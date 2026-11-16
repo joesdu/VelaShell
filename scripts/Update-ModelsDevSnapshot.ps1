@@ -6,7 +6,7 @@
 .DESCRIPTION
     AI 插件「拉取模型」时用 models.dev 补每个型号的上下文窗口与单价。没有外网、被墙、或 models.dev
     临时不可用时,插件只能用本地缓存;从没连通过的新装用户连缓存都没有。发版时把最新数据打进插件,
-    这些用户也有一份可用的规格(插件取「本地缓存」与「内置快照」中较新的那份,见 ModelsDevCatalog)。
+    这些用户也有一份可用的规格(插件把「本地缓存」与「内置快照」合并,同一型号以较新的为准,见 ModelsDevCatalog)。
 
     产出两个文件(都不进版本库,见 .gitignore):
       <OutputDirectory>/models-dev.json.gz   原始 api.json 的 gzip(插件的解析器直接认原始格式)
@@ -20,11 +20,18 @@
 
 .PARAMETER Optional
     抓取或校验失败时只给警告、以 0 退出(发版不该因为 models.dev 临时不可用而失败)。
+
+.PARAMETER MaxAgeMonths
+    只留这么多个月内发布或更新过的模型(release_date / last_updated 任一在期内;没有日期的保留)。
+    只裁内置快照:插件联网刷新时保存的是完整数据,并与快照合并(见 ModelsDevCatalog),
+    能连 models.dev 的用户不会因此丢掉老型号的规格。默认 12;0 表示不按日期裁。
 #>
 [CmdletBinding()]
 param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '..' 'plugins' 'VelaShell.Plugin.Ai' 'Assets'),
-    [switch]$Optional
+    [switch]$Optional,
+    [ValidateRange(0, 240)]
+    [int]$MaxAgeMonths = 12
 )
 
 $ErrorActionPreference = 'Stop'
@@ -83,6 +90,23 @@ finally {
 # 原始约 6.6 MB / gzip 约 670 KB;裁剪后小一个量级,发行包不为它明显变大。
 $root = [System.Text.Json.Nodes.JsonNode]::Parse($json)
 $slim = [System.Text.Json.Nodes.JsonObject]::new()
+$cutoff = if ($MaxAgeMonths -gt 0) { [DateTime]::UtcNow.Date.AddMonths(-$MaxAgeMonths) } else { $null }
+$keptModels = 0
+$tooOld = 0
+
+# release_date / last_updated 形如 2025-04-14,少数只到月份(2025-04)
+function Get-ModelDate($node, [string]$field) {
+    $value = $node[$field]
+    if ($null -eq $value -or $value.GetValueKind() -ne [System.Text.Json.JsonValueKind]::String) { return $null }
+    $text = [string]$value
+    if ($text.Length -eq 7) { $text += '-01' }
+    $parsed = [DateTime]::MinValue
+    if ([DateTime]::TryParseExact($text, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal, [ref]$parsed)) {
+        return $parsed
+    }
+    return $null
+}
 foreach ($provider in $root.AsObject()) {
     $models = $provider.Value?['models']
     if ($null -eq $models -or $models.GetValueKind() -ne [System.Text.Json.JsonValueKind]::Object) { continue }
@@ -91,6 +115,17 @@ foreach ($provider in $root.AsObject()) {
         $m = $model.Value
         if ($null -eq $m -or $m.GetValueKind() -ne [System.Text.Json.JsonValueKind]::Object) { continue }
         if ($m['status'] -and [string]$m['status'] -eq 'deprecated') { continue }
+        if ($null -ne $cutoff) {
+            $released = Get-ModelDate $m 'release_date'
+            $updated = Get-ModelDate $m 'last_updated'
+            # 两个日期都有且都早于期限才算太旧;缺日期的不猜,保留
+            if (($null -ne $released -or $null -ne $updated) -and
+                ($null -eq $released -or $released -lt $cutoff) -and ($null -eq $updated -or $updated -lt $cutoff)) {
+                $tooOld++
+                continue
+            }
+        }
+        $keptModels++
         $entry = [System.Text.Json.Nodes.JsonObject]::new()
         foreach ($field in 'id', 'name', 'reasoning') {
             if ($null -ne $m[$field]) { $entry[$field] = $m[$field].DeepClone() }
@@ -129,4 +164,5 @@ finally {
 [System.IO.File]::WriteAllText($stamp, [DateTimeOffset]::UtcNow.ToString('o'))
 
 $size = (Get-Item $target).Length
-Write-Host ("models.dev snapshot: {0} providers, {1:N0} bytes trimmed JSON → {2:N0} bytes gzip at {3}" -f $slim.Count, $bytes.Length, $size, $target)
+Write-Host ("models.dev snapshot: {0} providers, {1} models kept, {2} older than {3} months dropped; {4:N0} bytes trimmed JSON → {5:N0} bytes gzip at {6}" -f `
+        $slim.Count, $keptModels, $tooOld, $MaxAgeMonths, $bytes.Length, $size, $target)
