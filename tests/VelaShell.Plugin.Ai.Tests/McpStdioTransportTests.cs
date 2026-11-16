@@ -173,7 +173,26 @@ public sealed class McpStdioTransportTests
         public void Dispose()
         {
             _timeout.Dispose();
-            System.IO.Directory.Delete(Directory, recursive: true);
+            // 子进程的工作目录就是这里;Windows 上启动还套了一层 cmd /c(见 McpManager),被杀的子进程
+            // 与外壳要过一小会儿才放开目录 —— 立刻删会撞上「正被另一个进程使用」,让一条本已通过的用例在收尾时失败
+            // (CI 的 windows-latest 上见过)。短暂重试;实在删不掉也只是临时目录,不让收尾决定用例成败。
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    System.IO.Directory.Delete(Directory, recursive: true);
+                    return;
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    return;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt >= 25) return;
+                    Thread.Sleep(200);
+                }
+            }
         }
     }
 }

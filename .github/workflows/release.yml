@@ -124,12 +124,36 @@ jobs:
             echo 'published=true' >> "$GITHUB_OUTPUT"
           fi
 
+      # 发版时抓一次 models.dev 的最新规格,作为构建产物分给各平台打进 AI 插件(见 scripts/Update-ModelsDevSnapshot.ps1)。
+      # 没有外网或被墙的用户第一次拉取模型也有窗口与单价可用。-Optional:models.dev 临时不可用时只警告,不挡发版。
+      - uses: actions/checkout@v7
+        if: steps.validate.outputs.published == 'true' && (github.event_name == 'release' && github.event.action == 'published' || github.event_name == 'workflow_dispatch' && !inputs.notes_only)
+      - name: Snapshot models.dev specs for the AI plugin
+        if: steps.validate.outputs.published == 'true' && (github.event_name == 'release' && github.event.action == 'published' || github.event_name == 'workflow_dispatch' && !inputs.notes_only)
+        shell: pwsh
+        run: ./scripts/Update-ModelsDevSnapshot.ps1 -OutputDirectory "$env:RUNNER_TEMP/models-dev" -Optional
+      - uses: actions/upload-artifact@v7
+        if: steps.validate.outputs.published == 'true' && (github.event_name == 'release' && github.event.action == 'published' || github.event_name == 'workflow_dispatch' && !inputs.notes_only)
+        with:
+          name: models-dev-snapshot
+          path: ${{ runner.temp }}/models-dev/*
+          if-no-files-found: ignore
+          retention-days: 7
+
   build-windows:
     needs: prepare-release
     if: needs.prepare-release.outputs.published == 'true' && (github.event_name == 'release' && github.event.action == 'published' || github.event_name == 'workflow_dispatch' && !inputs.notes_only)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+      # AI 插件内置的 models.dev 规格快照(prepare-release 抓的那一份,四个平台用同一份)。
+      # 抓取失败时没有这个产物,这一步跳过,插件照旧按运行时缓存工作。
+      - name: Fetch models.dev snapshot
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: models-dev-snapshot
+          path: plugins/VelaShell.Plugin.Ai/Assets
       - uses: actions/setup-dotnet@v6
         with:
           # dotnet-quality: preview
@@ -182,6 +206,14 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+      # AI 插件内置的 models.dev 规格快照(prepare-release 抓的那一份,四个平台用同一份)。
+      # 抓取失败时没有这个产物,这一步跳过,插件照旧按运行时缓存工作。
+      - name: Fetch models.dev snapshot
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: models-dev-snapshot
+          path: plugins/VelaShell.Plugin.Ai/Assets
       - uses: actions/setup-dotnet@v6
         with:
           # dotnet-quality: preview
@@ -220,6 +252,14 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
+      # AI 插件内置的 models.dev 规格快照(prepare-release 抓的那一份,四个平台用同一份)。
+      # 抓取失败时没有这个产物,这一步跳过,插件照旧按运行时缓存工作。
+      - name: Fetch models.dev snapshot
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: models-dev-snapshot
+          path: plugins/VelaShell.Plugin.Ai/Assets
       - uses: actions/setup-dotnet@v6
         with:
           # dotnet-quality: preview
@@ -354,6 +394,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # AI 插件内置的 models.dev 规格快照(prepare-release 抓的那一份,四个平台用同一份)。
+      # 抓取失败时没有这个产物,这一步跳过,插件照旧按运行时缓存工作。
+      - name: Fetch models.dev snapshot
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: models-dev-snapshot
+          path: plugins/VelaShell.Plugin.Ai/Assets
       - uses: actions/setup-dotnet@v6
         with:
           # dotnet-quality: preview

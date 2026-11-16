@@ -79,8 +79,85 @@ public sealed class ModelsDevCatalog(IPluginContext context)
         }
     }
 
-    /// <summary>缓存不存在或已经过期。</summary>
-    public bool IsStale => CachedAt is not { } at || DateTimeOffset.UtcNow - at > CacheLifetime;
+    /// <summary>
+    /// 本地缓存与内置快照都没有,或较新的那份也已经过期。
+    /// 内置快照还新鲜时(刚发的版本)不必联网 —— 没有外网的环境装完就有可用的规格。
+    /// </summary>
+    public bool IsStale => Newest is not { } at || DateTimeOffset.UtcNow - at > CacheLifetime;
+
+    /// <summary>本地缓存与内置快照中较新的那份的时间;都没有为 null。</summary>
+    private DateTimeOffset? Newest => (CachedAt, BundledAt) switch
+    {
+        ({ } cached, { } bundled) => cached > bundled ? cached : bundled,
+        ({ } cached, null) => cached,
+        (null, { } bundled) => bundled,
+        _ => null
+    };
+
+    /// <summary>
+    /// 内置快照的来源:发版流水线跑 <c>scripts/Update-ModelsDevSnapshot.ps1</c> 抓的那份,作为嵌入资源打进插件
+    /// (gzip 后的 api.json 子集 + 抓取时刻)。本地开发构建没有它,返回 null,行为与以前一样。测试可替换。
+    /// </summary>
+    internal Func<(Func<Stream> Open, DateTimeOffset At)?> BundledSource { get; init; } = LoadBundledResource;
+
+    private (Func<Stream> Open, DateTimeOffset At)? _bundled;
+    private bool _bundledProbed;
+
+    /// <summary>内置快照的抓取时刻;没有内置快照为 null。</summary>
+    public DateTimeOffset? BundledAt => Bundled()?.At;
+
+    private (Func<Stream> Open, DateTimeOffset At)? Bundled()
+    {
+        if (!_bundledProbed)
+        {
+            _bundledProbed = true;
+            try { _bundled = BundledSource(); }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or FormatException)
+            {
+                context.Log.Warn($"models.dev: the bundled snapshot could not be read: {ex.Message}");
+                _bundled = null;
+            }
+        }
+        return _bundled;
+    }
+
+    private const string BundledResource = "VelaShell.Plugin.Ai.models-dev.json.gz";
+    private const string BundledStampResource = "VelaShell.Plugin.Ai.models-dev.stamp";
+
+    private static (Func<Stream> Open, DateTimeOffset At)? LoadBundledResource()
+    {
+        System.Reflection.Assembly assembly = typeof(ModelsDevCatalog).Assembly;
+        using Stream? stamp = assembly.GetManifestResourceStream(BundledStampResource);
+        if (stamp is null || assembly.GetManifestResourceInfo(BundledResource) is null)
+        {
+            return null;
+        }
+        using var reader = new StreamReader(stamp);
+        if (!DateTimeOffset.TryParse(reader.ReadToEnd().Trim(), System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out DateTimeOffset at))
+        {
+            return null;
+        }
+        return (() => assembly.GetManifestResourceStream(BundledResource)
+                      ?? throw new IOException("The bundled models.dev snapshot is missing."), at);
+    }
+
+    /// <summary>解压并解析内置快照;读不出来返回空表(由调用方退回缓存)。</summary>
+    private Dictionary<string, List<ModelSpec>> ParseBundled((Func<Stream> Open, DateTimeOffset At) bundled)
+    {
+        try
+        {
+            using Stream data = bundled.Open();
+            using var gzip = new System.IO.Compression.GZipStream(data, System.IO.Compression.CompressionMode.Decompress);
+            using var reader = new StreamReader(gzip);
+            return Parse(reader.ReadToEnd());
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
+        {
+            context.Log.Warn($"models.dev: the bundled snapshot could not be read: {ex.Message}");
+            return [];
+        }
+    }
 
     /// <summary>
     /// 取某家供应商的全部模型规格(按 id 排序);没有这一家、或还没有缓存时返回空。
@@ -295,9 +372,12 @@ public sealed class ModelsDevCatalog(IPluginContext context)
             context.Log.Info($"models.dev: cached {parsed.Count} providers.");
             return true;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            // 没网/被墙/对方改版 —— 退回已有缓存,连接流程照常
+            // 没网/被墙/对方改版 —— 退回已有缓存,连接流程照常。
+            // 超时也在这里:HttpClient.Timeout 到期抛的是 TaskCanceledException(取消异常的一种),
+            // 以前「不是取消才吞」让它一路冒上去,models.dev 连不上就把整次拉取(连同上游清单)打断了。
+            // 只有调用方自己的令牌取消才往外抛。
             context.Log.Warn($"models.dev: refresh failed, keeping the cached copy: {ex.Message}");
             return false;
         }
@@ -308,6 +388,17 @@ public sealed class ModelsDevCatalog(IPluginContext context)
         if (_index is not null)
         {
             return _index;
+        }
+        // 本地缓存与内置快照取较新的那份:刚升级的版本带来的快照比几周前的缓存新,就用它;
+        // 内置的读不出来(或解析为空)时退回缓存
+        DateTimeOffset? cachedAt = CachedAt;
+        if (Bundled() is { } bundled && (cachedAt is null || bundled.At > cachedAt))
+        {
+            Dictionary<string, List<ModelSpec>> fromBundle = ParseBundled(bundled);
+            if (fromBundle.Count > 0)
+            {
+                return _index = fromBundle;
+            }
         }
         try
         {

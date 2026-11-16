@@ -191,6 +191,20 @@ Key 新增不拉模型,OAuth 新账号和首次供应商配置保留原拉取流
 (订阅型的私有后端就没有)或请求失败时,整条退回 models.dev 的清单 —— 少一份准确,
 不至于一无所有。
 
+**反过来,models.dev 连不上绝不能挡住端点清单。** 两步并行:规格库刷新有自己的 12 秒期限(`ModelPull.CatalogueTimeout`),
+任何失败(没网、被墙、超时)都只记一句、退回已有缓存;端点清单照常落成模型,窗口与单价用缓存或默认值,
+界面据 `ModelPullResult.CatalogueUnavailable` 补一句说明。以前两步串行、共用 30 秒,而 `HttpClient.Timeout` 到期抛的
+`TaskCanceledException` 被 `RefreshAsync` 当成「取消」原样抛出 —— models.dev 一超时,整次拉取连同上游清单都失败了。
+现在只有调用方自己的令牌取消才往外抛。
+
+**发行包内置一份 models.dev 快照。** 没有外网 / 被墙的新装用户从没连通过 models.dev,连缓存都没有。发版流水线在
+`prepare-release` 跑一次 `scripts/Update-ModelsDevSnapshot.ps1`:抓 `api.json`、校验(顶层是对象、带 `models` 的供应商不少于 20 家)、
+**裁剪到解析器会读的字段**(id / name / reasoning / limit.context·output / cost.input·output·cache_read,去掉已下架的)、gzip,
+连同抓取时刻作为构建产物分给四个打包任务,以嵌入资源打进插件(`Assets/models-dev.json.gz` + `.stamp`,不进版本库)。
+原始约 6.6 MB → 裁剪后约 1.7 MB → gzip 约 190 KB;裁剪前后经插件解析器比对 323 家、8753 个模型规格一致。
+`ModelsDevCatalog` 取「本地缓存」与「内置快照」中较新的一份;`IsStale` 也按较新的那份算,快照还在 7 天新鲜期内就不联网。
+快照读不出来退回缓存;本地开发构建没有快照,行为与以前一样。抓取失败(`-Optional`)只警告,不挡发版。
+
 **模型列表按提供商实例保存,不按类型汇总。** 成功取得端点清单后,仅清理该实例中不再供应且从未定制的自动模型;
 手工模型、来源未知的旧配置、已改名称/参数/专属端点/Key 的模型以及拉取期间的新编辑均保留。
 仍被当前选中、故障转移链或 IM 桥接指定的模型也保留 —— 中转站的渠道被自动禁用时清单会暂时缩水,

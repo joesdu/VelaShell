@@ -345,7 +345,7 @@ pwsh scripts\publish-all.ps1
 | 流水线 | 触发与职责 |
 | --- | --- |
 | [`ci.yml`](.github/workflows/ci.yml) | `main` 推送、PR 或手动触发；三平台 Debug 构建与测试，警告视为错误；Linux 另以 `runtime-async=off` 检查跨 `await` 的 Span |
-| [`release.yml`](.github/workflows/release.yml) | Release 发布或编辑；三平台打包，生成 `SHA256SUMS.txt`、`latest.json` 与供商店提交的 MSIX |
+| [`release.yml`](.github/workflows/release.yml) | Release 发布或编辑；三平台打包，生成 `SHA256SUMS.txt`、`latest.json` 与供商店提交的 MSIX；打包前抓一次 models.dev 规格快照打进 AI 插件（[`scripts/Update-ModelsDevSnapshot.ps1`](scripts/Update-ModelsDevSnapshot.ps1)，抓取失败只警告） |
 
 CI 使用 Debug，避免依赖 Release 强名签名密钥；筛除需要额外环境的 `DockerIntegration` / `CrossPlatform` / `Interop` 分类。
 快捷键文档比对需并排检出 `velashell-docs`。版本由 Release 标签经 `-p:Version` 注入，`0.0.1-dev` 仅是开发占位。
