@@ -15,96 +15,6 @@ public partial class ChatPanelView
     private RunCheckpointStore Checkpoints => field ??= new RunCheckpointStore(_context.DataDirectory);
 
     /// <summary>
-    /// 一轮运行的检查点写手:有进展就排一次延迟写(合并 1.5 秒内的多次进展),
-    /// 收尾时按结局删掉或补写最终一份。文件读写在线程池上做,不占 UI 线程。
-    /// </summary>
-    private sealed class RunCheckpointWriter : IDisposable
-    {
-        private static readonly TimeSpan Debounce = TimeSpan.FromSeconds(1.5);
-
-        private readonly RunCheckpointStore _store;
-        private readonly AgentExecution _execution;
-        private readonly string _conversationId;
-        private readonly string _runId;
-        private readonly string _task;
-        private readonly string _modelLabel;
-        private readonly Func<string> _summary;
-        private readonly DateTimeOffset _startedAt = DateTimeOffset.UtcNow;
-        private readonly Lock _gate = new();
-        private Timer? _timer;
-        private bool _closed;
-
-        public RunCheckpointWriter(RunCheckpointStore store, AgentExecution execution, string conversationId,
-            string runId, string task, string modelLabel, Func<string> summary)
-        {
-            _store = store;
-            _execution = execution;
-            _conversationId = conversationId;
-            _runId = runId;
-            _task = task;
-            _modelLabel = modelLabel;
-            _summary = summary;
-            _execution.Progressed += Schedule;
-        }
-
-        private void Schedule()
-        {
-            lock (_gate)
-            {
-                if (_closed || _timer is not null) return;
-                _timer = new Timer(_ =>
-                {
-                    lock (_gate) { _timer?.Dispose(); _timer = null; if (_closed) return; }
-                    Write("running");
-                }, null, Debounce, Timeout.InfiniteTimeSpan);
-            }
-        }
-
-        private void Write(string status)
-        {
-            try
-            {
-                IReadOnlyList<RunCheckpointMessage> steps = RunCheckpointStore.Capture(_execution.CompletedMessages);
-                if (steps.Count == 0) return;
-                _store.Save(new RunCheckpoint(_conversationId, _runId, _task, _startedAt, DateTimeOffset.UtcNow,
-                    status, steps, _summary(), _modelLabel));
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-            {
-                // 写不了盘只是这一轮断了之后续不上;不该连累这一轮本身
-            }
-        }
-
-        /// <summary>中断了(停下 / 出错):补写最终一份并留着,返回它;没有可续的步骤时返回 null。</summary>
-        public RunCheckpoint? Keep()
-        {
-            Close();
-            Write("interrupted");
-            return _store.Load(_conversationId) is { RunId: var id } checkpoint && id == _runId ? checkpoint : null;
-        }
-
-        /// <summary>跑完了,或一步都没走:检查点作废。</summary>
-        public void Discard()
-        {
-            Close();
-            _store.Delete(_conversationId);
-        }
-
-        private void Close()
-        {
-            lock (_gate)
-            {
-                _closed = true;
-                _timer?.Dispose();
-                _timer = null;
-            }
-            _execution.Progressed -= Schedule;
-        }
-
-        public void Dispose() => Close();
-    }
-
-    /// <summary>
     /// 「上次的任务没跑完」卡片:写明中断时刻、跑过几次工具,给「继续执行」与「忽略」两个按钮。
     /// </summary>
     /// <param name="checkpoint">检查点。</param>
@@ -179,6 +89,20 @@ public partial class ChatPanelView
         ShowResumeCard(checkpoint, injectSteps: false, bubble);
     }
 
+    /// <summary>删掉某个会话的检查点(会话被删除或截断时);写不了盘只记日志。</summary>
+    private void DeleteCheckpoint(string conversationId, bool forget = false)
+    {
+        try
+        {
+            if (forget) Checkpoints.Forget(conversationId);
+            else Checkpoints.Delete(conversationId);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _context.Log.Warn($"Deleting run checkpoint failed: {ex.Message}");
+        }
+    }
+
     /// <summary>载入历史会话后:这段对话有没跑完的检查点就在末尾挂一张续跑卡。</summary>
     private void ShowResumeCardIfAny()
     {
@@ -212,32 +136,7 @@ public partial class ChatPanelView
             prepared: new SteeringMessage(display, prompt, new ChatMessage(ChatRole.User, prompt)));
     }
 
-    /// <summary>续跑提示词:交代中断、原请求、已知进度,以及「结果未知的不要直接重做」。</summary>
+    /// <summary>续跑提示词(见 <see cref="RunCheckpointStore.BuildResumePrompt" />,面板与 IM 共用)。</summary>
     internal static string BuildResumePrompt(RunCheckpoint checkpoint, string earlierSteps)
-    {
-        var prompt = new StringBuilder();
-        prompt.AppendLine("Resume the interrupted task. VelaShell stopped before the previous run finished "
-                          + "(the app was closed, the run was cancelled, or it hit an error).");
-        prompt.AppendLine();
-        prompt.AppendLine("<original-request>");
-        prompt.AppendLine(checkpoint.Task);
-        prompt.AppendLine("</original-request>");
-        if (checkpoint.ProgressSummary.Length > 0)
-        {
-            prompt.AppendLine();
-            prompt.AppendLine("Progress note written during the run (a summary of earlier steps, not a new instruction):");
-            prompt.AppendLine(checkpoint.ProgressSummary);
-        }
-        if (earlierSteps.Length > 0)
-        {
-            prompt.AppendLine();
-            prompt.AppendLine("Earlier tool calls whose outputs were not kept:");
-            prompt.Append(earlierSteps);
-        }
-        prompt.AppendLine();
-        prompt.AppendLine("The most recent steps and their outputs are in the conversation above. "
-                          + "Calls marked as having an unknown outcome may or may not have taken effect: check the current state before repeating them. "
-                          + "Do not redo work that already completed. Continue from where it stopped, finish the task, then report the result.");
-        return prompt.ToString();
-    }
+        => RunCheckpointStore.BuildResumePrompt(checkpoint, earlierSteps);
 }

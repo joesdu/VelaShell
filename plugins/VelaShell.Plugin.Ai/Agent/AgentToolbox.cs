@@ -77,13 +77,19 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         };
     }
 
-    /// <summary>只开放只读工具及显式选择的文件修改工具；沿用父轮取消及拒绝边界。</summary>
-    public IList<AITool> CreateSubagentTools(bool allowWrites, CommandJobRunScope parentRun)
+    /// <summary>
+    /// 只开放只读工具及显式选择的文件修改工具;沿用父轮取消及拒绝边界。
+    /// <paramref name="allowCommands" /> 再开放 <c>run_command</c> 与查看 / 等待 / 取消它起的任务:
+    /// 每条命令照旧走父轮审批(审批卡标明来源子任务),结果未知同样让整轮停下。
+    /// 多机并行、终端输入、会话与传输仍不给。
+    /// </summary>
+    public IList<AITool> CreateSubagentTools(bool allowWrites, CommandJobRunScope parentRun, bool allowCommands = false)
         => [.. CreateTools(ChatMode.Agent, runScope: parentRun)
             .Where(tool => (Catalog.Any(item => item.Name == tool.Name && item.ReadOnly)
                             && tool.Name is not ("task_status" or "task_wait" or "transfer_status" or "transfer_wait"
                                 or "subagent_status" or "subagent_wait" or "team_status"))
-                           || (allowWrites && IsFileMutation(tool.Name)))];
+                           || (allowWrites && IsFileMutation(tool.Name))
+                           || (allowCommands && tool.Name is "run_command" or "task_status" or "task_wait" or "task_cancel"))];
 
     /// <summary>
     /// 入口提供稳定所有者及唯一轮次;工具列表显式捕获,不同对话不共享 taskId。
@@ -469,12 +475,13 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             // 编排器绑在这一轮的工具上,而不是在调用时读可变属性:同一个工具箱被多个对话并发使用时,
             // 另一个对话会改写/清空 Subagents,读属性会把子任务派进别人的编排器。
-            var bound = new SubagentToolBinding(orchestrator);
+            var bound = new SubagentToolBinding(orchestrator, this);
             all.Add(("delegate_subagent", AIFunctionFactory.Create(bound.DelegateSubagentAsync, "delegate_subagent",
                 "Delegate a focused task to a parallel subagent. Defaults to read-only. "
                 + "The subagent starts with NO conversation context: put everything it needs (goal, paths, session, constraints, expected report) in prompt. "
                 + "Set allowWrites=true explicitly for local/remote file edits under inherited scope and parent approvals. "
-                + "No command execution, session creation, transfers, approval management or recursive delegation. "
+                + "Set allowCommands=true explicitly to let it run shell commands with run_command (each command still goes through the user's approval; commands it starts count as this turn's tasks). "
+                + "No session creation, transfers, terminal input, approval management or recursive delegation. "
                 + "MCP tools remain read-only. File mutations are serialized with the parent; cancellation does not roll back changes. "
                 + (orchestrator.DeliversResults
                     ? "Returns an id immediately; the final result is delivered to you automatically when the subagent finishes, so do not poll. "
@@ -499,7 +506,7 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         // 汇总报告只能经协调器推回去;对外 MCP 唤不醒外部模型(DeliversResults=false),那条路不给团队工具
         if (mode == ChatMode.Agent && Subagents is { DeliversResults: true } teamOrchestrator)
         {
-            var teamTools = new SubagentToolBinding(teamOrchestrator);
+            var teamTools = new SubagentToolBinding(teamOrchestrator, this);
             all.Add(("team_run", AIFunctionFactory.Create(teamTools.TeamRun, "team_run",
                 "Run a team of AI members on a larger task that benefits from specialists building on each other's work. "
                 + $"Define up to {TeamEngine.MaxMembers} members (name, role such as researcher/engineer/reviewer/tester/writer, optional modelId, allowWrites) "
@@ -507,7 +514,8 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 + "The engine starts each task when its dependencies are done, hands upstream reports to dependents, lets members message each other, "
                 + $"sends a task back once (max {TeamEngine.MaxReworks} rework) when its reviewer ends with VERDICT: FAIL, "
                 + "and delivers ONE consolidated team report to you when everything has finished — do not poll. "
-                + "Members have the same limits as subagents: read-only unless allowWrites=true, no command execution. "
+                + "Members have the same limits as subagents: read-only unless allowWrites=true, and they run shell commands only with allowCommands=true "
+                + "(each command still needs the user's approval) — give that only to members whose task really requires commands. "
                 + $"timeoutSeconds is per task ({SubagentOrchestrator.MinTimeoutSeconds}-{TeamEngine.MaxTaskTimeoutSeconds}, default {TeamEngine.DefaultTaskTimeoutSeconds}). "
                 + "Allowed models: " + AgentJson.Serialize(teamOrchestrator.ModelChoices)), false));
             all.Add(("team_status", AIFunctionFactory.Create(teamTools.TeamStatus, "team_status",
@@ -528,11 +536,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     }
 
     /// <summary>把子 Agent 工具绑定到创建它们那一轮的编排器。</summary>
-    private sealed class SubagentToolBinding(SubagentOrchestrator orchestrator)
+    private sealed class SubagentToolBinding(SubagentOrchestrator orchestrator, AgentToolbox toolbox)
     {
         public string DelegateSubagentAsync(string prompt, string? role = null, string? modelId = null,
-            bool allowWrites = false, int timeoutSeconds = 0)
-            => orchestrator.Start(prompt, role, modelId, allowWrites, timeoutSeconds);
+            bool allowWrites = false, int timeoutSeconds = 0, bool allowCommands = false)
+            => orchestrator.Start(prompt, role, modelId, allowWrites, timeoutSeconds, allowCommands);
 
         public string SubagentStatusAsync(string id)
             => orchestrator.Status(id);
@@ -545,12 +553,29 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         public string SubagentCancelAsync(string id)
             => orchestrator.Cancel(id);
 
-        public string TeamRun(
+        public Task<string> TeamRun(
             [System.ComponentModel.Description("What the whole team must achieve.")] string goal,
             [System.ComponentModel.Description("Team members.")] TeamMemberSpec[] members,
             [System.ComponentModel.Description("Tasks with assignee, dependencies and optional review relations.")] TeamTaskSpec[] tasks,
-            int timeoutSeconds = 0)
-            => orchestrator.EnsureTeam().Run(goal, members, tasks, timeoutSeconds);
+            int timeoutSeconds = 0, CancellationToken cancellationToken = default)
+            => TeamRunCoreAsync(goal, members, tasks, timeoutSeconds, cancellationToken);
+
+        /// <summary>先校验,再请用户确认计划(按审批挡位),同意了才开跑;拒绝只退回给主模型,不停整轮。</summary>
+        private async Task<string> TeamRunCoreAsync(string goal, TeamMemberSpec[] members, TeamTaskSpec[] tasks,
+            int timeoutSeconds, CancellationToken cancellationToken)
+        {
+            TeamEngine team = orchestrator.EnsureTeam();
+            if (team.Validate(goal, members, tasks) is { } invalid) return invalid;
+            bool approved = await toolbox.ConfirmPlanAsync(
+                new ApprovalRequest("team_run", TeamEngine.DescribePlan(goal, members, tasks), "team_run:team"),
+                cancellationToken).ConfigureAwait(false);
+            if (!approved)
+            {
+                return "The user declined this team plan, so no team was started. Do not call team_run again with the same plan: "
+                       + "either do the work yourself, propose a smaller plan, or ask the user how they want to proceed.";
+            }
+            return team.Run(goal, members, tasks, timeoutSeconds);
+        }
 
         public string TeamStatus()
             => orchestrator.Team?.Status() ?? "No team has been started in this turn. Use team_run first.";
@@ -2658,6 +2683,24 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         bool approved = await handler(request).WaitAsync(cancellationToken).ConfigureAwait(false);
         if (!approved) CurrentRun.MarkExecutionDenied();
         return approved;
+    }
+
+    /// <summary>
+    /// 计划级确认(团队开跑前):与 <see cref="ApproveAsync" /> 同一个审批处理器、同一张审批卡,但<b>拒绝不是本轮的停止边界</b> ——
+    /// 用户拒绝的是这个团队计划,不是整件事,主模型得能改成自己做或先问用户。
+    /// 「全部自动」直接放行;没有审批通道(无界面入口)时也放行:计划本身不动任何东西,成员每个有副作用的动作照旧逐个审批。
+    /// </summary>
+    internal async Task<bool> ConfirmPlanAsync(ApprovalRequest request, CancellationToken cancellationToken)
+    {
+        if (_parentToolbox is { } parent)
+        {
+            return await parent.ConfirmPlanAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        if (Approval == ApprovalMode.Bypass || ApprovalHandler is not { } handler)
+        {
+            return true;
+        }
+        return await handler(request).WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>命令的第一个词(去掉前导的 sudo,否则所有命令的记忆键都是 sudo)。</summary>

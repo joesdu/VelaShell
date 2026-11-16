@@ -3681,6 +3681,14 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **团队卡第二轮反馈**:任务行只写任务标题(任务 id 常被模型起成角色名,与简写圈重复,id 移到悬停提示);第二行引用别的任务时写对方标题;引擎的英文状态说明(等成员做完、返工后再审、依赖未完成)改为本地化文案。团队消息收起后留一大块空白:只藏了 ScrollViewer 里的列表,ScrollViewer 保留展开时的高度,改为开合整个滚动区(UI 用例量了展开前后卡片高度)。小简写圈 14px / 9 号字违反字号 ≥11 的可访问性门禁(`FontTokens_InXamlAndCode_AreDefinedAndAtLeast11`),改 16px / 11 号。
 - **团队模式自适应**:原先团队判据只有一句、挂在委派说明末尾,停用 `team_run` 后仍会提到它。拆出 `SubagentRunner.TeamGuidance`,仅在本轮有 `team_run` 时附加(桌面与 IM),写明由主模型自行决定、不等用户点名,给出四条判据(满足两条时倾向组团队)与不该组团队的情形,控制规模 2–4 人。
 - **模型不可用的替补**(试用反馈:Codex + ChatGPT 账号回 `model_not_found`「The 'gpt-5.4' model is not supported when using Codex with a ChatGPT account」,团队里分给该模型的成员一个接一个撞同一个 400):新增 `TransientFailure.IsModelUnavailable`,只认错误码 / 原话点名模型的 400 / 404(裸 404 多半是 Base URL 错,普通 400 参数错不算)。主模型按 403 同样处理(换 Key、只冷这把 Key 用在这个模型上),空链时 `FailoverCandidates(includeSiblingModels: true)` 追加同一供应商实例、同一份凭据下的其它聊天模型(同一账号,不需要跨账号开关;排了链照旧按链),切换卡原因「该账号不可用此模型」。子任务 / 团队成员在还没输出、没调工具时依次换父模型与委派候选里的其它模型重跑,卡片与结果写明换过,该模型本轮记为不可用、之后直接跳过;调过工具后才失败的不重跑。
+- **第二轮完善**(合并后自查):
+  - 检查点泄漏:删除会话、清空历史、从某条消息起删除都没清检查点(内含截短的工具输出),截断后还会冒出指向已删任务的续跑卡。三处一并清理;`RunCheckpointStore.Forget` 让删掉的会话之后不再写(删的正在跑时停下的收尾还会补写),`DeleteAll` 记下清空时刻、丢弃清空前开跑的那几轮的写入。写手的定时写入与正常收尾的删除有竞态(过了「未关闭」检查还没落盘时被删,文件又写回来),写与删改串在同一把锁上。写手挪到 `Chat/RunCheckpointWriter`,面板与桥接共用。
+  - 续跑交代后台命令:`PendingBackgroundCommands` 从检查点推断回过「运行中」、之后没见到终态的 `run_command`,续跑说明列出会话 / 命令 / 最后状态,要求先核实再决定。
+  - 子任务 / 团队成员也接入 `RunContextCompactor`(前缀为系统提示词与任务说明,写摘要另起裸客户端,用量计入该任务),跟随「上下文压缩」开关。
+  - 成员 / 子任务可执行命令:`allowCommands`(默认关)开放 `run_command` 与 `task_status` / `task_wait` / `task_cancel`,审批经父工具箱、审批卡标明来源;多机并行、终端输入、会话与传输仍不给。卡片「可执行命令(需审批)」,成员头像提示 `>_`。
+  - 团队开跑前确认计划:`team_run` 先 `Validate` 再经 `ConfirmPlanAsync`(同一审批处理器与审批卡,「全部自动」放行,可「本次会话总是允许」),**拒绝不是本轮停止边界**,只退回给主模型;审批卡显示 `DescribePlan`(成员 ✎ / >_、任务 ← 依赖 ⟲ 审查)。
+  - IM:Agent 模式写检查点(键为 `bridge-` + ChatKey,重启后聊天不变),/stop、超时、出错时附「发送 /continue 继续」;`/continue` 把步骤放回上下文(重启后先补回原请求那条用户消息)再开一轮,`/new` 丢弃旧检查点;进度改报团队一行(阶段、任务进度、在跑成员与任务)。
+  - 「模型不可用换到同账号其它模型后粘住」保持现状:那个模型在这个账号上本来就用不了,不粘住的话下一轮必然再失败一次再切;切换卡已写明,用户可在模型菜单换回。
 - **修掉的卡死**:团队任务若同步落定(模型解析当场失败),完成回调会赶在 `StartCore` 返回、任务记下子任务 id 之前进来,被当成无关条目忽略,团队永远不收尾。改为引擎预先生成 id(`presetId`)并在启动前标记运行中。由新测试在同步运行器上抓到。
 - **验证**:AI 测试工程 Debug 全量 2228 项中 2227 项通过,1 项失败(`CreateTools_InPlanMode_ExposesOnlyReadOnlyTools`:`team_status` 与 `subagent_status` 一样只在有编排器时出现,用例补上排除并把团队写工具列入计划模式禁止名单)。修正后,该用例与新增的 `ToolDisplayTests`、`RunContextCompactorTests`、`RunCheckpointStoreTests`、`TeamEngineTests`(含同步 / 异步运行器、审查返工、失败受阻、消息投递)、`ChatPanelViewUiTests.ToolGroups`(分组、封口、工作过程折叠、人读详情)以及既有子任务 / 思考相关 UI 用例共 82 项通过。之后只改了对外 MCP 不给团队工具、传输卡不进工作过程两处,未再跑全量。未接真实模型验证团队调度与运行内压缩的实际效果,未人工验收 GUI。
 - **文档**:宿主中英手册(工具调用的显示、团队模式、长任务、断点续跑)、AI 插件 README;velashell-docs 中英 `plugins/11-automation-and-ai.md` §1.12–1.14 与 `12-security-threat-model.md` 团队与续跑边界。

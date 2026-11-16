@@ -14,9 +14,13 @@ namespace VelaShell.Plugin.Ai.Agent;
 /// <param name="ExtraTools">额外交给子 Agent 的工具(团队成员的 team_message / team_board)。</param>
 /// <param name="DrainInbox">每次请求模型之前取走发给它的新消息(团队成员之间的消息);为空表示没有收件箱。</param>
 /// <param name="MaxSteps">最多走多少步;不大于 0 用默认值。</param>
+/// <param name="AllowCommands">
+/// 显式允许执行 shell 命令(<c>run_command</c> 及查看 / 等待 / 取消它起的任务),默认不开。
+/// 每条命令照旧走父轮的审批挡位与审批卡(标明来源子任务),拒绝即停止,不扩大会话范围。
+/// </param>
 public sealed record SubagentRequest(string Prompt, string? Role, string? ModelId = null, bool AllowWrites = false,
     string? Instructions = null, IReadOnlyList<AITool>? ExtraTools = null,
-    Func<IReadOnlyList<string>>? DrainInbox = null, int MaxSteps = 0);
+    Func<IReadOnlyList<string>>? DrainInbox = null, int MaxSteps = 0, bool AllowCommands = false);
 
 /// <summary>子 Agent 对某个工具的调用次数。</summary>
 /// <param name="Name">工具名称。</param>
@@ -54,6 +58,7 @@ public sealed record SubagentExecutionResult(
 /// <param name="OutputTokens">供应商已报告的输出 token 累计。</param>
 /// <param name="AllowWrites">本次委派是否开放了文件修改工具。</param>
 /// <param name="TeamTaskId">属于团队的哪个任务;普通委派为 null。团队任务的结果由 <see cref="TeamEngine" /> 汇总,不逐个送回父 Agent。</param>
+/// <param name="AllowCommands">本次委派是否开放了执行命令。</param>
 public sealed record SubagentSnapshot(
     string SubagentId,
     string Role,
@@ -69,7 +74,8 @@ public sealed record SubagentSnapshot(
     long InputTokens = 0,
     long OutputTokens = 0,
     bool AllowWrites = false,
-    string? TeamTaskId = null)
+    string? TeamTaskId = null,
+    bool AllowCommands = false)
 {
     /// <summary>已经落到终态（完成、失败、取消或超时）。</summary>
     public bool IsTerminal => Status is not ("queued" or "running");
@@ -320,8 +326,9 @@ public sealed class SubagentOrchestrator(
     /// 执行期限（秒），夹在 <see cref="MinTimeoutSeconds" /> 与 <see cref="MaxTimeoutSeconds" /> 之间；
     /// 不大于 0 时用默认值。等审批与等文件锁的时间不计入。
     /// </param>
+    /// <param name="allowCommands">是否开放执行命令(每条命令照旧审批)。</param>
     public string Start(string prompt, string? role, string? modelId = null, bool allowWrites = false,
-        int timeoutSeconds = 0)
+        int timeoutSeconds = 0, bool allowCommands = false)
     {
         if (Volatile.Read(ref _disposed) != 0)
         {
@@ -331,7 +338,7 @@ public sealed class SubagentOrchestrator(
         {
             return "A non-empty subagent prompt is required.";
         }
-        (string? id, string? error) = StartCore(new SubagentRequest(prompt, role, modelId, allowWrites),
+        (string? id, string? error) = StartCore(new SubagentRequest(prompt, role, modelId, allowWrites, AllowCommands: allowCommands),
             timeoutSeconds > 0
                 ? TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, MinTimeoutSeconds, MaxTimeoutSeconds))
                 : _timeout,
@@ -645,6 +652,7 @@ public sealed class SubagentOrchestrator(
             role = snapshot.Role,
             modelId = snapshot.ModelId,
             allowWrites = snapshot.AllowWrites,
+            allowCommands = snapshot.AllowCommands,
             status = snapshot.Status,
             activity = snapshot.Activity.Length > 0 ? snapshot.Activity : null,
             output = clipped ? output[..MaxModelOutputChars] : output,
@@ -690,7 +698,8 @@ public sealed class SubagentOrchestrator(
             Interlocked.Read(ref entry.InputTokens),
             Interlocked.Read(ref entry.OutputTokens),
             entry.AllowWrites,
-            entry.TeamTaskId);
+            entry.TeamTaskId,
+            entry.Request?.AllowCommands == true);
     }
 
     internal void NotifyChanged() => SnapshotsChanged?.Invoke(Snapshots());

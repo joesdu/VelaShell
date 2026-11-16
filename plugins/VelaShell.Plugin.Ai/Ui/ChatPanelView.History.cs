@@ -124,6 +124,8 @@ public partial class ChatPanelView
             // 先记下它引用的图片:行一删就查不到了
             IReadOnlyList<string> images = await _historyStore.ImageFilesAsync(session.Id);
             await _historyStore.DeleteAsync(session.Id);
+            // 检查点里有截短的工具输出:会话删了它也得走,否则还留在数据目录里;删的正在跑也不再补写
+            DeleteCheckpoint(session.Id, forget: true);
             if (session.Id == ConversationId)
             {
                 StartNewChat();
@@ -171,6 +173,11 @@ public partial class ChatPanelView
         // 清空开始之后才写下的图属于此刻还在跑的那几轮,不在这次回收之列
         DateTime clearedAt = DateTime.UtcNow;
         await _historyStore.ClearAsync();
+        try { Checkpoints.DeleteAll(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _context.Log.Warn($"Clearing run checkpoints failed: {ex.Message}");
+        }
         _inputHistory.Clear();
         StartNewChat();
         SetActiveView(PanelView.History);

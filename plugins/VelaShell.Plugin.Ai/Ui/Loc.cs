@@ -129,6 +129,8 @@ public sealed class Loc(string locale)
         ["SubagentWaitingLock"] = ["Waiting for another file change to finish", "等待其它文件修改完成", "等待其他檔案修改完成", "他のファイル変更の完了待ち", "다른 파일 변경 완료 대기 중"],
         ["SubagentCancel"] = ["Cancel this subagent", "取消这个子 Agent", "取消這個子 Agent", "このサブエージェントを取り消す", "이 하위 에이전트 취소"],
         ["SubagentWritable"] = ["can edit files", "可修改文件", "可修改檔案", "ファイル変更可", "파일 수정 가능"],
+        ["RiskTeam"] = ["Starts a team", "组建团队", "組建團隊", "チーム編成", "팀 구성"],
+        ["SubagentCommands"] = ["can run commands (with approval)", "可执行命令(需审批)", "可執行命令(需審批)", "コマンド実行可(承認制)", "명령 실행 가능(승인 필요)"],
         ["SubagentPartial"] = ["Stopped early — this is what it had written so far.", "任务提前停下,以下是已写出的部分。", "任務提前停下,以下是已寫出的部分。", "途中で停止しました。ここまでの出力です。", "작업이 일찍 중단되었습니다. 지금까지 작성된 내용입니다."],
         ["ApprovalOrigin"] = ["Requested by subagent {0}", "由子 Agent {0} 发起", "由子 Agent {0} 發起", "サブエージェント {0} からの要求", "하위 에이전트 {0}의 요청"],
         ["SubagentErrors"] = ["Errors: {0}", "{0} 项错误", "{0} 項錯誤", "エラー {0} 件", "오류 {0}개"],
@@ -905,14 +907,18 @@ public sealed class Loc(string locale)
             "**VelaShell 어시스턴트**가 이 대화에 연결되었습니다. VelaShell에 저장한 서버에 접속해 로그 확인, 서비스 상태 확인, 명령 실행을 할 수 있습니다.\n\n**현재 설정**\n- 모드: {0}\n- 승인: {1}\n- 조작 범위: {2}\n- 대상: {3}\n\n**명령**\n{4}\n\n그냥 물어봐도 됩니다(예: \"32601 서비스에 오늘 오류가 있나요?\"). 그룹에서는 먼저 @ 해 주세요."
         ],
         ["BridgeHelp"] = [
-            "/sessions — list connected servers\n/use <user@host:port> — bind this chat to one\n/mode chat|plan|agent — change the mode\n/new — start a fresh conversation\n/stop — stop the current turn\n/status — show what this chat is set to, including which machines it may touch",
-            "/sessions — 列出已连上的服务器\n/use <user@host:port> — 把本聊天绑到某一台\n/mode chat|plan|agent — 换挡位\n/new — 开一段新对话\n/stop — 中止当前这一轮\n/status — 看本聊天的当前设定(含能操作哪些机器)",
-            "/sessions — 列出已連上的伺服器\n/use <user@host:port> — 把本聊天綁到某一台\n/mode chat|plan|agent — 換擋位\n/new — 開一段新對話\n/stop — 中止目前這一輪\n/status — 看本聊天的目前設定",
-            "/sessions — 接続中のサーバー一覧\n/use <user@host:port> — このチャットを 1 台に紐付け\n/mode chat|plan|agent — モード変更\n/new — 会話をやり直す\n/stop — 実行中のターンを中止\n/status — このチャットの設定を表示",
-            "/sessions — 연결된 서버 목록\n/use <user@host:port> — 이 대화를 서버에 연결\n/mode chat|plan|agent — 모드 변경\n/new — 새 대화 시작\n/stop — 현재 턴 중단\n/status — 이 대화의 설정 보기"
+            "/sessions — list connected servers\n/use <user@host:port> — bind this chat to one\n/mode chat|plan|agent — change the mode\n/new — start a fresh conversation\n/stop — stop the current turn\n/continue — pick up an unfinished task where it stopped\n/status — show what this chat is set to, including which machines it may touch",
+            "/sessions — 列出已连上的服务器\n/use <user@host:port> — 把本聊天绑到某一台\n/mode chat|plan|agent — 换挡位\n/new — 开一段新对话\n/stop — 中止当前这一轮\n/continue — 从中断处接着跑没完成的任务\n/status — 看本聊天的当前设定(含能操作哪些机器)",
+            "/sessions — 列出已連上的伺服器\n/use <user@host:port> — 把本聊天綁到某一台\n/mode chat|plan|agent — 換擋位\n/new — 開一段新對話\n/stop — 中止目前這一輪\n/continue — 從中斷處接著跑沒完成的任務\n/status — 看本聊天的目前設定",
+            "/sessions — 接続中のサーバー一覧\n/use <user@host:port> — このチャットを 1 台に紐付け\n/mode chat|plan|agent — モード変更\n/new — 会話をやり直す\n/stop — 実行中のターンを中止\n/continue — 未完了のタスクを中断したところから再開\n/status — このチャットの設定を表示",
+            "/sessions — 연결된 서버 목록\n/use <user@host:port> — 이 대화를 서버에 연결\n/mode chat|plan|agent — 모드 변경\n/new — 새 대화 시작\n/stop — 현재 턴 중단\n/continue — 미완료 작업을 중단된 곳부터 이어서 실행\n/status — 이 대화의 설정 보기"
         ],
         ["BridgeNewChat"] = ["Started a fresh conversation.", "已开一段新对话。", "已開一段新對話。", "会話をやり直しました。", "새 대화를 시작했습니다."],
         ["BridgeStopped"] = ["Stopped the current turn.", "已中止当前这一轮。", "已中止目前這一輪。", "実行中のターンを中止しました。", "현재 턴을 중단했습니다."],
+        ["BridgeResumeHint"] = ["This task did not finish. Send /continue to pick it up where it stopped.", "这个任务没有跑完。发送 /continue 可以从中断处接着跑。", "這個任務沒有跑完。傳送 /continue 可以從中斷處接著跑。", "このタスクは完了していません。/continue を送ると中断したところから再開します。", "이 작업은 완료되지 않았습니다. /continue 를 보내면 중단된 곳부터 이어서 실행합니다."],
+        ["BridgeNothingToContinue"] = ["There is no unfinished task to continue in this chat.", "这个聊天里没有没跑完、可以继续的任务。", "這個聊天裡沒有沒跑完、可以繼續的任務。", "このチャットに再開できる未完了のタスクはありません。", "이 채팅에는 이어서 실행할 미완료 작업이 없습니다."],
+        ["BridgeContinueBusy"] = ["A turn is still running. Wait for it to finish (or /stop it) before /continue.", "当前这一轮还在跑。等它结束(或 /stop)后再 /continue。", "目前這一輪還在跑。等它結束(或 /stop)後再 /continue。", "実行中のターンがあります。終わってから(または /stop してから)/continue してください。", "실행 중인 턴이 있습니다. 끝난 뒤(또는 /stop 후) /continue 하세요."],
+        ["BridgeTeam"] = ["Team", "团队", "團隊", "チーム", "팀"],
         ["BridgeNothingRunning"] = ["Nothing is running.", "当前没有正在跑的轮次。", "目前沒有正在跑的輪次。", "実行中のターンはありません。", "실행 중인 턴이 없습니다."],
         ["BridgeStatus"] = ["{0} · mode {1} · approval {2} · bound to {3} ({4})", "{0} · 挡位 {1} · 审批 {2} · 绑定 {3}({4})", "{0} · 擋位 {1} · 審批 {2} · 綁定 {3}({4})", "{0} · モード {1} · 承認 {2} · 接続先 {3}({4})", "{0} · 모드 {1} · 승인 {2} · 대상 {3}({4})"],
         ["BridgeSessionOnline"] = ["connected", "在线", "在線", "接続中", "연결됨"],
