@@ -142,6 +142,23 @@ public sealed class ModelsDevCatalog(IPluginContext context)
                       ?? throw new IOException("The bundled models.dev snapshot is missing."), at);
     }
 
+    /// <summary>以 <paramref name="older" /> 为底,<paramref name="newer" /> 里有的型号覆盖、没有的补上;每家按 id 排序。</summary>
+    internal static Dictionary<string, List<ModelSpec>> Merge(Dictionary<string, List<ModelSpec>> older,
+        Dictionary<string, List<ModelSpec>> newer)
+    {
+        var merged = new Dictionary<string, List<ModelSpec>>(StringComparer.OrdinalIgnoreCase);
+        foreach (string provider in older.Keys.Union(newer.Keys, StringComparer.OrdinalIgnoreCase))
+        {
+            var byId = new Dictionary<string, ModelSpec>(StringComparer.OrdinalIgnoreCase);
+            foreach (ModelSpec spec in older.GetValueOrDefault(provider) ?? []) byId[spec.Id] = spec;
+            foreach (ModelSpec spec in newer.GetValueOrDefault(provider) ?? []) byId[spec.Id] = spec;
+            List<ModelSpec> specs = [.. byId.Values];
+            specs.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+            merged[provider] = specs;
+        }
+        return merged;
+    }
+
     /// <summary>解压并解析内置快照;读不出来返回空表(由调用方退回缓存)。</summary>
     private Dictionary<string, List<ModelSpec>> ParseBundled((Func<Stream> Open, DateTimeOffset At) bundled)
     {
@@ -389,27 +406,28 @@ public sealed class ModelsDevCatalog(IPluginContext context)
         {
             return _index;
         }
-        // 本地缓存与内置快照取较新的那份:刚升级的版本带来的快照比几周前的缓存新,就用它;
-        // 内置的读不出来(或解析为空)时退回缓存
-        DateTimeOffset? cachedAt = CachedAt;
-        if (Bundled() is { } bundled && (cachedAt is null || bundled.At > cachedAt))
-        {
-            Dictionary<string, List<ModelSpec>> fromBundle = ParseBundled(bundled);
-            if (fromBundle.Count > 0)
-            {
-                return _index = fromBundle;
-            }
-        }
+        Dictionary<string, List<ModelSpec>> fromCache;
         try
         {
-            _index = File.Exists(CacheFile) ? Parse(File.ReadAllText(CacheFile)) : [];
+            fromCache = File.Exists(CacheFile) ? Parse(File.ReadAllText(CacheFile)) : [];
         }
         catch (Exception ex) when (ex is IOException or JsonException)
         {
             context.Log.Warn($"models.dev: the cached index could not be read: {ex.Message}");
-            _index = [];
+            fromCache = [];
         }
-        return _index;
+        // 本地缓存与内置快照合并,同一型号以较新的那份为准。不能整份二选一:内置快照只留近一年的型号
+        // (见 scripts/Update-ModelsDevSnapshot.ps1),刚升级时它比旧缓存新,整份换过去的话,
+        // 能联网的用户在快照新鲜期内也丢了 gpt-4o 这类老型号的规格。合并之后老型号从缓存来,新型号与新价从快照来。
+        if (Bundled() is not { } bundled)
+        {
+            return _index = fromCache;
+        }
+        Dictionary<string, List<ModelSpec>> fromBundle = ParseBundled(bundled);
+        if (fromBundle.Count == 0) return _index = fromCache;
+        if (fromCache.Count == 0) return _index = fromBundle;
+        bool bundleIsNewer = CachedAt is not { } cachedAt || bundled.At > cachedAt;
+        return _index = bundleIsNewer ? Merge(fromCache, fromBundle) : Merge(fromBundle, fromCache);
     }
 
     /// <summary>

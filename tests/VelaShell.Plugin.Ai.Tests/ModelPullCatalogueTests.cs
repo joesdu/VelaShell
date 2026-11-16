@@ -147,20 +147,27 @@ public sealed class ModelPullCatalogueTests
         Assert.IsFalse(catalogue.IsStale, "内置快照还在新鲜期内,拉取时不必先去连 models.dev");
     }
 
-    /// <summary>本地缓存比内置快照新(升级后又联网刷过)就用缓存;快照比缓存新(刚升级)就用快照。</summary>
+    /// <summary>
+    /// 缓存与快照合并,同一型号以较新的那份为准:内置快照只留近一年的型号,刚升级时它比旧缓存新,
+    /// 整份换过去的话能联网的用户也会丢掉老型号的规格。合并后老型号从缓存来,新型号与新价从快照来。
+    /// </summary>
     [TestMethod]
-    public async Task NewerOfCacheAndSnapshot_Wins()
+    public async Task CacheAndSnapshot_AreMerged_NewerWinsPerModel()
     {
         using var context = new TestPluginContext();
         string cacheFile = Path.Combine(context.DataDirectory, "models-dev.json");
-        await File.WriteAllTextAsync(cacheFile, """{"openai":{"gpt-cached":{"name":"cached","ctx":1000,"max":100}}}""");
+        // 缓存:一个老型号,外加 gpt-5 的旧规格
+        await File.WriteAllTextAsync(cacheFile,
+            """{"openai":{"gpt-4o":{"name":"GPT-4o","ctx":128000,"max":16384},"gpt-5":{"name":"GPT-5","ctx":272000,"max":128000}}}""");
         File.SetLastWriteTimeUtc(cacheFile, DateTime.UtcNow.AddDays(-3));
 
-        var olderSnapshot = new ModelsDevCatalog(context) { BundledSource = Bundle(DateTimeOffset.UtcNow.AddDays(-10)) };
         var newerSnapshot = new ModelsDevCatalog(context) { BundledSource = Bundle(DateTimeOffset.UtcNow.AddDays(-1)) };
+        var olderSnapshot = new ModelsDevCatalog(context) { BundledSource = Bundle(DateTimeOffset.UtcNow.AddDays(-10)) };
 
-        Assert.AreEqual("gpt-cached", olderSnapshot.ForProvider("openai").Single().Id);
-        Assert.AreEqual("gpt-5", newerSnapshot.ForProvider("openai").Single().Id);
+        IReadOnlyList<ModelSpec> fromNewer = newerSnapshot.ForProvider("openai");
+        CollectionAssert.AreEqual(new[] { "gpt-4o", "gpt-5" }, fromNewer.Select(s => s.Id).ToArray(), "老型号从缓存来,不因快照裁剪而丢");
+        Assert.AreEqual(400000, fromNewer.Single(s => s.Id == "gpt-5").ContextTokens, "快照更新:同一型号以快照为准");
+        Assert.AreEqual(272000, olderSnapshot.ForProvider("openai").Single(s => s.Id == "gpt-5").ContextTokens, "缓存更新:同一型号以缓存为准");
     }
 
     /// <summary>快照过期(装的是很久以前的版本):仍拿它兜底,但标为该刷新;快照损坏时退回缓存。</summary>
