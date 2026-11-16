@@ -1,5 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Media;
+using VelaShell.Plugin.Ai.Agent;
 using Avalonia.VisualTree;
 using LiveMarkdown.Avalonia;
 using VelaShell.Plugin.Ai.Ui;
@@ -98,6 +101,64 @@ public sealed partial class ChatPanelViewUiTests
                 cancelled.FinishStreaming(cancelled: true);
                 await PumpAsync();
                 Assert.IsFalse(cancelled.Root.GetVisualDescendants().OfType<Border>().Any(b => b.Classes.Contains("processFold")));
+            }
+            finally { panel.Detach(); window.Close(); }
+        });
+    }
+
+    /// <summary>
+    /// 团队卡的任务行:负责人简写圈在标题左侧(各行对齐),右侧依次是输入 token 与耗时、都右对齐;
+    /// 团队消息的「谁 → 谁」用同样的简写圈;跑完的团队显示「已完成」。
+    /// </summary>
+    [TestMethod]
+    public void TeamCard_AlignsAvatarsLeftAndTokensTimeRight()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                window.Width = 460;
+                StackPanel messages = Find<StackPanel>(panel, "MessagesPanel");
+                var bubble = new ChatPanelView.AssistantBubble(panel);
+                messages.Children.Add(bubble.Root);
+                TeamMemberInfo[] members = [new("system", "researcher", null, false, 0), new("network", "researcher", null, false, 1)];
+                TeamTaskInfo[] tasks =
+                [
+                    new("t1", "审查 SSH 与权限", "system", "completed", [], null, 1, null, "sub-a", "ok", "", TimeSpan.FromSeconds(34)),
+                    new("t2", "审查 FRP 与防火墙", "network", "completed", [], null, 1, null, "sub-b", "ok", "", TimeSpan.FromSeconds(40))
+                ];
+                var team = new TeamBoardSnapshot("team-1", "安全审计", "completed", members, tasks,
+                    [new(DateTimeOffset.Now, "network", "lead", "report", "#t2 done")], TimeSpan.FromSeconds(80));
+                SubagentSnapshot[] runs =
+                [
+                    new("sub-a", "system", "completed", "", "ok", [], [], TimeSpan.FromSeconds(34), InputTokens: 18_200, OutputTokens: 900, TeamTaskId: "t1"),
+                    new("sub-b", "network", "completed", "", "ok", [], [], TimeSpan.FromSeconds(40), InputTokens: 9_400, OutputTokens: 700, TeamTaskId: "t2")
+                ];
+                bubble.UpdateTeam(team, runs);
+                await PumpAsync();
+
+                Border board = bubble.Root.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("teamBoard"));
+                Assert.Contains(t => t.Text == "Done", board.GetVisualDescendants().OfType<TextBlock>());
+                Border[] rows = [.. board.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("teamTask"))];
+                Assert.HasCount(2, rows);
+                double? titleLeft = null;
+                foreach (Border row in rows)
+                {
+                    TextBlock title = row.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text?.StartsWith('#') == true);
+                    TextBlock tokens = row.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text?.EndsWith(" tok", StringComparison.Ordinal) == true);
+                    TextBlock elapsed = row.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text?.EndsWith('s') == true && t.Text.Any(char.IsDigit) && t != tokens && t != title);
+                    double left = title.TranslatePoint(default, board)!.Value.X;
+                    titleLeft ??= left;
+                    Assert.AreEqual(titleLeft.Value, left, 0.5, "各行标题左缘对齐");
+                    Assert.IsLessThan(left, row.GetVisualDescendants().OfType<Border>().First(b => b.CornerRadius.TopLeft > 0 && b.Width == 14).TranslatePoint(default, board)!.Value.X + 1,
+                        "简写圈在标题左侧");
+                    Assert.IsLessThan(elapsed.TranslatePoint(default, board)!.Value.X, tokens.TranslatePoint(default, board)!.Value.X, "token 在耗时左侧");
+                    Assert.AreEqual(TextAlignment.Right, elapsed.TextAlignment);
+                }
+                Assert.Contains(t => t.Text == "18k tok", board.GetVisualDescendants().OfType<TextBlock>());
+                Assert.DoesNotContain(t => t.Text == "network", board.GetVisualDescendants().OfType<TextBlock>(), "成员名不再写全称,只用简写圈");
             }
             finally { panel.Detach(); window.Close(); }
         });

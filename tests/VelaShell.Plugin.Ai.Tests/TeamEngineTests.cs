@@ -223,6 +223,44 @@ public sealed class TeamEngineTests
         Assert.IsFalse(team.IsActive);
     }
 
+    /// <summary>
+    /// 正常跑完的团队,这一轮收尾释放编排器之后看板仍是「已完成」——
+    /// 释放时的 Shutdown 曾无条件置位取消,卡片最后一次刷新就把已完成改判成了已取消。
+    /// </summary>
+    [TestMethod]
+    public async Task FinishedTeam_StaysCompletedAfterTheOrchestratorIsDisposed()
+    {
+        var runner = new FakeRunner((_, _) => "ok");
+        var orchestrator = new SubagentOrchestrator(runner.RunAsync, CancellationToken.None);
+        TeamEngine team = orchestrator.EnsureTeam();
+        team.Run("goal", [Member("a", "researcher")], [Work("t1", "a")]);
+        await WaitForReportAsync(orchestrator);
+
+        await orchestrator.DisposeAsync();
+
+        Assert.AreEqual("completed", team.Snapshot()!.Phase);
+    }
+
+    /// <summary>还在跑时被释放(用户停下这一轮):看板记为已取消,任务不再开始。</summary>
+    [TestMethod]
+    public async Task RunningTeam_IsCancelledWhenTheOrchestratorIsDisposed()
+    {
+        var gate = new TaskCompletionSource<SubagentExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var orchestrator = new SubagentOrchestrator(async (_, token) =>
+        {
+            await using (token.Register(() => gate.TrySetCanceled(token)))
+                return await gate.Task;
+        }, CancellationToken.None);
+        TeamEngine team = orchestrator.EnsureTeam();
+        team.Run("goal", [Member("a", "researcher"), Member("b", "engineer")], [Work("t1", "a"), Work("t2", "b", ["t1"])]);
+
+        await orchestrator.DisposeAsync();
+
+        TeamBoardSnapshot board = team.Snapshot()!;
+        Assert.AreEqual("cancelled", board.Phase);
+        Assert.IsTrue(board.Tasks.All(t => t.Status is "cancelled" or "blocked"));
+    }
+
     [TestMethod]
     public void ParseVerdict_TakesTheLastOneAndTreatsMissingAsFail()
     {

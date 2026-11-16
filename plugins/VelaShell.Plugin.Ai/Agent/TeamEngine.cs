@@ -329,7 +329,12 @@ public sealed partial class TeamEngine
     /// <summary>编排器收尾时:不再开新任务。</summary>
     internal void Shutdown()
     {
-        lock (_gate) _cancelled = true;
+        // 只在还没落定时算「取消」:正常跑完的团队在这一轮收尾释放编排器时也会走到这里,
+        // 无条件置位会把已完成的看板改判成已取消(卡片最后一次刷新正好在释放之后)
+        lock (_gate)
+        {
+            if (_started && _finishedAt is null) _cancelled = true;
+        }
     }
 
     // ─────────────────────────── 成员的工具 ───────────────────────────

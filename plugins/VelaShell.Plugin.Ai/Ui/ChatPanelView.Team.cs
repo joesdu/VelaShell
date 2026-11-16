@@ -41,7 +41,7 @@ public partial class ChatPanelView
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
-        text[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize11");
+        text[!TextBlock.FontSizeProperty] = new DynamicResourceExtension(size < 16 ? "VelaFontSize9" : "VelaFontSize11");
         text[!TextBlock.ForegroundProperty] = new DynamicResourceExtension(MemberColor(member.Color));
         var avatar = new Border
         {
@@ -54,6 +54,32 @@ public partial class ChatPanelView
         avatar[!Border.BorderBrushProperty] = new DynamicResourceExtension(MemberColor(member.Color));
         avatar[!Border.BackgroundProperty] = new DynamicResourceExtension(MemberColor(member.Color) + "Dim");
         ToolTip.SetTip(avatar, $"{member.Name} · {member.Role}" + (member.AllowWrites ? " · ✎" : ""));
+        return avatar;
+    }
+
+    /// <summary>主控 / 全体 / 引擎的简写圈:中性色,不占成员的身份色(强调色在深色主题下与 VelaShellBlue 同色,不能用)。</summary>
+    private static Border NeutralAvatar(string text, string tip, double size)
+    {
+        var label = new TextBlock
+        {
+            Text = text,
+            FontWeight = FontWeight.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        label[!TextBlock.FontSizeProperty] = new DynamicResourceExtension(size < 16 ? "VelaFontSize9" : "VelaFontSize11");
+        label[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("VelaTextSecondary");
+        var avatar = new Border
+        {
+            Width = size,
+            Height = size,
+            CornerRadius = new CornerRadius(size / 2),
+            BorderThickness = new Thickness(1.5),
+            Child = label
+        };
+        avatar[!Border.BorderBrushProperty] = new DynamicResourceExtension("VelaTextTertiary");
+        avatar[!Border.BackgroundProperty] = new DynamicResourceExtension("VelaBgHover");
+        ToolTip.SetTip(avatar, tip);
         return avatar;
     }
 
@@ -187,12 +213,12 @@ public partial class ChatPanelView
             {
                 _renderedMessages = team.Messages.Count;
                 _messages.Children.Clear();
-                foreach (TeamMessageInfo message in team.Messages) _messages.Children.Add(MessageRow(message));
+                foreach (TeamMessageInfo message in team.Messages) _messages.Children.Add(MessageRow(message, team));
             }
         }
 
         /// <summary>一条团队消息:分类标签 + 「谁 → 谁」+ 正文。</summary>
-        private Grid MessageRow(TeamMessageInfo message)
+        private Grid MessageRow(TeamMessageInfo message, TeamBoardSnapshot team)
         {
             (string key, string tone) = message.Kind switch
             {
@@ -207,7 +233,11 @@ public partial class ChatPanelView
             var tagBox = new Border { Classes = { "teamTag" }, Child = tag, VerticalAlignment = VerticalAlignment.Top };
             tagBox[!Border.BorderBrushProperty] = new DynamicResourceExtension(tone);
 
-            var route = new TextBlock { Classes = { "dim" }, Text = $"{Display(message.From)} → {Display(message.To)}" };
+            // 「谁 → 谁」用与任务表同一套简写圈:成员是身份色首字母,主控 / 全体 / 引擎是中性色的短字
+            var route = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+            route.Children.Add(Party(message.From));
+            route.Children.Add(new TextBlock { Classes = { "dim" }, Text = "→", VerticalAlignment = VerticalAlignment.Center });
+            route.Children.Add(Party(message.To));
             var body = new SelectableTextBlock { Text = message.Text, TextWrapping = TextWrapping.Wrap };
             body[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize11");
             var text = new StackPanel { Spacing = 1 };
@@ -221,13 +251,18 @@ public partial class ChatPanelView
             ToolTip.SetTip(row, message.At.ToLocalTime().ToString("HH:mm:ss"));
             return row;
 
-            string Display(string name) => name switch
+            Border Party(string name)
             {
-                "lead" => _owner._loc["TeamLead"],
-                "all" => _owner._loc["TeamAll"],
-                "engine" => _owner._loc["TeamEngine"],
-                _ => name
-            };
+                if (team.Members.FirstOrDefault(m => m.Name == name) is { } member) return MemberAvatar(member, 14);
+                (string shortKey, string fullKey) = name switch
+                {
+                    "lead" => ("TeamLeadShort", "TeamLead"),
+                    "all" => ("TeamAllShort", "TeamAll"),
+                    "engine" => ("TeamEngineShort", "TeamEngine"),
+                    _ => ("", "")
+                };
+                return NeutralAvatar(shortKey.Length > 0 ? _owner._loc[shortKey] : name, fullKey.Length > 0 ? _owner._loc[fullKey] : name, 14);
+            }
         }
     }
 
@@ -237,8 +272,11 @@ public partial class ChatPanelView
         private readonly ChatPanelView _owner;
         private readonly Decorator _status = new() { Margin = new Thickness(0, 1, 6, 0), VerticalAlignment = VerticalAlignment.Top };
         private readonly TextBlock _title = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        private readonly StackPanel _assignee = new() { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
-        private readonly TextBlock _elapsed = new() { Classes = { "dim" }, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        // 负责人只放一枚带身份色的简写圈,固定在左侧一列:各行的圈与标题都上下对齐
+        private readonly Decorator _assignee = new() { Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        // 右侧两列定宽右对齐:这个成员这次运行收到的输入 token、耗时(时间贴最右)
+        private readonly TextBlock _tokens = new() { Classes = { "dim" }, MinWidth = 48, TextAlignment = TextAlignment.Right, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        private readonly TextBlock _elapsed = new() { Classes = { "dim" }, MinWidth = 42, TextAlignment = TextAlignment.Right, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock _detail = new() { Classes = { "dim" }, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 };
         private readonly Border _expanded = new() { IsVisible = false, Margin = new Thickness(18, 4, 0, 4) };
         private readonly SubagentRunCard _card;
@@ -253,15 +291,18 @@ public partial class ChatPanelView
         {
             _owner = owner;
             _card = new SubagentRunCard(owner, cancel);
-            var line = new Grid { ColumnDefinitions = [with("Auto,*,Auto,Auto")] };
+            // 状态 | 负责人简写 | #id 标题 | 输入 token | 耗时
+            var line = new Grid { ColumnDefinitions = [with("Auto,Auto,*,Auto,Auto")] };
             line.Children.Add(_status);
-            Grid.SetColumn(_title, 1);
-            line.Children.Add(_title);
-            Grid.SetColumn(_assignee, 2);
+            Grid.SetColumn(_assignee, 1);
             line.Children.Add(_assignee);
-            Grid.SetColumn(_elapsed, 3);
+            Grid.SetColumn(_title, 2);
+            line.Children.Add(_title);
+            Grid.SetColumn(_tokens, 3);
+            line.Children.Add(_tokens);
+            Grid.SetColumn(_elapsed, 4);
             line.Children.Add(_elapsed);
-            _detail.Margin = new Thickness(18, 0, 0, 0);
+            _detail.Margin = new Thickness(37, 0, 0, 0); // 与标题左缘对齐(状态 11+6 + 简写圈 14+6)
             var header = new StackPanel { Spacing = 1, Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand) };
             header.Children.Add(line);
             header.Children.Add(_detail);
@@ -302,14 +343,13 @@ public partial class ChatPanelView
             if (assigneeKey != _assigneeKey)
             {
                 _assigneeKey = assigneeKey;
-                _assignee.Children.Clear();
-                if (member is not null) _assignee.Children.Add(MemberAvatar(member, 14));
-                var name = new TextBlock { Text = task.Assignee, VerticalAlignment = VerticalAlignment.Center };
-                name[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize11");
-                if (member is not null) name[!TextBlock.ForegroundProperty] = new DynamicResourceExtension(MemberColor(member.Color));
-                _assignee.Children.Add(name);
+                _assignee.Child = MemberAvatar(member ?? new TeamMemberInfo(task.Assignee, "", null, false, 0), 14);
             }
             _elapsed.Text = task.Elapsed > TimeSpan.Zero ? ChatFormatting.Duration(run?.Elapsed ?? task.Elapsed) : "";
+            _tokens.Text = run is { InputTokens: > 0 } used ? $"{ChatFormatting.Compact(used.InputTokens)} tok" : "";
+            ToolTip.SetTip(_tokens, run is { } r && r.InputTokens + r.OutputTokens > 0
+                ? _owner._loc.F("TeamTokens", task.Assignee, ChatFormatting.Compact(r.InputTokens), ChatFormatting.Compact(r.OutputTokens))
+                : null);
 
             // 第二行:此刻在做什么(运行中)> 等待 / 受阻 / 返工原因 > 审查与依赖关系
             var parts = new List<string>();
