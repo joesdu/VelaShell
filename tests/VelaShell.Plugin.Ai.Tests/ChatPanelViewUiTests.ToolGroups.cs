@@ -164,7 +164,7 @@ public sealed partial class ChatPanelViewUiTests
         });
     }
 
-    /// <summary>展开工具卡:参数按「键: 值」逐行显示,不再是 < 之类的转义码;头部摘要取主参数。</summary>
+    /// <summary>展开工具卡:参数按「键: 值」逐行显示,不再是 <c>\u</c> 开头的转义码;头部摘要取主参数。</summary>
     [TestMethod]
     public void ToolCardDetails_AreHumanReadable()
     {
