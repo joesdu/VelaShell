@@ -152,7 +152,7 @@ public sealed partial class ChatPanelViewUiTests
                     double left = title.TranslatePoint(default, board)!.Value.X;
                     titleLeft ??= left;
                     Assert.AreEqual(titleLeft.Value, left, 0.5, "各行标题左缘对齐");
-                    Assert.IsLessThan(left, row.GetVisualDescendants().OfType<Border>().First(b => b.CornerRadius.TopLeft > 0 && b.Width == 14).TranslatePoint(default, board)!.Value.X + 1,
+                    Assert.IsLessThan(left, row.GetVisualDescendants().OfType<Border>().First(b => b.CornerRadius.TopLeft > 0 && b.Width == 16).TranslatePoint(default, board)!.Value.X + 1,
                         "简写圈在标题左侧");
                     Assert.IsLessThan(elapsed.TranslatePoint(default, board)!.Value.X, tokens.TranslatePoint(default, board)!.Value.X, "token 在耗时左侧");
                     Assert.AreEqual(TextAlignment.Right, elapsed.TextAlignment);

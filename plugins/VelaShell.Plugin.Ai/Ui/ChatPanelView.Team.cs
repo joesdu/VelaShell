@@ -30,6 +30,9 @@ public partial class ChatPanelView
 
     private static string MemberColor(int index) => MemberColors[index % MemberColors.Length];
 
+    /// <summary>任务行与消息里的小简写圈。字号令牌不得小于 11(FontTokens 可访问性门禁),16px 去掉边框后刚好放得下 11 号字。</summary>
+    private const double SmallAvatar = 16;
+
     /// <summary>成员头像:身份色描边的小圆,里面是名字首字母。</summary>
     private static Border MemberAvatar(TeamMemberInfo member, double size = 18)
     {
@@ -41,7 +44,7 @@ public partial class ChatPanelView
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
-        text[!TextBlock.FontSizeProperty] = new DynamicResourceExtension(size < 16 ? "VelaFontSize9" : "VelaFontSize11");
+        text[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize11");
         text[!TextBlock.ForegroundProperty] = new DynamicResourceExtension(MemberColor(member.Color));
         var avatar = new Border
         {
@@ -67,7 +70,7 @@ public partial class ChatPanelView
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
-        label[!TextBlock.FontSizeProperty] = new DynamicResourceExtension(size < 16 ? "VelaFontSize9" : "VelaFontSize11");
+        label[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize11");
         label[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("VelaTextSecondary");
         var avatar = new Border
         {
@@ -253,7 +256,7 @@ public partial class ChatPanelView
 
             Border Party(string name)
             {
-                if (team.Members.FirstOrDefault(m => m.Name == name) is { } member) return MemberAvatar(member, 14);
+                if (team.Members.FirstOrDefault(m => m.Name == name) is { } member) return MemberAvatar(member, SmallAvatar);
                 (string shortKey, string fullKey) = name switch
                 {
                     "lead" => ("TeamLeadShort", "TeamLead"),
@@ -261,7 +264,7 @@ public partial class ChatPanelView
                     "engine" => ("TeamEngineShort", "TeamEngine"),
                     _ => ("", "")
                 };
-                return NeutralAvatar(shortKey.Length > 0 ? _owner._loc[shortKey] : name, fullKey.Length > 0 ? _owner._loc[fullKey] : name, 14);
+                return NeutralAvatar(shortKey.Length > 0 ? _owner._loc[shortKey] : name, fullKey.Length > 0 ? _owner._loc[fullKey] : name, SmallAvatar);
             }
         }
     }
@@ -302,7 +305,7 @@ public partial class ChatPanelView
             line.Children.Add(_tokens);
             Grid.SetColumn(_elapsed, 4);
             line.Children.Add(_elapsed);
-            _detail.Margin = new Thickness(37, 0, 0, 0); // 与标题左缘对齐(状态 11+6 + 简写圈 14+6)
+            _detail.Margin = new Thickness(11 + 6 + SmallAvatar + 6, 0, 0, 0); // 与标题左缘对齐(状态图标 + 简写圈)
             var header = new StackPanel { Spacing = 1, Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand) };
             header.Children.Add(line);
             header.Children.Add(_detail);
@@ -343,7 +346,7 @@ public partial class ChatPanelView
             if (assigneeKey != _assigneeKey)
             {
                 _assigneeKey = assigneeKey;
-                _assignee.Child = MemberAvatar(member ?? new TeamMemberInfo(task.Assignee, "", null, false, 0), 14);
+                _assignee.Child = MemberAvatar(member ?? new TeamMemberInfo(task.Assignee, "", null, false, 0), SmallAvatar);
             }
             _elapsed.Text = task.Elapsed > TimeSpan.Zero ? ChatFormatting.Duration(run?.Elapsed ?? task.Elapsed) : "";
             _tokens.Text = run is { InputTokens: > 0 } used ? $"{ChatFormatting.Compact(used.InputTokens)} tok" : "";
