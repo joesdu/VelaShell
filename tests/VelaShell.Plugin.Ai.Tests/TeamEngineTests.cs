@@ -261,6 +261,24 @@ public sealed class TeamEngineTests
         Assert.IsTrue(board.Tasks.All(t => t.Status is "cancelled" or "blocked"));
     }
 
+    /// <summary>
+    /// 团队模式由主模型自适应启用:提示词明说不必等用户点名,并给出用与不用的判据;
+    /// 只在这一轮真有 team_run 时才附加(工具被停用、对外 MCP 时不提)。
+    /// </summary>
+    [TestMethod]
+    public void TeamGuidance_IsAdaptiveAndOnlyAddedWhenTeamRunIsAvailable()
+    {
+        AIFunction teamRun = AIFunctionFactory.Create(() => "", "team_run");
+        AIFunction delegate_ = AIFunctionFactory.Create(() => "", "delegate_subagent");
+
+        Assert.IsTrue(SubagentRunner.HasTeam([delegate_, teamRun]));
+        Assert.IsFalse(SubagentRunner.HasTeam([delegate_]));
+        Assert.IsFalse(SubagentRunner.HasTeam(null));
+        StringAssert.Contains(SubagentRunner.TeamGuidance, "without waiting for the user to ask for a team");
+        StringAssert.Contains(SubagentRunner.TeamGuidance, "Do NOT form a team");
+        Assert.DoesNotContain("team_run", SubagentRunner.DelegationGuidance, "停用团队工具时委派说明里不能再提它");
+    }
+
     [TestMethod]
     public void ParseVerdict_TakesTheLastOneAndTreatsMissingAsFail()
     {

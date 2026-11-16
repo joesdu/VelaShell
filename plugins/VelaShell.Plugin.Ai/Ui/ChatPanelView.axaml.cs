@@ -2213,6 +2213,7 @@ public partial class ChatPanelView : UserControl
                 RequestContext request = ContextBuilder.Build(
                     BuildSystemPrompt(current, mode, nativeSearch)
                     + (SubagentRunner.HasDelegation(options.Tools) ? SubagentRunner.DelegationGuidance : "")
+                    + (SubagentRunner.HasTeam(options.Tools) ? SubagentRunner.TeamGuidance : "")
                     + (imageToolsEnabled
                         ? "\nImage tools are available. For explicit image creation requests, use generate_image with a standalone prompt incorporating the relevant conversation details. " +
                           "For changes to an existing image use edit_image with its exact conversation image ID. Do not claim success before the tool succeeds. " +

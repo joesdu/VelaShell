@@ -30,6 +30,16 @@ public partial class ChatPanelView
 
     private static string MemberColor(int index) => MemberColors[index % MemberColors.Length];
 
+    // 引擎状态说明的几种固定句式(TeamEngine.Pump / OnEntryFinished 写的)
+    [System.Text.RegularExpressions.GeneratedRegex(@"^waiting for (\S+) to finish #(\S+)$")]
+    private static partial System.Text.RegularExpressions.Regex TeamNoteBusy();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^re-review after #(\S+) rework$")]
+    private static partial System.Text.RegularExpressions.Regex TeamNoteReReview();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^#(\S+) (failed|cancelled|blocked)$")]
+    private static partial System.Text.RegularExpressions.Regex TeamNoteBlocked();
+
     /// <summary>任务行与消息里的小简写圈。字号令牌不得小于 11(FontTokens 可访问性门禁),16px 去掉边框后刚好放得下 11 号字。</summary>
     private const double SmallAvatar = 16;
 
@@ -95,7 +105,15 @@ public partial class ChatPanelView
         private readonly StackPanel _avatars = new() { Orientation = Orientation.Horizontal, Spacing = -4 };
         private readonly TextBlock _progress = new() { Classes = { "dim" }, VerticalAlignment = VerticalAlignment.Center };
         private readonly StackPanel _tasks = new() { Spacing = 2 };
-        private readonly StackPanel _messages = new() { Spacing = 3, IsVisible = false };
+        private readonly StackPanel _messages = new() { Spacing = 3 };
+
+        // 开合的是整个滚动区而不是里面的列表:只藏列表时 ScrollViewer 留着展开时的高度,收起后剩一大块空白
+        private readonly ScrollViewer _messagesScroll = new()
+        {
+            MaxHeight = 220,
+            IsVisible = false,
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
+        };
         private readonly TextBlock _messagesTitle = new() { Classes = { "dim" } };
         private readonly Avalonia.Controls.Shapes.Path _messagesChevron;
         private readonly Dictionary<string, TeamTaskRow> _rows = [with(StringComparer.Ordinal)];
@@ -156,16 +174,13 @@ public partial class ChatPanelView
             messagesHeader.PointerPressed += (_, e) =>
             {
                 e.Handled = true;
-                _messages.IsVisible = !_messages.IsVisible;
-                _messagesChevron.RenderTransform = _messages.IsVisible ? new RotateTransform(90) : null;
+                _messagesScroll.IsVisible = !_messagesScroll.IsVisible;
+                _messagesChevron.RenderTransform = _messagesScroll.IsVisible ? new RotateTransform(90) : null;
+                if (_messagesScroll.IsVisible) _messagesScroll.ScrollToEnd(); // 展开时停在最新一条
             };
             stack.Children.Add(messagesHeader);
-            stack.Children.Add(new ScrollViewer
-            {
-                MaxHeight = 220,
-                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-                Content = _messages
-            });
+            _messagesScroll.Content = _messages;
+            stack.Children.Add(_messagesScroll);
 
             Root = new Border { Classes = { "toolCard", "teamBoard" }, Child = stack };
         }
@@ -198,6 +213,11 @@ public partial class ChatPanelView
                              + " · " + ChatFormatting.Duration(team.Elapsed);
 
             var byId = runs.ToDictionary(r => r.SubagentId, StringComparer.Ordinal);
+            // 第二行引用别的任务(等待谁、审查谁)时写对方的标题而不是 id,过长截短
+            Dictionary<string, string> titles = team.Tasks.ToDictionary(t => t.Id, t => t.Title, StringComparer.OrdinalIgnoreCase);
+            string Refer(string id) => titles.TryGetValue(id, out string? title)
+                ? "「" + (title.Length <= 14 ? title : title[..14] + "…") + "」"
+                : "#" + id;
             foreach (TeamTaskInfo task in team.Tasks)
             {
                 if (!_rows.TryGetValue(task.Id, out TeamTaskRow? row))
@@ -208,7 +228,7 @@ public partial class ChatPanelView
                 }
                 TeamMemberInfo? member = team.Members.FirstOrDefault(m => m.Name == task.Assignee);
                 SubagentSnapshot? run = task.SubagentId is { } id && byId.TryGetValue(id, out SubagentSnapshot? found) ? found : null;
-                row.Update(task, member, run, Cancel is not null);
+                row.Update(task, member, run, Cancel is not null, Refer);
             }
 
             _messagesTitle.Text = _owner._loc.F("TeamMessages", team.Messages.Count);
@@ -320,7 +340,8 @@ public partial class ChatPanelView
             Root = new Border { Classes = { "teamTask" }, Child = stack };
         }
 
-        public void Update(TeamTaskInfo task, TeamMemberInfo? member, SubagentSnapshot? run, bool cancellable)
+        public void Update(TeamTaskInfo task, TeamMemberInfo? member, SubagentSnapshot? run, bool cancellable,
+            Func<string, string> refer)
         {
             bool verifier = task.Verifies is not null;
             (string icon, string tone) = task.Status switch
@@ -339,8 +360,9 @@ public partial class ChatPanelView
                 _status.Child = MakeIcon(icon, tone, 11);
             }
             ToolTip.SetTip(_status, StatusLabel(task));
-            _title.Text = $"#{task.Id} {task.Title}";
-            ToolTip.SetTip(_title, task.Title);
+            // 只写任务本身:任务 id 常被模型起成角色名,与左边的简写圈重复;id 留在悬停提示里
+            _title.Text = task.Title;
+            ToolTip.SetTip(_title, $"#{task.Id} · {task.Title}");
 
             string assigneeKey = member is null ? task.Assignee : member.Name + member.Color;
             if (assigneeKey != _assigneeKey)
@@ -365,18 +387,18 @@ public partial class ChatPanelView
                     var activity => activity
                 });
             }
-            else if (task.Note.Length > 0)
+            else if (LocalizeNote(task.Note, refer) is { Length: > 0 } note)
             {
-                parts.Add(task.Note);
+                parts.Add(note);
             }
             if (verifier)
             {
-                parts.Add(_owner._loc.F("TeamReviews", task.Verifies!)
+                parts.Add(_owner._loc.F("TeamReviews", refer(task.Verifies!))
                           + (task.Verdict is { } verdict ? " · " + _owner._loc[verdict == "PASS" ? "TeamVerdictPass" : "TeamVerdictFail"] : ""));
             }
             else if (task.DependsOn.Count > 0 && task.Status == "pending")
             {
-                parts.Add(_owner._loc.F("TeamDependsOn", string.Join(", ", task.DependsOn.Select(d => "#" + d))));
+                parts.Add(_owner._loc.F("TeamDependsOn", string.Join("、", task.DependsOn.Select(refer))));
             }
             if (task.Attempts > 1) parts.Add(_owner._loc.F("TeamRework", task.Attempts - 1));
             _detail.Text = string.Join(" · ", parts);
@@ -400,6 +422,26 @@ public partial class ChatPanelView
                 segment.Append(task.Report);
                 _expanded.Child = segment.Host;
             }
+        }
+
+        /// <summary>
+        /// 引擎的状态说明是给模型看的英文固定句式(见 TeamEngine),这里换成本地化文案、任务 id 换成标题;
+        /// 「等待依赖」「返工 n/m」与第二行其它部分重复,不再写;认不出的(多半是工具报的错误原文)照原样。
+        /// </summary>
+        private string LocalizeNote(string note, Func<string, string> refer)
+        {
+            if (note.Length == 0 || note.StartsWith("waiting for #", StringComparison.Ordinal)
+                || note.StartsWith("rework ", StringComparison.Ordinal))
+            {
+                return "";
+            }
+            if (TeamNoteBusy().Match(note) is { Success: true } busy)
+                return _owner._loc.F("TeamWaitMember", busy.Groups[1].Value, refer(busy.Groups[2].Value));
+            if (TeamNoteReReview().Match(note) is { Success: true } again)
+                return _owner._loc.F("TeamReReview", refer(again.Groups[1].Value));
+            if (TeamNoteBlocked().Match(note) is { Success: true } blocked)
+                return _owner._loc.F("TeamBlockedBy", refer(blocked.Groups[1].Value));
+            return note == "team cancelled" ? _owner._loc["Cancelled"] : note;
         }
 
         private string StatusLabel(TeamTaskInfo task) => task.Status switch

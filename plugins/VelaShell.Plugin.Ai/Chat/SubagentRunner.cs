@@ -193,15 +193,38 @@ internal sealed class SubagentRunner(
         + "For user-authorized file changes, explicitly pass allowWrites=true; mutations retain parent approvals and scope. "
         + "Assign disjoint files where possible, inspect tool results, and never claim cancellation rolled changes back. "
         + "If analysis needs command output (for example df, ss or ps), collect it with parent tools first and include it in the delegated prompt. "
-        + "Do not claim subagents were created unless delegate_subagent succeeded. If the user explicitly wants OS processes, use command tools instead.\n"
-        + "When the user asks for a team, or a large task splits into specialist steps that build on each other (investigate → change → review), "
-        + "use team_run instead of several delegate_subagent calls: give each member a clear role, make every task self-contained, "
-        + "chain them with dependsOn so results flow downstream, and add a reviewer task with verifies for work that must be checked. "
-        + "After team_run, end your step: one consolidated team report arrives when the team finishes. Verify what matters, then report to the user.\n";
+        + "Do not claim subagents were created unless delegate_subagent succeeded. If the user explicitly wants OS processes, use command tools instead.\n";
+
+    /// <summary>
+    /// 主 Agent 系统提示词里关于团队模式的那一段:只在这一轮真的暴露了 <c>team_run</c> 时追加(见 <see cref="HasTeam" />),
+    /// 用户在工具配置里停用了它就不提。
+    /// </summary>
+    /// <remarks>
+    /// 团队模式是<b>自适应</b>的:由主模型按任务形状自己决定,不需要用户点名「组团队」。这里给出用与不用的具体判据 ——
+    /// 只说一句「大任务可以用团队」时,模型多半要么自己从头做到尾,要么连着发几个互不知情的子任务;
+    /// 反过来不写「不该用」的情形,又会为一个小问题拉起好几个并行请求。
+    /// </remarks>
+    internal const string TeamGuidance =
+        "\nTeam mode (team_run) is yours to choose: decide from the shape of the task, without waiting for the user to ask for a team. "
+        + "Prefer team_run when at least two of these hold: "
+        + "(1) the work splits into 3 or more substantial steps that need different expertise (for example investigate → change → verify, or security / network / operations reviews); "
+        + "(2) later steps depend on findings from earlier ones; "
+        + "(3) independent investigations can run in parallel and then be combined; "
+        + "(4) the result is risky or important enough that an independent reviewer should check it before you report (config changes, security conclusions, multi-file edits). "
+        + "Do NOT form a team for questions you can answer in a few tool calls, single-file edits, simple lookups, or work that is mostly running shell commands (members cannot run commands — collect command output yourself and include it in task details). "
+        + "A team costs several parallel model requests, so keep it small: usually 2–4 members, one task per member per stage. "
+        + "When you use it: give each member a distinct role, make every task's detail self-contained (members do not see this conversation), "
+        + "chain tasks with dependsOn so results flow downstream, and add a reviewer task with verifies when correctness matters. "
+        + "Briefly tell the user you are forming a team and why, then call team_run and end your step: one consolidated team report arrives when the team finishes. "
+        + "Verify what matters in that report, then give the user the final answer.\n";
 
     /// <summary>这一轮的工具里有没有委派工具(被禁用、非 Agent 模式时没有)。</summary>
     internal static bool HasDelegation(IEnumerable<AITool>? tools)
         => tools?.OfType<AIFunction>().Any(tool => tool.Name == "delegate_subagent") == true;
+
+    /// <summary>这一轮的工具里有没有团队工具(被停用、非 Agent 模式、对外 MCP 时没有)。</summary>
+    internal static bool HasTeam(IEnumerable<AITool>? tools)
+        => tools?.OfType<AIFunction>().Any(tool => tool.Name == "team_run") == true;
 
     /// <summary>可供委派选择的聊天模型:配置标识 → 显示名,不含凭据或端点。</summary>
     internal static Dictionary<string, string> ModelChoices(AiSettings settings, string providerId)

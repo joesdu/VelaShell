@@ -146,7 +146,8 @@ public sealed partial class ChatPanelViewUiTests
                 double? titleLeft = null;
                 foreach (Border row in rows)
                 {
-                    TextBlock title = row.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text?.StartsWith('#') == true);
+                    TextBlock title = row.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text?.StartsWith("审查", StringComparison.Ordinal) == true);
+                    Assert.DoesNotContain("#", title.Text!, "标题只写任务本身,不带任务 id");
                     TextBlock tokens = row.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text?.EndsWith(" tok", StringComparison.Ordinal) == true);
                     TextBlock elapsed = row.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text?.EndsWith('s') == true && t.Text.Any(char.IsDigit) && t != tokens && t != title);
                     double left = title.TranslatePoint(default, board)!.Value.X;
@@ -158,6 +159,17 @@ public sealed partial class ChatPanelViewUiTests
                     Assert.AreEqual(TextAlignment.Right, elapsed.TextAlignment);
                 }
                 Assert.Contains(t => t.Text == "18k tok", board.GetVisualDescendants().OfType<TextBlock>());
+
+                // 团队消息展开再收起:卡片高度回到展开之前,不留一大块空白
+                double before = board.Bounds.Height;
+                TextBlock messagesTitle = board.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text?.StartsWith("Team messages", StringComparison.Ordinal) == true);
+                Control messagesHeader = (Control)messagesTitle.Parent!;
+                Press(messagesHeader);
+                await PumpAsync();
+                Assert.IsGreaterThan(before, board.Bounds.Height, "展开后变高");
+                Press(messagesHeader);
+                await PumpAsync();
+                Assert.AreEqual(before, board.Bounds.Height, 0.5, "收起后回到原高度");
                 Assert.DoesNotContain(t => t.Text == "network", board.GetVisualDescendants().OfType<TextBlock>(), "成员名不再写全称,只用简写圈");
             }
             finally { panel.Detach(); window.Close(); }
