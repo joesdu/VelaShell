@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using AvaloniaEdit;
@@ -1186,10 +1187,10 @@ public sealed partial class ChatPanelViewUiTests
                 panel.SendExternal("hi");
                 Assert.IsTrue(await WaitForAsync(() => flow.IsVisible), "首次请求开始即显示计数");
                 Assert.IsTrue(await WaitForAsync(() => AnswerRenderers(Find<StackPanel>(panel, "MessagesPanel")).Count > 0));
-                Assert.Contains("~4 tok ↓", flow.Text ?? "", "流尚未结束时按文本增量刷新");
+                Assert.Contains("↓~4", flow.Text ?? "", "流尚未结束时按文本增量刷新");
                 Assert.IsTrue(Find<Border>(panel, "UsageMeterTrack").IsVisible);
                 Assert.Contains("~", usage.Text ?? "", "首次生成期间已有上下文占比估算");
-                Assert.Contains("/10k", usage.Text ?? "");
+                Assert.Contains("ctx ~", usage.Text ?? "", "可见文字带上「上下文」标签");
                 Assert.IsTrue(Find<Viewbox>(panel, "StopIcon").IsVisible);
                 stub.Release();
                 Assert.IsTrue(await WaitForAsync(() => !string.IsNullOrEmpty(usage.Text)
@@ -1200,11 +1201,23 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.Contains("10%", usage.Text!, "上下文占比");
                 Assert.Contains("80%", usage.Text!, "缓存命中率就显示在占比旁边");
                 Assert.IsTrue(flow.IsVisible);
-                Assert.AreEqual("1k tok ↑  50 tok ↓", flow.Text);
+                Assert.AreEqual("↑1k ↓50", flow.Text);
 
-                string tip = ToolTip.GetTip(usage) as string ?? "";
+                string tip = ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "";
                 Assert.Contains("800", tip, "悬停给出命中的具体 token 数");
                 Assert.Contains("1,000", tip, "以及这一轮的输入总量");
+
+                // 悬停面板是分段的控件,不是一长串文字:上下文一段、缓存一段(命中率 + 读取 / 写入 / 未命中三截)
+                var detail = (UsageDetailView)ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))!;
+                string[] shown = [.. detail.GetLogicalDescendants().OfType<TextBlock>().Where(t => t.IsVisible).Select(t => t.Text ?? "")];
+                Assert.Contains("Context window", shown);
+                Assert.Contains("1,000 / 10,000", shown);
+                Assert.Contains("80% hit", shown);
+                Assert.Contains("Read 800", shown);
+                Assert.Contains("Written 0", shown);
+                Assert.Contains("Uncached 200", shown);
+                Assert.Contains(t => t.Contains("usually doesn't report cache writes", StringComparison.Ordinal), shown,
+                    "OpenAI 系协议写入为 0 时说明是「没报」而不是「没写」");
             }
             finally
             {
@@ -1253,7 +1266,7 @@ public sealed partial class ChatPanelViewUiTests
                     "工具图标在没有宿主图标资源时也应可用");
                 usage.Text = new string('8', 100);
                 TextBlock flow = Find<TextBlock>(panel, "TokenFlowText");
-                flow.Text = "999k tok ↑  999k tok ↓";
+                flow.Text = "↑999k ↓999k";
                 flow.IsVisible = true;
                 Find<Border>(panel, "UsageMeterTrack").IsVisible = true;
                 foreach (double width in new[] { 800d, 300d })

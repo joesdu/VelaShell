@@ -292,7 +292,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.AreEqual(status == 401, health.IsKeyCooling(provider.Id), "只有 401 冷整把 Key;403 / 429 只冷它用在这个模型上");
                 Assert.IsFalse(health.IsKeyCooling(secondId));
                 Assert.IsFalse(health.IsCooling(provider.Models[0].Id), "一把 Key 挂了不能连坐模型");
-                Assert.Contains("Conversation total: in 22 / out 10", ToolTip.GetTip(Find<TextBlock>(panel, "UsageText")) as string ?? "",
+                Assert.Contains("Conversation total: in 22 / out 10", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "",
                     "探活与正式回答的实际用量各入账一次");
                 panel.SendExternal("下一轮粘住健康 Key");
                 Assert.IsTrue(await WaitForAsync(() => !Find<Viewbox>(panel, "StopIcon").IsVisible
@@ -329,7 +329,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.AreSequenceEqual(["Bearer key-a", "Bearer key-b", "Bearer key-b", "Bearer key-b"], endpoint.Requests.Select(request => request.Auth).ToArray());
                 Assert.Contains("Suggest ", endpoint.Requests[^1].Body);
                 Assert.AreEqual(second, (await store.LoadAsync()).Providers[0].ActiveApiKeyId);
-                Assert.Contains("Conversation total: in 22 / out 10", ToolTip.GetTip(Find<TextBlock>(panel, "UsageText")) as string ?? "");
+                Assert.Contains("Conversation total: in 22 / out 10", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
             }
             finally { panel.Detach(); window.Close(); }
         });
@@ -640,13 +640,13 @@ public sealed partial class ChatPanelViewUiTests
                 TextBlock usage = Find<TextBlock>(panel, "UsageText");
                 Assert.HasCount(1, healthy.Requests, "当前只有候选探活，没有正式流");
                 Assert.AreEqual("", usage.Text, "探活不能充当正文的上一轮上下文");
-                Assert.AreEqual("11 tok ↑  5 tok ↓", Find<TextBlock>(panel, "TokenFlowText").Text);
-                Assert.Contains("Conversation total: in 11 / out 5", ToolTip.GetTip(usage) as string ?? "");
+                Assert.AreEqual("↑11 ↓5", Find<TextBlock>(panel, "TokenFlowText").Text);
+                Assert.Contains("Conversation total: in 11 / out 5", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
                 storage.Release.TrySetResult();
                 Assert.IsTrue(await WaitForAsync(() => !Find<Viewbox>(panel, "StopIcon").IsVisible));
                 Assert.HasCount(2, healthy.Requests, "一次探活与一次正式流");
-                Assert.Contains("11/100", usage.Text ?? "", "占窗只取正式回复的输入");
-                Assert.Contains("Conversation total: in 22 / out 10", ToolTip.GetTip(usage) as string ?? "",
+                Assert.Contains("Last turn context: 11 / 100", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "", "占窗只取正式回复的输入");
+                Assert.Contains("Conversation total: in 22 / out 10", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "",
                     "探活和正文各入账一次");
                 Assert.AreEqual("回答", AnswerRenderers(Find<StackPanel>(panel, "MessagesPanel")).Single().MarkdownBuilder.ToString());
             }
@@ -692,9 +692,9 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.AreEqual(disconnect ? 1 : 2, empty?.Requests.Count ?? truncated!.Requests, "空探活补试一次,断流不额外补试,均不发送正式流");
                 Assert.HasCount(2, healthy.Requests, "下一站一次探活、一次正式回复");
                 TextBlock usage = Find<TextBlock>(panel, "UsageText");
-                Assert.Contains("11/100", usage.Text ?? "");
+                Assert.Contains("Last turn context: 11 / 100", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
                 Assert.Contains(disconnect ? "Conversation total: in 29 / out 13" : "Conversation total: in 36 / out 16",
-                    ToolTip.GetTip(usage) as string ?? "", "失败候选每次7/3 + 下一站探活11/5 + 正式流11/5,均不得重复或丢失");
+                    ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "", "失败候选每次7/3 + 下一站探活11/5 + 正式流11/5,均不得重复或丢失");
                 Assert.AreEqual("回答", AnswerRenderers(Find<StackPanel>(panel, "MessagesPanel")).Single().MarkdownBuilder.ToString());
             }
             finally { panel.Detach(); window.Close(); }
@@ -752,20 +752,20 @@ public sealed partial class ChatPanelViewUiTests
                 TextBlock usage = Find<TextBlock>(panel, "UsageText");
                 if (reset)
                 {
-                    Assert.Contains("11/100", usage.Text ?? "");
-                    Assert.Contains("Conversation total: in 11 / out 5", ToolTip.GetTip(usage) as string ?? "",
+                    Assert.Contains("Last turn context: 11 / 100", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
+                    Assert.Contains("Conversation total: in 11 / out 5", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "",
                         "迟到的探活不能污染已重置会话的新一轮真实用量");
                 }
                 else
                 {
                     Assert.AreEqual("", usage.Text, "迟到的候选探活不能写入另一前台会话");
-                    Assert.DoesNotContain("Conversation total:", ToolTip.GetTip(usage) as string ?? "");
+                    Assert.DoesNotContain("Conversation total:", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
                 }
                 if (!reset)
                 {
                     sessions.SelectedIndex = 0;
-                    Assert.Contains("11/100", usage.Text ?? "");
-                    Assert.Contains("Conversation total: in 22 / out 10", ToolTip.GetTip(usage) as string ?? "",
+                    Assert.Contains("Last turn context: 11 / 100", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
+                    Assert.Contains("Conversation total: in 22 / out 10", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "",
                         "切回发起会话，必须看到探活和正式流各一次的真实累计");
                 }
                 else
@@ -1099,7 +1099,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(await WaitForAsync(() => Footers(visible).Count == 2));
                 TextBlock usage = Find<TextBlock>(panel, "UsageText");
                 models.SelectedIndex = 0;
-                Assert.Contains("80/100", usage.Text ?? "", "前台先按 A 的窗口计算");
+                Assert.Contains("Last turn context: 80 / 100", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "", "前台先按 A 的窗口计算");
                 sessions.SelectedIndex = 1;
                 storage.TargetModelId = b.Models[0].Id;
                 panel.SendExternal("后台切站");
@@ -1109,8 +1109,8 @@ public sealed partial class ChatPanelViewUiTests
                 answering.Release();
                 Assert.IsTrue(await WaitForAsync(() => storage.Started.Task.IsCompleted), "粘住保存正被存储闸门挂住");
                 Assert.AreEqual(1, models.SelectedIndex, "保存未完成时下拉也须已切到 B");
-                Assert.Contains("80/200", usage.Text ?? "", "保存未完成时前台须已按 B 的窗口重算");
-                Assert.Contains("Conversation total: in 160 / out 4", ToolTip.GetTip(usage) as string ?? "",
+                Assert.Contains("Last turn context: 80 / 200", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "", "保存未完成时前台须已按 B 的窗口重算");
+                Assert.Contains("Conversation total: in 160 / out 4", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "",
                     "后台自己的统计不可写进前台");
                 Assert.HasCount(2, Footers(visible), "后台的回答不可写入前台气泡");
 
@@ -1127,14 +1127,14 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(await WaitForAsync(() => Footers(background).Count == 1), "保存放行后后台独立答完");
                 Assert.AreEqual(2, models.SelectedIndex, "旧保存回调不得重放 B 覆盖用户的新选择 C");
                 Assert.AreEqual(c.Models[0].Id, (await store.LoadAsync()).ActiveModelId);
-                Assert.Contains("80/300", usage.Text ?? "");
-                Assert.Contains("Conversation total: in 240 / out 6", ToolTip.GetTip(usage) as string ?? "",
+                Assert.Contains("Last turn context: 80 / 300", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
+                Assert.Contains("Conversation total: in 240 / out 6", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "",
                     "后台一轮的统计不可盖掉前台三轮的累计");
                 Assert.HasCount(3, Footers(visible));
                 models.SelectedIndex = 1;
                 sessions.SelectedIndex = 1;
-                Assert.Contains("80/200", usage.Text ?? "", "切回后台应显示它自己的用量和新窗口");
-                Assert.Contains("Conversation total: in 80 / out 2", ToolTip.GetTip(usage) as string ?? "",
+                Assert.Contains("Last turn context: 80 / 200", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "", "切回后台应显示它自己的用量和新窗口");
+                Assert.Contains("Conversation total: in 80 / out 2", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "",
                     "后台独立记账,切回它才显示自己的累计");
             }
             finally
@@ -1197,7 +1197,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(await WaitForAsync(() => heldBackup.Requests.Count == 2 && models.SelectedIndex == 1));
                 sessions.SelectedIndex = 0;
                 TextBlock usage = Find<TextBlock>(panel, "UsageText");
-                Assert.Contains("80/200", usage.Text ?? "");
+                Assert.Contains("Last turn context: 80 / 200", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
 
                 storage.TargetModelId = a.Models[0].Id;
                 sessions.SelectedIndex = 1;
@@ -1205,15 +1205,15 @@ public sealed partial class ChatPanelViewUiTests
                 sessions.SelectedIndex = 0;
                 Assert.IsTrue(await WaitForAsync(() => storage.Started.Task.IsCompleted), "取消后的回滚保存已挂住");
                 Assert.AreEqual(0, models.SelectedIndex, "回滚保存尚未完成也须已显示原站 A");
-                Assert.Contains("80/100", usage.Text ?? "", "回滚须按前台原用量及 A 的窗口重算");
+                Assert.Contains("Last turn context: 80 / 100", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "", "回滚须按前台原用量及 A 的窗口重算");
 
                 models.SelectedIndex = 2;
                 storage.Release.TrySetResult();
                 Assert.IsTrue(await WaitForAsync(() => Footers(background).Count == 1));
                 Assert.AreEqual(2, models.SelectedIndex, "迟到回滚保存不得重放原站覆盖新选择 C");
                 Assert.AreEqual(c.Models[0].Id, (await store.LoadAsync()).ActiveModelId);
-                Assert.Contains("80/300", usage.Text ?? "");
-                Assert.Contains("Conversation total: in 80 / out 2", ToolTip.GetTip(usage) as string ?? "");
+                Assert.Contains("Last turn context: 80 / 300", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
+                Assert.Contains("Conversation total: in 80 / out 2", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
             }
             finally
             {
@@ -2114,7 +2114,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.DoesNotContain("\"stream\":true", oldTarget.Requests[5]);
                 Assert.IsEmpty(renewedTarget.Requests, "摘要期间的同账号令牌地址移动不能授权旧回合向新来源探活或发送历史");
                 TextBlock usage = Find<TextBlock>(panel, "UsageText");
-                Assert.Contains("Conversation total: in 1 / out 1", ToolTip.GetTip(usage) as string ?? "",
+                Assert.Contains("Conversation total: in 1 / out 1", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "",
                     "已完成的摘要 1/1 仍须入账;未发出的新站请求及无用量的旧流不可估造");
                 if (moveEndpoint)
                 {
@@ -2132,9 +2132,9 @@ public sealed partial class ChatPanelViewUiTests
                     Assert.Contains("Reply with exactly:", renewedTarget.Requests[0]);
                     Assert.Contains("新回合", renewedTarget.Requests[^1]);
                     Assert.AreEqual("续期后答复", AnswerRenderers(messages).Last().MarkdownBuilder.ToString());
-                    Assert.Contains("13/40", usage.Text ?? "", "新回合重探用量不替代正式输入占窗");
+                    Assert.Contains("Last turn context: 13 / 40", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "", "新回合重探用量不替代正式输入占窗");
                     int summaries = renewedTarget.Requests.Count(body => !body.Contains("\"stream\":true", StringComparison.Ordinal));
-                    Assert.Contains($"Conversation total: in {27 + summaries} / out {9 + summaries}", ToolTip.GetTip(usage) as string ?? "",
+                    Assert.Contains($"Conversation total: in {27 + summaries} / out {9 + summaries}", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "",
                         "旧轮摘要与新回合探活、正式流及实际发生的新摘要各入账一次");
                 }
                 else
@@ -3287,7 +3287,7 @@ public sealed partial class ChatPanelViewUiTests
                 StackPanel messages = Find<StackPanel>(panel, "MessagesPanel");
                 panel.SendExternal("先建立真实历史上下文");
                 Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count == 1 && !Find<Viewbox>(panel, "StopIcon").IsVisible));
-                Assert.Contains("50/100", Find<TextBlock>(panel, "UsageText").Text ?? "");
+                Assert.Contains("ctx 50%", Find<TextBlock>(panel, "UsageText").Text ?? "");
                 Find<ListBox>(panel, "ProviderList").SelectedIndex = 1;
                 panel.SendExternal("空流失败后备用不报告用量");
                 Assert.IsTrue(await WaitForAsync(() => backup.Requests.Count == 2 && !Find<Viewbox>(panel, "StopIcon").IsVisible));
@@ -3295,10 +3295,10 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.AreEqual("回答", AnswerRenderers(messages).Last().MarkdownBuilder.ToString());
                 TextBlock usage = Find<TextBlock>(panel, "UsageText");
                 Assert.AreEqual("", usage.Text, "未知正文占窗不能借用历史或失败量");
-                Assert.AreEqual("71 tok ↑  19 tok ↓", Find<TextBlock>(panel, "TokenFlowText").Text,
+                Assert.AreEqual("↑71 ↓19", Find<TextBlock>(panel, "TokenFlowText").Text,
                     "累计保留50/10与三次7/3");
-                Assert.Contains("Conversation total: in 71 / out 19", ToolTip.GetTip(usage) as string ?? "");
-                Assert.DoesNotContain("Last turn context:", ToolTip.GetTip(usage) as string ?? "");
+                Assert.Contains("Conversation total: in 71 / out 19", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
+                Assert.DoesNotContain("Last turn context:", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
             }
             finally { panel.Detach(); window.Close(); }
         });
@@ -3629,7 +3629,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.AreEqual(third.Models[0].Id, (await store.LoadAsync()).ActiveModelId,
                     "空回复 B 不能粘住,真正答复的 C 才能粘住");
                 Assert.IsNotEmpty(AnswerRenderers(messages), "C 的真实正文要显示,而不是空的成功气泡");
-                string usageTip = ToolTip.GetTip(Find<TextBlock>(panel, "UsageText")) as string ?? "";
+                string usageTip = ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "";
                 Assert.Contains("Conversation total: in 43 / out 19", usageTip,
                     "B 的三次空流各计一次，加上 C 的探活与真实回复；usage 不可被重试清空或并进回答正文");
             }

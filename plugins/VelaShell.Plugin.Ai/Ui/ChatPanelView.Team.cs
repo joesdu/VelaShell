@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using VelaShell.Plugin.Ai.Agent;
+using VelaShell.Plugin.Ai.Configuration;
 
 namespace VelaShell.Plugin.Ai.Ui;
 
@@ -29,6 +30,28 @@ public partial class ChatPanelView
         ["VelaShellCyan", "VelaShellBlue", "VelaShellMagenta", "VelaShellYellow", "VelaShellGreen"];
 
     private static string MemberColor(int index) => MemberColors[index % MemberColors.Length];
+
+    /// <summary>
+    /// 成员实际用的思考强度:与主控同一个模型时沿用这一轮在输入框选的强度(子任务就是这么跑的,
+    /// 见 ResolveSubagentModelAsync),其它模型按接入里配的。不可调的模型没有强度可言。
+    /// </summary>
+    private ReasoningLevel MemberReasoning(ResolvedModel model)
+    {
+        if (!model.ReasoningAdjustable) return ReasoningLevel.Default;
+        return model.Id == ActiveProvider?.Id && ActiveProviderForRequest is { } turn ? turn.Reasoning : model.Reasoning;
+    }
+
+    /// <summary>思考强度的短标签;「自动」(不指定)不写,免得每张卡都挂一个没信息量的词。</summary>
+    private string ReasoningLabel(ReasoningLevel level) => level switch
+    {
+        ReasoningLevel.Off => _loc["ReasoningOff"],
+        ReasoningLevel.Low => _loc["ReasoningLow"],
+        ReasoningLevel.Medium => _loc["ReasoningMedium"],
+        ReasoningLevel.High => _loc["ReasoningHigh"],
+        ReasoningLevel.ExtraHigh => _loc["ReasoningExtraHigh"],
+        ReasoningLevel.Max => _loc["ReasoningMax"],
+        _ => ""
+    };
 
     // 引擎状态说明的几种固定句式(TeamEngine.Pump / OnEntryFinished 写的)
     [System.Text.RegularExpressions.GeneratedRegex(@"^waiting for (\S+) to finish #(\S+)$")]
@@ -210,8 +233,25 @@ public partial class ChatPanelView
             }
             int done = team.Tasks.Count(t => t.Status == "completed");
             int running = team.Tasks.Count(t => t.Status == "running");
+            // 全队合计:token 与费用(每次运行各按自己的模型单价算,返工的那几次也算 —— 都是真花出去的)
+            SubagentSnapshot[] teamRuns = [.. runs.Where(r => r.TeamTaskId is not null)];
+            long teamTokens = teamRuns.Sum(r => r.InputTokens + r.OutputTokens);
+            double? teamCost = null;
+            foreach (SubagentSnapshot r in teamRuns)
+            {
+                if (r.ModelId is { } id && _owner._settings.FindModel(id) is { } model
+                    && EstimateCost(model, r.InputTokens, r.CachedInputTokens, r.OutputTokens) is { } cost)
+                {
+                    teamCost = (teamCost ?? 0) + cost;
+                }
+            }
             _progress.Text = _owner._loc.F("TeamProgress", done, team.Tasks.Count, running)
-                             + " · " + ChatFormatting.Duration(team.Elapsed);
+                             + " · " + ChatFormatting.Duration(team.Elapsed)
+                             + (teamTokens > 0 ? $" · {ChatFormatting.Compact(teamTokens)} tok" : "")
+                             + (teamCost is { } total ? " " + FormatCost(total) : "");
+            ToolTip.SetTip(_progress, teamCost is { } sum
+                ? _owner._loc.F("TeamTotalCostTip", sum.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture))
+                : null);
 
             var byId = runs.ToDictionary(r => r.SubagentId, StringComparer.Ordinal);
             // 第二行引用别的任务(等待谁、审查谁)时写对方的标题而不是 id,过长截短
@@ -290,22 +330,31 @@ public partial class ChatPanelView
         }
     }
 
-    /// <summary>任务表的一行:状态 · #id 标题 · 负责人 · 耗时;第二行写依赖 / 审查 / 此刻动作;点开是该成员这次运行的卡片。</summary>
+    /// <summary>任务卡头像的边长:标题与「角色 · 模型」两行的高度。</summary>
+    private const double TaskAvatar = 28;
+
+    /// <summary>
+    /// 任务表的一张卡:左边负责人头像,右上角状态;正文四行 ——
+    /// 标题 / 角色(身份色)+ 模型 · 思考强度 / 此刻在做什么 + 「上下文占用 · token ≈费用 · 耗时」/ 身份色进度条。
+    /// 点开是该成员这次运行的卡片。
+    /// </summary>
     private sealed class TeamTaskRow
     {
         private readonly ChatPanelView _owner;
-        private readonly Decorator _status = new() { Margin = new Thickness(0, 1, 6, 0), VerticalAlignment = VerticalAlignment.Top };
-        private readonly TextBlock _title = new() { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-        // 负责人只放一枚带身份色的简写圈,固定在左侧一列:各行的圈与标题都上下对齐
-        private readonly Decorator _assignee = new() { Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
-        // 右侧两列定宽右对齐:这个成员这次运行收到的输入 token、耗时(时间贴最右)
-        private readonly TextBlock _tokens = new() { Classes = { "dim" }, MinWidth = 48, TextAlignment = TextAlignment.Right, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        private readonly TextBlock _elapsed = new() { Classes = { "dim" }, MinWidth = 42, TextAlignment = TextAlignment.Right, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        private readonly TextBlock _detail = new() { Classes = { "dim" }, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 };
-        private readonly Border _expanded = new() { IsVisible = false, Margin = new Thickness(18, 4, 0, 4) };
+        private readonly Decorator _status = new() { Margin = new Thickness(6, 2, 0, 0), VerticalAlignment = VerticalAlignment.Top };
+        private readonly Decorator _assignee = new() { Margin = new Thickness(0, 1, 8, 0), VerticalAlignment = VerticalAlignment.Top };
+        private readonly TextBlock _title = new() { FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 };
+        // 角色用成员身份色,模型与思考强度用次要色:一眼分清「谁」和「用什么跑」
+        private readonly TextBlock _role = new() { FontWeight = FontWeight.Medium, VerticalAlignment = VerticalAlignment.Center };
+        private readonly TextBlock _model = new() { Classes = { "dim" }, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1, VerticalAlignment = VerticalAlignment.Center };
+        private readonly TextBlock _detail = new() { TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1, VerticalAlignment = VerticalAlignment.Center };
+        private readonly TextBlock _metrics = new() { Classes = { "dim" }, TextAlignment = TextAlignment.Right, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        private readonly ProgressBar _bar = new() { Minimum = 0, Maximum = 100, Height = 4, MinHeight = 4, Margin = new Thickness(0, 3, 0, 0) };
+        private readonly Border _expanded = new() { IsVisible = false, Margin = new Thickness(TaskAvatar + 8, 4, 0, 4) };
         private readonly SubagentRunCard _card;
         private string _statusKey = "";
         private string _assigneeKey = "";
+        private string _barTone = "";
         private string _report = "";
         private bool _hasRun;
 
@@ -315,28 +364,38 @@ public partial class ChatPanelView
         {
             _owner = owner;
             _card = new SubagentRunCard(owner, cancel);
-            // 状态 | 负责人简写 | #id 标题 | 输入 token | 耗时
-            var line = new Grid { ColumnDefinitions = [with("Auto,Auto,*,Auto,Auto")] };
-            line.Children.Add(_status);
-            Grid.SetColumn(_assignee, 1);
+            _bar[!BackgroundProperty] = new DynamicResourceExtension("VelaBorderPrimary");
+            _detail[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("VelaTextSecondary");
+
+            var identity = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
+            identity.Children.Add(_role);
+            identity.Children.Add(_model);
+
+            var meta = new Grid { ColumnDefinitions = [with("*,Auto")] };
+            meta.Children.Add(_detail);
+            Grid.SetColumn(_metrics, 1);
+            meta.Children.Add(_metrics);
+
+            var body = new StackPanel { Spacing = 1 };
+            body.Children.Add(_title);
+            body.Children.Add(identity);
+            body.Children.Add(meta);
+            body.Children.Add(_bar);
+
+            // 头像 | 正文 | 状态
+            var line = new Grid { ColumnDefinitions = [with("Auto,*,Auto")], Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand) };
             line.Children.Add(_assignee);
-            Grid.SetColumn(_title, 2);
-            line.Children.Add(_title);
-            Grid.SetColumn(_tokens, 3);
-            line.Children.Add(_tokens);
-            Grid.SetColumn(_elapsed, 4);
-            line.Children.Add(_elapsed);
-            _detail.Margin = new Thickness(11 + 6 + SmallAvatar + 6, 0, 0, 0); // 与标题左缘对齐(状态图标 + 简写圈)
-            var header = new StackPanel { Spacing = 1, Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.Hand) };
-            header.Children.Add(line);
-            header.Children.Add(_detail);
-            header.PointerPressed += (_, e) =>
+            Grid.SetColumn(body, 1);
+            line.Children.Add(body);
+            Grid.SetColumn(_status, 2);
+            line.Children.Add(_status);
+            line.PointerPressed += (_, e) =>
             {
                 e.Handled = true;
                 _expanded.IsVisible = !_expanded.IsVisible;
             };
             var stack = new StackPanel();
-            stack.Children.Add(header);
+            stack.Children.Add(line);
             stack.Children.Add(_expanded);
             Root = new Border { Classes = { "teamTask" }, Child = stack };
         }
@@ -358,26 +417,32 @@ public partial class ChatPanelView
             if (statusKey != _statusKey)
             {
                 _statusKey = statusKey;
-                _status.Child = MakeIcon(icon, tone, 11);
+                _status.Child = MakeIcon(icon, tone, 13);
             }
             ToolTip.SetTip(_status, StatusLabel(task));
-            // 只写任务本身:任务 id 常被模型起成角色名,与左边的简写圈重复;id 留在悬停提示里
+            // 只写任务本身:任务 id 常被模型起成角色名,与左边的头像重复;id 留在悬停提示里
             _title.Text = task.Title;
             ToolTip.SetTip(_title, $"#{task.Id} · {task.Title}");
 
-            string assigneeKey = member is null ? task.Assignee : member.Name + member.Color;
+            TeamMemberInfo who = member ?? new TeamMemberInfo(task.Assignee, "", null, false, 0);
+            string assigneeKey = who.Name + who.Color;
             if (assigneeKey != _assigneeKey)
             {
                 _assigneeKey = assigneeKey;
-                _assignee.Child = MemberAvatar(member ?? new TeamMemberInfo(task.Assignee, "", null, false, 0), SmallAvatar);
+                _assignee.Child = MemberAvatar(who, TaskAvatar);
+                _role[!TextBlock.ForegroundProperty] = new DynamicResourceExtension(MemberColor(who.Color));
             }
-            _elapsed.Text = task.Elapsed > TimeSpan.Zero ? ChatFormatting.Duration(run?.Elapsed ?? task.Elapsed) : "";
-            _tokens.Text = run is { InputTokens: > 0 } used ? $"{ChatFormatting.Compact(used.InputTokens)} tok" : "";
-            ToolTip.SetTip(_tokens, run is { } r && r.InputTokens + r.OutputTokens > 0
-                ? _owner._loc.F("TeamTokens", task.Assignee, ChatFormatting.Compact(r.InputTokens), ChatFormatting.Compact(r.OutputTokens))
-                : null);
 
-            // 第二行:此刻在做什么(运行中)> 等待 / 受阻 / 返工原因 > 审查与依赖关系
+            // 第二行:角色 + 实际跑的模型(运行过就以运行记录为准 —— 选定的模型不可用时会换替补)· 思考强度
+            _role.Text = who.Role.Length > 0 ? who.Role : who.Name;
+            ToolTip.SetTip(_role, who.Name + (who.AllowWrites ? " · ✎" : "") + (who.AllowCommands ? " · >_" : ""));
+            string? modelId = run?.ModelId ?? who.ModelId;
+            ResolvedModel? model = modelId is null ? null : _owner._settings.FindModel(modelId);
+            string reasoning = model is null ? "" : _owner.ReasoningLabel(_owner.MemberReasoning(model));
+            _model.Text = (model?.Name ?? modelId ?? "") + (reasoning.Length > 0 ? " · " + reasoning : "");
+            ToolTip.SetTip(_model, model is null ? null : $"{model.ProviderName} / {model.Name} ({model.Model})");
+
+            // 第三行左:此刻在做什么(运行中)> 等待 / 受阻 / 返工原因 > 审查与依赖关系;都没有就写状态
             var parts = new List<string>();
             if (task.Status == "running" && run is { Activity.Length: > 0 } live)
             {
@@ -402,9 +467,54 @@ public partial class ChatPanelView
                 parts.Add(_owner._loc.F("TeamDependsOn", string.Join("、", task.DependsOn.Select(refer))));
             }
             if (task.Attempts > 1) parts.Add(_owner._loc.F("TeamRework", task.Attempts - 1));
+            if (parts.Count == 0) parts.Add(StatusLabel(task));
             _detail.Text = string.Join(" · ", parts);
-            _detail.IsVisible = _detail.Text.Length > 0;
             ToolTip.SetTip(_detail, _detail.Text);
+
+            // 第三行右:上下文占用 · token ≈费用 · 耗时
+            var metrics = new List<string>();
+            var tip = new System.Text.StringBuilder();
+            int window = model?.MaxInputTokens ?? 0;
+            if (run is { ContextTokens: > 0 } sampled && window > 0)
+            {
+                int percent = (int)Math.Min(100, Math.Round(sampled.ContextTokens * 100.0 / window));
+                metrics.Add($"{_owner._loc["CtxShort"]} {percent}%");
+                tip.AppendLine(_owner._loc.F("TeamContextTip", ChatFormatting.Compact(sampled.ContextTokens), ChatFormatting.Compact(window), percent));
+            }
+            if (run is { } used && used.InputTokens + used.OutputTokens > 0)
+            {
+                string tokens = ChatFormatting.Compact(used.InputTokens + used.OutputTokens);
+                tip.AppendLine(_owner._loc.F("TeamTokens", task.Assignee, ChatFormatting.Compact(used.InputTokens), ChatFormatting.Compact(used.OutputTokens)));
+                if (used.CachedInputTokens > 0)
+                    tip.AppendLine(_owner._loc.F("TeamCachedTip", ChatFormatting.Compact(used.CachedInputTokens)));
+                if (model is not null && EstimateCost(model, used.InputTokens, used.CachedInputTokens, used.OutputTokens) is { } cost)
+                {
+                    tokens += " " + FormatCost(cost);
+                    tip.AppendLine(_owner._loc.F("TeamCostTip", cost.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture), model.Name));
+                }
+                metrics.Add(tokens);
+            }
+            if (task.Elapsed > TimeSpan.Zero) metrics.Add(ChatFormatting.Duration(run?.Elapsed ?? task.Elapsed));
+            _metrics.Text = string.Join(" · ", metrics);
+            ToolTip.SetTip(_metrics, tip.Length > 0 ? tip.ToString().TrimEnd() : null);
+
+            // 第四行:进度条。完成 = 满格(身份色;审查不过 = 警告色),失败 = 满格错误色,
+            // 进行中没有可信的完成度(步数上限不是进度),走不定进度动画;等待 / 受阻 / 取消 = 空槽
+            (double value, bool busy, string barTone) = task.Status switch
+            {
+                "completed" when verifier && task.Verdict == "FAIL" => (100d, false, "VelaWarning"),
+                "completed" => (100d, false, MemberColor(who.Color)),
+                "failed" => (100d, false, "VelaError"),
+                "running" => (0d, true, MemberColor(who.Color)),
+                _ => (0d, false, MemberColor(who.Color))
+            };
+            _bar.IsIndeterminate = busy;
+            _bar.Value = value;
+            if (barTone != _barTone)
+            {
+                _barTone = barTone;
+                _bar[!ForegroundProperty] = new DynamicResourceExtension(barTone);
+            }
 
             // 展开区:有运行记录就放实时卡片;只剩报告(旧数据)就放报告
             if (run is not null)

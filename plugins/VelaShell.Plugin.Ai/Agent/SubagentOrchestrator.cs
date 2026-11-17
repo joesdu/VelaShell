@@ -59,6 +59,8 @@ public sealed record SubagentExecutionResult(
 /// <param name="AllowWrites">本次委派是否开放了文件修改工具。</param>
 /// <param name="TeamTaskId">属于团队的哪个任务;普通委派为 null。团队任务的结果由 <see cref="TeamEngine" /> 汇总,不逐个送回父 Agent。</param>
 /// <param name="AllowCommands">本次委派是否开放了执行命令。</param>
+/// <param name="CachedInputTokens">输入里命中缓存的部分(累计,包含在 <paramref name="InputTokens" /> 之内);估费用时按缓存价算。</param>
+/// <param name="ContextTokens">最近一次请求的输入 token,即此刻上下文有多大;界面据此算上下文占用百分比。</param>
 public sealed record SubagentSnapshot(
     string SubagentId,
     string Role,
@@ -75,7 +77,9 @@ public sealed record SubagentSnapshot(
     long OutputTokens = 0,
     bool AllowWrites = false,
     string? TeamTaskId = null,
-    bool AllowCommands = false)
+    bool AllowCommands = false,
+    long CachedInputTokens = 0,
+    long ContextTokens = 0)
 {
     /// <summary>已经落到终态（完成、失败、取消或超时）。</summary>
     public bool IsTerminal => Status is not ("queued" or "running");
@@ -150,6 +154,8 @@ public sealed class SubagentOrchestrator(
         public RunClock? Clock { get; set; }
         public long InputTokens;
         public long OutputTokens;
+        public long CachedInputTokens;
+        public long ContextTokens;
         public bool Reported { get; set; }
         public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
         public DateTimeOffset? FinishedAt { get; set; }
@@ -524,7 +530,11 @@ public sealed class SubagentOrchestrator(
     }
 
     /// <summary>累计当前子任务的 token 用量（供应商已报告的部分）。</summary>
-    public void RecordTokens(long inputTokens, long outputTokens)
+    /// <param name="inputTokens">这次请求的输入 token(含缓存命中)。</param>
+    /// <param name="outputTokens">这次请求的输出 token。</param>
+    /// <param name="cachedInputTokens">输入里命中缓存的部分。</param>
+    /// <param name="contextSample">这次请求的输入能不能代表任务此刻的上下文大小;写压缩摘要那一趟另起请求,不算。</param>
+    public void RecordTokens(long inputTokens, long outputTokens, long cachedInputTokens = 0, bool contextSample = true)
     {
         if (CurrentEntry.Value is not { } entry || !ReferenceEquals(entry.Owner, this))
         {
@@ -532,6 +542,8 @@ public sealed class SubagentOrchestrator(
         }
         Interlocked.Add(ref entry.InputTokens, inputTokens);
         Interlocked.Add(ref entry.OutputTokens, outputTokens);
+        Interlocked.Add(ref entry.CachedInputTokens, cachedInputTokens);
+        if (contextSample && inputTokens > 0) Interlocked.Exchange(ref entry.ContextTokens, inputTokens);
         NotifyChanged();
     }
 
@@ -699,7 +711,9 @@ public sealed class SubagentOrchestrator(
             Interlocked.Read(ref entry.OutputTokens),
             entry.AllowWrites,
             entry.TeamTaskId,
-            entry.Request?.AllowCommands == true);
+            entry.Request?.AllowCommands == true,
+            Interlocked.Read(ref entry.CachedInputTokens),
+            Interlocked.Read(ref entry.ContextTokens));
     }
 
     internal void NotifyChanged() => SnapshotsChanged?.Invoke(Snapshots());

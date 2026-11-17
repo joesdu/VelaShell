@@ -47,6 +47,7 @@ public partial class ChatPanelView
         public long TotalReasoningTokens;
         public long LastInputTokens;
         public long LastCachedInputTokens;
+        public long LastCacheWriteTokens;
         public long TotalCachedInputTokens;
         public long TotalCacheWriteTokens;
         public string? StreamingUsageConversationId;
