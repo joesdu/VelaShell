@@ -140,6 +140,45 @@ public sealed class TeamEngineTests
         Assert.AreEqual("completed", reports[0].Status);
     }
 
+    /// <summary>
+    /// 看板上的消息带着它说的是哪个任务;上游报告交给下游记一条「交付」(挂在上游任务上),
+    /// 审查结论记一条「审查」(挂在审查任务上);任务记下开跑时距团队开跑多久,看板带上主控用的模型 ——
+    /// 团队控制台的数据流、时间轴与通信记录靠的就是这几样。
+    /// </summary>
+    [TestMethod]
+    public async Task Board_RecordsHandoffsReviewsTaskLinksAndStartOffsets()
+    {
+        var runner = new FakeRunner((request, attempt) =>
+            request.Prompt.Contains("## Your task #review", StringComparison.Ordinal)
+                ? attempt == 1 ? "no reload\nVERDICT: FAIL" : "fine\nVERDICT: PASS"
+                : "did it");
+        await using var orchestrator = new SubagentOrchestrator(runner.RunAsync, CancellationToken.None) { DefaultModelId = "lead-model" };
+
+        orchestrator.EnsureTeam().Run("change config safely",
+            [Member("scout", "researcher"), Member("fixer", "engineer"), Member("checker", "reviewer")],
+            [Work("look", "scout"), Work("fix", "fixer", ["look"]), Work("review", "checker", verifies: "fix")]);
+        await WaitForReportAsync(orchestrator);
+        TeamBoardSnapshot board = orchestrator.Team!.Snapshot()!;
+
+        Assert.AreEqual("lead-model", board.LeadModelId);
+        Assert.IsTrue(board.Tasks.All(t => t.StartOffset >= TimeSpan.Zero), "每个开跑过的任务都记了开跑时刻");
+        Assert.IsTrue(board.Members.All(m => m.ModelId == "lead-model"), "没指定模型的成员沿用主控的");
+
+        TeamMessageInfo[] handoffs = [.. board.Messages.Where(m => m.Kind == "handoff")];
+        Assert.IsTrue(handoffs.Any(m => (m.From, m.To, m.TaskId) == ("scout", "fixer", "look")), "调研报告交给了修改的人");
+        Assert.IsTrue(handoffs.Any(m => (m.From, m.To, m.TaskId) == ("fixer", "checker", "fix")), "修改报告交给了审查的人");
+        Assert.IsFalse(handoffs.Any(m => m.From == m.To));
+
+        TeamMessageInfo[] reviews = [.. board.Messages.Where(m => m.Kind == "review")];
+        Assert.HasCount(2, reviews, "第一次不通过(返工)+ 第二次通过,各一条");
+        Assert.IsTrue(reviews.All(m => (m.From, m.To, m.TaskId) == ("checker", "fixer", "review")));
+        StringAssert.Contains(reviews[0].Text, "sent back for rework");
+        StringAssert.Contains(reviews[1].Text, "passed review");
+
+        Assert.IsTrue(board.Messages.Where(m => m.Kind is "assign" or "report").All(m => m.TaskId is not null), "分派与汇报都挂着任务");
+        Assert.HasCount(2, board.Messages.Where(m => m.Kind == "assign" && m.TaskId == "fix").ToArray(), "返工再分派一次");
+    }
+
     [TestMethod]
     public async Task ReviewThatKeepsFailing_StopsAfterOneRework()
     {

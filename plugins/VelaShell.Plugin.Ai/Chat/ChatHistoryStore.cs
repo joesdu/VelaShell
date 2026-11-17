@@ -40,7 +40,7 @@ public sealed record ChatGeneratedImage(string FileName, string MediaType);
 /// <param name="Images">这一轮生成的图片引用。</param>
 /// <param name="Switch">这一轮的故障转移 / 换 Key 记录(界面上那张切换提示卡);没切过为 null。</param>
 /// <param name="Subagents">这一轮委派出去的子 Agent 的终态快照(界面上那组运行卡片);没委派过为 null。</param>
-/// <param name="Team">这一轮团队的终态看板(界面上那张团队卡);没组过团队为 null。</param>
+/// <param name="Team">这一轮团队的终态看板(界面上的团队入口卡与团队控制台看的就是它);没组过团队为 null。</param>
 public sealed record ChatTurnMeta(
     string Model = "",
     long ElapsedMs = 0,
@@ -568,7 +568,7 @@ public sealed class ChatHistoryStore(IPluginContext context)
     /// </summary>
     private sealed record StoredSubagent(string? Id, string? Role, string? Status, string? Output, StoredSubagentTool[]? Tools,
         string[]? Errors, long ElapsedMs, string? ModelId, string? Task, long InputTokens, long OutputTokens, bool AllowWrites,
-        string? TeamTaskId = null, bool AllowCommands = false)
+        string? TeamTaskId = null, bool AllowCommands = false, long CachedInputTokens = 0, long ContextTokens = 0)
     {
         // 团队一轮最多 12 个任务、各可返工一次:24 次运行
         private const int MaxRuns = 24, MaxOutputChars = 16 * 1024, MaxTaskChars = 4 * 1024, MaxErrors = 12, MaxErrorChars = 600;
@@ -581,7 +581,8 @@ public sealed class ChatHistoryStore(IPluginContext context)
                     [.. run.ToolsUsed.Select(tool => new StoredSubagentTool(tool.Name, tool.Count))],
                     [.. run.Errors.Take(MaxErrors).Select(error => Truncate(error, MaxErrorChars))],
                     (long)run.Elapsed.TotalMilliseconds, run.ModelId, Truncate(run.TaskPrompt, MaxTaskChars),
-                    run.InputTokens, run.OutputTokens, run.AllowWrites, run.TeamTaskId, run.AllowCommands))
+                    run.InputTokens, run.OutputTokens, run.AllowWrites, run.TeamTaskId, run.AllowCommands,
+                    run.CachedInputTokens, run.ContextTokens))
             ];
 
         public static IReadOnlyList<Agent.SubagentSnapshot>? ToSnapshots(StoredSubagent[]? stored)
@@ -597,7 +598,8 @@ public sealed class ChatHistoryStore(IPluginContext context)
                     [.. (run.Errors ?? []).Where(error => !string.IsNullOrEmpty(error))],
                     TimeSpan.FromMilliseconds(Math.Max(0, run.ElapsedMs)), run.ModelId, run.Task ?? "",
                     InputTokens: run.InputTokens, OutputTokens: run.OutputTokens, AllowWrites: run.AllowWrites,
-                    TeamTaskId: run.TeamTaskId, AllowCommands: run.AllowCommands))
+                    TeamTaskId: run.TeamTaskId, AllowCommands: run.AllowCommands,
+                    CachedInputTokens: run.CachedInputTokens, ContextTokens: run.ContextTokens))
             ];
     }
 

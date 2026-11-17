@@ -39,19 +39,25 @@ public sealed record TeamMemberInfo(string Name, string Role, string? ModelId, b
 /// <summary>
 /// 团队面板上的一个任务。<c>Status</c> 取 pending / running / completed / failed / blocked / cancelled;
 /// <c>Attempts</c> 是跑过几次(返工加一);<c>Verdict</c> 是审查任务的结论 PASS / FAIL(非审查任务为 null);
-/// <c>SubagentId</c> 是当前(或最后一次)对应的子任务;<c>Note</c> 是等待 / 受阻 / 返工的原因。
+/// <c>SubagentId</c> 是当前(或最后一次)对应的子任务;<c>Note</c> 是等待 / 受阻 / 返工的原因;
+/// <c>StartOffset</c> 是(最近一次)开跑时距团队开跑过了多久,没开跑过为 null —— 团队控制台的时间轴按它摆任务条。
 /// </summary>
 public sealed record TeamTaskInfo(string Id, string Title, string Assignee, string Status, IReadOnlyList<string> DependsOn,
-    string? Verifies, int Attempts, string? Verdict, string? SubagentId, string Report, string Note, TimeSpan Elapsed);
+    string? Verifies, int Attempts, string? Verdict, string? SubagentId, string Report, string Note, TimeSpan Elapsed,
+    TimeSpan? StartOffset = null);
 
 /// <summary>
-/// 团队消息。<c>Kind</c> 取 assign(主控→成员)/ report(成员→主控)/ peer(成员之间)/ system(引擎)。
+/// 团队消息。<c>Kind</c> 取 assign(主控→成员)/ report(成员→主控)/ peer(成员之间)/
+/// handoff(上游报告交给下游)/ review(审查结论)/ system(引擎);<c>TaskId</c> 是这条消息说的那个任务,与任务无关为 null。
 /// </summary>
-public sealed record TeamMessageInfo(DateTimeOffset At, string From, string To, string Kind, string Text);
+public sealed record TeamMessageInfo(DateTimeOffset At, string From, string To, string Kind, string Text, string? TaskId = null);
 
-/// <summary>团队面板的整体快照(界面与历史用)。<c>Phase</c> 取 running / completed / failed / cancelled。</summary>
+/// <summary>
+/// 团队面板的整体快照(界面与历史用)。<c>Phase</c> 取 running / completed / failed / cancelled;
+/// <c>LeadModelId</c> 是主控这一轮用的模型(旧数据为 null)。
+/// </summary>
 public sealed record TeamBoardSnapshot(string TeamId, string Goal, string Phase, IReadOnlyList<TeamMemberInfo> Members,
-    IReadOnlyList<TeamTaskInfo> Tasks, IReadOnlyList<TeamMessageInfo> Messages, TimeSpan Elapsed);
+    IReadOnlyList<TeamTaskInfo> Tasks, IReadOnlyList<TeamMessageInfo> Messages, TimeSpan Elapsed, string? LeadModelId = null);
 
 /// <summary>
 /// 团队模式:主 Agent(lead)一次性定好成员(角色 / 模型 / 写权限)与任务(负责人 / 依赖 / 审查关系),
@@ -434,7 +440,7 @@ public sealed partial class TeamEngine
                 {
                     task.Status = "blocked";
                     task.Note = $"#{broken.Spec.Id} {broken.Status}";
-                    AddMessage("engine", task.Spec.Assignee, "system", $"#{task.Spec.Id} blocked: #{broken.Spec.Id} {broken.Status}.");
+                    AddMessage("engine", task.Spec.Assignee, "system", $"#{task.Spec.Id} blocked: #{broken.Spec.Id} {broken.Status}.", task.Spec.Id);
                     changed = true;
                     continue;
                 }
@@ -474,7 +480,15 @@ public sealed partial class TeamEngine
         task.StartedAt = DateTimeOffset.UtcNow;
         task.FinishedAt = null;
         member.RunningTask = task.Spec.Id;
-        AddMessage("lead", memberName, "assign", $"#{task.Spec.Id} {task.Spec.Title}" + (task.Attempts > 1 ? " (rework)" : ""));
+        AddMessage("lead", memberName, "assign", $"#{task.Spec.Id} {task.Spec.Title}" + (task.Attempts > 1 ? " (rework)" : ""), task.Spec.Id);
+        // 上游报告是引擎自动交给下游的(见 BuildTaskPrompt);别的成员做的那几份各记一条「交付」,
+        // 团队控制台的数据流与通信记录才看得出报告从谁手里到了谁手里。消息挂在上游任务上:点开看到的就是那份报告
+        foreach (TaskState upstream in task.DependsOn.Select(FindTask).OfType<TaskState>()
+                     .Where(t => t.Status == "completed" && t.Spec.Assignee != memberName))
+        {
+            AddMessage(upstream.Spec.Assignee, memberName, "handoff",
+                $"#{upstream.Spec.Id} {upstream.Spec.Title} → #{task.Spec.Id}", upstream.Spec.Id);
+        }
         (string? started, string? error) = _owner.StartCore(request, TimeSpan.FromSeconds(_timeoutSeconds), task.Spec.Id, id);
         if (started is null)
         {
@@ -482,7 +496,7 @@ public sealed partial class TeamEngine
             task.Status = "failed";
             task.Note = error ?? "could not start";
             task.FinishedAt = DateTimeOffset.UtcNow;
-            AddMessage("engine", "lead", "system", $"#{task.Spec.Id} could not start: {task.Note}");
+            AddMessage("engine", "lead", "system", $"#{task.Spec.Id} could not start: {task.Note}", task.Spec.Id);
         }
     }
 
@@ -500,17 +514,23 @@ public sealed partial class TeamEngine
             {
                 task.Status = snapshot.Status is "cancelled" ? "cancelled" : "failed";
                 task.Note = snapshot.Errors.Count > 0 ? snapshot.Errors[^1] : snapshot.Status;
-                AddMessage(member.Spec.Name, "lead", "system", $"#{task.Spec.Id} {snapshot.Status}: {Clip(task.Note, 200)}");
+                AddMessage(member.Spec.Name, "lead", "system", $"#{task.Spec.Id} {snapshot.Status}: {Clip(task.Note, 200)}", task.Spec.Id);
             }
             else
             {
                 task.Status = "completed";
                 task.Note = "";
-                AddMessage(member.Spec.Name, "lead", "report", $"#{task.Spec.Id} done: {Clip(snapshot.Summary, 200)}");
+                AddMessage(member.Spec.Name, "lead", "report", $"#{task.Spec.Id} done: {Clip(snapshot.Summary, 200)}", task.Spec.Id);
                 if (task.Spec.Verifies is { } verifiedId && FindTask(verifiedId) is { } verified)
                 {
                     task.Verdict = ParseVerdict(snapshot.Output);
-                    if (task.Verdict == "FAIL" && verified.Attempts <= MaxReworks && !_cancelled)
+                    // 审查结论记成一条「审查」消息(挂在审查任务上,点开是审查报告)
+                    if (task.Verdict != "FAIL" || verified.Attempts > MaxReworks || _cancelled)
+                    {
+                        AddMessage(member.Spec.Name, verified.Spec.Assignee, "review",
+                            $"#{verified.Spec.Id} " + (task.Verdict == "PASS" ? "passed review." : "did not pass review."), task.Spec.Id);
+                    }
+                    else
                     {
                         // 审查不过:被审查的任务带着意见返工,审查者等它重做完再审一次
                         verified.Status = "pending";
@@ -518,8 +538,8 @@ public sealed partial class TeamEngine
                         verified.Verdict = null;
                         task.Status = "pending";
                         task.Note = $"re-review after #{verified.Spec.Id} rework";
-                        AddMessage(member.Spec.Name, verified.Spec.Assignee, "peer",
-                            $"#{verified.Spec.Id} did not pass review; sent back for rework.");
+                        AddMessage(member.Spec.Name, verified.Spec.Assignee, "review",
+                            $"#{verified.Spec.Id} did not pass review; sent back for rework.", task.Spec.Id);
                     }
                 }
             }
@@ -586,9 +606,11 @@ public sealed partial class TeamEngine
                     m.Spec.AllowWrites, m.Color, m.Spec.AllowCommands))],
                 [.. _tasks.Select(t => new TeamTaskInfo(t.Spec.Id, t.Spec.Title, t.Spec.Assignee, t.Status, t.DependsOn,
                     t.Spec.Verifies, t.Attempts, t.Verdict, t.SubagentId, t.Report, t.Note,
-                    t.StartedAt is { } s ? (t.FinishedAt ?? now) - s : TimeSpan.Zero))],
+                    t.StartedAt is { } s ? (t.FinishedAt ?? now) - s : TimeSpan.Zero,
+                    t.StartedAt is { } began ? began - _startedAt : null))],
                 [.. _messages],
-                (_finishedAt ?? now) - _startedAt);
+                (_finishedAt ?? now) - _startedAt,
+                _owner.DefaultModelId);
         }
     }
 
@@ -716,9 +738,9 @@ public sealed partial class TeamEngine
     private TaskState? FindTask(string id)
         => _tasks.FirstOrDefault(t => string.Equals(t.Spec.Id, id.Trim(), StringComparison.OrdinalIgnoreCase));
 
-    private TeamMessageInfo AddMessage(string from, string to, string kind, string text)
+    private TeamMessageInfo AddMessage(string from, string to, string kind, string text, string? taskId = null)
     {
-        var message = new TeamMessageInfo(DateTimeOffset.UtcNow, from, to, kind, text);
+        var message = new TeamMessageInfo(DateTimeOffset.UtcNow, from, to, kind, text, taskId);
         _messages.Add(message);
         if (_messages.Count > MaxMessages) _messages.RemoveAt(0);
         return message;

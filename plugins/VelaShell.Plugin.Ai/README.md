@@ -592,10 +592,24 @@ Agent 模式的主模型可将有价值的独立任务交给 `delegate_subagent`
   `<untrusted-subagent-results>` 通知。编排器的「还有在途」判断把团队算进去,等依赖、等返工的空档不会让协调器提前收尾。
 * 每个任务默认 600 秒(30–1800)、60 步(普通子任务 30 步);编排器总数上限按 `任务数 × 2` 抬高。成员权限与子 Agent 相同,
   子任务工具里去掉主控用的 `team_status`。
-* **界面**(`Ui/ChatPanelView.Team.cs`):团队卡 = 目标 + 阶段芯片 → 成员头像叠(身份色用宿主转发的 `VelaShell{Cyan,Blue,Magenta,Yellow,Green}` 及 `*Dim`,
-  与状态语义色分开)+ 进度 → 任务表(状态 · #id 标题 · 负责人 · 耗时;第二行此刻动作 / 等待 / 审查结论 / 返工;点开是该次运行的
-  `SubagentRunCard`)→ 团队消息(分派 / 汇报 / 协作 / 系统分色,默认收起)。团队任务不再在子任务组里重复出现。
+* **界面**:会话里只留一张两行的**入口卡**(`Ui/ChatPanelView.Team.cs` 的 `TeamEntryCard`):目标 + 阶段芯片 + 行尾「在标签页中打开」的箭头,
+  成员头像叠(身份色用宿主转发的 `VelaShell{Cyan,Blue,Magenta,Yellow,Green}` 及 `*Dim`,与状态语义色分开)+ 进度与全队用量。整张卡可点
+  (聚焦后 Enter / 空格同效),把**团队控制台** `TeamConsoleView` 开成主窗口标签组里的文档标签(`PanelDisplayMode.Document` + `PanelPlacement.Tabs`,
+  标题「团队 · 目标」,按团队 id 去重,失败退回独立窗口 —— 与差异文档同一套开法)。团队任务不在子任务组里重复出现。
   看板随 `chat_meta` 落盘(`ChatTurnMeta.Team`,报告与消息截短,未落定的按已取消存)。
+* **团队控制台**(`Ui/TeamConsoleView*.cs`,数据推导在 `Ui/TeamConsoleModel.cs`,小部件在 `Ui/TeamConsoleParts.cs`,版式在 `Ui/TeamConsoleStyles.axaml`):
+  * 入口卡与控制台共用一份 `TeamConsoleSession`(最新看板、团队任务的各次运行、取消入口、`TeamTelemetry` 用量序列);气泡每次 `UpdateTeam`
+    都推给它,控制台订阅 `Changed`、按 700 ms 合并重画(消息数变了立即画),不在可视树上时不订阅、动画时钟停掉。
+  * 页面:头部 → 六块统计 → 拓扑与数据流 | 成员状态 → 任务时间轴 | Token 消耗 → 通信记录(≥ 1150 px 并排两栏)。各面板「建一次、之后原地改」,
+    团队在跑时每秒都有数字在变,整块重建会丢悬停提示与滚动位置。
+  * 拓扑:关系由计划推出(主控指派 / 依赖 = 交付 / `verifies` = 审查 / 成员间 `peer` 消息 = 协作,每对只留一条);成员按依赖层数排先后、
+    一行最多三名,主控放在直线被挡得最少的位置;被挡的连线取能让开的最小弯度,标签避开节点、节点下的名字与彼此(放不下就不画)。
+    节点外环 = 上下文占用,状态由在跑任务的 `Activity` 推出;新消息沿连线飞光点(一个 33 ms 的钟,只在有东西要动且页面在树上时走)。
+  * 详情抽屉:成员 / 任务 / 两人之间的对话,互相可点、带返回栈;内容按各自数据的指纹决定要不要重建,任务报告流式追加不重排。
+  * 为它补的快照字段:`TeamTaskInfo.StartOffset`、`TeamMessageInfo.TaskId`、`TeamBoardSnapshot.LeadModelId`;引擎多记 `handoff` / `review`
+    两类只给界面看的消息;`chat_meta` 的子任务另存 `CachedInputTokens` / `ContextTokens`。
+  * 页面是独立文档,不在聊天面板的资源作用域下:自己并入 `AiTheme.axaml`、LiveMarkdown 样式与 `MarkdownSkin.axaml`(从 `ChatPanelView.axaml`
+    抽出来两处共用,改键的部分在 `MarkdownSkin.Sync`)。配色全部绑 `Vela*` 令牌,四档底色 `VelaBgPage` → `VelaBgSidebar` → `VelaBgInput` → `VelaBgHover`。
 
 ## 数据存储位置
 
