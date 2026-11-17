@@ -8,7 +8,6 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using LiveMarkdown.Avalonia;
 using Microsoft.Extensions.AI;
 using TextMateSharp.Grammars;
@@ -1150,7 +1149,7 @@ public partial class ChatPanelView : UserControl
     /// </summary>
     private void ObserveRequest(Conversation conv, IReadOnlyList<ChatMessage> outgoing, ChatOptions? options)
     {
-        ContextBreakdown breakdown = ContextBreakdown.Analyze(outgoing, options, conv.ContextSummary, McpManager.ServerOf);
+        var breakdown = ContextBreakdown.Analyze(outgoing, options, conv.ContextSummary, McpManager.ServerOf);
         Dispatcher.UIThread.Post(() =>
         {
             conv.Breakdown = breakdown;
@@ -4515,7 +4514,7 @@ public partial class ChatPanelView : UserControl
             ToolTip.SetTip(_statusIconHost, owner._loc["ToolRunning"]);
             Grid.SetColumn(_statusIconHost, 4);
             header.Children.Add(_statusIconHost);
-            _diff = ToolDiff.FromArguments(name, argumentsJson);
+            Diff = ToolDiff.FromArguments(name, argumentsJson);
             UpdateDiffStats();
 
             _chevron = new Avalonia.Controls.Shapes.Path

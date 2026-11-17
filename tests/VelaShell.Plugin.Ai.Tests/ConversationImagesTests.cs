@@ -1,5 +1,5 @@
-using Microsoft.Extensions.AI;
 using System.Text.Json;
+using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Chat;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk.Testing;

@@ -7,7 +7,7 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <PackageVersion Include="MSTest.TestAdapter" Version="4.5.3" />
     <PackageVersion Include="MSTest.TestFramework" Version="4.5.3" />
-    <PackageVersion Include="coverlet.collector" Version="10.1.0" />
+    <PackageVersion Include="coverlet.collector" Version="10.1.1" />
     <!-- 测试辅助 -->
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <!-- 插件契约与测试替身,由插件工具链仓库(joesdu/velashell-plugin-toolchain)
@@ -30,6 +30,6 @@
     <!-- 吞吐与分配基准(见 tests/VelaShell.Benchmarks)。不进 CI 门禁:BDN 的数字受机器
          负载影响太大,当门禁只会天天误报;它的用处是改动前后在同一台机器上对比。 -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.16.0-preview.2" />
-    <PackageVersion Include="ReactiveUI.Testing" Version="27.0.0" />
+    <PackageVersion Include="ReactiveUI.Testing" Version="27.0.1" />
   </ItemGroup>
 </Project>

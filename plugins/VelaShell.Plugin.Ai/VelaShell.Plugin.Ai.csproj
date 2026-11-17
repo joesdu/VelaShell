@@ -16,10 +16,8 @@
     <EmbeddedResource Include="Ui\MarkdownInput.xshd" />
     <!-- models.dev 规格快照:发版流水线跑 scripts/Update-ModelsDevSnapshot.ps1 生成(不进版本库,见 .gitignore)。
          没有外网 / 被墙的用户第一次拉取模型也有窗口与单价可用;本地开发没有这两个文件时不打包,行为与以前一样。 -->
-    <EmbeddedResource Include="Assets\models-dev.json.gz" LogicalName="VelaShell.Plugin.Ai.models-dev.json.gz"
-                      Condition="Exists('Assets\models-dev.json.gz')" />
-    <EmbeddedResource Include="Assets\models-dev.stamp" LogicalName="VelaShell.Plugin.Ai.models-dev.stamp"
-                      Condition="Exists('Assets\models-dev.stamp')" />
+    <EmbeddedResource Include="Assets\models-dev.json.gz" LogicalName="VelaShell.Plugin.Ai.models-dev.json.gz" Condition="Exists('Assets\models-dev.json.gz')" />
+    <EmbeddedResource Include="Assets\models-dev.stamp" LogicalName="VelaShell.Plugin.Ai.models-dev.stamp" Condition="Exists('Assets\models-dev.stamp')" />
     <!-- SseRepairHandler 是纯 HTTP 层的东西,没必要为了测它变成公开 API。 -->
     <InternalsVisibleTo Include="VelaShell.Plugin.Ai.Tests" />
   </ItemGroup>
@@ -46,7 +44,7 @@
          这些依赖随插件目录分发,由插件 ALC 按 deps.json 隔离解析,与宿主互不干扰。 -->
     <PackageReference Include="Microsoft.Extensions.AI" Version="11.0.0" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="11.0.0" />
-    <PackageReference Include="Anthropic" Version="13.8.0" />
+    <PackageReference Include="Anthropic" Version="13.9.0" />
     <!-- MCP 官方 C# SDK(Core = 纯客户端/低层,无 Hosting/DI 依赖):
          McpClientTool 即 M.E.AI 的 AIFunction,直接并入 Agent 工具循环。 -->
     <PackageReference Include="ModelContextProtocol.Core" Version="2.4.0" />
@@ -93,6 +91,21 @@
          并且带来的 runtimes/{win,unix}/lib/net6.0/ 目录名里有点号,会被 macOS 的
          codesign 当成嵌套 bundle 而把 dmg 打包整个炸掉(1.4.8 踩过,与 plugins/README.md
          记的插件目录名那次是同一个坑)。**再加包之前先看清它的传递依赖。** -->
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Update="Markdig" Version="1.6.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Update="MicroCom.Runtime" Version="0.11.7" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Update="Onigwrap" Version="1.0.11" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Update="TextMateSharp" Version="3.0.0-preview.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Update="TextMateSharp.Grammars" Version="3.0.0-preview.1" />
   </ItemGroup>
 
 </Project>

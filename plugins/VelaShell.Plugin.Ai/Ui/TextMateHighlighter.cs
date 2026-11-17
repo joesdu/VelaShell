@@ -169,7 +169,7 @@ internal static class TextMateHighlighter
     /// <param name="theme">配色。</param>
     internal static IReadOnlyList<HighlightSpan>[]? HighlightLines(IReadOnlyList<string> lines, string? path, ThemeName theme)
     {
-        if (lines.Count == 0 || lines.Count > MaxLines) return null;
+        if (lines.Count is 0 or > MaxLines) return null;
         TextMateLineTokenizer? tokenizer = ForPath(path, theme);
         if (tokenizer is null) return null;
         var result = new IReadOnlyList<HighlightSpan>[lines.Count];

@@ -375,7 +375,7 @@ public sealed class TeamEngineTests
         IReadOnlyList<SubagentSnapshot> reports = await WaitForReportAsync(orchestrator);
 
         Assert.AreEqual("failed", reports[0].Status);
-        Dictionary<string, string> status = Report(reports[0]).GetProperty("tasks").EnumerateArray()
+        var status = Report(reports[0]).GetProperty("tasks").EnumerateArray()
             .ToDictionary(t => t.GetProperty("id").GetString()!, t => t.GetProperty("status").GetString()!);
         Assert.AreEqual("failed", status["t1"]);
         Assert.AreEqual("blocked", status["t2"]);

@@ -147,13 +147,25 @@ public sealed class LongRunFollowUpTests
     {
         var parent = new AiModelConfig
         {
-            Model = "big", Name = "Big", MaxInputTokens = 400_000, DefaultContextWindow = false, MaxTokens = 32_000,
-            InputPricePerMillion = 5, OutputPricePerMillion = 25, SupportsReasoning = true
+            Model = "big",
+            Name = "Big",
+            MaxInputTokens = 400_000,
+            DefaultContextWindow = false,
+            MaxTokens = 32_000,
+            InputPricePerMillion = 5,
+            OutputPricePerMillion = 25,
+            SupportsReasoning = true
         };
         var cheap = new AiModelConfig
         {
-            Model = "small", Name = "Small", MaxInputTokens = 128_000, DefaultContextWindow = true, MaxTokens = 8_192,
-            InputPricePerMillion = 0.5, OutputPricePerMillion = 2, SupportsReasoning = false
+            Model = "small",
+            Name = "Small",
+            MaxInputTokens = 128_000,
+            DefaultContextWindow = true,
+            MaxTokens = 8_192,
+            InputPricePerMillion = 0.5,
+            OutputPricePerMillion = 2,
+            SupportsReasoning = false
         };
         var unknown = new AiModelConfig { Model = "mystery", MaxInputTokens = 0 };
         var image = new AiModelConfig { Model = "gpt-image-test" };
@@ -270,7 +282,7 @@ public sealed class LongRunFollowUpTests
         TeamBoardSnapshot board = orchestrator.Team!.Snapshot()!;
         Assert.AreEqual("m-small", board.Members.Single(m => m.Name == "scout").ModelId);
         Assert.AreEqual("m-big", board.Members.Single(m => m.Name == "fixer").ModelId, "看板上写实际跑的那个,而不是空着");
-        Dictionary<string, string?> ranOn = orchestrator.Snapshots().ToDictionary(s => s.TeamTaskId!, s => s.ModelId);
+        var ranOn = orchestrator.Snapshots().ToDictionary(s => s.TeamTaskId!, s => s.ModelId);
         Assert.AreEqual("m-small", ranOn["t1"]);
         Assert.AreEqual("m-big", ranOn["t2"]);
     }

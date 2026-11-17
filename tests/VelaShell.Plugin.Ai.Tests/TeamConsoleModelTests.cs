@@ -225,7 +225,7 @@ public sealed class TeamConsoleModelTests
     {
         var telemetry = new TeamTelemetry();
         DateTimeOffset start = DateTimeOffset.UtcNow;
-        Dictionary<string, long> Totals(long a, long b) => new() { ["a"] = a, ["b"] = b };
+        static Dictionary<string, long> Totals(long a, long b) => new() { ["a"] = a, ["b"] = b };
 
         Assert.IsFalse(telemetry.Sample(start, Totals(100, 0)), "第一次只定基线");
         Assert.IsFalse(telemetry.Sample(start + TimeSpan.FromSeconds(1), Totals(500, 0)), "不足一个间隔");
