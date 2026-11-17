@@ -131,8 +131,9 @@ internal sealed class UsageDetailView : StackPanel
         _barHost.Children.Clear();
         _barHost.IsVisible = u.Window > 0 || u.Slices.Count > 0;
         if (_barHost.IsVisible)
-            _barHost.Children.Add(UsageVisuals.Bar(u.BarSegments(), BarHeight,
-                u.CompactAt > 0 ? u.CompactAt / (double)u.Window : null));
+        {
+            _barHost.Children.Add(UsageVisuals.Bar(u.BarSegments(), BarHeight, u.CompactAt > 0 ? u.CompactAt / (double)u.Window : null));
+        }
 
         _contextCaption.Text = ContextCaption(u, _loc);
         _contextCaption[!TextBlock.ForegroundProperty] =
@@ -217,14 +218,23 @@ internal sealed class UsageDetailView : StackPanel
     {
         string caption;
         if (u.Window <= 0)
+        {
             caption = loc["UsageContextUnknownWindow"];
+        }
         else if (u.CompactAt > 0 && u.NearCompaction)
+        {
             caption = loc.F("ContextNearCompaction", u.Estimate + ChatFormatting.Compact(u.Free));
+        }
         else if (u.CompactAt > 0)
+        {
             caption = loc.F("ContextToCompaction", u.Estimate + ChatFormatting.Compact(u.Free), ChatFormatting.Compact(u.CompactAt));
+        }
         else
+        {
             caption = loc.F(u.Figures.Streaming ? "UsageContextCaptionStreaming" : "UsageContextCaption",
                 u.Estimate + u.Percent, ChatFormatting.Compact(Math.Max(0, u.Window - u.Used)));
+        }
+
         if (u.Figures.Dropped > 0) caption += "\n" + loc.F("UsageTrimmedLine", u.Figures.Dropped);
         return caption;
     }

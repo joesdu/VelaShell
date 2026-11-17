@@ -155,25 +155,33 @@ internal sealed class ContextDetailView : StackPanel
     private List<(string, bool)> Insights(ContextUsage u, UsageFigures f)
     {
         var list = new List<(string, bool)>();
-        if (!f.CompactionEnabled && u.Window > 0
-            && u.Used > ContextCompactor.TriggerTokens((int)u.Window, (int)u.Reserve))
+        if (!f.CompactionEnabled && u.Window > 0 && u.Used > ContextCompactor.TriggerTokens((int)u.Window, (int)u.Reserve))
+        {
             list.Add((_loc["ContextInsightCompactOff"], true));
+        }
+
         if (u.Breakdown is { } b)
         {
             foreach (McpServerShare server in b.McpServers.Where(s => s.Calls == 0 && s.Tools.Count > 0).Take(2))
+            {
                 list.Add((_loc.F("ContextInsightIdleMcp", server.Name, server.Tools.Count,
                     ChatFormatting.Compact(u.Scale(server.Tokens))), false));
+            }
 
             int messages = b.Messages, results = b.Parts.GetValueOrDefault(ContextPart.ToolResult);
             if (messages > 0 && u.Scale(messages) >= u.Used * 0.2 && results >= messages * 0.4
                 && b.Largest.FirstOrDefault(i => i.Part == ContextPart.ToolResult) is { } biggest)
+            {
                 list.Add((_loc.F("ContextInsightToolResults", (int)Math.Round(results * 100.0 / messages),
                     biggest.Label, ChatFormatting.Compact(u.Scale(biggest.Tokens))), false));
+            }
 
             long fixedCost = u.Scale(b.System + b.Tools + b.Mcp);
             if (u.Used > 0 && fixedCost >= u.Used * 0.5)
+            {
                 list.Add((_loc.F("ContextInsightFixed", ChatFormatting.Compact(fixedCost),
                     (int)Math.Round(fixedCost * 100.0 / u.Used)), false));
+            }
         }
         return [.. list.Take(MaxInsights)];
     }
@@ -290,8 +298,11 @@ internal sealed class ContextDetailView : StackPanel
         if (b.BuiltinTools.Count == 0) return;
         var rows = b.BuiltinTools.Take(ToolRows).Select(t => (t.Name, u.Scale(t.Tokens), false)).ToList();
         if (b.BuiltinTools.Count > ToolRows)
+        {
             rows.Add((_loc.F("ContextMoreItems", b.BuiltinTools.Count - ToolRows),
                 u.Scale(b.BuiltinTools.Skip(ToolRows).Sum(t => t.Tokens)), false));
+        }
+
         groups.Children.Add(Group("tools", u, ContextSlice.Tools, _loc.F("ContextToolsSub", b.BuiltinTools.Count), rows, plain));
     }
 
@@ -306,8 +317,10 @@ internal sealed class ContextDetailView : StackPanel
             foreach (ContextEntry tool in server.Tools.Take(McpToolRows))
                 rows.Add(("    " + tool.Name, u.Scale(tool.Tokens), false));
             if (server.Tools.Count > McpToolRows)
+            {
                 rows.Add(("    " + _loc.F("ContextMoreItems", server.Tools.Count - McpToolRows),
                     u.Scale(server.Tools.Skip(McpToolRows).Sum(t => t.Tokens)), false));
+            }
         }
         string sub = _loc.F("ContextMcpSub", b.McpServers.Count, b.McpServers.Sum(s => s.Tools.Count));
         groups.Children.Add(Group("mcp", u, ContextSlice.Mcp, sub, rows, plain));

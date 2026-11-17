@@ -501,11 +501,9 @@ public sealed class MasterKeyResolverTests
     [DataRow("/org/freedesktop/secrets/collection/session_2", false)]
     [DataRow("/org/freedesktop/secrets/collection/mysession", false)]
     [DataRow(null, false)]
-    public void SecretService_RecognisesTheInMemorySessionCollection(string? objectPath, bool expected)
-    {
+    public void SecretService_RecognisesTheInMemorySessionCollection(string? objectPath, bool expected) =>
         // #750:默认别名指向 session 集合时,写进去的密钥重启即丢,要当成用不了回落到本地密钥文件。
         Assert.AreEqual(expected, SecretServiceMasterKeyStore.IsSessionCollectionPath(objectPath));
-    }
 
     [TestMethod]
     [OSCondition(ConditionMode.Exclude, OperatingSystems.OSX)]

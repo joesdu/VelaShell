@@ -222,8 +222,10 @@ public static class LineDiff
         int prefix = 0;
         while (prefix < n && prefix < m && string.Equals(a[prefix], b[prefix], StringComparison.Ordinal)) prefix++;
         int suffix = 0;
-        while (suffix < n - prefix && suffix < m - prefix
-               && string.Equals(a[n - 1 - suffix], b[m - 1 - suffix], StringComparison.Ordinal)) suffix++;
+        while (suffix < n - prefix && suffix < m - prefix && string.Equals(a[n - 1 - suffix], b[m - 1 - suffix], StringComparison.Ordinal))
+        {
+            suffix++;
+        }
 
         var ops = new List<Op>(n + m);
         for (int i = 0; i < prefix; i++) ops.Add(Op.Equal);

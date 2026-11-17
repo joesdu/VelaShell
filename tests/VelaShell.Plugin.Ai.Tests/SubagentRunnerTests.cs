@@ -268,10 +268,10 @@ public sealed class SubagentRunnerTests
         {
             orchestrator.Start("task one", "r", modelId: "bad");
             string first = orchestrator.Snapshots()[0].SubagentId;
-            using JsonDocument one = JsonDocument.Parse(await orchestrator.WaitAsync(first, 30, CancellationToken.None));
+            using var one = JsonDocument.Parse(await orchestrator.WaitAsync(first, 30, CancellationToken.None));
             orchestrator.Start("task two", "r", modelId: "bad");
             string second = orchestrator.Snapshots()[1].SubagentId;
-            using JsonDocument two = JsonDocument.Parse(await orchestrator.WaitAsync(second, 30, CancellationToken.None));
+            using var two = JsonDocument.Parse(await orchestrator.WaitAsync(second, 30, CancellationToken.None));
 
             Assert.AreEqual("completed", one.RootElement.GetProperty("status").GetString(), one.RootElement.GetRawText());
             Assert.AreEqual("first report", one.RootElement.GetProperty("output").GetString());
@@ -298,7 +298,7 @@ public sealed class SubagentRunnerTests
         {
             orchestrator.Start("task", "r");
             string id = orchestrator.Snapshots()[0].SubagentId;
-            using JsonDocument result = JsonDocument.Parse(await orchestrator.WaitAsync(id, 30, CancellationToken.None));
+            using var result = JsonDocument.Parse(await orchestrator.WaitAsync(id, 30, CancellationToken.None));
 
             Assert.AreEqual("completed", result.RootElement.GetProperty("status").GetString(), result.RootElement.GetRawText());
             Assert.AreEqual("spare", result.RootElement.GetProperty("modelId").GetString());
@@ -322,7 +322,7 @@ public sealed class SubagentRunnerTests
         {
             orchestrator.Start("task", "r", modelId: "bad");
             string id = orchestrator.Snapshots()[0].SubagentId;
-            using JsonDocument result = JsonDocument.Parse(await orchestrator.WaitAsync(id, 30, CancellationToken.None));
+            using var result = JsonDocument.Parse(await orchestrator.WaitAsync(id, 30, CancellationToken.None));
 
             Assert.AreEqual("failed", result.RootElement.GetProperty("status").GetString(), result.RootElement.GetRawText());
             Assert.IsEmpty(good.Requests, "调过工具之后不换模型重跑");

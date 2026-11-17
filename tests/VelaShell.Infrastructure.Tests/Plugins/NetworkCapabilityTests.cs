@@ -32,7 +32,7 @@ public sealed class NetworkCapabilityTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start(1);
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        Task server = Task.Run(async () =>
+        var server = Task.Run(async () =>
         {
             using TcpClient client = await listener.AcceptTcpClientAsync(cts.Token);
             await client.GetStream().WriteAsync(Encoding.ASCII.GetBytes("hi"), cts.Token);
@@ -57,7 +57,7 @@ public sealed class NetworkCapabilityTests
         listener.Start(1);
         int proxyPort = ((IPEndPoint)listener.LocalEndpoint).Port;
         var request = new TaskCompletionSource<byte[]>();
-        Task server = Task.Run(async () =>
+        var server = Task.Run(async () =>
         {
             using TcpClient client = await listener.AcceptTcpClientAsync(cts.Token);
             NetworkStream s = client.GetStream();

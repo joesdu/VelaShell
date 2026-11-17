@@ -20,13 +20,12 @@ public partial class ChatPanelView
     internal sealed partial class ToolCard
     {
         private readonly StackPanel _diffStats;
-        private ToolFileDiff? _diff;
 
         /// <summary>收到的文件改动(前后全文);没有为 null。</summary>
         internal FileChange? FileChange { get; private set; }
 
         /// <summary>当前可画的差异(测试用)。</summary>
-        internal ToolFileDiff? Diff => _diff;
+        internal ToolFileDiff? Diff { get; private set; }
 
         /// <summary>这张卡的参数是否指向 <paramref name="path" />。</summary>
         internal bool MatchesPath(string path, string? oldPath)
@@ -39,7 +38,7 @@ public partial class ChatPanelView
             FileChange = change;
             if (ToolDiff.FromChange(change) is { } diff)
             {
-                _diff = diff;
+                Diff = diff;
             }
             UpdateDiffStats();
             if (_details.IsVisible)
@@ -51,15 +50,15 @@ public partial class ChatPanelView
         private void UpdateDiffStats()
         {
             _diffStats.Children.Clear();
-            if (_diff is null)
+            if (Diff is null)
             {
                 _diffStats.IsVisible = false;
                 return;
             }
             _diffStats.IsVisible = true;
-            TextBlock added = DiffView.Text("+" + _diff.Added, "VelaStatusConnected");
+            TextBlock added = DiffView.Text("+" + Diff.Added, "VelaStatusConnected");
             added.Name = "ToolDiffAdded";
-            TextBlock removed = DiffView.Text("−" + _diff.Removed, "VelaError");
+            TextBlock removed = DiffView.Text("−" + Diff.Removed, "VelaError");
             removed.Name = "ToolDiffRemoved";
             _diffStats.Children.Add(added);
             _diffStats.Children.Add(removed);
@@ -70,7 +69,7 @@ public partial class ChatPanelView
         {
             // 解开 JSON 逐行排:中文与 < ' + 不再是 \uXXXX,脚本里的换行真的换行(见 ToolDisplay)
             var sb = new StringBuilder();
-            sb.Append(ToolDisplay.Readable(_diff is null
+            sb.Append(ToolDisplay.Readable(Diff is null
                 ? _argumentsJson
                 : ToolDisplay.WithoutKeys(_argumentsJson, ToolDiff.IsDiffPayloadKey)));
             if (_result.Length > 0)
@@ -80,7 +79,7 @@ public partial class ChatPanelView
             }
             _detailsText.Text = sb.ToString();
             _details.Content = null;
-            if (_diff is null)
+            if (Diff is null)
             {
                 _details.MaxHeight = 220;
                 _details.Content = _detailsText;
@@ -101,9 +100,9 @@ public partial class ChatPanelView
                 e.Handled = true;
                 OpenDiffDocument();
             };
-            string? path = FileChange?.Path ?? _diff.Path;
+            string? path = FileChange?.Path ?? Diff.Path;
             var panel = new StackPanel { Spacing = 6 };
-            panel.Children.Add(new DiffView(_diff, _owner._loc, DiffViewMode.Inline,
+            panel.Children.Add(new DiffView(Diff, _owner._loc, DiffViewMode.Inline,
                 path is null ? null : Path.GetFileName(path.Replace('\\', '/')), action: open));
             panel.Children.Add(_detailsText);
             _details.MaxHeight = 420;
@@ -113,7 +112,7 @@ public partial class ChatPanelView
         /// <summary>把这张卡的差异开成停靠文档;有文件改动时与「已修改文件」列表里那个文件共用同一个标签。</summary>
         internal void OpenDiffDocument()
         {
-            if (_diff is null) return;
+            if (Diff is null) return;
             if (FileChange is { } change)
             {
                 string key = ChangedFileList.KeyOf(change.Location, change.Path);
@@ -121,14 +120,14 @@ public partial class ChatPanelView
                 ChangedFileEntry? entry = _owner._active.ChangedFiles.Find(change.Location, change.Path);
                 _owner.OpenDiffDocument(key, entry is not null
                     ? _owner.DocumentOf(entry.Location, entry.Path, entry.OldPath, entry.Kind, entry.Before, entry.After, entry.Diff)
-                    : _owner.DocumentOf(change.Location, change.Path, change.OldPath, change.Kind, change.Before, change.After, _diff));
+                    : _owner.DocumentOf(change.Location, change.Path, change.OldPath, change.Kind, change.Before, change.After, Diff));
                 return;
             }
             // 只有参数里的片段(历史回放、或没收到改动事件):只比对片段;知道在哪儿就能「载入完整文件」
-            string path = _diff.Path ?? ToolName;
+            string path = Diff.Path ?? ToolName;
             string? location = GuessLocation();
             _owner.OpenDiffDocument("fragment\n" + ToolName + "\n" + path, new FileDiffDocument(path,
-                location is null ? null : _owner.DescribeLocation(location), null, _diff)
+                location is null ? null : _owner.DescribeLocation(location), null, Diff)
             { RawLocation = location });
         }
 

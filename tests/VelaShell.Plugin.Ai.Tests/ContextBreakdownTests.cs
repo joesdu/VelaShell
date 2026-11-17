@@ -37,7 +37,7 @@ public sealed class ContextBreakdownTests
             Tools = [Tool("read_remote_file", "Read a remote file"), Tool("github_search_code", "Search code"), Tool("github_list_issues", "List issues")]
         };
 
-        ContextBreakdown b = ContextBreakdown.Analyze(messages, options, summary, ServerOf);
+        var b = ContextBreakdown.Analyze(messages, options, summary, ServerOf);
 
         Assert.IsGreaterThanOrEqualTo(300, b.System, "系统提示词按 system 消息算");
         Assert.IsGreaterThan(0, b.Summary, "与对话摘要同文的那条 user 消息记作摘要,不算消息");
@@ -68,7 +68,7 @@ public sealed class ContextBreakdownTests
             new(ChatRole.Tool, [new FunctionResultContent("c9", Bulk(5000))])
         ];
 
-        ContextBreakdown b = ContextBreakdown.Analyze(messages, null, "", _ => null);
+        var b = ContextBreakdown.Analyze(messages, null, "", _ => null);
 
         Assert.AreEqual(ContextPart.ToolResult, b.Largest[0].Part);
         Assert.AreEqual("run_command · journalctl -u nginx -n 400", b.Largest[0].Label, "参数只取第一行");
@@ -85,7 +85,7 @@ public sealed class ContextBreakdownTests
         ];
         var options = new ChatOptions { Tools = [Tool("github_search_code", "Search code")] };
 
-        ContextBreakdown b = ContextBreakdown.Analyze(messages, options, "", ServerOf);
+        var b = ContextBreakdown.Analyze(messages, options, "", ServerOf);
 
         Assert.AreEqual(2, b.McpServers.Single().Calls);
     }
@@ -97,7 +97,7 @@ public sealed class ContextBreakdownTests
         string block = RunContextCompactor.SummaryBlock(Bulk(400));
         List<ChatMessage> messages = [new(ChatRole.User, [new TextContent("继续"), new TextContent(block)])];
 
-        ContextBreakdown b = ContextBreakdown.Analyze(messages, null, "", _ => null);
+        var b = ContextBreakdown.Analyze(messages, null, "", _ => null);
 
         Assert.IsGreaterThanOrEqualTo(400, b.Summary);
         Assert.IsLessThan(50, b.Parts.GetValueOrDefault(ContextPart.User));
@@ -107,7 +107,7 @@ public sealed class ContextBreakdownTests
     [TestMethod]
     public void Instructions_CountAsSystemPrompt()
     {
-        ContextBreakdown b = ContextBreakdown.Analyze([new(ChatRole.User, "hi")], new ChatOptions { Instructions = Bulk(500) }, "", _ => null);
+        var b = ContextBreakdown.Analyze([new(ChatRole.User, "hi")], new ChatOptions { Instructions = Bulk(500) }, "", _ => null);
 
         Assert.IsGreaterThanOrEqualTo(500, b.System);
     }
@@ -131,7 +131,7 @@ public sealed class ContextBreakdownTests
     {
         List<ChatMessage> messages = [new(ChatRole.System, Bulk(900)), new(ChatRole.User, "hi")];
         var options = new ChatOptions { Tools = [.. Enumerable.Range(0, 30).Select(i => Tool($"tool_{i}", Bulk(120)))] };
-        ContextBreakdown b = ContextBreakdown.Analyze(messages, options, "", _ => null);
+        var b = ContextBreakdown.Analyze(messages, options, "", _ => null);
 
         var usage = new Ui.ContextUsage(Figures(contextTokens: 1000, window: 10_000, b));
 
@@ -144,7 +144,7 @@ public sealed class ContextBreakdownTests
     public void Streaming_PutsTheInFlightReplyIntoMessages()
     {
         List<ChatMessage> messages = [new(ChatRole.System, Bulk(100)), new(ChatRole.User, Bulk(100))];
-        ContextBreakdown b = ContextBreakdown.Analyze(messages, null, "", _ => null);
+        var b = ContextBreakdown.Analyze(messages, null, "", _ => null);
 
         var usage = new Ui.ContextUsage(Figures(contextTokens: b.Total + 500, window: 10_000, b, streaming: true));
 

@@ -580,7 +580,7 @@ public sealed partial class ChatPanelViewUiTests
                 CollectionAssert.AreEqual((string[])["system", "checker"], others.Select(b => (string)b.Tag!).ToArray(), "可以改派给另外两名成员");
 
                 Named<Button>(view, "TeamTaskRetry").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-                Assert.AreEqual(("t2", (string?)null), retried.Single(), "重试:还是原来的成员");
+                Assert.AreEqual(("t2", null), retried.Single(), "重试:还是原来的成员");
                 Press(others[1]);
                 Assert.AreEqual(("t2", "checker"), retried[1], "改派:交给点中的成员");
 

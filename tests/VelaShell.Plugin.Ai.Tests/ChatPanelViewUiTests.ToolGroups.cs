@@ -1,9 +1,5 @@
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Media;
-using VelaShell.Plugin.Ai.Agent;
-using VelaShell.Plugin.Ai.Configuration;
 using Avalonia.VisualTree;
 using LiveMarkdown.Avalonia;
 using VelaShell.Plugin.Ai.Ui;
