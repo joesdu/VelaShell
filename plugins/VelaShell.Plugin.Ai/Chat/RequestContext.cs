@@ -275,19 +275,25 @@ public static class ContextBuilder
         int total = PerMessageOverhead;
         foreach (AIContent content in message.Contents)
         {
-            total += content switch
-            {
-                TextContent text => Estimate(text.Text),
-                TextReasoningContent reasoning => Estimate(reasoning.Text),
-                FunctionCallContent call => Estimate(call.Name) + EstimateArguments(call),
-                FunctionResultContent result => Estimate(result.Result?.ToString()),
-                // 图片按一张中等尺寸图的常见量级算;精确值各家不同,这里只求量级对
-                DataContent => 800,
-                _ => 8
-            };
+            total += Estimate(content);
         }
         return total;
     }
+
+    /// <summary>每条消息的固定开销(供按内容拆分的统计把它记回某一类)。</summary>
+    internal static int MessageOverhead => PerMessageOverhead;
+
+    /// <summary>单段内容的 token 估算(不含消息的固定开销)。</summary>
+    internal static int Estimate(AIContent content) => content switch
+    {
+        TextContent text => Estimate(text.Text),
+        TextReasoningContent reasoning => Estimate(reasoning.Text),
+        FunctionCallContent call => Estimate(call.Name) + EstimateArguments(call),
+        FunctionResultContent result => Estimate(result.Result?.ToString()),
+        // 图片按一张中等尺寸图的常见量级算;精确值各家不同,这里只求量级对
+        DataContent => 800,
+        _ => 8
+    };
 
     private static int EstimateArguments(FunctionCallContent call)
     {

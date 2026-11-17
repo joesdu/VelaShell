@@ -374,6 +374,7 @@ public partial class ChatPanelView : UserControl
             UpdateUsageText();
         };
         ConfigureModelPopup();
+        ConfigureContextPopup();
         ReasoningCombo.SelectionChanged += (_, _) =>
         {
             if (_syncingReasoning || ReasoningCombo.SelectedIndex < 0 || ActiveProvider?.ReasoningAdjustable == false)
@@ -1038,8 +1039,9 @@ public partial class ChatPanelView : UserControl
             UsageText.Text = "";
             UsageMeterTrack.IsVisible = false;
             string idle = windowWarning.Length > 0 ? _loc["UsageIdle"] + "\n" + windowWarning : _loc["UsageIdle"];
-            ToolTip.SetTip(UsageArea, idle);
+            if (!ContextPopup.IsOpen) ToolTip.SetTip(UsageArea, idle);
             Avalonia.Automation.AutomationProperties.SetHelpText(UsageArea, idle);
+            if (ContextPopup.IsOpen) RefreshContextDetail(UsageFiguresFor(false, 0, window, windowWarning));
             return;
         }
 
@@ -1115,19 +1117,95 @@ public partial class ChatPanelView : UserControl
 
         // 悬停面板:同一份数字按段落与占比条画出来;纯文本留给读屏(HelpText)与面板的 ToString
         _usageDetail ??= new UsageDetailView(_loc);
-        _usageDetail.Update(new UsageFigures(
-            streamingUsage, contextTokens, window, windowWarning,
+        UsageFigures figures = UsageFiguresFor(streamingUsage, contextTokens, window, windowWarning);
+        _usageDetail.Update(figures, plain);
+        // 明细浮层开着时悬停面板让位(两层叠在一起读不了),关上再挂回去
+        if (!ContextPopup.IsOpen && !ReferenceEquals(ToolTip.GetTip(UsageArea), _usageDetail))
+            ToolTip.SetTip(UsageArea, _usageDetail);
+        Avalonia.Automation.AutomationProperties.SetHelpText(UsageArea, plain);
+        if (ContextPopup.IsOpen) RefreshContextDetail(figures);
+    }
+
+    /// <summary>当前这份对话的用量快照(悬停面板与明细浮层共用)。</summary>
+    private UsageFigures UsageFiguresFor(bool streaming, long contextTokens, int window, string windowWarning)
+    {
+        ResolvedModel? provider = ActiveProvider;
+        int maxOutput = provider?.MaxTokens ?? 0;
+        return new UsageFigures(
+            streaming, contextTokens, window, windowWarning,
             LastInputTokens, LastCachedInputTokens, LastCacheWriteTokens,
             TotalInputTokens, TotalOutputTokens, TotalReasoningTokens, TotalCachedInputTokens, TotalCacheWriteTokens,
-            DroppedFromContext, ActiveProvider is { } priced ? EstimateCost(priced) : null,
-            ActiveProvider?.MaxTokens ?? 0,
-            ActiveProvider?.Protocol == ChatProtocol.AnthropicMessages), plain);
-        if (!ReferenceEquals(ToolTip.GetTip(UsageArea), _usageDetail)) ToolTip.SetTip(UsageArea, _usageDetail);
-        Avalonia.Automation.AutomationProperties.SetHelpText(UsageArea, plain);
+            DroppedFromContext, provider is not null ? EstimateCost(provider) : null,
+            maxOutput,
+            provider?.Protocol == ChatProtocol.AnthropicMessages,
+            Cur.Breakdown,
+            _settings.CompactContext ? ContextCompactor.TriggerTokens(window, maxOutput) : 0,
+            _settings.CompactContext,
+            provider is null ? "" : ProviderModelLabel(provider));
+    }
+
+    /// <summary>
+    /// 每次真实请求即将发出时(请求线程上)拆一次上下文,贴回 UI 线程上的那份对话。
+    /// 一轮里每一步工具调用都会再发一次请求,所以明细跟着最后一步走,而不是停在本轮开头。
+    /// </summary>
+    private void ObserveRequest(Conversation conv, IReadOnlyList<ChatMessage> outgoing, ChatOptions? options)
+    {
+        ContextBreakdown breakdown = ContextBreakdown.Analyze(outgoing, options, conv.ContextSummary, McpManager.ServerOf);
+        Dispatcher.UIThread.Post(() =>
+        {
+            conv.Breakdown = breakdown;
+            if (ReferenceEquals(conv, _active)) UpdateUsageText();
+        });
     }
 
     /// <summary>用量悬停面板(第一次有用量时建,之后就地刷新)。</summary>
     private UsageDetailView? _usageDetail;
+
+    /// <summary>点击用量打开的上下文明细(第一次打开时建)。</summary>
+    private ContextDetailView? _contextDetail;
+
+    private void RefreshContextDetail(UsageFigures figures)
+    {
+        _contextDetail ??= new ContextDetailView(_loc);
+        // 键盘焦点在里面(正在展开某一类)时,生成中的高频刷新会把焦点冲掉:等这一步写完再刷
+        if (figures.Streaming && _contextDetail.IsKeyboardFocusWithin) return;
+        _contextDetail.Update(figures);
+        if (!ReferenceEquals(ContextDetailHost.Content, _contextDetail)) ContextDetailHost.Content = _contextDetail;
+        Avalonia.Automation.AutomationProperties.SetHelpText(ContextPopupBody, _contextDetail.ToString());
+    }
+
+    private void ConfigureContextPopup()
+    {
+        UsageButton.Click += (_, _) => ContextPopup.IsOpen = !ContextPopup.IsOpen;
+        Avalonia.Automation.AutomationProperties.SetName(UsageButton, _loc["ContextDetailTitle"]);
+        Avalonia.Automation.AutomationProperties.SetName(ContextPopupBody, _loc["ContextDetailTitle"]);
+        ContextPopup.Opened += (_, _) =>
+        {
+            ToolTip.SetIsOpen(UsageArea, false);
+            ToolTip.SetTip(UsageArea, null);
+            // 窄侧栏里不出界:最宽 560,至少 260
+            ContextPopupBody.Width = Math.Max(260, Math.Min(560, Bounds.Width - 16));
+            ContextDetailScroll.MaxHeight = Math.Max(240, Math.Min(640, (TopLevel.GetTopLevel(this)?.ClientSize.Height ?? 720) - 120));
+            UpdateUsageText(); // 开着时它顺带刷新明细
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (ContextPopup.IsOpen) ContextPopupBody.Focus();
+            }, DispatcherPriority.Loaded);
+        };
+        ContextPopupBody.AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (e.Key == Key.Escape)
+            {
+                ContextPopup.IsOpen = false;
+                e.Handled = true;
+            }
+        }, RoutingStrategies.Tunnel);
+        ContextPopup.Closed += (_, _) =>
+        {
+            UpdateUsageText();
+            if (!_detached && IsEffectivelyVisible) UsageButton.Focus();
+        };
+    }
 
     /// <summary>
     /// 上下文占用条:把"上一轮吃掉了窗口的百分之几"画成一根 56px 的槽。
@@ -1885,7 +1963,8 @@ public partial class ChatPanelView : UserControl
             {
                 SteeringChatClient channel = null!;
                 channel = new SteeringChatClient(inner, SteeringQueue, () => OnSteeringDelivered(conv, channel),
-                    cancellationToken => VerifyFixedRequestAsync(cancellationToken, formal: true));
+                    cancellationToken => VerifyFixedRequestAsync(cancellationToken, formal: true),
+                    (outgoing, requestOptions) => ObserveRequest(conv, outgoing, requestOptions));
                 return channel;
             }
 
@@ -2998,6 +3077,7 @@ public partial class ChatPanelView : UserControl
         LastCacheWriteTokens = 0;
         TotalCachedInputTokens = 0;
         TotalCacheWriteTokens = 0;
+        Cur.Breakdown = null;
         UpdateUsageText();
     }
 

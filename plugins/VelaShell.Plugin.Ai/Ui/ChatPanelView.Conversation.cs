@@ -54,6 +54,9 @@ public partial class ChatPanelView
         public long StreamingInputTokens;
         public double StreamingOutputTokens;
 
+        /// <summary>最近一次真实请求的上下文拆分(系统提示词 / 工具定义 / 摘要 / 消息);还没发过为 null。</summary>
+        public ContextBreakdown? Breakdown;
+
         // ---------- 在途一轮 ----------
         public CancellationTokenSource? Cts;
         public bool Busy;

@@ -49,6 +49,13 @@ public static class ContextCompactor
     }
 
     /// <summary>
+    /// 压缩线:上下文超过这么多 token 就会在下一轮之前压缩(与 <see cref="ShouldCompact" /> 同一个式子)。
+    /// 窗口未知返回 0。用量面板按它画刻度。
+    /// </summary>
+    public static int TriggerTokens(int windowTokens, int reserveTokens)
+        => windowTokens <= 0 ? 0 : (int)Math.Max(0, (windowTokens - Math.Max(0, reserveTokens)) * Threshold);
+
+    /// <summary>
     /// 折到哪儿为止。目标是让"摘要 + 保留原文"落到 <see cref="Target" /> 以内,
     /// 同时至少留 <see cref="KeepVerbatim" /> 条原文,并且<b>只在用户消息处切</b> ——
     /// 从 assistant / 工具结果中间切会把工具调用和它的结果拆开。

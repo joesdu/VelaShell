@@ -26,11 +26,16 @@ namespace VelaShell.Plugin.Ai.Chat;
 /// 面板据此把它补进对话历史、在回复里挂一张卡、并把输入框上方那枚排队芯片撤掉。
 /// </param>
 /// <param name="beforeRequest">每次真实请求(含工具结果续流)前复验本轮固定凭据;失败不出境。</param>
+/// <param name="onRequest">
+/// 每次真实请求组装好、即将发出时回调(插话已并入;<b>在发请求的那个线程上</b>)。
+/// 用量明细据此拆分上下文;回调抛出的异常不影响请求。
+/// </param>
 internal sealed class SteeringChatClient(
     IChatClient innerClient,
     SteeringQueue queue,
     Action? onDelivered = null,
-    Func<CancellationToken, Task>? beforeRequest = null) : IChatClient
+    Func<CancellationToken, Task>? beforeRequest = null,
+    Action<IReadOnlyList<ChatMessage>, ChatOptions?>? onRequest = null) : IChatClient
 {
     private readonly Lock _gate = new();
     private readonly List<SteeringMessage> _delivered = [];
@@ -70,7 +75,7 @@ internal sealed class SteeringChatClient(
         ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
         if (beforeRequest is not null) await beforeRequest(cancellationToken).ConfigureAwait(false);
-        return await RequestClient.GetResponseAsync(Compose(messages), options, cancellationToken).ConfigureAwait(false);
+        return await RequestClient.GetResponseAsync(Observe(Compose(messages), options), options, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -79,11 +84,25 @@ internal sealed class SteeringChatClient(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (beforeRequest is not null) await beforeRequest(cancellationToken).ConfigureAwait(false);
-        await foreach (ChatResponseUpdate update in RequestClient.GetStreamingResponseAsync(Compose(messages), options, cancellationToken)
+        await foreach (ChatResponseUpdate update in RequestClient.GetStreamingResponseAsync(Observe(Compose(messages), options), options, cancellationToken)
             .ConfigureAwait(false))
         {
             yield return update;
         }
+    }
+
+    /// <summary>把即将发出的这一份交给观察者;观察者出错不连累请求(那只是统计)。</summary>
+    private List<ChatMessage> Observe(List<ChatMessage> outgoing, ChatOptions? options)
+    {
+        try
+        {
+            onRequest?.Invoke(outgoing, options);
+        }
+        catch (Exception)
+        {
+            // 用量明细算不出来就不显示,请求照发
+        }
+        return outgoing;
     }
 
     /// <summary>把队列里的插话并进这一次要发的消息序列。</summary>
