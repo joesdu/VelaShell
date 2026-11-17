@@ -104,6 +104,7 @@ public partial class ChatPanelView : UserControl
     private long TotalReasoningTokens { get => Cur.TotalReasoningTokens; set => Cur.TotalReasoningTokens = value; }
     private long LastInputTokens { get => Cur.LastInputTokens; set => Cur.LastInputTokens = value; }
     private long LastCachedInputTokens { get => Cur.LastCachedInputTokens; set => Cur.LastCachedInputTokens = value; }
+    private long LastCacheWriteTokens { get => Cur.LastCacheWriteTokens; set => Cur.LastCacheWriteTokens = value; }
     private long TotalCachedInputTokens { get => Cur.TotalCachedInputTokens; set => Cur.TotalCachedInputTokens = value; }
     private long TotalCacheWriteTokens { get => Cur.TotalCacheWriteTokens; set => Cur.TotalCacheWriteTokens = value; }
     private bool ThinkingHintShown { get => Cur.ThinkingHintShown; set => Cur.ThinkingHintShown = value; }
@@ -1069,7 +1070,9 @@ public partial class ChatPanelView : UserControl
             TokenFlowText.IsVisible = false;
             UsageText.Text = "";
             UsageMeterTrack.IsVisible = false;
-            ToolTip.SetTip(UsageText, windowWarning.Length > 0 ? _loc["UsageIdle"] + "\n" + windowWarning : _loc["UsageIdle"]);
+            string idle = windowWarning.Length > 0 ? _loc["UsageIdle"] + "\n" + windowWarning : _loc["UsageIdle"];
+            ToolTip.SetTip(UsageArea, idle);
+            Avalonia.Automation.AutomationProperties.SetHelpText(UsageArea, idle);
             return;
         }
 
@@ -1078,10 +1081,10 @@ public partial class ChatPanelView : UserControl
         string estimate = streamingUsage ? "~" : "";
         long input = TotalInputTokens + (streamingUsage ? Cur.StreamingInputTokens : 0);
         long output = TotalOutputTokens + (streamingUsage ? (long)Math.Ceiling(Cur.StreamingOutputTokens) : 0);
-        TokenFlowText.Text = $"{estimate}{ChatFormatting.Compact(input)} tok ↑  {estimate}{ChatFormatting.Compact(output)} tok ↓";
+        // 箭头在前、数字在后,不再挂 "tok":↑ 是发出去的(输入),↓ 是收回来的(输出)
+        TokenFlowText.Text = $"↑{estimate}{ChatFormatting.Compact(input)} ↓{estimate}{ChatFormatting.Compact(output)}";
         TokenFlowText.IsVisible = true;
         string totals = _loc.F("UsageTotalsLine", $"{TotalInputTokens:N0}", $"{TotalOutputTokens:N0}");
-        ToolTip.SetTip(TokenFlowText, totals);
         Avalonia.Automation.AutomationProperties.SetName(TokenFlowText,
             streamingUsage ? $"{TokenFlowText.Text}. {_loc["UsageStreamingEstimate"]}" : totals);
         long contextTokens = streamingUsage
@@ -1090,7 +1093,8 @@ public partial class ChatPanelView : UserControl
         if (window > 0 && (streamingUsage || contextTokens > 0))
         {
             int percent = (int)Math.Min(100, Math.Round(contextTokens * 100.0 / window));
-            label.Append($"{estimate}{ChatFormatting.Compact(contextTokens)}/{ChatFormatting.Compact(window)} · {estimate}{percent}%");
+            // 可见的只写「上下文 21%」:条就在它左边,绝对数(41k/200k)放进面板
+            label.Append($"{_loc["CtxShort"]} {estimate}{percent}%");
             detail.AppendLine(_loc.F("UsageContextLine", $"{contextTokens:N0}", $"{window:N0}", percent));
             if (streamingUsage) detail.AppendLine(_loc["UsageContextStreaming"]);
             SetUsageMeter(percent);
@@ -1139,10 +1143,24 @@ public partial class ChatPanelView : UserControl
                 window > 0 ? $"{window:N0}" : "—"));
             if (windowWarning.Length > 0) detail.AppendLine().Append(windowWarning);
         }
-        ToolTip.SetTip(UsageText, detail.ToString().TrimEnd());
         if (streamingUsage) detail.AppendLine().Append(_loc["UsageStreamingEstimate"]);
-        ToolTip.SetTip(TokenFlowText, detail.ToString().TrimEnd());
+        string plain = detail.ToString().TrimEnd();
+
+        // 悬停面板:同一份数字按段落与占比条画出来;纯文本留给读屏(HelpText)与面板的 ToString
+        _usageDetail ??= new UsageDetailView(_loc);
+        _usageDetail.Update(new UsageFigures(
+            streamingUsage, contextTokens, window, windowWarning,
+            LastInputTokens, LastCachedInputTokens, LastCacheWriteTokens,
+            TotalInputTokens, TotalOutputTokens, TotalReasoningTokens, TotalCachedInputTokens, TotalCacheWriteTokens,
+            DroppedFromContext, ActiveProvider is { } priced ? EstimateCost(priced) : null,
+            ActiveProvider?.MaxTokens ?? 0,
+            ActiveProvider?.Protocol == ChatProtocol.AnthropicMessages), plain);
+        if (!ReferenceEquals(ToolTip.GetTip(UsageArea), _usageDetail)) ToolTip.SetTip(UsageArea, _usageDetail);
+        Avalonia.Automation.AutomationProperties.SetHelpText(UsageArea, plain);
     }
+
+    /// <summary>用量悬停面板(第一次有用量时建,之后就地刷新)。</summary>
+    private UsageDetailView? _usageDetail;
 
     /// <summary>
     /// 上下文占用条:把"上一轮吃掉了窗口的百分之几"画成一根 56px 的槽。
@@ -1172,19 +1190,32 @@ public partial class ChatPanelView : UserControl
     /// 命中缓存的那部分单独按缓存价算 —— 那正是缓存值不值得开的关键数字。
     /// </summary>
     private double? EstimateCost(ResolvedModel provider)
+        => EstimateCost(provider, TotalInputTokens, TotalCachedInputTokens, TotalOutputTokens);
+
+    /// <summary>按某个模型填的单价估一段用量的花费;单价没填返回 null。团队卡上每个成员各按自己的模型算。</summary>
+    /// <param name="model">计价的模型。</param>
+    /// <param name="input">输入 token(含缓存命中)。</param>
+    /// <param name="cached">其中命中缓存的部分。</param>
+    /// <param name="output">输出 token。</param>
+    internal static double? EstimateCost(ResolvedModel model, long input, long cached, long output)
     {
-        if (provider.InputPricePerMillion <= 0 && provider.OutputPricePerMillion <= 0)
+        if (model.InputPricePerMillion <= 0 && model.OutputPricePerMillion <= 0)
         {
             return null;
         }
-        double cachedPrice = provider.CachedInputPricePerMillion > 0
-            ? provider.CachedInputPricePerMillion
-            : provider.InputPricePerMillion;
-        long freshInput = Math.Max(0, TotalInputTokens - TotalCachedInputTokens);
-        return ((freshInput * provider.InputPricePerMillion)
-                + (TotalCachedInputTokens * cachedPrice)
-                + (TotalOutputTokens * provider.OutputPricePerMillion)) / 1_000_000d;
+        double cachedPrice = model.CachedInputPricePerMillion > 0
+            ? model.CachedInputPricePerMillion
+            : model.InputPricePerMillion;
+        cached = Math.Clamp(cached, 0, Math.Max(0, input));
+        long freshInput = Math.Max(0, input - cached);
+        return ((freshInput * model.InputPricePerMillion)
+                + (cached * cachedPrice)
+                + (output * model.OutputPricePerMillion)) / 1_000_000d;
     }
+
+    /// <summary>卡片上的短金额:单价是用户填的、币种不定,只写数字;不到 0.01 时多留两位,免得显示成 0。</summary>
+    internal static string FormatCost(double cost) => "≈" + cost.ToString(cost is > 0 and < 0.01 ? "0.####" : "0.##",
+        System.Globalization.CultureInfo.InvariantCulture);
 
     private string? SelectedSessionId
         => _sessions.Count > 0 && SessionCombo.SelectedIndex >= 0 && SessionCombo.SelectedIndex < _sessions.Count
@@ -1902,6 +1933,7 @@ public partial class ChatPanelView : UserControl
                     UsageDetails? context = lastRequest ?? usage;
                     LastInputTokens = context?.InputTokenCount ?? 0;
                     LastCachedInputTokens = context?.CachedInputTokenCount ?? 0;
+                    LastCacheWriteTokens = context?.AdditionalCounts?.GetValueOrDefault(CacheUsageChatClient.CacheWriteKey) ?? 0;
                 }
                 if (usage is null)
                 {
@@ -1912,7 +1944,7 @@ public partial class ChatPanelView : UserControl
                 TotalOutputTokens += usage.OutputTokenCount ?? 0;
                 TotalReasoningTokens += usage.ReasoningTokenCount ?? 0;
                 TotalCachedInputTokens += usage.CachedInputTokenCount ?? 0;
-                TotalCacheWriteTokens += usage.AdditionalCounts?.GetValueOrDefault("CacheCreationInputTokens") ?? 0;
+                TotalCacheWriteTokens += usage.AdditionalCounts?.GetValueOrDefault(CacheUsageChatClient.CacheWriteKey) ?? 0;
                 UpdateUsageText();
             }
 
@@ -2992,6 +3024,7 @@ public partial class ChatPanelView : UserControl
         TotalReasoningTokens = 0;
         LastInputTokens = 0;
         LastCachedInputTokens = 0;
+        LastCacheWriteTokens = 0;
         TotalCachedInputTokens = 0;
         TotalCacheWriteTokens = 0;
         UpdateUsageText();

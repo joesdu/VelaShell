@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using VelaShell.Plugin.Ai.Agent;
+using VelaShell.Plugin.Ai.Configuration;
 using Avalonia.VisualTree;
 using LiveMarkdown.Avalonia;
 using VelaShell.Plugin.Ai.Ui;
@@ -107,15 +108,27 @@ public sealed partial class ChatPanelViewUiTests
     }
 
     /// <summary>
-    /// 团队卡的任务行:负责人简写圈在标题左侧(各行对齐),右侧依次是输入 token 与耗时、都右对齐;
-    /// 团队消息的「谁 → 谁」用同样的简写圈;跑完的团队显示「已完成」。
+    /// 团队卡的任务卡:负责人头像在标题左侧(各行对齐)、状态在右上;第二行是角色 + 实际模型 · 思考强度,
+    /// 第三行右侧是「上下文占用 · token ≈费用 · 耗时」(右对齐),最下面一根进度条;头部写全队合计费用。
+    /// 没配单价、没指定模型的成员不写模型与费用。团队消息的「谁 → 谁」用同样的简写圈;跑完的团队显示「已完成」。
     /// </summary>
     [TestMethod]
-    public void TeamCard_AlignsAvatarsLeftAndTokensTimeRight()
+    public void TeamCard_ShowsModelContextCostAndProgressPerTask()
     {
         OnUi(async () =>
         {
             using var context = new TestPluginContext();
+            File.WriteAllText(Path.Combine(context.DataDirectory, "models-dev.json"), "{}");
+            AiProvider provider = StubProvider("stub", "http://127.0.0.1:9", "opus", maxInputTokens: 200_000);
+            AiModelConfig opus = provider.Models[0];
+            opus.Name = "Opus 5.5";
+            opus.SupportsReasoning = true;
+            opus.Reasoning = ReasoningLevel.Low;
+            opus.InputPricePerMillion = 5;
+            opus.CachedInputPricePerMillion = 0.5;
+            opus.OutputPricePerMillion = 25;
+            await new AiSettingsStore(context).SaveAsync(new AiSettings
+            { Providers = [provider], ActiveModelId = opus.Id, SuggestFollowUps = false });
             (Window window, ChatPanelView panel) = await ShowAsync(context);
             try
             {
@@ -123,7 +136,7 @@ public sealed partial class ChatPanelViewUiTests
                 StackPanel messages = Find<StackPanel>(panel, "MessagesPanel");
                 var bubble = new ChatPanelView.AssistantBubble(panel);
                 messages.Children.Add(bubble.Root);
-                TeamMemberInfo[] members = [new("system", "researcher", null, false, 0), new("network", "researcher", null, false, 1)];
+                TeamMemberInfo[] members = [new("system", "researcher", opus.Id, false, 0), new("network", "auditor", null, false, 1)];
                 TeamTaskInfo[] tasks =
                 [
                     new("t1", "审查 SSH 与权限", "system", "completed", [], null, 1, null, "sub-a", "ok", "", TimeSpan.FromSeconds(34)),
@@ -133,32 +146,46 @@ public sealed partial class ChatPanelViewUiTests
                     [new(DateTimeOffset.Now, "network", "lead", "report", "#t2 done")], TimeSpan.FromSeconds(80));
                 SubagentSnapshot[] runs =
                 [
-                    new("sub-a", "system", "completed", "", "ok", [], [], TimeSpan.FromSeconds(34), InputTokens: 18_200, OutputTokens: 900, TeamTaskId: "t1"),
+                    // 18 200 输入(其中 10 000 命中缓存)+ 900 输出:8 200×5 + 10 000×0.5 + 900×25 = 68 500 / 1M ≈ 0.07;上下文 8 000 / 200 000 = 4%
+                    new("sub-a", "system", "completed", "", "ok", [], [], TimeSpan.FromSeconds(34), ModelId: opus.Id,
+                        InputTokens: 18_200, OutputTokens: 900, TeamTaskId: "t1", CachedInputTokens: 10_000, ContextTokens: 8_000),
                     new("sub-b", "network", "completed", "", "ok", [], [], TimeSpan.FromSeconds(40), InputTokens: 9_400, OutputTokens: 700, TeamTaskId: "t2")
                 ];
                 bubble.UpdateTeam(team, runs);
                 await PumpAsync();
 
                 Border board = bubble.Root.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("teamBoard"));
-                Assert.Contains(t => t.Text == "Done", board.GetVisualDescendants().OfType<TextBlock>());
+                TextBlock[] texts = [.. board.GetVisualDescendants().OfType<TextBlock>()];
+                Assert.Contains(t => t.Text == "Done", texts);
+                Assert.Contains(t => t.Text?.EndsWith("29k tok ≈0.07", StringComparison.Ordinal) == true, texts, "头部写全队 token 与合计费用");
                 Border[] rows = [.. board.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("teamTask"))];
                 Assert.HasCount(2, rows);
                 double? titleLeft = null;
                 foreach (Border row in rows)
                 {
-                    TextBlock title = row.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text?.StartsWith("审查", StringComparison.Ordinal) == true);
+                    TextBlock[] rowTexts = [.. row.GetVisualDescendants().OfType<TextBlock>()];
+                    TextBlock title = rowTexts.First(t => t.Text?.StartsWith("审查", StringComparison.Ordinal) == true);
                     Assert.DoesNotContain("#", title.Text!, "标题只写任务本身,不带任务 id");
-                    TextBlock tokens = row.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text?.EndsWith(" tok", StringComparison.Ordinal) == true);
-                    TextBlock elapsed = row.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text?.EndsWith('s') == true && t.Text.Any(char.IsDigit) && t != tokens && t != title);
                     double left = title.TranslatePoint(default, board)!.Value.X;
                     titleLeft ??= left;
                     Assert.AreEqual(titleLeft.Value, left, 0.5, "各行标题左缘对齐");
-                    Assert.IsLessThan(left, row.GetVisualDescendants().OfType<Border>().First(b => b.CornerRadius.TopLeft > 0 && b.Width == 16).TranslatePoint(default, board)!.Value.X + 1,
-                        "简写圈在标题左侧");
-                    Assert.IsLessThan(elapsed.TranslatePoint(default, board)!.Value.X, tokens.TranslatePoint(default, board)!.Value.X, "token 在耗时左侧");
-                    Assert.AreEqual(TextAlignment.Right, elapsed.TextAlignment);
+                    Border avatar = row.GetVisualDescendants().OfType<Border>().First(b => b.CornerRadius.TopLeft > 0 && b.Width == 28);
+                    Assert.IsLessThan(left, avatar.TranslatePoint(default, board)!.Value.X + 1, "头像在标题左侧");
+                    TextBlock metrics = rowTexts.Single(t => t.Text?.EndsWith('s') == true && t.Text.Any(char.IsDigit) && t != title);
+                    Assert.AreEqual(TextAlignment.Right, metrics.TextAlignment);
+                    Assert.IsGreaterThan(left, metrics.TranslatePoint(default, board)!.Value.X, "用量贴右");
+                    ProgressBar bar = row.GetVisualDescendants().OfType<ProgressBar>().Single();
+                    Assert.AreEqual(100, bar.Value, "完成的任务进度条满格");
+                    Assert.IsFalse(bar.IsIndeterminate);
                 }
-                Assert.Contains(t => t.Text == "18k tok", board.GetVisualDescendants().OfType<TextBlock>());
+
+                TextBlock[] first = [.. rows[0].GetVisualDescendants().OfType<TextBlock>()];
+                Assert.Contains(t => t.Text == "researcher", first, "第二行写角色");
+                Assert.Contains(t => t.Text == "Opus 5.5 · Low", first, "第二行写实际模型与思考强度");
+                Assert.Contains(t => t.Text == "ctx 4% · 19k ≈0.07 · 34s", first);
+                TextBlock[] second = [.. rows[1].GetVisualDescendants().OfType<TextBlock>()];
+                Assert.Contains(t => t.Text == "auditor", second);
+                Assert.Contains(t => t.Text == "10k · 40s", second, "没有模型就没有上下文占比与费用");
 
                 // 团队消息展开再收起:卡片高度回到展开之前,不留一大块空白
                 double before = board.Bounds.Height;
@@ -170,7 +197,7 @@ public sealed partial class ChatPanelViewUiTests
                 Press(messagesHeader);
                 await PumpAsync();
                 Assert.AreEqual(before, board.Bounds.Height, 0.5, "收起后回到原高度");
-                Assert.DoesNotContain(t => t.Text == "network", board.GetVisualDescendants().OfType<TextBlock>(), "成员名不再写全称,只用简写圈");
+                Assert.DoesNotContain(t => t.Text == "network", board.GetVisualDescendants().OfType<TextBlock>(), "成员名不写全称,只用头像与角色");
             }
             finally { panel.Detach(); window.Close(); }
         });

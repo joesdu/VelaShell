@@ -855,7 +855,7 @@
     </Grid>
 
     <!-- 最下沿的一条细行:左边是 Agent 的审批模式,右边是 token 用量和上下文占用条。 -->
-    <Grid x:Name="InputStatusBar" DockPanel.Dock="Bottom" ColumnDefinitions="Auto,Auto,*,Auto" Margin="2,5,2,0">
+    <Grid x:Name="InputStatusBar" DockPanel.Dock="Bottom" ColumnDefinitions="Auto,Auto,*" Margin="2,5,2,0">
       <!-- 审批方式:默认审批 / 只读放行 / 绕过审批(只在有工具的模式下才有意义)。
            三档的语义色由 SyncModeUi 就地写(问=中性 / 只读自动=warn / 全部自动=error) ——
            这是个安全开关,当前挡位该在余光里就能读出来。 -->
@@ -895,20 +895,24 @@
           </DataTemplate>
         </ComboBox.ItemTemplate>
       </ComboBox>
-      <!-- 命中缓存时这段会长一截(多一个"缓存 80%"),留够宽度;再长由 TextTrimming 收,
-           完整明细本来就在悬停提示里。 -->
-      <Grid Grid.Column="2" ColumnDefinitions="Auto,*" HorizontalAlignment="Right" ClipToBounds="True">
-        <TextBlock x:Name="TokenFlowText" Classes="meta" Margin="8,0,0,0" IsVisible="False" />
-        <TextBlock x:Name="UsageText" Grid.Column="1" Classes="meta" MaxWidth="300" Margin="8,0,0,0" HorizontalAlignment="Right" />
+      <!-- 用量:「↑累计输入 ↓累计输出 | 上下文占用条 上下文 21% · 缓存 80%」。
+           占用条紧挨着它的百分比(以前隔着一段文字放在最右,读不出是谁的条);
+           悬停整块弹出分段的用量面板(UsageDetailView),不再是一长串同字号纯文本。
+           再窄时由 UsageText 的 TextTrimming 收,完整数字都在面板里。 -->
+      <Grid x:Name="UsageArea" Grid.Column="2" ColumnDefinitions="Auto,Auto,*" HorizontalAlignment="Right"
+            ClipToBounds="True" Background="Transparent">
+        <TextBlock x:Name="TokenFlowText" Classes="meta" Margin="8,0,0,0" IsVisible="False" VerticalAlignment="Center" />
+        <!-- 上下文占用条:占比是要被瞥见的东西,不该只活在悬停里。
+             知道窗口大小才画得出来(MaxInputTokens=0 就整条隐掉,见 UpdateUsageText)。 -->
+        <Border x:Name="UsageMeterTrack" Grid.Column="1" Width="48" Height="4" CornerRadius="2"
+                Margin="10,0,0,0" IsVisible="False" VerticalAlignment="Center"
+                Background="{DynamicResource VelaBorderSecondary}">
+          <Border x:Name="UsageMeterFill" Width="0" CornerRadius="2"
+                  HorizontalAlignment="Left" Background="{DynamicResource VelaAccent}" />
+        </Border>
+        <TextBlock x:Name="UsageText" Grid.Column="2" Classes="meta" MaxWidth="300" Margin="6,0,0,0"
+                   HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
       </Grid>
-      <!-- 上下文占用条:占比是要被瞥见的东西,不该只活在悬停提示里。
-           知道窗口大小才画得出来(MaxInputTokens=0 就整条隐掉,见 UpdateUsageText)。 -->
-      <Border x:Name="UsageMeterTrack" Grid.Column="3" Width="56" Height="4" CornerRadius="2"
-              Margin="8,0,0,0" IsVisible="False" VerticalAlignment="Center"
-              Background="{DynamicResource VelaBorderSecondary}">
-        <Border x:Name="UsageMeterFill" Width="0" CornerRadius="2"
-                HorizontalAlignment="Left" Background="{DynamicResource VelaAccent}" />
-      </Border>
     </Grid>
 
     <!-- 输入容器 = 编辑区 + 其下的工具条(附件 / 模型与思考摘要 / 工具配置 / 模式 / 发送),状态行置于容器外。

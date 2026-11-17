@@ -1736,13 +1736,15 @@ public sealed class AiSettingsStore(IPluginContext context)
         switch (provider.Protocol)
         {
             case ChatProtocol.OpenAiChatCompletions:
-                return CreateOpenAiClient(provider, credential, callerCountsRetries).GetChatClient(provider.Model).AsIChatClient();
+                // 适配器不认缓存写入等字段,从原始用量里补(见 CacheUsageChatClient)
+                return new CacheUsageChatClient(
+                    CreateOpenAiClient(provider, credential, callerCountsRetries).GetChatClient(provider.Model).AsIChatClient());
 
             case ChatProtocol.OpenAiResponses:
                 // 工具循环每步整段重发,不拿 previous_response_id 续接 —— 中转站背后的上游多半没存上一步
 #pragma warning disable OPENAI001 // Responses API 在 OpenAI SDK 中标记为实验性
-                return new StatelessResponsesChatClient(
-                    CreateOpenAiClient(provider, credential, callerCountsRetries).GetResponsesClient().AsIChatClient(provider.Model));
+                return new StatelessResponsesChatClient(new CacheUsageChatClient(
+                    CreateOpenAiClient(provider, credential, callerCountsRetries).GetResponsesClient().AsIChatClient(provider.Model)));
 #pragma warning restore OPENAI001
 
             case ChatProtocol.AnthropicMessages:

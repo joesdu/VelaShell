@@ -838,7 +838,7 @@ public sealed partial class ChatPanelViewUiTests
                     Assert.AreEqual("Bearer new-token", target.Authorizations[1]);
                     Assert.Contains("BODY_SOURCE_MARKER", target.Requests[1]);
                     Assert.IsTrue(Find<WrapPanel>(panel, "SuggestionBar").IsVisible);
-                    Assert.Contains("Conversation total: in 1 / out 1", ToolTip.GetTip(Find<TextBlock>(panel, "UsageText")) as string ?? "");
+                    Assert.Contains("Conversation total: in 1 / out 1", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "");
                 }
                 else
                 {
@@ -925,7 +925,7 @@ public sealed partial class ChatPanelViewUiTests
                         .GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text)));
                     Assert.IsEmpty(other.Requests);
                 }
-                Assert.Contains("Conversation total: in 1 / out 1", ToolTip.GetTip(Find<TextBlock>(panel, "UsageText")) as string ?? "",
+                Assert.Contains("Conversation total: in 1 / out 1", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "",
                     "只结算当前会话自己完成的建议 usage");
                 Assert.HasCount(3, candidate.Requests, "会话切换和用量刷新不能重发候选建议");
             }
@@ -986,9 +986,9 @@ public sealed partial class ChatPanelViewUiTests
                 target.Release();
                 panel.SendExternal("新会话");
                 Assert.IsTrue(await WaitForAsync(() => !Find<Viewbox>(panel, "StopIcon").IsVisible));
-                string tip = ToolTip.GetTip(Find<TextBlock>(panel, "UsageText")) as string ?? "";
+                string tip = ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "";
                 Assert.Contains("Conversation total: in 7 / out 3", tip, "新会话只结算自己的真实请求");
-                Assert.AreEqual("7 tok ↑  3 tok ↓", Find<TextBlock>(panel, "TokenFlowText").Text);
+                Assert.AreEqual("↑7 ↓3", Find<TextBlock>(panel, "TokenFlowText").Text);
             }
             finally { target.Release(); panel.Detach(); window.Close(); }
         });

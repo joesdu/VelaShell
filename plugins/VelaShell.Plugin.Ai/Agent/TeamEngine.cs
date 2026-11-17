@@ -580,7 +580,10 @@ public sealed partial class TeamEngine
             if (!_started) return null;
             DateTimeOffset now = DateTimeOffset.UtcNow;
             return new TeamBoardSnapshot(_teamId, _goal, Phase(),
-                [.. _members.Select(m => new TeamMemberInfo(m.Spec.Name, m.Spec.Role, m.Spec.ModelId, m.Spec.AllowWrites, m.Color, m.Spec.AllowCommands))],
+                // 没指定模型的成员沿用主控的模型:看板上写实际跑的那个,而不是空着
+                [.. _members.Select(m => new TeamMemberInfo(m.Spec.Name, m.Spec.Role,
+                    string.IsNullOrWhiteSpace(m.Spec.ModelId) ? _owner.DefaultModelId : m.Spec.ModelId,
+                    m.Spec.AllowWrites, m.Color, m.Spec.AllowCommands))],
                 [.. _tasks.Select(t => new TeamTaskInfo(t.Spec.Id, t.Spec.Title, t.Spec.Assignee, t.Status, t.DependsOn,
                     t.Spec.Verifies, t.Attempts, t.Verdict, t.SubagentId, t.Report, t.Note,
                     t.StartedAt is { } s ? (t.FinishedAt ?? now) - s : TimeSpan.Zero))],

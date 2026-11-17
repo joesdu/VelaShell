@@ -200,7 +200,8 @@ internal sealed class SubagentRunner(
                         locale, token, o => AiSettingsStore.ApplyEndpointQuirks(o, model)).ConfigureAwait(false);
                     if (usage is not null)
                     {
-                        owner.RecordTokens(usage.InputTokenCount ?? 0, usage.OutputTokenCount ?? 0);
+                        owner.RecordTokens(usage.InputTokenCount ?? 0, usage.OutputTokenCount ?? 0,
+                            usage.CachedInputTokenCount ?? 0, contextSample: false);
                         recordUsage?.Invoke(usage);
                     }
                     return summary;
@@ -239,7 +240,8 @@ internal sealed class SubagentRunner(
                         segment.Clear();
                         break;
                     case UsageContent usage:
-                        owner.RecordTokens(usage.Details.InputTokenCount ?? 0, usage.Details.OutputTokenCount ?? 0);
+                        owner.RecordTokens(usage.Details.InputTokenCount ?? 0, usage.Details.OutputTokenCount ?? 0,
+                            usage.Details.CachedInputTokenCount ?? 0);
                         recordUsage?.Invoke(usage.Details);
                         break;
                 }
