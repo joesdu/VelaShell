@@ -786,7 +786,11 @@
            占用条紧挨着它的百分比(以前隔着一段文字放在最右,读不出是谁的条);
            悬停整块弹出分段的用量面板(UsageDetailView),不再是一长串同字号纯文本。
            再窄时由 UsageText 的 TextTrimming 收,完整数字都在面板里。 -->
-      <Grid x:Name="UsageArea" Grid.Column="2" ColumnDefinitions="Auto,Auto,*" HorizontalAlignment="Right"
+      <!-- 整块可点:悬停给分段的用量面板(UsageDetailView),点击打开逐项的上下文明细(ContextDetailView)。 -->
+      <Button x:Name="UsageButton" Grid.Column="2" Theme="{StaticResource AiGhostIconButtonTheme}"
+              Width="NaN" Height="NaN" MinWidth="0" Padding="2,1" HorizontalAlignment="Right"
+              HorizontalContentAlignment="Stretch">
+      <Grid x:Name="UsageArea" ColumnDefinitions="Auto,Auto,*"
             ClipToBounds="True" Background="Transparent">
         <TextBlock x:Name="TokenFlowText" Classes="meta" Margin="8,0,0,0" IsVisible="False" VerticalAlignment="Center" />
         <!-- 上下文占用条:占比是要被瞥见的东西,不该只活在悬停里。
@@ -800,6 +804,17 @@
         <TextBlock x:Name="UsageText" Grid.Column="2" Classes="meta" MaxWidth="300" Margin="6,0,0,0"
                    HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
       </Grid>
+      </Button>
+      <Popup x:Name="ContextPopup" Grid.Column="2" PlacementTarget="{Binding #UsageButton}"
+             Placement="TopEdgeAlignedRight" VerticalOffset="-4" IsLightDismissEnabled="True">
+        <Border x:Name="ContextPopupBody" Width="420" Padding="14,12" CornerRadius="8" Focusable="True"
+                Background="{DynamicResource VelaBgSurface}" BorderBrush="{DynamicResource VelaBorderSecondary}" BorderThickness="1"
+                KeyboardNavigation.TabNavigation="Cycle">
+          <ScrollViewer x:Name="ContextDetailScroll" MaxHeight="560" HorizontalScrollBarVisibility="Disabled">
+            <ContentControl x:Name="ContextDetailHost" Margin="0,0,4,0" />
+          </ScrollViewer>
+        </Border>
+      </Popup>
     </Grid>
 
     <!-- 输入容器 = 编辑区 + 其下的工具条(附件 / 模型与思考摘要 / 工具配置 / 模式 / 发送),状态行置于容器外。

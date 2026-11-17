@@ -46,6 +46,28 @@ public sealed class SteeringTests
         Assert.EndsWith("只看最近一小时的", inner.Requests[0][^1].Text, "插话该排在这次请求的最后");
     }
 
+    /// <summary>用量明细的观察点:拿到的是并好插话、真正发出去的那一份;观察者出错不连累请求。</summary>
+    [TestMethod]
+    public async Task OnRequest_SeesTheComposedRequest_AndItsFailureDoesNotBreakTheRequest()
+    {
+        var queue = new SteeringQueue();
+        var inner = new ScriptedChatClient([Text("好的")]);
+        IReadOnlyList<ChatMessage>? seen = null;
+        using var steering = new SteeringChatClient(inner, queue, onRequest: (messages, _) =>
+        {
+            seen = messages;
+            throw new InvalidOperationException("统计出错");
+        });
+
+        queue.Enqueue(Note("只看最近一小时的"));
+        ChatResponse response = await steering.GetResponseAsync(Context());
+
+        Assert.AreEqual("好的", response.Text);
+        Assert.IsNotNull(seen);
+        CollectionAssert.AreEqual(inner.Requests[0], seen.ToList(), "观察的就是发出去的那一份");
+        Assert.EndsWith("只看最近一小时的", seen[^1].Text);
+    }
+
     /// <summary>
     /// 末条也是 user 时并进去,不能另起一条 —— Anthropic 要求角色交替,
     /// 而适配器不会替你合并(与 <c>ContextBuilder</c> 同一个理由)。

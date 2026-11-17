@@ -627,6 +627,9 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
     private static string DisplayName(McpServerConfig server)
         => string.IsNullOrWhiteSpace(server.Name) ? "(unnamed MCP)" : server.Name.Trim();
 
+    /// <summary>这个工具来自哪台 MCP 服务器(显示名);不是 MCP 工具返回 null。用量明细据此把工具定义分组。</summary>
+    internal static string? ServerOf(AITool tool) => tool is ApprovalGatedFunction gated ? gated.ServerName : null;
+
     private async Task CloseAsync(string id, Connection connection)
     {
         SetState(id, "Stopping");
@@ -666,6 +669,7 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
     {
         private readonly SemaphoreSlim _calls = calls;
         private readonly TimeSpan _callTimeout = callTimeout;
+        internal string ServerName => serverName;
         internal bool ReadOnlyHint => inner.ProtocolTool.Annotations?.ReadOnlyHint == true;
 
         protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)

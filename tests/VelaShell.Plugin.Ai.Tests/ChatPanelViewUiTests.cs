@@ -1211,7 +1211,9 @@ public sealed partial class ChatPanelViewUiTests
                 var detail = (UsageDetailView)ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))!;
                 string[] shown = [.. detail.GetLogicalDescendants().OfType<TextBlock>().Where(t => t.IsVisible).Select(t => t.Text ?? "")];
                 Assert.Contains("Context window", shown);
-                Assert.Contains("1,000 / 10,000", shown);
+                Assert.Contains("1k", shown);
+                Assert.Contains("/ 10k", shown);
+                Assert.Contains("10%", shown, "占窗百分比在标题右侧的徽标里");
                 Assert.Contains("80% hit", shown);
                 Assert.Contains("Read 800", shown);
                 Assert.Contains("Written 0", shown);
