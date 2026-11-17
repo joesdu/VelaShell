@@ -314,6 +314,9 @@ internal sealed class SubagentRunner(
         + "When you use it: give each member a distinct role, make every task's detail self-contained (members do not see this conversation), "
         + "chain tasks with dependsOn so results flow downstream, and add a reviewer task with verifies when correctness matters. "
         + "Briefly tell the user you are forming a team and why, then call team_run and end your step: one consolidated team report arrives when the team finishes. "
+        + "If the report shows a task that failed or is blocked because the model endpoint was interrupted or unavailable (not because of the task itself), "
+        + "call team_retry for that task (optionally naming another member to take it over) instead of redoing the work yourself or giving up; "
+        + "transient failures were already retried automatically, so tell the user briefly when you retry by hand. "
         + "Verify what matters in that report, then give the user the final answer.\n";
 
     /// <summary>这一轮的工具里有没有委派工具(被禁用、非 Agent 模式时没有)。</summary>

@@ -104,7 +104,7 @@ public partial class ChatPanelView
             string? path = FileChange?.Path ?? _diff.Path;
             var panel = new StackPanel { Spacing = 6 };
             panel.Children.Add(new DiffView(_diff, _owner._loc, DiffViewMode.Inline,
-                path is null ? null : System.IO.Path.GetFileName(path.Replace('\\', '/')), action: open));
+                path is null ? null : Path.GetFileName(path.Replace('\\', '/')), action: open));
             panel.Children.Add(_detailsText);
             _details.MaxHeight = 420;
             _details.Content = panel;
@@ -128,7 +128,8 @@ public partial class ChatPanelView
             string path = _diff.Path ?? ToolName;
             string? location = GuessLocation();
             _owner.OpenDiffDocument("fragment\n" + ToolName + "\n" + path, new FileDiffDocument(path,
-                location is null ? null : _owner.DescribeLocation(location), null, _diff) { RawLocation = location });
+                location is null ? null : _owner.DescribeLocation(location), null, _diff)
+            { RawLocation = location });
         }
 
         /// <summary>

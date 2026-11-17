@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -68,7 +69,10 @@ internal sealed partial class TeamConsoleView : UserControl
     private readonly Grid _topRow = new(), _bottomRow = new();
     private readonly Decorator _liveHost = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _subtitle;
-    private Border _graphPanel = null!, _rosterPanel = null!, _ganttPanel = null!, _tokensPanel = null!;
+    private readonly Border _graphPanel = null!;
+    private readonly Border _rosterPanel = null!;
+    private readonly Border _ganttPanel = null!;
+    private readonly Border _tokensPanel = null!;
     private string _liveKey = "";
     private bool _dirty = true;
     private bool? _wide;
@@ -89,7 +93,8 @@ internal sealed partial class TeamConsoleView : UserControl
         _loc = host.Loc;
         Name = "TeamConsole";
         Focusable = true;
-        ClipToBounds = true;
+        FocusAdorner = null; // 页面自己拿焦点只是为了接 Esc,不该画一圈焦点框
+        ClipToBounds = true; // 关着的抽屉停在右缘之外,靠这一条裁掉
 
         // 图标、LiveMarkdown 的令牌与样式、Markdown 皮肤和本页的版式都在这一份编译好的样式表里(为什么不能在这里按地址并入,见该文件开头)
         Styles.Add(new TeamConsoleStyles());
@@ -118,7 +123,7 @@ internal sealed partial class TeamConsoleView : UserControl
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = new Border { Padding = new Thickness(20, 16, 20, 40), Child = _page }
         };
-        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
+        var root = new Grid { RowDefinitions = [with("Auto,*")] };
         root.Children.Add(header);
         root.Children.Add(_scroll.At(0, 1));
         Control drawer = BuildDrawer();
@@ -130,7 +135,7 @@ internal sealed partial class TeamConsoleView : UserControl
         SizeChanged += (_, e) => OnWidthChanged(e.NewSize.Width);
         KeyDown += (_, e) =>
         {
-            if (e.Key == Key.Escape && _drawerOpen)
+            if (e.Key == Key.Escape && IsDrawerOpen)
             {
                 e.Handled = true;
                 CloseDrawer();
@@ -162,6 +167,7 @@ internal sealed partial class TeamConsoleView : UserControl
         // 标签页被关掉或切走时不再跟着快照重画,动画的钟也停掉;切回来时补一次
         _session.Changed -= OnSessionChanged;
         _refreshTimer.Stop();
+        _drawerSettle.Stop();
         StopGraphClock();
     }
 
@@ -204,7 +210,7 @@ internal sealed partial class TeamConsoleView : UserControl
     private Border BuildHeader()
     {
         // 方形标:强调色底 + 团队图标(与聊天里团队入口、标签页图标是同一个)
-        var logo = new Border
+        Border logo = new Border
         {
             Width = 34,
             Height = 34,
@@ -219,7 +225,7 @@ internal sealed partial class TeamConsoleView : UserControl
         titles.Children.Add(titleRow);
         titles.Children.Add(_subtitle);
 
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 12 };
+        var grid = new Grid { ColumnDefinitions = [with("Auto,*")], ColumnSpacing = 12 };
         grid.Children.Add(logo);
         grid.Children.Add(titles.At(1));
         return new Border
@@ -259,7 +265,7 @@ internal sealed partial class TeamConsoleView : UserControl
         if (width <= 0) return;
         ApplyLayout(width >= WideBreakpoint);
         _stats.Columns = width >= 1000 ? 6 : width >= 560 ? 3 : 2;
-        _drawer.Width = Math.Min(640, width);
+        ResizeDrawer(width);
     }
 
     private void ApplyLayout(bool wide)
@@ -302,7 +308,7 @@ internal sealed partial class TeamConsoleView : UserControl
         var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         heading.Children.Add(TeamUi.Text(title, "VelaTextPrimary", 13, FontWeight.SemiBold));
         if (hint is { Length: > 0 }) heading.Children.Add(TeamUi.Line(hint, "VelaTextSecondary", 12));
-        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 10, Margin = new Thickness(0, 0, 0, 10) };
+        var head = new Grid { ColumnDefinitions = [with("*,Auto")], ColumnSpacing = 10, Margin = new Thickness(0, 0, 0, 10) };
         head.Children.Add(heading);
         if (trailing is not null) head.Children.Add(trailing.At(1));
         var stack = new StackPanel();
@@ -532,14 +538,14 @@ internal sealed partial class TeamConsoleView : UserControl
 /// </summary>
 internal static partial class TeamNotes
 {
-    [System.Text.RegularExpressions.GeneratedRegex(@"^waiting for (\S+) to finish #(\S+)$")]
-    private static partial System.Text.RegularExpressions.Regex Busy();
+    [GeneratedRegex(@"^waiting for (\S+) to finish #(\S+)$")]
+    private static partial Regex Busy();
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"^re-review after #(\S+) rework$")]
-    private static partial System.Text.RegularExpressions.Regex ReReview();
+    [GeneratedRegex(@"^re-review after #(\S+) rework$")]
+    private static partial Regex ReReview();
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"^#(\S+) (failed|cancelled|blocked)$")]
-    private static partial System.Text.RegularExpressions.Regex Blocked();
+    [GeneratedRegex(@"^#(\S+) (failed|cancelled|blocked)$")]
+    private static partial Regex Blocked();
 
     /// <summary>
     /// 「等待依赖」「返工 n/m」在界面上另有地方写,这里不重复(返回空串);认不出的(多半是工具报的错误原文)照原样。

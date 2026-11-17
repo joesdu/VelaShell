@@ -40,11 +40,12 @@ public sealed record TeamMemberInfo(string Name, string Role, string? ModelId, b
 /// 团队面板上的一个任务。<c>Status</c> 取 pending / running / completed / failed / blocked / cancelled;
 /// <c>Attempts</c> 是跑过几次(返工加一);<c>Verdict</c> 是审查任务的结论 PASS / FAIL(非审查任务为 null);
 /// <c>SubagentId</c> 是当前(或最后一次)对应的子任务;<c>Note</c> 是等待 / 受阻 / 返工的原因;
-/// <c>StartOffset</c> 是(最近一次)开跑时距团队开跑过了多久,没开跑过为 null —— 团队控制台的时间轴按它摆任务条。
+/// <c>StartOffset</c> 是(最近一次)开跑时距团队开跑过了多久,没开跑过为 null —— 团队控制台的时间轴按它摆任务条;
+/// <c>Retries</c> 是因为出错(或被取消)而重跑过几次(自动的与手动的都算,包含在 <c>Attempts</c> 里;返工次数 = Attempts − 1 − Retries)。
 /// </summary>
 public sealed record TeamTaskInfo(string Id, string Title, string Assignee, string Status, IReadOnlyList<string> DependsOn,
     string? Verifies, int Attempts, string? Verdict, string? SubagentId, string Report, string Note, TimeSpan Elapsed,
-    TimeSpan? StartOffset = null);
+    TimeSpan? StartOffset = null, int Retries = 0);
 
 /// <summary>
 /// 团队消息。<c>Kind</c> 取 assign(主控→成员)/ report(成员→主控)/ peer(成员之间)/
@@ -86,6 +87,12 @@ public sealed partial class TeamEngine
     /// <summary>审查不过时被审查的任务最多返工几次。</summary>
     public const int MaxReworks = 1;
 
+    /// <summary>
+    /// 成员的一次运行因为瞬时故障失败(上游断流、网络抖动、5xx,见 <see cref="Ui.TransientFailure.IsRetryableRun" />)时,
+    /// 引擎自动把这个任务重跑几次。用完还失败才真的记为失败(之后仍可以用 <see cref="Retry" /> 手动重跑或改派)。
+    /// </summary>
+    public const int MaxAutoRetries = 2;
+
     /// <summary>每个任务的默认执行期限(秒);等审批、等文件锁的时间不计入。</summary>
     public const int DefaultTaskTimeoutSeconds = 600;
 
@@ -122,9 +129,17 @@ public sealed partial class TeamEngine
 
     private sealed class TaskState(TeamTaskSpec spec)
     {
-        public TeamTaskSpec Spec { get; } = spec;
+        public TeamTaskSpec Spec { get; set; } = spec;
         public string Status { get; set; } = "pending";
         public int Attempts { get; set; }
+        /// <summary>审查不过而返工了几次(上限 <see cref="MaxReworks" />;出错重跑不占这个额度)。</summary>
+        public int Reworks { get; set; }
+        /// <summary>因为出错或被取消而重跑了几次(自动 + 手动)。</summary>
+        public int Retries { get; set; }
+        /// <summary>其中引擎自动重跑的次数(上限 <see cref="MaxAutoRetries" />)。</summary>
+        public int AutoRetries { get; set; }
+        /// <summary>上一次没跑完是因为什么(错误原话);下一次运行的任务说明里交代给成员,跑完清掉。</summary>
+        public string? Interruption { get; set; }
         public string? SubagentId { get; set; }
         public string Report { get; set; } = "";
         public string? Verdict { get; set; }
@@ -308,6 +323,7 @@ public sealed partial class TeamEngine
                     dependsOn = t.DependsOn,
                     verifies = t.Spec.Verifies,
                     attempts = t.Attempts,
+                    retries = t.Retries > 0 ? t.Retries : (int?)null,
                     verdict = t.Verdict,
                     note = t.Note.Length > 0 ? t.Note : null,
                     // 别人的报告给成员看时截得更短:它要的是结论,不是全文
@@ -417,6 +433,116 @@ public sealed partial class TeamEngine
         }
     }
 
+    // ─────────────────────────── 重跑与改派 ───────────────────────────
+
+    /// <summary>
+    /// 把一个没做成的任务(失败 / 超时 / 被取消 / 受阻)重新跑起来,可以顺手改派给另一名成员。
+    /// 因它而受阻的下游任务回到待办;团队已经落定的话重新打开,全部落定后再送一份汇总报告。
+    /// </summary>
+    /// <remarks>
+    /// 受阻的任务本身没出错,出错的是它上游:对它重试等于重试挡住它的那几个任务(改派只作用于点名的这一个)。
+    /// 重跑是全新的一次运行(成员每个任务都是新上下文),上次的错误与已写出的部分会写进任务说明,
+    /// 让成员先核对做到了哪一步,不把已经生效的改动再做一遍。不占返工额度。
+    /// </remarks>
+    /// <param name="taskId">任务 id。</param>
+    /// <param name="assignee">改派给谁(成员名);为空仍由原来的成员做。</param>
+    /// <param name="by">谁发起的:<c>lead</c>(主控的工具)或 <c>user</c>(团队控制台上的按钮),只影响看板上那条消息怎么写。</param>
+    /// <returns>给发起方看的一句结果。</returns>
+    public string Retry(string taskId, string? assignee = null, string by = "lead")
+    {
+        string result;
+        lock (_gate)
+        {
+            if (!_started) return "No team has been started in this turn. Use team_run first.";
+            if (FindTask(taskId ?? "") is not { } task) return $"Unknown task \"{taskId}\".";
+            if (task.Status is "running" or "pending") return $"Task #{task.Spec.Id} is {task.Status}; there is nothing to retry.";
+            if (task.Status == "completed") return $"Task #{task.Spec.Id} already completed; only failed, cancelled or blocked tasks can be retried.";
+            Member? target = null;
+            if (!string.IsNullOrWhiteSpace(assignee) && (target = Find(assignee)) is null)
+                return $"Unknown member \"{assignee}\". Members: {string.Join(", ", _members.Select(m => m.Spec.Name))}.";
+
+            // 要重跑的:点名的这个;它是受阻的,就换成挡住它的那些(失败 / 取消的上游)
+            bool wasBlocked = task.Status == "blocked";
+            List<TaskState> rerun = wasBlocked ? [.. Culprits(task)] : [task];
+            _cancelled = false; // 明说要继续:此前 team_cancel 留下的「不再开新任务」不再作数
+            _finishedAt = null;
+            _reportTaken = false;
+            if (target is not null && target.Spec.Name != task.Spec.Assignee)
+            {
+                AddMessage("engine", "lead", "system",
+                    $"#{task.Spec.Id} reassigned from {task.Spec.Assignee} to {target.Spec.Name}.", task.Spec.Id);
+                task.Spec = task.Spec with { Assignee = target.Spec.Name };
+            }
+            foreach (TaskState item in rerun) Requeue(item, item.Note);
+            // 被它们挡住的下游(包括点名的这个受阻任务)回到待办,由 Pump 重新判断:还被别的失败任务挡着的会再次标为受阻
+            HashSet<string> roots = [with(StringComparer.OrdinalIgnoreCase), .. rerun.Select(r => r.Spec.Id)];
+            foreach (TaskState blocked in _tasks.Where(t => t.Status == "blocked" && (ReferenceEquals(t, task) || DependsOnAny(t, roots))))
+            {
+                blocked.Status = "pending";
+                blocked.Note = "";
+            }
+            string ids = string.Join(", ", (rerun.Count > 0 ? rerun : [task]).Select(r => "#" + r.Spec.Id));
+            AddMessage("engine", "all", "system", $"{ids} retried by the {(by == "user" ? "user" : "lead")}.", task.Spec.Id);
+            Pump();
+            // 编排器已经在收尾(这一轮结束了)时一个都起不来:照实说,别报「正在重试」
+            result = rerun.Count > 0 && rerun.All(r => r.Status == "failed")
+                ? $"Could not retry {ids}: {Clip(rerun[0].Note, 200)}"
+                : $"Retrying {ids}. Tasks that were blocked by them are pending again. "
+                  + "A new consolidated team report is delivered when everything has settled — do not poll.";
+        }
+        _owner.NotifyChanged();
+        return result;
+    }
+
+    /// <summary>
+    /// 让一个没做成的任务回到待办,记下上次为什么没跑完。调用方持锁,随后要 <see cref="Pump" />。
+    /// </summary>
+    private void Requeue(TaskState task, string? reason)
+    {
+        task.Retries++;
+        task.Status = "pending";
+        task.Interruption = string.IsNullOrWhiteSpace(reason) ? "The previous attempt did not finish." : Clip(reason, 600);
+        task.Note = "";
+        task.Verdict = null;
+        task.FinishedAt = null;
+        // 每个任务原本按「1 + 返工次数」留了名额;重跑要另外腾一个
+        _owner.MaxTotal = Math.Max(_owner.MaxTotal, _owner.StartedCount + 1 + _tasks.Count(t => t.Status == "pending"));
+    }
+
+    /// <summary>挡住一个受阻任务的那些上游:沿依赖往上找到失败或被取消的任务。</summary>
+    private List<TaskState> Culprits(TaskState blocked)
+    {
+        HashSet<string> seen = [with(StringComparer.OrdinalIgnoreCase)];
+        var found = new List<TaskState>();
+        void Visit(TaskState task)
+        {
+            foreach (TaskState dependency in task.DependsOn.Select(FindTask).OfType<TaskState>())
+            {
+                if (!seen.Add(dependency.Spec.Id)) continue;
+                if (dependency.Status is "failed" or "cancelled") found.Add(dependency);
+                else if (dependency.Status == "blocked") Visit(dependency);
+            }
+        }
+        Visit(blocked);
+        return found;
+    }
+
+    /// <summary>这个任务是不是(直接或间接)依赖 <paramref name="roots" /> 里的某一个。</summary>
+    private bool DependsOnAny(TaskState task, HashSet<string> roots)
+    {
+        HashSet<string> seen = [with(StringComparer.OrdinalIgnoreCase)];
+        bool Visit(TaskState current)
+        {
+            foreach (string id in current.DependsOn)
+            {
+                if (roots.Contains(id)) return true;
+                if (seen.Add(id) && FindTask(id) is { } dependency && Visit(dependency)) return true;
+            }
+            return false;
+        }
+        return Visit(task);
+    }
+
     // ─────────────────────────── 调度 ───────────────────────────
 
     /// <summary>依赖都完成了的任务开跑;依赖失败的标为受阻。调用方持锁。</summary>
@@ -476,11 +602,11 @@ public sealed partial class TeamEngine
         task.Attempts++;
         task.Status = "running";
         task.SubagentId = id;
-        task.Note = task.Attempts > 1 ? $"rework {task.Attempts - 1}/{MaxReworks}" : "";
+        task.Note = task.Reworks > 0 ? $"rework {task.Reworks}/{MaxReworks}" : "";
         task.StartedAt = DateTimeOffset.UtcNow;
         task.FinishedAt = null;
         member.RunningTask = task.Spec.Id;
-        AddMessage("lead", memberName, "assign", $"#{task.Spec.Id} {task.Spec.Title}" + (task.Attempts > 1 ? " (rework)" : ""), task.Spec.Id);
+        AddMessage("lead", memberName, "assign", $"#{task.Spec.Id} {task.Spec.Title}" + (task.Interruption is not null ? " (retry)" : task.Attempts > 1 ? " (rework)" : ""), task.Spec.Id);
         // 上游报告是引擎自动交给下游的(见 BuildTaskPrompt);别的成员做的那几份各记一条「交付」,
         // 团队控制台的数据流与通信记录才看得出报告从谁手里到了谁手里。消息挂在上游任务上:点开看到的就是那份报告
         foreach (TaskState upstream in task.DependsOn.Select(FindTask).OfType<TaskState>()
@@ -515,17 +641,27 @@ public sealed partial class TeamEngine
                 task.Status = snapshot.Status is "cancelled" ? "cancelled" : "failed";
                 task.Note = snapshot.Errors.Count > 0 ? snapshot.Errors[^1] : snapshot.Status;
                 AddMessage(member.Spec.Name, "lead", "system", $"#{task.Spec.Id} {snapshot.Status}: {Clip(task.Note, 200)}", task.Spec.Id);
+                // 瞬时故障(上游断流一类):不让一次网络抖动把这名成员和它下游的任务一起拖垮,原样重跑。
+                // 重跑是从头再来一遍,所以把上次的错误交代给成员,让它先核对已经做到哪一步(见 BuildTaskPrompt)
+                if (snapshot.Status == "failed" && snapshot.Retryable && task.AutoRetries < MaxAutoRetries && !_cancelled)
+                {
+                    task.AutoRetries++;
+                    Requeue(task, task.Note);
+                    AddMessage("engine", member.Spec.Name, "system",
+                        $"#{task.Spec.Id} retrying automatically ({task.AutoRetries}/{MaxAutoRetries}) after a transient error.", task.Spec.Id);
+                }
             }
             else
             {
                 task.Status = "completed";
                 task.Note = "";
+                task.Interruption = null;
                 AddMessage(member.Spec.Name, "lead", "report", $"#{task.Spec.Id} done: {Clip(snapshot.Summary, 200)}", task.Spec.Id);
                 if (task.Spec.Verifies is { } verifiedId && FindTask(verifiedId) is { } verified)
                 {
                     task.Verdict = ParseVerdict(snapshot.Output);
                     // 审查结论记成一条「审查」消息(挂在审查任务上,点开是审查报告)
-                    if (task.Verdict != "FAIL" || verified.Attempts > MaxReworks || _cancelled)
+                    if (task.Verdict != "FAIL" || verified.Reworks >= MaxReworks || _cancelled)
                     {
                         AddMessage(member.Spec.Name, verified.Spec.Assignee, "review",
                             $"#{verified.Spec.Id} " + (task.Verdict == "PASS" ? "passed review." : "did not pass review."), task.Spec.Id);
@@ -534,6 +670,7 @@ public sealed partial class TeamEngine
                     {
                         // 审查不过:被审查的任务带着意见返工,审查者等它重做完再审一次
                         verified.Status = "pending";
+                        verified.Reworks++;
                         verified.Feedback = Clip(snapshot.Output, MaxUpstreamChars);
                         verified.Verdict = null;
                         task.Status = "pending";
@@ -582,7 +719,12 @@ public sealed partial class TeamEngine
                     note = t.Note.Length > 0 ? t.Note : null,
                     report = Clip(t.Report, MaxReportChars)
                 }),
-                messagesToLead = _leadInbox.Select(m => new { from = m.From, text = m.Text })
+                messagesToLead = _leadInbox.Select(m => new { from = m.From, text = m.Text }),
+                // 没全做成时告诉主控还有哪条路:别因为一次接口故障就自己从头重做,或者直接放弃
+                recovery = _tasks.All(t => t.Status == "completed") ? null
+                    : "Tasks that failed, timed out, were cancelled or are blocked can be re-run with team_retry(taskId, assignee?): "
+                      + "the same member tries again (or the member you name takes over), dependents become pending again, and a new team report follows. "
+                      + "Prefer that when the note describes an interrupted or unavailable model endpoint rather than a real problem with the task."
             });
             _leadInbox.Clear();
             int done = _tasks.Count(t => t.Status == "completed");
@@ -607,7 +749,7 @@ public sealed partial class TeamEngine
                 [.. _tasks.Select(t => new TeamTaskInfo(t.Spec.Id, t.Spec.Title, t.Spec.Assignee, t.Status, t.DependsOn,
                     t.Spec.Verifies, t.Attempts, t.Verdict, t.SubagentId, t.Report, t.Note,
                     t.StartedAt is { } s ? (t.FinishedAt ?? now) - s : TimeSpan.Zero,
-                    t.StartedAt is { } began ? began - _startedAt : null))],
+                    t.StartedAt is { } began ? began - _startedAt : null, t.Retries))],
                 [.. _messages],
                 (_finishedAt ?? now) - _startedAt,
                 _owner.DefaultModelId);
@@ -660,6 +802,23 @@ public sealed partial class TeamEngine
             prompt.AppendLine("Check its claims against the actual files, configuration and evidence with your tools. Be specific and skeptical.");
             prompt.AppendLine("End your report with exactly one line: \"VERDICT: PASS\" if the work is correct and complete, "
                               + "or \"VERDICT: FAIL\" followed by the concrete problems that must be fixed.");
+        }
+
+        if (task.Interruption is { Length: > 0 } interruption)
+        {
+            prompt.AppendLine();
+            prompt.AppendLine("## Retry");
+            prompt.AppendLine("A previous attempt at this task stopped before it finished. This is a fresh run: you do not remember that attempt.");
+            prompt.Append("What stopped it: ").AppendLine(interruption);
+            prompt.AppendLine("Before changing anything, check what that attempt already did (files it edited, commands it ran, state on the server) "
+                              + "so you do not apply the same change twice. Then finish the task and write the full report.");
+            if (task.Report.Length > 0)
+            {
+                prompt.AppendLine("What it had written before it stopped (unverified, may be incomplete):");
+                prompt.AppendLine("<interrupted-output>");
+                prompt.AppendLine(Clip(task.Report, 3000));
+                prompt.AppendLine("</interrupted-output>");
+            }
         }
 
         if (task.Feedback is { Length: > 0 } feedback)

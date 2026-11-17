@@ -126,22 +126,25 @@ public sealed partial class ChatPanelViewUiTests
             try
             {
                 await PumpAsync(5);
-                Avalonia.Controls.GridSplitter splitter = view.GetVisualDescendants()
-                    .OfType<Avalonia.Controls.GridSplitter>().Single(s => s.Name == "DiffSplitter");
+                GridSplitter splitter = view.GetVisualDescendants()
+                    .OfType<GridSplitter>().Single(s => s.Name == "DiffSplitter");
                 double before = view.LeftEditor!.Bounds.Width;
                 Assert.AreEqual(view.RightEditor!.Bounds.Width, before, 1.0, "默认对半");
 
                 splitter.RaiseEvent(new Avalonia.Input.VectorEventArgs
                 {
-                    RoutedEvent = Avalonia.Controls.Primitives.Thumb.DragStartedEvent, Vector = default
+                    RoutedEvent = Avalonia.Controls.Primitives.Thumb.DragStartedEvent,
+                    Vector = default
                 });
                 splitter.RaiseEvent(new Avalonia.Input.VectorEventArgs
                 {
-                    RoutedEvent = Avalonia.Controls.Primitives.Thumb.DragDeltaEvent, Vector = new Avalonia.Vector(200, 0)
+                    RoutedEvent = Avalonia.Controls.Primitives.Thumb.DragDeltaEvent,
+                    Vector = new Avalonia.Vector(200, 0)
                 });
                 splitter.RaiseEvent(new Avalonia.Input.VectorEventArgs
                 {
-                    RoutedEvent = Avalonia.Controls.Primitives.Thumb.DragCompletedEvent, Vector = new Avalonia.Vector(200, 0)
+                    RoutedEvent = Avalonia.Controls.Primitives.Thumb.DragCompletedEvent,
+                    Vector = new Avalonia.Vector(200, 0)
                 });
                 await PumpAsync(5);
                 Assert.IsGreaterThan(before + 150, view.LeftEditor.Bounds.Width, "拖动分割条后左栏变宽");

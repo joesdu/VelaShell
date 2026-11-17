@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Anthropic.Exceptions;
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Chat;
@@ -107,6 +108,50 @@ public static partial class TransientFailure
         return null;
     }
 
+    // 上游把流掐断时的各种说法:中转站 / 网关多半只给一句话,没有状态码也没有专门的异常类型
+    [GeneratedRegex(
+        @"\b(?:stream|connection|response|socket)\b[^\r\n]{0,60}?\b(?:interrupted|closed|reset|aborted|ended|terminated|broken|dropped)\b"
+        + @"|unexpected end of (?:stream|file|response|json)|premature(?:ly)? (?:end|close)"
+        + @"|\bupstream\b[^\r\n]{0,60}?\b(?:error|interrupted|timeout|timed out|unavailable|disconnect\w*|failed|closed|reset)\b"
+        + @"|\boverloaded\b|temporarily unavailable|bad gateway|gateway time-?out|service unavailable|ECONNRESET|socket hang up",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex InterruptedStreamPattern();
+
+    /// <summary>
+    /// 一次<b>成员 / 子任务运行</b>失败之后,原样再跑一遍可能就好了:瞬时故障(<see cref="IsTransient" />),
+    /// 或者错误原话说的是「流被上游掐断了」。团队引擎据此决定要不要自动重试(见 <c>TeamEngine</c>)。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 比 <see cref="IsTransient" /> 多认一类:流式回复里的 error 帧(如中转站的「Upstream response stream was interrupted」)
+    /// 到这里只是一个 <see cref="InvalidOperationException" /> 加一句话(见 <see cref="TerminalFailure" />),没有状态码,
+    /// 请求级的补试认不出它,成员整个任务就此失败。请求级不认是有意的 —— 那里要决定能不能续写、换不换站,宁可保守;
+    /// 任务级重跑是从头再来一遍,只要不是确定性的失败就值得试。
+    /// </para>
+    /// <para>
+    /// 明确不重跑的:服务端答复过的 4xx(408 / 429 除外 —— 参数错、鉴权失败、模型不可用,再跑一万次也一样)、
+    /// 模型拒答或输出到上限、以及「暂停」(命令结果未知、Retry-After 太久:再跑一遍可能把命令执行两次)。
+    /// </para>
+    /// </remarks>
+    public static bool IsRetryableRun(Exception? exception)
+    {
+        bool interrupted = false;
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is AgentPausedException or ModelResponseTerminatedException or OperationCanceledException) return false;
+            int status = current switch
+            {
+                HttpRequestException { StatusCode: { } code } => (int)code,
+                AnthropicApiException { StatusCode: { } apiCode } when apiCode != 0 => (int)apiCode,
+                System.ClientModel.ClientResultException { Status: > 0 } result => result.Status,
+                _ => 0
+            };
+            if (status is >= 400 and < 500 and not (408 or 429)) return false;
+            interrupted |= InterruptedStreamPattern().IsMatch(current.Message);
+        }
+        return interrupted || IsTransient(exception);
+    }
+
     /// <summary>这个异常值不值得重来一次。</summary>
     /// <remarks>
     /// <b>逐层看 InnerException</b>:HTTP 客户端与 SDK 会把真实原因包上一两层,
@@ -158,11 +203,11 @@ public static partial class TransientFailure
         return false;
     }
 
-    [System.Text.RegularExpressions.GeneratedRegex(
+    [GeneratedRegex(
         @"model_not_found|model_not_supported|unsupported_model|invalid_model|model_not_available"
         + @"|\bmodel\b[^\r\n]{0,120}?\b(?:is not supported|not supported|not found|does not exist|is not available|not available|unavailable|not enabled)",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
-    private static partial System.Text.RegularExpressions.Regex ModelUnavailablePattern();
+        RegexOptions.IgnoreCase)]
+    private static partial Regex ModelUnavailablePattern();
 
     /// <summary>
     /// 服务端明说<b>这个模型</b>在这个账号 / 端点上用不了(400 / 404 + model_not_found 一类错误码或原话)。

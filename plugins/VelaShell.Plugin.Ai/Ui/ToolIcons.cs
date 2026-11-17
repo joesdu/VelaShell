@@ -118,7 +118,8 @@ internal static class ToolIcons
         ["team_run"] = ToolKind.Team,
         ["team_status"] = ToolKind.Team,
         ["team_message"] = ToolKind.Team,
-        ["team_cancel"] = ToolKind.Team
+        ["team_cancel"] = ToolKind.Team,
+        ["team_retry"] = ToolKind.Team
     };
 
     /// <summary>工具的类别;没登记的(MCP 工具等)为 <see cref="ToolKind.External" />。</summary>

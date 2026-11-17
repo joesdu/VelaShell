@@ -368,8 +368,10 @@ public sealed partial class ChatPanelViewUiTests
                 TeamConsoleView view = panel.OpenTeamConsoleView("team-1")!;
                 host = await HostConsoleAsync(view);
                 Border drawer = Named<Border>(view, "TeamDrawer");
+                Border scrim = Named<Border>(view, "TeamDrawerScrim");
                 Assert.IsFalse(view.IsDrawerOpen);
-                Assert.IsFalse(drawer.IsVisible);
+                Assert.IsFalse(scrim.IsHitTestVisible, "关着时遮罩不挡页面上的点击");
+                Assert.IsTrue(drawer.IsVisible, "抽屉一直在树上,关着时只是停在屏幕右侧外面(开合才是一段从当前位置出发的滑动)");
 
                 // 成员
                 Border card = Named<Border>(view, "TeamRosterPanel").GetVisualDescendants().OfType<Border>()
@@ -377,7 +379,7 @@ public sealed partial class ChatPanelViewUiTests
                 Press(card);
                 await PumpAsync(5);
                 Assert.IsTrue(view.IsDrawerOpen);
-                Assert.IsTrue(drawer.IsVisible);
+                Assert.IsTrue(scrim.IsHitTestVisible);
                 Assert.AreEqual("system · researcher", view.DrawerTitle);
                 string[] agent = TextsOf(drawer);
                 Assert.Contains("18k", agent, "输入 token");
@@ -429,8 +431,15 @@ public sealed partial class ChatPanelViewUiTests
                 view.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape, Source = view });
                 await PumpAsync(3);
                 Assert.IsFalse(view.IsDrawerOpen);
-                Assert.IsFalse(drawer.IsVisible);
+                Assert.IsFalse(scrim.IsHitTestVisible);
                 Assert.IsNull(view.CurrentDrawerView);
+
+                // 点遮罩也能关
+                view.OpenView(new DrawerView("agent", "system"));
+                await PumpAsync(3);
+                Press(scrim);
+                await PumpAsync(3);
+                Assert.IsFalse(view.IsDrawerOpen);
 
                 // 通信记录里点一条:直接到对话
                 Border row = Named<Border>(view, "TeamFeedPanel").GetVisualDescendants().OfType<Border>()
@@ -510,6 +519,94 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.Contains("Done", TextsOf(Named<Border>(view, "TeamConsoleHeader")));
                 Assert.IsEmpty(drawer.GetVisualDescendants().OfType<Button>().Where(b => b.Name == "TeamTaskCancel"));
                 Assert.Contains("Idle", TextsOf(Card("network")));
+            }
+            finally
+            {
+                host?.Close();
+                panel.Detach();
+                window.Close();
+            }
+        });
+    }
+
+    /// <summary>
+    /// 没做成的任务(失败 / 受阻)在任务抽屉里有「重试」与「改派给」:点了就把任务 id(和接手的成员)交给引擎;
+    /// 做成了的任务没有;这一轮收尾(重试入口收回)后也没有;引擎说没重试成时把原因写出来。
+    /// </summary>
+    [TestMethod]
+    public void TeamConsole_FailedTaskCanBeRetriedOrHandedOver()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            string modelId = await SavePricedModelAsync(context);
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            Window? host = null;
+            try
+            {
+                ChatPanelView.AssistantBubble bubble = AddBubble(panel);
+                List<(string Task, string? Assignee)> retried = [];
+                string answer = "Retrying #t2.";
+                bubble.RetryTeamTask = (task, assignee) =>
+                {
+                    retried.Add((task, assignee));
+                    return answer;
+                };
+                (TeamBoardSnapshot team, SubagentSnapshot[] runs) = SampleTeam(modelId);
+                // t2 断流两次后失败,t3 因此受阻
+                TeamBoardSnapshot broken = team with
+                {
+                    Phase = "failed",
+                    Tasks =
+                    [
+                        team.Tasks[0],
+                        team.Tasks[1] with { Status = "failed", Attempts = 3, Retries = 2, Note = "Upstream response stream was interrupted" },
+                        team.Tasks[2] with { Status = "blocked", Attempts = 0, Verdict = null, SubagentId = null, Note = "#t2 failed" }
+                    ]
+                };
+                bubble.UpdateTeam(broken, runs);
+                await panel.OpenTeamConsoleAsync(bubble.TeamSession!);
+                TeamConsoleView view = panel.OpenTeamConsoleView("team-1")!;
+                host = await HostConsoleAsync(view);
+                Border drawer = Named<Border>(view, "TeamDrawer");
+
+                view.OpenView(new DrawerView("task", "t2"));
+                await PumpAsync(5);
+                string[] texts = TextsOf(drawer);
+                Assert.Contains(t => t.Contains("Upstream response stream was interrupted", StringComparison.Ordinal), texts, "为什么失败");
+                Assert.Contains(t => t.Contains("retried ×2", StringComparison.Ordinal), texts, "已经自动重试过几次");
+                Border bar = Named<Border>(view, "TeamTaskRetryBar");
+                Border[] others = [.. bar.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("tcFilter"))];
+                CollectionAssert.AreEqual((string[])["system", "checker"], others.Select(b => (string)b.Tag!).ToArray(), "可以改派给另外两名成员");
+
+                Named<Button>(view, "TeamTaskRetry").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                Assert.AreEqual(("t2", (string?)null), retried.Single(), "重试:还是原来的成员");
+                Press(others[1]);
+                Assert.AreEqual(("t2", "checker"), retried[1], "改派:交给点中的成员");
+
+                // 引擎没重试成(比如这一轮刚好收尾):把原因写出来,按钮恢复可点
+                answer = "Could not retry #t2: Subagent service is shutting down.";
+                view.OpenView(new DrawerView("task", "t2"), push: false);
+                await PumpAsync(3);
+                Button again = Named<Button>(view, "TeamTaskRetry");
+                again.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                Assert.Contains("Could not retry #t2: Subagent service is shutting down.", TextsOf(Named<Border>(view, "TeamTaskRetryBar")));
+                Assert.IsTrue(again.IsEnabled);
+
+                // 受阻的任务也能点(引擎会去重跑挡住它的上游);做成了的没有这一条
+                view.OpenView(new DrawerView("task", "t3"));
+                await PumpAsync(5);
+                Assert.Contains(t => t.StartsWith("This task is blocked", StringComparison.Ordinal), TextsOf(Named<Border>(view, "TeamTaskRetryBar")));
+                view.OpenView(new DrawerView("task", "t1"));
+                await PumpAsync(5);
+                Assert.IsEmpty(drawer.GetVisualDescendants().OfType<Border>().Where(b => b.Name == "TeamTaskRetryBar"));
+
+                // 这一轮收尾:引擎不在了,入口收回
+                bubble.RetryTeamTask = null;
+                bubble.UpdateTeam(broken, runs);
+                view.OpenView(new DrawerView("task", "t2"));
+                await PumpAsync(5);
+                Assert.IsEmpty(drawer.GetVisualDescendants().OfType<Border>().Where(b => b.Name == "TeamTaskRetryBar"));
             }
             finally
             {
