@@ -333,7 +333,7 @@ public sealed class BridgeAgentRunner(
         var subagentProgressGate = new Lock();
         void ReportSubagents(IReadOnlyList<SubagentSnapshot> snapshots)
         {
-            // IM 里没有团队卡:有团队时报团队这一行(阶段、任务进度、谁在做哪个任务),否则报子任务个数
+            // IM 里没有团队入口与控制台:有团队时报团队这一行(阶段、任务进度、谁在做哪个任务),否则报子任务个数
             if (subagents?.Team?.Snapshot() is { } team)
             {
                 string line = TeamProgressLine(team, loc);

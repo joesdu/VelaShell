@@ -714,61 +714,25 @@ public partial class ChatPanelView : UserControl
 
         // 库默认第一个处理器就是 HTTP,模型回复里的图片 URL 会被直接抓取 —— 那等于给
         // 任意模型输出开了个追踪像素通道。这里摘掉 HTTP,只留本地文件 / data: / 内嵌资源。
-        Styles.Add(new Style(x => x.OfType<Image>().Class("Link"))
-        {
-            Setters =
-            {
-                new Setter(AsyncImageLoader.HandlersProperty, new AsyncImageLoaderHandler[]
-                {
-                    LocalFileAsyncImageLoaderHandler.Shared,
-                    AvaloniaResourceAsyncImageLoaderHandler.Shared,
-                    DataUrlAsyncImageLoaderHandler.Shared,
-                    RawAsyncImageLoaderHandler.Shared
-                })
-            }
-        });
+        Styles.Add(MarkdownSkin.LocalImagesOnly());
 
         SyncMarkdownSkin();
         ActualThemeVariantChanged += (_, _) => SyncMarkdownSkin();
     }
 
     /// <summary>
-    /// 把 LiveMarkdown 的默认令牌换成 Vela 令牌的当前解析值,并按明暗切换代码高亮配色。
-    /// 大部分观感能用选择器覆盖(见 axaml),但代码块头/体的底色只在 ControlTemplate 内
-    /// 以 <c>{DynamicResource}</c> 引用,选择器够不到,只能改键;库里这些键全部落在画刷属性上,
-    /// 所以直接塞画刷即可。写成直接键 —— 直接键优先于 MergedDictionaries 里的 Defaults.axaml。
+    /// 把 LiveMarkdown 的默认令牌换成 Vela 令牌的当前解析值,并按明暗切换代码高亮配色
+    /// (做法与原因见 <see cref="MarkdownSkin.Sync" />,团队控制台用的是同一份)。
     /// </summary>
     private void SyncMarkdownSkin()
     {
-        // BorderColor 不能挪作背景用:Mermaid 拿它画全部线条(节点框/连线/分组框),
-        // 给成背景色调会让整张图糊掉。代码块标题栏底色改由 axaml 的 nth-child 选择器给。
-        Skin("BorderColor", "VelaBorderPrimary");              // 线条:表格/分隔线/Mermaid 描边
-        Skin("BorderBrush", "VelaBorderPrimary");              // 代码块外框
-        Skin("SecondaryCardBackgroundColor", "VelaBgInput");   // 代码块正文底 / Mermaid 分组头
-        Skin("CardBackgroundColor", "VelaBgHover");            // 表格底 / Mermaid 节点填充
-        Skin("ForegroundColor", "VelaTextPrimary");            // 正文 / Mermaid 图内文字
-        Skin("CodeInlineColor", "VelaAccent");
-        Skin("QuoteBorderColor", "VelaAccent");
-
-        // 代码高亮是控件属性而非资源键,已生成的渲染器要逐个改
-        ThemeName codeTheme = ActualThemeVariant == ThemeVariant.Dark ? ThemeName.DarkPlus : ThemeName.LightPlus;
+        ThemeName codeTheme = MarkdownSkin.Sync(this);
         _codeBlockTheme = codeTheme;
         // 每份对话各有一条消息流面板,后台那几条此刻不在可视树上但气泡还在 —— 全都要换皮,
         // 否则切回一份后台对话时它的代码块还停在上一套配色上。
         foreach (Conversation conversation in _conversations.Values)
         {
-            foreach (MarkdownRenderer renderer in conversation.Messages.GetVisualDescendants().OfType<MarkdownRenderer>())
-            {
-                renderer.CodeBlockColorTheme = codeTheme;
-            }
-        }
-
-        void Skin(string key, string velaKey)
-        {
-            if (this.TryFindResource(velaKey, ActualThemeVariant, out object? value) && value is IBrush brush)
-            {
-                Resources[key] = brush;
-            }
+            MarkdownSkin.ApplyCodeTheme(conversation.Messages, codeTheme);
         }
     }
 
@@ -1195,7 +1159,7 @@ public partial class ChatPanelView : UserControl
     private double? EstimateCost(ResolvedModel provider)
         => EstimateCost(provider, TotalInputTokens, TotalCachedInputTokens, TotalOutputTokens);
 
-    /// <summary>按某个模型填的单价估一段用量的花费;单价没填返回 null。团队卡上每个成员各按自己的模型算。</summary>
+    /// <summary>按某个模型填的单价估一段用量的花费;单价没填返回 null。团队入口与团队控制台上每个成员各按自己的模型算。</summary>
     /// <param name="model">计价的模型。</param>
     /// <param name="input">输入 token(含缓存命中)。</param>
     /// <param name="cached">其中命中缓存的部分。</param>
@@ -2629,7 +2593,7 @@ public partial class ChatPanelView : UserControl
                     {
                         bubble.CancelSubagent = null; // 编排器已收尾,卡片上不再留取消按钮
                         UpdateSubagentCards(bubble, subagents.Snapshots());
-                        bubble.TeamSource = null; // 团队卡停在最后一版
+                        bubble.TeamSource = null; // 团队入口与控制台停在最后一版
                         _subagentSnapshotSources.Remove(bubble);
                     }
                 }
@@ -3084,7 +3048,7 @@ public partial class ChatPanelView : UserControl
         }
         else if (bubble.SwitchNotice is not null || bubble.HasSubagents || bubble.HasTeam)
         {
-            // 中断的一轮照旧不存思考与工具卡;切换提示、子任务卡片与团队卡是这一轮"发生过什么"的仅有记录,留下
+            // 中断的一轮照旧不存思考与工具卡;切换提示、子任务卡片与团队入口是这一轮"发生过什么"的仅有记录,留下
             await _historyStore.AppendMetaAsync(ConversationId, sequence,
                 new ChatTurnMeta(Switch: bubble.SwitchNotice, Subagents: bubble.SubagentRuns, Team: bubble.TeamRun));
         }
@@ -3866,7 +3830,7 @@ public partial class ChatPanelView : UserControl
                 AddToolCall(id, tool.Name, tool.Arguments);
                 CompleteToolCall(id, tool.Result);
             }
-            // 团队卡与子任务卡片照存下来的终态摆回去:没有可取消的东西,所以不带取消按钮
+            // 团队入口与子任务卡片照存下来的终态摆回去:没有可取消的东西,所以不带取消按钮
             if (meta.Team is { } team)
             {
                 UpdateTeam(team, meta.Subagents ?? []);
@@ -3962,7 +3926,7 @@ public partial class ChatPanelView : UserControl
 
         public void UpdateSubagents(IReadOnlyList<SubagentSnapshot> snapshots)
         {
-            // 团队任务的运行卡长在团队卡的任务行里;子任务组只放普通委派
+            // 团队任务的运行情况在团队控制台里看;子任务组只放普通委派
             if (TeamSource?.Invoke() is { } team)
             {
                 UpdateTeam(team, snapshots);
