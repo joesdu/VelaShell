@@ -356,6 +356,7 @@ public partial class ChatPanelView
     private void CloseDialogs()
     {
         CloseImagePreviews();
+        CloseDiffWindows();
         _ = _settingsPanel?.CloseAsync();
         _ = _globalSettingsPanel?.CloseAsync();
         _globalSettingsPanel = null;

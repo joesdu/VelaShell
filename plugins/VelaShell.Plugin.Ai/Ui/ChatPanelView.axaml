@@ -465,6 +465,40 @@
       <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
     </Style>
 
+    <!-- 输入框上方的「已修改文件」条:与工具卡同一层级的表面色,行悬停提亮 -->
+    <Style Selector="Border.changedFiles">
+      <Setter Property="Background" Value="{DynamicResource VelaBgSurface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="8,5" />
+    </Style>
+    <Style Selector="TextBlock.changedFilesTitle">
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.changedFileRow">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Padding" Value="16,3,4,3" />
+    </Style>
+    <Style Selector="Border.changedFileRow:pointerover">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="TextBlock.changedFileName">
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.changedFileDir">
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
     <!-- 紧凑工具卡(主流 Agent 风格:单行头 + 点击展开详情) -->
     <Style Selector="TextBlock.toolName">
       <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
@@ -1064,6 +1098,9 @@
          空会话给几条起手提示(不花钱),一轮答完再由模型给后续提问。 -->
     <!-- 待发的本地附件(拖进来或 + 选的),点芯片可移除 -->
     <WrapPanel x:Name="AttachmentBar" DockPanel.Dock="Bottom" IsVisible="False" Margin="2,6,2,0" />
+    <!-- 本段对话里 Agent 改过的文件(仿 VS Code Copilot):标题「N 个文件已更改 +X −Y」,点开列出各文件,
+         点文件在主窗口标签区打开差异文档。内容在代码里建(见 ChatPanelView.ChangedFiles.cs)。 -->
+    <Border x:Name="ChangedFilesBar" Classes="changedFiles" DockPanel.Dock="Bottom" IsVisible="False" Margin="2,6,2,0" />
     <!-- 排队中的插话:上一轮还没答完时补发的消息,点一枚芯片可撤回(见 ChatPanelView.Steering.cs)。
          摆在附件行之上 —— 附件属于"正在写的这一条",排队属于"已经发出去的那些"。 -->
     <WrapPanel x:Name="QueuedBar" DockPanel.Dock="Bottom" IsVisible="False" Margin="2,6,2,0" />

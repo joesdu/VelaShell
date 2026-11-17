@@ -249,7 +249,10 @@ public partial class ChatPanelView : UserControl
             // 否则后台跑着的 A 轮会把命令打到你刚切过去正看的 B 上。工具调用发生在本轮的异步流里,
             // Cur 经 _turnScope 落到 A,取到的正是 A 绑的会话。
             SessionIdProvider = CurrentToolSessionId,
-            ApprovalHandler = RequestApprovalAsync
+            ApprovalHandler = RequestApprovalAsync,
+            // 改文件成功后带着前后全文报上来:汇进输入框上方的「已修改文件」、挂到对应工具卡片上画差异。
+            // 回调在工具所在的异步流里(可能不在 UI 线程),OnToolFileChanged 先记下所属对话再投递回 UI 线程。
+            FileChanged = OnToolFileChanged
         };
         _mcp = new McpManager(context);
         // 面板只有这一份:挡位由 ApplyApprovalMode 每轮开头推一次、中途改了再推(各对话共用同一个挡位设置)
@@ -1328,6 +1331,7 @@ public partial class ChatPanelView : UserControl
         UpdateUsageText();
         UpdateEmptyState();
         // 切到别的对话时上一份的后续提问药丸不再相关;各份的后续提问是即时算的,不做保留。
+        RefreshChangedFiles();
         ClearSuggestions();
         RequestAutoScroll(force: true);
         UpdateJumpToBottomButton();
@@ -3289,6 +3293,7 @@ public partial class ChatPanelView : UserControl
         PersistedCount = 0;
         _inputHistoryIndex = -1;
         StatusText.Text = "";
+        ClearChangedFiles(); // 改过的文件属于上一段对话
         ClearSuggestions();
         SetActiveView(PanelView.Chat);
         UpdateEmptyState();
@@ -4408,22 +4413,28 @@ public partial class ChatPanelView : UserControl
             ToolName = name;
             _argumentsJson = argumentsJson;
 
+            // 类别图标 | 工具名 | 参数摘要 | +N −M | 状态 | 箭头
+            // 左边一眼看出「这是读文件 / 改文件 / 跑命令」,右边状态图标照旧着色(运行 / 成功 / 需留意)
             var header = new Grid
             {
-                ColumnDefinitions = [with("Auto,Auto,*,Auto")],
+                ColumnDefinitions = [with("Auto,Auto,*,Auto,Auto,Auto")],
                 Background = Brushes.Transparent,
                 Cursor = new Cursor(StandardCursorType.Hand)
             };
-            _statusIconHost = new Decorator
+            ToolKind kind = ToolIcons.KindOf(name);
+            var kindIcon = new Decorator
             {
-                Child = MakeIcon("Icon.ellipsis", "VelaAccent", 11),
+                Name = "ToolKindIcon",
+                Tag = ToolIcons.IconKey(kind),
+                Child = MakeIcon(ToolIcons.IconKey(kind), "VelaTextTertiary", 12),
                 Margin = new Thickness(0, 0, 6, 0),
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             };
-            ToolTip.SetTip(_statusIconHost, owner._loc["ToolRunning"]);
-            header.Children.Add(_statusIconHost);
+            ToolTip.SetTip(kindIcon, owner._loc[ToolIcons.LabelKey(kind)]);
+            header.Children.Add(kindIcon);
 
             var nameText = new TextBlock { Classes = { "toolName" }, Text = name };
+            ToolTip.SetTip(nameText, owner._loc[ToolIcons.LabelKey(kind)]);
             Grid.SetColumn(nameText, 1);
             header.Children.Add(nameText);
 
@@ -4435,6 +4446,30 @@ public partial class ChatPanelView : UserControl
             };
             Grid.SetColumn(argsText, 2);
             header.Children.Add(argsText);
+
+            _diffStats = new StackPanel
+            {
+                Name = "ToolDiffStats",
+                Orientation = Avalonia.Layout.Orientation.Horizontal,
+                Spacing = 4,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                IsVisible = false
+            };
+            Grid.SetColumn(_diffStats, 3);
+            header.Children.Add(_diffStats);
+
+            _statusIconHost = new Decorator
+            {
+                Child = MakeIcon("Icon.ellipsis", "VelaAccent", 11),
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            };
+            ToolTip.SetTip(_statusIconHost, owner._loc["ToolRunning"]);
+            Grid.SetColumn(_statusIconHost, 4);
+            header.Children.Add(_statusIconHost);
+            _diff = ToolDiff.FromArguments(name, argumentsJson);
+            UpdateDiffStats();
 
             _chevron = new Avalonia.Controls.Shapes.Path
             {
@@ -4450,7 +4485,7 @@ public partial class ChatPanelView : UserControl
             _chevron[!Avalonia.Controls.Shapes.Shape.StrokeProperty] =
                 new DynamicResourceExtension("VelaTextMuted");
             var chevronBox = new Viewbox { Width = 10, Height = 10, Child = _chevron, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
-            Grid.SetColumn(chevronBox, 3);
+            Grid.SetColumn(chevronBox, 5);
             header.Children.Add(chevronBox);
 
             _detailsText = new SelectableTextBlock { Classes = { "mono" } };
@@ -4502,15 +4537,7 @@ public partial class ChatPanelView : UserControl
             if (_transferWithheld) return;
             if (!_details.IsVisible)
             {
-                // 解开 JSON 逐行排:中文与 < ' + 不再是 \uXXXX,脚本里的换行真的换行(见 ToolDisplay)
-                var sb = new StringBuilder();
-                sb.Append(ToolDisplay.Readable(_argumentsJson));
-                if (_result.Length > 0)
-                {
-                    sb.Append("\n────────\n");
-                    sb.Append(Truncate(ToolDisplay.Readable(_result), 8000));
-                }
-                _detailsText.Text = sb.ToString();
+                RenderDetails();
             }
             _details.IsVisible = !_details.IsVisible;
             _chevron.RenderTransform = _details.IsVisible ? new RotateTransform(90) : null;

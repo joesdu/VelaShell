@@ -64,8 +64,12 @@ internal sealed class PluginUiApi(
             {
                 MainWindowViewModel viewModel = mainViewModel()
                     ?? throw new InvalidOperationException("Host main window is not ready; cannot open a docked panel.");
-                // 第一方 AI 的文档请求由宿主放进专属区;通用插件仍使用文档停靠契约。
+                // 第一方 AI 的聊天面板(它总以 Placement=Right 请求)由宿主放进专属区;
+                // 它另开的文档(改动对比等,Placement=Tabs)与通用插件一样走停靠契约进主标签区。
+                // 专属区已有内容时同样走停靠 —— 再 Attach 会抛异常,插件只能退回成独立小窗。
                 return pluginId == "velashell.ai"
+                       && options.Placement == PanelPlacement.Right
+                       && viewModel.AiAssistant.Content is null
                     ? new PluginPanel(pluginId, log, options, content, viewModel.AiAssistant)
                     : new PluginPanel(pluginId, log, options, content, viewModel.Layout);
             }

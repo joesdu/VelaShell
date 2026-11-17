@@ -36,7 +36,7 @@ namespace VelaShell.Plugin.Ai.Agent;
 /// 而"这条路走不通"本身就是模型需要知道、并据此换个方法的信息。
 /// </para>
 /// </remarks>
-public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
+public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposable
 {
     private readonly CommandJobRegistry _jobs = new(context.RemoteExec, context, context.Shutdown);
     private readonly AsyncLocal<CommandJobRunScope?> _invocationScope = new();
@@ -251,14 +251,17 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         ("list_saved_sessions", "列出会话树里已保存的连接配置(含此刻没连着的)", true),
         ("read_terminal", "读取会话终端的尾部输出", true),
         ("search_terminal", "在终端滚回里搜索(子串或正则),只带回命中行", true),
-        ("read_remote_file", "经 SFTP 读取远端小文本文件(≤256KB)", true),
+        ("read_remote_file", "经 SFTP 读取远端文本文件,带行号,可按行区间分段读", true),
+        ("search_remote_files", "用 grep 在远端目录里搜索文件内容(工具自己拼命令,只读免审批)", true),
         ("list_remote_directory", "经 SFTP 列出远端目录", true),
         ("stat_remote_path", "查远端路径存不存在、多大、什么时候改的", true),
         ("get_working_directory", "取会话的当前工作目录(相对路径的基准)", true),
         ("list_local_workspaces", "列出当前 Agent 获得授权的本地工作区", true),
         ("list_local_directory", "列出授权本地工作区中的目录", true),
         ("stat_local_path", "查看授权本地路径的类型和元数据", true),
-        ("read_local_file", "读取授权本地工作区中的 UTF-8 文本文件", true),
+        ("read_local_file", "读取授权本地工作区中的 UTF-8 文本文件,带行号,可按行区间分段读", true),
+        ("search_local_files", "在授权本地工作区里按子串或正则搜索文件内容", true),
+        ("find_local_files", "在授权本地工作区里按 glob 模式查找文件", true),
         ("system_overview", "一次取回系统概览(内核、发行版、负载、内存、磁盘)", true),
         ("web_search", "检索网络,返回标题/链接/摘要清单(不含正文)", true),
         ("web_fetch", "取一个网页并转成文本", true),
@@ -270,11 +273,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         ("task_cancel", "请求取消本轮托管任务", false),
         ("run_on_sessions", "在多台会话上并行执行同一条命令", false),
         ("write_remote_file", "经 SFTP 覆盖写入远端文本文件", false),
-        ("patch_remote_file", "只替换远端文件里的一段文本(不必回传整份)", false),
+        ("patch_remote_file", "替换远端文件里的一处或多处文本(不必回传整份,一次审批)", false),
         ("make_remote_directory", "创建远端目录(幂等)", false),
         ("rename_remote_path", "重命名 / 移动远端文件或目录(改配置前备份用)", false),
         ("write_local_file", "创建或覆盖授权本地工作区中的文本文件", false),
-        ("patch_local_file", "只替换授权本地文件中的唯一文本片段", false),
+        ("patch_local_file", "替换授权本地文件中的一处或多处文本片段(一次审批)", false),
         ("make_local_directory", "创建授权本地工作区中的目录", false),
         ("rename_local_path", "重命名或移动授权本地路径", false),
         ("delete_local_path", "删除授权本地文件或空目录", false),
@@ -332,7 +335,17 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 + "Much cheaper than reading the whole buffer when hunting for an error message."), true),
 
             ("read_remote_file", AIFunctionFactory.Create(ReadRemoteFileAsync, "read_remote_file",
-                "Read a small text file from an SSH session via SFTP (up to 256 KB). Returns the file content as text."), true),
+                "Read a text file from an SSH session via SFTP. Output is numbered like `cat -n`: each line is prefixed with its line number and a TAB. "
+                + "Those prefixes are NOT part of the file — never copy them into patch_remote_file old_text or write_remote_file content. "
+                + $"Returns at most {MaxReadLines} lines per call; use offset (1-based start line) and limit to read a specific range "
+                + "(for example after search_remote_files told you the line numbers) instead of the whole file. "
+                + "When the output is cut off, a final note gives the total line count and the offset to continue from."), true),
+
+            ("search_remote_files", AIFunctionFactory.Create(SearchRemoteFilesAsync, "search_remote_files",
+                "Search file contents under a remote directory (recursive grep built and escaped by this tool; read-only, no approval needed). "
+                + "Returns `path:line:content` for matches (context lines use `path-line-content`). Skips binary files and .git/node_modules/bin/obj-style directories. "
+                + "Use it to locate code or config before reading a narrow range with read_remote_file offset/limit, instead of reading whole files or running grep via run_command. "
+                + "isRegex uses POSIX extended regex (grep -E), not .NET syntax."), true),
 
             ("list_remote_directory", AIFunctionFactory.Create(ListRemoteDirectoryAsync, "list_remote_directory",
                 "List a directory on an SSH session via SFTP (name, type, size, modified time). Use it to find files before reading or editing them."), true),
@@ -386,8 +399,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
                 + "This replaces the WHOLE file — to change a few lines in an existing file use patch_remote_file instead."), false),
 
             ("patch_remote_file", AIFunctionFactory.Create(PatchRemoteFileAsync, "patch_remote_file",
-                "Replace one exact snippet inside a remote text file, leaving the rest untouched. Requires user approval. "
-                + "old_text must appear EXACTLY ONCE in the file — include enough surrounding lines to make it unique. "
+                "Replace exact snippets inside a remote text file, leaving the rest untouched. Requires ONE user approval per call. "
+                + "Either pass oldText/newText for a single change, or an edits array of {oldText, newText, replaceAll} to change several places at once "
+                + "(applied in order; if any edit does not match, nothing is written). "
+                + "Each old text must appear EXACTLY ONCE unless replaceAll=true — include enough surrounding lines to make it unique. "
+                + "Copy snippets WITHOUT the line-number prefixes that read_remote_file adds. "
                 + "Prefer this over write_remote_file for config files: you do not have to send the whole file back."), false),
 
             ("make_remote_directory", AIFunctionFactory.Create(MakeRemoteDirectoryAsync, "make_remote_directory",
@@ -430,12 +446,28 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             all.Add(("stat_local_path", AIFunctionFactory.Create(StatLocalPathAsync, "stat_local_path",
                 "Inspect an authorized local file or directory without changing it."), true));
             all.Add(("read_local_file", AIFunctionFactory.Create(ReadLocalFileAsync, "read_local_file",
-                "Read a UTF-8 text file from an authorized local workspace, subject to the configured size limit."), true));
+                "Read a UTF-8 text file from an authorized local workspace. Output is numbered like `cat -n`: each line is prefixed with its line number and a TAB. "
+                + "Those prefixes are NOT part of the file — never copy them into patch_local_file old_text or write_local_file content. "
+                + $"Returns at most {MaxReadLines} lines per call; use offset (1-based start line) and limit to read only the range you need "
+                + "(for example around a hit from search_local_files). Large files can be read range by range. "
+                + "When the output is cut off, a final note gives the total line count and the offset to continue from."), true));
+            all.Add(("search_local_files", AIFunctionFactory.Create(SearchLocalFilesAsync, "search_local_files",
+                "Search file contents in an authorized local workspace by substring or .NET regular expression. "
+                + "Returns `relative/path:line: content` for matches (context lines use `path-line- content`). "
+                + "Skips binary files, symbolic links and .git/bin/obj/node_modules-style directories. "
+                + "Use it to find where something is defined or used, then read just that range with read_local_file offset/limit."), true));
+            all.Add(("find_local_files", AIFunctionFactory.Create(FindLocalFilesAsync, "find_local_files",
+                "Find files by glob pattern (for example \"*.csproj\" or \"src/**/*.ts\") in an authorized local workspace. "
+                + "Returns workspace-relative paths. Skips symbolic links and .git/bin/obj/node_modules-style directories."), true));
             all.Add(("write_local_file", AIFunctionFactory.Create(WriteLocalFileAsync, "write_local_file",
                 "Create or overwrite a UTF-8 text file in an authorized local workspace. Requires approval. "
                 + "Use patch_local_file for a small change to an existing file."), false));
             all.Add(("patch_local_file", AIFunctionFactory.Create(PatchLocalFileAsync, "patch_local_file",
-                "Replace one exact, unique text snippet in an authorized local UTF-8 file. Requires approval."), false));
+                "Replace exact text snippets in an authorized local UTF-8 file. Requires ONE approval per call. "
+                + "Either pass oldText/newText for a single change, or an edits array of {oldText, newText, replaceAll} to change several places at once "
+                + "(applied in order; if any edit does not match, nothing is written). "
+                + "Each old text must occur exactly once unless replaceAll=true. "
+                + "Copy snippets WITHOUT the line-number prefixes that read_local_file adds."), false));
             all.Add(("make_local_directory", AIFunctionFactory.Create(MakeLocalDirectoryAsync, "make_local_directory",
                 "Create a directory and its missing parents in an authorized local workspace. Requires approval."), false));
             all.Add(("rename_local_path", AIFunctionFactory.Create(RenameLocalPathAsync, "rename_local_path",
@@ -766,6 +798,8 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     private async Task<string> ReadRemoteFileAsync(
         [Description("Absolute path of the remote file to read.")] string path,
         [Description("Optional session id from list_sessions; omit to use the session selected in the panel.")] string? sessionId = null,
+        [Description("1-based line number to start reading from (default 1).")] int offset = 1,
+        [Description("Maximum number of lines to return (default and max 2000).")] int limit = 0,
         CancellationToken cancellationToken = default)
     {
         (string? id, string? error) = await ResolveAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -773,14 +807,50 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             return error!;
         }
+        (offset, limit) = NormalizeWindow(offset, limit);
         try
         {
-            byte[] bytes = await context.RemoteFs.ReadAllBytesAsync(id, path, MaxFileBytes, cancellationToken).ConfigureAwait(false);
-            return bytes.Length == 0 ? "(file is empty)" : Encoding.UTF8.GetString(bytes);
+            LineWindow window;
+            Stream? stream = null;
+            try
+            {
+                // 顺序流:只拉到窗口末尾(外加有限的计数预算),大文件也能读一段
+                stream = await context.RemoteFs.OpenReadAsync(id, path, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                // 宿主不支持流式读取(或开流失败)时退回整份读取;真正的错误(不存在、没权限)会在那里再报一次
+                stream = null;
+            }
+            if (stream is not null)
+            {
+                await using (stream.ConfigureAwait(false))
+                {
+                    using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+                    window = await ReadLineWindowAsync(reader, offset, limit, MaxFileBytes, RemoteLineCountBudgetChars,
+                        cancellationToken).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                byte[] bytes;
+                try
+                {
+                    bytes = await context.RemoteFs.ReadAllBytesAsync(id, path, MaxFileBytes, cancellationToken).ConfigureAwait(false);
+                }
+                catch (InvalidOperationException)
+                {
+                    return $"File is larger than {MaxFileBytes / 1024} KB and this host cannot stream it; use search_remote_files or run_command with sed -n/head/tail instead.";
+                }
+                using var reader = new StringReader(Encoding.UTF8.GetString(bytes));
+                window = await ReadLineWindowAsync(reader, offset, limit, MaxFileBytes, long.MaxValue, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            return FormatLineWindow(window, "read_remote_file", offset);
         }
-        catch (InvalidOperationException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return $"File is larger than {MaxFileBytes / 1024} KB; read a smaller file or use run_command with head/tail/grep instead.";
+            throw;
         }
         catch (Exception ex)
         {
@@ -904,7 +974,6 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             Path.TrimEndingDirectorySeparator(localPath.FullPath),
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
-    private static readonly UTF8Encoding LocalUtf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
     private static readonly UTF8Encoding LocalUtf8Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     /// <summary>严格按 UTF-8 读取本地文件；非 UTF-8 内容抛出 <see cref="DecoderFallbackException" />，避免改写时损坏字节。</summary>
@@ -916,22 +985,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         return (LocalUtf8Strict.GetString(bytes, offset, bytes.Length - offset), bom);
     }
 
-    private static bool LocalFileHasUtf8Bom(string fullPath)
-    {
-        try
-        {
-            using FileStream stream = new(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            Span<byte> head = stackalloc byte[3];
-            return stream.Read(head) == 3 && head[0] == 0xEF && head[1] == 0xBB && head[2] == 0xBF;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
-    }
+    // 与差异文档的「保存」共用同一份写法(见 FileTextStore),两边写出来的字节一致
+    private static bool LocalFileHasUtf8Bom(string fullPath) => FileTextStore.LocalFileHasUtf8Bom(fullPath);
 
     private static Task WriteLocalTextAsync(string fullPath, string content, bool withBom, CancellationToken cancellationToken)
-        => File.WriteAllTextAsync(fullPath, content, withBom ? Encoding.UTF8 : LocalUtf8NoBom, cancellationToken);
+        => FileTextStore.WriteLocalTextAsync(fullPath, content, withBom, cancellationToken);
 
     private int EffectiveLocalMaxFileBytes
         => LocalMaxFileBytes > 0 ? LocalMaxFileBytes : MaxFileBytes;
@@ -1037,12 +1095,15 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     private async Task<string> ReadLocalFileAsync(
         [Description("Relative path inside the workspace, or an absolute path inside it.")] string path,
         [Description("Workspace id from list_local_workspaces. Omit to use the configured default workspace.")] string? workspaceId = null,
+        [Description("1-based line number to start reading from (default 1).")] int offset = 1,
+        [Description("Maximum number of lines to return (default and max 2000).")] int limit = 0,
         CancellationToken cancellationToken = default)
     {
         if (!TryResolveLocal(workspaceId, path, write: false, out LocalPath localPath, out string error))
         {
             return error;
         }
+        (offset, limit) = NormalizeWindow(offset, limit);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -1050,13 +1111,20 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             {
                 return $"No such file: {path}";
             }
-            if (new FileInfo(localPath.FullPath).Length > EffectiveLocalMaxFileBytes)
+            // 按行流式读取:文件超过单次上限也能读其中一段;返回文本的总量仍受上限约束
+            var stream = new FileStream(localPath.FullPath, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete, 64 * 1024, useAsync: true);
+            await using (stream.ConfigureAwait(false))
             {
-                return $"File is larger than {EffectiveLocalMaxFileBytes / 1024} KB; read a smaller file.";
+                using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+                LineWindow window = await ReadLineWindowAsync(reader, offset, limit, EffectiveLocalMaxFileBytes,
+                    LocalLineCountBudgetChars, cancellationToken).ConfigureAwait(false);
+                return FormatLineWindow(window, "read_local_file", offset);
             }
-            string content = await File.ReadAllTextAsync(localPath.FullPath, Encoding.UTF8, cancellationToken)
-                .ConfigureAwait(false);
-            return content.Length == 0 ? "(file is empty)" : content;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -1098,9 +1166,13 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             {
                 return $"Parent directory does not exist: {path}";
             }
-            bool keepBom = File.Exists(localPath.FullPath) && LocalFileHasUtf8Bom(localPath.FullPath);
+            bool existed = File.Exists(localPath.FullPath);
+            bool keepBom = existed && LocalFileHasUtf8Bom(localPath.FullPath);
+            string? before = existed && FileChangedHandler is not null ? TryReadLocalTextForEvent(localPath.FullPath) : null;
             await WriteLocalTextAsync(localPath.FullPath, content, keepBom, cancellationToken)
                 .ConfigureAwait(false);
+            RaiseFileChanged(new FileChange("write_local_file", LocalLocation(localPath), localPath.RelativePath,
+                existed ? FileChangeKind.Modified : FileChangeKind.Created, before, content));
             return $"Wrote {byteCount} bytes to {localPath.RelativePath}.";
         }
         catch (Exception ex)
@@ -1111,18 +1183,20 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
 
     private async Task<string> PatchLocalFileAsync(
         [Description("Relative path inside the workspace, or an absolute path inside it.")] string path,
-        [Description("Exact text to replace; it must occur exactly once.")] string oldText,
-        [Description("Replacement text.")] string newText,
+        [Description("Exact text to replace (without read_local_file's line-number prefixes); it must occur exactly once unless replaceAll is true. Omit when using edits.")] string? oldText = null,
+        [Description("Replacement text for oldText.")] string? newText = null,
         [Description("Workspace id from list_local_workspaces. Omit to use the configured default workspace.")] string? workspaceId = null,
+        [Description("Replace every occurrence of oldText instead of requiring exactly one (default false).")] bool replaceAll = false,
+        [Description("Several edits to apply in order in ONE call and ONE approval; each is {oldText, newText, replaceAll}. If any edit fails to match, nothing is written.")] FileEdit[]? edits = null,
         CancellationToken cancellationToken = default)
     {
         if (!TryResolveLocal(workspaceId, path, write: true, out LocalPath localPath, out string error))
         {
             return error;
         }
-        if (string.IsNullOrEmpty(oldText))
+        if (CollectEdits(oldText, newText, replaceAll, edits, "write_local_file", out error) is not { } editList)
         {
-            return "old_text must not be empty; use write_local_file to create a file.";
+            return error;
         }
         try
         {
@@ -1146,22 +1220,16 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             {
                 return $"{localPath.RelativePath} is not valid UTF-8; refusing to patch it to avoid corrupting the file.";
             }
-            int occurrences = CountOccurrences(original, oldText);
-            if (occurrences == 0)
+            if (ApplyEdits(original, editList, localPath.RelativePath, out int replacements, out error) is not { } patched)
             {
-                return $"old_text was not found in {localPath.RelativePath}. Read the file first and copy the snippet exactly.";
+                return error;
             }
-            if (occurrences > 1)
-            {
-                return $"old_text occurs {occurrences} times in {localPath.RelativePath}; it must be unique.";
-            }
-            string patched = original.Replace(oldText, newText ?? "", StringComparison.Ordinal);
             if (Encoding.UTF8.GetByteCount(patched) > EffectiveLocalMaxFileBytes)
             {
                 return $"The patched file would exceed {EffectiveLocalMaxFileBytes / 1024} KB.";
             }
             if (!await ApproveAsync(new ApprovalRequest("patch_local_file",
-                    $"{localPath.RelativePath}\n- {Clip(oldText)}\n+ {Clip(newText ?? "")}"), cancellationToken)
+                    DescribeEdits(localPath.RelativePath, editList)), cancellationToken)
                     .ConfigureAwait(false))
             {
                 return "The user DENIED this local edit. Do not retry; ask the user how to proceed.";
@@ -1179,7 +1247,9 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             }
             await WriteLocalTextAsync(localPath.FullPath, patched, hasBom, cancellationToken)
                 .ConfigureAwait(false);
-            return $"Patched {localPath.RelativePath} ({original.Length} → {patched.Length} chars).";
+            RaiseFileChanged(new FileChange("patch_local_file", LocalLocation(localPath), localPath.RelativePath,
+                FileChangeKind.Modified, original, patched));
+            return DescribePatchResult(localPath.RelativePath, original, patched, editList, replacements);
         }
         catch (Exception ex)
         {
@@ -1267,6 +1337,13 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             else
             {
                 File.Move(source.FullPath, destination.FullPath);
+                // 只为文件发事件:目录改名牵动的是一整棵子树,逐个文件报既贵又不准
+                if (FileChangedHandler is not null)
+                {
+                    string? text = TryReadLocalTextForEvent(destination.FullPath);
+                    RaiseFileChanged(new FileChange("rename_local_path", LocalLocation(destination), destination.RelativePath,
+                        FileChangeKind.Renamed, text, text, source.RelativePath));
+                }
             }
             return $"Renamed {source.RelativePath} → {destination.RelativePath}.";
         }
@@ -1315,7 +1392,10 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             }
             else
             {
+                string? before = FileChangedHandler is not null ? TryReadLocalTextForEvent(localPath.FullPath) : null;
                 File.Delete(localPath.FullPath);
+                RaiseFileChanged(new FileChange("delete_local_path", LocalLocation(localPath), localPath.RelativePath,
+                    FileChangeKind.Deleted, before, null));
             }
             return $"Deleted {localPath.RelativePath}.";
         }
@@ -1895,8 +1975,13 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         }
         try
         {
+            (bool existed, _, string? before) = FileChangedHandler is not null
+                ? await TryReadRemoteTextForEventAsync(id, path, cancellationToken).ConfigureAwait(false)
+                : (false, false, null);
             await context.RemoteFs.WriteAllBytesAsync(id, path, Encoding.UTF8.GetBytes(content), cancellationToken)
                          .ConfigureAwait(false);
+            RaiseFileChanged(new FileChange("write_remote_file", RemoteLocation(id), path,
+                existed ? FileChangeKind.Modified : FileChangeKind.Created, before, content));
             return $"Wrote {Encoding.UTF8.GetByteCount(content)} bytes to {path}.";
         }
         catch (Exception ex)
@@ -1919,9 +2004,11 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
     /// </remarks>
     private async Task<string> PatchRemoteFileAsync(
         [Description("Absolute path of the remote text file to patch.")] string path,
-        [Description("The exact text to replace. It must occur EXACTLY ONCE in the file — include surrounding lines to make it unique.")] string oldText,
-        [Description("The replacement text.")] string newText,
+        [Description("The exact text to replace (without read_remote_file's line-number prefixes). It must occur EXACTLY ONCE in the file unless replaceAll is true — include surrounding lines to make it unique. Omit when using edits.")] string? oldText = null,
+        [Description("The replacement text for oldText.")] string? newText = null,
         [Description("Optional session id from list_sessions; omit to use the session selected in the panel.")] string? sessionId = null,
+        [Description("Replace every occurrence of oldText instead of requiring exactly one (default false).")] bool replaceAll = false,
+        [Description("Several edits to apply in order in ONE call and ONE approval; each is {oldText, newText, replaceAll}. If any edit fails to match, nothing is written.")] FileEdit[]? edits = null,
         CancellationToken cancellationToken = default)
     {
         (string? id, string? error) = await ResolveAsync(sessionId, cancellationToken).ConfigureAwait(false);
@@ -1929,11 +2016,10 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             return error!;
         }
-        if (string.IsNullOrEmpty(oldText))
+        if (CollectEdits(oldText, newText, replaceAll, edits, "write_remote_file", out string editError) is not { } editList)
         {
-            return "old_text must not be empty; use write_remote_file to create a file from scratch.";
+            return editError;
         }
-        newText ??= "";
         string original;
         try
         {
@@ -1949,20 +2035,16 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
             return $"Failed to read file: {ex.Message}";
         }
 
-        int occurrences = CountOccurrences(original, oldText);
-        if (occurrences == 0)
+        if (ApplyEdits(original, editList, path, out int replacements, out editError) is not { } patched)
         {
-            return $"old_text was not found in {path}. Read the file first and copy the snippet exactly (whitespace included).";
+            return editError;
         }
-        if (occurrences > 1)
+        if (Encoding.UTF8.GetByteCount(patched) > MaxFileBytes)
         {
-            return $"old_text occurs {occurrences} times in {path}; it must be unique. "
-                   + "Include more surrounding lines so it matches exactly one place.";
+            return $"The patched file would exceed {MaxFileBytes / 1024} KB.";
         }
-
-        string patched = original.Replace(oldText, newText, StringComparison.Ordinal);
-        // 审批摘要给的是"改哪一处",不是整份文件 —— 用户要判断的正是这一处
-        string summary = $"{path}\n- {Clip(oldText)}\n+ {Clip(newText)}";
+        // 审批摘要给的是"改哪几处",不是整份文件 —— 用户要判断的正是这几处
+        string summary = DescribeEdits(path, editList);
         if (!await ApproveAsync(new ApprovalRequest("patch_remote_file", summary), cancellationToken).ConfigureAwait(false))
         {
             return "The user DENIED this edit. Do not retry; ask the user how to proceed.";
@@ -1971,7 +2053,9 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         {
             await context.RemoteFs.WriteAllBytesAsync(id, path, Encoding.UTF8.GetBytes(patched), cancellationToken)
                          .ConfigureAwait(false);
-            return $"Patched {path} ({original.Length} → {patched.Length} chars).";
+            RaiseFileChanged(new FileChange("patch_remote_file", RemoteLocation(id), path,
+                FileChangeKind.Modified, original, patched));
+            return DescribePatchResult(path, original, patched, editList, replacements);
         }
         catch (Exception ex)
         {
@@ -2025,6 +2109,17 @@ public sealed class AgentToolbox(IPluginContext context) : IAsyncDisposable
         try
         {
             await context.RemoteFs.RenameAsync(id, oldPath, newPath, cancellationToken).ConfigureAwait(false);
+            if (FileChangedHandler is not null)
+            {
+                // 只为文件发事件(目录改名牵动整棵子树);内容不变,改动前后给同一份
+                (bool exists, bool isDirectory, string? text) =
+                    await TryReadRemoteTextForEventAsync(id, newPath, CancellationToken.None).ConfigureAwait(false);
+                if (exists && !isDirectory)
+                {
+                    RaiseFileChanged(new FileChange("rename_remote_path", RemoteLocation(id), newPath,
+                        FileChangeKind.Renamed, text, text, oldPath));
+                }
+            }
             return $"Renamed {oldPath} → {newPath}.";
         }
         catch (Exception ex)
