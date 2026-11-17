@@ -390,6 +390,7 @@ public sealed class BridgeAgentRunner(
                         (request, token) => subagentRunner.RunAsync(created, request, token), cancellationToken)
                     {
                         ModelChoices = SubagentRunner.ModelChoices(ai, model.Provider.Id),
+                        ModelCatalog = SubagentRunner.ModelCatalog(ai, model.Provider.Id, model.Id),
                         DefaultModelId = model.Id
                     };
                     created.SnapshotsChanged += ReportSubagents;

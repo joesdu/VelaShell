@@ -138,6 +138,143 @@ public sealed class LongRunFollowUpTests
         ["tasks"] = JsonDocument.Parse("""[{"id":"t1","title":"look","detail":"look at it","assignee":"scout"},{"id":"t2","title":"fix","detail":"fix it","assignee":"fixer","dependsOn":["t1"]}]""").RootElement
     };
 
+    /// <summary>
+    /// 主模型给成员挑模型要有依据:候选清单除了 id 与名字,还带配置里已知的事实(窗口、输出上限、单价、会不会思考、
+    /// 哪个是主控自己用的);没有的不写 —— 单价没填不写价格,窗口只是默认估值也不写。图片模型与别的供应商实例不在其中。
+    /// </summary>
+    [TestMethod]
+    public void ModelCatalog_ListsKnownFactsForEachCandidate()
+    {
+        var parent = new AiModelConfig
+        {
+            Model = "big", Name = "Big", MaxInputTokens = 400_000, DefaultContextWindow = false, MaxTokens = 32_000,
+            InputPricePerMillion = 5, OutputPricePerMillion = 25, SupportsReasoning = true
+        };
+        var cheap = new AiModelConfig
+        {
+            Model = "small", Name = "Small", MaxInputTokens = 128_000, DefaultContextWindow = true, MaxTokens = 8_192,
+            InputPricePerMillion = 0.5, OutputPricePerMillion = 2, SupportsReasoning = false
+        };
+        var unknown = new AiModelConfig { Model = "mystery", MaxInputTokens = 0 };
+        var image = new AiModelConfig { Model = "gpt-image-test" };
+        var provider = new AiProvider { Name = "acme", BaseUrl = "http://127.0.0.1:1", Models = [parent, cheap, unknown, image] };
+        var other = new AiProvider { Name = "elsewhere", BaseUrl = "http://127.0.0.1:2", Models = [new AiModelConfig { Model = "foreign" }] };
+        var settings = new AiSettings { Providers = [provider, other], ActiveModelId = parent.Id };
+
+        JsonElement[] listed = [.. JsonDocument.Parse(SubagentRunner.ModelCatalog(settings, provider.Id, parent.Id)).RootElement.EnumerateArray()];
+
+        CollectionAssert.AreEquivalent((string[])[parent.Id, cheap.Id, unknown.Id], listed.Select(m => m.GetProperty("id").GetString()).ToArray(),
+            "候选与 ModelChoices 一致:当前供应商实例的聊天模型");
+        CollectionAssert.AreEquivalent(SubagentRunner.ModelChoices(settings, provider.Id).Keys.ToArray(),
+            listed.Select(m => m.GetProperty("id").GetString()).ToArray());
+        JsonElement big = listed.Single(m => m.GetProperty("id").GetString() == parent.Id);
+        Assert.IsTrue(big.GetProperty("parent").GetBoolean(), "标出主控自己在用的那个");
+        Assert.AreEqual("acme / Big (big)", big.GetProperty("name").GetString());
+        Assert.AreEqual(400_000, big.GetProperty("contextTokens").GetInt32());
+        Assert.AreEqual(32_000, big.GetProperty("maxOutputTokens").GetInt32());
+        Assert.AreEqual(5, big.GetProperty("inputPricePerMTok").GetDouble());
+        Assert.AreEqual(25, big.GetProperty("outputPricePerMTok").GetDouble());
+        Assert.IsTrue(big.GetProperty("reasoning").GetBoolean());
+
+        JsonElement small = listed.Single(m => m.GetProperty("id").GetString() == cheap.Id);
+        Assert.IsFalse(small.TryGetProperty("parent", out _));
+        Assert.IsFalse(small.TryGetProperty("contextTokens", out _), "取不到规格时的默认估值不拿出来比大小");
+        Assert.AreEqual(0.5, small.GetProperty("inputPricePerMTok").GetDouble());
+        Assert.IsFalse(small.GetProperty("reasoning").GetBoolean());
+
+        JsonElement bare = listed.Single(m => m.GetProperty("id").GetString() == unknown.Id);
+        Assert.IsFalse(bare.TryGetProperty("inputPricePerMTok", out _), "没填单价就不写价格");
+        Assert.IsFalse(bare.TryGetProperty("contextTokens", out _));
+        Assert.IsFalse(bare.TryGetProperty("reasoning", out _), "不知道会不会思考就不写");
+    }
+
+    /// <summary>
+    /// 清单与「按任务挑模型」的说明真的到了主模型手里:两件委派工具的说明里带着候选的事实;
+    /// 系统提示词要求按这些事实给每名成员定模型(便宜的做例行收集、大窗口的读大量内容、会思考 / 更贵的做设计与要紧改动、
+    /// 审查者尽量换一个模型),并且只按事实、不按名字。没给清单的入口退回只列 id 与名字。
+    /// </summary>
+    [TestMethod]
+    public async Task ModelFactsAndAssignmentGuidance_ReachTheLead()
+    {
+        using var context = new TestPluginContext();
+        await using var orchestrator = new SubagentOrchestrator((_, _) => Task.FromResult(SubagentExecutionResult.FromText("ok")), CancellationToken.None)
+        {
+            ModelChoices = new Dictionary<string, string> { ["m-big"] = "acme / Big (big)", ["m-small"] = "acme / Small (small)" },
+            ModelCatalog = """[{"id":"m-big","parent":true,"contextTokens":400000},{"id":"m-small","inputPricePerMTok":0.5}]""",
+            DefaultModelId = "m-big"
+        };
+        await using var toolbox = new AgentToolbox(context) { Subagents = orchestrator };
+        AIFunction[] tools = [.. toolbox.CreateTools(ChatMode.Agent).OfType<AIFunction>()];
+
+        foreach (string name in (string[])["team_run", "delegate_subagent"])
+        {
+            string description = tools.Single(t => t.Name == name).Description;
+            StringAssert.Contains(description, "\"contextTokens\":400000", $"{name} 的说明里带候选的事实");
+            StringAssert.Contains(description, "\"inputPricePerMTok\":0.5");
+            StringAssert.Contains(description, "never by a model's name");
+        }
+        StringAssert.Contains(tools.Single(t => t.Name == "team_run").Description, "different model for a reviewer");
+
+        orchestrator.ModelCatalog = null;
+        string plain = toolbox.CreateTools(ChatMode.Agent).OfType<AIFunction>().Single(t => t.Name == "team_run").Description;
+        StringAssert.Contains(plain, "acme / Small (small)", "没给清单时退回只列 id 与名字");
+
+        StringAssert.Contains(SubagentRunner.TeamGuidance, "Give every member the model that fits its task");
+        StringAssert.Contains(SubagentRunner.TeamGuidance, "never a model's name");
+        StringAssert.Contains(SubagentRunner.TeamGuidance, "so the check is independent");
+        StringAssert.Contains(SubagentRunner.DelegationGuidance, "match the model to the subtask using the facts");
+        Assert.DoesNotContain("otherwise inherit the parent when no supported reason", SubagentRunner.DelegationGuidance,
+            "以前这句让主模型一律沿用自己的模型");
+    }
+
+    /// <summary>
+    /// 主模型给成员各指定了模型:确认卡上写的是模型名字(不是配置 id),每名成员的任务真的跑在指定的模型上,
+    /// 没指定的沿用主控的;看板与各次运行都记着实际用的模型。
+    /// </summary>
+    [TestMethod]
+    public async Task TeamMembers_RunOnTheModelsTheLeadAssigned()
+    {
+        using var context = new TestPluginContext();
+        ApprovalRequest? asked = null;
+        var requests = new List<SubagentRequest>();
+        await using var orchestrator = new SubagentOrchestrator((request, _) =>
+        {
+            lock (requests) requests.Add(request);
+            return Task.FromResult(SubagentExecutionResult.FromText("ok"));
+        }, CancellationToken.None)
+        {
+            ModelChoices = new Dictionary<string, string> { ["m-big"] = "acme / Big (big)", ["m-small"] = "acme / Small (small)" },
+            DefaultModelId = "m-big"
+        };
+        await using var toolbox = new AgentToolbox(context)
+        {
+            Subagents = orchestrator,
+            Approval = ApprovalMode.Ask,
+            ApprovalHandler = request => { asked = request; return Task.FromResult(true); }
+        };
+        await using CommandJobRunScope run = toolbox.BeginRun("o", "r");
+        AIFunction teamRun = toolbox.CreateTools(ChatMode.Agent, runScope: run).OfType<AIFunction>().Single(f => f.Name == "team_run");
+
+        await teamRun.InvokeAsync(new AIFunctionArguments
+        {
+            ["goal"] = "fix the proxy",
+            ["members"] = JsonDocument.Parse("""[{"name":"scout","role":"researcher","modelId":"m-small"},{"name":"fixer","role":"engineer"}]""").RootElement,
+            ["tasks"] = JsonDocument.Parse("""[{"id":"t1","title":"look","detail":"look at it","assignee":"scout"},{"id":"t2","title":"fix","detail":"fix it","assignee":"fixer","dependsOn":["t1"]}]""").RootElement
+        });
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (orchestrator.HasPendingResults && (await orchestrator.WaitForCompletionAsync(timeout.Token)).Count == 0) { }
+
+        StringAssert.Contains(asked!.Value.Detail, "scout (researcher, acme / Small (small))", "确认卡上写模型名字,用户看得出谁用哪个模型");
+        StringAssert.Contains(asked.Value.Detail, "fixer (engineer)", "没指定的不写(沿用主控的)");
+        Assert.AreEqual("m-small", requests.Single(r => r.Prompt.Contains("## Your task #t1", StringComparison.Ordinal)).ModelId);
+        TeamBoardSnapshot board = orchestrator.Team!.Snapshot()!;
+        Assert.AreEqual("m-small", board.Members.Single(m => m.Name == "scout").ModelId);
+        Assert.AreEqual("m-big", board.Members.Single(m => m.Name == "fixer").ModelId, "看板上写实际跑的那个,而不是空着");
+        Dictionary<string, string?> ranOn = orchestrator.Snapshots().ToDictionary(s => s.TeamTaskId!, s => s.ModelId);
+        Assert.AreEqual("m-small", ranOn["t1"]);
+        Assert.AreEqual("m-big", ranOn["t2"]);
+    }
+
     /// <summary>团队开跑前按挡位确认计划:拒绝只退回给主模型,不开团队,也不把整轮标为「执行被拒」。</summary>
     [TestMethod]
     public async Task TeamPlan_DeclinedDoesNotStartTheTeamOrStopTheTurn()

@@ -2080,6 +2080,7 @@ public partial class ChatPanelView : UserControl
                     subagents ??= new SubagentOrchestrator(
                         (request, childToken) => subagentRunner!.RunAsync(subagents!, request, childToken), token);
                     subagents.ModelChoices = SubagentRunner.ModelChoices(_settings, current.Provider.Id);
+                    subagents.ModelCatalog = SubagentRunner.ModelCatalog(_settings, current.Provider.Id, current.Id);
                     subagents.DefaultModelId = current.Id;
                     if (bubble is not null && !_subagentSnapshotSources.ContainsKey(bubble))
                     {
