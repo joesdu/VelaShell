@@ -45,9 +45,12 @@ public sealed partial class ChatPanelViewUiTests
             provider.Models.Add(image);
             await store.SaveAsync(new AiSettings
             {
-                Providers = [provider], ActiveModelId = provider.Models[0].Id,
-                ImageGenerationEnabled = enabled, Mode = mode,
-                Approval = ApprovalMode.Bypass, SuggestFollowUps = false
+                Providers = [provider],
+                ActiveModelId = provider.Models[0].Id,
+                ImageGenerationEnabled = enabled,
+                Mode = mode,
+                Approval = ApprovalMode.Bypass,
+                SuggestFollowUps = false
             });
             (Window window, ChatPanelView panel) = await ShowAsync(context);
             try

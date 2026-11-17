@@ -32,7 +32,7 @@ public sealed partial class LineDiffTests
     [TestMethod]
     public void SplitLines_NormalizesLineEndings_AndDropsTrailingNewline()
     {
-        CollectionAssert.AreEqual(new[] { "a", "b", "" , "c" }, LineDiff.SplitLines("a\r\nb\r\n\r\nc\r\n"));
+        CollectionAssert.AreEqual(new[] { "a", "b", "", "c" }, LineDiff.SplitLines("a\r\nb\r\n\r\nc\r\n"));
         Assert.IsEmpty(LineDiff.SplitLines(null));
         Assert.IsEmpty(LineDiff.SplitLines(""));
         Assert.IsFalse(LineDiff.Compute("x\r\ny\r\n", "x\ny\n").HasChanges, "只换了换行符不算改动");

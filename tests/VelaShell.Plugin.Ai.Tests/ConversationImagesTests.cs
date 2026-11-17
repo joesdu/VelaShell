@@ -72,8 +72,10 @@ public sealed class ConversationImagesTests
         var provider = new AiProvider { BaseUrl = endpoint.BaseUrl + "/v1", Models = [text, first, second] };
         var settings = new AiSettings
         {
-            Providers = [provider], ActiveModelId = text.Id,
-            ImageGenerationEnabled = true, ImageModelId = hasDefault ? first.Id : null
+            Providers = [provider],
+            ActiveModelId = text.Id,
+            ImageGenerationEnabled = true,
+            ImageModelId = hasDefault ? first.Id : null
         };
         var store = new AiSettingsStore(context);
         await store.SaveAsync(settings);

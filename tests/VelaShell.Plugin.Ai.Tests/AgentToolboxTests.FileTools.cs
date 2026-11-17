@@ -579,12 +579,12 @@ public sealed partial class AgentToolboxTests
             await using AgentToolbox child = parent.CreateSubagentToolbox();
             AIFunction patch = child.CreateSubagentTools(true, run).OfType<AIFunction>().Single(t => t.Name == "patch_local_file");
 
-            await patch.InvokeAsync(new AIFunctionArguments(new Dictionary<string, object?>
+            await patch.InvokeAsync([with(new Dictionary<string, object?>
             {
                 ["path"] = "a.txt",
                 ["oldText"] = "old",
                 ["newText"] = "new"
-            }), CancellationToken.None);
+            })], CancellationToken.None);
 
             Assert.HasCount(1, changes);
             Assert.AreEqual("new\n", changes[0].After);

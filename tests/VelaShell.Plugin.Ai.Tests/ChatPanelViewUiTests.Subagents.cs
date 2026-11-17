@@ -296,7 +296,10 @@ public sealed partial class ChatPanelViewUiTests
                 { DefaultModelId = parent.Id };
                 orchestrator.Start("inspect", null, scenario switch
                 {
-                    "image" => image.Id, "missing" => "missing", "foreign" => foreign.Models[0].Id, _ => null
+                    "image" => image.Id,
+                    "missing" => "missing",
+                    "foreign" => foreign.Models[0].Id,
+                    _ => null
                 });
                 string result = await orchestrator.WaitAsync(orchestrator.Snapshots().Single().SubagentId, 5, CancellationToken.None);
                 using var json = JsonDocument.Parse(result);

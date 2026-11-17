@@ -330,8 +330,6 @@ internal sealed class TeamSparkline : Control
     public static readonly StyledProperty<IBrush?> GuideProperty =
         AvaloniaProperty.Register<TeamSparkline, IBrush?>(nameof(Guide));
 
-    private IReadOnlyList<double> _values = [];
-
     static TeamSparkline() => AffectsRender<TeamSparkline>(StrokeProperty, GuideProperty);
 
     /// <summary>线与面积的颜色。</summary>
@@ -357,13 +355,13 @@ internal sealed class TeamSparkline : Control
     /// <summary>要画的序列。</summary>
     public IReadOnlyList<double> Values
     {
-        get => _values;
+        get;
         set
         {
-            _values = [.. value];
+            field = [.. value];
             InvalidateVisual();
         }
-    }
+    } = [];
 
     /// <inheritdoc />
     public override void Render(DrawingContext context)
@@ -374,13 +372,13 @@ internal sealed class TeamSparkline : Control
         {
             context.DrawLine(new Pen(guide, 1, new DashStyle([3, 4], 0)), new Point(0, height / 2), new Point(width, height / 2));
         }
-        if (Stroke is not { } stroke || _values.Count < 2) return;
-        double max = Math.Max(1, _values.Max()) * Headroom;
-        var points = new Point[_values.Count];
+        if (Stroke is not { } stroke || Values.Count < 2) return;
+        double max = Math.Max(1, Values.Max()) * Headroom;
+        var points = new Point[Values.Count];
         for (int i = 0; i < points.Length; i++)
         {
             points[i] = new Point(i / (double)(points.Length - 1) * width,
-                height - 1 - (Math.Clamp(_values[i] / max, 0, 1) * (height - 2)));
+                height - 1 - (Math.Clamp(Values[i] / max, 0, 1) * (height - 2)));
         }
         var area = new StreamGeometry();
         using (StreamGeometryContext g = area.Open())

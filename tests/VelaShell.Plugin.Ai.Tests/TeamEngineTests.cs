@@ -91,7 +91,7 @@ public sealed class TeamEngineTests
             InterlockedMax(ref peak, now);
             try
             {
-                await System.Threading.Tasks.Task.Delay(50, token);
+                await Task.Delay(50, token);
                 return await runner.RunAsync(request, token);
             }
             finally { Interlocked.Decrement(ref running); }
@@ -351,16 +351,16 @@ public sealed class TeamEngineTests
     [TestMethod]
     public void IsRetryableRun_AcceptsInterruptedStreamsAndRejectsDefiniteFailures()
     {
-        Assert.IsTrue(VelaShell.Plugin.Ai.Ui.TransientFailure.IsRetryableRun(new InvalidOperationException("Upstream response stream was interrupted")));
-        Assert.IsTrue(VelaShell.Plugin.Ai.Ui.TransientFailure.IsRetryableRun(new InvalidOperationException("wrapped", new IOException("connection reset by peer"))));
-        Assert.IsTrue(VelaShell.Plugin.Ai.Ui.TransientFailure.IsRetryableRun(new HttpRequestException("bad gateway", null, System.Net.HttpStatusCode.BadGateway)));
-        Assert.IsTrue(VelaShell.Plugin.Ai.Ui.TransientFailure.IsRetryableRun(new InvalidOperationException("The server is overloaded, try again later")));
+        Assert.IsTrue(Ui.TransientFailure.IsRetryableRun(new InvalidOperationException("Upstream response stream was interrupted")));
+        Assert.IsTrue(Ui.TransientFailure.IsRetryableRun(new InvalidOperationException("wrapped", new IOException("connection reset by peer"))));
+        Assert.IsTrue(Ui.TransientFailure.IsRetryableRun(new HttpRequestException("bad gateway", null, System.Net.HttpStatusCode.BadGateway)));
+        Assert.IsTrue(Ui.TransientFailure.IsRetryableRun(new InvalidOperationException("The server is overloaded, try again later")));
 
-        Assert.IsFalse(VelaShell.Plugin.Ai.Ui.TransientFailure.IsRetryableRun(new InvalidOperationException("boom")));
-        Assert.IsFalse(VelaShell.Plugin.Ai.Ui.TransientFailure.IsRetryableRun(
+        Assert.IsFalse(Ui.TransientFailure.IsRetryableRun(new InvalidOperationException("boom")));
+        Assert.IsFalse(Ui.TransientFailure.IsRetryableRun(
             new HttpRequestException("stream closed: invalid api key", null, System.Net.HttpStatusCode.Unauthorized)), "鉴权失败再跑也一样");
-        Assert.IsFalse(VelaShell.Plugin.Ai.Ui.TransientFailure.IsRetryableRun(new OperationCanceledException("connection closed")));
-        Assert.IsFalse(VelaShell.Plugin.Ai.Ui.TransientFailure.IsRetryableRun(null));
+        Assert.IsFalse(Ui.TransientFailure.IsRetryableRun(new OperationCanceledException("connection closed")));
+        Assert.IsFalse(Ui.TransientFailure.IsRetryableRun(null));
     }
 
     [TestMethod]

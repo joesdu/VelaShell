@@ -93,7 +93,7 @@ internal sealed class UsageDetailView : StackPanel
         session.Children.Add(_session);
         Children.Add(session);
 
-        var costLabel = Label(_loc["UsageCostLabel"]);
+        TextBlock costLabel = Label(_loc["UsageCostLabel"]);
         _costRow.Children.Add(costLabel);
         Grid.SetColumn(_costValue, 1);
         _costRow.Children.Add(_costValue);

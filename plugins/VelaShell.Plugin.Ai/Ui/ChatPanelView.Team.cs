@@ -227,7 +227,7 @@ public partial class ChatPanelView : ITeamConsoleHost
             _owner = owner;
             Session = new TeamConsoleSession(team, runs);
 
-            var head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto") };
+            var head = new Grid { ColumnDefinitions = [with("Auto,*,Auto,Auto")] };
             head.Children.Add(new Decorator
             {
                 Child = MakeIcon("AiIcon.users", "VelaAccent", 13),
@@ -253,7 +253,7 @@ public partial class ChatPanelView : ITeamConsoleHost
             Grid.SetColumn(open, 3);
             head.Children.Add(open);
 
-            var roster = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 8 };
+            var roster = new Grid { ColumnDefinitions = [with("Auto,*")], ColumnSpacing = 8 };
             roster.Children.Add(_avatars);
             Grid.SetColumn(_progress, 1);
             roster.Children.Add(_progress);

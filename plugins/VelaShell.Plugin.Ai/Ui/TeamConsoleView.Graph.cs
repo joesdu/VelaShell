@@ -83,7 +83,7 @@ internal sealed partial class TeamConsoleView
 
     private Border BuildGraphPanel()
     {
-        var toggle = new CheckBox { Name = "TeamGraphLabels", Content = _loc["TeamGraphLabels"], IsChecked = true }
+        CheckBox toggle = new CheckBox { Name = "TeamGraphLabels", Content = _loc["TeamGraphLabels"], IsChecked = true }
             .Bind(ThemeProperty, "AiCheckBoxTheme");
         toggle.IsCheckedChanged += (_, _) => _labelLayer.IsVisible = toggle.IsChecked == true;
 
@@ -98,14 +98,14 @@ internal sealed partial class TeamConsoleView
         foreach (string kind in (string[])["assign", "handoff", "collab", "review"])
         {
             (string key, string color) = EdgeLook(kind);
-            var swatch = new Border { Width = 18, Height = 2, VerticalAlignment = VerticalAlignment.Center }.Bind(Border.BackgroundProperty, color);
+            Border swatch = new Border { Width = 18, Height = 2, VerticalAlignment = VerticalAlignment.Center }.Bind(Border.BackgroundProperty, color);
             legend.Children.Add(LegendItem(swatch, _loc[key]));
         }
         legend.Children.Add(new Border { Width = 8 });
         foreach (TeamMemberState state in (TeamMemberState[])[TeamMemberState.Working, TeamMemberState.Thinking, TeamMemberState.Waiting, TeamMemberState.Blocked, TeamMemberState.Idle])
         {
             (string key, string color) = StateLook(state);
-            var dot = new Ellipse { Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center }.Bind(Shape.FillProperty, color);
+            Ellipse dot = new Ellipse { Width = 8, Height = 8, VerticalAlignment = VerticalAlignment.Center }.Bind(Shape.FillProperty, color);
             legend.Children.Add(LegendItem(dot, _loc[key]));
         }
 
@@ -188,7 +188,7 @@ internal sealed partial class TeamConsoleView
             g.QuadraticBezierTo(geometry.Control, geometry.End);
             g.EndFigure(false);
         }
-        var line = new Path { Data = curve, StrokeThickness = 1.6, Opacity = 0.5, StrokeLineCap = PenLineCap.Round, IsHitTestVisible = false }
+        Path line = new Path { Data = curve, StrokeThickness = 1.6, Opacity = 0.5, StrokeLineCap = PenLineCap.Round, IsHitTestVisible = false }
             .Bind(Shape.StrokeProperty, color);
         // 透明的粗线只用来接鼠标:1.6px 的细线不好点
         var hit = new Path { Data = curve, StrokeThickness = 14, Stroke = Brushes.Transparent, Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand) };
@@ -199,7 +199,7 @@ internal sealed partial class TeamConsoleView
         if (edge.Kind == "collab") root.Children.Add(Arrow(geometry.Start, geometry.Control, color));
 
         string text = EdgeLabel(edge);
-        var chip = new Border
+        Border chip = new Border
         {
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
@@ -262,13 +262,13 @@ internal sealed partial class TeamConsoleView
         Ellipse track = Centered(new Ellipse { Width = (R * 2) + 4, Height = (R * 2) + 4, StrokeThickness = 4 }
             .Bind(Shape.FillProperty, "VelaBgSidebar").Bind(Shape.StrokeProperty, "VelaBorderSecondary"));
         // 外环上的那一段弧:画在以 (R+2, R+2) 为圆心的局部坐标里,再整体挪到节点中心
-        var arc = new Path { StrokeThickness = 4, StrokeLineCap = PenLineCap.Round, IsHitTestVisible = false }.Bind(Shape.StrokeProperty, party.ColorKey);
+        Path arc = new Path { StrokeThickness = 4, StrokeLineCap = PenLineCap.Round, IsHitTestVisible = false }.Bind(Shape.StrokeProperty, party.ColorKey);
         Canvas.SetLeft(arc, -(R + 2));
         Canvas.SetTop(arc, -(R + 2));
         Viewbox avatar = TeamAvatar.Create(party.Face, 66);
         Canvas.SetLeft(avatar, -33);
         Canvas.SetTop(avatar, -33);
-        var dot = new Ellipse { Width = 17, Height = 17, StrokeThickness = 3 }.Bind(Shape.StrokeProperty, "VelaBgSidebar");
+        Ellipse dot = new Ellipse { Width = 17, Height = 17, StrokeThickness = 3 }.Bind(Shape.StrokeProperty, "VelaBgSidebar");
         Canvas.SetLeft(dot, 30 - 8.5);
         Canvas.SetTop(dot, -30 - 8.5);
 
@@ -277,7 +277,7 @@ internal sealed partial class TeamConsoleView
         Panel nameBox = Caption(TeamUi.Text(title, "VelaTextPrimary", 12, FontWeight.SemiBold), 50);
         Panel subBox = Caption(sub, 67);
 
-        var hit = Centered(new Ellipse { Width = 96, Height = 96, Fill = Brushes.Transparent, Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand) });
+        Ellipse hit = Centered(new Ellipse { Width = 96, Height = 96, Fill = Brushes.Transparent, Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand) });
         ToolTip.SetTip(hit, _loc.F("TeamNodeTip", party.Name, party.Role));
         hit.PointerPressed += (_, e) =>
         {
@@ -464,8 +464,8 @@ internal sealed partial class TeamConsoleView
         for (int k = 0; k < dots.Length; k++)
         {
             double glowRadius = 9 - (k * 2), coreRadius = 4.6 - k;
-            var glow = new Ellipse { Width = glowRadius * 2, Height = glowRadius * 2, Opacity = 0 }.Bind(Shape.FillProperty, colorKey);
-            var core = new Ellipse { Width = coreRadius * 2, Height = coreRadius * 2, Opacity = 0 }.Bind(Shape.FillProperty, colorKey);
+            Ellipse glow = new Ellipse { Width = glowRadius * 2, Height = glowRadius * 2, Opacity = 0 }.Bind(Shape.FillProperty, colorKey);
+            Ellipse core = new Ellipse { Width = coreRadius * 2, Height = coreRadius * 2, Opacity = 0 }.Bind(Shape.FillProperty, colorKey);
             _particleLayer.Children.Add(glow);
             _particleLayer.Children.Add(core);
             dots[k] = (glow, core);

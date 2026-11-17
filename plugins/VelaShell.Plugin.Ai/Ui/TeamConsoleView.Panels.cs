@@ -50,7 +50,7 @@ internal sealed partial class TeamConsoleView
     // ═══════════════════════════ 统计 ═══════════════════════════
 
     private readonly UniformGrid _stats = new() { Columns = 6, Margin = new Thickness(-6) };
-    private StatTile _statProgress = null!, _statActive = null!, _statTasks = null!, _statTokens = null!, _statCost = null!, _statMessages = null!;
+    private StatTile? _statProgress, _statActive, _statTasks, _statTokens, _statCost, _statMessages;
 
     /// <summary>一块统计:小标题、大数字(可带灰色的「/ 总数」)、底下一行说明或一根进度条。</summary>
     private sealed class StatTile
@@ -114,15 +114,15 @@ internal sealed partial class TeamConsoleView
         int total = Team.Tasks.Count;
         int done = Team.Tasks.Count(t => t.Status == "completed");
         double progress = total == 0 ? 0 : done / (double)total;
-        _statProgress.Set((progress * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "%");
-        _statProgress.Bar!.Set(progress, "VelaAccent");
+        _statProgress?.Set((progress * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "%");
+        _statProgress?.Bar?.Set(progress, "VelaAccent");
 
         TeamMemberState[] states = [.. Team.Members.Select(m => TeamConsoleModel.StateOf(m, Team, Runs))];
         int active = states.Count(s => s is TeamMemberState.Working or TeamMemberState.Thinking);
         int stalled = states.Count(s => s is TeamMemberState.Waiting or TeamMemberState.Blocked);
-        _statActive.Set(active.ToString(), $" / {Team.Members.Count}", _loc.F("TeamStatStalled", stalled));
+        _statActive?.Set(active.ToString(), $" / {Team.Members.Count}", _loc.F("TeamStatStalled", stalled));
 
-        _statTasks.Set(done.ToString(), $" / {total}", _loc["TeamStatTasksSub"]);
+        _statTasks?.Set(done.ToString(), $" / {total}", _loc["TeamStatTasksSub"]);
 
         long tokens = 0;
         double? cost = null;
@@ -132,11 +132,11 @@ internal sealed partial class TeamConsoleView
             if (CostOf(member) is { } own) cost = (cost ?? 0) + own;
         }
         IReadOnlyList<double> series = _session.Telemetry.Team;
-        _statTokens.Set(ChatFormatting.Compact(tokens), "",
+        _statTokens?.Set(ChatFormatting.Compact(tokens), "",
             series.Count > 0 ? _loc.F("TeamStatRate", ChatFormatting.Compact((long)series[^1]), TeamTelemetry.Interval.TotalSeconds) : _loc["TeamStatTokensSub"]);
-        _statCost.Set(cost is { } sum ? ChatPanelView.FormatCost(sum) : "—", "", _loc["TeamStatCostSub"],
+        _statCost?.Set(cost is { } sum ? ChatPanelView.FormatCost(sum) : "—", "", _loc["TeamStatCostSub"],
             cost is { } exact ? _loc.F("TeamTotalCostTip", exact.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)) : null);
-        _statMessages.Set(Team.Messages.Count.ToString(), "", ChatFormatting.Duration(Team.Elapsed));
+        _statMessages?.Set(Team.Messages.Count.ToString(), "", ChatFormatting.Duration(Team.Elapsed));
     }
 
     // ═══════════════════════════ 成员状态 ═══════════════════════════
@@ -201,7 +201,7 @@ internal sealed partial class TeamConsoleView
             right.Children.Add(_spark);
             right.Children.Add(_context.Root);
 
-            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("44,*,Auto"), ColumnSpacing = 10 };
+            var grid = new Grid { ColumnDefinitions = [with("44,*,Auto")], ColumnSpacing = 10 };
             grid.Children.Add(TeamAvatar.Create(party.Face, 44));
             grid.Children.Add(middle.At(1));
             grid.Children.Add(right.At(2));
@@ -297,7 +297,7 @@ internal sealed partial class TeamConsoleView
 
     private Border BuildGanttPanel()
     {
-        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("200,*,84"), ColumnSpacing = 10, Margin = new Thickness(6, 0, 6, 4) };
+        var head = new Grid { ColumnDefinitions = [with("200,*,84")], ColumnSpacing = 10, Margin = new Thickness(6, 0, 6, 4) };
         head.Children.Add(TeamUi.Text(_loc["TeamGanttColumn"], "VelaTextSecondary", 11));
         head.Children.Add(_ganttScale.At(1));
         var stack = new StackPanel();
@@ -329,7 +329,7 @@ internal sealed partial class TeamConsoleView
             _owner = owner;
             TextBlock id = TeamUi.Line(task.Id, "VelaTextSecondary", 11, mono: true);
             id.MaxWidth = 56;
-            var label = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 8 };
+            var label = new Grid { ColumnDefinitions = [with("Auto,*,Auto")], ColumnSpacing = 8 };
             label.Children.Add(id);
             label.Children.Add(_title.At(1));
             label.Children.Add(_owners.At(2));
@@ -354,7 +354,7 @@ internal sealed partial class TeamConsoleView
             _barSlots.ColumnDefinitions[1].MinWidth = 6;
             _barSlots.Children.Add(_bar.At(1));
             // 「现在」线:一根强调色的虚线,比凹槽上下各高出一点
-            var now = new Line { StartPoint = new Point(0, 0), EndPoint = new Point(0, 30), StrokeThickness = 1.5, StrokeDashArray = [2.5, 2], Margin = new Thickness(0, -4) }
+            Line now = new Line { StartPoint = new Point(0, 0), EndPoint = new Point(0, 30), StrokeThickness = 1.5, StrokeDashArray = [2.5, 2], Margin = new Thickness(0, -4) }
                 .Bind(Shape.StrokeProperty, "VelaAccent");
             _nowSlots.ColumnDefinitions.Add(new ColumnDefinition(0, GridUnitType.Star));
             _nowSlots.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
@@ -366,7 +366,7 @@ internal sealed partial class TeamConsoleView
             track.Children.Add(_barSlots);
             track.Children.Add(_nowSlots);
 
-            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("200,*,84"), ColumnSpacing = 10 };
+            var grid = new Grid { ColumnDefinitions = [with("200,*,84")], ColumnSpacing = 10 };
             grid.Children.Add(label);
             grid.Children.Add(track.At(1));
             grid.Children.Add(_status.At(2));
@@ -481,11 +481,11 @@ internal sealed partial class TeamConsoleView
         key.Children.Add(Swatch("VelaAccent", 0.35, _loc["TeamTokenCached"]));
         key.Children.Add(Swatch("VelaInfo", 1, _loc["TeamTokenOutput"]));
 
-        var rateHead = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 14, 0, 6) };
+        var rateHead = new Grid { ColumnDefinitions = [with("*,Auto")], Margin = new Thickness(0, 14, 0, 6) };
         rateHead.Children.Add(TeamUi.Text(_loc.F("TeamTokenRate", TeamTelemetry.Interval.TotalSeconds), "VelaTextSecondary", 12, FontWeight.SemiBold));
         rateHead.Children.Add(_rateNow.At(1));
         _rate.Bind(TeamSparkline.StrokeProperty, "VelaAccent").Bind(TeamSparkline.GuideProperty, "VelaBorderPrimary");
-        var rateScale = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,*") };
+        var rateScale = new Grid { ColumnDefinitions = [with("*,Auto,*")] };
         rateScale.Children.Add(_rateSpan);
         rateScale.Children.Add(_ratePeak.At(1));
         TextBlock nowLabel = TeamUi.Text(_loc["TeamRateNow"], "VelaTextTertiary", 11, mono: true);
@@ -510,9 +510,9 @@ internal sealed partial class TeamConsoleView
         stack.Children.Add(rateScale);
         return Panel(_loc["TeamTokensPanel"], null, TeamUi.Text(_loc["TeamStatCostSub"], "VelaTextSecondary", 11), stack, "TeamTokensPanel");
 
-        StackPanel Swatch(string color, double opacity, string text)
+        static StackPanel Swatch(string color, double opacity, string text)
         {
-            var box = new Border { Width = 10, Height = 10, CornerRadius = new CornerRadius(3), Opacity = opacity, VerticalAlignment = VerticalAlignment.Center }
+            Border box = new Border { Width = 10, Height = 10, CornerRadius = new CornerRadius(3), Opacity = opacity, VerticalAlignment = VerticalAlignment.Center }
                 .Bind(Border.BackgroundProperty, color);
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Margin = new Thickness(0, 0, 12, 0) };
             row.Children.Add(box);
@@ -541,7 +541,7 @@ internal sealed partial class TeamConsoleView
             _segments.Children.Add(new Border { Opacity = 0.35 }.Bind(Border.BackgroundProperty, "VelaAccent").At(1));
             _segments.Children.Add(new Border().Bind(Border.BackgroundProperty, "VelaInfo").At(2));
             _total.HorizontalAlignment = HorizontalAlignment.Right;
-            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("110,*,64"), ColumnSpacing = 10 };
+            var grid = new Grid { ColumnDefinitions = [with("110,*,64")], ColumnSpacing = 10 };
             grid.Children.Add(name);
             grid.Children.Add(new Border { Classes = { "tcTrough" }, Height = 12, CornerRadius = new CornerRadius(4), Child = _segments }.At(1));
             grid.Children.Add(_total.At(2));
@@ -603,14 +603,14 @@ internal sealed partial class TeamConsoleView
                 string color = ModelPalette[i % ModelPalette.Length];
                 double share = all == 0 ? 1.0 / byModel.Count : tokens / (double)all;
                 _modelBar.ColumnDefinitions.Add(new ColumnDefinition(Math.Max(share, 0.0001), GridUnitType.Star));
-                var segment = new Border().Bind(Border.BackgroundProperty, color).At(i);
+                Border segment = new Border().Bind(Border.BackgroundProperty, color).At(i);
                 ToolTip.SetTip(segment, ModelLine(id));
                 _modelBar.Children.Add(segment);
 
-                var swatch = new Border { Width = 9, Height = 9, CornerRadius = new CornerRadius(2), VerticalAlignment = VerticalAlignment.Center }
+                Border swatch = new Border { Width = 9, Height = 9, CornerRadius = new CornerRadius(2), VerticalAlignment = VerticalAlignment.Center }
                     .Bind(Border.BackgroundProperty, color);
                 TextBlock share2 = TeamUi.Text(Percent(share) + (cost is { } c ? " · " + ChatPanelView.FormatCost(c) : ""), "VelaTextPrimary", 11, mono: true);
-                var legend = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 6, Margin = new Thickness(0, 2, 12, 2) };
+                var legend = new Grid { ColumnDefinitions = [with("Auto,*,Auto")], ColumnSpacing = 6, Margin = new Thickness(0, 2, 12, 2) };
                 legend.Children.Add(swatch);
                 legend.Children.Add(TeamUi.Line($"{ModelName(id)} ×{count}", "VelaTextSecondary", 11).At(1));
                 legend.Children.Add(share2.At(2));
@@ -640,11 +640,11 @@ internal sealed partial class TeamConsoleView
     private readonly WrapPanel _feedFilters = new() { Margin = new Thickness(0, 0, 0, 4) };
     private readonly TextBlock _feedCount = TeamUi.Line("", "VelaTextSecondary", 12);
     private readonly Dictionary<string, Border> _filterChips = [with(StringComparer.Ordinal)];
-    private string _feedParty = "all", _feedKind = "all", _feedQuery = "", _feedKey = "";
+    private string _feedKind = "all", _feedQuery = "", _feedKey = "";
     private TeamMessageInfo? _newest;
 
     /// <summary>通信记录此刻按哪名成员筛(「all」= 不筛;测试用)。</summary>
-    internal string FeedParty => _feedParty;
+    internal string FeedParty { get; private set; } = "all";
 
     private Border BuildFeedPanel()
     {
@@ -663,7 +663,7 @@ internal sealed partial class TeamConsoleView
             _feedQuery = search.Text?.Trim() ?? "";
             RefreshFeed(force: true);
         };
-        var searchGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        var searchGrid = new Grid { ColumnDefinitions = [with("Auto,*")] };
         searchGrid.Children.Add(TeamUi.Icon("AiIcon.search", "VelaTextTertiary", 13));
         searchGrid.Children.Add(search.At(1));
         var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -673,11 +673,11 @@ internal sealed partial class TeamConsoleView
         var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         heading.Children.Add(TeamUi.Text(_loc["TeamFeed"], "VelaTextPrimary", 13, FontWeight.SemiBold));
         heading.Children.Add(_feedCount);
-        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 10, Margin = new Thickness(0, 0, 0, 10) };
+        var head = new Grid { ColumnDefinitions = [with("*,Auto")], ColumnSpacing = 10, Margin = new Thickness(0, 0, 0, 10) };
         head.Children.Add(heading);
         head.Children.Add(tools.At(1));
 
-        var list = new Border
+        Border list = new Border
         {
             BorderThickness = new Thickness(0, 1, 0, 0),
             Margin = new Thickness(0, 4, 0, 0),
@@ -710,7 +710,7 @@ internal sealed partial class TeamConsoleView
                 row.Children.Add(TeamUi.Text(PartyOf(id).Name, "VelaTextPrimary", 12));
             }
             Border chip = Clickable(new Border { Classes = { "tcFilter" }, Child = row, Tag = id }, () => SetFeedParty(id));
-            chip.Classes.Set("on", id == _feedParty);
+            chip.Classes.Set("on", id == FeedParty);
             _filterChips[id] = chip;
             _feedFilters.Children.Add(chip);
         }
@@ -719,7 +719,7 @@ internal sealed partial class TeamConsoleView
     /// <summary>按成员筛通信记录(「all」= 不筛)。</summary>
     internal void SetFeedParty(string party)
     {
-        _feedParty = party;
+        FeedParty = party;
         foreach ((string id, Border chip) in _filterChips) chip.Classes.Set("on", id == party);
         RefreshFeed(force: true);
     }
@@ -728,7 +728,7 @@ internal sealed partial class TeamConsoleView
     {
         EnsureFilterChips();
         TeamMessageInfo? last = Team.Messages.Count > 0 ? Team.Messages[^1] : null;
-        string key = $"{Team.Messages.Count}|{last?.At.Ticks}|{_feedParty}|{_feedKind}|{_feedQuery}";
+        string key = $"{Team.Messages.Count}|{last?.At.Ticks}|{FeedParty}|{_feedKind}|{_feedQuery}";
         if (!force && key == _feedKey) return;
         // 团队在跑时新到的那一条要闪一下;第一次画和改筛选条件时不闪
         bool arrived = !force && _feedKey.Length > 0 && last is not null && !ReferenceEquals(last, _newest);
@@ -737,7 +737,7 @@ internal sealed partial class TeamConsoleView
 
         List<TeamMessageInfo> shown =
         [
-            .. Team.Messages.Where(m => (_feedParty == "all" || TeamConsoleModel.Involves(m, _feedParty))
+            .. Team.Messages.Where(m => (FeedParty == "all" || TeamConsoleModel.Involves(m, FeedParty))
                                         && (_feedKind == "all" || m.Kind == _feedKind || (_feedKind == "system" && !FeedKinds.Contains(m.Kind)))
                                         && (_feedQuery.Length == 0 || m.Text.Contains(_feedQuery, StringComparison.OrdinalIgnoreCase)))
         ];
@@ -774,7 +774,7 @@ internal sealed partial class TeamConsoleView
             : "", "VelaTextSecondary", 11, mono: true);
         tokens.HorizontalAlignment = HorizontalAlignment.Right;
 
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("64,190,60,*,Auto,96"), ColumnSpacing = 10 };
+        var grid = new Grid { ColumnDefinitions = [with("64,190,60,*,Auto,96")], ColumnSpacing = 10 };
         grid.Children.Add(TeamUi.Text(message.At.ToLocalTime().ToString("HH:mm:ss"), "VelaTextSecondary", 12, mono: true));
         grid.Children.Add(pair.At(1));
         grid.Children.Add(KindTag(message.Kind).At(2));
@@ -791,7 +791,7 @@ internal sealed partial class TeamConsoleView
     /// <summary>新到的一行闪一下强调色再淡出。</summary>
     private static void Flash(Border row)
     {
-        var glow = new Border { Opacity = 0.22, IsHitTestVisible = false }.Bind(Border.BackgroundProperty, "VelaAccent");
+        Border glow = new Border { Opacity = 0.22, IsHitTestVisible = false }.Bind(Border.BackgroundProperty, "VelaAccent");
         glow.Transitions = [new Avalonia.Animation.DoubleTransition { Property = OpacityProperty, Duration = TimeSpan.FromSeconds(1.6) }];
         var layers = new Panel();
         Control content = row.Child!;

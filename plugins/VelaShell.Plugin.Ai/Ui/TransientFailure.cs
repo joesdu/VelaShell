@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Anthropic.Exceptions;
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Chat;
@@ -108,13 +109,13 @@ public static partial class TransientFailure
     }
 
     // 上游把流掐断时的各种说法:中转站 / 网关多半只给一句话,没有状态码也没有专门的异常类型
-    [System.Text.RegularExpressions.GeneratedRegex(
+    [GeneratedRegex(
         @"\b(?:stream|connection|response|socket)\b[^\r\n]{0,60}?\b(?:interrupted|closed|reset|aborted|ended|terminated|broken|dropped)\b"
         + @"|unexpected end of (?:stream|file|response|json)|premature(?:ly)? (?:end|close)"
         + @"|\bupstream\b[^\r\n]{0,60}?\b(?:error|interrupted|timeout|timed out|unavailable|disconnect\w*|failed|closed|reset)\b"
         + @"|\boverloaded\b|temporarily unavailable|bad gateway|gateway time-?out|service unavailable|ECONNRESET|socket hang up",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
-    private static partial System.Text.RegularExpressions.Regex InterruptedStreamPattern();
+        RegexOptions.IgnoreCase)]
+    private static partial Regex InterruptedStreamPattern();
 
     /// <summary>
     /// 一次<b>成员 / 子任务运行</b>失败之后,原样再跑一遍可能就好了:瞬时故障(<see cref="IsTransient" />),
@@ -202,11 +203,11 @@ public static partial class TransientFailure
         return false;
     }
 
-    [System.Text.RegularExpressions.GeneratedRegex(
+    [GeneratedRegex(
         @"model_not_found|model_not_supported|unsupported_model|invalid_model|model_not_available"
         + @"|\bmodel\b[^\r\n]{0,120}?\b(?:is not supported|not supported|not found|does not exist|is not available|not available|unavailable|not enabled)",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
-    private static partial System.Text.RegularExpressions.Regex ModelUnavailablePattern();
+        RegexOptions.IgnoreCase)]
+    private static partial Regex ModelUnavailablePattern();
 
     /// <summary>
     /// 服务端明说<b>这个模型</b>在这个账号 / 端点上用不了(400 / 404 + model_not_found 一类错误码或原话)。

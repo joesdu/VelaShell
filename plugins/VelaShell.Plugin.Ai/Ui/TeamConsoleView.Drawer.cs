@@ -40,7 +40,6 @@ internal sealed partial class TeamConsoleView
     private readonly ScrollViewer _drawerScroll = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
     private readonly List<DrawerView> _drawerStack = [];
     private DrawerView? _drawerView;
-    private bool _drawerOpen;
     private string _drawerKey = "";
 
     // 任务视图里随快照原地更新的那几样(其余部分按签名整块重建)
@@ -50,10 +49,10 @@ internal sealed partial class TeamConsoleView
     private string _reportShown = "";
 
     /// <summary>抽屉是否开着。</summary>
-    internal bool IsDrawerOpen => _drawerOpen;
+    internal bool IsDrawerOpen { get; private set; }
 
     /// <summary>抽屉里正在看的东西;关着为 null。</summary>
-    internal DrawerView? CurrentDrawerView => _drawerOpen ? _drawerView : null;
+    internal DrawerView? CurrentDrawerView => IsDrawerOpen ? _drawerView : null;
 
     /// <summary>抽屉标题(测试用)。</summary>
     internal string DrawerTitle => _drawerTitle.Text ?? "";
@@ -74,15 +73,15 @@ internal sealed partial class TeamConsoleView
         ToolTip.SetTip(close, _loc["TeamDrawerClose"]);
         close.Click += (_, _) => CloseDrawer();
 
-        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 10 };
+        var head = new Grid { ColumnDefinitions = [with("Auto,*,Auto")], ColumnSpacing = 10 };
         head.Children.Add(_drawerBack);
         head.Children.Add(_drawerTitle.At(1));
         head.Children.Add(close.At(2));
-        var headBar = new Border { BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(16, 12), Child = head }
+        Border headBar = new Border { BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(16, 12), Child = head }
             .Bind(Border.BorderBrushProperty, "VelaBorderPrimary");
 
         _drawerScroll.Content = new Border { Padding = new Thickness(16), Child = _drawerBody };
-        var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
+        var layout = new Grid { RowDefinitions = [with("Auto,*")] };
         layout.Children.Add(headBar);
         layout.Children.Add(_drawerScroll.At(0, 1));
         _drawer.Child = layout;
@@ -98,7 +97,7 @@ internal sealed partial class TeamConsoleView
         _drawerSettle.Tick += (_, _) =>
         {
             _drawerSettle.Stop();
-            if (!_drawerOpen) _drawerBody.Children.Clear();
+            if (!IsDrawerOpen) _drawerBody.Children.Clear();
         };
 
         var overlay = new Panel();
@@ -110,7 +109,7 @@ internal sealed partial class TeamConsoleView
     /// <summary>打开抽屉看某样东西;已经开着就把当前这样压进返回栈。</summary>
     internal void OpenView(DrawerView view, bool push = true)
     {
-        if (!_drawerOpen)
+        if (!IsDrawerOpen)
         {
             _drawerStack.Clear();
         }
@@ -119,8 +118,8 @@ internal sealed partial class TeamConsoleView
             _drawerStack.Add(_drawerView);
         }
         _drawerView = view;
-        bool opening = !_drawerOpen;
-        _drawerOpen = true;
+        bool opening = !IsDrawerOpen;
+        IsDrawerOpen = true;
         _drawerSettle.Stop();
         // 先把内容建好再滑:滑进来的是一块已经排好的板子,不是边滑边长出来
         RenderDrawer(resetScroll: true);
@@ -139,8 +138,8 @@ internal sealed partial class TeamConsoleView
     /// <summary>关掉抽屉:滑回屏幕右侧外面,遮罩淡出。</summary>
     internal void CloseDrawer()
     {
-        if (!_drawerOpen) return;
-        _drawerOpen = false;
+        if (!IsDrawerOpen) return;
+        IsDrawerOpen = false;
         _drawer.RenderTransform = DrawerOffscreen();
         _scrim.Opacity = 0;
         _scrim.IsHitTestVisible = false;
@@ -160,7 +159,7 @@ internal sealed partial class TeamConsoleView
     private void ResizeDrawer(double pageWidth)
     {
         _drawer.Width = Math.Min(640, pageWidth);
-        if (!_drawerOpen) _drawer.RenderTransform = DrawerOffscreen();
+        if (!IsDrawerOpen) _drawer.RenderTransform = DrawerOffscreen();
     }
 
     /// <summary>回到上一样东西;没有上一样时什么也不做。</summary>
@@ -175,7 +174,7 @@ internal sealed partial class TeamConsoleView
     /// <summary>快照变了:抽屉里的内容只在它自己那部分数据变了时才重建,免得打断正在读的人。</summary>
     private void RefreshDrawer()
     {
-        if (!_drawerOpen || _drawerView is null) return;
+        if (!IsDrawerOpen || _drawerView is null) return;
         if (DrawerKeyOf(_drawerView) != _drawerKey)
         {
             RenderDrawer(resetScroll: false);
@@ -221,31 +220,31 @@ internal sealed partial class TeamConsoleView
         switch (view.Kind)
         {
             case "agent":
-            {
-                TeamMemberInfo? member = Team.Members.FirstOrDefault(m => m.Name == view.A);
-                TeamMemberUsage? usage = member is null ? null : UsageOf(member);
-                return string.Join("|", "agent", view.A, StateOf(view.A), member is null ? "" : ActivityOf(member),
-                    usage?.Input, usage?.Output, usage?.Cached, usage?.Context,
-                    Team.Messages.Count(m => TeamConsoleModel.Involves(m, view.A)),
-                    string.Join(",", Team.Tasks.Where(t => t.Assignee == view.A).Select(t => t.Id + t.Status)),
-                    _session.Telemetry.Member(view.A).Count);
-            }
+                {
+                    TeamMemberInfo? member = Team.Members.FirstOrDefault(m => m.Name == view.A);
+                    TeamMemberUsage? usage = member is null ? null : UsageOf(member);
+                    return string.Join("|", "agent", view.A, StateOf(view.A), member is null ? "" : ActivityOf(member),
+                        usage?.Input, usage?.Output, usage?.Cached, usage?.Context,
+                        Team.Messages.Count(m => TeamConsoleModel.Involves(m, view.A)),
+                        string.Join(",", Team.Tasks.Where(t => t.Assignee == view.A).Select(t => t.Id + t.Status)),
+                        _session.Telemetry.Member(view.A).Count);
+                }
             case "task":
-            {
-                if (FindTask(view.A) is not { } task) return "task|" + view.A;
-                SubagentSnapshot? run = TeamConsoleModel.RunOf(task, Runs);
-                return string.Join("|", "task", task.Id, task.Status, task.Attempts, task.Verdict, task.Note,
-                    Team.Messages.Count(m => string.Equals(m.TaskId, task.Id, StringComparison.OrdinalIgnoreCase)),
-                    run?.SubagentId, run?.Status, run?.InputTokens, run?.OutputTokens, run?.Errors.Count,
-                    string.Join(",", run?.ToolsUsed.Select(t => t.Name + t.Count) ?? []),
-                    _session.Cancel is not null, _session.Retry is not null, task.Retries, task.Assignee, StateOf(task.Assignee));
-            }
+                {
+                    if (FindTask(view.A) is not { } task) return "task|" + view.A;
+                    SubagentSnapshot? run = TeamConsoleModel.RunOf(task, Runs);
+                    return string.Join("|", "task", task.Id, task.Status, task.Attempts, task.Verdict, task.Note,
+                        Team.Messages.Count(m => string.Equals(m.TaskId, task.Id, StringComparison.OrdinalIgnoreCase)),
+                        run?.SubagentId, run?.Status, run?.InputTokens, run?.OutputTokens, run?.Errors.Count,
+                        string.Join(",", run?.ToolsUsed.Select(t => t.Name + t.Count) ?? []),
+                        _session.Cancel is not null, _session.Retry is not null, task.Retries, task.Assignee, StateOf(task.Assignee));
+                }
             default:
-            {
-                TeamMessageInfo[] between = [.. TeamConsoleModel.Between(Team, view.A, view.B ?? "")];
-                return string.Join("|", "pair", view.A, view.B, between.Length, view.Focus?.At.Ticks, view.Focus?.Text,
-                    string.Join(",", between.Select(m => FindTask(m.TaskId)?.Report.Length ?? 0)));
-            }
+                {
+                    TeamMessageInfo[] between = [.. TeamConsoleModel.Between(Team, view.A, view.B ?? "")];
+                    return string.Join("|", "pair", view.A, view.B, between.Length, view.Focus?.At.Ticks, view.Focus?.Text,
+                        string.Join(",", between.Select(m => FindTask(m.TaskId)?.Report.Length ?? 0)));
+                }
         }
     }
 
@@ -277,7 +276,7 @@ internal sealed partial class TeamConsoleView
     /// <summary>条目:一个任务。点开看任务。</summary>
     private Border TaskItem(TeamTaskInfo task)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 8 };
+        var grid = new Grid { ColumnDefinitions = [with("Auto,*,Auto")], ColumnSpacing = 8 };
         grid.Children.Add(TeamUi.Text(task.Id, "VelaTextSecondary", 12, mono: true));
         grid.Children.Add(TeamUi.Line(task.Title, "VelaTextPrimary", 12).At(1));
         grid.Children.Add(TaskPill(task).At(2));
@@ -288,7 +287,7 @@ internal sealed partial class TeamConsoleView
     /// <summary>条目:一条消息。点开看它所在的对话,并高亮这一条。</summary>
     private Border MessageItem(TeamMessageInfo message)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,Auto,*"), ColumnSpacing = 8 };
+        var grid = new Grid { ColumnDefinitions = [with("Auto,Auto,Auto,Auto,Auto,*")], ColumnSpacing = 8 };
         grid.Children.Add(TeamUi.Text(message.At.ToLocalTime().ToString("HH:mm"), "VelaTextSecondary", 12, mono: true));
         grid.Children.Add(Avatar(message.From, 20).At(1));
         grid.Children.Add(TeamUi.Text("→", "VelaTextTertiary", 12).At(2));
@@ -306,7 +305,7 @@ internal sealed partial class TeamConsoleView
         var text = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         text.Children.Add(TeamUi.Text(party.Name, "VelaTextPrimary", 12, FontWeight.SemiBold));
         if (detail.Length > 0) text.Children.Add(TeamUi.Line(detail, "VelaTextSecondary", 12));
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 8 };
+        var grid = new Grid { ColumnDefinitions = [with("Auto,*,Auto")], ColumnSpacing = 8 };
         grid.Children.Add(Avatar(id, avatar));
         grid.Children.Add(text.At(1));
         if (trailing is not null) grid.Children.Add(trailing.At(2));
@@ -347,7 +346,7 @@ internal sealed partial class TeamConsoleView
         who.Children.Add(nameRow);
         who.Children.Add(badges);
         who.Children.Add(aboutText);
-        var profile = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 14 };
+        var profile = new Grid { ColumnDefinitions = [with("Auto,*")], ColumnSpacing = 14 };
         profile.Children.Add(Avatar(id, 72));
         profile.Children.Add(who.At(1));
         _drawerBody.Children.Add(profile);
@@ -420,7 +419,7 @@ internal sealed partial class TeamConsoleView
             {
                 text.Children.Add(TeamUi.Text("· " + EdgeLabel(found.Edge), EdgeLook(found.Edge.Kind).Color, 12));
             }
-            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 8 };
+            var grid = new Grid { ColumnDefinitions = [with("Auto,*,Auto")], ColumnSpacing = 8 };
             grid.Children.Add(Avatar(other, 26));
             grid.Children.Add(text.At(1));
             grid.Children.Add(TeamUi.Text(_loc.F("TeamMessageCount", count), "VelaTextSecondary", 12, mono: true).At(2));
@@ -465,11 +464,11 @@ internal sealed partial class TeamConsoleView
         _drawerBody.Children.Add(top);
 
         // 进度:做完满格,失败满格错误色;在跑的没有可信的完成度(步数上限不是进度),走不定进度动画
-        var progressHead = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 14, 0, 4) };
+        var progressHead = new Grid { ColumnDefinitions = [with("*,Auto")], Margin = new Thickness(0, 14, 0, 4) };
         progressHead.Children.Add(TeamUi.Text(_loc["TeamTaskProgress"], "VelaTextPrimary", 13, FontWeight.SemiBold));
         progressHead.Children.Add(TeamUi.Text(task.Status == "completed" ? "100%" : task.Status is "running" or "failed" ? _loc[TaskLook(task).Key] : "0%",
             "VelaTextPrimary", 12, mono: true).At(1));
-        var bar = new ProgressBar
+        ProgressBar bar = new ProgressBar
         {
             Minimum = 0,
             Maximum = 100,
@@ -530,7 +529,7 @@ internal sealed partial class TeamConsoleView
         var report = new StackPanel { Spacing = 8 };
         if (run is { IsTerminal: false } && _session.Cancel is { } cancel)
         {
-            var stop = new Button
+            Button stop = new Button
             {
                 Name = "TeamTaskCancel",
                 Content = _loc["Cancel"],
@@ -560,7 +559,7 @@ internal sealed partial class TeamConsoleView
         }
         if (run is { Errors.Count: > 0 })
         {
-            var errors = new SelectableTextBlock { Text = string.Join(Environment.NewLine, run.Errors), TextWrapping = TextWrapping.Wrap }
+            SelectableTextBlock errors = new SelectableTextBlock { Text = string.Join(Environment.NewLine, run.Errors), TextWrapping = TextWrapping.Wrap }
                 .Bind(TextBlock.ForegroundProperty, "VelaError").Bind(TextBlock.FontSizeProperty, "VelaFontSize11")
                 .Bind(TextBlock.FontFamilyProperty, "VelaUiMonoFont");
             report.Children.Add(new Border { Classes = { "tcCode" }, Child = errors });
@@ -607,7 +606,7 @@ internal sealed partial class TeamConsoleView
             result.IsVisible = answer.Length > 0;
         }
 
-        var again = new Button
+        Button again = new Button
         {
             Name = "TeamTaskRetry",
             Content = _loc["TeamRetry"],
@@ -811,7 +810,7 @@ internal sealed partial class TeamConsoleView
         Meta(TeamUi.Text(message.At.ToLocalTime().ToString("HH:mm:ss"), "VelaTextTertiary", 12, mono: true));
         if (message.TaskId is { Length: > 0 } taskId) Meta(TeamUi.Chip(taskId, radius: 5));
 
-        var text = new SelectableTextBlock { Text = message.Text, TextWrapping = TextWrapping.Wrap, FontWeight = FontWeight.SemiBold }
+        SelectableTextBlock text = new SelectableTextBlock { Text = message.Text, TextWrapping = TextWrapping.Wrap, FontWeight = FontWeight.SemiBold }
             .Bind(TextBlock.FontSizeProperty, "VelaFontSize13").Bind(TextBlock.ForegroundProperty, "VelaTextPrimary");
         var body = new StackPanel();
         body.Children.Add(meta);
@@ -883,7 +882,7 @@ internal sealed partial class TeamConsoleView
         var row = new Grid { ColumnSpacing = 10 };
         if (mine)
         {
-            row.ColumnDefinitions = new ColumnDefinitions("Auto,*");
+            row.ColumnDefinitions = [with("Auto,*")];
             row.Margin = new Thickness(0, 0, 34, 0);
             row.Children.Add(avatar);
             row.Children.Add(frame.At(1));
@@ -891,7 +890,7 @@ internal sealed partial class TeamConsoleView
         }
         else
         {
-            row.ColumnDefinitions = new ColumnDefinitions("*,Auto");
+            row.ColumnDefinitions = [with("*,Auto")];
             row.Margin = new Thickness(34, 0, 0, 0);
             row.Children.Add(frame);
             row.Children.Add(avatar.At(1));

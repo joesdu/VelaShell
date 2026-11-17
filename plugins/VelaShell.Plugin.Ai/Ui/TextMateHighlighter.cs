@@ -130,7 +130,7 @@ internal static class TextMateHighlighter
     internal static TextMateLineTokenizer? ForPath(string? path, ThemeName theme)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
-        string extension = System.IO.Path.GetExtension(path.Replace('\\', '/'));
+        string extension = Path.GetExtension(path.Replace('\\', '/'));
         if (extension.Length < 2) return null;
         lock (Gate)
         {

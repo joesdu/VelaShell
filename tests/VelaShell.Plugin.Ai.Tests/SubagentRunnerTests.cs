@@ -36,11 +36,11 @@ public sealed class SubagentRunnerTests
     public async Task ModelSelectionIsScopedByProviderInstanceBeforeCredentialResolution()
     {
         using var context = new TestPluginContext();
-        var parent = Model();
+        ResolvedModel parent = Model();
         var child = new AiModelConfig { Model = "child" };
         var image = new AiModelConfig { Model = "gpt-image-test" };
         parent.Provider.Models.AddRange([child, image]);
-        var other = Model();
+        ResolvedModel other = Model();
         var settings = new AiSettings { Providers = [parent.Provider, other.Provider], ActiveModelId = parent.Id };
         var store = new AiSettingsStore(context);
         await store.SaveAsync(settings);
