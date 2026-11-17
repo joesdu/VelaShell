@@ -14,7 +14,7 @@ namespace VelaShell.Plugin.Ai.Agent;
 public sealed record TeamMemberSpec(
     [property: Description("Unique short name, e.g. \"scout\" or \"fixer\". Messages are addressed by it.")] string Name,
     [property: Description("researcher, engineer, reviewer, tester, writer, or a short free-form role description.")] string Role,
-    [property: Description("Optional configured model ID; omit to inherit the lead's model.")] string? ModelId = null,
+    [property: Description("ID of the allowed model that fits this member's task (choose by the listed facts: context window, prices, reasoning); omit to inherit the lead's model.")] string? ModelId = null,
     [property: Description("Explicitly allow file edits for this member. Default false (read-only).")] bool AllowWrites = false,
     [property: Description("Explicitly allow this member to run shell commands with run_command; each command still needs the user's approval. Default false.")] bool AllowCommands = false);
 
@@ -181,7 +181,15 @@ public sealed partial class TeamEngine
     /// 计划给人看的摘要(开跑前的确认卡用):目标、成员(角色、模型、✎ 可改文件、>_ 可执行命令)、
     /// 任务(负责人、依赖 ←、审查 ⟲)。是给用户读的,不进模型上下文。
     /// </summary>
-    public static string DescribePlan(string goal, IReadOnlyList<TeamMemberSpec> members, IReadOnlyList<TeamTaskSpec> tasks)
+    /// <param name="goal">团队目标。</param>
+    /// <param name="members">成员。</param>
+    /// <param name="tasks">任务。</param>
+    /// <param name="modelNames">
+    /// 模型配置 id → 显示名。给了就把成员的模型写成名字(配置 id 是一串没人认得的字符),用户在确认卡上才看得出谁用哪个模型;
+    /// 没指定模型的成员不写(沿用主控的)。
+    /// </param>
+    public static string DescribePlan(string goal, IReadOnlyList<TeamMemberSpec> members, IReadOnlyList<TeamTaskSpec> tasks,
+        IReadOnlyDictionary<string, string>? modelNames = null)
     {
         var text = new StringBuilder();
         text.Append("goal: ").AppendLine(goal.Trim());
@@ -189,7 +197,7 @@ public sealed partial class TeamEngine
         foreach (TeamMemberSpec m in members)
         {
             text.Append("  ").Append(m.Name).Append(" (").Append(m.Role)
-                .Append(m.ModelId is { Length: > 0 } model ? ", " + model : "")
+                .Append(m.ModelId is { Length: > 0 } model ? ", " + (modelNames?.GetValueOrDefault(model.Trim()) ?? model) : "")
                 .Append(m.AllowWrites ? ", ✎" : "")
                 .Append(m.AllowCommands ? ", >_" : "")
                 .AppendLine(")");

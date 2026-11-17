@@ -276,8 +276,11 @@ internal sealed class SubagentRunner(
     /// </summary>
     internal const string DelegationGuidance =
         "\nUse delegate_subagent when the user requests multiple agents or when a substantial, self-contained subtask benefits from another model or independent parallel work. "
-        + "Choose modelId only from the current provider's listed chat models; honor explicit user choices, otherwise inherit the parent when no supported reason favors another model. "
-        + "Do not infer expertise, speed, quality or price from model names. Handle small tasks directly and avoid unnecessary delegation costs. "
+        + "Choose modelId only from the allowed models listed with the tool, and honor explicit user choices. Otherwise match the model to the subtask using the facts in that list "
+        + "(contextTokens, maxOutputTokens, input/output price per million tokens, reasoning): a cheaper listed model for simple, mechanical or high-volume work; "
+        + "a larger contextTokens when the subtask must read a lot; a reasoning-capable or higher-priced model (often the parent) for hard analysis, design and risky changes. "
+        + "Inherit the parent (omit modelId) when the list has one model or its facts do not tell the candidates apart. "
+        + "Judge only from the listed facts: never infer expertise, speed, quality or price from a model's name. Handle small tasks directly and avoid unnecessary delegation costs. "
         + "Image generation and editing use image tools, not chat subagents. "
         + "A subagent starts with no knowledge of this conversation, so write a self-contained prompt. "
         + "Each result is delivered to you automatically as a notification when its subagent finishes: after delegating, "
@@ -311,6 +314,13 @@ internal sealed class SubagentRunner(
         + "Do NOT form a team for questions you can answer in a few tool calls, single-file edits, simple lookups, or a short sequence of shell commands you can run yourself. "
         + "Members run commands only when you set allowCommands=true for them, and each command still needs the user's approval: enable it only for members whose task requires commands. "
         + "A team costs several parallel model requests, so keep it small: usually 2–4 members, one task per member per stage. "
+        + "Give every member the model that fits its task by setting its modelId from team_run's allowed models, using only the facts listed there "
+        + "(contextTokens, maxOutputTokens, input/output price per million tokens, reasoning) and never a model's name: "
+        + "members that mostly collect, search, list or summarise get a cheaper listed model; a member that must read large files or many logs gets a large contextTokens; "
+        + "members that design, debug hard problems or change important things get a reasoning-capable or higher-priced model (often your own, marked parent); "
+        + "give a reviewer a different model from the author of the work it reviews when another suitable one is listed, so the check is independent. "
+        + "Omit modelId only when the list has a single model or its facts do not distinguish the candidates. The user's explicit model choices always win. "
+        + "When you announce the team, say in one line which model each member runs on and why. "
         + "When you use it: give each member a distinct role, make every task's detail self-contained (members do not see this conversation), "
         + "chain tasks with dependsOn so results flow downstream, and add a reviewer task with verifies when correctness matters. "
         + "Briefly tell the user you are forming a team and why, then call team_run and end your step: one consolidated team report arrives when the team finishes. "
@@ -326,6 +336,44 @@ internal sealed class SubagentRunner(
     /// <summary>这一轮的工具里有没有团队工具(被停用、非 Agent 模式、对外 MCP 时没有)。</summary>
     internal static bool HasTeam(IEnumerable<AITool>? tools)
         => tools?.OfType<AIFunction>().Any(tool => tool.Name == "team_run") == true;
+
+    /// <summary>
+    /// 交给主模型看的候选模型清单(JSON):每个候选除了 id 与名字,再带上<b>配置里已知的事实</b> ——
+    /// 上下文窗口、输出上限、单价、会不会思考、是不是主控自己在用的那个。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 主模型要「把任务分给合适的模型」,手里得有依据。只给名字的话有两种结果:照着名字猜(名字不是能力或价格的证明),
+    /// 或者干脆谁都不选、全队沿用主控的模型 —— 后者正是这份清单加上之前的实际情况。
+    /// 这里给的全是用户在模型配置里填的、或从 models.dev 取到的数值,不编造;没有的就不写:
+    /// 单价没填不写价格;窗口是取不到规格时的默认估值(<c>DefaultContextWindow == true</c>)也不写,免得拿一个猜的数去比大小。
+    /// </para>
+    /// <para>
+    /// 清单只进工具说明,不含凭据与端点;候选范围与 <see cref="ModelChoices" /> 完全一致(当前供应商实例的聊天模型)。
+    /// </para>
+    /// </remarks>
+    /// <param name="settings">AI 设置。</param>
+    /// <param name="providerId">当前供应商实例。</param>
+    /// <param name="parentModelId">主控这一轮用的模型(没指定模型的子任务 / 成员沿用它)。</param>
+    internal static string ModelCatalog(AiSettings settings, string providerId, string? parentModelId)
+        => AgentJson.Serialize(settings.Providers.Where(p => p.Id == providerId)
+            .SelectMany(p => p.Models.Select(m => new ResolvedModel(p, m)))
+            .Where(m => !AiSettingsStore.IsImageModel(m))
+            .Select(m =>
+            {
+                var facts = new Dictionary<string, object>(StringComparer.Ordinal)
+                {
+                    ["id"] = m.Id,
+                    ["name"] = $"{m.Provider.Name} / {m.Name} ({m.Model})"
+                };
+                if (m.Id == parentModelId) facts["parent"] = true;
+                if (m.MaxInputTokens > 0 && m.Config.DefaultContextWindow != true) facts["contextTokens"] = m.MaxInputTokens;
+                if (m.MaxTokens > 0) facts["maxOutputTokens"] = m.MaxTokens;
+                if (m.InputPricePerMillion > 0) facts["inputPricePerMTok"] = m.InputPricePerMillion;
+                if (m.OutputPricePerMillion > 0) facts["outputPricePerMTok"] = m.OutputPricePerMillion;
+                if (m.Config.SupportsReasoning is { } reasoning) facts["reasoning"] = reasoning;
+                return facts;
+            }));
 
     /// <summary>可供委派选择的聊天模型:配置标识 → 显示名,不含凭据或端点。</summary>
     internal static Dictionary<string, string> ModelChoices(AiSettings settings, string providerId)

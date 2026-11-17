@@ -300,6 +300,15 @@ public sealed class SubagentOrchestrator(
     /// <summary>可选模型的配置标识与显示名称，不包含凭据或端点。</summary>
     public IReadOnlyDictionary<string, string> ModelChoices { get; set; } = new Dictionary<string, string>();
 
+    /// <summary>
+    /// 交给主模型看的候选模型清单(JSON,见 <see cref="Chat.SubagentRunner.ModelCatalog" />):在 <see cref="ModelChoices" /> 的 id 与名字之外
+    /// 带上窗口、单价、思考能力这些已知事实,主模型据此给子任务 / 团队成员挑模型。没给时工具说明里退回只列 id 与名字。
+    /// </summary>
+    public string? ModelCatalog { get; set; }
+
+    /// <summary>工具说明里「Allowed models」后面那一段。</summary>
+    internal string DescribeModels() => ModelCatalog ?? AgentJson.Serialize(ModelChoices);
+
     /// <summary>子任务状态或工具使用记录发生变化时触发。</summary>
     public event Action<IReadOnlyList<SubagentSnapshot>>? SnapshotsChanged;
 

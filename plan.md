@@ -3768,3 +3768,24 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **文案**:`Loc` 新增 `TeamRetry`、`TeamRetryTip`、`TeamRetryHint`、`TeamRetryHintBlocked`、`TeamReassignTo`、`TeamReassignTip`、`TeamRetries`(五语)。
 - **验证**:插件与测试工程构建零警告。团队、工具箱、文案表、主题令牌与编排器相关用例 328 项通过(新增 `TeamEngineTests` 7 项:自动重试、重试上限、重开团队并解除受阻、改派、不占返工额度、拒绝不可重试的、`IsRetryableRun` 判定;`ChatPanelViewUiTests.Team` 新增重试 / 改派 1 项,抽屉用例改按遮罩是否接指针断言并补「点遮罩关闭」)。另用临时的 Skia headless 程序(未入库)抓了「第二次打开」的首帧、中间帧与终帧:首帧抽屉刚从右缘滑入、遮罩刚开始变暗,不再在终点位置闪现。AI 测试工程 Debug 全量 2358 项通过,0 失败 0 跳过。未在真实宿主里用一次真实的断流做人工验收。
 - **文档**:宿主中英手册(团队模式新增「出错与重试」);AI 插件 README;velashell-docs 中英 `plugins/11-automation-and-ai.md` §1.14。
+
+## 331. 2026-11-17 AI 团队模式:主控按任务给成员挑模型(给它依据,而不是只给名字)
+
+- **起因**(试用反馈):团队里所有成员都跑在主控的模型上,没有按任务分到不同模型;怀疑是 §329 换界面时把这部分盖掉了。
+- **核对结论:没有被盖掉**。§322 的「按任务选择模型」一行没少:`TeamMemberSpec.ModelId` → `SubagentRequest.ModelId` → 编排器校验候选 → `SubagentRunner` 按它解析模型,§329 / §330 的提交没有碰这条链(对 `19effd75..HEAD` 的 `Agent/`、`Chat/` 差异逐条看过,没有删掉任何与模型有关的行)。界面也照旧显示每名成员实际用的模型。
+- **真正的原因在提示词与候选清单**:① 交给主控的候选只有「配置 id → 供应商 / 名称 (模型)」,没有任何可比的信息;② `DelegationGuidance` 明确写着「没有充分理由就沿用父模型」「不要从模型名称推断专长、速度、质量或价格」,`TeamGuidance` 则一个字没提模型。两条加在一起,最守规矩的做法就是谁都不指定 —— 全队沿用主控的模型。也就是说 §322 给的是「可以指定」,从来不是「会主动分配」。
+- **改法:把依据给它**。`SubagentRunner.ModelCatalog(settings, providerId, parentModelId)` 为每个候选生成一条事实:`id`、`name`、`parent`(主控自己在用的那个)、`contextTokens`、`maxOutputTokens`、`inputPricePerMTok` / `outputPricePerMTok`、`reasoning`。全部取自模型配置(用户填的或 models.dev 取到的),不编造;没有的不写 —— 单价没填不写价格,`DefaultContextWindow == true`(取不到规格时的 128000 估值)不写窗口,`SupportsReasoning` 为 null 不写。候选范围与 `ModelChoices` 完全一致(当前供应商实例的聊天模型,不含图片模型),不含凭据与端点。
+- **接线**:`SubagentOrchestrator.ModelCatalog` + `DescribeModels()`(没给清单时退回原来的 id → 名字);`team_run` 与 `delegate_subagent` 的工具说明里「Allowed models」换成这份清单。三个入口都设了:桌面(`ChatPanelView`,故障转移换站时随候选一起刷新)、IM 桥接、对外 MCP(那边没有父模型,`parent` 标的是不指定时落到的默认模型)。
+- **说明怎么写的**:`TeamGuidance` 新增一段 —— 用清单里的事实给每名成员定 `modelId`:以收集、检索、列举、汇总为主的成员用更便宜的;要读大文件或大量日志的用 `contextTokens` 大的;做设计、疑难排查、要紧改动的用会思考或单价更高的(常常就是主控自己那个);审查者尽量与被审查的成员用不同模型,复核才独立;清单只有一个模型或事实分不出高下时才省略;用户明确指定的永远优先;宣布组队时用一句话说清谁用哪个模型、为什么。`DelegationGuidance` 的那句「没有充分理由就沿用父模型」改成同样按事实匹配。两处都保留并强调「只按列出的事实,绝不按模型名字」—— §322 定的这条底线没有动,变的只是现在有事实可依。
+- **确认卡**:`TeamEngine.DescribePlan` 多一个 `modelNames` 参数,成员的模型写名字而不是配置 id(一串没人认得的字符),用户批准前看得出谁用哪个模型;没指定的不写。
+- **仍然成立的限制**:候选只在**当前供应商实例**内(§322 定的计费与凭据边界,没动)。当前供应商下只配了一个聊天模型时没有可分配的对象,全队仍然用它;各模型都没填单价、窗口都是默认估值时,清单里几乎没有可比的事实,主控多半也会沿用自己的模型。分配是主模型按说明做的判断,不是引擎的硬规则:没有做「引擎按角色强行换模型」,那等于让插件替用户决定把任务交给哪家的哪个型号,而插件手里同样只有这几项数字。
+- **验证**:插件与测试工程构建零警告。AI 测试工程 Debug 全量 2362 项:2361 项通过,1 项失败 —— `DiffDocument_ScrollSyncRepro`,断言信息就是「repro」,是同一时间另一项工作(差异文档滚动同步)放在工作区里的复现用例,被这次构建一并编了进去,与本节改动无关;它不在 HEAD 里,跑完时工作区里也已经没有了。新增 3 项(`LongRunFollowUpTests`):候选清单带哪些事实、缺的不写;清单与分配说明确实进了 `team_run` / `delegate_subagent` 的工具说明与系统提示词;成员按主控指定的模型运行、确认卡写模型名字。测试用的都是假的运行器:验证的是「依据与说明送到了主模型手里、指定的模型被用上」,**没有**用真实模型验证主模型实际会怎么分配。
+- **文档**:宿主中英手册(Subagent 一节「按任务选择模型」);AI 插件 README;velashell-docs 中英 `plugins/11-automation-and-ai.md` §1.14。
+
+## 332. 2026-11-17 对比标签:并排两侧的滚动同步真正生效
+
+- **现象**:§328 起并排模式写了「两侧滚动按 diff 的行映射同步」,实际滚一侧、另一侧原地不动(截图里左边停在第 1 行、右边已到第 58 行);工具条的上一处 / 下一处改动也不滚。
+- **原因**:AvaloniaEdit 12.0.0 的 `TextEditor.ScrollToVerticalOffset` / `ScrollToHorizontalOffset` 是空方法(反编译可见只调了 `ApplyTemplate()`)。`SyncScroll` 和 `Navigate` 都靠它,算出的位置是对的,只是没有落到编辑器上。没有测试覆盖滚动,所以一直没被发现。
+- **改动**(`Ui/FileDiffDocumentView.cs`):直接设编辑器模板里 ScrollViewer 的 `Offset`。Avalonia 12.1 的 `ScrollContentPresenter` 是同步把 Offset 推给 TextView 的,所以另一侧的 `ScrollOffsetChanged` 会在 `_syncing` 护罩里当场回来,不会来回拉扯。映射从「按行查表、行内像素照搬」改成锚点插值:两侧未改动行的行顶作为一一对应的锚点,锚点之间的改动块按两侧行数比例摊开,所以滚过一段纯新增时,另一侧慢慢走、不跳(仿 Visual Studio 的不补空行对比;VS Code 是补空行,这里仍然不补)。横向偏移照搬。`Navigate` 改用同一个设偏移的入口。
+- **验证**:新增 `DiffDocument_ScrollingEitherSide_KeepsTheOtherAligned`(两侧互滚、插入块内不跳、删除行之后对齐、横向同步、下一处改动真的滚到位)与 `DiffScrollMapping_InterpolatesBetweenAnchors_AndRunsOnPastTheLast`。差异文档相关用例与按源码路径定位的静态检查在 Release、`-warnaserror` 下通过;AI 测试工程全量 2363 项也跑过一遍,只有 26 项因为把产物放到了仓库外的临时目录、从 bin 往上找不到源码而失败,换到仓库内的产物目录后这 26 项全部通过。没有在真实窗口里手动滚过。
+- **文档**:手册里本来就写着「滚动同步」,行为现在与之相符,不用改。

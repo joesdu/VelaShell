@@ -520,9 +520,10 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
                     : "Returns an id immediately; results are not pushed, so collect each one with subagent_wait. ")
                 + $"timeoutSeconds sets the execution limit ({SubagentOrchestrator.MinTimeoutSeconds}-{SubagentOrchestrator.MaxTimeoutSeconds}, default 120; "
                 + "time spent waiting for user approval is not counted). "
-                + "Omit modelId to inherit the parent model, or select a configured chat model ID from the current provider's list. "
-                + "Use delegation for substantial independent tasks, not trivial steps; do not invent model capabilities or prices. Allowed models: "
-                + AgentJson.Serialize(orchestrator.ModelChoices)), false));
+                + "Set modelId to the allowed model that fits this subtask, judged by the facts listed below (context window, output limit, configured prices per million tokens, reasoning) "
+                + "and never by a model's name; omit it to inherit the parent model. "
+                + "Use delegation for substantial independent tasks, not trivial steps; do not invent model capabilities or prices beyond what is listed. Allowed models: "
+                + orchestrator.DescribeModels()), false));
             all.Add(("subagent_status", AIFunctionFactory.Create(bound.SubagentStatusAsync, "subagent_status",
                 "Get the current status of a delegated subagent by id without waiting."
                 + (orchestrator.DeliversResults ? " Not needed in the normal flow: finished results are delivered automatically." : "")), true));
@@ -549,7 +550,11 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
                 + "Members have the same limits as subagents: read-only unless allowWrites=true, and they run shell commands only with allowCommands=true "
                 + "(each command still needs the user's approval) — give that only to members whose task really requires commands. "
                 + $"timeoutSeconds is per task ({SubagentOrchestrator.MinTimeoutSeconds}-{TeamEngine.MaxTaskTimeoutSeconds}, default {TeamEngine.DefaultTaskTimeoutSeconds}). "
-                + "Allowed models: " + AgentJson.Serialize(teamOrchestrator.ModelChoices)), false));
+                + "Set each member's modelId to the allowed model that fits its task, judged by the facts listed below "
+                + "(context window, output limit, configured prices per million tokens, reasoning) and never by a model's name: cheaper for routine collection, "
+                + "large context for heavy reading, reasoning-capable / higher-priced for design, hard debugging and important changes, "
+                + "and preferably a different model for a reviewer than for the author it reviews. Omit modelId to inherit your own model (marked parent). "
+                + "Allowed models: " + teamOrchestrator.DescribeModels()), false));
             all.Add(("team_status", AIFunctionFactory.Create(teamTools.TeamStatus, "team_status",
                 "Show the team board (task status, owners, finished reports) and unread messages members sent to you. "
                 + "Not needed in the normal flow: the final team report is delivered automatically."), true));
@@ -606,7 +611,7 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             TeamEngine team = orchestrator.EnsureTeam();
             if (team.Validate(goal, members, tasks) is { } invalid) return invalid;
             bool approved = await toolbox.ConfirmPlanAsync(
-                new ApprovalRequest("team_run", TeamEngine.DescribePlan(goal, members, tasks), "team_run:team"),
+                new ApprovalRequest("team_run", TeamEngine.DescribePlan(goal, members, tasks, orchestrator.ModelChoices), "team_run:team"),
                 cancellationToken).ConfigureAwait(false);
             if (!approved)
             {

@@ -596,6 +596,13 @@ Agent 模式的主模型可将有价值的独立任务交给 `delegate_subagent`
   (`_finishedAt = null`、`_reportTaken = false`),全部落定后再送一份汇总报告。重跑是全新的一次运行,任务说明里多一段 `## Retry`
   (上次为什么停、已写出的部分、先核对再改)。返工额度改按 `TaskState.Reworks` 记,出错重跑不占;`TeamTaskInfo.Retries` 给界面显示「重试 ×n」。
   汇总报告在没全做成时带一句 `recovery`,告诉主控可以 `team_retry`。
+* **按任务挑模型**:主控给成员定模型(`TeamMemberSpec.ModelId`,候选限定在当前供应商实例的聊天模型)。它挑的依据是
+  `SubagentRunner.ModelCatalog` 生成的候选清单 —— 每个候选除 id 与名字外带上配置里已知的事实:`contextTokens`、`maxOutputTokens`、
+  `inputPricePerMTok` / `outputPricePerMTok`、`reasoning`、`parent`;没有的不写(单价没填、窗口只是默认估值、不知道会不会思考)。
+  清单经 `SubagentOrchestrator.ModelCatalog` 进 `team_run` / `delegate_subagent` 的工具说明(三个入口:桌面、IM 桥接、对外 MCP),
+  `TeamGuidance` / `DelegationGuidance` 要求按这些事实分配(便宜的做例行收集、大窗口的读大量内容、会思考 / 更贵的做设计与要紧改动、
+  审查者尽量换一个模型),只按事实、不按名字。原先的说明是「没有充分理由就沿用父模型、不要从名字推断」,而清单里又只有名字,
+  结果主控一律沿用自己的模型。确认卡(`DescribePlan`)上成员的模型写名字而不是配置 id。
 * **汇总**:全部落定后 `TakeReport()` 合成**一份**快照(role `team`)经 `WaitForCompletionAsync` 送回,走与子任务结果相同的
   `<untrusted-subagent-results>` 通知。编排器的「还有在途」判断把团队算进去,等依赖、等返工的空档不会让协调器提前收尾。
 * 每个任务默认 600 秒(30–1800)、60 步(普通子任务 30 步);编排器总数上限按 `任务数 × 2` 抬高。成员权限与子 Agent 相同,
