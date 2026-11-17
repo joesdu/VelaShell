@@ -2089,6 +2089,7 @@ public partial class ChatPanelView : UserControl
                         _subagentSnapshotSources[bubble] = observed.Snapshots;
                         bubble.TeamSource = () => observed.Team?.Snapshot();
                         bubble.CancelSubagent = id => observed.Cancel(id);
+                        bubble.RetryTeamTask = (taskId, assignee) => observed.Team?.Retry(taskId, assignee, "user") ?? "";
                         EnsureSubagentRefreshTimer();
                         UpdateSubagentCards(bubble, observed.Snapshots());
                     }
@@ -2592,6 +2593,7 @@ public partial class ChatPanelView : UserControl
                     if (bubble is not null)
                     {
                         bubble.CancelSubagent = null; // 编排器已收尾,卡片上不再留取消按钮
+                        bubble.RetryTeamTask = null;  // 同理:团队控制台里的「重试 / 改派」也收回
                         UpdateSubagentCards(bubble, subagents.Snapshots());
                         bubble.TeamSource = null; // 团队入口与控制台停在最后一版
                         _subagentSnapshotSources.Remove(bubble);

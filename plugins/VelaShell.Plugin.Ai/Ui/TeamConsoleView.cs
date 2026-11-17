@@ -89,7 +89,8 @@ internal sealed partial class TeamConsoleView : UserControl
         _loc = host.Loc;
         Name = "TeamConsole";
         Focusable = true;
-        ClipToBounds = true;
+        FocusAdorner = null; // 页面自己拿焦点只是为了接 Esc,不该画一圈焦点框
+        ClipToBounds = true; // 关着的抽屉停在右缘之外,靠这一条裁掉
 
         // 图标、LiveMarkdown 的令牌与样式、Markdown 皮肤和本页的版式都在这一份编译好的样式表里(为什么不能在这里按地址并入,见该文件开头)
         Styles.Add(new TeamConsoleStyles());
@@ -162,6 +163,7 @@ internal sealed partial class TeamConsoleView : UserControl
         // 标签页被关掉或切走时不再跟着快照重画,动画的钟也停掉;切回来时补一次
         _session.Changed -= OnSessionChanged;
         _refreshTimer.Stop();
+        _drawerSettle.Stop();
         StopGraphClock();
     }
 
@@ -259,7 +261,7 @@ internal sealed partial class TeamConsoleView : UserControl
         if (width <= 0) return;
         ApplyLayout(width >= WideBreakpoint);
         _stats.Columns = width >= 1000 ? 6 : width >= 560 ? 3 : 2;
-        _drawer.Width = Math.Min(640, width);
+        ResizeDrawer(width);
     }
 
     private void ApplyLayout(bool wide)

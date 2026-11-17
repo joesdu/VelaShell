@@ -588,6 +588,14 @@ Agent 模式的主模型可将有价值的独立任务交给 `delegate_subagent`
   发给 lead 的消息进汇总报告与 `team_status`。
 * **审查回路**:审查任务以 `VERDICT: PASS|FAIL` 收尾(没写按 FAIL —— 审查者没给结论不能当通过);FAIL 时被审查的任务带着
   `<review-feedback>` 返工(`MaxReworks = 1`),审查者等返工完再审。
+* **出错重跑与改派**:成员的一次运行失败时,编排器按 `TransientFailure.IsRetryableRun` 判一下值不值得原样再跑(瞬时故障,或错误原话说的是
+  流被上游掐断 —— 流里的 error 帧到这里只是一个 `InvalidOperationException` 加一句话,请求级补试认不出;服务端答复过的 4xx、模型拒答、
+  `AgentPausedException`、取消一律不算),记在 `SubagentSnapshot.Retryable` 上。引擎据此自动重跑,每个任务最多 `MaxAutoRetries = 2` 次;
+  用完才真的记为失败。`TeamEngine.Retry(taskId, assignee?, by)` 是手动的那条路(主控的 `team_retry` 与控制台任务抽屉里的「重试 / 改派给」):
+  失败 / 超时 / 取消的任务回到待办,受阻的任务换成重跑挡住它的上游,可改派给另一名成员;被挡住的下游回到待办,落定的团队重新打开
+  (`_finishedAt = null`、`_reportTaken = false`),全部落定后再送一份汇总报告。重跑是全新的一次运行,任务说明里多一段 `## Retry`
+  (上次为什么停、已写出的部分、先核对再改)。返工额度改按 `TaskState.Reworks` 记,出错重跑不占;`TeamTaskInfo.Retries` 给界面显示「重试 ×n」。
+  汇总报告在没全做成时带一句 `recovery`,告诉主控可以 `team_retry`。
 * **汇总**:全部落定后 `TakeReport()` 合成**一份**快照(role `team`)经 `WaitForCompletionAsync` 送回,走与子任务结果相同的
   `<untrusted-subagent-results>` 通知。编排器的「还有在途」判断把团队算进去,等依赖、等返工的空档不会让协调器提前收尾。
 * 每个任务默认 600 秒(30–1800)、60 步(普通子任务 30 步);编排器总数上限按 `任务数 × 2` 抬高。成员权限与子 Agent 相同,

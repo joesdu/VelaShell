@@ -3749,3 +3749,22 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **文案**:`Loc` 新增 90 余个键(五语),删去不再使用的 `TeamMessages`、`TeamLeadShort` / `TeamAllShort` / `TeamEngineShort`、`TeamContextTip`、`TeamCostTip`。新增图标 `AiIcon.arrow-up-right`、`AiIcon.arrow-left`。
 - **验证**:AI 测试工程 Debug 全量 2350 项通过,0 失败 0 跳过(新增 `TeamConsoleModelTests` 17 项、`ChatPanelViewUiTests.Team` 6 项、`TeamEngineTests.Board_RecordsHandoffsReviewsTaskLinksAndStartOffsets` 1 项,原 `TeamCard_ShowsModelContextCostAndProgressPerTask` 由它们取代);其后只把引擎里一处 `if / if` 收成 `if / else`,重跑团队相关 39 项通过。插件与测试工程构建零警告。另用一个临时的 Skia headless 程序(不进仓库,验证完已删)套上宿主的 Dark / Light 令牌,把入口卡、控制台与三种抽屉渲染成图对照目标页面核对版式 —— 拓扑布局与标签重叠就是这样发现并改掉的。未在真实宿主里人工验收(需要一次真实的团队运行)。
 - **文档**:宿主中英手册(团队模式一节);AI 插件 README;velashell-docs 中英 `plugins/11-automation-and-ai.md` §1.14 的界面条目。
+
+## 330. 2026-11-17 AI 团队模式:成员出错后的自动重试、手动重试与改派;控制台抽屉的开合动画
+
+- **起因**(试用反馈两条):① 成员的接口不稳定或意外出错(如「Upstream response stream was interrupted」)时任务直接失败,下游跟着受阻,团队就此卡死,没有办法把它叫起来重新干;② 团队控制台右侧抽屉打开时有闪烁感。
+- **为什么一次断流就让成员失败**:请求级的补试(`AgentExecution`,最多 3 次)只认 `TransientFailure.IsTransient` —— 带 408 / 429 / 5xx 状态码的、网络层异常、Anthropic 的几种 SSE 错误类型。而中转站在流里塞的 error 帧走的是 `TerminalFailure`,到手只是一个 `InvalidOperationException` 加一句话,没有状态码也没有专门的类型,被当成确定性失败直接抛出,一次都不补试(这是按代码路径推断的:没有抓到用户那次真实的响应,不排除它是以别的不带状态码的异常形态出现 —— 下面的判定按错误原话认,两种情况都覆盖)。请求级这样保守是有意的(那里要决定能不能续写、换不换站),所以不动它,在任务级另判。
+- **任务级判定** `TransientFailure.IsRetryableRun`:`IsTransient` 之外再认「原话说流被上游掐断」的(stream / connection / response … interrupted / closed / reset、unexpected end of stream、upstream … error / timeout、overloaded、bad gateway 等);服务端答复过的其余 4xx、`ModelResponseTerminatedException`(拒答 / 输出上限)、`AgentPausedException`(命令结果未知、Retry-After 太久 —— 重跑可能把命令执行两次)、取消一律不算。结果记在 `SubagentSnapshot.Retryable`(编排器在 `catch (Exception)` 里算)。
+- **自动重试**(`TeamEngine.OnEntryFinished`):成员的运行以可重跑的原因失败、且没被取消时,同一任务原样重跑,每个任务最多 `MaxAutoRetries = 2` 次;期间不把下游标为受阻。看板上留「failed: …」与「retrying automatically (n/2)」两条系统消息,再分派时消息尾写 `(retry)`。超时不自动重跑(等于再等一个期限),留给手动。
+- **手动重试与改派** `TeamEngine.Retry(taskId, assignee?, by)`:
+  - 失败 / 超时 / 被取消的任务回到待办;对受阻的任务重试 = 重跑挡住它的上游(`Culprits` 沿依赖找失败或取消的任务);`assignee` 给了就把点名的任务改派给那名成员(`TaskState.Spec` 改为可写)。
+  - 被这些任务挡住的下游(`DependsOnAny`)回到待办,由 `Pump` 重新判断;已经落定的团队重新打开(`_finishedAt = null`、`_reportTaken = false`、`_cancelled = false`),于是编排器的 `HasPendingResults` 又为真,协调器等到再次落定后把新的汇总报告送回主控。
+  - 入口两个:主控的新工具 `team_retry(taskId, assignee?)`(`AgentToolbox`,非只读,不另走审批 —— 成员的写权限 / 命令权限在组队时已经确认过,执行时照旧逐条审批);团队控制台任务抽屉里的「重试」与「改派给」(`TeamConsoleSession.Retry` ← `AssistantBubble.RetryTeamTask` ← `observed.Team.Retry(…, "user")`,与取消入口同一条线,这一轮收尾时一起收回)。
+  - 未全部完成的汇总报告多一个 `recovery` 字段,`TeamGuidance` 也补了一句:任务是被接口故障打断时用 `team_retry`,别自己从头重做或放弃。
+- **重跑的那次运行知道什么**:成员每个任务都是新上下文。`BuildTaskPrompt` 多一段 `## Retry`:上次因何中断(`TaskState.Interruption`)、中断前写出的内容(`<interrupted-output>`,截到 3000 字),并要求先核对已经生效的改动再继续,免得同一处改动做两遍。任务做成后清掉。
+- **返工额度与计数**:原来用 `Attempts <= MaxReworks` 判能不能返工,出错重跑一次就把返工额度吃掉了。改为 `TaskState.Reworks` 单独计数;`Attempts` 仍是总运行次数,新增 `TeamTaskInfo.Retries`(自动 + 手动的重跑次数),界面上返工次数 = Attempts − 1 − Retries,另写「重试 ×n」。`Requeue` 时把编排器的总数上限再抬一个名额。
+- **控制台**(`TeamConsoleView.Drawer.cs`):任务没做成且重试入口还在时,任务页在说明下面多一条 `RetryBar`:一句提示(受阻的任务写明会重跑上游)、「重试」按钮、「改派给」+ 其余成员的药丸;引擎回的不是「Retrying…」时(比如这一轮刚好收尾)把原话写出来、按钮恢复可点。失败任务的进度行写「失败」而不是 0%。
+- **抽屉动画为什么闪**:原来每次打开先把抽屉设到起点(`translateX(56px)`、`Opacity = 0`),下一拍再设回终点 —— 可这两个属性都挂着过渡,第一步自己也在动:抽屉先以上一次的终点状态整块出现,往回淡出一小段,再被拉回来。第二次打开起最明显;遮罩则是直接出现,没有淡入。改为抽屉与遮罩始终在可视树上:关着时抽屉停在页面右缘之外(宽度 + 40,连投影一起带出去,靠页面的 `ClipToBounds` 裁掉)、遮罩透明且不接指针;开合只改 `RenderTransform` / `Opacity` 的目标值,过渡永远从当前位置出发,滑到一半再点只是折返。时长 300 ms、缓动 `SplineEasing(0.2, 0.8, 0.2, 1)`(即目标页面的 `cubic-bezier(.2,.8,.2,1)`),遮罩 250 ms 淡入淡出;关闭也有了滑出。先建内容再滑(滑进来的是一块排好的板子),滑出去之后才清内容。关着时 `KeyboardNavigation.TabNavigation = None`,Tab 走不进去;页面自己的 `FocusAdorner` 置空。
+- **文案**:`Loc` 新增 `TeamRetry`、`TeamRetryTip`、`TeamRetryHint`、`TeamRetryHintBlocked`、`TeamReassignTo`、`TeamReassignTip`、`TeamRetries`(五语)。
+- **验证**:插件与测试工程构建零警告。团队、工具箱、文案表、主题令牌与编排器相关用例 328 项通过(新增 `TeamEngineTests` 7 项:自动重试、重试上限、重开团队并解除受阻、改派、不占返工额度、拒绝不可重试的、`IsRetryableRun` 判定;`ChatPanelViewUiTests.Team` 新增重试 / 改派 1 项,抽屉用例改按遮罩是否接指针断言并补「点遮罩关闭」)。另用临时的 Skia headless 程序(未入库)抓了「第二次打开」的首帧、中间帧与终帧:首帧抽屉刚从右缘滑入、遮罩刚开始变暗,不再在终点位置闪现。本节落笔时 AI 测试工程的全量运行尚未结束,结果见紧随其后的提交。未在真实宿主里用一次真实的断流做人工验收。
+- **文档**:宿主中英手册(团队模式新增「出错与重试」);AI 插件 README;velashell-docs 中英 `plugins/11-automation-and-ai.md` §1.14。

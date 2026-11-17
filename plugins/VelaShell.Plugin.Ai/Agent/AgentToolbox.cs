@@ -296,7 +296,8 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
         ("team_run", "组建多 Agent 团队:分角色、按依赖调度、审查返工,汇成一份报告", false),
         ("team_status", "查看团队看板与成员发给主控的消息", true),
         ("team_message", "给团队成员发消息", false),
-        ("team_cancel", "停下正在运行的团队", false)
+        ("team_cancel", "停下正在运行的团队", false),
+        ("team_retry", "重跑团队里失败 / 受阻的任务,可改派给另一名成员", false)
     ];
 
     /// <summary>
@@ -557,6 +558,13 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
                 + "idle members get it when their next task starts."), false));
             all.Add(("team_cancel", AIFunctionFactory.Create(teamTools.TeamCancel, "team_cancel",
                 "Stop the running team: running tasks are cancelled and pending ones never start. Changes already made are not rolled back."), false));
+            all.Add(("team_retry", AIFunctionFactory.Create(teamTools.TeamRetry, "team_retry",
+                "Re-run a team task that failed, timed out, was cancelled or is blocked, optionally handing it to another member. "
+                + "Use it when a task stopped because of the model endpoint (interrupted stream, upstream error, overload) rather than the task itself: "
+                + $"the engine already retried transient failures {TeamEngine.MaxAutoRetries} times automatically before reporting the failure. "
+                + "The member starts the task again in a fresh context and is told what stopped the previous attempt; tasks blocked by it become pending again, "
+                + "and a new consolidated team report is delivered when everything has settled — do not poll. "
+                + "Works while the team is running and after its report arrived, within the same turn. Retrying a blocked task retries the upstream tasks that blocked it."), false));
         }
         return
         [
@@ -618,6 +626,11 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
 
         public string TeamCancel()
             => orchestrator.Team?.Cancel() ?? "No team is running.";
+
+        public string TeamRetry(
+            [Description("Id of the task to re-run (failed, timed out, cancelled or blocked).")] string taskId,
+            [Description("Optional: name of another member who should take the task over. Omit to let the same member try again.")] string? assignee = null)
+            => orchestrator.Team?.Retry(taskId, assignee) ?? "No team has been started in this turn. Use team_run first.";
     }
 
     /// <summary>scope 由工具列表捕获,不是模型参数;AsyncLocal 仅在一次工具调用内部传递。</summary>

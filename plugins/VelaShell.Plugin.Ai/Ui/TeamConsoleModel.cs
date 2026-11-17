@@ -458,6 +458,12 @@ internal sealed class TeamConsoleSession(TeamBoardSnapshot team, IReadOnlyList<S
     /// <summary>取消某个成员的这次运行;这一轮收尾之后、以及从历史里翻出来的团队为 null。</summary>
     public Action<string>? Cancel { get; set; }
 
+    /// <summary>
+    /// 重跑一个没做成的任务(任务 id、改派给谁 —— 为空仍由原来的成员做),返回给人看的一句结果;
+    /// 这一轮收尾之后、以及从历史里翻出来的团队为 null(引擎已经不在了,没法再跑)。
+    /// </summary>
+    public Func<string, string?, string>? Retry { get; set; }
+
     /// <summary>快照换了(UI 线程上触发)。</summary>
     public event Action? Changed;
 

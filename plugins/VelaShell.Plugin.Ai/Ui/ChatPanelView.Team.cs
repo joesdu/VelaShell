@@ -215,6 +215,13 @@ public partial class ChatPanelView : ITeamConsoleHost
             set => Session.Cancel = value;
         }
 
+        /// <summary>重跑 / 改派一个没做成的任务;历史回放与这一轮收尾之后为 null。</summary>
+        public Func<string, string?, string>? Retry
+        {
+            get => Session.Retry;
+            set => Session.Retry = value;
+        }
+
         public TeamEntryCard(ChatPanelView owner, TeamBoardSnapshot team, IReadOnlyList<SubagentSnapshot> runs)
         {
             _owner = owner;
@@ -284,7 +291,7 @@ public partial class ChatPanelView : ITeamConsoleHost
             if (team.TeamId != Session.Team.TeamId)
             {
                 // 同一轮里主控又组了一个新团队:入口改指新的那个;旧团队的控制台若还开着,停在它最后一版
-                Session = new TeamConsoleSession(team, runs) { Cancel = Session.Cancel };
+                Session = new TeamConsoleSession(team, runs) { Cancel = Session.Cancel, Retry = Session.Retry };
             }
             else
             {
@@ -345,6 +352,19 @@ public partial class ChatPanelView : ITeamConsoleHost
         /// <summary>这一轮的团队看板从哪取(编排器还在时有值);收尾后为 null,入口与控制台停在最后一版。</summary>
         public Func<TeamBoardSnapshot?>? TeamSource { get; set; }
 
+        /// <summary>
+        /// 重跑 / 改派这条回复里团队的某个任务;只在这一轮还在跑时有值(引擎随编排器一起收尾),历史回放为 null。
+        /// </summary>
+        public Func<string, string?, string>? RetryTeamTask
+        {
+            get;
+            set
+            {
+                field = value;
+                _teamView?.Retry = value;
+            }
+        }
+
         /// <summary>这一轮组过团队。</summary>
         public bool HasTeam => _teamView is not null;
 
@@ -361,7 +381,7 @@ public partial class ChatPanelView : ITeamConsoleHost
         {
             if (_teamView is null)
             {
-                _teamView = new TeamEntryCard(_owner, team, runs) { Cancel = CancelSubagent };
+                _teamView = new TeamEntryCard(_owner, team, runs) { Cancel = CancelSubagent, Retry = RetryTeamTask };
                 int index = _currentSegment is null
                     ? _stack.Children.Count
                     : _stack.Children.IndexOf(_currentSegment.Host);
@@ -369,6 +389,7 @@ public partial class ChatPanelView : ITeamConsoleHost
                 return;
             }
             _teamView.Cancel = CancelSubagent;
+            _teamView.Retry = RetryTeamTask;
             _teamView.Update(team, runs);
         }
     }

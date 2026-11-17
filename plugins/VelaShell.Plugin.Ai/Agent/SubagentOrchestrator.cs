@@ -61,6 +61,7 @@ public sealed record SubagentExecutionResult(
 /// <param name="AllowCommands">本次委派是否开放了执行命令。</param>
 /// <param name="CachedInputTokens">输入里命中缓存的部分(累计,包含在 <paramref name="InputTokens" /> 之内);估费用时按缓存价算。</param>
 /// <param name="ContextTokens">最近一次请求的输入 token,即此刻上下文有多大;界面据此算上下文占用百分比。</param>
+/// <param name="Retryable">失败的原因是瞬时的(上游断流、网络抖动、5xx 一类,见 <see cref="Ui.TransientFailure.IsRetryableRun" />):原样再跑一遍可能就好了。团队引擎据此自动重试。</param>
 public sealed record SubagentSnapshot(
     string SubagentId,
     string Role,
@@ -79,7 +80,8 @@ public sealed record SubagentSnapshot(
     string? TeamTaskId = null,
     bool AllowCommands = false,
     long CachedInputTokens = 0,
-    long ContextTokens = 0)
+    long ContextTokens = 0,
+    bool Retryable = false)
 {
     /// <summary>已经落到终态（完成、失败、取消或超时）。</summary>
     public bool IsTerminal => Status is not ("queued" or "running");
@@ -146,6 +148,7 @@ public sealed class SubagentOrchestrator(
         public string? TeamTaskId { get; init; }
         public SubagentExecutionResult? Result { get; set; }
         public string? Error { get; set; }
+        public bool Retryable { get; set; }
         public Dictionary<string, int> LiveTools { get; } = [with(StringComparer.Ordinal)];
         public List<string> LiveErrors { get; } = [];
         public string LiveOutput { get; set; } = "";
@@ -610,6 +613,7 @@ public sealed class SubagentOrchestrator(
         {
             entry.Status = "failed";
             entry.Error = ex.GetBaseException().Message;
+            entry.Retryable = Ui.TransientFailure.IsRetryableRun(ex);
             return new SubagentExecutionResult("", [], [entry.Error]);
         }
         finally
@@ -713,7 +717,8 @@ public sealed class SubagentOrchestrator(
             entry.TeamTaskId,
             entry.Request?.AllowCommands == true,
             Interlocked.Read(ref entry.CachedInputTokens),
-            Interlocked.Read(ref entry.ContextTokens));
+            Interlocked.Read(ref entry.ContextTokens),
+            entry.Retryable);
     }
 
     internal void NotifyChanged() => SnapshotsChanged?.Invoke(Snapshots());

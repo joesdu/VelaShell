@@ -71,7 +71,7 @@ public sealed partial class AgentToolboxTests
                  {
                      "open_session", "close_session", "task_cancel", "write_local_file", "patch_local_file",
                      "make_local_directory", "rename_local_path", "delete_local_path", "delegate_subagent",
-                     "subagent_cancel", "team_run", "team_message", "team_cancel"
+                     "subagent_cancel", "team_run", "team_message", "team_cancel", "team_retry"
                  })
         {
             Assert.DoesNotContain(forbidden, names, $"计划模式不该暴露 {forbidden}");

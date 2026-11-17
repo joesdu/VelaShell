@@ -329,6 +329,13 @@ public sealed class Loc(string locale)
         ["TeamVerdictFail"] = ["failed", "不通过", "不通過", "不合格", "불통과"],
         ["TeamDependsOn"] = ["waits for {0}", "等待 {0}", "等待 {0}", "{0} 待ち", "{0} 대기"],
         ["TeamRework"] = ["rework ×{0}", "返工 ×{0}", "返工 ×{0}", "やり直し ×{0}", "재작업 ×{0}"],
+        ["TeamRetries"] = ["retried ×{0}", "重试 ×{0}", "重試 ×{0}", "再試行 ×{0}", "재시도 ×{0}"],
+        ["TeamRetry"] = ["Retry", "重试", "重試", "再試行", "다시 시도"],
+        ["TeamRetryTip"] = ["Let {0} run this task again from the start", "让 {0} 把这个任务从头再跑一遍", "讓 {0} 把這個任務從頭再跑一遍", "{0} にこのタスクを最初からやり直させる", "{0}이(가) 이 작업을 처음부터 다시 실행"],
+        ["TeamRetryHint"] = ["This task did not finish. Let the same member try again, or hand it to someone else. Tasks waiting on it resume automatically.", "这个任务没有做成。可以让原来的成员重试,或者改派给别人;等它的任务会自动接着跑。", "這個任務沒有做成。可以讓原來的成員重試,或者改派給別人;等它的任務會自動接著跑。", "このタスクは完了しませんでした。同じメンバーに再試行させるか、別のメンバーに引き継げます。これを待っているタスクは自動的に再開します。", "이 작업은 완료되지 않았습니다. 같은 멤버가 다시 시도하게 하거나 다른 멤버에게 넘길 수 있습니다. 이 작업을 기다리는 작업은 자동으로 이어집니다."],
+        ["TeamRetryHintBlocked"] = ["This task is blocked because a task it depends on did not finish. Retrying re-runs that upstream task; this one follows automatically.", "这个任务受阻,是因为它依赖的任务没有做成。重试会重跑那个上游任务,这个任务随后自动开跑。", "這個任務受阻,是因為它依賴的任務沒有做成。重試會重跑那個上游任務,這個任務隨後自動開跑。", "依存先のタスクが完了しなかったため、このタスクはブロックされています。再試行すると上流のタスクがやり直され、このタスクは自動的に続きます。", "의존하는 작업이 완료되지 않아 이 작업이 차단되었습니다. 다시 시도하면 해당 상위 작업이 다시 실행되고 이 작업은 자동으로 이어집니다."],
+        ["TeamReassignTo"] = ["Hand over to", "改派给", "改派給", "引き継ぎ先", "다음 멤버에게 넘기기"],
+        ["TeamReassignTip"] = ["Hand this task to {0} ({1}) and run it again", "把这个任务交给 {0}({1})重跑", "把這個任務交給 {0}({1})重跑", "このタスクを {0}({1})に引き継いでやり直す", "이 작업을 {0}({1})에게 넘겨 다시 실행"],
         ["TeamBlocked"] = ["Blocked", "受阻", "受阻", "ブロック", "차단됨"],
         // ---------- 团队入口卡与团队控制台(TeamConsoleView) ----------
         ["TeamEntryTip"] = ["Open the team console in a tab", "在标签页中打开团队控制台", "在分頁中開啟團隊主控台", "チームコンソールをタブで開く", "탭에서 팀 콘솔 열기"],

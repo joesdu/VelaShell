@@ -3,6 +3,7 @@ using Avalonia.Animation;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Transformation;
@@ -25,8 +26,14 @@ internal sealed record DrawerView(string Kind, string A, string? B = null, TeamM
 /// </summary>
 internal sealed partial class TeamConsoleView
 {
-    private readonly Border _scrim = new() { IsVisible = false };
-    private readonly Border _drawer = new() { Name = "TeamDrawer", Classes = { "tcDrawer" }, Width = 640, HorizontalAlignment = HorizontalAlignment.Right, IsVisible = false };
+    /// <summary>抽屉滑进 / 滑出要多久。</summary>
+    private static readonly TimeSpan DrawerSlide = TimeSpan.FromMilliseconds(300);
+
+    // 遮罩与抽屉一直在可视树上,关着时只是「透明、不接鼠标」和「停在屏幕右侧外面」:
+    // 开合只改这两个属性的目标值,过渡永远从此刻的位置出发(见 OpenView 的说明)
+    private readonly Border _scrim = new() { Name = "TeamDrawerScrim", Opacity = 0, IsHitTestVisible = false };
+    private readonly Border _drawer = new() { Name = "TeamDrawer", Classes = { "tcDrawer" }, Width = 640, HorizontalAlignment = HorizontalAlignment.Right };
+    private readonly DispatcherTimer _drawerSettle = new() { Interval = DrawerSlide + TimeSpan.FromMilliseconds(60) };
     private readonly TextBlock _drawerTitle = TeamUi.Line("", "VelaTextPrimary", 13, FontWeight.SemiBold);
     private readonly Button _drawerBack = new() { Name = "TeamDrawerBack", Classes = { "tcIconButton" } };
     private readonly StackPanel _drawerBody = new();
@@ -79,11 +86,20 @@ internal sealed partial class TeamConsoleView
         layout.Children.Add(headBar);
         layout.Children.Add(_drawerScroll.At(0, 1));
         _drawer.Child = layout;
+        // 先摆到屏幕外,再挂过渡:顺序反了的话,页面一打开抽屉就会从原位「滑出去」一次
+        _drawer.RenderTransform = DrawerOffscreen();
+        KeyboardNavigation.SetTabNavigation(_drawer, KeyboardNavigationMode.None);
         _drawer.Transitions =
         [
-            new TransformOperationsTransition { Property = RenderTransformProperty, Duration = TimeSpan.FromMilliseconds(260), Easing = new CubicEaseOut() },
-            new DoubleTransition { Property = OpacityProperty, Duration = TimeSpan.FromMilliseconds(180) }
+            new TransformOperationsTransition { Property = RenderTransformProperty, Duration = DrawerSlide, Easing = new SplineEasing(0.2, 0.8, 0.2, 1) }
         ];
+        _scrim.Transitions = [new DoubleTransition { Property = OpacityProperty, Duration = TimeSpan.FromMilliseconds(250) }];
+        // 滑出去之后再清内容:滑的途中清掉,看到的是一块空板子在动
+        _drawerSettle.Tick += (_, _) =>
+        {
+            _drawerSettle.Stop();
+            if (!_drawerOpen) _drawerBody.Children.Clear();
+        };
 
         var overlay = new Panel();
         overlay.Children.Add(_scrim);
@@ -103,32 +119,48 @@ internal sealed partial class TeamConsoleView
             _drawerStack.Add(_drawerView);
         }
         _drawerView = view;
-        if (!_drawerOpen)
-        {
-            _drawerOpen = true;
-            _scrim.IsVisible = true;
-            _drawer.IsVisible = true;
-            // 从右边滑进来:先摆在偏右、透明的位置,进树后下一拍再落到位,过渡才会跑
-            _drawer.RenderTransform = TransformOperations.Parse("translateX(56px)");
-            _drawer.Opacity = 0;
-            Dispatcher.UIThread.Post(() =>
-            {
-                _drawer.RenderTransform = TransformOperations.Parse("translateX(0px)");
-                _drawer.Opacity = 1;
-            });
-            Focus(); // Esc 关抽屉要先拿到键盘焦点
-        }
+        bool opening = !_drawerOpen;
+        _drawerOpen = true;
+        _drawerSettle.Stop();
+        // 先把内容建好再滑:滑进来的是一块已经排好的板子,不是边滑边长出来
         RenderDrawer(resetScroll: true);
+        if (!opening) return;
+        // 只动两个目标值:抽屉从屏幕外滑到位,遮罩淡入。
+        // 以前的做法是每次打开先把抽屉「瞬移」到起点(偏右、透明)、下一拍再放回终点 —— 可这两步都挂着过渡,
+        // 第一步自己也在动:抽屉先在原位闪出来、往回淡出,再被拉回来,看上去就是闪一下。
+        // 现在关着时它本来就停在屏幕外,开合都是从当前位置出发的一段过渡,滑到一半再点也只是折返。
+        _drawer.RenderTransform = TransformOperations.Parse("translateX(0px)");
+        _scrim.Opacity = 1;
+        _scrim.IsHitTestVisible = true;
+        KeyboardNavigation.SetTabNavigation(_drawer, KeyboardNavigationMode.Continue);
+        Focus(); // Esc 关抽屉要先拿到键盘焦点
     }
 
-    /// <summary>关掉抽屉。</summary>
+    /// <summary>关掉抽屉:滑回屏幕右侧外面,遮罩淡出。</summary>
     internal void CloseDrawer()
     {
+        if (!_drawerOpen) return;
         _drawerOpen = false;
-        _scrim.IsVisible = false;
-        _drawer.IsVisible = false;
+        _drawer.RenderTransform = DrawerOffscreen();
+        _scrim.Opacity = 0;
+        _scrim.IsHitTestVisible = false;
+        // 关着的抽屉还在可视树上,别让 Tab 键走进去
+        KeyboardNavigation.SetTabNavigation(_drawer, KeyboardNavigationMode.None);
         _drawerStack.Clear();
         _drawerKey = "";
+        _drawerSettle.Stop();
+        _drawerSettle.Start();
+    }
+
+    /// <summary>抽屉关着时停在哪儿:整块移到页面右缘之外,再多出一截把投影也带出去。</summary>
+    private TransformOperations DrawerOffscreen()
+        => TransformOperations.Parse(FormattableString.Invariant($"translateX({_drawer.Width + 40:0}px)"));
+
+    /// <summary>页面宽度变了:抽屉跟着变宽 / 变窄;关着的话,停靠的位置也要跟着挪。</summary>
+    private void ResizeDrawer(double pageWidth)
+    {
+        _drawer.Width = Math.Min(640, pageWidth);
+        if (!_drawerOpen) _drawer.RenderTransform = DrawerOffscreen();
     }
 
     /// <summary>回到上一样东西;没有上一样时什么也不做。</summary>
@@ -206,7 +238,7 @@ internal sealed partial class TeamConsoleView
                     Team.Messages.Count(m => string.Equals(m.TaskId, task.Id, StringComparison.OrdinalIgnoreCase)),
                     run?.SubagentId, run?.Status, run?.InputTokens, run?.OutputTokens, run?.Errors.Count,
                     string.Join(",", run?.ToolsUsed.Select(t => t.Name + t.Count) ?? []),
-                    _session.Cancel is not null, StateOf(task.Assignee));
+                    _session.Cancel is not null, _session.Retry is not null, task.Retries, task.Assignee, StateOf(task.Assignee));
             }
             default:
             {
@@ -435,7 +467,7 @@ internal sealed partial class TeamConsoleView
         // 进度:做完满格,失败满格错误色;在跑的没有可信的完成度(步数上限不是进度),走不定进度动画
         var progressHead = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 14, 0, 4) };
         progressHead.Children.Add(TeamUi.Text(_loc["TeamTaskProgress"], "VelaTextPrimary", 13, FontWeight.SemiBold));
-        progressHead.Children.Add(TeamUi.Text(task.Status == "completed" ? "100%" : task.Status == "running" ? _loc["SubagentRunning"] : "0%",
+        progressHead.Children.Add(TeamUi.Text(task.Status == "completed" ? "100%" : task.Status is "running" or "failed" ? _loc[TaskLook(task).Key] : "0%",
             "VelaTextPrimary", 12, mono: true).At(1));
         var bar = new ProgressBar
         {
@@ -465,7 +497,10 @@ internal sealed partial class TeamConsoleView
             notes.Add(_loc.F("TeamReviews", Refer(verifiedId))
                       + (task.Verdict is { } verdict ? " · " + _loc[verdict == "PASS" ? "TeamVerdictPass" : "TeamVerdictFail"] : ""));
         }
-        if (task.Attempts > 1) notes.Add(_loc.F("TeamRework", task.Attempts - 1));
+        // 返工(审查不过)与重试(出错后重跑)分开写:Attempts 是总共跑了几次
+        int reworks = task.Attempts - 1 - task.Retries;
+        if (reworks > 0) notes.Add(_loc.F("TeamRework", reworks));
+        if (task.Retries > 0) notes.Add(_loc.F("TeamRetries", task.Retries));
         if (notes.Count > 0)
         {
             TextBlock line = TeamUi.Text(string.Join(" · ", notes), "VelaTextSecondary", 12);
@@ -473,6 +508,7 @@ internal sealed partial class TeamConsoleView
             line.Margin = new Thickness(0, 10, 0, 0);
             _drawerBody.Children.Add(line);
         }
+        if (RetryBar(task) is { } retryBar) _drawerBody.Children.Add(retryBar);
 
         string ownerModel = ModelName(run?.ModelId ?? owner.Member?.ModelId);
         _drawerBody.Children.Add(Section(_loc["TeamSecOwner"],
@@ -549,7 +585,70 @@ internal sealed partial class TeamConsoleView
         _drawerBody.Children.Add(Section(_loc["TeamSecMessages"], messages.Length > 0 ? feed : None()));
     }
 
+    /// <summary>
+    /// 没做成的任务(失败 / 超时 / 被取消 / 受阻)下面的那一条:「重试」让原来的成员再跑一遍,
+    /// 「改派给」后面的成员药丸把它交给别人。只在这一轮还在跑时有(引擎随这一轮收尾);做成了、在跑、没开始的任务没有。
+    /// </summary>
+    private Border? RetryBar(TeamTaskInfo task)
+    {
+        if (_session.Retry is not { } retry || task.Status is not ("failed" or "cancelled" or "blocked")) return null;
+        TextBlock result = TeamUi.Text("", "VelaWarning", 12);
+        result.TextWrapping = TextWrapping.Wrap;
+        result.IsVisible = false;
+
+        void Run(string? assignee, Control source)
+        {
+            source.IsEnabled = false;
+            // 成了的话任务马上回到待办 / 运行中,快照一变这一条就跟着抽屉重建没了;没成(比如这一轮刚好收尾)把原因写出来
+            string answer = retry(task.Id, assignee);
+            if (answer.StartsWith("Retrying", StringComparison.Ordinal)) return;
+            source.IsEnabled = true;
+            result.Text = answer;
+            result.IsVisible = answer.Length > 0;
+        }
+
+        var again = new Button
+        {
+            Name = "TeamTaskRetry",
+            Content = _loc["TeamRetry"],
+            Height = 24,
+            Padding = new Thickness(12, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        }.Bind(ThemeProperty, "VelaOutlineButtonTheme");
+        ToolTip.SetTip(again, _loc.F("TeamRetryTip", task.Assignee));
+        again.Click += (_, _) => Run(null, again);
+
+        var actions = new WrapPanel();
+        again.Margin = new Thickness(0, 0, 10, 4);
+        actions.Children.Add(again);
+        TeamMemberInfo[] others = [.. Team.Members.Where(m => m.Name != task.Assignee)];
+        if (others.Length > 0)
+        {
+            TextBlock label = TeamUi.Text(_loc["TeamReassignTo"], "VelaTextSecondary", 12);
+            label.Margin = new Thickness(0, 0, 8, 4);
+            actions.Children.Add(label);
+            foreach (TeamMemberInfo member in others)
+            {
+                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
+                row.Children.Add(Avatar(member.Name, 20));
+                row.Children.Add(TeamUi.Text(member.Name, "VelaTextPrimary", 12));
+                var chip = new Border { Classes = { "tcFilter" }, Child = row, Tag = member.Name, Margin = new Thickness(0, 0, 6, 4) };
+                ToolTip.SetTip(chip, _loc.F("TeamReassignTip", member.Name, member.Role));
+                actions.Children.Add(Clickable(chip, () => Run(member.Name, chip)));
+            }
+        }
+
+        TextBlock hint = TeamUi.Text(_loc[task.Status == "blocked" ? "TeamRetryHintBlocked" : "TeamRetryHint"], "VelaTextSecondary", 12);
+        hint.TextWrapping = TextWrapping.Wrap;
+        var stack = new StackPanel { Spacing = 8 };
+        stack.Children.Add(hint);
+        stack.Children.Add(actions);
+        stack.Children.Add(result);
+        return new Border { Name = "TeamTaskRetryBar", Classes = { "tcCell" }, Margin = new Thickness(0, 12, 0, 0), Child = stack };
+    }
+
     /// <summary>任务视图里每一拍都在变的两样:耗时那一行,以及流式长出来的报告正文。</summary>
+
     private void UpdateTaskLive(TeamTaskInfo task)
     {
         _taskTiming?.Text = task.Elapsed > TimeSpan.Zero || task.Status == "running"
