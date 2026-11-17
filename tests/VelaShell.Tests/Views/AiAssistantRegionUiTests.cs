@@ -61,7 +61,8 @@ public sealed class AiAssistantRegionUiTests
             DockDocument? originalActive = vm.Layout.ActiveDocument;
             using var api = new PluginUiApi("velashell.ai", new NullLog(), () => vm);
             var content = new TextBox { Text = "unfinished question" };
-            IPluginPanel panel = await api.ShowPanelAsync(new() { Title = "AI", PlacementRatio = 0.85 }, () => content);
+            IPluginPanel panel = await api.ShowPanelAsync(
+                new() { Title = "AI", Placement = PanelPlacement.Right, PlacementRatio = 0.85 }, () => content);
             int closed = 0;
             panel.Closed += () => closed++;
 
@@ -89,6 +90,41 @@ public sealed class AiAssistantRegionUiTests
             Assert.IsFalse(vm.AiAssistant.IsVisible);
         });
 
+    /// <summary>
+    /// AI 插件另开的文档(改动对比,Placement=Tabs)进主标签区,不去抢聊天面板占着的专属区 ——
+    /// 以前一律送进专属区,Attach 抛「已有内容」,插件只能退回一个独立小窗。
+    /// </summary>
+    [TestMethod]
+    public Task HostRouting_AiSecondaryDocument_GoesToMainTabArea() =>
+        _session.RunOnUiAsync(async () =>
+        {
+            var vm = new MainWindowViewModel();
+            var terminal = new TestDocument { Id = "terminal", Title = "terminal" };
+            vm.Layout.AddDocument(terminal);
+            using var api = new PluginUiApi("velashell.ai", new NullLog(), () => vm);
+            var chat = new TextBox { Text = "chat" };
+            IPluginPanel chatPanel = await api.ShowPanelAsync(
+                new() { Title = "AI", Placement = PanelPlacement.Right }, () => chat);
+            Assert.AreSame(chat, vm.AiAssistant.Content);
+
+            var diff = new TextBox { Text = "diff" };
+            IPluginPanel diffPanel = await api.ShowPanelAsync(
+                new() { Title = "a.cs (changes)", Placement = PanelPlacement.Tabs }, () => diff);
+
+            Assert.AreSame(chat, vm.AiAssistant.Content, "the chat panel keeps the AI region");
+            Assert.AreEqual(2, vm.Layout.AllDocuments().Count());
+            Assert.AreSame(vm.Layout.FindGroup(terminal), vm.Layout.FindGroup(vm.Layout.ActiveDocument!),
+                "the diff lands in the main tab group, next to the terminal");
+            Assert.AreSame(diff, ((VelaShell.Docking.PluginDocument)vm.Layout.ActiveDocument!).CreateView());
+            Assert.IsTrue(diffPanel.IsOpen);
+
+            await diffPanel.CloseAsync();
+            Assert.AreSame(terminal, vm.Layout.AllDocuments().Single());
+            Assert.IsTrue(chatPanel.IsOpen);
+            api.Dispose();
+            await chatPanel.CloseAsync();
+        });
+
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
@@ -102,7 +138,7 @@ public sealed class AiAssistantRegionUiTests
             var window = new MainWindow { DataContext = vm, Width = 1440, Height = 800 };
             window.ApplyStartupAppearance(settings);
             using var api = new PluginUiApi("velashell.ai", new NullLog(), () => vm);
-            IPluginPanel panel = await api.ShowPanelAsync(new() { Title = "AI" }, () => new TextBox());
+            IPluginPanel panel = await api.ShowPanelAsync(new() { Title = "AI", Placement = PanelPlacement.Right }, () => new TextBox());
             window.Show();
             try
             {

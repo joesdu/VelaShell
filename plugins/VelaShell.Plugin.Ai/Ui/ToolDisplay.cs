@@ -99,6 +99,36 @@ public static class ToolDisplay
     }
 
     /// <summary>
+    /// 去掉若干顶层参数后的 JSON(差异视图已经画出来的 <c>oldText</c> / <c>content</c> 之类不必再原样列一遍);
+    /// 不是 JSON 对象时原样返回。
+    /// </summary>
+    /// <param name="json">参数 JSON。</param>
+    /// <param name="drop">要去掉的参数名。</param>
+    public static string WithoutKeys(string? json, Func<string, bool> drop)
+    {
+        if (string.IsNullOrWhiteSpace(json) || !TryParse(json, out JsonDocument? document))
+        {
+            return json ?? "";
+        }
+        using (document)
+        {
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return json;
+            }
+            var kept = new Dictionary<string, JsonElement>();
+            foreach (JsonProperty property in document.RootElement.EnumerateObject())
+            {
+                if (!drop(property.Name))
+                {
+                    kept[property.Name] = property.Value;
+                }
+            }
+            return JsonSerializer.Serialize(kept, Relaxed);
+        }
+    }
+
+    /// <summary>
     /// 展开详情的正文:JSON 按「键: 值」逐行排开,嵌套缩进两格,多行字符串原样分行;
     /// 不是 JSON 的文本原样返回。
     /// </summary>

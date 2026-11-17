@@ -242,6 +242,7 @@ public partial class ChatPanelView
             AlwaysApproved.Clear(); // 放行记忆只在同一段对话里有效
             UserBubbleIndex.Clear();
             ClearSuggestions(); // 载入的是别的会话,上一段的建议不再相关
+            ClearChangedFiles(); // 已修改文件不进历史,载入的会话从空列表开始
             ConversationId = session.Id;
             ConversationStartedAt = session.CreatedAt;
             PersistedCount = entries.Count;

@@ -513,7 +513,9 @@ Base URL(`BaseUrlOverride`)。发请求 / 建客户端 / 算成本的代码只�
 | `list_sessions` 列出全部会话 | `run_command` 单机执行 |
 | `read_terminal` 读终端尾部 | `run_on_sessions` **多机并行执行** |
 | `search_terminal` 在滚回里搜(只带回命中行) | `write_remote_file` 整份覆写 |
-| `read_remote_file` 读远端小文件 | `patch_remote_file` **只换一段** |
+| `read_remote_file` 按行区间读远端文件(带行号) | `patch_remote_file` **只换几段**(`edits` / `replaceAll`,一次审批) |
+| `search_remote_files` 工具自己拼装的 `grep -rn` 搜内容 | |
+| `read_local_file` / `search_local_files` / `find_local_files` 本地分段读、搜内容、按 glob 找文件(有工作区时) | `write_local_file` / `patch_local_file` 等本地写操作 |
 | `list_remote_directory` 列目录 | `make_remote_directory` 建目录(幂等) |
 | `stat_remote_path` 查存在/大小/时间 | `rename_remote_path` 改名 / 移动(备份用) |
 | `get_working_directory` 取 cwd | `upload_local_file` 本机 → 服务器 |
@@ -542,7 +544,14 @@ Base URL(`BaseUrlOverride`)。发请求 / 建客户端 / 算成本的代码只�
 * **改文件优先 `patch_remote_file`。** `write_remote_file` 要求回传整份内容,改一行 nginx.conf
   就要把几百行原样送回来 —— 费 token,而且模型复述长文本时丢内容是真实风险。
   patch 要求 `old_text` 在文件里**恰好出现一次**:多处匹配意味着模型并不确定自己在改哪一处,
-  那时挑第一处替换是运维场景里最容易出事故的"聪明"。
+  那时挑第一处替换是运维场景里最容易出事故的"聪明"。确实要全换时显式传 `replaceAll`;
+  同一文件的几处改动放进 `edits` 一次提交(按顺序应用,任何一处不匹配就整体不写)。
+* **先搜再读、只读需要的那几行。** `read_*_file` 带行号、按 `offset` / `limit` 分段(默认最多 2000 行),
+  `search_local_files` / `search_remote_files` 只带回命中行。`search_remote_files` 免审批的前提是命令完全由工具拼装:
+  每个值整体单引号转义、pattern 走 `-e`、路径在 `--` 之后,拼不出第二条命令。
+* **改动事件。** 写类工具成功后触发 `AgentToolbox.FileChanged`(`Agent/FileChange.cs`,带前后全文),
+  聊天面板据此画工具卡 diff(`Ui/LineDiff.cs` 的 Myers 行级差异)与输入框上方的「已更改文件」条,
+  点文件经 `ShowPanelAsync(Document)` 在宿主标签区打开 `FileDiffDocumentView`。
 
 ## 附件
 

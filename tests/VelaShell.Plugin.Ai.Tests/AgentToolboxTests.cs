@@ -10,12 +10,12 @@ namespace VelaShell.Plugin.Ai.Tests;
 
 /// <summary>Agent 工具箱:工具形状、审批闸门与各工具对插件能力的桥接语义。</summary>
 [TestClass]
-public sealed class AgentToolboxTests
+public sealed partial class AgentToolboxTests
 {
     private static readonly string[] ExpectedToolNames =
     [
         // 只读:不走审批
-        "list_sessions", "list_saved_sessions", "read_terminal", "search_terminal", "read_remote_file",
+        "list_sessions", "list_saved_sessions", "read_terminal", "search_terminal", "read_remote_file", "search_remote_files",
         "list_remote_directory", "stat_remote_path", "get_working_directory", "system_overview",
         "web_search", "web_fetch",
         // 会动东西:一律走审批(close_session 除外,见 CloseSession_NeedsNoApproval…)

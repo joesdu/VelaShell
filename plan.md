@@ -3697,3 +3697,35 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **修掉的卡死**:团队任务若同步落定(模型解析当场失败),完成回调会赶在 `StartCore` 返回、任务记下子任务 id 之前进来,被当成无关条目忽略,团队永远不收尾。改为引擎预先生成 id(`presetId`)并在启动前标记运行中。由新测试在同步运行器上抓到。
 - **验证**:AI 测试工程 Debug 全量 2228 项中 2227 项通过,1 项失败(`CreateTools_InPlanMode_ExposesOnlyReadOnlyTools`:`team_status` 与 `subagent_status` 一样只在有编排器时出现,用例补上排除并把团队写工具列入计划模式禁止名单)。修正后,该用例与新增的 `ToolDisplayTests`、`RunContextCompactorTests`、`RunCheckpointStoreTests`、`TeamEngineTests`(含同步 / 异步运行器、审查返工、失败受阻、消息投递)、`ChatPanelViewUiTests.ToolGroups`(分组、封口、工作过程折叠、人读详情)以及既有子任务 / 思考相关 UI 用例共 82 项通过。之后只改了对外 MCP 不给团队工具、传输卡不进工作过程两处,未再跑全量。未接真实模型验证团队调度与运行内压缩的实际效果,未人工验收 GUI。
 - **文档**:宿主中英手册(工具调用的显示、团队模式、长任务、断点续跑)、AI 插件 README;velashell-docs 中英 `plugins/11-automation-and-ai.md` §1.12–1.14 与 `12-security-threat-model.md` 团队与续跑边界。
+
+## 327. 2026-11-16 AI 文件工具省 Token、工具图标、git 风格改动对比与已更改文件条
+
+- **问题**:`read_local_file` / `read_remote_file` 只能整份读、无行号,超过上限直接拒绝;没有任何文件内容搜索工具(远端只能经 `run_command` 走审批);`patch_*` 一次只能改一处。模型为看几十行要拉回整份文件。改文件的卡片只把 `oldText` / `newText` 原样列出,看不出改了什么。
+- **分段读取**(`Agent/AgentToolbox.Files.cs`):两个读工具加 `offset` / `limit`(默认且最多 2000 行),输出 `行号\t内容`,截断时注明总行数与下一次 `offset`,描述里要求不把行号抄进 `oldText`。本地按行流式读,`EffectiveLocalMaxFileBytes` 改为只约束返回文本;远端用 SDK 2.2.0 已有的 `IRemoteFs.OpenReadAsync`,开流失败退回 `ReadAllBytesAsync`(256KB)。含 NUL 按二进制拒绝。
+- **搜索**:`search_local_files` / `find_local_files`(只读,有工作区时注册;跳过二进制、>16MB 与 `.git` / `node_modules` / `bin` / `obj` 等,不跟进符号链接与联接,正则 1 秒超时,上限 2 万文件 / 64K 字符);`search_remote_files` 执行工具自己拼装的 `grep -rnIsH`(值整体单引号转义、`-e` 传 pattern、路径在 `--` 后、拒绝 NUL / 换行、30 秒),结构上只读,能读到的不超过 `read_remote_file`,故免审批。三者在 Catalog 标为只读,计划模式与子 Agent 只读集自动包含。
+- **多处编辑**:`patch_local_file` / `patch_remote_file` 加 `replaceAll` 与 `edits[]`,按序应用、全过才写、一次审批;旧参数名保留(`oldText` / `newText` 改为可选)。远端 patch 补「改完超过 256KB 拒绝」。
+- **改动事件**:新增 `Agent/FileChange.cs`;`AgentToolbox.FileChanged` 在本地 / 远端写入、修补、删除文件、重命名文件成功后同步触发,带前后全文(超限或非 UTF-8 为 null),无订阅时不多读;子 Agent 沿用父订阅;目录操作不发。
+- **工具图标**(`Ui/ToolIcons.cs`):工具名精确映射到 23 个类别(不按前缀,MCP 工具名是 `前缀_工具名`),未知与 MCP 为插头;图标全部是插件自带的 `AiIcon.*`(`AiTheme.axaml` 补约 27 个 Lucide 描边几何)。卡片头部改为「类别图标 · 名称 · 摘要 · `+N −M` · 状态 · 展开」,状态图标移到右侧;组头改为左侧层叠图标。用例保证 Catalog 里每个工具都有映射、每个图标键都存在。
+- **行级 diff**(`Ui/LineDiff.cs`,Myers O(ND),先剥公共头尾、编辑距离 >2000 退化为整块替换)与 `Ui/DiffView.cs`(统一 diff、旧 / 新行号、3 行上下文、`⋯` 折叠、>1500 行截断)。增删底色为 `VelaStatusConnected` / `VelaError` 叠 0.16 透明度 —— 12 套命名主题各自派生令牌,固定一对亮暗色对不上 Nord / Sakura 等,所以不新增令牌。`Ui/ToolDiff.cs` 从参数(含 `edits`、被模型写成字符串的 `edits`)或 `FileChange` 求 diff;历史回放的 patch 卡照样显示。
+- **已更改文件条**(`Ui/ChatPanelView.ChangedFiles.cs`、`Ui/ChangedFileList.cs`):输入框上方「N 个文件已更改 +X −Y」,A/M/D/R 标记;同一文件合并(Before 首次、After 末次;先建后删移除,先删后建算修改,改名移位保留原路径)。`FileChanged` 可能在后台线程,先记下所属对话再封送 UI 线程,后台对话的改动不出现在当前对话。按对话隔离,新建 / 载入时清空,不入库。
+- **对比标签**(`Ui/FileDiffDocumentView.cs`):点文件经 `context.Ui.ShowPanelAsync`(`PanelDisplayMode.Document` + `Tabs`)在宿主标签区打开「文件名 (改动)」;默认左右并排(对侧补空行对齐、纵向滚动同步),可切内联(复用 `DiffView`),上一处 / 下一处;按 Location+Path 复用已开标签并就地刷新,`Closed` 时移除;打开抛异常(旧宿主)退回独立窗口,随面板关闭。工具卡 diff 区另有「在标签页中打开」。不需要新 SDK 契约。
+- **已知限制**:审批卡仍是 `- 旧 / + 新` 文本(要画 diff 需 `ApprovalRequest` 带结构化补丁);历史回放里 write 工具只有新内容,整份显示为新增;`FileChange` 按工具名 + 路径匹配到卡片(无调用 id),子 Agent 卡内的工具卡不挂全文 diff(改动仍进文件条);diff 在 UI 线程计算;对比标签属于主窗口,关聊天面板不关。远端搜索超时后远端 grep 不保证退出,默认对端 POSIX shell。
+- **验证**:AI 测试工程 Debug 全量 2308 项通过(新增 `AgentToolboxTests.FileTools` 24 例 + 7 组 glob 数据、`LineDiffTests` 19 例、`ChatPanelViewUiTests.Diffs` 4 例);宿主 `HeadlessDispatchUsageTests` / `NoColorLiteralsTests` / `UnusedLocalizedKeyTests` / `LocalizedKeyUsageTests` 20 项通过;插件构建零警告。未接真实模型验证、未人工验收 GUI(并排对比、标签复用、主题配色)。
+- **文档**:宿主中英手册(文件改动的对比、读取 / 搜索 / 修改文件)、AI 插件 README;velashell-docs 中英 `plugins/11-automation-and-ai.md` §1.15。
+
+## 328. 2026-11-17 改动对比第二轮:语法高亮、对比标签可编辑保存、对比标签不再退回小窗
+
+- **对比标签退回成小窗(宿主路由)**:`PluginUiApi.ShowPanelAsync` 原先把 `velashell.ai` 的所有 Document 请求都送进 AI 专属区。聊天面板已经占着专属区,对比标签再 `Attach` 就抛「已有内容」,插件退回成独立窗口(用户反馈「单独弹窗的预览框太小」);headless 用例的 `FakeUi` 不经宿主,所以没暴露。改为只有 `Placement = Right` 且专属区空着时才进专属区,其余与普通插件一样进主标签区。`AiAssistantRegionUiTests` 两条旧用例补上 `Placement = Right`(插件实际就是这样请求的),新增 `HostRouting_AiSecondaryDocument_GoesToMainTabArea`。插件侧:已有对比标签开着时先 `ActivateAsync` 再开新的,让新标签落在同一组;退回窗口放大到工作区的 90%(最小 720×480)。
+- **语法高亮**(`Ui/TextMateHighlighter.cs`):用插件已带、与宿主共享的 TextMateSharp,主题与聊天代码块一致(暗色 DarkPlus / 其余 LightPlus,跟随 `ActualThemeVariant`)。每个主题一份 `RegistryOptions` + `Registry`,grammar 按 scope 缓存;按扩展名选语言,逐行带状态 tokenize,颜色取自主题数据,默认前景色的片段不着色(仍用 Vela 令牌)。上限:超过 2 万行不高亮,单行超过 3000 字符跳过该行,每行 50ms、整段 1.5s;缺原生库或 grammar 时退回纯文本。`DiffView` 对每段完整的旧 / 新文本 tokenize 后按行号取片段,多行注释和字符串的状态不会断。聊天消息里的代码块经核实本来就有高亮(颜色异步到达),这次不改。
+- **对比标签可编辑**(重写 `Ui/FileDiffDocumentView.cs`、新增 `Ui/DiffEditorSupport.cs`):并排模式改为两个 AvaloniaEdit 编辑器。左侧旧内容只读;右侧是新内容全文,可编辑。两边都有行号和 TextMate 着色(`TextMateColorizer` 按行缓存状态,文本改动后从改动行起作废)。增删底色由 `DiffLineBackgroundRenderer` 画,停止输入 300ms 后重算 diff、`+N −M` 和导航;不补空行,两侧滚动按 diff 的行映射同步。内联模式只读。
+- **保存**(`Agent/FileTextStore.cs`):工具条有「保存 / 还原」,编辑器有焦点时可按 Ctrl+S(宿主出厂键位只占用了 Ctrl+Shift+S),有未保存修改时显示圆点。
+  - 保存前先读当前文件:本地重新经 `LocalPathScope` 解析,并严格按 UTF-8 解码;远端先确认会话还连着。
+  - 磁盘内容与基线不一致时,弹出「文件已被其他程序修改」,可选覆盖 / 重新载入 / 取消。
+  - 写入时保留 BOM;换行统一成原文件里占多数的那种(`MatchLineEndings`,只处理 `\r\n` / `\n`,不改换页符和 U+2028)。本地写入与 Agent 共用 `FileTextStore.WriteLocalTextAsync`。
+  - 保存成功后同步更新各对话的已更改文件列表。
+  - 这是用户自己的操作,不走 Agent 审批;保存允许任意已配置的工作区,不限于输入框当前选中的那个。
+  - 只有 patch 片段时(历史回放)提供「载入完整文件」:按卡片的 workspaceId / sessionId 读取当前全文,倒着套用 patch 重建旧内容;重建不了时左侧显示当前内容并加一句说明。
+- **已知限制**:SDK 2.2.0 没有关闭前的钩子,关闭有未保存修改的标签不会拦截;标签标题打开后改不了,未保存的圆点只显示在工具条上;片段推断的会话用的是当前对话的,不是卡片所属对话的;超过 2 万行的编辑器不高亮。
+- **验证**:AI 测试工程 Debug 全量 2326 项通过,新增 `TextMateHighlighterTests` 5 项、`ChatPanelViewUiTests.DiffEditing` 7 项(编辑重算、本地保存与 BOM、冲突的覆盖 / 重载、远端保存与断线、载入完整文件、同组打开、高亮)、`FileTextStoreTests` 换行 6 项。宿主路由、面板与扫描测试 44 项通过,0 跳过。插件构建零警告。未人工验收 GUI。
+- **文档**:宿主中英手册;velashell-docs 中英 `plugins/08-ui-extensions.md`(专属区路由规则)与 `plugins/11-automation-and-ai.md` §1.15。
+- **并排可拖动调宽**(2026-11-17 试用反馈):两栏之间原来是一条 1px 的 `Border`,宽度固定对半。改为 6px 透明 `GridSplitter`(`DiffSplitter`,左右拖动光标),中间仍画一条 1px 的线,悬停时换成 `VelaAccent`;两栏最小 120px,双击恢复对半。拖完从 GridSplitter 写回的列宽算出比例记在视图上(拖完那一刻 `ActualWidth` 还没重新布局,不能用),切内联再切回来、内容刷新都保留。新增 Loc 键 `DiffSplitterTip` 与用例 `DiffDocument_SplitterResizesPanes_AndWidthSurvivesModeSwitch`;相关的 43 项中 42 项通过,未过的 `EveryMappedIcon_IsDefinedInAiTheme` 是因为在仓库外的输出目录里找不到仓库根(用户正在运行宿主,dll 被锁,无法用正常路径重跑)。

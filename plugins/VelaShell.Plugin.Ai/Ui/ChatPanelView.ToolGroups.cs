@@ -75,11 +75,19 @@ public partial class ChatPanelView
             _owner = owner;
             _header = new Grid
             {
-                ColumnDefinitions = [with("Auto,Auto,*,Auto")],
+                // 叠层图标 | 标题 | 明细 | 状态 | 箭头 —— 与组内各张卡同一套摆法(类别图标在左、状态在右)
+                ColumnDefinitions = [with("Auto,Auto,*,Auto,Auto")],
                 Background = Brushes.Transparent,
                 Cursor = new Cursor(StandardCursorType.Hand),
                 IsVisible = false
             };
+            _header.Children.Add(new Decorator
+            {
+                Child = MakeIcon("AiIcon.layers", "VelaTextTertiary", 12),
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+            });
+            Grid.SetColumn(_statusHost, 3);
             _header.Children.Add(_statusHost);
             Grid.SetColumn(_title, 1);
             _header.Children.Add(_title);
@@ -96,7 +104,7 @@ public partial class ChatPanelView
             _chevron[!Avalonia.Controls.Shapes.Path.DataProperty] = new DynamicResourceExtension("Icon.chevron-right");
             _chevron[!Avalonia.Controls.Shapes.Shape.StrokeProperty] = new DynamicResourceExtension("VelaTextMuted");
             var chevronBox = new Viewbox { Width = 10, Height = 10, Child = _chevron, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
-            Grid.SetColumn(chevronBox, 3);
+            Grid.SetColumn(chevronBox, 4);
             _header.Children.Add(chevronBox);
             _header.PointerPressed += (_, e) =>
             {
