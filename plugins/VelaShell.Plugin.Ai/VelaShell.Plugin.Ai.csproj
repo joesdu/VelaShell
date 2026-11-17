@@ -92,20 +92,5 @@
          codesign 当成嵌套 bundle 而把 dmg 打包整个炸掉(1.4.8 踩过,与 plugins/README.md
          记的插件目录名那次是同一个坑)。**再加包之前先看清它的传递依赖。** -->
   </ItemGroup>
-  <ItemGroup>
-    <PackageReference Update="Markdig" Version="1.6.0" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Update="MicroCom.Runtime" Version="0.11.7" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Update="Onigwrap" Version="1.0.11" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Update="TextMateSharp" Version="3.0.0-preview.1" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Update="TextMateSharp.Grammars" Version="3.0.0-preview.1" />
-  </ItemGroup>
 
 </Project>
