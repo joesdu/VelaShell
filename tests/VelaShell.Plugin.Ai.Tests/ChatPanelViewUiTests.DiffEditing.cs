@@ -161,6 +161,84 @@ public sealed partial class ChatPanelViewUiTests
         });
     }
 
+    /// <summary>像用户拖滚动条 / 滚轮那样设编辑器的滚动位置(TextEditor.ScrollToVerticalOffset 在 AvaloniaEdit 12.0.0 里是空方法)。</summary>
+    private static void ScrollEditor(AvaloniaEdit.TextEditor editor, double x, double y)
+        => editor.GetVisualDescendants().OfType<ScrollViewer>().First().Offset = new Avalonia.Vector(x, y);
+
+    private static double LineTop(AvaloniaEdit.TextEditor editor, int line)
+        => editor.TextArea.TextView.GetVisualTopByDocumentLine(line);
+
+    [TestMethod]
+    public void DiffDocument_ScrollingEitherSide_KeepsTheOtherAligned()
+    {
+        OnUi(async () =>
+        {
+            // 300 行:第 10 行很长(横向滚动用),第 75 行改了,第 150 行后插入 6 行,第 200 行删掉
+            var old = Enumerable.Range(1, 300).Select(i => i == 10 ? new string('x', 600) : "line " + i).ToList();
+            var @new = old.Select(l => l == "line 75" ? "line 75 changed" : l).ToList();
+            @new.InsertRange(150, Enumerable.Range(1, 6).Select(i => "inserted " + i));
+            @new.Remove("line 200");
+            string before = string.Join('\n', old) + "\n", after = string.Join('\n', @new) + "\n";
+            var view = new FileDiffDocumentView(FullDocument("local:w", "a.txt", before, after), new Loc("en"), new MemoryDiffHost());
+            var window = new Window { Width = 1000, Height = 700, Content = view };
+            window.Show();
+            try
+            {
+                await PumpAsync(5);
+                AvaloniaEdit.TextEditor left = view.LeftEditor!, right = view.RightEditor!;
+
+                ScrollEditor(right, 0, LineTop(right, 57));
+                await PumpAsync(3);
+                Assert.AreEqual(LineTop(left, 57), left.VerticalOffset, 1.0, "滚右侧,左侧跟到同一行");
+
+                // 右侧滚进插入的那 6 行中间:左侧停在第 150 行附近慢慢走,不跳到后面
+                ScrollEditor(right, 0, LineTop(right, 153));
+                await PumpAsync(3);
+                Assert.IsGreaterThan(LineTop(left, 150) - 1, left.VerticalOffset);
+                Assert.IsLessThan(LineTop(left, 151), left.VerticalOffset, "插入块里左侧不跳");
+                Assert.AreEqual(LineTop(right, 153), right.VerticalOffset, 1.0, "右侧没被反向同步拉回去");
+
+                ScrollEditor(right, 0, LineTop(right, 180));
+                await PumpAsync(3);
+                Assert.AreEqual(LineTop(left, 174), left.VerticalOffset, 1.0, "过了插入块,两侧按行映射对齐");
+
+                // 反过来滚左侧:第 200 行删了,左 250 对右 255
+                ScrollEditor(left, 0, LineTop(left, 250));
+                await PumpAsync(3);
+                Assert.AreEqual(LineTop(right, 255), right.VerticalOffset, 1.0, "滚左侧,右侧跟到对应的行");
+                Assert.AreEqual(LineTop(left, 250), left.VerticalOffset, 1.0);
+
+                // 横向照搬
+                ScrollEditor(left, 0, 0);
+                await PumpAsync(3);
+                Assert.AreEqual(0, right.VerticalOffset, 1.0);
+                ScrollEditor(right, 120, 0);
+                await PumpAsync(3);
+                Assert.AreEqual(120, left.HorizontalOffset, 1.0, "横向滚动也同步");
+                ScrollEditor(right, 0, 0);
+                await PumpAsync(3);
+
+                // 下一处改动真的滚过去(第 75 行,上面留两行),左侧跟着
+                view.Navigate(1);
+                await PumpAsync(3);
+                Assert.AreEqual(LineTop(right, 73), right.VerticalOffset, 1.0, "下一处改动滚到位");
+                Assert.AreEqual(LineTop(left, 73), left.VerticalOffset, 1.0);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [TestMethod]
+    public void DiffScrollMapping_InterpolatesBetweenAnchors_AndRunsOnPastTheLast()
+    {
+        double[] from = [0, 10, 11, 20], to = [0, 10, 17, 26];
+        Assert.AreEqual(5, FileDiffDocumentView.MapAcross(5, from, to), 1e-9);
+        Assert.AreEqual(13.5, FileDiffDocumentView.MapAcross(10.5, from, to), 1e-9, "一行对七行的那段按比例摊开");
+        Assert.AreEqual(17, FileDiffDocumentView.MapAcross(11, from, to), 1e-9);
+        Assert.AreEqual(30, FileDiffDocumentView.MapAcross(24, from, to), 1e-9, "最后一个锚点之后一比一顺延");
+        Assert.AreEqual(10.5, FileDiffDocumentView.MapAcross(13.5, to, from), 1e-9, "反向映射是逆");
+    }
+
     [TestMethod]
     public void DiffDocument_SaveWritesLocalFile_KeepsBom_AndUpdatesChangedFiles()
     {

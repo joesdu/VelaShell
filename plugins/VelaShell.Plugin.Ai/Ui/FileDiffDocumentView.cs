@@ -10,6 +10,7 @@ using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using AvaloniaEdit;
 using AvaloniaEdit.Document;
 using VelaShell.Plugin.Ai.Agent;
@@ -67,7 +68,8 @@ internal interface IFileDiffHost
 /// <para>
 /// <b>并排</b>(默认):两个 AvaloniaEdit 编辑器,左旧右新,都带行号与 TextMate 语法高亮(<see cref="TextMateColorizer" />),
 /// 增删行底色由 <see cref="DiffLineBackgroundRenderer" /> 画。右侧是改动后的<b>真实全文</b>,能编辑:
-/// 停手约 300ms 重算差异,刷新底色、<c>+N −M</c> 与上一处 / 下一处;两侧纵向滚动按差异的行映射同步(不补空行)。
+/// 停手约 300ms 重算差异,刷新底色、<c>+N −M</c> 与上一处 / 下一处;两侧滚动同步:未改动的行对齐,
+/// 改动块按两侧行数比例摊开,横向照搬(不补空行)。
 /// </para>
 /// <para>
 /// <b>内联</b>:只读的统一差异(<see cref="DiffView" />),反映右侧当前内容;想改就切回并排。
@@ -99,8 +101,9 @@ internal sealed class FileDiffDocumentView : DockPanel
     private readonly Border _conflict;
     private readonly Border _host2 = new();
     private readonly DispatcherTimer _recompute;
-    private int[] _newToOld = [];
-    private int[] _oldToNew = [];
+    // 滚动同步的锚点:两侧未改动行的行顶(以行为单位、从 0 起),下标一一对应;两个锚点之间夹着的改动按比例摊开
+    private double[] _oldAnchors = [0];
+    private double[] _newAnchors = [0];
     private bool _syncing;
     private TextMateColorizer? _leftColorizer;
     private DiffLineBackgroundRenderer? _leftTint, _rightTint;
@@ -387,8 +390,8 @@ internal sealed class FileDiffDocumentView : DockPanel
         };
         // Ctrl+S 只在编辑器有焦点时生效(隧道阶段在编辑器自己的按键处理之前截住)。宿主的出厂键位没有占 Ctrl+S。
         rightEditor.AddHandler(KeyDownEvent, OnEditorKeyDown, RoutingStrategies.Tunnel);
-        leftEditor.TextArea.TextView.ScrollOffsetChanged += (_, _) => SyncScroll(leftEditor, rightEditor, _oldToNew);
-        rightEditor.TextArea.TextView.ScrollOffsetChanged += (_, _) => SyncScroll(rightEditor, leftEditor, _newToOld);
+        leftEditor.TextArea.TextView.ScrollOffsetChanged += (_, _) => SyncScroll(leftEditor, rightEditor, _oldAnchors, _newAnchors);
+        rightEditor.TextArea.TextView.ScrollOffsetChanged += (_, _) => SyncScroll(rightEditor, leftEditor, _newAnchors, _oldAnchors);
 
         // 中间一条可拖动的分割条(拖动调宽、双击回到对半)。比例记在视图上,切内联再切回来、刷新内容都不丢。
         var leftColumn = new ColumnDefinition(LeftShare, GridUnitType.Star) { MinWidth = MinPaneWidth };
@@ -516,64 +519,73 @@ internal sealed class FileDiffDocumentView : DockPanel
         LineDiffResult diff = CurrentDiff = LineDiff.Compute(LeftEditor.Text, RightEditor.Text);
         int oldCount = Math.Max(1, LeftEditor.Document.LineCount);
         int newCount = Math.Max(1, RightEditor.Document.LineCount);
-        int[] newToOld = new int[newCount + 1];
-        int[] oldToNew = new int[oldCount + 1];
+        var oldAnchors = new List<double> { 0 };
+        var newAnchors = new List<double> { 0 };
         var removed = new HashSet<int>();
         var added = new HashSet<int>();
         var starts = new List<int>();
-        int lastOld = 1, lastNew = 1;
+        int lastNew = 1;
         bool inChange = false, seenContext = false;
         foreach (DiffLine line in diff.Lines)
         {
             switch (line.Kind)
             {
                 case DiffLineKind.Context:
-                    lastOld = line.OldNumber;
                     lastNew = line.NewNumber;
                     seenContext = true;
-                    if (line.NewNumber <= newCount) newToOld[line.NewNumber] = line.OldNumber;
-                    if (line.OldNumber <= oldCount) oldToNew[line.OldNumber] = line.NewNumber;
+                    AddAnchor(line.OldNumber - 1, line.NewNumber - 1);
                     inChange = false;
                     break;
                 case DiffLineKind.Removed:
                     removed.Add(line.OldNumber);
-                    if (line.OldNumber <= oldCount) oldToNew[line.OldNumber] = lastNew;
                     if (!inChange) starts.Add(Math.Min(seenContext ? lastNew + 1 : 1, newCount));
                     inChange = true;
                     break;
                 default:
                     added.Add(line.NewNumber);
-                    if (line.NewNumber <= newCount) newToOld[line.NewNumber] = lastOld;
                     if (!inChange) starts.Add(line.NewNumber);
                     inChange = true;
                     break;
             }
         }
-        _newToOld = newToOld;
-        _oldToNew = oldToNew;
+        AddAnchor(oldCount, newCount);
+        _oldAnchors = [.. oldAnchors];
+        _newAnchors = [.. newAnchors];
         ChangeStarts = starts;
         _leftTint?.Lines = removed;
         _rightTint?.Lines = added;
         LeftEditor.TextArea.TextView.InvalidateLayer(AvaloniaEdit.Rendering.KnownLayer.Background);
         RightEditor.TextArea.TextView.InvalidateLayer(AvaloniaEdit.Rendering.KnownLayer.Background);
         UpdateChrome();
+
+        // 锚点两侧都必须严格递增:开头就是一段纯新增 / 纯删除时,第一行未改动内容的行顶在一侧还是 0,
+        // 跳过它,让那段改动和这一行一起按比例摊开,不至于一侧原地不动、另一侧一下跳过去
+        void AddAnchor(double oldTop, double newTop)
+        {
+            if (oldTop <= oldAnchors[^1] || newTop <= newAnchors[^1]) return;
+            oldAnchors.Add(oldTop);
+            newAnchors.Add(newTop);
+        }
     }
 
-    /// <summary>一侧滚动后,按行映射把另一侧滚到对应的行(同一行内的像素余量照搬)。</summary>
-    private void SyncScroll(TextEditor source, TextEditor target, int[] map)
+    /// <summary>
+    /// 一侧滚动后把另一侧带过去(仿 VS Code / Visual Studio 的对比视图):纵向按锚点映射 ——
+    /// 未改动的行两边对齐,夹在中间的改动按两侧行数比例摊开,滚过一段新增时另一侧慢慢走、不跳;横向照搬。
+    /// </summary>
+    /// <remarks>
+    /// 不用 <c>TextEditor.ScrollToVerticalOffset</c>:AvaloniaEdit 12.0.0 里它和 <c>ScrollToHorizontalOffset</c>
+    /// 都是空方法(只调了 <c>ApplyTemplate</c>),调了什么也不动。直接设编辑器模板里 ScrollViewer 的 Offset ——
+    /// 它同步推到 TextView,另一侧的 ScrollOffsetChanged 在 <see cref="_syncing" /> 护罩里就地回来,不会来回拉扯。
+    /// </remarks>
+    private void SyncScroll(TextEditor source, TextEditor target, double[] from, double[] to)
     {
-        if (_syncing || map.Length == 0) return;
+        if (_syncing) return;
         _syncing = true;
         try
         {
-            AvaloniaEdit.Rendering.TextView view = source.TextArea.TextView;
-            double offset = source.VerticalOffset;
-            int line = view.GetDocumentLineByVisualTop(offset)?.LineNumber ?? 1;
-            double within = offset - view.GetVisualTopByDocumentLine(line);
-            int mapped = line < map.Length && map[line] > 0 ? map[line] : 1;
-            mapped = Math.Clamp(mapped, 1, Math.Max(1, target.Document.LineCount));
-            double targetTop = target.TextArea.TextView.GetVisualTopByDocumentLine(mapped) + within;
-            if (Math.Abs(target.VerticalOffset - targetTop) > 0.5) target.ScrollToVerticalOffset(Math.Max(0, targetTop));
+            Vector offset = source.TextArea.TextView.ScrollOffset;
+            double lines = MapAcross(ToLines(source, offset.Y), from, to);
+            SetScrollOffset(target, new Vector(offset.X, Math.Max(0, ToPixels(target, lines))));
         }
         catch (Exception)
         {
@@ -583,6 +595,47 @@ internal sealed class FileDiffDocumentView : DockPanel
         {
             _syncing = false;
         }
+    }
+
+    /// <summary>
+    /// 按锚点把一侧的位置(以行为单位,从 0 起,可带小数)换算到另一侧:落在两个锚点之间就线性插值,
+    /// 越过最后一个锚点就一比一往后顺延。
+    /// </summary>
+    internal static double MapAcross(double position, double[] from, double[] to)
+    {
+        int count = Math.Min(from.Length, to.Length);
+        if (count == 0) return position;
+        if (position <= from[0]) return to[0] + (position - from[0]);
+        if (position >= from[count - 1]) return to[count - 1] + (position - from[count - 1]);
+        int index = Array.BinarySearch(from, 0, count, position);
+        if (index >= 0) return to[index];
+        int upper = ~index, lower = upper - 1;
+        double share = (position - from[lower]) / (from[upper] - from[lower]);
+        return to[lower] + share * (to[upper] - to[lower]);
+    }
+
+    /// <summary>纵向像素偏移 → 行(从 0 起,小数部分是这一行被卷上去的比例)。</summary>
+    private static double ToLines(TextEditor editor, double y)
+    {
+        AvaloniaEdit.Rendering.TextView view = editor.TextArea.TextView;
+        double height = view.DefaultLineHeight;
+        if (height <= 0 || view.GetDocumentLineByVisualTop(Math.Max(0, y)) is not { } line) return 0;
+        double within = (y - view.GetVisualTopByDocumentLine(line.LineNumber)) / height;
+        return line.LineNumber - 1 + Math.Clamp(within, 0, 1);
+    }
+
+    /// <summary>行(从 0 起,可带小数)→ 纵向像素偏移。</summary>
+    private static double ToPixels(TextEditor editor, double lines)
+    {
+        AvaloniaEdit.Rendering.TextView view = editor.TextArea.TextView;
+        int index = (int)Math.Clamp(Math.Floor(lines), 0, Math.Max(0, editor.Document.LineCount - 1));
+        return view.GetVisualTopByDocumentLine(index + 1) + (lines - index) * view.DefaultLineHeight;
+    }
+
+    /// <summary>设编辑器的滚动位置(越界由 ScrollViewer 自己收住)。</summary>
+    private static void SetScrollOffset(TextEditor editor, Vector offset)
+    {
+        if (editor.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault() is { } scroll) scroll.Offset = offset;
     }
 
     private void OnEditorKeyDown(object? sender, KeyEventArgs e)
@@ -790,7 +843,7 @@ internal sealed class FileDiffDocumentView : DockPanel
             if (target is { } line)
             {
                 double y = view.GetVisualTopByDocumentLine(Math.Max(1, line - 2));
-                right.ScrollToVerticalOffset(line <= 3 ? 0 : y);
+                SetScrollOffset(right, new Vector(right.HorizontalOffset, line <= 3 ? 0 : y));
                 right.TextArea.Caret.Line = line;
             }
             return;
