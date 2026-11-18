@@ -340,4 +340,50 @@
     </Style>
   </ControlTheme>
 
+  <!-- 开关(「配置工具」里每一行行尾那枚,仿 VS Code Copilot 的配置界面)。
+       套在 CheckBox 上而不是另起一个控件:勾选语义(IsChecked、IsCheckedChanged、三态的"部分启用")原样沿用,
+       只换外观。宿主的 ToggleSwitch 是 Fluent 默认样子,而且隔离进程拿不到宿主样式,所以插件自己画:
+       28×16 轨道 + 10 的圆钮;关 = 主描边 + 灰钮,开 = 强调色底 + AccentForeground 钮,
+       部分启用(IsChecked = null)= 强调描边 + 钮停在中间。几何与颜色全走令牌,不写颜色字面量。 -->
+  <ControlTheme x:Key="AiSwitchTheme" TargetType="CheckBox">
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border x:Name="PART_Track" Width="28" Height="16" CornerRadius="8" BorderThickness="1"
+                Background="Transparent" BorderBrush="{DynamicResource VelaBorderSecondary}">
+          <Ellipse x:Name="PART_Knob" Width="10" Height="10" HorizontalAlignment="Left" Margin="2,0,0,0"
+                   VerticalAlignment="Center" Fill="{DynamicResource VelaTextMuted}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:pointerover /template/ Border#PART_Track">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="^:checked /template/ Border#PART_Track">
+      <Setter Property="Background" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+    </Style>
+    <Style Selector="^:checked /template/ Ellipse#PART_Knob">
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="Margin" Value="0,0,2,0" />
+      <Setter Property="Fill" Value="{DynamicResource VelaAccentForeground}" />
+    </Style>
+    <Style Selector="^:indeterminate /template/ Border#PART_Track">
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+    </Style>
+    <Style Selector="^:indeterminate /template/ Ellipse#PART_Knob">
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="Fill" Value="{DynamicResource VelaAccent}" />
+    </Style>
+    <Style Selector="^:focus-visible /template/ Border#PART_Track">
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+    </Style>
+    <Style Selector="^:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+  </ControlTheme>
+
 </ResourceDictionary>

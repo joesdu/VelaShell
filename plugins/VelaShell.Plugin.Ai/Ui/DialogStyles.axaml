@@ -183,4 +183,71 @@
   <Style Selector="ListBox ListBoxItem:selected TextBlock.dim">
     <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
   </Style>
+
+  <!-- ===== 「配置工具」(仿 VS Code Copilot 的配置界面):左栏分节导航 + 右栏「标题 / 说明 / 搜索 / 列表」 ===== -->
+  <Style Selector="TextBlock.pageTitle">
+    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize16}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+  </Style>
+  <Style Selector="TextBlock.pageDesc">
+    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+    <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="LineHeight" Value="18" />
+  </Style>
+  <!-- 分区标题(「内置 6」「MCP 2」):小号加粗 + 一枚计数徽标 -->
+  <Style Selector="TextBlock.sectionLabel">
+    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.countBadge">
+    <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="6,0" />
+    <Setter Property="MinHeight" Value="16" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.countBadge TextBlock">
+    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+    <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- 一个来源的标题行(一类内置工具 / 一台 MCP 服务器 / 一个技能 / 一个扩展包):悬停提亮,整行可点折展 -->
+  <Style Selector="Border.sourceRow">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="6,6,8,6" />
+  </Style>
+  <Style Selector="Border.sourceRow:pointerover">
+    <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+  </Style>
+  <Style Selector="TextBlock.sourceName">
+    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="TextBlock.sourceSub">
+    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+    <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="Margin" Value="0,1,0,0" />
+  </Style>
+  <Style Selector="TextBlock.sourceCount">
+    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+    <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- 展开后的单个工具行:比来源行缩进一档 -->
+  <Style Selector="Border.itemRow">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="30,4,8,4" />
+  </Style>
+  <Style Selector="Border.itemRow:pointerover">
+    <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+  </Style>
 </Styles>

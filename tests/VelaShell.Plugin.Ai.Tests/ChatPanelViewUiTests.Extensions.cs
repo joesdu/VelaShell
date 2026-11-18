@@ -8,7 +8,7 @@ using VelaShell.PluginSdk.Testing;
 
 namespace VelaShell.Plugin.Ai.Tests;
 
-/// <summary>「配置工具」里的扩展包组(ai-plan §12.4):安装前确认 MCP 启动信息、启停、启动信息被改后重新确认、卸载。</summary>
+/// <summary>「配置工具」的「扩展包」页(ai-plan §12.4):安装前确认 MCP 启动信息、启停、启动信息被改后重新确认、卸载。</summary>
 public sealed partial class ChatPanelViewUiTests
 {
     [TestMethod]
@@ -33,6 +33,7 @@ public sealed partial class ChatPanelViewUiTests
             var picker = new ToolPickerView(context, settings, new Loc("en"), () => store.SaveAsync(settings), _ => { },
                 () => { mcpChanges++; return Task.CompletedTask; });
             Window host = Host(picker);
+            picker.ShowPage(ToolPickerView.Page.Extensions);
             try
             {
                 ConfirmOverlay confirm = picker.GetVisualDescendants().OfType<ConfirmOverlay>().Single(o => o.Name == "ExtensionConfirm");
@@ -85,7 +86,7 @@ public sealed partial class ChatPanelViewUiTests
 
                 // 停用:全部撤下,并通知面板对齐 MCP 连接
                 int before = mcpChanges;
-                picker.GetVisualDescendants().OfType<CheckBox>().Single(c => c.Name == "ExtensionToggle").IsChecked = false;
+                SwitchOf(Source(picker, "pack:acme-ops")).IsChecked = false;
                 await PumpAsync(3);
                 Assert.IsFalse(settings.ExtensionPacks.Single().Enabled);
                 Assert.IsEmpty(ExtensionRuntime.Active(settings, new ExtensionPackStore(context.DataDirectory)));
@@ -121,6 +122,7 @@ public sealed partial class ChatPanelViewUiTests
             var settings = new AiSettings();
             var picker = new ToolPickerView(context, settings, new Loc("en"), () => Task.CompletedTask, _ => { });
             Window host = Host(picker);
+            picker.ShowPage(ToolPickerView.Page.Extensions);
             try
             {
                 Assert.IsFalse(await picker.InstallFromAsync(source));

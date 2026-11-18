@@ -6,7 +6,7 @@ using VelaShell.PluginSdk.Testing;
 
 namespace VelaShell.Plugin.Ai.Tests;
 
-/// <summary>「配置工具」里的技能组(ai-plan §12.3 的 2c):逐个启停并保存、解析失败给原因、重新扫描。</summary>
+/// <summary>「配置工具」的「技能」页(ai-plan §12.3 的 2c):逐个启停并保存、按来源分区、解析失败给原因、重新扫描。</summary>
 public sealed partial class ChatPanelViewUiTests
 {
     [TestMethod]
@@ -32,18 +32,19 @@ public sealed partial class ChatPanelViewUiTests
                 await PumpAsync(5);
                 var picker = (ToolPickerView)context.FakeUi.LastPanel.CreateContent();
                 host = Host(picker);
-                Border group = ToolGroups(picker)[1];
+                picker.ShowPage(ToolPickerView.Page.Skills);
+                await PumpAsync(2);
+                Assert.AreEqual("1", NavCount(picker, ToolPickerView.Page.Skills), "左栏只数能用的技能");
 
-                CheckBox skill = group.GetVisualDescendants().OfType<CheckBox>()
-                    .Single(c => c.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "deploy-check"));
-                Assert.IsTrue(skill.IsChecked, "默认启用");
-                Assert.Contains(t => t.Text == "Verify a deployment. · from workspace", group.GetVisualDescendants().OfType<TextBlock>(), "说明后标出来源");
-                TextBlock error = group.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "SkillError");
+                Border skill = Source(picker, "skill:deploy-check");
+                Assert.IsTrue(SwitchOf(skill).IsChecked, "默认启用");
+                Assert.Contains(t => t.Text == "Verify a deployment.", skill.GetVisualDescendants().OfType<TextBlock>(), "副标题是说明");
+                Assert.Contains(t => t.Text == "from workspace", picker.GetVisualDescendants().OfType<TextBlock>(), "按来源分区");
+                TextBlock error = picker.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "SkillError");
                 StringAssert.Contains(error.Text, "broken");
                 StringAssert.Contains(error.Text, "description", "解析失败说清原因");
-                Assert.Contains(t => t.Text == "1/1 checked", group.GetVisualDescendants().OfType<TextBlock>(), "只数能用的技能");
 
-                skill.IsChecked = false;
+                SwitchOf(skill).IsChecked = false;
                 Assert.IsTrue(await WaitForAsync(() => PanelSettings(panel).DisabledSkills == "deploy-check"));
                 await PumpAsync(5);
                 Assert.AreEqual("deploy-check", (await new AiSettingsStore(context).LoadAsync()).DisabledSkills, "停用随工具配置保存");
@@ -54,9 +55,9 @@ public sealed partial class ChatPanelViewUiTests
                 picker.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SkillsRescan")
                     .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
                 await PumpAsync(3);
-                group = ToolGroups(picker)[1];
-                Assert.Contains(t => t.Text == "audit", group.GetVisualDescendants().OfType<TextBlock>());
-                Assert.Contains(t => t.Text == "1/2 checked", group.GetVisualDescendants().OfType<TextBlock>(), "停用的那个仍是停用");
+                Assert.IsTrue(SwitchOf(Source(picker, "skill:audit")).IsChecked);
+                Assert.IsFalse(SwitchOf(Source(picker, "skill:deploy-check")).IsChecked, "停用的那个仍是停用");
+                Assert.AreEqual("2", NavCount(picker, ToolPickerView.Page.Skills));
             }
             finally
             {

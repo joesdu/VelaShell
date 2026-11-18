@@ -11,7 +11,7 @@ using VelaShell.Plugin.Ai.Configuration;
 namespace VelaShell.Plugin.Ai.Ui;
 
 /// <summary>
-/// 「配置工具」里的扩展包组(ai-plan §12.4):安装(文件夹或 .zip)、启停、卸载、MCP 启动信息的确认与重新确认。
+/// 「配置工具」的「扩展包」页(ai-plan §12.4):安装(文件夹或 .zip)、启停、卸载、MCP 启动信息的确认与重新确认。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,60 +31,60 @@ public sealed partial class ToolPickerView
 
     private ExtensionPackStore Extensions => field ??= new ExtensionPackStore(_context.DataDirectory);
 
-    private Border BuildExtensionsGroup()
+    private void AddExtensionActions()
     {
-        var rows = new StackPanel { Spacing = 10, Classes = { "toolRows" } };
-        IReadOnlyList<InstalledPack> installed = Extensions.List();
-        if (installed.Count == 0)
-        {
-            rows.Children.Add(new TextBlock
-            {
-                Classes = { "dim" },
-                Text = _loc["ExtensionsEmpty"],
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Avalonia.Thickness(20, 2, 0, 2)
-            });
-        }
-        foreach (InstalledPack pack in installed)
-        {
-            rows.Children.Add(BuildPackRow(pack));
-        }
-
         Button fromFolder = HeaderButton("ExtensionInstallFolder", _loc["ExtensionInstallFolder"]);
         fromFolder.Click += async (_, _) => await PickAndInstallAsync(folder: true);
         Button fromZip = HeaderButton("ExtensionInstallZip", _loc["ExtensionInstallZip"]);
         fromZip.Click += async (_, _) => await PickAndInstallAsync(folder: false);
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
-        buttons.Children.Add(fromFolder);
-        buttons.Children.Add(fromZip);
+        _pageActions.Children.Add(fromFolder);
+        _pageActions.Children.Add(fromZip);
+    }
 
-        int enabled = installed.Count(p => StateOf(p.Id) is { Enabled: true });
-        return BuildGroup("extensions", _loc["ExtensionsGroup"], _loc.F("ToolsChecked", enabled, installed.Count), rows, buttons, defaultCollapsed: false);
+    /// <summary>「扩展包」页:每个已安装的扩展包一行(说明 + 版本与内容摘要,行尾卸载与开关);MCP 需要重新确认时下面多一行提示与按钮。</summary>
+    private void BuildExtensionsPage()
+    {
+        IReadOnlyList<InstalledPack> installed = Extensions.List();
+        if (installed.Count == 0)
+        {
+            _content.Children.Add(new TextBlock
+            {
+                Name = "ExtensionsEmpty",
+                Classes = { "dim" },
+                Text = _loc["ExtensionsEmpty"],
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Avalonia.Thickness(6, 4)
+            });
+            return;
+        }
+        var rows = new List<Control>();
+        foreach (InstalledPack pack in installed)
+        {
+            if (!Matches(pack.Id, pack.Manifest?.Name, pack.Manifest?.Description)) continue;
+            rows.Add(BuildPackRow(pack));
+        }
+        if (rows.Count == 0) return;
+        _content.Children.Add(SectionLabel(_loc["ExtensionsInstalled"], rows.Count));
+        foreach (Control row in rows) _content.Children.Add(row);
     }
 
     private ExtensionPackState? StateOf(string id) => _settings.ExtensionPacks.FirstOrDefault(s => s.Id == id);
 
-    private Control BuildPackRow(InstalledPack pack)
+    private Border BuildPackRow(InstalledPack pack)
     {
         Button uninstall = HeaderButton("ExtensionUninstall", _loc["ExtensionUninstall"]);
         uninstall.Click += async (_, _) => await UninstallAsync(pack.Id, pack.Manifest?.Name ?? pack.Id);
 
         if (pack.Manifest is not { } manifest)
         {
-            var broken = new TextBlock
+            // 清单读不出来:说明原因,只能卸载
+            Border broken = SourceRow("pack:" + pack.Id, pack.Id, null, null, uninstall, null, null);
+            ((StackPanel)broken.Child!).Children.Add(new Border
             {
-                Name = "ExtensionError",
-                Classes = { "hint" },
-                Text = _loc.F("ExtensionInvalid", pack.Id, pack.Error ?? ""),
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Avalonia.Thickness(20, 2, 0, 2)
-            };
-            broken[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("VelaWarning");
-            var line = new Grid { ColumnDefinitions = [with("*,Auto")] };
-            line.Children.Add(broken);
-            Grid.SetColumn(uninstall, 1);
-            line.Children.Add(uninstall);
-            return line;
+                Padding = new Avalonia.Thickness(24, 0, 8, 6),
+                Child = WarningText("ExtensionError", _loc.F("ExtensionInvalid", pack.Id, pack.Error ?? ""))
+            });
+            return broken;
         }
 
         ExtensionPackState? state = StateOf(pack.Id);
@@ -92,45 +92,29 @@ public sealed partial class ToolPickerView
             ExtensionRuntime.SkillDirectories([new ActivePack(manifest, pack.Directory, true)])
                 .Sum(dir => SkillCatalog.ScanDirectory(dir, SkillSource.Extension).Count(s => s.IsValid)),
             manifest.Commands.Count, manifest.McpServers.Count);
-        string description = manifest.Description.Length > 0 ? $"{manifest.Description}\n{summary}" : summary;
-        CheckBox toggle = BuildRow(manifest.Name, description, readOnly: false, state is { Enabled: true }, isEnabled =>
+        string subtitle = manifest.Description.Length > 0 ? $"{manifest.Description} · {summary}" : summary;
+        Border row = SourceRow("pack:" + pack.Id, manifest.Name, subtitle, null, uninstall, state is { Enabled: true }, isEnabled =>
         {
             ExtensionPackState current = StateOf(pack.Id) ?? AddState(pack.Id);
             current.Enabled = isEnabled;
             AfterExtensionChange();
         });
-        toggle.Name = "ExtensionToggle";
-        ToolTip.SetTip(toggle, pack.Directory);
-
-        var stack = new StackPanel { Spacing = 4 };
-        var head = new Grid { ColumnDefinitions = [with("*,Auto")] };
-        head.Children.Add(toggle);
-        Grid.SetColumn(uninstall, 1);
-        uninstall.VerticalAlignment = VerticalAlignment.Top;
-        head.Children.Add(uninstall);
-        stack.Children.Add(head);
+        ToolTip.SetTip(row, pack.Directory);
 
         // MCP 启动信息与用户确认过的不一致:这个包的 MCP 不启动,给出重新确认的入口
         if (manifest.HasMcp && state?.ApprovedMcpFingerprint != manifest.McpFingerprint())
         {
-            var warning = new TextBlock
-            {
-                Name = "ExtensionNeedsApproval",
-                Classes = { "hint" },
-                Text = _loc["ExtensionMcpNeedsApproval"],
-                TextWrapping = TextWrapping.Wrap,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            warning[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("VelaWarning");
             Button reapprove = HeaderButton("ExtensionReapprove", _loc["ExtensionReapprove"]);
             reapprove.Click += async (_, _) => await ReapproveAsync(pack.Id);
-            var line = new Grid { ColumnDefinitions = [with("*,Auto")], Margin = new Avalonia.Thickness(28, 0, 0, 0) };
+            var line = new Grid { ColumnDefinitions = [with("*,Auto")], Margin = new Avalonia.Thickness(24, 0, 8, 6) };
+            TextBlock warning = WarningText("ExtensionNeedsApproval", _loc["ExtensionMcpNeedsApproval"]);
+            warning.VerticalAlignment = VerticalAlignment.Center;
             line.Children.Add(warning);
             Grid.SetColumn(reapprove, 1);
             line.Children.Add(reapprove);
-            stack.Children.Add(line);
+            ((StackPanel)row.Child!).Children.Add(line);
         }
-        return stack;
+        return row;
     }
 
     private ExtensionPackState AddState(string id)
@@ -142,8 +126,7 @@ public sealed partial class ToolPickerView
 
     private void AfterExtensionChange()
     {
-        AfterChange(); // 保存设置
-        Rebuild();
+        AfterChange(); // 保存设置并重建
         if (_mcpChanged is not null) _ = _mcpChanged();
     }
 
