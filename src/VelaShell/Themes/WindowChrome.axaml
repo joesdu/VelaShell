@@ -14,8 +14,9 @@
        · 非模态窗口:自绘的最小化 / 最大化 / 关闭挂 window-caption(macOS 上换成系统红绿灯);
          标题栏最左边放一个 <Panel Classes="traffic-light-spacer" />,给红绿灯让位。
 
-       · Windows:窗口模板在独立底层画 VelaShadowWindow,与裁剪内容的卡片分开。
-         主窗口也使用这一层;透明边距 16px,最大化 / 全屏时收起。
+       · Windows:对话框与工具窗口的窗口模板在独立底层画 VelaShadowWindow,与裁剪内容的卡片分开;
+         透明边距 16px,最大化 / 全屏时收起。主窗口不用这一层:不透明、无透明边距、无投影
+         (DWM 圆角见 Win32WindowChrome),贴边分屏不留缝,窗口外沿就是缩放边。
        · macOS / X11(window-card-flat):不透明直角矩形。macOS 的圆角、描边、阴影由系统画;
          X11 的合成器只认整个窗口矩形,画了也只会多出一圈。最大化 / 全屏在各平台上都是 window-card-flat。
        · Wayland:卡片铺满内容区,描边与阴影由装饰层画在内容外面
@@ -73,8 +74,8 @@
   </Styles.Resources>
 
   <!-- 阴影不能画在 ClipToBounds=True 的内容卡片上:它会连自己的投影一起裁掉。
-       主窗口、工具窗口、对话框共用这一层,内容仍由各窗口自己的卡片裁剪。 -->
-  <Style Selector="Window.chrome-windows">
+       工具窗口、对话框共用这一层,内容仍由各窗口自己的卡片裁剪。主窗口(window-main)保持框架默认模板。 -->
+  <Style Selector="Window.chrome-windows:not(.window-main)">
     <Setter Property="Template">
       <ControlTemplate>
         <Panel>
@@ -99,18 +100,8 @@
       </ControlTemplate>
     </Setter>
   </Style>
-  <Style Selector="Window.chrome-windows.window-main /template/ Border#WindowContentFrame">
-    <Setter Property="Margin" Value="17" />
-    <Setter Property="CornerRadius" Value="7" />
-    <Setter Property="ClipToBounds" Value="True" />
-    <Setter Property="Background" Value="{DynamicResource VelaBgPage}" />
-  </Style>
   <Style Selector="Window.chrome-windows.window-expanded /template/ Border#WindowShadow">
     <Setter Property="IsVisible" Value="False" />
-  </Style>
-  <Style Selector="Window.chrome-windows.window-main.window-expanded /template/ Border#WindowContentFrame">
-    <Setter Property="Margin" Value="0" />
-    <Setter Property="CornerRadius" Value="0" />
   </Style>
 
   <!-- 标题栏:全部窗口一个高度(主窗口、独立窗口、对话框)。改这个数要同步 WindowChrome.TitleBarHeight

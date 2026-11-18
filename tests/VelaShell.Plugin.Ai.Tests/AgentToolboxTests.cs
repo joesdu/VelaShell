@@ -43,7 +43,8 @@ public sealed partial class AgentToolboxTests
         await using var toolbox = new AgentToolbox(context)
         {
             LocalWorkspaces = [new LocalWorkspace { Id = "work", RootPath = Environment.CurrentDirectory }],
-            LocalDefaultWorkspaceId = "work", Approval = ApprovalMode.Bypass,
+            LocalDefaultWorkspaceId = "work",
+            Approval = ApprovalMode.Bypass,
             ApprovalHandler = request => { seen = request; return Task.FromResult(false); }
         };
         await using var run = toolbox.BeginRun("desktop", "turn");
@@ -60,7 +61,7 @@ public sealed partial class AgentToolboxTests
         for (int i = 0; i < 2; i++)
         {
             string result = (await cli.InvokeAsync([with(args)], CancellationToken.None))?.ToString() ?? "";
-            StringAssert.Contains(result, "Local command exit code: 7");
+            StringAssert.Contains(result, "\"exitCode\":7");
             Assert.IsNull(seen);
         }
         toolbox.Approval = ApprovalMode.Ask;
@@ -88,7 +89,8 @@ public sealed partial class AgentToolboxTests
         int starts = 0;
         await using var toolbox = new AgentToolbox(context)
         {
-            LocalWorkspaces = configured, LocalDefaultWorkspaceId = selected,
+            LocalWorkspaces = configured,
+            LocalDefaultWorkspaceId = selected,
             ApprovalHandler = request => { seenApproval = request; pending.TrySetResult(true); return decision.Task; },
             StartLocalProcess = process =>
             {
@@ -96,8 +98,16 @@ public sealed partial class AgentToolboxTests
                 var start = process.StartInfo;
                 Assert.IsFalse(start.UseShellExecute);
                 Assert.AreEqual(OperatingSystem.IsWindows() ? "-NoLogo" : "-c", start.ArgumentList[0]);
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+                {
+                    Assert.IsTrue(start.KillOnParentExit, "VelaShell 崩溃时命令随之结束(macOS 不支持)");
+                }
                 Assert.AreEqual(Environment.CurrentDirectory, start.WorkingDirectory);
-                Assert.AreEqual(Environment.GetEnvironmentVariable("PATH"), start.Environment["PATH"]);
+                if (!OperatingSystem.IsMacOS())
+                {
+                    // macOS 上换成登录 shell 解析出的 PATH(从访达启动时桌面进程的 PATH 不全)
+                    Assert.AreEqual(Environment.GetEnvironmentVariable("PATH"), start.Environment["PATH"]);
+                }
                 Assert.IsNotNull(seenApproval);
                 Assert.IsTrue(Path.IsPathFullyQualified(start.FileName));
                 StringAssert.Contains(seenApproval.GetValueOrDefault().Summary, start.FileName);
@@ -119,11 +129,15 @@ public sealed partial class AgentToolboxTests
         decision.SetResult(true);
         string result = (await call)?.ToString() ?? "";
         Assert.AreEqual(revoke ? 0 : 1, starts);
-        StringAssert.Contains(result, revoke ? "no longer authorized" : "Local command exit code: 7");
+        StringAssert.Contains(result, revoke ? "no longer authorized" : "\"exitCode\":7");
         if (!revoke)
         {
-            StringAssert.Contains(result, "stdout:\nlocal-test 测试");
-            StringAssert.Contains(result, "stderr:\ntest-error");
+            using JsonDocument json = JsonDocument.Parse(result);
+            JsonElement[] output = [.. json.RootElement.GetProperty("output").EnumerateArray()];
+            StringAssert.Contains(string.Concat(output.Where(o => o.GetProperty("Stream").GetString() == "stdout")
+                .Select(o => o.GetProperty("Text").GetString())), "local-test 测试");
+            StringAssert.Contains(string.Concat(output.Where(o => o.GetProperty("Stream").GetString() == "stderr")
+                .Select(o => o.GetProperty("Text").GetString())), "test-error");
         }
     }
 
@@ -201,7 +215,7 @@ public sealed partial class AgentToolboxTests
         string result = (await cli.InvokeAsync([with(args)], CancellationToken.None))?.ToString() ?? "";
         Assert.AreEqual(2, approvals.Count);
         Assert.AreEqual(approveFallback ? 2 : 1, starts.Count);
-        StringAssert.Contains(result, approveFallback ? "exit code: 7" : "denied");
+        StringAssert.Contains(result, approveFallback ? "\"exitCode\":7" : "DENIED");
     }
 
     [TestMethod]

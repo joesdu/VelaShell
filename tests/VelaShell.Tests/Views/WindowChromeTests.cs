@@ -87,19 +87,16 @@ public sealed class WindowChromeTests
     }
 
     [TestMethod]
-    public void EveryWindowsRole_DrawsShadowOutsideTheClippedContent_AndHidesItWhenExpanded()
+    public void SecondaryWindowsRoles_DrawShadowOutsideTheClippedContent_AndHideItWhenExpanded()
     {
         OnUi(() =>
         {
-            foreach (WindowChromeKind role in Enum.GetValues<WindowChromeKind>())
+            foreach (WindowChromeKind role in Enum.GetValues<WindowChromeKind>().Where(kind => kind != WindowChromeKind.Main))
             {
                 var content = new Border { ClipToBounds = true };
                 var anchor = new Button { Width = 80, Height = 28 };
                 content.Child = anchor;
-                if (role != WindowChromeKind.Main)
-                {
-                    content.Classes.Add("window-card");
-                }
+                content.Classes.Add("window-card");
                 var window = new Window { Width = 400, Height = 300, Content = content };
                 try
                 {
@@ -114,7 +111,7 @@ public sealed class WindowChromeTests
                     Assert.IsTrue(content.ClipToBounds);
                     Assert.AreEqual(new Thickness(16), shadow.Margin);
                     Assert.IsFalse(shadow.GetVisualAncestors().Contains(content), "阴影在内容裁剪之外。");
-                    Assert.AreEqual(role == WindowChromeKind.Main ? new Thickness(17) : new Thickness(0), frame.Margin);
+                    Assert.AreEqual(new Thickness(0), frame.Margin);
                     var flyout = new Flyout { Content = new Border { Width = 20, Height = 20 } };
                     flyout.ShowAt(anchor);
                     Assert.IsTrue(flyout.IsOpen, "统一模板必须保留弹层、文本选择与键盘焦点装饰层。");
@@ -131,6 +128,35 @@ public sealed class WindowChromeTests
                 {
                     window.Close();
                 }
+            }
+        });
+    }
+
+    /// <summary>
+    /// 主窗口在 Windows 上不套阴影模板:不透明、没有透明边距。透明边距会让已保存的窗口尺寸看起来缩一圈、
+    /// 贴边分屏留缝,还会在窗口四周留下一圈看不见却吃点击的区域(WM_NCHITTEST 一律 HTCLIENT)。
+    /// </summary>
+    [TestMethod]
+    public void MainWindow_OnWindows_StaysOpaqueWithoutShadowInset()
+    {
+        OnUi(() =>
+        {
+            var content = new Border { ClipToBounds = true };
+            var window = new Window { Width = 400, Height = 300, Content = content };
+            try
+            {
+                WindowChrome.Apply(window, WindowChromeKind.Main, ChromePlatform.Windows);
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+                Assert.IsFalse(window.GetVisualDescendants().OfType<Border>().Any(border => border.Name is "WindowShadow" or "WindowContentFrame"));
+                Assert.AreNotEqual(Brushes.Transparent, window.Background);
+                Assert.IsFalse(window.TransparencyLevelHint.Contains(WindowTransparencyLevel.Transparent));
+                Assert.AreEqual(window.Bounds.Size, content.Bounds.Size, "内容铺满窗口,没有阴影边距。");
+            }
+            finally
+            {
+                window.Close();
             }
         });
     }

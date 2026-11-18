@@ -131,7 +131,7 @@ public partial class ChatPanelView
         }
         string prompt = BuildResumePrompt(checkpoint, earlier);
         string display = _loc["ResumeDisplay"];
-        await SendAsync(display, fromUser: false,
+        await SendAsync(display, fromUser: false, userInitiated: true,
             prepared: new SteeringMessage(display, prompt, new ChatMessage(ChatRole.User, prompt)));
     }
 

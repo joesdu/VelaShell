@@ -133,17 +133,37 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
         }
     }
 
-    private sealed class JobOutcomeException(CommandJobState state, string message, bool confirmed) : Exception(message)
+    /// <summary>执行器给出的确定结局(状态、说明、进程是否已确认停止),不再按通用异常推断。</summary>
+    internal sealed class JobOutcomeException(CommandJobState state, string message, bool confirmed) : Exception(message)
     {
         public CommandJobState State { get; } = state;
         public bool Confirmed { get; } = confirmed;
     }
 
+    /// <summary>任务列表里本机任务的会话标识(不是任何远端会话)。</summary>
+    public const string LocalSessionId = "local";
+
+    /// <summary>
+    /// 接管一个已经过审批、已启动的本机进程:与远端命令共用任务 id、task_status / task_wait / task_cancel、
+    /// 输出缓冲与完成通知。不占远端流的并发槽(进程已在跑,排队等槽只会让管道写满把它卡住),
+    /// 授权改用调用方给的工作区检查。
+    /// </summary>
+    /// <param name="scope">所属轮次。</param>
+    /// <param name="command">原始命令(只用于登记,不再执行)。</param>
+    /// <param name="executionTimeout">执行死线;由 <paramref name="execute" /> 自行施行。</param>
+    /// <param name="execute">驱动进程直到结束;取消 / 超时时须自行终止进程并以 <see cref="JobOutcomeException" /> 报告结局。</param>
+    /// <param name="authorize">读取任务时重新确认工作区授权;撤销后输出不再交出。</param>
+    internal string StartLocal(CommandJobRunScope scope, string command, TimeSpan? executionTimeout,
+        Func<IProgress<ExecOutput>, CancellationToken, Task<ExecStreamResult>> execute,
+        Func<CancellationToken, Task<bool>> authorize)
+        => StartCore(scope, LocalSessionId, command, executionTimeout, monitoring: false,
+            (output, _, token) => execute(output, token), preStarted: true, localAuthorize: authorize);
+
     // 提权使用同一调度、所有权、输出和清理路径;认证秘密不进入注册表。
     internal string StartCore(CommandJobRunScope scope, string sessionId, string command,
         TimeSpan? executionTimeout, bool monitoring,
         Func<IProgress<ExecOutput>, Action<CommandJobState>, CancellationToken, Task<ExecStreamResult>> execute,
-        bool mergedOutput = false)
+        bool mergedOutput = false, bool preStarted = false, Func<CancellationToken, Task<bool>>? localAuthorize = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
@@ -170,7 +190,11 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
                     throw new InvalidOperationException("The command task budget for this run is exhausted.");
                 }
             }
-            job = new Job(scope, sessionId, command, monitoring, mergedOutput);
+            job = new Job(scope, sessionId, command, monitoring, mergedOutput)
+            {
+                PreStarted = preStarted,
+                LocalAuthorize = localAuthorize
+            };
             _jobs.Add(job.Id, job);
             // 先登记再执行;同步完成的替身和真实异步实现走同一路径,无 Task.Run 包 I/O。
             job.Execution = ExecuteAsync(job, execute);
@@ -185,6 +209,21 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
         Job job = Find(scope, taskId);
         await AuthorizeAsync(job, cancellationToken).ConfigureAwait(false);
         return job.Deliver(cursor);
+    }
+
+    /// <summary>
+    /// 给界面实时展示用的只读快照。与 <see cref="ReadAsync" /> 不同:不消费终态的完成通知
+    /// (那是留给模型的),授权已撤销时只交出不含输出的占位快照,也不因此取消任务。
+    /// </summary>
+    internal async Task<CommandJobSnapshot> PeekAsync(CommandJobRunScope scope, string taskId,
+        long cursor = 0, CancellationToken cancellationToken = default)
+    {
+        Job job = Find(scope, taskId);
+        if (!await IsAuthorizedAsync(job, cancellationToken).ConfigureAwait(false))
+        {
+            return job.Withheld();
+        }
+        return job.Snapshot(cursor);
     }
 
     /// <summary>只限本地等待窗口,不会改变远端执行死线。</summary>
@@ -250,10 +289,20 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
         }
     }
 
+    /// <summary>本机任务按工作区授权,远端任务按会话授权;都没有设检查时视为已授权。</summary>
+    private static async Task<bool> IsAuthorizedAsync(Job job, CancellationToken cancellationToken)
+    {
+        if (job.LocalAuthorize is { } local)
+        {
+            return await local(cancellationToken).ConfigureAwait(false);
+        }
+        return job.Scope._authorize is not { } authorize
+            || await authorize(job.SessionId, cancellationToken).ConfigureAwait(false);
+    }
+
     private static async Task AuthorizeAsync(Job job, CancellationToken cancellationToken)
     {
-        if (job.Scope._authorize is { } authorize
-            && !await authorize(job.SessionId, cancellationToken).ConfigureAwait(false))
+        if (!await IsAuthorizedAsync(job, cancellationToken).ConfigureAwait(false))
         {
             await job.Cancel.CancelAsync().ConfigureAwait(false);
             throw new UnauthorizedAccessException("Authorization for this task's session was revoked; output is withheld.");
@@ -267,13 +316,18 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
         bool started = false;
         try
         {
-            await _streamSlots.WaitAsync(job.Cancel.Token).ConfigureAwait(false);
-            slot = true;
-            job.Cancel.Token.ThrowIfCancellationRequested();
-            await AuthorizeAsync(job, job.Cancel.Token).ConfigureAwait(false);
-            job.Cancel.Token.ThrowIfCancellationRequested();
-            if (job.Scope.HasDeniedExecution)
-                throw new UnauthorizedAccessException("Execution was denied in this run; queued commands cannot start.");
+            // 本机任务进来时进程已经在跑(审批与工作区授权在启动前已核过):不能再排队等槽或做启动前检查,
+            // 那样一旦被挡下,执行器根本没机会接手,已启动的进程就没人收拾了。执行器必须立刻接管。
+            if (!job.PreStarted)
+            {
+                await _streamSlots.WaitAsync(job.Cancel.Token).ConfigureAwait(false);
+                slot = true;
+                job.Cancel.Token.ThrowIfCancellationRequested();
+                await AuthorizeAsync(job, job.Cancel.Token).ConfigureAwait(false);
+                job.Cancel.Token.ThrowIfCancellationRequested();
+                if (job.Scope.HasDeniedExecution)
+                    throw new UnauthorizedAccessException("Execution was denied in this run; queued commands cannot start.");
+            }
             lock (job.Gate)
             {
                 job.State = CommandJobState.Running;
@@ -495,6 +549,10 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
         public readonly string Command = command;
         public readonly bool Monitoring = monitoring;
         public readonly bool MergedOutput = mergedOutput;
+        /// <summary>本机任务:进程在登记前已启动,跳过排队、等槽与启动前授权(那些已在启动前做过)。</summary>
+        public bool PreStarted { get; init; }
+        /// <summary>本机任务的授权检查(工作区仍被允许);为空时按会话授权。</summary>
+        public Func<CancellationToken, Task<bool>>? LocalAuthorize { get; init; }
         public bool CommandStarted;
         public readonly DateTimeOffset CreatedAt = DateTimeOffset.UtcNow;
         public readonly CancellationTokenSource Cancel = CancellationTokenSource.CreateLinkedTokenSource(scope.Token);
@@ -689,6 +747,13 @@ public sealed class CommandJobRunScope : IAsyncDisposable
 
     /// <summary>停止本轮,等待排队及运行任务的本地收尾;不受会话范围撤销影响。</summary>
     public Task CancelAsync() => _registry.CancelRunAsync(this);
+
+    /// <summary>界面读取本轮某个任务的实时快照(不消费模型的完成通知),见 <see cref="CommandJobRegistry.PeekAsync" />。</summary>
+    internal Task<CommandJobSnapshot> PeekAsync(string taskId, long cursor = 0, CancellationToken cancellationToken = default)
+        => _registry.PeekAsync(this, taskId, cursor, cancellationToken);
+
+    /// <summary>界面上的「停止」:请求取消本轮的单个任务,与模型调用 task_cancel 同一条路径。</summary>
+    internal Task CancelJobAsync(string taskId) => _registry.CancelAsync(this, taskId);
 
     /// <summary>取消并等待托管 I/O 收尾后释放本地资源。</summary>
     public async ValueTask DisposeAsync()
