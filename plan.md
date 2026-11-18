@@ -3907,3 +3907,10 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **改动**:`SubagentRunner.CreateOrchestrator` 与 `SubagentRunner.UseCandidates`,三处入口改用;行为不变。
 - **验证**:新增 1 条;AI 测试工程全量 2427/2427 通过。
 - **文档**:只动 `ai-plan.md` §12.5 / §12.9。
+
+## 346. AI 插件重构 1e(部分):请求参数构造收成一处,换站循环拆分推迟 (2026-11-18)
+
+- **来由**:ai-plan §12.2 的 1e。`SendAsync` 里请求参数构造重复三遍。
+- **改动**:收成 `ChatPanelView.CreateRequestOptions`;`SendAsync` 约 1,165 → 1,131 行。换站循环的拆分推迟到 Skills 之后(理由见 ai-plan §12.10);发现 IM 不带模型的停止序列、桌面带,记为单独小修,未改。
+- **验证**:AI 测试工程全量 2427/2427 通过。
+- **文档**:只动 `ai-plan.md` §12.5 / §12.10。

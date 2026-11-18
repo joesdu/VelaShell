@@ -511,8 +511,8 @@ AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出�
 | 1b 统一自定义提示词语义 | 完成 | 见 12.7 |
 | 1c 工具来源统一 | 完成 | 见 12.8 |
 | 1d 子 Agent 编排器工厂 | 完成 | 见 12.9 |
-| 1e 拆小 `SendAsync` | 进行中 | 先做低风险的一片,其余推迟(见 12.10) |
-| 2 Skills | 未开始 | 依赖第一步 |
+| 1e 拆小 `SendAsync` | 部分完成 | 低风险的一片已做,换站循环的拆分推迟到 Skills 之后(见 12.10) |
+| 2 Skills | 进行中 | 依赖的 1a、1c 已完成 |
 | 3 扩展包 | 未开始 | 依赖第二步 |
 
 每完成一步:在上表更新状态,在本节下追加一条「12.x 日期:做了什么、验证结果、遗留」,并同步 `plan.md`(已发生的事)。
@@ -547,3 +547,9 @@ AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出�
 - `SubagentRunner.UseCandidates(orchestrator, settings, providerId, defaultModelId)`:候选清单、交给主模型的事实与默认模型三项一起配,桌面换站后重配也走它。
 - 桌面、IM、对外 MCP 三处改用;对外 MCP 的 `MaxTotal` 与 `DeliversResults = false` 照旧。
 - 验证:新增 `SubagentRunnerTests.CreateOrchestrator_RunsOnThisRunner_AndUseCandidatesSetsAllThree`;AI 测试工程全量 **2427/2427** 通过,未改动任何既有断言。
+
+### 12.10 2026-11-18:1e 只做了低风险的一片,其余推迟
+
+- **做了**:`SendAsync` 里三处一模一样的请求参数构造(开跑、MCP 连接后复验到配置变化、对话模式复验到配置变化)收成 `ChatPanelView.CreateRequestOptions`。`SendAsync` 从约 1,165 行降到约 1,131 行。
+- **推迟,理由**:`SendAsync` 剩下的部分是故障转移的换站循环,约十几个局部变量(凭据、选择代次、已试过的站、租约、压缩器、气泡……)经闭包在换站之间共享,与 UI(气泡、状态行、卡片)交织在一起。整体拆分风险最高,而 Skills 与扩展包只依赖 1a(提示词分段)与 1c(工具来源),都已就绪,并不依赖它。拆分推迟到 Skills 做完之后再评估;若届时为接入新能力仍要改这个方法,再顺势按「准备模型与凭据 → 装配 → 运行 → 收尾入库」拆。
+- **发现的不一致(记下,未改)**:IM 的请求参数不带模型配置里的停止序列(`StopSequences`),桌面带。统一它会改变 IM 行为,不放进「不改行为」的重构里;留作单独的小修。

@@ -2138,20 +2138,7 @@ public partial class ChatPanelView : UserControl
                 SteeringChatClient steering = WrapForSteering(inner);
                 client = steering;
                 await BeginSteering(steering);
-                options = new ChatOptions
-                {
-                    MaxOutputTokens = current.MaxTokens,
-                    Temperature = current.Temperature,
-                    TopP = current.TopP,
-                    StopSequences = SplitLines(current.StopSequences)
-                };
-                // 思考档位:Default 表示"不带这个参数",交给服务端的默认行为。两家协议的翻译方式
-                // 不同(OpenAI 认 ChatOptions.Reasoning,Anthropic 只认请求体里的 thinking),
-                // 差异全收在 AiSettingsStore.ApplyReasoning 里。
-                AiSettingsStore.ApplyReasoning(options, current);
-                // 这一家端点不认的参数在这儿摘掉(私有后端常常只是标准协议的受限子集,
-                // 多发一个字段就整轮 400)。差异全在目录数据里,见 UnsupportedParameters。
-                AiSettingsStore.ApplyEndpointQuirks(options, current);
+                options = CreateRequestOptions(current);
                 // 检索优先走供应商自带的服务端工具:它跑在模型那一侧,不经本机,结果自带引用。
                 // 但只有 Anthropic Messages 与 OpenAI Responses 认这套,其余协议(Chat Completions、
                 // Ollama、多数中转站)解不出来,回落到插件自带的 web_search。用户可以在全局设置里关掉。
@@ -2236,15 +2223,7 @@ public partial class ChatPanelView : UserControl
                         steering = WrapForSteering(inner);
                         client = steering;
                         await BeginSteering(steering);
-                        options = new ChatOptions
-                        {
-                            MaxOutputTokens = current.MaxTokens,
-                            Temperature = current.Temperature,
-                            TopP = current.TopP,
-                            StopSequences = SplitLines(current.StopSequences)
-                        };
-                        AiSettingsStore.ApplyReasoning(options, current);
-                        AiSettingsStore.ApplyEndpointQuirks(options, current);
+                        options = CreateRequestOptions(current);
                     }
                     if (nativeSearch)
                     {
@@ -2293,15 +2272,7 @@ public partial class ChatPanelView : UserControl
                     steering = WrapForSteering(inner);
                     client = steering;
                     await BeginSteering(steering);
-                    options = new ChatOptions
-                    {
-                        MaxOutputTokens = current.MaxTokens,
-                        Temperature = current.Temperature,
-                        TopP = current.TopP,
-                        StopSequences = SplitLines(current.StopSequences)
-                    };
-                    AiSettingsStore.ApplyReasoning(options, current);
-                    AiSettingsStore.ApplyEndpointQuirks(options, current);
+                    options = CreateRequestOptions(current);
                 }
                 if (!AiSettingsStore.IsImageModel(current))
                 {
@@ -3242,6 +3213,29 @@ public partial class ChatPanelView : UserControl
         }
         string[] lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return lines.Length > 0 ? lines : null;
+    }
+
+    /// <summary>
+    /// 按这一站的模型配置建请求参数:输出上限、温度、top-p、停止序列,再套上思考档位与端点怪癖。
+    /// 开跑、MCP 连接后复验到配置变化、对话模式复验到配置变化,三处都用它(ai-plan §12.2 的 1e)。
+    /// </summary>
+    private static ChatOptions CreateRequestOptions(ResolvedModel current)
+    {
+        var options = new ChatOptions
+        {
+            MaxOutputTokens = current.MaxTokens,
+            Temperature = current.Temperature,
+            TopP = current.TopP,
+            StopSequences = SplitLines(current.StopSequences)
+        };
+        // 思考档位:Default 表示"不带这个参数",交给服务端的默认行为。两家协议的翻译方式
+        // 不同(OpenAI 认 ChatOptions.Reasoning,Anthropic 只认请求体里的 thinking),
+        // 差异全收在 AiSettingsStore.ApplyReasoning 里。
+        AiSettingsStore.ApplyReasoning(options, current);
+        // 这一家端点不认的参数在这儿摘掉(私有后端常常只是标准协议的受限子集,
+        // 多发一个字段就整轮 400)。差异全在目录数据里,见 UnsupportedParameters。
+        AiSettingsStore.ApplyEndpointQuirks(options, current);
+        return options;
     }
 
     /// <summary>作图指引的固定部分(本轮启用了作图工具时追加,后面接上这段对话里图片的清单)。</summary>
