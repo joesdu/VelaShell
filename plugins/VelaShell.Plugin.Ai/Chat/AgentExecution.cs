@@ -163,8 +163,12 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
             lock (_gate)
             {
                 _paused = ex;
-                var result = new ChatMessage(ChatRole.Tool, [new FunctionResultContent(context.CallContent.CallId,
-                    "Execution was cancelled. The remote outcome is unknown; do not automatically repeat this operation.")]);
+                // 本机命令被停时 VelaShell 会终止它的进程树,结局是确定的;「远端结果未知」只适用于远端操作
+                string message = context.CallContent.Name == "run_local_command"
+                    ? "Execution was cancelled. VelaShell stopped the local command and terminated its process tree; "
+                        + "any changes it made before that are kept. Do not automatically repeat this operation."
+                    : "Execution was cancelled. The remote outcome is unknown; do not automatically repeat this operation.";
+                var result = new ChatMessage(ChatRole.Tool, [new FunctionResultContent(context.CallContent.CallId, message)]);
                 _checkpoint.Add(result);
                 _completed.Add(result);
             }

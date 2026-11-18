@@ -16,7 +16,11 @@ namespace VelaShell.Plugin.Ai.Chat;
 /// 送给模型的那一份:<c>@</c> 引用已展开成完整路径与文件内容,本地附件已并进来。
 /// <b>在入队那一刻就定下来</b> —— 排队期间远端文件还可能被改,用户按下回车时看到的那份才算数。
 /// </param>
-internal sealed record SteeringMessage(string DisplayText, string RawText, ChatMessage Message);
+/// <param name="UserInitiated">
+/// 是否出自用户本人在面板里的操作(键入、排队、编辑重发)。外部注入的文本(<c>SendExternal</c>,如整段终端输出)
+/// 为 false:那段内容不可信,不能借它解锁 <c>run_local_command</c>。合并多条时全部为 true 才算。
+/// </param>
+internal sealed record SteeringMessage(string DisplayText, string RawText, ChatMessage Message, bool UserInitiated = true);
 
 /// <summary>
 /// 面板级的插话队列:用户在一轮进行中补发的消息先落在这里,
@@ -94,7 +98,8 @@ internal sealed class SteeringQueue
             _ => new SteeringMessage(
                 string.Join("\n\n", all.Select(item => item.DisplayText)),
                 string.Join("\n\n", all.Select(item => item.RawText)),
-                new ChatMessage(ChatRole.User, [.. all.SelectMany(item => item.Message.Contents)]))
+                new ChatMessage(ChatRole.User, [.. all.SelectMany(item => item.Message.Contents)]),
+                all.All(item => item.UserInitiated))
         };
     }
 }

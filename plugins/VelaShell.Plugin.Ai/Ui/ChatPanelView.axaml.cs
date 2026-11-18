@@ -1599,7 +1599,11 @@ public partial class ChatPanelView : UserControl
     /// 已经备好的那一条(排队时就展开过引用、并过附件)。给了它就不再重新展开 ——
     /// 排队期间远端文件可能已经变了,发出去的该是用户按下回车那一刻的那份。
     /// </param>
-    private async Task SendAsync(string text, bool fromUser = true, SteeringMessage? prepared = null)
+    /// <param name="userInitiated">
+    /// 这一轮是否由用户本人发起(决定能否拿到 <c>run_local_command</c>)。省略时与 <paramref name="fromUser" /> 相同;
+    /// 排队、编辑重发、继续这些「不是从输入框直接发、但确是用户操作」的路径显式传 true。
+    /// </param>
+    private async Task SendAsync(string text, bool fromUser = true, SteeringMessage? prepared = null, bool? userInitiated = null)
     {
         // 初始化不再随构造跑完(见 InitAsync),设置可能还没到手。这时直接往下走会撞上
         // "尚未配置模型"并把设置窗口弹到脸上 —— 而用户什么都没配错。已完成时这里是一次同步返回。
@@ -1762,6 +1766,7 @@ public partial class ChatPanelView : UserControl
             ClearAttachments();
             bubble = new AssistantBubble(this);
             BindTransfers(runScope, bubble);
+            bubble.CommandRun = runScope;
             ActiveBubble = bubble;
             MessagesPanel.Children.Add(bubble.Root);
             TrimMessageWindow(); // 常驻条数封顶,别让可视树越聊越长
@@ -2190,7 +2195,8 @@ public partial class ChatPanelView : UserControl
                     _toolbox.LocalMaxDirectoryEntries = _settings.LocalMaxDirectoryEntries;
                     subagentTemplate ??= _toolbox.CreateSubagentToolbox();
                     IList<AITool> tools = mode == ChatMode.Chat ? [] : _toolbox.CreateTools(mode, nativeSearch, runScope,
-                        interactiveLocal: fromUser && CurrentToolSessionId() is null,
+                        // 本机命令只给用户本人发起的轮次:键入、排队、编辑重发、继续都算;外部注入(SendExternal)不算
+                        interactiveLocal: (userInitiated ?? fromUser) && CurrentToolSessionId() is null,
                         workspaceGate: async action => await Dispatcher.UIThread.InvokeAsync(() => action(GetActiveLocalWorkspaces())));
                     if (bubble?.ImageTools is { } imageTools)
                         foreach (AITool tool in imageTools.CreateTools(_settings, current.Provider.Id)) tools.Add(tool);
@@ -2746,7 +2752,7 @@ public partial class ChatPanelView : UserControl
         if (SteeringQueue.DrainMerged() is { } next)
         {
             RenderQueuedChips();
-            await SendAsync(next.DisplayText, fromUser: false, prepared: next);
+            await SendAsync(next.DisplayText, fromUser: false, prepared: next, userInitiated: next.UserInitiated);
             return;
         }
 
@@ -3606,8 +3612,17 @@ public partial class ChatPanelView : UserControl
         stack.Children.Add(new Border
         {
             Classes = { "cardCode" },
-            // 团队计划比一条命令长得多(成员 + 任务 + 依赖),放宽到能看全
-            Child = new SelectableTextBlock { Classes = { "mono" }, Text = request.Kind == "run_local_command" ? request.Summary : Truncate(request.Summary, request.Kind == "team_run" ? 2000 : 600) }
+            // 团队计划比一条命令长得多(成员 + 任务 + 依赖),放宽到能看全。
+            // 本机命令必须让人看到全文(审批的就是这段),但再长也只占卡片里一块可滚动的区域,不把面板撑爆
+            Child = request.Kind == "run_local_command"
+                ? new ScrollViewer
+                {
+                    Name = "ApprovalCommandScroll",
+                    MaxHeight = 320,
+                    HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                    Content = new SelectableTextBlock { Classes = { "mono" }, Text = request.Summary }
+                }
+                : new SelectableTextBlock { Classes = { "mono" }, Text = Truncate(request.Summary, request.Kind == "team_run" ? 2000 : 600) }
         });
         // 主/次操作对齐宿主按钮方案:批准 = 强调药丸,拒绝 = 描边换危险色
         var approveButton = new Button { Content = _loc["Approve"], Height = 24, Padding = new Thickness(12, 0) };
@@ -4155,6 +4170,7 @@ public partial class ChatPanelView : UserControl
             ShowToolImage(result);
             if (_toolCards.TryGetValue(callId, out ToolCard? card))
             {
+                card.CommandRun ??= CommandRun;
                 if (Transfers?.Bind(card, result) != true) card.Complete(result);
                 card.Group?.Refresh();
             }
@@ -4175,6 +4191,12 @@ public partial class ChatPanelView : UserControl
             // Markdown 段不需要收口:LiveMarkdown 自己会把最后一次追加渲染完
             _thinking?.SetBody(_thinkingText.ToString());
             MarkThinkingDone();
+            // 没等到结果的前台命令(被停掉、出错、历史里缺结果):计时定格,别让秒数一直往上跳。
+            // 已转入后台的任务不受影响,它们由各自的轮询跟踪到终态。
+            foreach (ToolCard card in _toolCards.Values)
+            {
+                card.SettleForegroundClock();
+            }
             _phaseChip.IsVisible = false; // 一轮到此为止,阶段芯片退场(历史回放也走这里)
             // 默认本来就是收起的;这里不再强制折叠 —— 用户中途点开了就让它开着,
             // 别在他正读的时候把内容抽走。
@@ -4466,11 +4488,11 @@ public partial class ChatPanelView : UserControl
             ToolName = name;
             _argumentsJson = argumentsJson;
 
-            // 类别图标 | 工具名 | 参数摘要 | +N −M | 状态 | 箭头
+            // 类别图标 | 工具名 | 参数摘要 | +N −M | 命令耗时 / 退出码 | 状态 | 箭头
             // 左边一眼看出「这是读文件 / 改文件 / 跑命令」,右边状态图标照旧着色(运行 / 成功 / 需留意)
             var header = new Grid
             {
-                ColumnDefinitions = [with("Auto,Auto,*,Auto,Auto,Auto")],
+                ColumnDefinitions = [with("Auto,Auto,*,Auto,Auto,Auto,Auto")],
                 Background = Brushes.Transparent,
                 Cursor = new Cursor(StandardCursorType.Hand)
             };
@@ -4519,8 +4541,9 @@ public partial class ChatPanelView : UserControl
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
             };
             ToolTip.SetTip(_statusIconHost, owner._loc["ToolRunning"]);
-            Grid.SetColumn(_statusIconHost, 4);
+            Grid.SetColumn(_statusIconHost, 5);
             header.Children.Add(_statusIconHost);
+            InitCommandStatus(header, column: 4);
             Diff = ToolDiff.FromArguments(name, argumentsJson);
             UpdateDiffStats();
 
@@ -4538,7 +4561,7 @@ public partial class ChatPanelView : UserControl
             _chevron[!Avalonia.Controls.Shapes.Shape.StrokeProperty] =
                 new DynamicResourceExtension("VelaTextMuted");
             var chevronBox = new Viewbox { Width = 10, Height = 10, Child = _chevron, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
-            Grid.SetColumn(chevronBox, 5);
+            Grid.SetColumn(chevronBox, 6);
             header.Children.Add(chevronBox);
 
             _detailsText = new SelectableTextBlock { Classes = { "mono" } };
@@ -4572,6 +4595,11 @@ public partial class ChatPanelView : UserControl
             {
                 _statusIconHost.Child = MakeIcon("Icon.circle-alert", "VelaWarning", 11);
                 ToolTip.SetTip(_statusIconHost, _owner._loc["TransferUnknown"]);
+                return;
+            }
+            // 命令类:按退出码 / 任务状态着色并标上耗时;转入后台的继续实时跟踪(见 ChatPanelView.CommandStatus.cs)
+            if (CompleteCommand(result))
+            {
                 return;
             }
             if (IsFailedToolResult(result))

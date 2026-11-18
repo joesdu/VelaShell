@@ -89,6 +89,50 @@ public sealed class CommandJobRegistryTests
         Assert.IsEmpty(await scope.WaitForCompletionAsync());
     }
 
+    /// <summary>
+    /// 界面卡片实时跟踪后台任务时读到终态,不能把留给模型的完成通知消费掉 —— 否则模型永远等不到「任务结束」。
+    /// </summary>
+    [TestMethod]
+    public async Task UiPeekOfTerminalState_DoesNotConsumeTheModelsCompletionNotification()
+    {
+        TaskCompletionSource finish = Signal();
+        var exec = new ControlledExec
+        {
+            Handler = async (_, output, token) =>
+            {
+                output.Report(new(ExecStream.StandardOutput, "building…"));
+                await finish.Task.WaitAsync(token);
+                return new(0, 0);
+            }
+        };
+        await using var registry = new CommandJobRegistry(exec);
+        await using CommandJobRunScope scope = registry.BeginRun("owner", "run");
+        string id = registry.Start(scope, "session", "make");
+        Assert.AreEqual(CommandJobState.Running, (await registry.WaitAsync(scope, id, TimeSpan.Zero)).State);
+        registry.MarkBackground(scope, id);
+
+        CommandJobSnapshot running = await scope.PeekAsync(id);
+        Assert.AreEqual(CommandJobState.Running, running.State);
+        Assert.AreEqual("building…", running.Output.Single().Text);
+        Assert.IsEmpty((await scope.PeekAsync(id, running.NextCursor)).Output, "游标之后没有新输出");
+
+        finish.SetResult();
+        CommandJobSnapshot peeked = running;
+        for (int i = 0; i < 250 && !peeked.IsTerminal; i++)
+        {
+            await Task.Delay(20);
+            peeked = await scope.PeekAsync(id);
+        }
+        Assert.AreEqual(CommandJobState.Succeeded, peeked.State, "界面读到了终态");
+        Assert.IsNotNull(peeked.CompletedAt);
+
+        // 界面先读到终态之后,模型这边才来要通知:仍要收得到
+        Assert.IsTrue(scope.HasActiveJobs, "界面读取不算模型已知晓");
+        IReadOnlyList<CommandJobSnapshot> delivered = await scope.WaitForCompletionAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual(id, delivered.Single().TaskId);
+        Assert.IsFalse(scope.HasActiveJobs);
+    }
+
     /// <summary>模型已经用 task_wait / task_status 拿到终态,就不该再收一条完成通知、多请求一次模型。</summary>
     [TestMethod]
     public async Task TerminalStateReadByTheModel_IsNotNotifiedAgain()

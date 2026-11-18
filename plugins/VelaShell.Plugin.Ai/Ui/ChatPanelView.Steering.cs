@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
@@ -18,7 +19,7 @@ namespace VelaShell.Plugin.Ai.Ui;
 /// "只看最近一小时的",它读完当前工具结果就能照办。
 /// </para>
 /// <para>
-/// 插话在三个地方留痕,缺一不可:输入框上方的排队芯片(还没送出去,点一下可撤回)、
+/// 插话在三个地方留痕,缺一不可:输入框上方的排队芯片(还没送出去,点一下放回输入框继续编辑)、
 /// 回复里的一张卡(送到了,而且看得出是插在哪一步之间的)、以及对话历史与库
 /// (下一轮模型仍读得到,翻回旧会话也还在)。
 /// </para>
@@ -35,6 +36,12 @@ public partial class ChatPanelView
 
     /// <summary>单枚排队芯片上显示几个字。</summary>
     private const int MaxQueuedChipChars = 42;
+
+    /// <summary>
+    /// 入队时一并带走的本地附件(图片 / 文本文件)。入队会清空输入区的附件栏,
+    /// 撤回到输入框时要原样还回去,否则用户贴的图就跟着那条消息一起丢了。
+    /// </summary>
+    private readonly ConditionalWeakTable<SteeringMessage, LocalAttachment[]> _queuedAttachments = [];
 
     // 插话状态(队列 / 本轮通道 / 已提交条数)按对话各持一份,见 Conversation。
     // 这里经代理落到当前那一轮的那一份:_steeringQueue / _steering / _steeringCommitted。
@@ -81,8 +88,14 @@ public partial class ChatPanelView
                 AddAttachmentFailureNote(unreadable);
             }
             var message = new ChatMessage(ChatRole.User, BuildUserContents(modelText));
+            LocalAttachment[] attachments = [.. _attachments];
             ClearAttachments();
-            SteeringQueue.Enqueue(new SteeringMessage(display, text, message));
+            var queued = new SteeringMessage(display, text, message, UserInitiated: fromUser);
+            if (attachments.Length > 0)
+            {
+                _queuedAttachments.AddOrUpdate(queued, attachments);
+            }
+            SteeringQueue.Enqueue(queued);
         }
         catch (OperationCanceledException)
         {
@@ -104,7 +117,7 @@ public partial class ChatPanelView
             if (SteeringQueue.DrainMerged() is { } next)
             {
                 RenderQueuedChips();
-                await SendAsync(next.DisplayText, fromUser: false, prepared: next);
+                await SendAsync(next.DisplayText, fromUser: false, prepared: next, userInitiated: next.UserInitiated);
             }
             return;
         }
@@ -217,8 +230,45 @@ public partial class ChatPanelView
             return;
         }
         RenderQueuedChips();
-        RestoreToInput(string.Join("\n\n", left.Select(item => item.RawText)));
+        ReturnToComposer(left);
         StatusText.Text = _loc["QueueReturned"];
+    }
+
+    /// <summary>
+    /// 把已出队的插话还给输入区:正文接在现有草稿之后,入队时带走的附件放回附件栏
+    /// (仍受附件数量上限约束,超出的不再塞回)。
+    /// </summary>
+    private void ReturnToComposer(IReadOnlyList<SteeringMessage> items)
+    {
+        bool attachmentsChanged = false;
+        foreach (SteeringMessage item in items)
+        {
+            if (!_queuedAttachments.TryGetValue(item, out LocalAttachment[]? attachments))
+            {
+                continue;
+            }
+            _queuedAttachments.Remove(item);
+            foreach (LocalAttachment attachment in attachments)
+            {
+                if (_attachments.Count >= MaxLocalAttachments)
+                {
+                    break;
+                }
+                _attachments.Add(attachment);
+                attachmentsChanged = true;
+            }
+        }
+        if (attachmentsChanged)
+        {
+            RenderAttachmentChips();
+        }
+        RestoreToInput(string.Join("\n\n", items.Select(item => item.RawText).Where(text => text.Length > 0)));
+        if (!attachmentsChanged)
+        {
+            return;
+        }
+        // 只有附件、没有正文时 RestoreToInput 不动输入框,焦点照样给它,方便接着打字或直接回车。
+        InputBox.TextArea.Focus();
     }
 
     /// <summary>把一段文本放回输入框(已有草稿就接在后面,不覆盖)。</summary>
@@ -279,9 +329,12 @@ public partial class ChatPanelView
         chip.PointerPressed += (_, e) =>
         {
             e.Handled = true;
+            // 撤回 = 放回输入框继续改,而不是直接丢掉:多半是想补一句或改个字,
+            // 真要删,在输入框里删掉就是。Remove 失败说明它刚好已经送出去了,不再放回。
             if (SteeringQueue.Remove(item))
             {
                 RenderQueuedChips();
+                ReturnToComposer([item]);
             }
         };
         return chip;

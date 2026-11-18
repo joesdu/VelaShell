@@ -157,9 +157,12 @@ public sealed partial class ChatPanelViewUiTests
         });
     }
 
-    /// <summary>点一枚排队芯片就是撤回:这一轮答完也不该再把它发出去。</summary>
+    /// <summary>
+    /// 点一枚排队芯片就是撤回到输入框继续编辑:内容回到输入框而不是消失,
+    /// 这一轮答完也不该再把它自动发出去。
+    /// </summary>
     [TestMethod]
-    public void ClickingAQueuedChip_TakesTheMessageBack()
+    public void ClickingAQueuedChip_MovesTheMessageBackToTheInputBox()
     {
         OnUi(async () =>
         {
@@ -189,12 +192,15 @@ public sealed partial class ChatPanelViewUiTests
                 await PumpAsync(5);
 
                 Assert.IsFalse(queued.IsVisible, "撤回之后这一行就该收掉");
+                Assert.AreEqual("说错了,撤回", input.Text, "撤回的内容回到输入框,而不是直接消失");
+                Assert.AreEqual(input.Document.TextLength, input.CaretOffset, "光标停在末尾,接着就能改");
                 // 撤回完成,这才让这一轮答完 —— 队里已经没人,不该再发第二次
                 stub.Release();
                 Assert.IsTrue(await WaitForAsync(() => !Find<Viewbox>(panel, "StopIcon").IsVisible, maxRounds: 200),
                     "这一轮该正常答完");
                 await PumpAsync(20);
                 Assert.HasCount(1, stub.Requests, "撤回了就不该再发出去");
+                Assert.AreEqual("说错了,撤回", input.Text, "答完之后草稿仍留在输入框里,由用户决定改不改、发不发");
             }
             finally
             {

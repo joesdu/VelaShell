@@ -78,7 +78,7 @@ public partial class ChatPanelView
         {
             return;
         }
-        await SendAsync(text, fromUser: false);
+        await SendAsync(text, fromUser: false, userInitiated: true);
     }
 
     /// <summary>截断到某条用户气泡之前。返回是否真的动了。</summary>

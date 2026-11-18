@@ -543,11 +543,16 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
                 "Cancel a delegated subagent by id. Changes it already made are not rolled back."), false));
         }
         if (interactiveLocal && workspaceGate is not null && mode == ChatMode.Agent && _parentToolbox is null && ApprovalHandler is not null
-            && TryResolveLocal(null, ".", write: true, out LocalPath cwd, out _) && cwd.Workspace.AllowRead)
+            // 运行时要求工作区可读可写(见 LocalCommandBinding.Allowed),注册条件与之一致:只读工作区不暴露一个永远跑不了的工具
+            && TryResolveLocal(null, ".", write: true, out LocalPath cwd, out _) && cwd.Workspace.AllowRead && cwd.Workspace.AllowWrite)
         {
             var binding = new LocalCommandBinding(this, cwd, workspaceGate, context.Shutdown);
             all.Add(("run_local_command", AIFunctionFactory.Create(binding.RunAsync, "run_local_command",
-                $"Run a foreground command on the local computer with the selected workspace as the working directory and the desktop process's PATH. {(OperatingSystem.IsWindows() ? "Uses pwsh when available, with Windows PowerShell as a fallback." : "Uses an executable bash or zsh from $SHELL when available, otherwise prefers zsh over bash.")} Use for local CLI commands such as dotnet test or docker. Interpreter launches follow the desktop approval mode. Returns stdout, stderr and exit code. Do not use SSH tools as a fallback."), false));
+                $"Run a command on the local computer with the selected workspace as the working directory. {(OperatingSystem.IsWindows() ? "Uses pwsh when available, with Windows PowerShell as a fallback." : "Uses an executable bash or zsh from $SHELL when available, otherwise prefers zsh over bash.")} "
+                + "Use for local CLI commands such as dotnet test or docker. Interpreter launches follow the desktop approval mode. "
+                + "Returns the same task snapshot as run_command (state, exitCode, stdout/stderr output, timestamps). If it is still running after waitSeconds, "
+                + "it continues in the background with a taskId: use task_status/task_wait/task_cancel, and you are notified when it finishes. "
+                + "Background processes the command leaves behind (e.g. `&`, start /b) are not monitored. Do not use SSH tools as a fallback."), false));
         }
         // 团队模式:成员分角色、任务带依赖与审查,由引擎调度并汇成一份报告(见 TeamEngine)。
         // 汇总报告只能经协调器推回去;对外 MCP 唤不醒外部模型(DeliversResults=false),那条路不给团队工具

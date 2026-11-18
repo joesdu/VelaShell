@@ -47,12 +47,12 @@ public sealed partial class ChatPanelViewUiTests
                 await PumpAsync(10);
                 Assert.IsTrue(Find<DockPanel>(panel, "HistoryHost").IsVisible);
                 MethodInfo send = typeof(ChatPanelView).GetMethod("SendAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-                await (Task)send.Invoke(panel, ["/resume " + id, true, null])!;
+                await (Task)send.Invoke(panel, ["/resume " + id, true, null, null])!;
                 Assert.HasCount(2, Find<StackPanel>(panel, "MessagesPanel").Children);
                 Assert.IsTrue(Find<ScrollViewer>(panel, "ChatScroll").IsVisible);
-                await (Task)send.Invoke(panel, ["/help", true, null])!;
+                await (Task)send.Invoke(panel, ["/help", true, null, null])!;
                 Assert.Contains("/clear", Find<TextBlock>(panel, "StatusText").Text!);
-                await (Task)send.Invoke(panel, ["/not-a-command", true, null])!;
+                await (Task)send.Invoke(panel, ["/not-a-command", true, null, null])!;
                 Assert.Contains(new Loc(context.Host.Locale)["CommandUnknown"], Find<TextBlock>(panel, "StatusText").Text!);
                 Assert.HasCount(2, Find<StackPanel>(panel, "MessagesPanel").Children, "commands must not add model turns");
             }
