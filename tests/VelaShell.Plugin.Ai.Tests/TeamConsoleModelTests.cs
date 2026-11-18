@@ -63,64 +63,81 @@ public sealed class TeamConsoleModelTests
     }
 
     /// <summary>
-    /// 主控在顶上;成员按最早那个任务的依赖层数排先后,从左到右摆成一行(上游在左、下游在右),
-    /// 三人以内不换行。隔着一个人的连线会弯出去,不从中间那个节点上穿过。
+    /// 主控在正中;成员沿一圈排开,按最早那个任务的依赖层数从左到右落座(上游在左、下游在右)。
+    /// 主控的指派线都是放射线,不被别的节点挡住。
     /// </summary>
     [TestMethod]
-    public void Layout_PutsMembersLeftToRightInDependencyOrder()
+    public void Layout_PutsTheLeadInTheMiddleAndMembersLeftToRightInDependencyOrder()
     {
         // 声明的顺序故意打乱:排位置看的是依赖,不是声明顺序
         TeamBoardSnapshot team = Board(
             [Member("checker", 2), Member("scout", 0), Member("fixer", 1)],
             [Task("t1", "scout"), Task("t2", "fixer", dependsOn: ["t1"]), Task("t3", "checker", dependsOn: ["t2"], verifies: "t2")]);
 
-        Dictionary<string, Point> at = TeamConsoleModel.Layout(team, out double height);
+        Dictionary<string, Point> at = TeamConsoleModel.Layout(team, out double width, out double height);
 
-        Assert.AreEqual(TeamConsoleModel.GraphWidth / 2, at[TeamConsoleModel.Lead].X, 0.01, "一行三人:主控在正中,三条指派线都是直的");
-        Assert.IsLessThan(at["scout"].Y, at[TeamConsoleModel.Lead].Y);
-        Assert.AreEqual(at["scout"].Y, at["fixer"].Y, 0.01, "三人以内摆成一行");
-        Assert.AreEqual(at["fixer"].Y, at["checker"].Y, 0.01);
+        Point lead = at[TeamConsoleModel.Lead];
+        Assert.AreEqual(width / 2, lead.X, 0.01, "主控在正中");
+        Assert.AreEqual(height / 2, lead.Y, 60, "主控大致在纵向正中(上下各有一圈成员)");
         Assert.IsLessThan(at["fixer"].X, at["scout"].X, "上游在左");
         Assert.IsLessThan(at["checker"].X, at["fixer"].X, "下游在右");
-        Assert.IsGreaterThan(at["checker"].Y + TeamConsoleModel.NodeRadius, height, "画布够高,名字不被裁掉");
-
-        // 相邻两人之间没有东西挡着:走直线(控制点在两端的中点上)
-        TeamEdgeGeometry straight = TeamConsoleModel.Geometry(new TeamEdge("scout", "fixer", "handoff"), at);
-        Assert.AreEqual((straight.Start.Y + straight.End.Y) / 2, straight.Control.Y, 0.01);
-        // 隔着 fixer 的那条(scout → checker)必须弯出去
-        TeamEdgeGeometry around = TeamConsoleModel.Geometry(new TeamEdge("scout", "checker", "collab"), at);
-        double nearest = Enumerable.Range(1, 9).Min(i =>
+        Assert.IsTrue(at.Values.Any(p => p.Y < lead.Y) && at.Values.Any(p => p.Y > lead.Y), "成员围在主控上下,不是一排挂在下面的金字塔");
+        foreach (string member in (string[])["scout", "fixer", "checker"])
         {
-            Point p = around.At(i / 10.0);
-            return Math.Sqrt(Math.Pow(p.X - at["fixer"].X, 2) + Math.Pow(p.Y - at["fixer"].Y, 2));
-        });
-        Assert.IsGreaterThan(TeamConsoleModel.NodeRadius, nearest, "连线绕开了中间的节点");
+            TeamEdgeGeometry line = TeamConsoleModel.Geometry(new TeamEdge(TeamConsoleModel.Lead, member, "assign"), at);
+            Assert.AreEqual((line.Start.X + line.End.X) / 2, line.Control.X, 0.01, $"指派 {member} 的线是直的");
+            Assert.AreEqual((line.Start.Y + line.End.Y) / 2, line.Control.Y, 0.01);
+        }
     }
 
     /// <summary>
-    /// 超过三人换成两行、人数尽量平均(4 = 2 + 2,5 = 3 + 2,6 = 3 + 3);主控放在直线被挡得最少的位置,
-    /// 五人以内每条指派线都是直的,六人时只有正下方隔着一个人的那一条要绕。
+    /// 任何人数下:节点都在画布里(名字不被裁掉),节点与节点、节点与别人的名字互不重叠,相邻成员之间留得开;
+    /// 人数多到一圈放不下时画布随之放大,而不是挤在一起。三人起主控的每条指派线都是直的。
     /// </summary>
     [TestMethod]
-    [DataRow(4, 2, 0)]
-    [DataRow(5, 3, 0)]
-    [DataRow(6, 3, 1)]
-    public void Layout_WrapsIntoTwoRowsAndKeepsTheLeadsLinesClear(int count, int firstRow, int curved)
+    [DataRow(1)]
+    [DataRow(2)]
+    [DataRow(3)]
+    [DataRow(4)]
+    [DataRow(5)]
+    [DataRow(6)]
+    [DataRow(8)]
+    [DataRow(10)]
+    [DataRow(12)]
+    [DataRow(16)]
+    public void Layout_SpreadsAnyTeamSizeEvenlyWithoutOverlap(int count)
     {
         TeamMemberInfo[] members = [.. Enumerable.Range(0, count).Select(i => Member("m" + i, i))];
-        Dictionary<string, Point> at = TeamConsoleModel.Layout(Board(members, [.. members.Select((m, i) => Task("t" + i, m.Name))]), out double height);
+        Dictionary<string, Point> at = TeamConsoleModel.Layout(Board(members, [.. members.Select((m, i) => Task("t" + i, m.Name))]), out double width, out double height);
 
-        Assert.HasCount(2, at.Where(kv => kv.Key != TeamConsoleModel.Lead).Select(kv => kv.Value.Y).Distinct().ToArray());
-        Assert.AreEqual(firstRow, at.Count(kv => kv.Key != TeamConsoleModel.Lead && Math.Abs(kv.Value.Y - at["m0"].Y) < 0.01));
-        Assert.IsGreaterThan(at["m" + (count - 1)].Y + TeamConsoleModel.NodeRadius, height, "画布够高,第二行的名字不被裁掉");
-        int bent = members.Count(member =>
+        const double r = TeamConsoleModel.NodeRadius;
+        Assert.HasCount(count + 1, at);
+        Assert.IsGreaterThanOrEqualTo(TeamConsoleModel.GraphWidth, width);
+        foreach (Point p in at.Values)
+        {
+            Assert.IsTrue(p.X - 95 >= 0 && p.X + 95 <= width, $"({p.X:0},{p.Y:0}) 的名字横向不出画布");
+            Assert.IsTrue(p.Y - r - 10 >= 0 && p.Y + r + 46 <= height, $"({p.X:0},{p.Y:0}) 纵向不出画布");
+        }
+        Point[] all = [.. at.Values];
+        for (int i = 0; i < all.Length; i++)
+        {
+            var node = new Rect(all[i].X - r, all[i].Y - r, r * 2, r * 2);
+            var caption = new Rect(all[i].X - 90, all[i].Y + r + 6, 180, 34);
+            for (int j = 0; j < all.Length; j++)
+            {
+                if (i == j) continue;
+                var other = new Rect(all[j].X - r, all[j].Y - r, r * 2, r * 2);
+                Assert.IsFalse(node.Intersects(other), "节点互不重叠");
+                Assert.IsFalse(caption.Intersects(other), "名字不压别的节点");
+            }
+        }
+        if (count < 3) return;
+        Assert.IsTrue(members.All(member =>
         {
             TeamEdgeGeometry line = TeamConsoleModel.Geometry(new TeamEdge(TeamConsoleModel.Lead, member.Name, "assign"), at);
-            // 直线的控制点正好在两端的中点上
-            return Math.Abs(line.Control.X - ((line.Start.X + line.End.X) / 2)) > 0.01
-                   || Math.Abs(line.Control.Y - ((line.Start.Y + line.End.Y) / 2)) > 0.01;
-        });
-        Assert.AreEqual(curved, bent, "主控的指派线里要绕路的条数");
+            return Math.Abs(line.Control.X - ((line.Start.X + line.End.X) / 2)) < 0.01
+                   && Math.Abs(line.Control.Y - ((line.Start.Y + line.End.Y) / 2)) < 0.01;
+        }), "主控在正中,指派线都是放射线");
     }
 
     /// <summary>
@@ -135,7 +152,7 @@ public sealed class TeamConsoleModelTests
             Task("t0", "m0"), Task("t1", "m1", dependsOn: ["t0"]), Task("t2", "m2", dependsOn: ["t1"]),
             Task("t3", "m3", dependsOn: ["t1"]), Task("t4", "m4", dependsOn: ["t2", "t3"]), Task("t5", "m5", dependsOn: ["t3"], verifies: "t3")
         ]);
-        Dictionary<string, Point> at = TeamConsoleModel.Layout(team, out _);
+        Dictionary<string, Point> at = TeamConsoleModel.Layout(team, out _, out _);
         TeamEdge[] edges = [.. TeamConsoleModel.Edges(team)];
         const double width = 90;
 

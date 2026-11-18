@@ -568,7 +568,9 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             var teamTools = new SubagentToolBinding(teamOrchestrator, this);
             all.Add(("team_run", AIFunctionFactory.Create(teamTools.TeamRun, "team_run",
                 "Run a team of AI members on a larger task that benefits from specialists building on each other's work. "
-                + $"Define up to {TeamEngine.MaxMembers} members (name, role such as researcher/engineer/reviewer/tester/writer, optional modelId, allowWrites) "
+                + "Size the team to the work: one member per distinct responsibility, as few as the task needs; "
+                + $"large projects may use more specialists (hard limit {TeamEngine.MaxMembers}). "
+                + "Define the members (name, role such as researcher/engineer/reviewer/tester/writer, optional modelId, allowWrites) "
                 + $"and up to {TeamEngine.MaxTasks} tasks (id, title, self-contained detail, assignee, dependsOn, optional verifies). "
                 + "The engine starts each task when its dependencies are done, hands upstream reports to dependents, lets members message each other, "
                 + $"sends a task back once (max {TeamEngine.MaxReworks} rework) when its reviewer ends with VERDICT: FAIL, "

@@ -41,6 +41,32 @@
     <SolidColorBrush x:Key="VelaShellMagentaDim" Color="#28A3144D" />
     <SolidColorBrush x:Key="VelaShellSubtleDim"  Color="#206C664B" />
 
+    <!-- AI 团队成员身份色:前五个是种子色(顺序同改版前),其余由相邻色相两两混出(ThemeTokenApplier 同步) -->
+    <SolidColorBrush x:Key="VelaTeamColor0" Color="#036A96" />
+    <SolidColorBrush x:Key="VelaTeamColor1" Color="#644AC9" />
+    <SolidColorBrush x:Key="VelaTeamColor2" Color="#A3144D" />
+    <SolidColorBrush x:Key="VelaTeamColor3" Color="#846E15" />
+    <SolidColorBrush x:Key="VelaTeamColor4" Color="#14710A" />
+    <SolidColorBrush x:Key="VelaTeamColor5" Color="#A85420" />
+    <SolidColorBrush x:Key="VelaTeamColor6" Color="#0C6E50" />
+    <SolidColorBrush x:Key="VelaTeamColor7" Color="#842F8B" />
+    <SolidColorBrush x:Key="VelaTeamColor8" Color="#4C7010" />
+    <SolidColorBrush x:Key="VelaTeamColor9" Color="#345AB0" />
+    <SolidColorBrush x:Key="VelaTeamColor10" Color="#B7273C" />
+    <SolidColorBrush x:Key="VelaTeamColor11" Color="#533F72" />
+    <SolidColorBrush x:Key="VelaTeamColor0Dim" Color="#28036A96" />
+    <SolidColorBrush x:Key="VelaTeamColor1Dim" Color="#28644AC9" />
+    <SolidColorBrush x:Key="VelaTeamColor2Dim" Color="#28A3144D" />
+    <SolidColorBrush x:Key="VelaTeamColor3Dim" Color="#28846E15" />
+    <SolidColorBrush x:Key="VelaTeamColor4Dim" Color="#2814710A" />
+    <SolidColorBrush x:Key="VelaTeamColor5Dim" Color="#28A85420" />
+    <SolidColorBrush x:Key="VelaTeamColor6Dim" Color="#280C6E50" />
+    <SolidColorBrush x:Key="VelaTeamColor7Dim" Color="#28842F8B" />
+    <SolidColorBrush x:Key="VelaTeamColor8Dim" Color="#284C7010" />
+    <SolidColorBrush x:Key="VelaTeamColor9Dim" Color="#28345AB0" />
+    <SolidColorBrush x:Key="VelaTeamColor10Dim" Color="#28B7273C" />
+    <SolidColorBrush x:Key="VelaTeamColor11Dim" Color="#28533F72" />
+
     <!-- 图表刻度文字的底片:曲线面积铺满时,直接写字会糊进填充里。 -->
     <SolidColorBrush x:Key="VelaChartLabelBg" Color="#D0FFFBEB" />
 

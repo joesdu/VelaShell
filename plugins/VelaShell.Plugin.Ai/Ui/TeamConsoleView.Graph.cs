@@ -11,13 +11,14 @@ using Path = Avalonia.Controls.Shapes.Path;
 namespace VelaShell.Plugin.Ai.Ui;
 
 /// <summary>
-/// 团队拓扑与数据流:主控在上,成员按任务的先后分层排开;连线是关系(指派 / 交付 / 协作 / 审查),
+/// 团队拓扑与数据流:主控在正中,成员按任务的先后沿一圈均匀排开;连线是关系(指派 / 交付 / 协作 / 审查),
 /// 每来一条消息就有一串光点沿对应的连线飞过去。
 /// </summary>
 /// <remarks>
 /// 节点外环 = 上下文占用,右上角圆点 = 此刻的状态(执行中带呼吸光晕,思考中带旋转虚线环)。
 /// 点节点看成员,点连线看两人之间的对话;悬停时只留相关的节点与连线。
-/// 整张图画在一块固定宽度的虚拟画布上,由 Viewbox 等比缩放到面板宽度。
+/// 整张图画在一块虚拟画布上(人多时画布随之放大),由 Viewbox 等比缩放到面板宽度。
+/// 图下面一行是最新的一条通信,点它看这条消息;完整的通信记录在右栏的「通信」页。
 /// </remarks>
 internal sealed partial class TeamConsoleView
 {
@@ -112,6 +113,7 @@ internal sealed partial class TeamConsoleView
         var stack = new StackPanel();
         stack.Children.Add(viewbox);
         stack.Children.Add(legend);
+        stack.Children.Add(BuildTicker());
         _graphClock.Tick += (_, _) => TickGraph();
         return Panel(_loc["TeamGraph"], _loc["TeamGraphHint"], toggle, stack, "TeamGraphPanel");
 
@@ -122,6 +124,67 @@ internal sealed partial class TeamConsoleView
             row.Children.Add(TeamUi.Text(text, "VelaTextSecondary", 11));
             return row;
         }
+    }
+
+    // ---------- 最新一条通信 ----------
+
+    private readonly Ellipse _tickerDot = new() { Width = 6, Height = 6, VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock _tickerTime = TeamUi.Text("", "VelaTextTertiary", 11, mono: true);
+    private readonly TextBlock _tickerPair = TeamUi.Text("", "VelaTextPrimary", 12, FontWeight.SemiBold);
+    private readonly TextBlock _tickerText = TeamUi.Line("", "VelaTextSecondary", 12);
+    private TeamMessageInfo? _tickerMessage;
+    private string _tickerColor = "";
+
+    /// <summary>拓扑图下面那一行此刻显示的消息(测试用;还没有通信时为 null)。</summary>
+    internal TeamMessageInfo? TickerMessage => _tickerMessage;
+
+    /// <summary>图下面一行:最新的一条通信(类型色点 · 时刻 · 谁 → 谁:内容),点它看这条消息。</summary>
+    private Border BuildTicker()
+    {
+        Panel latest = TeamUi.Tag(_loc["TeamTickerLatest"], "VelaAccent");
+        var grid = new Grid { ColumnDefinitions = [with("Auto,Auto,Auto,Auto,*")], ColumnSpacing = 7 };
+        grid.Children.Add(latest);
+        grid.Children.Add(_tickerDot.At(1));
+        grid.Children.Add(_tickerTime.At(2));
+        grid.Children.Add(_tickerPair.At(3));
+        grid.Children.Add(_tickerText.At(4));
+        Border row = Clickable(new Border { Name = "TeamGraphTickerRow", Classes = { "tcRow" }, Child = grid }, () =>
+        {
+            if (_tickerMessage is { } message) OpenView(new DrawerView("pair", message.From, message.To, message));
+        });
+        return new Border
+        {
+            Name = "TeamGraphTicker",
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Margin = new Thickness(0, 8, 0, -6),
+            Padding = new Thickness(0, 4, 0, 0),
+            Child = row
+        }.Bind(Border.BorderBrushProperty, "VelaBorderPrimary");
+    }
+
+    private void RefreshTicker()
+    {
+        TeamMessageInfo? last = Team.Messages.Count > 0 ? Team.Messages[^1] : null;
+        if (ReferenceEquals(last, _tickerMessage) && last is not null) return;
+        _tickerMessage = last;
+        if (last is null)
+        {
+            _tickerDot.IsVisible = _tickerTime.IsVisible = _tickerPair.IsVisible = false;
+            _tickerText.Text = _loc["TeamTickerEmpty"];
+            ToolTip.SetTip(_tickerText, null);
+            return;
+        }
+        string color = KindLook(last.Kind).Color;
+        if (color != _tickerColor)
+        {
+            _tickerColor = color;
+            _tickerDot.Bind(Shape.FillProperty, color);
+        }
+        _tickerDot.IsVisible = _tickerTime.IsVisible = _tickerPair.IsVisible = true;
+        _tickerTime.Text = last.At.ToLocalTime().ToString("HH:mm:ss");
+        _tickerPair.Text = $"{PartyOf(last.From).Name} → {PartyOf(last.To).Name}";
+        _tickerText.Text = ChatFormatting.OneLine(last.Text, 300);
+        ToolTip.SetTip(_tickerText, ChatFormatting.OneLine(last.Text, 600));
     }
 
     private void RefreshGraph()
@@ -138,12 +201,14 @@ internal sealed partial class TeamConsoleView
         }
         foreach ((string id, GraphNode node) in _nodes) UpdateNode(id, node);
         FlyNewMessages();
+        RefreshTicker();
         UpdateGraphClock();
     }
 
     private void RebuildGraph(IReadOnlyList<TeamEdge> edges)
     {
-        Dictionary<string, Point> positions = TeamConsoleModel.Layout(Team, out double height);
+        Dictionary<string, Point> positions = TeamConsoleModel.Layout(Team, out double width, out double height);
+        _graphCanvas.Width = width;
         _graphCanvas.Height = height;
         _edgeLayer.Children.Clear();
         _labelLayer.Children.Clear();

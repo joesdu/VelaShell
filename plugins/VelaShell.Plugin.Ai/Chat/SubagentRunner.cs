@@ -353,7 +353,10 @@ internal sealed class SubagentRunner(
         + "(4) the result is risky or important enough that an independent reviewer should check it before you report (config changes, security conclusions, multi-file edits). "
         + "Do NOT form a team for questions you can answer in a few tool calls, single-file edits, simple lookups, or a short sequence of shell commands you can run yourself. "
         + "Members run commands only when you set allowCommands=true for them, and each command still needs the user's approval: enable it only for members whose task requires commands. "
-        + "A team costs several parallel model requests, so keep it small: usually 2–4 members, one task per member per stage. "
+        + "Choose the team size yourself from the scope of the work: give each distinct responsibility its own member and add no member without a clear job. "
+        + "Every member costs model requests (at most 4 run at a time), so small tasks usually need 2–4 members; "
+        + "a large project that spans many areas (for example frontend, backend, database, security, testing and docs) may use more, "
+        + "within team_run's hard limit. Keep one task per member per stage. "
         + "Give every member the model that fits its task by setting its modelId from team_run's allowed models. "
         + ModelSelectionGuidance
         + "Give a reviewer a different model from the author of the work it reviews, preferably from a different provider when a suitable one is listed, "

@@ -1,3 +1,4 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
@@ -5,6 +6,7 @@ using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
@@ -12,55 +14,65 @@ using VelaShell.PluginSdk;
 namespace VelaShell.Plugin.Ai.Ui;
 
 /// <summary>
-/// "配置工具":按来源分组(内置 / 每台 MCP 服务器)列出全部工具,逐个勾选是否暴露给模型;
-/// 每台 MCP 服务器都可以"更新工具库" —— 连上去把它现在提供的工具重新拉一遍。
+/// 「配置工具」窗口:左栏分节导航(扩展包 / MCP 服务器 / 技能 / 工具,带计数),右栏「标题 · 说明 · 搜索 · 列表」。
+/// 版式参照 VS Code Copilot 的配置界面。
 /// </summary>
 /// <remarks>
-/// 勾选状态<b>存的是"没勾的那些"</b>(<see cref="McpServerConfig.DisabledTools" /> /
-/// <see cref="AiSettings.DisabledBuiltinTools" />):服务器以后新增了工具,默认就是可用的,
-/// 而不是因为"不在已保存的白名单里"被静默屏蔽掉。
-///
-/// <para>版式是"左栏服务器概览 + 右栏工具清单"(设计图 G):配完一台服务器紧接着就在同一屏勾选它的工具,
-/// 不用在两个窗口之间来回切。左栏只摆概览(状态点 + 名字 + 传输 · 工具库状态);
-/// 服务器<b>本身怎么配</b>仍在 <see cref="McpServersView" /> —— 它自己就是一整套左列表右表单,
-/// 塞不进 270 宽的左栏,所以另开一个窗口,点概览行或「新增服务器」进去。
-/// 改完它会回调 <see cref="Rebuild" />,这边的左栏与分组当场跟着变。</para>
+/// <para>
+/// <b>为什么改成这样</b>:以前是「左栏 MCP 服务器概览 + 右栏一长串分组」,内置工具、技能、扩展包、各台 MCP 的工具全叠在一页里,
+/// 东西一多就分不清哪块是哪块。现在一节一页:页头说清这一页管什么,搜索只在这一页里筛。
+/// </para>
+/// <para>
+/// <b>行的样子统一</b>:每个来源一行(折叠箭头 + 名字 / 副标题 + 计数 + 操作 + 开关),展开后是逐项的开关行。
+/// 「工具」页按来源分两区:内置工具按类别(取自 <see cref="ToolIcons" /> 的类别,与工具卡片同一套),
+/// MCP 每台服务器一行(行尾开关是服务器本身的启停,展开逐个工具)。搜索时只留匹配的项,含匹配的来源自动展开。
+/// </para>
+/// <para>
+/// 勾选状态<b>存的是「没勾的那些」</b>(<see cref="McpServerConfig.DisabledTools" /> / <see cref="AiSettings.DisabledBuiltinTools" /> /
+/// <see cref="AiSettings.DisabledSkills" />):以后新增的工具、技能默认可用,而不是因为不在白名单里被静默屏蔽。
+/// 每次改动当场保存,没有「保存」按钮。服务器<b>怎么配</b>仍在 <see cref="McpServersView" /> 那张表单里,点服务器行或「新增服务器」打开。
+/// </para>
 /// </remarks>
 public sealed partial class ToolPickerView : UserControl
 {
+    /// <summary>左栏的分节。</summary>
+    internal enum Page
+    {
+        Extensions,
+        McpServers,
+        Skills,
+        Tools
+    }
+
     private readonly IPluginContext _context;
     private readonly AiSettings _settings;
     private readonly Loc _loc;
     private readonly Func<Task> _persist;
-    private readonly StackPanel _groups = new() { Spacing = 14 };
-    private readonly TextBlock _status = new() { Classes = { "dim" }, TextWrapping = TextWrapping.Wrap };
-
-    /// <summary>左栏的服务器概览行容器。</summary>
-    private readonly StackPanel _servers = new();
-
-    /// <summary>一台服务器都没有时左栏摆的那句话。</summary>
-    private readonly TextBlock _serversEmpty = new() { Classes = { "dim" }, TextWrapping = TextWrapping.Wrap, IsVisible = false };
-
-    /// <summary>点某台服务器(或「新增」,此时参数为 null)时打开那张配置表单。</summary>
     private readonly Action<string?> _openServerEditor;
 
-    /// <summary>
-    /// 各组的折叠状态,键 = 组 id(内置 = 空串,MCP = 服务器 id)。只活在这个视图里,不落盘:
-    /// 重建(改服务器 / 刷新工具库)时保住用户刚才折/展的样子就够了。
-    /// MCP 组默认折起 —— 一台服务器动辄二三十个工具,全展开这页长得没法看;
-    /// 内置那组就几个,默认展开。
-    /// </summary>
-    private readonly Dictionary<string, bool> _collapsed = [with(StringComparer.Ordinal)];
+    private readonly ListBox _nav = new() { Name = "ToolsNav", Classes = { "nav" } };
+    private readonly TextBlock _title = new() { Name = "PageTitle", Classes = { "pageTitle" } };
+    private readonly TextBlock _description = new() { Name = "PageDescription", Classes = { "pageDesc" }, Margin = new Avalonia.Thickness(0, 4, 0, 0) };
+    private readonly StackPanel _pageActions = new() { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBox _search = new() { Name = "ToolsSearch", Height = 28, MinHeight = 28, Padding = new Avalonia.Thickness(8, 0) };
+    private readonly StackPanel _content = new() { Name = "PageContent", Spacing = 2 };
+    private readonly TextBlock _status = new() { Name = "ToolsStatus", Classes = { "dim" }, TextWrapping = TextWrapping.Wrap };
 
-    /// <param name="context">插件上下文(只用来记日志)。</param>
-    /// <param name="settings">面板共享的设置实例;勾选直接改它。</param>
+    private Page _page = Page.Tools;
+    private bool _syncingNav;
+
+    /// <summary>
+    /// 各来源行的折叠状态,键 = 来源 id。只活在这个视图里,不落盘:重建(改服务器 / 刷新工具库)时保住刚才折 / 展的样子就够了。
+    /// 默认折起 —— 一台 MCP 服务器动辄二三十个工具,全展开这页长得没法看;折着也能从计数与开关看出个大概。
+    /// </summary>
+    private readonly Dictionary<string, bool> _expanded = [with(StringComparer.Ordinal)];
+
+    /// <param name="context">插件上下文(记日志、取插件数据目录)。</param>
+    /// <param name="settings">面板共享的设置实例;开关直接改它。</param>
     /// <param name="loc">多语言文案。</param>
-    /// <param name="persist">把设置落盘(勾一下就存一次,没有"保存"按钮)。</param>
-    /// <param name="openServerEditor">
-    /// 打开某台服务器的配置表单;参数为 null 表示"新增一台"。
-    /// 左栏只摆概览,表单仍在 <see cref="McpServersView" />(它自己就是左列表右表单,塞不进 270 宽)。
-    /// </param>
-    /// <param name="mcpChanged">扩展包启停 / 卸载 / 重新确认之后调用,让面板对齐 MCP 连接;可为空。</param>
+    /// <param name="persist">把设置落盘(拨一下就存一次)。</param>
+    /// <param name="openServerEditor">打开某台服务器的配置表单;参数为 null 表示「新增一台」。</param>
+    /// <param name="mcpChanged">MCP 服务器启停、扩展包启停 / 卸载 / 重新确认之后调用,让面板对齐 MCP 连接;可为空。</param>
     public ToolPickerView(IPluginContext context, AiSettings settings, Loc loc, Func<Task> persist,
         Action<string?> openServerEditor, Func<Task>? mcpChanged = null)
     {
@@ -70,85 +82,69 @@ public sealed partial class ToolPickerView : UserControl
         _persist = persist;
         _openServerEditor = openServerEditor;
         _mcpChanged = mcpChanged;
-        _serversEmpty.Text = _loc["McpNoServers"];
         // 这套版式规则原先由插件自己的对话框外壳下发;窗体换成宿主的自绘卡片之后自己带上
         Styles.Add(new StyleInclude(new Uri("avares://VelaShell.Plugin.Ai/"))
         {
             Source = new Uri("avares://VelaShell.Plugin.Ai/Ui/DialogStyles.axaml")
         });
-        // 勾选框要用插件自己写的那套(15×15 + 强调色):Fluent 默认那个是高饱和蓝方块,
-        // 跟本程序的强调色不是一回事,一屏十几个尤其扎眼。
+        // 开关与勾选框用插件自己画的那套:Fluent 默认是高饱和蓝,跟本程序的强调色不是一回事
         Resources.MergedDictionaries.Add(new ResourceInclude(new Uri("avares://VelaShell.Plugin.Ai/"))
         {
             Source = new Uri("avares://VelaShell.Plugin.Ai/Ui/AiTheme.axaml")
         });
 
-        // 内边距 20/16:内容直接贴着窗口边框很难看(这是补上的)。
-        // 右边这 20 拆成 10(根)+ 10(滚动区内):滚动条是浮在内容上、贴着<b>滚动区</b>右缘画的,
-        // 全放根上的话它就飘在卡片边上了;拆开之后滚动区比卡片宽出 10,条子正好落在空档里。
-        // 卡片左右仍旧各离窗口 20(离屏渲染量过:左 20 / 右 20)。
-        const double gutter = 10;
-        var right = new DockPanel { Margin = new Avalonia.Thickness(20, 16, 20 - gutter, 16) };
-        _status.Margin = new Avalonia.Thickness(0, 10, gutter, 0);
-        DockPanel.SetDock(_status, Dock.Bottom);
-        var hint = new TextBlock
+        // ── 左栏:分节导航 ──
+        _nav.SelectionChanged += (_, _) =>
         {
-            Classes = { "dim" },
-            Text = _loc["McpHint"],
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Avalonia.Thickness(0, 0, gutter, 10)
+            if (_syncingNav || _nav.SelectedItem is not ListBoxItem { Tag: Page page } || page == _page) return;
+            _page = page;
+            _search.Text = "";
+            RenderPage();
         };
-        DockPanel.SetDock(hint, Dock.Top);
-        right.Children.Add(hint);
-        right.Children.Add(_status);
-        right.Children.Add(new ScrollViewer
-        {
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            // 覆盖式滚动条会压住右缘,留白放在内容上而不是 ScrollViewer.Padding
-            Content = new Border { Padding = new Avalonia.Thickness(0, 0, gutter, 0), Child = _groups }
-        });
-
-        // 左栏:MCP 服务器概览。配好一台服务器紧接着就要挑它的工具,那份勾选列表就在右边 ——
-        // 原先两者隔着两个窗口来回切。这里只摆概览(状态点 + 名字 + 传输),
-        // 真要改仍旧回到 McpServersView 那张"左列表右表单" —— 它塞不进 270 宽。
-        var left = new Grid { RowDefinitions = [with("Auto,Auto,*,Auto")], Margin = new Avalonia.Thickness(16, 16, 16, 16) };
-        left.Children.Add(new TextBlock
-        {
-            Classes = { "section-title" },
-            Text = _loc["McpServers"],
-            [!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize12")
-        });
-        var paneHint = new TextBlock
-        {
-            Classes = { "dim" },
-            Text = _loc["McpPaneHint"],
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Avalonia.Thickness(0, 6, 0, 10)
-        };
-        Grid.SetRow(paneHint, 1);
-        left.Children.Add(paneHint);
-        var serverScroll = new ScrollViewer
-        {
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Content = _servers
-        };
-        Grid.SetRow(serverScroll, 2);
-        left.Children.Add(serverScroll);
-        Button add = OutlineButton("Icon.plus", _loc["McpAdd"], () => _openServerEditor(null));
-        add.Name = "McpRailAddButton"; // 用例按名字找它(文案随语言变,不能按文字找)
-        add.Margin = new Avalonia.Thickness(0, 10, 0, 0);
-        add.HorizontalAlignment = HorizontalAlignment.Stretch;
-        Grid.SetRow(add, 3);
-        left.Children.Add(add);
-
         var rail = new Border
         {
-            Width = 270,
-            Child = left,
+            Width = 210,
+            Padding = new Avalonia.Thickness(0, 14, 0, 14),
+            Child = _nav,
             BorderThickness = new Avalonia.Thickness(0, 0, 1, 0)
         };
         rail[!BackgroundProperty] = new DynamicResourceExtension("VelaBgSidebar");
         rail[!BorderBrushProperty] = new DynamicResourceExtension("VelaBorderPrimary");
+
+        // ── 右栏:页头(标题 + 页内操作)、说明、搜索,下面是可滚动的列表,最底下一行状态 ──
+        _search.PlaceholderText = _loc["ToolsSearch"];
+        _search[!FontSizeProperty] = new DynamicResourceExtension("VelaFontSize12");
+        _search.TextChanged += (_, _) => RenderContent();
+        AutomationProperties.SetName(_search, _loc["ToolsSearch"]);
+
+        var head = new Grid { ColumnDefinitions = [with("*,Auto")] };
+        head.Children.Add(_title);
+        Grid.SetColumn(_pageActions, 1);
+        head.Children.Add(_pageActions);
+
+        // 内容区限宽居中:窗口拉宽时一行不至于拉到一屏那么长,开关离名字太远就对不上了
+        var header = new StackPanel { Spacing = 0, MaxWidth = 860 };
+        header.Children.Add(head);
+        header.Children.Add(_description);
+        header.Children.Add(new Border { Height = 12 });
+        header.Children.Add(_search);
+        header.Children.Add(new Border { Height = 10 });
+        DockPanel.SetDock(header, Dock.Top);
+
+        _status.Margin = new Avalonia.Thickness(0, 10, 0, 0);
+        _status.MaxWidth = 860;
+        DockPanel.SetDock(_status, Dock.Bottom);
+
+        var scroll = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            // 覆盖式滚动条会压住右缘:留白放在内容上
+            Content = new Border { Padding = new Avalonia.Thickness(0, 0, 12, 0), MaxWidth = 872, Child = _content }
+        };
+        var right = new DockPanel { Margin = new Avalonia.Thickness(28, 20, 16, 16) };
+        right.Children.Add(header);
+        right.Children.Add(_status);
+        right.Children.Add(scroll);
 
         var root = new Grid { ColumnDefinitions = [with("Auto,*")] };
         root.Children.Add(rail);
@@ -159,95 +155,276 @@ public sealed partial class ToolPickerView : UserControl
         Rebuild();
     }
 
-    /// <summary>描边小按钮(图标 + 文字),供左栏的「新增服务器」与组里的「更新工具库」共用。</summary>
-    private static Button OutlineButton(string icon, string text, Action onClick)
+    /// <summary>当前在哪一节(测试用)。</summary>
+    internal Page CurrentPage => _page;
+
+    /// <summary>切到某一节(测试用;界面上由左栏切换)。</summary>
+    internal void ShowPage(Page page)
     {
-        var content = new StackPanel
+        _page = page;
+        _search.Text = "";
+        Rebuild();
+    }
+
+    /// <summary>整窗重建:左栏计数与当前这一节(改完服务器、刷新工具库、启停之后都走这里)。</summary>
+    public void Rebuild()
+    {
+        RebuildNav();
+        RenderPage();
+    }
+
+    private void RebuildNav()
+    {
+        _syncingNav = true;
+        try
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 5,
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Center
+            _nav.Items.Clear();
+            AddNav(Page.Extensions, _loc["ExtensionsGroup"], Extensions.List().Count);
+            AddNav(Page.McpServers, _loc["McpServers"], _settings.McpServers.Count);
+            AddNav(Page.Skills, _loc["SkillsGroup"], ScanSkills().Count(s => s.IsValid));
+            AddNav(Page.Tools, _loc["ToolsNavTools"], CountEnabled());
+            _nav.SelectedItem = _nav.Items.OfType<ListBoxItem>().First(i => (Page)i.Tag! == _page);
+        }
+        finally
+        {
+            _syncingNav = false;
+        }
+    }
+
+    private void AddNav(Page page, string label, int count)
+    {
+        var row = new Grid { ColumnDefinitions = [with("*,Auto")] };
+        row.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+        var number = new TextBlock { Classes = { "count" }, Text = count.ToString(System.Globalization.CultureInfo.InvariantCulture), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(number, 1);
+        row.Children.Add(number);
+        var item = new ListBoxItem { Name = "Nav" + page, Tag = page, Content = row };
+        AutomationProperties.SetName(item, $"{label} {count}");
+        _nav.Items.Add(item);
+    }
+
+    /// <summary>换页:页头(标题、说明、页内操作)与列表一起换。</summary>
+    private void RenderPage()
+    {
+        _pageActions.Children.Clear();
+        (string title, string description) = _page switch
+        {
+            Page.Extensions => (_loc["ExtensionsGroup"], _loc["PageExtensionsDesc"]),
+            Page.McpServers => (_loc["McpServers"], _loc["McpHint"]),
+            Page.Skills => (_loc["SkillsGroup"], _loc["PageSkillsDesc"]),
+            _ => (_loc["ToolsNavTools"], _loc["PageToolsDesc"])
         };
-        content.Children.Add(new Viewbox { Width = 11, Height = 11, Child = Glyph(icon), VerticalAlignment = VerticalAlignment.Center });
-        content.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center, [!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize11") });
-        var button = new Button { Content = content, Height = 26, Padding = new Avalonia.Thickness(10, 0) };
+        _title.Text = title;
+        _description.Text = description;
+        switch (_page)
+        {
+            case Page.Extensions: AddExtensionActions(); break;
+            case Page.McpServers: AddServerActions(); break;
+            case Page.Skills: AddSkillActions(); break;
+        }
+        RenderContent();
+    }
+
+    /// <summary>只重画列表(搜索词变了时走这里,页头不动)。</summary>
+    private void RenderContent()
+    {
+        _content.Children.Clear();
+        switch (_page)
+        {
+            case Page.Extensions: BuildExtensionsPage(); break;
+            case Page.McpServers: BuildServersPage(); break;
+            case Page.Skills: BuildSkillsPage(); break;
+            default: BuildToolsPage(); break;
+        }
+        if (_content.Children.Count == 0 && Query.Length > 0)
+        {
+            _content.Children.Add(new TextBlock { Name = "ToolsNoMatch", Classes = { "dim" }, Text = _loc["ToolsNoMatch"], Margin = new Avalonia.Thickness(6, 4) });
+        }
+        _status.Text = _loc.F("ToolsSelected", CountEnabled());
+    }
+
+    // ───────────────────────── 搜索 ─────────────────────────
+
+    private string Query => _search.Text?.Trim() ?? "";
+
+    /// <summary>这几段文字里有没有搜索词(没搜索时恒为 true)。</summary>
+    private bool Matches(params string?[] texts)
+        => Query.Length == 0 || texts.Any(t => t?.Contains(Query, StringComparison.OrdinalIgnoreCase) == true);
+
+    // ───────────────────────── 通用行 ─────────────────────────
+
+    /// <summary>分区标题:「内置 23」「MCP 2」。</summary>
+    private static StackPanel SectionLabel(string text, int count)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Avalonia.Thickness(6, 12, 0, 4) };
+        row.Children.Add(new TextBlock { Classes = { "sectionLabel" }, Text = text });
+        row.Children.Add(new Border
+        {
+            Classes = { "countBadge" },
+            Child = new TextBlock { Text = count.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+        });
+        return row;
+    }
+
+    /// <summary>
+    /// 一个来源一行:折叠箭头(有子项时)+ 名字 / 副标题 + 计数 + 操作 + 开关;展开后在下面列出 <paramref name="items" />。
+    /// </summary>
+    /// <param name="key">折叠状态的键。</param>
+    /// <param name="name">名字。</param>
+    /// <param name="subtitle">副标题(说明、路径、来源)。</param>
+    /// <param name="count">行尾计数(如 <c>8/8</c>);可为空。</param>
+    /// <param name="actions">行尾的操作按钮;可为空。</param>
+    /// <param name="on">开关状态;null = 部分启用;不给开关时传 <paramref name="setOn" /> 为空。</param>
+    /// <param name="setOn">开关被拨动时;为空则这一行没有开关。</param>
+    /// <param name="items">展开后的子项;为空则这一行不可折展。</param>
+    /// <param name="onClick">没有子项时点整行做什么(例如打开服务器表单)。</param>
+    private Border SourceRow(string key, string name, string? subtitle, string? count, Control? actions, bool? on,
+        Action<bool>? setOn, IReadOnlyList<Control>? items = null, Action? onClick = null)
+    {
+        bool expandable = items is { Count: > 0 };
+        bool expanded = expandable && (Query.Length > 0 || _expanded.GetValueOrDefault(key));
+
+        var grid = new Grid { ColumnDefinitions = [with("18,*,Auto,Auto,Auto")] };
+        if (expandable)
+        {
+            var chevron = new Viewbox
+            {
+                Width = 11,
+                Height = 11,
+                Child = Glyph("Icon.chevron-down"),
+                VerticalAlignment = VerticalAlignment.Center,
+                RenderTransformOrigin = Avalonia.RelativePoint.Center,
+                RenderTransform = expanded ? null : new RotateTransform(-90)
+            };
+            grid.Children.Add(chevron);
+        }
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Avalonia.Thickness(2, 0, 12, 0) };
+        text.Children.Add(new TextBlock { Classes = { "sourceName" }, Text = name });
+        if (!string.IsNullOrEmpty(subtitle)) text.Children.Add(new TextBlock { Classes = { "sourceSub" }, Text = subtitle });
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(text);
+        if (!string.IsNullOrEmpty(count))
+        {
+            var number = new TextBlock { Name = "SourceCount", Classes = { "sourceCount" }, Text = count, Margin = new Avalonia.Thickness(0, 0, 10, 0) };
+            Grid.SetColumn(number, 2);
+            grid.Children.Add(number);
+        }
+        if (actions is not null)
+        {
+            actions.Margin = new Avalonia.Thickness(0, 0, 10, 0);
+            actions.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(actions, 3);
+            grid.Children.Add(actions);
+        }
+        if (setOn is not null)
+        {
+            CheckBox toggle = Switch(on, setOn, name);
+            Grid.SetColumn(toggle, 4);
+            grid.Children.Add(toggle);
+        }
+
+        var header = new Border { Classes = { "sourceRow" }, Child = grid };
+        if (expandable || onClick is not null)
+        {
+            header.Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand);
+            header.PointerPressed += (_, e) =>
+            {
+                // 点在开关或按钮上不算点行
+                if (e.Source is Avalonia.Visual v && v.FindAncestorOfType<Button>(includeSelf: true) is not null) return;
+                if (e.Source is Avalonia.Visual w && w.FindAncestorOfType<CheckBox>(includeSelf: true) is not null) return;
+                e.Handled = true;
+                if (expandable)
+                {
+                    _expanded[key] = !_expanded.GetValueOrDefault(key);
+                    RenderContent();
+                }
+                else
+                {
+                    onClick!();
+                }
+            };
+        }
+
+        var block = new StackPanel();
+        block.Children.Add(header);
+        if (expandable)
+        {
+            var rows = new StackPanel { Classes = { "toolRows" }, IsVisible = expanded };
+            foreach (Control item in items!) rows.Children.Add(item);
+            block.Children.Add(rows);
+        }
+        var source = new Border { Classes = { "toolSource" }, Tag = key, Child = block };
+        AutomationProperties.SetName(source, name);
+        return source;
+    }
+
+    /// <summary>展开后的一行:工具名(等宽)+ 只读标记 + 说明,行尾开关。</summary>
+    private Border ItemRow(string name, string description, bool readOnly, bool on, Action<bool> setOn)
+    {
+        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        title.Children.Add(new TextBlock { Classes = { "toolName" }, Text = name });
+        if (readOnly) title.Children.Add(new TextBlock { Classes = { "dim" }, Text = _loc["ToolReadOnly"], VerticalAlignment = VerticalAlignment.Center });
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Avalonia.Thickness(0, 0, 12, 0) };
+        text.Children.Add(title);
+        if (description.Length > 0)
+        {
+            text.Children.Add(new TextBlock { Classes = { "sourceSub" }, Text = description, TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.None });
+        }
+        var grid = new Grid { ColumnDefinitions = [with("*,Auto")] };
+        grid.Children.Add(text);
+        CheckBox toggle = Switch(on, setOn, name);
+        Grid.SetColumn(toggle, 1);
+        grid.Children.Add(toggle);
+        return new Border { Classes = { "itemRow" }, Tag = name, Child = grid };
+    }
+
+    /// <summary>行尾的开关(套 <c>AiSwitchTheme</c> 的 CheckBox;<paramref name="on" /> 为 null 时显示「部分启用」)。</summary>
+    private static CheckBox Switch(bool? on, Action<bool> setOn, string name)
+    {
+        var toggle = new CheckBox { Name = "Switch", IsChecked = on, VerticalAlignment = VerticalAlignment.Center };
+        toggle[!ThemeProperty] = new DynamicResourceExtension("AiSwitchTheme");
+        AutomationProperties.SetName(toggle, name);
+        toggle.IsCheckedChanged += (_, _) => setOn(toggle.IsChecked == true);
+        return toggle;
+    }
+
+    /// <summary>一组开关的合计状态:全开 true、全关 false、有开有关 null。</summary>
+    private static bool? Aggregate(int on, int total) => on == total ? true : on == 0 ? false : null;
+
+    /// <summary>页头 / 行尾的描边小按钮。</summary>
+    private static Button HeaderButton(string name, string text)
+    {
+        var button = new Button
+        {
+            Name = name,
+            Content = text,
+            Height = 26,
+            Padding = new Avalonia.Thickness(12, 0),
+            [!FontSizeProperty] = new DynamicResourceExtension("VelaFontSize11"),
+            VerticalAlignment = VerticalAlignment.Center
+        };
         button[!ThemeProperty] = new DynamicResourceExtension("VelaOutlineButtonTheme");
-        button.Click += (_, _) => onClick();
         return button;
     }
 
-    /// <summary>左栏的服务器概览行:状态点 + 名字 + "传输 · 工具库状态"。点一下回到那张表单去改。</summary>
-    private void RebuildServerRail()
+    /// <summary>警示色的一行字(解析失败、需要重新确认)。</summary>
+    private static TextBlock WarningText(string name, string text)
     {
-        _servers.Children.Clear();
-        foreach (McpServerConfig server in _settings.McpServers)
+        var warning = new TextBlock
         {
-            string id = server.Id;
-            var row = new Grid { ColumnDefinitions = [with("Auto,*")] };
-            // 绿点 = 启用且工具库已拉过;其余一律灰点。没探过活就别拿颜色替用户下结论。
-            bool live = server.Enabled && server.KnownTools.Count > 0;
-            var dot = new Ellipse { Width = 6, Height = 6, Margin = new Avalonia.Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-            dot[!Shape.FillProperty] = new DynamicResourceExtension(live ? "VelaStatusConnected" : "VelaTextMuted");
-            row.Children.Add(dot);
-
-            var text = new StackPanel { Spacing = 2 };
-            var name = new TextBlock
-            {
-                Text = string.IsNullOrWhiteSpace(server.Name) ? _loc["Unnamed"] : server.Name,
-                FontWeight = FontWeight.Medium,
-                [!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize12"),
-                TextTrimming = TextTrimming.CharacterEllipsis
-            };
-            name[!ForegroundProperty] = new DynamicResourceExtension("VelaTextPrimary");
-            text.Children.Add(name);
-            text.Children.Add(new TextBlock
-            {
-                Classes = { "dim" },
-                Text = ServerDetail(server),
-                [!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize11"),
-                TextTrimming = TextTrimming.CharacterEllipsis
-            });
-            Grid.SetColumn(text, 1);
-            row.Children.Add(text);
-
-            var card = new Border
-            {
-                Classes = { "card" },
-                Padding = new Avalonia.Thickness(9, 7),
-                Margin = new Avalonia.Thickness(0, 0, 0, 5),
-                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
-                Child = row
-            };
-            card.PointerPressed += (_, e) =>
-            {
-                e.Handled = true;
-                _openServerEditor(id);
-            };
-            _servers.Children.Add(card);
-        }
-        _serversEmpty.IsVisible = _settings.McpServers.Count == 0;
-        if (_serversEmpty.IsVisible)
-        {
-            _servers.Children.Add(_serversEmpty);
-        }
-    }
-
-    /// <summary>概览行的第二行文字:传输方式 · 工具库状态 [· 已停用]。</summary>
-    private string ServerDetail(McpServerConfig server)
-    {
-        string transport = server.Transport == McpTransportType.Http ? "HTTP" : "Stdio";
-        string tools = server.KnownTools.Count > 0
-            ? _loc.F("McpToolCount", server.KnownTools.Count)
-            : _loc["McpToolsNotLoaded"];
-        string detail = $"{transport} · {tools}";
-        return server.Enabled ? detail : $"{detail} · {_loc["McpDisabledMark"]}";
+            Name = name,
+            Classes = { "sourceSub" },
+            Text = text,
+            TextWrapping = TextWrapping.Wrap,
+            TextTrimming = TextTrimming.None
+        };
+        warning[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("VelaWarning");
+        return warning;
     }
 
     /// <summary>
     /// 一枚 lucide 图标。几何与描边都用 <see cref="DynamicResourceExtension" /> 绑,
-    /// <b>不要 FindResource 取一次</b> —— Vela* 颜色令牌住在 ThemeDictionaries 里,
-    /// 一次性取值经常拿到 null,结果就是"按钮框在、图标不见了"。
+    /// <b>不要 FindResource 取一次</b> —— Vela* 颜色令牌住在 ThemeDictionaries 里,一次性取值经常拿到 null。
     /// </summary>
     private static Avalonia.Controls.Shapes.Path Glyph(string icon)
     {
@@ -264,240 +441,20 @@ public sealed partial class ToolPickerView : UserControl
         return path;
     }
 
-    /// <summary>整页重建(改完 MCP 服务器、刷新工具库之后都走这里)。</summary>
-    public void Rebuild()
-    {
-        RebuildServerRail();
-        _groups.Children.Clear();
-        _groups.Children.Add(BuildBuiltinGroup());
-        _groups.Children.Add(BuildSkillsGroup());
-        _groups.Children.Add(BuildExtensionsGroup());
-        foreach (McpServerConfig server in _settings.McpServers)
-        {
-            _groups.Children.Add(BuildMcpGroup(server));
-        }
-        _status.Text = _loc.F("ToolsSelected", CountEnabled());
-    }
-
-    private Border BuildBuiltinGroup()
-    {
-        HashSet<string> disabled = Lines(_settings.DisabledBuiltinTools);
-        var rows = new StackPanel { Spacing = 8, Classes = { "toolRows" } }; // toolRows 只是语义标记,供测试认出勾选行容器
-        foreach ((string name, string description, bool readOnly) in AgentToolbox.Catalog)
-        {
-            rows.Children.Add(BuildRow(name, description, readOnly, !disabled.Contains(name), enabled =>
-            {
-                Toggle(disabled, name, enabled);
-                _settings.DisabledBuiltinTools = string.Join('\n', disabled);
-                AfterChange();
-            }));
-        }
-        int total = AgentToolbox.Catalog.Count;
-        return BuildGroup("", _loc["ToolsBuiltin"], _loc.F("ToolsChecked", AgentToolbox.Catalog.Count(t => !disabled.Contains(t.Name)), total), rows, header: null, defaultCollapsed: false);
-    }
-
-    private Border BuildMcpGroup(McpServerConfig server)
-    {
-        HashSet<string> disabled = Lines(server.DisabledTools);
-        var rows = new StackPanel { Spacing = 8, Classes = { "toolRows" } }; // toolRows 只是语义标记,供测试认出勾选行容器
-        if (server.KnownTools.Count == 0)
-        {
-            rows.Children.Add(new TextBlock
-            {
-                Classes = { "dim" },
-                Text = _loc["ToolsNotLoaded"],
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Avalonia.Thickness(20, 2, 0, 2)
-            });
-        }
-        foreach (McpToolInfo tool in server.KnownTools)
-        {
-            rows.Children.Add(BuildRow(tool.Name, tool.Description, tool.ReadOnly, !disabled.Contains(tool.Name),
-                enabled =>
-                {
-                    Toggle(disabled, tool.Name, enabled);
-                    server.DisabledTools = string.Join('\n', disabled);
-                    AfterChange();
-                }));
-        }
-
-        // 每台服务器一枚"更新工具库":连上去把它现在提供的工具重新列一遍
-        var refresh = new Button
-        {
-            Content = _loc["RefreshTools"],
-            Height = 26,
-            Padding = new Avalonia.Thickness(12, 0),
-            [!FontSizeProperty] = new DynamicResourceExtension("VelaFontSize11"),
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        refresh[!ThemeProperty] = new DynamicResourceExtension("VelaOutlineButtonTheme");
-        refresh.Click += async (_, _) => await RefreshAsync(server, refresh);
-
-        // 刷新时刻是次要信息,压成小字跟在名字后面,别和名字抢同一个字重
-        string subtitle = server.ToolsRefreshedAt is { } at ? at.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "";
-        if (!server.Enabled)
-        {
-            subtitle = subtitle.Length > 0 ? $"{subtitle} · {_loc["McpDisabledMark"]}" : _loc["McpDisabledMark"];
-        }
-        // 折起来时也得看得出这台勾了多少:数字放进副标题
-        int total = server.KnownTools.Count;
-        string counts = _loc.F("ToolsChecked", server.KnownTools.Count(t => !disabled.Contains(t.Name)), total);
-        subtitle = subtitle.Length > 0 ? $"{counts} · {subtitle}" : counts;
-        return BuildGroup(server.Id,
-            string.IsNullOrWhiteSpace(server.Name) ? "(unnamed MCP)" : server.Name, subtitle, rows, refresh, defaultCollapsed: true);
-    }
-
-    /// <summary>
-    /// 一组:可点的标题行(折叠箭头 + 标题 + 小字副标题)+ 可选的右侧按钮 + 若干勾选行。
-    /// 点标题行折/展;折叠状态按 <paramref name="key" /> 记在 <see cref="_collapsed" /> 里,重建后仍保持。
-    /// </summary>
-    private Border BuildGroup(string key, string title, string subtitle, Control rows, Control? header, bool defaultCollapsed)
-    {
-        bool collapsed = _collapsed.TryGetValue(key, out bool saved) ? saved : defaultCollapsed;
-
-        Avalonia.Controls.Shapes.Path chevron = Glyph("Icon.chevron-down");
-        var chevronBox = new Viewbox
-        {
-            Width = 12,
-            Height = 12,
-            Child = chevron,
-            VerticalAlignment = VerticalAlignment.Center,
-            RenderTransformOrigin = Avalonia.RelativePoint.Center
-        };
-        var caption = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        caption.Children.Add(chevronBox);
-        caption.Children.Add(new TextBlock
-        {
-            Classes = { "section-title" },
-            Text = title,
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        if (subtitle.Length > 0)
-        {
-            caption.Children.Add(new TextBlock
-            {
-                Classes = { "dim" },
-                Text = subtitle,
-                VerticalAlignment = VerticalAlignment.Center
-            });
-        }
-        // 整个标题区(不含右侧按钮)都是折叠热区,而不是只有那枚小箭头
-        var toggle = new Border
-        {
-            Child = caption,
-            Padding = new Avalonia.Thickness(0, 2),
-            Background = Brushes.Transparent, // 透明也要有:不然空白处不命中,点标题字之间的缝隙没反应
-            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
-            Classes = { "toolGroupToggle" }
-        };
-
-        var sep = new Border { Classes = { "sep" } };
-        void Apply()
-        {
-            rows.IsVisible = !collapsed;
-            sep.IsVisible = !collapsed;
-            // 折起来箭头朝右、展开朝下 —— 与树形控件的习惯一致
-            chevronBox.RenderTransform = collapsed ? new RotateTransform(-90) : null;
-        }
-        Apply();
-        toggle.PointerPressed += (_, e) =>
-        {
-            collapsed = !collapsed;
-            _collapsed[key] = collapsed;
-            Apply();
-            e.Handled = true;
-        };
-
-        var head = new Grid { ColumnDefinitions = [with("*,Auto")] };
-        head.Children.Add(toggle);
-        if (header is not null)
-        {
-            Grid.SetColumn(header, 1);
-            head.Children.Add(header);
-        }
-        var stack = new StackPanel { Spacing = 8 };
-        stack.Children.Add(head);
-        stack.Children.Add(sep);
-        stack.Children.Add(rows);
-        // section = 外观(与设置页那些分节同一张卡片);toolGroup 只是个语义标记,没有样式,
-        // 供测试精确认出"一个来源一组"这件事。
-        return new Border { Classes = { "section", "toolGroup" }, Child = stack };
-    }
-
-    /// <summary>一行:勾选框 + 工具名 + 说明,只读工具额外标一下(它们不走审批)。</summary>
-    /// <remarks>
-    /// 名字与说明<b>分两行</b>,说明整段换行。挤在一行里用省略号截断时,MCP 那些长描述
-    /// 全都断在半句上("This tool retrieves the latest complete co…"),既占地方又什么都没说清。
-    /// </remarks>
-    private CheckBox BuildRow(string name, string description, bool readOnly, bool enabled, Action<bool> onChanged)
-    {
-        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        title.Children.Add(new TextBlock { Classes = { "toolName" }, Text = name });
-        if (readOnly)
-        {
-            title.Children.Add(new TextBlock { Classes = { "dim" }, Text = _loc["ToolReadOnly"] });
-        }
-
-        var label = new StackPanel { Spacing = 2 };
-        label.Children.Add(title);
-        if (description.Length > 0)
-        {
-            label.Children.Add(new TextBlock
-            {
-                Classes = { "hint" },
-                Text = description,
-                Margin = default
-            });
-        }
-        var check = new CheckBox
-        {
-            Content = label,
-            IsChecked = enabled,
-            Margin = new Avalonia.Thickness(4, 0, 0, 0),
-            Padding = new Avalonia.Thickness(8, 4, 0, 4),
-            VerticalContentAlignment = VerticalAlignment.Top
-        };
-        check[!ThemeProperty] = new DynamicResourceExtension("AiCheckBoxTheme");
-        check.IsCheckedChanged += (_, _) => onChanged(check.IsChecked == true);
-        return check;
-    }
-
-    private async Task RefreshAsync(McpServerConfig server, Button trigger)
-    {
-        trigger.IsEnabled = false;
-        _status.Text = _loc["RefreshingTools"];
-        try
-        {
-            IReadOnlyList<McpToolInfo> tools = await McpManager.RefreshToolsAsync(server, CancellationToken.None);
-            server.KnownTools = [.. tools];
-            server.ToolsRefreshedAt = DateTimeOffset.UtcNow;
-            await _persist();
-            Rebuild();
-            _status.Text = _loc.F("ToolsRefreshed", server.Name, tools.Count);
-        }
-        catch (Exception ex)
-        {
-            _context.Log.Warn($"Refreshing MCP tools for '{server.Name}' failed: {ex.Message}");
-            _status.Text = $"{_loc["Error"]}: {ex.Message}";
-        }
-        finally
-        {
-            trigger.IsEnabled = true;
-        }
-    }
+    // ───────────────────────── 保存与计数 ─────────────────────────
 
     private void AfterChange()
     {
-        _status.Text = _loc.F("ToolsSelected", CountEnabled());
         _ = _persist();
+        Rebuild();
     }
 
-    /// <summary>当前勾上的工具总数(内置 + 各 MCP)。</summary>
+    /// <summary>当前启用的工具总数(内置 + 各台启用中的 MCP 服务器)。</summary>
     private int CountEnabled()
     {
         HashSet<string> builtinOff = Lines(_settings.DisabledBuiltinTools);
         int total = AgentToolbox.Catalog.Count(t => !builtinOff.Contains(t.Name));
-        foreach (McpServerConfig server in _settings.McpServers)
+        foreach (McpServerConfig server in _settings.McpServers.Where(s => s.Enabled))
         {
             HashSet<string> off = Lines(server.DisabledTools);
             total += server.KnownTools.Count(t => !off.Contains(t.Name));
@@ -511,13 +468,7 @@ public sealed partial class ToolPickerView : UserControl
 
     private static void Toggle(HashSet<string> disabled, string name, bool enabled)
     {
-        if (enabled)
-        {
-            disabled.Remove(name);
-        }
-        else
-        {
-            disabled.Add(name);
-        }
+        if (enabled) disabled.Remove(name);
+        else disabled.Add(name);
     }
 }

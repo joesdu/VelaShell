@@ -1481,11 +1481,14 @@ public sealed partial class ChatPanelViewUiTests
                     "服务器表单不该挤在勾选列表上面");
                 Assert.IsEmpty(tools.Options.TitleActions,
                     "入口从标题栏 ⚙ 挪到左栏了,标题栏不该再挂动作");
-                List<Border> groups = ToolGroups(picker);
-                Assert.IsNotEmpty(groups, "至少有内置工具那一组");
+                Assert.AreEqual(ToolPickerView.Page.Tools, picker.CurrentPage, "默认打开「工具」页");
+                Assert.IsNotEmpty(Sources(picker), "至少有内置工具的几类");
 
-                // 左栏底部的「新增服务器」—— 现在的入口
-                picker.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "McpRailAddButton")
+                // 「MCP 服务器」页页头的「新增服务器」—— 现在的入口
+                picker.ShowPage(ToolPickerView.Page.McpServers);
+                await PumpAsync(2);
+                Assert.AreEqual("0", NavCount(picker, ToolPickerView.Page.McpServers));
+                picker.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "McpAddButton")
                       .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
                 await PumpAsync(5);
 
@@ -1496,8 +1499,9 @@ public sealed partial class ChatPanelViewUiTests
                 mcpHost = Host(servers);
                 await PumpAsync(5);
 
-                Assert.HasCount(groups.Count + 1, ToolGroups(picker),
-                    "新服务器要当场在右栏出现一块自己的分组");
+                Assert.AreEqual("1", NavCount(picker, ToolPickerView.Page.McpServers), "左栏计数当场跟着变");
+                Assert.HasCount(1, Sources(picker).Where(s => ((string?)s.Tag)?.StartsWith("srv:", StringComparison.Ordinal) == true),
+                    "新服务器要当场在这一页出现一行,不用关掉重开");
 
                 // 勾选列表都没了,单剩一个服务器配置窗口飘着没有意义
                 await tools.CloseAsync();
@@ -1580,28 +1584,24 @@ public sealed partial class ChatPanelViewUiTests
     /// 分组标题行的折叠箭头得真的<b>画出图标</b>来:几何与描边都要用 <c>DynamicResource</c> 绑。
     /// <c>FindResource</c> 取一次是不行的 —— Vela* 颜色令牌住在 ThemeDictionaries 里,
     /// 一次性取值经常拿到 null,结果就是"框在、图标不见了"。
-    /// 同时钉住折叠行为:内置组默认展开、MCP 组默认折起(一台服务器动辄几十个工具),点标题行切换,
-    /// 重建后状态保持。MCP 服务器配置的 ⚙ 已挪到窗口标题栏(见 McpServers_LiveInTheirOwnWindow…)。
+    /// 同时钉住新版式(仿 VS Code Copilot 的配置界面):左栏四节带计数,默认「工具」页;
+    /// 来源行默认折起、点标题行折 / 展、重建后保持;类别开关一次启停整类、部分启用显示中间态;
+    /// MCP 行尾开关是服务器本身的启停;搜索只留匹配的项并自动展开。
     /// </summary>
     [TestMethod]
-    public void ToolsWindow_GroupsCollapse_AndChevronResolvesItsIcon()
+    public void ToolsWindow_NavSourcesSwitchesAndSearch()
     {
         OnUi(async () =>
         {
             Avalonia.Media.Geometry geometry = Avalonia.Media.StreamGeometry.Parse("M0,0 L10,10");
             Application.Current!.Resources["Icon.chevron-down"] = geometry;
             using var context = new TestPluginContext();
-            await new AiSettingsStore(context).SaveAsync(new AiSettings
+            var server = new McpServerConfig
             {
-                McpServers =
-                [
-                    new McpServerConfig
-                    {
-                        Name = "srv",
-                        KnownTools = [new McpToolInfo { Name = "a", ReadOnly = true }, new McpToolInfo { Name = "b" }]
-                    }
-                ]
-            });
+                Name = "srv",
+                KnownTools = [new McpToolInfo { Name = "alpha_tool", ReadOnly = true }, new McpToolInfo { Name = "beta_tool" }]
+            };
+            await new AiSettingsStore(context).SaveAsync(new AiSettings { McpServers = [server] });
             (Window window, ChatPanelView panel) = await ShowAsync(context);
             Window? host = null;
             try
@@ -1610,33 +1610,62 @@ public sealed partial class ChatPanelViewUiTests
                 await PumpAsync(5);
                 var picker = (ToolPickerView)context.FakeUi.LastPanel.CreateContent();
                 host = Host(picker);
+                string mcpKey = "mcp:" + server.Id;
+                string readKey = "builtin:" + ToolKind.Read;
 
-                List<Border> groups = ToolGroups(picker);
-                Assert.HasCount(4, groups, "内置 + 技能 + 扩展包 + 一台 MCP");
-                Border builtin = groups[0], mcp = groups[3];
-                Assert.IsTrue(Rows(groups[1]).IsVisible, "技能组默认展开(没有技能时给出放在哪儿的提示)");
-                Assert.AreSame(geometry,
-                    Toggle(builtin).GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single().Data,
+                CollectionAssert.AreEqual(new[] { "NavExtensions", "NavMcpServers", "NavSkills", "NavTools" },
+                    picker.GetVisualDescendants().OfType<ListBoxItem>().Select(i => i.Name).ToArray(), "左栏四节");
+                Assert.AreEqual("1", NavCount(picker, ToolPickerView.Page.McpServers));
+                Assert.AreEqual((Agent.AgentToolbox.Catalog.Count + 2).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    NavCount(picker, ToolPickerView.Page.Tools), "工具计数 = 内置 + 启用中服务器的工具");
+
+                Assert.AreSame(geometry, Source(picker, mcpKey).GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().First().Data,
                     "箭头几何要真的解析出来,不能是空的");
+                Assert.IsFalse(Rows(Source(picker, mcpKey)).IsVisible, "来源行默认折起");
+                Assert.IsFalse(Rows(Source(picker, readKey)).IsVisible);
+                Assert.AreEqual("2/2", Count(Source(picker, mcpKey)), "折起时也带着计数");
 
-                Assert.IsTrue(Rows(builtin).IsVisible, "内置组默认展开");
-                Assert.IsFalse(Rows(mcp).IsVisible, "MCP 组默认折起");
-                Assert.Contains(t => t.Text == "2/2 checked", mcp.GetVisualDescendants().OfType<TextBlock>(),
-                    "折起时标题行要带着勾选计数");
-
-                // 点 MCP 组标题行 → 展开;点内置组 → 折起
-                Press(Toggle(mcp));
-                Press(Toggle(builtin));
+                // 点标题行展开;重建(改服务器 / 刷新工具库后都会)不丢折 / 展的样子
+                Press(Header(Source(picker, mcpKey)));
                 await PumpAsync(2);
-                Assert.IsTrue(Rows(mcp).IsVisible);
-                Assert.IsFalse(Rows(builtin).IsVisible);
-
-                // 重建(改服务器 / 刷新工具库后都会)不丢用户折/展的样子
+                Assert.IsTrue(Rows(Source(picker, mcpKey)).IsVisible);
                 picker.Rebuild();
                 await PumpAsync(2);
-                groups = ToolGroups(picker);
-                Assert.IsFalse(Rows(groups[0]).IsVisible);
-                Assert.IsTrue(Rows(groups[3]).IsVisible);
+                Assert.IsTrue(Rows(Source(picker, mcpKey)).IsVisible);
+
+                // 类别开关:一次停掉整类;再开回其中一个 → 部分启用(中间态)
+                int readTools = Agent.AgentToolbox.Catalog.Count(t => ToolIcons.KindOf(t.Name) == ToolKind.Read);
+                SwitchOf(Source(picker, readKey)).IsChecked = false;
+                await PumpAsync(2);
+                Assert.AreEqual($"0/{readTools}", Count(Source(picker, readKey)));
+                Assert.IsFalse(SwitchOf(Source(picker, readKey)).IsChecked);
+                Press(Header(Source(picker, readKey)));
+                await PumpAsync(2);
+                Rows(Source(picker, readKey)).GetVisualDescendants().OfType<CheckBox>().First(c => c.Name == "Switch").IsChecked = true;
+                await PumpAsync(2);
+                if (readTools > 1) Assert.IsNull(SwitchOf(Source(picker, readKey)).IsChecked, "有开有关显示中间态");
+                Assert.HasCount(readTools - 1, PanelSettings(panel).DisabledBuiltinTools.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+
+                // MCP 行尾开关 = 服务器本身的启停
+                SwitchOf(Source(picker, mcpKey)).IsChecked = false;
+                await PumpAsync(2);
+                Assert.IsFalse(PanelSettings(panel).McpServers.Single().Enabled);
+                Assert.Contains(t => (t.Text ?? "").Contains("disabled", StringComparison.Ordinal),
+                    Source(picker, mcpKey).GetVisualDescendants().OfType<TextBlock>(), "副标题标出已停用");
+
+                // 搜索:只留匹配的工具,含匹配的来源自动展开;什么都没匹配时给一句话
+                TextBox search = picker.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "ToolsSearch");
+                search.Text = "beta_tool";
+                await PumpAsync(2);
+                Border filtered = Sources(picker).Single();
+                Assert.AreEqual(mcpKey, filtered.Tag);
+                Assert.IsTrue(Rows(filtered).IsVisible, "搜索时自动展开");
+                CollectionAssert.AreEqual(new[] { "beta_tool" },
+                    filtered.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("itemRow")).Select(b => (string?)b.Tag).ToArray());
+                search.Text = "no-such-tool-anywhere";
+                await PumpAsync(2);
+                Assert.IsEmpty(Sources(picker));
+                Assert.Contains(t => t.Name == "ToolsNoMatch", picker.GetVisualDescendants().OfType<TextBlock>());
             }
             finally
             {
@@ -1647,12 +1676,15 @@ public sealed partial class ChatPanelViewUiTests
             }
         });
 
-        static Border Toggle(Border group)
-            => group.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("toolGroupToggle"));
+        static Border Header(Border source)
+            => source.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("sourceRow"));
 
-        // 勾选行容器(视图给它挂了 toolRows 语义标记)
-        static StackPanel Rows(Border group)
-            => group.GetVisualDescendants().OfType<StackPanel>().First(s => s.Classes.Contains("toolRows"));
+        // 展开后的子项容器(视图给它挂了 toolRows 语义标记)
+        static StackPanel Rows(Border source)
+            => source.GetVisualDescendants().OfType<StackPanel>().First(s => s.Classes.Contains("toolRows"));
+
+        static string Count(Border source)
+            => source.GetVisualDescendants().OfType<TextBlock>().First(t => t.Name == "SourceCount").Text!;
 
         static void Press(Border toggle)
             => toggle.RaiseEvent(new PointerPressedEventArgs(toggle, new Pointer(0, PointerType.Mouse, true),
@@ -1672,9 +1704,22 @@ public sealed partial class ChatPanelViewUiTests
         return window;
     }
 
-    /// <summary>「配置工具」里每个来源一块(内置 + 技能 + 扩展包 + 每台 MCP 服务器)。</summary>
-    private static List<Border> ToolGroups(ToolPickerView picker)
-        => [.. picker.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("toolGroup"))];
+    /// <summary>「配置工具」当前这一页上的来源行(一类内置工具 / 一台 MCP 服务器 / 一个技能 / 一个扩展包)。</summary>
+    private static List<Border> Sources(ToolPickerView picker)
+        => [.. picker.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("toolSource"))];
+
+    /// <summary>按键找来源行(<c>builtin:类别</c> / <c>mcp:服务器id</c> / <c>srv:服务器id</c> / <c>skill:名字</c> / <c>pack:id</c>)。</summary>
+    private static Border Source(ToolPickerView picker, string key)
+        => Sources(picker).Single(b => (string?)b.Tag == key);
+
+    /// <summary>来源行行尾的那枚开关(标题行里的第一个)。</summary>
+    private static CheckBox SwitchOf(Border source)
+        => source.GetVisualDescendants().OfType<CheckBox>().First(c => c.Name == "Switch");
+
+    /// <summary>左栏某一节的计数。</summary>
+    private static string NavCount(ToolPickerView picker, ToolPickerView.Page page)
+        => picker.GetVisualDescendants().OfType<ListBoxItem>().Single(i => i.Name == "Nav" + page)
+            .GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("count")).Text!;
 
     private static void Click(ChatPanelView panel, string name)
         => Find<Button>(panel, name).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));

@@ -1082,7 +1082,8 @@ public sealed partial class ChatPanelViewUiTests
                 await PumpAsync(5);
                 var picker = (ToolPickerView)context.FakeUi.LastPanel.CreateContent();
                 toolsHost = Host(picker);
-                RaiseClick(FindIn<Button>(picker, "McpRailAddButton"));
+                picker.ShowPage(ToolPickerView.Page.McpServers); // 「新增服务器」在「MCP 服务器」页的页头
+                RaiseClick(FindIn<Button>(picker, "McpAddButton"));
                 await PumpAsync(5);
                 var servers = (McpServersView)context.FakeUi.LastPanel.CreateContent();
                 mcpHost = Host(servers);
