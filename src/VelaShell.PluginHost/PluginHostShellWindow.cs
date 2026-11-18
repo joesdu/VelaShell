@@ -63,6 +63,7 @@ internal sealed partial class PluginHostShellWindow : Window
     private const string CardShadow = "0 2 4 0 #59000000, 0 6 10 0 #A6000000";
 
     private readonly Border _rootCard;
+    private readonly Border _shadow;
     private readonly Border _titleStrip;
     private readonly RowDefinition _titleRow;
     private readonly Panel _resizeGrips;
@@ -97,15 +98,25 @@ internal sealed partial class PluginHostShellWindow : Window
             CornerRadius = new CornerRadius(8),
             ClipToBounds = true,
             BorderThickness = new Thickness(1),
-            BoxShadow = BoxShadows.Parse(CardShadow),
             Child = grid
         };
         Bind(_rootCard, Border.BackgroundProperty, "VelaBgSurface");
         Bind(_rootCard, Border.BorderBrushProperty, "VelaBorderSecondary");
 
+        // 与宿主的共用窗口模板一样:投影放在内容裁剪之外,否则会被 ClipToBounds 一起裁掉。
+        _shadow = new Border
+        {
+            Margin = new Thickness(CardGutter),
+            CornerRadius = new CornerRadius(8),
+            BoxShadow = BoxShadows.Parse(CardShadow),
+            IsHitTestVisible = false,
+        };
+        Bind(_shadow, Border.BackgroundProperty, "VelaBgSurface");
+
         _resizeGrips = BuildResizeGrips();
 
         var rootPanel = new Panel();
+        rootPanel.Children.Add(_shadow);
         rootPanel.Children.Add(_rootCard);
         rootPanel.Children.Add(_resizeGrips);
         Content = rootPanel;
@@ -627,7 +638,8 @@ internal sealed partial class PluginHostShellWindow : Window
         _rootCard.CornerRadius = floating
             ? new CornerRadius(8)
             : flat ? default : new CornerRadius(InnerRadius);
-        _rootCard.BoxShadow = floating ? BoxShadows.Parse(CardShadow) : default;
+        _rootCard.BoxShadow = default;
+        _shadow.IsVisible = floating;
         _titleStrip.CornerRadius = flat ? default : new CornerRadius(InnerRadius, InnerRadius, 0, 0);
 
         _resizeGrips.IsVisible = normal && _platform is ShellPlatform.Windows or ShellPlatform.X11;

@@ -151,7 +151,8 @@ public sealed class LocalPathPickerMarqueeUiTests
     {
         Control container = list.ContainerFromIndex(index)
                             ?? throw new InvalidOperationException($"第 {index} 行没有实现出容器。");
-        return container.TranslatePoint(new(20, container.Bounds.Height / 2), dialog)
+        // 左侧 24px 已是勾选区;框选从名称区域开始。
+        return container.TranslatePoint(new(80, container.Bounds.Height / 2), dialog)
                ?? throw new InvalidOperationException("坐标换算失败。");
     }
 

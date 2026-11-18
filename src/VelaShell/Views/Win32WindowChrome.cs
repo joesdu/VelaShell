@@ -25,8 +25,8 @@ namespace VelaShell.Views;
 /// 【但别再加 DwmExtendFrameIntoClientArea】(#171 试过又撤掉):它能把 DWM 投影一并拿回来,
 /// 代价却是主窗口启动时挂着一层要手动缩放一次才消散的显示效果,不划算,已按决定回退。
 /// 两者别混为一谈 —— 圆角属性只影响窗口轮廓怎么裁,不参与合成,不产生那层残影。
-/// 主窗口因此有圆角、没投影;次级窗体本来就不走这条路,它们是透明窗 + 自绘卡片的
-/// BoxShadow(VelaShadowWindow 令牌),不受影响。
+/// 投影统一由 WindowChrome.axaml 的窗口模板在独立底层绘制,使用 VelaShadowWindow 令牌;
+/// 不依赖 DWM 扩展,也不受内容卡片的圆角裁剪影响。
 ///
 /// 主窗口与任务管理器共用这一套,新的自绘窗体只要调用 <see cref="Attach" /> 即可获得同样的外观。
 /// </remarks>

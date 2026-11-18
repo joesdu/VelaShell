@@ -15,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ReactiveUI.Primitives;
 using VelaShell.Controls.Controls;
 using VelaShell.Core.Models;
+using VelaShell.Core.Data;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Sftp;
 using VelaShell.ViewModels;
@@ -88,7 +89,7 @@ public partial class FileBrowserView : UserControl
             vm.PathEditActivated += OnPathEditActivated;
             vm.RevealRequested += OnRevealRequested;
             vm.ShowRemoteSearch = root => ShowRemoteSearchAsync(vm, root);
-            vm.PickLocalPathsForUpload = PickLocalPathsAsync;
+            vm.PickUploadSelection = PickLocalPathsAsync;
             vm.PickSavePathForDownload = PickSavePathAsync;
             vm.PickFolderForDownload = PickDownloadFolderAsync;
             vm.PromptForText = PromptForTextAsync;
@@ -483,13 +484,32 @@ public partial class FileBrowserView : UserControl
     /// 系统对话框做不到混选(见 <see cref="LocalPathPickerDialog" />),上传以前正是因此
     /// 被拆成"上传文件""上传文件夹"两个入口。
     /// </summary>
-    private async Task<IReadOnlyList<string>> PickLocalPathsAsync()
+    private async Task<UploadSelectionResult?> PickLocalPathsAsync(string destination)
     {
         if (TopLevel.GetTopLevel(this) is not Window owner || _viewModel is not { } vm)
         {
-            return [];
+            return null;
         }
-        return await LocalPathPickerDialog.PickAsync(owner, vm.TransferOptions);
+        IServiceProvider? services = (Application.Current as App)?.Services;
+        Guid? profileId = null;
+        if (vm.QueueOrigin is { } origin && services?.GetService<ISessionRepository>() is { } repository)
+        {
+            try
+            {
+                // 最近连接重建的临时配置也有 Guid,只有库中存在的配置才是持久映射边界。
+                if (await repository.GetSessionAsync(origin.ProfileId) is not null)
+                {
+                    profileId = origin.ProfileId;
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // 查不到稳定连接标识时仍可上传,使用全局最近状态。
+            }
+        }
+        return await LocalPathPickerDialog.PickAsync(owner, vm.TransferOptions,
+            new Services.UploadPickerContext(profileId, destination, vm.ServerDisplayName),
+            vm.UploadDirectoryService, vm.SessionId, vm.NavigateForUploadMappingAsync);
     }
 
     /// <summary>

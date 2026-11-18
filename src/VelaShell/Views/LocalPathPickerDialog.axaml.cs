@@ -3,12 +3,17 @@ using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.ViewModels;
+using VelaShell.Services;
+using VelaShell.Core.Sftp;
+using KeyModifiers = Avalonia.Input.KeyModifiers;
 using WindowLayout = VelaShell.Services.WindowLayout;
 using WindowLayoutStore = VelaShell.Services.WindowLayoutStore;
 
@@ -39,18 +44,27 @@ public partial class LocalPathPickerDialog : Window
     public LocalPathPickerDialog()
         : this(new()) { }
 
-    /// <summary>用给定的传输设置(决定起始目录)创建选择器。</summary>
+    /// <summary>创建选择器;没有目录记忆时使用给定的传输设置决定起始目录。</summary>
     public LocalPathPickerDialog(TransferOptions transferOptions)
         : this(new LocalFilePaneViewModel(transferOptions), loadInitial: true) { }
 
     /// <summary>用现成的面板视图模型创建选择器(测试用:可指定起始目录、跳过初始加载)。</summary>
     internal LocalPathPickerDialog(LocalFilePaneViewModel viewModel, bool loadInitial)
+        : this(viewModel, loadInitial, new UploadPickerStateStore(null), null) { }
+
+    internal LocalPathPickerDialog(LocalFilePaneViewModel viewModel, bool loadInitial,
+        UploadPickerStateStore store, UploadPickerContext? context)
     {
         InitializeComponent();
         WindowChrome.Apply(this, WindowChromeKind.Dialog, ResizeGrips);
         ViewModel = viewModel;
         DataContext = ViewModel;
-        ViewModel.SelectedEntries.CollectionChanged += (_, _) => UpdateSelectionSummary();
+        Picker = new(viewModel, store, context);
+        MappingList.ItemsSource = Picker.Mappings;
+        Picker.Changed += OnPickerChanged;
+        UploadTargetText.Text = context is null ? string.Empty
+            : Strings.Format("Sftp_UploadTarget", context.ServerName, context.RemotePath);
+        UploadTargetText.IsVisible = context is not null;
         UpdateSelectionSummary();
 
         // 框选。这里的行不发起拖放,不存在"拖行 = 拖文件"的歧义,所以放开从行上起框 ——
@@ -60,7 +74,7 @@ public partial class LocalPathPickerDialog : Window
             FileList,
             Marquee,
             item => item is LocalFileEntry { IsParentEntry: false },
-                _ => true
+            e => !IsCheckBoxSource(e.Source)
         );
 
         // 键入定位:在窗口里直接敲文件名开头几个字母就选中它,资源管理器同款。
@@ -74,10 +88,11 @@ public partial class LocalPathPickerDialog : Window
         // 输入框收起后焦点回到列表。
         AddHandler(KeyDownEvent, OnDialogKeyDownTunnel, RoutingStrategies.Tunnel);
         PathBar.EditFinished += (_, _) => FocusList();
+        OnPickerChanged(this, EventArgs.Empty);
 
         if (loadInitial)
         {
-            _ = ViewModel.LoadInitialAsync();
+            _ = Picker.InitializeAsync();
         }
     }
 
@@ -85,6 +100,22 @@ public partial class LocalPathPickerDialog : Window
     private const string LayoutKey = "uploadPicker";
 
     private LocalFilePaneViewModel ViewModel { get; }
+
+    internal UploadPickerSelection Picker { get; }
+    private bool _updatingChecks;
+    private bool _allowClose;
+    private bool _closing;
+    private bool _closed;
+    private object? _closeResult;
+    private ISftpService? _remoteDirectories;
+    private Guid _sessionId;
+    private bool _bindingOpen;
+    private bool _returnSelection;
+    private bool _opened;
+    private bool _mappingLocationScheduled;
+    private bool _mappingLocated;
+    internal ContextMenu? MappingContextMenu { get; private set; }
+    internal Func<string, CancellationToken, Task<bool>>? NavigateRemoteForMapping { get; set; }
 
     private readonly MarqueeSelection _marquee;
 
@@ -106,6 +137,7 @@ public partial class LocalPathPickerDialog : Window
             FileList.Classes.Set("tiles", icons);
             FileList.ItemTemplate = (IDataTemplate)Resources[icons ? "TileTemplate" : "RowTemplate"]!;
             ColumnHeader.IsVisible = !icons;
+            IconSelectionHeader.IsVisible = icons;
             ListViewButton.IsChecked = !icons;
             IconViewButton.IsChecked = icons;
         }
@@ -114,8 +146,38 @@ public partial class LocalPathPickerDialog : Window
     /// <summary>关窗时务必收起框选,否则自动滚动的计时器会拽着已关闭的窗口继续跑。</summary>
     protected override void OnClosed(EventArgs e)
     {
+        _closed = true;
+        MappingContextMenu?.Close();
         _marquee.End();
+        Picker.Changed -= OnPickerChanged;
+        Picker.Dispose();
+        ViewModel.Dispose();
         base.OnClosed(e);
+    }
+
+    /// <summary>标题栏和系统关闭也等待最新的选择记忆写完。</summary>
+    protected override void OnClosing(WindowClosingEventArgs e)
+    {
+        if (!_allowClose && !Picker.PrepareCloseAsync().IsCompleted)
+        {
+            e.Cancel = true;
+            _ = CloseAfterSaveAsync(_closeResult);
+        }
+        base.OnClosing(e);
+    }
+
+    private async Task CloseAfterSaveAsync(object? result)
+    {
+        if (_closing)
+        {
+            return;
+        }
+        _closing = true;
+        _closeResult = result;
+        IsEnabled = false;
+        await Picker.PrepareCloseAsync();
+        _allowClose = true;
+        this.PostClose(result);
     }
 
     /// <summary>
@@ -125,18 +187,50 @@ public partial class LocalPathPickerDialog : Window
     {
         base.OnOpened(e);
         FitIntoWorkArea();
+        _opened = true;
+        QueueInitialMappingLocation();
+    }
+
+    private void QueueInitialMappingLocation()
+    {
+        if (!_opened || _closed || _mappingLocated || _mappingLocationScheduled || Picker.IsRestoring) { return; }
+        _mappingLocationScheduled = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _mappingLocationScheduled = false;
+            if (_closed || Picker.IsRestoring) { return; }
+            _mappingLocated = true;
+            if (Picker.Mappings.FirstOrDefault(item => item.Mapping.Id == Picker.ActiveMappingId) is { } mapping)
+            {
+                // 由面板计算最小滚动距离,不移动记录、不抢焦点;后续保存不再定位。
+                MappingList.ScrollIntoView(mapping);
+            }
+        }, DispatcherPriority.Loaded);
     }
 
     /// <summary>
-    /// 打开选择器,返回用户选中的本地路径(文件与文件夹混合);取消则返回空列表。
+    /// 打开选择器,返回用户勾选的本地路径(文件与文件夹混合);取消则返回空列表。
     /// 上次调过的尺寸与选过的视图照旧(所有会话共用一条记录)。
     /// </summary>
     public static async Task<IReadOnlyList<string>> PickAsync(Window owner, TransferOptions transferOptions)
+        => (await PickAsync(owner, transferOptions, null, null, Guid.Empty))?.LocalPaths ?? [];
+
+    internal static async Task<UploadSelectionResult?> PickAsync(Window owner, TransferOptions transferOptions,
+        UploadPickerContext? context, ISftpService? remoteDirectories, Guid sessionId,
+        Func<string, CancellationToken, Task<bool>>? navigateRemote = null)
     {
-        var dialog = new LocalPathPickerDialog(transferOptions);
+        IServiceProvider? services = (Application.Current as App)?.Services;
+        UploadPickerStateStore store = services?.GetService<UploadPickerStateStore>() ?? new(null);
+        var dialog = new LocalPathPickerDialog(new LocalFilePaneViewModel(transferOptions), false, store, context);
+        dialog._remoteDirectories = remoteDirectories;
+        dialog._sessionId = sessionId;
+        dialog._returnSelection = true;
+        dialog.NavigateRemoteForMapping = navigateRemote;
+        await dialog.Picker.InitializeAsync();
         if ((Application.Current as App)?.Services?.GetService<WindowLayoutStore>() is { } layoutStore)
         {
             WindowLayout? layout = await layoutStore.LoadAsync(LayoutKey);
+            dialog.FitIntoWorkArea();
             WindowLayoutStore.Apply(dialog, layout);
             if (Enum.TryParse(layout?.View, out LocalPickerView view))
             {
@@ -144,7 +238,7 @@ public partial class LocalPathPickerDialog : Window
             }
             dialog.Closing += (_, _) => _ = layoutStore.SaveAsync(LayoutKey, dialog, dialog.View.ToString());
         }
-        return await dialog.ShowDialog<IReadOnlyList<string>?>(owner) ?? [];
+        return await dialog.ShowDialog<UploadSelectionResult?>(owner);
     }
 
     /// <summary>
@@ -168,9 +262,9 @@ public partial class LocalPathPickerDialog : Window
         Dispatcher.UIThread.Post(FocusList, DispatcherPriority.Loaded);
     }
 
-    /// <summary>当前选中的真实条目(排除合成的 ".." 行)。</summary>
+    /// <summary>当前勾选的真实条目,与列表的高亮和框选无关。</summary>
     private List<LocalFileEntry> PickedEntries() =>
-        [.. ViewModel.SelectedEntries.Where(entry => !entry.IsParentEntry)];
+        [.. Picker.CheckedEntries];
 
     private void UpdateSelectionSummary()
     {
@@ -185,13 +279,14 @@ public partial class LocalPathPickerDialog : Window
             : Strings.Format("Sftp_PickUploadSelected", picked.Count - folders, folders);
 
         // 没选东西时不给按,免得开一个空批次。
-        ConfirmButton?.IsEnabled = picked.Count > 0;
+        ConfirmButton?.IsEnabled = picked.Count > 0 && Picker.HasActiveMapping && !Picker.IsRestoring && !ViewModel.IsDirectoryLoading;
     }
 
-    /// <summary>双击:目录(含 "..")进去,文件直接当作选定并确认 —— 单选是最常见的用法。</summary>
+    /// <summary>双击目录进入;双击文件只切换勾选。</summary>
     private void OnFileDoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is not ListBox { SelectedItem: LocalFileEntry entry })
+        if (IsCheckBoxSource(e.Source)
+            || (e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext is not LocalFileEntry entry)
         {
             return;
         }
@@ -200,11 +295,11 @@ public partial class LocalPathPickerDialog : Window
             ViewModel.ActivateCommand.Execute(entry).Subscribe();
             return;
         }
-        this.PostClose(new[] { entry.FullPath });
+        Picker.SetChecked(entry, !Picker.IsChecked(entry));
     }
 
     /// <summary>
-    /// 列表里的回车与双击同一套规矩:只选着一个目录(含 "..")时进去,其余情况与「上传」按钮一样确认选中项。
+    /// 列表里的回车:单个目录(含 "..")高亮时进入,其余情况与「上传」按钮一样提交勾选项。
     /// 进目录后焦点给新列表的第一行,接着能按方向键、敲字定位。
     /// </summary>
     private void OnFileListKeyDown(object? sender, KeyEventArgs e)
@@ -214,6 +309,10 @@ public partial class LocalPathPickerDialog : Window
             return;
         }
         e.Handled = true;
+        if (IsCheckBoxSource(e.Source))
+        {
+            return;
+        }
         if (ViewModel.SelectedEntries is [{ IsDirectory: true } directory])
         {
             ViewModel.ActivateCommand.Execute(directory).Subscribe(_ => FocusList(), _ => { });
@@ -222,20 +321,190 @@ public partial class LocalPathPickerDialog : Window
         Confirm();
     }
 
-    private void OnRootSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    private void OnPickerChanged(object? sender, EventArgs e)
     {
-        if (sender is ComboBox comboBox
-            && comboBox.SelectedItem is LocalRootEntry root
-            && !ReferenceEquals(root, ViewModel.SelectedRoot))
+        UpdateSelectionSummary();
+        UploadTargetText.Text = Picker.HasActiveMapping
+            ? Strings.Format("Sftp_UploadTarget", Picker.ServerName, Picker.TargetRemotePath)
+            : Strings.Get("Sftp_UploadMappingSelectRequired");
+        BrowserArea.IsEnabled = !Picker.IsRestoring;
+        // 映射仍可点击:用户的新选择取消上一笔在飞读取,内容区则等待成功后整体提交。
+        MappingEmptyHint.IsVisible = Picker.Mappings.Count == 0;
+        QueueInitialMappingLocation();
+        string? error = Picker.ErrorMessage ?? ViewModel.ErrorMessage;
+        PickerErrorText.Text = error;
+        PickerErrorBanner.IsVisible = !string.IsNullOrEmpty(error);
+        RefreshCheckboxes();
+    }
+
+    private void RefreshCheckboxes()
+    {
+        _updatingChecks = true;
+        try
         {
-            if (!root.IsAccessible)
+            foreach (CheckBox checkBox in FileList.GetVisualDescendants().OfType<CheckBox>())
             {
-                comboBox.SelectedItem = ViewModel.SelectedRoot;
-                return;
+                if (checkBox.DataContext is LocalFileEntry entry)
+                {
+                    checkBox.IsChecked = Picker.IsChecked(entry);
+                    checkBox.IsEnabled = Picker.HasActiveMapping;
+                }
             }
-            ViewModel.SwitchRootCommand.Execute(root).Subscribe();
+            SelectAllCheck.IsChecked = Picker.AllChecked;
+            IconSelectAllCheck.IsChecked = Picker.AllChecked;
+            SelectAllCheck.IsEnabled = IconSelectAllCheck.IsEnabled = Picker.HasEntries && Picker.HasActiveMapping && !Picker.IsRestoring;
+        }
+        finally
+        {
+            _updatingChecks = false;
         }
     }
+
+    private void OnEntryCheckAttached(object? sender, VisualTreeAttachmentEventArgs e) => SyncEntryCheck(sender);
+    private void OnEntryCheckDataContextChanged(object? sender, EventArgs e) => SyncEntryCheck(sender);
+
+    private void SyncEntryCheck(object? sender)
+    {
+        if (Picker is null || sender is not CheckBox { DataContext: LocalFileEntry entry } checkBox)
+        {
+            return;
+        }
+        bool updating = _updatingChecks;
+        _updatingChecks = true;
+        checkBox.IsChecked = Picker.IsChecked(entry);
+        checkBox.IsEnabled = Picker.HasActiveMapping;
+        _updatingChecks = updating;
+    }
+
+    private void OnEntryCheckChanged(object? sender, RoutedEventArgs e)
+    {
+        if (!_updatingChecks && Picker is not null
+            && sender is CheckBox { DataContext: LocalFileEntry entry } checkBox
+            && TopLevel.GetTopLevel(checkBox) is not null)
+        {
+            Picker.SetChecked(entry, checkBox.IsChecked == true);
+        }
+    }
+
+    private void OnSelectAllClick(object? sender, RoutedEventArgs e) => Picker.SetAll(Picker.AllChecked != true);
+
+    private void OnMappingClick(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    {
+        if (!_closed && sender is Button { DataContext: UploadMappingItem item })
+        {
+            await Picker.ApplyMappingAsync(item, NavigateRemoteForMapping);
+            if (!_closed)
+            {
+                FocusList();
+            }
+        }
+    });
+
+    internal Func<string, string, Task<UploadMappingBinding?>>? BindMapping { get; set; }
+
+    private void OnMappingsContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        var row = (e.Source as Visual)?.FindAncestorOfType<Button>(includeSelf: true);
+        UploadMappingItem? item = row?.DataContext as UploadMappingItem;
+        var action = new MenuItem
+        {
+            Header = Strings.Get(item is null ? "Sftp_UploadMappingAdd" : "Sftp_UploadMappingDelete"),
+            IsEnabled = !Picker.IsRestoring && !_bindingOpen && Picker.CanManageMappings
+                && (item is not null || BindMapping is not null || _remoteDirectories is not null),
+        };
+        if (item is null)
+        {
+            action.Click += (_, _) => FireAndForget.Run(AddMappingAsync);
+        }
+        else
+        {
+            action.Classes.Add("danger");
+            action.Bind(MenuItem.ForegroundProperty, this.GetResourceObservable("VelaError"));
+            action.Click += (_, _) => FireAndForget.Run(() => Picker.DeleteMappingAsync(item));
+        }
+        var menu = new ContextMenu { ItemsSource = new[] { action } };
+        MappingContextMenu?.Close();
+        MappingContextMenu = menu;
+        menu.Open((Control?)row ?? MappingArea);
+        e.Handled = true;
+    }
+
+    private async Task AddMappingAsync()
+    {
+        if (_bindingOpen || _closed || !Picker.CanManageMappings || Picker.IsRestoring)
+        {
+            return;
+        }
+        _bindingOpen = true;
+        try
+        {
+            UploadMappingBinding? binding = BindMapping is { } bind
+                ? await bind(Picker.TargetRemotePath, ViewModel.CurrentPath)
+                : _remoteDirectories is not null
+                    ? await UploadMappingDialog.BindAsync(this, _remoteDirectories, _sessionId,
+                        Picker.TargetRemotePath, ViewModel.CurrentPath)
+                    : null;
+            if (!_closed && binding is not null)
+            {
+                await Picker.AddMappingAsync(binding.RemotePath, binding.LocalPath);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (!_closed)
+            {
+                Picker.ReportError(ex.Message);
+            }
+        }
+        finally
+        {
+            _bindingOpen = false;
+        }
+    }
+
+    internal Func<Task<string?>>? PickDirectory { get; set; }
+
+    private void OnChooseDirectoryClick(object? sender, RoutedEventArgs e) => FireAndForget.Run(ChooseDirectoryAsync);
+
+    private async Task ChooseDirectoryAsync()
+    {
+        try
+        {
+            string? path;
+            if (PickDirectory is { } pick)
+            {
+                path = await pick();
+            }
+            else
+            {
+                IReadOnlyList<IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new()
+                {
+                    Title = Strings.Get("Sftp_UploadChooseDirectory"),
+                    AllowMultiple = false,
+                    SuggestedStartLocation = await StorageDefaults.FolderAsync(this, ViewModel.CurrentPath),
+                });
+                path = folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
+            }
+            if (!_closed && !string.IsNullOrEmpty(path))
+            {
+                await ViewModel.NavigateToAsync(path);
+                if (!_closed)
+                {
+                    FocusList();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (!_closed)
+            {
+                Picker.ReportError(Strings.Format("Sftp_UploadDirectoryPickerFailed", ex.Message));
+            }
+        }
+    }
+
+    private static bool IsCheckBoxSource(object? source) =>
+        (source as Visual)?.FindAncestorOfType<CheckBox>(includeSelf: true) is not null;
 
     private void OnConfirmClick(object? sender, RoutedEventArgs e) => Confirm();
 
@@ -243,14 +512,14 @@ public partial class LocalPathPickerDialog : Window
     // "PlatformImpl is null" 警告(见 WindowCloseExtensions)。
     private void Confirm()
     {
-        List<LocalFileEntry> picked = PickedEntries();
-        if (picked.Count > 0)
+        if (!_closing && Picker.Submit() is { } result)
         {
-            this.PostClose(picked.Select(entry => entry.FullPath).ToArray());
+            // 保留不带连接上下文的纯路径选择器对话框返回类型。
+            _ = CloseAfterSaveAsync(_returnSelection ? result : result.LocalPaths);
         }
     }
 
-    private void OnCancelClick(object? sender, RoutedEventArgs e) => this.PostClose(null);
+    private void OnCancelClick(object? sender, RoutedEventArgs e) => _ = CloseAfterSaveAsync(null);
 
     // ---- 手动输入路径 ----
 
@@ -273,7 +542,7 @@ public partial class LocalPathPickerDialog : Window
     {
         if (e.Key == Key.Escape)
         {
-            this.PostClose(null);
+            _ = CloseAfterSaveAsync(null);
             e.Handled = true;
             return;
         }
@@ -318,6 +587,8 @@ public partial class LocalPathPickerDialog : Window
 
         // 留一点余量,免得正好顶到工作区边缘(某些桌面环境的自动隐藏面板会占掉几像素)。
         const double margin = 16;
+        MinWidth = Math.Min(MinWidth, Math.Max(1, availableWidth - margin));
+        MinHeight = Math.Min(MinHeight, Math.Max(1, availableHeight - margin));
         double width = Math.Clamp(Width, MinWidth, Math.Max(MinWidth, availableWidth - margin));
         double height = Math.Clamp(Height, MinHeight, Math.Max(MinHeight, availableHeight - margin));
         if (Math.Abs(width - Width) < 0.5 && Math.Abs(height - Height) < 0.5)

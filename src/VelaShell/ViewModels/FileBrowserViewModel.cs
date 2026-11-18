@@ -1268,7 +1268,13 @@ public class FileBrowserViewModel : ReactiveObject
     /// 两个入口),这正是上传以前被迫拆成两个菜单项的原因。
     /// </para>
     /// </summary>
-    public Func<Task<IReadOnlyList<string>>>? PickLocalPathsForUpload { get; set; }
+    public Func<string, Task<IReadOnlyList<string>>>? PickLocalPathsForUpload { get; set; }
+
+    /// <summary>映射上传选择器:返回勾选路径及用户选择的远端目标;取消返回 null。</summary>
+    public Func<string, Task<UploadSelectionResult?>>? PickUploadSelection { get; set; }
+
+    // 绑定窗口使用文档已有的串行目录服务,但不借用主面板的导航状态。
+    internal ISftpService UploadDirectoryService => _sftpService;
 
     /// <summary>
     /// 由视图设置:询问下载保存位置(参数 = 建议的文件名)。选了已有的文件时,由对话框自己问「要替换吗」——
@@ -1509,10 +1515,13 @@ public class FileBrowserViewModel : ReactiveObject
     public Task NavigateToAsync(string path, CancellationToken ct = default) =>
         NavigateCoreAsync(path, recordHistory: true, ct);
 
+    internal Task<bool> NavigateForUploadMappingAsync(string path, CancellationToken ct) =>
+        NavigateCoreAsync(path, recordHistory: true, ct);
+
     /// <param name="path">目标目录。</param>
     /// <param name="recordHistory">进了别的目录时要不要把原目录记进后退历史;后退 / 前进自己挪历史,传 false。</param>
     /// <param name="ct">取消令牌。</param>
-    private async Task NavigateCoreAsync(string path, bool recordHistory, CancellationToken ct)
+    private async Task<bool> NavigateCoreAsync(string path, bool recordHistory, CancellationToken ct)
     {
         using LifetimeScope lifetime = LinkToLifetime(ct);
         long navigationVersion = Interlocked.Increment(ref _navigationVersion);
@@ -1544,9 +1553,10 @@ public class FileBrowserViewModel : ReactiveObject
                 path,
                 ct
             );
+            ct.ThrowIfCancellationRequested();
             if (navigationVersion != Volatile.Read(ref _navigationVersion))
             {
-                return;
+                return false;
             }
             _ = RefreshFreeSpaceAsync(path, navigationVersion);
             bool pathChanged = !string.Equals(CurrentPath, path, StringComparison.Ordinal);
@@ -1555,7 +1565,7 @@ public class FileBrowserViewModel : ReactiveObject
             if (!pathChanged && visibleRowsInitialized && ListingUnchanged(files))
             {
                 HasLoaded = true;
-                return;
+                return true;
             }
             _allFiles.Clear();
             _allFiles.AddRange(files.Select(f => new RemoteFileInfoViewModel(f)));
@@ -1581,6 +1591,7 @@ public class FileBrowserViewModel : ReactiveObject
             {
                 DirectoryChanged?.Invoke(this, EventArgs.Empty);
             }
+            return true;
         }
         catch (OperationCanceledException)
         {
@@ -1603,6 +1614,7 @@ public class FileBrowserViewModel : ReactiveObject
             Interlocked.CompareExchange(ref _navigationCts, null, navigation);
             navigation.Dispose();
         }
+        return false;
     }
 
     /// <summary>
@@ -2063,7 +2075,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// 上传前预检:这批文件放得下吗(SFTP 的 statvfs)。可能放不下时问一句,用户说不传就不传 ——
     /// 传到一半磁盘满,远端会留下半个文件。查不到用量(服务端不支持、FTP)时不拦。
     /// </summary>
-    private async Task<bool> ConfirmEnoughSpaceAsync(IReadOnlyList<PlannedFileTransfer> plan, CancellationToken ct)
+    private async Task<bool> ConfirmEnoughSpaceAsync(IReadOnlyList<PlannedFileTransfer> plan, string destination, CancellationToken ct)
     {
         if (ConfirmLowSpace is null || plan.Count == 0)
         {
@@ -2090,7 +2102,7 @@ public class FileBrowserViewModel : ReactiveObject
         RemoteSpaceInfo? space;
         try
         {
-            space = await _sftpService.GetSpaceAsync(_sessionId, CurrentPath, ct);
+            space = await _sftpService.GetSpaceAsync(_sessionId, destination, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
         {
@@ -2112,22 +2124,34 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     private async Task UploadAsync(CancellationToken ct = default)
     {
+        if (PickUploadSelection is { } select)
+        {
+            UploadSelectionResult? selection = await select(CurrentPath);
+            if (selection is not null)
+            {
+                await UploadLocalPathsToAsync(selection.LocalPaths, selection.RemotePath, ct);
+            }
+            return;
+        }
         if (PickLocalPathsForUpload is null)
         {
             return;
         }
-        IReadOnlyList<string> picked = await PickLocalPathsForUpload();
-        await UploadLocalPathsAsync(picked, ct);
+        string destination = CurrentPath;
+        IReadOnlyList<string> picked = await PickLocalPathsForUpload(destination);
+        await UploadLocalPathsToAsync(picked, destination, ct);
     }
 
     /// <summary>
     /// 上传任意混合的本地文件和文件夹到当前目录,对文件夹做递归
     /// (创建对应的远程目录)。供上传菜单项与拖放共用,因此多选和拖放文件夹都汇聚到这里。
     /// </summary>
-    public async Task UploadLocalPathsAsync(
+    public Task UploadLocalPathsAsync(
         IReadOnlyList<string> localPaths,
         CancellationToken ct = default
-    )
+    ) => UploadLocalPathsToAsync(localPaths, CurrentPath, ct);
+
+    private async Task UploadLocalPathsToAsync(IReadOnlyList<string> localPaths, string destination, CancellationToken ct)
     {
         IReadOnlyList<string> roots = NormalizeUploadRoots(localPaths);
         if (roots.Count == 0)
@@ -2142,9 +2166,9 @@ public class FileBrowserViewModel : ReactiveObject
             var plan = new List<PlannedFileTransfer>();
             foreach (string path in roots)
             {
-                await BuildUploadPlanAsync(path, CurrentPath, plan, ct);
+                await BuildUploadPlanAsync(path, destination, plan, ct);
             }
-            if (!await ConfirmEnoughSpaceAsync(plan, ct))
+            if (!await ConfirmEnoughSpaceAsync(plan, destination, ct))
             {
                 return;
             }

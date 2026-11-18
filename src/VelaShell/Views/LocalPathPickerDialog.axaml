@@ -10,8 +10,8 @@
         x:Class="VelaShell.Views.LocalPathPickerDialog"
         x:DataType="vm:LocalFilePaneViewModel"
         Title="{loc:Localize Sftp_PickUploadTitle}"
-        Width="920" Height="640"
-        MinWidth="560" MinHeight="380"
+        Width="1160" Height="640"
+        MinWidth="800" MinHeight="380"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner">
 
@@ -21,12 +21,55 @@
        尺寸与视图(列表 / 图标)记在 windowLayout 里,下次照旧。 -->
 
   <Window.Resources>
+    <!-- 28px 文件行用紧凑勾选框,不继承 Fluent 模板内部的 32px 高度。 -->
+    <ControlTheme x:Key="UploadCheckTheme" TargetType="CheckBox">
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid ColumnDefinitions="20,*" Background="Transparent">
+            <Border Name="CheckFrame" Width="14" Height="14" CornerRadius="3"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    BorderThickness="1" BorderBrush="{DynamicResource VelaTextMuted}"
+                    Background="{DynamicResource VelaBgInput}">
+              <Panel>
+                <pc:LucideIcon Name="CheckGlyph" Width="12" Height="12" IsVisible="False"
+                               Data="{StaticResource Icon.check}" Foreground="{DynamicResource VelaAccent}" />
+                <Rectangle Name="PartialGlyph" Width="8" Height="2" IsVisible="False"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" Fill="{DynamicResource VelaAccent}" />
+              </Panel>
+            </Border>
+            <ContentPresenter Grid.Column="1" Margin="4,0,0,0" VerticalAlignment="Center"
+                              Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:checked /template/ Border#CheckFrame, ^:indeterminate /template/ Border#CheckFrame">
+        <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+      </Style>
+      <Style Selector="^:checked /template/ pc|LucideIcon#CheckGlyph">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+      <Style Selector="^:indeterminate /template/ Rectangle#PartialGlyph">
+        <Setter Property="IsVisible" Value="True" />
+      </Style>
+      <Style Selector="^:pointerover /template/ Border#CheckFrame, ^:focus-visible /template/ Border#CheckFrame">
+        <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+      </Style>
+    </ControlTheme>
+
     <!-- 列表视图的一行。 -->
     <DataTemplate x:Key="RowTemplate" x:DataType="vm:LocalFileEntry">
       <Border Classes="file-row" Classes.parent="{Binding IsParentEntry}" Height="28" Padding="16,0"
               BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
-        <Grid ColumnDefinitions="*,90,130">
-          <Grid Classes="dnd-surface" ColumnDefinitions="Auto,*" MinWidth="0" ClipToBounds="True" VerticalAlignment="Center">
+        <Grid ColumnDefinitions="24,*,90,130">
+          <CheckBox Classes="upload-check" Theme="{StaticResource UploadCheckTheme}" MinHeight="0" Height="20" Width="20" Padding="0"
+                    IsVisible="{Binding !IsParentEntry}" VerticalAlignment="Center"
+                    AutomationProperties.Name="{Binding DisplayName}"
+                    IsCheckedChanged="OnEntryCheckChanged" AttachedToVisualTree="OnEntryCheckAttached"
+                    DataContextChanged="OnEntryCheckDataContextChanged" />
+          <Grid Grid.Column="1" Classes="dnd-surface" ColumnDefinitions="Auto,*" MinWidth="0" ClipToBounds="True" VerticalAlignment="Center">
             <pc:LucideIcon Width="13" Height="13" Margin="0,0,7,0"
                            Data="{StaticResource Icon.folder}" Foreground="{DynamicResource VelaFileFolderIcon}"
                            IsVisible="{Binding IsRegularDirectory}" />
@@ -40,9 +83,9 @@
                        FontSize="{DynamicResource VelaFontSize11}" Foreground="{DynamicResource VelaTextSecondary}"
                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
           </Grid>
-          <TextBlock Classes="dnd-surface" Grid.Column="1" Text="{Binding FormattedSize}" FontFamily="{DynamicResource VelaUiMonoFont}"
+          <TextBlock Classes="dnd-surface" Grid.Column="2" Text="{Binding FormattedSize}" FontFamily="{DynamicResource VelaUiMonoFont}"
                      FontSize="{DynamicResource VelaFontSize11}" Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
-          <TextBlock Classes="dnd-surface" Grid.Column="2" Text="{Binding FormattedModifiedTime}" FontFamily="{DynamicResource VelaUiMonoFont}"
+          <TextBlock Classes="dnd-surface" Grid.Column="3" Text="{Binding FormattedModifiedTime}" FontFamily="{DynamicResource VelaUiMonoFont}"
                      FontSize="{DynamicResource VelaFontSize11}" Foreground="{DynamicResource VelaTextTertiary}" VerticalAlignment="Center" />
         </Grid>
       </Border>
@@ -52,6 +95,12 @@
          文件图标上印着扩展名 —— 格子里没有类型列,一屏同一个图标分不出谁是谁;
          大小与修改时间放进悬停提示,它们原本在列表的两列里。 -->
     <DataTemplate x:Key="TileTemplate" x:DataType="vm:LocalFileEntry">
+      <Grid>
+      <CheckBox Classes="upload-check" Theme="{StaticResource UploadCheckTheme}" MinHeight="0" Height="20" Width="20" Padding="0" Margin="4,5,0,0"
+                HorizontalAlignment="Left" VerticalAlignment="Top" ZIndex="1"
+                IsVisible="{Binding !IsParentEntry}" AutomationProperties.Name="{Binding DisplayName}"
+                IsCheckedChanged="OnEntryCheckChanged" AttachedToVisualTree="OnEntryCheckAttached"
+                DataContextChanged="OnEntryCheckDataContextChanged" />
       <StackPanel Classes="file-tile" Spacing="5" Margin="3,9,3,4" Background="Transparent">
         <ToolTip.Tip>
           <StackPanel Spacing="2" MaxWidth="360">
@@ -83,6 +132,7 @@
                    FontFamily="{DynamicResource VelaUiMonoFont}" FontSize="{DynamicResource VelaFontSize11}"
                    Foreground="{DynamicResource VelaTextSecondary}" />
       </StackPanel>
+      </Grid>
     </DataTemplate>
 
     <!-- 视图切换器的一段(Nautilus 头栏那种分段按钮):选中的一段 VelaAccentDim 底 + VelaAccent 图标,
@@ -191,7 +241,7 @@
 
   <Panel>
   <!-- 外边距是投影的画布:此前这里没有外边距,投影整个被窗口边缘裁掉,等于没画(#171)。 -->
-  <Border Classes="window-card" Background="{DynamicResource VelaBgSurface}"
+  <Border Classes="window-card" ClipToBounds="True" Background="{DynamicResource VelaBgSurface}"
           BorderBrush="{DynamicResource VelaBorderSecondary}">
     <DockPanel>
 
@@ -269,29 +319,59 @@
         </Grid>
       </Border>
 
-      <!-- 导航条:面包屑 / 路径输入框 + 根切换 + 上一级 + 刷新 -->
+      <!-- 每条映射独立决定本地来源、勾选状态和远端上传目标。 -->
+      <Border Name="MappingArea" DockPanel.Dock="Left" Width="240" Padding="12,10"
+              ContextRequested="OnMappingsContextRequested"
+              Background="{DynamicResource VelaBgSidebar}"
+              BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,1,0">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,10">
+            <TextBlock Text="{loc:Localize Sftp_UploadMappings}" FontWeight="SemiBold"
+                       FontSize="{DynamicResource VelaFontSize12}" Foreground="{DynamicResource VelaTextPrimary}" />
+            <TextBlock Name="UploadTargetText" TextWrapping="Wrap"
+                       FontSize="{DynamicResource VelaFontSize10}" Foreground="{DynamicResource VelaTextSecondary}" />
+            <TextBlock Text="{loc:Localize Sftp_UploadMappingsHint}" TextWrapping="Wrap"
+                       FontSize="{DynamicResource VelaFontSize10}" Foreground="{DynamicResource VelaTextMuted}" />
+          </StackPanel>
+          <Panel>
+            <TextBlock Name="MappingEmptyHint" Text="{loc:Localize Sftp_UploadMappingsEmpty}" TextWrapping="Wrap"
+                       FontSize="{DynamicResource VelaFontSize11}" Foreground="{DynamicResource VelaTextMuted}" />
+            <ScrollViewer Name="MappingScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+              <ItemsControl Name="MappingList">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:UploadMappingItem">
+                    <Button Theme="{DynamicResource VelaOutlineButtonTheme}" Click="OnMappingClick"
+                            Height="72" Padding="8,4" Margin="0,0,0,6" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch" ToolTip.Tip="{Binding LocalPath}">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="{loc:Localize Sftp_UploadMappingCurrent}" IsVisible="{Binding IsCurrent}"
+                                   FontSize="{DynamicResource VelaFontSize10}" Foreground="{DynamicResource VelaAccent}" />
+                        <TextBlock Text="{Binding RemotePath}" TextTrimming="CharacterEllipsis"
+                                   FontFamily="{DynamicResource VelaUiMonoFont}" FontSize="{DynamicResource VelaFontSize11}"
+                                   Foreground="{DynamicResource VelaTextPrimary}" />
+                        <TextBlock Text="{Binding LocalPath}" TextTrimming="CharacterEllipsis"
+                                   FontFamily="{DynamicResource VelaUiMonoFont}" FontSize="{DynamicResource VelaFontSize10}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                      </StackPanel>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Panel>
+        </DockPanel>
+      </Border>
+
+      <DockPanel Name="BrowserArea">
+      <!-- 导航条:面包屑 / 路径输入框 + 选择目录 + 刷新 -->
       <Border DockPanel.Dock="Top" Height="36" Padding="16,0"
               BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
         <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
           <views:LocalPathBar x:Name="PathBar" VerticalAlignment="Center" />
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-            <ComboBox MinHeight="0" Height="22" Padding="6,0" FontSize="{DynamicResource VelaFontSize12}"
-                      ItemsSource="{Binding Roots}" SelectedItem="{Binding SelectedRoot, Mode=OneWay}"
-                      SelectionChanged="OnRootSelectionChanged"
-                      VerticalContentAlignment="Center" MaxDropDownHeight="320">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:LocalRootEntry">
-                  <TextBlock Text="{Binding DisplayName}" ToolTip.Tip="{Binding Tooltip}"
-                             TextTrimming="CharacterEllipsis" FontSize="{DynamicResource VelaFontSize11}" Padding="2,1" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-            <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
-                    Command="{Binding GoUpCommand}"
-                    ToolTip.Tip="{loc:Localize Sftp_GoUp}" ToolTip.Placement="Top">
-              <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.corner-left-up}"
-                             Foreground="{DynamicResource VelaTextTertiary}" />
-            </Button>
+            <Button Name="ChooseDirectoryButton" Theme="{DynamicResource VelaOutlineButtonTheme}"
+                    Height="24" Padding="8,0" Click="OnChooseDirectoryClick"
+                    Content="{loc:Localize Sftp_UploadChooseDirectory}" />
             <Button Classes="toolbar-btn" Width="24" Height="24" Padding="0"
                     Command="{Binding RefreshCommand}"
                     ToolTip.Tip="{loc:Localize Refresh}" ToolTip.Placement="Top">
@@ -306,23 +386,33 @@
       <Border Name="ColumnHeader" DockPanel.Dock="Top" Height="26" Padding="16,0"
               Background="{DynamicResource VelaBgContentHeader}"
               BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
-        <Grid ColumnDefinitions="*,90,130">
-          <TextBlock Text="{loc:Localize FileName}" FontFamily="{DynamicResource VelaUiMonoFont}"
+        <Grid ColumnDefinitions="24,*,90,130">
+          <CheckBox Name="SelectAllCheck" Theme="{StaticResource UploadCheckTheme}" MinHeight="0" Height="20" Width="20" Padding="0"
+                    IsThreeState="True" Click="OnSelectAllClick"
+                    AutomationProperties.Name="{loc:Localize Sftp_UploadSelectAll}"
+                    ToolTip.Tip="{loc:Localize Sftp_UploadSelectAll}" />
+          <TextBlock Grid.Column="1" Text="{loc:Localize FileName}" FontFamily="{DynamicResource VelaUiMonoFont}"
                      FontSize="{DynamicResource VelaFontSize10}" LetterSpacing="1" Foreground="{DynamicResource VelaTextMuted}"
                      VerticalAlignment="Center" />
-          <TextBlock Grid.Column="1" Text="{loc:Localize Size}" FontFamily="{DynamicResource VelaUiMonoFont}"
+          <TextBlock Grid.Column="2" Text="{loc:Localize Size}" FontFamily="{DynamicResource VelaUiMonoFont}"
                      FontSize="{DynamicResource VelaFontSize10}" LetterSpacing="1" Foreground="{DynamicResource VelaTextMuted}"
                      VerticalAlignment="Center" />
-          <TextBlock Grid.Column="2" Text="{loc:Localize Modified}" FontFamily="{DynamicResource VelaUiMonoFont}"
+          <TextBlock Grid.Column="3" Text="{loc:Localize Modified}" FontFamily="{DynamicResource VelaUiMonoFont}"
                      FontSize="{DynamicResource VelaFontSize10}" LetterSpacing="1" Foreground="{DynamicResource VelaTextMuted}"
                      VerticalAlignment="Center" />
         </Grid>
       </Border>
 
-      <Border DockPanel.Dock="Top"
-              IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+      <Border Name="IconSelectionHeader" DockPanel.Dock="Top" Height="26" Padding="16,0" IsVisible="False"
+              BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,0,1">
+        <CheckBox Name="IconSelectAllCheck" Theme="{StaticResource UploadCheckTheme}" MinHeight="0" Height="22" Padding="0" IsThreeState="True"
+                  Content="{loc:Localize Sftp_UploadSelectAll}" Click="OnSelectAllClick"
+                  FontSize="{DynamicResource VelaFontSize10}" Foreground="{DynamicResource VelaTextSecondary}" />
+      </Border>
+
+      <Border Name="PickerErrorBanner" DockPanel.Dock="Top" IsVisible="False"
               Background="{DynamicResource VelaBgActive}" Padding="10,4">
-        <TextBlock Text="{Binding ErrorMessage}" Foreground="{DynamicResource VelaError}" FontSize="{DynamicResource VelaFontSize11}" />
+        <TextBlock Name="PickerErrorText" TextWrapping="Wrap" Foreground="{DynamicResource VelaError}" FontSize="{DynamicResource VelaFontSize11}" />
       </Border>
 
       <!-- 文件与文件夹同列表混选:这正是系统对话框做不到、也是拆成两个菜单项的原因。
@@ -349,6 +439,7 @@
                 BorderBrush="{DynamicResource VelaAccent}" BorderThickness="1"
                 CornerRadius="1" />
       </Panel>
+      </DockPanel>
     </DockPanel>
   </Border>
 

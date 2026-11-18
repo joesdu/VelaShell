@@ -308,6 +308,28 @@ public sealed class LocalFilePaneViewModel : ReactiveObject, IDisposable
     public Task NavigateToAsync(string path, CancellationToken cancellationToken = default) =>
         NavigateCoreAsync(path, recordHistory: true, cancellationToken);
 
+    internal sealed record PreparedDirectory(string Path, IReadOnlyList<LocalFileEntry> Entries);
+
+    // 只读取,不修改当前目录、列表、历史或监视器。映射的远端导航失败时可直接丢弃。
+    internal async Task<PreparedDirectory> PrepareDirectoryAsync(string path, CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        string canonical = Path.GetFullPath(path);
+        List<LocalFileEntry> listed = await ListDirectoryAsync(canonical, linked.Token);
+        linked.Token.ThrowIfCancellationRequested();
+        return new(canonical, listed);
+    }
+
+    internal void CommitPreparedDirectory(PreparedDirectory prepared, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _lifetime.Token.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref _navigationVersion);
+        ErrorMessage = null;
+        ApplyDirectory(prepared.Path, prepared.Entries, recordHistory: true);
+        IsDirectoryLoading = false;
+    }
+
     /// <param name="path">目标目录。</param>
     /// <param name="recordHistory">进了别的目录时要不要记历史;后退 / 前进自己挪历史,传 false。</param>
     /// <param name="cancellationToken">取消令牌。</param>
@@ -321,39 +343,13 @@ public sealed class LocalFilePaneViewModel : ReactiveObject, IDisposable
             ErrorMessage = null;
             IsDirectoryLoading = true;
             List<LocalFileEntry> listed = await ListDirectoryAsync(canonical, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             if (version != Volatile.Read(ref _navigationVersion))
             {
                 return;
             }
 
-            bool changed = !string.Equals(CurrentPath, canonical, PathComparison);
-            var selected = SelectedEntries
-                .Where(entry => !entry.IsParentEntry)
-                .Select(entry => entry.FullPath)
-                .ToHashSet(PathComparisonComparer);
-            string previousPath = CurrentPath;
-            CurrentPath = canonical;
-            if (changed)
-            {
-                SelectedEntries.Clear();
-                // 首次加载之前 CurrentPath 是空的,不进历史。
-                if (recordHistory && previousPath.Length > 0)
-                {
-                    PushHistory(previousPath);
-                }
-                // 换了目录,过滤条件作废(框照旧开着);只清字,下面这次重建就按不过滤来。
-                if (_filterText.Length > 0)
-                {
-                    this.RaiseAndSetIfChanged(ref _filterText, string.Empty, nameof(FilterText));
-                }
-            }
-            RebuildEntries(listed);
-            SyncSelectedRoot(canonical);
-            if (!changed)
-            {
-                RestoreSelection(selected);
-            }
-            RearmWatcher(canonical);
+            ApplyDirectory(canonical, listed, recordHistory);
         }
         catch (OperationCanceledException)
         {
@@ -373,6 +369,34 @@ public sealed class LocalFilePaneViewModel : ReactiveObject, IDisposable
                 IsDirectoryLoading = false;
             }
         }
+    }
+
+    private void ApplyDirectory(string canonical, IReadOnlyList<LocalFileEntry> listed, bool recordHistory)
+    {
+        bool changed = !string.Equals(CurrentPath, canonical, PathComparison);
+        var selected = SelectedEntries.Where(entry => !entry.IsParentEntry)
+            .Select(entry => entry.FullPath).ToHashSet(PathComparisonComparer);
+        string previousPath = CurrentPath;
+        CurrentPath = canonical;
+        if (changed)
+        {
+            SelectedEntries.Clear();
+            if (recordHistory && previousPath.Length > 0)
+            {
+                PushHistory(previousPath);
+            }
+            if (_filterText.Length > 0)
+            {
+                this.RaiseAndSetIfChanged(ref _filterText, string.Empty, nameof(FilterText));
+            }
+        }
+        RebuildEntries(listed);
+        SyncSelectedRoot(canonical);
+        if (!changed)
+        {
+            RestoreSelection(selected);
+        }
+        RearmWatcher(canonical);
     }
 
     /// <summary>刷新当前目录,或执行初始加载。</summary>

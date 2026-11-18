@@ -22,6 +22,39 @@ public class FileBrowserViewModelTests
         _vm = new(_sftpService, _sessionId);
     }
 
+    [TestMethod]
+    public async Task MappingNavigation_ReportsFailureAndPreservesLoadedRemoteContents()
+    {
+        _sftpService.ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(CreateTestFiles()));
+        await _vm.NavigateToAsync("/home/user");
+        RemoteFileInfoViewModel[] rows = [.. _vm.Files];
+        _sftpService.ListDirectoryAsync(_sessionId, "/denied", Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<List<RemoteFileInfo>>(new UnauthorizedAccessException("denied")));
+        Assert.IsFalse(await _vm.NavigateForUploadMappingAsync("/denied", CancellationToken.None));
+        Assert.AreEqual("/home/user", _vm.CurrentPath);
+        Assert.IsTrue(rows.SequenceEqual(_vm.Files));
+        Assert.IsNotNull(_vm.ErrorMessage);
+    }
+
+    [TestMethod]
+    public async Task MappingNavigation_CannotCommitAfterCancellationWhenBackendIgnoresIt()
+    {
+        _sftpService.ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(CreateTestFiles()));
+        await _vm.NavigateToAsync("/home/user");
+        var delayed = new TaskCompletionSource<List<RemoteFileInfo>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _sftpService.ListDirectoryAsync(_sessionId, "/late", Arg.Any<CancellationToken>()).Returns(delayed.Task);
+        using var cancellation = new CancellationTokenSource();
+        Task<bool> pending = _vm.NavigateForUploadMappingAsync("/late", cancellation.Token);
+        cancellation.Cancel();
+        delayed.SetResult([]);
+        Assert.IsFalse(await pending);
+        Assert.AreEqual("/home/user", _vm.CurrentPath);
+        Assert.IsTrue(_vm.Files.Any(file => file.Name == "readme.txt"));
+        Assert.IsFalse(_vm.IsDirectoryLoading);
+    }
+
     private static List<RemoteFileInfo> CreateTestFiles()
     {
         return
@@ -2176,7 +2209,7 @@ c => c.GetMethodInfo().Name == nameof(ISftpService.DownloadFileAsync),
             await File.WriteAllTextAsync(fileA, "A");
             await File.WriteAllTextAsync(fileB, "B");
             _vm.CurrentPath = "/home/user";
-            _vm.PickLocalPathsForUpload = () => Task.FromResult<IReadOnlyList<string>>([fileA, fileB]);
+            _vm.PickLocalPathsForUpload = _ => Task.FromResult<IReadOnlyList<string>>([fileA, fileB]);
             _sftpService
                 .ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult(new List<RemoteFileInfo>()));
@@ -2211,6 +2244,57 @@ c => c.GetMethodInfo().Name == nameof(ISftpService.DownloadFileAsync),
 
     [TestMethod]
     [TestCategory("FileBrowser")]
+    public async Task UploadCommand_KeepsTheDestinationCapturedBeforeThePickerOpens()
+    {
+        string file = Path.Combine(Path.GetTempPath(), "vela-upload-target-" + Guid.NewGuid().ToString("N") + ".txt");
+        await File.WriteAllTextAsync(file, "x");
+        try
+        {
+            _vm.CurrentPath = "/original";
+            _vm.PickLocalPathsForUpload = async destination =>
+            {
+                Assert.AreEqual("/original", destination);
+                await Task.Yield();
+                _vm.CurrentPath = "/changed-by-background";
+                return new[] { file };
+            };
+            await _vm.UploadCommand.Execute().FirstAsync();
+            await _sftpService.Received(1).UploadFileAsync(_sessionId, file,
+                "/original/" + Path.GetFileName(file), Arg.Any<IProgress<TransferProgress>?>(),
+                cancellationToken: Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task UploadCommand_UsesMappingTargetInsteadOfEntryOrBackgroundDirectory()
+    {
+        string file = Path.Combine(Path.GetTempPath(), "vela-mapped-upload-" + Guid.NewGuid().ToString("N") + ".txt");
+        await File.WriteAllTextAsync(file, "mapped");
+        try
+        {
+            _vm.CurrentPath = "/entry";
+            _vm.PickUploadSelection = async entry =>
+            {
+                Assert.AreEqual("/entry", entry);
+                await Task.Yield();
+                _vm.CurrentPath = "/background";
+                return new UploadSelectionResult([file], "/mapped", Guid.NewGuid());
+            };
+            await _vm.UploadCommand.Execute().FirstAsync();
+            await _sftpService.Received(1).UploadFileAsync(_sessionId, file,
+                "/mapped/" + Path.GetFileName(file), Arg.Any<IProgress<TransferProgress>?>(),
+                cancellationToken: Arg.Any<CancellationToken>());
+        }
+        finally { File.Delete(file); }
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public async Task UploadCommand_RecursivelyUploadsFolderTree()
     {
         string tempRoot = Path.Combine(
@@ -2227,7 +2311,7 @@ c => c.GetMethodInfo().Name == nameof(ISftpService.DownloadFileAsync),
             await File.WriteAllTextAsync(rootFile, "root");
             await File.WriteAllTextAsync(nestedFile, "child");
             _vm.CurrentPath = "/home/user";
-            _vm.PickLocalPathsForUpload = () => Task.FromResult<IReadOnlyList<string>>([folder]);
+            _vm.PickLocalPathsForUpload = _ => Task.FromResult<IReadOnlyList<string>>([folder]);
             _sftpService
                 .ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult(new List<RemoteFileInfo>()));
@@ -2290,7 +2374,7 @@ c => c.GetMethodInfo().Name == nameof(ISftpService.DownloadFileAsync),
             await File.WriteAllTextAsync(looseFile, "notes");
             await File.WriteAllTextAsync(folderFile, "png");
             _vm.CurrentPath = "/home/user";
-            _vm.PickLocalPathsForUpload = () => Task.FromResult<IReadOnlyList<string>>([looseFile, folder]);
+            _vm.PickLocalPathsForUpload = _ => Task.FromResult<IReadOnlyList<string>>([looseFile, folder]);
             _sftpService
                 .ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult(new List<RemoteFileInfo>()));
