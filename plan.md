@@ -3879,3 +3879,10 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **测试**:`ConversationNotesTests` 五条(类别归一、去重与保留旧说明、截断与上限、关掉与重新出现、工具调用、从历史重建与坏参数);`ChatPanelViewUiTests.Notes` 两组:提示条显示 / 折叠 / 逐条与全部关掉 / 新建清空 / 不出工具卡,以及真实一轮里模型调 `note_for_user` 后条目出现在提示条上(Agent、计划模式给;对话模式与在「配置工具」里停用时不给)。
 - **验证**:插件 `-warnaserror` 构建通过;AI 测试工程全量 2415 项全部通过(含 §340 的修正)。界面未在真实窗口里人工看过;真实模型是否会恰当地调用这件工具未验证(取决于模型对工具说明的遵从)。
 - **文档**:`manual.md` / `manual.en.md` 新增「你应该知道」一段;插件 README「界面」节补一段;velashell-docs《自动化与 AI》中英同步。
+
+## 342. AI 插件重构 1a:系统提示词分段组合 (2026-11-18)
+
+- **来由**:ai-plan §12(Agent 宿主重构、Skills 与扩展包)的第一步第一小步。桌面与 IM 各自把委派 / 团队 / 作图指引逐段相加,新加一段要在每个入口各补一处;Skills 的技能目录需要一个统一注入点。
+- **改动**:新增 `Chat/SystemPromptBuilder`(命名分段、空段跳过、按本轮工具追加委派 / 团队指引);`ChatPanelView.SendAsync` 与 `BridgeAgentRunner.RunAsync` 改用它;作图指引文字收成 `ChatPanelView.ImageGuidance`。输出与改动前逐字相同,自定义提示词的替换 / 追加语义不变(留给 1b)。
+- **验证**:新增 `SystemPromptBuilderTests` 3 条;AI 测试工程全量 2418/2418 通过,未改动既有断言。
+- **文档**:只动 `ai-plan.md` §12.5 / §12.6;对外行为不变,手册与 velashell-docs 无需同步。

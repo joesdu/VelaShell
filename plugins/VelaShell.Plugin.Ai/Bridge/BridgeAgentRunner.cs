@@ -431,11 +431,11 @@ public sealed class BridgeAgentRunner(
             conversation.History.Add(new ChatMessage(ChatRole.User, message.Text));
             await PersistAsync(conversation, "user", message.Text, cancellationToken).ConfigureAwait(false);
 
-            RequestContext request = ContextBuilder.Build(
-                BuildSystemPrompt(ai, bridge, mode, message, session, nativeSearch)
-                + (SubagentRunner.HasDelegation(options.Tools) ? SubagentRunner.DelegationGuidance : "")
-                + (SubagentRunner.HasTeam(options.Tools) ? SubagentRunner.TeamGuidance : ""),
-                conversation.History, model.MaxInputTokens, model.MaxTokens);
+            string systemPrompt = new SystemPromptBuilder()
+                .Add(SystemPromptBuilder.Base, BuildSystemPrompt(ai, bridge, mode, message, session, nativeSearch))
+                .AddToolGuidance(options.Tools)
+                .Build();
+            RequestContext request = ContextBuilder.Build(systemPrompt, conversation.History, model.MaxInputTokens, model.MaxTokens);
             // 有的订阅型端点不收 system 角色(ChatGPT 的 Codex 后端会回
             // 400 {"detail":"System messages are not allowed"})。那时把系统提示词挪到
             // Responses 协议自己的 instructions 字段上 —— 内容一个字不少,只是换了个位置。

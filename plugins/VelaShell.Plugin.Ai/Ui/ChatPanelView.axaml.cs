@@ -2315,15 +2315,12 @@ public partial class ChatPanelView : UserControl
                     }, token);
                 }
                 // 装配上下文:摘要 + 近几轮原文,按窗口裁剪并把相邻同角色的消息并起来(见 ContextBuilder)
-                RequestContext request = ContextBuilder.Build(
-                    BuildSystemPrompt(current, mode, nativeSearch)
-                    + (SubagentRunner.HasDelegation(options.Tools) ? SubagentRunner.DelegationGuidance : "")
-                    + (SubagentRunner.HasTeam(options.Tools) ? SubagentRunner.TeamGuidance : "")
-                    + (imageToolsEnabled
-                        ? "\nImage tools are available. For explicit image creation requests, use generate_image with a standalone prompt incorporating the relevant conversation details. " +
-                          "For changes to an existing image use edit_image with its exact conversation image ID. Do not claim success before the tool succeeds. " +
-                          "Never automatically retry failed image operations. Do not include unrelated terminal content or secrets in image prompts.\n" + ImagesFor(conv).Describe()
-                        : ""), History, current.MaxInputTokens, current.MaxTokens,
+                string systemPrompt = new SystemPromptBuilder()
+                    .Add(SystemPromptBuilder.Base, BuildSystemPrompt(current, mode, nativeSearch))
+                    .AddToolGuidance(options.Tools)
+                    .Add(SystemPromptBuilder.Images, imageToolsEnabled ? ImageGuidance + ImagesFor(conv).Describe() : null)
+                    .Build();
+                RequestContext request = ContextBuilder.Build(systemPrompt, History, current.MaxInputTokens, current.MaxTokens,
                     ContextSummary, SummarizedThrough);
                 requestMessages = request.Messages;
                 DroppedFromContext = request.DroppedMessages;
@@ -3247,6 +3244,12 @@ public partial class ChatPanelView : UserControl
         string[] lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return lines.Length > 0 ? lines : null;
     }
+
+    /// <summary>作图指引的固定部分(本轮启用了作图工具时追加,后面接上这段对话里图片的清单)。</summary>
+    internal const string ImageGuidance =
+        "\nImage tools are available. For explicit image creation requests, use generate_image with a standalone prompt incorporating the relevant conversation details. " +
+        "For changes to an existing image use edit_image with its exact conversation image ID. Do not claim success before the tool succeeds. " +
+        "Never automatically retry failed image operations. Do not include unrelated terminal content or secrets in image prompts.\n";
 
     /// <summary>
     /// 系统提示词:接入专用的优先,其次全局的,最后才是内置默认。

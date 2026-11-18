@@ -507,8 +507,8 @@ AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出�
 
 | 步骤 | 状态 | 说明 |
 | --- | --- | --- |
-| 1a 系统提示词分段组合 | 进行中 | |
-| 1b 统一自定义提示词语义 | 未开始 | 唯一的行为变化,单独提交 |
+| 1a 系统提示词分段组合 | 完成 | 见 12.6 |
+| 1b 统一自定义提示词语义 | 进行中 | 唯一的行为变化,单独提交 |
 | 1c 工具来源统一 | 未开始 | |
 | 1d 子 Agent 编排器工厂 | 未开始 | |
 | 1e 拆小 `SendAsync` | 未开始 | |
@@ -516,3 +516,10 @@ AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出�
 | 3 扩展包 | 未开始 | 依赖第二步 |
 
 每完成一步:在上表更新状态,在本节下追加一条「12.x 日期:做了什么、验证结果、遗留」,并同步 `plan.md`(已发生的事)。
+
+### 12.6 2026-11-18:1a 系统提示词分段组合
+
+- 新增 `Chat/SystemPromptBuilder`:按顺序拼接命名分段(`base` / `delegation` / `team` / `images`),空段跳过,分段之间不加分隔,拼出来与原先逐段相加逐字相同。`AddToolGuidance` 按本轮实际暴露的工具决定是否追加委派与团队指引,判定沿用 `SubagentRunner.HasDelegation` / `HasTeam`。
+- 桌面(`ChatPanelView.SendAsync`)与 IM(`BridgeAgentRunner.RunAsync`)改为经它拼接;作图指引的固定文字收成 `ChatPanelView.ImageGuidance` 常量。对外 MCP 不拼系统提示词(外部 agent 自带),不涉及。
+- 不改任何对外行为:自定义提示词仍是桌面替换、IM 追加(留给 1b)。
+- 验证:新增 `SystemPromptBuilderTests` 3 条;AI 测试工程全量 **2418/2418** 通过,未改动任何既有断言。
