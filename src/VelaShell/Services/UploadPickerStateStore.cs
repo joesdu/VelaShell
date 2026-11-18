@@ -47,8 +47,15 @@ internal sealed class UploadPickerStateStore(IAppDataStore? store)
     private Task _pending = Task.CompletedTask;
     private UploadPickerState? _state;
 
+    // 读取成功(或没有存储)之前不写盘:一次读失败后把临时的空状态写回去,会清掉磁盘上已有的映射。
+    private bool _loaded;
+
     public Task<UploadPickerState> LoadAsync() => Enqueue(async () => (await ReadCoreAsync()).Clone());
 
+    /// <summary>
+    /// 保存全局最近目录与勾选。映射只记录它自己目录下的勾选:当前目录就是映射的本地目录时才更新勾选;
+    /// 映射的本地 / 远端目录只由添加映射决定,在选择器里浏览别的目录不会改写绑定。
+    /// </summary>
     public Task<(UploadPickerState State, bool Saved)> SaveSelectionAsync(
         UploadPickerContext? context, Guid? mappingId, string localPath, string[] checkedPaths, bool updateMapping)
     {
@@ -59,15 +66,32 @@ internal sealed class UploadPickerStateStore(IAppDataStore? store)
             state.LocalPath = localPath;
             state.CheckedPaths = paths;
             if (updateMapping && context?.ProfileId is { } profileId
-                && state.Mappings.FirstOrDefault(item => item.Id == mappingId && item.ProfileId == profileId) is { } mapping)
+                && state.Mappings.FirstOrDefault(item => item.Id == mappingId && item.ProfileId == profileId) is { } mapping
+                && SameLocalPath(mapping.LocalPath, localPath))
             {
                 // 更新绝不插入:删除之后到达的旧窗口/旧保存不能复活映射。
-                mapping.LocalPath = localPath;
                 mapping.CheckedPaths = paths;
                 mapping.SavedOrder = ++state.SaveOrder;
             }
             return (state.Clone(), await PersistAsync(state));
         });
+    }
+
+    private static bool SameLocalPath(string left, string right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        {
+            return false;
+        }
+        try
+        {
+            return string.Equals(RemoteDirectoryBookmark.NormalizeLocalPath(left), RemoteDirectoryBookmark.NormalizeLocalPath(right),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
     }
 
     public Task<(UploadPickerState State, bool Saved, Guid Id)> AddMappingAsync(
@@ -119,6 +143,10 @@ internal sealed class UploadPickerStateStore(IAppDataStore? store)
 
     private async Task<bool> PersistAsync(UploadPickerState state)
     {
+        if (!_loaded)
+        {
+            return false;
+        }
         try
         {
             if (store is not null)
@@ -135,37 +163,49 @@ internal sealed class UploadPickerStateStore(IAppDataStore? store)
 
     private async Task<UploadPickerState> ReadCoreAsync()
     {
-        if (_state is null)
+        if (_loaded)
         {
-            try
+            return _state!;
+        }
+        UploadPickerState? loaded;
+        try
+        {
+            loaded = store is null ? null
+                : await store.GetAsync<UploadPickerState>("uploadPickerState", "state").ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // 读不出来时仍允许打开选择器:先用内存里的临时状态,不写盘(见 PersistAsync),下次操作再重读。
+            return _state ??= Normalize(new());
+        }
+        // 读成功后以磁盘内容为准;读失败期间的临时改动没写过盘,直接丢弃,不与真实数据交错合并。
+        _state = Normalize(loaded ?? new());
+        _loaded = true;
+        bool migrated = false;
+        foreach (UploadDirectoryMapping mapping in _state.Mappings)
+        {
+            if (mapping.Id == Guid.Empty)
             {
-                _state = store is null ? null
-                    : await store.GetAsync<UploadPickerState>("uploadPickerState", "state").ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                // 使用习惯读不出来时仍允许打开选择器。
-            }
-            _state ??= new();
-            _state.Mappings ??= [];
-            _state.LastUploadedMappings ??= [];
-            _state.SaveOrder = Math.Max(_state.SaveOrder, _state.Mappings.Select(item => item.SavedOrder).DefaultIfEmpty().Max());
-            bool migrated = false;
-            foreach (UploadDirectoryMapping mapping in _state.Mappings)
-            {
-                if (mapping.Id == Guid.Empty)
-                {
-                    mapping.Id = Guid.NewGuid();
-                    mapping.SavedOrder = ++_state.SaveOrder;
-                    migrated = true;
-                }
-            }
-            if (migrated)
-            {
-                await PersistAsync(_state).ConfigureAwait(false);
+                mapping.Id = Guid.NewGuid();
+                mapping.SavedOrder = ++_state.SaveOrder;
+                migrated = true;
             }
         }
+        if (migrated)
+        {
+            await PersistAsync(_state).ConfigureAwait(false);
+        }
         return _state;
+    }
+
+    private static UploadPickerState Normalize(UploadPickerState state)
+    {
+        state.Mappings ??= [];
+        state.LastUploadedMappings ??= [];
+        state.CheckedPaths ??= [];
+        state.LocalPath ??= string.Empty;
+        state.SaveOrder = Math.Max(state.SaveOrder, state.Mappings.Select(item => item.SavedOrder).DefaultIfEmpty().Max());
+        return state;
     }
 
     private Task<T> Enqueue<T>(Func<Task<T>> operation)

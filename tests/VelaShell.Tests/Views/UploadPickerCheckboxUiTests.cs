@@ -246,9 +246,18 @@ public sealed class UploadPickerCheckboxUiTests
             dialog.MappingContextMenu!.Close();
             await dialog.Picker.FlushAsync();
             Pump(dialog);
-            Assert.IsFalse(dialog.ConfirmButton.IsEnabled);
-            Assert.IsFalse(dialog.Picker.HasActiveMapping);
+            Assert.IsFalse(dialog.ConfirmButton.IsEnabled, "删除后勾选清空,没选东西时不给按。");
+            Assert.IsNull(dialog.Picker.ActiveMappingId);
             Assert.AreEqual(Path.Combine(root, "sub"), browser.CurrentPath);
+            File.WriteAllText(Path.Combine(root, "sub", "x.txt"), "x");
+            await browser.RefreshAsync();
+            await dialog.Picker.FlushAsync();
+            Pump(dialog);
+            Assert.IsTrue(dialog.SelectAllCheck.IsEnabled, "删除当前映射后仍可勾选上传。");
+            dialog.Picker.SetAll(true);
+            Pump(dialog);
+            Assert.IsTrue(dialog.ConfirmButton.IsEnabled);
+            StringAssert.Contains(dialog.UploadTargetText.Text, "/web");
         }
         finally
         {
@@ -265,11 +274,15 @@ public sealed class UploadPickerCheckboxUiTests
     public Task OpeningScrollsToRestoredMapping_WithoutReorderingOrLaterScrollJumps(int selectedIndex) => RunAsync(async (_, _, root) =>
     {
         var store = new UploadPickerStateStore(new UploadMemoryStore());
-        var context = new UploadPickerContext(Guid.NewGuid(), "/record-00", "server");
+        // 最近上传只在入口远端目录的绑定之间恢复,所以 20 条都挂在同一远端目录下、各自绑定不同的本地目录。
+        var context = new UploadPickerContext(Guid.NewGuid(), "/record", "server");
         var ids = new List<Guid>();
         for (int i = 0; i < 20; i++)
         {
-            ids.Add((await store.AddMappingAsync(context with { RemotePath = $"/record-{i:00}" }, root)).Id);
+            string local = Path.Combine(root, $"m-{i:00}");
+            Directory.CreateDirectory(local);
+            File.WriteAllText(Path.Combine(local, "f.txt"), "x");
+            ids.Add((await store.AddMappingAsync(context, local)).Id);
         }
         await store.MarkUploadedAsync(context.ProfileId!.Value, ids[selectedIndex]);
         using LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane();

@@ -10019,7 +10019,6 @@ Send anyway?</value>
   <data name="Sftp_UploadMappingUnavailable" xml:space="preserve"><value>The mapped directory is unavailable: {0}.</value></data>
   <data name="Sftp_UploadMemorySaveFailed" xml:space="preserve"><value>Could not save upload choices. They remain available for this run.</value></data>
   <data name="Sftp_UploadDirectoryPickerFailed" xml:space="preserve"><value>Could not choose a directory: {0}</value></data>
-  <data name="Sftp_UploadMappingSelectRequired" xml:space="preserve"><value>Select or add a mapping to continue uploading.</value></data>
   <data name="Sftp_UploadMappingAdd" xml:space="preserve"><value>Add mapping</value></data>
   <data name="Sftp_UploadMappingDelete" xml:space="preserve"><value>Delete mapping</value></data>
   <data name="Sftp_UploadMappingBindTitle" xml:space="preserve"><value>Bind upload directories</value></data>

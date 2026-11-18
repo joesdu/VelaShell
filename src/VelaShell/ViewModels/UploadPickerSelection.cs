@@ -39,7 +39,6 @@ internal sealed class UploadPickerSelection : IDisposable
     private readonly HashSet<string> _checked = new(PathComparer);
     private string _directory;
     private bool _restoring;
-    private bool _protectMapping;
     private bool _disposed;
     private long _restoreVersion;
     private long _saveVersion;
@@ -70,7 +69,6 @@ internal sealed class UploadPickerSelection : IDisposable
     public string ServerName => _context?.ServerName ?? string.Empty;
     public Guid? ActiveMappingId { get; private set; }
     public bool CanManageMappings => _context?.ProfileId is not null;
-    public bool HasActiveMapping => !CanManageMappings || ActiveMappingId is not null;
     public bool IsRestoring => _restoring;
     public IReadOnlyList<LocalFileEntry> CheckedEntries =>
         [.. _browser.Entries.Where(entry => !entry.IsParentEntry && _checked.Contains(entry.FullPath))];
@@ -82,14 +80,13 @@ internal sealed class UploadPickerSelection : IDisposable
 
     public void SetChecked(LocalFileEntry entry, bool value)
     {
-        if (_disposed || _stopping || _restoring || !HasActiveMapping || entry.IsParentEntry || !_browser.Entries.Contains(entry))
+        if (_disposed || _stopping || _restoring || entry.IsParentEntry || !_browser.Entries.Contains(entry))
         {
             return;
         }
         bool changed = value ? _checked.Add(entry.FullPath) : _checked.Remove(entry.FullPath);
         if (changed)
         {
-            _protectMapping = false;
             ErrorMessage = null;
             Save(userChangedChecks: true);
             RaiseChanged();
@@ -98,7 +95,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     public void SetAll(bool value)
     {
-        if (_disposed || _stopping || _restoring || !HasActiveMapping)
+        if (_disposed || _stopping || _restoring)
         {
             return;
         }
@@ -107,7 +104,6 @@ internal sealed class UploadPickerSelection : IDisposable
         {
             _checked.UnionWith(_browser.Entries.Where(entry => !entry.IsParentEntry).Select(entry => entry.FullPath));
         }
-        _protectMapping = false;
         ErrorMessage = null;
         Save(userChangedChecks: true);
         RaiseChanged();
@@ -132,7 +128,10 @@ internal sealed class UploadPickerSelection : IDisposable
             if (exact is not null && _context?.ProfileId is { } profile
                 && state.LastUploadedMappings.TryGetValue(profile, out Guid last))
             {
-                mapping = state.Mappings.FirstOrDefault(item => item.ProfileId == profile && item.Id == last) ?? exact;
+                // 最近上传只在入口远端目录的几条本地绑定之间挑:指向别的远端目录的记录不能接管目标,
+                // 否则主面板停在入口目录,文件却静默传进另一个目录。
+                mapping = state.Mappings.FirstOrDefault(item => item.ProfileId == profile && item.Id == last
+                    && item.RemotePath == _context.RemotePath) ?? exact;
             }
             if (mapping is not null)
             {
@@ -147,7 +146,6 @@ internal sealed class UploadPickerSelection : IDisposable
             }
             if (mapping is not null && !restored)
             {
-                _protectMapping = true;
                 ErrorMessage = Strings.Format("Sftp_UploadMappingUnavailable", mapping.LocalPath);
             }
             string[] paths = restored ? mapping!.CheckedPaths : CanManageMappings ? [] : state.CheckedPaths;
@@ -245,7 +243,6 @@ internal sealed class UploadPickerSelection : IDisposable
                 TargetRemotePath = mapping.RemotePath;
                 RestoreChecks(mapping.CheckedPaths);
                 _directory = _browser.CurrentPath;
-                _protectMapping = false;
                 ErrorMessage = null;
                 SetMappings(state);
                 applied = true;
@@ -304,7 +301,6 @@ internal sealed class UploadPickerSelection : IDisposable
         {
             ActiveMappingId = null;
             _checked.Clear();
-            _protectMapping = false;
             UpdateMarkers();
         }
         RaiseChanged();
@@ -329,7 +325,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     public UploadSelectionResult? Submit()
     {
-        if (_disposed || _stopping || _restoring || !HasActiveMapping || _browser.IsDirectoryLoading || CheckedEntries.Count == 0)
+        if (_disposed || _stopping || _restoring || _browser.IsDirectoryLoading || CheckedEntries.Count == 0)
         {
             return null;
         }
@@ -430,7 +426,6 @@ internal sealed class UploadPickerSelection : IDisposable
         {
             _directory = _browser.CurrentPath;
             _checked.Clear();
-            _protectMapping = false;
             ErrorMessage = null;
         }
         RaiseChanged();
@@ -461,7 +456,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     private async Task SaveCoreAsync(long version, Guid? id, string directory, string[] paths)
     {
-        var saved = await _store.SaveSelectionAsync(_context, id, directory, paths, !_protectMapping);
+        var saved = await _store.SaveSelectionAsync(_context, id, directory, paths, updateMapping: true);
         if (!_disposed && version == _saveVersion)
         {
             AcceptState(saved.State, saved.Saved);

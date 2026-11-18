@@ -10013,7 +10013,6 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Sftp_UploadMappingUnavailable" xml:space="preserve"><value>매핑된 폴더를 사용할 수 없습니다: {0}.</value></data>
   <data name="Sftp_UploadMemorySaveFailed" xml:space="preserve"><value>업로드 선택을 저장하지 못했습니다. 현재 실행 중에는 유지됩니다.</value></data>
   <data name="Sftp_UploadDirectoryPickerFailed" xml:space="preserve"><value>폴더를 선택할 수 없습니다: {0}</value></data>
-  <data name="Sftp_UploadMappingSelectRequired" xml:space="preserve"><value>업로드를 계속하려면 매핑을 선택하거나 추가하세요.</value></data>
   <data name="Sftp_UploadMappingAdd" xml:space="preserve"><value>매핑 추가</value></data>
   <data name="Sftp_UploadMappingDelete" xml:space="preserve"><value>매핑 삭제</value></data>
   <data name="Sftp_UploadMappingBindTitle" xml:space="preserve"><value>업로드 폴더 매핑 연결</value></data>

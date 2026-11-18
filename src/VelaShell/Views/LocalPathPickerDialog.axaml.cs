@@ -279,7 +279,7 @@ public partial class LocalPathPickerDialog : Window
             : Strings.Format("Sftp_PickUploadSelected", picked.Count - folders, folders);
 
         // 没选东西时不给按,免得开一个空批次。
-        ConfirmButton?.IsEnabled = picked.Count > 0 && Picker.HasActiveMapping && !Picker.IsRestoring && !ViewModel.IsDirectoryLoading;
+        ConfirmButton?.IsEnabled = picked.Count > 0 && !Picker.IsRestoring && !ViewModel.IsDirectoryLoading;
     }
 
     /// <summary>双击目录进入;双击文件只切换勾选。</summary>
@@ -324,9 +324,8 @@ public partial class LocalPathPickerDialog : Window
     private void OnPickerChanged(object? sender, EventArgs e)
     {
         UpdateSelectionSummary();
-        UploadTargetText.Text = Picker.HasActiveMapping
-            ? Strings.Format("Sftp_UploadTarget", Picker.ServerName, Picker.TargetRemotePath)
-            : Strings.Get("Sftp_UploadMappingSelectRequired");
+        // 删掉当前映射后照常可以上传,目标沿用窗口显示的远端目录,只是不再记到任何映射上。
+        UploadTargetText.Text = Strings.Format("Sftp_UploadTarget", Picker.ServerName, Picker.TargetRemotePath);
         BrowserArea.IsEnabled = !Picker.IsRestoring;
         // 映射仍可点击:用户的新选择取消上一笔在飞读取,内容区则等待成功后整体提交。
         MappingEmptyHint.IsVisible = Picker.Mappings.Count == 0;
@@ -347,12 +346,11 @@ public partial class LocalPathPickerDialog : Window
                 if (checkBox.DataContext is LocalFileEntry entry)
                 {
                     checkBox.IsChecked = Picker.IsChecked(entry);
-                    checkBox.IsEnabled = Picker.HasActiveMapping;
                 }
             }
             SelectAllCheck.IsChecked = Picker.AllChecked;
             IconSelectAllCheck.IsChecked = Picker.AllChecked;
-            SelectAllCheck.IsEnabled = IconSelectAllCheck.IsEnabled = Picker.HasEntries && Picker.HasActiveMapping && !Picker.IsRestoring;
+            SelectAllCheck.IsEnabled = IconSelectAllCheck.IsEnabled = Picker.HasEntries && !Picker.IsRestoring;
         }
         finally
         {
@@ -372,7 +370,6 @@ public partial class LocalPathPickerDialog : Window
         bool updating = _updatingChecks;
         _updatingChecks = true;
         checkBox.IsChecked = Picker.IsChecked(entry);
-        checkBox.IsEnabled = Picker.HasActiveMapping;
         _updatingChecks = updating;
     }
 
