@@ -3867,3 +3867,15 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **测试**:`SubagentRunnerTests` 的作用域用例改为「候选覆盖所有供应商、主控那一家在前、别家可解析、图片与已删除仍拒绝」,新增 `CannotUseModel` 判定与「别家 Key 被拒 → 换父模型跑完」两条;`LongRunFollowUpTests` 的清单用例改为跨供应商并核对 `provider` / `model` 与排序,说明用例改核新措辞;`SubagentEntryPointTests` 的「拒绝别家」改为 IM 桥接与对外 MCP 都真的把子任务发到别家端点并取回结果;`ChatPanelViewUiTests.Subagents` 去掉「别家模型应失败」一行,新增桌面解析别家模型、用它自己 Key 的一条。
 - **验证**:`VelaShell.Plugin.Ai` `-warnaserror` 构建通过;AI 测试工程全量 2405 项跑出 2404 通过、1 失败(即上面去掉的「别家模型应失败」旧断言),修正后相关 38 项通过,修正后未再跑全量。均为本地 HTTP 模拟,未调用真实付费模型,不宣称真实模型的跨厂商分工效果已验收。
 - **文档**:`manual.md` / `manual.en.md` 委派、IM 与对外 MCP 三段;插件 README 委派与「按任务挑模型」两处,新增替补一条;velashell-docs《自动化与 AI》§1.x 委派段与团队模式「跨供应商分工」一条、《安全威胁模型》模型选择一条,中英两份同步。
+
+## 341. AI 插件:「你应该知道」提示条 (2026-11-18)
+
+- **来由**:维护者要求仿 Claude Code 的 you-should-know 插件,让 AI 从对话中提取用户应该关注的信息,显示在插件里合适的位置。维护者选定:由主模型在回答中调工具标出(不每轮另跑一次提取),显示在输入框上方的提示条。
+- **工具**:`note_for_user(kind, title, detail?)`,`kind` 为 `warning` / `action` / `info`(认不出按 `info`)。工具说明要求少而精:只放风险、要用户亲自去做的事与影响后续决定的发现,不放进度与回答摘要,每轮约三条以内,同标题再调即更新。返回值只是一句回执,没有副作用。
+- **数据**:`Chat/ConversationNotes.cs`,每份对话一个(`Conversation.Notes`)。同标题(忽略大小写、去首尾空白)原位更新并重新显示,最多 20 条(超出丢最早的),标题 120 / 说明 600 字符截断。不另存:工具调用连同参数本来就进历史,载入会话时由 `Restore` 从 `ChatToolCall` 重建,参数坏了跳过;关掉只在本次打开期间有效。
+- **界面**:`Ui/ChatPanelView.Notes.cs` 的 `NotesBar`,在已修改文件条之上,沿用它的表面样式;标题「你应该知道 (N)」可折叠(默认展开),每条按类别配图标与语义色(风险 shield-alert / warning 色,待办 list-todo / info 色,发现 sparkles),右侧 × 关掉一条、标题行 × 关掉全部。写入可能来自后台轮次、不在 UI 线程,`NewConversation` 挂的 `Changed` 投递回 UI 线程,只在那份对话正显示时重画。新建 / 载入对话时清空;切换对话时随 `RefreshForeground` 换成那份的条目。回复里不为 `note_for_user` 出工具卡。
+- **范围**:Agent 与计划模式由桌面面板另加(提示条只在这里);对话模式不给任何工具,IM 桥接与对外 MCP 不给。登记进 `AgentToolbox.Catalog`(只读,`ToolKind.Note`,图标 sparkles)以便在「配置工具」里停用;计划模式目录用例相应排除它(它不从工具箱出)。
+- **界面文案**:`Loc.cs` 新增 `NotesTitle` / `NotesToggle` / `NotesDismissAll` / `NoteDismiss` / `NoteKindWarning` / `NoteKindAction` / `NoteKindInfo` / `ToolKindNote`,五种语言齐。
+- **测试**:`ConversationNotesTests` 五条(类别归一、去重与保留旧说明、截断与上限、关掉与重新出现、工具调用、从历史重建与坏参数);`ChatPanelViewUiTests.Notes` 两组:提示条显示 / 折叠 / 逐条与全部关掉 / 新建清空 / 不出工具卡,以及真实一轮里模型调 `note_for_user` 后条目出现在提示条上(Agent、计划模式给;对话模式与在「配置工具」里停用时不给)。
+- **验证**:插件 `-warnaserror` 构建通过;AI 测试工程全量 2415 项全部通过(含 §340 的修正)。界面未在真实窗口里人工看过;真实模型是否会恰当地调用这件工具未验证(取决于模型对工具说明的遵从)。
+- **文档**:`manual.md` / `manual.en.md` 新增「你应该知道」一段;插件 README「界面」节补一段;velashell-docs《自动化与 AI》中英同步。
