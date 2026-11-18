@@ -3914,3 +3914,10 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **改动**:收成 `ChatPanelView.CreateRequestOptions`;`SendAsync` 约 1,165 → 1,131 行。换站循环的拆分推迟到 Skills 之后(理由见 ai-plan §12.10);发现 IM 不带模型的停止序列、桌面带,记为单独小修,未改。
 - **验证**:AI 测试工程全量 2427/2427 通过。
 - **文档**:只动 `ai-plan.md` §12.5 / §12.10。
+
+## 347. AI 插件:技能(Skills)扫描与交给模型 (2026-11-18)
+
+- **来由**:ai-plan §12.3(第二步 Skills)的 2a。
+- **改动**:`Chat/Skills/SkillCatalog`(扫描与解析)、`Chat/Skills/SkillToolSource`(`load_skill` / `read_skill_file` 与技能目录);`AiSettings.DisabledSkills`;`SystemPromptBuilder.AddSkills`;桌面与 IM 接入;两件工具进内置工具目录(`ToolKind.Skill`)。用户级目录定为 `~/.velashell/skills`(不随卸载删除)。
+- **验证**:新增单元 7 条、IM 端到端 3 组、桌面端到端 1 条;AI 测试工程全量 2438/2438 通过。
+- **文档**:手册中英「技能」一段;插件 README;velashell-docs §1.17 与威胁模型一条(中英)。

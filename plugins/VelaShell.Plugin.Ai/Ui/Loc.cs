@@ -78,6 +78,7 @@ public sealed class Loc(string locale)
         ["ToolKindSubagent"] = ["Subagent", "子 Agent", "子 Agent", "サブエージェント", "하위 에이전트"],
         ["ToolKindTeam"] = ["Agent team", "Agent 团队", "Agent 團隊", "エージェントチーム", "에이전트 팀"],
         ["ToolKindNote"] = ["You should know", "你应该知道", "你應該知道", "知っておくべきこと", "알아 둘 사항"],
+        ["ToolKindSkill"] = ["Skill", "技能", "技能", "スキル", "스킬"],
         ["DiffHiddenLines"] = ["{0} unchanged lines", "{0} 行未改动", "{0} 行未變更", "変更のない {0} 行", "변경 없는 {0}줄"],
         ["DiffTruncated"] = ["{0} more lines not shown", "还有 {0} 行未显示", "還有 {0} 行未顯示", "表示していない行があと {0} 行", "표시하지 않은 {0}줄이 더 있음"],
         ["DiffNoChanges"] = ["No content changes", "内容无变化", "內容無變更", "内容の変更はありません", "내용 변경 없음"],

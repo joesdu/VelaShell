@@ -303,7 +303,10 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
         ("team_cancel", "停下正在运行的团队", false),
         ("team_retry", "重跑团队里失败 / 受阻的任务,可改派给另一名成员", false),
         // 只在桌面面板加(提示条在那儿,见 ChatPanelView 与 Chat.ConversationNotes);登记在这里是为了能在「配置工具」里停用
-        ("note_for_user", "把要用户留意的风险 / 待办 / 要紧发现钉到输入框上方的「你应该知道」条(只在桌面面板有)", true)
+        ("note_for_user", "把要用户留意的风险 / 待办 / 要紧发现钉到输入框上方的「你应该知道」条(只在桌面面板有)", true),
+        // 技能的两件工具由 Chat.Skills.SkillToolSource 另加(装有可用技能时);登记在这里同样是为了能停用
+        ("load_skill", "按名字取一个技能的完整指令与附带文件清单(技能目录在系统提示词里)", true),
+        ("read_skill_file", "读技能附带的文本文件(只读,不执行脚本,限技能目录内)", true)
     ];
 
     /// <summary>

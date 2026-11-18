@@ -49,4 +49,58 @@ public sealed partial class ChatPanelViewUiTests
             finally { panel.Detach(); window.Close(); }
         });
     }
+
+    /// <summary>
+    /// 桌面:工作区里的技能进技能目录(排在自定义提示词之前)、摆出 load_skill;模型调 load_skill 拿到正文(ai-plan §12.3)。
+    /// </summary>
+    [TestMethod]
+    public void Skills_WorkspaceSkillIsIndexedAndLoadable()
+    {
+        OnUi(async () =>
+        {
+            string workspace = Path.Combine(Path.GetTempPath(), "panel-skills-" + Guid.NewGuid().ToString("N"));
+            string skillDir = Path.Combine(workspace, ".velashell", "skills", "nginx-check");
+            Directory.CreateDirectory(skillDir);
+            await File.WriteAllTextAsync(Path.Combine(skillDir, "SKILL.md"),
+                "---\nname: nginx-check\ndescription: Check nginx config safely.\n---\nAlways run nginx -t before reloading.");
+            try
+            {
+                using var chat = new KeyAuthStub((_, body) => (200, body.Contains("\"role\":\"tool\"", StringComparison.Ordinal)
+                    ? LifecycleAnswer
+                    : ImageToolCall("load_skill", "{\"name\":\"nginx-check\"}")));
+                using var context = new TestPluginContext();
+                var store = new AiSettingsStore(context);
+                AiProvider provider = StubProvider("current", chat.BaseUrl, "chat-model");
+                var local = new LocalWorkspace { Name = "repo", RootPath = workspace };
+                await store.SaveAsync(new AiSettings
+                {
+                    Providers = [provider],
+                    ActiveModelId = provider.Models[0].Id,
+                    Mode = ChatMode.Agent,
+                    Approval = ApprovalMode.Bypass,
+                    SuggestFollowUps = false,
+                    SystemPrompt = "GLOBAL STYLE",
+                    LocalWorkspaces = [local],
+                    LocalDefaultWorkspaceId = local.Id
+                });
+                (Window window, ChatPanelView panel) = await ShowAsync(context);
+                try
+                {
+                    panel.SendExternal("reload nginx");
+                    Assert.IsTrue(await WaitForAsync(() => chat.Requests.Count > 1 && !Find<Viewbox>(panel, "StopIcon").IsVisible));
+                    string first = chat.Requests[0].Body;
+                    int index = first.IndexOf("- nginx-check (workspace): Check nginx config safely.", StringComparison.Ordinal);
+                    Assert.IsGreaterThan(0, index, "技能目录进了系统提示词");
+                    Assert.IsGreaterThan(index, first.IndexOf("Operator instructions: GLOBAL STYLE", StringComparison.Ordinal), "自定义提示词仍排最后");
+                    Assert.Contains("\"load_skill\"", first);
+                    Assert.Contains("Always run nginx -t before reloading.", chat.Requests[1].Body, "load_skill 把正文交回模型");
+                }
+                finally { panel.Detach(); window.Close(); }
+            }
+            finally
+            {
+                try { Directory.Delete(workspace, recursive: true); } catch (IOException) { }
+            }
+        });
+    }
 }

@@ -245,8 +245,8 @@ public sealed partial class AgentToolboxTests
             AgentToolbox.Catalog.Where(t => t.ReadOnly && !t.Name.Contains("_local_", StringComparison.Ordinal))
                 // 这几个只在有编排器的 Agent 轮才有(团队看板同理)
                 .Where(t => t.Name is not ("subagent_status" or "subagent_wait" or "team_status"))
-                // 「你应该知道」由桌面面板另加,不在工具箱里
-                .Where(t => t.Name != "note_for_user")
+                // 「你应该知道」与技能工具由各自的来源另加,不在工具箱里
+                .Where(t => t.Name is not ("note_for_user" or "load_skill" or "read_skill_file"))
                 .Select(t => t.Name),
             names,
             SequenceOrder.InAnyOrder);

@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Agent.Web;
 using VelaShell.Plugin.Ai.Chat;
+using VelaShell.Plugin.Ai.Chat.Skills;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.Plugin.Ai.Ui;
 using VelaShell.PluginSdk;
@@ -372,6 +373,9 @@ public sealed class BridgeAgentRunner(
                                 && ai.WebSearch.Enabled
                                 && ai.WebSearch.PreferProviderNative
                                 && NativeWebSearch.IsSupported(model.Protocol);
+            // 技能:与桌面同一套(用户级目录 + 允许读取的已授权工作区,去掉停用的),每轮现扫
+            IReadOnlyList<SkillInfo> turnSkills = mode == ChatMode.Chat ? []
+                : SkillCatalog.Enabled(ai.DisabledSkills, LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId));
             if (mode != ChatMode.Chat)
             {
                 if (mode == ChatMode.Agent)
@@ -409,6 +413,7 @@ public sealed class BridgeAgentRunner(
                 {
                     tools = await new TurnToolAssembly(mode, toolbox.DisabledTools)
                         .Add(_ => true, () => toolbox.CreateTools(mode, nativeSearch, runScope))
+                        .Add(new SkillToolSource(turnSkills))
                         .Add(mcpSource)
                         .BuildAsync(cancellationToken).ConfigureAwait(false);
                 }
@@ -432,6 +437,7 @@ public sealed class BridgeAgentRunner(
             string systemPrompt = new SystemPromptBuilder()
                 .Add(SystemPromptBuilder.Base, BuildSystemPrompt(mode, message, session, nativeSearch))
                 .AddToolGuidance(options.Tools)
+                .AddSkills(options.Tools, turnSkills)
                 .AddCustom(model.SystemPrompt, ai.SystemPrompt, bridge.ExtraSystemPrompt)
                 .Build();
             RequestContext request = ContextBuilder.Build(systemPrompt, conversation.History, model.MaxInputTokens, model.MaxTokens);

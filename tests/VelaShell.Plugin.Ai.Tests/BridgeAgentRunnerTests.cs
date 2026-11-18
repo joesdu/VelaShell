@@ -167,6 +167,55 @@ public sealed class BridgeAgentRunnerTests
         Assert.DoesNotContain("GLOBAL STYLE", body, "模型级的优先,全局的不叠加");
     }
 
+    /// <summary>
+    /// 技能在 IM 里与桌面一样可用(ai-plan §12.3):工作区里的技能进技能目录、摆出 load_skill;停用了或对话模式下都没有。
+    /// </summary>
+    [TestMethod]
+    [DataRow(ChatMode.Agent, false, true)]
+    [DataRow(ChatMode.Agent, true, false)]
+    [DataRow(ChatMode.Chat, false, false)]
+    public async Task RunAsync_OffersWorkspaceSkills(ChatMode mode, bool disabled, bool offered)
+    {
+        string workspace = Path.Combine(Path.GetTempPath(), "im-skills-" + Guid.NewGuid().ToString("N"));
+        string skillDir = Path.Combine(workspace, ".velashell", "skills", "deploy-check");
+        Directory.CreateDirectory(skillDir);
+        await File.WriteAllTextAsync(Path.Combine(skillDir, "SKILL.md"), "---\nname: deploy-check\ndescription: Verify a deployment.\n---\nSteps.");
+        try
+        {
+            await using var endpoint = new SseStub(
+                "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+            using var context = new TestPluginContext();
+            var store = new AiSettingsStore(context);
+            var local = new LocalWorkspace { Name = "repo", RootPath = workspace };
+            await store.SaveAsync(new AiSettings
+            {
+                Providers =
+                [
+                    new AiProvider
+                    {
+                        Id = "p1", Name = "Local", BaseUrl = endpoint.BaseUrl, DefaultProtocol = ChatProtocol.OpenAiChatCompletions,
+                        Models = [new AiModelConfig { Id = "m1", Model = "probe" }]
+                    }
+                ],
+                ActiveModelId = "m1",
+                LocalWorkspaces = [local],
+                LocalDefaultWorkspaceId = local.Id,
+                DisabledSkills = disabled ? "deploy-check" : ""
+            });
+
+            await Create(context).RunAsync(new BridgeConversation("ch1", "chat-1"), new BridgeSettings { Mode = mode },
+                Message(), Deny, English, null, null, CancellationToken.None);
+
+            string body = endpoint.Requests.Single();
+            Assert.AreEqual(offered, body.Contains("- deploy-check (workspace): Verify a deployment.", StringComparison.Ordinal), "技能目录");
+            Assert.AreEqual(offered, body.Contains("\"load_skill\"", StringComparison.Ordinal), "load_skill 工具");
+        }
+        finally
+        {
+            try { Directory.Delete(workspace, recursive: true); } catch (IOException) { }
+        }
+    }
+
     [TestMethod]
     public async Task RunAsync_RereadsTheAiSettingsEveryTurn()
     {

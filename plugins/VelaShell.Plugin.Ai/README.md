@@ -770,6 +770,15 @@ ControlTheme 的芯片开关(`Ui/AiTheme.axaml`,隔离进程下仅令牌也能�
 * **范围**:Agent 与计划模式由桌面面板另加这件工具(无副作用,计划模式也给);对话模式、IM 桥接与对外 MCP 都没有。
   登记在 `AgentToolbox.Catalog`(`ToolKind.Note`)只是为了能在「配置工具」里停用。回复里不为它出工具卡(`AddToolCall` 直接跳过,直播与载入历史同一条路)。
 
+**技能(Skills)**(`Chat/Skills/`,ai-plan §12.3):格式兼容 Anthropic Agent Skills 的 `SKILL.md`。
+* **扫描**(`SkillCatalog`):用户级 `~/.velashell/skills/<名>/` + 当前选中、允许读取的本地工作区内 `.velashell/skills/<名>/`,同名工作区优先;
+  每轮现扫,`AiSettings.DisabledSkills` 里停用的、解析失败的不进来。头只按「`键: 值`」逐行读(支持引号与 `>` / `|` 多行块),不是完整 YAML。
+  名字限字母数字 `-` `_`、64 字符;说明截到 300 字符;`SKILL.md` 上限 256 KB。测试程序集启动时把用户级目录指到空临时目录(`UserDirectoryOverride`)。
+* **交给模型**(`SkillToolSource`,一个 `ITurnToolSource`):系统提示词 `skills` 分段只列名字与说明(最多 50 个,工作区来源标 `(workspace)`),
+  排在自定义提示词之前、只在本轮真的暴露了 `load_skill` 时出现;`load_skill(name)` 取正文与附带文件清单,`read_skill_file(name, path)`
+  读附带的文本文件 —— 越出技能目录、符号链接、二进制、超过 256 KB 都拒绝,**不执行脚本**。
+* **范围**:桌面与 IM 的 Agent / 计划模式;对话模式与对外 MCP 没有。两件工具登记在 `AgentToolbox.Catalog`(`ToolKind.Skill`)以便停用。
+
 「AI:打开聊天(标签页)」以 `PanelPlacement.Right` 打开 —— 面板落在标签区**最右侧独立一栏**
 (VSCode 里 Copilot 聊天面板的位置),终端留在左边不被顶掉。落位走的是宿主的拖放停靠路径,
 与用户手动拖过去等价:随时可以再拖回标签条或换到别的分栏。初始宽度由设置页的

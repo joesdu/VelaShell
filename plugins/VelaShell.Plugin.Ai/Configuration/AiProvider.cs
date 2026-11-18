@@ -479,6 +479,9 @@ public sealed class AiSettings
     /// <summary>不想暴露给模型的内置工具名,每行一条(见"配置工具"窗口)。</summary>
     public string DisabledBuiltinTools { get; set; } = "";
 
+    /// <summary>停用的技能名,每行一条(见"配置工具"窗口的技能组);停用的技能不进技能目录,也不能被调用。</summary>
+    public string DisabledSkills { get; set; } = "";
+
     /// <summary>旧版的 Agent 开关。仅用于迁移 —— 读到 true 就折算成 <see cref="ChatMode.Agent" />。</summary>
     /// <remarks>不要在新代码里用它;<see cref="Migrate" /> 跑完之后它就没有意义了。</remarks>
     public bool AgentMode { get; set; }

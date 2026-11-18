@@ -29,7 +29,10 @@ internal enum ToolKind
     Team,
 
     /// <summary>「你应该知道」:钉到输入框上方提示条的条目(<c>note_for_user</c>)。</summary>
-    Note
+    Note,
+
+    /// <summary>技能:取技能指令、读技能附带文件。</summary>
+    Skill
 }
 
 /// <summary>
@@ -125,7 +128,10 @@ internal static class ToolIcons
         ["team_cancel"] = ToolKind.Team,
         ["team_retry"] = ToolKind.Team,
 
-        ["note_for_user"] = ToolKind.Note
+        ["note_for_user"] = ToolKind.Note,
+
+        ["load_skill"] = ToolKind.Skill,
+        ["read_skill_file"] = ToolKind.Skill
     };
 
     /// <summary>工具的类别;没登记的(MCP 工具等)为 <see cref="ToolKind.External" />。</summary>
@@ -168,6 +174,7 @@ internal static class ToolIcons
         ToolKind.Subagent => "AiIcon.bot",
         ToolKind.Team => "AiIcon.users",
         ToolKind.Note => "AiIcon.sparkles",
+        ToolKind.Skill => "AiIcon.layers",
         _ => "AiIcon.plug"
     };
 

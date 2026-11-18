@@ -32,6 +32,9 @@ internal sealed class SystemPromptBuilder
     /// <summary>作图指引(桌面,本轮启用了作图工具时)。</summary>
     public const string Images = "images";
 
+    /// <summary>技能目录(本轮暴露了 <c>load_skill</c> 时;见 <see cref="Skills.SkillToolSource.Index" />)。</summary>
+    public const string Skills = "skills";
+
     /// <summary>用户自定义的提示词,永远排在最后(见 <see cref="AddCustom" />)。</summary>
     public const string Custom = "custom";
 
@@ -58,6 +61,15 @@ internal sealed class SystemPromptBuilder
         if (SubagentRunner.HasTeam(list)) Add(Team, SubagentRunner.TeamGuidance);
         return this;
     }
+
+    /// <summary>
+    /// 追加技能目录:只在本轮真的暴露了 <c>load_skill</c> 时(对话模式、或用户在「配置工具」里停用了它时不说,
+    /// 免得模型去调一个不存在的工具)。
+    /// </summary>
+    public SystemPromptBuilder AddSkills(IEnumerable<AITool>? tools, IReadOnlyList<Skills.SkillInfo> skills)
+        => tools?.Any(t => t.Name == Chat.Skills.SkillToolSource.LoadToolName) == true
+            ? Add(Skills, Chat.Skills.SkillToolSource.Index(skills))
+            : this;
 
     /// <summary>
     /// 追加用户自定义的提示词:模型级的优先,没有再用全局的;都没填就不加。

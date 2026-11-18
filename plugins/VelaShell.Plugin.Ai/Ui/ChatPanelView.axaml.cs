@@ -14,6 +14,7 @@ using TextMateSharp.Grammars;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Agent.Web;
 using VelaShell.Plugin.Ai.Chat;
+using VelaShell.Plugin.Ai.Chat.Skills;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
 using VelaShell.PluginSdk.Sessions;
@@ -2146,6 +2147,10 @@ public partial class ChatPanelView : UserControl
                                     && _settings.WebSearch.Enabled
                                     && _settings.WebSearch.PreferProviderNative
                                     && NativeWebSearch.IsSupported(current.Protocol);
+                // 技能:每轮现扫(用户级目录 + 允许读取的已授权工作区),新放进去的技能下一轮就能用;
+                // 停用的、解析失败的不进来。技能目录只在本轮真的暴露了 load_skill 时进系统提示词。
+                IReadOnlyList<SkillInfo> turnSkills = mode == ChatMode.Chat ? []
+                    : SkillCatalog.Enabled(_settings.DisabledSkills, GetActiveLocalWorkspaces());
                 // 纯对话模式不给任何工具;计划模式只给只读工具(见 AgentToolbox.CreateTools)
                 if (usesToolLoop)
                 {
@@ -2206,6 +2211,7 @@ public partial class ChatPanelView : UserControl
                             .Add(_ => bubble?.ImageTools is not null, () => bubble!.ImageTools!.CreateTools(_settings, current.Provider.Id))
                             // 「你应该知道」:只写进这份对话自己的提示条,没有副作用,计划模式也给;只在桌面面板有
                             .Add(m => m != ChatMode.Chat, () => [conv.Notes.CreateTool()])
+                            .Add(new SkillToolSource(turnSkills))
                             .Add(mcpSource)
                             .BuildAsync(token);
                     }
@@ -2287,6 +2293,7 @@ public partial class ChatPanelView : UserControl
                     .Add(SystemPromptBuilder.Base, BuildSystemPrompt(mode, nativeSearch))
                     .AddToolGuidance(options.Tools)
                     .Add(SystemPromptBuilder.Images, imageToolsEnabled ? ImageGuidance + ImagesFor(conv).Describe() : null)
+                    .AddSkills(options.Tools, turnSkills)
                     // 专用提示词按当前这一站取(故障转移换站后跟着换),不读界面选中的那家,免得把别家的专用提示词发出去
                     .AddCustom(current.SystemPrompt, _settings.SystemPrompt)
                     .Build();
