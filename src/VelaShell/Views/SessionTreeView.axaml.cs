@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -62,8 +63,18 @@ public partial class SessionTreeView : UserControl
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
         _viewModel?.PropertyChanged -= OnViewModelPropertyChanged;
+        _viewModel?.CopyToClipboard = null;
         _viewModel = DataContext as SessionTreeViewModel;
         _viewModel?.PropertyChanged += OnViewModelPropertyChanged;
+        _viewModel?.CopyToClipboard = CopyToClipboardAsync;
+    }
+
+    private async Task CopyToClipboardAsync(string text)
+    {
+        if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+        {
+            await clipboard.SetTextAsync(text);
+        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

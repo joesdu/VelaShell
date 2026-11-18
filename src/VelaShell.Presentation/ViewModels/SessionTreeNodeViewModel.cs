@@ -31,6 +31,12 @@ public sealed class SessionTreeNodeViewModel(
     public bool CanOpenSftp => IsSshProfile || IsSftpProfile;
 
     /// <summary>
+    /// 连接是否填了主机地址(IP 或域名):决定右键菜单「复制 IP/域名」显不显示。
+    /// 有的插件协议(S3 之类)不用主机字段,那时这一项没有可复制的内容。
+    /// </summary>
+    public bool HasHost { get; init; }
+
+    /// <summary>
     /// 从连接类型看,能否作为「在双栏 SFTP 中打开」的一栏:SSH / SFTP / FTP / 插件协议。
     /// </summary>
     /// <remarks>

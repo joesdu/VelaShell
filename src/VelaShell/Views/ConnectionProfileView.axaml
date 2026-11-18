@@ -856,8 +856,10 @@
                   <Grid ColumnDefinitions="*,12,Auto">
                     <StackPanel Grid.Column="0">
                       <TextBlock Classes="field-label" Text="{Binding HostLabel}" />
+                      <!-- 失焦时把「主机:端口」里的端口拆进右边的端口栏(见 SplitPortFromHost)。 -->
                       <TextBox Text="{Binding Host}" PlaceholderText="{Binding HostPlaceholder}"
-                               IsVisible="{Binding HostIsText}" />
+                               IsVisible="{Binding HostIsText}"
+                               LostFocus="HostBox_LostFocus" />
                       <!-- 只读下拉:值只能取自候选项。 -->
                       <ComboBox ItemsSource="{Binding HostChoices}" SelectedItem="{Binding SelectedHostChoice}"
                                 IsVisible="{Binding HostIsChoice}" HorizontalAlignment="Stretch">

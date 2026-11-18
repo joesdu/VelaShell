@@ -74,7 +74,11 @@ public sealed class SessionTreeViewModel : ReactiveObject
             DuplicateSelectedSessionAsync,
             hasSelectedSession
         );
-        IObservable<bool> hasSelectedSftpProfile = this.WhenAnyValue(x => x.SelectedNode)
+        CopyHostCommand = ReactiveCommand.CreateFromTask(
+            CopySelectedHostAsync,
+            this.WhenAnyValue(x => x.SelectedNode).Select(node => node is { IsGroup: false, HasHost: true })
+        );
+        IObservable<bool> hasSelectedSftpProfile =this.WhenAnyValue(x => x.SelectedNode)
             .Select(node => node is { IsGroup: false, IsSshProfile: true } or
             { IsGroup: false, IsSftpProfile: true });
         IObservable<bool> hasSelectedSshSession = this.WhenAnyValue(x => x.SelectedNode)
@@ -832,6 +836,28 @@ public sealed class SessionTreeViewModel : ReactiveObject
     /// <summary>复制选中的会话为“&lt;名称&gt; (副本)”并落库,随后重建树。</summary>
     public ReactiveCommand<RxVoid, RxVoid> DuplicateSessionCommand { get; }
 
+    /// <summary>
+    /// 把选中会话填写的主机地址(IP 或域名,原样、去掉首尾空白)复制到剪贴板。
+    /// 不含端口与用户名 —— 要的就是能直接贴进 ping / 浏览器 / 别的工具里的那一段。
+    /// </summary>
+    public ReactiveCommand<RxVoid, RxVoid> CopyHostCommand { get; }
+
+    /// <summary>写剪贴板的回调,由视图挂上(视图模型层拿不到 Avalonia 的剪贴板);未挂时复制不做任何事。</summary>
+    public Func<string, Task>? CopyToClipboard { get; set; }
+
+    private async Task CopySelectedHostAsync()
+    {
+        if (
+            CopyToClipboard is { } copy
+            && SelectedNode is { IsGroup: false } node
+            && _sessionCache.TryGetValue(node.Id, out SessionProfile? session)
+            && session.Host.Trim() is { Length: > 0 } host
+        )
+        {
+            await copy(host);
+        }
+    }
+
     /// <summary>为选中的会话打开 SFTP,触发 <see cref="OpenSftpRequested" />。</summary>
     public ReactiveCommand<RxVoid, RxVoid> OpenSftpCommand { get; }
 
@@ -916,6 +942,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
             IsPinned = session.IsPinned,
             Notes = session.Notes,
             TabIconId = SessionTabIcons.For(session),
+            HasHost = !string.IsNullOrWhiteSpace(session.Host),
         };
         if (session.GroupId is null)
         {
@@ -1348,6 +1375,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
             IsPinned = session.IsPinned,
             Notes = session.Notes,
             TabIconId = SessionTabIcons.For(session),
+            HasHost = !string.IsNullOrWhiteSpace(session.Host),
         };
         if (_statusCache.TryGetValue(session.Id, out SessionStatus status))
         {

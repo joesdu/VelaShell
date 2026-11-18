@@ -72,6 +72,41 @@ public sealed class ConnectionProfileViewModelTests
         Assert.AreEqual($"tzraeq@{savedHost}", saved.Name, "名称留空时的兜底也用去掉方括号的地址");
     }
 
+    /// <summary>
+    /// 主机栏填了「主机:端口」,失焦时端口挪进端口栏、主机栏只留 IP 或域名。
+    /// 写不出端口的(裸 IPv6、Windows 路径、URL、越界端口)原样不动。
+    /// </summary>
+    [TestMethod]
+    [DataRow("192.168.1.1:22", "192.168.1.1", 22, true)]
+    [DataRow(" example.com:2222 ", "example.com", 2222, true)]
+    [DataRow("[2001:db8::1]:2200", "2001:db8::1", 2200, true)]
+    [DataRow("example.com", "example.com", 8022, false)]
+    [DataRow("2001:db8::1:22", "2001:db8::1:22", 8022, false)]
+    [DataRow(@"C:\data\app.db", @"C:\data\app.db", 8022, false)]
+    [DataRow("https://s3.example.com", "https://s3.example.com", 8022, false)]
+    [DataRow("example.com:70000", "example.com:70000", 8022, false)]
+    public void SplitPortFromHost_MovesAnExplicitPortIntoThePortField(
+        string host, string expectedHost, int expectedPort, bool split)
+    {
+        var vm = new ConnectionProfileViewModel { Host = host, Port = 8022, Username = "root" };
+
+        Assert.AreEqual(split, vm.SplitPortFromHost());
+        Assert.AreEqual((expectedHost, expectedPort), (vm.Host, vm.Port));
+    }
+
+    /// <summary>没失焦就直接保存(焦点还在主机栏时按快捷键)也照样拆:存进去的主机不带端口。</summary>
+    [TestMethod]
+    public async Task HostWithPort_IsSplitOnSaveEvenWithoutLosingFocus()
+    {
+        var vm = new ConnectionProfileViewModel { Host = "10.0.0.5:2222", Port = 22, Username = "root" };
+
+        SessionProfile? saved = await vm.SaveCommand.Execute().FirstAsync();
+
+        Assert.IsNotNull(saved);
+        Assert.AreEqual(("10.0.0.5", 2222), (saved.Host, saved.Port));
+        Assert.AreEqual("root@10.0.0.5", saved.Name);
+    }
+
     /// <summary>只有空格的命令等于没配:存下去会让 <c>SendSilentCommand</c> 每次连接多敲一个回车。</summary>
     [TestMethod]
     public async Task PostAuthCommand_WhenBlank_IsSavedAsNull()

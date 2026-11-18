@@ -419,6 +419,15 @@
                                    Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
+                <!-- 复制这条连接填的主机地址(IP 或域名);没填主机的(部分插件协议)不显示。 -->
+                <MenuItem Header="{loc:Localize Tree_CopyHost}"
+                          Command="{Binding $parent[ListBox].((vm:SessionTreeViewModel)DataContext).CopyHostCommand}"
+                          IsVisible="{Binding HasHost}">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.clipboard}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
                 <!-- 置顶(#474):文案随当前置顶态翻转,置顶项被提到整棵树的最前。 -->
                 <MenuItem Header="{Binding PinToggleText}"
                           Command="{Binding $parent[ListBox].((vm:SessionTreeViewModel)DataContext).TogglePinCommand}"

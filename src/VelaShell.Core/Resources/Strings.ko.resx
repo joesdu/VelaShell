@@ -4839,6 +4839,9 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Tree_DuplicateConnection" xml:space="preserve">
     <value>연결 복제</value>
   </data>
+  <data name="Tree_CopyHost" xml:space="preserve">
+    <value>IP/도메인 복사</value>
+  </data>
   <data name="Tree_DeleteGroup" xml:space="preserve">
     <value>그룹 삭제</value>
   </data>

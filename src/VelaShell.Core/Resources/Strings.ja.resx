@@ -4839,6 +4839,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Tree_DuplicateConnection" xml:space="preserve">
     <value>接続を複製</value>
   </data>
+  <data name="Tree_CopyHost" xml:space="preserve">
+    <value>IP/ドメインをコピー</value>
+  </data>
   <data name="Tree_DeleteGroup" xml:space="preserve">
     <value>グループを削除</value>
   </data>

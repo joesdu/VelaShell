@@ -3848,3 +3848,12 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **测试**:新增 `ChatPanelViewUiTests.CommandStatus.cs`(本机 / 远端结果、后台实时输出与结束、停止按钮、历史回放与计时定格)、`UiPeekOfTerminalState_DoesNotConsumeTheModelsCompletionNotification`、`AgentToolboxTests.LocalCommand.cs`(后台运行与完成通知、超时保留输出且非未知结局、后台子进程占管道不挂起、用户停止、命令行过长在审批前拒绝、5.1 退出码四种情形、只读工作区、不可见字符显形、包装首行、排队合并的发起者);改写排队芯片撤回用例与原有本机命令用例的结果断言(结果改为任务快照 JSON)。
 - **验证**:插件与测试工程 Debug `-warnaserror` 构建 0 警告 / 0 错误;本机命令相关 25 项在 Windows 上通过(含 Windows PowerShell 5.1 的退出码用例);AI 测试工程全量 2403 项全部通过(中途一条用反射调用 `SendAsync` 的旧用例因新增可选参数而实参个数不符,已补上);bash 实测 `bash -c ' -V'` 把 `-V` 当命令执行;解码器用 GBK 字节与逐字节切块的 UTF-8 做了单元测试(本机系统代码页已是 UTF-8,真实 GBK 程序未实测)。macOS 登录 shell PATH 未在实机验证;未在真实窗口里手动看过界面。
 - **文档**:`manual.md` / `manual.en.md` 的输入框、工具调用显示两段补充,新增「本机命令」一段。velashell-docs 没有描述该工具的内容,无需同步。
+
+## 339. 资源管理器「复制 IP/域名」与主机栏自动拆端口 (2026-11-18)
+
+- **复制 IP/域名**:资源管理器连接行右键菜单在「复制连接」下新增「复制 IP/域名」(`SessionTreeViewModel.CopyHostCommand`),把配置里的 `Host` 去掉首尾空白后写进剪贴板,不带端口与用户名。节点新增 `HasHost`,主机为空的连接(部分插件协议)不显示这一项、命令也不可执行。剪贴板经 `CopyToClipboard` 回调由 `SessionTreeView` 挂上(视图模型层拿不到 Avalonia 剪贴板),与文件栏等处同一写法。界面规格里一直写着的「复制地址」就此落地。
+- **主机栏自动拆端口**:连接表单的 Host 栏写成 `192.168.1.1:22`、`example.com:2222` 或 `[2001:db8::1]:2222` 时,失焦即把端口挪进 Port 栏、Host 栏只留 IP 或域名(`ConnectionProfileViewModel.SplitPortFromHost`,视图在 `LostFocus` 调用)。不在每次按键时拆 —— 打到 `host:2` 就会被拆走,后面的数字落回主机栏。保存时 `EffectiveEndpoint` 兜底同样拆开(焦点还在主机栏就按快捷键保存的情形),此前它只认 #611 的方括号写法。拆分沿用 `HostAddress.TrySplit`:只认「一个冒号 + 1–65535」,裸 IPv6、串口设备名、SQLite 路径、插件 URL 与越界端口原样不动;Port 栏收起的协议不拆。
+- **界面文案**:新增 `Tree_CopyHost`,五份 resx 齐。
+- **测试**:`SessionTreeViewModelTests` 新增复制去空白、主机为空时不可用两条;`ConnectionProfileViewModelTests` 新增 `SplitPortFromHost` 八组写法与「不失焦直接保存也拆」一条。
+- **验证**:`VelaShell.Tests` Debug 构建通过,全量 3563 项:3510 通过、53 跳过(Docker 等环境类集成用例早退)、0 失败;界面上的右键复制与失焦拆分未人工实测。
+- **文档**:`manual.md` / `manual.en.md` 的资源管理器与连接目标两段补充;velashell-docs《交互与界面规格》中英两份同步(右键菜单项与 Host 栏带端口)。

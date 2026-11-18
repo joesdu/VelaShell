@@ -334,6 +334,15 @@ public partial class ConnectionProfileView : Window
         }
     }
 
+    /// <summary>主机栏失焦:写成「主机:端口」的,把端口拆进端口栏。</summary>
+    private void HostBox_LostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is ConnectionProfileViewModel viewModel)
+        {
+            viewModel.SplitPortFromHost();
+        }
+    }
+
     /// <summary>把文本写进系统剪贴板;拿不到剪贴板(无 TopLevel)时静默跳过。</summary>
     private async Task CopyToClipboardAsync(string text)
     {
