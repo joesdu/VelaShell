@@ -36,6 +36,175 @@ public sealed partial class AgentToolboxTests
     }
 
     [TestMethod]
+    public async Task LocalCommand_IsDesktopOnlyAndHonorsBypassApprovalMode()
+    {
+        using var context = new TestPluginContext();
+        ApprovalRequest? seen = null;
+        await using var toolbox = new AgentToolbox(context)
+        {
+            LocalWorkspaces = [new LocalWorkspace { Id = "work", RootPath = Environment.CurrentDirectory }],
+            LocalDefaultWorkspaceId = "work", Approval = ApprovalMode.Bypass,
+            ApprovalHandler = request => { seen = request; return Task.FromResult(false); }
+        };
+        await using var run = toolbox.BeginRun("desktop", "turn");
+        const string name = "run_local_command";
+        Assert.IsFalse(toolbox.CreateTools(ChatMode.Agent).Any(t => t.Name == name));
+        Assert.IsFalse(toolbox.CreateTools(ChatMode.Plan, interactiveLocal: true).Any(t => t.Name == name));
+        Assert.IsFalse(toolbox.CreateSubagentTools(true, run, allowCommands: true).Any(t => t.Name == name));
+        Assert.IsFalse(toolbox.CreateTools(ChatMode.Agent, runScope: run, interactiveLocal: true).Any(t => t.Name == name));
+        AIFunction cli = toolbox.CreateTools(ChatMode.Agent, runScope: run, interactiveLocal: true,
+                workspaceGate: action => Task.FromResult(action(toolbox.LocalWorkspaces)))
+            .OfType<AIFunction>().Single(t => t.Name == name);
+        const string command = "exit 7";
+        var args = new Dictionary<string, object?> { ["command"] = command };
+        for (int i = 0; i < 2; i++)
+        {
+            string result = (await cli.InvokeAsync([with(args)], CancellationToken.None))?.ToString() ?? "";
+            StringAssert.Contains(result, "Local command exit code: 7");
+            Assert.IsNull(seen);
+        }
+        toolbox.Approval = ApprovalMode.Ask;
+        await cli.InvokeAsync([with(args)], CancellationToken.None);
+        Assert.IsNotNull(seen);
+        StringAssert.Contains(seen.GetValueOrDefault().Summary, command);
+        StringAssert.Contains(seen.GetValueOrDefault().Summary, Environment.CurrentDirectory);
+        Assert.AreEqual(name, seen?.Kind);
+        Assert.IsNull(seen?.RepeatKey);
+        Assert.IsTrue(run.HasDeniedExecution);
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task LocalCommand_ApprovalUsesLiveSelectionBeforeStarting(bool revoke)
+    {
+        using var context = new TestPluginContext();
+        var workspace = new LocalWorkspace { Id = "work", RootPath = Environment.CurrentDirectory };
+        IReadOnlyList<LocalWorkspace> configured = [workspace];
+        string? selected = workspace.Id;
+        var pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ApprovalRequest? seenApproval = null;
+        int starts = 0;
+        await using var toolbox = new AgentToolbox(context)
+        {
+            LocalWorkspaces = configured, LocalDefaultWorkspaceId = selected,
+            ApprovalHandler = request => { seenApproval = request; pending.TrySetResult(true); return decision.Task; },
+            StartLocalProcess = process =>
+            {
+                starts++;
+                var start = process.StartInfo;
+                Assert.IsFalse(start.UseShellExecute);
+                Assert.AreEqual(OperatingSystem.IsWindows() ? "-NoLogo" : "-c", start.ArgumentList[0]);
+                Assert.AreEqual(Environment.CurrentDirectory, start.WorkingDirectory);
+                Assert.AreEqual(Environment.GetEnvironmentVariable("PATH"), start.Environment["PATH"]);
+                Assert.IsNotNull(seenApproval);
+                Assert.IsTrue(Path.IsPathFullyQualified(start.FileName));
+                StringAssert.Contains(seenApproval.GetValueOrDefault().Summary, start.FileName);
+                StringAssert.Contains(seenApproval.GetValueOrDefault().Summary, start.ArgumentList[^1]);
+                return process.Start();
+            }
+        };
+        await using var run = toolbox.BeginRun("desktop", "turn");
+        AIFunction cli = toolbox.CreateTools(ChatMode.Agent, runScope: run, interactiveLocal: true,
+            workspaceGate: action => Task.FromResult(action(LocalPathScope.ActiveWorkspaces(configured, selected))))
+            .OfType<AIFunction>().Single(t => t.Name == "run_local_command");
+        string command = OperatingSystem.IsWindows()
+            ? "Write-Output \"local-test 测试\"; [Console]::Error.WriteLine('test-error'); cmd.exe /d /c exit 7"
+            : "printf 'local-test 测试'; printf test-error >&2; exit 7";
+        var args = new Dictionary<string, object?> { ["command"] = command };
+        var call = cli.InvokeAsync([with(args)], CancellationToken.None);
+        await pending.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        if (revoke) selected = null; // Toolbox still has the old turn snapshot.
+        decision.SetResult(true);
+        string result = (await call)?.ToString() ?? "";
+        Assert.AreEqual(revoke ? 0 : 1, starts);
+        StringAssert.Contains(result, revoke ? "no longer authorized" : "Local command exit code: 7");
+        if (!revoke)
+        {
+            StringAssert.Contains(result, "stdout:\nlocal-test 测试");
+            StringAssert.Contains(result, "stderr:\ntest-error");
+        }
+    }
+
+    [TestMethod]
+    public void LocalCommand_InterpreterDiscoveryHonorsPlatformOrderAndExecutableFiles()
+    {
+        var root = Directory.CreateTempSubdirectory();
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                string modern = Path.Combine(root.FullName, "pwsh.exe");
+                File.WriteAllText(modern, "not an executable"); // Discovery must never run a probe.
+                string[] candidates = AgentToolbox.FindLocalInterpreters($".;\"{root.FullName}\";{root.FullName}", null);
+                Assert.AreEqual(modern, candidates[0]);
+                Assert.AreEqual(1, candidates.Count(p => p == modern));
+                Assert.IsTrue(candidates.All(Path.IsPathFullyQualified));
+                if (candidates.Any(p => Path.GetFileName(p) == "powershell.exe"))
+                    Assert.AreEqual("powershell.exe", Path.GetFileName(candidates[^1]));
+                return;
+            }
+            string bash = Path.Combine(root.FullName, "bash");
+            string zsh = Path.Combine(root.CreateSubdirectory("other").FullName, "zsh");
+            string fish = Path.Combine(root.FullName, "fish");
+            foreach (string file in new[] { bash, zsh, fish })
+            {
+                File.WriteAllText(file, "not an executable");
+                File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            }
+            string path = $".:{root.FullName}:{Path.GetDirectoryName(zsh)}";
+            Assert.AreEqual(bash, AgentToolbox.FindLocalInterpreters(path, bash)[0]);
+            string[] fallback = AgentToolbox.FindLocalInterpreters(path, fish);
+            Assert.AreEqual(zsh, fallback[0]);
+            Assert.IsTrue(fallback.All(p => Path.IsPathFullyQualified(p) && Path.GetFileName(p) is "bash" or "zsh"));
+            File.SetUnixFileMode(zsh, UnixFileMode.UserRead);
+            Assert.DoesNotContain(zsh, AgentToolbox.FindLocalInterpreters(path, zsh));
+        }
+        finally { root.Delete(recursive: true); }
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task LocalCommand_OnlyRetriesCreationFailureWithFreshApproval(bool approveFallback)
+    {
+        using var context = new TestPluginContext();
+        string missing = Path.Combine(Environment.CurrentDirectory, "missing-shell");
+        string working = AgentToolbox.FindLocalInterpreters(Environment.GetEnvironmentVariable("PATH"), null).First();
+        var approvals = new List<string>();
+        var starts = new List<string>();
+        await using var toolbox = new AgentToolbox(context)
+        {
+            LocalWorkspaces = [new LocalWorkspace { Id = "work", RootPath = Environment.CurrentDirectory }],
+            LocalDefaultWorkspaceId = "work",
+            LocalInterpreters = () => [missing, working, missing],
+            ApprovalHandler = request =>
+            {
+                approvals.Add(request.Summary);
+                return Task.FromResult(approvals.Count == 1 || approveFallback);
+            },
+            StartLocalProcess = process =>
+            {
+                starts.Add(process.StartInfo.FileName);
+                Assert.AreEqual(starts.Count, approvals.Count);
+                StringAssert.Contains(approvals[^1], process.StartInfo.FileName);
+                if (starts.Count == 1) throw new System.ComponentModel.Win32Exception(2);
+                return process.Start();
+            }
+        };
+        await using var run = toolbox.BeginRun("desktop", "fallback");
+        AIFunction cli = toolbox.CreateTools(ChatMode.Agent, runScope: run, interactiveLocal: true,
+                workspaceGate: action => Task.FromResult(action(toolbox.LocalWorkspaces)))
+            .OfType<AIFunction>().Single(t => t.Name == "run_local_command");
+        var args = new Dictionary<string, object?> { ["command"] = "exit 7" };
+        string result = (await cli.InvokeAsync([with(args)], CancellationToken.None))?.ToString() ?? "";
+        Assert.AreEqual(2, approvals.Count);
+        Assert.AreEqual(approveFallback ? 2 : 1, starts.Count);
+        StringAssert.Contains(result, approveFallback ? "exit code: 7" : "denied");
+    }
+
+    [TestMethod]
     public void CreateTools_ExposesExpectedToolSet()
     {
         using var context = new TestPluginContext();
@@ -1172,6 +1341,19 @@ public sealed partial class AgentToolboxTests
         string tail = await InvokeAsync(toolbox, "read_terminal");
 
         Assert.Contains("92%", tail);
+    }
+
+    [TestMethod]
+    public async Task LocalDesktop_OpenSession_RequiresExplicitRemoteTarget()
+    {
+        using var context = new TestPluginContext();
+        SavedSessionInfo saved = context.FakeSessions.AddSaved();
+        var toolbox = new AgentToolbox(context) { UseOpenedSessionAsDefault = false, Approval = ApprovalMode.Bypass };
+        await InvokeAsync(toolbox, "open_session", new() { ["savedSessionId"] = saved.SavedSessionId, ["reason"] = "check" });
+        string id = context.FakeSessions.Sessions[0].SessionId;
+        context.FakeTerminal.Output[id] = ["remote-only-marker"];
+        Assert.DoesNotContain("remote-only-marker", await InvokeAsync(toolbox, "read_terminal"));
+        Assert.Contains("remote-only-marker", await InvokeAsync(toolbox, "read_terminal", new() { ["sessionId"] = id }));
     }
 
     /// <summary>

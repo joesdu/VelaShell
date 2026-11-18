@@ -32,7 +32,7 @@ public class RemoteSha256IntegrationTests
     [Timeout(60_000)]
     public async Task Sha256_OfAwkwardFileNames_MatchesTheLocalDigest()
     {
-        RequireDockerAndSsh();
+        await RequireDockerAndSshAsync();
 
         string root = $"/tmp/vela-sha-{Guid.NewGuid():N}";
         (string Name, string Content)[] files =
@@ -84,42 +84,31 @@ public class RemoteSha256IntegrationTests
     }
 
     /// <summary>跳过记 Inconclusive 而不是"通过":全绿的报告里不能混着一行断言都没跑的用例。</summary>
-    private static void RequireDockerAndSsh()
+    private static async Task RequireDockerAndSshAsync()
     {
-        if (!IsDockerAvailable())
+        if (!await IsDockerAvailableAsync())
         {
             Assert.Inconclusive("Docker 不可用。运行 'docker compose -f docker-compose.test.yml up -d' 以启用。");
         }
         try
         {
             using var tcp = new TcpClient();
-            if (!tcp.ConnectAsync(TestHost, TestPort).Wait(TimeSpan.FromSeconds(3)))
-            {
-                Assert.Inconclusive($"SSH 测试服务器 {TestHost}:{TestPort} 不可达。");
-            }
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            await tcp.ConnectAsync(TestHost, TestPort, timeout.Token);
         }
-        catch (Exception ex) when (ex is SocketException or AggregateException)
+        catch (Exception ex) when (ex is SocketException or OperationCanceledException)
         {
             Assert.Inconclusive($"SSH 测试服务器 {TestHost}:{TestPort} 不可达:{ex.Message}");
         }
     }
 
-    private static bool IsDockerAvailable()
+    private static async Task<bool> IsDockerAvailableAsync()
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo("docker", "version")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            });
-            if (process is null)
-            {
-                return false;
-            }
-            process.WaitForExit(10_000);
-            return process.HasExited && process.ExitCode == 0;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var status = await Process.RunAsync("docker", ["version"], silent: true, cancellationToken: timeout.Token);
+            return !status.Canceled && status.ExitCode == 0;
         }
         catch
         {

@@ -713,7 +713,15 @@ public sealed class RemoteEditSession : IDisposable
         ProcessStartInfo startInfo = BuildEditorStartInfo(editorCommand.Trim().Trim('"'), LocalPath);
         try
         {
-            Process.Start(startInfo)?.Dispose();
+            if (startInfo.UseShellExecute)
+            {
+                // Windows App Paths 需要 ShellExecute，可能复用已有进程。
+                Process.Start(startInfo)?.Dispose();
+            }
+            else
+            {
+                Process.StartAndForget(startInfo);
+            }
         }
         catch (Exception ex)
         {

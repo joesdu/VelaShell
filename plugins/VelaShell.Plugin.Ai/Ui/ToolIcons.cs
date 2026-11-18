@@ -83,6 +83,7 @@ internal static class ToolIcons
         ["write_terminal"] = ToolKind.TerminalWrite,
 
         ["run_command"] = ToolKind.Command,
+        ["run_local_command"] = ToolKind.Command,
         ["run_on_sessions"] = ToolKind.Command,
 
         ["task_status"] = ToolKind.Task,

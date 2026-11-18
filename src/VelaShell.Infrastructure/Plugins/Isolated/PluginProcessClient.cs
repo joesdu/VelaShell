@@ -294,13 +294,20 @@ internal sealed class PluginProcessClient : IAsyncDisposable
             {
                 while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line)
                 {
-                    if (processOutput is not null)
+                    try
                     {
-                        processOutput(isError, line);
+                        if (processOutput is not null)
+                        {
+                            processOutput(isError, line);
+                        }
+                        else
+                        {
+                            Trace.WriteLine($"[PluginHost:{pluginId}] {line}");
+                        }
                     }
-                    else
+                    catch
                     {
-                        Trace.WriteLine($"[PluginHost:{pluginId}] {line}");
+                        // A logging callback must not stop draining the child pipe.
                     }
                 }
             }
@@ -375,12 +382,21 @@ internal sealed class PluginProcessClient : IAsyncDisposable
     /// </summary>
     private static async Task<bool> WaitForExitAsync(Process process, TimeSpan timeout)
     {
-        Task exited = process.WaitForExitAsync();
         using var delayCts = new CancellationTokenSource();
+        Task exited = process.WaitForExitAsync(delayCts.Token);
         // 取消的 Task.Delay 落在 Canceled 而非 Faulted,不会进未观察任务异常通道,无需 Observe。
         var delay = Task.Delay(timeout, delayCts.Token);
         bool exitedFirst = await Task.WhenAny(exited, delay).ConfigureAwait(false) == exited;
         await delayCts.CancelAsync().ConfigureAwait(false);
+        if (exitedFirst)
+        {
+            await exited.ConfigureAwait(false);
+        }
+        else
+        {
+            // Timeout won. Cancel and join the outstanding waiter before disposing its process.
+            await exited.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
         return exitedFirst;
     }
 

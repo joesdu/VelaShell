@@ -516,37 +516,22 @@ public sealed class X11Forwarder : IAsyncDisposable
 
         using (process)
         {
-            // 两条输出管道**同时**读 —— 只等进程退出而不读的话，输出一多就会
-            // 把管道写满，进程卡在写上、永远不退出。
-            Task<string> stdout = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
-            Task<string> stderr = process.StandardError.ReadToEndAsync(CancellationToken.None);
-
-            using var limit =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             limit.CancelAfter(XAuthTimeout);
+            Task discard = process.StandardOutput.BaseStream.CopyToAsync(Stream.Null, limit.Token);
+            Task<string> stderr = ReadTailAsync(process.StandardError, limit.Token);
+            var completed = Task.WhenAll(discard, stderr, process.WaitForExitAsync(limit.Token));
 
             try
             {
-                // ⚠️ **必须有期限。** xauth 可能卡在一个没响应的 X server 上，
-                //    而那会让整个请求跟着挂住。
-                await process.WaitForExitAsync(limit.Token).ConfigureAwait(false);
+                await completed.WaitAsync(limit.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
-                // 超时或调用方取消：**把它杀掉**，不留一个挂着的子进程。
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (Exception)
-                {
-                    // 恰好在这时退出了。
-                }
-
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
+                try { process.Kill(entireProcessTree: true); }
+                catch (Exception) { }
+                await completed.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                cancellationToken.ThrowIfCancellationRequested();
 
                 throw new SshForwardException(SshFailureReason.ForwardSetupFailed, $"{xauth} generate 超过 {XAuthTimeout.TotalSeconds:0} 秒没有返回。")
                 {
@@ -555,7 +540,6 @@ public sealed class X11Forwarder : IAsyncDisposable
                 };
             }
 
-            _ = await stdout.ConfigureAwait(false);
             string error = await stderr.ConfigureAwait(false);
 
             if (process.ExitCode != 0)
@@ -574,6 +558,19 @@ public sealed class X11Forwarder : IAsyncDisposable
                 };
             }
         }
+    }
+
+    private static async Task<string> ReadTailAsync(StreamReader reader, CancellationToken token)
+    {
+        char[] buffer = new char[MaxXAuthErrorChars];
+        var tail = new System.Text.StringBuilder(MaxXAuthErrorChars);
+        int count;
+        while ((count = await reader.ReadAsync(buffer.AsMemory(), token).ConfigureAwait(false)) > 0)
+        {
+            tail.Remove(0, Math.Max(0, tail.Length + count - MaxXAuthErrorChars));
+            tail.Append(buffer, 0, count);
+        }
+        return tail.ToString();
     }
 
     /// <inheritdoc />

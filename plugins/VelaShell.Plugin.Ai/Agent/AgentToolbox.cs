@@ -57,6 +57,7 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
         return new AgentToolbox(context)
         {
             SessionIdProvider = () => sessionId,
+            UseOpenedSessionAsDefault = UseOpenedSessionAsDefault,
             Scope = Scope,
             LocalWorkspaces = [.. LocalWorkspaces.Select(workspace => new LocalWorkspace
             {
@@ -138,6 +139,8 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
 
     /// <summary>当前选中的目标会话 id(由聊天面板提供;null = 未选)。</summary>
     public Func<string?>? SessionIdProvider { get; set; }
+
+    internal bool UseOpenedSessionAsDefault { get; init; } = true;
 
     /// <summary>本地 Agent 的工作区配置。</summary>
     public IReadOnlyList<LocalWorkspace> LocalWorkspaces { get; set; } = [];
@@ -268,6 +271,7 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
         ("open_session", "按已保存的配置连一台机器(宿主会再向用户确认一次)", false),
         ("close_session", "关掉本插件自己开的那条会话", false),
         ("run_command", "在独立通道托管前台命令,长任务返回 taskId", false),
+        ("run_local_command", "按当前审批设置在本机工作区运行前台命令", false),
         ("task_status", "查看本轮托管任务状态与增量输出", true),
         ("task_wait", "等待本轮任务,等待到期不取消远端执行", true),
         ("task_cancel", "请求取消本轮托管任务", false),
@@ -311,7 +315,10 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
     /// web_fetch 照给:原生检索给的是它自己挑好的结果,用户点名要读某个 URL 时还得靠它。
     /// </param>
     /// <param name="runScope">显式绑定入口所有者的运行作用域;不作为模型可见参数。</param>
-    public IList<AITool> CreateTools(ChatMode mode, bool nativeWebSearch = false, CommandJobRunScope? runScope = null)
+    /// <param name="interactiveLocal">Only set by a user-initiated desktop turn bound to the local target.</param>
+    /// <param name="workspaceGate">Runs a synchronous check/action against the current desktop workspace selection.</param>
+    public IList<AITool> CreateTools(ChatMode mode, bool nativeWebSearch = false, CommandJobRunScope? runScope = null,
+        bool interactiveLocal = false, LocalWorkspaceGate? workspaceGate = null)
     {
         // 记下这一轮的模式:"没有会话可用"那句提示要据此决定该不该提 open_session ——
         // 计划模式里它压根没注册,提了只会让模型去调一个不存在的工具。
@@ -535,6 +542,13 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             all.Add(("subagent_cancel", AIFunctionFactory.Create(bound.SubagentCancelAsync, "subagent_cancel",
                 "Cancel a delegated subagent by id. Changes it already made are not rolled back."), false));
         }
+        if (interactiveLocal && workspaceGate is not null && mode == ChatMode.Agent && _parentToolbox is null && ApprovalHandler is not null
+            && TryResolveLocal(null, ".", write: true, out LocalPath cwd, out _) && cwd.Workspace.AllowRead)
+        {
+            var binding = new LocalCommandBinding(this, cwd, workspaceGate, context.Shutdown);
+            all.Add(("run_local_command", AIFunctionFactory.Create(binding.RunAsync, "run_local_command",
+                $"Run a foreground command on the local computer with the selected workspace as the working directory and the desktop process's PATH. {(OperatingSystem.IsWindows() ? "Uses pwsh when available, with Windows PowerShell as a fallback." : "Uses an executable bash or zsh from $SHELL when available, otherwise prefers zsh over bash.")} Use for local CLI commands such as dotnet test or docker. Interpreter launches follow the desktop approval mode. Returns stdout, stderr and exit code. Do not use SSH tools as a fallback."), false));
+        }
         // 团队模式:成员分角色、任务带依赖与审查,由引擎调度并汇成一份报告(见 TeamEngine)。
         // 汇总报告只能经协调器推回去;对外 MCP 唤不醒外部模型(DeliversResults=false),那条路不给团队工具
         if (mode == ChatMode.Agent && Subagents is { DeliversResults: true } teamOrchestrator)
@@ -684,7 +698,7 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             return Scope is null ? "No sessions. " + NoSession : OutOfScopeEmpty;
         }
         // 与 ResolveAsync 同一套优先级:界面选中的 > 自己开出来的。标错默认目标比不标更糟。
-        string? selected = SessionIdProvider?.Invoke() ?? _openedSessionId;
+        string? selected = SessionIdProvider?.Invoke() ?? (UseOpenedSessionAsDefault ? _openedSessionId : null);
         var sb = new StringBuilder();
         foreach (SessionInfo s in sessions)
         {
@@ -1801,12 +1815,12 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             SessionInfo opened = await context.Sessions
                 .OpenAsync(wanted, new SessionOpenOptions(reason.Trim(), reuseConnected), cancellationToken)
                 .ConfigureAwait(false);
-            bool isDefault = SessionIdProvider?.Invoke() is null;
+            bool isDefault = UseOpenedSessionAsDefault && SessionIdProvider?.Invoke() is null;
             _openedSessionId = opened.SessionId;
             return $"Connected to {opened.Username}@{opened.Host}:{opened.Port}. session_id = {opened.SessionId}. "
                    + (isDefault
                        ? "The other tools now act on it by default; close_session it when you are done."
-                       : "Pass that session_id explicitly to the other tools — without it they keep acting on the session the user selected. "
+                       : "Pass that session_id explicitly to target this connection. The conversation target has not changed. "
                          + "Close it with close_session when you are done.");
         }
         catch (PluginPermissionDeniedException ex)
@@ -2661,7 +2675,7 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             return (current, null);
         }
         // 自己开的那条:用户手动关掉之后就不该再往它上面发东西,所以每次都核实一下还在不在。
-        if (_openedSessionId is { } opened)
+        if (UseOpenedSessionAsDefault && _openedSessionId is { } opened)
         {
             if (await context.Sessions.GetAsync(opened, cancellationToken).ConfigureAwait(false) is { } live)
             {

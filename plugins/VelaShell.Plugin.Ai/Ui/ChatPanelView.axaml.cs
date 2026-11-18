@@ -23,7 +23,8 @@ namespace VelaShell.Plugin.Ai.Ui;
 /// <summary>顶栏会话下拉的一项:主机标签 + 连接状态点(<c>SessionCombo</c> 的 ItemTemplate 用)。</summary>
 /// <param name="Text">显示文字(<c>用户@主机</c>)。</param>
 /// <param name="Dot">状态点的颜色。画笔在构造项时就解析好,免得为它写一个 bool→Brush 的转换器。</param>
-public sealed record SessionNavItem(string Text, IBrush Dot);
+/// <param name="SessionId">SSH 会话标识;本机为 null。</param>
+public sealed record SessionNavItem(string Text, IBrush Dot, string? SessionId = null);
 
 /// <summary>输入框旁边的本地工作区选择项。</summary>
 public sealed record WorkspaceNavItem(string? Id, string Text, bool IsAdd);
@@ -85,6 +86,7 @@ public partial class ChatPanelView : UserControl
 
     /// <summary>正在重建会话下拉(别把代码回填选中项当成用户在切对话)。</summary>
     private bool _switchingSessions;
+    private int _sessionRefreshVersion;
 
     // 下面这些以前是散落各处的实例字段,现在一律代理到 Cur(=某一轮的那一份 / 正显示的那一份)。
     // 好处是原来一百多处 `_history`/`_cts`/... 的写法一个字都不用改,后台并行却能落到对的那一份上。
@@ -248,6 +250,7 @@ public partial class ChatPanelView : UserControl
             // 否则后台跑着的 A 轮会把命令打到你刚切过去正看的 B 上。工具调用发生在本轮的异步流里,
             // Cur 经 _turnScope 落到 A,取到的正是 A 绑的会话。
             SessionIdProvider = CurrentToolSessionId,
+            UseOpenedSessionAsDefault = false,
             ApprovalHandler = RequestApprovalAsync,
             // 改文件成功后带着前后全文报上来:汇进输入框上方的「已修改文件」、挂到对应工具卡片上画差异。
             // 回调在工具所在的异步流里(可能不在 UI 线程),OnToolFileChanged 先记下所属对话再投递回 UI 线程。
@@ -1262,9 +1265,7 @@ public partial class ChatPanelView : UserControl
         System.Globalization.CultureInfo.InvariantCulture);
 
     private string? SelectedSessionId
-        => _sessions.Count > 0 && SessionCombo.SelectedIndex >= 0 && SessionCombo.SelectedIndex < _sessions.Count
-            ? _sessions[SessionCombo.SelectedIndex].SessionId
-            : null;
+        => (SessionCombo.SelectedItem as SessionNavItem)?.SessionId;
 
     /// <summary>
     /// 当前这一轮的工具该打在哪台机器上:本轮所属对话绑的那条会话(<c>""</c> 通用对话 = 不绑,给 null)。
@@ -1273,7 +1274,7 @@ public partial class ChatPanelView : UserControl
     /// 工具调用发生在本轮的异步流里,<see cref="Cur" /> 经 <see cref="_turnScope" /> 落到本轮那份对话,
     /// 所以后台轮次取到的是它自己那台机器,而不是此刻下拉选中的那台。
     /// </remarks>
-    private string? CurrentToolSessionId()
+    internal string? CurrentToolSessionId()
     {
         string key = Cur.SessionKey;
         return string.IsNullOrEmpty(key) ? null : key;
@@ -1285,15 +1286,17 @@ public partial class ChatPanelView : UserControl
     {
         try
         {
+            int version = ++_sessionRefreshVersion;
             IReadOnlyList<SessionInfo> all = await _context.Sessions.ListAsync();
-            string? previous = SelectedSessionId;
-            _sessions = [.. all.Where(s => s.State == SessionState.Connected)];
             // 顶栏的会话行显示的是<b>连接的名字</b>,不是 user@host。名字在已保存的配置里
             // (会话树上那个用户认得的名),而在途会话本身不带它 —— 按 主机/端口/用户 对回去取。
             // 对不上的(临时会话、没起名的)退回 user@host,总有个能认的落点。
             Dictionary<(string, int, string), string> names = await LoadSessionNamesAsync();
-            // 顶栏的会话行前面带一颗状态点。列表里只有"已连接"的会话,所以点恒为绿;
-            // 一台都没有时那条占位项给灰点 —— 空着不画反而会让整行的对齐跳一下。
+            if (version != _sessionRefreshVersion)
+            {
+                return;
+            }
+            _sessions = [.. all.Where(s => s.State == SessionState.Connected)];
             IBrush online = FindBrush("VelaStatusConnected") ?? Brushes.LimeGreen;
             IBrush offline = FindBrush("VelaTextMuted") ?? Brushes.Gray;
             // 重建下拉这一下会连带触发 SelectionChanged,但那只是代码回填、不是用户在切对话 ——
@@ -1301,11 +1304,13 @@ public partial class ChatPanelView : UserControl
             _switchingSessions = true;
             try
             {
-                SessionCombo.ItemsSource = _sessions.Count == 0
-                    ? (IReadOnlyList<SessionNavItem>)[new SessionNavItem(_loc["NoSession"], offline)]
-                    : [.. _sessions.Select(s => new SessionNavItem(SessionLabel(s, names), online))];
-                int keep = _sessions.FindIndex(s => s.SessionId == previous);
-                SessionCombo.SelectedIndex = keep >= 0 ? keep : 0;
+                // 首次打开仍默认第一台已连接机器。之后按当前对话恢复,包括没有 SSH id 的本机。
+                bool first = SessionCombo.ItemsSource is null;
+                List<SessionNavItem> items = [.. _sessions.Select(s => new SessionNavItem(SessionLabel(s, names), online, s.SessionId)),
+                    new SessionNavItem(_loc["LocalWorkspace"], offline)];
+                int keep = items.FindIndex(i => (i.SessionId ?? "") == _active.SessionKey);
+                SessionCombo.ItemsSource = items;
+                SessionCombo.SelectedIndex = first || keep < 0 ? 0 : keep;
             }
             finally
             {
@@ -2184,7 +2189,9 @@ public partial class ChatPanelView : UserControl
                     _toolbox.LocalMaxFileBytes = _settings.LocalMaxFileBytes;
                     _toolbox.LocalMaxDirectoryEntries = _settings.LocalMaxDirectoryEntries;
                     subagentTemplate ??= _toolbox.CreateSubagentToolbox();
-                    IList<AITool> tools = mode == ChatMode.Chat ? [] : _toolbox.CreateTools(mode, nativeSearch, runScope);
+                    IList<AITool> tools = mode == ChatMode.Chat ? [] : _toolbox.CreateTools(mode, nativeSearch, runScope,
+                        interactiveLocal: fromUser && CurrentToolSessionId() is null,
+                        workspaceGate: async action => await Dispatcher.UIThread.InvokeAsync(() => action(GetActiveLocalWorkspaces())));
                     if (bubble?.ImageTools is { } imageTools)
                         foreach (AITool tool in imageTools.CreateTools(_settings, current.Provider.Id)) tools.Add(tool);
                     // 计划模式下不接 MCP:那些工具的副作用由第三方服务器说了算,插件无从判断,
@@ -3600,7 +3607,7 @@ public partial class ChatPanelView : UserControl
         {
             Classes = { "cardCode" },
             // 团队计划比一条命令长得多(成员 + 任务 + 依赖),放宽到能看全
-            Child = new SelectableTextBlock { Classes = { "mono" }, Text = Truncate(request.Summary, request.Kind == "team_run" ? 2000 : 600) }
+            Child = new SelectableTextBlock { Classes = { "mono" }, Text = request.Kind == "run_local_command" ? request.Summary : Truncate(request.Summary, request.Kind == "team_run" ? 2000 : 600) }
         });
         // 主/次操作对齐宿主按钮方案:批准 = 强调药丸,拒绝 = 描边换危险色
         var approveButton = new Button { Content = _loc["Approve"], Height = 24, Padding = new Thickness(12, 0) };

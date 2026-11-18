@@ -23,7 +23,7 @@ public static class UrlProtocolRegistration
     private const string OwnerValueName = "VelaShellManaged";
 
     /// <summary>按开关同步协议关联;失败静默忽略(权限受限、桌面环境异常都不该影响其它设置生效)。</summary>
-    public static void Apply(bool enabled)
+    public static async Task ApplyAsync(bool enabled)
     {
         try
         {
@@ -33,7 +33,16 @@ public static class UrlProtocolRegistration
             }
             else if (OperatingSystem.IsLinux())
             {
-                ApplyLinux(enabled);
+                // 设置保存可能发生在上一次注册仍在运行时。串行提交以免后写入的设置被覆盖。
+                await LinuxRegistrationGate.WaitAsync().ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+                try
+                {
+                    await ApplyLinuxAsync(enabled).ConfigureAwait(false);
+                }
+                finally
+                {
+                    LinuxRegistrationGate.Release();
+                }
             }
         }
         catch (Exception ex)
@@ -86,8 +95,10 @@ public static class UrlProtocolRegistration
         return key?.GetValue(OwnerValueName) is int marker && marker == 1;
     }
 
+    private static readonly SemaphoreSlim LinuxRegistrationGate = new(1, 1);
+
     [SupportedOSPlatform("linux")]
-    private static void ApplyLinux(bool enabled)
+    private static async Task ApplyLinuxAsync(bool enabled)
     {
         string applications = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -98,7 +109,7 @@ public static class UrlProtocolRegistration
             if (File.Exists(desktopFile))
             {
                 File.Delete(desktopFile);
-                RunQuietly("update-desktop-database", applications);
+                await RunQuietlyAsync("update-desktop-database", [applications]).ConfigureAwait(false);
             }
             return;
         }
@@ -122,27 +133,22 @@ public static class UrlProtocolRegistration
             MimeType={mimeTypes}
 
             """);
-        RunQuietly("update-desktop-database", applications);
+        await RunQuietlyAsync("update-desktop-database", [applications]).ConfigureAwait(false);
         foreach (string scheme in Schemes)
         {
-            RunQuietly("xdg-mime", $"default velashell-url-handler.desktop x-scheme-handler/{scheme}");
+            await RunQuietlyAsync("xdg-mime", ["default", "velashell-url-handler.desktop", $"x-scheme-handler/{scheme}"]).ConfigureAwait(false);
         }
     }
 
     /// <summary>跑一条桌面环境的辅助命令;装没装、成不成都不影响功能本身(关联文件已经写好了)。</summary>
-    private static void RunQuietly(string fileName, string arguments)
+    private static async Task RunQuietlyAsync(string fileName, string[] arguments)
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo(fileName, arguments)
-            {
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            });
-            process?.WaitForExit(3000);
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(3));
+            await Process.RunAsync(fileName, arguments, silent: true, cancellationToken: timeout.Token).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or OperationCanceledException)
         {
             // 命令不存在(精简发行版)—— 关联文件已落盘,多数桌面重启后仍会认。
         }
