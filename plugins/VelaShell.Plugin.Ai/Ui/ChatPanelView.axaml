@@ -332,6 +332,26 @@
       <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <!-- 「你应该知道」条目:与已修改文件行同一套留白;正文可换行,说明用次要色 -->
+    <Style Selector="Border.noteRow">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Padding" Value="16,3,0,3" />
+    </Style>
+    <Style Selector="Border.noteRow:pointerover">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="TextBlock.noteTitle">
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.noteDetail">
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize11}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextTertiary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,1,0,0" />
+    </Style>
     <Style Selector="Border.changedFileRow">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="CornerRadius" Value="3" />
@@ -969,6 +989,9 @@
     <!-- 本段对话里 Agent 改过的文件(仿 VS Code Copilot):标题「N 个文件已更改 +X −Y」,点开列出各文件,
          点文件在主窗口标签区打开差异文档。内容在代码里建(见 ChatPanelView.ChangedFiles.cs)。 -->
     <Border x:Name="ChangedFilesBar" Classes="changedFiles" DockPanel.Dock="Bottom" IsVisible="False" Margin="2,6,2,0" />
+    <!-- 「你应该知道」:主模型经 note_for_user 标出的风险 / 待办 / 要紧发现,回复滚走了也还在这里。
+         可折叠、可逐条关掉;内容在代码里建(见 ChatPanelView.Notes.cs)。 -->
+    <Border x:Name="NotesBar" Classes="changedFiles" DockPanel.Dock="Bottom" IsVisible="False" Margin="2,6,2,0" />
     <!-- 排队中的插话:上一轮还没答完时补发的消息,点一枚芯片可撤回(见 ChatPanelView.Steering.cs)。
          摆在附件行之上 —— 附件属于"正在写的这一条",排队属于"已经发出去的那些"。 -->
     <WrapPanel x:Name="QueuedBar" DockPanel.Dock="Bottom" IsVisible="False" Margin="2,6,2,0" />

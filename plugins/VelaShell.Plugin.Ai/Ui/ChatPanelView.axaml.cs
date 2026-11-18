@@ -1336,7 +1336,13 @@ public partial class ChatPanelView : UserControl
         };
         // 链接是冒泡路由事件,挂在这条面板上就覆盖它里面的所有气泡。
         messages.AddHandler(MarkdownTextBlock.LinkClickEvent, OnMarkdownLinkClicked);
-        return new Conversation(sessionKey, messages);
+        var conversation = new Conversation(sessionKey, messages);
+        // 「你应该知道」条目可能在后台轮次里、不在 UI 线程上写入:投递回来,只在它正显示时重画
+        conversation.Notes.Changed += () => Dispatcher.UIThread.Post(() =>
+        {
+            if (ReferenceEquals(conversation, _active)) RefreshNotes();
+        });
+        return conversation;
     }
 
     /// <summary>
@@ -1378,6 +1384,7 @@ public partial class ChatPanelView : UserControl
         UpdateEmptyState();
         // 切到别的对话时上一份的后续提问药丸不再相关;各份的后续提问是即时算的,不做保留。
         RefreshChangedFiles();
+        RefreshNotes();
         ClearSuggestions();
         RequestAutoScroll(force: true);
         UpdateJumpToBottomButton();
@@ -2200,6 +2207,10 @@ public partial class ChatPanelView : UserControl
                         workspaceGate: async action => await Dispatcher.UIThread.InvokeAsync(() => action(GetActiveLocalWorkspaces())));
                     if (bubble?.ImageTools is { } imageTools)
                         foreach (AITool tool in imageTools.CreateTools(_settings, current.Provider.Id)) tools.Add(tool);
+                    // 「你应该知道」:只写进这份对话自己的提示条,没有副作用,计划模式也给;对话模式不给任何工具。
+                    // 只在桌面面板有(提示条在这里),IM 与对外 MCP 不给。
+                    if (mode != ChatMode.Chat && !_toolbox.DisabledTools.Contains(ConversationNotes.ToolName))
+                        tools.Add(conv.Notes.CreateTool());
                     // 计划模式下不接 MCP:那些工具的副作用由第三方服务器说了算,插件无从判断,
                     // 而"计划"的承诺是这一步不动任何东西。
                     if (mode == ChatMode.Agent && _settings.McpServers.Any(s => s.Enabled))
@@ -3352,6 +3363,7 @@ public partial class ChatPanelView : UserControl
         _inputHistoryIndex = -1;
         StatusText.Text = "";
         ClearChangedFiles(); // 改过的文件属于上一段对话
+        Cur.Notes.Clear(); // 「你应该知道」同样属于上一段对话
         ClearSuggestions();
         SetActiveView(PanelView.Chat);
         UpdateEmptyState();
@@ -4153,6 +4165,11 @@ public partial class ChatPanelView : UserControl
             // 取子任务结果的两个工具不另出工具卡:状态、工具明细与完整报告都在子任务卡片里,
             // 再摆一张装着同一份 JSON 的卡只是把一件事显示两遍。
             if (name is "subagent_wait" or "subagent_status" && _subagentGroup is not null)
+            {
+                return;
+            }
+            // 「你应该知道」的内容就显示在输入框上方的提示条里,不再在回复里摆一张工具卡
+            if (name == ConversationNotes.ToolName)
             {
                 return;
             }

@@ -26,7 +26,10 @@ internal enum ToolKind
     SendFile,
     Image,
     Subagent,
-    Team
+    Team,
+
+    /// <summary>「你应该知道」:钉到输入框上方提示条的条目(<c>note_for_user</c>)。</summary>
+    Note
 }
 
 /// <summary>
@@ -120,7 +123,9 @@ internal static class ToolIcons
         ["team_status"] = ToolKind.Team,
         ["team_message"] = ToolKind.Team,
         ["team_cancel"] = ToolKind.Team,
-        ["team_retry"] = ToolKind.Team
+        ["team_retry"] = ToolKind.Team,
+
+        ["note_for_user"] = ToolKind.Note
     };
 
     /// <summary>工具的类别;没登记的(MCP 工具等)为 <see cref="ToolKind.External" />。</summary>
@@ -162,6 +167,7 @@ internal static class ToolIcons
         ToolKind.Image => "AiIcon.image",
         ToolKind.Subagent => "AiIcon.bot",
         ToolKind.Team => "AiIcon.users",
+        ToolKind.Note => "AiIcon.sparkles",
         _ => "AiIcon.plug"
     };
 

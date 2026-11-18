@@ -91,5 +91,8 @@ public partial class ChatPanelView
 
         // ---------- 本段对话里 Agent 改过的文件(输入框上方那条,只在内存里)----------
         public ChangedFileList ChangedFiles { get; } = new();
+
+        // ---------- 「你应该知道」(输入框上方那条,主模型经 note_for_user 写入;载入会话时从工具调用重建)----------
+        public ConversationNotes Notes { get; } = new();
     }
 }

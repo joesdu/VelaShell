@@ -243,6 +243,7 @@ public partial class ChatPanelView
             UserBubbleIndex.Clear();
             ClearSuggestions(); // 载入的是别的会话,上一段的建议不再相关
             ClearChangedFiles(); // 已修改文件不进历史,载入的会话从空列表开始
+            Cur.Notes.Clear(); // 「你应该知道」从下面各条回复存过的 note_for_user 调用重建
             ConversationId = session.Id;
             ConversationStartedAt = session.CreatedAt;
             PersistedCount = entries.Count;
@@ -272,6 +273,7 @@ public partial class ChatPanelView
                     if (entry.Meta is { } meta)
                     {
                         bubble.Restore(meta);
+                        foreach (ChatToolCall tool in meta.Tools ?? []) Cur.Notes.Restore(tool);
                     }
                     bubble.AppendText(entry.Text);
                     bubble.FinishStreaming(

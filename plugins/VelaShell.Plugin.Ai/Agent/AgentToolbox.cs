@@ -301,7 +301,9 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
         ("team_status", "查看团队看板与成员发给主控的消息", true),
         ("team_message", "给团队成员发消息", false),
         ("team_cancel", "停下正在运行的团队", false),
-        ("team_retry", "重跑团队里失败 / 受阻的任务,可改派给另一名成员", false)
+        ("team_retry", "重跑团队里失败 / 受阻的任务,可改派给另一名成员", false),
+        // 只在桌面面板加(提示条在那儿,见 ChatPanelView 与 Chat.ConversationNotes);登记在这里是为了能在「配置工具」里停用
+        ("note_for_user", "把要用户留意的风险 / 待办 / 要紧发现钉到输入框上方的「你应该知道」条(只在桌面面板有)", true)
     ];
 
     /// <summary>
