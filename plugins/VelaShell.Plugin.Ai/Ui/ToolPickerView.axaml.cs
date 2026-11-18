@@ -26,7 +26,7 @@ namespace VelaShell.Plugin.Ai.Ui;
 /// 塞不进 270 宽的左栏,所以另开一个窗口,点概览行或「新增服务器」进去。
 /// 改完它会回调 <see cref="Rebuild" />,这边的左栏与分组当场跟着变。</para>
 /// </remarks>
-public sealed class ToolPickerView : UserControl
+public sealed partial class ToolPickerView : UserControl
 {
     private readonly IPluginContext _context;
     private readonly AiSettings _settings;
@@ -267,6 +267,7 @@ public sealed class ToolPickerView : UserControl
         RebuildServerRail();
         _groups.Children.Clear();
         _groups.Children.Add(BuildBuiltinGroup());
+        _groups.Children.Add(BuildSkillsGroup());
         foreach (McpServerConfig server in _settings.McpServers)
         {
             _groups.Children.Add(BuildMcpGroup(server));

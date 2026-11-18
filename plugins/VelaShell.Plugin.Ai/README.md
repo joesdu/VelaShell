@@ -778,6 +778,7 @@ ControlTheme 的芯片开关(`Ui/AiTheme.axaml`,隔离进程下仅令牌也能�
   排在自定义提示词之前、只在本轮真的暴露了 `load_skill` 时出现;`load_skill(name)` 取正文与附带文件清单,`read_skill_file(name, path)`
   读附带的文本文件 —— 越出技能目录、符号链接、二进制、超过 256 KB 都拒绝,**不执行脚本**。
 * **显式调用**(`SkillInvocation`):`/技能名 请求` 展开成「带技能正文的请求」只送给模型,气泡与历史留原话;对话模式也可用。桌面在 `SendAsync` 解析 `#` 引用之后展开(用户敲的才认,`SendExternal` 不认),`/` 候选与 `/help` 列出技能;IM 在 `BridgeAgentRunner` 展开(`ConversationRouter` 的内置命令先处理)。内置命令优先于同名技能;停用 `load_skill` 时不展开。
+* **启停界面**(`Ui/ToolPickerView.Skills.cs`):「配置工具」里内置组之后的「技能」组,与模型看到的同一套来源现扫;逐个勾选写 `AiSettings.DisabledSkills`;解析失败的显示原因(不可勾选);「打开目录」建好并打开 `~/.velashell/skills`;「重新扫描」即整页重建。
 * **范围**:桌面与 IM 的 Agent / 计划模式;对话模式与对外 MCP 没有。两件工具登记在 `AgentToolbox.Catalog`(`ToolKind.Skill`)以便停用。
 
 「AI:打开聊天(标签页)」以 `PanelPlacement.Right` 打开 —— 面板落在标签区**最右侧独立一栏**

@@ -3928,3 +3928,10 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **改动**:`Chat/Skills/SkillInvocation`;桌面 `/` 候选、`/help` 与 `SendAsync` 展开;IM 在 `BridgeAgentRunner` 展开。内置命令优先;停用 `load_skill` 时不展开;对话模式也可用;历史存原话。斜杠命令「注册表」只共享技能这一层(理由见 ai-plan §12.12)。
 - **验证**:AI 测试工程全量 2439/2439 通过。
 - **文档**:手册中英「技能」段补斜杠调用;插件 README;velashell-docs §1.17 同步。
+
+## 349. AI 插件:「配置工具」里的技能组 (2026-11-18)
+
+- **来由**:ai-plan §12.3 的 2c,第二步 Skills 的最后一小步。
+- **改动**:`Ui/ToolPickerView.Skills.cs`:逐个启停(`AiSettings.DisabledSkills`)、来源、解析失败原因、打开技能目录、重新扫描;`ToolPickerView` 改为 partial。
+- **验证**:AI 测试工程全量 2440/2440 通过。
+- **文档**:手册中英「技能」段补技能组;插件 README;velashell-docs §1.17 同步。
