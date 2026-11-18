@@ -5019,6 +5019,9 @@ Overwrite it?</value>
   <data name="Tree_DuplicateConnection" xml:space="preserve">
     <value>Duplicate Connection</value>
   </data>
+  <data name="Tree_CopyHost" xml:space="preserve">
+    <value>Copy IP/Domain</value>
+  </data>
   <data name="Tree_DeleteGroup" xml:space="preserve">
     <value>Delete Group</value>
   </data>

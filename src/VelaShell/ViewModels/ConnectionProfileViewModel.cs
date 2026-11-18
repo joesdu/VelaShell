@@ -872,17 +872,66 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// 去掉方括号,方括号后面的端口取代端口栏(#611);配置里存裸地址(见 <see cref="HostAddress" />)。
     /// </summary>
     /// <remarks>
-    /// 只认方括号这一种写法,别的原样(去两端空白):主机栏在串口协议下装的是设备名,插件协议的主机写法由插件定;
-    /// 不带方括号的 IPv6 本来就是裸地址,不用动。
+    /// <para>
+    /// 端口栏显示着时,<c>192.168.1.1:22</c> / <c>example.com:2222</c> 这种只有一个冒号、冒号后是 1–65535 的写法
+    /// 也拆开 —— 平时主机栏一失焦就由 <see cref="SplitPortFromHost" /> 拆进端口栏了,这里兜的是没失焦就保存的那一下。
+    /// </para>
+    /// <para>
+    /// 别的原样(去两端空白):多个冒号又没方括号的是裸 IPv6,拆不出端口;串口的设备名(<c>COM3</c>)、
+    /// SQLite 的文件路径(<c>C:\db.sqlite</c>)、插件的 URL(<c>https://…</c>)冒号后面都不是纯数字,
+    /// <see cref="HostAddress.TrySplit" /> 认不成端口,不会被拆。
+    /// </para>
     /// </remarks>
     private (string Host, int Port) EffectiveEndpoint()
     {
         string host = _host.Trim();
-        if (host.StartsWith('[') && HostAddress.TrySplit(host, out string bare, out int? port))
+        if (TrySplitHostPort(host, out string bare, out int? port))
         {
-            return (bare, ShowPortField && port is { } explicitPort ? explicitPort : _port);
+            return (bare, port ?? _port);
         }
         return (host, _port);
+    }
+
+    /// <summary>
+    /// 主机栏里该不该拆、拆成什么:方括号写法照旧去掉方括号(端口栏收起时端口不取);
+    /// 不带方括号的,只在端口栏显示着、且真写了端口时才拆。
+    /// </summary>
+    private bool TrySplitHostPort(string host, out string bare, out int? port)
+    {
+        port = null;
+        if (!HostAddress.TrySplit(host, out bare, out int? parsed))
+        {
+            return false;
+        }
+        if (host.StartsWith('['))
+        {
+            port = ShowPortField ? parsed : null;
+            return true;
+        }
+        if (ShowPortField && parsed is not null)
+        {
+            port = parsed;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 主机栏里写了 <c>主机:端口</c>(<c>192.168.1.1:22</c>、<c>example.com:2222</c>、<c>[2001:db8::1]:22</c>)时,
+    /// 把端口挪进端口栏、主机栏只留主机。由视图在主机栏失焦时调用 —— 不在每次按键时拆,
+    /// 否则打到 <c>host:2</c> 就被拆走,后面的数字落回主机栏。
+    /// </summary>
+    /// <returns>拆了为 true;没写端口、端口栏收起或写法认不出时什么都不动,返回 false。</returns>
+    public bool SplitPortFromHost()
+    {
+        string host = _host.Trim();
+        if (!TrySplitHostPort(host, out string bare, out int? port) || port is not { } explicitPort)
+        {
+            return false;
+        }
+        Host = bare;
+        Port = explicitPort;
+        return true;
     }
 
     /// <summary>端口越界时的提示;没问题为 null。</summary>

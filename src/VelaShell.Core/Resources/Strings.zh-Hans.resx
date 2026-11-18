@@ -5125,6 +5125,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Tree_DuplicateConnection" xml:space="preserve">
     <value>复制连接</value>
   </data>
+  <data name="Tree_CopyHost" xml:space="preserve">
+    <value>复制IP/域名</value>
+  </data>
   <data name="Tree_DeleteGroup" xml:space="preserve">
     <value>删除分组</value>
   </data>

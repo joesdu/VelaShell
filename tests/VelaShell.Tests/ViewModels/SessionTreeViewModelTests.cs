@@ -522,6 +522,48 @@ public class SessionTreeViewModelTests
         );
     }
 
+    /// <summary>「复制 IP/域名」只复制主机字段本身(去掉首尾空白),不带端口与用户名。</summary>
+    [TestMethod]
+    [TestCategory("SessionTree")]
+    public async Task CopyHostCommand_CopiesTrimmedHostOnly()
+    {
+        SessionProfile session = CreateSession("Web");
+        session.Host = "  10.0.0.8 ";
+        session.Port = 2222;
+        _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
+        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session }));
+        await _vm.LoadCommand.Execute().FirstAsync();
+        string? copied = null;
+        _vm.CopyToClipboard = text =>
+        {
+            copied = text;
+            return Task.CompletedTask;
+        };
+        _vm.SelectedNode = _vm.Nodes.Single();
+
+        Assert.IsTrue(_vm.SelectedNode.HasHost);
+        await _vm.CopyHostCommand.Execute().FirstAsync();
+
+        Assert.AreEqual("10.0.0.8", copied);
+    }
+
+    /// <summary>没填主机的连接(部分插件协议)不显示也不能执行「复制 IP/域名」。</summary>
+    [TestMethod]
+    [TestCategory("SessionTree")]
+    public async Task CopyHostCommand_IsDisabledWhenHostIsEmpty()
+    {
+        SessionProfile session = CreateSession("Bucket");
+        session.ConnectionType = ConnectionType.Plugin;
+        session.Host = " ";
+        _repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
+        _repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session }));
+        await _vm.LoadCommand.Execute().FirstAsync();
+        _vm.SelectedNode = _vm.Nodes.Single();
+
+        Assert.IsFalse(_vm.SelectedNode.HasHost);
+        Assert.IsFalse(await _vm.CopyHostCommand.CanExecute.FirstAsync());
+    }
+
     /// <summary>
     /// 「复制配置」拷的是库里最新的那份:树加载之后才在 SFTP 文档里加的收藏只经
     /// <c>UpdateDirectoryBookmarksAsync</c> 落库,不回写树缓存,拿缓存拷会把它们丢掉(plan.md §222 留下的边角)。
