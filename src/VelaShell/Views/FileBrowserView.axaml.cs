@@ -509,7 +509,7 @@ public partial class FileBrowserView : UserControl
         }
         return await LocalPathPickerDialog.PickAsync(owner, vm.TransferOptions,
             new Services.UploadPickerContext(profileId, destination, vm.ServerDisplayName),
-            vm.UploadDirectoryService, vm.SessionId);
+            vm.UploadDirectoryService, vm.SessionId, vm.NavigateForUploadMappingAsync);
     }
 
     /// <summary>

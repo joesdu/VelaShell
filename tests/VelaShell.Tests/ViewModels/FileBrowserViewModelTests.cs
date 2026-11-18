@@ -22,6 +22,39 @@ public class FileBrowserViewModelTests
         _vm = new(_sftpService, _sessionId);
     }
 
+    [TestMethod]
+    public async Task MappingNavigation_ReportsFailureAndPreservesLoadedRemoteContents()
+    {
+        _sftpService.ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(CreateTestFiles()));
+        await _vm.NavigateToAsync("/home/user");
+        RemoteFileInfoViewModel[] rows = [.. _vm.Files];
+        _sftpService.ListDirectoryAsync(_sessionId, "/denied", Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<List<RemoteFileInfo>>(new UnauthorizedAccessException("denied")));
+        Assert.IsFalse(await _vm.NavigateForUploadMappingAsync("/denied", CancellationToken.None));
+        Assert.AreEqual("/home/user", _vm.CurrentPath);
+        Assert.IsTrue(rows.SequenceEqual(_vm.Files));
+        Assert.IsNotNull(_vm.ErrorMessage);
+    }
+
+    [TestMethod]
+    public async Task MappingNavigation_CannotCommitAfterCancellationWhenBackendIgnoresIt()
+    {
+        _sftpService.ListDirectoryAsync(_sessionId, "/home/user", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(CreateTestFiles()));
+        await _vm.NavigateToAsync("/home/user");
+        var delayed = new TaskCompletionSource<List<RemoteFileInfo>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _sftpService.ListDirectoryAsync(_sessionId, "/late", Arg.Any<CancellationToken>()).Returns(delayed.Task);
+        using var cancellation = new CancellationTokenSource();
+        Task<bool> pending = _vm.NavigateForUploadMappingAsync("/late", cancellation.Token);
+        cancellation.Cancel();
+        delayed.SetResult([]);
+        Assert.IsFalse(await pending);
+        Assert.AreEqual("/home/user", _vm.CurrentPath);
+        Assert.IsTrue(_vm.Files.Any(file => file.Name == "readme.txt"));
+        Assert.IsFalse(_vm.IsDirectoryLoading);
+    }
+
     private static List<RemoteFileInfo> CreateTestFiles()
     {
         return

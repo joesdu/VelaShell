@@ -1,16 +1,31 @@
 using System.Collections.Specialized;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using ReactiveUI;
+using ReactiveUI.Primitives;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
 using VelaShell.Services;
 
 namespace VelaShell.ViewModels;
 
-/// <summary>左侧映射快照;选中标记按映射 Id 区分同一远端的多条记录。</summary>
-internal sealed record UploadMappingItem(UploadDirectoryMapping Mapping, bool IsCurrent)
+/// <summary>按 Id 复用的映射条目,更新标记不重建或移动列表中的控件。</summary>
+internal sealed class UploadMappingItem(UploadDirectoryMapping mapping, bool isCurrent) : ReactiveObject
 {
+    public UploadDirectoryMapping Mapping { get; private set; } = mapping;
+    public bool IsCurrent { get; private set => this.RaiseAndSetIfChanged(ref field, value); } = isCurrent;
     public string RemotePath => Mapping.RemotePath;
     public string LocalPath => Mapping.LocalPath;
+
+    public void Update(UploadDirectoryMapping value, bool current)
+    {
+        string remote = RemotePath;
+        string local = LocalPath;
+        Mapping = value;
+        if (remote != RemotePath) { this.RaisePropertyChanged(nameof(RemotePath)); }
+        if (local != LocalPath) { this.RaisePropertyChanged(nameof(LocalPath)); }
+        IsCurrent = current;
+    }
 }
 
 /// <summary>上传专用勾选与映射状态,独立于文件列表的高亮和定位。</summary>
@@ -30,6 +45,9 @@ internal sealed class UploadPickerSelection : IDisposable
     private long _saveVersion;
     private Task _pendingSave = Task.CompletedTask;
     private Task _pendingOperation = Task.CompletedTask;
+    private CancellationTokenSource? _mappingNavigation;
+    private bool _stopping;
+    private Task? _closeSave;
 
     public UploadPickerSelection(LocalFilePaneViewModel browser, UploadPickerStateStore store, UploadPickerContext? context)
     {
@@ -46,7 +64,7 @@ internal sealed class UploadPickerSelection : IDisposable
     }
 
     public event EventHandler? Changed;
-    public IReadOnlyList<UploadMappingItem> Mappings { get; private set; } = [];
+    public ObservableCollection<UploadMappingItem> Mappings { get; } = [];
     public string? ErrorMessage { get; private set; }
     public string TargetRemotePath { get; private set; }
     public string ServerName => _context?.ServerName ?? string.Empty;
@@ -64,7 +82,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     public void SetChecked(LocalFileEntry entry, bool value)
     {
-        if (_disposed || _restoring || !HasActiveMapping || entry.IsParentEntry || !_browser.Entries.Contains(entry))
+        if (_disposed || _stopping || _restoring || !HasActiveMapping || entry.IsParentEntry || !_browser.Entries.Contains(entry))
         {
             return;
         }
@@ -80,7 +98,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     public void SetAll(bool value)
     {
-        if (_disposed || _restoring || !HasActiveMapping)
+        if (_disposed || _stopping || _restoring || !HasActiveMapping)
         {
             return;
         }
@@ -120,6 +138,7 @@ internal sealed class UploadPickerSelection : IDisposable
             {
                 ActiveMappingId = mapping.Id;
                 TargetRemotePath = mapping.RemotePath;
+                UpdateMarkers();
             }
             bool restored = mapping is not null && await NavigateAsync(mapping.LocalPath);
             if (!IsCurrent(version))
@@ -165,18 +184,23 @@ internal sealed class UploadPickerSelection : IDisposable
         }
     }
 
-    public Task ApplyMappingAsync(UploadMappingItem item)
+    public Task ApplyMappingAsync(UploadMappingItem item, Func<string, CancellationToken, Task<bool>>? navigateRemote = null)
     {
-        Task operation = ApplyMappingCoreAsync(item);
+        Task operation = ApplyMappingCoreAsync(item, navigateRemote);
         _pendingOperation = operation;
         return operation;
     }
 
-    private async Task ApplyMappingCoreAsync(UploadMappingItem item)
+    private async Task ApplyMappingCoreAsync(UploadMappingItem item, Func<string, CancellationToken, Task<bool>>? navigateRemote)
     {
+        if (_disposed || _stopping) { return; }
+        CancelMappingNavigation();
+        using var navigation = new CancellationTokenSource();
+        _mappingNavigation = navigation;
         long version = ++_restoreVersion;
         ++_saveVersion;
         _restoring = true;
+        bool applied = false;
         RaiseChanged();
         try
         {
@@ -188,8 +212,35 @@ internal sealed class UploadPickerSelection : IDisposable
             {
                 return;
             }
-            if (await NavigateAsync(mapping.LocalPath) && IsCurrent(version))
+            LocalFilePaneViewModel.PreparedDirectory prepared;
+            try
             {
+                prepared = await _browser.PrepareDirectoryAsync(mapping.LocalPath, navigation.Token);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not OperationCanceledException)
+            {
+                if (IsCurrent(version))
+                {
+                    ErrorMessage = Strings.Format("Sftp_UploadMappingUnavailable", mapping.LocalPath);
+                }
+                return;
+            }
+            if (!IsCurrent(version) || navigation.IsCancellationRequested) { return; }
+            if (navigateRemote is not null)
+            {
+                bool opened;
+                try { opened = await navigateRemote(mapping.RemotePath, navigation.Token); }
+                catch (Exception ex) when (ex is not OutOfMemoryException and not OperationCanceledException) { opened = false; }
+                if (!IsCurrent(version) || navigation.IsCancellationRequested) { return; }
+                if (!opened)
+                {
+                    ErrorMessage = Strings.Format("Sftp_UploadMappingRemoteUnavailable", mapping.RemotePath);
+                    return;
+                }
+            }
+            if (IsCurrent(version))
+            {
+                _browser.CommitPreparedDirectory(prepared, navigation.Token);
                 ActiveMappingId = mapping.Id;
                 TargetRemotePath = mapping.RemotePath;
                 RestoreChecks(mapping.CheckedPaths);
@@ -197,15 +248,17 @@ internal sealed class UploadPickerSelection : IDisposable
                 _protectMapping = false;
                 ErrorMessage = null;
                 SetMappings(state);
+                applied = true;
             }
-            else if (IsCurrent(version))
-            {
-                ErrorMessage = Strings.Format("Sftp_UploadMappingUnavailable", mapping.LocalPath);
-            }
+        }
+        catch (OperationCanceledException) when (navigation.IsCancellationRequested || !IsCurrent(version))
+        {
+            // 取消、被新选择取代或窗口关闭,均不提交暂存结果。
         }
         finally
         {
-            FinishRestore(version);
+            if (ReferenceEquals(_mappingNavigation, navigation)) { _mappingNavigation = null; }
+            FinishRestore(version, applied);
         }
     }
 
@@ -218,12 +271,12 @@ internal sealed class UploadPickerSelection : IDisposable
 
     private async Task AddMappingCoreAsync(string remotePath, string localPath)
     {
-        if (_disposed || !CanManageMappings || _restoring)
+        if (_disposed || _stopping || !CanManageMappings || _restoring)
         {
             return;
         }
         var added = await _store.AddMappingAsync(_context! with { RemotePath = remotePath }, localPath);
-        if (!_disposed)
+        if (!_disposed && !_stopping)
         {
             AcceptState(added.State, added.Saved);
             await ApplyMappingAsync(Mappings.Single(item => item.Mapping.Id == added.Id));
@@ -239,11 +292,11 @@ internal sealed class UploadPickerSelection : IDisposable
 
     private async Task DeleteMappingCoreAsync(UploadMappingItem item)
     {
-        if (_disposed || _context?.ProfileId is not { } profile)
+        if (_disposed || _stopping || _context?.ProfileId is not { } profile)
         {
             return;
         }
-        bool navigationPending = _restoring;
+        CancelMappingNavigation();
         long version = ++_restoreVersion;
         ++_saveVersion;
         _restoring = true;
@@ -252,15 +305,11 @@ internal sealed class UploadPickerSelection : IDisposable
             ActiveMappingId = null;
             _checked.Clear();
             _protectMapping = false;
+            UpdateMarkers();
         }
         RaiseChanged();
         try
         {
-            if (navigationPending && _directory.Length > 0)
-            {
-                // 同时使本地面板的旧请求失效,仅增加映射版本还不足以阻止它改写文件列表。
-                await _browser.NavigateToAsync(_directory);
-            }
             var deleted = await _store.DeleteMappingAsync(profile, item.Mapping.Id);
             if (IsCurrent(version))
             {
@@ -280,7 +329,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     public UploadSelectionResult? Submit()
     {
-        if (_disposed || _restoring || !HasActiveMapping || _browser.IsDirectoryLoading || CheckedEntries.Count == 0)
+        if (_disposed || _stopping || _restoring || !HasActiveMapping || _browser.IsDirectoryLoading || CheckedEntries.Count == 0)
         {
             return null;
         }
@@ -312,15 +361,39 @@ internal sealed class UploadPickerSelection : IDisposable
         }
         await _pendingSave;
     }
-    public void ReportError(string message) { ErrorMessage = message; RaiseChanged(); }
-    private bool IsCurrent(long version) => !_disposed && version == _restoreVersion;
 
-    private void FinishRestore(long version)
+    public Task PrepareCloseAsync()
+    {
+        if (_closeSave is not null) { return _closeSave; }
+        _stopping = true;
+        CancelMappingNavigation();
+        ++_restoreVersion;
+        ++_saveVersion;
+        return _closeSave = FlushStoreOnCloseAsync();
+    }
+
+    private async Task FlushStoreOnCloseAsync()
+    {
+        // 等待已经入队的写入,不等待可能忽略取消的目录列举。停止后不会再提交新写入。
+        await _store.LoadAsync();
+        await _pendingSave;
+    }
+
+    private void CancelMappingNavigation()
+    {
+        CancellationTokenSource? previous = _mappingNavigation;
+        _mappingNavigation = null;
+        previous?.Cancel();
+    }
+    public void ReportError(string message) { ErrorMessage = message; RaiseChanged(); }
+    private bool IsCurrent(long version) => !_disposed && !_stopping && version == _restoreVersion;
+
+    private void FinishRestore(long version, bool save = true)
     {
         if (IsCurrent(version))
         {
             _restoring = false;
-            Save();
+            if (save) { Save(); }
             RaiseChanged();
         }
     }
@@ -380,7 +453,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     private void Save(bool userChangedChecks = false)
     {
-        if (!_disposed && _browser.CurrentPath.Length > 0 && (_browser.ErrorMessage is null || userChangedChecks))
+        if (!_disposed && !_stopping && _browser.CurrentPath.Length > 0 && (_browser.ErrorMessage is null || userChangedChecks))
         {
             _pendingSave = SaveCoreAsync(++_saveVersion, ActiveMappingId, NormalizeDirectory(_browser.CurrentPath), [.. _checked]);
         }
@@ -405,11 +478,32 @@ internal sealed class UploadPickerSelection : IDisposable
         RaiseChanged();
     }
 
-    private void SetMappings(UploadPickerState state) => Mappings = [.. state.Mappings
-        .Where(item => item.ProfileId == _context?.ProfileId)
-        .Select(item => new UploadMappingItem(item.Clone(), item.Id == ActiveMappingId))
-        .OrderByDescending(item => item.IsCurrent).ThenBy(item => item.RemotePath, StringComparer.Ordinal)
-        .ThenBy(item => item.LocalPath, PathComparer)];
+    private void SetMappings(UploadPickerState state)
+    {
+        UploadDirectoryMapping[] incoming = [.. state.Mappings.Where(item => item.ProfileId == _context?.ProfileId)];
+        var ids = incoming.Select(item => item.Id).ToHashSet();
+        for (int i = Mappings.Count - 1; i >= 0; i--)
+        {
+            if (!ids.Contains(Mappings[i].Mapping.Id)) { Mappings.RemoveAt(i); }
+        }
+        var existing = Mappings.ToDictionary(item => item.Mapping.Id);
+        foreach (UploadDirectoryMapping mapping in incoming)
+        {
+            if (existing.TryGetValue(mapping.Id, out UploadMappingItem? row))
+            {
+                row.Update(mapping.Clone(), mapping.Id == ActiveMappingId);
+            }
+            else
+            {
+                Mappings.Add(new(mapping.Clone(), mapping.Id == ActiveMappingId));
+            }
+        }
+    }
+
+    private void UpdateMarkers()
+    {
+        foreach (UploadMappingItem item in Mappings) { item.Update(item.Mapping, item.Mapping.Id == ActiveMappingId); }
+    }
 
     private void RaiseChanged()
     {
@@ -422,6 +516,8 @@ internal sealed class UploadPickerSelection : IDisposable
     public void Dispose()
     {
         _disposed = true;
+        _stopping = true;
+        CancelMappingNavigation();
         ++_restoreVersion;
         _browser.PropertyChanged -= OnBrowserPropertyChanged;
         _browser.Entries.CollectionChanged -= OnEntriesChanged;

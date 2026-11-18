@@ -60,6 +60,7 @@ public partial class LocalPathPickerDialog : Window
         ViewModel = viewModel;
         DataContext = ViewModel;
         Picker = new(viewModel, store, context);
+        MappingList.ItemsSource = Picker.Mappings;
         Picker.Changed += OnPickerChanged;
         UploadTargetText.Text = context is null ? string.Empty
             : Strings.Format("Sftp_UploadTarget", context.ServerName, context.RemotePath);
@@ -110,7 +111,11 @@ public partial class LocalPathPickerDialog : Window
     private Guid _sessionId;
     private bool _bindingOpen;
     private bool _returnSelection;
+    private bool _opened;
+    private bool _mappingLocationScheduled;
+    private bool _mappingLocated;
     internal ContextMenu? MappingContextMenu { get; private set; }
+    internal Func<string, CancellationToken, Task<bool>>? NavigateRemoteForMapping { get; set; }
 
     private readonly MarqueeSelection _marquee;
 
@@ -153,7 +158,7 @@ public partial class LocalPathPickerDialog : Window
     /// <summary>标题栏和系统关闭也等待最新的选择记忆写完。</summary>
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        if (!_allowClose && !Picker.FlushAsync().IsCompleted)
+        if (!_allowClose && !Picker.PrepareCloseAsync().IsCompleted)
         {
             e.Cancel = true;
             _ = CloseAfterSaveAsync(_closeResult);
@@ -170,7 +175,7 @@ public partial class LocalPathPickerDialog : Window
         _closing = true;
         _closeResult = result;
         IsEnabled = false;
-        await Picker.FlushAsync();
+        await Picker.PrepareCloseAsync();
         _allowClose = true;
         this.PostClose(result);
     }
@@ -182,6 +187,25 @@ public partial class LocalPathPickerDialog : Window
     {
         base.OnOpened(e);
         FitIntoWorkArea();
+        _opened = true;
+        QueueInitialMappingLocation();
+    }
+
+    private void QueueInitialMappingLocation()
+    {
+        if (!_opened || _closed || _mappingLocated || _mappingLocationScheduled || Picker.IsRestoring) { return; }
+        _mappingLocationScheduled = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _mappingLocationScheduled = false;
+            if (_closed || Picker.IsRestoring) { return; }
+            _mappingLocated = true;
+            if (Picker.Mappings.FirstOrDefault(item => item.Mapping.Id == Picker.ActiveMappingId) is { } mapping)
+            {
+                // 由面板计算最小滚动距离,不移动记录、不抢焦点;后续保存不再定位。
+                MappingList.ScrollIntoView(mapping);
+            }
+        }, DispatcherPriority.Loaded);
     }
 
     /// <summary>
@@ -192,7 +216,8 @@ public partial class LocalPathPickerDialog : Window
         => (await PickAsync(owner, transferOptions, null, null, Guid.Empty))?.LocalPaths ?? [];
 
     internal static async Task<UploadSelectionResult?> PickAsync(Window owner, TransferOptions transferOptions,
-        UploadPickerContext? context, ISftpService? remoteDirectories, Guid sessionId)
+        UploadPickerContext? context, ISftpService? remoteDirectories, Guid sessionId,
+        Func<string, CancellationToken, Task<bool>>? navigateRemote = null)
     {
         IServiceProvider? services = (Application.Current as App)?.Services;
         UploadPickerStateStore store = services?.GetService<UploadPickerStateStore>() ?? new(null);
@@ -200,6 +225,7 @@ public partial class LocalPathPickerDialog : Window
         dialog._remoteDirectories = remoteDirectories;
         dialog._sessionId = sessionId;
         dialog._returnSelection = true;
+        dialog.NavigateRemoteForMapping = navigateRemote;
         await dialog.Picker.InitializeAsync();
         if ((Application.Current as App)?.Services?.GetService<WindowLayoutStore>() is { } layoutStore)
         {
@@ -302,9 +328,9 @@ public partial class LocalPathPickerDialog : Window
             ? Strings.Format("Sftp_UploadTarget", Picker.ServerName, Picker.TargetRemotePath)
             : Strings.Get("Sftp_UploadMappingSelectRequired");
         BrowserArea.IsEnabled = !Picker.IsRestoring;
-        MappingList.IsEnabled = !Picker.IsRestoring;
-        MappingList.ItemsSource = Picker.Mappings;
+        // 映射仍可点击:用户的新选择取消上一笔在飞读取,内容区则等待成功后整体提交。
         MappingEmptyHint.IsVisible = Picker.Mappings.Count == 0;
+        QueueInitialMappingLocation();
         string? error = Picker.ErrorMessage ?? ViewModel.ErrorMessage;
         PickerErrorText.Text = error;
         PickerErrorBanner.IsVisible = !string.IsNullOrEmpty(error);
@@ -366,7 +392,7 @@ public partial class LocalPathPickerDialog : Window
     {
         if (!_closed && sender is Button { DataContext: UploadMappingItem item })
         {
-            await Picker.ApplyMappingAsync(item);
+            await Picker.ApplyMappingAsync(item, NavigateRemoteForMapping);
             if (!_closed)
             {
                 FocusList();

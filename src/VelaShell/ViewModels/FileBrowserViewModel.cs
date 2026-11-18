@@ -1515,10 +1515,13 @@ public class FileBrowserViewModel : ReactiveObject
     public Task NavigateToAsync(string path, CancellationToken ct = default) =>
         NavigateCoreAsync(path, recordHistory: true, ct);
 
+    internal Task<bool> NavigateForUploadMappingAsync(string path, CancellationToken ct) =>
+        NavigateCoreAsync(path, recordHistory: true, ct);
+
     /// <param name="path">目标目录。</param>
     /// <param name="recordHistory">进了别的目录时要不要把原目录记进后退历史;后退 / 前进自己挪历史,传 false。</param>
     /// <param name="ct">取消令牌。</param>
-    private async Task NavigateCoreAsync(string path, bool recordHistory, CancellationToken ct)
+    private async Task<bool> NavigateCoreAsync(string path, bool recordHistory, CancellationToken ct)
     {
         using LifetimeScope lifetime = LinkToLifetime(ct);
         long navigationVersion = Interlocked.Increment(ref _navigationVersion);
@@ -1550,9 +1553,10 @@ public class FileBrowserViewModel : ReactiveObject
                 path,
                 ct
             );
+            ct.ThrowIfCancellationRequested();
             if (navigationVersion != Volatile.Read(ref _navigationVersion))
             {
-                return;
+                return false;
             }
             _ = RefreshFreeSpaceAsync(path, navigationVersion);
             bool pathChanged = !string.Equals(CurrentPath, path, StringComparison.Ordinal);
@@ -1561,7 +1565,7 @@ public class FileBrowserViewModel : ReactiveObject
             if (!pathChanged && visibleRowsInitialized && ListingUnchanged(files))
             {
                 HasLoaded = true;
-                return;
+                return true;
             }
             _allFiles.Clear();
             _allFiles.AddRange(files.Select(f => new RemoteFileInfoViewModel(f)));
@@ -1587,6 +1591,7 @@ public class FileBrowserViewModel : ReactiveObject
             {
                 DirectoryChanged?.Invoke(this, EventArgs.Empty);
             }
+            return true;
         }
         catch (OperationCanceledException)
         {
@@ -1609,6 +1614,7 @@ public class FileBrowserViewModel : ReactiveObject
             Interlocked.CompareExchange(ref _navigationCts, null, navigation);
             navigation.Dispose();
         }
+        return false;
     }
 
     /// <summary>

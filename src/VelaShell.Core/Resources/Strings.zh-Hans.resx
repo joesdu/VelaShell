@@ -10491,7 +10491,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Sftp_UploadMappings" xml:space="preserve"><value>目录映射</value></data>
   <data name="Sftp_UploadMappingsHint" xml:space="preserve"><value>选择映射以切换本地目录和上传目标，右键管理映射。</value></data>
   <data name="Sftp_UploadMappingsEmpty" xml:space="preserve"><value>暂无映射，在此处右键添加。</value></data>
-  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>当前映射</value></data>
+  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>上一次映射</value></data>
   <data name="Sftp_UploadChooseDirectory" xml:space="preserve"><value>选择目录</value></data>
   <data name="Sftp_UploadSelectAll" xml:space="preserve"><value>全选／取消全选</value></data>
   <data name="Sftp_UploadTarget" xml:space="preserve"><value>上传到 {0}：{1}</value></data>
@@ -10509,4 +10509,5 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Sftp_UploadMappingParent" xml:space="preserve"><value>上一级</value></data>
   <data name="Sftp_UploadMappingInvalidRemote" xml:space="preserve"><value>无法解析远端目录。</value></data>
   <data name="Sftp_UploadMappingInvalidLocal" xml:space="preserve"><value>请输入本地目录路径。</value></data>
+  <data name="Sftp_UploadMappingRemoteUnavailable" xml:space="preserve"><value>无法打开远端目录：{0}。已保留原映射。</value></data>
 </root>

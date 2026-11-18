@@ -10006,7 +10006,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Sftp_UploadMappings" xml:space="preserve"><value>ディレクトリの対応</value></data>
   <data name="Sftp_UploadMappingsHint" xml:space="preserve"><value>マッピングを選ぶとローカルフォルダーとアップロード先が切り替わります。右クリックで管理します。</value></data>
   <data name="Sftp_UploadMappingsEmpty" xml:space="preserve"><value>マッピングはありません。ここを右クリックして追加します。</value></data>
-  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>選択中のマッピング</value></data>
+  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>前回選択したマッピング</value></data>
   <data name="Sftp_UploadChooseDirectory" xml:space="preserve"><value>フォルダーを選択</value></data>
   <data name="Sftp_UploadSelectAll" xml:space="preserve"><value>すべてチェック／解除</value></data>
   <data name="Sftp_UploadTarget" xml:space="preserve"><value>アップロード先 {0}: {1}</value></data>
@@ -10024,4 +10024,5 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Sftp_UploadMappingParent" xml:space="preserve"><value>親フォルダー</value></data>
   <data name="Sftp_UploadMappingInvalidRemote" xml:space="preserve"><value>リモートフォルダーを解決できません。</value></data>
   <data name="Sftp_UploadMappingInvalidLocal" xml:space="preserve"><value>ローカルフォルダーのパスを入力してください。</value></data>
+  <data name="Sftp_UploadMappingRemoteUnavailable" xml:space="preserve"><value>リモートフォルダーを開けません: {0}。元のマッピングは変更されていません。</value></data>
 </root>

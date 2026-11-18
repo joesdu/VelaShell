@@ -7,6 +7,9 @@ using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using NSubstitute;
+using VelaShell.Core.Models;
+using VelaShell.Core.Sftp;
 using VelaShell.Core.Localization;
 using VelaShell.Core.Resources;
 using VelaShell.Localization;
@@ -250,6 +253,243 @@ public sealed class UploadPickerCheckboxUiTests
         finally
         {
             await dialog.Picker.FlushAsync();
+            dialog.Close();
+            Dispatcher.UIThread.RunJobs();
+        }
+    });
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(9)]
+    [DataRow(19)]
+    public Task OpeningScrollsToRestoredMapping_WithoutReorderingOrLaterScrollJumps(int selectedIndex) => RunAsync(async (_, _, root) =>
+    {
+        var store = new UploadPickerStateStore(new UploadMemoryStore());
+        var context = new UploadPickerContext(Guid.NewGuid(), "/record-00", "server");
+        var ids = new List<Guid>();
+        for (int i = 0; i < 20; i++)
+        {
+            ids.Add((await store.AddMappingAsync(context with { RemotePath = $"/record-{i:00}" }, root)).Id);
+        }
+        await store.MarkUploadedAsync(context.ProfileId!.Value, ids[selectedIndex]);
+        using LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane();
+        var dialog = new LocalPathPickerDialog(browser, false, store, context);
+        try
+        {
+            await dialog.Picker.InitializeAsync();
+            dialog.Show();
+            Pump(dialog);
+            UploadMappingItem restored = dialog.Picker.Mappings.Single(row => row.Mapping.Id == ids[selectedIndex]);
+            Control? container = dialog.MappingList.ContainerFromItem(restored);
+            Assert.IsNotNull(container);
+            double y = container.TranslatePoint(new(0, 0), dialog.MappingScroll)!.Value.Y;
+            Assert.IsGreaterThanOrEqualTo(-1d, y, "恢复项应在视口内。");
+            Assert.IsLessThanOrEqualTo(dialog.MappingScroll.Viewport.Height + 1,
+                y + container.Bounds.Height, "恢复项的底边应在视口内。");
+            Assert.IsGreaterThan(dialog.MappingScroll.Viewport.Height, dialog.MappingScroll.Extent.Height);
+            if (selectedIndex == 0) { Assert.AreEqual(0d, dialog.MappingScroll.Offset.Y, 1d); }
+            Assert.AreSequenceEqual(ids.ToArray(), dialog.Picker.Mappings.Select(row => row.Mapping.Id).ToArray());
+            dialog.MappingScroll.Offset = new(0, selectedIndex > 0 ? 0
+                : dialog.MappingScroll.Extent.Height - dialog.MappingScroll.Viewport.Height);
+            Pump(dialog);
+            double manual = dialog.MappingScroll.Offset.Y;
+            dialog.Picker.SetChecked(browser.Entries.First(entry => !entry.IsDirectory), true);
+            await dialog.Picker.FlushAsync();
+            Pump(dialog);
+            Assert.AreEqual(manual, dialog.MappingScroll.Offset.Y, 1d, "保存不应把用户滚动位置拉回。");
+            Assert.AreSame(container, dialog.MappingList.ContainerFromItem(restored), "仅更新标记不能重建条目控件。");
+            await dialog.Picker.AddMappingAsync("/appended", root);
+            await dialog.Picker.FlushAsync();
+            Pump(dialog);
+            Assert.AreEqual(manual, dialog.MappingScroll.Offset.Y, 1d, "新建后选中不再次执行打开定位。");
+            Assert.AreEqual("/appended", dialog.Picker.Mappings[^1].RemotePath);
+        }
+        finally { await dialog.Picker.PrepareCloseAsync(); dialog.Close(); Dispatcher.UIThread.RunJobs(); }
+    });
+
+    [TestMethod]
+    public Task OpeningWithoutAnActiveMapping_DoesNotScrollOrFocusTheSidebar() => RunAsync(async (_, _, root) =>
+    {
+        var store = new UploadPickerStateStore(new UploadMemoryStore());
+        var context = new UploadPickerContext(Guid.NewGuid(), "/entry", "server");
+        await store.AddMappingAsync(context, root);
+        for (int i = 0; i < 16; i++) { await store.AddMappingAsync(context with { RemotePath = "/other-" + i }, root); }
+        using LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane();
+        var dialog = new LocalPathPickerDialog(browser, false, store, context);
+        try
+        {
+            await dialog.Picker.InitializeAsync();
+            await dialog.Picker.DeleteMappingAsync(dialog.Picker.Mappings[0]);
+            dialog.Show();
+            Pump(dialog);
+            Assert.IsNull(dialog.Picker.ActiveMappingId);
+            Assert.AreEqual(0d, dialog.MappingScroll.Offset.Y, 1d);
+            Assert.IsFalse(dialog.MappingList.IsKeyboardFocusWithin);
+        }
+        finally { await dialog.Picker.PrepareCloseAsync(); dialog.Close(); Dispatcher.UIThread.RunJobs(); }
+    });
+
+    [TestMethod]
+    public Task LeftClickSynchronizesRealRemotePane_WhileRestoreAddAndRightClickDoNot() => RunAsync(async (_, _, root) =>
+    {
+        string local = Path.Combine(root, "sub");
+        string file = Path.Combine(local, "local.txt");
+        await File.WriteAllTextAsync(file, "x");
+        var store = new UploadPickerStateStore(new UploadMemoryStore());
+        var context = new UploadPickerContext(Guid.NewGuid(), "/app", "server");
+        await store.AddMappingAsync(context, root, [Path.Combine(root, "file-000.txt")]);
+        await store.AddMappingAsync(context with { RemotePath = "/web" }, local, [file]);
+        ISftpService service = Substitute.For<ISftpService>();
+        Guid session = Guid.NewGuid();
+        service.ListDirectoryAsync(session, Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(call =>
+            Task.FromResult(new List<RemoteFileInfo> { new()
+            {
+                Name = "remote.txt", FullPath = (string)call[1] + "/remote.txt", IsDirectory = false,
+                Size = 1, Permissions = "", Owner = "", Group = "", LastModified = DateTime.UtcNow,
+            } }));
+        var remote = new FileBrowserViewModel(service, session);
+        await remote.NavigateToAsync("/app");
+        service.ClearReceivedCalls();
+        using LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane();
+        var dialog = new LocalPathPickerDialog(browser, false, store, context)
+        {
+            NavigateRemoteForMapping = remote.NavigateForUploadMappingAsync,
+        };
+        try
+        {
+            await dialog.Picker.InitializeAsync();
+            dialog.Show();
+            Pump(dialog);
+            await service.DidNotReceiveWithAnyArgs().ListDirectoryAsync(default, default!, default);
+            Button web = dialog.MappingList.GetVisualDescendants().OfType<Button>()
+                .Single(button => button.DataContext is UploadMappingItem { RemotePath: "/web" });
+            Click(dialog, web);
+            await WaitForAsync(dialog, () => dialog.Picker.IsRestoring);
+            Assert.AreEqual("/web", remote.CurrentPath);
+            Assert.AreEqual("/web/remote.txt", remote.Files.Single(entry => !entry.IsParentEntry).FullPath);
+            Assert.AreEqual(local, browser.CurrentPath);
+            Assert.AreSame(web, dialog.MappingList.GetVisualDescendants().OfType<Button>()
+                .Single(button => button.DataContext is UploadMappingItem { RemotePath: "/web" }));
+            Assert.AreSequenceEqual(new[] { "/app", "/web" }, dialog.Picker.Mappings.Select(row => row.RemotePath).ToArray());
+            Click(dialog, web);
+            await WaitForAsync(dialog, () => dialog.Picker.IsRestoring);
+            await service.Received(2).ListDirectoryAsync(session, "/web", Arg.Any<CancellationToken>());
+
+            service.ListDirectoryAsync(session, "/app", Arg.Any<CancellationToken>())
+                .Returns(Task.FromException<List<RemoteFileInfo>>(new UnauthorizedAccessException("denied")));
+            Button app = dialog.MappingList.GetVisualDescendants().OfType<Button>()
+                .Single(button => button.DataContext is UploadMappingItem { RemotePath: "/app" });
+            Click(dialog, app);
+            await WaitForAsync(dialog, () => dialog.Picker.IsRestoring);
+            Assert.AreEqual("/web", remote.CurrentPath);
+            Assert.AreEqual(local, browser.CurrentPath);
+            Assert.AreEqual("/web", dialog.Picker.TargetRemotePath);
+            Assert.AreSequenceEqual([file], dialog.Picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
+            Assert.IsTrue(dialog.Picker.Mappings[1].IsCurrent);
+            Assert.IsTrue(dialog.PickerErrorBanner.IsVisible);
+
+            _ = RightClickMenu(dialog, app, new(40, app.Bounds.Height / 2));
+            dialog.MappingContextMenu!.Close();
+            await service.Received(1).ListDirectoryAsync(session, "/app", Arg.Any<CancellationToken>());
+            await dialog.Picker.AddMappingAsync("/added", root);
+            Assert.AreEqual("/web", remote.CurrentPath, "新建后选中不联动主远端面板。");
+            Assert.AreEqual("/added", dialog.Picker.TargetRemotePath);
+            await service.DidNotReceive().ListDirectoryAsync(session, "/added", Arg.Any<CancellationToken>());
+        }
+        finally { await dialog.Picker.PrepareCloseAsync(); dialog.Close(); Dispatcher.UIThread.RunJobs(); }
+        Assert.AreEqual("/web", remote.CurrentPath, "取消上传不撤销已经完成的远端浏览。");
+    });
+
+    [TestMethod]
+    public Task ClosingDuringRemoteNavigation_DiscardsLateUiResults() => RunAsync(async (_, _, root) =>
+    {
+        var store = new UploadPickerStateStore(new UploadMemoryStore());
+        var context = new UploadPickerContext(Guid.NewGuid(), "/app", "server");
+        await store.AddMappingAsync(context, root, [Path.Combine(root, "file-000.txt")]);
+        await store.AddMappingAsync(context with { RemotePath = "/web" }, Path.Combine(root, "sub"));
+        using LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane();
+        var started = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var dialog = new LocalPathPickerDialog(browser, false, store, context)
+        {
+            NavigateRemoteForMapping = (_, ct) => { started.TrySetResult(ct); return release.Task; },
+        };
+        try
+        {
+            await dialog.Picker.InitializeAsync();
+            dialog.Show();
+            Pump(dialog);
+            Click(dialog, dialog.MappingList.GetVisualDescendants().OfType<Button>()
+                .Single(button => button.DataContext is UploadMappingItem { RemotePath: "/web" }));
+            CancellationToken token = await started.Task;
+            dialog.Close();
+            Pump(dialog);
+            Assert.IsFalse(dialog.IsVisible, "关闭不能等待一个忽略取消的目录请求。");
+            Assert.IsTrue(token.IsCancellationRequested);
+            release.TrySetResult(true);
+            await dialog.Picker.FlushAsync();
+            Assert.AreEqual(root, browser.CurrentPath);
+            Assert.AreEqual("/app", dialog.Picker.TargetRemotePath);
+        }
+        finally
+        {
+            release.TrySetResult(true);
+            await dialog.Picker.FlushAsync();
+            dialog.Close();
+            Dispatcher.UIThread.RunJobs();
+        }
+    });
+
+    [TestMethod]
+    public Task RapidLeftClicks_KeepMappingsClickableAndOnlyApplyTheNewestSelection() => RunAsync(async (_, _, root) =>
+    {
+        var store = new UploadPickerStateStore(new UploadMemoryStore());
+        var context = new UploadPickerContext(Guid.NewGuid(), "/app", "server");
+        string checkedFile = Path.Combine(root, "file-000.txt");
+        await store.AddMappingAsync(context, root, [checkedFile]);
+        await store.AddMappingAsync(context with { RemotePath = "/slow" }, Path.Combine(root, "sub"));
+        await store.AddMappingAsync(context with { RemotePath = "/new" }, root, [checkedFile]);
+        using LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane();
+        var started = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var dialog = new LocalPathPickerDialog(browser, false, store, context)
+        {
+            NavigateRemoteForMapping = async (path, ct) =>
+            {
+                if (path != "/slow") { return true; }
+                started.SetResult(ct);
+                bool result = await release.Task;
+                finished.SetResult();
+                return result;
+            },
+        };
+        try
+        {
+            await dialog.Picker.InitializeAsync();
+            dialog.Show();
+            Pump(dialog);
+            Button Row(string remote) => dialog.MappingList.GetVisualDescendants().OfType<Button>()
+                .Single(button => button.DataContext is UploadMappingItem row && row.RemotePath == remote);
+            Click(dialog, Row("/slow"));
+            CancellationToken oldToken = await started.Task;
+            Assert.IsTrue(dialog.MappingList.IsEnabled);
+            Click(dialog, Row("/new"));
+            await WaitForAsync(dialog, () => dialog.Picker.IsRestoring);
+            Assert.IsTrue(oldToken.IsCancellationRequested);
+            release.SetResult(true);
+            await finished.Task;
+            Pump(dialog);
+            Assert.AreEqual("/new", dialog.Picker.TargetRemotePath);
+            Assert.AreEqual(root, browser.CurrentPath);
+            Assert.AreSequenceEqual([checkedFile], dialog.Picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
+            Assert.AreSequenceEqual(new[] { "/app", "/slow", "/new" }, dialog.Picker.Mappings.Select(row => row.RemotePath).ToArray());
+            Assert.IsTrue(dialog.Picker.Mappings[2].IsCurrent);
+        }
+        finally
+        {
+            release.TrySetResult(true);
+            await dialog.Picker.PrepareCloseAsync();
             dialog.Close();
             Dispatcher.UIThread.RunJobs();
         }

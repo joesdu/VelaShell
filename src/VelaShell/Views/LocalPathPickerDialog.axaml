@@ -336,7 +336,7 @@
           <Panel>
             <TextBlock Name="MappingEmptyHint" Text="{loc:Localize Sftp_UploadMappingsEmpty}" TextWrapping="Wrap"
                        FontSize="{DynamicResource VelaFontSize11}" Foreground="{DynamicResource VelaTextMuted}" />
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <ScrollViewer Name="MappingScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
               <ItemsControl Name="MappingList">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:UploadMappingItem">
