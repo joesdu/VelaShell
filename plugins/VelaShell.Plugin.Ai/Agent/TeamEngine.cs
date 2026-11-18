@@ -229,7 +229,7 @@ public sealed partial class TeamEngine
             if (member.Name.Trim() is "lead" or "all" or "*") return $"\"{member.Name}\" is reserved; choose another member name.";
             if (!names.Add(member.Name.Trim())) return $"Duplicate member name \"{member.Name}\".";
             if (member.ModelId is { Length: > 0 } model && _owner.ModelChoices.Count > 0 && !_owner.ModelChoices.ContainsKey(model))
-                return $"Member \"{member.Name}\": select modelId from the current provider's allowed list.";
+                return $"Member \"{member.Name}\": select modelId from the allowed models list.";
         }
         HashSet<string> ids = [with(StringComparer.OrdinalIgnoreCase)];
         foreach (TeamTaskSpec task in tasks)

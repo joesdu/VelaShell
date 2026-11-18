@@ -572,7 +572,7 @@ GIF 照样作为视觉输入发给聊天模型,但不给 ID,免得模型拿它�
 
 `generate_image(prompt, modelId?)` / `edit_image(prompt, imageIds, modelId?)` 的工具说明列出当前供应商实例下的图片模型及手动配置的默认模型（兼容跨供应商默认值）,不包含凭据。用户指定优先,否则使用默认值;无默认时主模型必须传入候选配置 ID。比较图片时主模型按要求对不同 ID 使用相同提示词分别调用;每轮最多四次,失败不重试或换图源。执行前和审批后复核开关、默认值与目标快照;回执记录请求的 `model`、`modelId`、`providerId`,不声称验证了上游实际模型。日常聊天模型和全局默认值不被工具改写。
 
-Agent 模式的主模型可将有价值的独立任务交给 `delegate_subagent`,不需要额外决策模型。候选和执行限制在当前供应商实例的聊天模型;省略 `modelId` 沿用父模型,不凭模型名猜能力或价格。桌面换站后重建候选,IM 按本轮父模型限定;对外 MCP 按连接建立时的当前供应商限定（未选模型时取首个聊天模型所属供应商）,无同供应商聊天模型则不提供委派。文件权限、审批、任务数量及超时边界不变。
+Agent 模式的主模型可将有价值的独立任务交给 `delegate_subagent`,不需要额外决策模型。候选是用户配置的**所有**供应商实例的聊天模型(`SubagentRunner.ModelChoices`,父模型所在的那家排在最前,不含图片模型),各用各的凭据;省略 `modelId` 沿用父模型。桌面换站后重建候选,IM 按本轮父模型排序;对外 MCP 按连接建立时所选模型的供应商排序（未选模型时取首个聊天模型所属供应商）,一个聊天模型都没有才不提供委派。文件权限、审批、任务数量及超时边界不变。
 
 **团队模式**(`Agent/TeamEngine.cs`,参照 Claude Code agent teams 的共享任务表 + 邮箱、MiniMax Mavis 的 Team Engine):
 主模型调一次 `team_run(goal, members[], tasks[], timeoutSeconds?)` 定好成员(名字 / 角色 / 可选模型 / `allowWrites`,≤6)
@@ -596,13 +596,18 @@ Agent 模式的主模型可将有价值的独立任务交给 `delegate_subagent`
   (`_finishedAt = null`、`_reportTaken = false`),全部落定后再送一份汇总报告。重跑是全新的一次运行,任务说明里多一段 `## Retry`
   (上次为什么停、已写出的部分、先核对再改)。返工额度改按 `TaskState.Reworks` 记,出错重跑不占;`TeamTaskInfo.Retries` 给界面显示「重试 ×n」。
   汇总报告在没全做成时带一句 `recovery`,告诉主控可以 `team_retry`。
-* **按任务挑模型**:主控给成员定模型(`TeamMemberSpec.ModelId`,候选限定在当前供应商实例的聊天模型)。它挑的依据是
-  `SubagentRunner.ModelCatalog` 生成的候选清单 —— 每个候选除 id 与名字外带上配置里已知的事实:`contextTokens`、`maxOutputTokens`、
-  `inputPricePerMTok` / `outputPricePerMTok`、`reasoning`、`parent`;没有的不写(单价没填、窗口只是默认估值、不知道会不会思考)。
+* **按任务挑模型**:主控给成员定模型(`TeamMemberSpec.ModelId`,候选是**所有供应商实例**的聊天模型,主控那一家在前)。它挑的依据是
+  `SubagentRunner.ModelCatalog` 生成的候选清单 —— 每个候选除 id 与名字外带上 `provider`(供应商实例名)、`model`(真实型号 id)
+  与配置里已知的事实:`contextTokens`、`maxOutputTokens`、`inputPricePerMTok` / `outputPricePerMTok`、`reasoning`、`parent`;
+  没有的不写(单价没填、窗口只是默认估值、不知道会不会思考)。
   清单经 `SubagentOrchestrator.ModelCatalog` 进 `team_run` / `delegate_subagent` 的工具说明(三个入口:桌面、IM 桥接、对外 MCP),
-  `TeamGuidance` / `DelegationGuidance` 要求按这些事实分配(便宜的做例行收集、大窗口的读大量内容、会思考 / 更贵的做设计与要紧改动、
-  审查者尽量换一个模型),只按事实、不按名字。原先的说明是「没有充分理由就沿用父模型、不要从名字推断」,而清单里又只有名字,
-  结果主控一律沿用自己的模型。确认卡(`DescribePlan`)上成员的模型写名字而不是配置 id。
+  `TeamGuidance` / `DelegationGuidance` 共用 `ModelSelectionGuidance`:先按事实分配(便宜的做例行收集、大窗口的读大量内容、
+  会思考 / 更贵的做设计与要紧改动);型号 id 明确对应知名厂商模型时,可借助主模型对该模型所长(写代码、长文档、多语种…)的了解,
+  认不出的名字当未知、与事实冲突以事实为准;审查者尽量换一个模型、最好换一家供应商;不为「换着用」而换供应商(另一份计费、内容发给另一家)。
+  确认卡(`DescribePlan`)上成员的模型写「供应商 / 名字」而不是配置 id。
+* **模型用不了时的替补**(`SubagentRunner.RunWithModelFallbackAsync`):还没输出、没调工具时,选定模型 → 父模型 → 候选里的其它聊天模型
+  (候选顺序即主控那一家在前)。触发条件 `CannotUseModel`:型号没开通(`model_not_found`),或那一家的凭据被拒 / 额度用尽(401 / 403 / 429)、
+  OAuth 续期失败 —— 跨供应商之后「某家只配了地址、Key 早过期」很常见。换过的模型在本轮记为不可用。
 * **汇总**:全部落定后 `TakeReport()` 合成**一份**快照(role `team`)经 `WaitForCompletionAsync` 送回,走与子任务结果相同的
   `<untrusted-subagent-results>` 通知。编排器的「还有在途」判断把团队算进去,等依赖、等返工的空档不会让协调器提前收尾。
 * 每个任务默认 600 秒(30–1800)、60 步(普通子任务 30 步);编排器总数上限按 `任务数 × 2` 抬高。成员权限与子 Agent 相同,

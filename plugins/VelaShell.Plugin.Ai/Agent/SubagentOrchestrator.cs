@@ -259,7 +259,7 @@ public sealed class SubagentOrchestrator(
     internal bool IsModelUnavailable(string? modelId) => modelId is not null && _unavailableModels.ContainsKey(modelId);
 
     /// <summary>
-    /// 当前子任务从 <paramref name="from" /> 换到了 <paramref name="to" />(父模型或同供应商的其它聊天模型):卡片改显示实际用的模型,
+    /// 当前子任务从 <paramref name="from" /> 换到了 <paramref name="to" />(父模型或候选里的其它聊天模型):卡片改显示实际用的模型,
     /// 并在错误栏留一句说明(主控读结果时也看得到,不会以为任务是用它选的那个模型做的)。
     /// </summary>
     internal void ReportModelFallback(string from, string to, string reason)
@@ -268,7 +268,7 @@ public sealed class SubagentOrchestrator(
         entry.ModelId = to;
         lock (entry.LiveTools)
         {
-            entry.LiveErrors.Add($"Model {from} is not available for this account ({ClipError(reason)}); switched to model {to}.");
+            entry.LiveErrors.Add($"Model {from} could not be used ({ClipError(reason)}); switched to model {to}.");
         }
         NotifyChanged();
     }
@@ -386,7 +386,7 @@ public sealed class SubagentOrchestrator(
         if (Volatile.Read(ref _disposed) != 0) return (null, "Subagent service is shutting down.");
         string? selectedModelId = string.IsNullOrWhiteSpace(request.ModelId) ? DefaultModelId : request.ModelId.Trim();
         if (ModelChoices.Count > 0 && (selectedModelId is null || !ModelChoices.ContainsKey(selectedModelId)))
-            return (null, "Select a subagent model ID from the current provider's allowed list.");
+            return (null, "Select a subagent model ID from the allowed models list.");
         int sequence = Interlocked.Increment(ref _started);
         if (sequence > MaxTotal)
         {

@@ -527,9 +527,11 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
                     : "Returns an id immediately; results are not pushed, so collect each one with subagent_wait. ")
                 + $"timeoutSeconds sets the execution limit ({SubagentOrchestrator.MinTimeoutSeconds}-{SubagentOrchestrator.MaxTimeoutSeconds}, default 120; "
                 + "time spent waiting for user approval is not counted). "
-                + "Set modelId to the allowed model that fits this subtask, judged by the facts listed below (context window, output limit, configured prices per million tokens, reasoning) "
-                + "and never by a model's name; omit it to inherit the parent model. "
-                + "Use delegation for substantial independent tasks, not trivial steps; do not invent model capabilities or prices beyond what is listed. Allowed models: "
+                + "Set modelId to the allowed model that fits this subtask. The list may span several providers (each entry gives provider and real model id): "
+                + "judge first by the listed facts (context window, output limit, configured prices per million tokens, reasoning), then by what you reliably know "
+                + "about a well-known vendor model's strengths when its model id clearly identifies it; unrecognised names are unknown and listed facts win. "
+                + "Omit modelId to inherit the parent model. "
+                + "Use delegation for substantial independent tasks, not trivial steps; do not invent prices or limits beyond what is listed. Allowed models: "
                 + orchestrator.DescribeModels()), false));
             all.Add(("subagent_status", AIFunctionFactory.Create(bound.SubagentStatusAsync, "subagent_status",
                 "Get the current status of a delegated subagent by id without waiting."
@@ -569,10 +571,12 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
                 + "Members have the same limits as subagents: read-only unless allowWrites=true, and they run shell commands only with allowCommands=true "
                 + "(each command still needs the user's approval) — give that only to members whose task really requires commands. "
                 + $"timeoutSeconds is per task ({SubagentOrchestrator.MinTimeoutSeconds}-{TeamEngine.MaxTaskTimeoutSeconds}, default {TeamEngine.DefaultTaskTimeoutSeconds}). "
-                + "Set each member's modelId to the allowed model that fits its task, judged by the facts listed below "
-                + "(context window, output limit, configured prices per million tokens, reasoning) and never by a model's name: cheaper for routine collection, "
-                + "large context for heavy reading, reasoning-capable / higher-priced for design, hard debugging and important changes, "
-                + "and preferably a different model for a reviewer than for the author it reviews. Omit modelId to inherit your own model (marked parent). "
+                + "Set each member's modelId to the allowed model that fits its task. The list may span several providers (each entry gives provider and real model id): "
+                + "judge first by the listed facts (context window, output limit, configured prices per million tokens, reasoning) — cheaper for routine collection, "
+                + "large context for heavy reading, reasoning-capable / higher-priced for design, hard debugging and important changes — then by what you reliably know "
+                + "about a well-known vendor model's strengths (coding, long documents, multilingual writing…) when its model id clearly identifies it; "
+                + "unrecognised names are unknown and listed facts win. Give a reviewer a different model than the author it reviews, "
+                + "preferably from another provider. Omit modelId to inherit your own model (marked parent). "
                 + "Allowed models: " + teamOrchestrator.DescribeModels()), false));
             all.Add(("team_status", AIFunctionFactory.Create(teamTools.TeamStatus, "team_status",
                 "Show the team board (task status, owners, finished reports) and unread messages members sent to you. "

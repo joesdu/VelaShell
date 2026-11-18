@@ -267,7 +267,6 @@ public sealed partial class ChatPanelViewUiTests
     [DataRow("missing")]
     [DataRow("image")]
     [DataRow("changed-parent")]
-    [DataRow("foreign")]
     public void SubagentModelSelection_InvalidSelectionFailsWithoutFallback(string scenario)
     {
         OnUi(async () =>
@@ -298,7 +297,6 @@ public sealed partial class ChatPanelViewUiTests
                 {
                     "image" => image.Id,
                     "missing" => "missing",
-                    "foreign" => foreign.Models[0].Id,
                     _ => null
                 });
                 string result = await orchestrator.WaitAsync(orchestrator.Snapshots().Single().SubagentId, 5, CancellationToken.None);
@@ -306,6 +304,35 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.AreEqual("failed", json.RootElement.GetProperty("status").GetString());
                 Assert.IsGreaterThan(0, json.RootElement.GetProperty("errors").GetArrayLength());
                 Assert.IsEmpty(endpoint.Requests);
+            }
+            finally { panel.Detach(); window.Close(); }
+        });
+    }
+
+    /// <summary>桌面入口:别家供应商的模型可以选,解析出的是它自己那一家,凭据用它自己的 Key 而不是父模型的。</summary>
+    [TestMethod]
+    public void SubagentModelSelection_ResolvesModelsUnderAnotherProviderWithTheirOwnKey()
+    {
+        OnUi(async () =>
+        {
+            await using var endpoint = new SseStub(LifecycleAnswer);
+            using var context = new TestPluginContext();
+            AiProvider provider = StubProvider("test", endpoint.BaseUrl, "m");
+            AiProvider foreign = StubProvider("test", endpoint.BaseUrl, "foreign");
+            var store = new AiSettingsStore(context);
+            await store.SaveAsync(new AiSettings { Providers = [provider, foreign], ActiveModelId = provider.Models[0].Id });
+            await store.SetApiKeyAsync(provider.Id, "parent-key");
+            await store.SetApiKeyAsync(foreign.Id, "foreign-key");
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                AiSettings settings = await store.LoadAsync();
+                ResolvedModel parent = settings.FindModel(provider.Models[0].Id)!;
+                (ProviderCredential credential, string? keyId) = await store.ResolveCredentialWithKeyIdAsync(parent);
+                (ResolvedModel model, ProviderCredential resolved) = await panel.ResolveSubagentModelAsync(
+                    new SubagentRequest("inspect", null, foreign.Models[0].Id), parent, credential, keyId, CancellationToken.None);
+                Assert.AreEqual(foreign.Id, model.Provider.Id);
+                Assert.AreNotEqual(credential, resolved, "别家的模型不借用父模型的凭据");
             }
             finally { panel.Detach(); window.Close(); }
         });

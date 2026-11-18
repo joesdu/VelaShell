@@ -3857,3 +3857,13 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **测试**:`SessionTreeViewModelTests` 新增复制去空白、主机为空时不可用两条;`ConnectionProfileViewModelTests` 新增 `SplitPortFromHost` 八组写法与「不失焦直接保存也拆」一条。
 - **验证**:`VelaShell.Tests` Debug 构建通过,全量 3563 项:3510 通过、53 跳过(Docker 等环境类集成用例早退)、0 失败;界面上的右键复制与失焦拆分未人工实测。
 - **文档**:`manual.md` / `manual.en.md` 的资源管理器与连接目标两段补充;velashell-docs《交互与界面规格》中英两份同步(右键菜单项与 Host 栏带端口)。
+
+## 340. AI 插件:团队模式与委派的候选模型扩展到所有供应商 (2026-11-18)
+
+- **来由**:维护者要求团队模式的可选模型覆盖已添加的全部供应商,让主模型能按各家型号的所长分工,而不是只在当前供应商里挑。§322 定下的「候选与执行只在当前供应商实例内」就此撤销;计费与内容接收方的变化改为在手册与威胁模型里明示。
+- **候选**:`SubagentRunner.ModelChoices` / `ModelCatalog` 改为所有供应商实例的聊天模型(不含图片模型),父模型所在的那家排在最前,其余保持设置里的顺序;这个顺序同时是替补顺序。清单每条另带 `provider`(供应商实例名)与 `model`(真实型号 id)。桌面、IM 桥接、对外 MCP 三个入口的候选与解析一起放开:`ResolveFromSettingsAsync` 去掉 `providerId` 参数,`ChatPanelView.ResolveSubagentModelAsync` 去掉同供应商检查;别家模型按它自己的配置现取凭据,复用父模型时照旧复验父凭据。对外 MCP 在所选模型是图片模型、同供应商又没有聊天模型时,现在会落到别家排在最前的聊天模型,而不是不提供委派。
+- **挑模型的说明**:`TeamGuidance` / `DelegationGuidance` 共用新的 `ModelSelectionGuidance`,`team_run` / `delegate_subagent` 的工具说明同步。原先「只按事实、不许看名字」在候选同在一家时够用,跨供应商后体现不出「这家写代码强、那家读长文档稳」;现在先按事实,型号 id 明确对应知名厂商模型时可借助主模型对其所长的了解,认不出的名字当未知、与事实冲突以事实为准;审查者尽量换一家供应商;不为「换着用」而换供应商(另一份计费、内容发给另一家)。分配仍是主模型的判断,引擎不按角色强行指定。
+- **替补放宽**:新增 `SubagentRunner.CannotUseModel`,在 `model_not_found` 之外,401 / 403 / 429(`TransientFailure.IsApiKeyFailure`)与 `OAuthException` 也在「未输出、未调工具」时换模型重跑。跨供应商之后「某家只配了地址、Key 早过期」很常见,不该让分到它的成员整个失败。`ReportModelFallback` 的说明改为 `Model X could not be used (…); switched to model Y.`。编排器与团队引擎的校验错误去掉「current provider」字样。
+- **测试**:`SubagentRunnerTests` 的作用域用例改为「候选覆盖所有供应商、主控那一家在前、别家可解析、图片与已删除仍拒绝」,新增 `CannotUseModel` 判定与「别家 Key 被拒 → 换父模型跑完」两条;`LongRunFollowUpTests` 的清单用例改为跨供应商并核对 `provider` / `model` 与排序,说明用例改核新措辞;`SubagentEntryPointTests` 的「拒绝别家」改为 IM 桥接与对外 MCP 都真的把子任务发到别家端点并取回结果;`ChatPanelViewUiTests.Subagents` 去掉「别家模型应失败」一行,新增桌面解析别家模型、用它自己 Key 的一条。
+- **验证**:`VelaShell.Plugin.Ai` `-warnaserror` 构建通过;AI 测试工程全量 2405 项跑出 2404 通过、1 失败(即上面去掉的「别家模型应失败」旧断言),修正后相关 38 项通过,修正后未再跑全量。均为本地 HTTP 模拟,未调用真实付费模型,不宣称真实模型的跨厂商分工效果已验收。
+- **文档**:`manual.md` / `manual.en.md` 委派、IM 与对外 MCP 三段;插件 README 委派与「按任务挑模型」两处,新增替补一条;velashell-docs《自动化与 AI》§1.x 委派段与团队模式「跨供应商分工」一条、《安全威胁模型》模型选择一条,中英两份同步。

@@ -2980,8 +2980,7 @@ public partial class ChatPanelView : UserControl
         {
             throw new InvalidOperationException("Image models cannot run subagent tools. Select a chat model with tool support.");
         }
-        if (model.Provider.Id != parentModel.Provider.Id)
-            throw new InvalidOperationException("Subagents must use a model from the current provider.");
+        // 别家供应商的模型同样可选(候选见 SubagentRunner.ModelChoices):下面按它自己的配置现取凭据
         if (model.Id == parentModel.Id)
         {
             if (!await StillVerifiedAsync(parentModel, parentCredential, token, parentModel.Model, parentKeyId))
