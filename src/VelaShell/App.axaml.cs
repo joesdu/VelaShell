@@ -302,7 +302,7 @@ public class App : Application
             StartupRegistration.Apply(_startupSettings?.General.LaunchAtStartup == true);
 
             // ssh:// / sftp:// 协议关联同理:设置是唯一事实,启动时把系统状态拉回来对齐。
-            UrlProtocolRegistration.Apply(_startupSettings?.Security.RegisterUrlProtocols == true);
+            _ = UrlProtocolRegistration.ApplyAsync(_startupSettings?.Security.RegisterUrlProtocols == true);
 
             // Xshell 兼容登录:命令行里那条请求已在 Program 里入队,这里接上处理器一并放行;
             // 之后由别的进程转发来的请求也走同一个入口。管道监听要等主窗口在手 ——
@@ -375,7 +375,7 @@ public class App : Application
                     Dispatcher.UIThread.Post(() =>
                     {
                         StartupRegistration.Apply(settings.General.LaunchAtStartup);
-                        UrlProtocolRegistration.Apply(settings.Security.RegisterUrlProtocols);
+                        _ = UrlProtocolRegistration.ApplyAsync(settings.Security.RegisterUrlProtocols);
                         _trayIconService?.SetEnabled(settings.General.MinimizeToTray);
                     });
             }

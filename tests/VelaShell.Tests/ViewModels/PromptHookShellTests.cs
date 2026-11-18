@@ -111,7 +111,7 @@ public sealed class PromptHookShellTests
     /// <summary>包成 shell 单引号字面量(内部的单引号按 <c>'\''</c> 拆开重接)。</summary>
     private static string Quote(string value) => "'" + value.Replace("'", "'\\''") + "'";
 
-    private static (string PromptCommand, bool Runs) RunHook(string? initial)
+    private static async Task<(string PromptCommand, bool Runs)> RunHookAsync(string? initial)
     {
         string script = Path.Combine(Path.GetTempPath(), $"vela-prompt-hook-{Guid.NewGuid():N}.sh");
         // bash 只认 LF;Windows 上写出 CRLF 会得到 "$'\r': command not found"。
@@ -129,10 +129,22 @@ public sealed class PromptHookShellTests
             // Windows 的 bash 不认盘符路径,转成 /c/... 形式。
             psi.ArgumentList.Add(ToBashPath(script));
 
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             using Process process = Process.Start(psi)!;
-            string stdout = process.StandardOutput.ReadToEnd();
-            string stderr = process.StandardError.ReadToEnd();
-            Assert.IsTrue(process.WaitForExit(30_000), "bash 没有在 30 秒内退出");
+            Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            Task<string> stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
+            try
+            {
+                await Task.WhenAll(stdoutTask, stderrTask, process.WaitForExitAsync(timeout.Token));
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); }
+                catch (InvalidOperationException) when (process.HasExited) { }
+                throw;
+            }
+            string stdout = await stdoutTask;
+            string stderr = await stderrTask;
             Assert.IsEmpty(stderr.Trim(), $"钩子本身向 stderr 写了东西:{stderr}");
 
             return (Extract(stdout, "RESULT"), Extract(stdout, "RUNS") == "yes");
@@ -162,7 +174,7 @@ public sealed class PromptHookShellTests
 
     [TestMethod]
     [DynamicData(nameof(Cases))]
-    public void Hook_LeavesPromptCommandUsable(string? initial, string expected, string description)
+    public async Task Hook_LeavesPromptCommandUsable(string? initial, string expected, string description)
     {
         if (_bash is null)
         {
@@ -170,7 +182,7 @@ public sealed class PromptHookShellTests
             return;
         }
 
-        (string promptCommand, bool runs) = RunHook(initial);
+        (string promptCommand, bool runs) = await RunHookAsync(initial);
 
         Assert.AreEqual(expected, promptCommand, $"{description}:装完的 PROMPT_COMMAND 不对");
         Assert.IsTrue(runs, $"{description}:PROMPT_COMMAND 执行不了(多半是拼出了 ;;)—— [{promptCommand}]");
@@ -185,7 +197,7 @@ public sealed class PromptHookShellTests
     /// 这条用例守的是"守卫为假 = 不产生副作用"这一半。
     /// </remarks>
     [TestMethod]
-    public void Hook_WhenNotBash_ProducesNothingButTheLineClear()
+    public async Task Hook_WhenNotBash_ProducesNothingButTheLineClear()
     {
         if (_bash is null)
         {
@@ -209,9 +221,21 @@ public sealed class PromptHookShellTests
                 CreateNoWindow = true
             };
             psi.ArgumentList.Add(ToBashPath(script));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             using Process process = Process.Start(psi)!;
-            string stdout = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(30_000);
+            Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            Task stderrTask = process.StandardError.BaseStream.CopyToAsync(Stream.Null, timeout.Token);
+            try
+            {
+                await Task.WhenAll(stdoutTask, stderrTask, process.WaitForExitAsync(timeout.Token));
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); }
+                catch (InvalidOperationException) when (process.HasExited) { }
+                throw;
+            }
+            string stdout = await stdoutTask;
 
             Assert.IsEmpty(Extract(stdout, "AFTER"), "守卫为假却动了 PROMPT_COMMAND");
 

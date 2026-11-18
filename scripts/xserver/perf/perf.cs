@@ -886,10 +886,29 @@ sealed class DockerLauncher : IClientLauncher
     {
         public async ValueTask DisposeAsync()
         {
-            using Process kill = Process.Start(new ProcessStartInfo("docker", ["rm", "-f", name]) { RedirectStandardOutput = true, RedirectStandardError = true })!;
-            await kill.WaitForExitAsync();
-            await process.WaitForExitAsync();
-            process.Dispose();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try
+            {
+                var status = await Process.RunAsync("docker", ["rm", "-f", name], silent: true, cancellationToken: timeout.Token);
+                timeout.Token.ThrowIfCancellationRequested();
+                if (status.ExitCode != 0 && !process.HasExited)
+                {
+                    throw new InvalidOperationException($"docker rm -f {name} failed (exit {status.ExitCode}).");
+                }
+                // WaitForExitAsync also waits for the two event readers to reach EOF.
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            finally
+            {
+                using (process)
+                {
+                    if (!process.HasExited)
+                    {
+                        try { process.Kill(entireProcessTree: true); }
+                        catch (InvalidOperationException) when (process.HasExited) { }
+                    }
+                }
+            }
         }
     }
 }
@@ -944,11 +963,27 @@ sealed class SshLauncher : IClientLauncher
         return new SshLauncher(container, connection, server, options);
     }
 
+    private static async Task<string> ReadErrorTailAsync(StreamReader reader)
+    {
+        const int limit = 4096;
+        var tail = new StringBuilder(limit);
+        char[] buffer = new char[1024];
+        int count;
+        while ((count = await reader.ReadAsync(buffer.AsMemory())) > 0)
+        {
+            tail.Remove(0, Math.Max(0, tail.Length + count - limit));
+            tail.Append(buffer, 0, count);
+        }
+        return tail.ToString();
+    }
+
     private static async Task DockerAsync(params string[] args)
     {
         using Process p = Process.Start(new ProcessStartInfo("docker", args) { RedirectStandardOutput = true, RedirectStandardError = true })!;
-        string err = await p.StandardError.ReadToEndAsync();
-        await p.WaitForExitAsync();
+        Task discard = p.StandardOutput.BaseStream.CopyToAsync(Stream.Null);
+        Task<string> error = ReadErrorTailAsync(p.StandardError);
+        await Task.WhenAll(discard, error, p.WaitForExitAsync());
+        string err = await error;
         if (p.ExitCode != 0)
         {
             throw new InvalidOperationException($"docker {string.Join(' ', args)}: {err.Trim()}");

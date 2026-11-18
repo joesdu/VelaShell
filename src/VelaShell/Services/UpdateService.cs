@@ -516,7 +516,7 @@ public class UpdateService : IUpdateService
                 File.SetUnixFileMode(exePath, File.GetUnixFileMode(exePath)
                     | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
             }
-            Process.Start(new ProcessStartInfo(exePath)
+            Process.StartAndForget(new ProcessStartInfo(exePath)
             {
                 WorkingDirectory = _applier.ApplicationDirectory,
                 UseShellExecute = false,

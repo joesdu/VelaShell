@@ -42,7 +42,7 @@ public class CrossPlatformPublishTests : IDisposable
             "Could not find solution root. Expected VelaShell.slnx in an ancestor directory.");
     }
 
-    private (int exitCode, string output, string error) RunDotnetPublish(string rid)
+    private async Task<(int exitCode, string output, string error)> RunDotnetPublishAsync(string rid)
     {
         string solutionRoot = FindSolutionRoot();
         string projectPath = Path.Combine(solutionRoot, "src", "VelaShell");
@@ -61,12 +61,22 @@ public class CrossPlatformPublishTests : IDisposable
             WorkingDirectory = solutionRoot
         };
 
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         using Process process = Process.Start(psi)!;
-        string stdout = process.StandardOutput.ReadToEnd();
-        string stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit(300_000);
+        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        Task<string> stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
+        try
+        {
+            await Task.WhenAll(stdoutTask, stderrTask, process.WaitForExitAsync(timeout.Token));
+        }
+        catch (OperationCanceledException)
+        {
+            try { process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) when (process.HasExited) { }
+            throw;
+        }
 
-        return (process.ExitCode, stdout, stderr);
+        return (process.ExitCode, await stdoutTask, await stderrTask);
     }
 
     private static bool IsNativeRid(string rid)
@@ -106,12 +116,12 @@ public class CrossPlatformPublishTests : IDisposable
 
     [TestMethod]
     [TestCategory("CrossPlatform")]
-    public void Publish_OsxArm64_Succeeds()
+    public async Task Publish_OsxArm64_Succeeds()
     {
         const string rid = "osx-arm64";
         RequireNativePublish(rid);
 
-        (int exitCode, string? stdout, string? stderr) = RunDotnetPublish(rid);
+        (int exitCode, string? stdout, string? stderr) = await RunDotnetPublishAsync(rid);
 
         Assert.AreEqual(0, exitCode,
             $"dotnet publish for {rid} should succeed.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
@@ -124,12 +134,12 @@ public class CrossPlatformPublishTests : IDisposable
 
     [TestMethod]
     [TestCategory("CrossPlatform")]
-    public void Publish_WinX64_Succeeds()
+    public async Task Publish_WinX64_Succeeds()
     {
         const string rid = "win-x64";
         RequireNativePublish(rid);
 
-        (int exitCode, string? stdout, string? stderr) = RunDotnetPublish(rid);
+        (int exitCode, string? stdout, string? stderr) = await RunDotnetPublishAsync(rid);
 
         Assert.AreEqual(0, exitCode,
             $"dotnet publish for {rid} should succeed.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
@@ -142,12 +152,12 @@ public class CrossPlatformPublishTests : IDisposable
 
     [TestMethod]
     [TestCategory("CrossPlatform")]
-    public void Publish_LinuxX64_Succeeds()
+    public async Task Publish_LinuxX64_Succeeds()
     {
         const string rid = "linux-x64";
         RequireNativePublish(rid);
 
-        (int exitCode, string? stdout, string? stderr) = RunDotnetPublish(rid);
+        (int exitCode, string? stdout, string? stderr) = await RunDotnetPublishAsync(rid);
 
         Assert.AreEqual(0, exitCode,
             $"dotnet publish for {rid} should succeed.\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");

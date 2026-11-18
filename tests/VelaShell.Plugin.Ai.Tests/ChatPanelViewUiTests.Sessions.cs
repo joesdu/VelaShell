@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using VelaShell.Plugin.Ai.Ui;
+using VelaShell.PluginSdk.Sessions;
 using VelaShell.PluginSdk.Testing;
 
 namespace VelaShell.Plugin.Ai.Tests;
@@ -25,7 +26,8 @@ public sealed partial class ChatPanelViewUiTests
             {
                 ComboBox combo = Find<ComboBox>(panel, "SessionCombo");
                 List<SessionNavItem> items = [.. combo.ItemsSource!.Cast<SessionNavItem>()];
-                Assert.HasCount(1, items);
+                Assert.HasCount(2, items);
+                Assert.IsNull(items[1].SessionId);
                 Assert.AreEqual("我的生产机", items[0].Text, "下拉该显示连接名,而不是 root@10.0.0.1");
             }
             finally
@@ -49,8 +51,44 @@ public sealed partial class ChatPanelViewUiTests
             {
                 ComboBox combo = Find<ComboBox>(panel, "SessionCombo");
                 List<SessionNavItem> items = [.. combo.ItemsSource!.Cast<SessionNavItem>()];
-                Assert.HasCount(1, items);
+                Assert.HasCount(2, items);
+                Assert.IsNull(items[1].SessionId);
                 Assert.AreEqual("root@10.0.0.9", items[0].Text);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [TestMethod]
+    public void SshConnectionEvent_PreservesLocalConversation_UntilExplicitSwitch()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                ComboBox combo = Find<ComboBox>(panel, "SessionCombo");
+                ScrollViewer scroll = Find<ScrollViewer>(panel, "ChatScroll");
+                var local = (StackPanel)scroll.Content!;
+                SessionInfo ssh = context.FakeSessions.AddConnected();
+                context.HostEvents.RaiseSessionConnected(ssh);
+                await PumpAsync();
+
+                Assert.HasCount(2, combo.Items);
+                Assert.IsNull(((SessionNavItem)combo.SelectedItem!).SessionId);
+                Assert.IsNull(panel.CurrentToolSessionId());
+                Assert.AreSame(local, scroll.Content);
+
+                combo.SelectedItem = combo.Items.Cast<SessionNavItem>().Single(i => i.SessionId == ssh.SessionId);
+                Assert.AreEqual(ssh.SessionId, panel.CurrentToolSessionId());
+                Assert.AreNotSame(local, scroll.Content);
+                combo.SelectedItem = combo.Items.Cast<SessionNavItem>().Single(i => i.SessionId is null);
+                Assert.IsNull(panel.CurrentToolSessionId());
+                Assert.AreSame(local, scroll.Content);
             }
             finally
             {

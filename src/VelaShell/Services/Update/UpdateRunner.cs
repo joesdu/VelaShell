@@ -172,7 +172,7 @@ internal static class UpdateRunner
                 File.SetUnixFileMode(launcher, File.GetUnixFileMode(launcher)
                     | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
             }
-            Process.Start(new ProcessStartInfo(launcher)
+            Process.StartAndForget(new ProcessStartInfo(launcher)
             {
                 WorkingDirectory = Path.GetDirectoryName(launcher),
                 UseShellExecute = false,
