@@ -31,7 +31,7 @@ public sealed class UploadPickerSelectionTests
         await picker.FlushAsync();
 
         Assert.AreEqual(tree.A, browser.CurrentPath);
-        Assert.AreSequenceEqual([tree.FileA], picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
+        Assert.AreSequenceEqual([tree.FileA], [.. picker.CheckedEntries.Select(entry => entry.FullPath)]);
         Assert.IsTrue(picker.Mappings.Single().IsCurrent);
         Assert.IsEmpty(browser.SelectedEntries, "恢复勾选不改变列表高亮。");
         UploadPickerState restored = await new UploadPickerStateStore(disk).LoadAsync();
@@ -43,7 +43,7 @@ public sealed class UploadPickerSelectionTests
     {
         using var tree = new Tree();
         var store = new UploadPickerStateStore(new UploadMemoryStore());
-        Guid profile = Guid.NewGuid();
+        var profile = Guid.NewGuid();
         await store.SaveAsync(new(profile, "/app", "one"), tree.A, [tree.FileA], true);
         await store.SaveAsync(null, tree.B, [tree.FileB], false);
         foreach (UploadPickerContext context in new[]
@@ -75,7 +75,7 @@ public sealed class UploadPickerSelectionTests
         await File.WriteAllTextAsync(Path.Combine(tree.A, "new.txt"), "new");
         await browser.RefreshAsync();
         Assert.IsNull(picker.AllChecked, "刷新新出现的文件不自动勾选。");
-        Assert.AreSequenceEqual([tree.FileA], picker.CheckedEntries.Where(entry => !entry.IsDirectory).Select(entry => entry.FullPath).ToArray());
+        Assert.AreSequenceEqual([tree.FileA], [.. picker.CheckedEntries.Where(entry => !entry.IsDirectory).Select(entry => entry.FullPath)]);
         await browser.NavigateToAsync(tree.A + Path.DirectorySeparatorChar);
         Assert.IsNotEmpty(picker.CheckedEntries, "同一目录的尾分隔符不应清空勾选。");
         File.Delete(tree.FileA);
@@ -94,7 +94,7 @@ public sealed class UploadPickerSelectionTests
         using var tree = new Tree();
         var disk = new UploadMemoryStore();
         var store = new UploadPickerStateStore(disk);
-        Guid profile = Guid.NewGuid();
+        var profile = Guid.NewGuid();
         var target = new UploadPickerContext(profile, "/app", "one");
         await store.SaveAsync(target, tree.A, [tree.FileA], true);
         await store.SaveAsync(target with { RemotePath = "/web" }, tree.B, [tree.FileB], true);
@@ -105,12 +105,12 @@ public sealed class UploadPickerSelectionTests
         await picker.ApplyMappingAsync(picker.Mappings.Single(item => item.RemotePath == "/web"));
         await picker.FlushAsync();
         Assert.AreEqual(tree.B, browser.CurrentPath);
-        Assert.AreSequenceEqual([tree.FileB], picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
+        Assert.AreSequenceEqual([tree.FileB], [.. picker.CheckedEntries.Select(entry => entry.FullPath)]);
         UploadPickerState state = await new UploadPickerStateStore(disk).LoadAsync();
         Assert.AreEqual(tree.A, state.Mappings.Single(item => item.RemotePath == "/app").LocalPath);
         Assert.AreSequenceEqual([tree.FileA], state.Mappings.Single(item => item.RemotePath == "/app").CheckedPaths);
         Assert.AreEqual("/web", picker.TargetRemotePath);
-        Assert.AreSequenceEqual(new[] { "/app", "/web" }, picker.Mappings.Select(item => item.RemotePath).ToArray());
+        Assert.AreSequenceEqual(["/app", "/web"], [.. picker.Mappings.Select(item => item.RemotePath)]);
         Assert.IsTrue(picker.Mappings[1].IsCurrent);
     });
 
@@ -183,18 +183,18 @@ public sealed class UploadPickerSelectionTests
         await new UploadPickerStateStore(disk).AddMappingAsync(context, Path.GetTempPath());
         var store = new UploadPickerStateStore(new FailFirstReadStore(disk));
 
-        var failed = await store.SaveSelectionAsync(null, null, Path.GetTempPath(), [], false);
+        (UploadPickerState State, bool Saved) failed = await store.SaveSelectionAsync(null, null, Path.GetTempPath(), [], false);
         Assert.IsFalse(failed.Saved, "读失败期间如实报告未保存。");
         Assert.HasCount(1, (await new UploadPickerStateStore(disk).LoadAsync()).Mappings, "读失败后不能用空状态覆盖磁盘。");
 
         UploadPickerState recovered = await store.LoadAsync();
         Assert.HasCount(1, recovered.Mappings, "下一次操作重新读取磁盘。");
-        var saved = await store.SaveSelectionAsync(null, null, Path.GetTempPath(), [], false);
+        (UploadPickerState State, bool Saved) saved = await store.SaveSelectionAsync(null, null, Path.GetTempPath(), [], false);
         Assert.IsTrue(saved.Saved);
         Assert.HasCount(1, (await new UploadPickerStateStore(disk).LoadAsync()).Mappings);
     }
 
-    private sealed class FailFirstReadStore(UploadMemoryStore inner) : VelaShell.Core.Data.IAppDataStore
+    private sealed class FailFirstReadStore(UploadMemoryStore inner) : Core.Data.IAppDataStore
     {
         private bool _failed;
 
@@ -230,7 +230,7 @@ public sealed class UploadPickerSelectionTests
         string[] before = [.. picker.CheckedEntries.Select(entry => entry.FullPath)];
         await browser.NavigateToAsync(Path.Combine(tree.A, "missing"));
         Assert.AreEqual(tree.A, browser.CurrentPath);
-        Assert.AreSequenceEqual(before, picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
+        Assert.AreSequenceEqual(before, [.. picker.CheckedEntries.Select(entry => entry.FullPath)]);
         picker.SetChecked(browser.Entries.Single(entry => entry.FullPath == tree.FileA), false);
         await picker.FlushAsync();
         UploadPickerState state = await store.LoadAsync();
@@ -261,7 +261,7 @@ public sealed class UploadPickerSelectionTests
         using var browser = new LocalFilePaneViewModel(new(), fs);
         await browser.NavigateToAsync(tree.B);
         var store = new UploadPickerStateStore(new UploadMemoryStore());
-        Guid profile = Guid.NewGuid();
+        var profile = Guid.NewGuid();
         await store.SaveAsync(new(profile, "/old", "server"), tree.A, [tree.FileA], true);
         await store.SaveAsync(new(profile, "/new", "server"), tree.B, [tree.FileB], true);
         using var picker = new UploadPickerSelection(browser, store, new(profile, "/new", "server"));
@@ -274,7 +274,7 @@ public sealed class UploadPickerSelectionTests
         await old;
         await picker.FlushAsync();
         Assert.AreEqual(tree.B, browser.CurrentPath);
-        Assert.AreSequenceEqual([tree.FileB], picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
+        Assert.AreSequenceEqual([tree.FileB], [.. picker.CheckedEntries.Select(entry => entry.FullPath)]);
         Assert.AreEqual(tree.B, (await store.LoadAsync()).Mappings.Single(item => item.RemotePath == "/new").LocalPath);
         Assert.IsNull(picker.ErrorMessage);
     });
@@ -296,7 +296,7 @@ public sealed class UploadPickerSelectionTests
             }
         };
         var store = new UploadPickerStateStore(disk);
-        Guid profile = Guid.NewGuid();
+        var profile = Guid.NewGuid();
         Task first = store.AddMappingAsync(new(profile, "/one", "server"), "first");
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Task second = store.AddMappingAsync(new(profile, "/two", "server"), "second", ["checked"]);
@@ -306,7 +306,7 @@ public sealed class UploadPickerSelectionTests
         release.SetResult();
         await Task.WhenAll(first, second);
         UploadPickerState state = await reading;
-        Assert.AreSequenceEqual(new[] { "checked" }, state.Mappings.Single(item => item.RemotePath == "/two").CheckedPaths);
+        Assert.AreSequenceEqual(["checked"], state.Mappings.Single(item => item.RemotePath == "/two").CheckedPaths);
         Assert.HasCount(2, state.Mappings);
         Assert.HasCount(2, (await new UploadPickerStateStore(disk).LoadAsync()).Mappings);
     }
@@ -317,8 +317,8 @@ public sealed class UploadPickerSelectionTests
         using var tree = new Tree();
         var store = new UploadPickerStateStore(new UploadMemoryStore());
         var context = new UploadPickerContext(Guid.NewGuid(), "/app", "one");
-        var first = await store.AddMappingAsync(context, tree.A, [tree.FileA]);
-        var second = await store.AddMappingAsync(context, tree.B, [tree.FileB]);
+        (UploadPickerState State, bool Saved, Guid Id) first = await store.AddMappingAsync(context, tree.A, [tree.FileA]);
+        (UploadPickerState State, bool Saved, Guid Id) second = await store.AddMappingAsync(context, tree.B, [tree.FileB]);
         Assert.AreNotEqual(first.Id, second.Id);
         using LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane();
         using var picker = new UploadPickerSelection(browser, store, context);
@@ -327,7 +327,7 @@ public sealed class UploadPickerSelectionTests
         await picker.AddMappingAsync("/app/./", tree.A);
         await picker.FlushAsync();
         Assert.AreEqual(first.Id, picker.ActiveMappingId);
-        Assert.AreSequenceEqual([tree.FileA], picker.CheckedEntries.Select(item => item.FullPath).ToArray());
+        Assert.AreSequenceEqual([tree.FileA], [.. picker.CheckedEntries.Select(item => item.FullPath)]);
         Assert.HasCount(2, (await store.LoadAsync()).Mappings);
     });
 
@@ -363,7 +363,7 @@ public sealed class UploadPickerSelectionTests
         using (UploadPickerSelection restored = await OpenAsync(context))
         {
             Assert.AreEqual(appA, restored.ActiveMappingId, "同一远端目录的多条绑定里,恢复最近一次提交的那条。");
-            Assert.AreSequenceEqual([tree.FileA], restored.CheckedEntries.Select(item => item.FullPath).ToArray());
+            Assert.AreSequenceEqual([tree.FileA], [.. restored.CheckedEntries.Select(item => item.FullPath)]);
             await restored.ApplyMappingAsync(restored.Mappings.Single(item => item.Mapping.Id == web));
             Assert.AreEqual("/web", restored.Submit()!.RemotePath);
             await restored.FlushAsync();
@@ -443,7 +443,7 @@ public sealed class UploadPickerSelectionTests
     {
         using var tree = new Tree();
         var disk = new UploadMemoryStore();
-        Guid profile = Guid.NewGuid();
+        var profile = Guid.NewGuid();
         await disk.UpsertAsync("uploadPickerState", "state", new UploadPickerState
         {
             LocalPath = tree.B,
@@ -486,7 +486,7 @@ public sealed class UploadPickerSelectionTests
         await picker.FlushAsync();
         Assert.AreEqual(tree.B, browser.CurrentPath);
         Assert.AreEqual("/current", picker.TargetRemotePath);
-        Assert.AreSequenceEqual([tree.FileB], picker.CheckedEntries.Select(row => row.FullPath).ToArray());
+        Assert.AreSequenceEqual([tree.FileB], [.. picker.CheckedEntries.Select(row => row.FullPath)]);
         Assert.HasCount(1, (await store.LoadAsync()).Mappings);
     });
 
@@ -525,7 +525,7 @@ public sealed class UploadPickerSelectionTests
         await picker.FlushAsync();
         Assert.AreEqual(0, collectionChanges, "切换、勾选和刷新不能重建或移动映射项。");
         for (int i = 0; i < rows.Length; i++) { Assert.AreSame(rows[i], picker.Mappings[i]); }
-        Assert.AreSequenceEqual(ids, picker.Mappings.Select(item => item.Mapping.Id).ToArray());
+        Assert.AreSequenceEqual(ids, [.. picker.Mappings.Select(item => item.Mapping.Id)]);
         Assert.IsTrue(rows[1].IsCurrent);
         Assert.IsFalse(rows[0].IsCurrent);
         Assert.IsFalse(rows[2].IsCurrent);
@@ -535,12 +535,12 @@ public sealed class UploadPickerSelectionTests
         await picker.DeleteMappingAsync(rows[1]);
         await picker.FlushAsync();
         Guid[] remaining = [.. picker.Mappings.Select(item => item.Mapping.Id)];
-        Assert.AreSequenceEqual(new[] { ids[0], ids[2] }, remaining[..2]);
+        Assert.AreSequenceEqual([ids[0], ids[2]], remaining[..2]);
         using LocalFilePaneViewModel otherBrowser = UnwatchedLocalFileSystem.NewPane();
         using var reopened = new UploadPickerSelection(otherBrowser, new(disk), context);
         await reopened.InitializeAsync();
         await reopened.FlushAsync();
-        Assert.AreSequenceEqual(remaining, reopened.Mappings.Select(item => item.Mapping.Id).ToArray());
+        Assert.AreSequenceEqual(remaining, [.. reopened.Mappings.Select(item => item.Mapping.Id)]);
     });
 
     [TestMethod]
@@ -574,7 +574,7 @@ public sealed class UploadPickerSelectionTests
         Assert.AreEqual(tree.A, browser.CurrentPath);
         Assert.AreEqual(old, picker.ActiveMappingId);
         Assert.AreEqual("/old", picker.TargetRemotePath);
-        Assert.AreSequenceEqual([tree.FileA], picker.CheckedEntries.Select(item => item.FullPath).ToArray());
+        Assert.AreSequenceEqual([tree.FileA], [.. picker.CheckedEntries.Select(item => item.FullPath)]);
         Assert.IsTrue(entries.SequenceEqual(browser.Entries), "失败时保留原列表项。");
         Assert.IsNotNull(picker.ErrorMessage);
         Assert.IsTrue(picker.Mappings[0].IsCurrent);
@@ -624,7 +624,7 @@ public sealed class UploadPickerSelectionTests
         await picker.FlushAsync();
         Assert.AreEqual("/old", picker.TargetRemotePath);
         Assert.AreEqual(tree.A, browser.CurrentPath);
-        Assert.AreSequenceEqual([tree.FileA], picker.CheckedEntries.Select(item => item.FullPath).ToArray());
+        Assert.AreSequenceEqual([tree.FileA], [.. picker.CheckedEntries.Select(item => item.FullPath)]);
         Assert.IsNull(picker.ErrorMessage);
     });
 

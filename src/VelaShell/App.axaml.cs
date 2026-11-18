@@ -178,7 +178,7 @@ public class App : Application
             .AddSingleton<BackgroundUpdateDownload>(sp =>
                 () => sp.GetRequiredService<SettingsViewModel>().DownloadUpdateInBackgroundAsync())
             .AddSingleton(sp => new WindowLayoutStore(sp.GetService<IAppDataStore>()))
-            .AddSingleton(sp => new Services.UploadPickerStateStore(sp.GetService<IAppDataStore>()))
+            .AddSingleton(sp => new UploadPickerStateStore(sp.GetService<IAppDataStore>()))
             .AddSingleton<QuickCommandsViewModel>()
             .AddSingleton<SettingsViewModel>()
             .AddSingleton<MainWindowViewModel>()

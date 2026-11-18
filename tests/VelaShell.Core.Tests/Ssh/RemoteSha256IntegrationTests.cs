@@ -107,7 +107,7 @@ public class RemoteSha256IntegrationTests
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var status = await Process.RunAsync("docker", ["version"], silent: true, cancellationToken: timeout.Token);
+            ProcessExitStatus status = await Process.RunAsync("docker", ["version"], silent: true, cancellationToken: timeout.Token);
             return !status.Canceled && status.ExitCode == 0;
         }
         catch

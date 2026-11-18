@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using NSubstitute;
 using VelaShell.Core.Models;
@@ -29,8 +30,8 @@ public sealed class UploadMappingEditorTests
         using var editor = new UploadMappingEditor(service, Guid.Empty);
         await editor.InitializeAsync("/app", tree.Root);
         Assert.IsTrue(editor.CanSave);
-        Assert.AreSequenceEqual(new[] { "child" }, editor.Remote.Entries.Select(item => item.Name).ToArray());
-        Assert.AreSequenceEqual(new[] { "child" }, editor.Local.Entries.Select(item => item.Name).ToArray());
+        Assert.AreSequenceEqual(["child"], [.. editor.Remote.Entries.Select(item => item.Name)]);
+        Assert.AreSequenceEqual(["child"], [.. editor.Local.Entries.Select(item => item.Name)]);
         editor.Remote.SelectedItem = editor.Remote.Entries.Single();
         editor.Local.SelectedItem = editor.Local.Entries.Single();
         UploadMappingBinding binding = (await editor.ValidateAsync())!;
@@ -110,10 +111,10 @@ public sealed class UploadMappingEditorTests
             if (Environment.GetEnvironmentVariable("VELASHELL_VISUAL_QA_DIR") is { Length: > 0 } directory)
             {
                 Directory.CreateDirectory(directory);
-                using var frame = dialog.CaptureRenderedFrame();
+                using WriteableBitmap? frame = dialog.CaptureRenderedFrame();
                 Assert.IsNotNull(frame);
-                using var output = File.Create(Path.Combine(directory, "upload-mapping-binding.png"));
-                frame.Save(output, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+                using FileStream output = File.Create(Path.Combine(directory, "upload-mapping-binding.png"));
+                frame.Save(output, PngBitmapEncoderOptions.Default);
             }
             // 真实按钮事件经过 ValidateAsync,而不是直接调用视图模型来关闭。
             dialog.SaveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

@@ -218,7 +218,7 @@ public sealed class MasterPasswordFormatTests
             clock.Advance(wrong.RetryAfter);
         }
 
-        Assert.AreSequenceEqual(new double[] { 1, 2, 4, 8, 16, 30, 30 }, [.. waits]);
+        Assert.AreSequenceEqual([1, 2, 4, 8, 16, 30, 30], [.. waits]);
         Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, protector.Vault.Unlock(Utf8(Password)).Status, "不锁死:等过之后输对照常解开");
         Assert.AreEqual("hunter2", protector.Unprotect(cipher));
         Assert.AreEqual(TimeSpan.Zero, protector.Vault.RetryAfter, "解开之后计数清零");
