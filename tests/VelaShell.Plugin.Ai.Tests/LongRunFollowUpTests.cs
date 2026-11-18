@@ -140,7 +140,8 @@ public sealed class LongRunFollowUpTests
 
     /// <summary>
     /// 主模型给成员挑模型要有依据:候选清单除了 id 与名字,还带配置里已知的事实(窗口、输出上限、单价、会不会思考、
-    /// 哪个是主控自己用的);没有的不写 —— 单价没填不写价格,窗口只是默认估值也不写。图片模型与别的供应商实例不在其中。
+    /// 哪个是主控自己用的、属于哪家供应商、真实型号);没有的不写 —— 单价没填不写价格,窗口只是默认估值也不写。
+    /// 候选覆盖所有供应商实例(主控那一家在前),图片模型不在其中。
     /// </summary>
     [TestMethod]
     public void ModelCatalog_ListsKnownFactsForEachCandidate()
@@ -170,18 +171,25 @@ public sealed class LongRunFollowUpTests
         var unknown = new AiModelConfig { Model = "mystery", MaxInputTokens = 0 };
         var image = new AiModelConfig { Model = "gpt-image-test" };
         var provider = new AiProvider { Name = "acme", BaseUrl = "http://127.0.0.1:1", Models = [parent, cheap, unknown, image] };
-        var other = new AiProvider { Name = "elsewhere", BaseUrl = "http://127.0.0.1:2", Models = [new AiModelConfig { Model = "foreign" }] };
-        var settings = new AiSettings { Providers = [provider, other], ActiveModelId = parent.Id };
+        var foreignModel = new AiModelConfig { Model = "foreign" };
+        var other = new AiProvider { Name = "elsewhere", BaseUrl = "http://127.0.0.1:2", Models = [foreignModel] };
+        // 别家排在设置的前面:清单里仍是主控那一家在前
+        var settings = new AiSettings { Providers = [other, provider], ActiveModelId = parent.Id };
 
         JsonElement[] listed = [.. JsonDocument.Parse(SubagentRunner.ModelCatalog(settings, provider.Id, parent.Id)).RootElement.EnumerateArray()];
 
-        CollectionAssert.AreEquivalent((string[])[parent.Id, cheap.Id, unknown.Id], listed.Select(m => m.GetProperty("id").GetString()).ToArray(),
-            "候选与 ModelChoices 一致:当前供应商实例的聊天模型");
-        CollectionAssert.AreEquivalent(SubagentRunner.ModelChoices(settings, provider.Id).Keys.ToArray(),
-            listed.Select(m => m.GetProperty("id").GetString()).ToArray());
+        Assert.AreSequenceEqual(new[] { parent.Id, cheap.Id, unknown.Id, foreignModel.Id }, listed.Select(m => m.GetProperty("id").GetString()).ToArray(),
+            "候选覆盖所有供应商的聊天模型,主控那一家在前");
+        Assert.AreSequenceEqual(SubagentRunner.ModelChoices(settings, provider.Id).Keys.ToArray(),
+            listed.Select(m => m.GetProperty("id").GetString()).ToArray(), "与 ModelChoices 一致");
         JsonElement big = listed.Single(m => m.GetProperty("id").GetString() == parent.Id);
         Assert.IsTrue(big.GetProperty("parent").GetBoolean(), "标出主控自己在用的那个");
         Assert.AreEqual("acme / Big (big)", big.GetProperty("name").GetString());
+        Assert.AreEqual("acme", big.GetProperty("provider").GetString());
+        Assert.AreEqual("big", big.GetProperty("model").GetString(), "真实型号 id,主模型据此认出各家型号");
+        JsonElement foreign = listed.Single(m => m.GetProperty("id").GetString() == foreignModel.Id);
+        Assert.AreEqual("elsewhere", foreign.GetProperty("provider").GetString());
+        Assert.IsFalse(foreign.TryGetProperty("parent", out _));
         Assert.AreEqual(400_000, big.GetProperty("contextTokens").GetInt32());
         Assert.AreEqual(32_000, big.GetProperty("maxOutputTokens").GetInt32());
         Assert.AreEqual(5, big.GetProperty("inputPricePerMTok").GetDouble());
@@ -203,7 +211,8 @@ public sealed class LongRunFollowUpTests
     /// <summary>
     /// 清单与「按任务挑模型」的说明真的到了主模型手里:两件委派工具的说明里带着候选的事实;
     /// 系统提示词要求按这些事实给每名成员定模型(便宜的做例行收集、大窗口的读大量内容、会思考 / 更贵的做设计与要紧改动、
-    /// 审查者尽量换一个模型),并且只按事实、不按名字。没给清单的入口退回只列 id 与名字。
+    /// 审查者尽量换一家供应商),事实优先;型号 id 明确对应知名厂商模型时可借助对它所长的了解,认不出的名字当未知。
+    /// 没给清单的入口退回只列 id 与名字。
     /// </summary>
     [TestMethod]
     public async Task ModelFactsAndAssignmentGuidance_ReachTheLead()
@@ -223,18 +232,26 @@ public sealed class LongRunFollowUpTests
             string description = tools.Single(t => t.Name == name).Description;
             StringAssert.Contains(description, "\"contextTokens\":400000", $"{name} 的说明里带候选的事实");
             StringAssert.Contains(description, "\"inputPricePerMTok\":0.5");
-            StringAssert.Contains(description, "never by a model's name");
+            StringAssert.Contains(description, "may span several providers");
+            StringAssert.Contains(description, "listed facts win");
         }
-        StringAssert.Contains(tools.Single(t => t.Name == "team_run").Description, "different model for a reviewer");
+        StringAssert.Contains(tools.Single(t => t.Name == "team_run").Description, "preferably from another provider");
 
         orchestrator.ModelCatalog = null;
         string plain = toolbox.CreateTools(ChatMode.Agent).OfType<AIFunction>().Single(t => t.Name == "team_run").Description;
         StringAssert.Contains(plain, "acme / Small (small)", "没给清单时退回只列 id 与名字");
 
         StringAssert.Contains(SubagentRunner.TeamGuidance, "Give every member the model that fits its task");
-        StringAssert.Contains(SubagentRunner.TeamGuidance, "never a model's name");
-        StringAssert.Contains(SubagentRunner.TeamGuidance, "so the check is independent");
-        StringAssert.Contains(SubagentRunner.DelegationGuidance, "match the model to the subtask using the facts");
+        StringAssert.Contains(SubagentRunner.TeamGuidance, "so the check is genuinely independent");
+        StringAssert.Contains(SubagentRunner.TeamGuidance, "preferably from a different provider");
+        foreach (string guidance in (string[])[SubagentRunner.TeamGuidance, SubagentRunner.DelegationGuidance])
+        {
+            StringAssert.Contains(guidance, "may come from several providers");
+            StringAssert.Contains(guidance, "first by the listed facts");
+            StringAssert.Contains(guidance, "well-known vendor model's particular strengths");
+            StringAssert.Contains(guidance, "the facts win", "名字认不准时以清单事实为准");
+            StringAssert.Contains(guidance, "Do not switch providers just for variety");
+        }
         Assert.DoesNotContain("otherwise inherit the parent when no supported reason", SubagentRunner.DelegationGuidance,
             "以前这句让主模型一律沿用自己的模型");
     }

@@ -33,26 +33,41 @@ public sealed class SubagentRunnerTests
     private static ChatResponseUpdate End(ChatFinishReason reason) => new() { FinishReason = reason };
 
     [TestMethod]
-    public async Task ModelSelectionIsScopedByProviderInstanceBeforeCredentialResolution()
+    public async Task ModelSelectionSpansAllProvidersWithTheParentProviderFirst()
     {
         using var context = new TestPluginContext();
+        ResolvedModel first = Model();
         ResolvedModel parent = Model();
         var child = new AiModelConfig { Model = "child" };
         var image = new AiModelConfig { Model = "gpt-image-test" };
         parent.Provider.Models.AddRange([child, image]);
-        ResolvedModel other = Model();
-        var settings = new AiSettings { Providers = [parent.Provider, other.Provider], ActiveModelId = parent.Id };
+        var settings = new AiSettings { Providers = [first.Provider, parent.Provider], ActiveModelId = parent.Id };
         var store = new AiSettingsStore(context);
         await store.SaveAsync(settings);
         Dictionary<string, string> choices = SubagentRunner.ModelChoices(settings, parent.Provider.Id);
-        Assert.AreSequenceEqual(new[] { parent.Id, child.Id }, [.. choices.Keys], SequenceOrder.InAnyOrder);
-        (ResolvedModel selected, _) = await SubagentRunner.ResolveFromSettingsAsync(store, child.Id, parent.Id,
-            CancellationToken.None, parent.Provider.Id);
+        // 所有供应商的聊天模型都可选,主控那一家排在最前(也是替补顺序);图片模型不在内
+        Assert.AreSequenceEqual(new[] { parent.Id, child.Id, first.Id }, [.. choices.Keys]);
+        (ResolvedModel selected, _) = await SubagentRunner.ResolveFromSettingsAsync(store, child.Id, parent.Id, CancellationToken.None);
         Assert.AreEqual(child.Id, selected.Id);
+        (ResolvedModel foreign, _) = await SubagentRunner.ResolveFromSettingsAsync(store, first.Id, parent.Id, CancellationToken.None);
+        Assert.AreEqual(first.Provider.Id, foreign.Provider.Id, "别家供应商的模型按它自己的配置解析");
         await Assert.ThrowsAsync<InvalidOperationException>(() => SubagentRunner.ResolveFromSettingsAsync(
-            store, other.Id, parent.Id, CancellationToken.None, parent.Provider.Id));
+            store, image.Id, parent.Id, CancellationToken.None));
         await Assert.ThrowsAsync<InvalidOperationException>(() => SubagentRunner.ResolveFromSettingsAsync(
-            store, image.Id, parent.Id, CancellationToken.None, parent.Provider.Id));
+            store, "deleted", parent.Id, CancellationToken.None));
+    }
+
+    [TestMethod]
+    public void CannotUseModel_CoversModelAndCredentialFailuresOnly()
+    {
+        Assert.IsTrue(SubagentRunner.CannotUseModel(ModelNotFound("x")));
+        Assert.IsTrue(SubagentRunner.CannotUseModel(new HttpRequestException("bad key", null, System.Net.HttpStatusCode.Unauthorized)));
+        Assert.IsTrue(SubagentRunner.CannotUseModel(new HttpRequestException("forbidden", null, System.Net.HttpStatusCode.Forbidden)));
+        Assert.IsTrue(SubagentRunner.CannotUseModel(new HttpRequestException("quota", null, System.Net.HttpStatusCode.TooManyRequests)));
+        Assert.IsTrue(SubagentRunner.CannotUseModel(new InvalidOperationException("wrapped", new Auth.OAuthException("invalid_grant", "refresh failed"))));
+        Assert.IsFalse(SubagentRunner.CannotUseModel(new HttpRequestException("bad input", null, System.Net.HttpStatusCode.BadRequest)));
+        Assert.IsFalse(SubagentRunner.CannotUseModel(new HttpRequestException("down", null, System.Net.HttpStatusCode.InternalServerError)));
+        Assert.IsFalse(SubagentRunner.CannotUseModel(new OperationCanceledException()));
     }
 
     private static ChatResponseUpdate Usage(long input, long output) => new()
@@ -198,6 +213,9 @@ public sealed class SubagentRunnerTests
         /// <summary>第一次请求先正常调一个工具,之后才回「模型用不了」。</summary>
         public bool CallFirst { get; set; }
 
+        /// <summary>改回别的错误(比如另一家的凭据被拒);为空时回「模型用不了」。</summary>
+        public Exception? Error { get; set; }
+
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
             ChatOptions? options = null, CancellationToken cancellationToken = default)
             => throw new NotSupportedException();
@@ -213,7 +231,7 @@ public sealed class SubagentRunnerTests
                 yield return End(ChatFinishReason.ToolCalls);
                 yield break;
             }
-            throw ModelNotFound(model);
+            throw Error ?? ModelNotFound(model);
         }
 
         public object? GetService(Type serviceType, object? serviceKey = null) => null;
@@ -276,7 +294,7 @@ public sealed class SubagentRunnerTests
             Assert.AreEqual("completed", one.RootElement.GetProperty("status").GetString(), one.RootElement.GetRawText());
             Assert.AreEqual("first report", one.RootElement.GetProperty("output").GetString());
             Assert.AreEqual("parent", one.RootElement.GetProperty("modelId").GetString(), "卡片显示实际用的模型");
-            Assert.Contains(e => e!.Contains("Model bad is not available", StringComparison.Ordinal) && e.Contains("switched to model parent", StringComparison.Ordinal),
+            Assert.Contains(e => e!.Contains("Model bad could not be used", StringComparison.Ordinal) && e.Contains("switched to model parent", StringComparison.Ordinal),
                 one.RootElement.GetProperty("errors").EnumerateArray().Select(e => e.GetString()));
             Assert.AreEqual("completed", two.RootElement.GetProperty("status").GetString());
             Assert.AreEqual(1, bad.Requests, "同一轮第二次选到它,不再发请求去撞");
@@ -284,7 +302,59 @@ public sealed class SubagentRunnerTests
         }
     }
 
-    /// <summary>父模型自己用不了时,换到候选里的其它聊天模型(同一供应商,委派本来就允许选它)。</summary>
+    /// <summary>
+    /// 分给另一家供应商的成员,那一家的 Key 被拒(401):还没输出、没调工具,就改用父模型跑完,结果写明换过。
+    /// 跨供应商后「只配了地址、Key 早过期」很常见,不该让这个成员整个失败。
+    /// </summary>
+    [TestMethod]
+    public async Task ForeignProviderCredentialFailure_FallsBackToTheParent()
+    {
+        using var context = new TestPluginContext();
+        ResolvedModel parent = Model();
+        parent.Provider.Models[0].Id = "parent";
+        ResolvedModel foreign = Model();
+        foreign.Provider.Name = "elsewhere";
+        foreign.Provider.Models[0].Id = "foreign";
+        foreign.Provider.Models[0].Model = "foreign-model";
+        var settings = new AiSettings { Providers = [parent.Provider, foreign.Provider] };
+        var rejected = new Rejecting("foreign-model")
+        {
+            Error = new HttpRequestException("HTTP 401 invalid api key", null, System.Net.HttpStatusCode.Unauthorized)
+        };
+        var good = new Scripted([Text("parent report"), End(ChatFinishReason.Stop)]);
+        var toolbox = new AgentToolbox(context);
+        CommandJobRunScope run = toolbox.BeginRun("test", "turn");
+        AgentToolbox template = toolbox.CreateSubagentToolbox();
+        var runner = new SubagentRunner(
+            (request, _) => Task.FromResult((settings.FindModel(request.ModelId!)!, default(ProviderCredential))),
+            (model, _) => model.Provider.Id == foreign.Provider.Id ? rejected : good,
+            () => template, run, "en");
+        SubagentOrchestrator? owner = null;
+        owner = new SubagentOrchestrator((request, token) => runner.RunAsync(owner!, request, token), CancellationToken.None)
+        {
+            DefaultModelId = "parent",
+            ModelChoices = SubagentRunner.ModelChoices(settings, parent.Provider.Id)
+        };
+        await using (toolbox)
+        await using (run)
+        await using (template)
+        await using (owner)
+        {
+            Assert.IsTrue(owner.ModelChoices.ContainsKey("foreign"), "别家供应商的模型在候选里");
+            owner.Start("task", "r", modelId: "foreign");
+            string id = owner.Snapshots()[0].SubagentId;
+            using var result = JsonDocument.Parse(await owner.WaitAsync(id, 30, CancellationToken.None));
+
+            Assert.AreEqual("completed", result.RootElement.GetProperty("status").GetString(), result.RootElement.GetRawText());
+            Assert.AreEqual("parent report", result.RootElement.GetProperty("output").GetString());
+            Assert.AreEqual("parent", result.RootElement.GetProperty("modelId").GetString());
+            Assert.Contains(e => e!.Contains("Model foreign could not be used", StringComparison.Ordinal),
+                result.RootElement.GetProperty("errors").EnumerateArray().Select(e => e.GetString()));
+            Assert.AreEqual(1, rejected.Requests);
+        }
+    }
+
+    /// <summary>父模型自己用不了时,换到候选里的其它聊天模型(委派本来就允许选它)。</summary>
     [TestMethod]
     public async Task UnavailableParent_FallsBackToAnotherCandidate()
     {

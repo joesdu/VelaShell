@@ -79,7 +79,9 @@ internal sealed class SubagentRunner(
     }
 
     /// <summary>
-    /// 选定的模型在这个账号上用不了(<see cref="TransientFailure.IsModelUnavailable" />)时改用父模型重跑一次。
+    /// 选定的模型用不了时改用父模型重跑一次:这个账号没开通该型号(<see cref="TransientFailure.IsModelUnavailable" />),
+    /// 或它那家供应商的凭据被拒、额度用尽、登录失效(见 <see cref="CannotUseModel" />)。
+    /// 候选跨供应商之后后一种很常见 —— 某家只是配了地址、Key 早过期了,不该让分到它的成员整个失败。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -94,8 +96,8 @@ internal sealed class SubagentRunner(
     private async Task<SubagentExecutionResult> RunWithModelFallbackAsync(SubagentOrchestrator owner, SubagentRequest request,
         CancellationToken cancellationToken)
     {
-        // 替补顺序:选定的模型 → 父模型 → 委派候选里的其它聊天模型(都在当前供应商实例内,委派本来就允许选它们);
-        // 本轮已确认用不了的跳过
+        // 替补顺序:选定的模型 → 父模型 → 委派候选里的其它聊天模型(候选按主控所在供应商在前排序,
+        // 所以先在主控那一家里找替补,再到用户配置的其它供应商);本轮已确认用不了的跳过
         List<string> order = [.. new[] { request.ModelId ?? owner.DefaultModelId, owner.DefaultModelId }
             .Concat(owner.ModelChoices.Keys)
             .OfType<string>()
@@ -119,13 +121,13 @@ internal sealed class SubagentRunner(
                 return await RunCoreAsync(owner, request with { ModelId = order[index] }, progressed, cancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (Exception ex) when (!progressed.Value && TransientFailure.IsModelUnavailable(ex) && NextUsable(index) is { } next)
+            catch (Exception ex) when (!progressed.Value && CannotUseModel(ex) && NextUsable(index) is { } next)
             {
                 owner.MarkModelUnavailable(order[index]);
                 owner.ReportModelFallback(order[index], order[next], ApiErrorText.Describe(ex));
                 index = next;
             }
-            catch (Exception ex) when (!progressed.Value && TransientFailure.IsModelUnavailable(ex))
+            catch (Exception ex) when (!progressed.Value && CannotUseModel(ex))
             {
                 owner.MarkModelUnavailable(order[index]); // 没有替补了:照常报错,但本轮之后的子任务不再撞它
                 throw;
@@ -140,6 +142,20 @@ internal sealed class SubagentRunner(
             }
             return null;
         }
+    }
+
+    /// <summary>
+    /// 这个模型本轮用不了、值得换一个:型号没开通,或它那家的凭据被拒(401 / 403)、额度用尽(429)、OAuth 续期失败。
+    /// 只在什么都还没发生时才会被用到(见调用处),所以换模型不会让副作用做两遍。
+    /// </summary>
+    internal static bool CannotUseModel(Exception exception)
+    {
+        if (TransientFailure.IsApiKeyFailure(exception)) return true; // 已含 IsModelUnavailable
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is Auth.OAuthException) return true;
+        }
+        return false;
     }
 
     private async Task<SubagentExecutionResult> RunCoreAsync(SubagentOrchestrator owner, SubagentRequest request,
@@ -271,16 +287,40 @@ internal sealed class SubagentRunner(
     }
 
     /// <summary>
+    /// 委派与团队共用的「怎么挑模型」:候选来自用户配置的<b>所有</b>供应商,各家型号各有所长。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 之前只给数字(窗口、单价、思考),并明令「不许看名字」—— 候选同在一家时这够用,跨供应商后就不够了:
+    /// 「这家的型号写代码强、那家的读长文档稳」这类知识主模型本来就有,数字里却体现不出来。
+    /// 所以放开一条口子:<b>型号 id 明确对应一个知名厂商模型时</b>,可以用它对该模型的可靠了解;
+    /// 认不出来的名字(中转站别名、自定义名)一律当未知,清单里的事实与它的印象冲突时以事实为准。
+    /// </para>
+    /// <para>
+    /// 不鼓励「为多样而多样」:换一家意味着另一份计费、子任务读到的内容发给另一家,只在更合适或需要独立复核时才换。
+    /// </para>
+    /// </remarks>
+    internal const string ModelSelectionGuidance =
+        "The allowed models may come from several providers the user configured; each entry names its provider and its real model id. "
+        + "Match the model to the work, first by the listed facts (contextTokens, maxOutputTokens, input/output price per million tokens, reasoning): "
+        + "a cheaper model for simple, mechanical or high-volume work such as collecting, searching, listing or summarising; a larger contextTokens when it must read a lot; "
+        + "a reasoning-capable or higher-priced model (often the parent) for hard analysis, design, debugging and risky changes. "
+        + "Beyond those facts you may use what you reliably know about a well-known vendor model's particular strengths (for example coding, long-document reading, "
+        + "multilingual writing, math or tool use) to put each piece of work on the model best suited to it, but only when the model id clearly identifies that model: "
+        + "treat names you do not recognise (gateway aliases, custom names) as unknown, and when the listed facts contradict your impression, the facts win. "
+        + "Do not switch providers just for variety: a different provider bills separately and receives whatever that subtask reads, "
+        + "so pick one when it fits the work better or gives an independent check. ";
+
+    /// <summary>
     /// 主 Agent 系统提示词里关于委派的那一段。只在这一轮真的暴露了 <c>delegate_subagent</c> 时追加
     /// (见 <see cref="HasDelegation" />),桌面与 IM 共用。
     /// </summary>
     internal const string DelegationGuidance =
         "\nUse delegate_subagent when the user requests multiple agents or when a substantial, self-contained subtask benefits from another model or independent parallel work. "
-        + "Choose modelId only from the allowed models listed with the tool, and honor explicit user choices. Otherwise match the model to the subtask using the facts in that list "
-        + "(contextTokens, maxOutputTokens, input/output price per million tokens, reasoning): a cheaper listed model for simple, mechanical or high-volume work; "
-        + "a larger contextTokens when the subtask must read a lot; a reasoning-capable or higher-priced model (often the parent) for hard analysis, design and risky changes. "
-        + "Inherit the parent (omit modelId) when the list has one model or its facts do not tell the candidates apart. "
-        + "Judge only from the listed facts: never infer expertise, speed, quality or price from a model's name. Handle small tasks directly and avoid unnecessary delegation costs. "
+        + "Choose modelId only from the allowed models listed with the tool, and honor explicit user choices. "
+        + ModelSelectionGuidance
+        + "Inherit the parent (omit modelId) when the list has one model or nothing tells the candidates apart for this subtask. "
+        + "Handle small tasks directly and avoid unnecessary delegation costs. "
         + "Image generation and editing use image tools, not chat subagents. "
         + "A subagent starts with no knowledge of this conversation, so write a self-contained prompt. "
         + "Each result is delivered to you automatically as a notification when its subagent finishes: after delegating, "
@@ -314,13 +354,12 @@ internal sealed class SubagentRunner(
         + "Do NOT form a team for questions you can answer in a few tool calls, single-file edits, simple lookups, or a short sequence of shell commands you can run yourself. "
         + "Members run commands only when you set allowCommands=true for them, and each command still needs the user's approval: enable it only for members whose task requires commands. "
         + "A team costs several parallel model requests, so keep it small: usually 2–4 members, one task per member per stage. "
-        + "Give every member the model that fits its task by setting its modelId from team_run's allowed models, using only the facts listed there "
-        + "(contextTokens, maxOutputTokens, input/output price per million tokens, reasoning) and never a model's name: "
-        + "members that mostly collect, search, list or summarise get a cheaper listed model; a member that must read large files or many logs gets a large contextTokens; "
-        + "members that design, debug hard problems or change important things get a reasoning-capable or higher-priced model (often your own, marked parent); "
-        + "give a reviewer a different model from the author of the work it reviews when another suitable one is listed, so the check is independent. "
-        + "Omit modelId only when the list has a single model or its facts do not distinguish the candidates. The user's explicit model choices always win. "
-        + "When you announce the team, say in one line which model each member runs on and why. "
+        + "Give every member the model that fits its task by setting its modelId from team_run's allowed models. "
+        + ModelSelectionGuidance
+        + "Give a reviewer a different model from the author of the work it reviews, preferably from a different provider when a suitable one is listed, "
+        + "so the check is genuinely independent. "
+        + "Omit modelId only when the list has a single model or nothing distinguishes the candidates for that task. The user's explicit model choices always win. "
+        + "When you announce the team, say in one line which provider and model each member runs on and why. "
         + "When you use it: give each member a distinct role, make every task's detail self-contained (members do not see this conversation), "
         + "chain tasks with dependsOn so results flow downstream, and add a reviewer task with verifies when correctness matters. "
         + "Briefly tell the user you are forming a team and why, then call team_run and end your step: one consolidated team report arrives when the team finishes. "
@@ -349,22 +388,23 @@ internal sealed class SubagentRunner(
     /// 单价没填不写价格;窗口是取不到规格时的默认估值(<c>DefaultContextWindow == true</c>)也不写,免得拿一个猜的数去比大小。
     /// </para>
     /// <para>
-    /// 清单只进工具说明,不含凭据与端点;候选范围与 <see cref="ModelChoices" /> 完全一致(当前供应商实例的聊天模型)。
+    /// 清单只进工具说明,不含凭据与端点;候选范围与 <see cref="ModelChoices" /> 完全一致(所有供应商的聊天模型,主控所在的那家在前)。
+    /// 每条另带 <c>provider</c>(供应商实例名)与 <c>model</c>(真实型号 id),主模型据此认出各家型号、按所长分工。
     /// </para>
     /// </remarks>
     /// <param name="settings">AI 设置。</param>
-    /// <param name="providerId">当前供应商实例。</param>
+    /// <param name="providerId">主控所在的供应商实例:它的模型排在最前。</param>
     /// <param name="parentModelId">主控这一轮用的模型(没指定模型的子任务 / 成员沿用它)。</param>
     internal static string ModelCatalog(AiSettings settings, string providerId, string? parentModelId)
-        => AgentJson.Serialize(settings.Providers.Where(p => p.Id == providerId)
-            .SelectMany(p => p.Models.Select(m => new ResolvedModel(p, m)))
-            .Where(m => !AiSettingsStore.IsImageModel(m))
+        => AgentJson.Serialize(Candidates(settings, providerId)
             .Select(m =>
             {
                 var facts = new Dictionary<string, object>(StringComparer.Ordinal)
                 {
                     ["id"] = m.Id,
-                    ["name"] = $"{m.Provider.Name} / {m.Name} ({m.Model})"
+                    ["name"] = DisplayName(m),
+                    ["provider"] = m.Provider.Name,
+                    ["model"] = m.Model
                 };
                 if (m.Id == parentModelId) facts["parent"] = true;
                 if (m.MaxInputTokens > 0 && m.Config.DefaultContextWindow != true) facts["contextTokens"] = m.MaxInputTokens;
@@ -375,25 +415,36 @@ internal sealed class SubagentRunner(
                 return facts;
             }));
 
-    /// <summary>可供委派选择的聊天模型:配置标识 → 显示名,不含凭据或端点。</summary>
+    /// <summary>
+    /// 可供委派选择的聊天模型:配置标识 → 显示名,不含凭据或端点。
+    /// 范围是用户配置的<b>所有</b>供应商实例(不含图片模型),<paramref name="providerId" /> 那一家排在最前 ——
+    /// 这个顺序同时是模型用不了时的替补顺序(见 <c>RunWithModelFallbackAsync</c>),先在主控那一家里找。
+    /// </summary>
+    /// <param name="settings">AI 设置。</param>
+    /// <param name="providerId">主控所在的供应商实例。</param>
     internal static Dictionary<string, string> ModelChoices(AiSettings settings, string providerId)
-        => settings.Providers.Where(p => p.Id == providerId)
+        => Candidates(settings, providerId).ToDictionary(m => m.Id, DisplayName, StringComparer.Ordinal);
+
+    private static IEnumerable<ResolvedModel> Candidates(AiSettings settings, string providerId)
+        => settings.Providers
+            .OrderBy(p => p.Id == providerId ? 0 : 1) // 稳定排序:其余各家保持设置里的顺序
             .SelectMany(p => p.Models.Select(m => new ResolvedModel(p, m)))
             .Where(m => !AiSettingsStore.IsImageModel(m))
-            .ToDictionary(m => m.Id, m => $"{m.Provider.Name} / {m.Name} ({m.Model})", StringComparer.Ordinal);
+            .DistinctBy(m => m.Id, StringComparer.Ordinal);
+
+    private static string DisplayName(ResolvedModel m) => $"{m.Provider.Name} / {m.Name} ({m.Model})";
 
     /// <summary>
     /// 没有界面的入口(IM 桥接、对外 MCP)用的模型解析:按<b>当下</b>的设置找模型、现取凭据。
-    /// 模型已删除、是图片模型时明确失败,不回退到别的模型 —— 那可能换了供应商与计费归属。
+    /// 模型已删除、是图片模型时明确失败,不悄悄换成别的模型 —— 那可能换了供应商与计费归属。
+    /// 可选范围是所有供应商的聊天模型(与 <see cref="ModelChoices" /> 一致),各用各的凭据。
     /// </summary>
     /// <param name="store">AI 设置。</param>
     /// <param name="modelId">请求指定的模型;为空时用 <paramref name="fallbackModelId" />。</param>
     /// <param name="fallbackModelId">没指定时用哪个;仍为空则用设置里的当前模型。</param>
     /// <param name="cancellationToken">取消。</param>
-    /// <param name="providerId">当前供应商实例；禁止跨供应商委派。</param>
     internal static async Task<(ResolvedModel Model, ProviderCredential Credential)> ResolveFromSettingsAsync(
-        AiSettingsStore store, string? modelId, string? fallbackModelId, CancellationToken cancellationToken,
-        string providerId)
+        AiSettingsStore store, string? modelId, string? fallbackModelId, CancellationToken cancellationToken)
     {
         AiSettings settings = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
         string? id = !string.IsNullOrWhiteSpace(modelId) ? modelId.Trim()
@@ -406,8 +457,6 @@ internal sealed class SubagentRunner(
         {
             throw new InvalidOperationException("Image models cannot run subagent tools. Select a chat model with tool support.");
         }
-        if (model.Provider.Id != providerId)
-            throw new InvalidOperationException("Subagents must use a model from the current provider.");
         ProviderCredential credential = await store.ResolveCredentialAsync(model, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
         return (model, credential);

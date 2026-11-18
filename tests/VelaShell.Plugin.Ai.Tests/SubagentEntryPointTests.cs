@@ -170,13 +170,17 @@ public sealed partial class SubagentEntryPointTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public async Task EntryPointsRejectModelsUnderAnotherProvider(bool bridge)
+    public async Task EntryPointsDelegateToModelsUnderAnotherProvider(bool bridge)
     {
-        await using var foreignEndpoint = new SseStub(Answer("must not run"));
+        // 两家同名的供应商实例:仍是两个实例,各用各的端点与凭据
+        await using var foreignEndpoint = new SseStub(Answer("foreign report: config looks fine"));
         AiProvider foreign = Provider("same-name", foreignEndpoint.BaseUrl);
-        await using var parentEndpoint = new SseStub("", streamingReply: n => n == 1
-            ? ToolCall("delegate_subagent", new { prompt = "Inspect.", modelId = foreign.Models[0].Id })
-            : Answer("Cannot delegate to that provider."));
+        await using var parentEndpoint = new SseStub("", streamingReply: n => n switch
+        {
+            1 => ToolCall("delegate_subagent", new { prompt = "Inspect.", modelId = foreign.Models[0].Id }),
+            2 => Answer("Delegated."),
+            _ => Answer(" Inspection done.")
+        });
         AiProvider parent = Provider("same-name", parentEndpoint.BaseUrl);
         using var context = new TestPluginContext();
         var store = new AiSettingsStore(context);
@@ -190,8 +194,9 @@ public sealed partial class SubagentEntryPointTests
                 new InboundMessage("ch1", "chat-1", false, "u1", "Ann", "Delegate the inspection.", "m1", true),
                 _ => Task.FromResult(false), English, null, null, CancellationToken.None)
                 .WaitAsync(TimeSpan.FromSeconds(30));
-            Assert.DoesNotContain(foreign.Models[0].Id, parentEndpoint.Requests[0]);
-            Assert.Contains("current provider", parentEndpoint.Requests[1]);
+            Assert.Contains(foreign.Models[0].Id, parentEndpoint.Requests[0], "别家供应商的模型在候选清单里");
+            Assert.Contains(t => t.Contains("foreign report: config looks fine", StringComparison.Ordinal), parentEndpoint.Requests,
+                "子任务在另一家跑完,报告送回主控");
         }
         else
         {
@@ -199,15 +204,18 @@ public sealed partial class SubagentEntryPointTests
                 new McpServerSettings { Mode = ChatMode.Agent }, store, CancellationToken.None);
             string description = host.Tools.Single(t => t.Name == "delegate_subagent").Description!;
             Assert.Contains(parent.Models[0].Id, description);
-            Assert.DoesNotContain(foreign.Models[0].Id, description);
-            string result = await host.CallAsync("delegate_subagent",
+            Assert.Contains(foreign.Models[0].Id, description);
+            string started = await host.CallAsync("delegate_subagent",
                 new Dictionary<string, object?> { ["prompt"] = "Inspect.", ["modelId"] = foreign.Models[0].Id },
                 CancellationToken.None);
-            Assert.Contains("current provider", result);
-            Assert.IsFalse(host.HasActiveSubagents);
+            string id = SubagentIdRegex().Match(started).Value;
+            using var json = JsonDocument.Parse(await host.CallAsync("subagent_wait",
+                new Dictionary<string, object?> { ["id"] = id, ["timeoutSeconds"] = 30 }, CancellationToken.None));
+            Assert.AreEqual("completed", json.RootElement.GetProperty("status").GetString(), json.RootElement.GetRawText());
+            Assert.AreEqual(foreign.Models[0].Id, json.RootElement.GetProperty("modelId").GetString());
             Assert.IsEmpty(parentEndpoint.Requests);
         }
-        Assert.IsEmpty(foreignEndpoint.Requests);
+        Assert.HasCount(1, foreignEndpoint.Requests, "子任务的请求发到了它自己那一家的端点");
     }
 
     [TestMethod]

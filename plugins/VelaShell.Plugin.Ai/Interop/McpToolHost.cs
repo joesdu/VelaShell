@@ -121,10 +121,11 @@ internal sealed class McpToolHost : IAsyncDisposable
             // 外部 agent 自己就是模型:这里没有"父模型",子任务用 VelaShell 当前选中的那个,每次按当下设置现取凭据。
             // 子任务的工具与这条连接同一套范围与挡位;没有审批界面,所以 allowWrites 只在绕过审批时写得进去。
             _subagentTemplate = _toolbox.CreateSubagentToolbox();
+            // 候选是所有供应商的聊天模型,所选模型那一家排在最前;所选的是图片模型时默认用排在最前的聊天模型
             string defaultModelId = models.ContainsKey(anchor.Id) ? anchor.Id : models.Keys.First();
             string providerId = anchor.Provider.Id;
             var runner = new Chat.SubagentRunner(
-                (request, token) => Chat.SubagentRunner.ResolveFromSettingsAsync(aiStore, request.ModelId, defaultModelId, token, providerId),
+                (request, token) => Chat.SubagentRunner.ResolveFromSettingsAsync(aiStore, request.ModelId, defaultModelId, token),
                 (model, credential) => aiStore.CreateClient(model, credential, callerCountsRetries: true),
                 () => _subagentTemplate, _runScope, context.Host.Locale);
             SubagentOrchestrator created = null!;
