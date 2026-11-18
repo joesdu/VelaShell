@@ -3900,3 +3900,10 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **改动**:`Chat/TurnToolAssembly` + `ITurnToolSource` + `McpToolSource`;`ChatPanelView.SendAsync` 与 `BridgeAgentRunner.RunAsync` 改为登记来源后统一装配,顺序不变(桌面:内置 → 作图 → 笔记 → MCP;IM:内置 → MCP)。停用清单统一过滤(作图工具因此也受其约束,界面上无勾选项,看不出区别)。装配内部不切线程,桌面状态行回调仍在 UI 线程;租约在 `finally` 里登记。
 - **验证**:新增 `TurnToolAssemblyTests` 4 条;AI 测试工程全量 2426/2426 通过。
 - **文档**:只动 `ai-plan.md` §12.5 / §12.8;对外行为不变。
+
+## 345. AI 插件重构 1d:子 Agent 编排器工厂 (2026-11-18)
+
+- **来由**:ai-plan §12.2 的 1d。桌面、IM、对外 MCP 各自手写编排器的建立与候选配置。
+- **改动**:`SubagentRunner.CreateOrchestrator` 与 `SubagentRunner.UseCandidates`,三处入口改用;行为不变。
+- **验证**:新增 1 条;AI 测试工程全量 2427/2427 通过。
+- **文档**:只动 `ai-plan.md` §12.5 / §12.9。

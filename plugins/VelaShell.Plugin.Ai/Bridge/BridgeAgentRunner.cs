@@ -385,14 +385,8 @@ public sealed class BridgeAgentRunner(
                             : await SubagentRunner.ResolveFromSettingsAsync(store, request.ModelId, model.Id, token).ConfigureAwait(false),
                         (target, credential) => store.CreateClient(target, credential, callerCountsRetries: true),
                         () => template, runScope, context.Host.Locale, compactContext: ai.CompactContext);
-                    SubagentOrchestrator created = null!;
-                    created = new SubagentOrchestrator(
-                        (request, token) => subagentRunner.RunAsync(created, request, token), cancellationToken)
-                    {
-                        ModelChoices = SubagentRunner.ModelChoices(ai, model.Provider.Id),
-                        ModelCatalog = SubagentRunner.ModelCatalog(ai, model.Provider.Id, model.Id),
-                        DefaultModelId = model.Id
-                    };
+                    SubagentOrchestrator created = subagentRunner.CreateOrchestrator(cancellationToken);
+                    SubagentRunner.UseCandidates(created, ai, model.Provider.Id, model.Id);
                     created.SnapshotsChanged += ReportSubagents;
                     subagents = created;
                     toolbox.Subagents = created;

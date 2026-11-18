@@ -510,8 +510,8 @@ AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出�
 | 1a 系统提示词分段组合 | 完成 | 见 12.6 |
 | 1b 统一自定义提示词语义 | 完成 | 见 12.7 |
 | 1c 工具来源统一 | 完成 | 见 12.8 |
-| 1d 子 Agent 编排器工厂 | 进行中 | |
-| 1e 拆小 `SendAsync` | 未开始 | |
+| 1d 子 Agent 编排器工厂 | 完成 | 见 12.9 |
+| 1e 拆小 `SendAsync` | 进行中 | 先做低风险的一片,其余推迟(见 12.10) |
 | 2 Skills | 未开始 | 依赖第一步 |
 | 3 扩展包 | 未开始 | 依赖第二步 |
 
@@ -540,3 +540,10 @@ AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出�
 - 装配内部**刻意不用 `ConfigureAwait(false)`**:桌面的状态行回调必须回到 UI 线程;有单元测试守着。
 - 唯一的细微差别:作图工具现在也受停用清单约束(以前不受)。「配置工具」里没有它们的勾选项,用户界面上看不出区别。
 - 验证:新增 `TurnToolAssemblyTests` 4 条(顺序与模式、停用清单作用于所有来源、对话模式不造内置工具、调用方同步上下文不丢);AI 测试工程全量 **2426/2426** 通过,未改动任何既有断言。
+
+### 12.9 2026-11-18:1d 子 Agent 编排器工厂
+
+- `SubagentRunner.CreateOrchestrator(token, deliversResults)`:建一个由本执行器跑子任务的编排器,替掉三个入口各写一遍的「先声明 `null!` 再在闭包里引用自己」。
+- `SubagentRunner.UseCandidates(orchestrator, settings, providerId, defaultModelId)`:候选清单、交给主模型的事实与默认模型三项一起配,桌面换站后重配也走它。
+- 桌面、IM、对外 MCP 三处改用;对外 MCP 的 `MaxTotal` 与 `DeliversResults = false` 照旧。
+- 验证:新增 `SubagentRunnerTests.CreateOrchestrator_RunsOnThisRunner_AndUseCandidatesSetsAllThree`;AI 测试工程全量 **2427/2427** 通过,未改动任何既有断言。

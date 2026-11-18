@@ -2172,11 +2172,9 @@ public partial class ChatPanelView : UserControl
                         // 子任务的请求同样是已计费的真实用量,并进这段对话的收发计数(不算进上下文占用)
                         usage => Dispatcher.UIThread.Post(() => RecordUsage(usage, isContext: false)),
                         compactContext: _settings.CompactContext);
-                    subagents ??= new SubagentOrchestrator(
-                        (request, childToken) => subagentRunner!.RunAsync(subagents!, request, childToken), token);
-                    subagents.ModelChoices = SubagentRunner.ModelChoices(_settings, current.Provider.Id);
-                    subagents.ModelCatalog = SubagentRunner.ModelCatalog(_settings, current.Provider.Id, current.Id);
-                    subagents.DefaultModelId = current.Id;
+                    subagents ??= subagentRunner.CreateOrchestrator(token);
+                    // 换站后候选按新的这一站重排(编排器沿用,已在跑的子任务不受影响)
+                    SubagentRunner.UseCandidates(subagents, _settings, current.Provider.Id, current.Id);
                     if (bubble is not null && !_subagentSnapshotSources.ContainsKey(bubble))
                     {
                         SubagentOrchestrator observed = subagents;

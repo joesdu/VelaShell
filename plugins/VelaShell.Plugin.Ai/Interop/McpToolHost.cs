@@ -128,19 +128,13 @@ internal sealed class McpToolHost : IAsyncDisposable
                 (request, token) => Chat.SubagentRunner.ResolveFromSettingsAsync(aiStore, request.ModelId, defaultModelId, token),
                 (model, credential) => aiStore.CreateClient(model, credential, callerCountsRetries: true),
                 () => _subagentTemplate, _runScope, context.Host.Locale);
-            SubagentOrchestrator created = null!;
-            created = new SubagentOrchestrator((request, token) => runner.RunAsync(created, request, token), _lifetime.Token)
-            {
-                ModelChoices = models,
-                // 外部 agent 没有「父模型」;默认用的那个照样标出来,对方才知道不指定时落在谁身上
-                ModelCatalog = Chat.SubagentRunner.ModelCatalog(ai, providerId, defaultModelId),
-                // 没指定模型时用 VelaShell 当前选中的;选中的是图片模型就退到第一个聊天模型。
-                // 在这里定下来,结果里才说得清实际用的是哪个模型。
-                DefaultModelId = defaultModelId,
-                MaxTotal = MaxSubagentsPerConnection,
-                // 这条路唤不醒外部模型:结果得它自己用 subagent_wait 来取
-                DeliversResults = false
-            };
+            // 这条路唤不醒外部模型:结果得它自己用 subagent_wait 来取
+            SubagentOrchestrator created = runner.CreateOrchestrator(_lifetime.Token, deliversResults: false);
+            // 外部 agent 没有「父模型」;默认用的那个照样标出来,对方才知道不指定时落在谁身上。
+            // 没指定模型时用 VelaShell 当前选中的;选中的是图片模型就退到排在最前的聊天模型。
+            // 在这里定下来,结果里才说得清实际用的是哪个模型。
+            Chat.SubagentRunner.UseCandidates(created, ai, providerId, defaultModelId);
+            created.MaxTotal = MaxSubagentsPerConnection;
             _subagents = created;
             _toolbox.Subagents = created;
         }
