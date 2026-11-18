@@ -1,0 +1,286 @@
+using System.Text;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Markup.Xaml.MarkupExtensions;
+using Avalonia.Media;
+using Avalonia.Platform.Storage;
+using VelaShell.Plugin.Ai.Chat.Extensions;
+using VelaShell.Plugin.Ai.Chat.Skills;
+using VelaShell.Plugin.Ai.Configuration;
+
+namespace VelaShell.Plugin.Ai.Ui;
+
+/// <summary>
+/// 「配置工具」里的扩展包组(ai-plan §12.4):安装(文件夹或 .zip)、启停、卸载、MCP 启动信息的确认与重新确认。
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>确认的是什么</b>:扩展包带来的 MCP 服务器会在用户本机启动进程或连远端地址,命令由扩展包作者写。
+/// 安装前把每台服务器的完整启动命令、参数、工作目录、环境变量、地址与请求头原样列出来,用户点「安装并启用」才装;
+/// 记下的是 <see cref="ExtensionManifest.McpFingerprint" />。之后这部分变了(升级、或安装目录里的文件被改),
+/// 这个扩展包的 MCP 服务器不启动,行上提示「需要重新确认」,点了再走一遍同样的确认。技能与命令只是给模型的文字,不在此列。
+/// </para>
+/// <para>
+/// 确认框默认焦点在「取消」,Esc 取消;安装失败(清单不合格、压缩包越界等)原因写进状态行,不装任何东西。
+/// </para>
+/// </remarks>
+public sealed partial class ToolPickerView
+{
+    private readonly ConfirmOverlay _confirm = new() { Name = "ExtensionConfirm" };
+    private readonly Func<Task>? _mcpChanged;
+
+    private ExtensionPackStore Extensions => field ??= new ExtensionPackStore(_context.DataDirectory);
+
+    private Border BuildExtensionsGroup()
+    {
+        var rows = new StackPanel { Spacing = 10, Classes = { "toolRows" } };
+        IReadOnlyList<InstalledPack> installed = Extensions.List();
+        if (installed.Count == 0)
+        {
+            rows.Children.Add(new TextBlock
+            {
+                Classes = { "dim" },
+                Text = _loc["ExtensionsEmpty"],
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Avalonia.Thickness(20, 2, 0, 2)
+            });
+        }
+        foreach (InstalledPack pack in installed)
+        {
+            rows.Children.Add(BuildPackRow(pack));
+        }
+
+        Button fromFolder = HeaderButton("ExtensionInstallFolder", _loc["ExtensionInstallFolder"]);
+        fromFolder.Click += async (_, _) => await PickAndInstallAsync(folder: true);
+        Button fromZip = HeaderButton("ExtensionInstallZip", _loc["ExtensionInstallZip"]);
+        fromZip.Click += async (_, _) => await PickAndInstallAsync(folder: false);
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        buttons.Children.Add(fromFolder);
+        buttons.Children.Add(fromZip);
+
+        int enabled = installed.Count(p => StateOf(p.Id) is { Enabled: true });
+        return BuildGroup("extensions", _loc["ExtensionsGroup"], _loc.F("ToolsChecked", enabled, installed.Count), rows, buttons, defaultCollapsed: false);
+    }
+
+    private ExtensionPackState? StateOf(string id) => _settings.ExtensionPacks.FirstOrDefault(s => s.Id == id);
+
+    private Control BuildPackRow(InstalledPack pack)
+    {
+        Button uninstall = HeaderButton("ExtensionUninstall", _loc["ExtensionUninstall"]);
+        uninstall.Click += async (_, _) => await UninstallAsync(pack.Id, pack.Manifest?.Name ?? pack.Id);
+
+        if (pack.Manifest is not { } manifest)
+        {
+            var broken = new TextBlock
+            {
+                Name = "ExtensionError",
+                Classes = { "hint" },
+                Text = _loc.F("ExtensionInvalid", pack.Id, pack.Error ?? ""),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Avalonia.Thickness(20, 2, 0, 2)
+            };
+            broken[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("VelaWarning");
+            var line = new Grid { ColumnDefinitions = [with("*,Auto")] };
+            line.Children.Add(broken);
+            Grid.SetColumn(uninstall, 1);
+            line.Children.Add(uninstall);
+            return line;
+        }
+
+        ExtensionPackState? state = StateOf(pack.Id);
+        string summary = _loc.F("ExtensionSummary", manifest.Version,
+            ExtensionRuntime.SkillDirectories([new ActivePack(manifest, pack.Directory, true)])
+                .Sum(dir => SkillCatalog.ScanDirectory(dir, SkillSource.Extension).Count(s => s.IsValid)),
+            manifest.Commands.Count, manifest.McpServers.Count);
+        string description = manifest.Description.Length > 0 ? $"{manifest.Description}\n{summary}" : summary;
+        CheckBox toggle = BuildRow(manifest.Name, description, readOnly: false, state is { Enabled: true }, isEnabled =>
+        {
+            ExtensionPackState current = StateOf(pack.Id) ?? AddState(pack.Id);
+            current.Enabled = isEnabled;
+            AfterExtensionChange();
+        });
+        toggle.Name = "ExtensionToggle";
+        ToolTip.SetTip(toggle, pack.Directory);
+
+        var stack = new StackPanel { Spacing = 4 };
+        var head = new Grid { ColumnDefinitions = [with("*,Auto")] };
+        head.Children.Add(toggle);
+        Grid.SetColumn(uninstall, 1);
+        uninstall.VerticalAlignment = VerticalAlignment.Top;
+        head.Children.Add(uninstall);
+        stack.Children.Add(head);
+
+        // MCP 启动信息与用户确认过的不一致:这个包的 MCP 不启动,给出重新确认的入口
+        if (manifest.HasMcp && state?.ApprovedMcpFingerprint != manifest.McpFingerprint())
+        {
+            var warning = new TextBlock
+            {
+                Name = "ExtensionNeedsApproval",
+                Classes = { "hint" },
+                Text = _loc["ExtensionMcpNeedsApproval"],
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            warning[!TextBlock.ForegroundProperty] = new DynamicResourceExtension("VelaWarning");
+            Button reapprove = HeaderButton("ExtensionReapprove", _loc["ExtensionReapprove"]);
+            reapprove.Click += async (_, _) => await ReapproveAsync(pack.Id);
+            var line = new Grid { ColumnDefinitions = [with("*,Auto")], Margin = new Avalonia.Thickness(28, 0, 0, 0) };
+            line.Children.Add(warning);
+            Grid.SetColumn(reapprove, 1);
+            line.Children.Add(reapprove);
+            stack.Children.Add(line);
+        }
+        return stack;
+    }
+
+    private ExtensionPackState AddState(string id)
+    {
+        var state = new ExtensionPackState { Id = id };
+        _settings.ExtensionPacks.Add(state);
+        return state;
+    }
+
+    private void AfterExtensionChange()
+    {
+        AfterChange(); // 保存设置
+        Rebuild();
+        if (_mcpChanged is not null) _ = _mcpChanged();
+    }
+
+    private async Task PickAndInstallAsync(bool folder)
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
+        string? path = null;
+        if (folder)
+        {
+            IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = _loc["ExtensionInstallFolder"],
+                AllowMultiple = false
+            });
+            path = folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
+        }
+        else
+        {
+            IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = _loc["ExtensionInstallZip"],
+                AllowMultiple = false,
+                FileTypeFilter = [new FilePickerFileType("ZIP") { Patterns = ["*.zip"] }]
+            });
+            path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
+        }
+        if (path is not null) await InstallFromAsync(path);
+    }
+
+    /// <summary>从文件夹或 .zip 安装:校验清单 → 列出将带来的东西请用户确认 → 安装并启用。返回是否装上了。</summary>
+    internal async Task<bool> InstallFromAsync(string source)
+    {
+        StagedPack staged;
+        try
+        {
+            staged = ExtensionPackStore.Stage(source);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            _status.Text = _loc.F("ExtensionInstallFailed", ex.Message);
+            return false;
+        }
+        using (staged)
+        {
+            ExtensionManifest manifest = staged.Manifest;
+            bool upgrade = Extensions.List().Any(p => p.Id == manifest.Id);
+            string title = _loc.F(upgrade ? "ExtensionUpgradeTitle" : "ExtensionInstallTitle", manifest.Name, manifest.Version);
+            if (!await _confirm.AskAsync(title, DescribeForConsent(manifest, staged.Directory), _loc["ExtensionInstallConfirm"], _loc["Cancel"]))
+            {
+                return false;
+            }
+            try
+            {
+                Extensions.Install(staged);
+            }
+            catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                _status.Text = _loc.F("ExtensionInstallFailed", ex.Message);
+                return false;
+            }
+            ExtensionPackState state = StateOf(manifest.Id) ?? AddState(manifest.Id);
+            state.Enabled = true;
+            state.ApprovedMcpFingerprint = manifest.HasMcp ? manifest.McpFingerprint() : null;
+            AfterExtensionChange();
+            _status.Text = _loc.F("ExtensionInstalled", manifest.Name, manifest.Version);
+            return true;
+        }
+    }
+
+    /// <summary>MCP 启动信息变了之后重新确认:同一份确认内容,点了才记下新的指纹。</summary>
+    internal async Task<bool> ReapproveAsync(string id)
+    {
+        InstalledPack? pack = Extensions.List().FirstOrDefault(p => p.Id == id);
+        if (pack?.Manifest is not { } manifest) return false;
+        if (!await _confirm.AskAsync(_loc.F("ExtensionReapproveTitle", manifest.Name), DescribeForConsent(manifest, pack.Directory),
+                _loc["ExtensionReapprove"], _loc["Cancel"]))
+        {
+            return false;
+        }
+        (StateOf(id) ?? AddState(id)).ApprovedMcpFingerprint = manifest.McpFingerprint();
+        AfterExtensionChange();
+        return true;
+    }
+
+    private async Task UninstallAsync(string id, string name)
+    {
+        if (!await _confirm.AskAsync(_loc.F("ExtensionUninstallTitle", name), _loc["ExtensionUninstallBody"], _loc["ExtensionUninstall"], _loc["Cancel"]))
+        {
+            return;
+        }
+        try
+        {
+            Extensions.Uninstall(id);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _status.Text = $"{_loc["Error"]}: {ex.Message}";
+            return;
+        }
+        _settings.ExtensionPacks.RemoveAll(s => s.Id == id);
+        AfterExtensionChange();
+    }
+
+    /// <summary>确认框里的说明:它会带来哪些技能与命令,以及每台 MCP 服务器原样的启动信息。</summary>
+    internal string DescribeForConsent(ExtensionManifest manifest, string packDirectory)
+    {
+        var text = new StringBuilder();
+        if (manifest.Description.Length > 0) text.Append(manifest.Description).Append("\n\n");
+        List<string> skills = [.. ExtensionRuntime.SkillDirectories([new ActivePack(manifest, packDirectory, true)])
+            .SelectMany(dir => SkillCatalog.ScanDirectory(dir, SkillSource.Extension)).Where(s => s.IsValid).Select(s => s.Name)];
+        text.Append(_loc.F("ExtensionConsentSkills", skills.Count > 0 ? string.Join(", ", skills) : "—")).Append('\n');
+        text.Append(_loc.F("ExtensionConsentCommands",
+            manifest.Commands.Count > 0 ? string.Join(", ", manifest.Commands.Select(c => "/" + c.Name)) : "—")).Append('\n');
+        if (!manifest.HasMcp)
+        {
+            text.Append('\n').Append(_loc["ExtensionConsentNoMcp"]);
+            return text.ToString();
+        }
+        text.Append('\n').Append(_loc["ExtensionConsentMcp"]).Append('\n');
+        foreach (McpServerConfig server in manifest.ToMcpServers(packDirectory))
+        {
+            text.Append("\n• ").Append(server.Name);
+            if (server.Transport == McpTransportType.Stdio)
+            {
+                text.Append(" (stdio)\n  ").Append(server.Command);
+                if (server.Arguments.Length > 0) text.Append(' ').Append(server.Arguments);
+                text.Append("\n  ").Append(_loc.F("ExtensionConsentWorkdir", server.WorkingDirectory));
+                foreach (string line in server.EnvironmentVariables.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                    text.Append("\n  ").Append(_loc.F("ExtensionConsentEnv", line));
+            }
+            else
+            {
+                text.Append(" (http)\n  ").Append(server.Url);
+                foreach (string line in server.Headers.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                    text.Append("\n  ").Append(_loc.F("ExtensionConsentHeader", line));
+            }
+        }
+        return text.ToString();
+    }
+}

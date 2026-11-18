@@ -165,7 +165,7 @@ internal sealed class UploadPickerSelection : IDisposable
             _directory = _browser.CurrentPath;
             if (mapping is null && CanManageMappings && _browser.CurrentPath.Length > 0 && _browser.ErrorMessage is null)
             {
-                var added = await _store.AddMappingAsync(_context!, _browser.CurrentPath);
+                (UploadPickerState State, bool Saved, Guid Id) added = await _store.AddMappingAsync(_context!, _browser.CurrentPath);
                 if (!IsCurrent(version))
                 {
                     return;
@@ -272,7 +272,7 @@ internal sealed class UploadPickerSelection : IDisposable
         {
             return;
         }
-        var added = await _store.AddMappingAsync(_context! with { RemotePath = remotePath }, localPath);
+        (UploadPickerState State, bool Saved, Guid Id) added = await _store.AddMappingAsync(_context! with { RemotePath = remotePath }, localPath);
         if (!_disposed && !_stopping)
         {
             AcceptState(added.State, added.Saved);
@@ -306,7 +306,7 @@ internal sealed class UploadPickerSelection : IDisposable
         RaiseChanged();
         try
         {
-            var deleted = await _store.DeleteMappingAsync(profile, item.Mapping.Id);
+            (UploadPickerState State, bool Saved) deleted = await _store.DeleteMappingAsync(profile, item.Mapping.Id);
             if (IsCurrent(version))
             {
                 ErrorMessage = null;
@@ -340,7 +340,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     private async Task MarkUploadedAsync(long version, Guid profile, Guid id)
     {
-        var saved = await _store.MarkUploadedAsync(profile, id);
+        (UploadPickerState State, bool Saved) saved = await _store.MarkUploadedAsync(profile, id);
         if (!_disposed && version == _saveVersion)
         {
             AcceptState(saved.State, saved.Saved);
@@ -456,7 +456,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     private async Task SaveCoreAsync(long version, Guid? id, string directory, string[] paths)
     {
-        var saved = await _store.SaveSelectionAsync(_context, id, directory, paths, updateMapping: true);
+        (UploadPickerState State, bool Saved) saved = await _store.SaveSelectionAsync(_context, id, directory, paths, updateMapping: true);
         if (!_disposed && version == _saveVersion)
         {
             AcceptState(saved.State, saved.Saved);

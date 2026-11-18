@@ -48,7 +48,7 @@ public sealed partial class AgentToolboxTests
 
     private static (string State, int? Exit, string Stdout, string Stderr, string? Error) ReadJob(string json)
     {
-        using JsonDocument document = JsonDocument.Parse(json);
+        using var document = JsonDocument.Parse(json);
         JsonElement root = document.RootElement;
         JsonElement[] output = [.. root.GetProperty("output").EnumerateArray()];
         string Join(string stream) => string.Concat(output.Where(o => o.GetProperty("Stream").GetString() == stream)

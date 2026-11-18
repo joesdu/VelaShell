@@ -453,3 +453,140 @@ A–D 的本轮功能及 E 的本地自动化验证已完成；三平台 Stdio �
 - 委派引导、可选模型清单与无界面入口的模型解析收进 `SubagentRunner`，三个入口共用；编排器的总数上限与「结果是否自动送达」改为可配。
 - 验证：AI 插件完整测试 **2173/2173** 通过，0 失败、0 跳过；其后只对 `ImApprovalBroker` 做了不改行为的格式调整，桥接与 Subagent 定向 119/119 通过。插件工程严格构建无诊断；测试工程仍是 §11.16 所列、本次未改动的两个文件里的 13 项 IDE0055。
 - 未验证：真实 IM 渠道、真实外部 MCP 客户端与真实供应商下的委派，仍需人工验收。IM 的子任务请求不占桥接的总并发名额，也不单独计入请求预算。
+
+## 12. Agent 宿主重构、Skills 与扩展包(2026-11-18 立项)
+
+### 12.1 为什么要做
+
+AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出来。每加一种能力都得在几个入口各接一遍,而且接法会走样。Skills 与扩展包都要求三个入口一起能用,不先收拢这一层,后面会越做越散。立项时核对到的具体问题:
+
+1. **桌面的装配写在界面类里**:`ChatPanelView.SendAsync` 一个方法约 1,165 行(`Ui/ChatPanelView.axaml.cs` 第 1613–2777 行),模型选择、工具、MCP 租约、子 Agent、运行内压缩、补试、系统提示词全在里面。
+2. **IM 再装配一遍**:`BridgeAgentRunner.RunAsync`(约 330–440 行)重复了推理参数、端点怪癖、原生检索判定、子 Agent 编排器、`CreateTools`、MCP 租约与 `ReadOnlyMcpTools`、委派 / 团队提示词追加。对外 MCP(`McpToolHost`)是第三份。
+3. **已经出现的走样**:跨供应商委派(§12 之前的 #780)要在三处各改;「你应该知道」(#781)只接进了桌面;作图提示词只在桌面追加。
+4. **系统提示词两套写法、行为不一致**:桌面 `BuildSystemPrompt` 在用户填了全局或模型级自定义提示词时**整段替换**(模式说明、「MCP 跑在本机」的提醒一起丢掉),IM 则把它作为 `Operator instructions` **追加**。Skills 需要往提示词里注入技能目录,目前没有统一入口。
+5. **工具与命令写死**:`AgentToolbox.Catalog` 是手写清单;斜杠命令 `ChatPanelView.Commands.cs` 的 `LocalCommands = ["/clear", "/resume", "/help"]` 硬编码,IM 的 `/help` 等在 `ConversationRouter` 另有一套。扩展包要加工具与命令,没有注册入口。
+
+底层不需要重写,直接复用:`AgentToolbox` 的工具实现、`AgentExecution` / `RecoveringChatClient`、`AgentRunCoordinator`、`SubagentOrchestrator` / `SubagentRunner` / `TeamEngine`、`McpManager`、`ContextBuilder`。
+
+**原则**:逐步替换(strangler),每一小步单独提交、单独可合并;第一步不改任何对外行为,验收就是 AI 测试工程全量保持全绿(立项时 2415/2415)。
+
+### 12.2 第一步:抽出与界面无关的轮次装配
+
+目标:三个入口只描述「自己和别人不一样的地方」,公共装配集中在 `Chat/` 下与界面无关的类型里。
+
+- **1a 系统提示词分段组合**:新增 `Chat/SystemPromptComposer`(名字实现时可调),按固定顺序拼接分段:身份与语气(入口提供)→ 模式说明 → 本机 / 远端与 MCP 提醒 → 原生检索提示 → 委派 → 团队 → 作图 → (第二步)技能目录 → 用户自定义。分段只在条件满足时出现(例如委派段只在本轮真的暴露了 `delegate_subagent` 时出现,沿用 `SubagentRunner.HasDelegation` 的判定)。桌面与 IM 改为通过它拼接;**这一小步保持现有文字与替换 / 追加语义不变**,只搬家。
+- **1b 统一自定义提示词语义**(唯一一处行为变化,单独提交):桌面的全局 / 模型级自定义提示词改为**追加**在内置分段之后,不再整段替换,与 IM 一致;模式说明、MCP 本机提醒、委派 / 团队 / 技能段因此不再被吞掉。手册中英同步说明;旧用户若依赖「完全替换」,在手册里说明变化。
+- **1c 工具来源统一**:引入 `IToolSource`(按需调整),每轮由装配器按顺序收集:内置工具(`AgentToolbox.CreateTools`)→ 入口专属工具(桌面:作图、`note_for_user`)→ MCP(租约随轮次释放,`ReadOnlyMcpTools` 交给子 Agent)。`DisabledBuiltinTools`、计划模式只读、对话模式无工具这些规则只写一处。
+- **1d 子 Agent 编排器的建立收进工厂**:`SubagentRunner` + `SubagentOrchestrator` 的创建、`ModelChoices` / `ModelCatalog` / `DefaultModelId` 赋值、与协调器的挂接,桌面与 IM 共用;入口只提供模型解析、用量回调与快照观察。
+- **1e 拆小 `SendAsync`**:在 1a–1d 之后,把它剩下的部分按「准备模型与凭据 → 装配 → 运行 → 收尾入库」拆成几个方法 / 类型,界面相关(气泡、状态行、卡片)留在面板。
+- **验收**:每个小步后 AI 测试工程全量通过;1a、1c、1d 不改任何测试断言(只允许为新类型补测试);1b 只改与自定义提示词语义相关的断言,并补「自定义提示词下委派段仍在」一类用例。
+
+### 12.3 第二步:Skills
+
+格式与 Anthropic Agent Skills 的 `SKILL.md` 兼容,便于直接复用社区技能。
+
+- **技能是什么**:一个文件夹,含 `SKILL.md`(YAML 头至少有 `name`、`description`,正文是指令),可附带参考文件或脚本。插件只读取它们,**不自动执行**附带的脚本;要执行仍走现有命令工具与审批。
+- **从哪儿加载**:用户级目录 `~/.velashell/skills/`(实施时由「插件数据目录」改定:用户自己写的技能不该随卸载插件消失,且与 `~/.velashell/mcp` 同一棵树)与当前选中、允许读取的本地工作区内的 `.velashell/skills/`。同名时工作区优先,并在界面上标出来源。
+- **怎么交给模型(渐进披露)**:系统提示词里只放技能目录(名字 + 一句描述,条数与长度有上限),经第一步的提示词分段注入;模型需要时调用 `load_skill(name)` 取正文与附带文件清单,`read_skill_file(name, path)` 读附带文件(只限技能目录内)。
+- **用户显式调用**:斜杠命令改为注册表(桌面与 IM 共用),`/技能名 参数` 把该技能正文作为本轮指令附上。内置的 `/clear`、`/resume`、`/help` 迁入同一注册表。
+- **界面**:设置里新增技能列表:来源、启用 / 停用、重新扫描、打开目录;解析失败的技能显示原因,不阻断其它技能。
+- **范围**:桌面与 IM 都有(经第一步的统一装配);对外 MCP 暂不暴露(外部 agent 有自己的技能体系)。
+- **验收**:解析(头字段缺失、编码、超长)、目录上限、同名覆盖、`load_skill` 路径越界拒绝、停用后不进目录、斜杠调用、IM 可用、提示词分段位置的单元与 headless 测试;手册中英、velashell-docs 同步。
+
+### 12.4 第三步:扩展包
+
+命名用「扩展包」(英文 extension pack),不叫「插件」—— VelaShell 宿主已经有插件体系(这个 AI 插件本身就是其中之一),同名会让文档与界面混淆。
+
+- **扩展包是什么**:一个目录或压缩包,根部有清单 `velashell-extension.json`:`id`、`name`、`version`、`description`,以及要提供的 `skills`(目录)、`mcpServers`(与现有 MCP 配置同构)、`commands`(斜杠命令 → 提示词模板)。
+- **安装与信任**:从本地目录或压缩包安装,复制到插件数据目录;安装时列出它会带来的 MCP 服务器的**完整启动命令与环境变量**,用户明确同意后才启用。MCP 部分直接复用 `McpManager`(工具名带扩展包前缀,沿用现有审批、工作区绑定、超时与生命周期);启动命令变化(升级)需要重新同意。不做在线商店与自动更新。
+- **管理**:设置里的扩展包列表:启用 / 停用 / 卸载 / 打开目录;停用即撤下它的技能、命令与 MCP 服务器。
+- **暂不做**:钩子(工具调用前后的脚本)、扩展包之间的依赖、签名校验。钩子等扩展包本身稳定后再评估。
+- **验收**:清单解析与校验、安装 / 卸载 / 停用的撤下、MCP 同意流程与命令变化后的重新同意、命名冲突、坏包不影响其它包的测试;手册中英、velashell-docs(含威胁模型:扩展包带来的本机代码执行)同步。
+
+### 12.5 进度
+
+| 步骤 | 状态 | 说明 |
+| --- | --- | --- |
+| 1a 系统提示词分段组合 | 完成 | 见 12.6 |
+| 1b 统一自定义提示词语义 | 完成 | 见 12.7 |
+| 1c 工具来源统一 | 完成 | 见 12.8 |
+| 1d 子 Agent 编排器工厂 | 完成 | 见 12.9 |
+| 1e 拆小 `SendAsync` | 部分完成 | 低风险的一片已做,换站循环的拆分推迟到 Skills 之后(见 12.10) |
+| 2 Skills | 完成 | 2a、2b、2c 见 12.11–12.13 |
+| 3 扩展包 | 完成 | 见 12.14 |
+
+每完成一步:在上表更新状态,在本节下追加一条「12.x 日期:做了什么、验证结果、遗留」,并同步 `plan.md`(已发生的事)。
+
+### 12.6 2026-11-18:1a 系统提示词分段组合
+
+- 新增 `Chat/SystemPromptBuilder`:按顺序拼接命名分段(`base` / `delegation` / `team` / `images`),空段跳过,分段之间不加分隔,拼出来与原先逐段相加逐字相同。`AddToolGuidance` 按本轮实际暴露的工具决定是否追加委派与团队指引,判定沿用 `SubagentRunner.HasDelegation` / `HasTeam`。
+- 桌面(`ChatPanelView.SendAsync`)与 IM(`BridgeAgentRunner.RunAsync`)改为经它拼接;作图指引的固定文字收成 `ChatPanelView.ImageGuidance` 常量。对外 MCP 不拼系统提示词(外部 agent 自带),不涉及。
+- 不改任何对外行为:自定义提示词仍是桌面替换、IM 追加(留给 1b)。
+- 验证:新增 `SystemPromptBuilderTests` 3 条;AI 测试工程全量 **2418/2418** 通过,未改动任何既有断言。
+
+### 12.7 2026-11-18:1b 统一自定义提示词语义
+
+- `SystemPromptBuilder` 新增 `custom` 分段与 `AddCustom(modelPrompt, globalPrompt, extra)`:模型级提示词优先,没有再用全局的,以 `\n\nOperator instructions: ` 引出;入口附加的一段(IM 机器人的附加提示词)跟在后面;都没填就不加这一段。永远排在最后。
+- 桌面:`BuildSystemPrompt` 不再在有自定义提示词时提前返回,内置说明(身份、模式、本机 / 远端与 MCP 提醒、原生检索提示)照常发出,自定义的追加在作图指引之后。专用提示词仍按当前这一站的模型取。
+- IM:`Operator instructions` 与机器人附加提示词从基础段挪到最后;**新增**:模型级提示词在 IM 里也生效(以前被忽略),与桌面一致。
+- 手册中英「全局设置」段说明追加语义与升级注意;velashell-docs 没有描述旧的替换语义,无需同步。
+- 验证:`SystemPromptBuilderTests` 补 1 条(优先级、排最后、内置段保留),新增桌面端到端 `ChatPanelViewUiTests.Prompt`(全局 / 模型级两种)与 IM `BridgeAgentRunnerTests.RunAsync_AppendsModelLevelThenBotPromptAfterTheBuiltInRules`;AI 测试工程全量 **2422/2422** 通过,未改动任何既有断言。
+
+### 12.8 2026-11-18:1c 工具来源统一
+
+- 新增 `Chat/TurnToolAssembly` 与 `ITurnToolSource`:按登记顺序收集各来源的工具,每个来源声明在哪些模式下提供;停用清单(入口工具箱的 `DisabledTools`)在装配末尾统一按名过滤。简单来源用 `Add(appliesTo, create)` 登记。
+- `McpToolSource`:Agent 模式且至少启用一台服务器时连接,租约经 `Lease` 交给入口在轮次结束时释放;连接前后与只读工具筛选经回调交给入口(桌面写状态行,IM 记日志,两者都把只读 MCP 工具交给子 Agent)。
+- 桌面登记:内置 → 作图 → 「你应该知道」→ MCP;IM 登记:内置 → MCP。顺序与以前一致。装配中途出错时租约仍在 `finally` 里登记,不泄漏。
+- 装配内部**刻意不用 `ConfigureAwait(false)`**:桌面的状态行回调必须回到 UI 线程;有单元测试守着。
+- 唯一的细微差别:作图工具现在也受停用清单约束(以前不受)。「配置工具」里没有它们的勾选项,用户界面上看不出区别。
+- 验证:新增 `TurnToolAssemblyTests` 4 条(顺序与模式、停用清单作用于所有来源、对话模式不造内置工具、调用方同步上下文不丢);AI 测试工程全量 **2426/2426** 通过,未改动任何既有断言。
+
+### 12.9 2026-11-18:1d 子 Agent 编排器工厂
+
+- `SubagentRunner.CreateOrchestrator(token, deliversResults)`:建一个由本执行器跑子任务的编排器,替掉三个入口各写一遍的「先声明 `null!` 再在闭包里引用自己」。
+- `SubagentRunner.UseCandidates(orchestrator, settings, providerId, defaultModelId)`:候选清单、交给主模型的事实与默认模型三项一起配,桌面换站后重配也走它。
+- 桌面、IM、对外 MCP 三处改用;对外 MCP 的 `MaxTotal` 与 `DeliversResults = false` 照旧。
+- 验证:新增 `SubagentRunnerTests.CreateOrchestrator_RunsOnThisRunner_AndUseCandidatesSetsAllThree`;AI 测试工程全量 **2427/2427** 通过,未改动任何既有断言。
+
+### 12.10 2026-11-18:1e 只做了低风险的一片,其余推迟
+
+- **做了**:`SendAsync` 里三处一模一样的请求参数构造(开跑、MCP 连接后复验到配置变化、对话模式复验到配置变化)收成 `ChatPanelView.CreateRequestOptions`。`SendAsync` 从约 1,165 行降到约 1,131 行。
+- **推迟,理由**:`SendAsync` 剩下的部分是故障转移的换站循环,约十几个局部变量(凭据、选择代次、已试过的站、租约、压缩器、气泡……)经闭包在换站之间共享,与 UI(气泡、状态行、卡片)交织在一起。整体拆分风险最高,而 Skills 与扩展包只依赖 1a(提示词分段)与 1c(工具来源),都已就绪,并不依赖它。拆分推迟到 Skills 做完之后再评估;若届时为接入新能力仍要改这个方法,再顺势按「准备模型与凭据 → 装配 → 运行 → 收尾入库」拆。
+- **发现的不一致(记下,未改)**:IM 的请求参数不带模型配置里的停止序列(`StopSequences`),桌面带。统一它会改变 IM 行为,不放进「不改行为」的重构里;留作单独的小修。
+
+### 12.11 2026-11-18:2a Skills 扫描与交给模型
+
+- `Chat/Skills/SkillCatalog`:扫描 `~/.velashell/skills/<名>/` 与当前选中、允许读取的本地工作区 `.velashell/skills/<名>/`,同名工作区优先;解析 `SKILL.md` 头(逐行「键: 值」,支持引号与 `>` / `|` 多行块);名字限字母数字 `-` `_`、64 字符,说明截到 300 字符,文件上限 256 KB;解析失败的带原因留在清单里、不交给模型。`Enabled` 去掉 `AiSettings.DisabledSkills`(新设置,随工具配置保存,重载时同步)里停用的。
+- `Chat/Skills/SkillToolSource`(`ITurnToolSource`):有可用技能且非对话模式时提供 `load_skill` / `read_skill_file`;`read_skill_file` 拒绝越界路径、符号链接、二进制与超过 256 KB 的文件,不执行脚本。`SystemPromptBuilder.AddSkills` 在本轮真的暴露了 `load_skill` 时加 `skills` 分段(排在自定义提示词之前)。
+- 桌面与 IM 每轮现扫并登记;两件工具进 `AgentToolbox.Catalog`(只读,`ToolKind.Skill`,图标 layers)以便在「配置工具」里整体关闭。
+- 测试隔离:新增 `TestAssemblySetup`,测试程序集启动时把用户级技能目录指到空的临时目录(`SkillCatalog.UserDirectoryOverride`),需要技能的用例放进工作区。
+- 文档:手册中英新增「技能」一段;插件 README 补一节;velashell-docs《自动化与 AI》§1.17 与《安全威胁模型》各加一条(中英)。
+- 验证:新增 `SkillCatalogTests` 7 条、IM 端到端 3 组、桌面端到端 1 条(模型调 `load_skill` 拿到正文);AI 测试工程全量 **2438/2438** 通过。
+- 待做:2b 斜杠命令注册表(`/技能名`,并把 `/clear` / `/resume` / `/help` 迁入,桌面与 IM 共用);2c「配置工具」里的技能组(逐个启停、来源、解析失败原因、打开目录、重新扫描)。
+
+### 12.12 2026-11-18:2b 用斜杠命令显式调用技能
+
+- `Chat/Skills/SkillInvocation`:`/技能名 请求`(开头、忽略大小写)匹配到可用技能时,展开成「用户显式调用了这个技能 + `<skill>` 正文 + 请求」只送给模型;读不到正文时照原文发。展开文字同样声明技能不能越过用户的明确要求、工具规则与审批。对话模式也可用(不靠工具)。
+- 桌面:`TryRunLocalCommandAsync` 遇到技能名放行;`SendAsync` 在解析 `#` 引用之后展开,气泡与历史留原话;只认用户敲的(`SendExternal` 不认)。`/` 候选在内置命令后列出技能(说明作副标题),`/help` 末尾列技能命令;与内置命令同名的技能不列、不能斜杠调用。
+- IM:`ConversationRouter` 的内置命令先处理,其余 `/…` 照常进 `BridgeAgentRunner`,在那里展开;历史存原话。
+- 两处都在停用了 `load_skill`(整体关闭技能)时不展开。
+- **与计划的出入**:计划写的是「斜杠命令改为注册表,桌面与 IM 共用,内置命令迁入」。实施时看到两边的内置命令几乎不重叠(IM 有 `/use`、`/sessions`、`/mode`、`/stop` 等,桌面有 `/clear`、`/resume`),合成一张表收益很小;共享的只做技能这一层(`SkillInvocation`),各入口的内置命令保持原样。
+- 验证:`SkillCatalogTests` 补 1 条(匹配与展开);IM 端到端 3 组各加一次斜杠调用(停用时不展开、对话模式也展开);桌面端到端加一次用户输入斜杠调用(模型拿到正文,历史存原话);AI 测试工程全量 **2439/2439** 通过。
+
+### 12.13 2026-11-18:2c「配置工具」里的技能组
+
+- `Ui/ToolPickerView.Skills.cs`:内置组之后新增「技能」组(默认展开),与模型看到的同一套来源现扫(用户级 + 当前选中、允许读取的工作区)。可用的技能一行一个勾选框,说明后标来源(我的技能 / 来自工作区),悬停给出 `SKILL.md` 路径;勾选写 `AiSettings.DisabledSkills`,随工具配置保存。解析失败的用警告色显示原因、不可勾选。组标题旁「打开目录」(必要时先建 `~/.velashell/skills`,打不开就把路径写进状态行)与「重新扫描」(整页重建)。没有技能时给出放在哪儿的提示。
+- 技能整体的开关仍是内置组里的 `load_skill`。
+- 界面文案 9 个键,五种语言齐。`ToolsWindow_GroupsCollapse_AndChevronResolvesItsIcon` 的分组数从 2 改为 3(内置 + 技能 + MCP),并补「技能组默认展开」一条断言。
+- 验证:新增 `ChatPanelViewUiTests.Skills`(启停并保存、解析失败给原因、计数只算能用的、重新扫描出现新技能、停用状态保留);AI 测试工程全量 **2440/2440** 通过。
+- 第二步(Skills)至此完成。
+
+### 12.14 2026-11-18:第三步 扩展包
+
+- **3a 清单与安装**:`Chat/Extensions/ExtensionManifest`(`velashell-extension.json`:`id` / `name` / `version` / `description` / `skills` / `commands` / `mcpServers`,逐项校验)与 `ExtensionPackStore`(文件夹或 `.zip` → 插件数据目录 `extensions/<id>/`;zip-slip、2 万项、200 MB 上限,不跟随符号链接;先复制到临时目录再替换)。安装位置定为插件数据目录(装进来的产物,随卸载插件清除),与用户自己写的技能放 `~/.velashell/skills` 不同。
+- **确认指纹**:`McpFingerprint` 覆盖 MCP 的传输方式、命令、参数、工作目录、环境变量、地址与请求头;只改名字、版本、说明、技能或命令不影响。`AiSettings.ExtensionPacks`(新设置:`Id` / `Enabled` / `ApprovedMcpFingerprint`,重载时同步)。
+- **3b 生效**:`ExtensionRuntime` —— 已安装、清单可读、设置里启用才生效;技能并进技能目录(`SkillSource.Extension`,同名时优先级最低,目录里标 `(extension pack)`);命令 `/名字 参数` 按模板展开(`{{args}}`,内置命令与同名技能优先),桌面候选与 `/help` 列出;已确认的 MCP 服务器转成 `McpServerConfig` 并进桌面 / IM 的 MCP 来源、MCP 工作目录提示,以及 `McpServersView` 里 `ReconcileAsync` 的列表 —— 只传手工配置的会把扩展包的连接当成已删除关掉。
+- **3c 界面**:「配置工具」的「扩展包」组(在技能组之后):从文件夹 / .zip 安装 → 确认框列出技能、命令与每台 MCP 的原样启动信息(`ConfirmOverlay` 说明区改为最高 360 可滚动)→「安装并启用」;每包启停、卸载(确认)、指纹对不上时「查看并确认」。变动后经 `ToolPickerView` 新增的 `mcpChanged` 回调让面板 `ReconcileAsync`,撤下的连接立即关掉。界面文案 24 个键,五种语言齐。
+- **与计划的出入**:无。暂不做的(钩子、依赖、签名、在线商店、自动更新)照计划保留。扩展包 MCP 的密钥不进清单,手册建议放进用户自己的 MCP 配置。
+- **验证**:新增 `ExtensionPackTests` 7 条(清单校验、映射与参数往返、指纹范围、文件夹与 zip 安装 / 升级 / 列出 / 卸载、zip-slip、生效与 MCP 确认、命令展开与技能优先级)、IM 端到端 2 组、界面 2 条(取消不装;确认框原样列命令 → 安装记下指纹 → 文件被改后提示并重新确认 → 停用撤下并通知对齐 MCP → 卸载;坏清单报原因不弹确认);分组数用例改为 4 组。AI 测试工程全量 **2451/2451** 通过;整个解决方案 `dotnet build VelaShell.slnx -warnaserror` 通过,`dotnet test VelaShell.slnx` 11,949 通过、0 失败、246 跳过(Docker、真实 SSH、Shell 集成等环境类用例早退)。
+- 第三步完成;ai-plan §12 的三步至此全部完成(1e 的换站循环拆分仍按 §12.10 推迟)。

@@ -14,6 +14,8 @@ using TextMateSharp.Grammars;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Agent.Web;
 using VelaShell.Plugin.Ai.Chat;
+using VelaShell.Plugin.Ai.Chat.Extensions;
+using VelaShell.Plugin.Ai.Chat.Skills;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
 using VelaShell.PluginSdk.Sessions;
@@ -1760,6 +1762,16 @@ public partial class ChatPanelView : UserControl
                 {
                     AddAttachmentFailureNote(unreadable);
                 }
+                // /技能名 请求:送给模型的那份附上该技能的指令;气泡与历史里仍是用户敲的那一行(见 SkillInvocation)
+                if (fromUser && SkillInvocation.TryExpand(modelText, InvocableSkills()) is { } invoked)
+                {
+                    modelText = invoked;
+                }
+                // 扩展包的 /命令 参数:按它的提示词模板展开(技能同名时上面先用了技能)
+                else if (fromUser && ExtensionRuntime.TryExpandCommand(modelText, ActivePacks()) is { } command)
+                {
+                    modelText = command;
+                }
                 // 本地附件并进这一轮:图片作为视觉输入,文本附件接在正文后面
                 userMessage = new ChatMessage(ChatRole.User, BuildUserContents(modelText));
             }
@@ -2138,20 +2150,7 @@ public partial class ChatPanelView : UserControl
                 SteeringChatClient steering = WrapForSteering(inner);
                 client = steering;
                 await BeginSteering(steering);
-                options = new ChatOptions
-                {
-                    MaxOutputTokens = current.MaxTokens,
-                    Temperature = current.Temperature,
-                    TopP = current.TopP,
-                    StopSequences = SplitLines(current.StopSequences)
-                };
-                // 思考档位:Default 表示"不带这个参数",交给服务端的默认行为。两家协议的翻译方式
-                // 不同(OpenAI 认 ChatOptions.Reasoning,Anthropic 只认请求体里的 thinking),
-                // 差异全收在 AiSettingsStore.ApplyReasoning 里。
-                AiSettingsStore.ApplyReasoning(options, current);
-                // 这一家端点不认的参数在这儿摘掉(私有后端常常只是标准协议的受限子集,
-                // 多发一个字段就整轮 400)。差异全在目录数据里,见 UnsupportedParameters。
-                AiSettingsStore.ApplyEndpointQuirks(options, current);
+                options = CreateRequestOptions(current);
                 // 检索优先走供应商自带的服务端工具:它跑在模型那一侧,不经本机,结果自带引用。
                 // 但只有 Anthropic Messages 与 OpenAI Responses 认这套,其余协议(Chat Completions、
                 // Ollama、多数中转站)解不出来,回落到插件自带的 web_search。用户可以在全局设置里关掉。
@@ -2159,6 +2158,12 @@ public partial class ChatPanelView : UserControl
                                     && _settings.WebSearch.Enabled
                                     && _settings.WebSearch.PreferProviderNative
                                     && NativeWebSearch.IsSupported(current.Protocol);
+                // 技能:每轮现扫(用户级目录 + 允许读取的已授权工作区),新放进去的技能下一轮就能用;
+                // 停用的、解析失败的不进来。技能目录只在本轮真的暴露了 load_skill 时进系统提示词。
+                // 扩展包:每轮现取生效的(已安装、启用),它们的技能并进技能目录,已确认的 MCP 服务器并进 MCP 来源
+                IReadOnlyList<ActivePack> turnPacks = ActivePacks();
+                IReadOnlyList<SkillInfo> turnSkills = mode == ChatMode.Chat ? []
+                    : SkillCatalog.Enabled(_settings.DisabledSkills, GetActiveLocalWorkspaces(), ExtensionRuntime.SkillDirectories(turnPacks));
                 // 纯对话模式不给任何工具;计划模式只给只读工具(见 AgentToolbox.CreateTools)
                 if (usesToolLoop)
                 {
@@ -2172,11 +2177,9 @@ public partial class ChatPanelView : UserControl
                         // 子任务的请求同样是已计费的真实用量,并进这段对话的收发计数(不算进上下文占用)
                         usage => Dispatcher.UIThread.Post(() => RecordUsage(usage, isContext: false)),
                         compactContext: _settings.CompactContext);
-                    subagents ??= new SubagentOrchestrator(
-                        (request, childToken) => subagentRunner!.RunAsync(subagents!, request, childToken), token);
-                    subagents.ModelChoices = SubagentRunner.ModelChoices(_settings, current.Provider.Id);
-                    subagents.ModelCatalog = SubagentRunner.ModelCatalog(_settings, current.Provider.Id, current.Id);
-                    subagents.DefaultModelId = current.Id;
+                    subagents ??= subagentRunner.CreateOrchestrator(token);
+                    // 换站后候选按新的这一站重排(编排器沿用,已在跑的子任务不受影响)
+                    SubagentRunner.UseCandidates(subagents, _settings, current.Provider.Id, current.Id);
                     if (bubble is not null && !_subagentSnapshotSources.ContainsKey(bubble))
                     {
                         SubagentOrchestrator observed = subagents;
@@ -2201,34 +2204,34 @@ public partial class ChatPanelView : UserControl
                     _toolbox.LocalMaxFileBytes = _settings.LocalMaxFileBytes;
                     _toolbox.LocalMaxDirectoryEntries = _settings.LocalMaxDirectoryEntries;
                     subagentTemplate ??= _toolbox.CreateSubagentToolbox();
-                    IList<AITool> tools = mode == ChatMode.Chat ? [] : _toolbox.CreateTools(mode, nativeSearch, runScope,
-                        // 本机命令只给用户本人发起的轮次:键入、排队、编辑重发、继续都算;外部注入(SendExternal)不算
-                        interactiveLocal: (userInitiated ?? fromUser) && CurrentToolSessionId() is null,
-                        workspaceGate: async action => await Dispatcher.UIThread.InvokeAsync(() => action(GetActiveLocalWorkspaces())));
-                    if (bubble?.ImageTools is { } imageTools)
-                        foreach (AITool tool in imageTools.CreateTools(_settings, current.Provider.Id)) tools.Add(tool);
-                    // 「你应该知道」:只写进这份对话自己的提示条,没有副作用,计划模式也给;对话模式不给任何工具。
-                    // 只在桌面面板有(提示条在这里),IM 与对外 MCP 不给。
-                    if (mode != ChatMode.Chat && !_toolbox.DisabledTools.Contains(ConversationNotes.ToolName))
-                        tools.Add(conv.Notes.CreateTool());
-                    // 计划模式下不接 MCP:那些工具的副作用由第三方服务器说了算,插件无从判断,
-                    // 而"计划"的承诺是这一步不动任何东西。
-                    if (mode == ChatMode.Agent && _settings.McpServers.Any(s => s.Enabled))
+                    // 本轮工具:内置 → 作图 → 「你应该知道」→ MCP,模式与停用规则在 TurnToolAssembly 里统一执行
+                    SubagentOrchestrator turnSubagents = subagents;
+                    var mcpSource = new McpToolSource(_mcp, ExtensionRuntime.McpServers(_settings, turnPacks), _mcpApproval, GetActiveLocalWorkspaces())
                     {
-                        SetStatus(_loc["McpConnecting"]);
-                        McpManager.ToolLease lease = await _mcp.AcquireToolsAsync(
-                            _settings.McpServers, _mcpApproval, token, GetActiveLocalWorkspaces());
-                        mcpLeases.Add(lease);
-                        List<AITool> mcpTools = lease.Tools;
-                        List<string> mcpErrors = lease.Errors;
-                        subagents.ReadOnlyMcpTools = McpManager.FilterReadOnlyTools(mcpTools);
-                        foreach (AITool tool in mcpTools)
-                        {
-                            tools.Add(tool);
-                        }
-                        SetStatus(mcpErrors.Count > 0
-                            ? $"{_loc["Error"]} (MCP): {string.Join("; ", mcpErrors)}"
-                            : "");
+                        Connecting = () => SetStatus(_loc["McpConnecting"]),
+                        Connected = errors => SetStatus(errors.Count > 0 ? $"{_loc["Error"]} (MCP): {string.Join("; ", errors)}" : ""),
+                        ReadOnlyTools = readOnly => turnSubagents.ReadOnlyMcpTools = readOnly
+                    };
+                    IList<AITool> tools;
+                    try
+                    {
+                        tools = await new TurnToolAssembly(mode, _toolbox.DisabledTools)
+                            .Add(m => m != ChatMode.Chat, () => _toolbox.CreateTools(mode, nativeSearch, runScope,
+                                // 本机命令只给用户本人发起的轮次:键入、排队、编辑重发、继续都算;外部注入(SendExternal)不算
+                                interactiveLocal: (userInitiated ?? fromUser) && CurrentToolSessionId() is null,
+                                workspaceGate: async action => await Dispatcher.UIThread.InvokeAsync(() => action(GetActiveLocalWorkspaces()))))
+                            // 作图:是否启用在开跑时已定(bubble.ImageTools 只在启用时有),对话模式也给
+                            .Add(_ => bubble?.ImageTools is not null, () => bubble!.ImageTools!.CreateTools(_settings, current.Provider.Id))
+                            // 「你应该知道」:只写进这份对话自己的提示条,没有副作用,计划模式也给;只在桌面面板有
+                            .Add(m => m != ChatMode.Chat, () => [conv.Notes.CreateTool()])
+                            .Add(new SkillToolSource(turnSkills))
+                            .Add(mcpSource)
+                            .BuildAsync(token);
+                    }
+                    finally
+                    {
+                        // 租约拿到就登记,装配中途出错也在轮次结束时释放
+                        if (mcpSource.Lease is { } lease) mcpLeases.Add(lease);
                     }
                     // MCP await 后先复验；更新后必须同时重建裸客户端与正式请求参数。
                     if (await RefreshBeforeSendAsync())
@@ -2239,15 +2242,7 @@ public partial class ChatPanelView : UserControl
                         steering = WrapForSteering(inner);
                         client = steering;
                         await BeginSteering(steering);
-                        options = new ChatOptions
-                        {
-                            MaxOutputTokens = current.MaxTokens,
-                            Temperature = current.Temperature,
-                            TopP = current.TopP,
-                            StopSequences = SplitLines(current.StopSequences)
-                        };
-                        AiSettingsStore.ApplyReasoning(options, current);
-                        AiSettingsStore.ApplyEndpointQuirks(options, current);
+                        options = CreateRequestOptions(current);
                     }
                     if (nativeSearch)
                     {
@@ -2296,15 +2291,7 @@ public partial class ChatPanelView : UserControl
                     steering = WrapForSteering(inner);
                     client = steering;
                     await BeginSteering(steering);
-                    options = new ChatOptions
-                    {
-                        MaxOutputTokens = current.MaxTokens,
-                        Temperature = current.Temperature,
-                        TopP = current.TopP,
-                        StopSequences = SplitLines(current.StopSequences)
-                    };
-                    AiSettingsStore.ApplyReasoning(options, current);
-                    AiSettingsStore.ApplyEndpointQuirks(options, current);
+                    options = CreateRequestOptions(current);
                 }
                 if (!AiSettingsStore.IsImageModel(current))
                 {
@@ -2315,15 +2302,15 @@ public partial class ChatPanelView : UserControl
                     }, token);
                 }
                 // 装配上下文:摘要 + 近几轮原文,按窗口裁剪并把相邻同角色的消息并起来(见 ContextBuilder)
-                RequestContext request = ContextBuilder.Build(
-                    BuildSystemPrompt(current, mode, nativeSearch)
-                    + (SubagentRunner.HasDelegation(options.Tools) ? SubagentRunner.DelegationGuidance : "")
-                    + (SubagentRunner.HasTeam(options.Tools) ? SubagentRunner.TeamGuidance : "")
-                    + (imageToolsEnabled
-                        ? "\nImage tools are available. For explicit image creation requests, use generate_image with a standalone prompt incorporating the relevant conversation details. " +
-                          "For changes to an existing image use edit_image with its exact conversation image ID. Do not claim success before the tool succeeds. " +
-                          "Never automatically retry failed image operations. Do not include unrelated terminal content or secrets in image prompts.\n" + ImagesFor(conv).Describe()
-                        : ""), History, current.MaxInputTokens, current.MaxTokens,
+                string systemPrompt = new SystemPromptBuilder()
+                    .Add(SystemPromptBuilder.Base, BuildSystemPrompt(mode, nativeSearch))
+                    .AddToolGuidance(options.Tools)
+                    .Add(SystemPromptBuilder.Images, imageToolsEnabled ? ImageGuidance + ImagesFor(conv).Describe() : null)
+                    .AddSkills(options.Tools, turnSkills)
+                    // 专用提示词按当前这一站取(故障转移换站后跟着换),不读界面选中的那家,免得把别家的专用提示词发出去
+                    .AddCustom(current.SystemPrompt, _settings.SystemPrompt)
+                    .Build();
+                RequestContext request = ContextBuilder.Build(systemPrompt, History, current.MaxInputTokens, current.MaxTokens,
                     ContextSummary, SummarizedThrough);
                 requestMessages = request.Messages;
                 DroppedFromContext = request.DroppedMessages;
@@ -3249,30 +3236,45 @@ public partial class ChatPanelView : UserControl
     }
 
     /// <summary>
-    /// 系统提示词:接入专用的优先,其次全局的,最后才是内置默认。
-    /// 内置那份会按对话模式追加不同的交代 —— 三种模式对模型的要求本来就不一样。
+    /// 按这一站的模型配置建请求参数:输出上限、温度、top-p、停止序列,再套上思考档位与端点怪癖。
+    /// 开跑、MCP 连接后复验到配置变化、对话模式复验到配置变化,三处都用它(ai-plan §12.2 的 1e)。
+    /// </summary>
+    private static ChatOptions CreateRequestOptions(ResolvedModel current)
+    {
+        var options = new ChatOptions
+        {
+            MaxOutputTokens = current.MaxTokens,
+            Temperature = current.Temperature,
+            TopP = current.TopP,
+            StopSequences = SplitLines(current.StopSequences)
+        };
+        // 思考档位:Default 表示"不带这个参数",交给服务端的默认行为。两家协议的翻译方式
+        // 不同(OpenAI 认 ChatOptions.Reasoning,Anthropic 只认请求体里的 thinking),
+        // 差异全收在 AiSettingsStore.ApplyReasoning 里。
+        AiSettingsStore.ApplyReasoning(options, current);
+        // 这一家端点不认的参数在这儿摘掉(私有后端常常只是标准协议的受限子集,
+        // 多发一个字段就整轮 400)。差异全在目录数据里,见 UnsupportedParameters。
+        AiSettingsStore.ApplyEndpointQuirks(options, current);
+        return options;
+    }
+
+    /// <summary>作图指引的固定部分(本轮启用了作图工具时追加,后面接上这段对话里图片的清单)。</summary>
+    internal const string ImageGuidance =
+        "\nImage tools are available. For explicit image creation requests, use generate_image with a standalone prompt incorporating the relevant conversation details. " +
+        "For changes to an existing image use edit_image with its exact conversation image ID. Do not claim success before the tool succeeds. " +
+        "Never automatically retry failed image operations. Do not include unrelated terminal content or secrets in image prompts.\n";
+
+    /// <summary>
+    /// 内置的基础系统提示词:身份与语气,并按对话模式追加不同的交代 —— 三种模式对模型的要求本来就不一样。
     /// </summary>
     /// <remarks>
-    /// 用户自定义的提示词<b>不追加模式说明</b>:他既然自己写了,就该完全由他说了算。
-    /// 模式的实际约束靠"给不给工具"来兜底(计划模式根本拿不到写工具),不依赖提示词自觉。
+    /// 用户自定义的提示词不在这里:它作为最后一段由 <see cref="SystemPromptBuilder.AddCustom" /> 追加,
+    /// 不再整段替换这份说明(ai-plan §12.2 的 1b)。
     /// </remarks>
-    /// <param name="current">
-    /// 按<b>当前这一站</b>取专用提示词,不看界面选中的那家:故障转移切到 B 时选择可能
-    /// 仍指着 A(或已被用户改去 C)—— 读 <c>ActiveProvider</c> 会把别家的专用提示词
-    /// 发给这一站,那是跨接入泄露。
-    /// </param>
-    /// <param name="mode">对话模式(纯对话 / 计划 / Agent),决定默认提示词的尾段。</param>
-    /// <param name="nativeWebSearch">本轮服务端检索可用时,默认提示词要点破"你连着网"。</param>
-    private string BuildSystemPrompt(ResolvedModel current, ChatMode mode, bool nativeWebSearch = false)
+    /// <param name="mode">对话模式(纯对话 / 计划 / Agent),决定提示词的尾段。</param>
+    /// <param name="nativeWebSearch">本轮服务端检索可用时,要点破"你连着网"。</param>
+    private string BuildSystemPrompt(ChatMode mode, bool nativeWebSearch = false)
     {
-        if (current is { SystemPrompt: { } own } && !string.IsNullOrWhiteSpace(own))
-        {
-            return own;
-        }
-        if (!string.IsNullOrWhiteSpace(_settings.SystemPrompt))
-        {
-            return _settings.SystemPrompt;
-        }
         string prompt =
             "You are the AI assistant embedded in VelaShell, an SSH terminal application. " +
             "Help the user with servers, shell commands, log analysis and DevOps questions. Be concise and practical. " +
@@ -3323,7 +3325,7 @@ public partial class ChatPanelView : UserControl
         List<string> dirs =
         [
             // 本地进程型的每台都有工作目录(没填就是 ~/.velashell),都告诉模型;HTTP 型的没有"本机目录"可言
-            .. _settings.McpServers
+            .. ExtensionRuntime.McpServers(_settings, ActivePacks()) // 含已确认的扩展包服务器
                         .Where(s => s.Enabled && s.Transport == McpTransportType.Stdio)
                         .Select(s => $"{DisplayName(s)}: {McpWorkspace.Resolve(s.WorkingDirectory)}")
         ];

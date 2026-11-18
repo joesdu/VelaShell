@@ -257,7 +257,7 @@ public sealed partial class ChatPanelViewUiTests
                 await view.SaveAsync();
 
                 byte[] bytes = await File.ReadAllBytesAsync(file);
-                CollectionAssert.AreEqual(Bom, bytes[..3], "原文件带 BOM,保存后照样带");
+                Assert.AreSequenceEqual(Bom, bytes[..3], "原文件带 BOM,保存后照样带");
                 Assert.AreEqual("int a = 2;\n", Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3));
                 Assert.IsFalse(view.IsDirty);
                 Assert.AreEqual("Saved.", view.StatusText);
@@ -273,7 +273,7 @@ public sealed partial class ChatPanelViewUiTests
                     new FileChange("write_local_file", "local:w", "plain.txt", FileChangeKind.Modified, "", "x\n"));
                 plainView.RightEditor!.Text = "y\n";
                 await plainView.SaveAsync();
-                CollectionAssert.AreEqual(Encoding.UTF8.GetBytes("y\n"), await File.ReadAllBytesAsync(plain));
+                Assert.AreSequenceEqual(Encoding.UTF8.GetBytes("y\n"), await File.ReadAllBytesAsync(plain));
             }
             finally { panel.Detach(); window.Close(); Directory.Delete(root, recursive: true); }
         });

@@ -3,6 +3,8 @@ using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Agent.Web;
 using VelaShell.Plugin.Ai.Chat;
+using VelaShell.Plugin.Ai.Chat.Extensions;
+using VelaShell.Plugin.Ai.Chat.Skills;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.Plugin.Ai.Ui;
 using VelaShell.PluginSdk;
@@ -372,6 +374,12 @@ public sealed class BridgeAgentRunner(
                                 && ai.WebSearch.Enabled
                                 && ai.WebSearch.PreferProviderNative
                                 && NativeWebSearch.IsSupported(model.Protocol);
+            // 技能:与桌面同一套(用户级目录 + 允许读取的已授权工作区,去掉停用的),每轮现扫
+            // 扩展包:与桌面同一套规则(生效的包带来技能、命令与已确认的 MCP 服务器)
+            IReadOnlyList<ActivePack> turnPacks = ExtensionRuntime.Active(ai, new ExtensionPackStore(context.DataDirectory));
+            IReadOnlyList<SkillInfo> turnSkills = mode == ChatMode.Chat ? []
+                : SkillCatalog.Enabled(ai.DisabledSkills, LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId),
+                    ExtensionRuntime.SkillDirectories(turnPacks));
             if (mode != ChatMode.Chat)
             {
                 if (mode == ChatMode.Agent)
@@ -385,38 +393,37 @@ public sealed class BridgeAgentRunner(
                             : await SubagentRunner.ResolveFromSettingsAsync(store, request.ModelId, model.Id, token).ConfigureAwait(false),
                         (target, credential) => store.CreateClient(target, credential, callerCountsRetries: true),
                         () => template, runScope, context.Host.Locale, compactContext: ai.CompactContext);
-                    SubagentOrchestrator created = null!;
-                    created = new SubagentOrchestrator(
-                        (request, token) => subagentRunner.RunAsync(created, request, token), cancellationToken)
-                    {
-                        ModelChoices = SubagentRunner.ModelChoices(ai, model.Provider.Id),
-                        ModelCatalog = SubagentRunner.ModelCatalog(ai, model.Provider.Id, model.Id),
-                        DefaultModelId = model.Id
-                    };
+                    SubagentOrchestrator created = subagentRunner.CreateOrchestrator(cancellationToken);
+                    SubagentRunner.UseCandidates(created, ai, model.Provider.Id, model.Id);
                     created.SnapshotsChanged += ReportSubagents;
                     subagents = created;
                     toolbox.Subagents = created;
                     // 模型委派完就停下时,由协调器等子任务跑完、把结果当通知送回去
                     coordinator.Subagents = created;
                 }
-                IList<AITool> tools = toolbox.CreateTools(mode, nativeSearch, runScope);
-                if (mode == ChatMode.Agent && ai.McpServers.Any(s => s.Enabled))
+                // 本轮工具:内置 → MCP;审批上下文每轮一份:mcp 是所有聊天共用的,别的聊天的轮次可能正同时在跑
+                SubagentOrchestrator? turnSubagents = subagents;
+                var mcpSource = new McpToolSource(mcp, ExtensionRuntime.McpServers(ai, turnPacks), new McpApproval(approve, approval),
+                    LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId))
                 {
-                    // 审批上下文每轮一份:mcp 是所有聊天共用的,别的聊天的轮次可能正同时在跑
-                    mcpLease = await mcp
-                        .AcquireToolsAsync(ai.McpServers, new McpApproval(approve, approval), cancellationToken,
-                            LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId)).ConfigureAwait(false);
-                    List<AITool> mcpTools = mcpLease.Tools;
-                    List<string> errors = mcpLease.Errors;
-                    subagents?.ReadOnlyMcpTools = McpManager.FilterReadOnlyTools(mcpTools);
-                    foreach (AITool tool in mcpTools)
+                    Connected = errors =>
                     {
-                        tools.Add(tool);
-                    }
-                    if (errors.Count > 0)
-                    {
-                        context.Log.Warn($"Bridge: MCP servers reported: {string.Join("; ", errors)}");
-                    }
+                        if (errors.Count > 0) context.Log.Warn($"Bridge: MCP servers reported: {string.Join("; ", errors)}");
+                    },
+                    ReadOnlyTools = readOnly => turnSubagents?.ReadOnlyMcpTools = readOnly
+                };
+                IList<AITool> tools;
+                try
+                {
+                    tools = await new TurnToolAssembly(mode, toolbox.DisabledTools)
+                        .Add(_ => true, () => toolbox.CreateTools(mode, nativeSearch, runScope))
+                        .Add(new SkillToolSource(turnSkills))
+                        .Add(mcpSource)
+                        .BuildAsync(cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    mcpLease = mcpSource.Lease; // 轮次结束时在 finally 里释放(装配中途出错也一样)
                 }
                 if (nativeSearch)
                 {
@@ -428,14 +435,33 @@ public sealed class BridgeAgentRunner(
                     .Build();
             }
 
-            conversation.History.Add(new ChatMessage(ChatRole.User, message.Text));
+            // /技能名 请求:送给模型的那份附上该技能的指令(对话模式也行,不靠工具);历史里留的仍是原话。
+            // IM 的内置命令(/use、/mode 等)在 ConversationRouter 里先处理,到不了这里;整体关了技能(停用 load_skill)时不展开。
+            string modelText = message.Text;
+            if (message.Text.StartsWith('/')
+                && !toolbox.DisabledTools.Contains(SkillToolSource.LoadToolName)
+                && SkillInvocation.TryExpand(message.Text, mode == ChatMode.Chat
+                    ? SkillCatalog.Enabled(ai.DisabledSkills, LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId),
+                        ExtensionRuntime.SkillDirectories(turnPacks))
+                    : turnSkills) is { } invoked)
+            {
+                modelText = invoked;
+            }
+            // 扩展包的 /命令 参数(技能同名时上面先用了技能)
+            else if (message.Text.StartsWith('/') && ExtensionRuntime.TryExpandCommand(message.Text, turnPacks) is { } command)
+            {
+                modelText = command;
+            }
+            conversation.History.Add(new ChatMessage(ChatRole.User, modelText));
             await PersistAsync(conversation, "user", message.Text, cancellationToken).ConfigureAwait(false);
 
-            RequestContext request = ContextBuilder.Build(
-                BuildSystemPrompt(ai, bridge, mode, message, session, nativeSearch)
-                + (SubagentRunner.HasDelegation(options.Tools) ? SubagentRunner.DelegationGuidance : "")
-                + (SubagentRunner.HasTeam(options.Tools) ? SubagentRunner.TeamGuidance : ""),
-                conversation.History, model.MaxInputTokens, model.MaxTokens);
+            string systemPrompt = new SystemPromptBuilder()
+                .Add(SystemPromptBuilder.Base, BuildSystemPrompt(mode, message, session, nativeSearch))
+                .AddToolGuidance(options.Tools)
+                .AddSkills(options.Tools, turnSkills)
+                .AddCustom(model.SystemPrompt, ai.SystemPrompt, bridge.ExtraSystemPrompt)
+                .Build();
+            RequestContext request = ContextBuilder.Build(systemPrompt, conversation.History, model.MaxInputTokens, model.MaxTokens);
             // 有的订阅型端点不收 system 角色(ChatGPT 的 Codex 后端会回
             // 400 {"detail":"System messages are not allowed"})。那时把系统提示词挪到
             // Responses 协议自己的 instructions 字段上 —— 内容一个字不少,只是换了个位置。
@@ -548,8 +574,7 @@ public sealed class BridgeAgentRunner(
     /// 桥接侧的系统提示词。在面板那套之上补三件 IM 特有的事:
     /// 回复要短、当前是谁在问、这个聊天绑的是哪台机器。
     /// </summary>
-    private string BuildSystemPrompt(AiSettings ai, BridgeSettings bridge, ChatMode mode,
-        InboundMessage message, SessionInfo? session, bool nativeWebSearch)
+    private string BuildSystemPrompt(ChatMode mode, InboundMessage message, SessionInfo? session, bool nativeWebSearch)
     {
         var prompt = new StringBuilder(
             "You are the VelaShell assistant, reachable from a team chat. " +
@@ -587,14 +612,7 @@ public sealed class BridgeAgentRunner(
                 "Produce a short ordered plan with the exact commands, the risk, and the rollback. ",
             _ => "You have no tools in this mode: answer from the conversation itself. "
         });
-        if (!string.IsNullOrWhiteSpace(ai.SystemPrompt))
-        {
-            prompt.Append("\n\nOperator instructions: ").Append(ai.SystemPrompt.Trim());
-        }
-        if (!string.IsNullOrWhiteSpace(bridge.ExtraSystemPrompt))
-        {
-            prompt.Append("\n\n").Append(bridge.ExtraSystemPrompt.Trim());
-        }
+        // 用户自定义的提示词(模型级 / 全局 / 机器人附加)不在这里:与桌面一样作为最后一段追加,见 SystemPromptBuilder.AddCustom
         return prompt.ToString();
     }
 

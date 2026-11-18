@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using VelaShell.Plugin.Ai.Agent;
+using VelaShell.Plugin.Ai.Chat.Extensions;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
 
@@ -387,7 +388,12 @@ public partial class McpServersView : UserControl
         try
         {
             await _persist();
-            if (_manager is not null) await _manager.ReconcileAsync(_settings.McpServers);
+            // 带上生效扩展包的服务器:只传手工配置的,扩展包的连接会被当成「已删除」关掉
+            if (_manager is not null)
+            {
+                IReadOnlyList<ActivePack> packs = ExtensionRuntime.Active(_settings, new ExtensionPackStore(_context.DataDirectory));
+                await _manager.ReconcileAsync(ExtensionRuntime.McpServers(_settings, packs));
+            }
             ServersChanged?.Invoke();
             RefreshRuntime();
         }

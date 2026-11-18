@@ -3879,3 +3879,66 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **测试**:`ConversationNotesTests` 五条(类别归一、去重与保留旧说明、截断与上限、关掉与重新出现、工具调用、从历史重建与坏参数);`ChatPanelViewUiTests.Notes` 两组:提示条显示 / 折叠 / 逐条与全部关掉 / 新建清空 / 不出工具卡,以及真实一轮里模型调 `note_for_user` 后条目出现在提示条上(Agent、计划模式给;对话模式与在「配置工具」里停用时不给)。
 - **验证**:插件 `-warnaserror` 构建通过;AI 测试工程全量 2415 项全部通过(含 §340 的修正)。界面未在真实窗口里人工看过;真实模型是否会恰当地调用这件工具未验证(取决于模型对工具说明的遵从)。
 - **文档**:`manual.md` / `manual.en.md` 新增「你应该知道」一段;插件 README「界面」节补一段;velashell-docs《自动化与 AI》中英同步。
+
+## 342. AI 插件重构 1a:系统提示词分段组合 (2026-11-18)
+
+- **来由**:ai-plan §12(Agent 宿主重构、Skills 与扩展包)的第一步第一小步。桌面与 IM 各自把委派 / 团队 / 作图指引逐段相加,新加一段要在每个入口各补一处;Skills 的技能目录需要一个统一注入点。
+- **改动**:新增 `Chat/SystemPromptBuilder`(命名分段、空段跳过、按本轮工具追加委派 / 团队指引);`ChatPanelView.SendAsync` 与 `BridgeAgentRunner.RunAsync` 改用它;作图指引文字收成 `ChatPanelView.ImageGuidance`。输出与改动前逐字相同,自定义提示词的替换 / 追加语义不变(留给 1b)。
+- **验证**:新增 `SystemPromptBuilderTests` 3 条;AI 测试工程全量 2418/2418 通过,未改动既有断言。
+- **文档**:只动 `ai-plan.md` §12.5 / §12.6;对外行为不变,手册与 velashell-docs 无需同步。
+
+## 343. AI 插件重构 1b:自定义提示词改为追加,桌面与 IM 一致 (2026-11-18)
+
+- **来由**:ai-plan §12.2 的 1b。桌面填了全局或模型级自定义提示词就整段替换内置的基础说明(身份、模式说明、「MCP 跑在本机」的提醒、原生检索提示一起丢掉;委派 / 团队 / 作图指引本来就追加在后面,不受影响);IM 则是追加。同一份设置两个入口效果不同,Skills 的技能目录也需要内置分段始终在。
+- **改动**:`SystemPromptBuilder.AddCustom`:模型级优先于全局,`Operator instructions:` 引出,IM 机器人附加提示词随后,整段排在最后。桌面 `BuildSystemPrompt` 去掉提前返回;IM 把自定义部分从基础段挪到最后,并开始使用模型级提示词(以前被忽略)。
+- **验证**:新增桌面端到端 2 条、IM 1 条、单元 1 条;AI 测试工程全量 2422/2422 通过。
+- **文档**:`manual.md` / `manual.en.md`「全局设置」段说明追加语义与升级注意;velashell-docs 无相关描述,无需同步。
+
+## 344. AI 插件重构 1c:一轮工具的装配收进 TurnToolAssembly (2026-11-18)
+
+- **来由**:ai-plan §12.2 的 1c。桌面与 IM 各自先 `CreateTools` 再补作图、笔记、MCP,模式判断与停用检查散在各处;技能与扩展包会再加两类来源。
+- **改动**:`Chat/TurnToolAssembly` + `ITurnToolSource` + `McpToolSource`;`ChatPanelView.SendAsync` 与 `BridgeAgentRunner.RunAsync` 改为登记来源后统一装配,顺序不变(桌面:内置 → 作图 → 笔记 → MCP;IM:内置 → MCP)。停用清单统一过滤(作图工具因此也受其约束,界面上无勾选项,看不出区别)。装配内部不切线程,桌面状态行回调仍在 UI 线程;租约在 `finally` 里登记。
+- **验证**:新增 `TurnToolAssemblyTests` 4 条;AI 测试工程全量 2426/2426 通过。
+- **文档**:只动 `ai-plan.md` §12.5 / §12.8;对外行为不变。
+
+## 345. AI 插件重构 1d:子 Agent 编排器工厂 (2026-11-18)
+
+- **来由**:ai-plan §12.2 的 1d。桌面、IM、对外 MCP 各自手写编排器的建立与候选配置。
+- **改动**:`SubagentRunner.CreateOrchestrator` 与 `SubagentRunner.UseCandidates`,三处入口改用;行为不变。
+- **验证**:新增 1 条;AI 测试工程全量 2427/2427 通过。
+- **文档**:只动 `ai-plan.md` §12.5 / §12.9。
+
+## 346. AI 插件重构 1e(部分):请求参数构造收成一处,换站循环拆分推迟 (2026-11-18)
+
+- **来由**:ai-plan §12.2 的 1e。`SendAsync` 里请求参数构造重复三遍。
+- **改动**:收成 `ChatPanelView.CreateRequestOptions`;`SendAsync` 约 1,165 → 1,131 行。换站循环的拆分推迟到 Skills 之后(理由见 ai-plan §12.10);发现 IM 不带模型的停止序列、桌面带,记为单独小修,未改。
+- **验证**:AI 测试工程全量 2427/2427 通过。
+- **文档**:只动 `ai-plan.md` §12.5 / §12.10。
+
+## 347. AI 插件:技能(Skills)扫描与交给模型 (2026-11-18)
+
+- **来由**:ai-plan §12.3(第二步 Skills)的 2a。
+- **改动**:`Chat/Skills/SkillCatalog`(扫描与解析)、`Chat/Skills/SkillToolSource`(`load_skill` / `read_skill_file` 与技能目录);`AiSettings.DisabledSkills`;`SystemPromptBuilder.AddSkills`;桌面与 IM 接入;两件工具进内置工具目录(`ToolKind.Skill`)。用户级目录定为 `~/.velashell/skills`(不随卸载删除)。
+- **验证**:新增单元 7 条、IM 端到端 3 组、桌面端到端 1 条;AI 测试工程全量 2438/2438 通过。
+- **文档**:手册中英「技能」一段;插件 README;velashell-docs §1.17 与威胁模型一条(中英)。
+
+## 348. AI 插件:斜杠命令显式调用技能 (2026-11-18)
+
+- **来由**:ai-plan §12.3 的 2b。
+- **改动**:`Chat/Skills/SkillInvocation`;桌面 `/` 候选、`/help` 与 `SendAsync` 展开;IM 在 `BridgeAgentRunner` 展开。内置命令优先;停用 `load_skill` 时不展开;对话模式也可用;历史存原话。斜杠命令「注册表」只共享技能这一层(理由见 ai-plan §12.12)。
+- **验证**:AI 测试工程全量 2439/2439 通过。
+- **文档**:手册中英「技能」段补斜杠调用;插件 README;velashell-docs §1.17 同步。
+
+## 349. AI 插件:「配置工具」里的技能组 (2026-11-18)
+
+- **来由**:ai-plan §12.3 的 2c,第二步 Skills 的最后一小步。
+- **改动**:`Ui/ToolPickerView.Skills.cs`:逐个启停(`AiSettings.DisabledSkills`)、来源、解析失败原因、打开技能目录、重新扫描;`ToolPickerView` 改为 partial。
+- **验证**:AI 测试工程全量 2440/2440 通过。
+- **文档**:手册中英「技能」段补技能组;插件 README;velashell-docs §1.17 同步。
+
+## 350. AI 插件:扩展包 (2026-11-18)
+
+- **来由**:ai-plan §12.4(第三步)。
+- **改动**:`Chat/Extensions/`(`ExtensionManifest`、`ExtensionPackStore`、`ExtensionRuntime`);`AiSettings.ExtensionPacks`;技能 `SkillSource.Extension`;桌面与 IM 接入扩展包的技能、命令与已确认的 MCP 服务器;`McpServersView` 对齐 MCP 时带上扩展包服务器;「配置工具」的扩展包组与安装确认;`ConfirmOverlay` 说明区可滚动。细节见 ai-plan §12.14。
+- **验证**:AI 测试工程全量 2451/2451 通过;整个解决方案构建(`-warnaserror`)通过,`dotnet test VelaShell.slnx` 11,949 通过、0 失败、246 跳过(环境类用例早退)。
+- **文档**:手册中英新增「扩展包」一段;插件 README;velashell-docs《自动化与 AI》§1.18 与《安全威胁模型》各加一条(中英)。

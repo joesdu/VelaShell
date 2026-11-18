@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
@@ -47,7 +48,7 @@ public sealed partial class AgentToolboxTests
             Approval = ApprovalMode.Bypass,
             ApprovalHandler = request => { seen = request; return Task.FromResult(false); }
         };
-        await using var run = toolbox.BeginRun("desktop", "turn");
+        await using CommandJobRunScope run = toolbox.BeginRun("desktop", "turn");
         const string name = "run_local_command";
         Assert.IsFalse(toolbox.CreateTools(ChatMode.Agent).Any(t => t.Name == name));
         Assert.IsFalse(toolbox.CreateTools(ChatMode.Plan, interactiveLocal: true).Any(t => t.Name == name));
@@ -95,7 +96,7 @@ public sealed partial class AgentToolboxTests
             StartLocalProcess = process =>
             {
                 starts++;
-                var start = process.StartInfo;
+                ProcessStartInfo start = process.StartInfo;
                 Assert.IsFalse(start.UseShellExecute);
                 Assert.AreEqual(OperatingSystem.IsWindows() ? "-NoLogo" : "-c", start.ArgumentList[0]);
                 if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
@@ -115,7 +116,7 @@ public sealed partial class AgentToolboxTests
                 return process.Start();
             }
         };
-        await using var run = toolbox.BeginRun("desktop", "turn");
+        await using CommandJobRunScope run = toolbox.BeginRun("desktop", "turn");
         AIFunction cli = toolbox.CreateTools(ChatMode.Agent, runScope: run, interactiveLocal: true,
             workspaceGate: action => Task.FromResult(action(LocalPathScope.ActiveWorkspaces(configured, selected))))
             .OfType<AIFunction>().Single(t => t.Name == "run_local_command");
@@ -123,7 +124,7 @@ public sealed partial class AgentToolboxTests
             ? "Write-Output \"local-test 测试\"; [Console]::Error.WriteLine('test-error'); cmd.exe /d /c exit 7"
             : "printf 'local-test 测试'; printf test-error >&2; exit 7";
         var args = new Dictionary<string, object?> { ["command"] = command };
-        var call = cli.InvokeAsync([with(args)], CancellationToken.None);
+        ValueTask<object?> call = cli.InvokeAsync([with(args)], CancellationToken.None);
         await pending.Task.WaitAsync(TimeSpan.FromSeconds(5));
         if (revoke) selected = null; // Toolbox still has the old turn snapshot.
         decision.SetResult(true);
@@ -132,7 +133,7 @@ public sealed partial class AgentToolboxTests
         StringAssert.Contains(result, revoke ? "no longer authorized" : "\"exitCode\":7");
         if (!revoke)
         {
-            using JsonDocument json = JsonDocument.Parse(result);
+            using var json = JsonDocument.Parse(result);
             JsonElement[] output = [.. json.RootElement.GetProperty("output").EnumerateArray()];
             StringAssert.Contains(string.Concat(output.Where(o => o.GetProperty("Stream").GetString() == "stdout")
                 .Select(o => o.GetProperty("Text").GetString())), "local-test 测试");
@@ -144,7 +145,7 @@ public sealed partial class AgentToolboxTests
     [TestMethod]
     public void LocalCommand_InterpreterDiscoveryHonorsPlatformOrderAndExecutableFiles()
     {
-        var root = Directory.CreateTempSubdirectory();
+        DirectoryInfo root = Directory.CreateTempSubdirectory();
         try
         {
             if (OperatingSystem.IsWindows())
@@ -207,7 +208,7 @@ public sealed partial class AgentToolboxTests
                 return process.Start();
             }
         };
-        await using var run = toolbox.BeginRun("desktop", "fallback");
+        await using CommandJobRunScope run = toolbox.BeginRun("desktop", "fallback");
         AIFunction cli = toolbox.CreateTools(ChatMode.Agent, runScope: run, interactiveLocal: true,
                 workspaceGate: action => Task.FromResult(action(toolbox.LocalWorkspaces)))
             .OfType<AIFunction>().Single(t => t.Name == "run_local_command");
@@ -245,8 +246,8 @@ public sealed partial class AgentToolboxTests
             AgentToolbox.Catalog.Where(t => t.ReadOnly && !t.Name.Contains("_local_", StringComparison.Ordinal))
                 // 这几个只在有编排器的 Agent 轮才有(团队看板同理)
                 .Where(t => t.Name is not ("subagent_status" or "subagent_wait" or "team_status"))
-                // 「你应该知道」由桌面面板另加,不在工具箱里
-                .Where(t => t.Name != "note_for_user")
+                // 「你应该知道」与技能工具由各自的来源另加,不在工具箱里
+                .Where(t => t.Name is not ("note_for_user" or "load_skill" or "read_skill_file"))
                 .Select(t => t.Name),
             names,
             SequenceOrder.InAnyOrder);

@@ -280,7 +280,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.Contains(team.Messages.Count.ToString(), TextsOf(Named<Border>(view, "TeamStatMessages")));
 
                 // 拓扑:主控 + 三名成员;主控指派每个人,调研交付给修改,审查指向被审查的人
-                CollectionAssert.AreEquivalent((string[])["lead", "system", "network", "checker"], view.GraphNodes.ToArray());
+                Assert.AreSequenceEqual((string[])["lead", "system", "network", "checker"], [.. view.GraphNodes], SequenceOrder.InAnyOrder);
                 Assert.AreEqual(3, view.GraphEdges.Count(e => e.Kind == "assign"));
                 Assert.AreEqual(("system", "network"), view.GraphEdges.Where(e => e.Kind == "handoff").Select(e => (e.From, e.To)).Single());
                 Assert.AreEqual(("checker", "network"), view.GraphEdges.Where(e => e.Kind == "review").Select(e => (e.From, e.To)).Single());
@@ -496,7 +496,7 @@ public sealed partial class ChatPanelViewUiTests
                 Button cancel = Named<Button>(view, "TeamTaskCancel");
                 Assert.IsNotEmpty(drawer.GetVisualDescendants().OfType<MarkdownRenderer>());
                 cancel.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-                CollectionAssert.AreEqual((string[])["sub-b"], cancelled, "取消的是这个任务当前的那次运行");
+                Assert.AreSequenceEqual((string[])["sub-b"], cancelled, "取消的是这个任务当前的那次运行");
                 view.CloseDrawer();
 
                 // 新到一条成员之间的消息:通信记录多一行,对应的连线上飞起光点
@@ -577,7 +577,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.Contains(t => t.Contains("retried ×2", StringComparison.Ordinal), texts, "已经自动重试过几次");
                 Border bar = Named<Border>(view, "TeamTaskRetryBar");
                 Border[] others = [.. bar.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("tcFilter"))];
-                CollectionAssert.AreEqual((string[])["system", "checker"], others.Select(b => (string)b.Tag!).ToArray(), "可以改派给另外两名成员");
+                Assert.AreSequenceEqual((string[])["system", "checker"], [.. others.Select(b => (string)b.Tag!)], "可以改派给另外两名成员");
 
                 Named<Button>(view, "TeamTaskRetry").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
                 Assert.AreEqual(("t2", null), retried.Single(), "重试:还是原来的成员");

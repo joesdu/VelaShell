@@ -377,7 +377,7 @@ public partial class LocalPathPickerDialog : Window
     {
         if (!_updatingChecks && Picker is not null
             && sender is CheckBox { DataContext: LocalFileEntry entry } checkBox
-            && TopLevel.GetTopLevel(checkBox) is not null)
+            && GetTopLevel(checkBox) is not null)
         {
             Picker.SetChecked(entry, checkBox.IsChecked == true);
         }
@@ -401,8 +401,8 @@ public partial class LocalPathPickerDialog : Window
 
     private void OnMappingsContextRequested(object? sender, ContextRequestedEventArgs e)
     {
-        var row = (e.Source as Visual)?.FindAncestorOfType<Button>(includeSelf: true);
-        UploadMappingItem? item = row?.DataContext as UploadMappingItem;
+        Button? row = (e.Source as Visual)?.FindAncestorOfType<Button>(includeSelf: true);
+        var item = row?.DataContext as UploadMappingItem;
         var action = new MenuItem
         {
             Header = Strings.Get(item is null ? "Sftp_UploadMappingAdd" : "Sftp_UploadMappingDelete"),
@@ -416,7 +416,7 @@ public partial class LocalPathPickerDialog : Window
         else
         {
             action.Classes.Add("danger");
-            action.Bind(MenuItem.ForegroundProperty, this.GetResourceObservable("VelaError"));
+            action.Bind(ForegroundProperty, this.GetResourceObservable("VelaError"));
             action.Click += (_, _) => FireAndForget.Run(() => Picker.DeleteMappingAsync(item));
         }
         var menu = new ContextMenu { ItemsSource = new[] { action } };

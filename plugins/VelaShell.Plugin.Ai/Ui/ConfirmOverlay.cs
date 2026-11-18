@@ -123,7 +123,12 @@ public sealed class ConfirmOverlay : Panel
             CornerRadius = new CornerRadius(8),
             Child = new StackPanel
             {
-                Children = { headerBar, new Border { Padding = new Thickness(20, 16), Child = _message }, buttonBar }
+                Children = { headerBar, new Border
+                    {
+                        Padding = new Thickness(20, 16),
+                        // 说明可能很长(扩展包要列出每台 MCP 服务器的完整启动命令):超出就在框内滚动,按钮栏始终看得见
+                        Child = new ScrollViewer { MaxHeight = 360, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled, Content = _message }
+                    }, buttonBar }
             }
         };
         card[!Border.BackgroundProperty] = new DynamicResourceExtension("VelaBgSurface");

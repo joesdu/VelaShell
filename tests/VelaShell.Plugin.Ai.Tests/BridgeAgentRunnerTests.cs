@@ -126,6 +126,141 @@ public sealed class BridgeAgentRunnerTests
     /// 所以第二轮一定失败,但失败的原因得是服务商拒绝,不是"没模型")。
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// IM 与桌面同一套自定义提示词语义(ai-plan §12.2 的 1b):模型级的优先于全局,机器人附加提示词跟在后面,都排在 IM 内置说明之后。
+    /// </summary>
+    [TestMethod]
+    public async Task RunAsync_AppendsModelLevelThenBotPromptAfterTheBuiltInRules()
+    {
+        await using var endpoint = new SseStub(
+            "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+        using var context = new TestPluginContext();
+        var store = new AiSettingsStore(context);
+        await store.SaveAsync(new AiSettings
+        {
+            Providers =
+            [
+                new AiProvider
+                {
+                    Id = "p1",
+                    Name = "Local",
+                    BaseUrl = endpoint.BaseUrl,
+                    DefaultProtocol = ChatProtocol.OpenAiChatCompletions,
+                    Models = [new AiModelConfig { Id = "m1", Model = "probe", SystemPrompt = "MODEL-LEVEL STYLE" }]
+                }
+            ],
+            ActiveModelId = "m1",
+            SystemPrompt = "GLOBAL STYLE"
+        });
+
+        await Create(context).RunAsync(new BridgeConversation("ch1", "chat-1"),
+            new BridgeSettings { Mode = ChatMode.Chat, ExtraSystemPrompt = "BOT EXTRA" },
+            Message(), Deny, English, null, null, CancellationToken.None);
+
+        string body = endpoint.Requests.Single();
+        int builtIn = body.IndexOf("reachable from a team chat", StringComparison.Ordinal);
+        int custom = body.IndexOf("Operator instructions: MODEL-LEVEL STYLE", StringComparison.Ordinal);
+        int extra = body.IndexOf("BOT EXTRA", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, builtIn);
+        Assert.IsGreaterThan(builtIn, custom, "模型级提示词以前在 IM 里被忽略,现在与桌面一样生效");
+        Assert.IsGreaterThan(custom, extra, "机器人附加提示词跟在后面");
+        Assert.DoesNotContain("GLOBAL STYLE", body, "模型级的优先,全局的不叠加");
+    }
+
+    /// <summary>
+    /// 技能在 IM 里与桌面一样可用(ai-plan §12.3):工作区里的技能进技能目录、摆出 load_skill;停用了或对话模式下都没有。
+    /// </summary>
+    [TestMethod]
+    [DataRow(ChatMode.Agent, false, true)]
+    [DataRow(ChatMode.Agent, true, false)]
+    [DataRow(ChatMode.Chat, false, false)]
+    public async Task RunAsync_OffersWorkspaceSkills(ChatMode mode, bool disabled, bool offered)
+    {
+        string workspace = Path.Combine(Path.GetTempPath(), "im-skills-" + Guid.NewGuid().ToString("N"));
+        string skillDir = Path.Combine(workspace, ".velashell", "skills", "deploy-check");
+        Directory.CreateDirectory(skillDir);
+        await File.WriteAllTextAsync(Path.Combine(skillDir, "SKILL.md"), "---\nname: deploy-check\ndescription: Verify a deployment.\n---\nSteps.");
+        try
+        {
+            await using var endpoint = new SseStub(
+                "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+            using var context = new TestPluginContext();
+            var store = new AiSettingsStore(context);
+            var local = new LocalWorkspace { Name = "repo", RootPath = workspace };
+            await store.SaveAsync(new AiSettings
+            {
+                Providers =
+                [
+                    new AiProvider
+                    {
+                        Id = "p1", Name = "Local", BaseUrl = endpoint.BaseUrl, DefaultProtocol = ChatProtocol.OpenAiChatCompletions,
+                        Models = [new AiModelConfig { Id = "m1", Model = "probe" }]
+                    }
+                ],
+                ActiveModelId = "m1",
+                LocalWorkspaces = [local],
+                LocalDefaultWorkspaceId = local.Id,
+                DisabledSkills = disabled ? "deploy-check" : ""
+            });
+
+            await Create(context).RunAsync(new BridgeConversation("ch1", "chat-1"), new BridgeSettings { Mode = mode },
+                Message(), Deny, English, null, null, CancellationToken.None);
+
+            string body = endpoint.Requests.Single();
+            Assert.AreEqual(offered, body.Contains("- deploy-check (workspace): Verify a deployment.", StringComparison.Ordinal), "技能目录");
+            Assert.AreEqual(offered, body.Contains("\"load_skill\"", StringComparison.Ordinal), "load_skill 工具");
+
+            // /技能名 显式调用:送给模型的那份附上技能正文(对话模式也行);停用了这个技能就照原文发
+            await Create(context).RunAsync(new BridgeConversation("ch1", "chat-2"), new BridgeSettings { Mode = mode },
+                new InboundMessage("ch1", "chat-2", false, "u1", "Ann", "/deploy-check prod", "m2", true), Deny, English, null, null,
+                CancellationToken.None);
+            string invoked = endpoint.Requests[^1];
+            Assert.AreEqual(!disabled, invoked.Contains("explicitly invoked the skill", StringComparison.Ordinal));
+            Assert.AreEqual(!disabled, invoked.Contains("User request: prod", StringComparison.Ordinal));
+        }
+        finally
+        {
+            try { Directory.Delete(workspace, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    /// <summary>扩展包在 IM 里生效(ai-plan §12.4):启用时它的技能进技能目录、它的命令能用;停用即全部撤下。</summary>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task RunAsync_UsesSkillsAndCommandsFromEnabledExtensionPacks(bool enabled)
+    {
+        await using var endpoint = new SseStub(
+            "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+        using var context = new TestPluginContext();
+        string pack = Path.Combine(context.DataDirectory, "extensions", "acme-ops");
+        Directory.CreateDirectory(Path.Combine(pack, "skills", "incident"));
+        await File.WriteAllTextAsync(Path.Combine(pack, "velashell-extension.json"),
+            """{"id":"acme-ops","name":"Acme Ops","version":"1.0","commands":[{"name":"deploy","prompt":"Deploy {{args}} carefully."}]}""");
+        await File.WriteAllTextAsync(Path.Combine(pack, "skills", "incident", "SKILL.md"), "---\nname: incident\ndescription: Handle an incident.\n---\nPage the on-call.");
+        var store = new AiSettingsStore(context);
+        await store.SaveAsync(new AiSettings
+        {
+            Providers =
+            [
+                new AiProvider
+                {
+                    Id = "p1", Name = "Local", BaseUrl = endpoint.BaseUrl, DefaultProtocol = ChatProtocol.OpenAiChatCompletions,
+                    Models = [new AiModelConfig { Id = "m1", Model = "probe" }]
+                }
+            ],
+            ActiveModelId = "m1",
+            ExtensionPacks = [new ExtensionPackState { Id = "acme-ops", Enabled = enabled }]
+        });
+
+        await Create(context).RunAsync(new BridgeConversation("ch1", "chat-1"), new BridgeSettings { Mode = ChatMode.Agent },
+            new InboundMessage("ch1", "chat-1", false, "u1", "Ann", "/deploy api-gateway", "m1", true), Deny, English, null, null, CancellationToken.None);
+
+        string body = endpoint.Requests.Single();
+        Assert.AreEqual(enabled, body.Contains("- incident (extension pack): Handle an incident.", StringComparison.Ordinal), "扩展包的技能");
+        Assert.AreEqual(enabled, body.Contains("Deploy api-gateway carefully.", StringComparison.Ordinal), "扩展包的命令");
+    }
+
     [TestMethod]
     public async Task RunAsync_RereadsTheAiSettingsEveryTurn()
     {

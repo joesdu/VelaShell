@@ -85,8 +85,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.AreEqual("−3", TextOf(bar, "ChangedFilesRemoved"));
                 Press(bar.GetVisualDescendants().OfType<Grid>().First(g => g.Name == "ChangedFilesHeader"));
                 await PumpAsync(3);
-                CollectionAssert.AreEqual(new[] { "M", "D" },
-                    bar.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Name == "ChangedFileBadge").Select(t => t.Text).ToArray());
+                Assert.AreSequenceEqual(["M", "D"], bar.GetVisualDescendants().OfType<TextBlock>().Where(t => t.Name == "ChangedFileBadge").Select(t => t.Text).ToArray());
 
                 ChatPanelView.ToolCard card = bubble.ToolCardsForTest().Single();
                 Assert.IsNotNull(card.FileChange, "改动挂到发起它的那张卡上");

@@ -113,7 +113,7 @@ internal sealed class UploadMappingEditor : IDisposable
             if (path.StartsWith('~'))
             {
                 path = await service.ExpandPathAsync(sessionId, path, ct)
-                    ?? throw new IOException(VelaShell.Core.Resources.Strings.Get("Sftp_UploadMappingInvalidRemote"));
+                    ?? throw new IOException(Core.Resources.Strings.Get("Sftp_UploadMappingInvalidRemote"));
             }
             if (!path.StartsWith('/'))
             {
@@ -128,7 +128,7 @@ internal sealed class UploadMappingEditor : IDisposable
         Local = new(async (input, current, ct) =>
         {
             string path = LocalFilePaneViewModel.ResolvePathInput(input, current)
-                ?? throw new IOException(VelaShell.Core.Resources.Strings.Get("Sftp_UploadMappingInvalidLocal"));
+                ?? throw new IOException(Core.Resources.Strings.Get("Sftp_UploadMappingInvalidLocal"));
             path = RemoteDirectoryBookmark.NormalizeLocalPath(path);
             IReadOnlyList<LocalFileSystemEntry> entries = await local.EnumerateAsync(path, ct);
             return new(path, [.. entries.Where(item => item.IsDirectory)

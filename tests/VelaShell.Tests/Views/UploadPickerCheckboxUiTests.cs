@@ -135,7 +135,7 @@ public sealed class UploadPickerCheckboxUiTests
             Click(dialog, mapping);
             await WaitForAsync(dialog, () => dialog.Picker.IsRestoring);
             Assert.AreEqual(local, browser.CurrentPath);
-            Assert.AreSequenceEqual([file], dialog.Picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
+            Assert.AreSequenceEqual([file], [.. dialog.Picker.CheckedEntries.Select(entry => entry.FullPath)]);
             StringAssert.Contains(dialog.UploadTargetText.Text!, "/web");
             await dialog.Picker.FlushAsync();
             Assert.AreEqual("/web", dialog.Picker.Mappings[0].RemotePath);
@@ -301,7 +301,7 @@ public sealed class UploadPickerCheckboxUiTests
                 y + container.Bounds.Height, "恢复项的底边应在视口内。");
             Assert.IsGreaterThan(dialog.MappingScroll.Viewport.Height, dialog.MappingScroll.Extent.Height);
             if (selectedIndex == 0) { Assert.AreEqual(0d, dialog.MappingScroll.Offset.Y, 1d); }
-            Assert.AreSequenceEqual(ids.ToArray(), dialog.Picker.Mappings.Select(row => row.Mapping.Id).ToArray());
+            Assert.AreSequenceEqual([.. ids], [.. dialog.Picker.Mappings.Select(row => row.Mapping.Id)]);
             dialog.MappingScroll.Offset = new(0, selectedIndex > 0 ? 0
                 : dialog.MappingScroll.Extent.Height - dialog.MappingScroll.Viewport.Height);
             Pump(dialog);
@@ -353,7 +353,7 @@ public sealed class UploadPickerCheckboxUiTests
         await store.AddMappingAsync(context, root, [Path.Combine(root, "file-000.txt")]);
         await store.AddMappingAsync(context with { RemotePath = "/web" }, local, [file]);
         ISftpService service = Substitute.For<ISftpService>();
-        Guid session = Guid.NewGuid();
+        var session = Guid.NewGuid();
         service.ListDirectoryAsync(session, Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(call =>
             Task.FromResult(new List<RemoteFileInfo> { new()
             {
@@ -383,7 +383,7 @@ public sealed class UploadPickerCheckboxUiTests
             Assert.AreEqual(local, browser.CurrentPath);
             Assert.AreSame(web, dialog.MappingList.GetVisualDescendants().OfType<Button>()
                 .Single(button => button.DataContext is UploadMappingItem { RemotePath: "/web" }));
-            Assert.AreSequenceEqual(new[] { "/app", "/web" }, dialog.Picker.Mappings.Select(row => row.RemotePath).ToArray());
+            Assert.AreSequenceEqual(["/app", "/web"], [.. dialog.Picker.Mappings.Select(row => row.RemotePath)]);
             Click(dialog, web);
             await WaitForAsync(dialog, () => dialog.Picker.IsRestoring);
             await service.Received(2).ListDirectoryAsync(session, "/web", Arg.Any<CancellationToken>());
@@ -397,7 +397,7 @@ public sealed class UploadPickerCheckboxUiTests
             Assert.AreEqual("/web", remote.CurrentPath);
             Assert.AreEqual(local, browser.CurrentPath);
             Assert.AreEqual("/web", dialog.Picker.TargetRemotePath);
-            Assert.AreSequenceEqual([file], dialog.Picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
+            Assert.AreSequenceEqual([file], [.. dialog.Picker.CheckedEntries.Select(entry => entry.FullPath)]);
             Assert.IsTrue(dialog.Picker.Mappings[1].IsCurrent);
             Assert.IsTrue(dialog.PickerErrorBanner.IsVisible);
 
@@ -495,8 +495,8 @@ public sealed class UploadPickerCheckboxUiTests
             Pump(dialog);
             Assert.AreEqual("/new", dialog.Picker.TargetRemotePath);
             Assert.AreEqual(root, browser.CurrentPath);
-            Assert.AreSequenceEqual([checkedFile], dialog.Picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
-            Assert.AreSequenceEqual(new[] { "/app", "/slow", "/new" }, dialog.Picker.Mappings.Select(row => row.RemotePath).ToArray());
+            Assert.AreSequenceEqual([checkedFile], [.. dialog.Picker.CheckedEntries.Select(entry => entry.FullPath)]);
+            Assert.AreSequenceEqual(["/app", "/slow", "/new"], [.. dialog.Picker.Mappings.Select(row => row.RemotePath)]);
             Assert.IsTrue(dialog.Picker.Mappings[2].IsCurrent);
         }
         finally

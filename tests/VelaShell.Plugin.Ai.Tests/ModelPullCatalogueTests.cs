@@ -165,7 +165,7 @@ public sealed class ModelPullCatalogueTests
         var olderSnapshot = new ModelsDevCatalog(context) { BundledSource = Bundle(DateTimeOffset.UtcNow.AddDays(-10)) };
 
         IReadOnlyList<ModelSpec> fromNewer = newerSnapshot.ForProvider("openai");
-        CollectionAssert.AreEqual(new[] { "gpt-4o", "gpt-5" }, fromNewer.Select(s => s.Id).ToArray(), "老型号从缓存来,不因快照裁剪而丢");
+        Assert.AreSequenceEqual(["gpt-4o", "gpt-5"], [.. fromNewer.Select(s => s.Id)], "老型号从缓存来,不因快照裁剪而丢");
         Assert.AreEqual(400000, fromNewer.Single(s => s.Id == "gpt-5").ContextTokens, "快照更新:同一型号以快照为准");
         Assert.AreEqual(272000, olderSnapshot.ForProvider("openai").Single(s => s.Id == "gpt-5").ContextTokens, "缓存更新:同一型号以缓存为准");
     }

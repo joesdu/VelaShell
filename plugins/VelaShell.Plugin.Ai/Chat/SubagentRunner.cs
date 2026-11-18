@@ -416,6 +416,37 @@ internal sealed class SubagentRunner(
             }));
 
     /// <summary>
+    /// 建一个由本执行器跑子任务的编排器(桌面、IM、对外 MCP 共用,ai-plan §12.2 的 1d)。
+    /// </summary>
+    /// <remarks>编排器与执行器互相引用:执行器跑子任务时要拿编排器记快照。以前三个入口各写一遍「先声明 null! 再在闭包里引用自己」。</remarks>
+    /// <param name="cancellationToken">父轮(或连接)的取消:取消时收尾全部子任务。</param>
+    /// <param name="deliversResults">结果会不会在终态后自动送回发起方;对外 MCP 唤不醒外部模型,为 false。</param>
+    internal SubagentOrchestrator CreateOrchestrator(CancellationToken cancellationToken, bool deliversResults = true)
+    {
+        SubagentOrchestrator created = null!;
+        created = new SubagentOrchestrator((request, token) => RunAsync(created, request, token), cancellationToken)
+        {
+            DeliversResults = deliversResults
+        };
+        return created;
+    }
+
+    /// <summary>
+    /// 给编排器配上可选模型:候选清单(<see cref="ModelChoices" />)、交给主模型的事实(<see cref="ModelCatalog" />)
+    /// 与没指定时用哪个。三项必须一起换(桌面换站后重配),分开赋值容易漏一项。
+    /// </summary>
+    /// <param name="orchestrator">编排器。</param>
+    /// <param name="settings">AI 设置。</param>
+    /// <param name="providerId">主控所在的供应商实例:它的模型排在最前。</param>
+    /// <param name="defaultModelId">没指定模型时用哪个(通常是父模型),在清单里标为 <c>parent</c>。</param>
+    internal static void UseCandidates(SubagentOrchestrator orchestrator, AiSettings settings, string providerId, string? defaultModelId)
+    {
+        orchestrator.ModelChoices = ModelChoices(settings, providerId);
+        orchestrator.ModelCatalog = ModelCatalog(settings, providerId, defaultModelId);
+        orchestrator.DefaultModelId = defaultModelId;
+    }
+
+    /// <summary>
     /// 可供委派选择的聊天模型:配置标识 → 显示名,不含凭据或端点。
     /// 范围是用户配置的<b>所有</b>供应商实例(不含图片模型),<paramref name="providerId" /> 那一家排在最前 ——
     /// 这个顺序同时是模型用不了时的替补顺序(见 <c>RunWithModelFallbackAsync</c>),先在主控那一家里找。

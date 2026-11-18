@@ -46,7 +46,7 @@ public sealed class SubagentRunnerTests
         await store.SaveAsync(settings);
         Dictionary<string, string> choices = SubagentRunner.ModelChoices(settings, parent.Provider.Id);
         // 所有供应商的聊天模型都可选,主控那一家排在最前(也是替补顺序);图片模型不在内
-        Assert.AreSequenceEqual(new[] { parent.Id, child.Id, first.Id }, [.. choices.Keys]);
+        Assert.AreSequenceEqual([parent.Id, child.Id, first.Id], [.. choices.Keys]);
         (ResolvedModel selected, _) = await SubagentRunner.ResolveFromSettingsAsync(store, child.Id, parent.Id, CancellationToken.None);
         Assert.AreEqual(child.Id, selected.Id);
         (ResolvedModel foreign, _) = await SubagentRunner.ResolveFromSettingsAsync(store, first.Id, parent.Id, CancellationToken.None);
@@ -55,6 +55,40 @@ public sealed class SubagentRunnerTests
             store, image.Id, parent.Id, CancellationToken.None));
         await Assert.ThrowsAsync<InvalidOperationException>(() => SubagentRunner.ResolveFromSettingsAsync(
             store, "deleted", parent.Id, CancellationToken.None));
+    }
+
+    /// <summary>编排器工厂(ai-plan §12.2 的 1d):子任务由这个执行器跑、结果是否自动送回可配,候选三项一起配上。</summary>
+    [TestMethod]
+    public async Task CreateOrchestrator_RunsOnThisRunner_AndUseCandidatesSetsAllThree()
+    {
+        using var context = new TestPluginContext();
+        ResolvedModel first = Model();
+        ResolvedModel parent = Model();
+        var settings = new AiSettings { Providers = [first.Provider, parent.Provider] };
+        var client = new Scripted([Text("factory report"), End(ChatFinishReason.Stop)]);
+        var toolbox = new AgentToolbox(context);
+        CommandJobRunScope run = toolbox.BeginRun("test", "turn");
+        AgentToolbox template = toolbox.CreateSubagentToolbox();
+        var runner = new SubagentRunner(
+            (request, _) => Task.FromResult((settings.FindModel(request.ModelId!)!, default(ProviderCredential))),
+            (_, _) => client, () => template, run, "en");
+        SubagentOrchestrator orchestrator = runner.CreateOrchestrator(CancellationToken.None, deliversResults: false);
+        await using (toolbox)
+        await using (run)
+        await using (template)
+        await using (orchestrator)
+        {
+            Assert.IsFalse(orchestrator.DeliversResults);
+            SubagentRunner.UseCandidates(orchestrator, settings, parent.Provider.Id, parent.Id);
+            Assert.AreEqual(parent.Id, orchestrator.DefaultModelId);
+            Assert.AreSequenceEqual([parent.Id, first.Id], [.. orchestrator.ModelChoices.Keys], "主控那一家在前");
+            StringAssert.Contains(orchestrator.ModelCatalog, "\"parent\":true");
+
+            orchestrator.Start("task", "r");
+            using var result = JsonDocument.Parse(await orchestrator.WaitAsync(orchestrator.Snapshots()[0].SubagentId, 30, CancellationToken.None));
+            Assert.AreEqual("factory report", result.RootElement.GetProperty("output").GetString(), "子任务由这个执行器跑");
+            Assert.AreEqual(parent.Id, result.RootElement.GetProperty("modelId").GetString());
+        }
     }
 
     [TestMethod]

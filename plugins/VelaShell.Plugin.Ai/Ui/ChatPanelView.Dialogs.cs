@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using VelaShell.Plugin.Ai.Chat.Extensions;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk.Ui;
 
@@ -183,7 +184,9 @@ public partial class ChatPanelView
         _ = OpenAsync(
             _loc["ConfigureTools"], 1100, 800, [],
             () => picker = new ToolPickerView(_context, _settings, _loc, PersistSettingsAsync,
-                serverId => OpenMcpDialog(picker!, serverId)),
+                serverId => OpenMcpDialog(picker!, serverId),
+                // 扩展包启停 / 卸载 / 重新确认后对齐 MCP 连接:撤下的那些立即关掉,不等它们自己闲置
+                () => _mcp.ReconcileAsync(ExtensionRuntime.McpServers(_settings, ActivePacks()))),
             panel => _toolsPanel = panel,
             () =>
             {

@@ -453,6 +453,22 @@ public sealed class ResolvedModel
         => level is null ? this : new ResolvedModel(Provider, Config) { ReasoningOverride = level };
 }
 
+/// <summary>一个已安装扩展包的状态(见 ai-plan §12.4)。</summary>
+public sealed class ExtensionPackState
+{
+    /// <summary>扩展包 id(安装目录名)。</summary>
+    public string Id { get; set; } = "";
+
+    /// <summary>是否启用:停用时它的技能、命令与 MCP 服务器全部撤下。</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// 用户确认过的 MCP 启动信息指纹;与清单当前的指纹不一致(升级或文件被改)时,这个扩展包的 MCP 服务器不启动,直到重新确认。
+    /// 不带 MCP 的扩展包为 null。
+    /// </summary>
+    public string? ApprovedMcpFingerprint { get; set; }
+}
+
 /// <summary>插件持久化设置(经 Storage 存 JSON)。</summary>
 public sealed class AiSettings
 {
@@ -478,6 +494,12 @@ public sealed class AiSettings
 
     /// <summary>不想暴露给模型的内置工具名,每行一条(见"配置工具"窗口)。</summary>
     public string DisabledBuiltinTools { get; set; } = "";
+
+    /// <summary>停用的技能名,每行一条(见"配置工具"窗口的技能组);停用的技能不进技能目录,也不能被调用。</summary>
+    public string DisabledSkills { get; set; } = "";
+
+    /// <summary>已安装扩展包的状态(启用与否、用户确认过的 MCP 指纹);文件本身在插件数据目录的 <c>extensions/</c> 下。</summary>
+    public List<ExtensionPackState> ExtensionPacks { get; set; } = [];
 
     /// <summary>旧版的 Agent 开关。仅用于迁移 —— 读到 true 就折算成 <see cref="ChatMode.Agent" />。</summary>
     /// <remarks>不要在新代码里用它;<see cref="Migrate" /> 跑完之后它就没有意义了。</remarks>

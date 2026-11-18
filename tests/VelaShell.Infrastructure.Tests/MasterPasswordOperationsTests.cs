@@ -462,8 +462,8 @@ public sealed class MasterPasswordOperationsTests
         Assert.AreEqual(MasterPasswordChangeStatus.Done, (await service.ForgetAsync()).Status);
 
         Assert.AreSequenceEqual(
-            new[] { AuditActions.MasterPasswordEnabled, AuditActions.MasterPasswordChanged, AuditActions.MasterPasswordDisabled,
-                AuditActions.MasterPasswordEnabled, AuditActions.MasterPasswordReset }, [.. entries.Select(static e => e.Action)]);
+            [ AuditActions.MasterPasswordEnabled, AuditActions.MasterPasswordChanged, AuditActions.MasterPasswordDisabled,
+                AuditActions.MasterPasswordEnabled, AuditActions.MasterPasswordReset ], [.. entries.Select(static e => e.Action)]);
         Assert.IsTrue(entries.All(static e => e.Category == AuditCategories.Settings));
         Assert.IsTrue(entries.All(static e => !e.Detail.Contains("horse", StringComparison.Ordinal) && !e.Detail.Contains("passphrase", StringComparison.Ordinal)),
             "只记动作,不记任何口令材料");
