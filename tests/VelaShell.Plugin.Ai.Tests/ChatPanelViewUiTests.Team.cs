@@ -1,3 +1,4 @@
+using Avalonia.LogicalTree;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.VisualTree;
@@ -314,8 +315,14 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.Contains("Only recorded while the team is running", TextsOf(tokens), "历史里翻出来的团队没有速率序列,不编造");
 
                 // 通信记录:最新的在上;按成员 / 关键字筛
+                // 右栏默认是「分工」页;通信记录在同一张卡的「通信」页
+                Assert.AreEqual("roster", view.RailPage);
+                Press(Named<Border>(view, "TeamRailFeedTab"));
+                await PumpAsync(3);
+                Assert.AreEqual("feed", view.RailPage);
                 Border feed = Named<Border>(view, "TeamFeedPanel");
-                Border[] FeedRows() => [.. feed.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("tcFeedRow"))];
+                // 通信页开窗时是隐藏的:页里 ScrollViewer 的内容在 headless 下要等下一次布局才进可视树,行是否存在按逻辑树数
+                Border[] FeedRows() => [.. feed.GetLogicalDescendants().OfType<Border>().Where(b => b.Classes.Contains("tcFeedRow"))];
                 Assert.HasCount(team.Messages.Count, FeedRows());
                 Assert.AreSame(team.Messages[^1], FeedRows()[0].Tag);
                 view.SetFeedParty("checker");
@@ -330,6 +337,22 @@ public sealed partial class ChatPanelViewUiTests
                 Named<ComboBox>(view, "TeamFeedKind").SelectedIndex = 2; // 交付
                 await PumpAsync(3);
                 Assert.HasCount(1, FeedRows());
+
+                // 「通信」与「分工」两页只显示一页;拓扑下面一行是最新的一条通信
+                Assert.IsTrue(feed.IsVisible);
+                Assert.IsFalse(Named<Border>(view, "TeamRosterPanel").IsVisible);
+                Assert.AreSame(team.Messages[^1], view.TickerMessage);
+                Press(Named<Border>(view, "TeamRailRosterTab"));
+                await PumpAsync(3);
+                Assert.AreEqual("roster", view.RailPage);
+                Assert.IsFalse(feed.IsVisible);
+                Assert.IsTrue(Named<Border>(view, "TeamRosterPanel").IsVisible);
+
+                // 右栏与下面的 Token 卡左右对齐;并排时右栏与拓扑等高
+                Border rail = Named<Border>(view, "TeamRailPanel"), graphPanel = Named<Border>(view, "TeamGraphPanel");
+                Assert.AreEqual(tokens.Bounds.X, rail.Bounds.X, 0.5, "右栏与 Token 卡左缘对齐");
+                Assert.AreEqual(tokens.Bounds.Width, rail.Bounds.Width, 0.5, "右栏与 Token 卡同宽");
+                Assert.AreEqual(graphPanel.Bounds.Height, rail.Bounds.Height, 0.5, "右栏与拓扑等高");
 
                 // 版式:宽屏并排,窄了叠放
                 Assert.IsTrue(view.IsWide);
@@ -442,7 +465,9 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsFalse(view.IsDrawerOpen);
 
                 // 通信记录里点一条:直接到对话
-                Border row = Named<Border>(view, "TeamFeedPanel").GetVisualDescendants().OfType<Border>()
+                view.ShowRail("feed"); // 通信记录在右栏的「通信」页
+                await PumpAsync(3);
+                Border row = Named<Border>(view, "TeamFeedPanel").GetLogicalDescendants().OfType<Border>()
                     .First(b => b.Classes.Contains("tcFeedRow") && b.Tag is TeamMessageInfo { Kind: "review" });
                 Press(row);
                 await PumpAsync(5);
@@ -500,12 +525,14 @@ public sealed partial class ChatPanelViewUiTests
                 view.CloseDrawer();
 
                 // 新到一条成员之间的消息:通信记录多一行,对应的连线上飞起光点
+                view.ShowRail("feed"); // 通信记录在右栏的「通信」页
+                await PumpAsync(3);
                 Border feed = Named<Border>(view, "TeamFeedPanel");
-                int rowsBefore = feed.GetVisualDescendants().OfType<Border>().Count(b => b.Classes.Contains("tcFeedRow"));
+                int rowsBefore = feed.GetLogicalDescendants().OfType<Border>().Count(b => b.Classes.Contains("tcFeedRow"));
                 var asked = new TeamMessageInfo(DateTimeOffset.Now, "network", "system", "peer", "which port does frps listen on?");
                 bubble.UpdateTeam(team with { Messages = [.. team.Messages, asked] }, runs);
                 await PumpAsync(3);
-                Border[] rowsAfter = [.. feed.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("tcFeedRow"))];
+                Border[] rowsAfter = [.. feed.GetLogicalDescendants().OfType<Border>().Where(b => b.Classes.Contains("tcFeedRow"))];
                 Assert.HasCount(rowsBefore + 1, rowsAfter);
                 Assert.AreSame(asked, rowsAfter[0].Tag, "最新的在最上面");
                 Assert.AreEqual(1, view.ActiveFlights, "沿 system ⇄ network 那条线飞一串光点");

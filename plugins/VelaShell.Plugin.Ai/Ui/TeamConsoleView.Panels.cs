@@ -9,7 +9,7 @@ using VelaShell.Plugin.Ai.Agent;
 namespace VelaShell.Plugin.Ai.Ui;
 
 /// <summary>
-/// 团队控制台的五块面板:统计、成员状态、任务进度与归属、Token 消耗、通信记录。
+/// 团队控制台的各块面板:统计、右栏(分工 = 成员状态 / 通信 = 通信记录)、任务进度与归属、Token 消耗。
 /// 每块都是「建一次、之后原地改」:团队在跑时每秒都有数字在变,整块重建会让悬停提示与滚动位置跟着丢。
 /// </summary>
 internal sealed partial class TeamConsoleView
@@ -107,6 +107,8 @@ internal sealed partial class TeamConsoleView
         {
             _stats.Children.Add(tile.Root);
         }
+        // 点「通信」那块统计,右栏翻到通信记录
+        Clickable(_statMessages.Root, () => ShowRail("feed"));
     }
 
     private void RefreshStats()
@@ -144,15 +146,127 @@ internal sealed partial class TeamConsoleView
     private readonly StackPanel _roster = new() { Spacing = 8 };
     private readonly Dictionary<string, RosterCard> _rosterCards = [with(StringComparer.Ordinal)];
 
-    private Border BuildRosterPanel()
+    // ═══════════════════════════ 右栏:分工 / 通信 ═══════════════════════════
+
+    /// <summary>右栏不跟拓扑并排(窄屏叠放)时最多多高,再多就在栏里滚。</summary>
+    private const double RailStackedHeight = 520;
+
+    private readonly ElasticHost _railBody = new() { MinElasticHeight = 320 };
+    private readonly TextBlock _railTitle = TeamUi.Text("", "VelaTextPrimary", 13, FontWeight.SemiBold);
+    private readonly TextBlock _railHint = TeamUi.Line("", "VelaTextSecondary", 12);
+    private readonly TextBlock _feedTabCount = TeamUi.Text("", "VelaTextTertiary", 11, mono: true);
+    private Border _rosterPage = null!, _feedPage = null!, _rosterTab = null!, _feedTab = null!;
+    private string _feedHint = "";
+
+    /// <summary>右栏此刻是哪一页:「roster」分工 /「feed」通信(测试用)。</summary>
+    internal string RailPage { get; private set; } = "roster";
+
+    /// <summary>
+    /// 右栏:一张卡片,头部右端的分段开关在「分工」(成员状态)与「通信」(通信记录)之间切换。
+    /// 并排时卡片与左边的拓扑等高,内容在卡片里滚;叠放时限高 <see cref="RailStackedHeight" />。
+    /// </summary>
+    private Border BuildRailPanel()
     {
-        var scroll = new ScrollViewer
+        _rosterPage = new Border
         {
-            MaxHeight = 560,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Content = _roster
+            Name = "TeamRosterPanel",
+            Child = new ScrollViewer { Name = "TeamRosterScroll", HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = _roster }
         };
-        return Panel(_loc["TeamRoster"], _loc["TeamRosterHint"], null, scroll, "TeamRosterPanel");
+        _feedPage = BuildFeedPage();
+        var pages = new Panel();
+        pages.Children.Add(_rosterPage);
+        pages.Children.Add(_feedPage);
+        _railBody.Child = pages;
+
+        _rosterTab = Tab(TeamUi.Text(_loc["TeamRailRoster"], "VelaTextPrimary", 12), "roster");
+        var feedLabel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
+        feedLabel.Children.Add(TeamUi.Text(_loc["TeamRailFeed"], "VelaTextPrimary", 12));
+        feedLabel.Children.Add(_feedTabCount);
+        _feedTab = Tab(feedLabel, "feed");
+        var tabs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
+        tabs.Children.Add(_rosterTab);
+        tabs.Children.Add(_feedTab);
+        Border switcher = new() { Name = "TeamRailSwitch", Classes = { "tcSwitch" }, Child = tabs, VerticalAlignment = VerticalAlignment.Center };
+
+        var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        heading.Children.Add(_railTitle);
+        heading.Children.Add(_railHint);
+        var head = new Grid { ColumnDefinitions = [with("*,Auto")], ColumnSpacing = 10, Margin = new Thickness(0, 0, 0, 10) };
+        head.Children.Add(heading);
+        head.Children.Add(switcher.At(1));
+
+        var root = new Grid { RowDefinitions = [with("Auto,*")] };
+        root.Children.Add(head);
+        root.Children.Add(_railBody.At(0, 1));
+        ShowRail("roster");
+        return new Border { Name = "TeamRailPanel", Classes = { "tcPanel" }, Child = root };
+
+        Border Tab(Control label, string page)
+            => Clickable(new Border { Name = page == "roster" ? "TeamRailRosterTab" : "TeamRailFeedTab", Classes = { "tcSwitchItem" }, Child = label },
+                () => ShowRail(page));
+    }
+
+    /// <summary>右栏切到「分工」(roster)或「通信」(feed)。</summary>
+    internal void ShowRail(string page)
+    {
+        RailPage = page == "feed" ? "feed" : "roster";
+        bool feed = RailPage == "feed";
+        _rosterPage.IsVisible = !feed;
+        _feedPage.IsVisible = feed;
+        _rosterTab.Classes.Set("on", !feed);
+        _feedTab.Classes.Set("on", feed);
+        _railTitle.Text = _loc[feed ? "TeamFeed" : "TeamRoster"];
+        _railHint.Text = feed ? _feedHint : _loc["TeamRosterHint"];
+    }
+
+    /// <summary>并排时右栏跟着左边的拓扑等高;叠放时自己限高。</summary>
+    private void FitRail(bool wide)
+    {
+        _railBody.Elastic = wide;
+        _railBody.MaxHeight = wide ? double.PositiveInfinity : RailStackedHeight;
+    }
+
+    /// <summary>
+    /// 高度由旁边决定的容器:量尺寸时只报一个下限(<see cref="MinElasticHeight" />,内容更矮就报内容的高度),
+    /// 排版时给多高就占多高,里头的滚动区按这个高度滚。这样右栏既不会把一行撑高,又能填满拓扑那么高。
+    /// </summary>
+    private sealed class ElasticHost : Decorator
+    {
+        private double _arranged = double.NaN;
+        private bool _elastic = true;
+
+        public double MinElasticHeight { get; init; } = 300;
+
+        public bool Elastic
+        {
+            get => _elastic;
+            set
+            {
+                if (_elastic == value) return;
+                _elastic = value;
+                _arranged = double.NaN;
+                InvalidateMeasure();
+            }
+        }
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            if (!_elastic || Child is not { } child) return base.MeasureOverride(availableSize);
+            // 按上一次实际排到的高度量,前后两遍的约束一致,不会来回失效
+            double height = double.IsNaN(_arranged) ? MinElasticHeight : _arranged;
+            child.Measure(new Size(availableSize.Width, Math.Min(height, availableSize.Height)));
+            return new Size(child.DesiredSize.Width, Math.Min(child.DesiredSize.Height, MinElasticHeight));
+        }
+
+        protected override Size ArrangeOverride(Size finalSize)
+        {
+            if (_elastic && Child is { } child && !finalSize.Height.Equals(_arranged))
+            {
+                _arranged = finalSize.Height;
+                child.Measure(finalSize);
+            }
+            return base.ArrangeOverride(finalSize);
+        }
     }
 
     /// <summary>
@@ -629,7 +743,7 @@ internal sealed partial class TeamConsoleView
         _ratePeak.Text = sampled ? _loc.F("TeamRatePeak", ChatFormatting.Compact((long)series.Max())) : "";
     }
 
-    // ═══════════════════════════ 通信记录 ═══════════════════════════
+    // ═══════════════════════════ 通信记录(右栏的「通信」页) ═══════════════════════════
 
     /// <summary>通信记录最多画多少行(最新的在上)。</summary>
     internal const int MaxFeedRows = 120;
@@ -637,17 +751,24 @@ internal sealed partial class TeamConsoleView
     private static readonly string[] FeedKinds = ["assign", "handoff", "peer", "report", "review", "system"];
 
     private readonly StackPanel _feed = new();
-    private readonly WrapPanel _feedFilters = new() { Margin = new Thickness(0, 0, 0, 4) };
-    private readonly TextBlock _feedCount = TeamUi.Line("", "VelaTextSecondary", 12);
-    private readonly Dictionary<string, Border> _filterChips = [with(StringComparer.Ordinal)];
+    private readonly ComboBox _feedPartyBox = new() { Name = "TeamFeedParty", Classes = { "tcSelect" } };
+    private string[] _feedParties = [];
+    private bool _syncingParty;
     private string _feedKind = "all", _feedQuery = "", _feedKey = "";
     private TeamMessageInfo? _newest;
 
     /// <summary>通信记录此刻按哪名成员筛(「all」= 不筛;测试用)。</summary>
     internal string FeedParty { get; private set; } = "all";
 
-    private Border BuildFeedPanel()
+    /// <summary>「通信」页:一行筛选(成员 / 类型 / 关键字),下面是可滚动的消息列表。</summary>
+    private Border BuildFeedPage()
     {
+        _feedPartyBox.SelectionChanged += (_, _) =>
+        {
+            if (_syncingParty || _feedPartyBox.SelectedIndex < 0 || _feedPartyBox.SelectedIndex >= _feedParties.Length) return;
+            FeedParty = _feedParties[_feedPartyBox.SelectedIndex];
+            RefreshFeed(force: true);
+        };
         var kinds = new ComboBox { Name = "TeamFeedKind", Classes = { "tcSelect" } };
         kinds.Items.Add(_loc["TeamFeedAllKinds"]);
         foreach (string kind in FeedKinds) kinds.Items.Add(_loc[KindLook(kind).Key]);
@@ -666,67 +787,65 @@ internal sealed partial class TeamConsoleView
         var searchGrid = new Grid { ColumnDefinitions = [with("Auto,*")] };
         searchGrid.Children.Add(TeamUi.Icon("AiIcon.search", "VelaTextTertiary", 13));
         searchGrid.Children.Add(search.At(1));
-        var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        tools.Children.Add(kinds);
-        tools.Children.Add(new Border { Classes = { "tcSearch" }, Child = searchGrid });
-
-        var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        heading.Children.Add(TeamUi.Text(_loc["TeamFeed"], "VelaTextPrimary", 13, FontWeight.SemiBold));
-        heading.Children.Add(_feedCount);
-        var head = new Grid { ColumnDefinitions = [with("*,Auto")], ColumnSpacing = 10, Margin = new Thickness(0, 0, 0, 10) };
-        head.Children.Add(heading);
-        head.Children.Add(tools.At(1));
+        // 栏窄:两个下拉按内容收窄,搜索框占剩下的宽度
+        _feedPartyBox.MinWidth = kinds.MinWidth = 0;
+        _feedPartyBox.MaxWidth = kinds.MaxWidth = 140;
+        var tools = new Grid { ColumnDefinitions = [with("Auto,Auto,*")], ColumnSpacing = 6, Margin = new Thickness(0, 0, 0, 8) };
+        tools.Children.Add(_feedPartyBox);
+        tools.Children.Add(kinds.At(1));
+        tools.Children.Add(new Border { Classes = { "tcSearch" }, Width = double.NaN, Child = searchGrid }.At(2));
 
         Border list = new Border
         {
             BorderThickness = new Thickness(0, 1, 0, 0),
-            Margin = new Thickness(0, 4, 0, 0),
-            Child = new ScrollViewer { Name = "TeamFeedScroll", MaxHeight = 460, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = _feed }
+            Child = new ScrollViewer { Name = "TeamFeedScroll", HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = _feed }
         }.Bind(Border.BorderBrushProperty, "VelaBorderPrimary");
-        var stack = new StackPanel();
-        stack.Children.Add(head);
-        stack.Children.Add(_feedFilters);
-        stack.Children.Add(list);
-        return new Border { Name = "TeamFeedPanel", Classes = { "tcPanel" }, Child = stack };
+        var grid = new Grid { RowDefinitions = [with("Auto,*")] };
+        grid.Children.Add(tools);
+        grid.Children.Add(list.At(0, 1));
+        return new Border { Name = "TeamFeedPanel", Child = grid };
     }
 
-    private void EnsureFilterChips()
+    /// <summary>成员下拉:全部成员、主控、各成员;成员有增减时重填,尽量保住当前的选择。</summary>
+    private void EnsurePartyFilter()
     {
         string[] parties = ["all", TeamConsoleModel.Lead, .. Team.Members.Select(m => m.Name)];
-        if (parties.Length == _filterChips.Count) return;
-        _feedFilters.Children.Clear();
-        _filterChips.Clear();
-        foreach (string id in parties)
+        if (parties.SequenceEqual(_feedParties)) return;
+        _feedParties = parties;
+        _syncingParty = true;
+        try
         {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
-            if (id == "all")
-            {
-                row.Margin = new Thickness(5, 0, 0, 0);
-                row.Children.Add(TeamUi.Text(_loc["TeamFeedAllMembers"], "VelaTextPrimary", 12));
-            }
-            else
-            {
-                row.Children.Add(Avatar(id, 20));
-                row.Children.Add(TeamUi.Text(PartyOf(id).Name, "VelaTextPrimary", 12));
-            }
-            Border chip = Clickable(new Border { Classes = { "tcFilter" }, Child = row, Tag = id }, () => SetFeedParty(id));
-            chip.Classes.Set("on", id == FeedParty);
-            _filterChips[id] = chip;
-            _feedFilters.Children.Add(chip);
+            _feedPartyBox.Items.Clear();
+            foreach (string id in parties) _feedPartyBox.Items.Add(id == "all" ? _loc["TeamFeedAllMembers"] : PartyOf(id).Name);
+            if (Array.IndexOf(parties, FeedParty) < 0) FeedParty = "all";
+            _feedPartyBox.SelectedIndex = Array.IndexOf(parties, FeedParty);
+        }
+        finally
+        {
+            _syncingParty = false;
         }
     }
 
     /// <summary>按成员筛通信记录(「all」= 不筛)。</summary>
     internal void SetFeedParty(string party)
     {
-        FeedParty = party;
-        foreach ((string id, Border chip) in _filterChips) chip.Classes.Set("on", id == party);
+        EnsurePartyFilter();
+        FeedParty = Array.IndexOf(_feedParties, party) >= 0 ? party : "all";
+        _syncingParty = true;
+        try
+        {
+            _feedPartyBox.SelectedIndex = Array.IndexOf(_feedParties, FeedParty);
+        }
+        finally
+        {
+            _syncingParty = false;
+        }
         RefreshFeed(force: true);
     }
 
     private void RefreshFeed(bool force)
     {
-        EnsureFilterChips();
+        EnsurePartyFilter();
         TeamMessageInfo? last = Team.Messages.Count > 0 ? Team.Messages[^1] : null;
         string key = $"{Team.Messages.Count}|{last?.At.Ticks}|{FeedParty}|{_feedKind}|{_feedQuery}";
         if (!force && key == _feedKey) return;
@@ -734,6 +853,7 @@ internal sealed partial class TeamConsoleView
         bool arrived = !force && _feedKey.Length > 0 && last is not null && !ReferenceEquals(last, _newest);
         _feedKey = key;
         _newest = last;
+        _feedTabCount.Text = Team.Messages.Count.ToString();
 
         List<TeamMessageInfo> shown =
         [
@@ -742,7 +862,8 @@ internal sealed partial class TeamConsoleView
                                         && (_feedQuery.Length == 0 || m.Text.Contains(_feedQuery, StringComparison.OrdinalIgnoreCase)))
         ];
         shown.Reverse();
-        _feedCount.Text = _loc.F("TeamFeedCount", shown.Count);
+        _feedHint = _loc.F("TeamFeedCount", shown.Count);
+        if (RailPage == "feed") _railHint.Text = _feedHint;
         _feed.Children.Clear();
         foreach (TeamMessageInfo message in shown.Take(MaxFeedRows))
         {
@@ -757,32 +878,41 @@ internal sealed partial class TeamConsoleView
         }
     }
 
-    /// <summary>通信记录的一行:时刻 | 谁 → 谁 | 类型 | 内容 | 任务 | 这条消息对应那次运行的用量。</summary>
+    /// <summary>
+    /// 通信记录的一行(按右栏的宽度排成两行):谁 → 谁 · 类型 | 任务 · 用量 · 时刻;下面一行是内容。
+    /// </summary>
     private Border FeedRow(TeamMessageInfo message, bool fresh)
     {
         var pair = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, ClipToBounds = true };
-        pair.Children.Add(Avatar(message.From, 20));
+        pair.Children.Add(Avatar(message.From, 18));
         pair.Children.Add(TeamUi.Text(PartyOf(message.From).Name, "VelaTextPrimary", 12, FontWeight.SemiBold));
         pair.Children.Add(TeamUi.Text("→", "VelaTextTertiary", 12));
-        pair.Children.Add(Avatar(message.To, 20));
+        pair.Children.Add(Avatar(message.To, 18));
         pair.Children.Add(TeamUi.Text(PartyOf(message.To).Name, "VelaTextPrimary", 12, FontWeight.SemiBold));
+        Panel kind = KindTag(message.Kind);
+        kind.Margin = new Thickness(3, 0, 0, 0);
+        pair.Children.Add(kind);
 
+        var meta = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        if (message.TaskId is { Length: > 0 } taskId) meta.Children.Add(TeamUi.Chip(taskId, radius: 5));
         TeamTaskInfo? task = FindTask(message.TaskId);
-        SubagentSnapshot? run = message.Kind is "report" or "review" && task is not null ? TeamConsoleModel.RunOf(task, Runs) : null;
-        TextBlock tokens = TeamUi.Text(run is { } used && used.InputTokens + used.OutputTokens > 0
-            ? ChatFormatting.Compact(used.InputTokens + used.OutputTokens) + " tok"
-            : "", "VelaTextSecondary", 11, mono: true);
-        tokens.HorizontalAlignment = HorizontalAlignment.Right;
+        if (message.Kind is "report" or "review" && task is not null && TeamConsoleModel.RunOf(task, Runs) is { } run
+            && run.InputTokens + run.OutputTokens > 0)
+        {
+            meta.Children.Add(TeamUi.Text(ChatFormatting.Compact(run.InputTokens + run.OutputTokens) + " tok", "VelaTextSecondary", 11, mono: true));
+        }
+        meta.Children.Add(TeamUi.Text(message.At.ToLocalTime().ToString("HH:mm:ss"), "VelaTextTertiary", 11, mono: true));
 
-        var grid = new Grid { ColumnDefinitions = [with("64,190,60,*,Auto,96")], ColumnSpacing = 10 };
-        grid.Children.Add(TeamUi.Text(message.At.ToLocalTime().ToString("HH:mm:ss"), "VelaTextSecondary", 12, mono: true));
-        grid.Children.Add(pair.At(1));
-        grid.Children.Add(KindTag(message.Kind).At(2));
-        grid.Children.Add(TeamUi.Line(ChatFormatting.OneLine(message.Text, 300), "VelaTextPrimary", 12).At(3));
-        if (message.TaskId is { Length: > 0 } taskId) grid.Children.Add(TeamUi.Chip(taskId, radius: 5).At(4));
-        grid.Children.Add(tokens.At(5));
+        var top = new Grid { ColumnDefinitions = [with("*,Auto")], ColumnSpacing = 8 };
+        top.Children.Add(pair);
+        top.Children.Add(meta.At(1));
+        TextBlock text = TeamUi.Line(ChatFormatting.OneLine(message.Text, 300), "VelaTextPrimary", 12);
+        text.Margin = new Thickness(0, 4, 0, 0);
+        var stack = new StackPanel();
+        stack.Children.Add(top);
+        stack.Children.Add(text);
 
-        Border row = Clickable(new Border { Classes = { "tcFeedRow" }, Child = grid, Tag = message },
+        Border row = Clickable(new Border { Classes = { "tcFeedRow" }, Child = stack, Tag = message },
             () => OpenView(new DrawerView("pair", message.From, message.To, message)));
         if (fresh) Flash(row);
         return row;

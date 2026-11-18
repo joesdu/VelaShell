@@ -78,11 +78,15 @@ public sealed record TeamBoardSnapshot(string TeamId, string Goal, string Phase,
 /// </remarks>
 public sealed partial class TeamEngine
 {
-    /// <summary>一个团队最多几名成员。</summary>
-    public const int MaxMembers = 6;
+    /// <summary>
+    /// 一个团队最多几名成员。具体用几名由主模型按任务的规模自己定(指引里写的是「按职责配人,小任务 2–4 名」),
+    /// 这里只是防止一份失控的计划一口气铺开的安全上限:同时在跑的仍受 <see cref="SubagentOrchestrator" /> 的并发上限约束,
+    /// 每份计划开跑前也都要经用户在审批卡上确认。
+    /// </summary>
+    public const int MaxMembers = 16;
 
-    /// <summary>一个团队最多几个任务。</summary>
-    public const int MaxTasks = 12;
+    /// <summary>一个团队最多几个任务(与成员上限同理,是安全上限;人多时每人一两个任务也够用)。</summary>
+    public const int MaxTasks = 32;
 
     /// <summary>审查不过时被审查的任务最多返工几次。</summary>
     public const int MaxReworks = 1;

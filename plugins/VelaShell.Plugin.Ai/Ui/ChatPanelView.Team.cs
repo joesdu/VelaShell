@@ -32,7 +32,7 @@ public partial class ChatPanelView : ITeamConsoleHost
 {
     /// <summary>成员身份色:按成员序号轮换。都是宿主转发过来的主题令牌,跟着明暗主题变。</summary>
     private static readonly string[] MemberColors =
-        ["VelaShellCyan", "VelaShellBlue", "VelaShellMagenta", "VelaShellYellow", "VelaShellGreen"];
+        [.. Enumerable.Range(0, 12).Select(i => "VelaTeamColor" + i)];
 
     /// <summary>第 <paramref name="index" /> 名成员的身份色令牌(入口卡与团队控制台共用)。</summary>
     internal static string MemberColor(int index) => MemberColors[index % MemberColors.Length];

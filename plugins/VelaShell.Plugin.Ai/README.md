@@ -623,7 +623,8 @@ Agent 模式的主模型可将有价值的独立任务交给 `delegate_subagent`
   * 页面:头部 → 六块统计 → 拓扑与数据流 | 成员状态 → 任务时间轴 | Token 消耗 → 通信记录(≥ 1150 px 并排两栏)。各面板「建一次、之后原地改」,
     团队在跑时每秒都有数字在变,整块重建会丢悬停提示与滚动位置。
   * 拓扑:关系由计划推出(主控指派 / 依赖 = 交付 / `verifies` = 审查 / 成员间 `peer` 消息 = 协作,每对只留一条);成员按依赖层数排先后、
-    一行最多三名,主控放在直线被挡得最少的位置;被挡的连线取能让开的最小弯度,标签避开节点、节点下的名字与彼此(放不下就不画)。
+    沿一圈圆角矩形(超椭圆,指数 4)等弧长排开、上游在左下游在右,主控在正中(每条指派线都是放射线);人多到一圈放不下时整圈连同画布等比放大(Viewbox 缩回面板宽度),
+    一两名成员与主控排成一行;被挡的连线取能让开的最小弯度,标签避开节点、节点下的名字与彼此(放不下就不画)。
     节点外环 = 上下文占用,状态由在跑任务的 `Activity` 推出;新消息沿连线飞光点(一个 33 ms 的钟,只在有东西要动且页面在树上时走)。
   * 详情抽屉:成员 / 任务 / 两人之间的对话,互相可点、带返回栈;内容按各自数据的指纹决定要不要重建,任务报告流式追加不重排。
   * 为它补的快照字段:`TeamTaskInfo.StartOffset`、`TeamMessageInfo.TaskId`、`TeamBoardSnapshot.LeadModelId`;引擎多记 `handoff` / `review`
@@ -1044,17 +1045,20 @@ MCP 服务器在**自己的窗口**里配(`Ui/McpServersView`),入口是「配�
 
 ### 配置工具(独立窗口)
 
-顶栏的 **配置工具** 按钮开一个独立窗口(`Ui/ToolPickerView`),按来源分组列出全部工具 ——
-内置七个 + 每台 MCP 服务器一组 —— 逐个勾选是否暴露给模型;窗口**标题栏**的 ⚙(`PanelOptions.TitleActions`)通向
-MCP 服务器配置窗口(见上),那边改完这边当场重建。每组标题行可点折叠(箭头 + 标题 + "已勾 n/m"),
-**MCP 组默认折起、内置组默认展开** —— 一台服务器动辄几十个工具,全展开这页长得没法看;折叠状态
-只活在窗口里,重建不丢、关窗不存。
-有些 MCP 一口气给几十个工具,全塞给模型既占上下文又容易被误调。每台服务器旁边一枚
-**更新工具库**:连上去把它现在提供的工具重新拉一遍(`McpManager.RefreshToolsAsync`),
-结果连同刷新时刻存进配置,下次开窗口不必再连。
+顶栏的 **配置工具** 按钮开一个独立窗口(`Ui/ToolPickerView*.cs`),版式参照 VS Code Copilot 的配置界面(2026-11-19 重做):
 
-勾选状态**存的是"没勾的那些"**(`McpServerConfig.DisabledTools` / `AiSettings.DisabledBuiltinTools`):
-服务器以后新增了工具,默认就是可用的,而不是因为"不在已保存的白名单里"被静默屏蔽掉。
+* **左栏**:`ListBox.nav` 分四节 ——「扩展包」「MCP 服务器」「技能」「工具」,行尾计数(已安装扩展包 / 手工配置的服务器 / 可用技能 / 启用中的工具),默认「工具」。
+* **右栏**:标题(`TextBlock.pageTitle`)+ 页内操作 + 一句说明(`pageDesc`)+ 28px 搜索框(只筛本节,匹配到的来源强制展开)+ 列表 + 底部状态行。
+* **行**(`SourceRow` / `ItemRow`):来源行 = 折叠箭头 + 名字 / 副标题 + `n/m` 计数 + 行内操作 + 开关;展开后逐项一行。折叠状态默认折起,只活在窗口里,重建不丢、关窗不存。
+  开关是 `AiTheme.axaml` 的 `AiSwitchTheme`(套在 `CheckBox` 上沿用勾选语义;`IsChecked = null` 显示中间态)。
+* **「工具」页**(`ToolPickerView.Tools.cs`):内置工具按 `ToolIcons` 的类别分组,类别开关一次启停整类;MCP 每台服务器一行,行尾开关 = `McpServerConfig.Enabled`
+  (改完经 `mcpChanged` 回调让面板 `ReconcileAsync`,停用的立即断开),展开逐个工具,**更新工具库**(`McpManager.RefreshToolsAsync`)在行内,结果连同刷新时刻存进配置。
+* **「MCP 服务器」页**:手工配置的服务器(点行打开 `McpServersView` 配置表单,页头「新增服务器」),与已启用扩展包带来的服务器(只读)。
+* **「技能」页**(`ToolPickerView.Skills.cs`)与**「扩展包」页**(`ToolPickerView.Extensions.cs`):见上面「技能」「扩展包」两节。
+* 测试钩子:`ToolPickerView.Page` / `ShowPage` / `CurrentPage`;来源行 `Border.toolSource`(`Tag` = `builtin:类别` / `mcp:id` / `srv:id` / `skill:名` / `pack:id`),开关名 `Switch`。
+
+勾选状态**存的是"没勾的那些"**(`McpServerConfig.DisabledTools` / `AiSettings.DisabledBuiltinTools` / `AiSettings.DisabledSkills`):
+以后新增的工具、技能默认可用,而不是因为"不在已保存的白名单里"被静默屏蔽掉。
 
 ## 四个配置窗口
 

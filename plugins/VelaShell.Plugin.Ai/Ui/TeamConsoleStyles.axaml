@@ -125,6 +125,29 @@
     <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
   </Style>
 
+  <!-- 右栏头部的分段开关:「分工」/「通信」 -->
+  <Style Selector="Border.tcSwitch">
+    <Setter Property="Background" Value="{DynamicResource VelaBgInput}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="2" />
+  </Style>
+  <Style Selector="Border.tcSwitchItem">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="10,3" />
+    <Setter Property="Opacity" Value="0.7" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Border.tcSwitchItem:pointerover">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+  <Style Selector="Border.tcSwitchItem.on">
+    <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
   <!-- 抽屉头部的方形图标钮 -->
   <Style Selector="Button.tcIconButton">
     <Setter Property="Width" Value="30" />

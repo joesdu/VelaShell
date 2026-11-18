@@ -72,13 +72,11 @@ internal static class TeamConsoleModel
     /// <summary>主控在消息与拓扑里的名字(成员不能叫这个,见 TeamEngine.Validate)。</summary>
     public const string Lead = "lead";
 
-    /// <summary>拓扑画布的宽度(虚拟坐标,整张图等比缩放到面板宽度)。</summary>
+    /// <summary>拓扑画布的基准宽度(虚拟坐标,整张图等比缩放到面板宽度;人多时随环一起放大)。</summary>
     public const double GraphWidth = 820;
 
     /// <summary>节点半径(外环)。连线从它外面一点起笔。</summary>
     public const double NodeRadius = 42;
-
-    private const double LeadY = 68, FirstRowY = 268, RowGap = 190, BottomPad = 92;
 
     /// <summary>任务在依赖图里的层数:没有依赖是 0,否则是最深的那个依赖 + 1。</summary>
     public static Dictionary<string, int> TaskDepths(TeamBoardSnapshot team)
@@ -159,19 +157,27 @@ internal static class TeamConsoleModel
         return edges;
     }
 
-    /// <summary>一行最多摆几名成员。</summary>
-    public const int MembersPerRow = 3;
+    /// <summary>环上相邻两名成员之间至少留多长(虚拟坐标):节点连同它下面两行字的宽度,再留一点缝。</summary>
+    private const double RingSpacing = 205;
+
+    /// <summary>基准环的半轴、上下留白:主控在正中,成员绕着它排成一圈圆角矩形,铺满面板。</summary>
+    private const double RingRx = 300, RingRy = 160, RingTop = 58, RingBottom = 96;
+
+    /// <summary>超椭圆的指数:2 是椭圆,越大越接近矩形;取 4 让四角也坐得下人,面板里的留白最少。</summary>
+    private const double RingPower = 4;
 
     /// <summary>
-    /// 节点位置:主控在顶上,成员按「它最早那个任务在依赖图里的层数」排好先后,从左到右、一行最多
-    /// <see cref="MembersPerRow" /> 名地摆开 —— 上游在左、下游在右,摆不下再换行。
+    /// 节点位置:主控在正中,成员沿一圈圆角矩形(超椭圆)<b>等弧长</b>排开,均匀铺满整块画布。
+    /// 成员按「它最早那个任务在依赖图里的层数」排好先后,依次落到从左到右的位置上 —— 上游在左、下游在右。
     /// </summary>
     /// <remarks>
-    /// 主控连着每一名成员,它放哪儿决定了多少条指派线要绕路:在「正中」与「相邻两列之间」里挑直线被挡得最少的那个位置。
+    /// 主控放在正中,每条指派线都是一根放射线,不会被别的节点挡住。一两名成员围不成一圈,和主控排成一行。
+    /// 人多到一圈放不下时,整圈连同画布一起等比放大(再由 Viewbox 缩回面板宽度),节点之间的距离不变,多少人都不挤。
     /// </remarks>
     /// <param name="team">团队快照。</param>
-    /// <param name="height">画布高度(随行数变)。</param>
-    public static Dictionary<string, Point> Layout(TeamBoardSnapshot team, out double height)
+    /// <param name="width">画布宽度(人多时随环放大)。</param>
+    /// <param name="height">画布高度。</param>
+    public static Dictionary<string, Point> Layout(TeamBoardSnapshot team, out double width, out double height)
     {
         Dictionary<string, int> taskDepth = TaskDepths(team);
         string[] ordered =
@@ -180,49 +186,84 @@ internal static class TeamConsoleModel
                     .Select(t => taskDepth.GetValueOrDefault(t.Id)).DefaultIfEmpty(0).Min()))
                 .OrderBy(m => m.Depth).ThenBy(m => m.index).Select(m => m.Name)
         ];
-        int rowCount = Math.Max(1, (ordered.Length + MembersPerRow - 1) / MembersPerRow);
-        // 各行人数尽量平均(4 人 = 2 + 2,而不是 3 + 1)
-        int perRow = (ordered.Length + rowCount - 1) / rowCount;
         Dictionary<string, Point> positions = [with(StringComparer.Ordinal)];
-        List<double> firstRow = [];
-        for (int row = 0, next = 0; row < rowCount; row++)
+        int n = ordered.Length;
+        width = GraphWidth;
+        if (n <= 2)
         {
-            int count = Math.Min(perRow, ordered.Length - next);
-            for (int i = 0; i < count; i++)
+            // 一名成员:主控在左、成员在右;两名:主控居中,上游在左、下游在右
+            const double y = 128;
+            height = 300;
+            double[] xs = n switch { 0 => [0.5], 1 => [0.3, 0.7], _ => [0.17, 0.5, 0.83] };
+            int leadSlot = n == 2 ? 1 : 0;
+            for (int i = 0, next = 0; i < xs.Length; i++)
             {
-                double x = GraphWidth * (i + 0.5) / count;
-                positions[ordered[next++]] = new Point(x, FirstRowY + (row * RowGap));
-                if (row == 0) firstRow.Add(x);
+                positions[i == leadSlot ? Lead : ordered[next++]] = new Point(width * xs[i], y);
             }
+            return positions;
         }
 
-        List<double> candidates = [GraphWidth / 2];
-        for (int i = 1; i < firstRow.Count; i++) candidates.Add((firstRow[i - 1] + firstRow[i]) / 2);
-        double leadX = GraphWidth / 2;
-        int fewest = int.MaxValue;
-        foreach (double x in candidates)
-        {
-            var lead = new Point(x, LeadY);
-            int blocked = positions.Count(target => positions.Any(other => other.Key != target.Key
-                && DistanceToSegment(other.Value, lead, target.Value) < NodeRadius + 20));
-            if (blocked < fewest)
-            {
-                fewest = blocked;
-                leadX = x;
-            }
-        }
-        positions[Lead] = new Point(leadX, LeadY);
-        height = FirstRowY + ((rowCount - 1) * RowGap) + BottomPad;
+        // 一圈的周长不够每人分到 RingSpacing,就把整圈(连同画布)按比例放大
+        double scale = Math.Max(1, n * RingSpacing / Ring.Sample(RingRx, RingRy).Length);
+        double rx = RingRx * scale, ry = RingRy * scale;
+        width = GraphWidth * scale;
+        double cx = width / 2, cy = RingTop + ry;
+        height = cy + ry + RingBottom;
+
+        Ring ring = Ring.Sample(rx, ry);
+        double step = ring.Length / n;
+        // 从正上方起等弧长取点;人数是 4 的倍数时错开半步,四角各坐一人、上下左右对称
+        double offset = n % 4 == 0 ? step / 2 : 0;
+        // 位置从左到右(同一列从上到下)排好,成员按依赖先后依次落座
+        Point[] slots =
+        [
+            .. Enumerable.Range(0, n)
+                .Select(k => ring.At(offset + (k * step)))
+                .Select(p => new Point(cx + p.X, cy + p.Y))
+                .OrderBy(p => Math.Round(p.X, 1)).ThenBy(p => p.Y)
+        ];
+        for (int i = 0; i < n; i++) positions[ordered[i]] = slots[i];
+        positions[Lead] = new Point(cx, cy);
         return positions;
     }
 
-    private static double DistanceToSegment(Point p, Point a, Point b)
+    /// <summary>以原点为心的一圈超椭圆:从正上方顺时针密集采样,记下累计弧长,按弧长取点。</summary>
+    private sealed class Ring
     {
-        double dx = b.X - a.X, dy = b.Y - a.Y;
-        double lengthSquared = (dx * dx) + (dy * dy);
-        double t = lengthSquared <= 0 ? 0 : Math.Clamp((((p.X - a.X) * dx) + ((p.Y - a.Y) * dy)) / lengthSquared, 0, 1);
-        double x = a.X + (t * dx) - p.X, y = a.Y + (t * dy) - p.Y;
-        return Math.Sqrt((x * x) + (y * y));
+        private const int Samples = 720;
+        private readonly Point[] _points = new Point[Samples + 1];
+        private readonly double[] _lengths = new double[Samples + 1];
+
+        public double Length => _lengths[Samples];
+
+        public static Ring Sample(double rx, double ry)
+        {
+            var ring = new Ring();
+            double exponent = 2 / RingPower;
+            for (int i = 0; i <= Samples; i++)
+            {
+                double t = (-Math.PI / 2) + (2 * Math.PI * i / Samples);
+                double c = Math.Cos(t), s = Math.Sin(t);
+                ring._points[i] = new Point(rx * Math.Sign(c) * Math.Pow(Math.Abs(c), exponent), ry * Math.Sign(s) * Math.Pow(Math.Abs(s), exponent));
+                if (i == 0) continue;
+                Vector d = ring._points[i] - ring._points[i - 1];
+                ring._lengths[i] = ring._lengths[i - 1] + d.Length;
+            }
+            return ring;
+        }
+
+        /// <summary>从正上方顺时针走过 <paramref name="distance" /> 的那一点(超过一圈的取余)。</summary>
+        public Point At(double distance)
+        {
+            distance %= Length;
+            int index = Array.BinarySearch(_lengths, distance);
+            if (index >= 0) return _points[index];
+            index = Math.Clamp(~index, 1, Samples);
+            double a = _lengths[index - 1], b = _lengths[index];
+            double f = b > a ? (distance - a) / (b - a) : 0;
+            Point p = _points[index - 1], q = _points[index];
+            return new Point(p.X + ((q.X - p.X) * f), p.Y + ((q.Y - p.Y) * f));
+        }
     }
 
     /// <summary>

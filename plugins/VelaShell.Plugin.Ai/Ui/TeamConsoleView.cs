@@ -35,8 +35,8 @@ internal interface ITeamConsoleHost
 /// </summary>
 /// <remarks>
 /// <para>
-/// 自上而下:头部(目标、阶段、已运行多久)→ 六块统计 → 团队拓扑与数据流 | 成员状态 →
-/// 任务进度与归属(时间轴)| Token 消耗 → 通信记录。点成员、任务、连线或某条消息,右侧滑出抽屉看详情,
+/// 自上而下:头部(目标、阶段、已运行多久)→ 六块统计 → 团队拓扑与数据流(图下是最新一条通信)| 右栏「分工 / 通信」→
+/// 任务进度与归属(时间轴)| Token 消耗;两行的左右两栏同宽、上下对齐。点成员、任务、连线或某条消息,右侧滑出抽屉看详情,
 /// 抽屉里可以一层层点进去,左上角返回。
 /// </para>
 /// <para>
@@ -109,13 +109,12 @@ internal sealed partial class TeamConsoleView : UserControl
 
         BuildStats();
         _graphPanel = BuildGraphPanel();
-        _rosterPanel = BuildRosterPanel();
+        _rosterPanel = BuildRailPanel();
         _ganttPanel = BuildGanttPanel();
         _tokensPanel = BuildTokensPanel();
         _page.Children.Add(_stats);
         _page.Children.Add(_topRow);
         _page.Children.Add(_bottomRow);
-        _page.Children.Add(BuildFeedPanel());
 
         _scroll = new ScrollViewer
         {
@@ -272,9 +271,14 @@ internal sealed partial class TeamConsoleView : UserControl
     {
         if (_wide == wide) return;
         _wide = wide;
-        Arrange(_topRow, _graphPanel, _rosterPanel, wide, 1.65);
-        Arrange(_bottomRow, _ganttPanel, _tokensPanel, wide, 1.4);
+        // 上下两行用同一个比例,右栏的两张卡左右边缘对齐
+        Arrange(_topRow, _graphPanel, _rosterPanel, wide, ColumnRatio);
+        Arrange(_bottomRow, _ganttPanel, _tokensPanel, wide, ColumnRatio);
+        FitRail(wide);
     }
+
+    /// <summary>宽屏并排时左栏与右栏的宽度比(上下两行共用,右栏对齐)。</summary>
+    private const double ColumnRatio = 1.6;
 
     /// <summary>两块面板:宽屏左右并排(左边占 <paramref name="ratio" /> 份、右边 1 份),窄屏上下叠放。</summary>
     private static void Arrange(Grid grid, Control first, Control second, bool wide, double ratio)

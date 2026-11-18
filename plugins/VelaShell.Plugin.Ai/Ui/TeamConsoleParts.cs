@@ -142,9 +142,13 @@ internal sealed record TeamFace(string ColorKey, string WashKey, string Eyes, st
     /// <summary>「全体」「引擎」这类不是某个人的一端:中性色、最朴素的款式。</summary>
     public static TeamFace Neutral { get; } = new("VelaTextTertiary", "VelaBgHover", "dots", "antenna");
 
-    /// <summary>成员:身份色按序号轮换,眼睛与配件也按序号轮换,六名成员各不相同。</summary>
+    /// <summary>
+    /// 成员:身份色按序号轮换(十二色),眼睛与配件也按序号轮换;配件每过一轮眼睛错开一格,
+    /// 三十六名以内没有两人的眼睛与配件完全相同。
+    /// </summary>
     public static TeamFace Member(string colorKey, int index)
-        => new(colorKey, colorKey + "Dim", MemberEyes[index % MemberEyes.Length], MemberAccessories[index % MemberAccessories.Length]);
+        => new(colorKey, colorKey + "Dim", MemberEyes[index % MemberEyes.Length],
+            MemberAccessories[(index + (index / MemberEyes.Length)) % MemberAccessories.Length]);
 }
 
 /// <summary>
