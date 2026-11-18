@@ -399,24 +399,28 @@ public sealed class BridgeAgentRunner(
                     // 模型委派完就停下时,由协调器等子任务跑完、把结果当通知送回去
                     coordinator.Subagents = created;
                 }
-                IList<AITool> tools = toolbox.CreateTools(mode, nativeSearch, runScope);
-                if (mode == ChatMode.Agent && ai.McpServers.Any(s => s.Enabled))
+                // 本轮工具:内置 → MCP;审批上下文每轮一份:mcp 是所有聊天共用的,别的聊天的轮次可能正同时在跑
+                SubagentOrchestrator? turnSubagents = subagents;
+                var mcpSource = new McpToolSource(mcp, ai.McpServers, new McpApproval(approve, approval),
+                    LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId))
                 {
-                    // 审批上下文每轮一份:mcp 是所有聊天共用的,别的聊天的轮次可能正同时在跑
-                    mcpLease = await mcp
-                        .AcquireToolsAsync(ai.McpServers, new McpApproval(approve, approval), cancellationToken,
-                            LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId)).ConfigureAwait(false);
-                    List<AITool> mcpTools = mcpLease.Tools;
-                    List<string> errors = mcpLease.Errors;
-                    subagents?.ReadOnlyMcpTools = McpManager.FilterReadOnlyTools(mcpTools);
-                    foreach (AITool tool in mcpTools)
+                    Connected = errors =>
                     {
-                        tools.Add(tool);
-                    }
-                    if (errors.Count > 0)
-                    {
-                        context.Log.Warn($"Bridge: MCP servers reported: {string.Join("; ", errors)}");
-                    }
+                        if (errors.Count > 0) context.Log.Warn($"Bridge: MCP servers reported: {string.Join("; ", errors)}");
+                    },
+                    ReadOnlyTools = readOnly => turnSubagents?.ReadOnlyMcpTools = readOnly
+                };
+                IList<AITool> tools;
+                try
+                {
+                    tools = await new TurnToolAssembly(mode, toolbox.DisabledTools)
+                        .Add(_ => true, () => toolbox.CreateTools(mode, nativeSearch, runScope))
+                        .Add(mcpSource)
+                        .BuildAsync(cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    mcpLease = mcpSource.Lease; // 轮次结束时在 finally 里释放(装配中途出错也一样)
                 }
                 if (nativeSearch)
                 {

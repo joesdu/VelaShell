@@ -2201,34 +2201,33 @@ public partial class ChatPanelView : UserControl
                     _toolbox.LocalMaxFileBytes = _settings.LocalMaxFileBytes;
                     _toolbox.LocalMaxDirectoryEntries = _settings.LocalMaxDirectoryEntries;
                     subagentTemplate ??= _toolbox.CreateSubagentToolbox();
-                    IList<AITool> tools = mode == ChatMode.Chat ? [] : _toolbox.CreateTools(mode, nativeSearch, runScope,
-                        // 本机命令只给用户本人发起的轮次:键入、排队、编辑重发、继续都算;外部注入(SendExternal)不算
-                        interactiveLocal: (userInitiated ?? fromUser) && CurrentToolSessionId() is null,
-                        workspaceGate: async action => await Dispatcher.UIThread.InvokeAsync(() => action(GetActiveLocalWorkspaces())));
-                    if (bubble?.ImageTools is { } imageTools)
-                        foreach (AITool tool in imageTools.CreateTools(_settings, current.Provider.Id)) tools.Add(tool);
-                    // 「你应该知道」:只写进这份对话自己的提示条,没有副作用,计划模式也给;对话模式不给任何工具。
-                    // 只在桌面面板有(提示条在这里),IM 与对外 MCP 不给。
-                    if (mode != ChatMode.Chat && !_toolbox.DisabledTools.Contains(ConversationNotes.ToolName))
-                        tools.Add(conv.Notes.CreateTool());
-                    // 计划模式下不接 MCP:那些工具的副作用由第三方服务器说了算,插件无从判断,
-                    // 而"计划"的承诺是这一步不动任何东西。
-                    if (mode == ChatMode.Agent && _settings.McpServers.Any(s => s.Enabled))
+                    // 本轮工具:内置 → 作图 → 「你应该知道」→ MCP,模式与停用规则在 TurnToolAssembly 里统一执行
+                    SubagentOrchestrator turnSubagents = subagents;
+                    var mcpSource = new McpToolSource(_mcp, _settings.McpServers, _mcpApproval, GetActiveLocalWorkspaces())
                     {
-                        SetStatus(_loc["McpConnecting"]);
-                        McpManager.ToolLease lease = await _mcp.AcquireToolsAsync(
-                            _settings.McpServers, _mcpApproval, token, GetActiveLocalWorkspaces());
-                        mcpLeases.Add(lease);
-                        List<AITool> mcpTools = lease.Tools;
-                        List<string> mcpErrors = lease.Errors;
-                        subagents.ReadOnlyMcpTools = McpManager.FilterReadOnlyTools(mcpTools);
-                        foreach (AITool tool in mcpTools)
-                        {
-                            tools.Add(tool);
-                        }
-                        SetStatus(mcpErrors.Count > 0
-                            ? $"{_loc["Error"]} (MCP): {string.Join("; ", mcpErrors)}"
-                            : "");
+                        Connecting = () => SetStatus(_loc["McpConnecting"]),
+                        Connected = errors => SetStatus(errors.Count > 0 ? $"{_loc["Error"]} (MCP): {string.Join("; ", errors)}" : ""),
+                        ReadOnlyTools = readOnly => turnSubagents.ReadOnlyMcpTools = readOnly
+                    };
+                    IList<AITool> tools;
+                    try
+                    {
+                        tools = await new TurnToolAssembly(mode, _toolbox.DisabledTools)
+                            .Add(m => m != ChatMode.Chat, () => _toolbox.CreateTools(mode, nativeSearch, runScope,
+                                // 本机命令只给用户本人发起的轮次:键入、排队、编辑重发、继续都算;外部注入(SendExternal)不算
+                                interactiveLocal: (userInitiated ?? fromUser) && CurrentToolSessionId() is null,
+                                workspaceGate: async action => await Dispatcher.UIThread.InvokeAsync(() => action(GetActiveLocalWorkspaces()))))
+                            // 作图:是否启用在开跑时已定(bubble.ImageTools 只在启用时有),对话模式也给
+                            .Add(_ => bubble?.ImageTools is not null, () => bubble!.ImageTools!.CreateTools(_settings, current.Provider.Id))
+                            // 「你应该知道」:只写进这份对话自己的提示条,没有副作用,计划模式也给;只在桌面面板有
+                            .Add(m => m != ChatMode.Chat, () => [conv.Notes.CreateTool()])
+                            .Add(mcpSource)
+                            .BuildAsync(token);
+                    }
+                    finally
+                    {
+                        // 租约拿到就登记,装配中途出错也在轮次结束时释放
+                        if (mcpSource.Lease is { } lease) mcpLeases.Add(lease);
                     }
                     // MCP await 后先复验；更新后必须同时重建裸客户端与正式请求参数。
                     if (await RefreshBeforeSendAsync())

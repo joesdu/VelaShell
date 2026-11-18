@@ -509,8 +509,8 @@ AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出�
 | --- | --- | --- |
 | 1a 系统提示词分段组合 | 完成 | 见 12.6 |
 | 1b 统一自定义提示词语义 | 完成 | 见 12.7 |
-| 1c 工具来源统一 | 进行中 | |
-| 1d 子 Agent 编排器工厂 | 未开始 | |
+| 1c 工具来源统一 | 完成 | 见 12.8 |
+| 1d 子 Agent 编排器工厂 | 进行中 | |
 | 1e 拆小 `SendAsync` | 未开始 | |
 | 2 Skills | 未开始 | 依赖第一步 |
 | 3 扩展包 | 未开始 | 依赖第二步 |
@@ -531,3 +531,12 @@ AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出�
 - IM:`Operator instructions` 与机器人附加提示词从基础段挪到最后;**新增**:模型级提示词在 IM 里也生效(以前被忽略),与桌面一致。
 - 手册中英「全局设置」段说明追加语义与升级注意;velashell-docs 没有描述旧的替换语义,无需同步。
 - 验证:`SystemPromptBuilderTests` 补 1 条(优先级、排最后、内置段保留),新增桌面端到端 `ChatPanelViewUiTests.Prompt`(全局 / 模型级两种)与 IM `BridgeAgentRunnerTests.RunAsync_AppendsModelLevelThenBotPromptAfterTheBuiltInRules`;AI 测试工程全量 **2422/2422** 通过,未改动任何既有断言。
+
+### 12.8 2026-11-18:1c 工具来源统一
+
+- 新增 `Chat/TurnToolAssembly` 与 `ITurnToolSource`:按登记顺序收集各来源的工具,每个来源声明在哪些模式下提供;停用清单(入口工具箱的 `DisabledTools`)在装配末尾统一按名过滤。简单来源用 `Add(appliesTo, create)` 登记。
+- `McpToolSource`:Agent 模式且至少启用一台服务器时连接,租约经 `Lease` 交给入口在轮次结束时释放;连接前后与只读工具筛选经回调交给入口(桌面写状态行,IM 记日志,两者都把只读 MCP 工具交给子 Agent)。
+- 桌面登记:内置 → 作图 → 「你应该知道」→ MCP;IM 登记:内置 → MCP。顺序与以前一致。装配中途出错时租约仍在 `finally` 里登记,不泄漏。
+- 装配内部**刻意不用 `ConfigureAwait(false)`**:桌面的状态行回调必须回到 UI 线程;有单元测试守着。
+- 唯一的细微差别:作图工具现在也受停用清单约束(以前不受)。「配置工具」里没有它们的勾选项,用户界面上看不出区别。
+- 验证:新增 `TurnToolAssemblyTests` 4 条(顺序与模式、停用清单作用于所有来源、对话模式不造内置工具、调用方同步上下文不丢);AI 测试工程全量 **2426/2426** 通过,未改动任何既有断言。
