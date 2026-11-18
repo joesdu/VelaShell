@@ -18,7 +18,11 @@ internal sealed class UploadDirectoryMapping
 
     public UploadDirectoryMapping Clone() => new()
     {
-        Id = Id, SavedOrder = SavedOrder, ProfileId = ProfileId, RemotePath = RemotePath, LocalPath = LocalPath,
+        Id = Id,
+        SavedOrder = SavedOrder,
+        ProfileId = ProfileId,
+        RemotePath = RemotePath,
+        LocalPath = LocalPath,
         CheckedPaths = [.. CheckedPaths ?? []],
     };
 }
@@ -34,16 +38,18 @@ internal sealed class UploadPickerState
 
     public UploadPickerState Clone() => new()
     {
-        LocalPath = LocalPath, CheckedPaths = [.. CheckedPaths ?? []],
+        LocalPath = LocalPath,
+        CheckedPaths = [.. CheckedPaths ?? []],
         Mappings = [.. (Mappings ?? []).Select(item => item.Clone())],
-        LastUploadedMappings = new(LastUploadedMappings ?? []), SaveOrder = SaveOrder,
+        LastUploadedMappings = [with(LastUploadedMappings ?? [])],
+        SaveOrder = SaveOrder,
     };
 }
 
 /// <summary>串行读写上传记忆。每次修改从最新内存状态合并,慢写入不能覆盖较新的选择。</summary>
 internal sealed class UploadPickerStateStore(IAppDataStore? store)
 {
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private Task _pending = Task.CompletedTask;
     private UploadPickerState? _state;
 
@@ -111,8 +117,12 @@ internal sealed class UploadPickerStateStore(IAppDataStore? store)
             {
                 mapping = new()
                 {
-                    Id = Guid.NewGuid(), ProfileId = profileId, RemotePath = remote, LocalPath = local,
-                    CheckedPaths = paths, SavedOrder = ++state.SaveOrder,
+                    Id = Guid.NewGuid(),
+                    ProfileId = profileId,
+                    RemotePath = remote,
+                    LocalPath = local,
+                    CheckedPaths = paths,
+                    SavedOrder = ++state.SaveOrder,
                 };
                 state.Mappings.Add(mapping);
             }

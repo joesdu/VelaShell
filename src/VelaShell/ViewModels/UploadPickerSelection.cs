@@ -36,7 +36,7 @@ internal sealed class UploadPickerSelection : IDisposable
     private readonly LocalFilePaneViewModel _browser;
     private readonly UploadPickerStateStore _store;
     private readonly UploadPickerContext? _context;
-    private readonly HashSet<string> _checked = new(PathComparer);
+    private readonly HashSet<string> _checked = [with(PathComparer)];
     private string _directory;
     private bool _restoring;
     private bool _disposed;

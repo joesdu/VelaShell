@@ -148,8 +148,14 @@ public sealed class UploadMappingEditorTests
     }
     private static RemoteFileInfo Entry(string name, string path, bool directory) => new()
     {
-        Name = name, FullPath = path, IsDirectory = directory, Size = 0,
-        Permissions = "", Owner = "", Group = "", LastModified = DateTime.UtcNow,
+        Name = name,
+        FullPath = path,
+        IsDirectory = directory,
+        Size = 0,
+        Permissions = "",
+        Owner = "",
+        Group = "",
+        LastModified = DateTime.UtcNow,
     };
     private static void Pump(Window window) { Dispatcher.UIThread.RunJobs(); window.UpdateLayout(); Dispatcher.UIThread.RunJobs(); }
     private sealed class Tree : IDisposable

@@ -22,7 +22,7 @@ public class UpdateService : IUpdateService
     private readonly Func<Task<string>> _channelProvider;
     private readonly UpdateApplier _applier;
     private readonly Action _shutdownForRestart;
-    private readonly object _stateLock = new();
+    private readonly Lock _stateLock = new();
     private UpdateManifest? _manifest;
     private UpdateAsset? _asset;
     private UpdateManifest? _readyUpdate;
@@ -203,7 +203,7 @@ public class UpdateService : IUpdateService
             throw new InvalidOperationException(
                 "No update has been selected for download. Call CheckForUpdateAsync first.");
         }
-        return DownloadUpdateCoreAsync(manifest, asset, progress, cancellationToken, requireSelfUpdate: false);
+        return DownloadUpdateCoreAsync(manifest, asset, progress, requireSelfUpdate: false, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -214,15 +214,15 @@ public class UpdateService : IUpdateService
     {
         ArgumentNullException.ThrowIfNull(manifest);
         UpdateAsset asset = ValidateExplicitManifest(manifest);
-        return DownloadUpdateCoreAsync(manifest, asset, progress, cancellationToken, requireSelfUpdate: true);
+        return DownloadUpdateCoreAsync(manifest, asset, progress, requireSelfUpdate: true, cancellationToken);
     }
 
     private async Task DownloadUpdateCoreAsync(
         UpdateManifest manifest,
         UpdateAsset asset,
         IProgress<UpdateDownloadProgress>? progress,
-        CancellationToken cancellationToken,
-        bool requireSelfUpdate)
+        bool requireSelfUpdate,
+        CancellationToken cancellationToken)
     {
         if (IsStoreManaged || (requireSelfUpdate && !CanSelfUpdate))
         {

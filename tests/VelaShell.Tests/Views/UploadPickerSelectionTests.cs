@@ -446,7 +446,8 @@ public sealed class UploadPickerSelectionTests
         Guid profile = Guid.NewGuid();
         await disk.UpsertAsync("uploadPickerState", "state", new UploadPickerState
         {
-            LocalPath = tree.B, CheckedPaths = [tree.FileB],
+            LocalPath = tree.B,
+            CheckedPaths = [tree.FileB],
             Mappings = [new() { ProfileId = profile, RemotePath = "/app", LocalPath = tree.A, CheckedPaths = [tree.FileA] }],
         });
         UploadPickerState first = await new UploadPickerStateStore(disk).LoadAsync();
