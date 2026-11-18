@@ -3801,3 +3801,11 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **颜色**:各类用主题自带的 ANSI 那组令牌(`VelaShellSubtle` / `Cyan` / `Magenta` / `Yellow`、消息用 `VelaAccent`),深浅两套都有;压缩缓冲用 `VelaWarning` 降不透明度,余量用 `VelaTextMuted`。没有颜色字面量。主题里没有 Warning 的 Dim 版,徽标底色用同一令牌叠低不透明度。
 - **验证**:插件与 AI 测试工程构建零警告零错误;AI 测试工程 Debug 全量 2374 项通过、0 跳过(新增 `ContextBreakdownTests` 9 项、`SteeringTests` 1 项、UI 用例 `Usage_HoverShowsCategories_AndClickOpensTheContextDetail`;原 `Usage_ShowsContextRatioAndCacheHitRate_AfterARealResponse` 按新版式改了「1k」「/ 10k」「10%」三条断言)。用一次性 Skia 程序在深浅两套主题下截了悬停面板与明细浮层(中段与临近压缩两种占用)核对版式,程序已删。宿主测试工程(`VelaShell.Tests` 的 Design 守卫)这次**没有跑**:构建要把插件拷进 `src/VelaShell/bin/.../plugins`,当时那份 DLL 被正在运行的 VelaShell 与 Visual Studio 锁着。没有在真实窗口里手动点过。
 - **文档**:宿主中英手册(AI 用量一段与新增「上下文明细」);velashell-docs 中英 `plugins/11-automation-and-ai.md`。
+
+## 334. 2026-11-18 上传选择器:目录映射与勾选记忆;全窗口共用独立阴影层
+
+- **上传选择**:移除选择器的盘符下拉和「上一级」按钮,新增系统目录选择按钮,保留面包屑、路径输入、刷新与 `..`。列表和图标视图都有独立复选框,表头三态全选覆盖整个目录,与高亮、框选、键入定位分开。上传和底部计数只读取勾选项;双击文件切换勾选,双击目录进入,输入文件路径只定位。手动换目录清空勾选,同目录刷新及切换视图保留仍存在的项。
+- **本机记忆与映射**:新增 `UploadPickerStateStore` 和上传专用勾选模型,在 `IAppDataStore` 的 `uploadPickerState/state` 保存全局最近目录与勾选项,以及按连接配置 Id + 完整远端目录精确匹配的映射。左侧 240px 列出当前连接的记录,当前目标置顶。打开优先恢复映射,再回退最近目录、配置下载目录和主目录;失效映射不被回退结果覆盖。点击其他记录只借用其本地目录和勾选项,写为当前目标的新映射,来源不动;临时连接只用全局记忆。取消、上传后重开和正常重启均恢复。写入串行,关窗等待最新保存;失败导航后的勾选变化仍可保存。上传入口捕获远端目标快照,规划与空间预检整批使用该目标,不随后台导航改变。
+- **全窗口阴影**:Windows 主窗口、对话框和工具窗口共用 `WindowChrome.axaml` 的独立 `WindowShadow` 底层,投影与内容圆角裁剪分开,最大化 / 全屏收起。保留框架的透明度回退、弹层、文本选择与焦点装饰层,没有重新启用会造成启动残影的 DWM 扩展。隔离插件窗口同步拆开投影与裁剪。macOS 系统阴影、Wayland 装饰层和 X11 合成器边界照原平台规则处理。上传窗口默认 1160×640,小工作区可降低最小尺寸以适配。
+- **验证**:使用临时目录内校验 SHA-512 的官方 .NET SDK 11.0.100。Windows Debug 全解决方案 `-warnaserror` 构建 0 警告 / 0 错误;全量报告 11803 通过、0 失败、274 跳过;逐条核对输出后,其中另有 30 条虽记为通过但输出了 [SKIP](X11 / Docker 互操作与工具环境等),实际验证通过 11773 条,合计 304 条跳过或环境早退。缺失条件包含真实 SSH / Docker、跨平台发布、Unix 与系统环境相关能力。窗口 / 上传定向 201 项通过;最后一处失败导航后的保存修正后,状态与 UI 定向 14 项通过。核对深浅主题和列表 / 图标截图。中英文规格的相对路径检查 56 条可达。全量构建发现原有 `McpEndpointTests` 漏导入 `System.Net.Http.Json`,仅补该 using 后 AI 全量 2374 项通过。没有运行 Release,没有 macOS / Linux 实机或真实远端上传验收。
+- **文档**:五份界面资源齐全;同步 `manual.md` / `manual.en.md`、`DESIGN.md` §4.5,以及 velashell-docs 的中英文交互规格。代码与文档 PR 在正文中互相引用。

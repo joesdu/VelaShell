@@ -32,6 +32,8 @@
        窗口四周为自绘缩放抓取区(BeginResizeDrag)。
        macOS 例外:WindowChrome 在代码里换成 Full + 扩展客户区,用系统红绿灯、圆角与阴影,
        自绘的窗口按钮与缩放抓取区随之关闭(这里的 WindowDecorations="None" 是其余平台的值)。 -->
+  <!-- Windows 的阴影与 1px 外边框由 WindowChrome.axaml 的共用窗口模板绘制,
+       本面板由模板的内层框裁剪;最大化 / 全屏时模板撤掉阴影与边距。 -->
   <Panel>
     <!-- 背景图层(设置→外观→背景图片):铺在窗口最底层,UniformToFill。默认无图=不可见,行为与旧版一致。 -->
     <Image x:Name="BackgroundImageLayer" Stretch="UniformToFill" IsHitTestVisible="False" IsVisible="False" />

@@ -1282,19 +1282,16 @@
     <value>選擇要上傳的檔案與資料夾</value>
   </data>
   <data name="Sftp_PickUploadHint" xml:space="preserve">
-    <value>選擇檔案與資料夾 —— 兩者可以一起選;直接輸入名稱即可定位</value>
+    <value>勾選要上傳的檔案與資料夾；輸入名稱可定位</value>
   </data>
   <data name="Sftp_PickUploadSelected" xml:space="preserve">
-    <value>已選 {0} 個檔案、{1} 個資料夾</value>
+    <value>已勾選 {0} 個檔案、{1} 個資料夾</value>
   </data>
   <data name="Sftp_PickerListView" xml:space="preserve">
     <value>清單檢視</value>
   </data>
   <data name="Sftp_PickerIconView" xml:space="preserve">
     <value>圖示檢視</value>
-  </data>
-  <data name="Sftp_GoUp" xml:space="preserve">
-    <value>上一層</value>
   </data>
   <data name="NewFolder" xml:space="preserve">
     <value>新增資料夾</value>
@@ -10491,4 +10488,14 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="PluginManager_Summary" xml:space="preserve"><value>共 {0} 個外掛 · {1} 個執行中</value></data>
   <data name="PluginManager_SummaryWithUpdates" xml:space="preserve"><value>共 {0} 個外掛 · {1} 個執行中 · {2} 個可更新</value></data>
   <data name="PluginManager_DismissNotice" xml:space="preserve"><value>關閉提示</value></data>
+  <data name="Sftp_UploadMappings" xml:space="preserve"><value>目錄對應</value></data>
+  <data name="Sftp_UploadMappingsHint" xml:space="preserve"><value>自動記住目前連線的選擇。點擊記錄僅切換本機內容。</value></data>
+  <data name="Sftp_UploadMappingsEmpty" xml:space="preserve"><value>尚無對應，下一次選擇會自動儲存。</value></data>
+  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>目前上傳目標</value></data>
+  <data name="Sftp_UploadChooseDirectory" xml:space="preserve"><value>選擇目錄</value></data>
+  <data name="Sftp_UploadSelectAll" xml:space="preserve"><value>全選／取消全選</value></data>
+  <data name="Sftp_UploadTarget" xml:space="preserve"><value>上傳至 {0}：{1}</value></data>
+  <data name="Sftp_UploadMappingUnavailable" xml:space="preserve"><value>對應目錄無法使用：{0}。已改用最近或預設目錄。</value></data>
+  <data name="Sftp_UploadMemorySaveFailed" xml:space="preserve"><value>無法儲存上傳選擇，本次執行期間仍會保留。</value></data>
+  <data name="Sftp_UploadDirectoryPickerFailed" xml:space="preserve"><value>無法選擇目錄：{0}</value></data>
 </root>

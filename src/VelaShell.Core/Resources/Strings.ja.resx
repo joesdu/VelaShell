@@ -5065,19 +5065,16 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>アップロードするファイルとフォルダーを選択</value>
   </data>
   <data name="Sftp_PickUploadHint" xml:space="preserve">
-    <value>ファイルとフォルダーを選択 —— 同時に選べます。名前を入力するとその項目へ移動します</value>
+    <value>アップロードするファイルとフォルダーにチェックしてください。名前の入力で移動できます</value>
   </data>
   <data name="Sftp_PickUploadSelected" xml:space="preserve">
-    <value>ファイル {0} 個、フォルダー {1} 個を選択中</value>
+    <value>ファイル {0} 個、フォルダー {1} 個をチェック済み</value>
   </data>
   <data name="Sftp_PickerListView" xml:space="preserve">
     <value>リスト表示</value>
   </data>
   <data name="Sftp_PickerIconView" xml:space="preserve">
     <value>アイコン表示</value>
-  </data>
-  <data name="Sftp_GoUp" xml:space="preserve">
-    <value>上の階層へ</value>
   </data>
   <data name="Username" xml:space="preserve">
     <value>ユーザー名</value>
@@ -10006,4 +10003,14 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="PluginManager_Summary" xml:space="preserve"><value>プラグイン {0} 個 · 実行中 {1} 個</value></data>
   <data name="PluginManager_SummaryWithUpdates" xml:space="preserve"><value>プラグイン {0} 個 · 実行中 {1} 個 · 更新あり {2} 個</value></data>
   <data name="PluginManager_DismissNotice" xml:space="preserve"><value>閉じる</value></data>
+  <data name="Sftp_UploadMappings" xml:space="preserve"><value>ディレクトリの対応</value></data>
+  <data name="Sftp_UploadMappingsHint" xml:space="preserve"><value>この接続の選択を自動保存します。履歴を開くとローカル側だけが切り替わります。</value></data>
+  <data name="Sftp_UploadMappingsEmpty" xml:space="preserve"><value>対応履歴はありません。次の選択が自動保存されます。</value></data>
+  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>現在のアップロード先</value></data>
+  <data name="Sftp_UploadChooseDirectory" xml:space="preserve"><value>フォルダーを選択</value></data>
+  <data name="Sftp_UploadSelectAll" xml:space="preserve"><value>すべてチェック／解除</value></data>
+  <data name="Sftp_UploadTarget" xml:space="preserve"><value>アップロード先 {0}: {1}</value></data>
+  <data name="Sftp_UploadMappingUnavailable" xml:space="preserve"><value>対応するフォルダーを開けません: {0}。最近または既定のフォルダーを使用します。</value></data>
+  <data name="Sftp_UploadMemorySaveFailed" xml:space="preserve"><value>選択を保存できませんでした。今回の実行中は保持されます。</value></data>
+  <data name="Sftp_UploadDirectoryPickerFailed" xml:space="preserve"><value>フォルダーを選択できません: {0}</value></data>
 </root>

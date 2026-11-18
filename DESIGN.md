@@ -254,6 +254,12 @@ One token, `VelaShadowWindow`, carries every float and self-drawn window card â€
 language must not vary between overlays. It is two layers: a near one that firms up the edge and
 a far one that spreads.
 
+On Windows every window uses the shared template in `Themes/WindowChrome.axaml`. Its
+`WindowShadow` underlay draws the token outside the clipped content card; never put the
+shadow on a `ClipToBounds="True"` content border. The main window uses the same underlay
+and a clipped inner frame. Maximized and full-screen windows hide the underlay and remove
+the main window's inset. macOS keeps native shadows and Wayland uses its decorations layer.
+
 | Theme | Token value |
 |---|---|
 | Dark | `0 1 3 0 #40000000, 0 4 12 0 #66000000` |

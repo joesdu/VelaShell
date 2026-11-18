@@ -1268,7 +1268,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// 两个入口),这正是上传以前被迫拆成两个菜单项的原因。
     /// </para>
     /// </summary>
-    public Func<Task<IReadOnlyList<string>>>? PickLocalPathsForUpload { get; set; }
+    public Func<string, Task<IReadOnlyList<string>>>? PickLocalPathsForUpload { get; set; }
 
     /// <summary>
     /// 由视图设置:询问下载保存位置(参数 = 建议的文件名)。选了已有的文件时,由对话框自己问「要替换吗」——
@@ -2063,7 +2063,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// 上传前预检:这批文件放得下吗(SFTP 的 statvfs)。可能放不下时问一句,用户说不传就不传 ——
     /// 传到一半磁盘满,远端会留下半个文件。查不到用量(服务端不支持、FTP)时不拦。
     /// </summary>
-    private async Task<bool> ConfirmEnoughSpaceAsync(IReadOnlyList<PlannedFileTransfer> plan, CancellationToken ct)
+    private async Task<bool> ConfirmEnoughSpaceAsync(IReadOnlyList<PlannedFileTransfer> plan, string destination, CancellationToken ct)
     {
         if (ConfirmLowSpace is null || plan.Count == 0)
         {
@@ -2090,7 +2090,7 @@ public class FileBrowserViewModel : ReactiveObject
         RemoteSpaceInfo? space;
         try
         {
-            space = await _sftpService.GetSpaceAsync(_sessionId, CurrentPath, ct);
+            space = await _sftpService.GetSpaceAsync(_sessionId, destination, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
         {
@@ -2116,18 +2116,21 @@ public class FileBrowserViewModel : ReactiveObject
         {
             return;
         }
-        IReadOnlyList<string> picked = await PickLocalPathsForUpload();
-        await UploadLocalPathsAsync(picked, ct);
+        string destination = CurrentPath;
+        IReadOnlyList<string> picked = await PickLocalPathsForUpload(destination);
+        await UploadLocalPathsToAsync(picked, destination, ct);
     }
 
     /// <summary>
     /// 上传任意混合的本地文件和文件夹到当前目录,对文件夹做递归
     /// (创建对应的远程目录)。供上传菜单项与拖放共用,因此多选和拖放文件夹都汇聚到这里。
     /// </summary>
-    public async Task UploadLocalPathsAsync(
+    public Task UploadLocalPathsAsync(
         IReadOnlyList<string> localPaths,
         CancellationToken ct = default
-    )
+    ) => UploadLocalPathsToAsync(localPaths, CurrentPath, ct);
+
+    private async Task UploadLocalPathsToAsync(IReadOnlyList<string> localPaths, string destination, CancellationToken ct)
     {
         IReadOnlyList<string> roots = NormalizeUploadRoots(localPaths);
         if (roots.Count == 0)
@@ -2142,9 +2145,9 @@ public class FileBrowserViewModel : ReactiveObject
             var plan = new List<PlannedFileTransfer>();
             foreach (string path in roots)
             {
-                await BuildUploadPlanAsync(path, CurrentPath, plan, ct);
+                await BuildUploadPlanAsync(path, destination, plan, ct);
             }
-            if (!await ConfirmEnoughSpaceAsync(plan, ct))
+            if (!await ConfirmEnoughSpaceAsync(plan, destination, ct))
             {
                 return;
             }

@@ -190,12 +190,15 @@ public sealed class LocalPathPickerKeyboardUiTests
             Assert.IsTrue(IsInViewport(list, vm.SelectedEntries.Single()), "选中的文件在列表很靠下,要滚进视口。");
             Assert.AreEqual("fxyc.txt", FocusedEntry(dialog)?.Name);
 
-            // 输入框已收起,这时的回车才是「上传」:贴路径、回车、再回车,一气呵成。
+            // 路径定位只改变高亮。没有勾选时再按回车也不能上传。
             bool closed = false;
             dialog.Closed += (_, _) => closed = true;
+            Press(dialog, Key.Enter, PhysicalKey.Enter, RawInputModifiers.None);
+            Assert.IsFalse(closed);
+            dialog.Picker.SetChecked(vm.SelectedEntries.Single(), true);
             dialog.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
             Dispatcher.UIThread.RunJobs();
-            Assert.IsTrue(closed, "选中文件后再按回车应直接确认上传。");
+            Assert.IsTrue(closed, "勾选文件后按回车确认上传。");
         });
     }
 

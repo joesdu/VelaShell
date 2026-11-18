@@ -1218,19 +1218,16 @@
     <value>Select files and folders to upload</value>
   </data>
   <data name="Sftp_PickUploadHint" xml:space="preserve">
-    <value>Select files and folders — both can be picked together; type a name to jump to it</value>
+    <value>Check files and folders to upload; type a name to locate it</value>
   </data>
   <data name="Sftp_PickUploadSelected" xml:space="preserve">
-    <value>{0} file(s), {1} folder(s) selected</value>
+    <value>{0} file(s), {1} folder(s) checked</value>
   </data>
   <data name="Sftp_PickerListView" xml:space="preserve">
     <value>List view</value>
   </data>
   <data name="Sftp_PickerIconView" xml:space="preserve">
     <value>Icon view</value>
-  </data>
-  <data name="Sftp_GoUp" xml:space="preserve">
-    <value>Go up</value>
   </data>
   <data name="NewFolder" xml:space="preserve">
     <value>New Folder</value>
@@ -10012,4 +10009,14 @@ Send anyway?</value>
   <data name="PluginManager_Summary" xml:space="preserve"><value>{0} plugins · {1} running</value></data>
   <data name="PluginManager_SummaryWithUpdates" xml:space="preserve"><value>{0} plugins · {1} running · {2} updates available</value></data>
   <data name="PluginManager_DismissNotice" xml:space="preserve"><value>Dismiss</value></data>
+  <data name="Sftp_UploadMappings" xml:space="preserve"><value>Directory mappings</value></data>
+  <data name="Sftp_UploadMappingsHint" xml:space="preserve"><value>Remembered automatically for this connection. Opening a record changes only the local selection.</value></data>
+  <data name="Sftp_UploadMappingsEmpty" xml:space="preserve"><value>No mappings yet. Your next choice will be remembered.</value></data>
+  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>Current upload target</value></data>
+  <data name="Sftp_UploadChooseDirectory" xml:space="preserve"><value>Choose directory</value></data>
+  <data name="Sftp_UploadSelectAll" xml:space="preserve"><value>Select all / clear all</value></data>
+  <data name="Sftp_UploadTarget" xml:space="preserve"><value>Upload to {0}: {1}</value></data>
+  <data name="Sftp_UploadMappingUnavailable" xml:space="preserve"><value>The mapped directory is unavailable: {0}. Using a recent or default directory.</value></data>
+  <data name="Sftp_UploadMemorySaveFailed" xml:space="preserve"><value>Could not save upload choices. They remain available for this run.</value></data>
+  <data name="Sftp_UploadDirectoryPickerFailed" xml:space="preserve"><value>Could not choose a directory: {0}</value></data>
 </root>

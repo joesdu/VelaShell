@@ -6,6 +6,7 @@ using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using NSubstitute;
 using VelaShell.Presentation.Services;
 using VelaShell.ViewModels;
@@ -81,6 +82,55 @@ public sealed class WindowChromeTests
                 Assert.IsFalse(window.Classes.Contains("chrome-traffic-lights"), platform.ToString());
                 Assert.AreEqual(0, WindowChrome.OuterFrameSize(window), platform.ToString());
                 Assert.AreEqual(0, WindowChrome.SizeReductionOf(window), platform.ToString());
+            }
+        });
+    }
+
+    [TestMethod]
+    public void EveryWindowsRole_DrawsShadowOutsideTheClippedContent_AndHidesItWhenExpanded()
+    {
+        OnUi(() =>
+        {
+            foreach (WindowChromeKind role in Enum.GetValues<WindowChromeKind>())
+            {
+                var content = new Border { ClipToBounds = true };
+                var anchor = new Button { Width = 80, Height = 28 };
+                content.Child = anchor;
+                if (role != WindowChromeKind.Main)
+                {
+                    content.Classes.Add("window-card");
+                }
+                var window = new Window { Width = 400, Height = 300, Content = content };
+                try
+                {
+                    WindowChrome.Apply(window, role, ChromePlatform.Windows);
+                    window.Show();
+                    Dispatcher.UIThread.RunJobs();
+                    window.UpdateLayout();
+                    Border shadow = window.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "WindowShadow");
+                    Border frame = window.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "WindowContentFrame");
+                    Assert.IsGreaterThan(0, shadow.BoxShadow.Count, role.ToString());
+                    Assert.IsFalse(shadow.ClipToBounds);
+                    Assert.IsTrue(content.ClipToBounds);
+                    Assert.AreEqual(new Thickness(16), shadow.Margin);
+                    Assert.IsFalse(shadow.GetVisualAncestors().Contains(content), "阴影在内容裁剪之外。");
+                    Assert.AreEqual(role == WindowChromeKind.Main ? new Thickness(17) : new Thickness(0), frame.Margin);
+                    var flyout = new Flyout { Content = new Border { Width = 20, Height = 20 } };
+                    flyout.ShowAt(anchor);
+                    Assert.IsTrue(flyout.IsOpen, "统一模板必须保留弹层、文本选择与键盘焦点装饰层。");
+                    flyout.Hide();
+                    window.WindowState = WindowState.Maximized;
+                    Dispatcher.UIThread.RunJobs();
+                    Assert.IsFalse(shadow.IsVisible);
+                    Assert.AreEqual(new Thickness(0), frame.Margin);
+                    window.WindowState = WindowState.Normal;
+                    Dispatcher.UIThread.RunJobs();
+                    Assert.IsTrue(shadow.IsVisible);
+                }
+                finally
+                {
+                    window.Close();
+                }
             }
         });
     }
@@ -448,7 +498,10 @@ public sealed class WindowChromeTests
                 Assert.AreEqual(new CornerRadius(8), card.CornerRadius, label);
                 Assert.AreEqual(new Thickness(1), card.BorderThickness, label);
                 Assert.IsTrue(card.TryFindResource("VelaShadowWindow", card.ActualThemeVariant, out object? shadow), label);
-                Assert.AreEqual((BoxShadows)shadow!, card.BoxShadow, label);
+                Assert.AreEqual(0, card.BoxShadow.Count, "内容卡片只负责裁剪,不再绘制会被裁掉的阴影。");
+                Border underlay = TopLevel.GetTopLevel(card)!.GetVisualDescendants().OfType<Border>()
+                    .Single(border => border.Name == "WindowShadow");
+                Assert.AreEqual((BoxShadows)shadow!, underlay.BoxShadow, label);
                 break;
             case ChromePlatform.LinuxWayland:
                 // 描边与阴影在装饰层里;卡片只剩描边内侧的圆角,并按圆角裁剪内容。

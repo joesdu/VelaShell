@@ -11,7 +11,7 @@ namespace VelaShell.Views;
 /// <summary>窗口在外框上的角色,决定各平台用哪种外框(见 <see cref="WindowChrome" />)。</summary>
 internal enum WindowChromeKind
 {
-    /// <summary>主窗口:只有 macOS 改用系统标题栏按钮(红绿灯),其余平台沿用自绘无边框。</summary>
+    /// <summary>主窗口:Windows 共用窗口阴影模板,macOS 使用系统标题栏按钮(红绿灯)。</summary>
     Main,
 
     /// <summary>模态对话框(<c>ShowDialog</c>):卡片外观,macOS 上不显示红绿灯。</summary>
@@ -130,6 +130,7 @@ internal static class WindowChrome
             _ = window.Classes.Remove(platformClass);
         }
         window.Classes.Add(ClassOf(platform));
+        window.Classes.Set("window-main", kind == WindowChromeKind.Main);
         window.Classes.Set(TrafficLightsClass, platform == ChromePlatform.MacOS && kind != WindowChromeKind.Dialog);
 
         if (kind == WindowChromeKind.Main)
@@ -140,6 +141,17 @@ internal static class WindowChrome
             window.WindowDecorations = native ? WindowDecorations.Full : WindowDecorations.None;
             window.ExtendClientAreaToDecorationsHint = native;
             window.WindowDecorationsTheme = null;
+            if (platform == ChromePlatform.Windows)
+            {
+                // 统一窗口模板在客户区外圈留出阴影画布,不需要扩展 DWM 框架。
+                window.TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
+                window.Background = Brushes.Transparent;
+            }
+            else
+            {
+                window.TransparencyLevelHint = [WindowTransparencyLevel.None];
+                _ = window.Bind(TemplatedControl.BackgroundProperty, window.GetResourceObservable("VelaBgPage"));
+            }
         }
         else
         {
@@ -293,6 +305,7 @@ internal static class WindowChrome
     {
         WindowState windowState = window.WindowState;
         bool expanded = windowState is WindowState.Maximized or WindowState.FullScreen;
+        window.Classes.Set("window-expanded", expanded);
         bool flat = state.Kind != WindowChromeKind.Main
             && (state.Platform is ChromePlatform.MacOS or ChromePlatform.LinuxX11 || expanded);
         window.Classes.Set(CardFlatClass, flat);
