@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using VelaShell.Core.Data;
+using VelaShell.Services;
 
 namespace VelaShell.Tests.TestSupport;
 
@@ -30,5 +31,16 @@ internal sealed class UploadMemoryStore : IAppDataStore
     {
         _rows.TryRemove(collection + "/" + id, out _);
         return Task.CompletedTask;
+    }
+}
+
+/// <summary>按旧测试的简写建立初始映射与全局最近状态,不经过 UI 操作。</summary>
+internal static class UploadStateSeeds
+{
+    public static async Task SaveAsync(this UploadPickerStateStore store, UploadPickerContext? context,
+        string localPath, string[] checkedPaths, bool mapping)
+    {
+        Guid? id = mapping ? (await store.AddMappingAsync(context!, localPath, checkedPaths)).Id : null;
+        await store.SaveSelectionAsync(context, id, localPath, checkedPaths, mapping);
     }
 }

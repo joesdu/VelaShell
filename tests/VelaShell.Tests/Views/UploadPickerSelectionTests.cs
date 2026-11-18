@@ -57,7 +57,7 @@ public sealed class UploadPickerSelectionTests
             await picker.InitializeAsync();
             await picker.FlushAsync();
             Assert.AreEqual(tree.B, browser.CurrentPath);
-            Assert.AreSequenceEqual([tree.FileB], picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
+            Assert.IsEmpty(picker.CheckedEntries, "首次自动建立的映射没有勾选。");
         }
     });
 
@@ -67,7 +67,7 @@ public sealed class UploadPickerSelectionTests
         using var tree = new Tree();
         using LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane();
         await browser.NavigateToAsync(tree.A);
-        using var picker = new UploadPickerSelection(browser, new(null), new(Guid.NewGuid(), "/app", "one"));
+        using var picker = new UploadPickerSelection(browser, new(null), new(null, "/app", "one"));
         picker.SetAll(true);
         Assert.IsTrue(picker.AllChecked);
         Assert.IsFalse(picker.IsChecked(browser.Entries.Single(entry => entry.IsParentEntry)));
@@ -89,7 +89,7 @@ public sealed class UploadPickerSelectionTests
     });
 
     [TestMethod]
-    public Task OpeningAnotherMapping_CopiesChecksIntoCurrentTarget_WithoutChangingSource() => _session.RunOnUiAsync(async () =>
+    public Task OpeningAnotherMapping_RestoresChecksAndChangesTarget_WithoutChangingSource() => _session.RunOnUiAsync(async () =>
     {
         using var tree = new Tree();
         var disk = new UploadMemoryStore();
@@ -107,12 +107,10 @@ public sealed class UploadPickerSelectionTests
         Assert.AreEqual(tree.B, browser.CurrentPath);
         Assert.AreSequenceEqual([tree.FileB], picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
         UploadPickerState state = await new UploadPickerStateStore(disk).LoadAsync();
-        foreach (UploadDirectoryMapping item in state.Mappings)
-        {
-            Assert.AreEqual(tree.B, item.LocalPath);
-            Assert.AreSequenceEqual([tree.FileB], item.CheckedPaths);
-        }
-        Assert.AreEqual("/app", picker.Mappings[0].RemotePath);
+        Assert.AreEqual(tree.A, state.Mappings.Single(item => item.RemotePath == "/app").LocalPath);
+        Assert.AreSequenceEqual([tree.FileA], state.Mappings.Single(item => item.RemotePath == "/app").CheckedPaths);
+        Assert.AreEqual("/web", picker.TargetRemotePath);
+        Assert.AreEqual("/web", picker.Mappings[0].RemotePath);
         Assert.IsTrue(picker.Mappings[0].IsCurrent);
     });
 
@@ -185,21 +183,20 @@ public sealed class UploadPickerSelectionTests
         await browser.NavigateToAsync(tree.B);
         var store = new UploadPickerStateStore(new UploadMemoryStore());
         Guid profile = Guid.NewGuid();
-        using var picker = new UploadPickerSelection(browser, store, new(profile, "/app", "server"));
-        Task old = picker.ApplyMappingAsync(new(new()
-        {
-            ProfileId = profile, RemotePath = "/old", LocalPath = tree.A, CheckedPaths = [tree.FileA],
-        }, false));
-        await picker.ApplyMappingAsync(new(new()
-        {
-            ProfileId = profile, RemotePath = "/new", LocalPath = tree.B, CheckedPaths = [tree.FileB],
-        }, false));
+        await store.SaveAsync(new(profile, "/old", "server"), tree.A, [tree.FileA], true);
+        await store.SaveAsync(new(profile, "/new", "server"), tree.B, [tree.FileB], true);
+        using var picker = new UploadPickerSelection(browser, store, new(profile, "/new", "server"));
+        await picker.InitializeAsync();
+        Task old = picker.ApplyMappingAsync(picker.Mappings.Single(item => item.RemotePath == "/old"));
+        // 等旧的列表请求开始,再发起新导航。
+        await Task.Yield();
+        await picker.ApplyMappingAsync(picker.Mappings.Single(item => item.RemotePath == "/new"));
         delayed.SetResult([new("a.txt", tree.FileA, false, 1, DateTime.UtcNow)]);
         await old;
         await picker.FlushAsync();
         Assert.AreEqual(tree.B, browser.CurrentPath);
         Assert.AreSequenceEqual([tree.FileB], picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
-        Assert.AreEqual(tree.B, (await store.LoadAsync()).Mappings.Single().LocalPath);
+        Assert.AreEqual(tree.B, (await store.LoadAsync()).Mappings.Single(item => item.RemotePath == "/new").LocalPath);
         Assert.IsNull(picker.ErrorMessage);
     });
 
@@ -221,18 +218,183 @@ public sealed class UploadPickerSelectionTests
         };
         var store = new UploadPickerStateStore(disk);
         Guid profile = Guid.NewGuid();
-        Task first = store.SaveAsync(new(profile, "/one", "server"), "first", [], true);
+        Task first = store.AddMappingAsync(new(profile, "/one", "server"), "first");
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Task second = store.SaveAsync(new(profile, "/two", "server"), "second", ["checked"], true);
+        Task second = store.AddMappingAsync(new(profile, "/two", "server"), "second", ["checked"]);
         Task<UploadPickerState> reading = store.LoadAsync();
         Assert.IsFalse(second.IsCompleted);
         Assert.IsFalse(reading.IsCompleted);
         release.SetResult();
         await Task.WhenAll(first, second);
         UploadPickerState state = await reading;
-        Assert.AreEqual("second", state.LocalPath);
+        Assert.AreSequenceEqual(new[] { "checked" }, state.Mappings.Single(item => item.RemotePath == "/two").CheckedPaths);
         Assert.HasCount(2, state.Mappings);
         Assert.HasCount(2, (await new UploadPickerStateStore(disk).LoadAsync()).Mappings);
+    }
+
+    [TestMethod]
+    public Task MultipleMappingsForOneRemote_DuplicateBindingPreservesExistingChecks() => _session.RunOnUiAsync(async () =>
+    {
+        using var tree = new Tree();
+        var store = new UploadPickerStateStore(new UploadMemoryStore());
+        var context = new UploadPickerContext(Guid.NewGuid(), "/app", "one");
+        var first = await store.AddMappingAsync(context, tree.A, [tree.FileA]);
+        var second = await store.AddMappingAsync(context, tree.B, [tree.FileB]);
+        Assert.AreNotEqual(first.Id, second.Id);
+        using LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane();
+        using var picker = new UploadPickerSelection(browser, store, context);
+        await picker.InitializeAsync();
+        Assert.AreEqual(second.Id, picker.ActiveMappingId, "无提交历史时选当前目录最近保存的记录。");
+        await picker.AddMappingAsync("/app/./", tree.A);
+        await picker.FlushAsync();
+        Assert.AreEqual(first.Id, picker.ActiveMappingId);
+        Assert.AreSequenceEqual([tree.FileA], picker.CheckedEntries.Select(item => item.FullPath).ToArray());
+        Assert.HasCount(2, (await store.LoadAsync()).Mappings);
+    });
+
+    [TestMethod]
+    public Task LastSubmittedMapping_IsPerConnection_AndBrowsingDoesNotReplaceIt() => _session.RunOnUiAsync(async () =>
+    {
+        using var tree = new Tree();
+        var disk = new UploadMemoryStore();
+        var store = new UploadPickerStateStore(disk);
+        var context = new UploadPickerContext(Guid.NewGuid(), "/app", "one");
+        await store.AddMappingAsync(context, tree.A, [tree.FileA]);
+        Guid web = (await store.AddMappingAsync(context with { RemotePath = "/web" }, tree.B, [tree.FileB])).Id;
+        using (LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane())
+        using (var picker = new UploadPickerSelection(browser, store, context))
+        {
+            await picker.InitializeAsync();
+            await picker.ApplyMappingAsync(picker.Mappings.Single(item => item.Mapping.Id == web));
+            UploadSelectionResult result = picker.Submit()!;
+            Assert.AreEqual("/web", result.RemotePath);
+            Assert.AreEqual(web, result.MappingId);
+            Assert.AreSequenceEqual([tree.FileB], result.LocalPaths);
+            await picker.FlushAsync();
+            await picker.ApplyMappingAsync(picker.Mappings.Single(item => item.RemotePath == "/app"));
+            picker.SetAll(false); // 相当于浏览后取消,不重新提交。
+            await picker.FlushAsync();
+        }
+        using LocalFilePaneViewModel reopened = UnwatchedLocalFileSystem.NewPane();
+        using var restored = new UploadPickerSelection(reopened, new(disk), context);
+        await restored.InitializeAsync();
+        Assert.AreEqual(web, restored.ActiveMappingId);
+        Assert.AreEqual("/web", restored.TargetRemotePath);
+        Assert.AreSequenceEqual([tree.FileB], restored.CheckedEntries.Select(item => item.FullPath).ToArray());
+        await restored.FlushAsync();
+    });
+
+    [TestMethod]
+    public Task UnmappedEntry_CreatesAndSelectsItEvenWhenAnotherRemoteWasLastSubmitted() => _session.RunOnUiAsync(async () =>
+    {
+        using var tree = new Tree();
+        var store = new UploadPickerStateStore(new UploadMemoryStore());
+        var context = new UploadPickerContext(Guid.NewGuid(), "/web", "one");
+        Guid web = (await store.AddMappingAsync(context, tree.A, [tree.FileA])).Id;
+        await store.MarkUploadedAsync(context.ProfileId!.Value, web);
+        await store.SaveSelectionAsync(null, null, tree.B, [tree.FileB], false);
+        using LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane();
+        using var picker = new UploadPickerSelection(browser, store, context with { RemotePath = "/new" });
+        await picker.InitializeAsync();
+        await picker.FlushAsync();
+        Assert.AreEqual("/new", picker.TargetRemotePath);
+        Assert.AreEqual(tree.B, browser.CurrentPath);
+        Assert.IsEmpty(picker.CheckedEntries);
+        UploadPickerState state = await store.LoadAsync();
+        Assert.HasCount(2, state.Mappings);
+        Assert.AreEqual(web, state.LastUploadedMappings[context.ProfileId.Value]);
+    });
+
+    [TestMethod]
+    public Task DeleteActiveMapping_WaitsForSelection_AndStaleWritesCannotRecreateIt() => _session.RunOnUiAsync(async () =>
+    {
+        using var tree = new Tree();
+        var store = new UploadPickerStateStore(new UploadMemoryStore());
+        var context = new UploadPickerContext(Guid.NewGuid(), "/app", "one");
+        Guid id = (await store.AddMappingAsync(context, tree.A, [tree.FileA])).Id;
+        using LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane();
+        using var picker = new UploadPickerSelection(browser, store, context);
+        await picker.InitializeAsync();
+        Assert.IsNotNull(picker.Submit());
+        await picker.DeleteMappingAsync(picker.Mappings.Single());
+        Assert.AreEqual(tree.A, browser.CurrentPath);
+        Assert.IsFalse(picker.HasActiveMapping);
+        Assert.IsEmpty(picker.CheckedEntries);
+        picker.SetAll(true);
+        Assert.IsNull(picker.Submit());
+        await browser.RefreshAsync();
+        await store.SaveSelectionAsync(context, id, tree.B, [tree.FileB], true);
+        await picker.FlushAsync();
+        UploadPickerState state = await store.LoadAsync();
+        Assert.IsEmpty(state.Mappings);
+        Assert.IsEmpty(state.LastUploadedMappings);
+        await picker.AddMappingAsync("/web", tree.B);
+        Assert.IsTrue(picker.HasActiveMapping);
+        Assert.AreEqual("/web", picker.TargetRemotePath);
+        Assert.IsEmpty(picker.CheckedEntries);
+        await picker.FlushAsync();
+    });
+
+    [TestMethod]
+    public async Task LegacyMappings_AreMigratedToStableIdsWithoutLosingChecks()
+    {
+        using var tree = new Tree();
+        var disk = new UploadMemoryStore();
+        Guid profile = Guid.NewGuid();
+        await disk.UpsertAsync("uploadPickerState", "state", new UploadPickerState
+        {
+            LocalPath = tree.B, CheckedPaths = [tree.FileB],
+            Mappings = [new() { ProfileId = profile, RemotePath = "/app", LocalPath = tree.A, CheckedPaths = [tree.FileA] }],
+        });
+        UploadPickerState first = await new UploadPickerStateStore(disk).LoadAsync();
+        UploadPickerState second = await new UploadPickerStateStore(disk).LoadAsync();
+        Assert.AreNotEqual(Guid.Empty, first.Mappings.Single().Id);
+        Assert.AreEqual(first.Mappings.Single().Id, second.Mappings.Single().Id);
+        Assert.AreSequenceEqual([tree.FileA], second.Mappings.Single().CheckedPaths);
+        Assert.AreEqual(tree.B, second.LocalPath);
+        Assert.IsEmpty(second.LastUploadedMappings);
+    }
+
+    [TestMethod]
+    public Task DeletingAMappingDuringItsLoad_InvalidatesTheLocalDirectoryRequest() => _session.RunOnUiAsync(async () =>
+    {
+        using var tree = new Tree();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var slow = new TaskCompletionSource<IReadOnlyList<LocalFileSystemEntry>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fs = new ControlledFileSystem(path =>
+        {
+            if (path == tree.A) { started.TrySetResult(); return slow.Task; }
+            return Task.FromResult<IReadOnlyList<LocalFileSystemEntry>>([new("b.txt", tree.FileB, false, 1, DateTime.UtcNow)]);
+        });
+        var store = new UploadPickerStateStore(new UploadMemoryStore());
+        var context = new UploadPickerContext(Guid.NewGuid(), "/current", "one");
+        await store.AddMappingAsync(context, tree.B, [tree.FileB]);
+        await store.AddMappingAsync(context with { RemotePath = "/slow" }, tree.A, [tree.FileA]);
+        using var browser = new LocalFilePaneViewModel(new(), fs);
+        using var picker = new UploadPickerSelection(browser, store, context);
+        await picker.InitializeAsync();
+        UploadMappingItem item = picker.Mappings.Single(row => row.RemotePath == "/slow");
+        Task opening = picker.ApplyMappingAsync(item);
+        await started.Task;
+        await picker.DeleteMappingAsync(item);
+        slow.SetResult([new("a.txt", tree.FileA, false, 1, DateTime.UtcNow)]);
+        await opening;
+        await picker.FlushAsync();
+        Assert.AreEqual(tree.B, browser.CurrentPath);
+        Assert.AreEqual("/current", picker.TargetRemotePath);
+        Assert.AreSequenceEqual([tree.FileB], picker.CheckedEntries.Select(row => row.FullPath).ToArray());
+        Assert.HasCount(1, (await store.LoadAsync()).Mappings);
+    });
+
+    [TestMethod]
+    public async Task InvalidAdd_DoesNotPoisonLaterPersistenceOperations()
+    {
+        using var tree = new Tree();
+        var store = new UploadPickerStateStore(new UploadMemoryStore());
+        var context = new UploadPickerContext(Guid.NewGuid(), " ", "one");
+        await Assert.ThrowsExactlyAsync<ArgumentException>(async () => { await store.AddMappingAsync(context, tree.A); });
+        await store.AddMappingAsync(context with { RemotePath = "/valid" }, tree.A);
+        Assert.HasCount(1, (await store.LoadAsync()).Mappings);
     }
 
     private sealed class ControlledFileSystem(Func<string, Task<IReadOnlyList<LocalFileSystemEntry>>> enumerate) : ILocalFileSystem

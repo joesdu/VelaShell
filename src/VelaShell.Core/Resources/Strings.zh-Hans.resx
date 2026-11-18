@@ -10489,13 +10489,24 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="PluginManager_SummaryWithUpdates" xml:space="preserve"><value>共 {0} 个插件 · {1} 个运行中 · {2} 个可更新</value></data>
   <data name="PluginManager_DismissNotice" xml:space="preserve"><value>关闭提示</value></data>
   <data name="Sftp_UploadMappings" xml:space="preserve"><value>目录映射</value></data>
-  <data name="Sftp_UploadMappingsHint" xml:space="preserve"><value>自动记住当前连接的选择。点击记录仅切换本地内容。</value></data>
-  <data name="Sftp_UploadMappingsEmpty" xml:space="preserve"><value>暂无映射，下一次选择会自动保存。</value></data>
-  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>当前上传目标</value></data>
+  <data name="Sftp_UploadMappingsHint" xml:space="preserve"><value>选择映射以切换本地目录和上传目标，右键管理映射。</value></data>
+  <data name="Sftp_UploadMappingsEmpty" xml:space="preserve"><value>暂无映射，在此处右键添加。</value></data>
+  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>当前映射</value></data>
   <data name="Sftp_UploadChooseDirectory" xml:space="preserve"><value>选择目录</value></data>
   <data name="Sftp_UploadSelectAll" xml:space="preserve"><value>全选／取消全选</value></data>
   <data name="Sftp_UploadTarget" xml:space="preserve"><value>上传到 {0}：{1}</value></data>
-  <data name="Sftp_UploadMappingUnavailable" xml:space="preserve"><value>映射目录不可用：{0}。已改用最近或默认目录。</value></data>
+  <data name="Sftp_UploadMappingUnavailable" xml:space="preserve"><value>映射目录不可用：{0}。</value></data>
   <data name="Sftp_UploadMemorySaveFailed" xml:space="preserve"><value>无法保存上传选择，本次运行内仍会保留。</value></data>
   <data name="Sftp_UploadDirectoryPickerFailed" xml:space="preserve"><value>无法选择目录：{0}</value></data>
+  <data name="Sftp_UploadMappingSelectRequired" xml:space="preserve"><value>请选择或添加映射后继续上传。</value></data>
+  <data name="Sftp_UploadMappingAdd" xml:space="preserve"><value>添加映射</value></data>
+  <data name="Sftp_UploadMappingDelete" xml:space="preserve"><value>删除映射</value></data>
+  <data name="Sftp_UploadMappingBindTitle" xml:space="preserve"><value>绑定上传目录映射</value></data>
+  <data name="Sftp_UploadMappingRemote" xml:space="preserve"><value>远端目录</value></data>
+  <data name="Sftp_UploadMappingLocal" xml:space="preserve"><value>本地目录</value></data>
+  <data name="Sftp_UploadMappingPath" xml:space="preserve"><value>目录路径</value></data>
+  <data name="Sftp_UploadMappingOpen" xml:space="preserve"><value>打开目录</value></data>
+  <data name="Sftp_UploadMappingParent" xml:space="preserve"><value>上一级</value></data>
+  <data name="Sftp_UploadMappingInvalidRemote" xml:space="preserve"><value>无法解析远端目录。</value></data>
+  <data name="Sftp_UploadMappingInvalidLocal" xml:space="preserve"><value>请输入本地目录路径。</value></data>
 </root>

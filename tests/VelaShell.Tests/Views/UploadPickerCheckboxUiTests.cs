@@ -2,11 +2,13 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using VelaShell.Core.Localization;
+using VelaShell.Core.Resources;
 using VelaShell.Localization;
 using VelaShell.Services;
 using VelaShell.Tests.TestSupport;
@@ -105,7 +107,7 @@ public sealed class UploadPickerCheckboxUiTests
     });
 
     [TestMethod]
-    public Task SidebarButtons_RestoreChecksWithoutChangingTarget_AndRenderBothThemes() => RunAsync(async (_, _, root) =>
+    public Task SidebarButtons_RestoreChecksAndChangeTarget_AndRenderBothThemes() => RunAsync(async (_, _, root) =>
     {
         string local = Path.Combine(root, "sub");
         string file = Path.Combine(local, "index.html");
@@ -131,9 +133,9 @@ public sealed class UploadPickerCheckboxUiTests
             await WaitForAsync(dialog, () => dialog.Picker.IsRestoring);
             Assert.AreEqual(local, browser.CurrentPath);
             Assert.AreSequenceEqual([file], dialog.Picker.CheckedEntries.Select(entry => entry.FullPath).ToArray());
-            StringAssert.Contains(dialog.UploadTargetText.Text!, "/app");
+            StringAssert.Contains(dialog.UploadTargetText.Text!, "/web");
             await dialog.Picker.FlushAsync();
-            Assert.AreEqual("/app", dialog.Picker.Mappings[0].RemotePath);
+            Assert.AreEqual("/web", dialog.Picker.Mappings[0].RemotePath);
             dialog.View = LocalPickerView.Icons;
             Pump(dialog);
             SaveFrame(dialog, "upload-picker-icons-light.png");
@@ -152,10 +154,12 @@ public sealed class UploadPickerCheckboxUiTests
         var disk = new UploadMemoryStore();
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        disk.BeforeWrite = async () => { started.TrySetResult(); await release.Task; };
         using LocalFilePaneViewModel otherBrowser = UnwatchedLocalFileSystem.NewPane();
-        await otherBrowser.NavigateToAsync(root);
+        await new UploadPickerStateStore(disk).SaveAsync(null, root, [], false);
         var other = new LocalPathPickerDialog(otherBrowser, false, new(disk), new(Guid.NewGuid(), "/app", "server"));
+        await other.Picker.InitializeAsync();
+        await other.Picker.FlushAsync();
+        disk.BeforeWrite = async () => { started.TrySetResult(); await release.Task; };
         try
         {
             other.Show();
@@ -180,6 +184,87 @@ public sealed class UploadPickerCheckboxUiTests
             other.Close();
         }
     });
+
+    [TestMethod]
+    public Task SidebarRightClick_AddCancelAndDelete_DoNotActivateTheClickedMapping() => RunAsync(async (_, _, root) =>
+    {
+        var store = new UploadPickerStateStore(new UploadMemoryStore());
+        var context = new UploadPickerContext(Guid.NewGuid(), "/app", "server");
+        await store.SaveAsync(context, root, [Path.Combine(root, "file-000.txt")], true);
+        using LocalFilePaneViewModel browser = UnwatchedLocalFileSystem.NewPane();
+        var dialog = new LocalPathPickerDialog(browser, false, store, context);
+        try
+        {
+            await dialog.Picker.InitializeAsync();
+            dialog.Show();
+            Pump(dialog);
+            Guid? original = dialog.Picker.ActiveMappingId;
+            int bindCalls = 0;
+            dialog.BindMapping = (remote, local) =>
+            {
+                bindCalls++;
+                Assert.AreEqual("/app", remote);
+                Assert.AreEqual(root, local);
+                return Task.FromResult<UploadMappingBinding?>(null);
+            };
+            MenuItem add = RightClickMenu(dialog, dialog.MappingArea, new(100, dialog.MappingArea.Bounds.Height - 20));
+            Assert.AreEqual(Strings.Get("Sftp_UploadMappingAdd"), add.Header);
+            add.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            dialog.MappingContextMenu!.Close();
+            Pump(dialog);
+            Assert.AreEqual(1, bindCalls);
+            Assert.HasCount(1, dialog.Picker.Mappings, "取消绑定不保存草稿。");
+            Assert.AreEqual(original, dialog.Picker.ActiveMappingId);
+
+            dialog.BindMapping = (_, _) => Task.FromResult<UploadMappingBinding?>(new("/web", Path.Combine(root, "sub")));
+            add = RightClickMenu(dialog, dialog.MappingArea, new(100, dialog.MappingArea.Bounds.Height - 20));
+            add.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            dialog.MappingContextMenu!.Close();
+            await dialog.Picker.FlushAsync();
+            await WaitForAsync(dialog, () => dialog.Picker.IsRestoring);
+            Pump(dialog);
+            Assert.HasCount(2, dialog.Picker.Mappings);
+            Assert.AreEqual("/web", dialog.Picker.TargetRemotePath);
+
+            Button old = dialog.MappingList.GetVisualDescendants().OfType<Button>()
+                .Single(button => button.DataContext is UploadMappingItem { RemotePath: "/app" });
+            MenuItem delete = RightClickMenu(dialog, old, new(50, old.Bounds.Height / 2));
+            Assert.AreEqual(Strings.Get("Sftp_UploadMappingDelete"), delete.Header);
+            Assert.AreEqual("/web", dialog.Picker.TargetRemotePath, "右键不能激活所指记录。");
+            delete.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            dialog.MappingContextMenu!.Close();
+            await dialog.Picker.FlushAsync();
+            Pump(dialog);
+            Assert.HasCount(1, dialog.Picker.Mappings);
+
+            Button current = dialog.MappingList.GetVisualDescendants().OfType<Button>().Single();
+            delete = RightClickMenu(dialog, current, new(50, current.Bounds.Height / 2));
+            delete.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            dialog.MappingContextMenu!.Close();
+            await dialog.Picker.FlushAsync();
+            Pump(dialog);
+            Assert.IsFalse(dialog.ConfirmButton.IsEnabled);
+            Assert.IsFalse(dialog.Picker.HasActiveMapping);
+            Assert.AreEqual(Path.Combine(root, "sub"), browser.CurrentPath);
+        }
+        finally
+        {
+            await dialog.Picker.FlushAsync();
+            dialog.Close();
+            Dispatcher.UIThread.RunJobs();
+        }
+    });
+
+    private static MenuItem RightClickMenu(LocalPathPickerDialog dialog, Control control, Point local)
+    {
+        Point point = control.TranslatePoint(local, dialog)!.Value;
+        dialog.MouseDown(point, MouseButton.Right);
+        dialog.MouseUp(point, MouseButton.Right);
+        Pump(dialog);
+        Assert.IsNotNull(dialog.MappingContextMenu);
+        Assert.IsTrue(dialog.MappingContextMenu.IsOpen);
+        return dialog.MappingContextMenu.Items.OfType<MenuItem>().Single();
+    }
 
     private static Task RunAsync(Func<LocalPathPickerDialog, LocalFilePaneViewModel, string, Task> body) =>
         _session.RunOnUiAsync(async () =>

@@ -10004,13 +10004,24 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="PluginManager_SummaryWithUpdates" xml:space="preserve"><value>プラグイン {0} 個 · 実行中 {1} 個 · 更新あり {2} 個</value></data>
   <data name="PluginManager_DismissNotice" xml:space="preserve"><value>閉じる</value></data>
   <data name="Sftp_UploadMappings" xml:space="preserve"><value>ディレクトリの対応</value></data>
-  <data name="Sftp_UploadMappingsHint" xml:space="preserve"><value>この接続の選択を自動保存します。履歴を開くとローカル側だけが切り替わります。</value></data>
-  <data name="Sftp_UploadMappingsEmpty" xml:space="preserve"><value>対応履歴はありません。次の選択が自動保存されます。</value></data>
-  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>現在のアップロード先</value></data>
+  <data name="Sftp_UploadMappingsHint" xml:space="preserve"><value>マッピングを選ぶとローカルフォルダーとアップロード先が切り替わります。右クリックで管理します。</value></data>
+  <data name="Sftp_UploadMappingsEmpty" xml:space="preserve"><value>マッピングはありません。ここを右クリックして追加します。</value></data>
+  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>選択中のマッピング</value></data>
   <data name="Sftp_UploadChooseDirectory" xml:space="preserve"><value>フォルダーを選択</value></data>
   <data name="Sftp_UploadSelectAll" xml:space="preserve"><value>すべてチェック／解除</value></data>
   <data name="Sftp_UploadTarget" xml:space="preserve"><value>アップロード先 {0}: {1}</value></data>
-  <data name="Sftp_UploadMappingUnavailable" xml:space="preserve"><value>対応するフォルダーを開けません: {0}。最近または既定のフォルダーを使用します。</value></data>
+  <data name="Sftp_UploadMappingUnavailable" xml:space="preserve"><value>マッピング先のフォルダーを利用できません: {0}。</value></data>
   <data name="Sftp_UploadMemorySaveFailed" xml:space="preserve"><value>選択を保存できませんでした。今回の実行中は保持されます。</value></data>
   <data name="Sftp_UploadDirectoryPickerFailed" xml:space="preserve"><value>フォルダーを選択できません: {0}</value></data>
+  <data name="Sftp_UploadMappingSelectRequired" xml:space="preserve"><value>アップロードするにはマッピングを選択または追加してください。</value></data>
+  <data name="Sftp_UploadMappingAdd" xml:space="preserve"><value>マッピングを追加</value></data>
+  <data name="Sftp_UploadMappingDelete" xml:space="preserve"><value>マッピングを削除</value></data>
+  <data name="Sftp_UploadMappingBindTitle" xml:space="preserve"><value>アップロードフォルダーの関連付け</value></data>
+  <data name="Sftp_UploadMappingRemote" xml:space="preserve"><value>リモートフォルダー</value></data>
+  <data name="Sftp_UploadMappingLocal" xml:space="preserve"><value>ローカルフォルダー</value></data>
+  <data name="Sftp_UploadMappingPath" xml:space="preserve"><value>フォルダーのパス</value></data>
+  <data name="Sftp_UploadMappingOpen" xml:space="preserve"><value>フォルダーを開く</value></data>
+  <data name="Sftp_UploadMappingParent" xml:space="preserve"><value>親フォルダー</value></data>
+  <data name="Sftp_UploadMappingInvalidRemote" xml:space="preserve"><value>リモートフォルダーを解決できません。</value></data>
+  <data name="Sftp_UploadMappingInvalidLocal" xml:space="preserve"><value>ローカルフォルダーのパスを入力してください。</value></data>
 </root>

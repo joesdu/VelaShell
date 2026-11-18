@@ -319,8 +319,9 @@
         </Grid>
       </Border>
 
-      <!-- 映射只改变本地选择;当前上传目标在窗口打开时已固定。 -->
-      <Border DockPanel.Dock="Left" Width="240" Padding="12,10"
+      <!-- 每条映射独立决定本地来源、勾选状态和远端上传目标。 -->
+      <Border Name="MappingArea" DockPanel.Dock="Left" Width="240" Padding="12,10"
+              ContextRequested="OnMappingsContextRequested"
               Background="{DynamicResource VelaBgSidebar}"
               BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,0,1,0">
         <DockPanel>

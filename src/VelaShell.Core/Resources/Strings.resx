@@ -10010,13 +10010,24 @@ Send anyway?</value>
   <data name="PluginManager_SummaryWithUpdates" xml:space="preserve"><value>{0} plugins · {1} running · {2} updates available</value></data>
   <data name="PluginManager_DismissNotice" xml:space="preserve"><value>Dismiss</value></data>
   <data name="Sftp_UploadMappings" xml:space="preserve"><value>Directory mappings</value></data>
-  <data name="Sftp_UploadMappingsHint" xml:space="preserve"><value>Remembered automatically for this connection. Opening a record changes only the local selection.</value></data>
-  <data name="Sftp_UploadMappingsEmpty" xml:space="preserve"><value>No mappings yet. Your next choice will be remembered.</value></data>
-  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>Current upload target</value></data>
+  <data name="Sftp_UploadMappingsHint" xml:space="preserve"><value>Select a mapping to switch the local directory and upload target. Right-click to manage mappings.</value></data>
+  <data name="Sftp_UploadMappingsEmpty" xml:space="preserve"><value>No mappings. Right-click here to add one.</value></data>
+  <data name="Sftp_UploadMappingCurrent" xml:space="preserve"><value>Selected mapping</value></data>
   <data name="Sftp_UploadChooseDirectory" xml:space="preserve"><value>Choose directory</value></data>
   <data name="Sftp_UploadSelectAll" xml:space="preserve"><value>Select all / clear all</value></data>
   <data name="Sftp_UploadTarget" xml:space="preserve"><value>Upload to {0}: {1}</value></data>
-  <data name="Sftp_UploadMappingUnavailable" xml:space="preserve"><value>The mapped directory is unavailable: {0}. Using a recent or default directory.</value></data>
+  <data name="Sftp_UploadMappingUnavailable" xml:space="preserve"><value>The mapped directory is unavailable: {0}.</value></data>
   <data name="Sftp_UploadMemorySaveFailed" xml:space="preserve"><value>Could not save upload choices. They remain available for this run.</value></data>
   <data name="Sftp_UploadDirectoryPickerFailed" xml:space="preserve"><value>Could not choose a directory: {0}</value></data>
+  <data name="Sftp_UploadMappingSelectRequired" xml:space="preserve"><value>Select or add a mapping to continue uploading.</value></data>
+  <data name="Sftp_UploadMappingAdd" xml:space="preserve"><value>Add mapping</value></data>
+  <data name="Sftp_UploadMappingDelete" xml:space="preserve"><value>Delete mapping</value></data>
+  <data name="Sftp_UploadMappingBindTitle" xml:space="preserve"><value>Bind upload directories</value></data>
+  <data name="Sftp_UploadMappingRemote" xml:space="preserve"><value>Remote directory</value></data>
+  <data name="Sftp_UploadMappingLocal" xml:space="preserve"><value>Local directory</value></data>
+  <data name="Sftp_UploadMappingPath" xml:space="preserve"><value>Directory path</value></data>
+  <data name="Sftp_UploadMappingOpen" xml:space="preserve"><value>Open directory</value></data>
+  <data name="Sftp_UploadMappingParent" xml:space="preserve"><value>Parent directory</value></data>
+  <data name="Sftp_UploadMappingInvalidRemote" xml:space="preserve"><value>The remote directory could not be resolved.</value></data>
+  <data name="Sftp_UploadMappingInvalidLocal" xml:space="preserve"><value>Enter a local directory path.</value></data>
 </root>

@@ -89,7 +89,7 @@ public partial class FileBrowserView : UserControl
             vm.PathEditActivated += OnPathEditActivated;
             vm.RevealRequested += OnRevealRequested;
             vm.ShowRemoteSearch = root => ShowRemoteSearchAsync(vm, root);
-            vm.PickLocalPathsForUpload = PickLocalPathsAsync;
+            vm.PickUploadSelection = PickLocalPathsAsync;
             vm.PickSavePathForDownload = PickSavePathAsync;
             vm.PickFolderForDownload = PickDownloadFolderAsync;
             vm.PromptForText = PromptForTextAsync;
@@ -484,11 +484,11 @@ public partial class FileBrowserView : UserControl
     /// 系统对话框做不到混选(见 <see cref="LocalPathPickerDialog" />),上传以前正是因此
     /// 被拆成"上传文件""上传文件夹"两个入口。
     /// </summary>
-    private async Task<IReadOnlyList<string>> PickLocalPathsAsync(string destination)
+    private async Task<UploadSelectionResult?> PickLocalPathsAsync(string destination)
     {
         if (TopLevel.GetTopLevel(this) is not Window owner || _viewModel is not { } vm)
         {
-            return [];
+            return null;
         }
         IServiceProvider? services = (Application.Current as App)?.Services;
         Guid? profileId = null;
@@ -508,7 +508,8 @@ public partial class FileBrowserView : UserControl
             }
         }
         return await LocalPathPickerDialog.PickAsync(owner, vm.TransferOptions,
-            new Services.UploadPickerContext(profileId, destination, vm.ServerDisplayName));
+            new Services.UploadPickerContext(profileId, destination, vm.ServerDisplayName),
+            vm.UploadDirectoryService, vm.SessionId);
     }
 
     /// <summary>

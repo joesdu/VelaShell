@@ -1270,6 +1270,12 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     public Func<string, Task<IReadOnlyList<string>>>? PickLocalPathsForUpload { get; set; }
 
+    /// <summary>映射上传选择器:返回勾选路径及用户选择的远端目标;取消返回 null。</summary>
+    public Func<string, Task<UploadSelectionResult?>>? PickUploadSelection { get; set; }
+
+    // 绑定窗口使用文档已有的串行目录服务,但不借用主面板的导航状态。
+    internal ISftpService UploadDirectoryService => _sftpService;
+
     /// <summary>
     /// 由视图设置:询问下载保存位置(参数 = 建议的文件名)。选了已有的文件时,由对话框自己问「要替换吗」——
     /// 返回的路径即视为用户已同意覆盖(「下载为…」不再走「文件已存在时」策略)。
@@ -2112,6 +2118,15 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     private async Task UploadAsync(CancellationToken ct = default)
     {
+        if (PickUploadSelection is { } select)
+        {
+            UploadSelectionResult? selection = await select(CurrentPath);
+            if (selection is not null)
+            {
+                await UploadLocalPathsToAsync(selection.LocalPaths, selection.RemotePath, ct);
+            }
+            return;
+        }
         if (PickLocalPathsForUpload is null)
         {
             return;

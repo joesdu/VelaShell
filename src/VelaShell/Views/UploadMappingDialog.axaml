@@ -1,0 +1,103 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:VelaShell.ViewModels"
+        xmlns:loc="using:VelaShell.Localization"
+        xmlns:pc="using:VelaShell.Controls.Controls"
+        x:Class="VelaShell.Views.UploadMappingDialog"
+        x:DataType="vm:UploadMappingEditor"
+        Title="{loc:Localize Sftp_UploadMappingBindTitle}"
+        Width="920" Height="560" MinWidth="580" MinHeight="360"
+        ShowInTaskbar="False" WindowStartupLocation="CenterOwner">
+  <Window.Resources>
+    <DataTemplate x:Key="DirectoryPaneTemplate" x:DataType="vm:UploadDirectoryPane">
+      <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Margin="10">
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+          <TextBox Text="{Binding InputPath, Mode=TwoWay}" KeyDown="OnPathKeyDown"
+                   FontFamily="{DynamicResource VelaUiMonoFont}" FontSize="{DynamicResource VelaFontSize11}"
+                   AutomationProperties.Name="{loc:Localize Sftp_UploadMappingPath}" />
+          <Button Grid.Column="1" Content="{loc:Localize Sftp_UploadMappingOpen}"
+                  Theme="{DynamicResource VelaOutlineButtonTheme}" Margin="6,0,0,0"
+                  Height="28" Click="OnOpenPath" />
+        </Grid>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8">
+          <Button Content="{loc:Localize Sftp_UploadMappingParent}" Click="OnParent"
+                  Theme="{DynamicResource VelaOutlineButtonTheme}" Height="28" />
+          <Button Content="{loc:Localize Refresh}" Click="OnRefresh"
+                  Theme="{DynamicResource VelaOutlineButtonTheme}" Height="28" />
+          <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Width="64" Height="3" />
+        </StackPanel>
+        <ListBox Grid.Row="2" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                 DoubleTapped="OnDirectoryDoubleTapped" KeyDown="OnDirectoryKeyDown"
+                 Background="{DynamicResource VelaBgPage}" BorderBrush="{DynamicResource VelaBorderPrimary}"
+                 BorderThickness="1" FontSize="{DynamicResource VelaFontSize11}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:UploadDirectoryItem">
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="4">
+                <pc:LucideIcon Width="14" Height="14" Data="{StaticResource Icon.folder}"
+                               Foreground="{DynamicResource VelaTextSecondary}" />
+                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource VelaTextPrimary}" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock Grid.Row="3" Text="{Binding SelectedPath}" TextTrimming="CharacterEllipsis"
+                   Margin="0,8,0,0" ToolTip.Tip="{Binding SelectedPath}"
+                   FontFamily="{DynamicResource VelaUiMonoFont}" FontSize="{DynamicResource VelaFontSize10}"
+                   Foreground="{DynamicResource VelaTextSecondary}" />
+        <TextBlock Grid.Row="4" Text="{Binding ErrorMessage}" TextWrapping="Wrap" Margin="0,4,0,0"
+                   FontSize="{DynamicResource VelaFontSize11}" Foreground="{DynamicResource VelaError}" />
+      </Grid>
+    </DataTemplate>
+  </Window.Resources>
+  <Panel>
+    <Border Classes="window-card" ClipToBounds="True" Background="{DynamicResource VelaBgSurface}"
+            BorderBrush="{DynamicResource VelaBorderSecondary}">
+      <DockPanel>
+        <Border DockPanel.Dock="Top" Classes="window-titlebar window-card-top" Height="28"
+                Background="{DynamicResource VelaBgSurface}" BorderBrush="{DynamicResource VelaBorderPrimary}"
+                BorderThickness="0,0,0,1" PointerPressed="OnTitleBarPointerPressed">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="{loc:Localize Sftp_UploadMappingBindTitle}" Margin="12,0"
+                       VerticalAlignment="Center" FontSize="{DynamicResource VelaFontSize12}"
+                       FontWeight="SemiBold" Foreground="{DynamicResource VelaTextPrimary}" />
+            <Button Grid.Column="1" Classes="caption-close window-caption" Width="27" Height="27"
+                    Padding="0" Click="OnCancel" Background="Transparent" BorderThickness="0"
+                    AutomationProperties.Name="{loc:Localize Cancel}" ToolTip.Tip="{loc:Localize Cancel}">
+              <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.x}"
+                             Foreground="{DynamicResource VelaTextSecondary}" />
+            </Button>
+          </Grid>
+        </Border>
+        <Border DockPanel.Dock="Bottom" Padding="12,10" BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource VelaBorderPrimary}">
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Name="CancelButton" Content="{loc:Localize Cancel}" Height="28" Padding="14,0"
+                    Theme="{DynamicResource VelaOutlineButtonTheme}" Click="OnCancel" />
+            <Button Name="SaveButton" Content="{loc:Localize Save}" Height="28" Padding="14,0" IsDefault="True"
+                    IsEnabled="False" Theme="{DynamicResource VelaAccentPillButtonTheme}" Click="OnSave" />
+          </StackPanel>
+        </Border>
+        <Grid Name="ContentArea" ColumnDefinitions="*,*" RowDefinitions="Auto,*">
+          <TextBlock Text="{loc:Localize Sftp_UploadMappingRemote}" Margin="12,12,12,0"
+                     FontSize="{DynamicResource VelaFontSize12}" FontWeight="SemiBold"
+                     Foreground="{DynamicResource VelaTextPrimary}" />
+          <TextBlock Grid.Column="1" Text="{loc:Localize Sftp_UploadMappingLocal}" Margin="12,12,12,0"
+                     FontSize="{DynamicResource VelaFontSize12}" FontWeight="SemiBold"
+                     Foreground="{DynamicResource VelaTextPrimary}" />
+          <ContentControl Grid.Row="1" Content="{Binding Remote}" ContentTemplate="{StaticResource DirectoryPaneTemplate}" />
+          <ContentControl Grid.Row="1" Grid.Column="1" Content="{Binding Local}" ContentTemplate="{StaticResource DirectoryPaneTemplate}" />
+        </Grid>
+      </DockPanel>
+    </Border>
+  <Panel x:Name="ResizeGrips" ZIndex="200">
+    <Border Tag="North" Height="16" VerticalAlignment="Top" Margin="22,0" Background="Transparent" Cursor="TopSide" PointerPressed="ResizeEdge_PointerPressed" />
+    <Border Tag="South" Height="16" VerticalAlignment="Bottom" Margin="22,0" Background="Transparent" Cursor="BottomSide" PointerPressed="ResizeEdge_PointerPressed" />
+    <Border Tag="West" Width="16" HorizontalAlignment="Left" Margin="0,22" Background="Transparent" Cursor="LeftSide" PointerPressed="ResizeEdge_PointerPressed" />
+    <Border Tag="East" Width="16" HorizontalAlignment="Right" Margin="0,22" Background="Transparent" Cursor="RightSide" PointerPressed="ResizeEdge_PointerPressed" />
+    <Border Tag="NorthWest" Width="22" Height="22" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" Cursor="TopLeftCorner" PointerPressed="ResizeEdge_PointerPressed" />
+    <Border Tag="NorthEast" Width="22" Height="22" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Cursor="TopRightCorner" PointerPressed="ResizeEdge_PointerPressed" />
+    <Border Tag="SouthWest" Width="22" Height="22" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" PointerPressed="ResizeEdge_PointerPressed" />
+    <Border Tag="SouthEast" Width="22" Height="22" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" PointerPressed="ResizeEdge_PointerPressed" />
+  </Panel>
+  </Panel>
+</Window>

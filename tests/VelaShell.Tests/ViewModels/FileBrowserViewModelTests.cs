@@ -2238,6 +2238,30 @@ c => c.GetMethodInfo().Name == nameof(ISftpService.DownloadFileAsync),
 
     [TestMethod]
     [TestCategory("FileBrowser")]
+    public async Task UploadCommand_UsesMappingTargetInsteadOfEntryOrBackgroundDirectory()
+    {
+        string file = Path.Combine(Path.GetTempPath(), "vela-mapped-upload-" + Guid.NewGuid().ToString("N") + ".txt");
+        await File.WriteAllTextAsync(file, "mapped");
+        try
+        {
+            _vm.CurrentPath = "/entry";
+            _vm.PickUploadSelection = async entry =>
+            {
+                Assert.AreEqual("/entry", entry);
+                await Task.Yield();
+                _vm.CurrentPath = "/background";
+                return new UploadSelectionResult([file], "/mapped", Guid.NewGuid());
+            };
+            await _vm.UploadCommand.Execute().FirstAsync();
+            await _sftpService.Received(1).UploadFileAsync(_sessionId, file,
+                "/mapped/" + Path.GetFileName(file), Arg.Any<IProgress<TransferProgress>?>(),
+                cancellationToken: Arg.Any<CancellationToken>());
+        }
+        finally { File.Delete(file); }
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
     public async Task UploadCommand_RecursivelyUploadsFolderTree()
     {
         string tempRoot = Path.Combine(
