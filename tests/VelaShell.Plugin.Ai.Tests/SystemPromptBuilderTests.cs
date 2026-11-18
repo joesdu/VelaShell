@@ -13,13 +13,12 @@ public sealed class SystemPromptBuilderTests
     public void Build_ConcatenatesSectionsInOrder_ExactlyLikeTheOldStringSum()
     {
         AITool[] tools = [Tool("delegate_subagent"), Tool("team_run")];
-        var builder = new SystemPromptBuilder()
+        SystemPromptBuilder builder = new SystemPromptBuilder()
             .Add(SystemPromptBuilder.Base, "You are the assistant.")
             .AddToolGuidance(tools)
             .Add(SystemPromptBuilder.Images, "\nImages.\n");
 
-        CollectionAssert.AreEqual(new[] { SystemPromptBuilder.Base, SystemPromptBuilder.Delegation, SystemPromptBuilder.Team, SystemPromptBuilder.Images },
-            builder.SectionIds.ToArray());
+        Assert.AreSequenceEqual([SystemPromptBuilder.Base, SystemPromptBuilder.Delegation, SystemPromptBuilder.Team, SystemPromptBuilder.Images], [.. builder.SectionIds]);
         Assert.AreEqual("You are the assistant." + SubagentRunner.DelegationGuidance + SubagentRunner.TeamGuidance + "\nImages.\n",
             builder.Build(), "分段之间不加分隔,与以前逐段相加的结果逐字相同");
     }
@@ -29,9 +28,7 @@ public sealed class SystemPromptBuilderTests
     {
         Assert.IsEmpty(new SystemPromptBuilder().AddToolGuidance(null).SectionIds);
         Assert.IsEmpty(new SystemPromptBuilder().AddToolGuidance([Tool("list_sessions")]).SectionIds);
-        CollectionAssert.AreEqual(new[] { SystemPromptBuilder.Delegation },
-            new SystemPromptBuilder().AddToolGuidance([Tool("delegate_subagent")]).SectionIds.ToArray(),
-            "停用团队工具时不说团队");
+        Assert.AreSequenceEqual([SystemPromptBuilder.Delegation], [.. new SystemPromptBuilder().AddToolGuidance([Tool("delegate_subagent")]).SectionIds], "停用团队工具时不说团队");
     }
 
     [TestMethod]
@@ -52,19 +49,17 @@ public sealed class SystemPromptBuilderTests
             new SystemPromptBuilder().Add(SystemPromptBuilder.Base, "b").AddCustom("  ", "Global style.").Build());
         Assert.AreEqual("b\n\nBot extra.",
             new SystemPromptBuilder().Add(SystemPromptBuilder.Base, "b").AddCustom(null, null, "Bot extra.").Build());
-        CollectionAssert.AreEqual(new[] { SystemPromptBuilder.Base },
-            new SystemPromptBuilder().Add(SystemPromptBuilder.Base, "b").AddCustom(null, " ", null).SectionIds.ToArray(),
-            "都没填就不加这一段");
+        Assert.AreSequenceEqual([SystemPromptBuilder.Base], [.. new SystemPromptBuilder().Add(SystemPromptBuilder.Base, "b").AddCustom(null, " ", null).SectionIds], "都没填就不加这一段");
     }
 
     [TestMethod]
     public void Add_SkipsEmptySections()
     {
-        var builder = new SystemPromptBuilder()
+        SystemPromptBuilder builder = new SystemPromptBuilder()
             .Add(SystemPromptBuilder.Base, "base")
             .Add(SystemPromptBuilder.Images, null)
             .Add("extra", "");
-        CollectionAssert.AreEqual(new[] { SystemPromptBuilder.Base }, builder.SectionIds.ToArray());
+        Assert.AreSequenceEqual([SystemPromptBuilder.Base], [.. builder.SectionIds]);
         Assert.AreEqual("base", builder.Build());
     }
 }

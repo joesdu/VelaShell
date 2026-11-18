@@ -231,6 +231,7 @@ public sealed class AiSettingsStore(IPluginContext context)
                 settings.Approval = fresh.Approval;
                 settings.DisabledBuiltinTools = fresh.DisabledBuiltinTools;
                 settings.DisabledSkills = fresh.DisabledSkills;
+                settings.ExtensionPacks = fresh.ExtensionPacks;
                 settings.AgentMode = fresh.AgentMode;
                 settings.AutoApproveCommands = fresh.AutoApproveCommands;
                 settings.SystemPrompt = fresh.SystemPrompt;

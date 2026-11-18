@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Agent.Web;
 using VelaShell.Plugin.Ai.Chat;
+using VelaShell.Plugin.Ai.Chat.Extensions;
 using VelaShell.Plugin.Ai.Chat.Skills;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.Plugin.Ai.Ui;
@@ -374,8 +375,11 @@ public sealed class BridgeAgentRunner(
                                 && ai.WebSearch.PreferProviderNative
                                 && NativeWebSearch.IsSupported(model.Protocol);
             // 技能:与桌面同一套(用户级目录 + 允许读取的已授权工作区,去掉停用的),每轮现扫
+            // 扩展包:与桌面同一套规则(生效的包带来技能、命令与已确认的 MCP 服务器)
+            IReadOnlyList<ActivePack> turnPacks = ExtensionRuntime.Active(ai, new ExtensionPackStore(context.DataDirectory));
             IReadOnlyList<SkillInfo> turnSkills = mode == ChatMode.Chat ? []
-                : SkillCatalog.Enabled(ai.DisabledSkills, LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId));
+                : SkillCatalog.Enabled(ai.DisabledSkills, LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId),
+                    ExtensionRuntime.SkillDirectories(turnPacks));
             if (mode != ChatMode.Chat)
             {
                 if (mode == ChatMode.Agent)
@@ -399,7 +403,7 @@ public sealed class BridgeAgentRunner(
                 }
                 // 本轮工具:内置 → MCP;审批上下文每轮一份:mcp 是所有聊天共用的,别的聊天的轮次可能正同时在跑
                 SubagentOrchestrator? turnSubagents = subagents;
-                var mcpSource = new McpToolSource(mcp, ai.McpServers, new McpApproval(approve, approval),
+                var mcpSource = new McpToolSource(mcp, ExtensionRuntime.McpServers(ai, turnPacks), new McpApproval(approve, approval),
                     LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId))
                 {
                     Connected = errors =>
@@ -437,10 +441,16 @@ public sealed class BridgeAgentRunner(
             if (message.Text.StartsWith('/')
                 && !toolbox.DisabledTools.Contains(SkillToolSource.LoadToolName)
                 && SkillInvocation.TryExpand(message.Text, mode == ChatMode.Chat
-                    ? SkillCatalog.Enabled(ai.DisabledSkills, LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId))
+                    ? SkillCatalog.Enabled(ai.DisabledSkills, LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId),
+                        ExtensionRuntime.SkillDirectories(turnPacks))
                     : turnSkills) is { } invoked)
             {
                 modelText = invoked;
+            }
+            // 扩展包的 /命令 参数(技能同名时上面先用了技能)
+            else if (message.Text.StartsWith('/') && ExtensionRuntime.TryExpandCommand(message.Text, turnPacks) is { } command)
+            {
+                modelText = command;
             }
             conversation.History.Add(new ChatMessage(ChatRole.User, modelText));
             await PersistAsync(conversation, "user", message.Text, cancellationToken).ConfigureAwait(false);

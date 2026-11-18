@@ -224,6 +224,43 @@ public sealed class BridgeAgentRunnerTests
         }
     }
 
+    /// <summary>扩展包在 IM 里生效(ai-plan §12.4):启用时它的技能进技能目录、它的命令能用;停用即全部撤下。</summary>
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task RunAsync_UsesSkillsAndCommandsFromEnabledExtensionPacks(bool enabled)
+    {
+        await using var endpoint = new SseStub(
+            "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+        using var context = new TestPluginContext();
+        string pack = Path.Combine(context.DataDirectory, "extensions", "acme-ops");
+        Directory.CreateDirectory(Path.Combine(pack, "skills", "incident"));
+        await File.WriteAllTextAsync(Path.Combine(pack, "velashell-extension.json"),
+            """{"id":"acme-ops","name":"Acme Ops","version":"1.0","commands":[{"name":"deploy","prompt":"Deploy {{args}} carefully."}]}""");
+        await File.WriteAllTextAsync(Path.Combine(pack, "skills", "incident", "SKILL.md"), "---\nname: incident\ndescription: Handle an incident.\n---\nPage the on-call.");
+        var store = new AiSettingsStore(context);
+        await store.SaveAsync(new AiSettings
+        {
+            Providers =
+            [
+                new AiProvider
+                {
+                    Id = "p1", Name = "Local", BaseUrl = endpoint.BaseUrl, DefaultProtocol = ChatProtocol.OpenAiChatCompletions,
+                    Models = [new AiModelConfig { Id = "m1", Model = "probe" }]
+                }
+            ],
+            ActiveModelId = "m1",
+            ExtensionPacks = [new ExtensionPackState { Id = "acme-ops", Enabled = enabled }]
+        });
+
+        await Create(context).RunAsync(new BridgeConversation("ch1", "chat-1"), new BridgeSettings { Mode = ChatMode.Agent },
+            new InboundMessage("ch1", "chat-1", false, "u1", "Ann", "/deploy api-gateway", "m1", true), Deny, English, null, null, CancellationToken.None);
+
+        string body = endpoint.Requests.Single();
+        Assert.AreEqual(enabled, body.Contains("- incident (extension pack): Handle an incident.", StringComparison.Ordinal), "扩展包的技能");
+        Assert.AreEqual(enabled, body.Contains("Deploy api-gateway carefully.", StringComparison.Ordinal), "扩展包的命令");
+    }
+
     [TestMethod]
     public async Task RunAsync_RereadsTheAiSettingsEveryTurn()
     {

@@ -781,6 +781,18 @@ ControlTheme 的芯片开关(`Ui/AiTheme.axaml`,隔离进程下仅令牌也能�
 * **启停界面**(`Ui/ToolPickerView.Skills.cs`):「配置工具」里内置组之后的「技能」组,与模型看到的同一套来源现扫;逐个勾选写 `AiSettings.DisabledSkills`;解析失败的显示原因(不可勾选);「打开目录」建好并打开 `~/.velashell/skills`;「重新扫描」即整页重建。
 * **范围**:桌面与 IM 的 Agent / 计划模式;对话模式与对外 MCP 没有。两件工具登记在 `AgentToolbox.Catalog`(`ToolKind.Skill`)以便停用。
 
+**扩展包**(`Chat/Extensions/`、`Ui/ToolPickerView.Extensions.cs`,ai-plan §12.4):一个扩展包打包技能、斜杠命令与 MCP 服务器。
+* **清单**(`ExtensionManifest`,`velashell-extension.json`):`id` / `name` / `version` / `description` / `skills` / `commands` / `mcpServers`;
+  逐项校验(路径不许越出扩展包、环境变量与请求头的值不许有换行等),不合格整包拒绝并说明原因。
+  `ToMcpServers` 转成与手工配置同构的 `McpServerConfig`(id `ext-包id-名字`,工具名前缀 `包id_名字`,参数数组经 `JoinArguments` 拼成 `SplitArguments` 认的单行写法)。
+* **确认**:`McpFingerprint` 覆盖每台服务器的传输方式、命令、参数、工作目录、环境变量、地址与请求头;`AiSettings.ExtensionPacks[].ApprovedMcpFingerprint` 记用户确认过的值,
+  对不上时这个包的 MCP 不启动(技能与命令照常),界面提示重新确认。
+* **安装**(`ExtensionPackStore`):文件夹或 `.zip`(清单在根下或唯一顶层文件夹下)→ 插件数据目录 `extensions/<id>/`;zip-slip、项数(2 万)、总大小(200 MB)检查,
+  文件夹复制不跟随符号链接 / 联接点;先复制到临时目录再换掉旧版本。
+* **生效**(`ExtensionRuntime`):已安装 + 清单可读 + 启用;技能目录并进 `SkillCatalog`(`SkillSource.Extension`,优先级最低);`/命令` 在技能之后展开;
+  已确认的 MCP 服务器并进 `McpToolSource` 与 `McpManager.ReconcileAsync` 的列表(少传会被当成已删除关掉)。桌面与 IM 共用。
+* **界面**:「配置工具」的「扩展包」组 —— 安装(确认框原样列出每台 MCP 的启动信息;`ConfirmOverlay` 的说明区改为可滚动)、启停、卸载、重新确认;变动后经回调让面板对齐 MCP 连接。
+
 「AI:打开聊天(标签页)」以 `PanelPlacement.Right` 打开 —— 面板落在标签区**最右侧独立一栏**
 (VSCode 里 Copilot 聊天面板的位置),终端留在左边不被顶掉。落位走的是宿主的拖放停靠路径,
 与用户手动拖过去等价:随时可以再拖回标签条或换到别的分栏。初始宽度由设置页的

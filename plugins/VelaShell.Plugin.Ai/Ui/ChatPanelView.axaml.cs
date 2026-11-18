@@ -14,6 +14,7 @@ using TextMateSharp.Grammars;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Agent.Web;
 using VelaShell.Plugin.Ai.Chat;
+using VelaShell.Plugin.Ai.Chat.Extensions;
 using VelaShell.Plugin.Ai.Chat.Skills;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
@@ -1766,6 +1767,11 @@ public partial class ChatPanelView : UserControl
                 {
                     modelText = invoked;
                 }
+                // 扩展包的 /命令 参数:按它的提示词模板展开(技能同名时上面先用了技能)
+                else if (fromUser && ExtensionRuntime.TryExpandCommand(modelText, ActivePacks()) is { } command)
+                {
+                    modelText = command;
+                }
                 // 本地附件并进这一轮:图片作为视觉输入,文本附件接在正文后面
                 userMessage = new ChatMessage(ChatRole.User, BuildUserContents(modelText));
             }
@@ -2154,8 +2160,10 @@ public partial class ChatPanelView : UserControl
                                     && NativeWebSearch.IsSupported(current.Protocol);
                 // 技能:每轮现扫(用户级目录 + 允许读取的已授权工作区),新放进去的技能下一轮就能用;
                 // 停用的、解析失败的不进来。技能目录只在本轮真的暴露了 load_skill 时进系统提示词。
+                // 扩展包:每轮现取生效的(已安装、启用),它们的技能并进技能目录,已确认的 MCP 服务器并进 MCP 来源
+                IReadOnlyList<ActivePack> turnPacks = ActivePacks();
                 IReadOnlyList<SkillInfo> turnSkills = mode == ChatMode.Chat ? []
-                    : SkillCatalog.Enabled(_settings.DisabledSkills, GetActiveLocalWorkspaces());
+                    : SkillCatalog.Enabled(_settings.DisabledSkills, GetActiveLocalWorkspaces(), ExtensionRuntime.SkillDirectories(turnPacks));
                 // 纯对话模式不给任何工具;计划模式只给只读工具(见 AgentToolbox.CreateTools)
                 if (usesToolLoop)
                 {
@@ -2198,7 +2206,7 @@ public partial class ChatPanelView : UserControl
                     subagentTemplate ??= _toolbox.CreateSubagentToolbox();
                     // 本轮工具:内置 → 作图 → 「你应该知道」→ MCP,模式与停用规则在 TurnToolAssembly 里统一执行
                     SubagentOrchestrator turnSubagents = subagents;
-                    var mcpSource = new McpToolSource(_mcp, _settings.McpServers, _mcpApproval, GetActiveLocalWorkspaces())
+                    var mcpSource = new McpToolSource(_mcp, ExtensionRuntime.McpServers(_settings, turnPacks), _mcpApproval, GetActiveLocalWorkspaces())
                     {
                         Connecting = () => SetStatus(_loc["McpConnecting"]),
                         Connected = errors => SetStatus(errors.Count > 0 ? $"{_loc["Error"]} (MCP): {string.Join("; ", errors)}" : ""),
@@ -3317,7 +3325,7 @@ public partial class ChatPanelView : UserControl
         List<string> dirs =
         [
             // 本地进程型的每台都有工作目录(没填就是 ~/.velashell),都告诉模型;HTTP 型的没有"本机目录"可言
-            .. _settings.McpServers
+            .. ExtensionRuntime.McpServers(_settings, ActivePacks()) // 含已确认的扩展包服务器
                         .Where(s => s.Enabled && s.Transport == McpTransportType.Stdio)
                         .Select(s => $"{DisplayName(s)}: {McpWorkspace.Resolve(s.WorkingDirectory)}")
         ];

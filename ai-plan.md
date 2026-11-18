@@ -513,7 +513,7 @@ AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出�
 | 1d 子 Agent 编排器工厂 | 完成 | 见 12.9 |
 | 1e 拆小 `SendAsync` | 部分完成 | 低风险的一片已做,换站循环的拆分推迟到 Skills 之后(见 12.10) |
 | 2 Skills | 完成 | 2a、2b、2c 见 12.11–12.13 |
-| 3 扩展包 | 未开始 | 第二步已完成,可以开始 |
+| 3 扩展包 | 完成 | 见 12.14 |
 
 每完成一步:在上表更新状态,在本节下追加一条「12.x 日期:做了什么、验证结果、遗留」,并同步 `plan.md`(已发生的事)。
 
@@ -580,3 +580,13 @@ AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出�
 - 界面文案 9 个键,五种语言齐。`ToolsWindow_GroupsCollapse_AndChevronResolvesItsIcon` 的分组数从 2 改为 3(内置 + 技能 + MCP),并补「技能组默认展开」一条断言。
 - 验证:新增 `ChatPanelViewUiTests.Skills`(启停并保存、解析失败给原因、计数只算能用的、重新扫描出现新技能、停用状态保留);AI 测试工程全量 **2440/2440** 通过。
 - 第二步(Skills)至此完成。
+
+### 12.14 2026-11-18:第三步 扩展包
+
+- **3a 清单与安装**:`Chat/Extensions/ExtensionManifest`(`velashell-extension.json`:`id` / `name` / `version` / `description` / `skills` / `commands` / `mcpServers`,逐项校验)与 `ExtensionPackStore`(文件夹或 `.zip` → 插件数据目录 `extensions/<id>/`;zip-slip、2 万项、200 MB 上限,不跟随符号链接;先复制到临时目录再替换)。安装位置定为插件数据目录(装进来的产物,随卸载插件清除),与用户自己写的技能放 `~/.velashell/skills` 不同。
+- **确认指纹**:`McpFingerprint` 覆盖 MCP 的传输方式、命令、参数、工作目录、环境变量、地址与请求头;只改名字、版本、说明、技能或命令不影响。`AiSettings.ExtensionPacks`(新设置:`Id` / `Enabled` / `ApprovedMcpFingerprint`,重载时同步)。
+- **3b 生效**:`ExtensionRuntime` —— 已安装、清单可读、设置里启用才生效;技能并进技能目录(`SkillSource.Extension`,同名时优先级最低,目录里标 `(extension pack)`);命令 `/名字 参数` 按模板展开(`{{args}}`,内置命令与同名技能优先),桌面候选与 `/help` 列出;已确认的 MCP 服务器转成 `McpServerConfig` 并进桌面 / IM 的 MCP 来源、MCP 工作目录提示,以及 `McpServersView` 里 `ReconcileAsync` 的列表 —— 只传手工配置的会把扩展包的连接当成已删除关掉。
+- **3c 界面**:「配置工具」的「扩展包」组(在技能组之后):从文件夹 / .zip 安装 → 确认框列出技能、命令与每台 MCP 的原样启动信息(`ConfirmOverlay` 说明区改为最高 360 可滚动)→「安装并启用」;每包启停、卸载(确认)、指纹对不上时「查看并确认」。变动后经 `ToolPickerView` 新增的 `mcpChanged` 回调让面板 `ReconcileAsync`,撤下的连接立即关掉。界面文案 24 个键,五种语言齐。
+- **与计划的出入**:无。暂不做的(钩子、依赖、签名、在线商店、自动更新)照计划保留。扩展包 MCP 的密钥不进清单,手册建议放进用户自己的 MCP 配置。
+- **验证**:新增 `ExtensionPackTests` 7 条(清单校验、映射与参数往返、指纹范围、文件夹与 zip 安装 / 升级 / 列出 / 卸载、zip-slip、生效与 MCP 确认、命令展开与技能优先级)、IM 端到端 2 组、界面 2 条(取消不装;确认框原样列命令 → 安装记下指纹 → 文件被改后提示并重新确认 → 停用撤下并通知对齐 MCP → 卸载;坏清单报原因不弹确认);分组数用例改为 4 组。AI 测试工程全量 **2451/2451** 通过;整个解决方案 `dotnet build VelaShell.slnx -warnaserror` 通过,`dotnet test VelaShell.slnx` 11,949 通过、0 失败、246 跳过(Docker、真实 SSH、Shell 集成等环境类用例早退)。
+- 第三步完成;ai-plan §12 的三步至此全部完成(1e 的换站循环拆分仍按 §12.10 推迟)。

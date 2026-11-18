@@ -60,14 +60,16 @@ public sealed partial class ToolPickerView : UserControl
     /// 打开某台服务器的配置表单;参数为 null 表示"新增一台"。
     /// 左栏只摆概览,表单仍在 <see cref="McpServersView" />(它自己就是左列表右表单,塞不进 270 宽)。
     /// </param>
+    /// <param name="mcpChanged">扩展包启停 / 卸载 / 重新确认之后调用,让面板对齐 MCP 连接;可为空。</param>
     public ToolPickerView(IPluginContext context, AiSettings settings, Loc loc, Func<Task> persist,
-        Action<string?> openServerEditor)
+        Action<string?> openServerEditor, Func<Task>? mcpChanged = null)
     {
         _context = context;
         _settings = settings;
         _loc = loc;
         _persist = persist;
         _openServerEditor = openServerEditor;
+        _mcpChanged = mcpChanged;
         _serversEmpty.Text = _loc["McpNoServers"];
         // 这套版式规则原先由插件自己的对话框外壳下发;窗体换成宿主的自绘卡片之后自己带上
         Styles.Add(new StyleInclude(new Uri("avares://VelaShell.Plugin.Ai/"))
@@ -152,7 +154,8 @@ public sealed partial class ToolPickerView : UserControl
         root.Children.Add(rail);
         Grid.SetColumn(right, 1);
         root.Children.Add(right);
-        Content = root;
+        // 确认框(扩展包安装 / 卸载 / 重新确认 MCP)盖在整个视图上
+        Content = new Panel { Children = { root, _confirm } };
         Rebuild();
     }
 
@@ -268,6 +271,7 @@ public sealed partial class ToolPickerView : UserControl
         _groups.Children.Clear();
         _groups.Children.Add(BuildBuiltinGroup());
         _groups.Children.Add(BuildSkillsGroup());
+        _groups.Children.Add(BuildExtensionsGroup());
         foreach (McpServerConfig server in _settings.McpServers)
         {
             _groups.Children.Add(BuildMcpGroup(server));

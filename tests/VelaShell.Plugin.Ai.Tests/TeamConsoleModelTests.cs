@@ -181,7 +181,7 @@ public sealed class TeamConsoleModelTests
 
         TeamMemberState[] states = [.. members.Select(m => TeamConsoleModel.StateOf(m, team, runs))];
 
-        CollectionAssert.AreEqual((TeamMemberState[])
+        Assert.AreSequenceEqual((TeamMemberState[])
         [
             TeamMemberState.Working, TeamMemberState.Thinking, TeamMemberState.Waiting,
             TeamMemberState.Waiting, TeamMemberState.Blocked, TeamMemberState.Idle
@@ -232,9 +232,9 @@ public sealed class TeamConsoleModelTests
         Assert.IsTrue(telemetry.Sample(start + TeamTelemetry.Interval, Totals(700, 50)));
         Assert.IsTrue(telemetry.Sample(start + (TeamTelemetry.Interval * 2), Totals(700, 80)));
 
-        CollectionAssert.AreEqual((double[])[600, 0], telemetry.Member("a").ToArray());
-        CollectionAssert.AreEqual((double[])[50, 30], telemetry.Member("b").ToArray());
-        CollectionAssert.AreEqual((double[])[650, 30], telemetry.Team.ToArray());
+        Assert.AreSequenceEqual((double[])[600, 0], [.. telemetry.Member("a")]);
+        Assert.AreSequenceEqual((double[])[50, 30], [.. telemetry.Member("b")]);
+        Assert.AreSequenceEqual((double[])[650, 30], [.. telemetry.Team]);
         Assert.IsEmpty(telemetry.Member("nobody"));
 
         for (int i = 3; i < 80; i++) telemetry.Sample(start + (TeamTelemetry.Interval * i), Totals(700 + i, 80));

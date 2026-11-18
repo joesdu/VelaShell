@@ -9,7 +9,10 @@ internal enum SkillSource
     User,
 
     /// <summary>已授权本地工作区里的 <c>.velashell/skills</c>。</summary>
-    Workspace
+    Workspace,
+
+    /// <summary>已启用的扩展包带来的技能(ai-plan §12.4)。</summary>
+    Extension
 }
 
 /// <summary>扫描到的一个技能(解析失败时 <see cref="Error" /> 不为空,其余字段尽量填)。</summary>
@@ -73,12 +76,14 @@ internal static class SkillCatalog
     /// </summary>
     /// <param name="disabledSkills">停用的技能名(每行一条,见 <c>AiSettings.DisabledSkills</c>)。</param>
     /// <param name="workspaces">本轮生效的本地工作区;只扫描允许读取的。</param>
-    public static IReadOnlyList<SkillInfo> Enabled(string? disabledSkills, IEnumerable<Configuration.LocalWorkspace> workspaces)
+    /// <param name="extensionSkillDirectories">已启用扩展包的技能目录(直接含各技能文件夹)。</param>
+    public static IReadOnlyList<SkillInfo> Enabled(string? disabledSkills, IEnumerable<Configuration.LocalWorkspace> workspaces,
+        IEnumerable<string>? extensionSkillDirectories = null)
     {
         HashSet<string> disabled = new(
             (disabledSkills ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             StringComparer.OrdinalIgnoreCase);
-        return [.. Scan(UserDirectory, workspaces.Where(w => w.AllowRead && w.RootPath.Length > 0).Select(w => w.RootPath))
+        return [.. Scan(UserDirectory, workspaces.Where(w => w.AllowRead && w.RootPath.Length > 0).Select(w => w.RootPath), extensionSkillDirectories)
             .Where(s => s.IsValid && !disabled.Contains(s.Name))];
     }
 
@@ -90,26 +95,30 @@ internal static class SkillCatalog
     /// </summary>
     /// <param name="userDirectory">用户级技能目录(测试可替换)。</param>
     /// <param name="workspaceRoots">已授权的本地工作区根目录;只扫描它们下面的 <c>.velashell/skills</c>。</param>
-    public static IReadOnlyList<SkillInfo> Scan(string userDirectory, IEnumerable<string> workspaceRoots)
+    /// <param name="extensionSkillDirectories">已启用扩展包的技能目录;同名时优先级最低(扩展包 &lt; 用户级 &lt; 工作区,越具体越优先)。</param>
+    public static IReadOnlyList<SkillInfo> Scan(string userDirectory, IEnumerable<string> workspaceRoots,
+        IEnumerable<string>? extensionSkillDirectories = null)
     {
         var byName = new Dictionary<string, SkillInfo>(StringComparer.OrdinalIgnoreCase);
         var failed = new List<SkillInfo>();
-        foreach (SkillInfo skill in ScanDirectory(userDirectory, SkillSource.User)
+        foreach (SkillInfo skill in (extensionSkillDirectories ?? []).SelectMany(dir => ScanDirectory(dir, SkillSource.Extension))
+                     .Concat(ScanDirectory(userDirectory, SkillSource.User))
                      .Concat(workspaceRoots.SelectMany(root => ScanDirectory(Path.Combine(root, WorkspaceRelativeDirectory), SkillSource.Workspace))))
         {
             if (!skill.IsValid) failed.Add(skill);
-            else byName[skill.Name] = skill; // 后扫到的(工作区)覆盖先扫到的(用户级)
+            else byName[skill.Name] = skill; // 后扫到的覆盖先扫到的:扩展包 < 用户级 < 工作区
         }
         return [.. byName.Values.Concat(failed).OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)];
     }
 
-    private static IEnumerable<SkillInfo> ScanDirectory(string directory, SkillSource source)
+    /// <summary>扫描一个技能目录(直接含各技能文件夹);目录不存在或读不了时为空。</summary>
+    public static IEnumerable<SkillInfo> ScanDirectory(string directory, SkillSource source)
     {
         string[] folders;
         try
         {
-            if (!System.IO.Directory.Exists(directory)) yield break;
-            folders = System.IO.Directory.GetDirectories(directory);
+            if (!Directory.Exists(directory)) yield break;
+            folders = Directory.GetDirectories(directory);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

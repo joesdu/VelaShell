@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using VelaShell.Plugin.Ai.Chat;
+using VelaShell.Plugin.Ai.Chat.Extensions;
 using VelaShell.Plugin.Ai.Chat.Skills;
 
 namespace VelaShell.Plugin.Ai.Ui;
@@ -19,7 +20,13 @@ public partial class ChatPanelView
     private IReadOnlyList<SkillInfo> InvocableSkills()
         => (SplitLines(_settings.DisabledBuiltinTools) ?? []).Contains(SkillToolSource.LoadToolName, StringComparer.OrdinalIgnoreCase)
             ? []
-            : SkillCatalog.Enabled(_settings.DisabledSkills, GetActiveLocalWorkspaces());
+            : SkillCatalog.Enabled(_settings.DisabledSkills, GetActiveLocalWorkspaces(), ExtensionRuntime.SkillDirectories(ActivePacks()));
+
+    /// <summary>已安装扩展包的文件(插件数据目录的 <c>extensions/</c>)。</summary>
+    internal ExtensionPackStore Extensions => field ??= new ExtensionPackStore(_context.DataDirectory);
+
+    /// <summary>现在生效的扩展包(已安装、启用;MCP 是否已确认各自标明)。</summary>
+    internal IReadOnlyList<ActivePack> ActivePacks() => ExtensionRuntime.Active(_settings, Extensions);
 
     private bool TryShowCommandPicker(string text, int caret)
     {
@@ -35,6 +42,16 @@ public partial class ChatPanelView
                 || !command.StartsWith(text[..caret], StringComparison.OrdinalIgnoreCase)) continue;
             _commandCandidates.Add(command);
             _skillCommandDescriptions[command] = skill.Description;
+        }
+        // 扩展包的命令排在技能之后;与内置命令或技能同名的被它们盖住,不列
+        foreach ((string name, string description, string pack) in ExtensionRuntime.Commands(ActivePacks()))
+        {
+            string command = "/" + name;
+            if (_commandCandidates.Contains(command, StringComparer.OrdinalIgnoreCase)
+                || LocalCommands.Contains(command, StringComparer.OrdinalIgnoreCase)
+                || !command.StartsWith(text[..caret], StringComparison.OrdinalIgnoreCase)) continue;
+            _commandCandidates.Add(command);
+            _skillCommandDescriptions[command] = _loc.F("CommandFromPack", description.Length > 0 ? description : name, pack);
         }
         _imageMentionCandidates.Clear();
         _fileCandidates.Clear();
@@ -95,8 +112,9 @@ public partial class ChatPanelView
         string command = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
         if (!LocalCommands.Contains(command, StringComparer.OrdinalIgnoreCase))
         {
-            // /技能名:不是本地命令,照常发给模型,由 SendAsync 把技能指令附上(见 SkillInvocation)
-            if (SkillInvocation.Match(text, InvocableSkills()) is not null) return false;
+            // /技能名 或扩展包的 /命令:不是本地命令,照常发给模型,由 SendAsync 展开(见 SkillInvocation / ExtensionRuntime)
+            if (SkillInvocation.Match(text, InvocableSkills()) is not null
+                || ExtensionRuntime.TryExpandCommand(text, ActivePacks()) is not null) return false;
             SetStatus(_loc["CommandUnknown"]);
             return true;
         }
@@ -141,6 +159,9 @@ public partial class ChatPanelView
         List<string> skillCommands = [.. InvocableSkills().Select(s => "/" + s.Name)
             .Where(c => !LocalCommands.Contains(c, StringComparer.OrdinalIgnoreCase))];
         if (skillCommands.Count > 0) help += " · " + _loc.F("CommandSkillsHelp", string.Join(" ", skillCommands));
+        List<string> packCommands = [.. ExtensionRuntime.Commands(ActivePacks()).Select(c => "/" + c.Name)
+            .Where(c => !LocalCommands.Contains(c, StringComparer.OrdinalIgnoreCase) && !skillCommands.Contains(c, StringComparer.OrdinalIgnoreCase))];
+        if (packCommands.Count > 0) help += " · " + _loc.F("CommandPacksHelp", string.Join(" ", packCommands));
         SetStatus(help);
         return true;
     }

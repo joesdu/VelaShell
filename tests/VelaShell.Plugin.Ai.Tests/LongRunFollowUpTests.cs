@@ -178,9 +178,9 @@ public sealed class LongRunFollowUpTests
 
         JsonElement[] listed = [.. JsonDocument.Parse(SubagentRunner.ModelCatalog(settings, provider.Id, parent.Id)).RootElement.EnumerateArray()];
 
-        Assert.AreSequenceEqual(new[] { parent.Id, cheap.Id, unknown.Id, foreignModel.Id }, listed.Select(m => m.GetProperty("id").GetString()).ToArray(),
+        Assert.AreSequenceEqual([parent.Id, cheap.Id, unknown.Id, foreignModel.Id], listed.Select(m => m.GetProperty("id").GetString()).ToArray(),
             "候选覆盖所有供应商的聊天模型,主控那一家在前");
-        Assert.AreSequenceEqual(SubagentRunner.ModelChoices(settings, provider.Id).Keys.ToArray(),
+        Assert.AreSequenceEqual([.. SubagentRunner.ModelChoices(settings, provider.Id).Keys],
             listed.Select(m => m.GetProperty("id").GetString()).ToArray(), "与 ModelChoices 一致");
         JsonElement big = listed.Single(m => m.GetProperty("id").GetString() == parent.Id);
         Assert.IsTrue(big.GetProperty("parent").GetBoolean(), "标出主控自己在用的那个");

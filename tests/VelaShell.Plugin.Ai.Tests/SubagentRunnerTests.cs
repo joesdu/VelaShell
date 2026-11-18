@@ -46,7 +46,7 @@ public sealed class SubagentRunnerTests
         await store.SaveAsync(settings);
         Dictionary<string, string> choices = SubagentRunner.ModelChoices(settings, parent.Provider.Id);
         // 所有供应商的聊天模型都可选,主控那一家排在最前(也是替补顺序);图片模型不在内
-        Assert.AreSequenceEqual(new[] { parent.Id, child.Id, first.Id }, [.. choices.Keys]);
+        Assert.AreSequenceEqual([parent.Id, child.Id, first.Id], [.. choices.Keys]);
         (ResolvedModel selected, _) = await SubagentRunner.ResolveFromSettingsAsync(store, child.Id, parent.Id, CancellationToken.None);
         Assert.AreEqual(child.Id, selected.Id);
         (ResolvedModel foreign, _) = await SubagentRunner.ResolveFromSettingsAsync(store, first.Id, parent.Id, CancellationToken.None);
@@ -81,7 +81,7 @@ public sealed class SubagentRunnerTests
             Assert.IsFalse(orchestrator.DeliversResults);
             SubagentRunner.UseCandidates(orchestrator, settings, parent.Provider.Id, parent.Id);
             Assert.AreEqual(parent.Id, orchestrator.DefaultModelId);
-            Assert.AreSequenceEqual(new[] { parent.Id, first.Id }, [.. orchestrator.ModelChoices.Keys], "主控那一家在前");
+            Assert.AreSequenceEqual([parent.Id, first.Id], [.. orchestrator.ModelChoices.Keys], "主控那一家在前");
             StringAssert.Contains(orchestrator.ModelCatalog, "\"parent\":true");
 
             orchestrator.Start("task", "r");

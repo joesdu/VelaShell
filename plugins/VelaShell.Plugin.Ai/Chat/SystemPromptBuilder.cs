@@ -56,7 +56,7 @@ internal sealed class SystemPromptBuilder
     /// <summary>按本轮实际暴露的工具追加委派与团队指引(没有那件工具就不说,免得模型去调一个不存在的工具)。</summary>
     public SystemPromptBuilder AddToolGuidance(IEnumerable<AITool>? tools)
     {
-        List<AITool>? list = tools?.ToList();
+        var list = tools?.ToList();
         if (SubagentRunner.HasDelegation(list)) Add(Delegation, SubagentRunner.DelegationGuidance);
         if (SubagentRunner.HasTeam(list)) Add(Team, SubagentRunner.TeamGuidance);
         return this;

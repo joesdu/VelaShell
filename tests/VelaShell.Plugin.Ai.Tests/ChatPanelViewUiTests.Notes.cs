@@ -28,7 +28,7 @@ public sealed partial class ChatPanelViewUiTests
                 Find<StackPanel>(panel, "MessagesPanel").Children.Add(bubble.Root);
                 bubble.AddToolCall("c1", ConversationNotes.ToolName, """{"kind":"info","title":"x"}""");
                 bubble.AddToolCall("c2", "list_sessions", "{}");
-                CollectionAssert.AreEqual(new[] { "list_sessions" }, bubble.ToolCardsForTest().Select(c => c.ToolName).ToArray());
+                Assert.AreSequenceEqual(["list_sessions"], [.. bubble.ToolCardsForTest().Select(c => c.ToolName)]);
 
                 // 工具调用在轮次的异步流里,可能不在 UI 线程:走投递
                 await Task.Run(() =>

@@ -20,7 +20,7 @@ public sealed class TurnToolAssemblyTests
             .Add(m => m != ChatMode.Chat, () => [Tool("note")])
             .BuildAsync(CancellationToken.None);
 
-        CollectionAssert.AreEqual(new[] { "builtin_a", "builtin_b", "images", "note" }, tools.Select(t => t.Name).ToArray());
+        Assert.AreSequenceEqual(["builtin_a", "builtin_b", "images", "note"], [.. tools.Select(t => t.Name)]);
     }
 
     [TestMethod]
@@ -32,7 +32,7 @@ public sealed class TurnToolAssemblyTests
             .Add(_ => true, () => [Tool("note_for_user")])
             .BuildAsync(CancellationToken.None);
 
-        CollectionAssert.AreEqual(new[] { "read_file" }, tools.Select(t => t.Name).ToArray());
+        Assert.AreSequenceEqual(["read_file"], [.. tools.Select(t => t.Name)]);
         Assert.AreEqual(1, created);
     }
 

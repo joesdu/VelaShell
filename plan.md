@@ -3935,3 +3935,10 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **改动**:`Ui/ToolPickerView.Skills.cs`:逐个启停(`AiSettings.DisabledSkills`)、来源、解析失败原因、打开技能目录、重新扫描;`ToolPickerView` 改为 partial。
 - **验证**:AI 测试工程全量 2440/2440 通过。
 - **文档**:手册中英「技能」段补技能组;插件 README;velashell-docs §1.17 同步。
+
+## 350. AI 插件:扩展包 (2026-11-18)
+
+- **来由**:ai-plan §12.4(第三步)。
+- **改动**:`Chat/Extensions/`(`ExtensionManifest`、`ExtensionPackStore`、`ExtensionRuntime`);`AiSettings.ExtensionPacks`;技能 `SkillSource.Extension`;桌面与 IM 接入扩展包的技能、命令与已确认的 MCP 服务器;`McpServersView` 对齐 MCP 时带上扩展包服务器;「配置工具」的扩展包组与安装确认;`ConfirmOverlay` 说明区可滚动。细节见 ai-plan §12.14。
+- **验证**:AI 测试工程全量 2451/2451 通过;整个解决方案构建(`-warnaserror`)通过,`dotnet test VelaShell.slnx` 11,949 通过、0 失败、246 跳过(环境类用例早退)。
+- **文档**:手册中英新增「扩展包」一段;插件 README;velashell-docs《自动化与 AI》§1.18 与《安全威胁模型》各加一条(中英)。

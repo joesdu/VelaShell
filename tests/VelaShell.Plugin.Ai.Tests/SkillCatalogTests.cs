@@ -83,7 +83,7 @@ public sealed class SkillCatalogTests
 
         IReadOnlyList<SkillInfo> skills = SkillCatalog.Scan(user, [workspace]);
 
-        CollectionAssert.AreEqual(new[] { "audit", "broken", "deploy" }, skills.Select(s => s.Name).ToArray());
+        Assert.AreSequenceEqual(["audit", "broken", "deploy"], [.. skills.Select(s => s.Name)]);
         SkillInfo deploy = skills.Single(s => s.Name == "deploy");
         Assert.AreEqual(SkillSource.Workspace, deploy.Source, "同名时工作区的优先");
         Assert.AreEqual("workspace version", deploy.Description);
@@ -104,8 +104,7 @@ public sealed class SkillCatalogTests
         IReadOnlyList<SkillInfo> enabled = SkillCatalog.Enabled("OFF\n",
             [new LocalWorkspace { RootPath = readable }, new LocalWorkspace { RootPath = unreadable, AllowRead = false }]);
 
-        CollectionAssert.AreEqual(new[] { "keep" }, enabled.Select(s => s.Name).ToArray(),
-            "停用的(忽略大小写)、解析失败的、不允许读取的工作区里的都不进来");
+        Assert.AreSequenceEqual(["keep"], [.. enabled.Select(s => s.Name)], "停用的(忽略大小写)、解析失败的、不允许读取的工作区里的都不进来");
     }
 
     private SkillToolSource SourceWith(out SkillInfo skill)

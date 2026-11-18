@@ -32,7 +32,7 @@ public sealed partial class LineDiffTests
     [TestMethod]
     public void SplitLines_NormalizesLineEndings_AndDropsTrailingNewline()
     {
-        CollectionAssert.AreEqual(new[] { "a", "b", "", "c" }, LineDiff.SplitLines("a\r\nb\r\n\r\nc\r\n"));
+        Assert.AreSequenceEqual(["a", "b", "", "c"], LineDiff.SplitLines("a\r\nb\r\n\r\nc\r\n"));
         Assert.IsEmpty(LineDiff.SplitLines(null));
         Assert.IsEmpty(LineDiff.SplitLines(""));
         Assert.IsFalse(LineDiff.Compute("x\r\ny\r\n", "x\ny\n").HasChanges, "只换了换行符不算改动");
@@ -78,8 +78,8 @@ public sealed partial class LineDiffTests
         Assert.AreEqual(5, result.Added + result.Removed);
         string[] rebuiltNew = [.. result.Lines.Where(l => l.Kind != DiffLineKind.Removed).Select(l => l.Text)];
         string[] rebuiltOld = [.. result.Lines.Where(l => l.Kind != DiffLineKind.Added).Select(l => l.Text)];
-        CollectionAssert.AreEqual(LineDiff.SplitLines("C\nB\nA\nB\nA\nC"), rebuiltNew);
-        CollectionAssert.AreEqual(LineDiff.SplitLines("A\nB\nC\nA\nB\nB\nA"), rebuiltOld);
+        Assert.AreSequenceEqual(LineDiff.SplitLines("C\nB\nA\nB\nA\nC"), rebuiltNew);
+        Assert.AreSequenceEqual(LineDiff.SplitLines("A\nB\nC\nA\nB\nB\nA"), rebuiltOld);
     }
 
     [TestMethod]
@@ -185,8 +185,7 @@ public sealed partial class LineDiffTests
         Assert.IsTrue(ToolDiff.SamePath(@"src\app.cs", "src/app.cs"));
         Assert.IsTrue(ToolDiff.SamePath(@"C:\work\proj\src\app.cs", "src/app.cs"));
         Assert.IsFalse(ToolDiff.SamePath("src/app.cs", "src/other.cs"));
-        CollectionAssert.AreEqual(new[] { "a/b", "c/d" },
-            ToolDiff.PathsOf("""{"path":"a/b","newPath":"c/d","content":"x"}""").ToArray());
+        Assert.AreSequenceEqual(["a/b", "c/d"], [.. ToolDiff.PathsOf("""{"path":"a/b","newPath":"c/d","content":"x"}""")]);
     }
 
     // ---------- ChangedFileList ----------

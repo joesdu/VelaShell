@@ -50,7 +50,7 @@ public sealed class ConversationNotesTests
         notes.Add("action", "B", null);
 
         notes.Dismiss(a.Id);
-        CollectionAssert.AreEqual(new[] { "B" }, notes.Visible.Select(n => n.Title).ToArray());
+        Assert.AreSequenceEqual(["B"], [.. notes.Visible.Select(n => n.Title)]);
         notes.Add("warning", "A", "again");
         Assert.HasCount(2, notes.Visible, "模型再提同一件事时重新显示");
 

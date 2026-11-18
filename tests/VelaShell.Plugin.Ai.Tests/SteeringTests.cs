@@ -64,7 +64,7 @@ public sealed class SteeringTests
 
         Assert.AreEqual("好的", response.Text);
         Assert.IsNotNull(seen);
-        CollectionAssert.AreEqual(inner.Requests[0], seen.ToList(), "观察的就是发出去的那一份");
+        Assert.AreSequenceEqual(inner.Requests[0], seen.ToList(), "观察的就是发出去的那一份");
         Assert.EndsWith("只看最近一小时的", seen[^1].Text);
     }
 

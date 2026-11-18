@@ -42,8 +42,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(group.Classes.Contains("grouped"));
                 List<Border> cards = ToolItems(group);
                 Assert.HasCount(4, cards);
-                CollectionAssert.AreEqual(new[] { false, false, true, true }, cards.Select(c => c.IsVisible).ToArray(),
-                    "运行中只露出最近两张");
+                Assert.AreSequenceEqual([false, false, true, true], [.. cards.Select(c => c.IsVisible)], "运行中只露出最近两张");
 
                 bubble.AppendText("Disk usage is fine.");
                 await PumpAsync();

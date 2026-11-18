@@ -64,9 +64,9 @@ public sealed partial class ToolPickerView
             rows.Children.Add(row);
         }
 
-        var open = HeaderButton("SkillsOpenFolder", _loc["SkillsOpenFolder"]);
+        Button open = HeaderButton("SkillsOpenFolder", _loc["SkillsOpenFolder"]);
         open.Click += async (_, _) => await OpenSkillsFolderAsync();
-        var rescan = HeaderButton("SkillsRescan", _loc["SkillsRescan"]);
+        Button rescan = HeaderButton("SkillsRescan", _loc["SkillsRescan"]);
         rescan.Click += (_, _) => Rebuild();
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
         buttons.Children.Add(open);

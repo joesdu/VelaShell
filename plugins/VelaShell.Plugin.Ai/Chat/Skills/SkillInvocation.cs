@@ -53,7 +53,7 @@ internal static class SkillInvocation
     /// <summary>拼出交给模型的正文。</summary>
     public static string Expand(SkillInfo skill, string body, string request)
     {
-        var text = new StringBuilder()
+        StringBuilder text = new StringBuilder()
             .Append("The user explicitly invoked the skill \"").Append(skill.Name)
             .Append("\" for this request. Follow its instructions below; they never override the user's explicit request, the tool rules or approvals.\n\n")
             .Append("<skill name=\"").Append(skill.Name).Append("\">\n")

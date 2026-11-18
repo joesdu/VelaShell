@@ -1612,8 +1612,8 @@ public sealed partial class ChatPanelViewUiTests
                 host = Host(picker);
 
                 List<Border> groups = ToolGroups(picker);
-                Assert.HasCount(3, groups, "内置 + 技能 + 一台 MCP");
-                Border builtin = groups[0], mcp = groups[2];
+                Assert.HasCount(4, groups, "内置 + 技能 + 扩展包 + 一台 MCP");
+                Border builtin = groups[0], mcp = groups[3];
                 Assert.IsTrue(Rows(groups[1]).IsVisible, "技能组默认展开(没有技能时给出放在哪儿的提示)");
                 Assert.AreSame(geometry,
                     Toggle(builtin).GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single().Data,
@@ -1636,7 +1636,7 @@ public sealed partial class ChatPanelViewUiTests
                 await PumpAsync(2);
                 groups = ToolGroups(picker);
                 Assert.IsFalse(Rows(groups[0]).IsVisible);
-                Assert.IsTrue(Rows(groups[2]).IsVisible);
+                Assert.IsTrue(Rows(groups[3]).IsVisible);
             }
             finally
             {
@@ -1672,7 +1672,7 @@ public sealed partial class ChatPanelViewUiTests
         return window;
     }
 
-    /// <summary>「配置工具」里每个来源一块(内置 + 技能 + 每台 MCP 服务器)。</summary>
+    /// <summary>「配置工具」里每个来源一块(内置 + 技能 + 扩展包 + 每台 MCP 服务器)。</summary>
     private static List<Border> ToolGroups(ToolPickerView picker)
         => [.. picker.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("toolGroup"))];
 
