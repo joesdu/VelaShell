@@ -166,6 +166,27 @@ public sealed class SkillCatalogTests
     }
 
     [TestMethod]
+    public void Invocation_MatchesSlashName_AndExpandsWithTheSkillBody()
+    {
+        SourceWith(out SkillInfo skill);
+        SkillInfo broken = new("broken", "", _root, SkillSource.User, "bad");
+        IReadOnlyList<SkillInfo> skills = [skill, broken];
+
+        Assert.AreEqual(("nginx-check", "reload  prod"), SkillInvocation.Match("  /NGINX-check  reload  prod ", skills) is { } m ? (m.Skill.Name, m.Request) : default);
+        Assert.IsNull(SkillInvocation.Match("/unknown do it", skills));
+        Assert.IsNull(SkillInvocation.Match("/broken", skills), "解析失败的技能不能调用");
+        Assert.IsNull(SkillInvocation.Match("nginx-check /nginx-check", skills), "只认开头的斜杠");
+        Assert.IsNull(SkillInvocation.Match("/", skills));
+
+        string expanded = SkillInvocation.TryExpand("/nginx-check reload prod", skills)!;
+        StringAssert.Contains(expanded, "explicitly invoked the skill \"nginx-check\"");
+        StringAssert.Contains(expanded, "Run nginx -t first.");
+        StringAssert.EndsWith(expanded, "User request: reload prod");
+        StringAssert.Contains(SkillInvocation.TryExpand("/nginx-check", skills), "(none given: apply the skill to the current conversation)");
+        Assert.IsNull(SkillInvocation.TryExpand("plain message", skills));
+    }
+
+    [TestMethod]
     public void Index_ListsValidSkillsWithSource_AndCapsTheList()
     {
         Assert.IsNull(SkillToolSource.Index([]), "没有可用技能时不加这一段");

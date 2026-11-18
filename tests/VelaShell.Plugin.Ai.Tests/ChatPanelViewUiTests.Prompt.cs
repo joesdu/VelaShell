@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+
+using AvaloniaEdit;
 using VelaShell.Plugin.Ai.Chat;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.Plugin.Ai.Ui;
@@ -94,6 +96,23 @@ public sealed partial class ChatPanelViewUiTests
                     Assert.IsGreaterThan(index, first.IndexOf("Operator instructions: GLOBAL STYLE", StringComparison.Ordinal), "自定义提示词仍排最后");
                     Assert.Contains("\"load_skill\"", first);
                     Assert.Contains("Always run nginx -t before reloading.", chat.Requests[1].Body, "load_skill 把正文交回模型");
+
+                    // /技能名 显式调用:送给模型的那份附上技能正文;气泡里仍是用户敲的那一行
+                    int before = chat.Requests.Count;
+                    Find<TextEditor>(panel, "InputBox").Text = "/nginx-check reload prod"; // 用户敲的才认斜杠命令(SendExternal 不认)
+                    Click(panel, "SendButton");
+                    Assert.IsTrue(await WaitForAsync(() => chat.Requests.Count > before && !Find<Viewbox>(panel, "StopIcon").IsVisible));
+                    string invoked = chat.Requests[before].Body;
+                    Assert.Contains("explicitly invoked the skill", invoked);
+                    Assert.Contains("<skill name=", invoked);
+                    Assert.Contains("User request: reload prod", invoked);
+                    // 历史库里(气泡与载入旧会话都读它)留的是原话,展开的指令只在送给模型的那份里
+                    var history = new ChatHistoryStore(context);
+                    await history.InitAsync();
+                    IReadOnlyList<ChatEntry> saved = await history.LoadAsync(panel.ActiveConversation.ConversationId);
+                    List<string> userLines = [.. saved.Where(e => e.Role == "user").Select(e => e.Text)];
+                    Assert.Contains("/nginx-check reload prod", userLines, "历史里存原话");
+                    Assert.DoesNotContain(t => t.Contains("explicitly invoked", StringComparison.Ordinal), userLines, "展开的指令不进历史");
                 }
                 finally { panel.Detach(); window.Close(); }
             }

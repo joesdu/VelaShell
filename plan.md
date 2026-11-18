@@ -3921,3 +3921,10 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **改动**:`Chat/Skills/SkillCatalog`(扫描与解析)、`Chat/Skills/SkillToolSource`(`load_skill` / `read_skill_file` 与技能目录);`AiSettings.DisabledSkills`;`SystemPromptBuilder.AddSkills`;桌面与 IM 接入;两件工具进内置工具目录(`ToolKind.Skill`)。用户级目录定为 `~/.velashell/skills`(不随卸载删除)。
 - **验证**:新增单元 7 条、IM 端到端 3 组、桌面端到端 1 条;AI 测试工程全量 2438/2438 通过。
 - **文档**:手册中英「技能」一段;插件 README;velashell-docs §1.17 与威胁模型一条(中英)。
+
+## 348. AI 插件:斜杠命令显式调用技能 (2026-11-18)
+
+- **来由**:ai-plan §12.3 的 2b。
+- **改动**:`Chat/Skills/SkillInvocation`;桌面 `/` 候选、`/help` 与 `SendAsync` 展开;IM 在 `BridgeAgentRunner` 展开。内置命令优先;停用 `load_skill` 时不展开;对话模式也可用;历史存原话。斜杠命令「注册表」只共享技能这一层(理由见 ai-plan §12.12)。
+- **验证**:AI 测试工程全量 2439/2439 通过。
+- **文档**:手册中英「技能」段补斜杠调用;插件 README;velashell-docs §1.17 同步。

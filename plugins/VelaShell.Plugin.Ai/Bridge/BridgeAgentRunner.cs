@@ -431,7 +431,18 @@ public sealed class BridgeAgentRunner(
                     .Build();
             }
 
-            conversation.History.Add(new ChatMessage(ChatRole.User, message.Text));
+            // /技能名 请求:送给模型的那份附上该技能的指令(对话模式也行,不靠工具);历史里留的仍是原话。
+            // IM 的内置命令(/use、/mode 等)在 ConversationRouter 里先处理,到不了这里;整体关了技能(停用 load_skill)时不展开。
+            string modelText = message.Text;
+            if (message.Text.StartsWith('/')
+                && !toolbox.DisabledTools.Contains(SkillToolSource.LoadToolName)
+                && SkillInvocation.TryExpand(message.Text, mode == ChatMode.Chat
+                    ? SkillCatalog.Enabled(ai.DisabledSkills, LocalPathScope.ActiveWorkspaces(ai.LocalWorkspaces, ai.LocalDefaultWorkspaceId))
+                    : turnSkills) is { } invoked)
+            {
+                modelText = invoked;
+            }
+            conversation.History.Add(new ChatMessage(ChatRole.User, modelText));
             await PersistAsync(conversation, "user", message.Text, cancellationToken).ConfigureAwait(false);
 
             string systemPrompt = new SystemPromptBuilder()

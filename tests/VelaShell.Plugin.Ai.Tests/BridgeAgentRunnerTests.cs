@@ -209,6 +209,14 @@ public sealed class BridgeAgentRunnerTests
             string body = endpoint.Requests.Single();
             Assert.AreEqual(offered, body.Contains("- deploy-check (workspace): Verify a deployment.", StringComparison.Ordinal), "技能目录");
             Assert.AreEqual(offered, body.Contains("\"load_skill\"", StringComparison.Ordinal), "load_skill 工具");
+
+            // /技能名 显式调用:送给模型的那份附上技能正文(对话模式也行);停用了这个技能就照原文发
+            await Create(context).RunAsync(new BridgeConversation("ch1", "chat-2"), new BridgeSettings { Mode = mode },
+                new InboundMessage("ch1", "chat-2", false, "u1", "Ann", "/deploy-check prod", "m2", true), Deny, English, null, null,
+                CancellationToken.None);
+            string invoked = endpoint.Requests[^1];
+            Assert.AreEqual(!disabled, invoked.Contains("explicitly invoked the skill", StringComparison.Ordinal));
+            Assert.AreEqual(!disabled, invoked.Contains("User request: prod", StringComparison.Ordinal));
         }
         finally
         {

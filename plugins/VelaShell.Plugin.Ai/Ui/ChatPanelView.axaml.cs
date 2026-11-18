@@ -1761,6 +1761,11 @@ public partial class ChatPanelView : UserControl
                 {
                     AddAttachmentFailureNote(unreadable);
                 }
+                // /技能名 请求:送给模型的那份附上该技能的指令;气泡与历史里仍是用户敲的那一行(见 SkillInvocation)
+                if (fromUser && SkillInvocation.TryExpand(modelText, InvocableSkills()) is { } invoked)
+                {
+                    modelText = invoked;
+                }
                 // 本地附件并进这一轮:图片作为视觉输入,文本附件接在正文后面
                 userMessage = new ChatMessage(ChatRole.User, BuildUserContents(modelText));
             }
