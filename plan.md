@@ -3886,3 +3886,10 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **改动**:新增 `Chat/SystemPromptBuilder`(命名分段、空段跳过、按本轮工具追加委派 / 团队指引);`ChatPanelView.SendAsync` 与 `BridgeAgentRunner.RunAsync` 改用它;作图指引文字收成 `ChatPanelView.ImageGuidance`。输出与改动前逐字相同,自定义提示词的替换 / 追加语义不变(留给 1b)。
 - **验证**:新增 `SystemPromptBuilderTests` 3 条;AI 测试工程全量 2418/2418 通过,未改动既有断言。
 - **文档**:只动 `ai-plan.md` §12.5 / §12.6;对外行为不变,手册与 velashell-docs 无需同步。
+
+## 343. AI 插件重构 1b:自定义提示词改为追加,桌面与 IM 一致 (2026-11-18)
+
+- **来由**:ai-plan §12.2 的 1b。桌面填了全局或模型级自定义提示词就整段替换内置说明,模式说明、「MCP 跑在本机」的提醒、作图之外的委派 / 团队以外的部分一起丢掉;IM 则是追加。同一份设置两个入口效果不同,Skills 的技能目录也需要内置分段始终在。
+- **改动**:`SystemPromptBuilder.AddCustom`:模型级优先于全局,`Operator instructions:` 引出,IM 机器人附加提示词随后,整段排在最后。桌面 `BuildSystemPrompt` 去掉提前返回;IM 把自定义部分从基础段挪到最后,并开始使用模型级提示词(以前被忽略)。
+- **验证**:新增桌面端到端 2 条、IM 1 条、单元 1 条;AI 测试工程全量 2422/2422 通过。
+- **文档**:`manual.md` / `manual.en.md`「全局设置」段说明追加语义与升级注意;velashell-docs 无相关描述,无需同步。

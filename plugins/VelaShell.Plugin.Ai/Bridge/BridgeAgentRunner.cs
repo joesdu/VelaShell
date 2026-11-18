@@ -432,8 +432,9 @@ public sealed class BridgeAgentRunner(
             await PersistAsync(conversation, "user", message.Text, cancellationToken).ConfigureAwait(false);
 
             string systemPrompt = new SystemPromptBuilder()
-                .Add(SystemPromptBuilder.Base, BuildSystemPrompt(ai, bridge, mode, message, session, nativeSearch))
+                .Add(SystemPromptBuilder.Base, BuildSystemPrompt(mode, message, session, nativeSearch))
                 .AddToolGuidance(options.Tools)
+                .AddCustom(model.SystemPrompt, ai.SystemPrompt, bridge.ExtraSystemPrompt)
                 .Build();
             RequestContext request = ContextBuilder.Build(systemPrompt, conversation.History, model.MaxInputTokens, model.MaxTokens);
             // 有的订阅型端点不收 system 角色(ChatGPT 的 Codex 后端会回
@@ -548,8 +549,7 @@ public sealed class BridgeAgentRunner(
     /// 桥接侧的系统提示词。在面板那套之上补三件 IM 特有的事:
     /// 回复要短、当前是谁在问、这个聊天绑的是哪台机器。
     /// </summary>
-    private string BuildSystemPrompt(AiSettings ai, BridgeSettings bridge, ChatMode mode,
-        InboundMessage message, SessionInfo? session, bool nativeWebSearch)
+    private string BuildSystemPrompt(ChatMode mode, InboundMessage message, SessionInfo? session, bool nativeWebSearch)
     {
         var prompt = new StringBuilder(
             "You are the VelaShell assistant, reachable from a team chat. " +
@@ -587,14 +587,7 @@ public sealed class BridgeAgentRunner(
                 "Produce a short ordered plan with the exact commands, the risk, and the rollback. ",
             _ => "You have no tools in this mode: answer from the conversation itself. "
         });
-        if (!string.IsNullOrWhiteSpace(ai.SystemPrompt))
-        {
-            prompt.Append("\n\nOperator instructions: ").Append(ai.SystemPrompt.Trim());
-        }
-        if (!string.IsNullOrWhiteSpace(bridge.ExtraSystemPrompt))
-        {
-            prompt.Append("\n\n").Append(bridge.ExtraSystemPrompt.Trim());
-        }
+        // 用户自定义的提示词(模型级 / 全局 / 机器人附加)不在这里:与桌面一样作为最后一段追加,见 SystemPromptBuilder.AddCustom
         return prompt.ToString();
     }
 

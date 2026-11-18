@@ -2316,9 +2316,11 @@ public partial class ChatPanelView : UserControl
                 }
                 // 装配上下文:摘要 + 近几轮原文,按窗口裁剪并把相邻同角色的消息并起来(见 ContextBuilder)
                 string systemPrompt = new SystemPromptBuilder()
-                    .Add(SystemPromptBuilder.Base, BuildSystemPrompt(current, mode, nativeSearch))
+                    .Add(SystemPromptBuilder.Base, BuildSystemPrompt(mode, nativeSearch))
                     .AddToolGuidance(options.Tools)
                     .Add(SystemPromptBuilder.Images, imageToolsEnabled ? ImageGuidance + ImagesFor(conv).Describe() : null)
+                    // 专用提示词按当前这一站取(故障转移换站后跟着换),不读界面选中的那家,免得把别家的专用提示词发出去
+                    .AddCustom(current.SystemPrompt, _settings.SystemPrompt)
                     .Build();
                 RequestContext request = ContextBuilder.Build(systemPrompt, History, current.MaxInputTokens, current.MaxTokens,
                     ContextSummary, SummarizedThrough);
@@ -3252,30 +3254,16 @@ public partial class ChatPanelView : UserControl
         "Never automatically retry failed image operations. Do not include unrelated terminal content or secrets in image prompts.\n";
 
     /// <summary>
-    /// 系统提示词:接入专用的优先,其次全局的,最后才是内置默认。
-    /// 内置那份会按对话模式追加不同的交代 —— 三种模式对模型的要求本来就不一样。
+    /// 内置的基础系统提示词:身份与语气,并按对话模式追加不同的交代 —— 三种模式对模型的要求本来就不一样。
     /// </summary>
     /// <remarks>
-    /// 用户自定义的提示词<b>不追加模式说明</b>:他既然自己写了,就该完全由他说了算。
-    /// 模式的实际约束靠"给不给工具"来兜底(计划模式根本拿不到写工具),不依赖提示词自觉。
+    /// 用户自定义的提示词不在这里:它作为最后一段由 <see cref="SystemPromptBuilder.AddCustom" /> 追加,
+    /// 不再整段替换这份说明(ai-plan §12.2 的 1b)。
     /// </remarks>
-    /// <param name="current">
-    /// 按<b>当前这一站</b>取专用提示词,不看界面选中的那家:故障转移切到 B 时选择可能
-    /// 仍指着 A(或已被用户改去 C)—— 读 <c>ActiveProvider</c> 会把别家的专用提示词
-    /// 发给这一站,那是跨接入泄露。
-    /// </param>
-    /// <param name="mode">对话模式(纯对话 / 计划 / Agent),决定默认提示词的尾段。</param>
-    /// <param name="nativeWebSearch">本轮服务端检索可用时,默认提示词要点破"你连着网"。</param>
-    private string BuildSystemPrompt(ResolvedModel current, ChatMode mode, bool nativeWebSearch = false)
+    /// <param name="mode">对话模式(纯对话 / 计划 / Agent),决定提示词的尾段。</param>
+    /// <param name="nativeWebSearch">本轮服务端检索可用时,要点破"你连着网"。</param>
+    private string BuildSystemPrompt(ChatMode mode, bool nativeWebSearch = false)
     {
-        if (current is { SystemPrompt: { } own } && !string.IsNullOrWhiteSpace(own))
-        {
-            return own;
-        }
-        if (!string.IsNullOrWhiteSpace(_settings.SystemPrompt))
-        {
-            return _settings.SystemPrompt;
-        }
         string prompt =
             "You are the AI assistant embedded in VelaShell, an SSH terminal application. " +
             "Help the user with servers, shell commands, log analysis and DevOps questions. Be concise and practical. " +

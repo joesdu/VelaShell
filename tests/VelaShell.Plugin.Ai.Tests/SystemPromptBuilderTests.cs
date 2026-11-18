@@ -35,6 +35,29 @@ public sealed class SystemPromptBuilderTests
     }
 
     [TestMethod]
+    public void AddCustom_ModelPromptWinsOverGlobal_ComesLast_AndKeepsBuiltInSections()
+    {
+        string prompt = new SystemPromptBuilder()
+            .Add(SystemPromptBuilder.Base, "Built-in mode rules.")
+            .AddToolGuidance([Tool("delegate_subagent")])
+            .AddCustom("  Model style.  ", "Global style.", "Bot extra.")
+            .Build();
+
+        Assert.StartsWith("Built-in mode rules.", prompt, "内置说明不再被自定义提示词整段替换");
+        Assert.Contains(SubagentRunner.DelegationGuidance, prompt);
+        Assert.EndsWith(SystemPromptBuilder.CustomPrefix + "Model style.\n\nBot extra.", prompt, "自定义的排在最后");
+        Assert.DoesNotContain("Global style.", prompt, "模型级的优先,全局的不再叠加");
+
+        Assert.EndsWith(SystemPromptBuilder.CustomPrefix + "Global style.",
+            new SystemPromptBuilder().Add(SystemPromptBuilder.Base, "b").AddCustom("  ", "Global style.").Build());
+        Assert.AreEqual("b\n\nBot extra.",
+            new SystemPromptBuilder().Add(SystemPromptBuilder.Base, "b").AddCustom(null, null, "Bot extra.").Build());
+        CollectionAssert.AreEqual(new[] { SystemPromptBuilder.Base },
+            new SystemPromptBuilder().Add(SystemPromptBuilder.Base, "b").AddCustom(null, " ", null).SectionIds.ToArray(),
+            "都没填就不加这一段");
+    }
+
+    [TestMethod]
     public void Add_SkipsEmptySections()
     {
         var builder = new SystemPromptBuilder()

@@ -508,8 +508,8 @@ AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出�
 | 步骤 | 状态 | 说明 |
 | --- | --- | --- |
 | 1a 系统提示词分段组合 | 完成 | 见 12.6 |
-| 1b 统一自定义提示词语义 | 进行中 | 唯一的行为变化,单独提交 |
-| 1c 工具来源统一 | 未开始 | |
+| 1b 统一自定义提示词语义 | 完成 | 见 12.7 |
+| 1c 工具来源统一 | 进行中 | |
 | 1d 子 Agent 编排器工厂 | 未开始 | |
 | 1e 拆小 `SendAsync` | 未开始 | |
 | 2 Skills | 未开始 | 依赖第一步 |
@@ -523,3 +523,11 @@ AI 插件已经是一个 Agent,但「装配一轮对话」这一层没有抽出�
 - 桌面(`ChatPanelView.SendAsync`)与 IM(`BridgeAgentRunner.RunAsync`)改为经它拼接;作图指引的固定文字收成 `ChatPanelView.ImageGuidance` 常量。对外 MCP 不拼系统提示词(外部 agent 自带),不涉及。
 - 不改任何对外行为:自定义提示词仍是桌面替换、IM 追加(留给 1b)。
 - 验证:新增 `SystemPromptBuilderTests` 3 条;AI 测试工程全量 **2418/2418** 通过,未改动任何既有断言。
+
+### 12.7 2026-11-18:1b 统一自定义提示词语义
+
+- `SystemPromptBuilder` 新增 `custom` 分段与 `AddCustom(modelPrompt, globalPrompt, extra)`:模型级提示词优先,没有再用全局的,以 `\n\nOperator instructions: ` 引出;入口附加的一段(IM 机器人的附加提示词)跟在后面;都没填就不加这一段。永远排在最后。
+- 桌面:`BuildSystemPrompt` 不再在有自定义提示词时提前返回,内置说明(身份、模式、本机 / 远端与 MCP 提醒、原生检索提示)照常发出,自定义的追加在作图指引之后。专用提示词仍按当前这一站的模型取。
+- IM:`Operator instructions` 与机器人附加提示词从基础段挪到最后;**新增**:模型级提示词在 IM 里也生效(以前被忽略),与桌面一致。
+- 手册中英「全局设置」段说明追加语义与升级注意;velashell-docs 没有描述旧的替换语义,无需同步。
+- 验证:`SystemPromptBuilderTests` 补 1 条(优先级、排最后、内置段保留),新增桌面端到端 `ChatPanelViewUiTests.Prompt`(全局 / 模型级两种)与 IM `BridgeAgentRunnerTests.RunAsync_AppendsModelLevelThenBotPromptAfterTheBuiltInRules`;AI 测试工程全量 **2422/2422** 通过,未改动任何既有断言。

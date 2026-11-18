@@ -126,6 +126,47 @@ public sealed class BridgeAgentRunnerTests
     /// 所以第二轮一定失败,但失败的原因得是服务商拒绝,不是"没模型")。
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// IM 与桌面同一套自定义提示词语义(ai-plan §12.2 的 1b):模型级的优先于全局,机器人附加提示词跟在后面,都排在 IM 内置说明之后。
+    /// </summary>
+    [TestMethod]
+    public async Task RunAsync_AppendsModelLevelThenBotPromptAfterTheBuiltInRules()
+    {
+        await using var endpoint = new SseStub(
+            "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+        using var context = new TestPluginContext();
+        var store = new AiSettingsStore(context);
+        await store.SaveAsync(new AiSettings
+        {
+            Providers =
+            [
+                new AiProvider
+                {
+                    Id = "p1",
+                    Name = "Local",
+                    BaseUrl = endpoint.BaseUrl,
+                    DefaultProtocol = ChatProtocol.OpenAiChatCompletions,
+                    Models = [new AiModelConfig { Id = "m1", Model = "probe", SystemPrompt = "MODEL-LEVEL STYLE" }]
+                }
+            ],
+            ActiveModelId = "m1",
+            SystemPrompt = "GLOBAL STYLE"
+        });
+
+        await Create(context).RunAsync(new BridgeConversation("ch1", "chat-1"),
+            new BridgeSettings { Mode = ChatMode.Chat, ExtraSystemPrompt = "BOT EXTRA" },
+            Message(), Deny, English, null, null, CancellationToken.None);
+
+        string body = endpoint.Requests.Single();
+        int builtIn = body.IndexOf("reachable from a team chat", StringComparison.Ordinal);
+        int custom = body.IndexOf("Operator instructions: MODEL-LEVEL STYLE", StringComparison.Ordinal);
+        int extra = body.IndexOf("BOT EXTRA", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, builtIn);
+        Assert.IsGreaterThan(builtIn, custom, "模型级提示词以前在 IM 里被忽略,现在与桌面一样生效");
+        Assert.IsGreaterThan(custom, extra, "机器人附加提示词跟在后面");
+        Assert.DoesNotContain("GLOBAL STYLE", body, "模型级的优先,全局的不叠加");
+    }
+
     [TestMethod]
     public async Task RunAsync_RereadsTheAiSettingsEveryTurn()
     {
