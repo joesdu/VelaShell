@@ -105,11 +105,44 @@ public sealed class MasterPasswordFormatTests
         string sloppy = " " + display.ToLowerInvariant().Replace("-", " ", StringComparison.Ordinal).Replace('1', 'l').Replace('0', 'o') + " ";
         Assert.IsTrue(RecoveryCode.TryParse(sloppy, out byte[] again), "不分大小写,空格当分隔,l / o 当 1 / 0");
         Assert.AreSequenceEqual(entropy, again);
-        char[] typo = display.ToCharArray();
-        typo[0] = typo[0] == 'A' ? 'B' : 'A';
-        Assert.IsFalse(RecoveryCode.TryParse(new string(typo), out _), "抄错一位:校验不通过");
         Assert.IsFalse(RecoveryCode.TryParse(display[..^1], out _), "少一位");
         Assert.IsFalse(RecoveryCode.TryParse("", out _));
+    }
+
+    /// <summary>
+    /// 抄错一位多半会被校验拦下 —— 但只是「多半」:校验只有 1 字节(SHA-256 的首字节),
+    /// 随便改一个字符约有 1/256 的机会恰好仍然对得上。以前这里拿<b>随机</b>生成的码改第一个字符、断言一定失败,
+    /// 于是每 256 次就会随机红一次(2026-11-19 CI 的 ubuntu 作业就撞上了)。
+    /// 现在用固定的熵,把每个位置换成字母表里每个别的字符逐一试一遍,断言绝大多数被拦下(理论上约 0.4% 漏过,门槛给 2%),
+    /// 再点名一处确定会被拦的。结果每次都一样,不再随机。
+    /// </summary>
+    [TestMethod]
+    public void RecoveryCode_ChecksumCatchesAlmostEverySingleCharacterTypo()
+    {
+        const string alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+        byte[] entropy = [.. Enumerable.Range(1, RecoveryCode.EntropySize).Select(static i => (byte)(i * 37))];
+        string code = RecoveryCode.Format(entropy);
+        Assert.IsTrue(RecoveryCode.TryParse(code, out _));
+
+        int tried = 0, accepted = 0;
+        for (int i = 0; i < code.Length; i++)
+        {
+            if (code[i] == '-') continue;
+            foreach (char c in alphabet)
+            {
+                if (c == code[i]) continue;
+                char[] typo = code.ToCharArray();
+                typo[i] = c;
+                tried++;
+                if (RecoveryCode.TryParse(new string(typo), out _)) accepted++;
+            }
+        }
+        Assert.IsGreaterThan(800, tried, "28 个位置 × 31 种换法");
+        Assert.IsLessThan(tried * 2 / 100, accepted, $"抄错一位绝大多数要被拦下(这次 {accepted}/{tried} 漏过)");
+
+        char[] first = code.ToCharArray();
+        first[0] = first[0] == 'A' ? 'B' : 'A';
+        Assert.IsFalse(RecoveryCode.TryParse(new string(first), out _), "固定的这份码里,把第一个字符抄错会被拦下");
     }
 
     // ———— 锁着时 ————
