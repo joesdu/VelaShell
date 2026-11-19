@@ -35,7 +35,7 @@ public sealed class MasterPasswordLockedStateTests : IDisposable
         _root = Path.Combine(Path.GetTempPath(), "velashell-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
         _keyFile = Path.Combine(_root, "secret.key");
-        _engine = new(Path.Combine(_root, "sonnetdb"));
+        _engine = SonnetDbTestTemplate.Open(Path.Combine(_root, "sonnetdb"));
     }
 
     public void Dispose()

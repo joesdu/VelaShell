@@ -60,7 +60,7 @@ public sealed class PluginTrustRepositoryTests
     [TestMethod]
     public async Task SaveAndReload_ProtectsTrustStateInSonnetDb()
     {
-        using var engine = new SonnetDbEngine(Path.Combine(_root, "db"));
+        using var engine = SonnetDbTestTemplate.Open(Path.Combine(_root, "db"));
         var repository = new PluginTrustRepository(engine, new TestSecretProtector());
         using var publisher = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         string publicKey = Convert.ToBase64String(publisher.ExportSubjectPublicKeyInfo());
@@ -83,7 +83,7 @@ public sealed class PluginTrustRepositoryTests
     [TestMethod]
     public async Task Load_TamperedCiphertext_FailsClosed()
     {
-        using var engine = new SonnetDbEngine(Path.Combine(_root, "db"));
+        using var engine = SonnetDbTestTemplate.Open(Path.Combine(_root, "db"));
         var repository = new PluginTrustRepository(engine, new TestSecretProtector());
         await repository.SaveAsync(new PluginTrustState());
         await engine.WithCollectionAsync<object?>(SonnetDbEngine.ConfigCollection, collection =>
@@ -99,7 +99,7 @@ public sealed class PluginTrustRepositoryTests
     public async Task Load_AfterKeyChanged_FailsWithAuthenticationError()
     {
         // 用户实际撞上的形状:文档由旧密钥加密,secret.key 换过之后再读。
-        using var engine = new SonnetDbEngine(Path.Combine(_root, "db"));
+        using var engine = SonnetDbTestTemplate.Open(Path.Combine(_root, "db"));
         await new PluginTrustRepository(engine, new AesSecretProtector(Path.Combine(_root, "old.key")))
             .SaveAsync(new PluginTrustState());
         var repository = new PluginTrustRepository(engine, new AesSecretProtector(Path.Combine(_root, "new.key")));
@@ -111,7 +111,7 @@ public sealed class PluginTrustRepositoryTests
     [TestMethod]
     public async Task Reset_KeepsUnreadableDocumentAsBackup_AndLoadsAgain()
     {
-        using var engine = new SonnetDbEngine(Path.Combine(_root, "db"));
+        using var engine = SonnetDbTestTemplate.Open(Path.Combine(_root, "db"));
         await new PluginTrustRepository(engine, new AesSecretProtector(Path.Combine(_root, "old.key")))
             .SaveAsync(new PluginTrustState());
         string original = (await engine.WithCollectionAsync(SonnetDbEngine.ConfigCollection,
@@ -136,7 +136,7 @@ public sealed class PluginTrustRepositoryTests
         string publicKey = Convert.ToBase64String(publisher.ExportSubjectPublicKeyInfo());
         string legacy = Path.Combine(_root, "trusted-plugin-publishers.json");
         await File.WriteAllTextAsync(legacy, JsonSerializer.Serialize(new[] { publicKey }));
-        using var engine = new SonnetDbEngine(Path.Combine(_root, "db"));
+        using var engine = SonnetDbTestTemplate.Open(Path.Combine(_root, "db"));
         var repository = new PluginTrustRepository(engine, new TestSecretProtector(), legacy);
 
         PluginTrustState state = await repository.LoadAsync();

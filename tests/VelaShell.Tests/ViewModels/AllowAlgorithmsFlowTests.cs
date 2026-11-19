@@ -169,7 +169,7 @@ public sealed class AllowAlgorithmsFlowTests
             IShellStreamWrapper shell = Substitute.For<IShellStreamWrapper>();
             shell.CanRead.Returns(true);
             shell.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                 .Returns(new TaskCompletionSource<int>().Task);
+                 .Returns(TestSupport.FakeShellReads.UntilCancelled);
             ITerminalEmulator terminal = FakeTerminal.Emulator();
             SessionProfile profile = new()
             {

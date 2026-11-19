@@ -142,7 +142,7 @@ public sealed class TerminalSidebarRemoteEditTests
         shellStream.CanRead.Returns(true);
         shellStream.CanWrite.Returns(true);
         shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                   .Returns(new TaskCompletionSource<int>().Task);
+                   .Returns(TestSupport.FakeShellReads.UntilCancelled);
         var profile = new SessionProfile
         {
             Id = Guid.NewGuid(),

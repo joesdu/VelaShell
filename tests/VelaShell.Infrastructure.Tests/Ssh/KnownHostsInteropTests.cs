@@ -21,7 +21,7 @@ public sealed class KnownHostsInteropTests : IDisposable
     {
         _directory = Path.Combine(Path.GetTempPath(), $"velashell_khinterop_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
-        _engine = new(Path.Combine(_directory, "sonnetdb"));
+        _engine = SonnetDbTestTemplate.Open(Path.Combine(_directory, "sonnetdb"));
         _store = new(_engine);
     }
 

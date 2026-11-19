@@ -32,7 +32,7 @@ public sealed class TerminalTabReconnectProfileTests
     {
         _directory = Path.Combine(Path.GetTempPath(), $"velashell_reconnect_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
-        _engine = new SonnetDbEngine(Path.Combine(_directory, "sonnetdb"));
+        _engine = SonnetDbTestTemplate.Open(Path.Combine(_directory, "sonnetdb"));
         _repository = new SonnetDbSessionRepository(_engine, new AesSecretProtector(Path.Combine(_directory, "secret.key")));
     }
 
@@ -249,14 +249,15 @@ public sealed class TerminalTabReconnectProfileTests
         return new MainWindowViewModel(workflow, ssh, () => terminal, sessionRepository: _repository);
     }
 
-    /// <summary>一条永远不吐数据的 shell 流(活连接),写进去的每一段都记下来。</summary>
+    /// <summary>一条活连接的 shell 流:先吐一次提示符、之后不再有输出,写进去的每一段都记下来。</summary>
     private IShellStreamWrapper CapturingShell()
     {
         IShellStreamWrapper shell = Substitute.For<IShellStreamWrapper>();
         shell.CanRead.Returns(true);
         shell.CanWrite.Returns(true);
+        // 吐过提示符、静下来就注入(不必等 3 秒上限),见 FakeShellReads.PromptThenUntilCancelled
         shell.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-             .Returns(new TaskCompletionSource<int>().Task);
+             .Returns(TestSupport.FakeShellReads.PromptThenUntilCancelled());
         shell.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
              .Returns(call =>
              {
@@ -270,7 +271,7 @@ public sealed class TerminalTabReconnectProfileTests
         return shell;
     }
 
-    /// <summary>等到第 <paramref name="occurrence" /> 段含 <paramref name="marker" /> 的写入(注入推迟到对端安静之后,替身流一路等到 3 秒上限)。</summary>
+    /// <summary>等到第 <paramref name="occurrence" /> 段含 <paramref name="marker" /> 的写入(注入推迟到对端吐完提示符、安静下来之后)。</summary>
     private async Task WaitForWriteAsync(string marker, int occurrence)
     {
         for (int i = 0; i < 500; i++)

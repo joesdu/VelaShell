@@ -19,7 +19,7 @@ public sealed class SessionRecordingStoreTests : IDisposable
     {
         _testDirectory = Path.Combine(Path.GetTempPath(), $"velashell_rectest_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testDirectory);
-        _engine = new(Path.Combine(_testDirectory, "sonnetdb"));
+        _engine = SonnetDbTestTemplate.Open(Path.Combine(_testDirectory, "sonnetdb"));
         _store = new(_engine);
     }
 

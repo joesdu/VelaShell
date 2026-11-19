@@ -23,7 +23,7 @@ public sealed class SharedCredentialStorageTests : IDisposable
     {
         _testDirectory = Path.Combine(Path.GetTempPath(), $"velashell_credtest_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testDirectory);
-        _engine = new(Path.Combine(_testDirectory, "sonnetdb"));
+        _engine = SonnetDbTestTemplate.Open(Path.Combine(_testDirectory, "sonnetdb"));
         _protector = new(Path.Combine(_testDirectory, "secret.key"));
     }
 

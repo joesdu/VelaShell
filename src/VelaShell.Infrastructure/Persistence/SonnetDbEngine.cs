@@ -93,17 +93,41 @@ public sealed class SonnetDbEngine : IDisposable
         RootDirectory = rootDirectory;
         // 快照要在开库**之前**取,删除要在开库**之后**做 —— 见 SweepOrphanSegmentTempFiles。
         SegmentTempFile[] orphans = SnapshotSegmentTempFiles(rootDirectory);
-        _db = Tsdb.Open(new()
+        _db = Tsdb.Open(CreateOptions(rootDirectory,
+            fsync: Environment.GetEnvironmentVariable(NoFsyncEnvironmentVariable) != "1"));
+        SweepOrphanSegmentTempFiles(orphans);
+        EnsureSchema();
+    }
+
+    /// <summary>
+    /// 关掉逐次写入落盘同步的环境变量(<c>VELASHELL_NO_DB_FSYNC=1</c>),只给自动化测试用 —— tests/velashell.runsettings 统一设上。
+    /// </summary>
+    /// <remarks>
+    /// SonnetDB 默认每次 KV / 文档写入都把 WAL 同步到磁盘(<c>KvOptions.SyncWalOnEveryWrite</c>)、段文件提交时 fsync
+    /// (<c>SegmentWriterOptions.FsyncOnCommit</c>)。在 Windows 上那是一次 <c>FlushFileBuffers</c>,GitHub 的 Windows runner 上极慢:
+    /// 同一次 CI(run 44429052817)里每条用例都新开一个库的测试类,Windows 比 Linux 慢 10–40 倍
+    /// (QuickCommandsViewModelTests 61.9 秒 vs 1.5 秒、ConfigAuditTests 29.0 秒 vs 1.2 秒)。
+    /// 关掉之后写入仍照常交给操作系统(<c>FlushWalToOsOnWrite</c> 不动),同一台机器上关库再开读到的是同一份数据,
+    /// 测试验的「落盘后重开还在」不受影响;放弃的只是掉电时的持久性,没有用例验它。
+    /// 用户不会设这个变量;即便设了,代价也只是掉电时可能丢最近的写入,不涉及机密。
+    /// </remarks>
+    public const string NoFsyncEnvironmentVariable = "VELASHELL_NO_DB_FSYNC";
+
+    /// <summary>开库参数。<paramref name="fsync" /> 为 false 时关掉 WAL 与段文件的逐次落盘同步(见 <see cref="NoFsyncEnvironmentVariable" />)。</summary>
+    internal static TsdbOptions CreateOptions(string rootDirectory, bool fsync)
+    {
+        var defaults = new TsdbOptions();
+        return new TsdbOptions
         {
             RootDirectory = rootDirectory,
             SegmentReaderOptions = new()
             {
                 UseMemoryMappedFileForLargeSegments = true,
                 MemoryMappedFileThresholdBytes = SegmentMemoryMapThresholdBytes
-            }
-        });
-        SweepOrphanSegmentTempFiles(orphans);
-        EnsureSchema();
+            },
+            Kv = fsync ? defaults.Kv : defaults.Kv with { SyncWalOnEveryWrite = false },
+            SegmentWriterOptions = fsync ? defaults.SegmentWriterOptions : defaults.SegmentWriterOptions with { FsyncOnCommit = false }
+        };
     }
 
     /// <summary>数据库根目录(统计磁盘占用用)。</summary>

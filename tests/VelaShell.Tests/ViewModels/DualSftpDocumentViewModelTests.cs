@@ -130,6 +130,8 @@ public class DualSftpDocumentViewModelTests
         // 与上传同一口径:开着断点续传,写到一半的目标就是下次续传的素材,不能清。
         (ISftpService sftp, _, FileBrowserViewModel right) =
             PanePair(new() { ConflictPolicy = "overwrite", ResumeEnabled = true, AutoCleanTempFiles = true });
+        // IOException 算瞬时故障,照常重试 3 次;只是不真等 1 + 2 + 4 秒的退避
+        right.RetryDelay = (_, _) => Task.CompletedTask;
         RemoteFileInfo file = Entry("/src/a.txt");
         Readable(sftp, Left, file);
         FailWhileWriting(sftp, "/a.txt");
@@ -144,6 +146,7 @@ public class DualSftpDocumentViewModelTests
     {
         (ISftpService sftp, _, FileBrowserViewModel right) =
             PanePair(new() { ConflictPolicy = "overwrite", ResumeEnabled = false, AutoCleanTempFiles = true });
+        right.RetryDelay = (_, _) => Task.CompletedTask; // 同上:照常重试,不真等退避
         RemoteFileInfo file = Entry("/src/a.txt");
         Readable(sftp, Left, file);
         FailWhileWriting(sftp, "/a.txt");

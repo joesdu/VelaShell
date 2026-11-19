@@ -33,7 +33,7 @@ public sealed class HostCaPolicyTests : IDisposable
     {
         _directory = Path.Combine(Path.GetTempPath(), $"velashell_hostca_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
-        _engine = new(Path.Combine(_directory, "sonnetdb"));
+        _engine = SonnetDbTestTemplate.Open(Path.Combine(_directory, "sonnetdb"));
         _store = new(_engine);
 
         // 拒绝理由的文案按英文核对:中文界面的那几句与库的中文原文措辞相同,在中文环境下核对不出用的是哪一套。

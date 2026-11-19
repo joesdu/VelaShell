@@ -28,7 +28,7 @@ public sealed class ExternalLaunchTemporaryProfileTests
     {
         _directory = Path.Combine(Path.GetTempPath(), $"velashell_extlaunch_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
-        _engine = new SonnetDbEngine(Path.Combine(_directory, "sonnetdb"));
+        _engine = SonnetDbTestTemplate.Open(Path.Combine(_directory, "sonnetdb"));
         _repository = new SonnetDbSessionRepository(_engine, new AesSecretProtector(Path.Combine(_directory, "secret.key")));
     }
 

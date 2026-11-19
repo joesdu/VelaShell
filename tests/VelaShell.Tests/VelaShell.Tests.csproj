@@ -28,6 +28,13 @@
              Link="Ftp\LoopbackFtpServer.cs" />
   </ItemGroup>
 
+  <!-- 用例开 SonnetDB 库从模板拷一份(省掉每条用例 ~0.5 秒的建 schema),与 Infrastructure.Tests 共用一份实现。 -->
+  <ItemGroup>
+    <Compile Include="..\VelaShell.Infrastructure.Tests\TestSupport\SonnetDbTestTemplate.cs"
+             Link="TestSupport\SonnetDbTestTemplate.cs" />
+    <Using Include="VelaShell.Infrastructure.Tests.TestSupport" />
+  </ItemGroup>
+
   <!-- 令牌 axaml 以纯文本读入:ThemeTokenApplier 展开出来的 VelaDark / VelaLight
        必须与这两份编译期缺省逐值一致(见 ThemeTokenApplierTests),否则贴主题之前
        那一瞬间的界面与贴完之后是两套颜色。 -->

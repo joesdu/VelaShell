@@ -708,7 +708,7 @@ public sealed class StandaloneSftpDocumentBehaviorTests
         ITerminalEmulator terminal = FakeTerminal.Emulator();
         shellStream.CanRead.Returns(true);
         shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(new TaskCompletionSource<int>().Task);
+            .Returns(TestSupport.FakeShellReads.UntilCancelled);
         var profile = new SessionProfile
         {
             Name = "Files",

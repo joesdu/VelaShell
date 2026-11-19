@@ -40,7 +40,7 @@ public sealed class DocumentLoginPromptPersistenceTests
     {
         _directory = Path.Combine(Path.GetTempPath(), $"velashell_doclogin_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
-        _engine = new SonnetDbEngine(Path.Combine(_directory, "sonnetdb"));
+        _engine = SonnetDbTestTemplate.Open(Path.Combine(_directory, "sonnetdb"));
         _repository = new SonnetDbSessionRepository(_engine, new AesSecretProtector(Path.Combine(_directory, "secret.key")));
     }
 
