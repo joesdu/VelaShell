@@ -1627,7 +1627,8 @@ public sealed class ProviderSetupView : UserControl
         }));
 
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-        var login = new ProviderLogin(new OAuthClient(http), LaunchAsync);
+        OAuthClient client = DevicePollDelay is { } pollDelay ? new OAuthClient(http) { Delay = pollDelay } : new OAuthClient(http);
+        var login = new ProviderLogin(client, LaunchAsync);
         try
         {
             OAuthTokens tokens = await login.SignInAsync(provider.OAuth!, prompts, progress, cancellation.Token)
@@ -1798,6 +1799,12 @@ public sealed class ProviderSetupView : UserControl
     }
 
     // 目录只接纳自己实际改过的规格字段;网络期间的外部编辑不能混进表单基线。
+    /// <summary>
+    /// 设备码登录两次轮询之间怎么等(见 <see cref="OAuthClient.Delay" />);null 即生产的 <see cref="Task.Delay(TimeSpan, CancellationToken)" />。
+    /// 只给测试用:假授权端点回的 1 秒间隔是占位,真等的话每条走登录的用例都白挂一秒。
+    /// </summary>
+    internal Func<TimeSpan, CancellationToken, Task>? DevicePollDelay { get; set; }
+
     internal static void MergeCatalogue(AiProvider target, AiProvider before, AiProvider catalogue,
         AiProvider? baseline, List<string>? changedModels)
     {

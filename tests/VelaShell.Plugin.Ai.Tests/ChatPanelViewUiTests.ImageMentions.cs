@@ -92,18 +92,20 @@ public sealed partial class ChatPanelViewUiTests
                 await PumpAsync();
                 TextEditor input = Find<TextEditor>(panel, "InputBox");
                 input.TextArea.Focus();
+                // 列表要等过 180 ms 的补全防抖:等到条数对上,不靠拍数凑时间
                 Type(input, "@i");
-                await PumpAsync();
+                await WaitForAsync(() => Find<StackPanel>(panel, "FileList").Children.Count == 2);
                 Assert.HasCount(2, Find<StackPanel>(panel, "FileList").Children);
                 Assert.AreEqual(0, context.FakeRemoteFs.ListDirectoryCalls);
                 Type(input, "#/etc/ho");
-                await PumpAsync();
+                await WaitForAsync(() => Find<StackPanel>(panel, "FileList").Children.Count == 1);
                 Assert.HasCount(1, Find<StackPanel>(panel, "FileList").Children);
                 window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
                 Assert.AreEqual("#/etc/hosts ", input.Text);
                 int listings = context.FakeRemoteFs.ListDirectoryCalls;
                 Type(input, "@/etc/hosts");
-                await PumpAsync();
+                // 断言的是「不弹、不列目录」:没有条件可等,必须真等过防抖(150 拍 × 2 ms = 300 ms > 180 ms),否则断言是空过
+                await PumpAsync(150);
                 Assert.IsFalse(Find<Popup>(panel, "FilePopup").IsOpen);
                 Assert.AreEqual(listings, context.FakeRemoteFs.ListDirectoryCalls);
             }

@@ -247,16 +247,17 @@ public sealed class HealthProbeTests
     [TestMethod]
     public async Task EmptyProbe_RetrySharesOriginalDeadline()
     {
-        // 每次都 10 秒后空答:补试若另得 15 秒预算,约 20.4 秒才读完;共用原截止时间则 15 秒到点切断
-        await using var endpoint = new SseStub("data: [DONE]\n\n", delay: TimeSpan.FromSeconds(10));
+        // 时限按比例从 15 秒缩到 3 秒(这条只验「补试共用原截止时间」,不必真等 15 秒):
+        // 每次都 2 秒后空答:补试若另得 3 秒预算,约 4 秒才读完;共用原截止时间则 3 秒到点切断
+        await using var endpoint = new SseStub("data: [DONE]\n\n", delay: TimeSpan.FromSeconds(2));
         using var context = new TestPluginContext();
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
-        (Exception? error, _) = await HealthProbe.ProbeAsync(new AiSettingsStore(context), ModelFor(endpoint.BaseUrl))
-            .WaitAsync(TimeSpan.FromSeconds(25));
+        (Exception? error, _) = await HealthProbe.ProbeWithTimeoutAsync(new AiSettingsStore(context), ModelFor(endpoint.BaseUrl), TimeSpan.FromSeconds(3))
+            .WaitAsync(TimeSpan.FromSeconds(10));
         elapsed.Stop();
         Assert.HasCount(2, endpoint.Requests, "首次空答后补试一次");
-        Assert.IsGreaterThan(TimeSpan.FromSeconds(14), elapsed.Elapsed, "补试是被原截止时间切断的,不是自己提前结束");
-        Assert.IsLessThan(TimeSpan.FromSeconds(18), elapsed.Elapsed, "重试不能重新获得15秒预算");
+        Assert.IsGreaterThan(TimeSpan.FromSeconds(2.8), elapsed.Elapsed, "补试是被原截止时间切断的,不是自己提前结束");
+        Assert.IsLessThan(TimeSpan.FromSeconds(3.7), elapsed.Elapsed, "重试不能重新获得一份完整的预算");
         Assert.IsInstanceOfType<HealthProbe.EmptyReplyException>(error,
             "已空答一次、补试被探活自己的截止时间切断:不通的原因仍是空回复,不报「操作已取消」");
     }

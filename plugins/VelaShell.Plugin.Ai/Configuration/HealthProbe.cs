@@ -30,17 +30,22 @@ public static class HealthProbe
     public static Task<(Exception? Error, string Text)> ProbeAsync(
         AiSettingsStore store, ResolvedModel model, string? apiKeyOverride = null,
         CancellationToken cancellationToken = default)
-        => ProbeCoreAsync(store, model, null, apiKeyOverride, null, cancellationToken);
+        => ProbeCoreAsync(store, model, null, apiKeyOverride, null, Timeout, cancellationToken);
+
+    /// <summary>同 <see cref="ProbeAsync(AiSettingsStore, ResolvedModel, string?, CancellationToken)" />,时限自定(测试用:按比例缩短 15 秒的截止时间,不必真等 15 秒)。</summary>
+    internal static Task<(Exception? Error, string Text)> ProbeWithTimeoutAsync(
+        AiSettingsStore store, ResolvedModel model, TimeSpan timeout, CancellationToken cancellationToken = default)
+        => ProbeCoreAsync(store, model, null, null, null, timeout, cancellationToken);
 
     /// <summary>故障转移使用已固定的凭据探活;已收到的用量在调用上下文收尾时结算一次(包括失败和取消)。</summary>
     internal static Task<(Exception? Error, string Text)> ProbeAsync(
         AiSettingsStore store, ResolvedModel model, ProviderCredential credential,
         Action<UsageDetails>? usageCallback = null, CancellationToken cancellationToken = default)
-        => ProbeCoreAsync(store, model, credential, null, usageCallback, cancellationToken);
+        => ProbeCoreAsync(store, model, credential, null, usageCallback, Timeout, cancellationToken);
 
     private static async Task<(Exception? Error, string Text)> ProbeCoreAsync(
         AiSettingsStore store, ResolvedModel model, ProviderCredential? credential,
-        string? apiKeyOverride, Action<UsageDetails>? usageCallback, CancellationToken cancellationToken)
+        string? apiKeyOverride, Action<UsageDetails>? usageCallback, TimeSpan timeout, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(model);
@@ -50,7 +55,7 @@ public static class HealthProbe
             return (new NotSupportedException("Image models cannot be tested without generating a potentially billable image."), "");
         }
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(Timeout);
+        cts.CancelAfter(timeout);
         UsageDetails? usage = null;
         Exception? terminal = null;
         bool repliedEmpty = false;
