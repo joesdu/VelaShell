@@ -80,6 +80,12 @@ public sealed class RemoteEditRequest
 
     /// <summary>连接配置;不知道时为 null。写进状态标记:崩溃或回传失败留下草稿时,消息中心的「重新上传」按它找连接。</summary>
     public Guid? ProfileId { get; init; }
+
+    /// <summary>
+    /// 保存之后攒多久再回传。生产恒为 <see cref="RemoteEditSession.DefaultDebounceWindow" />(600 ms);
+    /// 测试经 init 缩短,不必为每次上传真等满防抖。
+    /// </summary>
+    internal TimeSpan DebounceWindow { get; init; } = RemoteEditSession.DefaultDebounceWindow;
 }
 
 /// <summary>
@@ -401,8 +407,8 @@ public sealed class RemoteEditSession : IDisposable
     /// </remarks>
     internal static readonly TimeSpan ShutdownUploadTimeout = TimeSpan.FromMinutes(2);
 
-    /// <summary>编辑器保存往往触发多个事件(写入 + 改名 + 属性),攒这么久再传一次。</summary>
-    private static readonly TimeSpan DebounceWindow = TimeSpan.FromMilliseconds(600);
+    /// <summary>编辑器保存往往触发多个事件(写入 + 改名 + 属性),攒这么久再传一次(生产值;见 <see cref="RemoteEditRequest.DebounceWindow" />)。</summary>
+    internal static readonly TimeSpan DefaultDebounceWindow = TimeSpan.FromMilliseconds(600);
 
     private readonly Action<string>? _onError;
     private readonly RemoteEditRequest _request;
@@ -788,7 +794,7 @@ public sealed class RemoteEditSession : IDisposable
         Interlocked.Exchange(ref _debounce, null)?.Dispose();
         // ReSharper disable once RedundantAssignment
         // ReSharper disable once AllUnderscoreLocalParameterName
-        _debounce = new(_ => _ = UploadAsync(), null, DebounceWindow, Timeout.InfiniteTimeSpan);
+        _debounce = new(_ => _ = UploadAsync(), null, _request.DebounceWindow, Timeout.InfiniteTimeSpan);
     }
 
     /// <summary>

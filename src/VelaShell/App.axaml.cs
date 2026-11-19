@@ -52,6 +52,9 @@ public class App : Application
     private ServiceProvider? _serviceProvider;
     private AppSettings? _startupSettings;
     private readonly SyncDebounceLifecycle _syncDebounce = new();
+
+    /// <summary>自动同步的防抖:连续保存只推最后一次。生产恒为 5 秒;测试经 init 缩短,不必真等 5 秒。</summary>
+    internal TimeSpan AutoSyncDebounce { get; init; } = TimeSpan.FromSeconds(5);
     private IThemeService? _themeService;
     private TrayIconService? _trayIconService;
     private Services.MasterPassword.MasterPasswordAutoLock? _autoLock;
@@ -574,7 +577,7 @@ public class App : Application
                 }
                 // 经 ContinueWith 观察取消而非 await 已取消任务:被取代/退出是防抖的
                 // 常态路径,不该每次都在调试输出里刷一发 TaskCanceledException。
-                var delay = Task.Delay(TimeSpan.FromSeconds(5), token);
+                var delay = Task.Delay(AutoSyncDebounce, token);
                 await delay.ContinueWith(static _ => { }, CancellationToken.None,
                     TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
                 if (delay.IsCanceled)

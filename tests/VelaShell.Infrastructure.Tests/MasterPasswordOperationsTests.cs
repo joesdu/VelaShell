@@ -45,7 +45,7 @@ public sealed class MasterPasswordOperationsTests
 
     private string HeaderFile => _keyFile + MasterKeyResolver.HeaderSuffix;
 
-    private AesSecretProtector Protector(IMasterKeyStore? store) => new(new MasterKeyResolver(_keyFile, store));
+    private AesSecretProtector Protector(IMasterKeyStore? store) => new(new MasterKeyResolver(_keyFile, store), time: null, TestCost);
 
     /// <summary>密钥链里两把密钥(一把原有、一把是密钥链暂时用不了那一轮另起后并进来的),各加密一段。</summary>
     private (string First, string Second) TwoKeys(MemoryKeychain store)
@@ -196,7 +196,7 @@ public sealed class MasterPasswordOperationsTests
         Assert.AreEqual(MasterPasswordChangeStatus.Done, Protector(store).Vault.Enable(Utf8(Password), false).Status);
         var before = store.Entries.ToDictionary(static e => e.Key, static e => e.Value.ToArray());
         var clock = new ManualClock();
-        AesSecretProtector locked = new(new MasterKeyResolver(_keyFile, store), clock);
+        AesSecretProtector locked = new(new MasterKeyResolver(_keyFile, store), clock, TestCost);
 
         MasterPasswordChangeResult wrong = locked.Vault.Disable(Utf8("not it"));
 
@@ -310,7 +310,7 @@ public sealed class MasterPasswordOperationsTests
     {
         MasterPasswordHeader current = MasterPasswordHeader.Parse(File.ReadAllText(HeaderFile))!;
         byte[] oldKek = MasterPasswordKdf.DerivePasswordKey(Utf8(Password), current);
-        var next = MasterPasswordHeader.CreateNew(current.RecoverySalt, MasterPasswordHeaderState.Active);
+        var next = MasterPasswordHeader.CreateNew(current.RecoverySalt, MasterPasswordHeaderState.Active, TestCost); // 与 vault 自己修改时出的头同一组参数
         byte[] newKek = MasterPasswordKdf.DerivePasswordKey(Utf8(password), next);
         foreach (string id in store.Entries.Keys.ToArray())
         {
@@ -409,13 +409,30 @@ public sealed class MasterPasswordOperationsTests
         string id = store.Entries.Keys.Single();
         store.Entries[id] = new MasterKeyEnvelope([MasterKeyEnvelope.Wrap(WrapKind.Password, header.PasswordWrapId, kek, store.Entries[id])]).ToBytes();
 
-        AesSecretProtector locked = Protector(store);
+        // 这条验的就是「rehash 成出厂参数」:用生产的公开构造(出厂参数),不用其余用例那组便宜参数
+        AesSecretProtector locked = new(new MasterKeyResolver(_keyFile, store));
         Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, locked.Vault.Unlock(Utf8(Password)).Status);
 
         Assert.IsTrue(MasterPasswordHeader.Parse(File.ReadAllText(HeaderFile))!.UsesCurrentParameters, "下一次解锁成功时用新参数、新盐重新包裹");
-        AesSecretProtector next = Protector(store);
+        AesSecretProtector next = new(new MasterKeyResolver(_keyFile, store));
         Assert.AreEqual(MasterPasswordUnlockStatus.Unlocked, next.Vault.Unlock(Utf8(Password)).Status);
         Assert.AreEqual("hunter2", next.Unprotect(cipher));
+    }
+
+    [TestMethod]
+    public void Enable_ThroughThePublicConstructor_WritesTheFactoryParameters()
+    {
+        // 其余用例经 internal 构造用便宜参数(MasterPasswordTestKit.TestCost);这条守住生产入口:
+        // 公开构造开启出来的头就是出厂参数,不会因为测试那条路而在生产里落成便宜参数。
+        var store = new MemoryKeychain();
+        _ = TwoKeys(store);
+        AesSecretProtector production = new(new MasterKeyResolver(_keyFile, store));
+
+        Assert.AreEqual(MasterPasswordChangeStatus.Done, production.Vault.Enable(Utf8(Password), false).Status);
+
+        MasterPasswordHeader header = MasterPasswordHeader.Parse(File.ReadAllText(HeaderFile))!;
+        Assert.AreEqual(Argon2Cost.Production, new Argon2Cost(header.MemoryKiB, header.Iterations, header.Parallelism));
+        Assert.IsTrue(header.UsesCurrentParameters);
     }
 
     // ———— 设置里的镜像字段 ————

@@ -35,6 +35,9 @@ internal sealed partial class MasterKeyVault
     private readonly MasterKeyResolver _resolver;
     private readonly TimeProvider _time;
 
+    /// <summary>开启、修改与 rehash 时新头用的 Argon2id 参数;生产恒为 <see cref="Argon2Cost.Production" />。解锁按头里记着的参数派生,不看它。</summary>
+    private readonly Argon2Cost _kdfCost;
+
     /// <summary>加解密与换密钥串、换状态时持有(都很快)。</summary>
     private readonly Lock _keysGate = new();
 
@@ -53,9 +56,14 @@ internal sealed partial class MasterKeyVault
 
     /// <summary>解析一次本机加密密钥并构造(可能阻塞:密钥链解锁要等用户)。</summary>
     public MasterKeyVault(MasterKeyResolver resolver, TimeProvider? time = null)
+        : this(resolver, time, Argon2Cost.Production) { }
+
+    /// <summary>同上,另给新头的 Argon2id 参数(测试用,见 <see cref="Argon2Cost" />)。</summary>
+    internal MasterKeyVault(MasterKeyResolver resolver, TimeProvider? time, Argon2Cost kdfCost)
     {
         _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
         _time = time ?? TimeProvider.System;
+        _kdfCost = kdfCost;
         MasterKeyResolution resolution = resolver.Resolve();
         _ring = resolution.Ring;
         _sealed = resolution.Sealed;

@@ -44,9 +44,13 @@ public sealed class AesSecretProtector : ISecretProtector, IMasterKeyStatusSourc
 
     /// <summary>用给定的解析器与时钟构造(测试用:输错的退避按这个时钟算)。</summary>
     internal AesSecretProtector(MasterKeyResolver resolver, TimeProvider? time)
+        : this(resolver, time, Argon2Cost.Production) { }
+
+    /// <summary>用给定的解析器、时钟与新头的 Argon2id 参数构造(测试用,见 <see cref="Argon2Cost" />)。</summary>
+    internal AesSecretProtector(MasterKeyResolver resolver, TimeProvider? time, Argon2Cost kdfCost)
     {
         ArgumentNullException.ThrowIfNull(resolver);
-        _vault = new(() => new MasterKeyVault(resolver, time), LazyThreadSafetyMode.ExecutionAndPublication);
+        _vault = new(() => new MasterKeyVault(resolver, time, kdfCost), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     /// <summary>密钥与主密码那一层(首次访问时解析)。</summary>

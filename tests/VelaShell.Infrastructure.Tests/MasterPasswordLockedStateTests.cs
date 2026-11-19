@@ -51,13 +51,13 @@ public sealed class MasterPasswordLockedStateTests : IDisposable
         }
     }
 
-    private AesSecretProtector Unprotected() => new(new MasterKeyResolver(_keyFile, null));
+    private AesSecretProtector Unprotected() => new(new MasterKeyResolver(_keyFile, null), time: null, TestCost);
 
     /// <summary>把数据目录照开启后的样子包起来,交回一个新启动(锁着)的保护器。</summary>
     private AesSecretProtector LockedAfterWrapping()
     {
         WrapEverything(new MasterKeyResolver(_keyFile, null), Password, withRecovery: false);
-        AesSecretProtector locked = new(new MasterKeyResolver(_keyFile, null));
+        AesSecretProtector locked = new(new MasterKeyResolver(_keyFile, null), time: null, TestCost);
         Assert.IsTrue(locked.IsLocked);
         return locked;
     }

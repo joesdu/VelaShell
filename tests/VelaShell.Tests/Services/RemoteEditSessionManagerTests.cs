@@ -134,8 +134,8 @@ public sealed class RemoteEditSessionManagerTests
         using var fixture = new SessionFixture(autoUpload: false);
 
         await File.WriteAllTextAsync(fixture.LocalPath, "local only");
-        // 防抖是 600ms;等够它再断言"没动静",否则测的只是"还没轮到"。
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        // 等够防抖的 4 倍再断言"没动静",否则测的只是"还没轮到"。
+        await Task.Delay(SessionFixture.Debounce * 4);
 
         Assert.IsFalse(fixture.Session.HasPendingChange, "开关关着却还在记账 —— 这笔账没有任何出口。");
         Assert.IsEmpty(fixture.UploadedContents, "自动上传关着却还是传了。");
@@ -194,7 +194,8 @@ public sealed class RemoteEditSessionManagerTests
     [TestCategory("ExternalEdit")]
     public async Task ShutdownTimeout_PreservesCopyAndLeaseUntilUploadCompletes()
     {
-        using var fixture = new SessionFixture { UploadDelay = TimeSpan.FromSeconds(1) };
+        // 上传只需明显长于下面 20 ms 的收尾时限
+        using var fixture = new SessionFixture { UploadDelay = TimeSpan.FromMilliseconds(300) };
         await fixture.SaveAsync("upload in progress");
         Assert.IsFalse(await fixture.Session.ShutdownAsync(TimeSpan.FromMilliseconds(20)));
         fixture.Session.Dispose();
@@ -297,7 +298,7 @@ public sealed class RemoteEditSessionManagerTests
         using var fixture = new SessionFixture();
 
         await fixture.SaveAsync("edited by the user");
-        // 防抖是 600ms;这里刻意在它到点之前就收尾。
+        // 这里刻意在防抖(SessionFixture.Debounce)到点之前就收尾。
         bool landed = await fixture.Session.ShutdownAsync(TimeSpan.FromSeconds(30));
 
         Assert.IsTrue(landed);
@@ -310,7 +311,8 @@ public sealed class RemoteEditSessionManagerTests
     [TestCategory("ExternalEdit")]
     public async Task Shutdown_WaitsForAnUploadSlowerThanTheOldFixedDelay()
     {
-        using var fixture = new SessionFixture { UploadDelay = TimeSpan.FromSeconds(3) };
+        // 1.8 秒:仍比旧的 1.5 秒固定等待长,这条要验的就是「比它慢也等」
+        using var fixture = new SessionFixture { UploadDelay = TimeSpan.FromSeconds(1.8) };
 
         await fixture.SaveAsync("slow link");
         bool landed = await fixture.Session.ShutdownAsync(TimeSpan.FromSeconds(30));
@@ -395,9 +397,16 @@ public sealed class RemoteEditSessionManagerTests
                     AutoUpload = autoUpload,
                     OnError = Errors.Add,
                     UploadAsync = UploadAsync,
+                    DebounceWindow = Debounce,
                 },
                 LocalPath);
         }
+
+        /// <summary>
+        /// 会话的防抖(生产 600 ms)。一次保存触发的那几个事件彼此只差几毫秒,250 ms 照样把它们攒成一次;
+        /// 只是每次上传不必真等满 600 ms。
+        /// </summary>
+        public static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(250);
 
         public string Directory { get; }
 

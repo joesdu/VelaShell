@@ -14,6 +14,12 @@ namespace VelaShell.Infrastructure.Tests.Plugins;
 [TestCategory("PluginDevWatch")]
 public sealed class PluginDevWatcherTests
 {
+    /// <summary>
+    /// 用例用的去抖时长(生产 <see cref="PluginDevWatcher.DebounceDelay" /> = 1.5 秒)。用例在同一拍里连着通知,
+    /// 远短于 150 ms,「一串变更只触发一次」照样成立;只是不必每条真等 1.5 秒。
+    /// </summary>
+    private static readonly TimeSpan Debounce = TimeSpan.FromMilliseconds(150);
+
     /// <summary>只有入口程序集与清单值得触发重载。</summary>
     /// <remarks>
     /// 一次构建会在 obj/bin 里翻出成百个中间文件。全都放行的话,去抖窗口会被无关变更
@@ -53,7 +59,7 @@ public sealed class PluginDevWatcherTests
     public async Task ABurstOfChangesFiresOnlyOnce()
     {
         int fired = 0;
-        using PluginDevWatcher watcher = new(() => Interlocked.Increment(ref fired), _ => { });
+        using PluginDevWatcher watcher = new(() => Interlocked.Increment(ref fired), _ => { }, Debounce);
         watcher.Start([]);   // 不挂真实监视器,只用手动通知驱动去抖
 
         for (int i = 0; i < 20; i++)
@@ -69,7 +75,7 @@ public sealed class PluginDevWatcherTests
     public async Task IrrelevantChangesDoNotKeepPushingTheWindowOut()
     {
         int fired = 0;
-        using PluginDevWatcher watcher = new(() => Interlocked.Increment(ref fired), _ => { });
+        using PluginDevWatcher watcher = new(() => Interlocked.Increment(ref fired), _ => { }, Debounce);
         watcher.Start([]);
 
         Assert.IsTrue(watcher.Notify(@"C:\dev\plugin\bin\My.Plugin.dll"));
@@ -85,12 +91,12 @@ public sealed class PluginDevWatcherTests
     public async Task NothingFiresAfterDispose()
     {
         int fired = 0;
-        PluginDevWatcher watcher = new(() => Interlocked.Increment(ref fired), _ => { });
+        PluginDevWatcher watcher = new(() => Interlocked.Increment(ref fired), _ => { }, Debounce);
         watcher.Start([]);
         watcher.Notify(@"C:\dev\plugin\bin\My.Plugin.dll");
         watcher.Dispose();
 
-        await Task.Delay(PluginDevWatcher.DebounceDelay + TimeSpan.FromMilliseconds(500));
+        await Task.Delay(Debounce + TimeSpan.FromMilliseconds(350));
 
         Assert.AreEqual(0, Volatile.Read(ref fired), "停机之后不该再触发重载。");
     }

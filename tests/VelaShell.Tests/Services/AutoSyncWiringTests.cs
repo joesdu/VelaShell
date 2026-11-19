@@ -88,12 +88,13 @@ public sealed class AutoSyncWiringTests
         var syncs = new SemaphoreSlim(0);
         IGistSyncService sync = Sync(new SyncSettings { Enabled = true, AutoSync = true }, reads, syncs);
         var templates = new LayoutTemplateStore(Substitute.For<IAppDataStore>());
-        new App().WireAutoSync(sync, null, null, layoutTemplates: templates);
+        // 防抖缩成 50 ms(生产 5 秒):这条验的是「模板改动照样排一次防抖同步」,不是防抖时长
+        new App { AutoSyncDebounce = TimeSpan.FromMilliseconds(50) }.WireAutoSync(sync, null, null, layoutTemplates: templates);
         await WaitAsync(syncs, "启动那次同步");
 
         await templates.SaveAsync(Template("rack-A"));
 
-        // 防抖 5 秒之后照样同步一次:模板在同步的核对 / 拉取那两条路上合并并推上去。
+        // 防抖到点之后照样同步一次:模板在同步的核对 / 拉取那两条路上合并并推上去。
         await WaitAsync(syncs, "模板改动排的那次同步");
         await sync.DidNotReceive().MarkLocalChangedAsync(Arg.Any<CancellationToken>());
     });

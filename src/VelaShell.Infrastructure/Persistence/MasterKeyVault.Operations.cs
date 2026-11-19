@@ -76,7 +76,8 @@ internal sealed partial class MasterKeyVault
 
             (string Display, byte[] Entropy)? recovery = withRecoveryCode ? RecoveryCode.Generate() : null;
             var header = MasterPasswordHeader.CreateNew(
-                withRecoveryCode ? RandomNumberGenerator.GetBytes(MasterPasswordHeader.SaltSize) : null, MasterPasswordHeaderState.Enabling);
+                withRecoveryCode ? RandomNumberGenerator.GetBytes(MasterPasswordHeader.SaltSize) : null, MasterPasswordHeaderState.Enabling,
+                _kdfCost);
             if (!_resolver.TryWriteHeader(header))
             {
                 return new(MasterPasswordChangeStatus.StorageFailed, Detail: _resolver.HeaderFilePath);
@@ -457,7 +458,7 @@ internal sealed partial class MasterKeyVault
     private MasterPasswordChangeResult RewrapUnderNewHeader(MasterPasswordHeader current, byte[] nextUtf8, List<SlotPlan> plans,
         string? supersededHeaderKept)
     {
-        var next = MasterPasswordHeader.CreateNew(current.RecoverySalt, MasterPasswordHeaderState.Active);
+        var next = MasterPasswordHeader.CreateNew(current.RecoverySalt, MasterPasswordHeaderState.Active, _kdfCost);
         byte[] kek = MasterPasswordKdf.DerivePasswordKey(nextUtf8, next);
         try
         {
@@ -541,7 +542,8 @@ internal sealed partial class MasterKeyVault
     /// </summary>
     private void TryRehash(byte[] passwordUtf8, MasterPasswordHeader header, byte[] kek)
     {
-        if (header.UsesCurrentParameters || header.State != MasterPasswordHeaderState.Active)
+        // 与本 vault 新头用的参数比(生产即出厂参数):测试用便宜参数开出来的头不该在每次解锁后被 rehash 成 64 MiB
+        if (header.UsesParameters(_kdfCost) || header.State != MasterPasswordHeaderState.Active)
         {
             return;
         }
