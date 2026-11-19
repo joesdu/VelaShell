@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using VelaShell.Plugin.Ai.Chat;
 using VelaShell.Plugin.Ai.Chat.Extensions;
+using VelaShell.Plugin.Ai.Chat.Memory;
 using VelaShell.Plugin.Ai.Chat.Skills;
 
 namespace VelaShell.Plugin.Ai.Ui;
@@ -21,6 +22,9 @@ public partial class ChatPanelView
         => (SplitLines(_settings.DisabledBuiltinTools) ?? []).Contains(SkillToolSource.LoadToolName, StringComparer.OrdinalIgnoreCase)
             ? []
             : SkillCatalog.Enabled(_settings.DisabledSkills, GetActiveLocalWorkspaces(), ExtensionRuntime.SkillDirectories(ActivePacks()));
+
+    /// <summary>记忆(插件数据目录的 <c>memory.json</c>;与「配置工具」窗口共用同一实例)。</summary>
+    internal MemoryStore Memories => MemoryStore.For(_context.DataDirectory);
 
     /// <summary>已安装扩展包的文件(插件数据目录的 <c>extensions/</c>)。</summary>
     internal ExtensionPackStore Extensions => field ??= new ExtensionPackStore(_context.DataDirectory);

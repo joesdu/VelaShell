@@ -15,6 +15,7 @@ using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Agent.Web;
 using VelaShell.Plugin.Ai.Chat;
 using VelaShell.Plugin.Ai.Chat.Extensions;
+using VelaShell.Plugin.Ai.Chat.Memory;
 using VelaShell.Plugin.Ai.Chat.Skills;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
@@ -2225,6 +2226,8 @@ public partial class ChatPanelView : UserControl
                             // 「你应该知道」:只写进这份对话自己的提示条,没有副作用,计划模式也给;只在桌面面板有
                             .Add(m => m != ChatMode.Chat, () => [conv.Notes.CreateTool()])
                             .Add(new SkillToolSource(turnSkills))
+                            // 记忆:只在桌面面板、记忆开启时给保存 / 修改 / 删除(仅 Agent 模式,见 MemoryToolSource)
+                            .Add(new MemoryToolSource(Memories) { Enabled = _settings.MemoryEnabled })
                             .Add(mcpSource)
                             .BuildAsync(token);
                     }
@@ -2307,6 +2310,8 @@ public partial class ChatPanelView : UserControl
                     .AddToolGuidance(options.Tools)
                     .Add(SystemPromptBuilder.Images, imageToolsEnabled ? ImageGuidance + ImagesFor(conv).Describe() : null)
                     .AddSkills(options.Tools, turnSkills)
+                    // 记忆清单:三种模式都放(对话 / 计划模式只读);关了记忆就不放
+                    .Add(SystemPromptBuilder.Memory, _settings.MemoryEnabled ? MemoryToolSource.Index(Memories.List()) : null)
                     // 专用提示词按当前这一站取(故障转移换站后跟着换),不读界面选中的那家,免得把别家的专用提示词发出去
                     .AddCustom(current.SystemPrompt, _settings.SystemPrompt)
                     .Build();

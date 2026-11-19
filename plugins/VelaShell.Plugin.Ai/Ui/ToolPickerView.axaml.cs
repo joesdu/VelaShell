@@ -41,6 +41,7 @@ public sealed partial class ToolPickerView : UserControl
         Extensions,
         McpServers,
         Skills,
+        Memory,
         Tools
     }
 
@@ -152,6 +153,7 @@ public sealed partial class ToolPickerView : UserControl
         root.Children.Add(right);
         // 确认框(扩展包安装 / 卸载 / 重新确认 MCP)盖在整个视图上
         Content = new Panel { Children = { root, _confirm } };
+        WatchMemories();
         Rebuild();
     }
 
@@ -182,6 +184,7 @@ public sealed partial class ToolPickerView : UserControl
             AddNav(Page.Extensions, _loc["ExtensionsGroup"], Extensions.List().Count);
             AddNav(Page.McpServers, _loc["McpServers"], _settings.McpServers.Count);
             AddNav(Page.Skills, _loc["SkillsGroup"], ScanSkills().Count(s => s.IsValid));
+            AddNav(Page.Memory, _loc["MemoryNav"], Memories.List().Count);
             AddNav(Page.Tools, _loc["ToolsNavTools"], CountEnabled());
             _nav.SelectedItem = _nav.Items.OfType<ListBoxItem>().First(i => (Page)i.Tag! == _page);
         }
@@ -212,6 +215,7 @@ public sealed partial class ToolPickerView : UserControl
             Page.Extensions => (_loc["ExtensionsGroup"], _loc["PageExtensionsDesc"]),
             Page.McpServers => (_loc["McpServers"], _loc["McpHint"]),
             Page.Skills => (_loc["SkillsGroup"], _loc["PageSkillsDesc"]),
+            Page.Memory => (_loc["MemoryNav"], _loc["PageMemoryDesc"]),
             _ => (_loc["ToolsNavTools"], _loc["PageToolsDesc"])
         };
         _title.Text = title;
@@ -221,6 +225,7 @@ public sealed partial class ToolPickerView : UserControl
             case Page.Extensions: AddExtensionActions(); break;
             case Page.McpServers: AddServerActions(); break;
             case Page.Skills: AddSkillActions(); break;
+            case Page.Memory: AddMemoryActions(); break;
         }
         RenderContent();
     }
@@ -234,6 +239,7 @@ public sealed partial class ToolPickerView : UserControl
             case Page.Extensions: BuildExtensionsPage(); break;
             case Page.McpServers: BuildServersPage(); break;
             case Page.Skills: BuildSkillsPage(); break;
+            case Page.Memory: BuildMemoryPage(); break;
             default: BuildToolsPage(); break;
         }
         if (_content.Children.Count == 0 && Query.Length > 0)

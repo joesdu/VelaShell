@@ -306,7 +306,11 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
         ("note_for_user", "把要用户留意的风险 / 待办 / 要紧发现钉到输入框上方的「你应该知道」条(只在桌面面板有)", true),
         // 技能的两件工具由 Chat.Skills.SkillToolSource 另加(装有可用技能时);登记在这里同样是为了能停用
         ("load_skill", "按名字取一个技能的完整指令与附带文件清单(技能目录在系统提示词里)", true),
-        ("read_skill_file", "读技能附带的文本文件(只读,不执行脚本,限技能目录内)", true)
+        ("read_skill_file", "读技能附带的文本文件(只读,不执行脚本,限技能目录内)", true),
+        // 记忆的三件工具由桌面面板的 Chat.Memory.MemoryToolSource 另加(仅 Agent 模式、记忆开启时);登记在这里是为了能停用
+        ("save_memory", "把值得跨对话保留的事(偏好、环境事实、被纠正的做法)记进记忆(只在桌面面板有)", false),
+        ("update_memory", "按 id 修改一条记忆(只在桌面面板有)", false),
+        ("delete_memory", "按 id 删除一条记忆(只在桌面面板有)", false)
     ];
 
     /// <summary>
