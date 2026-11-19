@@ -454,39 +454,39 @@ public sealed class SubagentOrchestrator(
     /// <param name="cancellationToken">父轮的取消令牌；取消只结束等待，不取消子任务。</param>
     public async Task<IReadOnlyList<SubagentSnapshot>> WaitForCompletionAsync(CancellationToken cancellationToken)
     {
+        await WaitForResultsAvailableAsync(cancellationToken).ConfigureAwait(false);
+        return TakeCompletedResults();
+    }
+
+    internal async Task WaitForResultsAvailableAsync(CancellationToken cancellationToken)
+    {
         while (true)
         {
             Task signal;
             lock (_completionGate)
             {
-                List<SubagentSnapshot> finished = [];
-                bool active = false;
-                foreach (Entry entry in _entries.Values.OrderBy(e => e.Sequence))
-                {
-                    if (entry.FinishedAt is null)
-                    {
-                        active = true;
-                    }
-                    else if (!entry.Reported)
-                    {
-                        entry.Reported = true;
-                        finished.Add(Snapshot(entry));
-                    }
-                }
-                // 团队:任务都落定后汇成一份报告送回去;还有任务在等依赖 / 等返工时也算在途
-                if (Team is { } team)
-                {
-                    if (team.TakeReport() is { } report) finished.Add(report);
-                    else if (team.IsActive) active = true;
-                }
-                if (finished.Count > 0 || !active)
-                {
-                    return finished;
-                }
                 signal = _completionSignal.Task;
+                if (_entries.Values.Any(e => !e.Reported && e.FinishedAt is not null)) return;
             }
+            // 先捕获信号再查团队状态。团队落定时会持团队锁发信号，不能反向嵌套这两把锁。
+            if (Team is { HasPendingReport: true, IsActive: false } || !HasPendingResults) return;
             await signal.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    internal IReadOnlyList<SubagentSnapshot> TakeCompletedResults()
+    {
+        List<SubagentSnapshot> finished = [];
+        lock (_completionGate)
+        {
+            foreach (Entry entry in _entries.Values.Where(e => !e.Reported && e.FinishedAt is not null).OrderBy(e => e.Sequence))
+            {
+                entry.Reported = true;
+                finished.Add(Snapshot(entry));
+            }
+        }
+        if (Team?.TakeReport() is { } report) finished.Add(report);
+        return finished;
     }
 
     /// <summary>返回给运行状态 UI 的结构化快照，按创建顺序排列。</summary>

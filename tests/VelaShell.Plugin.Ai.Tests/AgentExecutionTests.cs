@@ -1228,6 +1228,67 @@ public sealed class AgentExecutionTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Coordinator_TeamLaunchAndRetry_SendNextRequestOnlyWithReport(bool cancelWhileWaiting)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
+        var releases = new[] { new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+        int attempts = 0;
+        await using var orchestrator = new SubagentOrchestrator(async (request, token) =>
+        {
+            if (request.Role == "independent") return SubagentExecutionResult.FromText("independent result");
+            int attempt = Interlocked.Increment(ref attempts);
+            await releases[attempt - 1].Task.WaitAsync(token);
+            if (attempt == 1) throw new InvalidOperationException("review failed");
+            return SubagentExecutionResult.FromText("review succeeded");
+        }, stop.Token);
+        var wire = new Wire((n, _) => n switch
+        {
+            1 => [Call("start", "team_run"), End(ChatFinishReason.ToolCalls)],
+            2 => [Call("retry", "team_retry"), End(ChatFinishReason.ToolCalls)],
+            _ => [new(ChatRole.Assistant, "Done"), End(ChatFinishReason.Stop)]
+        });
+        var execution = new AgentExecution("run");
+        await using var registry = new CommandJobRegistry(new ControlledExec());
+        await using var scope = registry.BeginRun("owner", "run");
+        using IChatClient client = new RecoveringChatClient(wire, execution, "boundary")
+            .AsBuilder().UseFunctionInvocation(configure: c => execution.Configure(c, 1)).Build();
+        var coordinator = new AgentRunCoordinator(scope, execution) { Subagents = orchestrator };
+        var options = new ChatOptions { Tools = [AIFunctionFactory.Create(() =>
+        {
+            orchestrator.Start("check", "independent");
+            return orchestrator.EnsureTeam().Run("review", [new("checker", "tester")], [new("t", "review", "check", "checker")]);
+        }, "team_run"), AIFunctionFactory.Create(() => orchestrator.EnsureTeam().Retry("t"), "team_retry")] };
+        int waits = 0;
+        async Task Run()
+        {
+            await foreach (var _ in coordinator.RunAsync(client, [new(ChatRole.User, "go")], options, () =>
+            {
+                if (cancelWhileWaiting) stop.Cancel();
+                // 第一次只等独立任务；它的完成通知不能在团队报告之前唤醒主模型。
+                else if (++waits > 1) releases[wire.Requests.Count - 1].TrySetResult();
+            }, stop.Token)) { }
+        }
+        if (cancelWhileWaiting)
+        {
+            await Assert.ThrowsAsync<OperationCanceledException>(Run);
+            Assert.HasCount(1, wire.Requests);
+            return;
+        }
+        await Run();
+        Assert.HasCount(3, wire.Requests);
+        Assert.HasCount(2, execution.Notifications);
+        Assert.Contains("independent result", wire.Requests[1][^1].Text);
+        Assert.Contains("review failed", wire.Requests[1][^1].Text);
+        Assert.Contains("review succeeded", wire.Requests[2][^1].Text);
+        foreach (var (request, callId) in new[] { (wire.Requests[1], "start"), (wire.Requests[2], "retry") })
+            Assert.HasCount(1, request.SelectMany(m => m.Contents).OfType<FunctionResultContent>().Where(r => r.CallId == callId));
+    }
+
+    [TestMethod]
     public async Task Coordinator_WaitsForRunningSubagents_AndDeliversTheirReportsAsUntrustedData()
     {
         const string Close = "</untrusted-subagent-results>";

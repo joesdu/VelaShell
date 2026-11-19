@@ -38,7 +38,10 @@ internal sealed class SteeringChatClient(
     Action<IReadOnlyList<ChatMessage>, ChatOptions?>? onRequest = null) : IChatClient
 {
     private readonly Lock _gate = new();
-    private readonly List<SteeringMessage> _delivered = [];
+    private readonly record struct Delivery(int Boundary, IReadOnlyList<SteeringMessage> Items);
+
+    private readonly List<Delivery> _deliveries = [];
+    private string?[] _previousSteps = [];
 
     internal IChatClient RequestClient { get; private set; } = innerClient;
 
@@ -65,7 +68,7 @@ internal sealed class SteeringChatClient(
         {
             lock (_gate)
             {
-                return [.. _delivered];
+                return [.. _deliveries.SelectMany(delivery => delivery.Items)];
             }
         }
     }
@@ -108,28 +111,66 @@ internal sealed class SteeringChatClient(
     /// <summary>把队列里的插话并进这一次要发的消息序列。</summary>
     private List<ChatMessage> Compose(IEnumerable<ChatMessage> messages)
     {
-        List<ChatMessage> outgoing = [.. messages];
-        IReadOnlyList<SteeringMessage> fresh = queue.DrainAll();
-        SteeringMessage[] carried;
+        List<ChatMessage> history = [.. messages];
+        IReadOnlyList<SteeringMessage> fresh;
+        Delivery[] carried;
         lock (_gate)
         {
-            _delivered.AddRange(fresh);
-            carried = [.. _delivered];
+            fresh = queue.DrainAll();
+            if (_deliveries.Count == 0 && fresh.Count == 0) return history;
+            RebaseDeliveries([.. history.Select(StepKey)]);
+            if (fresh.Count > 0) _deliveries.Add(new Delivery(history.Count, fresh));
+            carried = [.. _deliveries];
         }
-        // 循环每一步都把上下文<b>整份</b>重发,之前送过的插话也得跟着重发 ——
-        // 那份历史是循环自己攒的,它并不知道我们往里加过东西,不补就等于说过的话下一步就没了。
-        // (OpenAI Responses 那条路也不例外:它不拿 previous_response_id 续接,见 StatelessResponsesChatClient。
-        // 曾经按"消息里还有没有系统提示词"猜循环是不是只发了增量,而 Codex 那条路的系统提示词挪进了
-        // instructions,消息里本来就没有 —— 一猜就错,插过的话从第二步起就丢了。)
-        foreach (SteeringMessage item in carried)
+
+        List<ChatMessage> outgoing = [];
+        int deliveryIndex = 0;
+        for (int i = 0; i <= history.Count; i++)
         {
-            Append(outgoing, item.Message);
+            bool hasNotes = deliveryIndex < carried.Length && carried[deliveryIndex].Boundary == i;
+            while (deliveryIndex < carried.Length && carried[deliveryIndex].Boundary == i)
+            {
+                foreach (SteeringMessage item in carried[deliveryIndex++].Items) Append(outgoing, item.Message);
+            }
+            if (i == history.Count) break;
+            if (hasNotes && history[i].Role == ChatRole.User) Append(outgoing, history[i]);
+            else outgoing.Add(history[i]);
         }
-        if (fresh.Count > 0)
-        {
-            onDelivered?.Invoke();
-        }
+        if (fresh.Count > 0) onDelivered?.Invoke();
         return outgoing;
+    }
+
+    // 批次续接会重建消息;工具结果还可能清理或重新分组。结果永远跟在发起调用的步骤后面。
+    // 压缩会把进度摘要追加到起始 user 的末尾,它仍是同一条用户消息。
+    private static string? StepKey(ChatMessage message)
+    {
+        if (message.Role == ChatRole.Tool || message.Contents.Any(c => c is FunctionResultContent)) return null;
+        if (message.Role == ChatRole.User)
+            return "user:" + (message.Contents.FirstOrDefault() as TextContent)?.Text;
+        return RunContextCompactor.Key(message);
+    }
+
+    // 找到送达时还没有的第一步。被折进摘要的旧步骤可以跳过;因此即使原来的工具结果已消失,
+    // 插话也只会放在保留下来的新步骤之前,不会重新落到末尾变成模型眼里的新指令。
+    private void RebaseDeliveries(string?[] current)
+    {
+        int previousIndex = 0, currentIndex = 0;
+        for (int i = 0; i < _deliveries.Count; i++)
+        {
+            Delivery delivery = _deliveries[i];
+            while (currentIndex < current.Length)
+            {
+                if (current[currentIndex] is { } key)
+                {
+                    int match = Array.IndexOf(_previousSteps, key, previousIndex, delivery.Boundary - previousIndex);
+                    if (match < 0) break;
+                    previousIndex = match + 1;
+                }
+                currentIndex++;
+            }
+            _deliveries[i] = delivery with { Boundary = currentIndex };
+        }
+        _previousSteps = current;
     }
 
     /// <summary>
