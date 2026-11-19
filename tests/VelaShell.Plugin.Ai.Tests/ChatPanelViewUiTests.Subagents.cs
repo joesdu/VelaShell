@@ -184,8 +184,12 @@ public sealed partial class ChatPanelViewUiTests
                     .Single(e => e.Classes.Contains("subagentRun"));
                 Assert.IsFalse(childCard.IsExpanded);
                 childCard.IsExpanded = true;
-                await PumpAsync(2);
-                Assert.Contains(r => r.MarkdownBuilder?.ToString() == "child analysis complete", childCard.GetVisualDescendants().OfType<MarkdownRenderer>());
+                // 等展开后的内容真排进可视树,不靠固定拍数(macOS CI run 44433034532 在这里一次性断言落空过,本机复现不出)。
+                // 再落空时把卡片里实际有什么一并报出来:分得清是「子树还空着」还是「文字不对」—— 后者就是产品侧的竞争,不是用例时序。
+                Assert.IsTrue(await WaitForAsync(() => childCard.GetVisualDescendants().OfType<MarkdownRenderer>()
+                        .Any(r => r.MarkdownBuilder?.ToString() == "child analysis complete")),
+                    "renderers: [" + string.Join(" | ", childCard.GetVisualDescendants().OfType<MarkdownRenderer>().Select(r => r.MarkdownBuilder?.ToString()))
+                    + "]; texts: [" + string.Join(" | ", childCard.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)) + "]");
                 Assert.Contains(t => t.Text?.Contains("Completed") == true, messages.GetVisualDescendants().OfType<TextBlock>());
                 Assert.Contains(t => t.Text?.Contains("child-model") == true, messages.GetVisualDescendants().OfType<TextBlock>());
                 // 取结果的那次调用不另出工具卡(报告已在子任务卡片里);委派那次照出

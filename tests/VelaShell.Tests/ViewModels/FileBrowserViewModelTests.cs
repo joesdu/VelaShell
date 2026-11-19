@@ -1412,6 +1412,12 @@ c => c.GetMethodInfo().Name == nameof(ISftpService.DownloadFileAsync),
             {
                 capturedProgress = ci.ArgAt<IProgress<SftpDeleteProgress>?>(2);
                 capturedProgress?.Report(new(2, 4, "/home/user/readme.txt"));
+                // Progress<T> 不当场回调:它把回调 Post 到构造时捕获的 SynchronizationContext —— 这里没有,于是落到线程池。
+                // 替身若立刻返回,回调可能晚于删除收尾的 finally(进度归零)才跑,又把进度写回 50(macOS CI run 44440518454 撞上过)。
+                // 等回调真的落定再返回:次序就此确定,也顺带验了用例名说的「进度条跟着更新」。
+                Assert.IsTrue(SpinWait.SpinUntil(() => _vm.DeleteProgressPercent == 50d, TimeSpan.FromSeconds(5)),
+                    "报告的 2/4 进度没反映到进度条上");
+                Assert.IsFalse(_vm.IsDeleteProgressIndeterminate);
                 await Task.CompletedTask;
             });
         var file = new RemoteFileInfoViewModel(CreateTestFiles()[1]);
