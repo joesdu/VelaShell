@@ -32,7 +32,10 @@ internal enum ToolKind
     Note,
 
     /// <summary>技能:取技能指令、读技能附带文件。</summary>
-    Skill
+    Skill,
+
+    /// <summary>记忆:保存 / 修改 / 删除跨对话保留的记忆。</summary>
+    Memory
 }
 
 /// <summary>
@@ -131,7 +134,11 @@ internal static class ToolIcons
         ["note_for_user"] = ToolKind.Note,
 
         ["load_skill"] = ToolKind.Skill,
-        ["read_skill_file"] = ToolKind.Skill
+        ["read_skill_file"] = ToolKind.Skill,
+
+        ["save_memory"] = ToolKind.Memory,
+        ["update_memory"] = ToolKind.Memory,
+        ["delete_memory"] = ToolKind.Memory
     };
 
     /// <summary>工具的类别;没登记的(MCP 工具等)为 <see cref="ToolKind.External" />。</summary>
@@ -175,6 +182,7 @@ internal static class ToolIcons
         ToolKind.Team => "AiIcon.users",
         ToolKind.Note => "AiIcon.sparkles",
         ToolKind.Skill => "AiIcon.layers",
+        ToolKind.Memory => "AiIcon.brain",
         _ => "AiIcon.plug"
     };
 

@@ -498,6 +498,12 @@ public sealed class AiSettings
     /// <summary>停用的技能名,每行一条(见"配置工具"窗口的技能组);停用的技能不进技能目录,也不能被调用。</summary>
     public string DisabledSkills { get; set; } = "";
 
+    /// <summary>
+    /// 记忆总开关(默认开):关掉时不往系统提示词里放记忆清单,也不给保存 / 修改 / 删除记忆的工具;已存的记忆原样保留。
+    /// 只影响桌面面板(IM 与对外 MCP 本来就不用记忆)。
+    /// </summary>
+    public bool MemoryEnabled { get; set; } = true;
+
     /// <summary>已安装扩展包的状态(启用与否、用户确认过的 MCP 指纹);文件本身在插件数据目录的 <c>extensions/</c> 下。</summary>
     public List<ExtensionPackState> ExtensionPacks { get; set; } = [];
 

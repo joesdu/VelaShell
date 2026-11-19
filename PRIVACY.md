@@ -56,6 +56,7 @@ computer unless you explicitly enable the optional sync feature described below.
 | Audit log — connection results (`user@host:port`), host-key decisions, external logins, and changes to connection profiles (name and `user@host:port`), settings and shared credentials: which part changed and where the change came from (local edit, cloud sync, import, login prompt), never passwords or setting values | `~/.velashell`; records older than the retention period you set (default 180 days) are deleted at startup |
 | Offline IP geolocation database, if you add one | `geoip` subfolder |
 | Plugins you manually install | `~/.velashell/plugins` |
+| AI assistant memory — notes the agent saves during conversations, or that you add yourself, carried across conversations (preferences, facts about your environment); used only in the desktop chat panel, and you can view, edit, delete or turn it off under Configure tools → Memory | The AI plugin's own data folder (`memory.json`), removed when the plugin is uninstalled |
 
 The application data folder is `~/.velashell` on Windows, macOS, and Linux. On first launch
 after this location changed, VelaShell migrates the former platform-specific data directory
@@ -281,6 +282,7 @@ VelaShell 发起的每一个网络连接,都完整列在下方。
 | 审计日志 —— 连接成败(`用户@主机:端口`)、主机指纹的裁决、外部拉起的登录,以及连接配置(名称与 `用户@主机:端口`)、设置、共享凭据的改动:只记改了哪一块与改动的来源(本机编辑、云同步、导入、登录框),不记密码与设置的值 | `~/.velashell`;启动时删掉超过保留期(默认 180 天,可设)的记录 |
 | 离线 IP 归属地数据库(如果你添加了) | `geoip` 子目录 |
 | 你手动安装的插件 | `~/.velashell/plugins` |
+| AI 助手的记忆 —— Agent 在对话中保存、或你手动添加的跨对话笔记(偏好、环境事实等),只在桌面聊天面板使用,可在「配置工具 → 记忆」查看、编辑、删除或整体关闭 | AI 插件自己的数据目录(`memory.json`),卸载插件时随之删除 |
 
 应用数据目录在 Windows、macOS 与 Linux 上统一为 `~/.velashell`。位置变更后的首次启动会把
 原平台数据目录迁入此目录，校验成功后删除原目录。

@@ -1613,8 +1613,8 @@ public sealed partial class ChatPanelViewUiTests
                 string mcpKey = "mcp:" + server.Id;
                 string readKey = "builtin:" + ToolKind.Read;
 
-                CollectionAssert.AreEqual(new[] { "NavExtensions", "NavMcpServers", "NavSkills", "NavTools" },
-                    picker.GetVisualDescendants().OfType<ListBoxItem>().Select(i => i.Name).ToArray(), "左栏四节");
+                CollectionAssert.AreEqual(new[] { "NavExtensions", "NavMcpServers", "NavSkills", "NavMemory", "NavTools" },
+                    picker.GetVisualDescendants().OfType<ListBoxItem>().Select(i => i.Name).ToArray(), "左栏五节");
                 Assert.AreEqual("1", NavCount(picker, ToolPickerView.Page.McpServers));
                 Assert.AreEqual((Agent.AgentToolbox.Catalog.Count + 2).ToString(System.Globalization.CultureInfo.InvariantCulture),
                     NavCount(picker, ToolPickerView.Page.Tools), "工具计数 = 内置 + 启用中服务器的工具");

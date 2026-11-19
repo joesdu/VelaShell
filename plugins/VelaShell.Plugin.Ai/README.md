@@ -794,6 +794,14 @@ ControlTheme 的芯片开关(`Ui/AiTheme.axaml`,隔离进程下仅令牌也能�
   已确认的 MCP 服务器并进 `McpToolSource` 与 `McpManager.ReconcileAsync` 的列表(少传会被当成已删除关掉)。桌面与 IM 共用。
 * **界面**:「配置工具」的「扩展包」组 —— 安装(确认框原样列出每台 MCP 的启动信息;`ConfirmOverlay` 的说明区改为可滚动)、启停、卸载、重新确认;变动后经回调让面板对齐 MCP 连接。
 
+**记忆**(`Chat/Memory/`、`Ui/ToolPickerView.Memory.cs`,2026-11-19):跨对话保留的少量事实;模型自动保存、用户可增删改,**只在桌面面板**、全局一份。
+* **存储**(`MemoryStore.For(DataDirectory)`,同一目录同一实例):`memory.json`,短 id + 标题(≤80)+ 内容(≤1000)+ 来源(`model` / `user`)+ 时间,最多 200 条;
+  先写临时文件再替换,坏文件按空处理并留 `.bad`;`LooksLikeSecret` 粗筛私钥 / 令牌 / `password=`;`Changed` 事件让面板与「配置工具」同步。
+* **交给模型**(`MemoryToolSource`):系统提示词 `memory` 分段(技能之后、自定义之前,最近改过的在前,8000 字符上限),三种模式都放,声明为背景而非指令;
+  `save_memory` / `update_memory` / `delete_memory` 仅 Agent 模式,登记在 `AgentToolbox.Catalog`(`ToolKind.Memory`,图标 brain)。总开关 `AiSettings.MemoryEnabled`。
+* **不在 IM 与对外 MCP**:`BridgeAgentRunner` 与 `McpToolHost` 都不接记忆(IM 有用例 `RunAsync_NeverUsesTheDesktopMemory` 守着)。
+* **界面**:「配置工具」的「记忆」页 —— 总开关、搜索、新增、就地编辑(错误写在输入框下)、删除 / 全部清除(确认);窗口挂着时订阅 `Changed`,拆下时退订(实例是全局的,不退订会把窗口留在内存里)。
+
 「AI:打开聊天(标签页)」以 `PanelPlacement.Right` 打开 —— 面板落在标签区**最右侧独立一栏**
 (VSCode 里 Copilot 聊天面板的位置),终端留在左边不被顶掉。落位走的是宿主的拖放停靠路径,
 与用户手动拖过去等价:随时可以再拖回标签条或换到别的分栏。初始宽度由设置页的
@@ -1047,7 +1055,7 @@ MCP 服务器在**自己的窗口**里配(`Ui/McpServersView`),入口是「配�
 
 顶栏的 **配置工具** 按钮开一个独立窗口(`Ui/ToolPickerView*.cs`),版式参照 VS Code Copilot 的配置界面(2026-11-19 重做):
 
-* **左栏**:`ListBox.nav` 分四节 ——「扩展包」「MCP 服务器」「技能」「工具」,行尾计数(已安装扩展包 / 手工配置的服务器 / 可用技能 / 启用中的工具),默认「工具」。
+* **左栏**:`ListBox.nav` 分五节 ——「扩展包」「MCP 服务器」「技能」「记忆」「工具」,行尾计数(已安装扩展包 / 手工配置的服务器 / 可用技能 / 已存记忆 / 启用中的工具),默认「工具」。
 * **右栏**:标题(`TextBlock.pageTitle`)+ 页内操作 + 一句说明(`pageDesc`)+ 28px 搜索框(只筛本节,匹配到的来源强制展开)+ 列表 + 底部状态行。
 * **行**(`SourceRow` / `ItemRow`):来源行 = 折叠箭头 + 名字 / 副标题 + `n/m` 计数 + 行内操作 + 开关;展开后逐项一行。折叠状态默认折起,只活在窗口里,重建不丢、关窗不存。
   开关是 `AiTheme.axaml` 的 `AiSwitchTheme`(套在 `CheckBox` 上沿用勾选语义;`IsChecked = null` 显示中间态)。

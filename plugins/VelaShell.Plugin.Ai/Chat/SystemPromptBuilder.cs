@@ -38,6 +38,9 @@ internal sealed class SystemPromptBuilder
     /// <summary>用户自定义的提示词,永远排在最后(见 <see cref="AddCustom" />)。</summary>
     public const string Custom = "custom";
 
+    /// <summary>记忆清单(桌面面板、记忆开启且有记忆时;见 <see cref="Memory.MemoryToolSource.Index" />)。排在技能之后、自定义提示词之前。</summary>
+    public const string Memory = "memory";
+
     /// <summary>自定义提示词前的引导语;桌面与 IM 同一句。</summary>
     internal const string CustomPrefix = "\n\nOperator instructions: ";
 

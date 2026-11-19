@@ -261,6 +261,36 @@ public sealed class BridgeAgentRunnerTests
         Assert.AreEqual(enabled, body.Contains("Deploy api-gateway carefully.", StringComparison.Ordinal), "扩展包的命令");
     }
 
+    /// <summary>记忆只在桌面面板生效:IM 既不把记忆清单发给模型,也不给保存记忆的工具(维护者 2026-11-19 定)。</summary>
+    [TestMethod]
+    public async Task RunAsync_NeverUsesTheDesktopMemory()
+    {
+        await using var endpoint = new SseStub(
+            "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+        using var context = new TestPluginContext();
+        Chat.Memory.MemoryStore.For(context.DataDirectory).Add("Home address", "The user lives on Elm Street.", "user");
+        var store = new AiSettingsStore(context);
+        await store.SaveAsync(new AiSettings
+        {
+            Providers =
+            [
+                new AiProvider
+                {
+                    Id = "p1", Name = "Local", BaseUrl = endpoint.BaseUrl, DefaultProtocol = ChatProtocol.OpenAiChatCompletions,
+                    Models = [new AiModelConfig { Id = "m1", Model = "probe" }]
+                }
+            ],
+            ActiveModelId = "m1"
+        });
+
+        await Create(context).RunAsync(new BridgeConversation("ch1", "chat-1"), new BridgeSettings { Mode = ChatMode.Agent },
+            Message(), Deny, English, null, null, CancellationToken.None);
+
+        string body = endpoint.Requests.Single();
+        Assert.DoesNotContain("Elm Street", body, "记忆不带进 IM");
+        Assert.DoesNotContain("save_memory", body);
+    }
+
     [TestMethod]
     public async Task RunAsync_RereadsTheAiSettingsEveryTurn()
     {
