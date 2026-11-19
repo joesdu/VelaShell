@@ -999,6 +999,8 @@ IM bots can delegate subagents in Agent mode as well, with the same candidates a
 
 After `team_run`, the reply shows only a two-line **team entry card**: the first line is the team goal and phase (Running / Done / Needs attention / Cancelled), the second is the member avatars (each member gets its own theme color: twelve colors that follow the theme, so up to twelve members never share one) and "done/total tasks · running · elapsed · team tokens ≈estimated cost" (hover for the total; each run is priced at its own model's rates, reworks included). The task list, each member's run details and the team messages are no longer expanded in the conversation. Click the card (or focus it and press Enter / Space) and a tab titled "Team · goal" opens in the main window's tab area: the **team console**. If it is already open, the tab is brought to the front; one team never gets a second tab. On an older host without document tabs the console opens in a separate window instead.
 
+When a team starts or retries, the lead model waits locally for the consolidated report. You can follow progress in the team console or stop the turn. If you send the lead a message while it waits, it receives that message on its next request. Later tool results follow the message in order.
+
 The team console is a one-page overview of the whole team. It updates live while the team runs and stays on its last state once the turn ends:
 
 - **Stats:** overall progress (share of tasks completed), active members (how many are working / thinking, and how many are waiting / blocked), tasks done, total tokens with the last 2.5 seconds' increase, estimated cost, message count and run time.

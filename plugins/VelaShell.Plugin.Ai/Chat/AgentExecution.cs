@@ -43,6 +43,7 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
     private int _stepCalls, _idleSteps;
     private bool _stepAdvanced;
     internal string RunId { get; } = runId;
+    internal Agent.SubagentOrchestrator? Subagents { get; set; }
 
     /// <summary>
     /// 只读的轮询工具:同参连调本就是为了看进度,结果变了就算有进展,不计入重复;
@@ -204,6 +205,7 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
                 _paused = new AgentPausedException("NoProgress");
                 throw _paused;
             }
+            if (Subagents?.Team?.HasPendingReport == true) throw new TeamReportPendingException();
             if (_batchSteps >= _batchSize) throw new AgentBatchBoundaryException();
             _batchSteps++;
             _checkpoint.Clear();
@@ -324,6 +326,7 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
 }
 
 internal sealed class AgentBatchBoundaryException : Exception;
+internal sealed class TeamReportPendingException : Exception;
 
 internal sealed class AgentPausedException(string key, Exception? inner = null) : InvalidOperationException(key, inner)
 {

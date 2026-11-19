@@ -14,7 +14,7 @@ internal sealed class AgentRunCoordinator(CommandJobRunScope jobs, AgentExecutio
     /// 这一轮的子 Agent 编排器(有委派工具的入口才设)。父模型停下时还有子任务在跑、或有结果没取走,
     /// 就在这里等到终态并当作通知送回去 —— 与后台命令同一条路,不靠模型自己轮询。
     /// </summary>
-    internal SubagentOrchestrator? Subagents { get; set; }
+    internal SubagentOrchestrator? Subagents { get => execution.Subagents; set => execution.Subagents = value; }
 
     /// <summary>子任务结果通知的开头;结果是委派出去的 AI 写的报告,不是用户的话。</summary>
     internal const string SubagentNotice =
@@ -38,7 +38,7 @@ internal sealed class AgentRunCoordinator(CommandJobRunScope jobs, AgentExecutio
         int batch = 0;
         Task<IReadOnlyList<CommandJobSnapshot>>? commandCompletion = null;
         Task<IReadOnlyList<PluginSdk.RemoteFs.RemoteTransferSnapshot>>? transferCompletion = null;
-        Task<IReadOnlyList<SubagentSnapshot>>? subagentCompletion = null;
+        Task? subagentCompletion = null;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -54,6 +54,7 @@ internal sealed class AgentRunCoordinator(CommandJobRunScope jobs, AgentExecutio
                         if (!await iterator.MoveNextAsync().ConfigureAwait(false)) break;
                         update = iterator.Current;
                     }
+                    catch (TeamReportPendingException) { break; }
                     catch (AgentBatchBoundaryException) { atBatchBoundary = true; break; }
                     updates.Add(update);
                     yield return update;
@@ -68,10 +69,10 @@ internal sealed class AgentRunCoordinator(CommandJobRunScope jobs, AgentExecutio
                 execution.ContinueBatch();
                 continue;
             }
-            IReadOnlyList<CommandJobSnapshot> completed = [];
-            IReadOnlyList<PluginSdk.RemoteFs.RemoteTransferSnapshot> transfers = [];
-            IReadOnlyList<SubagentSnapshot> reports = [];
-            while (completed.Count == 0 && transfers.Count == 0 && reports.Count == 0)
+            List<CommandJobSnapshot> completed = [];
+            List<PluginSdk.RemoteFs.RemoteTransferSnapshot> transfers = [];
+            List<SubagentSnapshot> reports = [];
+            do
             {
                 // 保留各个等待任务，不能让 WhenAny 落败者后台消费终态而丢失通知。
                 if (commandCompletion is null && jobs.HasActiveJobs)
@@ -79,7 +80,7 @@ internal sealed class AgentRunCoordinator(CommandJobRunScope jobs, AgentExecutio
                 if (transferCompletion is null && jobs.Transfers?.HasActiveJobs == true)
                     transferCompletion = jobs.Transfers.WaitForCompletionAsync(cancellationToken);
                 if (subagentCompletion is null && Subagents?.HasPendingResults == true)
-                    subagentCompletion = Subagents.WaitForCompletionAsync(cancellationToken);
+                    subagentCompletion = Subagents.WaitForResultsAvailableAsync(cancellationToken);
                 if (commandCompletion is null && transferCompletion is null && subagentCompletion is null)
                 {
                     if (jobs.HasMonitoringJobs)
@@ -108,22 +109,25 @@ internal sealed class AgentRunCoordinator(CommandJobRunScope jobs, AgentExecutio
                 }
                 if (commandCompletion?.IsCompleted == true)
                 {
-                    completed = await commandCompletion.ConfigureAwait(false);
+                    completed.AddRange(await commandCompletion.ConfigureAwait(false));
                     commandCompletion = null;
                 }
                 if (transferCompletion?.IsCompleted == true)
                 {
-                    transfers = await transferCompletion.ConfigureAwait(false);
+                    transfers.AddRange(await transferCompletion.ConfigureAwait(false));
                     transferCompletion = null;
                 }
                 if (subagentCompletion?.IsCompleted == true)
                 {
                     // 可能是空的:结果在等待期间被模型自己用 subagent_wait 取走了,回到循环头重新判断
-                    reports = await subagentCompletion.ConfigureAwait(false);
+                    await subagentCompletion.ConfigureAwait(false);
+                    reports.AddRange(Subagents!.TakeCompletedResults());
                     subagentCompletion = null;
                 }
                 cancellationToken.ThrowIfCancellationRequested();
-            }
+            } while ((completed.Count == 0 && transfers.Count == 0 && reports.Count == 0)
+                || (Subagents?.Team?.HasPendingReport == true && !jobs.HasDeniedExecution
+                    && !completed.Any(job => job.State == CommandJobState.Unknown) && jobs.Transfers?.HasUnknownOutcome != true));
             // running工具已取得唯一结果。终态通知是新输入,
             // 绝不能作为原CallId的第二个FunctionResultContent。
             // 仍用 User 角色:Tool 消息必须紧跟对应的工具调用,伪造一对调用各家供应商的校验不一;

@@ -185,8 +185,7 @@ public sealed class SteeringTests
     public async Task FunctionInvocationLoop_HandsTheQueuedMessage_ToTheNextStep()
     {
         var queue = new SteeringQueue();
-        // 第一步发起一次工具调用,第二步才给正文
-        var inner = new ScriptedChatClient([Call("c1", "peek")], [Text("好,只看最近一小时。")]);
+        var inner = new ScriptedChatClient([Call("c1", "peek")], [Call("c2", "peek")], [Text("完成。")]);
         var steering = new SteeringChatClient(inner, queue);
         IChatClient client = steering.AsBuilder().UseFunctionInvocation().Build();
 
@@ -195,24 +194,82 @@ public sealed class SteeringTests
             Tools = [AIFunctionFactory.Create(() => "…日志…", "peek")]
         };
 
-        var updates = new List<ChatResponseUpdate>();
         await foreach (ChatResponseUpdate update in client.GetStreamingResponseAsync(Context(), options))
         {
-            updates.Add(update);
-            // 工具刚跑完、模型还没决定下一步 —— 用户此刻补一句
-            if (update.Contents.Any(c => c is FunctionResultContent))
-            {
-                queue.Enqueue(Note("只看最近一小时的"));
-            }
+            foreach (FunctionResultContent result in update.Contents.OfType<FunctionResultContent>())
+                queue.Enqueue(Note(result.CallId == "c1" ? "只看最近一小时的" : "按时间排序"));
         }
 
-        Assert.HasCount(2, inner.Requests, "循环该跑两步:调用工具,再据结果作答");
+        Assert.HasCount(3, inner.Requests);
         Assert.DoesNotContain(m => m.Text.Contains("最近一小时"), inner.Requests[0],
             "第一步的时候用户还没开口");
         Assert.Contains("只看最近一小时的", inner.Requests[1][^1].Text,
             "第二步之前必须把那句补充送进去 —— 这正是边跑边补要的效果");
-        Assert.HasCount(1, steering.Delivered);
+        List<string> third = [.. inner.Requests[2].SelectMany(m => m.Contents).Select(c => c switch
+        {
+            FunctionCallContent call => call.CallId,
+            FunctionResultContent result => $"result:{result.CallId}",
+            TextContent text => text.Text,
+            _ => ""
+        })];
+        Assert.AreSequenceEqual(new[] { "c1", "result:c1", "只看最近一小时的", "c2", "result:c2", "按时间排序" },
+            third.Skip(2).ToList());
+        Assert.HasCount(2, steering.Delivered);
         client.Dispose();
+    }
+
+    [TestMethod]
+    public async Task RetryPrompt_FollowsTheDeliveredNote_InOneUserMessage()
+    {
+        var queue = new SteeringQueue();
+        var inner = new ScriptedChatClient();
+        using var steering = new SteeringChatClient(inner, queue);
+        List<ChatMessage> context = Context();
+        context.Add(new(ChatRole.Assistant, [new FunctionCallContent("c1", "peek", null)]));
+        context.Add(new(ChatRole.Tool, [new FunctionResultContent("c1", "out")]));
+        queue.Enqueue(Note("补充条件"));
+        _ = await steering.GetResponseAsync(context);
+
+        context.Add(new(ChatRole.User, RecoveringChatClient.ContinueAfterTools));
+        _ = await steering.GetResponseAsync(context);
+
+        List<ChatMessage> retry = inner.Requests[1];
+        Assert.HasCount(context.Count, retry);
+        Assert.AreEqual(ChatRole.Tool, retry[^2].Role);
+        Assert.AreSequenceEqual(new[] { "补充条件", RecoveringChatClient.ContinueAfterTools },
+            retry[^1].Contents.OfType<TextContent>().Select(c => c.Text));
+        Assert.HasCount(1, context[^1].Contents, "补试传入的原始消息不应被改写");
+    }
+
+    [TestMethod]
+    public async Task Compaction_KeepsNotesFromFoldedSteps_BeforeTheRemainingSteps()
+    {
+        var queue = new SteeringQueue();
+        var inner = new ScriptedChatClient();
+        var steering = new SteeringChatClient(inner, queue);
+        using var compactor = new RunContextCompactor(steering, 1000, 0,
+            (_, _, _) => Task.FromResult<string?>("progress")) { PrefixCount = 2 };
+        List<ChatMessage> context = Context();
+        AddStep("c1", "first");
+        queue.Enqueue(Note("补充条件"));
+        _ = await compactor.GetResponseAsync(context);
+
+        for (int i = 2; i <= 6; i++) AddStep($"c{i}", new string('x', 1600));
+        _ = await compactor.GetResponseAsync(context);
+
+        List<ChatMessage> sent = inner.Requests[1];
+        Assert.AreEqual("progress", compactor.Summary);
+        Assert.DoesNotContain(c => c.CallId == "c1", sent.SelectMany(m => m.Contents).OfType<FunctionCallContent>());
+        Assert.AreEqual(ChatRole.User, sent[1].Role);
+        Assert.EndsWith("补充条件", sent[1].Text);
+        Assert.AreEqual(ChatRole.Assistant, sent[2].Role);
+        Assert.DoesNotContain(m => m.Text.Contains("补充条件"), sent.Skip(2));
+
+        void AddStep(string id, string text)
+        {
+            context.Add(new(ChatRole.Assistant, [new TextContent(text), new FunctionCallContent(id, "peek", null)]));
+            context.Add(new(ChatRole.Tool, [new FunctionResultContent(id, "out")]));
+        }
     }
 
     [TestMethod]
