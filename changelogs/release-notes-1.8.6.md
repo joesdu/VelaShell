@@ -123,7 +123,8 @@
 
 ## ✅ 验证
 
-- [三平台 CI #44462390554](https://github.com/joesdu/VelaShell/actions/runs/44462390554)（对应提交 `189a7db7`，即 #788 合并后的 main）：发版时 Ubuntu 构建与测试已通过，Windows 与 macOS 仍在运行、结果未计入本节；[CodeQL #44462390510](https://github.com/joesdu/VelaShell/actions/runs/44462390510) 通过。发版 PR [#789](https://github.com/joesdu/VelaShell/pull/789)（只改插件版本号与本日志）按维护者决定未等 CI 即合并。
+- [三平台 CI #44462390554](https://github.com/joesdu/VelaShell/actions/runs/44462390554)（对应提交 `189a7db7`，即 #788 合并后的 main）：Ubuntu 构建与测试通过；Windows 与 macOS 作业在 #789 合并推送到 main 后被新一轮 CI 取消，未得出结果。[CodeQL #44462390510](https://github.com/joesdu/VelaShell/actions/runs/44462390510) 通过。
+- 发版 PR [#789](https://github.com/joesdu/VelaShell/pull/789)（只改插件版本号与本日志）按维护者决定未等 CI 即合并；发版提交 `31768bba` 的 [CI #44463693112](https://github.com/joesdu/VelaShell/actions/runs/44463693112) 在发布时尚未完成，结果未计入本节。
 - CI 按既有规则排除 `DockerIntegration`、`CrossPlatform`、`Interop` 类别，部分依赖平台或外部环境的用例跳过；跳过不计为通过。
 - 测试提速（不影响产品行为）：AI 插件测试 9 分 22 秒 → 5 分 15 秒；SonnetDB 测试改用模板库并在测试中关闭逐次 fsync，Argon2id 在测试中用低成本参数，三处计时改为 internal 替身，2000 文件中转用例减量，CI 先启动最长的 `VelaShell.Tests`；生产默认值由新增用例钉住不变。另修了恢复码「抄错一位」用例约 1/256 的随机失败与几条 macOS / Windows CI 偶发失败。变更：`80b685fc`、`65a00350`、`b29c9936`、`cb5a75ec`、`10a165ec`、`c55dca8f` · [PR #784](https://github.com/joesdu/VelaShell/pull/784)、[PR #786](https://github.com/joesdu/VelaShell/pull/786)、[PR #787](https://github.com/joesdu/VelaShell/pull/787)、[PR #788](https://github.com/joesdu/VelaShell/pull/788)
 - 各 PR 合并前的本机验证（Windows / .NET 11，Debug）：
