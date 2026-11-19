@@ -12,29 +12,27 @@ namespace VelaShell.Plugin.Ai.Ui;
 /// <remarks>
 /// 模型经常在回答里给出服务器上的文件路径,写成 <c>[名字](/root/xxx.md)</c>。
 /// 那既不是网址也不是本机文件,默认什么都不会发生 —— 用户点了没反应,只能自己去终端里找。
-/// 现在按目标形状分三条路走:网址交给浏览器,本机路径交给系统默认程序,
+/// 网址交给浏览器,本机文件在文件管理器中打开所在目录,
 /// <b>远端绝对路径经 SFTP 下载下来</b>(存到哪儿由用户挑)。
 /// </remarks>
 public partial class ChatPanelView
 {
     private void OnMarkdownLinkClicked(LinkClickedEventArgs e)
     {
-        string href = e?.HRef?.ToString() ?? "";
-        if (href.Length == 0)
+        if (e.HRef is not { } uri || uri.OriginalString.Length == 0)
         {
             return;
         }
-        e!.Handled = true;
-        if (Uri.TryCreate(href, UriKind.Absolute, out Uri? absolute)
-            && absolute.Scheme is "http" or "https" or "mailto")
+        e.Handled = true;
+        string href = uri.OriginalString;
+        if (uri.IsAbsoluteUri && uri.Scheme is "http" or "https" or "mailto")
         {
-            _ = LaunchAsync(absolute);
+            _ = LaunchAsync(uri);
             return;
         }
-        // Windows 盘符路径 / UNC:本机文件,交给系统默认程序
-        if (Path.IsPathRooted(href) && !href.StartsWith('/'))
+        if (GetLocalLinkPath(uri) is { } path)
         {
-            _ = LaunchLocalAsync(href);
+            _ = OpenLocalLinkFolderAsync(path);
             return;
         }
         if (href.StartsWith('/'))
@@ -62,18 +60,32 @@ public partial class ChatPanelView
         }
     }
 
-    private async Task LaunchLocalAsync(string path)
+    internal static string? GetLocalLinkPath(Uri uri)
+    {
+        string href = uri.OriginalString;
+        if (OperatingSystem.IsWindows() && href.StartsWith('/') && Path.IsPathFullyQualified(href[1..]) && char.IsAsciiLetter(href[1]))
+        {
+            return Uri.UnescapeDataString(href[1..]);
+        }
+        // Bare /paths refer to the remote session, even on hosts where Uri treats them as files.
+        return !href.StartsWith('/') && uri.IsAbsoluteUri && uri.IsFile ? uri.LocalPath : null;
+    }
+
+    internal static DirectoryInfo? GetLocalLinkFolder(string path) =>
+        Directory.Exists(path) ? new DirectoryInfo(path) : File.Exists(path) ? new FileInfo(path).Directory : null;
+
+    private async Task OpenLocalLinkFolderAsync(string path)
     {
         try
         {
-            if (!File.Exists(path) && !Directory.Exists(path))
+            if (GetLocalLinkFolder(path) is not { } folder)
             {
                 StatusText.Text = _loc.F("LinkMissingLocal", path);
                 return;
             }
-            if (TopLevel.GetTopLevel(this)?.Launcher is { } launcher)
+            if (TopLevel.GetTopLevel(this)?.Launcher is not { } launcher || !await launcher.LaunchDirectoryInfoAsync(folder))
             {
-                await launcher.LaunchFileInfoAsync(new FileInfo(path));
+                StatusText.Text = _loc.F("LinkFolderOpenFailed", folder.FullName);
             }
         }
         catch (Exception ex)

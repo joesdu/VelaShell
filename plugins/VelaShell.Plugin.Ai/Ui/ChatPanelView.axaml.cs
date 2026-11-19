@@ -742,15 +742,7 @@ public partial class ChatPanelView : UserControl
         }
     }
 
-    /// <summary>Markdown 链接点击:只放行 http/https,交给宿主的默认浏览器打开。</summary>
-    private void OnMarkdownLinkClicked(object? sender, LinkClickedEventArgs e)
-    {
-        if (e.HRef is { IsAbsoluteUri: true } uri && uri.Scheme is "http" or "https")
-        {
-            _ = TopLevel.GetTopLevel(this)?.Launcher.LaunchUriAsync(uri);
-        }
-        e.Handled = true;
-    }
+    private void OnMarkdownLinkClicked(object? sender, LinkClickedEventArgs e) => OnMarkdownLinkClicked(e);
 
     private void OnLocaleChanged(string locale) => Dispatcher.UIThread.Post(() =>
     {

@@ -874,6 +874,7 @@ public sealed class Loc(string locale)
         ["LinkDownloading"] = ["Downloading {0}…", "正在下载 {0}…", "正在下載 {0}…", "{0} をダウンロード中…", "{0} 다운로드 중…"],
         ["LinkDownloaded"] = ["Saved to {0}", "已保存到 {0}", "已儲存到 {0}", "{0} に保存しました", "{0} 에 저장했습니다"],
         ["LinkMissingRemote"] = ["No such file on the server: {0}", "服务器上没有这个文件:{0}", "伺服器上沒有這個檔案:{0}", "サーバーにそのファイルはありません: {0}", "서버에 그런 파일이 없습니다: {0}"],
+        ["LinkFolderOpenFailed"] = ["Could not open folder: {0}", "无法打开文件夹：{0}", "無法開啟資料夾：{0}", "フォルダーを開けませんでした: {0}", "폴더를 열 수 없습니다: {0}"],
         ["LinkMissingLocal"] = ["No such local file: {0}", "本机没有这个文件:{0}", "本機沒有這個檔案:{0}", "ローカルにそのファイルはありません: {0}", "로컬에 그런 파일이 없습니다: {0}"],
         ["LinkIsDirectory"] = ["{0} is a directory, not a file.", "{0} 是目录,不是文件。", "{0} 是目錄,不是檔案。", "{0} はディレクトリです(ファイルではありません)。", "{0} 은(는) 디렉터리입니다."],
         ["LinkUnsupported"] = ["Don't know how to open: {0}", "不知道该怎么打开:{0}", "不知道該怎麼打開:{0}", "開き方が分かりません: {0}", "여는 방법을 알 수 없습니다: {0}"],
