@@ -45,7 +45,8 @@ public sealed partial class ChatPanelViewUiTests
     /// <summary>把面板挂进一个窗口(控件要拿到 TopLevel 才算真正装载),并等初始化跑完。</summary>
     private static async Task<(Window Window, ChatPanelView Panel)> ShowAsync(TestPluginContext context)
     {
-        var panel = new ChatPanelView(context, new AiSettingsStore(context));
+        // 补试退避按 1/20 等(400 / 800 ms → 20 / 40 ms):先后次序不变,每条走补试 / 故障转移的用例省一两秒
+        var panel = new ChatPanelView(context, new AiSettingsStore(context)) { RetryDelayOverride = (wait, token) => Task.Delay(wait / 20, token) };
         var window = new Window { Width = 800, Height = 600, Content = panel };
         window.Show();
         await PumpAsync();
@@ -54,7 +55,8 @@ public sealed partial class ChatPanelViewUiTests
 
     /// <summary>
     /// 面板的初始化是 fire-and-forget 的异步链,跑几拍调度器让它落定。
-    /// 默认拍数要盖过 <c>@</c> 补全的防抖(180ms),否则弹层还没来得及开就断言了。
+    /// 默认拍数<b>不保证</b>盖过 <c>@</c> 补全的防抖(180ms,见 <see cref="HeadlessPump" />):
+    /// 要断言弹层弹出,用 <see cref="WaitForAsync" /> 等它真弹出来。
     /// </summary>
     private static Task PumpAsync(int rounds = 60) => HeadlessPump.RunAsync(rounds);
 
@@ -259,10 +261,11 @@ public sealed partial class ChatPanelViewUiTests
                 input.TextArea.Focus();
                 input.Text = "看看 #/etc/host";
                 input.CaretOffset = input.Text.Length;
-                await PumpAsync();
 
+                // 弹层要等过 180 ms 的防抖与一次远端列目录:等它真弹出来,不靠拍数凑时间
                 Popup popup = Find<Popup>(panel, "FilePopup");
-                Assert.IsTrue(popup.IsOpen, "@ 后应弹出远端文件选择器");
+                Assert.IsTrue(await WaitForAsync(() => popup.IsOpen && Find<StackPanel>(panel, "FileList").Children.Count > 0),
+                    "@ 后应弹出远端文件选择器");
                 StackPanel list = Find<StackPanel>(panel, "FileList");
                 Assert.HasCount(2, list.Children, "只应列出匹配 host 前缀的两个文件(nginx 目录被过滤掉)");
 

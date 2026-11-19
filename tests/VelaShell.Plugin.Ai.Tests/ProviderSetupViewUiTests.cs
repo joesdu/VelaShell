@@ -365,6 +365,13 @@ public sealed class ProviderSetupViewUiTests
         await PumpAsync(20);
     }
 
+    /// <summary>
+    /// 设备码轮询的等待:假授权端点回的 <c>"interval":1</c> 只是占位,缩成 20 ms(每条走登录的用例省一秒);
+    /// 更长的间隔是用例刻意要「一直挂着」(如 <c>"interval":30</c> 的第二次登录),照原样真等。
+    /// </summary>
+    private static Task FastDevicePoll(TimeSpan interval, CancellationToken token)
+        => Task.Delay(interval <= TimeSpan.FromSeconds(1) ? TimeSpan.FromMilliseconds(20) : interval, token);
+
     private static async Task<(Window Window, ProviderSetupView View, AiSettings Settings, AiSettingsStore Store)>
         ShowAsync(TestPluginContext context, AiSettings? seed = null, string? focus = null, ProviderHealth? health = null)
     {
@@ -373,7 +380,7 @@ public sealed class ProviderSetupViewUiTests
         AiSettings settings = seed ?? new AiSettings();
         var store = new AiSettingsStore(context);
         await store.SaveAsync(settings);
-        var view = new ProviderSetupView(context, store, settings, new Loc("en"), focus, health: health);
+        var view = new ProviderSetupView(context, store, settings, new Loc("en"), focus, health: health) { DevicePollDelay = FastDevicePoll };
         var window = new Window { Width = 720, Height = 720, Content = view };
         window.Show();
         await PumpAsync(40);
@@ -928,7 +935,7 @@ public sealed class ProviderSetupViewUiTests
             var store = new AiSettingsStore(context);
             await store.SaveTokensAsync(openrouter.Id,
                 new OAuthTokens { AccessToken = "sk-or-v1-abc", Account = "ops@example.com" });
-            var view = new ProviderSetupView(context, store, seed, new Loc("en"));
+            var view = new ProviderSetupView(context, store, seed, new Loc("en")) { DevicePollDelay = FastDevicePoll };
             var window = new Window { Width = 720, Height = 720, Content = view };
             window.Show();
             await PumpAsync(40);
@@ -1972,7 +1979,7 @@ public sealed class ProviderSetupViewUiTests
             var store = new AiSettingsStore(context);
             await store.SaveTokensAsync(openrouter.Id,
                 new OAuthTokens { AccessToken = "sk-or-v1-abc", Account = "ops@example.com" });
-            var view = new ProviderSetupView(context, store, seed, new Loc("en"));
+            var view = new ProviderSetupView(context, store, seed, new Loc("en")) { DevicePollDelay = FastDevicePoll };
             var window = new Window { Width = 720, Height = 720, Content = view };
             window.Show();
             await PumpAsync(40);
@@ -3003,7 +3010,7 @@ public sealed class ProviderSetupViewUiTests
             await store.SetApiKeyAsync(old.Id, "sk-old");
             await store.SetApiKeyAsync(current.Id, "sk-current");
             var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var view = new ProviderSetupView(context, store, seed, new Loc("en"), "custom-openai");
+            var view = new ProviderSetupView(context, store, seed, new Loc("en"), "custom-openai") { DevicePollDelay = FastDevicePoll };
             view.ProviderChanged += id => { if (id == old.Id) saved.TrySetResult(); };
             var pulled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             view.ModelsChanged += () => pulled.TrySetResult();
@@ -3394,7 +3401,7 @@ public sealed class ProviderSetupViewUiTests
             var store = new AiSettingsStore(context);
             await store.SaveAsync(settings);
             storage.Hold = true;
-            var view = new ProviderSetupView(context, store, settings, new Loc("en"), "deepseek");
+            var view = new ProviderSetupView(context, store, settings, new Loc("en"), "deepseek") { DevicePollDelay = FastDevicePoll };
             var window = new Window { Width = 720, Height = 720, Content = view };
             window.Show();
             try
@@ -3543,7 +3550,7 @@ public sealed class ProviderSetupViewUiTests
             await store.SetApiKeyAsync(removed.Id, "sk-removed");
             storage.Hold = true;
             var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var view = new ProviderSetupView(context, store, settings, new Loc("en"), "deepseek");
+            var view = new ProviderSetupView(context, store, settings, new Loc("en"), "deepseek") { DevicePollDelay = FastDevicePoll };
             view.ProviderChanged += _ => completed.TrySetResult();
             var window = new Window { Width = 720, Height = 720, Content = view };
             window.Show();

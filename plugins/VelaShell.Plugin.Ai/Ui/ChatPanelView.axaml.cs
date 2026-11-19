@@ -2279,6 +2279,7 @@ public partial class ChatPanelView : UserControl
                     client = new RecoveringChatClient(client, execution, _loc["ContinuationBoundary"],
                             (attempt, failure) => Dispatcher.UIThread.Post(() => SetStatus(retryStatus = _loc.F(
                                 failure is HealthProbe.EmptyReplyException ? "RetryingEmptyReply" : "Retrying", attempt))),
+                            delay: RetryDelayOverride,
                             recovered: () => Dispatcher.UIThread.Post(() =>
                             {
                                 if (Cur.Status == retryStatus) SetStatus("");
@@ -2370,7 +2371,7 @@ public partial class ChatPanelView : UserControl
                             }
                             // 空答不是连接失败,与 Agent / 计划模式的补试同一句提示(#651 复审③)
                             SetStatus(_loc.F(ex is HealthProbe.EmptyReplyException ? "RetryingEmptyReply" : "Retrying", attempt + 1));
-                            await Task.Delay(TimeSpan.FromMilliseconds(400 * (attempt + 1)), token);
+                            await (RetryDelayOverride ?? Task.Delay)(TimeSpan.FromMilliseconds(400 * (attempt + 1)), token);
                             bubble.ResetUnopenedContent();
                             updates.Clear(); // 前一次可能只有 role / usage 等不可见帧,不并进重试的回答
                             lock (pendingSync)
@@ -3041,6 +3042,13 @@ public partial class ChatPanelView : UserControl
     /// 拖到二十秒后才告诉用户。
     /// </summary>
     private const int StreamRetries = 1;
+
+    /// <summary>
+    /// 测试替身:补试之间的退避怎么等(聊天流自己的补试与 <see cref="RecoveringChatClient" /> 的补试共用)。
+    /// 正式运行为 null,即 <see cref="Task.Delay(TimeSpan, CancellationToken)" />;UI 用例把 400 / 800 ms 的退避按比例缩短,
+    /// 不然每条走补试或故障转移的用例都要白挂一两秒。
+    /// </summary>
+    internal Func<TimeSpan, CancellationToken, Task>? RetryDelayOverride { get; set; }
 
     /// <summary>回复底部显示的模型名:优先模型 id,没填就退回接入名称。</summary>
     private static string ModelLabel(ResolvedModel provider)
