@@ -943,6 +943,8 @@ These are separate paths, not one switch. Closing chat does not necessarily disa
 
 ### 19.3 Chat, File References, and Global Settings
 
+Ctrl+click a local file link in an AI reply to open its containing folder. For an executable such as an `.exe`, check the filename there and run it manually. A directory link opens that directory.
+
 **Starter prompts:** An empty conversation offers four examples: explain terminal output, check disk usage, list listening services, and “Check this server for suspicious programs”, shown with the `virus` icon. Clicking sends the prompt when a model is configured; otherwise it fills the input. Actual checks follow the selected mode, target session, and approval settings.
 
 **Entry point and steps:** Select model, target session, mode, and approval level in chat. Enter sends; Shift+Enter inserts a newline. View/continue/rename/delete history; stop or add input during a run. `#` selects files from the chosen remote session: up to five files, each at most 128 KB, included when sending. Use `#/etc/hosts` or `#"/opt/my app/config"` for spaces. The old `@/path` syntax is no longer parsed as a file reference.
