@@ -29,6 +29,7 @@ public sealed class PluginDevWatcher : IDisposable
     private readonly List<FileSystemWatcher> _watchers = [];
     private readonly Action _onRebuilt;
     private readonly Action<string> _log;
+    private readonly TimeSpan _debounceDelay;
     private Timer? _debounce;
     private bool _stopped;
 
@@ -36,11 +37,16 @@ public sealed class PluginDevWatcher : IDisposable
     /// <param name="onRebuilt">检测到重新构建时触发(已去抖)。</param>
     /// <param name="log">日志输出。</param>
     public PluginDevWatcher(Action onRebuilt, Action<string> log)
+        : this(onRebuilt, log, DebounceDelay) { }
+
+    /// <summary>同上,另给去抖时长(测试用:不必每条用例真等 1.5 秒)。</summary>
+    internal PluginDevWatcher(Action onRebuilt, Action<string> log, TimeSpan debounceDelay)
     {
         ArgumentNullException.ThrowIfNull(onRebuilt);
         ArgumentNullException.ThrowIfNull(log);
         _onRebuilt = onRebuilt;
         _log = log;
+        _debounceDelay = debounceDelay;
     }
 
     /// <summary>
@@ -113,7 +119,7 @@ public sealed class PluginDevWatcher : IDisposable
         }
         try
         {
-            _debounce?.Change(DebounceDelay, Timeout.InfiniteTimeSpan);
+            _debounce?.Change(_debounceDelay, Timeout.InfiniteTimeSpan);
         }
         catch (ObjectDisposedException)
         {

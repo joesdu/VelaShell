@@ -951,14 +951,15 @@ public class FtpFileServiceIntegrationTests
         Assert.AreEqual(1, _server.AcceptedConnections);
     }
 
+    // 压力最大的那一行(3 路并发 + 混合元数据)照旧 2000 个文件,守端口 / TIME_WAIT 这类只在量大时才露头的问题;
+    // 其余行 200 个:要守的「每个文件一次 RETR、两次 SIZE、被动监听与接受的连接一一对应」都是精确相等,200 个照样抓得到漏。
     [TestMethod]
-    [DataRow(1, false)]
-    [DataRow(3, false)]
-    [DataRow(1, true)]
-    [DataRow(3, true)]
-    public async Task OpenRead_Relay2000DistinctFiles_LengthAndHashMatch(int concurrency, bool mixedMetadata)
+    [DataRow(1, false, 200)]
+    [DataRow(3, false, 200)]
+    [DataRow(1, true, 200)]
+    [DataRow(3, true, 2000)]
+    public async Task OpenRead_RelayManyDistinctFiles_LengthAndHashMatch(int concurrency, bool mixedMetadata, int count)
     {
-        const int count = 2000;
         for (int i = 0; i < count; i++)
         {
             await File.WriteAllBytesAsync(Path.Combine(_root, $"f{i}.bin"), RelayPayload(i, mixedMetadata), TestContext.CancellationToken);
@@ -1298,12 +1299,12 @@ public class FtpFileServiceIntegrationTests
         Assert.AreEqual("RETR /producer.bin", client.LastReply.Command);
     }
 
+    // 同上:3 路并发那行照旧 2000 个文件,单路 200 个(每个文件一次 RETR 是精确相等,量小照样抓得到漏)。
     [TestMethod]
-    [DataRow(1)]
-    [DataRow(3)]
-    public async Task DownloadStream_2000DistinctFiles_SingleRetrAndCorrectHash(int concurrency)
+    [DataRow(1, 200)]
+    [DataRow(3, 2000)]
+    public async Task DownloadStream_ManyDistinctFiles_SingleRetrAndCorrectHash(int concurrency, int count)
     {
-        const int count = 2000;
         for (int i = 0; i < count; i++)
             await File.WriteAllBytesAsync(Path.Combine(_root, $"p{i}.bin"), RelayPayload(i, true));
         Guid session = await OpenAsync(maxConnections: concurrency);

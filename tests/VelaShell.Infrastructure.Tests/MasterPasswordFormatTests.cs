@@ -43,7 +43,7 @@ public sealed class MasterPasswordFormatTests
 
     private MasterKeyResolver Resolver(IMasterKeyStore? store) => new(_keyFile, store);
 
-    private AesSecretProtector Protector(IMasterKeyStore? store, TimeProvider? time = null) => new(Resolver(store), time);
+    private AesSecretProtector Protector(IMasterKeyStore? store, TimeProvider? time = null) => new(Resolver(store), time, TestCost);
 
     // ———— 格式 ————
 
@@ -62,6 +62,9 @@ public sealed class MasterPasswordFormatTests
         Assert.AreSequenceEqual(header.RecoverySalt!, read.RecoverySalt!);
         Assert.AreEqual(MasterPasswordHeaderState.Enabling, read.State);
         Assert.IsTrue(read.UsesCurrentParameters);
+        // 生产只经 Argon2Cost.Production 出新头(测试另给便宜参数走的是 internal 构造);出厂值在这里钉住
+        Assert.AreEqual(new Argon2Cost(64 * 1024, 3, 1), Argon2Cost.Production);
+        Assert.IsFalse(read.UsesParameters(TestCost));
         string text = header.Serialize();
         Assert.IsNull(MasterPasswordHeader.Parse(text.Replace("m=65536", "m=999999999", StringComparison.Ordinal)), "参数被改大到能拖死解锁的程度:当成读不出来");
         Assert.IsNull(MasterPasswordHeader.Parse(text.Replace("kdf=argon2id", "kdf=pbkdf2", StringComparison.Ordinal)));

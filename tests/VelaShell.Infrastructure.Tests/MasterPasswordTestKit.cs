@@ -7,6 +7,15 @@ namespace VelaShell.Infrastructure.Tests;
 /// <summary>主密码用例共用的几样东西:内存里的假密钥链、手调的时钟、把数据目录照「开启」的样子包起来的帮手。</summary>
 internal static class MasterPasswordTestKit
 {
+    /// <summary>
+    /// 主密码用例用的 Argon2id 参数:256 KiB / 1 / 1,派生一次不到一毫秒(出厂的 64 MiB / 3 / 1 一次约 0.5 秒)。
+    /// 用例经 <see cref="AesSecretProtector" /> 的 internal 构造把它交给 vault,开启、修改与 rehash 都按它出新头;
+    /// 解锁按头里记着的参数派生,所以要与 <see cref="WrapEverything" /> 用同一组,否则每次解锁都会被 rehash。
+    /// 出厂参数本身由 Header_RoundTrips、Envelope_RoundTrips、rehash 与公开构造的那几条用例照真的跑。
+    /// 刻意不取 1024 / 1 / 1:rehash 用例拿它当「以后调过参的旧头」。
+    /// </summary>
+    public static readonly Argon2Cost TestCost = new(MemoryKiB: 256, Iterations: 1, Parallelism: 1);
+
     /// <summary>主密码的 UTF-8 字节(每次给一份新的:被测代码用完会清零)。</summary>
     public static byte[] Utf8(string password) => Encoding.UTF8.GetBytes(password);
 
@@ -19,7 +28,7 @@ internal static class MasterPasswordTestKit
     {
         (string Display, byte[] Entropy)? recovery = withRecovery ? RecoveryCode.Generate() : null;
         var header = MasterPasswordHeader.CreateNew(
-            withRecovery ? System.Security.Cryptography.RandomNumberGenerator.GetBytes(MasterPasswordHeader.SaltSize) : null, state);
+            withRecovery ? System.Security.Cryptography.RandomNumberGenerator.GetBytes(MasterPasswordHeader.SaltSize) : null, state, TestCost);
         Assert.IsTrue(resolver.TryWriteHeader(header));
         byte[] kek = MasterPasswordKdf.DerivePasswordKey(Utf8(password), header);
         byte[]? rk = recovery is { } r ? MasterPasswordKdf.DeriveRecoveryKey(r.Entropy, header.RecoverySalt!) : null;

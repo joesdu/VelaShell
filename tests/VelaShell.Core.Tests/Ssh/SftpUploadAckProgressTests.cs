@@ -206,16 +206,18 @@ public sealed class SftpUploadAckProgressTests
         Assert.AreSequenceEqual(SHA256.HashData(data), SHA256.HashData([.. harness.SftpServer.Nodes[RemotePath].Content]));
     }
 
+    // 3 路并发那行照旧 2000 个文件;单路 200 个。要守的「每个文件第一次就成、一次上传 OPEN + 一次校验 OPEN」都是精确相等,
+    // 200 个照样抓得到漏或多出来的重试。
     [TestMethod]
-    [DataRow(1)]
-    [DataRow(3)]
-    public async Task Upload_MixedSizeBatch_FirstAttemptsSucceedAndHashesMatch(int concurrency)
+    [DataRow(1, 200)]
+    [DataRow(3, 2000)]
+    public async Task Upload_MixedSizeBatch_FirstAttemptsSucceedAndHashesMatch(int concurrency, int count)
     {
         await using Harness harness = await Harness.StartAsync(new TestSftpOptions());
         var sessionId = Guid.NewGuid();
         await using SftpService service = CreateService(harness.Sftp, sessionId);
         int[] sizes = [0, 1, 17, 1023, BlockSize - 1, BlockSize, BlockSize + 1, 256 * 1024 + 17];
-        (string Path, byte[] Data)[] files = [.. Enumerable.Range(0, 2000).Select(i =>
+        (string Path, byte[] Data)[] files = [.. Enumerable.Range(0, count).Select(i =>
             (Path: $"/home/joe/batch-{i}.bin", Data: RandomNumberGenerator.GetBytes(sizes[i % sizes.Length])))];
         int attempts = 0;
         await Parallel.ForEachAsync(files, new ParallelOptions { MaxDegreeOfParallelism = concurrency }, async (file, ct) =>
@@ -236,12 +238,13 @@ public sealed class SftpUploadAckProgressTests
             "Exactly one upload OPEN and one verification download OPEN per file.");
     }
 
+    // 压力最大的那一行(3 路并发 + 远端提交)照旧 2000 个文件,其余行 200 个:每个文件一次 RETR、一次 OPEN 都是精确相等,量小照样抓得到漏。
     [TestMethod]
-    [DataRow(1, false)]
-    [DataRow(3, false)]
-    [DataRow(1, true)]
-    [DataRow(3, true)]
-    public async Task Relay_FtpToActualSftpWrapper_2000FilesEachRetrievedAndOpenedOnce(int concurrency, bool remoteCommit)
+    [DataRow(1, false, 200)]
+    [DataRow(3, false, 200)]
+    [DataRow(1, true, 200)]
+    [DataRow(3, true, 2000)]
+    public async Task Relay_FtpToActualSftpWrapper_ManyFilesEachRetrievedAndOpenedOnce(int concurrency, bool remoteCommit, int count)
     {
         string root = Path.Combine(Path.GetTempPath(), $"vela-ftp-sftp-wire-{Guid.NewGuid():N}");
         var server = new LoopbackFtpServer(root) { SupportsMlsd = true };
@@ -250,7 +253,7 @@ public sealed class SftpUploadAckProgressTests
         var targetSession = Guid.NewGuid();
         await using SftpService target = CreateService(harness.Sftp, targetSession);
         int[] sizes = [0, 1, 17, 1023, BlockSize - 1, BlockSize, BlockSize + 1, 256 * 1024 + 17];
-        (string Name, byte[] Data)[] files = [.. Enumerable.Range(0, 2000).Select(i =>
+        (string Name, byte[] Data)[] files = [.. Enumerable.Range(0, count).Select(i =>
             (Name: $"relay-{i}.bin", Data: RandomNumberGenerator.GetBytes(sizes[i % sizes.Length])))];
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         try
@@ -645,9 +648,10 @@ public sealed class SftpUploadAckProgressTests
     [TestMethod]
     [TestCategory("StagedWire")]
     [DoNotParallelize]
-    [DataRow(1)]
-    [DataRow(3)]
-    public async Task StagedWire_FtpToSftp_2000FilesEachRetrievedAndOpenedOnce(int concurrency)
+    // 3 路并发那行照旧 2000 个文件;单路 200 个(每个文件一次 RETR、一次上传 OPEN 都是精确相等)。
+    [DataRow(1, 200)]
+    [DataRow(3, 2000)]
+    public async Task StagedWire_FtpToSftp_ManyFilesEachRetrievedAndOpenedOnce(int concurrency, int count)
     {
         string root = Path.Combine(Path.GetTempPath(), $"vela-staged-wire-batch-{Guid.NewGuid():N}");
         var server = new LoopbackFtpServer(root) { SupportsMlsd = true };
@@ -656,7 +660,7 @@ public sealed class SftpUploadAckProgressTests
         var targetSession = Guid.NewGuid();
         await using SftpService target = CreateService(harness.Sftp, targetSession);
         int[] sizes = [0, 1, 17, 1023, BlockSize - 1, BlockSize, BlockSize + 1, 256 * 1024 + 17];
-        (string Name, byte[] Data)[] files = [.. Enumerable.Range(0, 2000).Select(i =>
+        (string Name, byte[] Data)[] files = [.. Enumerable.Range(0, count).Select(i =>
             (Name: $"staged-{i}.bin", Data: RandomNumberGenerator.GetBytes(sizes[i % sizes.Length])))];
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         try
@@ -696,7 +700,7 @@ public sealed class SftpUploadAckProgressTests
                 Assert.HasCount(file.Data.Length, actual, file.Name);
                 Assert.AreSequenceEqual(SHA256.HashData(file.Data), SHA256.HashData(actual), file.Name);
             }
-            Assert.AreEqual(2000, harness.SftpServer.ReceivedTypes.Count(t => t == SftpMessageType.Open),
+            Assert.AreEqual(count, harness.SftpServer.ReceivedTypes.Count(t => t == SftpMessageType.Open),
                 "Inspect peer storage without verification OPENs: exactly one wire upload OPEN per file.");
             Assert.AreEqual(0, harness.SftpServer.OpenHandleCount);
         }

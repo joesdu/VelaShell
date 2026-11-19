@@ -4026,9 +4026,15 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
                     _ = AutoReconnectTabAsync(tab);
                 }
             },
-            TimeSpan.FromSeconds(delaySeconds)
+            ReconnectDelayUnit * delaySeconds
         );
     }
+
+    /// <summary>
+    /// 自动重连倒计时「一秒」有多长。生产恒为 1 秒(提示里的秒数与真实等待一致);
+    /// 测试经 init 缩短,不必为每次排队的重连真等满整秒。提示文案里的秒数不受影响。
+    /// </summary>
+    internal TimeSpan ReconnectDelayUnit { get; init; } = TimeSpan.FromSeconds(1);
 
     /// <summary>
     /// 探一句对端是<b>哪一种</b> shell(#305),据此决定注入

@@ -19,6 +19,20 @@ internal enum MasterPasswordHeaderState
     Disabling
 }
 
+/// <summary>Argon2id 的代价参数:内存(KiB)、迭代次数、并行度。</summary>
+/// <remarks>
+/// <b>生产只用 <see cref="Production" /></b>(64 MiB / 3 / 1,维护者 2026-10-31 定,不为低端机降参)。
+/// 别的取值只能经 <see cref="MasterKeyVault" /> 与 <see cref="AesSecretProtector" /> 的 internal 构造重载传进来 ——
+/// 测试用一组便宜的参数,免得每条主密码用例都派生几次 64 MiB 的 Argon2id(每次约 0.5 秒,三个平台都一样慢)。
+/// 没有环境变量、没有配置项、没有公开入口;友元声明只在非签名构建里有(见 VelaShell.Infrastructure.csproj),发布构建够不着。
+/// </remarks>
+internal readonly record struct Argon2Cost(int MemoryKiB, int Iterations, int Parallelism)
+{
+    /// <summary>出厂参数。</summary>
+    public static Argon2Cost Production { get; } = new(MasterPasswordHeader.DefaultMemoryKiB,
+        MasterPasswordHeader.DefaultIterations, MasterPasswordHeader.DefaultParallelism);
+}
+
 /// <summary>
 /// 主密码的 KDF 头(数据目录里的 <c>secret.key.mp</c>):版本、Argon2id 参数、盐,以及恢复码的盐。
 /// 都不是机密 —— 只靠它什么也解不开,它也不含任何能拿来离线核对口令的东西(核对靠包裹本身的 GCM 标签)。
@@ -74,17 +88,27 @@ internal sealed class MasterPasswordHeader
     public byte[]? RecoveryWrapId => RecoverySalt is { } salt ? MasterKeyEnvelope.WrapIdOf(WrapKind.Recovery, salt) : null;
 
     /// <summary>参数就是出厂参数(不是的话下次解锁成功时 rehash)。</summary>
-    public bool UsesCurrentParameters =>
-        MemoryKiB == DefaultMemoryKiB && Iterations == DefaultIterations && Parallelism == DefaultParallelism;
+    public bool UsesCurrentParameters => UsesParameters(Argon2Cost.Production);
+
+    /// <summary>参数就是 <paramref name="cost" />。</summary>
+    public bool UsesParameters(Argon2Cost cost) =>
+        MemoryKiB == cost.MemoryKiB && Iterations == cost.Iterations && Parallelism == cost.Parallelism;
 
     /// <summary>新开一份头:出厂参数、新盐。</summary>
     /// <param name="recoverySalt">恢复码的盐:沿用已有的那份(修改主密码时恢复码不变)、新生成,或 null(不要恢复码)。</param>
     /// <param name="state">进度。</param>
-    public static MasterPasswordHeader CreateNew(byte[]? recoverySalt, MasterPasswordHeaderState state) => new()
+    public static MasterPasswordHeader CreateNew(byte[]? recoverySalt, MasterPasswordHeaderState state) =>
+        CreateNew(recoverySalt, state, Argon2Cost.Production);
+
+    /// <summary>新开一份头:给定的 Argon2id 参数、新盐。生产只经 <see cref="Argon2Cost.Production" /> 走到这里。</summary>
+    /// <param name="recoverySalt">恢复码的盐。</param>
+    /// <param name="state">进度。</param>
+    /// <param name="cost">Argon2id 参数。</param>
+    public static MasterPasswordHeader CreateNew(byte[]? recoverySalt, MasterPasswordHeaderState state, Argon2Cost cost) => new()
     {
-        MemoryKiB = DefaultMemoryKiB,
-        Iterations = DefaultIterations,
-        Parallelism = DefaultParallelism,
+        MemoryKiB = cost.MemoryKiB,
+        Iterations = cost.Iterations,
+        Parallelism = cost.Parallelism,
         Salt = RandomNumberGenerator.GetBytes(SaltSize),
         RecoverySalt = recoverySalt,
         State = state
