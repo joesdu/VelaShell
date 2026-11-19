@@ -86,8 +86,7 @@ public sealed partial class ToolPickerView
         }
         if (rows.Count > 0)
         {
-            _content.Children.Add(SectionLabel(_loc["MemorySaved"], rows.Count));
-            foreach (Control row in rows) _content.Children.Add(row);
+            AddSection(_loc["MemorySaved"], rows);
         }
         else if (entries.Count == 0 && _editingMemory is null)
         {
