@@ -64,7 +64,8 @@ public sealed partial class ToolPickerView : UserControl
 
     /// <summary>
     /// 各来源行的折叠状态,键 = 来源 id。只活在这个视图里,不落盘:重建(改服务器 / 刷新工具库)时保住刚才折 / 展的样子就够了。
-    /// 默认折起 —— 一台 MCP 服务器动辄二三十个工具,全展开这页长得没法看;折着也能从计数与开关看出个大概。
+    /// 来源行默认折起 —— 一台 MCP 服务器动辄二三十个工具,全展开这页长得没法看;折着也能从计数与开关看出个大概。
+    /// 分区标题(键以 <c>section:</c> 开头)默认展开,点一下把整区折起来。
     /// </summary>
     private readonly Dictionary<string, bool> _expanded = [with(StringComparer.Ordinal)];
 
@@ -107,7 +108,9 @@ public sealed partial class ToolPickerView : UserControl
             Width = 210,
             Padding = new Avalonia.Thickness(0, 14, 0, 14),
             Child = _nav,
-            BorderThickness = new Avalonia.Thickness(0, 0, 1, 0)
+            BorderThickness = new Avalonia.Thickness(0, 0, 1, 0),
+            // 左栏贴着卡片左下角:内圆角 7 = 外框 8 − 1px 描边。方角背景会盖掉外框那段弧线,看起来像断线(同 SettingsView)
+            CornerRadius = new Avalonia.CornerRadius(0, 0, 0, 7)
         };
         rail[!BackgroundProperty] = new DynamicResourceExtension("VelaBgSidebar");
         rail[!BorderBrushProperty] = new DynamicResourceExtension("VelaBorderPrimary");
@@ -259,17 +262,51 @@ public sealed partial class ToolPickerView : UserControl
 
     // ───────────────────────── 通用行 ─────────────────────────
 
-    /// <summary>分区标题:「内置 23」「MCP 2」。</summary>
-    private static StackPanel SectionLabel(string text, int count)
+    /// <summary>
+    /// 一个分区:可点的分区标题(折叠箭头 +「内置 23」「MCP 2」)+ 其下各行。点标题折起 / 展开整区,
+    /// 状态与来源行共用 <see cref="_expanded" />(默认展开);搜索时恒展开,与来源行一致。
+    /// </summary>
+    /// <param name="text">分区名。</param>
+    /// <param name="rows">分区里的行;标题上的计数即其条数。</param>
+    private void AddSection(string text, List<Control> rows)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Avalonia.Thickness(6, 12, 0, 4) };
+        string key = $"section:{_page}:{text}";
+        bool expanded = Query.Length > 0 || _expanded.GetValueOrDefault(key, true);
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        row.Children.Add(new Viewbox
+        {
+            Width = 11,
+            Height = 11,
+            Child = Glyph("Icon.chevron-down"),
+            VerticalAlignment = VerticalAlignment.Center,
+            RenderTransformOrigin = Avalonia.RelativePoint.Center,
+            RenderTransform = expanded ? null : new RotateTransform(-90)
+        });
         row.Children.Add(new TextBlock { Classes = { "sectionLabel" }, Text = text });
         row.Children.Add(new Border
         {
             Classes = { "countBadge" },
-            Child = new TextBlock { Text = count.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+            Child = new TextBlock { Text = rows.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) }
         });
-        return row;
+        var header = new Border
+        {
+            Name = "SectionHeader",
+            Classes = { "sectionHeader" },
+            Tag = key,
+            Child = row,
+            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand)
+        };
+        AutomationProperties.SetName(header, text);
+        header.PointerPressed += (_, e) =>
+        {
+            e.Handled = true;
+            _expanded[key] = !_expanded.GetValueOrDefault(key, true);
+            RenderContent();
+        };
+        _content.Children.Add(header);
+        if (!expanded) return;
+        foreach (Control item in rows) _content.Children.Add(item);
     }
 
     /// <summary>

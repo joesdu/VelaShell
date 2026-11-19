@@ -76,8 +76,7 @@ public sealed partial class ToolPickerView
                 rows.Add(row);
             }
             if (rows.Count == 0) continue;
-            _content.Children.Add(SectionLabel(section, rows.Count));
-            foreach (Control row in rows) _content.Children.Add(row);
+            AddSection(section, rows);
         }
     }
 

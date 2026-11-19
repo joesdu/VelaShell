@@ -26,7 +26,7 @@ namespace VelaShell.Plugin.Ai.Ui;
 /// </remarks>
 public sealed partial class ToolPickerView
 {
-    private readonly ConfirmOverlay _confirm = new() { Name = "ExtensionConfirm" };
+    private readonly ConfirmOverlay _confirm = new() { Name = "ExtensionConfirm", ScrimCornerRadius = new Avalonia.CornerRadius(0, 0, 7, 7) };
     private readonly Func<Task>? _mcpChanged;
 
     private ExtensionPackStore Extensions => field ??= new ExtensionPackStore(_context.DataDirectory);
@@ -64,8 +64,7 @@ public sealed partial class ToolPickerView
             rows.Add(BuildPackRow(pack));
         }
         if (rows.Count == 0) return;
-        _content.Children.Add(SectionLabel(_loc["ExtensionsInstalled"], rows.Count));
-        foreach (Control row in rows) _content.Children.Add(row);
+        AddSection(_loc["ExtensionsInstalled"], rows);
     }
 
     private ExtensionPackState? StateOf(string id) => _settings.ExtensionPacks.FirstOrDefault(s => s.Id == id);

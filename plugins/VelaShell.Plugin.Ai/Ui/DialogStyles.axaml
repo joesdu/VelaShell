@@ -196,12 +196,22 @@
     <Setter Property="TextWrapping" Value="Wrap" />
     <Setter Property="LineHeight" Value="18" />
   </Style>
-  <!-- 分区标题(「内置 6」「MCP 2」):小号加粗 + 一枚计数徽标 -->
+  <!-- 分区标题(「内置 6」「MCP 2」):折叠箭头 + 小号加粗 + 一枚计数徽标 -->
   <Style Selector="TextBlock.sectionLabel">
     <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
     <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- 分区标题行:整行可点,折起 / 展开整区(「内置」一点就把所有内置类别收起来) -->
+  <Style Selector="Border.sectionHeader">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="6,4" />
+    <Setter Property="Margin" Value="0,8,0,2" />
+  </Style>
+  <Style Selector="Border.sectionHeader:pointerover">
+    <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
   </Style>
   <Style Selector="Border.countBadge">
     <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />

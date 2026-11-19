@@ -1633,6 +1633,17 @@ public sealed partial class ChatPanelViewUiTests
                 await PumpAsync(2);
                 Assert.IsTrue(Rows(Source(picker, mcpKey)).IsVisible);
 
+                // 分区标题:点「内置」把所有内置类别一起收起(MCP 区不受影响),再点展开回来
+                Border builtinSection() => picker.GetVisualDescendants().OfType<Border>()
+                    .Single(b => b.Classes.Contains("sectionHeader") && (string?)b.Tag == $"section:{ToolPickerView.Page.Tools}:Built-in");
+                Press(builtinSection());
+                await PumpAsync(2);
+                Assert.IsFalse(Sources(picker).Any(s => ((string?)s.Tag)!.StartsWith("builtin:", StringComparison.Ordinal)), "折起内置区");
+                Assert.IsNotNull(Source(picker, mcpKey), "MCP 区仍在");
+                Press(builtinSection());
+                await PumpAsync(2);
+                Assert.IsNotNull(Source(picker, readKey), "再点展开");
+
                 // 类别开关:一次停掉整类;再开回其中一个 → 部分启用(中间态)
                 int readTools = Agent.AgentToolbox.Catalog.Count(t => ToolIcons.KindOf(t.Name) == ToolKind.Read);
                 SwitchOf(Source(picker, readKey)).IsChecked = false;

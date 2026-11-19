@@ -67,13 +67,11 @@ public sealed partial class ToolPickerView
 
         if (builtin.Count > 0)
         {
-            _content.Children.Add(SectionLabel(_loc["ToolsBuiltin"], builtin.Count));
-            foreach (Control row in builtin) _content.Children.Add(row);
+            AddSection(_loc["ToolsBuiltin"], builtin);
         }
         if (mcp.Count > 0)
         {
-            _content.Children.Add(SectionLabel("MCP", mcp.Count));
-            foreach (Control row in mcp) _content.Children.Add(row);
+            AddSection("MCP", mcp);
         }
     }
 
@@ -135,8 +133,7 @@ public sealed partial class ToolPickerView
         }
         if (mine.Count > 0)
         {
-            _content.Children.Add(SectionLabel(_loc["McpUserServers"], mine.Count));
-            foreach (Control row in mine) _content.Children.Add(row);
+            AddSection(_loc["McpUserServers"], mine);
         }
         else if (Query.Length == 0)
         {
@@ -156,8 +153,7 @@ public sealed partial class ToolPickerView
         }
         if (fromPacks.Count > 0)
         {
-            _content.Children.Add(SectionLabel(_loc["McpPackServers"], fromPacks.Count));
-            foreach (Control row in fromPacks) _content.Children.Add(row);
+            AddSection(_loc["McpPackServers"], fromPacks);
         }
     }
 
