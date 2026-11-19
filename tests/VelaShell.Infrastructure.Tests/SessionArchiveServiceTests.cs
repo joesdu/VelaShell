@@ -35,7 +35,7 @@ public sealed class SessionArchiveServiceTests : IDisposable
     {
         string directory = Path.Combine(_root, name);
         Directory.CreateDirectory(directory);
-        var engine = new SonnetDbEngine(Path.Combine(directory, "sonnetdb"));
+        var engine = SonnetDbTestTemplate.Open(Path.Combine(directory, "sonnetdb"));
         _engines.Add(engine);
         var protector = new AesSecretProtector(Path.Combine(directory, "secret.key"));
         var sessions = new SonnetDbSessionRepository(engine, protector);

@@ -28,7 +28,7 @@ public sealed class ConfigAuditTests : IDisposable
     {
         _directory = Path.Combine(Path.GetTempPath(), $"velashell_audit_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
-        _engine = new(Path.Combine(_directory, "sonnetdb"));
+        _engine = SonnetDbTestTemplate.Open(Path.Combine(_directory, "sonnetdb"));
         _protector = new(Path.Combine(_directory, "secret.key"));
     }
 

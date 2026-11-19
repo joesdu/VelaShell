@@ -15,7 +15,7 @@ public sealed class SettingsSnapshotTests : IDisposable
     private SonnetDbEngine? _engine;
     private readonly string _testDirectory;
 
-    private SonnetDbEngine Engine => _engine ??= new(Path.Combine(_testDirectory, "sonnetdb"));
+    private SonnetDbEngine Engine => _engine ??= SonnetDbTestTemplate.Open(Path.Combine(_testDirectory, "sonnetdb"));
 
     public SettingsSnapshotTests()
     {

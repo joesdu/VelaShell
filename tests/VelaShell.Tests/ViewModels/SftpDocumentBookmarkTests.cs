@@ -29,7 +29,7 @@ public sealed class SftpDocumentBookmarkTests
         _directory = Path.Combine(Path.GetTempPath(), $"velashell_bookmarks_{Guid.NewGuid():N}");
         _localDir = Path.Combine(_directory, "local");
         Directory.CreateDirectory(_localDir);
-        _engine = new SonnetDbEngine(Path.Combine(_directory, "sonnetdb"));
+        _engine = SonnetDbTestTemplate.Open(Path.Combine(_directory, "sonnetdb"));
         _repository = new SonnetDbSessionRepository(_engine, new AesSecretProtector(Path.Combine(_directory, "secret.key")));
     }
 

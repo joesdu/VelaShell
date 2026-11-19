@@ -19,6 +19,8 @@
 
   <ItemGroup>
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+    <!-- SonnetDbTestTemplate:用例开 SonnetDB 库的统一入口(VelaShell.Tests 链接同一份) -->
+    <Using Include="VelaShell.Infrastructure.Tests.TestSupport" />
   </ItemGroup>
 
   <ItemGroup>

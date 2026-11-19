@@ -34,7 +34,7 @@ public sealed class TransferQueuePersistenceTests : IDisposable
                     $"/srv/备份/{i}.bin")),
         ];
         Guid id;
-        using (var engine = new SonnetDbEngine(Path.Combine(_directory, "sonnetdb")))
+        using (var engine = SonnetDbTestTemplate.Open(Path.Combine(_directory, "sonnetdb")))
         {
             var journal = new TransferQueueJournal(new SonnetDbAppDataStore(engine), TimeSpan.FromHours(1));
             id = journal.Begin(origin, items);
@@ -68,7 +68,7 @@ public sealed class TransferQueuePersistenceTests : IDisposable
         var origin = new TransferQueueOrigin(Guid.NewGuid(), "备份机");
         string halfWritten = TransferQueueJournal.DocumentId(Guid.NewGuid(), 0);
         Guid id;
-        using (var engine = new SonnetDbEngine(Path.Combine(_directory, "sonnetdb")))
+        using (var engine = SonnetDbTestTemplate.Open(Path.Combine(_directory, "sonnetdb")))
         {
             var journal = new TransferQueueJournal(new SonnetDbAppDataStore(engine), TimeSpan.FromHours(1));
             id = journal.Begin(origin, [new TransferQueueItem(TransferType.Upload, Path.Combine(_directory, "a.bin"), "/srv/a.bin")]);

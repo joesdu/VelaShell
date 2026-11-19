@@ -31,7 +31,7 @@ public class QuickCommandsViewModelTests : IDisposable
         _testDirectory = Path.Combine(Path.GetTempPath(), $"velashell_qctest_{Guid.NewGuid()}");
         Directory.CreateDirectory(_testDirectory);
         _legacyDataPath = Path.Combine(_testDirectory, "quick-commands.json");
-        _engine = new(Path.Combine(_testDirectory, "sonnetdb"));
+        _engine = SonnetDbTestTemplate.Open(Path.Combine(_testDirectory, "sonnetdb"));
         _dataStore = new SonnetDbAppDataStore(_engine);
         _repository = new SonnetDbQuickCommandRepository(_dataStore, _legacyDataPath);
         _vm = new(_repository);

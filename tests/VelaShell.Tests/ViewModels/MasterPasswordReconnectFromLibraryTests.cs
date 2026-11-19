@@ -38,7 +38,7 @@ public sealed class MasterPasswordReconnectFromLibraryTests
     {
         _directory = Path.Combine(Path.GetTempPath(), $"velashell_mpw_reconnect_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_directory);
-        _engine = new SonnetDbEngine(Path.Combine(_directory, "sonnetdb"));
+        _engine = SonnetDbTestTemplate.Open(Path.Combine(_directory, "sonnetdb"));
         _repository = new SonnetDbSessionRepository(
             _engine, new LockableProtector(new AesSecretProtector(Path.Combine(_directory, "secret.key")), _lock));
     }

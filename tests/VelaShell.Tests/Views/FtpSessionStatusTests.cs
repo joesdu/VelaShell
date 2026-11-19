@@ -123,6 +123,8 @@ public sealed class FtpSessionStatusTests
             await document.ViewModel.InitialLoadTask;
 
             document.ViewModel.RemoteFiles.OpenLocalFile = _ => Task.CompletedTask;
+            // 断线是瞬时故障,下载照常重试 3 次;只是不真等 1 + 2 + 4 秒的退避
+            document.ViewModel.RemoteFiles.RetryDelay = (_, _) => Task.CompletedTask;
             RemoteFileInfoViewModel file = document.ViewModel.RemoteFiles.Files.Single(f => f.Name == "note.txt");
             server.Dispose();   // 断线
 

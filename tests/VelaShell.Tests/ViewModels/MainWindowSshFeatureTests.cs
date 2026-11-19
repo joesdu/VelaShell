@@ -158,7 +158,7 @@ public sealed class MainWindowSshFeatureTests
         // 结果竞态,把刚连上的标签翻回断开(真实连接不会立即 EOF)。
         shellStream.CanRead.Returns(true);
         shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                   .Returns(new TaskCompletionSource<int>().Task);
+                   .Returns(TestSupport.FakeShellReads.UntilCancelled);
         var profile = new SessionProfile
         {
             Name = "Prod",
@@ -223,7 +223,7 @@ public sealed class MainWindowSshFeatureTests
         shellStream.CanRead.Returns(true);
         shellStream.CanWrite.Returns(true);
         shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                   .Returns(new TaskCompletionSource<int>().Task);
+                   .Returns(TestSupport.FakeShellReads.UntilCancelled);
 
         // 出站写由桥的写循环在后台线程逐段刷出,不与 TryConnectProfileAsync 同步完成;
         // 用 TCS 等那一段字节真的落到流上,而不是 sleep 一个猜出来的毫秒数。
@@ -359,7 +359,7 @@ public sealed class MainWindowSshFeatureTests
         // 模拟活连接:读循环阻塞在 ReadAsync,避免桥立即 EOF 触发 Closed 与连接结果竞态。
         shellStream.CanRead.Returns(true);
         shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                   .Returns(new TaskCompletionSource<int>().Task);
+                   .Returns(TestSupport.FakeShellReads.UntilCancelled);
         ITerminalEmulator? terminal = FakeTerminal.Emulator();
         var profile = new SessionProfile
         {
@@ -415,7 +415,7 @@ public sealed class MainWindowSshFeatureTests
         IShellStreamWrapper? shellStream = Substitute.For<IShellStreamWrapper>();
         shellStream.CanRead.Returns(true);
         shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                   .Returns(new TaskCompletionSource<int>().Task);
+                   .Returns(TestSupport.FakeShellReads.UntilCancelled);
         ITerminalEmulator? terminal = FakeTerminal.Emulator();
         var profile = new SessionProfile
         {

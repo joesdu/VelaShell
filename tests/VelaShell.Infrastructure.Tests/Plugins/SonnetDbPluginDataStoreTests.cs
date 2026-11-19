@@ -35,7 +35,7 @@ public class SonnetDbPluginDataStoreTests
     public void Setup()
     {
         _dbDir = Path.Combine(Path.GetTempPath(), "velashell-tests", Guid.NewGuid().ToString("N"));
-        _engine = new(_dbDir);
+        _engine = SonnetDbTestTemplate.Open(_dbDir);
         _store = new(_engine, new Base64Protector());
     }
 

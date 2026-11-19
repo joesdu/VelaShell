@@ -24,6 +24,11 @@
            不该往开发者的钥匙串 / keyring 里写条目,也不该弹解锁框把整套用例卡住。
            真密钥链的用例是另一类(SystemKeychain),要显式设 VELASHELL_KEYCHAIN_TESTS=1 才跑。 -->
       <VELASHELL_NO_KEYCHAIN>1</VELASHELL_NO_KEYCHAIN>
+      <!-- SonnetDB 不做逐次写入的落盘同步(SonnetDbEngine.NoFsyncEnvironmentVariable):Windows runner 上一次
+           FlushFileBuffers 极慢,每条用例都新开一个库的测试类比 Linux 慢 10–40 倍。写入仍交给操作系统,
+           关库重开读到的是同一份数据;放弃的只是掉电持久性,没有用例验它。生产默认开着,由
+           SonnetDbEngineOptionsTests 钉住。 -->
+      <VELASHELL_NO_DB_FSYNC>1</VELASHELL_NO_DB_FSYNC>
     </EnvironmentVariables>
   </RunConfiguration>
 </RunSettings>

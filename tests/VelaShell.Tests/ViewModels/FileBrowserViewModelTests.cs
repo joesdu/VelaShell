@@ -1290,7 +1290,9 @@ c => c.GetMethodInfo().Name == nameof(ISftpService.DownloadFileAsync),
         {
             // 这个会话故意留着一次没上传的改动,收尾时会<b>刻意保留</b>本地副本
             //(那是改动唯一的存身之处)。所以得自己把它删掉,别在 %TEMP% 下积草稿。
-            RemoteEditSessionManager.CleanupAll();
+            // 限时给短:那次回传要回 UI 线程,而本用例不在 headless UI 线程上,永远等不到 ——
+            // 用 CleanupAll() 的 5 秒预算就是白等满 5 秒。会话照样先摘掉、再逐个 Dispose,与超时多久无关。
+            await RemoteEditSessionManager.CleanupAllAsync(TimeSpan.FromMilliseconds(200));
             if (tempDirectory is not null && Directory.Exists(tempDirectory))
             {
                 Directory.Delete(tempDirectory, true);

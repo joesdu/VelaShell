@@ -111,7 +111,7 @@ public sealed class OpenTerminalHereTests
         shellStream.CanRead.Returns(true);
         shellStream.CanWrite.Returns(true);
         shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                   .Returns(new TaskCompletionSource<int>().Task);
+                   .Returns(TestSupport.FakeShellReads.UntilCancelled);
         List<string> writes = [];
         var injected = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         shellStream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -145,6 +145,7 @@ public sealed class OpenTerminalHereTests
         Assert.AreEqual("/srv/it's here", tab.StartupDirectoryOverride);
         Assert.AreEqual("/srv/old", profile.Terminal.StartupDirectory, "只挂在标签上,不改配置。");
         // 注入推迟到对端安静下来之后(替身流永远不吐数据,一路等到 3 秒上限),余量给宽。
+        // 这条刻意保持静默:「对端一直不吐数据也照样注入」的兜底路径就靠它守着;其余用例的替身先吐提示符,不白等 3 秒。
         string payload = await injected.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Contains(@"cd '/srv/it'\''s here'", payload);
         Assert.EndsWith("\n", payload);
@@ -303,8 +304,9 @@ public sealed class OpenTerminalHereTests
         IShellStreamWrapper shellStream = Substitute.For<IShellStreamWrapper>();
         shellStream.CanRead.Returns(true);
         shellStream.CanWrite.Returns(true);
+        // 先吐提示符:吐过、静下来就注入,不必等 3 秒上限(兜底路径由上面那条静默用例守着)
         shellStream.ReadAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-                   .Returns(new TaskCompletionSource<int>().Task);
+                   .Returns(TestSupport.FakeShellReads.PromptThenUntilCancelled());
         List<byte[]> writes = [];
         var marker = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         shellStream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
