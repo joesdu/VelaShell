@@ -704,11 +704,7 @@ public sealed class MainWindowSshFeatureTests
         };
         workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>()).Returns(_ => ConnectedSession(profile));
         workflow.ReconnectProfileAutomaticallyAsync(profile, Arg.Any<CancellationToken>()).Returns(_ => ConnectedSession(profile));
-        // 倒计时的「一秒」缩成 100 ms(生产 1 秒);PassQueuedReconnectDeadlineAsync 照它等过排队的那次重连
-        return (new MainWindowViewModel(workflow, ssh, () => FakeTerminal.Emulator(), settingsService: settings)
-        {
-            ReconnectDelayUnit = ReconnectDelayUnit
-        }, workflow, settings, profile);
+        return (new MainWindowViewModel(workflow, ssh, () => FakeTerminal.Emulator(), settingsService: settings), workflow, settings, profile);
     }
 
     private static AppSettings ReconnectSettings(string proxyType)
@@ -730,19 +726,10 @@ public sealed class MainWindowSshFeatureTests
         ConnectionInfo = new() { Host = profile.Host, Port = profile.Port, Username = profile.Username, AuthMethod = profile.AuthMethod }
     };
 
-    /// <summary>CreateReconnectConsumer 开出来的 vm 的倒计时单位(ReconnectSettings 把间隔钉在 1,于是每次排队的重连都是 1 个单位)。</summary>
-    private static readonly TimeSpan ReconnectDelayUnit = TimeSpan.FromMilliseconds(100);
-
-    /// <summary>
-    /// 恰好等过<b>一次</b>排队的重连:哨兵定在 1.4 个单位(原先是 1 秒单位下的 1.4 秒)。必须落在 1 与 2 个单位之间 ——
-    /// 失败之后下一次退避重试又排在 1 个单位后,哨兵再晚就会多放过去一次,用例按次数数重连就数错了。
-    /// 次序不靠机器快慢:同一个调度器上的计时器按到点先后触发,下一次重试的计时器又是在上一次重试跑完之后才排的,
-    /// 所以它总比哨兵晚到点。
-    /// </summary>
     private static async Task PassQueuedReconnectDeadlineAsync()
     {
         var sentinel = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using IDisposable timer = DispatcherTimer.RunOnce(() => sentinel.TrySetResult(), ReconnectDelayUnit * 1.4);
+        using IDisposable timer = DispatcherTimer.RunOnce(() => sentinel.TrySetResult(), TimeSpan.FromMilliseconds(1400));
         await sentinel.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
 

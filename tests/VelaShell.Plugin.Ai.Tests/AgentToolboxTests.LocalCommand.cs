@@ -87,8 +87,10 @@ public sealed partial class AgentToolboxTests
         using (context)
         {
             var watch = Stopwatch.StartNew();
+            // 时限 6 秒:要验的是「超时前收到的输出保留下来」,输出就得真在超时之前到。2 秒时,负载重的 Windows runner 上
+            // PowerShell 光启动就可能超过它(main 上 run 44447476893 / 44453221304 两次红在 stdout 为空)。
             string result = await RunLocalAsync(cli, Shell("Write-Output before; Start-Sleep 60", "echo before; sleep 60"),
-                waitSeconds: 30, timeoutSeconds: 2);
+                waitSeconds: 30, timeoutSeconds: 6);
             (string state, int? exit, string stdout, _, string? error) = ReadJob(result);
             Assert.AreEqual("TimedOut", state);
             Assert.IsNull(exit);
@@ -108,12 +110,14 @@ public sealed partial class AgentToolboxTests
         using (context)
         {
             var watch = Stopwatch.StartNew();
-            // shell 立刻退出,但留下一个继承了标准输出、还要跑 8 秒的子进程
+            // shell 立刻退出,但留下一个继承了标准输出、还要跑 20 秒的子进程。
+            // 上限 12 秒:做对了只花 shell 启动那点时间,做错了(等子进程)至少 20 秒,两边隔得够开 ——
+            // 原先子进程 8 秒、上限 7 秒,负载重的 Windows runner 上光启动就到了 7.3 秒(main 上 run 44447476893)。
             string result = await RunLocalAsync(cli,
-                Shell("Write-Output started; cmd.exe /d /c \"start /b ping -n 9 127.0.0.1 >nul\"", "echo started; sleep 8 &"),
+                Shell("Write-Output started; cmd.exe /d /c \"start /b ping -n 21 127.0.0.1 >nul\"", "echo started; sleep 20 &"),
                 waitSeconds: 30);
             (string state, int? exit, string stdout, string stderr, _) = ReadJob(result);
-            Assert.IsLessThan(TimeSpan.FromSeconds(7), watch.Elapsed, $"不能等到后台子进程退出才返回;实际 {watch.Elapsed}");
+            Assert.IsLessThan(TimeSpan.FromSeconds(12), watch.Elapsed, $"不能等到后台子进程退出才返回;实际 {watch.Elapsed}");
             Assert.AreEqual("Succeeded", state);
             Assert.AreEqual(0, exit);
             StringAssert.Contains(stdout, "started");
