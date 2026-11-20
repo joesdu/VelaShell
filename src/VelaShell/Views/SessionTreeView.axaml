@@ -162,7 +162,7 @@
         <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
       </Style>
 
-      <!-- 会话行:子级缩进 36,根级(未分组)与分组行同缩进 12;选中行 bg-active。 -->
+      <!-- 会话行按所属分组深度缩进;根级(未分组)与分组行同缩进 12;选中行 bg-active。 -->
       <!-- 右内边距 20 > 滚动条展开宽 16(VelaScrollBarSize):树装在侧栏的 ScrollViewer 里,
            而滚动条是覆盖式的 —— 留 12 时展开的滑道会压住行尾的状态徽标/长会话名的末尾。 -->
       <Style Selector="Border.session">
@@ -249,7 +249,7 @@
                   Classes="group"
                   Classes.droptarget="{Binding IsDropTarget}"
                   Height="30"
-                  Padding="11,0"
+                  Padding="{Binding Depth, Converter={x:Static conv:DepthToIndentConverter.Instance}}"
                   Cursor="Hand"
                   Tapped="Group_Tapped"
                   PointerPressed="Group_PointerPressed">
@@ -280,6 +280,13 @@
                           Command="{Binding $parent[ListBox].((vm:SessionTreeViewModel)DataContext).HealthCheckGroupCommand}">
                   <MenuItem.Icon>
                     <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.activity}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="{loc:Localize Tree_NewChildGroup}"
+                          Click="Group_NewChild_Click">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-plus}"
                                    Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
@@ -358,7 +365,7 @@
                          VerticalAlignment="Center" />
 
               <!-- 子项数量 -->
-              <TextBlock Text="{Binding Children.Count}"
+              <TextBlock Text="{Binding SessionCount}"
                          Foreground="{DynamicResource VelaTextTertiary}"
                          FontFamily="{DynamicResource VelaUiMonoFont}"
                          FontSize="{DynamicResource VelaFontSize10}"
@@ -375,6 +382,7 @@
                   Classes.rootlevel="{Binding ShowsAtRootIndent}"
                   ToolTip.Tip="{Binding NotesTip}"
                   Height="28"
+                  Padding="{Binding ParentGroup.Depth, Converter={x:Static conv:DepthToIndentConverter.Instance}, ConverterParameter=session}"
                   Cursor="Hand"
                   DoubleTapped="Session_DoubleTapped"
                   PointerPressed="Session_PointerPressed">
@@ -565,6 +573,26 @@
       </DataTemplate>
     </ListBox.ItemTemplate>
   </ListBox>
+
+    <Button x:Name="NewRootGroupButton"
+            IsVisible="{Binding HasNoSessions}"
+            Click="NewRootGroup_Click"
+            HorizontalAlignment="Left"
+            Margin="12,8,12,0"
+            Padding="8,4"
+            Background="Transparent"
+            BorderBrush="{DynamicResource VelaBorderPrimary}"
+            BorderThickness="1"
+            CornerRadius="3"
+            Cursor="Hand">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-plus}"
+                       Foreground="{DynamicResource VelaAccent}" />
+        <TextBlock Text="{loc:Localize Tree_NewRootGroup}"
+                   Foreground="{DynamicResource VelaTextSecondary}"
+                   FontSize="{DynamicResource VelaFontSize11}" />
+      </StackPanel>
+    </Button>
 
     <!-- 过滤框里有字却一条都没命中:说一句,别让一片空白看起来像是连接全丢了。 -->
     <TextBlock IsVisible="{Binding HasNoFilterMatches}"

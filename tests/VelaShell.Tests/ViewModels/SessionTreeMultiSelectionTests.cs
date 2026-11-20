@@ -349,7 +349,7 @@ public class SessionTreeMultiSelectionTests
     }
 
     [TestMethod]
-    public async Task MoveSelectionToGroup_MovesEveryOne_AndDeletesTheEmptiedGroup()
+    public async Task MoveSelectionToGroup_MovesEveryOne_AndPreservesTheEmptiedGroup()
     {
         _vm.SelectedNode = Node(_alpha);
         _vm.ExtendSelectionTo(Node(_gamma), additive: false); // 整个 Prod 组
@@ -357,8 +357,8 @@ public class SessionTreeMultiSelectionTests
 
         await _vm.MoveSelectionToGroupCommand.Execute(ungrouped).FirstAsync();
 
-        Assert.DoesNotContain(n => n.IsGroup, _vm.Nodes, "源分组被挪空,按老规矩连分组一起删掉");
-        await _repository.Received(1).DeleteGroupAsync(_group.Id);
+        Assert.IsEmpty(_vm.Nodes.Single(n => n.IsGroup).Children);
+        await _repository.DidNotReceive().DeleteGroupAsync(_group.Id);
         Assert.IsTrue(new[] { _alpha, _beta, _bucket, _gamma }.All(p => p.GroupId is null));
     }
 

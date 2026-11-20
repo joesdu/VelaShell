@@ -38,7 +38,7 @@ public class SessionTransferDialogsUiTests
         _session.Dispatch(async () =>
         {
             ISessionArchiveService service = Substitute.For<ISessionArchiveService>();
-            service.PreviewExportAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>())
+            service.PreviewExportAsync(Arg.Any<SessionExportScope>(), Arg.Any<CancellationToken>())
                 .Returns(new SessionExportPreview(12, 10, 2, 3, 4));
             var viewModel = new SessionExportViewModel(service, new SessionExportRequest([Guid.NewGuid()], "生产环境"));
             var window = new SessionExportView { DataContext = viewModel };

@@ -86,9 +86,16 @@ public sealed class WinScpImportService(ISessionRepository repository) : ISessio
                         : FtpSettings.DefaultPort;
             int port = raw.Port is int p and > 0 ? p : defaultPort;
 
+            // WinSCP uses '/' between site folders, for both decoded registry and INI names.
+            string[] sitePath = raw.Name.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (sitePath.Length == 0)
+            {
+                continue;
+            }
             items.Add(new ImportedSession
             {
-                Name = raw.Name,
+                Name = sitePath[^1],
+                GroupPath = sitePath[..^1],
                 Host = raw.Host.Trim(),
                 Port = port,
                 Username = raw.Username.Trim(),

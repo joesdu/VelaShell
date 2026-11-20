@@ -17,6 +17,9 @@ public class ServerGroup
     /// <summary>分组在列表中的排序序号,值越小越靠前。</summary>
     public int SortOrder { get; set; }
 
+    /// <summary>父分组的 Id。为 null 时表示根分组。</summary>
+    public Guid? ParentGroupId { get; set; }
+
     /// <summary>归属于本分组的会话 Id 集合。</summary>
     public List<Guid> Sessions { get; set; } = [];
 }

@@ -237,6 +237,10 @@ public class SshConfigImportTests
 
         (FakeRepository repository, _) = await ImportAsync(scan.Items);
         SessionProfile profile = repository.Sessions.Single();
+        ServerGroup source = repository.Groups.Single();
+        Assert.AreEqual("SSH config", source.Name);
+        Assert.IsNull(source.ParentGroupId);
+        Assert.AreEqual(source.Id, profile.GroupId);
         Assert.AreEqual(AuthMethod.PrivateKey, profile.AuthMethod);
         Assert.AreEqual(expected, profile.PrivateKeyPath);
         Assert.IsFalse(profile.RememberPassword);

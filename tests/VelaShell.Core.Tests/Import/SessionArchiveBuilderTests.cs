@@ -10,6 +10,30 @@ namespace VelaShell.Core.Tests.Import;
 public sealed class SessionArchiveBuilderTests
 {
     [TestMethod]
+    public void Scope_IncludesSubtreeAndDependencyAncestors_EvenWhenSelectedGroupIsEmpty()
+    {
+        var root = new ServerGroup { Name = "Team" };
+        var group = new ServerGroup { Name = "Prod", ParentGroupId = root.Id };
+        var empty = new ServerGroup { Name = "Empty", ParentGroupId = group.Id };
+        var infra = new ServerGroup { Name = "Infra" };
+        var gateways = new ServerGroup { Name = "Gateways", ParentGroupId = infra.Id };
+        var unrelated = new ServerGroup { Name = "Other" };
+        ServerGroup[] groups = [empty, gateways, group, root, infra, unrelated];
+        var jump = new SessionProfile { GroupId = gateways.Id };
+        var session = new SessionProfile { GroupId = group.Id, JumpHostProfileId = jump.Id };
+        SessionProfile[] profiles = [jump, session];
+
+        SessionExportSelection selection = SessionArchiveBuilder.Select(new SessionExportScope([], group.Id), profiles, groups);
+        Assert.AreEqual(1, selection.RequestedCount);
+        Assert.AreEqual(1, selection.DependencyCount);
+        Assert.IsTrue(selection.GroupIds.SetEquals([root.Id, group.Id, empty.Id, infra.Id, gateways.Id]));
+        Assert.IsTrue(SessionArchiveBuilder.Select(new SessionExportScope([], empty.Id), profiles, groups)
+            .GroupIds.SetEquals([root.Id, group.Id, empty.Id]));
+        Assert.IsTrue(SessionArchiveBuilder.Select([session.Id], profiles, groups).GroupIds.SetEquals([root.Id, group.Id, infra.Id, gateways.Id]));
+        Assert.HasCount(groups.Length, SessionArchiveBuilder.Select(new SessionExportScope([], ExportAll: true), profiles, groups).GroupIds);
+    }
+
+    [TestMethod]
     public void Select_PullsInJumpHostsTransitively_AndSurvivesCycles()
     {
         var outer = new SessionProfile { Name = "outer", Host = "1.1.1.1" };

@@ -2800,7 +2800,7 @@ Paste anyway?</value>
     <value>Display Name</value>
   </data>
   <data name="Profile_GroupPlaceholder" xml:space="preserve">
-    <value>Select or enter a new group name</value>
+    <value>Select or enter a group path (A &gt; B)</value>
   </data>
   <data name="Profile_ErrHostRequired" xml:space="preserve">
     <value>Host is required</value>
@@ -5027,6 +5027,9 @@ Overwrite it?</value>
   </data>
   <data name="Tree_DeleteGroupConfirm" xml:space="preserve">
     <value>Delete group "{0}"? The {1} connection(s) inside it will be deleted as well. This cannot be undone.</value>
+  </data>
+  <data name="Tree_DeleteGroupConfirmSubtree" xml:space="preserve">
+    <value>Delete “{0}”, its {1} subgroup(s) and {2} connection(s)? This cannot be undone.</value>
   </data>
   <data name="Tree_DeleteGroupConfirmEmpty" xml:space="preserve">
     <value>Delete the empty group "{0}"? This cannot be undone.</value>
@@ -9346,6 +9349,15 @@ Send anyway?</value>
   <data name="SessFile_NotVelaShell" xml:space="preserve">
     <value>This is not a VelaShell connection file.</value>
   </data>
+  <data name="SessFile_InvalidGroupTree" xml:space="preserve">
+    <value>The file contains duplicate group IDs or invalid parent relationships.</value>
+  </data>
+  <data name="SessFile_GroupPathTooDeep" xml:space="preserve">
+    <value>Group paths may contain at most {0} levels.</value>
+  </data>
+  <data name="SessImport_GroupCountFmt" xml:space="preserve">
+    <value>Groups: {0}</value>
+  </data>
   <data name="SessFile_SectionInvalid" xml:space="preserve">
     <value>The "{0}" section of the file is malformed: {1}</value>
   </data>
@@ -9648,6 +9660,18 @@ Send anyway?</value>
   </data>
   <data name="Tree_DragGroupBefore" xml:space="preserve">
     <value>move before "{0}"</value>
+  </data>
+  <data name="Tree_DragGroupInside" xml:space="preserve">
+    <value>move inside "{0}"</value>
+  </data>
+  <data name="Tree_NewRootGroup" xml:space="preserve">
+    <value>New group</value>
+  </data>
+  <data name="Tree_NewChildGroup" xml:space="preserve">
+    <value>New child group</value>
+  </data>
+  <data name="Tree_GroupNamePrompt" xml:space="preserve">
+    <value>Enter a group name</value>
   </data>
   <data name="Tree_DragGroupToEnd" xml:space="preserve">
     <value>move to the end</value>

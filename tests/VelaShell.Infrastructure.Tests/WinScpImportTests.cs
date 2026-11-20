@@ -47,7 +47,7 @@ public class WinScpImportTests
             $"""
              [Configuration\Security]
              UseMasterPassword=0
-             [Sessions\prod%20box]
+             [Sessions\Team%20A%2FProd/prod%20box]
              HostName={host}
              UserName={user}
              PortNumber=2222
@@ -66,6 +66,7 @@ public class WinScpImportTests
             Assert.HasCount(1, scan.Items);
             ImportedSession item = scan.Items[0];
             Assert.AreEqual("prod box", item.Name);       // %20 已解码
+            Assert.AreSequenceEqual(["Team A", "Prod"], item.GroupPath);
             Assert.AreEqual(host, item.Host);
             Assert.AreEqual(2222, item.Port);
             Assert.AreEqual(user, item.Username);

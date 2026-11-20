@@ -113,6 +113,13 @@ public static class SessionImportPlanner
         return new Writer(plan, options).Run();
     }
 
+    /// <summary>Resolve the file's group labels using the same mapped parents and IDs as import.</summary>
+    public static IReadOnlyDictionary<int, (string Path, bool Exists)> PreviewGroups(SessionImportPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        return new Writer(plan, new SessionImportOptions()).PreviewGroups();
+    }
+
     private static void AddReferenceWarnings(
         SessionImportPlanItem item,
         SessionFileFormat format,
@@ -348,13 +355,9 @@ public static class SessionImportPlanner
             .GroupBy(static g => g.Id)
             .ToDictionary(static g => g.Key, static g => g.First());
 
-        private readonly Dictionary<string, ServerGroup> _groupsByName = plan.ExistingGroups
-            .OrderBy(static g => g.SortOrder)
-            .GroupBy(static g => g.Name.Trim(), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(static g => g.Key, static g => g.First(), StringComparer.OrdinalIgnoreCase);
-
-        /// <summary>要新建的分组(按名称),带一个排序依据:JSON 用文件里的排序序号,CSV 用首次出现的行。</summary>
-        private readonly Dictionary<string, (ServerGroup Group, double Rank)> _newGroups = [with(StringComparer.OrdinalIgnoreCase)];
+        private readonly Dictionary<Guid, Guid> _fileGroupMap = [];
+        private readonly Dictionary<Guid, ServerGroup> _newGroups = [];
+        private readonly Dictionary<(Guid? Parent, string Name), ServerGroup> _siblings = [];
 
         /// <summary>成员列表要改的已有分组(克隆,不动调用方传进来的对象)。</summary>
         private readonly Dictionary<Guid, ServerGroup> _touchedGroups = [];
@@ -367,9 +370,41 @@ public static class SessionImportPlanner
 
         private bool IsCsv => plan.Document.Format == SessionFileFormat.Csv;
 
+        private void IndexSiblings()
+        {
+            foreach (ServerGroup group in new ServerGroupTree(plan.ExistingGroups).OrderedGroups)
+            {
+                _siblings.TryAdd((group.ParentGroupId, group.Name.Trim().ToUpperInvariant()), group);
+            }
+        }
+
+        public Dictionary<int, (string Path, bool Exists)> PreviewGroups()
+        {
+            IndexSiblings();
+            if (!IsCsv)
+            {
+                EnsureDocumentGroups(plan.Document.Candidates.Select(static c => c.FileGroupId));
+            }
+            var leaves = new Dictionary<int, Guid>();
+            foreach (SessionImportCandidate candidate in plan.Document.Candidates)
+            {
+                if (candidate.GroupPath.Count <= ServerGroupTree.MaxDepth + 1 && ResolveGroup(candidate) is { } id)
+                {
+                    leaves[candidate.Index] = id;
+                }
+            }
+            var tree = new ServerGroupTree(plan.ExistingGroups.Concat(_newGroups.Values));
+            return leaves.ToDictionary(static pair => pair.Key, pair => (tree.PathOf(pair.Value), _groupsById.ContainsKey(pair.Value)));
+        }
+
         public SessionImportWriteSet Run()
         {
+            IndexSiblings();
             List<(SessionImportPlanItem Item, Guid Id, SessionProfile? Target)> writes = Choose();
+            if (options.UseFileGroups && !IsCsv)
+            {
+                EnsureDocumentGroups(writes.Select(static w => w.Item.Candidate.FileGroupId));
+            }
             List<(SessionImportPlanItem Item, SessionProfile Profile, SessionProfile? Target)> built = [];
             foreach ((SessionImportPlanItem item, Guid id, SessionProfile? target) in writes)
             {
@@ -488,7 +523,7 @@ public static class SessionImportPlanner
             profile.Id = id;
             profile.LastConnectedAt = target?.LastConnectedAt;
 
-            bool keepGroup = target is not null && IsCsv && options.UseFileGroups && !candidate.Columns.HasFlag(SessionCsvColumns.Group);
+            bool keepGroup = target is not null && IsCsv && options.UseFileGroups && (candidate.Columns & (SessionCsvColumns.Group | SessionCsvColumns.GroupPath)) == 0;
             profile.GroupId = keepGroup ? target!.GroupId : ResolveGroup(candidate);
 
             if (target is not null && !IsCsv)
@@ -517,57 +552,59 @@ public static class SessionImportPlanner
             return profile;
         }
 
+        private void EnsureDocumentGroups(IEnumerable<Guid?> selectedGroupIds)
+        {
+            var tree = new ServerGroupTree(plan.Document.Groups.Select(static g => g.ToGroup()));
+            var occupied = plan.Document.Candidates.Select(static c => c.FileGroupId).ToHashSet();
+            var parents = plan.Document.Groups.Select(static g => g.ParentGroupId).ToHashSet();
+            // Explicitly empty leaves and selected sessions bring their ancestors. A deselected session alone creates no group.
+            var required = selectedGroupIds.OfType<Guid>().Concat(tree.OrderedGroups
+                .Where(g => !occupied.Contains(g.Id) && !parents.Contains(g.Id)).Select(static g => g.Id))
+                .SelectMany(tree.AncestorsOf).Select(static g => g.Id).ToHashSet();
+            foreach (ServerGroup file in tree.OrderedGroups.Where(g => required.Contains(g.Id)))
+            {
+                Guid? parent = file.ParentGroupId is { } p ? _fileGroupMap[p] : null;
+                _fileGroupMap[file.Id] = EnsureGroup(parent, file.Name, file.SortOrder, file);
+            }
+        }
+
         private Guid? ResolveGroup(SessionImportCandidate candidate)
         {
             if (!options.UseFileGroups)
             {
                 return options.TargetGroupId is { } target && _groupsById.ContainsKey(target) ? target : null;
             }
-            string? name;
-            double rank;
-            Guid? preferredId = null;
-            if (IsCsv)
+            if (!IsCsv)
             {
-                name = candidate.GroupName;
-                rank = candidate.Index;
+                return candidate.FileGroupId is { } id && _fileGroupMap.TryGetValue(id, out Guid mapped) ? mapped : null;
             }
-            else
+            Guid? parent = null;
+            foreach (string name in candidate.GroupPath)
             {
-                if (candidate.FileGroupId is not { } fileGroupId)
-                {
-                    return null;
-                }
-                if (_groupsById.ContainsKey(fileGroupId))
-                {
-                    return fileGroupId;
-                }
-                SessionArchiveGroup? fileGroup = plan.Document.Groups.FirstOrDefault(g => g.Id == fileGroupId);
-                name = fileGroup?.Name ?? candidate.GroupName;
-                rank = fileGroup?.SortOrder ?? int.MaxValue;
-                preferredId = fileGroupId;
+                parent = EnsureGroup(parent, name, candidate.Index);
             }
-            if (string.IsNullOrWhiteSpace(name))
+            return parent;
+        }
+
+        private Guid EnsureGroup(Guid? parent, string name, int rank, ServerGroup? file = null)
+        {
+            if (file is not null && _groupsById.TryGetValue(file.Id, out ServerGroup? sameId) && sameId.ParentGroupId == parent)
             {
-                return null;
+                return sameId.Id;
             }
-            name = name.Trim();
-            if (_groupsByName.TryGetValue(name, out ServerGroup? existing))
+            var key = (parent, name.Trim().ToUpperInvariant());
+            if (_siblings.TryGetValue(key, out ServerGroup? sibling))
             {
-                return existing.Id;
+                return sibling.Id;
             }
-            if (_newGroups.TryGetValue(name, out (ServerGroup Group, double Rank) pending))
+            var group = new ServerGroup { Name = name.Trim(), ParentGroupId = parent, Icon = file?.Icon, SortOrder = rank };
+            if (file is not null && !_groupsById.ContainsKey(file.Id))
             {
-                return pending.Group.Id;
+                group.Id = file.Id;
             }
-            // 沿用文件里的分组 Id(不冲突时):下次再导同一份文件,按 Id 就能认出是同一个分组。
-            Guid id = preferredId is { } preferred
-                      && !_groupsById.ContainsKey(preferred)
-                      && !_newGroups.Values.Any(v => v.Group.Id == preferred)
-                ? preferred
-                : Guid.NewGuid();
-            var group = new ServerGroup { Id = id, Name = name };
-            _newGroups[name] = (group, rank);
-            return id;
+            _siblings.Add(key, group);
+            _newGroups.Add(group.Id, group);
+            return group.Id;
         }
 
         private void ResolveCredential(SessionImportCandidate candidate, SessionProfile profile, SessionProfile? target, SessionProfile? hint)
@@ -809,7 +846,7 @@ public static class SessionImportPlanner
             {
                 return;
             }
-            ServerGroup? group = _newGroups.Values.Select(static v => v.Group).FirstOrDefault(g => g.Id == groupId) ?? Touch(groupId);
+            ServerGroup? group = _newGroups.GetValueOrDefault(groupId) ?? Touch(groupId);
             if (group is not null && !group.Sessions.Contains(profile.Id))
             {
                 group.Sessions.Add(profile.Id);
@@ -830,6 +867,7 @@ public static class SessionImportPlanner
             {
                 Id = existing.Id,
                 Name = existing.Name,
+                ParentGroupId = existing.ParentGroupId,
                 Icon = existing.Icon,
                 SortOrder = existing.SortOrder,
                 Sessions = [.. existing.Sessions]
@@ -841,14 +879,28 @@ public static class SessionImportPlanner
         /// <summary>新建的分组接在已有分组之后,彼此之间按文件里的先后排。</summary>
         private void FinishGroups()
         {
-            int next = plan.ExistingGroups.Count == 0 ? 0 : plan.ExistingGroups.Max(static g => g.SortOrder) + 1;
-            foreach ((ServerGroup group, _) in _newGroups.Values.OrderBy(static v => v.Rank))
+            var existingSiblings = plan.ExistingGroups.ToLookup(static g => g.ParentGroupId);
+            foreach (var siblings in _newGroups.Values.GroupBy(static g => g.ParentGroupId))
             {
-                group.SortOrder = next++;
-                _result.Groups.Add(group);
+                int next = existingSiblings[siblings.Key].Select(static g => g.SortOrder).DefaultIfEmpty(-1).Max() + 1;
+                foreach (ServerGroup group in siblings.OrderBy(static g => g.SortOrder))
+                {
+                    group.SortOrder = next++;
+                }
+            }
+            var tree = new ServerGroupTree(plan.ExistingGroups.Concat(_newGroups.Values));
+            foreach (ServerGroup group in tree.OrderedGroups)
+            {
+                if (_newGroups.ContainsKey(group.Id))
+                {
+                    _result.Groups.Add(group);
+                }
+                else if (_touchedGroups.TryGetValue(group.Id, out ServerGroup? touched))
+                {
+                    _result.Groups.Add(touched);
+                }
             }
             _result.GroupsCreated = _newGroups.Count;
-            _result.Groups.AddRange(_touchedGroups.Values);
         }
 
         private void Warn(SessionProfile profile, string message) =>

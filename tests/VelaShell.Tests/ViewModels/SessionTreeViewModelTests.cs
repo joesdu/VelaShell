@@ -119,7 +119,7 @@ public class SessionTreeViewModelTests
         await _vm.LoadCommand.Execute().FirstAsync();
 
         // Guid.Empty 是“未分组”落点:节点应移到树根,落库 GroupId 为 null。
-        // 组内最后一条被移走 → 空分组随之自动删除,树里只剩这条根级会话。
+        // 移走最后一条连接后仍可把连接移回这个组。
         await _vm.MoveSessionToGroupAsync(session.Id, Guid.Empty);
         SessionTreeNodeViewModel? rootNode = _vm.Nodes.FirstOrDefault(node =>
             !node.IsGroup && node.Id == session.Id
@@ -127,7 +127,7 @@ public class SessionTreeViewModelTests
         Assert.IsNotNull(rootNode);
         Assert.IsTrue(rootNode.IsRootLevel);
         Assert.IsNull(session.GroupId);
-        Assert.DoesNotContain(node => node.IsGroup, _vm.Nodes);
+        Assert.IsEmpty(_vm.Nodes.Single(node => node.IsGroup).Children);
     }
 
     [TestMethod]
@@ -151,12 +151,12 @@ public class SessionTreeViewModelTests
         Assert.AreEqual(group.Id, orphan.GroupId);
     }
 
-    // ── 拖动分组:移动 + 空分组自动删除 ────────────────────────────
+    // ── 拖动分组:移动 + 保留空分组 ────────────────────────────
 
-    /// <summary>组内最后一条被拖走 → 空分组连同落库一并删除(“移动到分组”菜单同一条路径)。</summary>
+    /// <summary>组内最后一条被拖走后保留源分组(“移动到分组”菜单同一条路径)。</summary>
     [TestMethod]
     [TestCategory("SessionTree")]
-    public async Task MoveSessionToGroupAsync_LastMemberLeaves_DeletesEmptiedGroup()
+    public async Task MoveSessionToGroupAsync_LastMemberLeaves_PreservesEmptiedGroup()
     {
         ServerGroup source = CreateGroup("Source", 0);
         ServerGroup target = CreateGroup("Target", 1);
@@ -171,10 +171,9 @@ public class SessionTreeViewModelTests
 
         await _vm.MoveSessionToGroupAsync(session.Id, target.Id);
 
-        await _repository.Received(1).DeleteGroupAsync(source.Id);
-        Assert.DoesNotContain(node => node.Id == source.Id, _vm.Nodes);
-        // “移动到分组”子菜单绑定 GroupNodes,不同步移除会留下指向已删分组的落点。
-        Assert.DoesNotContain(node => node.Id == source.Id, _vm.GroupNodes);
+        await _repository.DidNotReceive().DeleteGroupAsync(source.Id);
+        Assert.IsEmpty(_vm.Nodes.Single(node => node.Id == source.Id).Children);
+        Assert.Contains(node => node.Id == source.Id, _vm.GroupNodes);
         Assert.HasCount(1, _vm.Nodes.First(node => node.Id == target.Id).Children);
         Assert.AreEqual(target.Id, session.GroupId);
     }
@@ -482,8 +481,8 @@ public class SessionTreeViewModelTests
         Assert.IsEmpty(sourceGroup.Children);
         Assert.HasCount(1, targetGroup.Children);
         Assert.AreEqual("MoveMe", targetGroup.Children[0].Name);
-        // 源分组被搬空 → 自动删除,树里不再留着它。
-        Assert.DoesNotContain(node => node.Id == sourceGroupId, _vm.Nodes);
+        // 空分组仍然可作为落点。
+        Assert.Contains(node => node.Id == sourceGroupId, _vm.Nodes);
     }
 
     [TestMethod]

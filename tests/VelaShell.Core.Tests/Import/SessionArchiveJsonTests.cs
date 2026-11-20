@@ -305,6 +305,54 @@ public sealed class SessionArchiveJsonTests
     }
 
     [TestMethod]
+    public void Version_PreservesFlatCompatibility_AndSignalsEmptyOrNestedGroups()
+    {
+        var root = new SessionArchiveGroup { Id = Guid.NewGuid(), Name = "Team" };
+        var child = new SessionArchiveGroup { Id = Guid.NewGuid(), Name = "Prod", ParentGroupId = root.Id };
+        var archive = new SessionArchive { Groups = [root], Sessions = [new() { Host = "example.test", GroupId = root.Id }] };
+        Assert.Contains("\"version\": 1", SessionArchiveJson.Serialize(archive, null));
+        archive.Sessions.Clear();
+        Assert.Contains("\"version\": 2", SessionArchiveJson.Serialize(archive, null));
+        archive.Groups.Insert(0, child);
+        string json = SessionArchiveJson.Serialize(archive, null);
+        Assert.AreEqual(root.Id, SessionArchiveJson.Read("tree.json", json).Groups[0].ParentGroupId);
+        Assert.IsNull(SessionArchiveJson.Read("flat.json", json.Replace("\"version\": 2", "\"version\": 1", StringComparison.Ordinal)).Groups[0].ParentGroupId);
+        archive.Version = 3;
+        Assert.ThrowsExactly<SessionFileFormatException>(() => SessionArchiveJson.Serialize(archive, null));
+    }
+
+    [TestMethod]
+    public void Validation_RejectsBrokenChainsAndDuplicateIdsBeforeReadingOrWriting()
+    {
+        var a = new SessionArchiveGroup { Id = Guid.NewGuid() };
+        var b = new SessionArchiveGroup { Id = Guid.NewGuid(), ParentGroupId = a.Id };
+        var archive = new SessionArchive { Groups = [a, b] };
+        void Reject()
+        {
+            Assert.ThrowsExactly<SessionFileFormatException>(() => SessionArchiveJson.Serialize(archive, null));
+            string raw = JsonSerializer.Serialize(archive, SessionArchiveJson.Options);
+            Assert.ThrowsExactly<SessionFileFormatException>(() => SessionArchiveJson.Read("bad.json", raw));
+        }
+        a.ParentGroupId = b.Id;
+        Reject();
+        a.ParentGroupId = a.Id;
+        Reject();
+        a.ParentGroupId = Guid.NewGuid();
+        Reject();
+        a.ParentGroupId = null;
+        archive.Groups.Add(a);
+        Reject();
+        archive.Groups = [a];
+        for (int depth = 1; depth <= ServerGroupTree.MaxDepth; depth++)
+        {
+            archive.Groups.Add(new() { Id = Guid.NewGuid(), ParentGroupId = archive.Groups[^1].Id });
+        }
+        Assert.IsEmpty(SessionArchiveJson.Validate(archive.Groups));
+        archive.Groups.Add(new() { Id = Guid.NewGuid(), ParentGroupId = archive.Groups[^1].Id });
+        Reject();
+    }
+
+    [TestMethod]
     public void Read_RejectsFilesThatAreNotOurs_OrTooNew()
     {
         Assert.ThrowsExactly<SessionFileFormatException>(() => SessionArchiveJson.Read("x.json", "{ not json"));

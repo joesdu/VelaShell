@@ -17,6 +17,7 @@ internal static class SessionCsvHeaderAliases
         (SessionCsvColumns.Id, ["uuid", "guid"]),
         (SessionCsvColumns.Name, ["label", "title", "session", "session name", "名称", "名字", "连接名", "会话名", "名稱", "連線名稱", "名前", "接続名", "이름"]),
         (SessionCsvColumns.Group, ["folder", "分组", "分組", "グループ", "그룹"]),
+        (SessionCsvColumns.GroupPath, ["group path", "folder path", "path", "分组路径", "分組路徑", "グループパス", "그룹 경로"]),
         (SessionCsvColumns.Protocol, ["type", "scheme", "协议", "協定", "協議", "プロトコル", "프로토콜"]),
         (SessionCsvColumns.Host, ["hostname", "address", "ip", "server", "主机", "地址", "主機", "ホスト", "호스트"]),
         (SessionCsvColumns.Port, ["端口", "連接埠", "ポート", "포트"]),

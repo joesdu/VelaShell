@@ -61,22 +61,14 @@ public sealed partial class GistSyncService
     /// </summary>
     private async Task<Dictionary<string, string>> BuildUploadFilesAsync(
         SyncSettings config,
-        string token,
         string content,
+        string? remote,
         CancellationToken cancellationToken)
     {
         var files = new Dictionary<string, string>(StringComparer.Ordinal) { [GistFileName] = content };
         if (!LayoutTemplatesInScope(config))
         {
             return files;
-        }
-        string? remote = null;
-        if (!string.IsNullOrEmpty(config.GistId))
-        {
-            // 推送前现读一次云端那份:别的设备刚存的模板要先合进来,不然这次推送就把它盖掉了。
-            (remote, _) = await GistApiClient
-                .GetFileAsync(token, config.GistId, LayoutTemplatesFileName, cancellationToken)
-                .ConfigureAwait(false);
         }
         if (await BuildLayoutTemplatesUploadAsync(config, remote, cancellationToken).ConfigureAwait(false) is { } layouts)
         {

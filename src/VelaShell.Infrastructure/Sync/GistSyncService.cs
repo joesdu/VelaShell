@@ -28,15 +28,9 @@ public sealed partial class GistSyncService(
     Core.Layouts.LayoutTemplateStore? layoutTemplates = null
 ) : IGistSyncService
 {
-    /// <summary>
-    /// 本机认得的最高载荷版本。3 = 带共享凭据(#550)。
-    /// </summary>
-    /// <remarks>
-    /// 推送时只在真用到共享凭据时才写 3,否则仍写 2(见 <see cref="PayloadSchemaVersion" />):
-    /// 不认识引用的旧客户端拉到这份载荷,会把连接上的引用当未知字段丢掉,再推回来时就把
-    /// 引用从云端抹了 —— 写 3 让旧客户端照章拒收,而没用这个功能的人照旧与旧版本互通。
-    /// </remarks>
-    private const int CurrentSchemaVersion = 3;
+    // v2: flat groups; v3: shared credentials; v4: every group's parent (including explicit null for root).
+    private const int HierarchySchemaVersion = 4;
+    private const int CurrentSchemaVersion = HierarchySchemaVersion;
     private const string ConfigCollection = "app_config";
     private const string ConfigDocId = "sync";
     private const string GistFileName = "velashell-sync.json";
@@ -49,6 +43,17 @@ public sealed partial class GistSyncService(
         PropertyNameCaseInsensitive = true,
         WriteIndented = true,
         TypeInfoResolver = new DefaultJsonTypeInfoResolver { Modifiers = { MarkMissingDirectoryBookmarks } },
+    };
+
+    private static readonly JsonSerializerOptions HierarchyJsonOptions = new(JsonOptions)
+    {
+        TypeInfoResolver = JsonOptions.TypeInfoResolver!.WithAddedModifier(static type =>
+        {
+            if (type.Type == typeof(ServerGroup))
+            {
+                type.Properties.Single(static p => p.Name == "parentGroupId").IsRequired = true;
+            }
+        })
     };
 
     /// <summary>
@@ -179,7 +184,7 @@ public sealed partial class GistSyncService(
                 await ReadGistAsync(token, config.GistId, revision: null, cancellationToken).ConfigureAwait(false);
             if (content is null)
             {
-                return await PushCoreAsync(config, token, cancellationToken).ConfigureAwait(false);
+                return await PushCoreAsync(config, token, cancellationToken, (content, remoteLayouts)).ConfigureAwait(false);
             }
             bool localChanged =
                 config.LastLocalChangeAtUtc is not null
@@ -200,7 +205,7 @@ public sealed partial class GistSyncService(
             }
             if (localChanged && !remoteChanged)
             {
-                return await PushCoreAsync(config, token, cancellationToken).ConfigureAwait(false);
+                return await PushCoreAsync(config, token, cancellationToken, (content, remoteLayouts)).ConfigureAwait(false);
             }
             SyncEnvelope envelope = ParseEnvelope(content);
             if (!localChanged)
@@ -228,7 +233,7 @@ public sealed partial class GistSyncService(
                     Message = pulled.Message + Strings.Get("SyncSvc_BothChangedRemoteWins"),
                 };
             }
-            SyncResult pushed = await PushCoreAsync(config, token, cancellationToken)
+            SyncResult pushed = await PushCoreAsync(config, token, cancellationToken, (content, remoteLayouts))
                 .ConfigureAwait(false);
             return pushed with
             {
@@ -474,13 +479,45 @@ public sealed partial class GistSyncService(
     private async Task<SyncResult> PushCoreAsync(
         SyncSettings config,
         string token,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        (string? Content, string? Layouts)? currentFiles = null
     )
     {
-        string content = await BuildGistContentAsync(config, cancellationToken)
-            .ConfigureAwait(false);
-        // 主载荷加上(合并过云端那份的)布局模板文件,同一次提交写上去。
-        Dictionary<string, string> files = await BuildUploadFilesAsync(config, token, content, cancellationToken)
+        string? remoteLayouts = null;
+        if (!string.IsNullOrEmpty(config.GistId))
+        {
+            // A newly bound device can force-push before its first pull. Read the current schema even for history restore.
+            string? current;
+            if (currentFiles is { } alreadyRead)
+            {
+                (current, remoteLayouts) = alreadyRead;
+            }
+            else if (LayoutTemplatesInScope(config))
+            {
+                (current, _, remoteLayouts) = await ReadGistAsync(token, config.GistId, revision: null, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                (current, _) = await GistApiClient.GetFileAsync(token, config.GistId, GistFileName, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            if (current is not null)
+            {
+                int remoteSchema = ReadSchemaVersion(current);
+                if (remoteSchema > CurrentSchemaVersion)
+                {
+                    return UnsupportedSchema(remoteSchema);
+                }
+                if (remoteSchema == HierarchySchemaVersion)
+                {
+                    config.HierarchyGistId = config.GistId;
+                }
+            }
+        }
+        SyncEnvelope envelope = await BuildEnvelopeAsync(config, cancellationToken).ConfigureAwait(false);
+        string content = JsonSerializer.Serialize(envelope, JsonOptions);
+        Dictionary<string, string> files = await BuildUploadFilesAsync(config, content, remoteLayouts, cancellationToken)
             .ConfigureAwait(false);
         string version;
         if (string.IsNullOrEmpty(config.GistId))
@@ -495,6 +532,10 @@ public sealed partial class GistSyncService(
                 .UpdateGistAsync(token, config.GistId, files, cancellationToken)
                 .ConfigureAwait(false);
         }
+        if (envelope.SchemaVersion == HierarchySchemaVersion)
+        {
+            config.HierarchyGistId = config.GistId;
+        }
         config.LastSyncAtUtc = DateTime.UtcNow;
         config.LastRemoteVersion = version;
         config.LastLocalChangeAtUtc = null;
@@ -502,10 +543,10 @@ public sealed partial class GistSyncService(
         return new(SyncAction.Pushed, true, Strings.Format("SyncSvc_Pushed", Short(version)));
     }
 
-    internal async Task<string> BuildGistContentAsync(
-        SyncSettings config,
-        CancellationToken cancellationToken
-    )
+    internal async Task<string> BuildGistContentAsync(SyncSettings config, CancellationToken cancellationToken) =>
+        JsonSerializer.Serialize(await BuildEnvelopeAsync(config, cancellationToken).ConfigureAwait(false), JsonOptions);
+
+    private async Task<SyncEnvelope> BuildEnvelopeAsync(SyncSettings config, CancellationToken cancellationToken)
     {
         bool encrypted = HasPassphrase(config);
         var payload = new SyncPayload
@@ -520,7 +561,12 @@ public sealed partial class GistSyncService(
         }
         if (config.SyncProfiles)
         {
-            payload.Groups = await sessionRepository.GetAllGroupsAsync().ConfigureAwait(false);
+            var tree = new ServerGroupTree(await sessionRepository.GetAllGroupsAsync().ConfigureAwait(false));
+            if (tree.Validate() is { Count: > 0 } errors)
+            {
+                throw new InvalidDataException(errors[0]);
+            }
+            payload.Groups = [.. tree.OrderedGroups];
             List<SessionProfile> profiles = await sessionRepository
                 .GetAllSessionsAsync()
                 .ConfigureAwait(false);
@@ -591,7 +637,8 @@ public sealed partial class GistSyncService(
                 .ExportSyncAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
-        payload.SchemaVersion = PayloadSchemaVersion(payload);
+        payload.SchemaVersion = config.GistId.Length > 0 && config.GistId == config.HierarchyGistId
+            ? HierarchySchemaVersion : PayloadSchemaVersion(payload);
         var envelope = new SyncEnvelope
         {
             SchemaVersion = payload.SchemaVersion,
@@ -610,18 +657,19 @@ public sealed partial class GistSyncService(
         {
             envelope.Payload = payload;
         }
-        return JsonSerializer.Serialize(envelope, JsonOptions);
+        return envelope;
     }
 
-    /// <summary>
-    /// 这份载荷要标的版本:用到共享凭据(有凭据,或有连接引用凭据)时为 3,否则为 2。
-    /// 理由见 <see cref="CurrentSchemaVersion" />。
-    /// </summary>
-    internal static int PayloadSchemaVersion(SyncPayload payload) =>
-        payload.SharedCredentials is { Count: > 0 }
-        || payload.Profiles?.Exists(static p => p.CredentialSource is not null) == true
-            ? 3
-            : 2;
+    /// <summary>这份载荷所需的最低版本：有层级分组用 4，有共享凭据用 3，其余仍用 2。</summary>
+    internal static int PayloadSchemaVersion(SyncPayload payload)
+    {
+        if (payload.Groups?.Exists(static g => g.ParentGroupId.HasValue) == true)
+        {
+            return HierarchySchemaVersion;
+        }
+        return payload.SharedCredentials is { Count: > 0 }
+            || payload.Profiles?.Exists(static p => p.CredentialSource is not null) == true ? 3 : 2;
+    }
 
     // ———— 拉取与应用 ————
 
@@ -634,9 +682,7 @@ public sealed partial class GistSyncService(
     {
         if (envelope.SchemaVersion > CurrentSchemaVersion)
         {
-            return SyncResult.Fail(
-                $"Remote sync version {envelope.SchemaVersion} is newer than supported version {CurrentSchemaVersion}."
-            );
+            return UnsupportedSchema(envelope.SchemaVersion);
         }
         SyncPayload payload;
         if (envelope.Encrypted)
@@ -651,7 +697,7 @@ public sealed partial class GistSyncService(
                 payload =
                     JsonSerializer.Deserialize<SyncPayload>(
                         SyncCrypto.Decrypt(envelope.CipherText ?? "", passphrase),
-                        JsonOptions
+                        OptionsForSchema(envelope.SchemaVersion)
                     ) ?? throw new InvalidOperationException(Strings.Get("SyncSvc_EmptyPayload"));
             }
             catch (CryptographicException)
@@ -667,9 +713,41 @@ public sealed partial class GistSyncService(
         }
         if (payload.SchemaVersion > CurrentSchemaVersion)
         {
-            return SyncResult.Fail(
-                $"Remote sync payload version {payload.SchemaVersion} is newer than supported version {CurrentSchemaVersion}."
-            );
+            return UnsupportedSchema(payload.SchemaVersion);
+        }
+        if (payload.SchemaVersion != envelope.SchemaVersion && Math.Max(payload.SchemaVersion, envelope.SchemaVersion) >= HierarchySchemaVersion)
+        {
+            return SyncResult.Fail(Strings.Get("SyncSvc_BadFormat"));
+        }
+
+        IReadOnlyList<ServerGroup> groupWrites = [];
+        if (config.SyncProfiles && payload.Groups is { Count: > 0 } incomingGroups)
+        {
+            List<ServerGroup> localGroups = await sessionRepository.GetAllGroupsAsync().ConfigureAwait(false);
+            var remoteIds = new HashSet<Guid>();
+            var merged = localGroups.ToDictionary(static g => g.Id);
+            foreach (ServerGroup incoming in incomingGroups)
+            {
+                if (!remoteIds.Add(incoming.Id))
+                {
+                    return SyncResult.Fail(Strings.Get("SyncSvc_BadFormat"));
+                }
+                merged.TryGetValue(incoming.Id, out ServerGroup? local);
+                if (payload.SchemaVersion < HierarchySchemaVersion)
+                {
+                    incoming.ParentGroupId = local?.ParentGroupId;
+                }
+                // Membership follows the profiles actually on disk, including local-only sessions.
+                // The repository adds/removes members as each incoming profile is saved.
+                incoming.Sessions = local is null ? [] : [.. local.Sessions];
+                merged[incoming.Id] = incoming;
+            }
+            var tree = new ServerGroupTree(merged.Values);
+            if (tree.Validate() is { Count: > 0 } errors)
+            {
+                return SyncResult.Fail(errors[0]);
+            }
+            groupWrites = [.. tree.OrderedGroups.Where(g => remoteIds.Contains(g.Id))];
         }
 
         // 这次拉到的设置要提示「Webhook 告警开着却没有地址」时,那份设置的指纹;不用提示时为 null。
@@ -700,8 +778,9 @@ public sealed partial class GistSyncService(
             if (config.SyncProfiles)
             {
                 // upsert 合并:云端条目按 Id 覆盖/新增,本地独有的连接不删除(防误删)。
-                foreach (ServerGroup group in payload.Groups ?? [])
+                foreach (ServerGroup group in groupWrites)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     await sessionRepository.SaveGroupAsync(group).ConfigureAwait(false);
                 }
                 // 共享凭据先于连接落库:连接里的引用指向它们。合并口径与连接相同 ——
@@ -769,6 +848,10 @@ public sealed partial class GistSyncService(
         finally
         {
             IsApplyingRemote = false;
+        }
+        if (envelope.SchemaVersion == HierarchySchemaVersion)
+        {
+            config.HierarchyGistId = config.GistId;
         }
         config.LastSyncAtUtc = DateTime.UtcNow;
         if (remoteVersion is not null)
@@ -1000,9 +1083,28 @@ public sealed partial class GistSyncService(
                 ? passphrase
                 : throw new InvalidOperationException(Strings.Get("SyncSvc_PassphraseDecryptFailed"));
 
-    internal static SyncEnvelope ParseEnvelope(string content) =>
-        JsonSerializer.Deserialize<SyncEnvelope>(content, JsonOptions)
-        ?? throw new InvalidOperationException(Strings.Get("SyncSvc_BadFormat"));
+    private sealed record SchemaHeader(int SchemaVersion = 2);
+
+    private static int ReadSchemaVersion(string content) =>
+        JsonSerializer.Deserialize<SchemaHeader>(content, JsonOptions)?.SchemaVersion
+        ?? throw new InvalidDataException(Strings.Get("SyncSvc_BadFormat"));
+
+    private static JsonSerializerOptions OptionsForSchema(int version) =>
+        version == HierarchySchemaVersion ? HierarchyJsonOptions : JsonOptions;
+
+    private static SyncResult UnsupportedSchema(int version) => SyncResult.Fail(
+        $"Remote sync version {version} is newer than supported version {CurrentSchemaVersion}.");
+
+    internal static SyncEnvelope ParseEnvelope(string content)
+    {
+        int schema = ReadSchemaVersion(content);
+        if (schema > CurrentSchemaVersion)
+        {
+            throw new InvalidDataException(UnsupportedSchema(schema).Message);
+        }
+        return JsonSerializer.Deserialize<SyncEnvelope>(content, OptionsForSchema(schema))
+            ?? throw new InvalidOperationException(Strings.Get("SyncSvc_BadFormat"));
+    }
 
     private static string Short(string version) => version.Length <= 7 ? version : version[..7];
 }

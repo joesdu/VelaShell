@@ -3,11 +3,25 @@ using VelaShell.Core.Models;
 
 namespace VelaShell.Core.Import;
 
+/// <summary>导出范围。分组范围会保留整个子树及其中的空分组,全部范围会保留所有分组。</summary>
+/// <param name="ProfileIds">用户选中的连接。分组或全部范围会由服务根据范围重新计算。</param>
+/// <param name="GroupId">要导出的分组及其后代;null 表示没有分组范围。</param>
+/// <param name="ExportAll">是否导出全部连接与分组。</param>
+public sealed record SessionExportScope(
+    IReadOnlyCollection<Guid> ProfileIds,
+    Guid? GroupId = null,
+    bool ExportAll = false);
+
 /// <summary>一次导出实际要写的连接:用户选的那些,加上它们经跳板链引用到的连接。</summary>
 /// <param name="Sessions">要写的连接,按资源管理器里的顺序(分组顺序 → 名称)排好。</param>
 /// <param name="RequestedCount">其中用户直接选的条数。</param>
 /// <param name="DependencyCount">因为被当作跳板引用而自动带上的条数。</param>
-public sealed record SessionExportSelection(IReadOnlyList<SessionProfile> Sessions, int RequestedCount, int DependencyCount);
+/// <param name="GroupIds">要写出的分组 Id,包括空分组与依赖连接的祖先。</param>
+public sealed record SessionExportSelection(
+    IReadOnlyList<SessionProfile> Sessions,
+    int RequestedCount,
+    int DependencyCount,
+    IReadOnlySet<Guid> GroupIds);
 
 /// <summary>从本机数据组装一份导出(#571)。纯函数,不碰仓储 —— 读数据与写文件由调用方负责。</summary>
 public static class SessionArchiveBuilder
@@ -26,18 +40,27 @@ public static class SessionArchiveBuilder
     public static SessionExportSelection Select(
         IReadOnlyCollection<Guid> requested,
         IReadOnlyList<SessionProfile> all,
+        IReadOnlyList<ServerGroup> groups) => Select(new SessionExportScope(requested), all, groups);
+
+    /// <summary>按显式范围选择连接,并计算分组子树、祖先与跳板依赖。</summary>
+    public static SessionExportSelection Select(
+        SessionExportScope scope,
+        IReadOnlyList<SessionProfile> all,
         IReadOnlyList<ServerGroup> groups)
     {
-        ArgumentNullException.ThrowIfNull(requested);
+        ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(all);
         ArgumentNullException.ThrowIfNull(groups);
-        var byId = new Dictionary<Guid, SessionProfile>();
-        foreach (SessionProfile profile in all)
-        {
-            _ = byId.TryAdd(profile.Id, profile);
-        }
-        var included = new HashSet<Guid>(requested.Where(byId.ContainsKey));
-        int requestedCount = included.Count;
+        var byId = all.GroupBy(static p => p.Id).ToDictionary(static g => g.Key, static g => g.First());
+        var groupTree = new ServerGroupTree(groups);
+        var groupIds = scope.ExportAll ? groups.Select(static g => g.Id).ToHashSet()
+            : scope.GroupId is { } selected ? groupTree.SubtreeOf(selected).Select(static g => g.Id).ToHashSet() : [];
+        HashSet<Guid> requested = scope.ExportAll ? [.. byId.Keys]
+            : scope.GroupId is not null ? [.. all.Where(p => p.GroupId is { } id && groupIds.Contains(id)).Select(p => p.Id)]
+            : [.. scope.ProfileIds.Where(byId.ContainsKey)];
+        AddGroupAndAncestors(groupIds, scope.GroupId, groupTree);
+        int requestedCount = requested.Count;
+        var included = new HashSet<Guid>(requested);
         var pending = new Queue<Guid>(included);
         while (pending.TryDequeue(out Guid id))
         {
@@ -46,11 +69,33 @@ public static class SessionArchiveBuilder
                 pending.Enqueue(jump);
             }
         }
+
+        foreach (SessionProfile profile in included.Select(id => byId[id]))
+        {
+            AddGroupAndAncestors(groupIds, profile.GroupId, groupTree);
+        }
+
         IReadOnlyList<SessionProfile> ordered = Order(included.Select(id => byId[id]), groups);
-        return new SessionExportSelection(ordered, requestedCount, included.Count - requestedCount);
+        return new SessionExportSelection(
+            ordered,
+            requestedCount,
+            included.Count - requestedCount,
+            groupIds);
     }
 
-    /// <summary>按资源管理器的顺序排:分组按排序序号,未分组的在最后;组内按名称。</summary>
+    private static void AddGroupAndAncestors(HashSet<Guid> target, Guid? groupId, ServerGroupTree tree)
+    {
+        if (groupId is not { } id)
+        {
+            return;
+        }
+        foreach (ServerGroup group in tree.AncestorsOf(id))
+        {
+            _ = target.Add(group.Id);
+        }
+    }
+
+    /// <summary>按资源管理器的顺序排:分组按树的父子顺序,未分组的在最后;组内按名称。</summary>
     /// <param name="sessions">要排的连接。</param>
     /// <param name="groups">本机全部分组。</param>
     /// <returns>排好的列表。</returns>
@@ -60,7 +105,7 @@ public static class SessionArchiveBuilder
         ArgumentNullException.ThrowIfNull(groups);
         var rank = new Dictionary<Guid, int>();
         int index = 0;
-        foreach (ServerGroup group in groups.OrderBy(static g => g.SortOrder))
+        foreach (ServerGroup group in new ServerGroupTree(groups).OrderedGroups)
         {
             _ = rank.TryAdd(group.Id, index++);
         }
@@ -76,7 +121,7 @@ public static class SessionArchiveBuilder
     /// 组装导出内容:选中的连接(此时仍带着明文机密,写文件时由 <see cref="SessionArchiveJson.Serialize" /> 剥掉或加密)、
     /// 它们所在的分组、引用到的共享凭据与隧道。
     /// </summary>
-    /// <param name="selection">由 <see cref="Select" /> 定下的连接。</param>
+    /// <param name="selection">由 <see cref="SessionExportSelection" /> 定下的连接。</param>
     /// <param name="groups">本机全部分组。</param>
     /// <param name="credentials">本机全部共享凭据。</param>
     /// <param name="tunnels">各连接的隧道(键为连接 Id;没有的可以不在字典里)。</param>
@@ -95,7 +140,8 @@ public static class SessionArchiveBuilder
         ArgumentNullException.ThrowIfNull(groups);
         ArgumentNullException.ThrowIfNull(credentials);
         ArgumentNullException.ThrowIfNull(tunnels);
-        var usedGroups = selection.Sessions.Select(static s => s.GroupId).OfType<Guid>().ToHashSet();
+        var groupTree = new ServerGroupTree(groups);
+        var usedGroups = selection.GroupIds.ToHashSet();
         var usedCredentials = selection.Sessions
             .Select(static s => s.CredentialSource is { } reference && reference.TryGetSharedId(out Guid id) ? id : (Guid?)null)
             .OfType<Guid>()
@@ -106,10 +152,16 @@ public static class SessionArchiveBuilder
             Application = application,
             Groups =
             [
-                .. groups
+                .. groupTree.OrderedGroups
                     .Where(g => usedGroups.Contains(g.Id))
-                    .OrderBy(static g => g.SortOrder)
-                    .Select(static g => new SessionArchiveGroup { Id = g.Id, Name = g.Name, Icon = g.Icon, SortOrder = g.SortOrder })
+                    .Select(g => new SessionArchiveGroup
+                    {
+                        Id = g.Id,
+                        Name = g.Name,
+                        Icon = g.Icon,
+                        SortOrder = g.SortOrder,
+                        ParentGroupId = groupTree.ParentOf(g.Id)
+                    })
             ],
             Sessions = [.. selection.Sessions.Select(static s => s.Clone())]
         };

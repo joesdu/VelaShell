@@ -2909,7 +2909,7 @@
     <value>顯示名稱</value>
   </data>
   <data name="Profile_GroupPlaceholder" xml:space="preserve">
-    <value>選擇或輸入新群組名稱</value>
+    <value>選擇或輸入群組路徑（A &gt; B）</value>
   </data>
   <data name="Profile_ErrHostRequired" xml:space="preserve">
     <value>請填寫主機</value>
@@ -5133,6 +5133,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="Tree_DeleteGroupConfirm" xml:space="preserve">
     <value>確定要刪除分組「{0}」嗎？群組內的 {1} 個連線會一併刪除，此操作無法復原。</value>
+  </data>
+  <data name="Tree_DeleteGroupConfirmSubtree" xml:space="preserve">
+    <value>確定刪除「{0}」及其下的 {1} 個子群組和 {2} 個連線嗎？此操作無法復原。</value>
   </data>
   <data name="Tree_DeleteGroupConfirmEmpty" xml:space="preserve">
     <value>確定要刪除空分組「{0}」嗎？此操作無法復原。</value>
@@ -9825,6 +9828,15 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SessFile_NotVelaShell" xml:space="preserve">
     <value>這不是 VelaShell 匯出的連線檔案。</value>
   </data>
+  <data name="SessFile_InvalidGroupTree" xml:space="preserve">
+    <value>檔案包含重複的群組 ID 或無效的父子關係。</value>
+  </data>
+  <data name="SessFile_GroupPathTooDeep" xml:space="preserve">
+    <value>群組路徑最多可包含 {0} 層。</value>
+  </data>
+  <data name="SessImport_GroupCountFmt" xml:space="preserve">
+    <value>群組數：{0}</value>
+  </data>
   <data name="SessFile_SectionInvalid" xml:space="preserve">
     <value>檔案中的「{0}」部分格式不正確：{1}</value>
   </data>
@@ -10127,6 +10139,18 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   </data>
   <data name="Tree_DragGroupBefore" xml:space="preserve">
     <value>移到「{0}」之前</value>
+  </data>
+  <data name="Tree_DragGroupInside" xml:space="preserve">
+    <value>移入「{0}」</value>
+  </data>
+  <data name="Tree_NewRootGroup" xml:space="preserve">
+    <value>新增群組</value>
+  </data>
+  <data name="Tree_NewChildGroup" xml:space="preserve">
+    <value>新增子群組</value>
+  </data>
+  <data name="Tree_GroupNamePrompt" xml:space="preserve">
+    <value>請輸入群組名稱</value>
   </data>
   <data name="Tree_DragGroupToEnd" xml:space="preserve">
     <value>移到最後</value>

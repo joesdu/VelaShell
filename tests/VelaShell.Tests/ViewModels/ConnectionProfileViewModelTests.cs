@@ -1645,6 +1645,54 @@ public sealed class ConnectionProfileViewModelTests
     }
 
     [TestMethod]
+    public async Task SaveCommand_PathText_CreatesMissingParentsAndSelectsLeaf()
+    {
+        ISessionRepository? repository = Substitute.For<ISessionRepository>();
+        repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup>()));
+        repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
+        var vm = new ConnectionProfileViewModel(sessionRepository: repository)
+        {
+            Host = "h",
+            Port = 22,
+            Username = "root",
+        };
+        await vm.LoadGroupsAsync();
+        vm.GroupText = " 项目 > 项目A > 生产 ";
+
+        SessionProfile? profile = await vm.SaveCommand.Execute().FirstAsync();
+
+        Assert.IsNotNull(profile?.GroupId);
+        await repository.Received(3).SaveGroupAsync(Arg.Any<ServerGroup>());
+        await repository.Received(1).SaveGroupAsync(Arg.Is<ServerGroup>(group =>
+            group.Name == "项目A" && group.ParentGroupId != null));
+        await repository.Received(1).SaveGroupAsync(Arg.Is<ServerGroup>(group =>
+            group.Name == "生产" && group.ParentGroupId != null));
+        Assert.AreEqual("项目 > 项目A > 生产", vm.Groups.Single(option => option.Id == profile.GroupId).Path);
+    }
+
+    [TestMethod]
+    public async Task SaveCommand_ExactLegacyNameContainingSeparator_WinsOverPathParsing()
+    {
+        var legacy = new ServerGroup { Name = "项目 > 生产", SortOrder = 0 };
+        ISessionRepository? repository = Substitute.For<ISessionRepository>();
+        repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { legacy }));
+        repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
+        var vm = new ConnectionProfileViewModel(sessionRepository: repository)
+        {
+            Host = "h",
+            Port = 22,
+            Username = "root",
+        };
+        await vm.LoadGroupsAsync();
+        vm.GroupText = "项目 > 生产";
+
+        SessionProfile? profile = await vm.SaveCommand.Execute().FirstAsync();
+
+        Assert.AreEqual(legacy.Id, profile?.GroupId);
+        await repository.DidNotReceive().SaveGroupAsync(Arg.Any<ServerGroup>());
+    }
+
+    [TestMethod]
     public async Task SaveCommand_EmptyOrUngroupedText_SavesAsUngrouped()
     {
         ISessionRepository? repository = Substitute.For<ISessionRepository>();

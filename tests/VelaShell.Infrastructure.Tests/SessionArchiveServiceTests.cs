@@ -45,6 +45,33 @@ public sealed class SessionArchiveServiceTests : IDisposable
     }
 
     [TestMethod]
+    public async Task GroupOnlyExport_PreviewAndArchiveContainTheSameSubtree_AndRestoreItOnce()
+    {
+        var (source, repo, _, _) = Machine("source");
+        var root = new ServerGroup { Name = "Root" };
+        var child = new ServerGroup { Name = "Child", ParentGroupId = root.Id };
+        var empty = new ServerGroup { Name = "Empty", ParentGroupId = child.Id };
+        var other = new ServerGroup { Name = "Other" };
+        foreach (ServerGroup group in new[] { root, child, empty, other })
+        {
+            await repo.SaveGroupAsync(group);
+        }
+        var scope = new SessionExportScope([], child.Id);
+        SessionExportPreview preview = await source.PreviewExportAsync(scope);
+        SessionExportFile file = await source.ExportAsync(scope, SessionFileFormat.Json, null);
+        var (target, targetRepo, _, _) = Machine("target");
+        SessionImportDocument doc = target.Parse("empty.json", file.Content);
+        Assert.AreEqual(0, preview.SessionCount);
+        Assert.AreEqual(3, preview.GroupCount);
+        Assert.AreEqual(preview.GroupCount, doc.Groups.Count);
+        Assert.AreSequenceEqual([root.Id, child.Id, empty.Id], doc.Groups.Select(g => g.Id).ToArray());
+        var options = new SessionImportOptions();
+        Assert.AreEqual(3, (await target.ImportAsync(await target.PlanAsync(doc), options)).GroupsCreated);
+        Assert.AreEqual(0, (await target.ImportAsync(await target.PlanAsync(doc), options)).GroupsCreated);
+        Assert.AreEqual("Root > Child > Empty", new ServerGroupTree(await targetRepo.GetAllGroupsAsync()).PathOf(empty.Id));
+    }
+
+    [TestMethod]
     public async Task ExportWithPassphrase_ThenImportElsewhere_BringsEverythingAcross()
     {
         (SessionArchiveService? sourceService, SonnetDbSessionRepository? sourceSessions, SonnetDbSharedCredentialRepository? sourceCredentials, SonnetDbAppDataStore? sourceStore) = Machine("source");

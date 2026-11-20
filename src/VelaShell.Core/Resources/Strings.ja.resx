@@ -2496,7 +2496,7 @@
     <value>表示名</value>
   </data>
   <data name="Profile_GroupPlaceholder" xml:space="preserve">
-    <value>グループを選択または新しい名前を入力</value>
+    <value>グループパスを選択または入力（A &gt; B）</value>
   </data>
   <data name="Profile_ErrHostRequired" xml:space="preserve">
     <value>ホストを入力してください</value>
@@ -4847,6 +4847,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="Tree_DeleteGroupConfirm" xml:space="preserve">
     <value>グループ「{0}」を削除しますか？中の接続 {1} 件もまとめて削除され、この操作は元に戻せません。</value>
+  </data>
+  <data name="Tree_DeleteGroupConfirmSubtree" xml:space="preserve">
+    <value>「{0}」と配下のサブグループ {1} 個、接続 {2} 件を削除しますか？この操作は元に戻せません。</value>
   </data>
   <data name="Tree_DeleteGroupConfirmEmpty" xml:space="preserve">
     <value>空のグループ「{0}」を削除しますか？この操作は元に戻せません。</value>
@@ -9340,6 +9343,15 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SessFile_NotVelaShell" xml:space="preserve">
     <value>VelaShell の接続ファイルではありません。</value>
   </data>
+  <data name="SessFile_InvalidGroupTree" xml:space="preserve">
+    <value>ファイルに重複したグループ ID または無効な親子関係があります。</value>
+  </data>
+  <data name="SessFile_GroupPathTooDeep" xml:space="preserve">
+    <value>グループのパスは最大 {0} 階層までです。</value>
+  </data>
+  <data name="SessImport_GroupCountFmt" xml:space="preserve">
+    <value>グループ数：{0}</value>
+  </data>
   <data name="SessFile_SectionInvalid" xml:space="preserve">
     <value>ファイルの「{0}」の形式が正しくありません：{1}</value>
   </data>
@@ -9642,6 +9654,18 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   </data>
   <data name="Tree_DragGroupBefore" xml:space="preserve">
     <value>「{0}」の前へ移動</value>
+  </data>
+  <data name="Tree_DragGroupInside" xml:space="preserve">
+    <value>「{0}」の中へ移動</value>
+  </data>
+  <data name="Tree_NewRootGroup" xml:space="preserve">
+    <value>新しいグループ</value>
+  </data>
+  <data name="Tree_NewChildGroup" xml:space="preserve">
+    <value>子グループを新規作成</value>
+  </data>
+  <data name="Tree_GroupNamePrompt" xml:space="preserve">
+    <value>グループ名を入力</value>
   </data>
   <data name="Tree_DragGroupToEnd" xml:space="preserve">
     <value>末尾へ移動</value>

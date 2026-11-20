@@ -43,6 +43,8 @@ public sealed class SessionFileImportViewModel : ReactiveObject
     private readonly ISessionArchiveService _service;
     private readonly Guid? _initialTarget;
     private SessionImportPlan? _plan;
+    private int _emptyGroupsToImport;
+    private IReadOnlyDictionary<int, (string Path, bool Exists)> _fileGroups = new Dictionary<int, (string, bool)>();
 
     /// <summary>构造。</summary>
     /// <param name="service">导入导出服务。</param>
@@ -63,8 +65,8 @@ public sealed class SessionFileImportViewModel : ReactiveObject
         GroupTargets = [new(true, null, Strings.Get("SessImport_TargetFromFile")), new(false, null, Strings.Get("Svc_Ungrouped"))];
         SelectedGroupTarget = GroupTargets[0];
 
-        IObservable<bool> canImport = this.WhenAnyValue(x => x.SelectedCount, x => x.IsBusy)
-            .Select(static t => t.Property1 > 0 && !t.Property2);
+        IObservable<bool> canImport = this.WhenAnyValue(x => x.SelectedCount, x => x.IsBusy, x => x.SelectedGroupTarget)
+            .Select(t => !t.Property2 && (t.Property1 > 0 || (t.Property3.FromFile && _emptyGroupsToImport > 0)));
         ImportCommand = ReactiveCommand.CreateFromTask(ImportAsync, canImport);
         IObservable<bool> canUnlock = this.WhenAnyValue(x => x.SecretsUnlocked, x => x.Passphrase)
             .Select(t => Document.HasEncryptedSecrets && !t.Property1 && t.Property2 is { Length: > 0 });
@@ -186,6 +188,7 @@ public sealed class SessionFileImportViewModel : ReactiveObject
                 return;
             }
             this.RaiseAndSetIfChanged(ref field, value);
+            this.RaisePropertyChanged(nameof(Headline));
             RefreshGroupLabels();
         }
     }
@@ -215,6 +218,7 @@ public sealed class SessionFileImportViewModel : ReactiveObject
     /// <summary>摘要主标题。</summary>
     public string Headline =>
         IsBusy && _plan is null ? Strings.Get("SessImport_Loading")
+        : SelectedCount == 0 && _emptyGroupsToImport > 0 && SelectedGroupTarget.FromFile ? Strings.Format("SessImport_GroupCountFmt", _emptyGroupsToImport)
         : SelectedCount == 0 ? Strings.Get("SessImport_NothingSelected")
         : Strings.Format("SessImport_HeadlineFmt", SelectedCount);
 
@@ -277,9 +281,15 @@ public sealed class SessionFileImportViewModel : ReactiveObject
         try
         {
             _plan = await _service.PlanAsync(Document).ConfigureAwait(true);
-            foreach (ServerGroup group in _plan.ExistingGroups.OrderBy(static g => g.SortOrder))
+            _fileGroups = SessionImportPlanner.PreviewGroups(_plan);
+            if (Document.Groups.Count > 0)
             {
-                GroupTargets.Add(new SessionImportGroupTarget(false, group.Id, group.Name));
+                _emptyGroupsToImport = SessionImportPlanner.BuildWrites(_plan, new SessionImportOptions { SelectedIndices = [] }).GroupsCreated;
+            }
+            var tree = new ServerGroupTree(_plan.ExistingGroups);
+            foreach (ServerGroup group in tree.OrderedGroups)
+            {
+                GroupTargets.Add(new SessionImportGroupTarget(false, group.Id, tree.PathOf(group.Id)));
             }
             if (_initialTarget is { } target && GroupTargets.FirstOrDefault(t => t.GroupId == target) is { } preset)
             {
@@ -386,8 +396,7 @@ public sealed class SessionFileImportViewModel : ReactiveObject
             return;
         }
         SessionImportGroupTarget target = SelectedGroupTarget;
-        var byId = _plan.ExistingGroups.GroupBy(static g => g.Id).ToDictionary(static g => g.Key, static g => g.First().Name);
-        var names = _plan.ExistingGroups.Select(static g => g.Name.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var byId = GroupTargets.Where(static t => t.GroupId.HasValue).ToDictionary(static t => t.GroupId!.Value, static t => t.Name);
         string ungrouped = Strings.Get("Svc_Ungrouped");
         foreach (SessionFileImportItemViewModel item in Items)
         {
@@ -397,13 +406,8 @@ public sealed class SessionFileImportViewModel : ReactiveObject
                 continue;
             }
             SessionImportCandidate candidate = item.Item.Candidate;
-            if (candidate.FileGroupId is { } fileGroup && byId.TryGetValue(fileGroup, out string? localName))
-            {
-                item.GroupLabel = localName;
-                continue;
-            }
             if (Document.Format == SessionFileFormat.Csv
-                && !candidate.Columns.HasFlag(SessionCsvColumns.Group)
+                && (candidate.Columns & (SessionCsvColumns.Group | SessionCsvColumns.GroupPath)) == 0
                 && item.Item.Existing is { } existing
                 && SelectedConflict.Conflict == SessionImportConflict.Overwrite)
             {
@@ -411,10 +415,9 @@ public sealed class SessionFileImportViewModel : ReactiveObject
                 item.GroupLabel = existing.GroupId is { } current && byId.TryGetValue(current, out string? currentName) ? currentName : ungrouped;
                 continue;
             }
-            string? name = candidate.GroupName?.Trim();
-            item.GroupLabel = string.IsNullOrEmpty(name) ? ungrouped
-                : names.Contains(name) ? name
-                : Strings.Format("SessImport_NewGroupFmt", name);
+            item.GroupLabel = _fileGroups.TryGetValue(candidate.Index, out var group)
+                ? group.Exists ? group.Path : Strings.Format("SessImport_NewGroupFmt", group.Path)
+                : ungrouped;
         }
     }
 

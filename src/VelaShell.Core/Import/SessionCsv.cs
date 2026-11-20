@@ -25,15 +25,15 @@ public static class SessionCsv
     /// <summary>导出与模板的表头,按这个顺序写。</summary>
     public static IReadOnlyList<string> Header { get; } =
     [
-        "id", "name", "group", "protocol", "host", "port", "username", "auth", "password",
+        "id", "name", "group", "group_path", "protocol", "host", "port", "username", "auth", "password",
         "private_key", "certificate", "credential", "jump_host", "tags", "notes"
     ];
 
     private static readonly SessionCsvColumns[] HeaderColumns =
     [
-        SessionCsvColumns.Id, SessionCsvColumns.Name, SessionCsvColumns.Group, SessionCsvColumns.Protocol,
-        SessionCsvColumns.Host, SessionCsvColumns.Port, SessionCsvColumns.Username, SessionCsvColumns.Auth,
-        SessionCsvColumns.Password, SessionCsvColumns.PrivateKey, SessionCsvColumns.Certificate,
+        SessionCsvColumns.Id, SessionCsvColumns.Name, SessionCsvColumns.Group, SessionCsvColumns.GroupPath,
+        SessionCsvColumns.Protocol, SessionCsvColumns.Host, SessionCsvColumns.Port, SessionCsvColumns.Username,
+        SessionCsvColumns.Auth, SessionCsvColumns.Password, SessionCsvColumns.PrivateKey, SessionCsvColumns.Certificate,
         SessionCsvColumns.Credential, SessionCsvColumns.JumpHost, SessionCsvColumns.Tags, SessionCsvColumns.Notes
     ];
 
@@ -51,9 +51,12 @@ public static class SessionCsv
     public static string Write(SessionArchive archive)
     {
         ArgumentNullException.ThrowIfNull(archive);
-        var groupNames = archive.Groups
+        var groupRecords = archive.Groups
             .GroupBy(static g => g.Id)
-            .ToDictionary(static g => g.Key, static g => g.First().Name);
+            .ToDictionary(static g => g.Key, static g => g.First());
+        var groupTree = new ServerGroupTree(groupRecords.Values.Select(static group => group.ToGroup()));
+        var groupPaths = groupRecords.Keys.ToDictionary(static id => id, id => string.Join(" > ",
+            groupTree.AncestorsOf(id).Select(static g => g.Name.Replace("\\", "\\\\", StringComparison.Ordinal).Replace(">", "\\>", StringComparison.Ordinal))));
         var credentialNames = (archive.SharedCredentials ?? [])
             .GroupBy(static c => c.Id)
             .ToDictionary(static g => g.Key, static g => g.First().Name);
@@ -83,7 +86,12 @@ public static class SessionCsv
             [
                 session.Id.ToString("D"),
                 session.Name,
-                session.GroupId is { } groupId && groupNames.TryGetValue(groupId, out string? groupName) ? groupName : string.Empty,
+                session.GroupId is { } groupId && groupRecords.TryGetValue(groupId, out SessionArchiveGroup? group)
+                    ? group.Name
+                    : string.Empty,
+                session.GroupId is { } pathGroupId && groupPaths.TryGetValue(pathGroupId, out string? groupPath)
+                    ? groupPath
+                    : string.Empty,
                 FormatProtocol(session),
                 session.Host,
                 session.Port.ToString(CultureInfo.InvariantCulture),
@@ -118,8 +126,8 @@ public static class SessionCsv
     {
         var builder = new StringBuilder();
         AppendRow(builder, Header);
-        AppendRow(builder, ["", "example-web", "Examples", "ssh", "192.0.2.10", "22", "root", "password", "", "", "", "", "", "web;nginx", ""]);
-        AppendRow(builder, ["", "example-db", "Examples", "ssh", "192.0.2.20", "2222", "admin", "key", "", "~/.ssh/id_ed25519", "", "", "example-web", "db", ""]);
+        AppendRow(builder, ["", "example-web", "Examples", "Examples", "ssh", "192.0.2.10", "22", "root", "password", "", "", "", "", "", "web;nginx", ""]);
+        AppendRow(builder, ["", "example-db", "Examples", "Examples", "ssh", "192.0.2.20", "2222", "admin", "key", "", "~/.ssh/id_ed25519", "", "", "example-web", "db", ""]);
         return builder.ToString();
     }
 
@@ -388,20 +396,63 @@ public static class SessionCsv
             : string.Empty;
         profile.Notes = notes.Length > 0 ? notes : null;
 
+        string groupPathText = present.HasFlag(SessionCsvColumns.GroupPath) ? Cell(SessionCsvColumns.GroupPath) : string.Empty;
+        string? groupName = present.HasFlag(SessionCsvColumns.Group) ? Cell(SessionCsvColumns.Group) : null;
+        string[] groupPath = present.HasFlag(SessionCsvColumns.GroupPath)
+            ? ParseGroupPath(groupPathText)
+            : groupName is { Length: > 0 } literalGroup ? [literalGroup] : [];
         var candidate = new SessionImportCandidate
         {
             Index = index,
             LineNumber = record.Line,
             Profile = profile,
             HasFileId = hasFileId,
-            GroupName = present.HasFlag(SessionCsvColumns.Group) ? Cell(SessionCsvColumns.Group) : null,
+            GroupName = groupPath.Length > 0 ? groupPath[^1] : null,
+            GroupPath = groupPath,
             JumpHostReference = Cell(SessionCsvColumns.JumpHost) is { Length: > 0 } jump ? jump : null,
             CredentialReference = credential.Length > 0 ? credential : null,
             Columns = rowColumns
         };
+        if (groupPath.Length > ServerGroupTree.MaxDepth + 1)
+        {
+            errors.Add(Strings.Format("SessFile_GroupPathTooDeep", ServerGroupTree.MaxDepth + 1));
+        }
         candidate.Errors.AddRange(errors);
         candidate.Warnings.AddRange(warnings);
         return candidate;
+    }
+
+    private static string[] ParseGroupPath(string value)
+    {
+        List<string> segments = [];
+        var segment = new StringBuilder();
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (value[i] == '\\' && i + 1 < value.Length && value[i + 1] is '>' or '\\')
+            {
+                segment.Append(value[++i]);
+            }
+            else if (value[i] == '>')
+            {
+                AddSegment();
+            }
+            else
+            {
+                segment.Append(value[i]);
+            }
+        }
+        AddSegment();
+        return [.. segments];
+
+        void AddSegment()
+        {
+            string name = segment.ToString().Trim();
+            if (name.Length > 0)
+            {
+                segments.Add(name);
+            }
+            segment.Clear();
+        }
     }
 
     /// <summary>

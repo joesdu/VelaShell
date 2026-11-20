@@ -141,7 +141,7 @@ internal sealed class SessionTreeActions(Window owner, MainWindowViewModel viewM
 
     private async Task ExportAsync(SessionExportRequest request)
     {
-        if (request.ProfileIds.Count == 0 || services.GetService<ISessionArchiveService>() is not { } archive)
+        if ((request.ProfileIds.Count == 0 && request.GroupId is null && !request.ExportAll) || services.GetService<ISessionArchiveService>() is not { } archive)
         {
             return;
         }
@@ -207,7 +207,7 @@ internal sealed class SessionTreeActions(Window owner, MainWindowViewModel viewM
             await ShowImportProblemAsync(Strings.Format("SessImport_ReadFailed", ex.Message));
             return;
         }
-        if (document.Candidates.Count == 0)
+        if (document.Candidates.Count == 0 && document.Groups.Count == 0)
         {
             await ShowImportProblemAsync(Strings.Get("SessImport_Empty"));
             return;
@@ -227,6 +227,10 @@ internal sealed class SessionTreeActions(Window owner, MainWindowViewModel viewM
             return;
         }
         string summary = Strings.Format("SessImport_DoneFmt", outcome.Created, outcome.Updated, outcome.Skipped);
+        if (outcome.GroupsCreated > 0)
+        {
+            summary += Environment.NewLine + Strings.Format("SessImport_GroupCountFmt", outcome.GroupsCreated);
+        }
         if (outcome.Warnings.Count == 0)
         {
             viewModel.Toasts.Info(summary);

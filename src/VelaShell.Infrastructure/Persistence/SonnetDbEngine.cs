@@ -217,6 +217,14 @@ public sealed class SonnetDbEngine : IDisposable
         }, cancellationToken);
     }
 
+    /// <summary>在同一把锁内更新会话及直属组成员，防止并行移动交错写回。</summary>
+    internal Task WithSessionsAndGroupsAsync(Action<DocumentCollectionStore, DocumentCollectionStore> action) =>
+        InLockAsync(() =>
+        {
+            ThrowIfDisposed();
+            action(OpenStore(ProfilesCollection), OpenStore(GroupsCollection));
+        }, CancellationToken.None);
+
     /// <summary>写入一条时序数据点。</summary>
     public Task WritePointAsync(
         string measurement,

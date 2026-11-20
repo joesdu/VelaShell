@@ -14,6 +14,22 @@ public sealed class SessionCsvTests
     private static string Header => string.Join(',', SessionCsv.Header);
 
     [TestMethod]
+    public void Paths_RoundTripLiteralSeparatorsAtRootAndInChildNames()
+    {
+        var root = new SessionArchiveGroup { Id = Guid.NewGuid(), Name = @"Ops\Core > East" };
+        var leaf = new SessionArchiveGroup { Id = Guid.NewGuid(), Name = "Prod>1", ParentGroupId = root.Id };
+        string csv = SessionCsv.Write(new SessionArchive
+        {
+            Groups = [leaf, root], Sessions = [new() { Host = "one.test", GroupId = root.Id }, new() { Host = "two.test", GroupId = leaf.Id }]
+        });
+        SessionImportDocument document = SessionCsv.Read("tree.csv", csv);
+        Assert.AreSequenceEqual([root.Name], document.Candidates[0].GroupPath.ToArray());
+        Assert.AreSequenceEqual([root.Name, leaf.Name], document.Candidates[1].GroupPath.ToArray());
+        string tooDeep = string.Join('>', Enumerable.Repeat("x", ServerGroupTree.MaxDepth + 2));
+        Assert.IsFalse(SessionCsv.Read("deep.csv", $"host,group_path\na.test,{tooDeep}\n").Candidates.Single().IsValid);
+    }
+
+    [TestMethod]
     public void WriteThenRead_RoundTripsTheCommonFields()
     {
         var group = new SessionArchiveGroup { Id = Guid.NewGuid(), Name = "生产, 主机房" };
@@ -107,7 +123,7 @@ public sealed class SessionCsvTests
         Assert.AreEqual(profile.KeyStoreKey, read.Profile.KeyStoreKey);
         Assert.IsNull(read.Profile.PrivateKeyPath, "私钥那一列是引用,不是文件");
 
-        SessionImportCandidate bad = SessionCsv.Read("x.csv", $"{Header}\n,bad,,ssh,10.0.0.13,22,ops,keystore,,C:\\keys\\id,,,,\n").Candidates.Single();
+        SessionImportCandidate bad = SessionCsv.Read("x.csv", $"{Header}\n,bad,,,ssh,10.0.0.13,22,ops,keystore,,C:\\keys\\id,,,,\n").Candidates.Single();
         Assert.IsFalse(bad.IsValid, "认证方式写了 keystore,私钥那一列却是文件路径:报错");
     }
 

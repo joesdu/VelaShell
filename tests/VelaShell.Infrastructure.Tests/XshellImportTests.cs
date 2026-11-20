@@ -34,6 +34,61 @@ public class XshellImportTests
         Assert.AreEqual("QUJDQQ==", result.EncryptedPassword);
     }
 
+    [TestMethod]
+    public async Task Import_SavesSelectedFoldersBeforeTheirSessions()
+    {
+        ISessionRepository repository = Substitute.For<ISessionRepository>();
+        repository.GetAllSessionsAsync().Returns([]);
+        repository.GetAllGroupsAsync().Returns([]);
+        var groups = new List<ServerGroup>();
+        var profiles = new List<SessionProfile>();
+        repository.When(r => r.SaveGroupAsync(Arg.Any<ServerGroup>())).Do(call =>
+        {
+            ServerGroup group = call.Arg<ServerGroup>();
+            Assert.IsEmpty(profiles);
+            Assert.IsTrue(group.ParentGroupId is null || groups.Any(g => g.Id == group.ParentGroupId));
+            groups.Add(group);
+        });
+        repository.When(r => r.SaveSessionAsync(Arg.Any<SessionProfile>())).Do(call => profiles.Add(call.Arg<SessionProfile>()));
+        var service = new XshellImportService(repository);
+        DirectoryInfo directory = Directory.CreateTempSubdirectory();
+        SessionImportScan scan;
+        try
+        {
+            foreach (string path in new[] { "Root", "A/Prod/one", "A/Prod/two", "B/Prod/three" })
+            {
+                string file = Path.Combine(directory.FullName, path + ".xsh");
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                await File.WriteAllTextAsync(file, "[CONNECTION]\nHost=example.test\n", Encoding.Unicode);
+            }
+            scan = await service.ScanAsync(directory.FullName);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+        SessionImportOutcome outcome = await service.ImportAsync(scan.Items, "Xshell");
+        var tree = new ServerGroupTree(groups);
+        Assert.HasCount(5, groups);
+        Assert.AreEqual(4, outcome.Imported);
+        Assert.AreEqual(outcome.GroupId, profiles.Single(p => p.Name == "Root").GroupId);
+        Assert.AreSequenceEqual(["Xshell > A > Prod", "Xshell > A > Prod", "Xshell > B > Prod"],
+            profiles.Where(p => p.Name != "Root").Select(p => tree.PathOf(p.GroupId!.Value)).Order().ToArray());
+    }
+
+    [TestMethod]
+    public async Task Import_CancellationDuringGroupCreation_LeavesNoSessions()
+    {
+        using var cancellation = new CancellationTokenSource();
+        ISessionRepository repository = Substitute.For<ISessionRepository>();
+        repository.GetAllGroupsAsync().Returns([]);
+        repository.When(r => r.SaveGroupAsync(Arg.Any<ServerGroup>())).Do(_ => cancellation.Cancel());
+        var service = new XshellImportService(repository);
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => service.ImportAsync(
+            [new ImportedSession { Name = "host", Host = "example.test", GroupPath = ["sub"] }], "Xshell", cancellation.Token));
+        await repository.DidNotReceive().SaveSessionAsync(Arg.Any<SessionProfile>());
+    }
+
     /// <summary>RC4 是对称变换:同密钥两次变换还原原文。</summary>
     [TestMethod]
     public void Rc4_IsSymmetric()

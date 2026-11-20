@@ -40,6 +40,18 @@ public class SessionFileImportViewModelTests
         + "broken,10.0.0.4,root,,99999\n";  // 有错误
 
     [TestMethod]
+    public async Task EmptyGroupsCanBeImportedWithNoSelectedSession()
+    {
+        var root = new SessionArchiveGroup { Id = Guid.NewGuid(), Name = "Empty" };
+        var archive = new SessionArchive { Groups = [root] };
+        SessionFileImportViewModel vm = await CreateAsync(SessionArchiveJson.Read("groups.json", SessionArchiveJson.Serialize(archive, null)));
+        Assert.AreEqual(0, vm.SelectedCount);
+        Assert.IsTrue(await vm.ImportCommand.CanExecute.FirstAsync());
+        vm.SelectedGroupTarget = vm.GroupTargets.Single(target => target.GroupId == _prod.Id);
+        Assert.IsFalse(await vm.ImportCommand.CanExecute.FirstAsync());
+    }
+
+    [TestMethod]
     public async Task Defaults_SelectOnlyNewValidRows()
     {
         SessionFileImportViewModel vm = await CreateAsync(Csv(MixedCsv));

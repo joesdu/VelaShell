@@ -183,6 +183,45 @@ public sealed class SessionImportPlannerTests
     // ———— 分组 ————
 
     [TestMethod]
+    public void JsonGroups_MapParentsBeforeChildren_AndPreserveExplicitEmptyLeaves()
+    {
+        var team = new ServerGroup { Name = "Local team name" };
+        var prod = new ServerGroup { Name = "Prod", ParentGroupId = team.Id };
+        var unrelated = new ServerGroup { Name = "Prod" };
+        var fileTeam = new SessionArchiveGroup { Id = team.Id, Name = "Team" };
+        var fileProd = new SessionArchiveGroup { Id = Guid.NewGuid(), Name = "Prod", ParentGroupId = fileTeam.Id };
+        var empty = new SessionArchiveGroup { Id = Guid.NewGuid(), Name = "Empty", Icon = "star", ParentGroupId = fileProd.Id };
+        var skipped = new SessionArchiveGroup { Id = Guid.NewGuid(), Name = "Other session" };
+        SessionImportDocument document = Json(new SessionArchive
+        {
+            Groups = [skipped, empty, fileProd, fileTeam],
+            Sessions = [Session("chosen", "one.test", group: fileProd.Id), Session("omitted", "two.test", group: skipped.Id)]
+        });
+        SessionImportWriteSet writes = Write(Plan(document, groups: [unrelated, prod, team]), selected: [0]);
+        Assert.AreEqual(1, writes.GroupsCreated);
+        Assert.AreEqual(prod.Id, writes.Sessions.Single().GroupId);
+        Assert.AreSequenceEqual([prod.Id, empty.Id], writes.Groups.Select(g => g.Id).ToArray());
+        Assert.AreEqual(team.Id, writes.Groups[0].ParentGroupId);
+        Assert.AreEqual(prod.Id, writes.Groups[1].ParentGroupId);
+        Assert.AreEqual("star", writes.Groups[1].Icon);
+    }
+
+    [TestMethod]
+    public void CsvGroups_PathTakesPrecedence_AndBlankClearsWhileMissingPreserves()
+    {
+        var local = new ServerGroup { Name = "Prod" };
+        var session = Session("s", "local.test", group: local.Id);
+        SessionImportWriteSet Apply(string columns, string cells) => Write(Plan(Csv($"id,host{columns}\n{session.Id},{session.Host}{cells}\n"), [session], [local]), SessionImportConflict.Overwrite);
+        Assert.AreEqual(local.Id, Apply("", "").Sessions.Single().GroupId);
+        Assert.IsNull(Apply(",group,group_path", ",Prod,").Sessions.Single().GroupId);
+        SessionImportWriteSet nested = Apply(",group,group path", ",Prod,Team > Prod");
+        var tree = new ServerGroupTree(nested.Groups);
+        Assert.AreEqual("Team > Prod", tree.PathOf(nested.Sessions.Single().GroupId!.Value));
+        Assert.AreNotEqual(local.Id, nested.Sessions.Single().GroupId);
+        Assert.AreEqual("A > B", Apply(",group", ",A > B").Groups.Single(g => g.Id != local.Id).Name);
+    }
+
+    [TestMethod]
     public void FileGroups_MapById_ThenByName_AndMissingOnesAreAppendedInFileOrder()
     {
         var sameId = new ServerGroup { Id = Guid.NewGuid(), Name = "Lab (renamed locally)", SortOrder = 0 };

@@ -2496,7 +2496,7 @@
     <value>표시 이름</value>
   </data>
   <data name="Profile_GroupPlaceholder" xml:space="preserve">
-    <value>그룹 선택 또는 새 그룹 이름 입력</value>
+    <value>그룹 경로 선택 또는 입력 (A &gt; B)</value>
   </data>
   <data name="Profile_ErrHostRequired" xml:space="preserve">
     <value>호스트를 입력하세요</value>
@@ -4847,6 +4847,9 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="Tree_DeleteGroupConfirm" xml:space="preserve">
     <value>"{0}" 그룹을 삭제하시겠습니까? 그룹 안의 연결 {1}개도 함께 삭제되며 이 작업은 되돌릴 수 없습니다.</value>
+  </data>
+  <data name="Tree_DeleteGroupConfirmSubtree" xml:space="preserve">
+    <value>“{0}” 및 하위 그룹 {1}개와 연결 {2}개를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</value>
   </data>
   <data name="Tree_DeleteGroupConfirmEmpty" xml:space="preserve">
     <value>비어 있는 "{0}" 그룹을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</value>
@@ -9340,6 +9343,15 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SessFile_NotVelaShell" xml:space="preserve">
     <value>VelaShell 연결 파일이 아닙니다.</value>
   </data>
+  <data name="SessFile_InvalidGroupTree" xml:space="preserve">
+    <value>파일에 중복된 그룹 ID 또는 잘못된 상위 그룹 관계가 있습니다.</value>
+  </data>
+  <data name="SessFile_GroupPathTooDeep" xml:space="preserve">
+    <value>그룹 경로는 최대 {0}단계까지 허용됩니다.</value>
+  </data>
+  <data name="SessImport_GroupCountFmt" xml:space="preserve">
+    <value>그룹 수: {0}</value>
+  </data>
   <data name="SessFile_SectionInvalid" xml:space="preserve">
     <value>파일의 "{0}" 부분 형식이 올바르지 않습니다: {1}</value>
   </data>
@@ -9642,6 +9654,18 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   </data>
   <data name="Tree_DragGroupBefore" xml:space="preserve">
     <value>"{0}" 앞으로 이동</value>
+  </data>
+  <data name="Tree_DragGroupInside" xml:space="preserve">
+    <value>"{0}" 안으로 이동</value>
+  </data>
+  <data name="Tree_NewRootGroup" xml:space="preserve">
+    <value>새 그룹</value>
+  </data>
+  <data name="Tree_NewChildGroup" xml:space="preserve">
+    <value>하위 그룹 만들기</value>
+  </data>
+  <data name="Tree_GroupNamePrompt" xml:space="preserve">
+    <value>그룹 이름 입력</value>
   </data>
   <data name="Tree_DragGroupToEnd" xml:space="preserve">
     <value>맨 끝으로 이동</value>

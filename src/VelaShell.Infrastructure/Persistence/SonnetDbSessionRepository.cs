@@ -27,7 +27,7 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         await EnsureMigratedAsync().ConfigureAwait(false);
         List<ServerGroup?> groups = await _engine.WithCollectionAsync(SonnetDbEngine.GroupsCollection, store =>
                                         store.Scan().Select(row => SonnetDbJson.Deserialize<ServerGroup>(row.Json)).ToList()).ConfigureAwait(false);
-        return [.. groups.OfType<ServerGroup>().OrderBy(static g => g.SortOrder)];
+        return [.. new ServerGroupTree(groups.OfType<ServerGroup>()).OrderedGroups];
     }
 
     /// <summary>返回全部会话配置,密码与私钥口令已解密为明文。</summary>
@@ -101,11 +101,11 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
             locked = true;
             copy = Protect(session, locked);
         }
-        await _engine.WithCollectionAsync<object?>(SonnetDbEngine.ProfilesCollection, store =>
+        await _engine.WithSessionsAndGroupsAsync((store, groups) =>
         {
             string key = session.Id.ToString("D");
             // 读现存收藏与写回在同一次集合锁内:中间插进来的收藏修改不会被这次写回盖掉。
-            SessionProfile? stored = (keepStoredBookmarks || locked) && store.Get(key) is { } row
+            SessionProfile? stored = store.Get(key) is { } row
                 ? SonnetDbJson.Deserialize<SessionProfile>(row.Json)
                 : null;
             if (keepStoredBookmarks && stored is not null)
@@ -117,7 +117,14 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
                 KeepStoredSecrets(copy, stored);
             }
             store.Upsert(key, SonnetDbJson.Serialize(copy));
-            return null;
+            if (stored?.GroupId is { } previous && previous != copy.GroupId)
+            {
+                SetMembership(groups, previous, copy.Id, member: false);
+            }
+            if (copy.GroupId is { } current)
+            {
+                SetMembership(groups, current, copy.Id, member: true);
+            }
         }).ConfigureAwait(false);
     }
 
@@ -148,6 +155,28 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         {
             CredentialMaterial.ClearInline(copy);
         }
+    }
+
+    private static void SetMembership(DocumentCollectionStore groups, Guid groupId, Guid sessionId, bool member)
+    {
+        string key = groupId.ToString("D");
+        if (groups.Get(key) is not { } row || SonnetDbJson.Deserialize<ServerGroup>(row.Json) is not { } group)
+        {
+            return;
+        }
+        if (group.Sessions.Contains(sessionId) == member)
+        {
+            return;
+        }
+        if (member)
+        {
+            group.Sessions.Add(sessionId);
+        }
+        else
+        {
+            group.Sessions.RemoveAll(id => id == sessionId);
+        }
+        groups.Upsert(key, SonnetDbJson.Serialize(group));
     }
 
     /// <summary>删除指定会话配置,并从各分组的会话列表中移除对它的引用。</summary>
@@ -188,17 +217,29 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         }).ConfigureAwait(false);
     }
 
-    /// <summary>删除指定分组,并将归属该分组的会话重置为未分组状态。</summary>
+    /// <summary>
+    /// 删除指定分组,并将直属会话与直属子分组安全地移回根层。
+    /// 递归删除由上层资源树显式执行,这样低层仓储操作不会留下悬空父引用。
+    /// </summary>
     public async Task DeleteGroupAsync(Guid id)
     {
         await EnsureMigratedAsync().ConfigureAwait(false);
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.GroupsCollection, store =>
         {
             store.Delete(id.ToString("D"));
+            foreach (DocumentRow row in store.Scan())
+            {
+                ServerGroup? group = SonnetDbJson.Deserialize<ServerGroup>(row.Json);
+                if (group?.ParentGroupId == id)
+                {
+                    group.ParentGroupId = null;
+                    store.Upsert(row.Id, SonnetDbJson.Serialize(group));
+                }
+            }
             return null;
         }).ConfigureAwait(false);
 
-        // 归属该分组的会话回到未分组状态。
+        // 归属该分组的直属会话回到未分组状态。
         await _engine.WithCollectionAsync<object?>(SonnetDbEngine.ProfilesCollection, store =>
         {
             foreach (DocumentRow row in store.Scan())
