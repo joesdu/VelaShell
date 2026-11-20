@@ -349,6 +349,8 @@ public sealed class GistSyncLayoutTemplatesTests
     {
         public Dictionary<string, string> Files { get; } = [with(StringComparer.Ordinal)];
 
+        public Dictionary<string, string> OlderRevision { get; } = [with(StringComparer.Ordinal)];
+
         public int Revision { get; set; } = 1;
 
         public string Version => $"v{Revision}";
@@ -371,7 +373,8 @@ public sealed class GistSyncLayoutTemplatesTests
                 Revision++;
             }
             var files = new System.Text.Json.Nodes.JsonObject();
-            foreach ((string name, string content) in Files)
+            var requested = request.RequestUri!.AbsolutePath.EndsWith("/older", StringComparison.Ordinal) ? OlderRevision : Files;
+            foreach ((string name, string content) in requested)
             {
                 files[name] = new System.Text.Json.Nodes.JsonObject { ["content"] = content };
             }
@@ -458,6 +461,53 @@ public sealed class GistSyncLayoutTemplatesTests
             SyncSettings after = await desktop.GetSyncSettingsAsync();
             Assert.AreEqual(api.Version, after.LastRemoteVersion);
             Assert.IsNull(after.LastLocalChangeAtUtc);
+        }
+        finally
+        {
+            GistApiClient.UseHttpClientForTests(null);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task RestoreRevision_ValidatesHistoryAndRetainsCurrentGistHierarchySchema(bool invalid)
+    {
+        var api = new FakeGistApi();
+        api.Files[SyncFile] = """{"schemaVersion":4,"payload":{"schemaVersion":4,"groups":[]}}""";
+        api.OlderRevision[SyncFile] = invalid
+            ? """{"schemaVersion":4,"payload":{"schemaVersion":4,"groups":[{"name":"orphan","parentGroupId":"1a4ac47b-71cc-42cc-b68e-1972f66b0b59"}]}}"""
+            : """{"schemaVersion":2,"payload":{"schemaVersion":2,"groups":[{"name":"restored"}]}}""";
+        ISessionRepository sessions = Substitute.For<ISessionRepository>();
+        var groups = new List<ServerGroup>();
+        sessions.GetAllGroupsAsync().Returns(groups);
+        sessions.GetAllSessionsAsync().Returns([]);
+        sessions.When(s => s.SaveGroupAsync(Arg.Any<ServerGroup>())).Do(call => groups.Add(call.Arg<ServerGroup>()));
+        ISecretProtector protector = Substitute.For<ISecretProtector>();
+        protector.TryUnprotect("token", out Arg.Any<string?>()).Returns(call => { call[1] = "test-token"; return true; });
+        var service = new GistSyncService(Substitute.For<ISettingsService>(), sessions, new MemoryStore(),
+            Substitute.For<IQuickCommandRepository>(), protector);
+        await service.SaveSyncSettingsAsync(new SyncSettings
+        {
+            Enabled = true, GistId = "gist-1", ProtectedToken = "token", SyncAppSettings = false, SyncSnippets = false
+        });
+        GistApiClient.UseHttpClientForTests(new HttpClient(api));
+        try
+        {
+            SyncResult result = await service.RestoreRevisionAsync("older");
+            if (invalid)
+            {
+                Assert.IsFalse(result.Success);
+                Assert.IsEmpty(groups);
+                Assert.IsEmpty(api.Patches);
+                return;
+            }
+            Assert.IsTrue(result.Success, result.Message);
+            Assert.HasCount(1, api.Patches);
+            SyncEnvelope restored = GistSyncService.ParseEnvelope(api.Files[SyncFile]);
+            Assert.AreEqual(4, restored.SchemaVersion);
+            Assert.AreEqual("restored", restored.Payload!.Groups!.Single().Name);
+            Assert.IsNull(restored.Payload.Groups.Single().ParentGroupId);
         }
         finally
         {

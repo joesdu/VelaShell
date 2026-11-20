@@ -63,6 +63,37 @@ public sealed class SonnetDbPersistenceTests : IDisposable
     }
 
     [TestMethod]
+    public async Task SessionRepository_HierarchySurvivesReopenAndMovesOnlyDirectMembership()
+    {
+        var repo = new SonnetDbSessionRepository(Engine, _protector);
+        var root = new ServerGroup { Name = "A" };
+        var child = new ServerGroup { Name = "B", ParentGroupId = root.Id };
+        var leaf = new ServerGroup { Name = "C", ParentGroupId = child.Id };
+        var profile = new SessionProfile { GroupId = leaf.Id, Name = "db" };
+        await repo.SaveGroupAsync(root);
+        await repo.SaveGroupAsync(child);
+        await repo.SaveGroupAsync(leaf);
+        await repo.SaveSessionAsync(profile);
+        _engine!.Dispose();
+        _engine = null;
+        repo = new SonnetDbSessionRepository(Engine, _protector);
+        var tree = new ServerGroupTree(await repo.GetAllGroupsAsync());
+        Assert.AreEqual("A > B > C", tree.PathOf(leaf.Id));
+        Assert.AreEqual(profile.Id, tree.Find(leaf.Id)!.Sessions.Single());
+        Assert.IsEmpty(tree.Find(child.Id)!.Sessions);
+        profile.GroupId = child.Id;
+        await repo.ReplaceSessionAsync(profile);
+        tree = new(await repo.GetAllGroupsAsync());
+        Assert.AreEqual(profile.Id, tree.Find(child.Id)!.Sessions.Single());
+        Assert.IsEmpty(tree.Find(leaf.Id)!.Sessions);
+        await repo.DeleteGroupAsync(child.Id);
+        tree = new(await repo.GetAllGroupsAsync());
+        Assert.IsEmpty(tree.Validate());
+        Assert.IsNull(tree.Find(leaf.Id)!.ParentGroupId);
+        Assert.IsNull((await repo.GetSessionAsync(profile.Id))!.GroupId);
+    }
+
+    [TestMethod]
     public async Task SessionRepository_SftpProfile_RoundTripsThroughProtectedDocument()
     {
         var repo = new SonnetDbSessionRepository(Engine, _protector);

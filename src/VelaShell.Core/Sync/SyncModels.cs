@@ -55,6 +55,9 @@ public class SyncSettings
     /// <summary>上次同步时远端的 Gist revision;用于检测远端是否有新版本。</summary>
     public string? LastRemoteVersion { get; set; }
 
+    /// <summary>上次使用层级分组载荷的 Gist。分组全部移回根后仍用版本 4，以便其他设备收到显式的根位置。</summary>
+    public string? HierarchyGistId { get; set; }
+
     /// <summary>
     /// 上一次为哪一份拉到的设置提示过「Webhook 告警开着、这台设备上却没有地址」(那份设置的指纹);
     /// 同一份设置再拉一次不再提示(见 <see cref="IGistSyncService.WebhookUrlMissing" />)。

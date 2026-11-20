@@ -7,6 +7,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using VelaShell.Core.Resources;
 using VelaShell.Presentation.ViewModels;
 using FireAndForget = VelaShell.Services.FireAndForget;
 
@@ -104,6 +105,31 @@ public partial class SessionTreeView : UserControl
             node.IsExpanded = !node.IsExpanded;
         }
     }
+
+    private void Group_NewChild_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    {
+        if (DataContext is not SessionTreeViewModel viewModel
+            || (sender as Control)?.DataContext is not SessionTreeNodeViewModel { IsGroup: true } group)
+        {
+            return;
+        }
+        Window owner = TopLevel.GetTopLevel(this) as Window
+            ?? throw new InvalidOperationException("Session tree is not attached to a window");
+        string? name = await MessageDialog.PromptAsync(owner, Strings.Get("Tree_GroupNamePrompt"), string.Empty);
+        await viewModel.CreateGroupAsync(name, group.Id);
+    });
+
+    private void NewRootGroup_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    {
+        if (DataContext is not SessionTreeViewModel viewModel)
+        {
+            return;
+        }
+        Window owner = TopLevel.GetTopLevel(this) as Window
+            ?? throw new InvalidOperationException("Session tree is not attached to a window");
+        string? name = await MessageDialog.PromptAsync(owner, Strings.Get("Tree_GroupNamePrompt"), string.Empty);
+        await viewModel.CreateGroupAsync(name);
+    });
 
     /// <summary>
     /// 右键分组行时先选中它:分组菜单里的命令同样作用于 SelectedNode。
@@ -405,19 +431,63 @@ public partial class SessionTreeView : UserControl
     /// </summary>
     private void OnGroupDragOver(DragEventArgs e, Guid groupId, SessionTreeViewModel viewModel)
     {
-        int slot = ResolveGroupSlot(e, viewModel);
-        bool moves = viewModel.GroupDropIndex(groupId, slot) is not null;
+        SessionTreeNodeViewModel? hovered = FindNodeAt(e.Source);
+        GroupDropPlacement placement = ResolveGroupPlacement(e, hovered);
+        GroupDropTarget? target = viewModel.ResolveHierarchyGroupDrop(groupId, hovered, placement);
+        bool moves = target is { } resolved && viewModel.GroupDropWouldMove(groupId, resolved);
         e.DragEffects = moves ? DragDropEffects.Move : DragDropEffects.None;
-        ShowGroupDragFeedback(_dragLabel, slot, moves, e.GetPosition(DragOverlay));
+        ShowHierarchyGroupDragFeedback(_dragLabel, target, placement, moves, e.GetPosition(DragOverlay), viewModel);
         e.Handled = true;
     }
 
-    /// <summary>鼠标下面那一行,以及鼠标在不在它的上半截,换算成空位(规则在视图模型里)。</summary>
-    private static int ResolveGroupSlot(DragEventArgs e, SessionTreeViewModel viewModel)
+    private static GroupDropPlacement ResolveGroupPlacement(DragEventArgs e, SessionTreeNodeViewModel? hovered)
     {
+        if (hovered is not { IsGroup: true })
+        {
+            return GroupDropPlacement.End;
+        }
         ListBoxItem? container = (e.Source as Visual)?.GetSelfAndVisualAncestors().OfType<ListBoxItem>().FirstOrDefault();
-        bool upperHalf = container is not null && e.GetPosition(container).Y < container.Bounds.Height / 2;
-        return viewModel.ResolveGroupDropSlot(FindNodeAt(e.Source), upperHalf);
+        if (container is null)
+        {
+            return GroupDropPlacement.After;
+        }
+        double y = e.GetPosition(container).Y;
+        return y < container.Bounds.Height / 3
+            ? GroupDropPlacement.Before
+            : y > container.Bounds.Height * 2 / 3
+                ? GroupDropPlacement.After
+                : GroupDropPlacement.Inside;
+    }
+
+    private void ShowHierarchyGroupDragFeedback(
+        string draggedName,
+        GroupDropTarget? target,
+        GroupDropPlacement placement,
+        bool moves,
+        Point position,
+        SessionTreeViewModel viewModel)
+    {
+        HighlightDropTarget(viewModel, moves && target is { ParentGroupId: { } parentId } && placement == GroupDropPlacement.Inside
+            ? parentId
+            : Guid.Empty);
+        RootDropZone.IsVisible = false;
+        double? lineY = moves && placement != GroupDropPlacement.Inside && target is { } insertion
+            ? GroupSlotLineY(viewModel, insertion)
+            : null;
+        GroupInsertLine.IsVisible = lineY is not null;
+        if (lineY is { } y)
+        {
+            GroupInsertLine.Width = Math.Max(0, DragOverlay.Bounds.Width - 8);
+            Canvas.SetLeft(GroupInsertLine, 4);
+            Canvas.SetTop(GroupInsertLine, Math.Max(0, y - 1));
+        }
+        DragGhostText.Text = moves && target is { } resolved
+            ? $"{draggedName} → {viewModel.DescribeHierarchyDrop(resolved, placement)}"
+            : draggedName;
+        DragGhost.IsVisible = true;
+        DragGhost.Measure(Size.Infinity);
+        _dragGhostAnchor = position;
+        ClampGhostIntoOverlay();
     }
 
     /// <summary>
@@ -434,30 +504,18 @@ public partial class SessionTreeView : UserControl
         {
             return;
         }
-        HighlightDropTarget(viewModel, Guid.Empty);
-        RootDropZone.IsVisible = false;
-        double? lineY = moves ? GroupSlotLineY(viewModel, slot) : null;
-        GroupInsertLine.IsVisible = lineY is not null;
-        if (lineY is { } y)
-        {
-            GroupInsertLine.Width = Math.Max(0, DragOverlay.Bounds.Width - 8);
-            Canvas.SetLeft(GroupInsertLine, 4);
-            Canvas.SetTop(GroupInsertLine, Math.Max(0, y - 1));
-        }
-        DragGhostText.Text = moves ? $"{draggedName} → {viewModel.DescribeGroupDropSlot(slot)}" : draggedName;
-        DragGhost.IsVisible = true;
-        DragGhost.Measure(Size.Infinity);
-        _dragGhostAnchor = position;
-        ClampGhostIntoOverlay();
+        ShowHierarchyGroupDragFeedback(draggedName, new GroupDropTarget(null, slot), GroupDropPlacement.Before, moves, position, viewModel);
     }
 
     /// <summary>
     /// 空位在叠层里的纵坐标:插在某个分组前面 = 那一组标题行的上沿;排到最后 = 最后一组(连同展开的会话)的下沿。
     /// 那一行此刻没被虚拟化出来(滚到视口外了)就不画线 —— 幽灵标签照样写明落点。
     /// </summary>
-    private double? GroupSlotLineY(SessionTreeViewModel viewModel, int slot)
+    private double? GroupSlotLineY(SessionTreeViewModel viewModel, GroupDropTarget target)
     {
-        List<SessionTreeNodeViewModel> groups = [.. viewModel.Nodes.Where(static node => node.IsGroup)];
+        var parent = target.ParentGroupId is { } id ? viewModel.GroupNodes.FirstOrDefault(node => node.Id == id) : null;
+        List<SessionTreeNodeViewModel> groups = [.. (parent?.Children ?? viewModel.Nodes).Where(static node => node.IsGroup)];
+        int slot = target.Index;
         if (groups.Count == 0)
         {
             return null;
@@ -472,7 +530,7 @@ public partial class SessionTreeView : UserControl
         {
             return null;
         }
-        while (end + 1 < viewModel.Rows.Count && last.Children.Contains(viewModel.Rows[end + 1]))
+        while (end + 1 < viewModel.Rows.Count && !viewModel.Rows[end + 1].IsPinned && viewModel.Rows[end + 1].Depth > last.Depth)
         {
             end++;
         }
@@ -497,9 +555,11 @@ public partial class SessionTreeView : UserControl
         if (TryGetDraggedId(e, GroupDragPrefix) is { } groupId && DataContext is SessionTreeViewModel groupTree)
         {
             e.Handled = true;
-            if (groupTree.GroupDropIndex(groupId, ResolveGroupSlot(e, groupTree)) is { } index)
+            SessionTreeNodeViewModel? hovered = FindNodeAt(e.Source);
+            GroupDropPlacement placement = ResolveGroupPlacement(e, hovered);
+            if (groupTree.ResolveHierarchyGroupDrop(groupId, hovered, placement) is { } target)
             {
-                await groupTree.MoveGroupAsync(groupId, index);
+                await groupTree.MoveGroupToAsync(groupId, target.ParentGroupId, target.Index);
             }
             return;
         }
@@ -534,7 +594,7 @@ public partial class SessionTreeView : UserControl
     /// <summary>点亮目标分组行;<see cref="Guid.Empty" />(未分组/树根)不对应任何行,等同于全部熄灭。</summary>
     private static void HighlightDropTarget(SessionTreeViewModel viewModel, Guid groupId)
     {
-        foreach (SessionTreeNodeViewModel node in viewModel.Nodes)
+        foreach (SessionTreeNodeViewModel node in viewModel.Rows)
         {
             node.IsDropTarget = node.IsGroup && node.Id == groupId;
         }

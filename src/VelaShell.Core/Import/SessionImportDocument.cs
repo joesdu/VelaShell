@@ -35,8 +35,11 @@ public enum SessionCsvColumns
     /// <summary><c>name</c>:显示名称。</summary>
     Name = 1 << 1,
 
-    /// <summary><c>group</c>:分组名。</summary>
+    /// <summary><c>group</c>:单个字面分组名。</summary>
     Group = 1 << 2,
+
+    /// <summary><c>group_path</c>:从根到叶的分组路径。</summary>
+    GroupPath = 1 << 15,
 
     /// <summary><c>protocol</c>:协议。</summary>
     Protocol = 1 << 3,
@@ -75,7 +78,7 @@ public enum SessionCsvColumns
     Notes = 1 << 14,
 
     /// <summary>JSON 导入:整条连接都由文件给出。</summary>
-    All = Id | Name | Group | Protocol | Host | Port | Username | Auth | Password | PrivateKey | Certificate
+    All = Id | Name | Group | GroupPath | Protocol | Host | Port | Username | Auth | Password | PrivateKey | Certificate
           | Credential | JumpHost | Tags | Notes
 }
 
@@ -99,8 +102,12 @@ public sealed class SessionImportCandidate
     /// <summary>JSON:连接在文件里所属分组的 Id;CSV 为 null。</summary>
     public Guid? FileGroupId { get; init; }
 
+    /// <summary>文件里的完整分组路径,从根到叶。空列表表示未分组。</summary>
+    public IReadOnlyList<string> GroupPath { get; init; } = [];
+
     /// <summary>
-    /// 分组名:JSON 是文件分组的名称;CSV 是 <c>group</c> 列的值。null = 没有这一列 / 不属于任何分组。
+    /// 分组名:JSON 是文件分组的叶名称;CSV 是 <c>group</c> 或 <c>group_path</c> 的叶名称。
+    /// null = 没有分组列 / 不属于任何分组。
     /// </summary>
     public string? GroupName { get; init; }
 

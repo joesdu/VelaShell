@@ -319,6 +319,28 @@ public sealed class SessionTreeNodeViewModel(
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    /// <summary>该分组节点下的子节点集合(会话或子分组)。</summary>
+    /// <summary>该分组节点下的子节点集合(子分组或直属会话)。</summary>
     public ObservableCollection<SessionTreeNodeViewModel> Children { get; } = [];
+
+    /// <summary>包含后代分组在内的连接数，与整组打开和删除的范围一致。</summary>
+    public int SessionCount => IsGroup ? Children.Sum(child => child.SessionCount) : 1;
+
+    internal void RefreshSessionCount() => this.RaisePropertyChanged(nameof(SessionCount));
+
+    /// <summary>该节点所属的父分组。根级分组与未分组会话为 null。</summary>
+    public SessionTreeNodeViewModel? ParentGroup { get; internal set; }
+
+    /// <summary>该节点在分组树中的深度,根分组为 0。</summary>
+    public int Depth
+    {
+        get;
+        internal set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>分组的完整显示路径,会话节点使用其所属分组路径。</summary>
+    public string GroupPath
+    {
+        get;
+        internal set => this.RaiseAndSetIfChanged(ref field, value);
+    } = isGroup ? name : string.Empty;
 }

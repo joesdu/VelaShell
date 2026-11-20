@@ -17,10 +17,21 @@ public class SessionExportViewModelTests
 
     private async Task<SessionExportViewModel> CreateAsync(SessionExportPreview preview, SessionExportRequest? request = null)
     {
-        _service.PreviewExportAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CancellationToken>()).Returns(preview);
+        _service.PreviewExportAsync(Arg.Any<SessionExportScope>(), Arg.Any<CancellationToken>()).Returns(preview);
         var vm = new SessionExportViewModel(_service, request ?? _request, new FixedTime(new DateTimeOffset(2026, 10, 9, 8, 0, 0, TimeSpan.Zero)));
         await vm.InitializeAsync();
         return vm;
+    }
+
+    [TestMethod]
+    public async Task GroupOnlyScope_CanExportJson()
+    {
+        var request = new SessionExportRequest([], "Empty", Guid.NewGuid());
+        SessionExportViewModel vm = await CreateAsync(new SessionExportPreview(0, 0, 0, 2, 0), request);
+        Assert.IsTrue(vm.CanExport);
+        await _service.Received(1).PreviewExportAsync(new SessionExportScope(request.ProfileIds, request.GroupId), Arg.Any<CancellationToken>());
+        vm.Format = SessionFileFormat.Csv;
+        Assert.IsFalse(vm.CanExport);
     }
 
     [TestMethod]
@@ -72,7 +83,7 @@ public class SessionExportViewModelTests
     public async Task ExportTo_WritesTheFile_AndPassesThePassphraseOnlyWhenSecretsAreIncluded()
     {
         SessionExportViewModel vm = await CreateAsync(new SessionExportPreview(2, 2, 0, 1, 2));
-        _service.ExportAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<SessionFileFormat>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        _service.ExportAsync(Arg.Any<SessionExportScope>(), Arg.Any<SessionFileFormat>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(new SessionExportFile([1, 2, 3], 2, true));
         string path = Path.Combine(Path.GetTempPath(), $"vs-export-{Guid.NewGuid():N}.json");
         try
@@ -86,7 +97,7 @@ public class SessionExportViewModelTests
             Assert.IsNotNull(result);
             Assert.IsTrue(result.SecretsIncluded);
             Assert.AreSequenceEqual(new byte[] { 1, 2, 3 }, await File.ReadAllBytesAsync(path));
-            await _service.Received(1).ExportAsync(_request.ProfileIds, SessionFileFormat.Json, "correct horse", Arg.Any<CancellationToken>());
+            await _service.Received(1).ExportAsync(new SessionExportScope(_request.ProfileIds), SessionFileFormat.Json, "correct horse", Arg.Any<CancellationToken>());
         }
         finally
         {
@@ -98,7 +109,7 @@ public class SessionExportViewModelTests
     public async Task Csv_NeverCarriesAPassphrase_EvenIfTheBoxWasTicked()
     {
         SessionExportViewModel vm = await CreateAsync(new SessionExportPreview(2, 2, 0, 1, 2));
-        _service.ExportAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<SessionFileFormat>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        _service.ExportAsync(Arg.Any<SessionExportScope>(), Arg.Any<SessionFileFormat>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(new SessionExportFile([], 2, false));
         vm.IncludeSecrets = true;
         vm.Format = SessionFileFormat.Csv;
@@ -110,7 +121,7 @@ public class SessionExportViewModelTests
 
             await vm.ExportToAsync(path);
 
-            await _service.Received(1).ExportAsync(Arg.Any<IReadOnlyCollection<Guid>>(), SessionFileFormat.Csv, null, Arg.Any<CancellationToken>());
+            await _service.Received(1).ExportAsync(Arg.Any<SessionExportScope>(), SessionFileFormat.Csv, null, Arg.Any<CancellationToken>());
         }
         finally
         {
@@ -122,7 +133,7 @@ public class SessionExportViewModelTests
     public async Task ExportTo_AWriteFailure_StaysInTheDialogWithTheReason()
     {
         SessionExportViewModel vm = await CreateAsync(new SessionExportPreview(1, 1, 0, 0, 0));
-        _service.ExportAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<SessionFileFormat>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        _service.ExportAsync(Arg.Any<SessionExportScope>(), Arg.Any<SessionFileFormat>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Throws(new IOException("disk full"));
 
         SessionExportResult? result = await vm.ExportToAsync(Path.Combine(Path.GetTempPath(), "never.json"));
@@ -149,7 +160,7 @@ public class SessionExportViewModelTests
     public async Task SshConfig_NeverCarriesAPassphrase()
     {
         SessionExportViewModel vm = await CreateAsync(new SessionExportPreview(2, 2, 0, 1, 2));
-        _service.ExportAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<SessionFileFormat>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        _service.ExportAsync(Arg.Any<SessionExportScope>(), Arg.Any<SessionFileFormat>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(new SessionExportFile([], 2, false));
         vm.IncludeSecrets = true;
         vm.Format = SessionFileFormat.SshConfig;
@@ -163,7 +174,7 @@ public class SessionExportViewModelTests
             SessionExportResult? result = await vm.ExportToAsync(path);
 
             Assert.AreEqual(SessionFileFormat.SshConfig, result?.Format);
-            await _service.Received(1).ExportAsync(Arg.Any<IReadOnlyCollection<Guid>>(), SessionFileFormat.SshConfig, null, Arg.Any<CancellationToken>());
+            await _service.Received(1).ExportAsync(Arg.Any<SessionExportScope>(), SessionFileFormat.SshConfig, null, Arg.Any<CancellationToken>());
         }
         finally
         {

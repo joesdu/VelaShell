@@ -1248,7 +1248,13 @@
                                 ItemsSource="{Binding Groups}"
                                 SelectedItem="{Binding SelectedGroup}"
                                 Text="{Binding GroupText}"
-                                PlaceholderText="{loc:Localize Profile_GroupPlaceholder}" />
+                                PlaceholderText="{loc:Localize Profile_GroupPlaceholder}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="vm:GroupOption">
+                            <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
                     </StackPanel>
                     <StackPanel Grid.Column="4">
                       <TextBlock Classes="field-label" Text="{loc:Localize Profile_TagsLabel}" TextTrimming="CharacterEllipsis" />

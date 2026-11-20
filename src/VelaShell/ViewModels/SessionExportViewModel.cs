@@ -35,6 +35,7 @@ public sealed class SessionExportViewModel : ReactiveObject
 
     private readonly ISessionArchiveService _service;
     private readonly SessionExportRequest _request;
+    private readonly SessionExportScope _scope;
     private readonly TimeProvider _time;
 
     /// <summary>构造。</summary>
@@ -45,6 +46,7 @@ public sealed class SessionExportViewModel : ReactiveObject
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _request = request ?? throw new ArgumentNullException(nameof(request));
+        _scope = new SessionExportScope(request.ProfileIds, request.GroupId, request.ExportAll);
         _time = timeProvider ?? TimeProvider.System;
         SelectFormatCommand = ReactiveCommand.Create<SessionFileFormat>(format => Format = format);
         CancelCommand = ReactiveCommand.Create(() => { });
@@ -196,7 +198,7 @@ public sealed class SessionExportViewModel : ReactiveObject
     }
 
     /// <summary>导出按钮能不能点。</summary>
-    public bool CanExport => !IsBusy && Preview is { SessionCount: > 0 } && PassphraseError is null;
+    public bool CanExport => !IsBusy && (Preview is { SessionCount: > 0 } || (IsJson && Preview is { GroupCount: > 0 })) && PassphraseError is null;
 
     /// <summary>建议的文件名:velashell-&lt;范围&gt;-&lt;日期&gt;.json / .csv / .conf。</summary>
     public string SuggestedFileName
@@ -227,7 +229,7 @@ public sealed class SessionExportViewModel : ReactiveObject
     {
         try
         {
-            Preview = await _service.PreviewExportAsync(_request.ProfileIds).ConfigureAwait(true);
+            Preview = await _service.PreviewExportAsync(_scope).ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException)
         {
@@ -250,7 +252,7 @@ public sealed class SessionExportViewModel : ReactiveObject
         try
         {
             string? passphrase = IsJson && IncludeSecrets && CanIncludeSecrets ? SecureStringConvert.ToPlaintext(Passphrase) : null;
-            SessionExportFile file = await _service.ExportAsync(_request.ProfileIds, Format, passphrase).ConfigureAwait(true);
+            SessionExportFile file = await _service.ExportAsync(_scope, Format, passphrase).ConfigureAwait(true);
             await File.WriteAllBytesAsync(path, file.Content).ConfigureAwait(true);
             return new SessionExportResult(path, file.SessionCount, file.SecretsIncluded, Format);
         }

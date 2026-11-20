@@ -22,8 +22,11 @@ public sealed class SessionArchive
     /// <summary><see cref="Format" /> 的固定值,导入时据此认出这是 VelaShell 的连接文件。</summary>
     public const string FormatId = "velashell-sessions";
 
-    /// <summary>当前写出的文件版本。导入时比它新的版本一律拒收,不猜着读。</summary>
-    public const int CurrentVersion = 1;
+    /// <summary>当前支持的文件版本。导入时比它新的版本一律拒收,不猜着读。</summary>
+    public const int CurrentVersion = 2;
+
+    /// <summary>没有层级关系时仍可写出的兼容版本。</summary>
+    public const int FlatVersion = 1;
 
     /// <summary>文件格式标识,恒为 <see cref="FormatId" />。</summary>
     public string Format { get; set; } = FormatId;
@@ -56,6 +59,8 @@ public sealed class SessionArchive
 /// <summary>导出文件里的一个分组(只带显示所需的字段,成员关系以连接上的 <c>groupId</c> 为准)。</summary>
 public sealed class SessionArchiveGroup
 {
+    internal ServerGroup ToGroup() => new() { Id = Id, Name = Name, Icon = Icon, SortOrder = SortOrder, ParentGroupId = ParentGroupId };
+
     /// <summary>分组在导出方那台机器上的 Id;导入时同 Id 的分组视为同一个。</summary>
     public Guid Id { get; set; }
 
@@ -67,6 +72,9 @@ public sealed class SessionArchiveGroup
 
     /// <summary>分组在导出方的排序序号;新建的分组按它的先后接在已有分组之后。</summary>
     public int SortOrder { get; set; }
+
+    /// <summary>父分组 Id。null 表示根分组。版本 1 文件中省略时按根分组处理。</summary>
+    public Guid? ParentGroupId { get; set; }
 }
 
 /// <summary>导出文件里加密的那一段机密。</summary>

@@ -8,6 +8,9 @@ public sealed class ImportedSession
     /// <summary>会话显示名称。</summary>
     public required string Name { get; init; }
 
+    /// <summary>来源分组下的目录名，从父到子。每一段都是字面名称；没有目录元数据时直接放在来源分组。</summary>
+    public IReadOnlyList<string> GroupPath { get; init; } = [];
+
     /// <summary>目标主机地址(主机名或 IP)。</summary>
     public required string Host { get; init; }
 

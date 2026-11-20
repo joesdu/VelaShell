@@ -143,6 +143,8 @@ The main window contains a title bar, Explorer, a docking document area, and a b
 
 ### 4.2 Groups, Multiple Selection, and Bulk Actions
 
+In the connection editor, enter `Projects > A > Production` in the group field. Saving creates any missing groups. Each project can have its own Production group. Moving the last connection out leaves the group available for reuse. Deleting a group in the explorer also deletes its subgroups and their connections after confirmation.
+
 **Entry point:** Connection and group context menus.
 
 - Double-click a connection to open it. Use its context menu to edit, copy, pin, move, or delete it. **Copy IP/Domain** copies the host you entered for the connection (without port or username) to the clipboard; plugin connections that have no host do not show it. Drag a connection into a group to move it; drag group rows to reorder them.
@@ -164,6 +166,8 @@ The main window contains a title bar, Explorer, a docking document area, and a b
 **Caution:** Keep fingerprint checking enabled before and after import. Importing Xshell sessions is different from [Xshell-compatible external launch](#desktop).
 
 ### 4.4 Import and Export Connection JSON/CSV
+
+Version 1 JSON groups import at the root. Version 2 preserves nested and empty groups. Exporting a nested connection includes its ancestors. In CSV, `group` is a literal group name, including any `>` character. Use `group_path` for a complete path. When both columns exist, `group_path` takes precedence. Use JSON to back up empty groups. In a path segment, `\``>` represents a literal greater-than sign and `\` represents a backslash. When overwriting a connection, a present but empty `group_path` cell moves it to Ungrouped.
 
 **Sensitive-data warning:** Protect JSON exports containing secrets with a strong export passphrase and keep that passphrase separately. The application cannot recover a forgotten passphrase. Even exports without passwords may reveal hosts, usernames, notes, groups, and network structure. CSV imports can contain a `password` column; do not share such spreadsheets with untrusted parties.
 
@@ -821,6 +825,8 @@ Type conflicts, case-only name differences, and illegal local filenames are not 
 **Sensitive-backup warning:** Leaking the database with usable `secret.key` (on macOS/Linux it is in the data root when the key fell back to a file) can expose credentials; copied private keys are also authentication material. Encrypt backups, restrict access, and keep export passphrases separately. Never commit `~/.ssh`, secret-bearing JSON, or Gist passphrases to Git or paste them into support chats.
 
 ### 17.2 Configure and Run Gist Sync
+
+Upgrade all devices before syncing nested groups. Once a Gist has stored a nested group, it uses sync schema v4, including after every group has moved back to the root. Clients supporting only v2/v3 cannot pull that Gist.
 
 **Entry point and prerequisites:** Settings → Cloud Sync, a GitHub account, a PAT with the necessary gist permission, and GitHub connectivity.
 

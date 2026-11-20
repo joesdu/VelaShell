@@ -2909,7 +2909,7 @@
     <value>显示名称</value>
   </data>
   <data name="Profile_GroupPlaceholder" xml:space="preserve">
-    <value>选择或输入新分组名</value>
+    <value>选择或输入分组路径（A &gt; B）</value>
   </data>
   <data name="Profile_ErrHostRequired" xml:space="preserve">
     <value>请填写主机</value>
@@ -5133,6 +5133,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="Tree_DeleteGroupConfirm" xml:space="preserve">
     <value>确定要删除分组“{0}”吗？组内的 {1} 个连接会一并删除，此操作不可撤销。</value>
+  </data>
+  <data name="Tree_DeleteGroupConfirmSubtree" xml:space="preserve">
+    <value>确定删除“{0}”及其下的 {1} 个子分组和 {2} 个连接吗？此操作不可撤销。</value>
   </data>
   <data name="Tree_DeleteGroupConfirmEmpty" xml:space="preserve">
     <value>确定要删除空分组“{0}”吗？此操作不可撤销。</value>
@@ -9825,6 +9828,15 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SessFile_NotVelaShell" xml:space="preserve">
     <value>这不是 VelaShell 导出的连接文件。</value>
   </data>
+  <data name="SessFile_InvalidGroupTree" xml:space="preserve">
+    <value>文件包含重复的分组 ID 或无效的父子关系。</value>
+  </data>
+  <data name="SessFile_GroupPathTooDeep" xml:space="preserve">
+    <value>分组路径最多可包含 {0} 层。</value>
+  </data>
+  <data name="SessImport_GroupCountFmt" xml:space="preserve">
+    <value>分组数：{0}</value>
+  </data>
   <data name="SessFile_SectionInvalid" xml:space="preserve">
     <value>文件中的「{0}」部分格式不正确：{1}</value>
   </data>
@@ -10127,6 +10139,18 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   </data>
   <data name="Tree_DragGroupBefore" xml:space="preserve">
     <value>移到「{0}」之前</value>
+  </data>
+  <data name="Tree_DragGroupInside" xml:space="preserve">
+    <value>移入「{0}」</value>
+  </data>
+  <data name="Tree_NewRootGroup" xml:space="preserve">
+    <value>新建分组</value>
+  </data>
+  <data name="Tree_NewChildGroup" xml:space="preserve">
+    <value>新建子分组</value>
+  </data>
+  <data name="Tree_GroupNamePrompt" xml:space="preserve">
+    <value>请输入分组名称</value>
   </data>
   <data name="Tree_DragGroupToEnd" xml:space="preserve">
     <value>移到最后</value>

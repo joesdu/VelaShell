@@ -27,8 +27,14 @@ namespace VelaShell.ViewModels;
 /// <summary>“会话分组”下拉的一项;Id 为 null 表示未分组。</summary>
 public sealed record GroupOption(Guid? Id, string Name)
 {
-    /// <summary>下拉项以分组名称展示。</summary>
-    public override string ToString() => Name;
+    /// <summary>分组在树中的完整路径;旧调用方只提供名称时路径就是名称。</summary>
+    public string Path { get; init; } = Name;
+
+    /// <summary>下拉项显示完整路径,让同名子分组可以区分。</summary>
+    public string DisplayName => Path;
+
+    /// <summary>下拉项以完整分组路径展示。</summary>
+    public override string ToString() => DisplayName;
 }
 
 /// <summary>
@@ -346,7 +352,7 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
                 _groupId = option?.Id;
                 if (option is not null)
                 {
-                    GroupText = option.Name;
+                    GroupText = option.DisplayName;
                 }
             });
         this.WhenAnyValue(x => x.SelectedJumpHost)
@@ -2427,15 +2433,20 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
         try
         {
             List<ServerGroup> groups = await _sessionRepository.GetAllGroupsAsync();
+            var groupTree = new ServerGroupTree(groups);
             while (Groups.Count > 1)
             {
                 Groups.RemoveAt(Groups.Count - 1);
             }
-            foreach (ServerGroup group in groups)
+            foreach (ServerGroup group in groupTree.OrderedGroups)
             {
-                Groups.Add(new(group.Id, group.Name));
+                Groups.Add(new GroupOption(group.Id, group.Name)
+                {
+                    Path = groupTree.PathOf(group.Id),
+                });
             }
             SelectedGroup = Groups.FirstOrDefault(option => option.Id == _groupId) ?? Groups[0];
+            GroupText = SelectedGroup?.DisplayName ?? UngroupedName;
         }
         catch
         {
@@ -2619,22 +2630,24 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     }
 
     /// <summary>
-    /// 把分组框文本解析为 GroupId:留空/“未分组”→ null;命中已有分组(不区分
-    /// 大小写)→ 其 Id;否则新建分组落库并归属。无仓储(设计时)只回退未分组,
-    /// 避免产生指向不存在分组的悬空 Id。
+    /// 把分组框文本解析为 GroupId。先尝试完整名称匹配，以保留旧数据中包含 “&gt;” 的分组名称，
+    /// 再按 “&gt;” 分段解析并在每个缺失的父级下创建分组。
     /// </summary>
     private async Task ResolveGroupFromTextAsync()
     {
         string text = GroupText.Trim();
-        if (text.Length == 0 || text == UngroupedName)
+        if (text.Length == 0 || string.Equals(text, UngroupedName, StringComparison.OrdinalIgnoreCase))
         {
             SelectedGroup = Groups[0];
             return;
         }
-        GroupOption? existing = Groups.FirstOrDefault(option => option.Id is not null && string.Equals(option.Name, text, StringComparison.OrdinalIgnoreCase));
-        if (existing is not null)
+
+        // 完整名称优先于路径解析,这样旧版允许的名称“A > B”仍然可以直接选中。
+        GroupOption? exact = Groups.FirstOrDefault(option =>
+            option.Id is not null && string.Equals(option.Name, text, StringComparison.OrdinalIgnoreCase));
+        if (exact is not null)
         {
-            SelectedGroup = existing;
+            SelectedGroup = exact;
             return;
         }
         if (_sessionRepository is null)
@@ -2642,18 +2655,58 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
             SelectedGroup = Groups[0];
             return;
         }
-        // 排在已有分组之后:取现有最大序号 + 1。不能按「当前个数」取号 —— 分组可以删、也可以拖动重排(#571),
-        // 序号早就不连续了,按个数取出来的号会和某个已有分组撞上,新分组就不一定落在最后。
+
         List<ServerGroup> stored = await _sessionRepository.GetAllGroupsAsync();
-        var group = new ServerGroup
+        List<string> segments = text.Split('>')
+            .Select(static segment => segment.Trim())
+            .Where(static segment => segment.Length > 0)
+            .ToList();
+        if (segments.Count == 0)
         {
-            Name = text,
-            SortOrder = stored.Count == 0 ? 0 : stored.Max(static g => g.SortOrder) + 1
-        };
-        await _sessionRepository.SaveGroupAsync(group);
-        var option = new GroupOption(group.Id, group.Name);
-        Groups.Add(option);
-        SelectedGroup = option;
+            SelectedGroup = Groups[0];
+            return;
+        }
+
+        Guid? parentId = null;
+        ServerGroup? resolved = null;
+        foreach (string segment in segments)
+        {
+            resolved = stored.FirstOrDefault(group =>
+                group.ParentGroupId == parentId
+                && string.Equals(group.Name, segment, StringComparison.OrdinalIgnoreCase));
+            if (resolved is null)
+            {
+                int sortOrder = stored
+                    .Where(group => group.ParentGroupId == parentId)
+                    .Select(static group => group.SortOrder)
+                    .DefaultIfEmpty(-1)
+                    .Max() + 1;
+                resolved = new ServerGroup
+                {
+                    Name = segment,
+                    ParentGroupId = parentId,
+                    SortOrder = sortOrder,
+                };
+                await _sessionRepository.SaveGroupAsync(resolved);
+                stored.Add(resolved);
+            }
+            parentId = resolved.Id;
+        }
+
+        var groupTree = new ServerGroupTree(stored);
+        while (Groups.Count > 1)
+        {
+            Groups.RemoveAt(Groups.Count - 1);
+        }
+        foreach (ServerGroup group in groupTree.OrderedGroups)
+        {
+            Groups.Add(new GroupOption(group.Id, group.Name)
+            {
+                Path = groupTree.PathOf(group.Id),
+            });
+        }
+        SelectedGroup = Groups.FirstOrDefault(candidate => candidate.Id == resolved!.Id) ?? Groups[0];
+        GroupText = SelectedGroup?.DisplayName ?? UngroupedName;
     }
 
     private SessionProfile BuildProfile()

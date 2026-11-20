@@ -75,6 +75,7 @@ public sealed class XshellImportService(ISessionRepository repository) : ISessio
             items.Add(new ImportedSession
             {
                 Name = Path.GetFileNameWithoutExtension(file),
+                GroupPath = Path.GetRelativePath(directory, file).Split(Path.DirectorySeparatorChar)[..^1],
                 Host = parsed.Host.Trim(),
                 Port = port,
                 Username = parsed.UserName?.Trim() ?? string.Empty,

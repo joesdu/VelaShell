@@ -98,14 +98,27 @@ public static class SessionArchiveJson
     public static string Serialize(SessionArchive archive, string? passphrase)
     {
         ArgumentNullException.ThrowIfNull(archive);
+        if (archive.Version is < SessionArchive.FlatVersion or > SessionArchive.CurrentVersion)
+        {
+            throw new SessionFileFormatException(Strings.Format("SessFile_VersionTooNew", archive.Version));
+        }
+        ValidateOrThrow(archive.Groups);
+        var occupied = archive.Sessions.Select(static session => session.GroupId).ToHashSet();
         var payload = new SessionArchiveSecretPayload();
         var output = new SessionArchive
         {
             Format = SessionArchive.FormatId,
-            Version = SessionArchive.CurrentVersion,
+            Version = archive.Groups.Any(g => g.ParentGroupId is not null || !occupied.Contains(g.Id)) ? SessionArchive.CurrentVersion : SessionArchive.FlatVersion,
             ExportedAtUtc = archive.ExportedAtUtc,
             Application = archive.Application,
-            Groups = [.. archive.Groups],
+            Groups = [.. archive.Groups.Select(static group => new SessionArchiveGroup
+            {
+                Id = group.Id,
+                Name = group.Name,
+                Icon = group.Icon,
+                SortOrder = group.SortOrder,
+                ParentGroupId = group.ParentGroupId
+            })],
             Tunnels = archive.Tunnels is { Count: > 0 } tunnels ? new(tunnels) : null
         };
         foreach (SessionProfile session in archive.Sessions)
@@ -182,12 +195,14 @@ public static class SessionArchiveJson
             {
                 throw new SessionFileFormatException(Strings.Get("SessFile_NotVelaShell"));
             }
-            if (TryGetProperty(root, "version", out JsonElement versionElement)
-                && versionElement.ValueKind == JsonValueKind.Number
-                && versionElement.TryGetInt32(out int version)
-                && version > SessionArchive.CurrentVersion)
+            int version = SessionArchive.FlatVersion;
+            if (TryGetProperty(root, "version", out JsonElement versionElement))
             {
-                throw new SessionFileFormatException(Strings.Format("SessFile_VersionTooNew", version));
+                if (versionElement.ValueKind != JsonValueKind.Number || !versionElement.TryGetInt32(out version)
+                    || version is < SessionArchive.FlatVersion or > SessionArchive.CurrentVersion)
+                {
+                    throw new SessionFileFormatException(Strings.Format("SessFile_VersionTooNew", version));
+                }
             }
 
             // 数组里的 null 元素、名称写成 null 的(手写文件)一并兜住,理由同 ReadSession。
@@ -195,7 +210,12 @@ public static class SessionArchiveJson
             foreach (SessionArchiveGroup group in groups)
             {
                 group.Name ??= string.Empty;
+                if (version == SessionArchive.FlatVersion)
+                {
+                    group.ParentGroupId = null;
+                }
             }
+            ValidateOrThrow(groups);
             List<SharedCredential> credentials = [.. (ReadSection<List<SharedCredential?>>(root, "sharedCredentials") ?? []).OfType<SharedCredential>()];
             foreach (SharedCredential credential in credentials)
             {
@@ -210,16 +230,15 @@ public static class SessionArchiveJson
                 ? stamp
                 : null;
 
-            var groupNames = new Dictionary<Guid, string>();
-            foreach (SessionArchiveGroup group in groups)
-            {
-                _ = groupNames.TryAdd(group.Id, group.Name);
-            }
+            var groupTree = new ServerGroupTree(groups.Select(static g => g.ToGroup()));
+            var groupNames = groups.ToDictionary(static g => g.Id, static g => g.Name);
+            var groupPaths = groups.ToDictionary(static g => g.Id,
+                g => (IReadOnlyList<string>)[.. groupTree.AncestorsOf(g.Id).Select(static ancestor => ancestor.Name)]);
 
             List<SessionImportCandidate> candidates = [];
             foreach (JsonElement element in sessions.EnumerateArray())
             {
-                candidates.Add(ReadSession(candidates.Count, element, groupNames));
+                candidates.Add(ReadSession(candidates.Count, element, groupNames, groupPaths));
             }
 
             var document = new SessionImportDocument
@@ -297,7 +316,11 @@ public static class SessionArchiveJson
         return true;
     }
 
-    private static SessionImportCandidate ReadSession(int index, JsonElement element, Dictionary<Guid, string> groupNames)
+    private static SessionImportCandidate ReadSession(
+        int index,
+        JsonElement element,
+        Dictionary<Guid, string> groupNames,
+        Dictionary<Guid, IReadOnlyList<string>> groupPaths)
     {
         bool hasId = TryGetProperty(element, "id", out JsonElement idElement)
                      && idElement.ValueKind == JsonValueKind.String
@@ -356,6 +379,9 @@ public static class SessionArchiveJson
             HasFileId = hasId,
             FileGroupId = fileGroupId,
             GroupName = fileGroupId is { } groupId && groupNames.TryGetValue(groupId, out string? groupName) ? groupName : null,
+            GroupPath = fileGroupId is { } pathId && groupPaths.TryGetValue(pathId, out IReadOnlyList<string>? groupPath)
+                ? groupPath
+                : [],
             Columns = SessionCsvColumns.All,
             HasDirectoryBookmarks = hasBookmarks
         };
@@ -407,6 +433,22 @@ public static class SessionArchiveJson
         }
         value = default;
         return false;
+    }
+
+    /// <summary>验证导出分组关系,返回可直接显示的错误列表。</summary>
+    public static IReadOnlyList<string> Validate(IEnumerable<SessionArchiveGroup> groups)
+    {
+        ArgumentNullException.ThrowIfNull(groups);
+        return new ServerGroupTree(groups.Select(static group => group.ToGroup())).Validate();
+    }
+
+    private static void ValidateOrThrow(IEnumerable<SessionArchiveGroup> groups)
+    {
+        IReadOnlyList<string> errors = Validate(groups);
+        if (errors.Count > 0)
+        {
+            throw new SessionFileFormatException(Strings.Get("SessFile_InvalidGroupTree"));
+        }
     }
 
     private static SessionSecretValues SecretsOf(SessionProfile profile) =>

@@ -9,7 +9,7 @@ using VelaShell.Core.Resources;
 namespace VelaShell.Presentation.ViewModels;
 
 /// <summary>会话树视图模型:管理分组/会话节点、选中项与右键菜单命令,并向宿主转发连接、编辑、SFTP 等操作请求。</summary>
-public sealed class SessionTreeViewModel : ReactiveObject
+public sealed partial class SessionTreeViewModel : ReactiveObject
 {
     private readonly ISessionRepository _repository;
     private readonly ISettingsService? _settings;
@@ -146,8 +146,8 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
         // 资源管理器「更多」菜单(#571)。
         ExportAllCommand = ReactiveCommand.Create(
-            () => ExportRequested?.Invoke(new SessionExportRequest([.. OrderedSessionIds()], null)),
-            this.WhenAnyValue(x => x.HasNoSessions).Select(static none => !none)
+            () => ExportRequested?.Invoke(new SessionExportRequest([.. OrderedSessionIds()], null, null, true)),
+            this.WhenAnyValue(x => x.HasExportableNodes)
         );
         ImportFileCommand = ReactiveCommand.Create(() => ImportFileRequested?.Invoke(null));
         SaveCsvTemplateCommand = ReactiveCommand.Create(() => CsvTemplateRequested?.Invoke());
@@ -207,7 +207,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         RaiseGroupMoveState();
     }
 
-    /// <summary>盯住一个根级节点:它的展开状态、以及(分组的)子项增删都会改变行序。</summary>
+    /// <summary>盯住一个节点及其后代:展开状态与任意层级的子项增删都会改变行序。</summary>
     private void Watch(SessionTreeNodeViewModel node)
     {
         if (!_watched.Add(node))
@@ -215,9 +215,14 @@ public sealed class SessionTreeViewModel : ReactiveObject
             return;
         }
         node.PropertyChanged += OnNodePropertyChanged;
-        if (node.IsGroup)
+        if (!node.IsGroup)
         {
-            node.Children.CollectionChanged += OnChildrenChanged;
+            return;
+        }
+        node.Children.CollectionChanged += OnChildrenChanged;
+        foreach (SessionTreeNodeViewModel child in node.Children)
+        {
+            Watch(child);
         }
     }
 
@@ -228,9 +233,14 @@ public sealed class SessionTreeViewModel : ReactiveObject
             return;
         }
         node.PropertyChanged -= OnNodePropertyChanged;
-        if (node.IsGroup)
+        if (!node.IsGroup)
         {
-            node.Children.CollectionChanged -= OnChildrenChanged;
+            return;
+        }
+        node.Children.CollectionChanged -= OnChildrenChanged;
+        foreach (SessionTreeNodeViewModel child in node.Children)
+        {
+            Unwatch(child);
         }
     }
 
@@ -323,18 +333,18 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
         // 缓存里没有(理论上不该发生)就只按名字比,不至于让一行凭空消失又找不到原因。
         SessionProfile profile = _sessionCache.GetValueOrDefault(node.Id) ?? new SessionProfile { Name = node.Name };
-        return SessionTreeFilter.Matches(profile, group?.Name, _filterTerms);
+        return SessionTreeFilter.Matches(profile, group?.GroupPath ?? group?.Name, _filterTerms);
     }
 
-    /// <summary>把有命中的分组撑开(不记进展开态记忆,见 <see cref="FilterText" />)。</summary>
+    /// <summary>把有命中的分组及其祖先撑开(不记进展开态记忆,见 <see cref="FilterText" />)。</summary>
     private void ExpandGroupsWithMatches()
     {
         _applyingFilterExpansion = true;
         try
         {
-            foreach (SessionTreeNodeViewModel group in Nodes.Where(static node => node.IsGroup))
+            foreach (SessionTreeNodeViewModel group in EnumerateGroupNodes())
             {
-                if (group.Children.Any(child => !child.IsPinned && PassesFilter(child, group)))
+                if (GroupHasFilterMatch(group))
                 {
                     group.IsExpanded = true;
                 }
@@ -346,13 +356,23 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
     }
 
+    private bool GroupHasFilterMatch(SessionTreeNodeViewModel group)
+    {
+        if (_filterTerms.All(term => group.GroupPath.Contains(term, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+        return group.Children.Any(child =>
+            child.IsGroup ? GroupHasFilterMatch(child) : (!child.IsPinned && PassesFilter(child, group)));
+    }
+
     /// <summary>清掉过滤:每个分组回到过滤之前的展开态(手动改过的按记忆,没改过的按设置)。</summary>
     private void RestoreGroupExpansion()
     {
         _applyingFilterExpansion = true;
         try
         {
-            foreach (SessionTreeNodeViewModel group in Nodes.Where(static node => node.IsGroup))
+            foreach (SessionTreeNodeViewModel group in EnumerateGroupNodes())
             {
                 group.IsExpanded = _groupExpansion.GetValueOrDefault(group.Id, _defaultExpanded);
             }
@@ -363,7 +383,23 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
     }
 
-    private void OnChildrenChanged(object? sender, NotifyCollectionChangedEventArgs e) => SyncRows();
+    private void OnChildrenChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        foreach (SessionTreeNodeViewModel node in e.OldItems?.OfType<SessionTreeNodeViewModel>() ?? [])
+        {
+            Unwatch(node);
+        }
+        foreach (SessionTreeNodeViewModel node in e.NewItems?.OfType<SessionTreeNodeViewModel>() ?? [])
+        {
+            Watch(node);
+        }
+        for (var owner = _watched.FirstOrDefault(group => ReferenceEquals(group.Children, sender));
+             owner is not null; owner = owner.ParentGroup)
+        {
+            owner.RefreshSessionCount();
+        }
+        SyncRows();
+    }
 
     /// <summary>
     /// 把 <see cref="Rows" /> 对齐到 <see cref="Nodes" /> 此刻应该摊出来的样子。
@@ -377,53 +413,22 @@ public sealed class SessionTreeViewModel : ReactiveObject
     {
         var desired = new List<SessionTreeNodeViewModel>(Rows.Count);
 
-        // 置顶的会话先摊在最前(#474)。它们在 Nodes 里的位置**一点没动** —— 只是这一层
-        // 换个顺序摊出来,于是分组归属、拖放落点、"分组空了就删掉"那些规则一条都不用改。
-        // 过滤时没命中的置顶项一样藏起来。
-        var pinned = new List<SessionTreeNodeViewModel>();
-        foreach (SessionTreeNodeViewModel node in Nodes)
-        {
-            if (node.IsGroup)
-            {
-                pinned.AddRange(node.Children.Where(child => child.IsPinned && PassesFilter(child, node)));
-            }
-            else if (node.IsPinned && PassesFilter(node, null))
-            {
-                pinned.Add(node);
-            }
-        }
-        desired.AddRange(pinned.OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase));
+        // 置顶会话无论位于哪一级都先摊在整棵树的最前面。
+        desired.AddRange(
+            EnumerateSessionNodes()
+                .Where(node => node.IsPinned && PassesFilter(node, node.ParentGroup))
+                .OrderBy(node => node.Name, StringComparer.OrdinalIgnoreCase));
+
         foreach (SessionTreeNodeViewModel node in Nodes)
         {
             if (node.IsPinned)
             {
-                // 根级的置顶会话:已经摊在最前了,不能再摊一次 —— 同一个实例在
-                // 列表里出现两次,选中与容器复用都会错乱。
                 continue;
             }
-            if (!node.IsGroup)
-            {
-                if (PassesFilter(node, null))
-                {
-                    desired.Add(node);
-                }
-                continue;
-            }
-            List<SessionTreeNodeViewModel> children = [.. node.Children.Where(child => !child.IsPinned && PassesFilter(child, node))];
-            // 过滤时一条都没命中的分组整个藏起来;不过滤时空分组(只剩置顶成员)照旧显示。
-            if (IsFiltering && children.Count == 0)
-            {
-                continue;
-            }
-            desired.Add(node);
-            if (node.IsExpanded)
-            {
-                desired.AddRange(children);
-            }
+            AddVisibleNode(node, desired);
         }
+
         var keep = new HashSet<SessionTreeNodeViewModel>(desired);
-        // 多选里有几条被折叠收进去(或整棵树重建)了:看不见的不该还算"选中",从多选里摘掉;
-        // 剩不到两条就退回普通单选。选中项本身被收进去时,下面会把选中挪到它那一组,多选随之结束。
         if (_multiSelection.Any(node => !keep.Contains(node)))
         {
             List<SessionTreeNodeViewModel> visible = [.. _multiSelection.Where(keep.Contains)];
@@ -455,7 +460,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
             }
         }
 
-        HasNoFilterMatches = IsFiltering && !desired.Any(static row => !row.IsGroup);
+        HasNoFilterMatches = IsFiltering && desired.Count == 0;
         this.RaisePropertyChanged(nameof(SingleFilterMatch));
 
         if (selected is null)
@@ -467,11 +472,41 @@ public sealed class SessionTreeViewModel : ReactiveObject
             SelectedNode = selected;
             return;
         }
-        // 收进去了:落到它那一组的行上。整个节点已经不在树里了(删掉了)就落空,那是对的。
-        // 被过滤掉的不算「收进去」:它不在组里也看不见,选中落空,免得右键菜单对着另一行执行。
-        SessionTreeNodeViewModel? owner = Nodes.FirstOrDefault(node => node.IsGroup && node.Children.Contains(selected));
+        SessionTreeNodeViewModel? owner = selected.ParentGroup;
         bool filteredOut = !selected.IsGroup && !PassesFilter(selected, owner);
-        SelectedNode = !filteredOut && owner is not null && keep.Contains(owner) ? owner : null;
+        while (owner is not null && !keep.Contains(owner))
+        {
+            owner = owner.ParentGroup;
+        }
+        SelectedNode = !filteredOut && _watched.Contains(selected) ? owner : null;
+    }
+
+    private void AddVisibleNode(SessionTreeNodeViewModel node, List<SessionTreeNodeViewModel> desired)
+    {
+        if (!node.IsGroup)
+        {
+            if (PassesFilter(node, node.ParentGroup))
+            {
+                desired.Add(node);
+            }
+            return;
+        }
+        if (IsFiltering && !GroupHasFilterMatch(node))
+        {
+            return;
+        }
+        desired.Add(node);
+        if (!node.IsExpanded)
+        {
+            return;
+        }
+        foreach (SessionTreeNodeViewModel child in node.Children)
+        {
+            if (!child.IsPinned)
+            {
+                AddVisibleNode(child, desired);
+            }
+        }
     }
 
     /// <summary>是否当前没有任何会话,用于驱动空状态提示的显示。</summary>
@@ -777,7 +812,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     /// <summary>选中的分组能不能再往下移。</summary>
     public bool CanMoveSelectedGroupDown =>
-        SelectedNode is { IsGroup: true } group && GroupIndexOf(group) is var index && index >= 0 && index < GroupCount() - 1;
+        SelectedNode is { IsGroup: true } group && GroupIndexOf(group) is var index && index >= 0 && index < GroupCount(group) - 1;
 
     /// <summary>
     /// 一次打开多条连接(整组打开、多选打开)。由宿主决定要不要先确认、按什么并发度连。
@@ -932,34 +967,22 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
     }
 
-    /// <summary>将一个会话加入树:无分组的挂到树根,否则挂到对应分组节点下,并刷新空状态。</summary>
+    /// <summary>将一个会话加入树:无分组或分组不存在时挂到树根,否则挂到直属分组下。</summary>
     /// <param name="session">要加入树的会话配置。</param>
     public void AddSession(SessionProfile session)
     {
-        _sessionCache[session.Id] = session;
-        var sessionNode = new SessionTreeNodeViewModel(session.Id, session.Name, false, session.ConnectionType)
+        SessionTreeNodeViewModel? groupNode = session.GroupId is { } groupId ? FindGroupNode(groupId) : null;
+        var sessionNode = CreateSessionNode(session, groupNode is null);
+        if (groupNode is null)
         {
-            IsPinned = session.IsPinned,
-            Notes = session.Notes,
-            TabIconId = SessionTabIcons.For(session),
-            HasHost = !string.IsNullOrWhiteSpace(session.Host),
-        };
-        if (session.GroupId is null)
-        {
-            // 未分组会话直接挂树根(设计 FrJPu),不再有“未分组”目录。
-            sessionNode.IsRootLevel = true;
-            Nodes.Add(sessionNode);
+            InsertRootSessionSorted(sessionNode);
         }
         else
         {
-            SessionTreeNodeViewModel? groupNode = Nodes.FirstOrDefault(node =>
-                node.IsGroup && node.Id == session.GroupId
-            );
-            if (groupNode is null)
-            {
-                return;
-            }
-            groupNode.Children.Add(sessionNode);
+            sessionNode.ParentGroup = groupNode;
+            sessionNode.Depth = groupNode.Depth + 1;
+            sessionNode.GroupPath = groupNode.GroupPath;
+            InsertSorted(groupNode.Children, sessionNode);
         }
         RefreshHasNoSessions();
     }
@@ -974,17 +997,8 @@ public sealed class SessionTreeViewModel : ReactiveObject
         _ = MoveSessionToGroupAsync(sessionId, targetGroupId);
 
     /// <summary>
-    /// 移动会话到目标分组并落库。源分组因此空掉时连同分组一并删除 —— 分组在本应用里
-    /// 只是会话的容器,空容器既没有可展示的内容,也无法再被拖入(拖放落点是分组行本身),
-    /// 留着只会变成永远清不掉的僵尸目录。
+    /// 移动会话并保留源分组，即使它已经没有成员。
     /// </summary>
-    /// <remarks>
-    /// 树节点的增删全部排在第一个 await 之前:同步入口 <see cref="MoveSessionToGroup" />
-    /// 靠这一点让界面立即更新,只把持久化留给后台。
-    /// 落库顺序是先存会话、再删分组 —— 反过来的话中途失败会留下一批 GroupId 指向已消失
-    /// 分组的会话,下次加载时它们既不在分组下、也不在树根,等于凭空消失
-    /// (与 <see cref="DeleteSelectedGroupAsync" /> 同一处置)。
-    /// </remarks>
     public async Task MoveSessionToGroupAsync(Guid sessionId, Guid targetGroupId)
     {
         SessionTreeNodeViewModel? sourceNode = FindSessionNode(
@@ -1004,7 +1018,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         SessionTreeNodeViewModel? targetGroup = null;
         if (targetGroupId != Guid.Empty)
         {
-            targetGroup = Nodes.FirstOrDefault(node => node.IsGroup && node.Id == targetGroupId);
+            targetGroup = FindGroupNode(targetGroupId);
             if (targetGroup is null)
             {
                 // 目标分组不存在:整个移动放弃,不能把节点摘下来又挂不回去。
@@ -1023,41 +1037,35 @@ public sealed class SessionTreeViewModel : ReactiveObject
         {
             // “未分组”落点 = 树根(设计 FrJPu)。
             sourceNode.IsRootLevel = true;
+            sourceNode.ParentGroup = null;
+            sourceNode.Depth = 0;
+            sourceNode.GroupPath = string.Empty;
             InsertRootSessionSorted(sourceNode);
         }
         else
         {
             sourceNode.IsRootLevel = false;
+            sourceNode.ParentGroup = targetGroup;
+            sourceNode.Depth = targetGroup.Depth + 1;
+            sourceNode.GroupPath = targetGroup.GroupPath;
             InsertSorted(targetGroup.Children, sourceNode);
             // 拖进折叠着的分组时展开一下,否则会话看起来像是"没了"。
             // 置顶的会话不用:它本来就摊在树顶,展开目标分组只是平白多铺开一片。
             if (!sourceNode.IsPinned)
             {
-                targetGroup.IsExpanded = true;
+                for (var ancestor = targetGroup; ancestor is not null; ancestor = ancestor.ParentGroup)
+                {
+                    ancestor.IsExpanded = true;
+                }
             }
         }
-        bool sourceGroupEmptied = sourceGroup is { Children.Count: 0 };
-        if (sourceGroupEmptied)
-        {
-            Nodes.Remove(sourceGroup!);
-            // GroupNodes 里是同一批分组节点实例(“移动到分组”子菜单绑定它),
-            // 不同步移除的话,菜单里会留下一个指向已删分组的落点。
-            GroupNodes.Remove(sourceGroup!);
-            if (ReferenceEquals(SelectedNode, sourceGroup))
-            {
-                SelectedNode = null;
-            }
-        }
+        // 空分组保留,便于用户先建立层级再逐步添加连接。
         if (_sessionCache.TryGetValue(sessionId, out SessionProfile? session))
         {
             // Guid.Empty 是“未分组”落点:落库必须存 null,否则下次加载时会话会
             // 因找不到分组而从树里消失。
             session.GroupId = targetGroupId == Guid.Empty ? null : targetGroupId;
             await _repository.SaveSessionAsync(session);
-        }
-        if (sourceGroupEmptied)
-        {
-            await _repository.DeleteGroupAsync(sourceGroup!.Id);
         }
     }
 
@@ -1085,7 +1093,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
     public string DescribeDropTarget(Guid targetGroupId) =>
         targetGroupId == Guid.Empty
             ? Strings.Get("Svc_Ungrouped")
-            : Nodes.FirstOrDefault(node => node.IsGroup && node.Id == targetGroupId)?.Name
+            : FindGroupNode(targetGroupId)?.GroupPath
               ?? Strings.Get("Svc_Ungrouped");
 
     /// <summary>返回会话当前所属分组 Id;根级(未分组)为 <see cref="Guid.Empty" />,节点不存在为 null。</summary>
@@ -1104,9 +1112,10 @@ public sealed class SessionTreeViewModel : ReactiveObject
         SessionTreeNodeViewModel node
     )
     {
-        int index = 0;
+        int index = node.IsGroup ? 0 : children.TakeWhile(static child => child.IsGroup).Count();
         while (
             index < children.Count
+            && !children[index].IsGroup
             && string.Compare(children[index].Name, node.Name, StringComparison.OrdinalIgnoreCase) < 0
         )
         {
@@ -1173,7 +1182,12 @@ public sealed class SessionTreeViewModel : ReactiveObject
         // 置顶的会话恒在树顶可见,不必为了露出它把整个分组铺开。
         if (!node.IsPinned)
         {
-            parentGroup?.IsExpanded = true;
+            SessionTreeNodeViewModel? currentGroup = parentGroup;
+            while (currentGroup is not null)
+            {
+                currentGroup.IsExpanded = true;
+                currentGroup = currentGroup.ParentGroup;
+            }
         }
         foreach (SessionTreeNodeViewModel current in EnumerateSessionNodes())
         {
@@ -1184,7 +1198,42 @@ public sealed class SessionTreeViewModel : ReactiveObject
     }
 
     private IEnumerable<SessionTreeNodeViewModel> EnumerateSessionNodes() =>
-        Nodes.SelectMany(node => node.IsGroup ? node.Children : [node]);
+        Nodes.SelectMany(EnumerateSessionsUnder);
+
+    private static IEnumerable<SessionTreeNodeViewModel> EnumerateSessionsUnder(SessionTreeNodeViewModel node)
+    {
+        if (!node.IsGroup)
+        {
+            yield return node;
+            yield break;
+        }
+        foreach (SessionTreeNodeViewModel child in node.Children)
+        {
+            foreach (SessionTreeNodeViewModel session in EnumerateSessionsUnder(child))
+            {
+                yield return session;
+            }
+        }
+    }
+
+    private IEnumerable<SessionTreeNodeViewModel> EnumerateGroupNodes() =>
+        Nodes.SelectMany(EnumerateGroupsUnder);
+
+    private static IEnumerable<SessionTreeNodeViewModel> EnumerateGroupsUnder(SessionTreeNodeViewModel node)
+    {
+        if (!node.IsGroup)
+        {
+            yield break;
+        }
+        yield return node;
+        foreach (SessionTreeNodeViewModel child in node.Children)
+        {
+            foreach (SessionTreeNodeViewModel group in EnumerateGroupsUnder(child))
+            {
+                yield return group;
+            }
+        }
+    }
 
     /// <summary>
     /// 换语言后重取树上 C# 侧拼的文案:会话行的置顶菜单项与状态标签,
@@ -1198,7 +1247,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
         if (GroupNodes.FirstOrDefault(node => node.Id == Guid.Empty) is { } ungrouped)
         {
-            ungrouped.Name = Strings.Get("Svc_Ungrouped");
+            ungrouped.Name = ungrouped.GroupPath = Strings.Get("Svc_Ungrouped");
         }
         this.RaisePropertyChanged(nameof(OpenSelectedText));
         this.RaisePropertyChanged(nameof(OpenSelectedInSyncChannelText));
@@ -1206,7 +1255,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(DeleteSelectedText));
     }
 
-    /// <summary>在树根与各分组下查找会话节点;<paramref name="parentGroup" /> 为 null 表示根级。</summary>
+    /// <summary>在任意层级查找会话节点;<paramref name="parentGroup" /> 为 null 表示根级。</summary>
     private SessionTreeNodeViewModel? FindSessionNode(
         Guid sessionId,
         out SessionTreeNodeViewModel? parentGroup
@@ -1214,31 +1263,45 @@ public sealed class SessionTreeViewModel : ReactiveObject
     {
         foreach (SessionTreeNodeViewModel node in Nodes)
         {
-            if (node.IsGroup)
-            {
-                SessionTreeNodeViewModel? child = node.Children.FirstOrDefault(item =>
-                    item.Id == sessionId
-                );
-                if (child is null)
-                {
-                    continue;
-                }
-                parentGroup = node;
-                return child;
-            }
-            if (node.Id != sessionId)
+            SessionTreeNodeViewModel? found = FindSessionUnder(node, sessionId);
+            if (found is null)
             {
                 continue;
             }
-            parentGroup = null;
-            return node;
+            parentGroup = found.ParentGroup;
+            return found;
         }
         parentGroup = null;
         return null;
     }
 
-    private void RefreshHasNoSessions() =>
-        HasNoSessions = !Nodes.Any(node => !node.IsGroup || node.Children.Count > 0);
+    private static SessionTreeNodeViewModel? FindSessionUnder(SessionTreeNodeViewModel node, Guid sessionId)
+    {
+        if (!node.IsGroup)
+        {
+            return node.Id == sessionId ? node : null;
+        }
+        foreach (SessionTreeNodeViewModel child in node.Children)
+        {
+            if (FindSessionUnder(child, sessionId) is { } found)
+            {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    private SessionTreeNodeViewModel? FindGroupNode(Guid groupId) =>
+        EnumerateGroupNodes().FirstOrDefault(node => node.Id == groupId);
+
+    /// <summary>有可导出的连接或空组。</summary>
+    public bool HasExportableNodes => Nodes.Count > 0;
+
+    private void RefreshHasNoSessions()
+    {
+        HasNoSessions = !EnumerateSessionNodes().Any();
+        this.RaisePropertyChanged(nameof(HasExportableNodes));
+    }
 
     private async Task MoveSelectedToGroupAsync(SessionTreeNodeViewModel? targetGroup)
     {
@@ -1300,70 +1363,90 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     private async Task LoadTreeAsync()
     {
-        Nodes.Clear();
-        GroupNodes.Clear();
-        _sessionCache.Clear();
 
-        // 分组的初始展开态:设置说了算(#474),但用户这次运行里手动改过的以记忆为准 ——
-        // 新建一条连接就把刚展开的分组折回去,比不折叠更烦人。
+        // 分组的初始展开态:设置说了算(#474),但用户这次运行里手动改过的以记忆为准。
         bool defaultExpanded = _settings is null
             || !(await _settings.GetSnapshotAsync().ConfigureAwait(true)).General.CollapseGroupsByDefault;
         _defaultExpanded = defaultExpanded;
 
-        // 以会话的 GroupId 为唯一事实来源分组;无分组的会话归入“未分组”节点。
         List<ServerGroup> groups = await _repository.GetAllGroupsAsync();
         List<SessionProfile> sessions = await _repository.GetAllSessionsAsync();
-        var byGroup = sessions
-            .Where(session => session.GroupId is not null)
-            .GroupBy(session => session.GroupId!.Value)
-            .ToDictionary(grouping => grouping.Key, grouping => grouping.ToList());
-        var ungrouped = sessions.Where(session => session.GroupId is null).ToList();
-        int groupIndex = 0;
-        foreach (ServerGroup group in groups.OrderBy(item => item.SortOrder))
+        var groupTree = new ServerGroupTree(groups);
+        Guid? selectedId = SelectedNode?.Id;
+        bool selectedGroup = SelectedNode?.IsGroup == true;
+        Guid[] marked = [.. _multiSelection.Select(node => node.Id)];
+        _sessionCache.Clear();
+        GroupNodes.Clear();
+        List<SessionTreeNodeViewModel> roots = [];
+        var groupNodes = new Dictionary<Guid, SessionTreeNodeViewModel>();
+        foreach (ServerGroup group in groupTree.OrderedGroups)
         {
+            var parent = groupTree.ParentOf(group.Id) is { } parentId ? groupNodes[parentId] : null;
             var groupNode = new SessionTreeNodeViewModel(group.Id, group.Name, true)
             {
-                // 文件夹图标按设计 FrJPu 以 warning/info/accent 轮换配色。
-                GroupColorIndex = groupIndex++ % 3,
+                ParentGroup = parent,
+                Depth = parent is null ? 0 : parent.Depth + 1,
+                GroupPath = parent is null ? group.Name : $"{parent.GroupPath} > {group.Name}",
+                GroupColorIndex = (parent?.Children.Count ?? roots.Count) % 3,
                 IsExpanded = _groupExpansion.GetValueOrDefault(group.Id, defaultExpanded),
             };
-            if (byGroup.TryGetValue(group.Id, out List<SessionProfile>? members))
-            {
-                foreach (
-                    SessionProfile session in members.OrderBy(
-                        s => s.Name,
-                        StringComparer.OrdinalIgnoreCase
-                    )
-                )
-                {
-                    groupNode.Children.Add(CreateSessionNode(session, false));
-                }
-            }
-            Nodes.Add(groupNode);
+            groupNodes.Add(group.Id, groupNode);
             GroupNodes.Add(groupNode);
+            if (parent is null)
+            {
+                roots.Add(groupNode);
+            }
+            else
+            {
+                parent.Children.Add(groupNode);
+            }
         }
-
-        // 未分组会话直接挂在树根(设计 FrJPu),不再收进“未分组”目录。
-        foreach (
-            SessionProfile session in ungrouped.OrderBy(
-                s => s.Name,
-                StringComparer.OrdinalIgnoreCase
-            )
-        )
+        foreach (SessionProfile session in sessions.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
         {
-            Nodes.Add(CreateSessionNode(session, true));
+            var parent = session.GroupId is { } id ? groupNodes.GetValueOrDefault(id) : null;
+            var node = CreateSessionNode(session, parent is null);
+            if (parent is null)
+            {
+                roots.Add(node);
+            }
+            else
+            {
+                node.ParentGroup = parent;
+                node.Depth = parent.Depth + 1;
+                node.GroupPath = parent.GroupPath;
+                parent.Children.Add(node);
+            }
         }
-
-        // “移动到分组”子菜单始终提供“未分组”落点(即移回树根)。
-        GroupNodes.Add(new(Guid.Empty, Strings.Get("Svc_Ungrouped"), true));
+        Nodes.CollectionChanged -= OnNodesChanged;
+        try
+        {
+            foreach (var old in Nodes) Unwatch(old);
+            Nodes.Clear();
+            foreach (var root in roots)
+            {
+                Nodes.Add(root);
+                Watch(root);
+            }
+        }
+        finally
+        {
+            Nodes.CollectionChanged += OnNodesChanged;
+        }
+        GroupNodes.Add(new(Guid.Empty, Strings.Get("Svc_Ungrouped"), true) { GroupPath = Strings.Get("Svc_Ungrouped") });
         RefreshHasNoSessions();
-        // 过滤着的时候重建了树(编辑 / 新建一条连接、云同步回写):新建的分组节点照记忆展开,
-        // 有命中的得重新撑开,否则刚保存完,过滤结果就缩回了一排分组标题。
         if (IsFiltering)
         {
             ExpandGroupsWithMatches();
-            SyncRows();
         }
+        SyncRows();
+        SelectedNode = Rows.FirstOrDefault(n => n.Id == selectedId && n.IsGroup == selectedGroup);
+        if (marked.Length >= 2)
+        {
+            var visible = Rows.Where(n => !n.IsGroup).ToDictionary(n => n.Id);
+            var keep = marked.Select(id => visible.GetValueOrDefault(id)).OfType<SessionTreeNodeViewModel>().ToList();
+            if (keep.Count >= 2) ApplyMultiSelection(keep);
+        }
+        RaiseGroupMoveState();
     }
 
     private SessionTreeNodeViewModel CreateSessionNode(SessionProfile session, bool isRootLevel)
@@ -1399,10 +1482,13 @@ public sealed class SessionTreeViewModel : ReactiveObject
         {
             return;
         }
-        List<Guid> memberIds = [.. group.Children.Select(child => child.Id)];
+        List<SessionTreeNodeViewModel> subtree = [.. EnumerateGroupsUnder(group)];
+        List<Guid> memberIds = [.. EnumerateSessionsUnder(group).Select(static node => node.Id)];
         if (ConfirmDeleteGroup is not null)
         {
-            string message = memberIds.Count == 0
+            string message = subtree.Count > 1
+                ? Strings.Format("Tree_DeleteGroupConfirmSubtree", group.GroupPath, subtree.Count - 1, memberIds.Count)
+                : memberIds.Count == 0
                 ? Strings.Format("Tree_DeleteGroupConfirmEmpty", group.Name)
                 : Strings.Format("Tree_DeleteGroupConfirm", group.Name, memberIds.Count);
             if (!await ConfirmDeleteGroup(message))
@@ -1417,11 +1503,23 @@ public sealed class SessionTreeViewModel : ReactiveObject
             _statusCache.Remove(sessionId);
             _syncChannelCache.Remove(sessionId);
         }
-        await _repository.DeleteGroupAsync(group.Id);
-        Nodes.Remove(group);
-        // GroupNodes 里存的就是同一批分组节点实例(“移动到分组”子菜单绑定它),
-        // 不同步移除的话,菜单里会留下一个指向已删分组的落点。
-        GroupNodes.Remove(group);
+        foreach (SessionTreeNodeViewModel node in subtree.OrderByDescending(static node => node.Depth))
+        {
+            await _repository.DeleteGroupAsync(node.Id);
+            _groupExpansion.Remove(node.Id);
+        }
+        if (group.ParentGroup is { } parent)
+        {
+            parent.Children.Remove(group);
+        }
+        else
+        {
+            Nodes.Remove(group);
+        }
+        foreach (SessionTreeNodeViewModel node in subtree)
+        {
+            GroupNodes.Remove(node);
+        }
         SelectedNode = null;
         RefreshHasNoSessions();
     }
@@ -1513,7 +1611,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     /// <summary>
     /// 把多选的连接一条条移进目标分组。逐条走 <see cref="MoveSessionToGroupAsync" />:
-    /// 「源分组空了连同分组一起删」那条规矩与拖放、单条移动完全一致。
+    /// 空分组与单条移动时一样保留。
     /// </summary>
     private async Task MoveMultiSelectionToGroupAsync(SessionTreeNodeViewModel? targetGroup)
     {
@@ -1553,43 +1651,37 @@ public sealed class SessionTreeViewModel : ReactiveObject
         }
     }
 
-    /// <summary>选中分组的全部连接,按组内顺序;选中的不是分组时为空。过滤框只管显示,整组的操作照旧是整组。</summary>
+    /// <summary>选中分组及其全部后代连接,按树上顺序;选中的不是分组时为空。</summary>
     private List<SessionProfile> SelectedGroupProfiles() =>
         SelectedNode is { IsGroup: true } group
-            ? [.. group.Children.Select(child => _sessionCache.GetValueOrDefault(child.Id)).OfType<SessionProfile>()]
+            ? [.. EnumerateSessionsUnder(group).Select(child => _sessionCache.GetValueOrDefault(child.Id)).OfType<SessionProfile>()]
             : [];
 
     private void RaiseExportGroup()
     {
         if (SelectedNode is { IsGroup: true } group)
         {
-            ExportRequested?.Invoke(new SessionExportRequest([.. group.Children.Select(static child => child.Id)], group.Name));
+            ExportRequested?.Invoke(new SessionExportRequest(
+                [.. EnumerateSessionsUnder(group).Select(static child => child.Id)],
+                group.GroupPath, group.Id, false));
         }
     }
 
     /// <summary>树上全部连接的 Id,按树上从上到下的顺序。</summary>
     private IEnumerable<Guid> OrderedSessionIds() =>
-        Nodes.SelectMany(node => node.IsGroup ? node.Children : [node]).Select(static node => node.Id);
+        Nodes.SelectMany(EnumerateSessionsUnder).Select(static node => node.Id);
 
     private int GroupIndexOf(SessionTreeNodeViewModel group)
     {
-        int index = 0;
-        foreach (SessionTreeNodeViewModel node in Nodes)
-        {
-            if (!node.IsGroup)
-            {
-                continue;
-            }
-            if (ReferenceEquals(node, group))
-            {
-                return index;
-            }
-            index++;
-        }
-        return -1;
+        IEnumerable<SessionTreeNodeViewModel> siblings = group.ParentGroup?.Children
+            .Where(static node => node.IsGroup)
+            ?? Nodes.Where(static node => node.IsGroup);
+        return siblings.ToList().FindIndex(node => ReferenceEquals(node, group));
     }
 
-    private int GroupCount() => Nodes.Count(static node => node.IsGroup);
+    private int GroupCount(SessionTreeNodeViewModel group) =>
+        group.ParentGroup?.Children.Count(static node => node.IsGroup)
+        ?? Nodes.Count(static node => node.IsGroup);
 
     private void RaiseGroupMoveState()
     {
@@ -1614,8 +1706,13 @@ public sealed class SessionTreeViewModel : ReactiveObject
     /// <param name="newIndex">挪到第几位。</param>
     public async Task MoveGroupAsync(Guid groupId, int newIndex)
     {
-        List<SessionTreeNodeViewModel> groups = [.. Nodes.Where(static node => node.IsGroup)];
-        int from = groups.FindIndex(node => node.Id == groupId);
+        SessionTreeNodeViewModel? moving = FindGroupNode(groupId);
+        if (moving is null)
+        {
+            return;
+        }
+        List<SessionTreeNodeViewModel> groups = [.. (moving.ParentGroup?.Children ?? Nodes).Where(static node => node.IsGroup)];
+        int from = groups.FindIndex(node => ReferenceEquals(node, moving));
         if (from < 0)
         {
             return;
@@ -1625,7 +1722,6 @@ public sealed class SessionTreeViewModel : ReactiveObject
         {
             return;
         }
-        SessionTreeNodeViewModel moving = groups[from];
         groups.RemoveAt(from);
         groups.Insert(newIndex, moving);
         await ApplyGroupOrderAsync(groups);
@@ -1686,11 +1782,16 @@ public sealed class SessionTreeViewModel : ReactiveObject
     }
 
     /// <summary>分组按名称排序(自然序:「机房 2」排在「机房 10」前面;按当前区域的排序规则,中文按拼音)。</summary>
-    public Task SortGroupsByNameAsync()
+    public async Task SortGroupsByNameAsync()
     {
         IComparer<string> comparer = NaturalNameComparer();
-        List<SessionTreeNodeViewModel> groups = [.. Nodes.Where(static node => node.IsGroup).OrderBy(static node => node.Name, comparer)];
-        return ApplyGroupOrderAsync(groups);
+        foreach (SessionTreeNodeViewModel? parent in EnumerateGroupNodes().Cast<SessionTreeNodeViewModel?>().Prepend(null).ToList())
+        {
+            List<SessionTreeNodeViewModel> groups = [.. (parent?.Children ?? Nodes)
+                .Where(static node => node.IsGroup)
+                .OrderBy(static node => node.Name, comparer)];
+            await ApplyGroupOrderAsync(groups);
+        }
     }
 
     /// <summary>
@@ -1719,43 +1820,46 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     private async Task ApplyGroupOrderAsync(List<SessionTreeNodeViewModel> ordered)
     {
-        // 分组恒排在 Nodes 的最前面(未分组的会话跟在后面),逐个挪到位即可。
+        if (ordered.Count == 0)
+        {
+            return;
+        }
+        ObservableCollection<SessionTreeNodeViewModel> siblings = ordered[0].ParentGroup?.Children ?? Nodes;
         for (int i = 0; i < ordered.Count; i++)
         {
-            int at = Nodes.IndexOf(ordered[i]);
+            int at = siblings.IndexOf(ordered[i]);
             if (at >= 0 && at != i)
             {
-                Nodes.Move(at, i);
+                siblings.Move(at, i);
             }
-            int menuAt = GroupNodes.IndexOf(ordered[i]);
-            if (menuAt >= 0 && menuAt != i)
-            {
-                GroupNodes.Move(menuAt, i);
-            }
-            // 文件夹图标的轮换配色跟着位置走,与重新加载后的样子一致。
             ordered[i].GroupColorIndex = i % 3;
         }
+        RefreshGroupMenuOrder();
         RaiseGroupMoveState();
 
         List<ServerGroup> stored = await _repository.GetAllGroupsAsync();
-        var byId = new Dictionary<Guid, ServerGroup>();
-        foreach (ServerGroup group in stored)
+        var byId = stored.ToDictionary(static group => group.Id);
+        for (int i = 0; i < ordered.Count; i++)
         {
-            _ = byId.TryAdd(group.Id, group);
-        }
-        int next = 0;
-        foreach (SessionTreeNodeViewModel node in ordered)
-        {
-            if (byId.Remove(node.Id, out ServerGroup? group))
+            if (byId.TryGetValue(ordered[i].Id, out ServerGroup? group))
             {
-                await SaveSortOrderAsync(group, next);
+                await SaveSortOrderAsync(group, i);
             }
-            next++;
         }
-        // 库里有、树上却没有的分组(理论上不该有)排到最后,免得序号和树上的撞车。
-        foreach (ServerGroup group in byId.Values.OrderBy(static g => g.SortOrder))
+    }
+
+    private void RefreshGroupMenuOrder()
+    {
+        SessionTreeNodeViewModel? ungrouped = GroupNodes.FirstOrDefault(static node => node.Id == Guid.Empty);
+        List<SessionTreeNodeViewModel> groups = [.. EnumerateGroupNodes()];
+        GroupNodes.Clear();
+        foreach (SessionTreeNodeViewModel group in groups)
         {
-            await SaveSortOrderAsync(group, next++);
+            GroupNodes.Add(group);
+        }
+        if (ungrouped is not null)
+        {
+            GroupNodes.Add(ungrouped);
         }
     }
 
@@ -1771,7 +1875,7 @@ public sealed class SessionTreeViewModel : ReactiveObject
 
     private void SetAllGroupsExpanded(bool expanded)
     {
-        foreach (SessionTreeNodeViewModel node in Nodes.Where(static node => node.IsGroup).ToList())
+        foreach (SessionTreeNodeViewModel node in EnumerateGroupNodes())
         {
             node.IsExpanded = expanded;
         }

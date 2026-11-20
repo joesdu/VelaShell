@@ -41,6 +41,13 @@ public interface ISessionArchiveService
         string? passphrase,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Preview the complete group or export-all scope, including empty groups.</summary>
+    Task<SessionExportPreview> PreviewExportAsync(SessionExportScope scope, CancellationToken cancellationToken = default);
+
+    /// <summary>Export the same scope used by the preview.</summary>
+    Task<SessionExportFile> ExportAsync(SessionExportScope scope, SessionFileFormat format, string? passphrase,
+        CancellationToken cancellationToken = default);
+
     /// <summary>CSV 导入模板(带 BOM 的 UTF-8)。</summary>
     /// <returns>文件字节。</returns>
     byte[] CreateCsvTemplate();

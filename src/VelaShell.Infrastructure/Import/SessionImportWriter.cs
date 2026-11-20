@@ -42,18 +42,47 @@ internal static class SessionImportWriter
         // 这一批落的盘在审计里记成「导入」(Xshell / WinSCP / ssh_config 都经过这里)。
         using IDisposable source = AuditSourceScope.Enter(AuditSources.Import);
         List<ServerGroup> groups = await repository.GetAllGroupsAsync().ConfigureAwait(false);
-        int nextSort = groups.Count == 0 ? 0 : groups.Max(static g => g.SortOrder) + 1;
-        var group = new ServerGroup
+        var root = new ServerGroup
         {
             Name = string.IsNullOrWhiteSpace(groupName) ? tag : groupName,
-            SortOrder = nextSort
+            SortOrder = groups.Where(static g => g.ParentGroupId is null).Select(static g => g.SortOrder).DefaultIfEmpty(-1).Max() + 1
         };
+        var newGroups = new List<ServerGroup> { root };
+        var children = new Dictionary<Guid, Dictionary<string, ServerGroup>>();
+        var planned = new List<(ImportedSession Item, Guid GroupId)>(toImport.Count);
+        foreach (ImportedSession item in toImport)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(item.GroupPath.Count, ServerGroupTree.MaxDepth);
+            ServerGroup parent = root;
+            foreach (string segment in item.GroupPath)
+            {
+                if (!children.TryGetValue(parent.Id, out var siblings))
+                {
+                    children.Add(parent.Id, siblings = new(StringComparer.Ordinal));
+                }
+                if (!siblings.TryGetValue(segment, out ServerGroup? child))
+                {
+                    child = new ServerGroup { Name = segment, ParentGroupId = parent.Id, SortOrder = siblings.Count };
+                    siblings.Add(segment, child);
+                    newGroups.Add(child);
+                }
+                parent = child;
+            }
+            planned.Add((item, parent.Id));
+        }
+        // Every group is persisted before the first profile is written. SaveSessionAsync maintains direct membership.
+        foreach (ServerGroup group in newGroups)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await repository.SaveGroupAsync(group).ConfigureAwait(false);
+        }
 
         int recovered = 0;
         // 别名 → 刚落盘的配置,供第二趟解析 ProxyJump 用;同名取先导入的那条。
         var byAlias = new Dictionary<string, SessionProfile>(StringComparer.OrdinalIgnoreCase);
         var pendingJumps = new List<(SessionProfile Profile, string Alias)>();
-        foreach (ImportedSession item in toImport)
+        foreach ((ImportedSession item, Guid groupId) in planned)
         {
             cancellationToken.ThrowIfCancellationRequested();
             bool usesKey = item.PrivateKeyPath is { Length: > 0 };
@@ -73,7 +102,7 @@ internal static class SessionImportWriter
                 CertificatePath = item.AuthMethod == AuthMethod.Certificate ? item.CertificatePath : null,
                 // SSH 层的选项只对 SSH 生效(SessionProfile.Ssh 的约定:其余协议一律存 null),一项都没开也存 null。
                 Ssh = isSsh && item.Ssh is { IsEmpty: false } ssh ? ssh.Clone() : null,
-                GroupId = group.Id,
+                GroupId = groupId,
                 Tags = [tag.ToLowerInvariant()],
                 Ftp = item.FtpSettings,
                 PluginProtocolId = item.PluginProtocolId,
@@ -86,7 +115,6 @@ internal static class SessionImportWriter
                 await dataStore.UpsertAsync(TunnelsCollection, profile.Id.ToString("D"), tunnels.ToList(), cancellationToken)
                     .ConfigureAwait(false);
             }
-            group.Sessions.Add(profile.Id);
             _ = byAlias.TryAdd(item.Name, profile);
             if (item.JumpHostAlias is { Length: > 0 } alias)
             {
@@ -97,14 +125,13 @@ internal static class SessionImportWriter
                 recovered++;
             }
         }
-        await repository.SaveGroupAsync(group).ConfigureAwait(false);
         await LinkJumpHostsAsync(repository, byAlias, pendingJumps, cancellationToken).ConfigureAwait(false);
 
         return new SessionImportOutcome
         {
             Imported = toImport.Count,
             PasswordsRecovered = recovered,
-            GroupId = group.Id
+            GroupId = root.Id
         };
     }
 

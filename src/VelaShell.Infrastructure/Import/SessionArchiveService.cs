@@ -27,14 +27,18 @@ public sealed class SessionArchiveService(
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
 
     /// <inheritdoc />
+    public Task<SessionExportPreview> PreviewExportAsync(IReadOnlyCollection<Guid> profileIds, CancellationToken cancellationToken = default) =>
+        PreviewExportAsync(new SessionExportScope(profileIds), cancellationToken);
+
+    /// <inheritdoc />
     public async Task<SessionExportPreview> PreviewExportAsync(
-        IReadOnlyCollection<Guid> profileIds,
+        SessionExportScope scope,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(profileIds);
+        ArgumentNullException.ThrowIfNull(scope);
         (List<SessionProfile> all, List<ServerGroup> groups, List<SharedCredential> shared) = await LoadAsync().ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        SessionExportSelection selection = SessionArchiveBuilder.Select(profileIds, all, groups);
+        SessionExportSelection selection = SessionArchiveBuilder.Select(scope, all, groups);
         SessionArchive archive = SessionArchiveBuilder.Build(selection, groups, shared,
             new Dictionary<Guid, List<TunnelConfig>>(), _time.GetUtcNow().UtcDateTime, null);
         return new SessionExportPreview(
@@ -46,15 +50,19 @@ public sealed class SessionArchiveService(
     }
 
     /// <inheritdoc />
+    public Task<SessionExportFile> ExportAsync(IReadOnlyCollection<Guid> profileIds, SessionFileFormat format, string? passphrase,
+        CancellationToken cancellationToken = default) => ExportAsync(new SessionExportScope(profileIds), format, passphrase, cancellationToken);
+
+    /// <inheritdoc />
     public async Task<SessionExportFile> ExportAsync(
-        IReadOnlyCollection<Guid> profileIds,
+        SessionExportScope scope,
         SessionFileFormat format,
         string? passphrase,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(profileIds);
+        ArgumentNullException.ThrowIfNull(scope);
         (List<SessionProfile> all, List<ServerGroup> groups, List<SharedCredential> shared) = await LoadAsync().ConfigureAwait(false);
-        SessionExportSelection selection = SessionArchiveBuilder.Select(profileIds, all, groups);
+        SessionExportSelection selection = SessionArchiveBuilder.Select(scope, all, groups);
         Dictionary<Guid, List<TunnelConfig>> tunnels = format is SessionFileFormat.Json or SessionFileFormat.SshConfig
             ? await LoadTunnelsAsync(selection.Sessions, cancellationToken).ConfigureAwait(false)
             : [];

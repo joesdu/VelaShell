@@ -360,6 +360,7 @@ public sealed class GistSyncServiceTests
         ISharedCredentialRepository credentials = Substitute.For<ISharedCredentialRepository>();
         settings.GetSettingsAsync().Returns(new AppSettings());
         sessions.GetAllSessionsAsync().Returns([]);
+        sessions.GetAllGroupsAsync().Returns([]);
         credentials.GetAllAsync().Returns([]);
         var seen = new List<string>();
         settings.When(s => s.SaveSettingsAsync(Arg.Any<AppSettings>())).Do(_ => seen.Add("settings:" + AuditSourceScope.Current));
@@ -741,13 +742,109 @@ public sealed class GistSyncServiceTests
     }
 
     [TestMethod]
+    [DataRow(2)]
+    [DataRow(3)]
+    public async Task Pull_LegacyGroupUpdatesPreserveLocalParents(int schema)
+    {
+        (GistSyncService service, ISessionRepository sessions, _) = CreateWithCredentials();
+        var root = new ServerGroup { Name = "local" };
+        var child = new ServerGroup { Name = "before", ParentGroupId = root.Id };
+        sessions.GetAllGroupsAsync().Returns([root, child]);
+        var added = Guid.NewGuid();
+        SyncEnvelope envelope = GistSyncService.ParseEnvelope($$$"""
+            {"schemaVersion":{{{schema}}},"payload":{"schemaVersion":{{{schema}}},"groups":[
+             {"id":"{{{child.Id}}}","name":"after"},{"id":"{{{added}}}","name":"after"}]}}
+            """);
+
+        SyncResult result = await service.ApplyRemoteAsync(ProfilesOnly(), envelope, "revision", CancellationToken.None);
+
+        Assert.IsTrue(result.Success, result.Message);
+        await sessions.Received(1).SaveGroupAsync(Arg.Is<ServerGroup>(g => g.Id == child.Id && g.Name == "after" && g.ParentGroupId == root.Id));
+        await sessions.Received(1).SaveGroupAsync(Arg.Is<ServerGroup>(g => g.Id == added && g.ParentGroupId == null));
+        await sessions.DidNotReceive().SaveGroupAsync(Arg.Is<ServerGroup>(g => g.Id == root.Id));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Pull_HierarchyAndExplicitRootMovesRoundTrip(bool encrypted)
+    {
+        (GistSyncService service, ISessionRepository sessions, _) = CreateWithCredentials(PassphraseProtector());
+        SyncSettings config = ProfilesOnly();
+        config.GistId = "gist-A";
+        config.ProtectedPassphrase = encrypted ? "protected-passphrase" : null;
+        var root = new ServerGroup { Name = "a" };
+        var child = new ServerGroup { Name = "b", ParentGroupId = root.Id };
+        sessions.GetAllGroupsAsync().Returns([child, root]);
+        SyncEnvelope nested = GistSyncService.ParseEnvelope(await service.BuildGistContentAsync(config, CancellationToken.None));
+        Assert.AreEqual(4, nested.SchemaVersion);
+        Assert.AreEqual(encrypted, nested.Encrypted);
+
+        sessions.GetAllGroupsAsync().Returns([]);
+        var saved = new List<ServerGroup>();
+        sessions.When(s => s.SaveGroupAsync(Arg.Any<ServerGroup>())).Do(call => saved.Add(call.Arg<ServerGroup>()));
+        int refreshed = 0;
+        service.ProfilesApplied += (_, _) => refreshed++;
+        Assert.IsTrue((await service.ApplyRemoteAsync(config, nested, "v1", CancellationToken.None)).Success);
+        Assert.AreSequenceEqual([root.Id, child.Id], saved.Select(g => g.Id).ToArray());
+        Assert.AreEqual(root.Id, saved[1].ParentGroupId);
+
+        sessions.GetAllGroupsAsync().Returns([new ServerGroup { Id = child.Id, Name = "b" }]);
+        SyncEnvelope moved = GistSyncService.ParseEnvelope(await service.BuildGistContentAsync(config, CancellationToken.None));
+        Assert.AreEqual(4, moved.SchemaVersion);
+        sessions.GetAllGroupsAsync().Returns([root, child]);
+        Assert.IsTrue((await service.ApplyRemoteAsync(config, moved, "v2", CancellationToken.None)).Success);
+        Assert.AreEqual(child.Id, saved[^1].Id);
+        Assert.IsNull(saved[^1].ParentGroupId);
+        Assert.AreEqual(2, refreshed);
+
+        sessions.GetAllGroupsAsync().Returns([]);
+        config.GistId = "another-gist";
+        Assert.AreEqual(2, GistSyncService.ParseEnvelope(await service.BuildGistContentAsync(config, CancellationToken.None)).SchemaVersion);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Pull_RejectsInvalidMergedGraphBeforeWritingAnything(bool missingParent)
+    {
+        ISettingsService settings = Substitute.For<ISettingsService>();
+        ISessionRepository sessions = Substitute.For<ISessionRepository>();
+        var root = new ServerGroup { Name = "root" };
+        var localOnly = new ServerGroup { Name = "local", ParentGroupId = root.Id };
+        sessions.GetAllGroupsAsync().Returns([root, localOnly]);
+        var service = new GistSyncService(settings, sessions, Substitute.For<IAppDataStore>(),
+            Substitute.For<IQuickCommandRepository>(), Substitute.For<ISecretProtector>());
+        bool refreshed = false;
+        service.ProfilesApplied += (_, _) => refreshed = true;
+        var payload = new SyncPayload
+        {
+            SchemaVersion = 4, Settings = new AppSettings(),
+            Groups = [new ServerGroup { Id = root.Id, ParentGroupId = missingParent ? Guid.NewGuid() : localOnly.Id }]
+        };
+        SyncResult result = await service.ApplyRemoteAsync(new SyncSettings(), new SyncEnvelope { SchemaVersion = 4, Payload = payload },
+            remoteVersion: null, CancellationToken.None);
+        Assert.IsFalse(result.Success);
+        await sessions.DidNotReceive().SaveGroupAsync(Arg.Any<ServerGroup>());
+        await settings.DidNotReceive().SaveSettingsAsync(Arg.Any<AppSettings>());
+        Assert.IsFalse(refreshed);
+    }
+
+    [TestMethod]
+    public void Parse_HierarchyCannotSilentlyTurnAMissingParentFieldIntoARootMove()
+    {
+        const string malformed = """{"schemaVersion":4,"payload":{"schemaVersion":4,"groups":[{"name":"child"}]}}""";
+        Assert.ThrowsExactly<System.Text.Json.JsonException>(() => GistSyncService.ParseEnvelope(malformed));
+    }
+
+    [TestMethod]
     public async Task Pull_RejectsAPayloadNewerThanItUnderstands()
     {
         (GistSyncService service, _, _) = CreateWithCredentials();
 
         SyncResult result = await service.ApplyRemoteAsync(
             ProfilesOnly(),
-            new SyncEnvelope { SchemaVersion = 4, Payload = new SyncPayload { SchemaVersion = 4 } },
+            new SyncEnvelope { SchemaVersion = 5, Payload = new SyncPayload { SchemaVersion = 5 } },
             remoteVersion: "rev",
             CancellationToken.None);
 
