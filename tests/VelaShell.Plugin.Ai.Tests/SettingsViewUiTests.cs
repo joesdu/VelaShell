@@ -2821,6 +2821,37 @@ public sealed partial class SettingsViewUiTests
     }
 
     [TestMethod]
+    public void ModelListSplitter_ChangesNavigationWidthForLongModelNames()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            (Window window, SettingsView view, _, _) = await ShowAsync(context, TwoProviders());
+            try
+            {
+                Grid layout = view.GetControl<Grid>("SettingsLayout");
+                GridSplitter splitter = view.GetControl<GridSplitter>("ModelListSplitter");
+                double initialWidth = layout.ColumnDefinitions[0].ActualWidth;
+                Point start = splitter.TranslatePoint(new(splitter.Bounds.Width / 2, splitter.Bounds.Height / 2), window)!.Value;
+
+                window.MouseDown(start, MouseButton.Left);
+                window.MouseMove(start + new Point(120, 0));
+                window.MouseUp(start + new Point(120, 0), MouseButton.Left);
+                await PumpAsync();
+
+                Assert.IsGreaterThan(initialWidth, layout.ColumnDefinitions[0].ActualWidth,
+                    "拖动分隔条应扩大模型列表区域");
+                Assert.IsLessThanOrEqualTo(420, layout.ColumnDefinitions[0].ActualWidth,
+                    "模型列表区域不能挤占整个编辑区");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [TestMethod]
     public void Sampling_AnthropicProtocolDisablesTemperatureAndTopP_ButKeepsTheSavedValues()
     {
         // Anthropic SDK 13.x 的接口版本(2026-10-21)不收 temperature / top_p,插件在这条协议上不发:

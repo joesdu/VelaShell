@@ -381,7 +381,14 @@ public partial class SettingsView : UserControl
             UpdateContextWindowHint();
         };
         ModelBox.TextChanged += (_, _) => UpdateContextWindowHint();
-        SizeChanged += (_, _) => SettingsLayout.ColumnDefinitions[0].Width = new GridLength(Bounds.Width < 650 ? 120 : 230);
+        SizeChanged += (_, _) =>
+        {
+            double currentWidth = SettingsLayout.ColumnDefinitions[0].Width.Value;
+            double navigationWidth = Bounds.Width < 650
+                ? 120
+                : Math.Clamp(currentWidth, 120, 420);
+            SettingsLayout.ColumnDefinitions[0].Width = new GridLength(navigationWidth);
+        };
 
         // 默认折叠的供应商只选中父行，不因活跃模型自动展开。
         AiProvider? activeProvider = _settings.Providers.FirstOrDefault(p => p.Models.Exists(m => m.Id == _settings.ActiveModelId));
