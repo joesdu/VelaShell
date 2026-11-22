@@ -23,7 +23,12 @@ public partial class AiAssistantRegionView : UserControl
         InitializeComponent();
         _hideTimer.Tick += (_, _) =>
         {
-            if (IsPointerOver || _dragStart is not null) return;
+            if (IsPointerOver || _dragStart is not null || IsRegionFocused)
+            {
+                _hideTimer.Stop();
+                return;
+            }
+
             // 下拉菜单在独立 PopupRoot 内,指针离开面板并不代表离开了插件的操作区域。
             if (State?.Content is { } content && content.GetVisualDescendants()
                     .Any(control => control is Popup { IsOpen: true } or ComboBox { IsDropDownOpen: true }
@@ -41,11 +46,23 @@ public partial class AiAssistantRegionView : UserControl
             _hideTimer.Stop();
             if (State is { IsAutoHide: true, IsVisible: true }) State.Activate();
         };
-        PointerExited += (_, _) =>
-        {
-            if (State is { IsDocked: false, IsExpanded: true }) _hideTimer.Start();
-        };
+        PointerExited += (_, _) => UpdateHideTimer();
+        AddHandler(GotFocusEvent, (_, _) => _hideTimer.Stop(), RoutingStrategies.Bubble);
+        AddHandler(LostFocusEvent, (_, _) => Dispatcher.UIThread.Post(UpdateHideTimer), RoutingStrategies.Bubble);
         DetachedFromVisualTree += (_, _) => _hideTimer.Stop();
+    }
+
+    private bool IsRegionFocused => IsKeyboardFocusWithin;
+
+    private void UpdateHideTimer()
+    {
+        if (State is not { IsDocked: false, IsExpanded: true } || IsPointerOver || _dragStart is not null || IsRegionFocused)
+        {
+            _hideTimer.Stop();
+            return;
+        }
+
+        _hideTimer.Start();
     }
 
     private void PinClicked(object? sender, RoutedEventArgs e) => State?.TogglePin();

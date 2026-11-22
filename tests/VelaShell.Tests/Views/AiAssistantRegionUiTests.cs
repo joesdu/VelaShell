@@ -229,6 +229,38 @@ public sealed class AiAssistantRegionUiTests
         });
 
     [TestMethod]
+    public Task RegionPointer_WithRegionFocusStaysExpandedUntilFocusLeaves() =>
+        _session.RunOnUiAsync(async () =>
+        {
+            var state = new AiAssistantRegionViewModel();
+            var input = new TextBox { Text = "unfinished question" };
+            var view = new AiAssistantRegionView { DataContext = state, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };
+            var outside = new Button { Width = 200, Height = 600, Content = "outside" };
+            var host = new Grid();
+            host.Children.Add(outside);
+            host.Children.Add(view);
+            var window = new Window { Width = 1000, Height = 600, Content = host };
+            var panel = new PluginPanel("velashell.ai", new NullLog(), new() { Title = "AI" }, input, state);
+            window.Show();
+            try
+            {
+                Layout(window);
+                Click(view, "PinButton");
+                Layout(window);
+                Assert.IsTrue(state.IsExpanded);
+                Assert.IsTrue(input.Focus());
+                window.MouseMove(new Point(10, 300));
+                await Task.Delay(400);
+                Assert.IsTrue(state.IsExpanded, "输入框仍有键盘焦点时,移出整个 AI 区域也不得收起");
+
+                Assert.IsTrue(outside.Focus());
+                await Task.Delay(400);
+                Assert.IsFalse(state.IsExpanded, "焦点离开整个 AI 区域后,移出区域应恢复自动收起");
+            }
+            finally { await panel.CloseAsync(); window.Close(); }
+        });
+
+    [TestMethod]
     public Task RegionButtonsAndPointer_AutoHideWaitsForDropdown_AndReusesTheView() =>
         _session.RunOnUiAsync(async () =>
         {
