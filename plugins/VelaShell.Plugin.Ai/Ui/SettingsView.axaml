@@ -26,7 +26,12 @@
   <!-- 版式对齐宿主设置页:左边一条 bg-sidebar 导航(贴着窗口边,跟着卡片左下圆角),
        右边留足内边距的可滚动内容区,内容按"节"分块。
        左栏是"供应商 › 模型"两层:供应商一行、其下模型缩进一档;右侧表单随选中的是哪一层切换。 -->
-  <Grid x:Name="SettingsLayout" ColumnDefinitions="230,*">
+  <Grid x:Name="SettingsLayout">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="230" MinWidth="120" MaxWidth="420" />
+      <ColumnDefinition Width="5" />
+      <ColumnDefinition Width="*" MinWidth="400" />
+    </Grid.ColumnDefinitions>
     <!-- 左:供应商/模型树 + 新增 -->
     <Border Grid.Column="0"
             Background="{DynamicResource VelaBgSidebar}"
@@ -124,13 +129,20 @@
       </DockPanel>
     </Border>
 
+    <!-- 左右栏之间的分隔条支持拖动,让较长的模型名称获得更多显示空间。 -->
+    <Border x:Name="ModelListSplitterLine" Grid.Column="1" Width="1" HorizontalAlignment="Center"
+            Background="{DynamicResource VelaBorderPrimary}" />
+    <GridSplitter x:Name="ModelListSplitter" Grid.Column="1" Background="Transparent"
+                  ResizeDirection="Columns" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                  Cursor="SizeWestEast" />
+
     <!-- 右:编辑表单。底色压到 VelaBgTerminal(设计图 E):宿主的插件窗体本体是 VelaBgSurface,
          而每一节卡片也是 VelaBgSurface —— 不垫这一层的话卡片只剩一圈 1px 描边,分不出块来。
          滚动条留白放在内容 Margin 上(勿用 ScrollViewer.Padding),
          避免悬停展开的覆盖式滚动条压住输入框右缘。
          左右都是 24:滚动条是<b>浮在</b>内容上的(不占布局),所以左右留白就等于这里写的数,
          右边不需要为它另外扣一块。它会飘在这 24 的空档里,压不到卡片。 -->
-    <Border Grid.Column="1" Background="{DynamicResource VelaBgTerminal}" CornerRadius="0,0,7,0">
+    <Border Grid.Column="2" Background="{DynamicResource VelaBgTerminal}" CornerRadius="0,0,7,0">
       <ScrollViewer HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="24,18" Spacing="14">
 
