@@ -574,26 +574,6 @@
     </ListBox.ItemTemplate>
   </ListBox>
 
-    <Button x:Name="NewRootGroupButton"
-            IsVisible="{Binding HasNoSessions}"
-            Click="NewRootGroup_Click"
-            HorizontalAlignment="Left"
-            Margin="12,8,12,0"
-            Padding="8,4"
-            Background="Transparent"
-            BorderBrush="{DynamicResource VelaBorderPrimary}"
-            BorderThickness="1"
-            CornerRadius="3"
-            Cursor="Hand">
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.folder-plus}"
-                       Foreground="{DynamicResource VelaAccent}" />
-        <TextBlock Text="{loc:Localize Tree_NewRootGroup}"
-                   Foreground="{DynamicResource VelaTextSecondary}"
-                   FontSize="{DynamicResource VelaFontSize11}" />
-      </StackPanel>
-    </Button>
-
     <!-- 过滤框里有字却一条都没命中:说一句,别让一片空白看起来像是连接全丢了。 -->
     <TextBlock IsVisible="{Binding HasNoFilterMatches}"
                Text="{loc:Localize Tree_FilterNoMatches}"
