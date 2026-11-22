@@ -119,18 +119,6 @@ public partial class SessionTreeView : UserControl
         await viewModel.CreateGroupAsync(name, group.Id);
     });
 
-    private void NewRootGroup_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
-    {
-        if (DataContext is not SessionTreeViewModel viewModel)
-        {
-            return;
-        }
-        Window owner = TopLevel.GetTopLevel(this) as Window
-            ?? throw new InvalidOperationException("Session tree is not attached to a window");
-        string? name = await MessageDialog.PromptAsync(owner, Strings.Get("Tree_GroupNamePrompt"), string.Empty);
-        await viewModel.CreateGroupAsync(name);
-    });
-
     /// <summary>
     /// 右键分组行时先选中它:分组菜单里的命令同样作用于 SelectedNode。
     /// 左键记下拖动分组(#571)的起点 —— 是否真拖由移动阈值决定,没拖动就照旧由 Group_Tapped 展开 / 折叠。

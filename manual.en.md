@@ -171,7 +171,7 @@ Version 1 JSON groups import at the root. Version 2 preserves nested and empty g
 
 **Sensitive-data warning:** Protect JSON exports containing secrets with a strong export passphrase and keep that passphrase separately. The application cannot recover a forgotten passphrase. Even exports without passwords may reveal hosts, usernames, notes, groups, and network structure. CSV imports can contain a `password` column; do not share such spreadsheets with untrusted parties.
 
-**Entry point:** Explorer's more menu offers connection-file import, export-all, and a CSV import template. Selection and group menus export the corresponding scope.
+**Entry point:** Explorer's more menu offers new-group creation, connection-file import, export-all, and a CSV import template. Selection and group menus export the corresponding scope.
 
 **Steps:**
 

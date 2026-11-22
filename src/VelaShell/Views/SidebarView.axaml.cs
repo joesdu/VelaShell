@@ -152,6 +152,18 @@ public partial class SidebarView : UserControl
 
     private void OpenConnectionProfile_Click(object? sender, RoutedEventArgs e) => OpenConnectionProfileRequested?.Invoke(this, EventArgs.Empty);
 
+    private void NewRootGroup_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    {
+        if (_viewModel?.SessionTree is not { } viewModel)
+        {
+            return;
+        }
+        Window owner = TopLevel.GetTopLevel(this) as Window
+            ?? throw new InvalidOperationException("Sidebar is not attached to a window");
+        string? name = await MessageDialog.PromptAsync(owner, Strings.Get("Tree_GroupNamePrompt"), string.Empty);
+        await viewModel.CreateGroupAsync(name);
+    });
+
     private void OpenSettings_Click(object? sender, RoutedEventArgs e) => SettingsRequested?.Invoke(this, EventArgs.Empty);
 
     private void OpenPlugins_Click(object? sender, RoutedEventArgs e) => PluginsRequested?.Invoke(this, EventArgs.Empty);

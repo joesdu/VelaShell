@@ -8,6 +8,7 @@ using NSubstitute;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Presentation.ViewModels;
 using VelaShell.Views;
 
@@ -116,7 +117,8 @@ public class SessionTreeMenusUiTests
             {
                 Assert.Contains(command, commands, "「更多」菜单少了一项,或者绑定路径写错成了 null");
             }
-            Assert.HasCount(7, flyout.Items.OfType<MenuItem>().ToList(), "六项命令 + 原有的「从其他工具导入会话」");
+            Assert.HasCount(8, flyout.Items.OfType<MenuItem>().ToList(), "新建分组 + 六项命令 + 原有的「从其他工具导入会话」");
+            Assert.Contains(Strings.Get("Tree_NewRootGroup"), flyout.Items.OfType<MenuItem>().Select(static item => item.Header));
             flyout.Hide();
 
             window.Close();
