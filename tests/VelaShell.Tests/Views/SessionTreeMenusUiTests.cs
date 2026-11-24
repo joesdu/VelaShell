@@ -85,6 +85,7 @@ public class SessionTreeMenusUiTests
                 window.Close();
                 Logger.Sink = previous;
             }
+            return true;
         }, CancellationToken.None).GetAwaiter().GetResult();
     }
 
