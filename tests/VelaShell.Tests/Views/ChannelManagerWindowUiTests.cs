@@ -24,6 +24,7 @@ public class ChannelManagerWindowUiTests
     [TestMethod]
     [DataRow(740)]
     [DataRow(470)]
+    [DataRow(472)]
     public Task GroupedMatrix_AlignsWithHeadersAndMovesOnlyClickedTerminal(int width) =>
         HeadlessUnitTestSession.GetOrStartForAssembly(GetType().Assembly).RunOnUiAsync(() =>
         {

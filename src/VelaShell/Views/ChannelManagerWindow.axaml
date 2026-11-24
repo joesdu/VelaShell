@@ -57,10 +57,10 @@
       <Setter Property="Template">
         <ControlTemplate>
           <Grid Background="Transparent">
-            <Ellipse Name="Ring" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center"
-                     StrokeThickness="1" Stroke="{DynamicResource VelaTextSecondary}" />
-            <Ellipse Name="Dot" Width="8" Height="8" HorizontalAlignment="Center" VerticalAlignment="Center"
-                     Fill="{DynamicResource VelaAccent}" />
+            <Grid Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+              <Ellipse Name="Ring" StrokeThickness="1" Stroke="{DynamicResource VelaTextSecondary}" />
+              <Ellipse Name="Dot" Margin="3" Fill="{DynamicResource VelaAccent}" />
+            </Grid>
           </Grid>
         </ControlTemplate>
       </Setter>
