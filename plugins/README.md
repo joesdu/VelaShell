@@ -67,10 +67,7 @@ SDK 契约程序集取 nuget.org 上的正式包，**不做工程引用**：
 - **发布**：`AddVelaPluginsToPublish` 调各插件的 `GetVelaPluginPayload`，把它们登记进安装包的
   `plugins/<目录名>/`（排除 pdb/xml）。是否进包由 csproj 的 `<VelaPluginShip>` 控制，默认 `true`。
   带 RID 发布时只留 `runtimes/` 下目标平台回退链（rid → 操作系统 → unix → any）上的原生库。
-- **与宿主共用的依赖**：宿主根目录已带同版本的纯函数库（Markdig、TextMateSharp 等）写成
-  `<VelaHostSharedPackage Include="…" Version="…" />`，只编译期引用、不进插件目录，运行时回落默认 ALC 用宿主那份。
-  版本必须与宿主发行包一致，发布期 `VerifyVelaHostSharedPackages` 核对，不一致直接断掉发布。
-  在静态里攒调用方对象的库（如 LiveMarkdown.Avalonia 的扩展注册）不要这样共享，否则插件 ALC 卸不掉。
+- **插件依赖**：AI 插件只声明直接依赖；Markdig、TextMateSharp 等传递依赖由 NuGet 解析，随插件分发，无需另行对齐宿主版本。插件 SDK 与 Avalonia/AvaloniaEdit 运行时由宿主共享，编译期包版本由 `src/Directory.Packages.props` 所有。
 - **目录名**：插件 id 把点换成短横（`velashell.ai` → `velashell-ai`）。id 本身不改——它是插件数据与
   机密的命名空间，改了等于让已有用户的配置（AI 插件的 API key 就在里面）全部失联。
   目录名不参与任何逻辑：宿主枚举子目录后从 `plugin.json` 读 id。

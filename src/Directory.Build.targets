@@ -4,29 +4,29 @@
 	<Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.targets', '$(MSBuildThisFileDirectory)../'))" />
 
 	<!--
-	  宿主与插件 SDK 的 Avalonia 版本一致性核对。
-
-	  插件在宿主进程里运行时,Avalonia* 一律被强制回落到**宿主**这一份
-	  (见 VelaShell.Infrastructure/Plugins 的 PluginAssemblyLoadContext);而插件是拿
-	  VelaShell.PluginSdk.Build 锁定的那个版本编译的。两者不是同一个版本时,现象是
-	  跨 ALC 的控件类型对不上 —— 而且要等到用户装上插件、点开面板那一刻才炸。
-
-	  拆库之前这个核对由工具链侧 XmlPeek 本仓库的 src/Directory.Packages.props 完成;
-	  两个仓库之后读不到对方的文件,于是反过来:工具链仓库是版本号的权威,
-	  VelaShell.PluginSdk 包在 buildTransitive 里导出 $(VelaSdkPinnedAvaloniaVersion),
-	  由这里核对。
-
-	  $(VelaSdkPinnedAvaloniaVersion) 只在包引用路径上有值(buildTransitive 是 NuGet 的机制),
-	  为空就跳过。
+	  Host-owned Avalonia alignment. The host package versions in this repository are the
+	  release contract; the SDK does not publish an Avalonia pin. Check the resolved
+	  compile references as well as the central package declarations so a transitive
+	  dependency cannot silently select a different shared assembly.
 	-->
-	<Target Name="VerifyAvaloniaMatchesSdk" BeforeTargets="Build"
-	        Condition="'$(VelaSdkPinnedAvaloniaVersion)' != ''">
-		<XmlPeek XmlInputPath="$(MSBuildThisFileDirectory)Directory.Packages.props"
-		         Query="/Project/ItemGroup/PackageVersion[@Include='Avalonia']/@Version">
-			<Output TaskParameter="Result" ItemName="_VelaHostAvaloniaVersion" />
-		</XmlPeek>
-		<Error Condition="'@(_VelaHostAvaloniaVersion)' != '$(VelaSdkPinnedAvaloniaVersion)'"
+	<Target Name="VerifyHostAvaloniaVersions" AfterTargets="ResolveAssemblyReferences"
+	        Condition="'$(VelaSkipAvaloniaVersionCheck)' != 'true'">
+		<PropertyGroup>
+			<_VelaHostAvaloniaVersion>@(PackageVersion->WithMetadataValue('Identity','Avalonia')->'%(Version)')</_VelaHostAvaloniaVersion>
+			<_VelaHostAvaloniaEditVersion>@(PackageVersion->WithMetadataValue('Identity','Avalonia.AvaloniaEdit')->'%(Version)')</_VelaHostAvaloniaEditVersion>
+		</PropertyGroup>
+		<ItemGroup>
+			<_VelaHostAvaloniaRef Include="@(ReferencePath)" Condition="'%(ReferencePath.NuGetPackageId)' == 'Avalonia'" />
+			<_VelaHostAvaloniaEditRef Include="@(ReferencePath)" Condition="'%(ReferencePath.NuGetPackageId)' == 'Avalonia.AvaloniaEdit'" />
+		</ItemGroup>
+		<Error Condition="'$(_VelaHostAvaloniaVersion)' == ''"
 		       Code="VELA1000"
-		       Text="Avalonia version pin drifted: the host references '@(_VelaHostAvaloniaVersion)' (src/Directory.Packages.props) but the referenced VelaShell.PluginSdk pins plugins to '$(VelaSdkPinnedAvaloniaVersion)'. Plugins would compile against a different Avalonia than this host loads. Update both repositories in the same release." />
+		       Text="The host must declare its Avalonia version in src/Directory.Packages.props." />
+		<Error Condition="'@(_VelaHostAvaloniaRef)' != '' and '%(_VelaHostAvaloniaRef.NuGetPackageVersion)' != '$(_VelaHostAvaloniaVersion)'"
+		       Code="VELA1000"
+		       Text="The host resolves Avalonia %(_VelaHostAvaloniaRef.NuGetPackageVersion), but src/Directory.Packages.props declares $(_VelaHostAvaloniaVersion)." />
+		<Error Condition="'@(_VelaHostAvaloniaEditRef)' != '' and '%(_VelaHostAvaloniaEditRef.NuGetPackageVersion)' != '$(_VelaHostAvaloniaEditVersion)'"
+		       Code="VELA1001"
+		       Text="The host resolves AvaloniaEdit %(_VelaHostAvaloniaEditRef.NuGetPackageVersion), but src/Directory.Packages.props declares $(_VelaHostAvaloniaEditVersion)." />
 	</Target>
 </Project>
