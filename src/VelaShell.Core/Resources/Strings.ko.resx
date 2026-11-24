@@ -6084,6 +6084,9 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Trace_Failed" xml:space="preserve">
     <value>추적 실패: {0}</value>
   </data>
+  <data name="Trace_AutoRotate" xml:space="preserve">
+    <value>자동 회전</value>
+  </data>
   <data name="Trace_Continuous" xml:space="preserve">
     <value>계속 추적</value>
   </data>

@@ -6084,6 +6084,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Trace_Failed" xml:space="preserve">
     <value>トレースに失敗しました: {0}</value>
   </data>
+  <data name="Trace_AutoRotate" xml:space="preserve">
+    <value>自動回転</value>
+  </data>
   <data name="Trace_Continuous" xml:space="preserve">
     <value>継続追跡</value>
   </data>

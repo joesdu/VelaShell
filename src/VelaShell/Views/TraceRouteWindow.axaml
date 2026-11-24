@@ -118,7 +118,7 @@
               BorderBrush="{DynamicResource VelaBorderSecondary}"
               BorderThickness="0,0,0,1"
               Padding="12,8">
-        <Grid ColumnDefinitions="Auto,240,Auto,Auto,Auto,*">
+        <Grid ColumnDefinitions="Auto,240,Auto,Auto,Auto,Auto,*">
           <TextBlock Grid.Column="0" Classes="col" Text="{loc:Localize Trace_Target}" Margin="0,0,8,0" />
           <TextBox Grid.Column="1" Text="{Binding Target}"
                    Height="28" MinHeight="28" FontSize="{DynamicResource VelaFontSize11}" Padding="8,0"
@@ -133,16 +133,26 @@
                     FontSize="{DynamicResource VelaFontSize11}"
                     Foreground="{DynamicResource VelaTextSecondary}"
                     VerticalAlignment="Center" />
+          <CheckBox x:Name="AutoRotateToggle" Grid.Column="5" Margin="12,0,0,0"
+                    IsChecked="True" Content="{loc:Localize Trace_AutoRotate}"
+                    FontSize="{DynamicResource VelaFontSize11}"
+                    Foreground="{DynamicResource VelaTextSecondary}" VerticalAlignment="Center" />
         </Grid>
       </Border>
 
       <!-- 左:世界地图(落点为推断位置)   右:跃点列表,随每轮采样刷新 -->
-      <Grid Grid.Row="2" ColumnDefinitions="*,1,520">
-        <Panel Grid.Column="0">
-          <ctl:TraceWorldMap Hops="{Binding Hops}" Revision="{Binding Revision}" />
+      <Grid Grid.Row="2">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="9*" />
+          <ColumnDefinition Width="1" />
+          <ColumnDefinition Width="11*" MinWidth="520" MaxWidth="844" />
+        </Grid.ColumnDefinitions>
+        <Grid Grid.Column="0" RowDefinitions="*,Auto">
+          <ctl:TraceWorldMap Hops="{Binding Hops}" Revision="{Binding Revision}"
+                             AutoRotate="{Binding #AutoRotateToggle.IsChecked, Mode=OneWay}" />
           <!-- 缺库时的引导:说明 + 官方下载直链 + 选择本地文件。放在窗口里而不是设置页 ——
                用户是在这儿发现地图空的,修复入口就该在这儿。 -->
-          <Border VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
+          <Border Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
                   Background="{DynamicResource VelaScrimStrong}" Padding="10,8"
                   IsVisible="{Binding GeoDatabaseMissing}">
             <StackPanel Spacing="6">
@@ -168,13 +178,13 @@
             </StackPanel>
           </Border>
           <!-- 已加载时只在角落标一行来源,CC BY 4.0 要求署名。 -->
-          <Border VerticalAlignment="Bottom" HorizontalAlignment="Right"
-                  Background="{DynamicResource VelaScrim}" Padding="6,3" Margin="0,0,6,6"
+          <Border Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                  Background="{DynamicResource VelaBgSurface}" Padding="6,3" Margin="0,0,6,6"
                   IsVisible="{Binding !GeoDatabaseMissing}">
             <TextBlock Text="{loc:Localize Trace_GeoAttribution}"
-                       Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize9}" />
+                       Foreground="{DynamicResource VelaTextPrimary}" FontSize="{DynamicResource VelaFontSize10}" />
           </Border>
-        </Panel>
+        </Grid>
         <Border Grid.Column="1" Background="{DynamicResource VelaBorderPrimary}" />
 
         <Grid Grid.Column="2" RowDefinitions="22,*">
@@ -186,7 +196,15 @@
               Background="{DynamicResource VelaBgContentHeader}"
               BorderBrush="{DynamicResource VelaBorderSecondary}"
               BorderThickness="0,0,0,1" Padding="12,0,20,0">
-        <Grid ColumnDefinitions="30,*,150,58,58,58">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="28" />
+            <ColumnDefinition Width="3*" MaxWidth="280" />
+            <ColumnDefinition Width="2*" />
+            <ColumnDefinition Width="48" />
+            <ColumnDefinition Width="48" />
+            <ColumnDefinition Width="48" />
+          </Grid.ColumnDefinitions>
           <TextBlock Grid.Column="0" Classes="col" Text="#" />
           <TextBlock Grid.Column="1" Classes="col" Text="{loc:Localize Trace_ColHost}" />
           <TextBlock Grid.Column="2" Classes="col" Text="{loc:Localize Trace_ColLocation}" />
@@ -208,10 +226,17 @@
         </ListBox.Styles>
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="vm:TraceHopViewModel">
-            <Grid ColumnDefinitions="30,*,150,58,58,58"
-                  ToolTip.Tip="{Binding VerdictHint}">
+            <Grid ToolTip.Tip="{Binding VerdictHint}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="28" />
+                <ColumnDefinition Width="3*" MaxWidth="280" />
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="48" />
+                <ColumnDefinition Width="48" />
+                <ColumnDefinition Width="48" />
+              </Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Classes="cell" TextAlignment="Left" Text="{Binding Ttl}" />
-              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <Grid Grid.Column="1" ColumnDefinitions="*,Auto" Margin="0,0,6,0" VerticalAlignment="Center" ClipToBounds="True" ToolTip.Tip="{Binding Host}">
                 <!-- 判定着色:限速/不回应是灰(不算故障),疑似真实丢包才是红。 -->
                 <TextBlock Classes="cell host" Text="{Binding Host}"
                            Foreground="{DynamicResource VelaTextPrimary}"
@@ -219,13 +244,13 @@
                 <TextBlock Classes="cell host" Text="{Binding Host}"
                            Foreground="{DynamicResource VelaTextMuted}"
                            IsVisible="{Binding IsQuiet}" />
-                <Border Background="{DynamicResource VelaBgHover}" CornerRadius="3" Padding="4,0"
+                <Border Grid.Column="1" Margin="4,0,0,0" Background="{DynamicResource VelaBgHover}" CornerRadius="3" Padding="4,0"
                         VerticalAlignment="Center"
                         IsVisible="{Binding ExtraAddresses, Converter={x:Static conv:StringNotEmptyConverter.Instance}}">
                   <TextBlock Text="{Binding ExtraAddresses}" FontSize="{DynamicResource VelaFontSize9}"
                              Foreground="{DynamicResource VelaTextMuted}" />
                 </Border>
-              </StackPanel>
+              </Grid>
               <TextBlock Grid.Column="2" Classes="cell host" Text="{Binding LocationText}"
                          Foreground="{DynamicResource VelaTextMuted}" Margin="0,0,10,0"
                          ToolTip.Tip="{loc:Localize Trace_LocationHint}" />

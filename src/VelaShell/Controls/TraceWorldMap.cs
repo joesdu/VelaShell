@@ -2,50 +2,202 @@ using System.Collections;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Styling;
+using Avalonia.Threading;
 using VelaShell.ViewModels;
 
 namespace VelaShell.Controls;
 
 /// <summary>
-/// 链路追踪的简易世界地图:等距圆柱投影,把有归属地的跃点落到经纬网上,并用弧线依次相连。
+/// 链路追踪的点阵地球仪。球体、陆地点阵和路线弧线都在控件内绘制，避免引入外部地图运行时。
 /// </summary>
 /// <remarks>
-/// 呈现上刻意区分确定性:起点与终点画实心点 + 实线,中间跳画空心点 + 虚线 ——
-/// 骨干路由器的 IP 段登记的是运营商注册地址而非设备实际位置,城市级命中率在独立测试中
-/// 不到五成,画成和终点一样确定会误导人。查不到位置的跳直接跳过,不塞到国家中心装作知道。
+/// 地理位置来自离线归属地库，只绘制确实拿到经纬度的跃点。球体的旋转和路线头部动画用于表达
+/// 路由仍在持续采样，同时让推断位置与确定的网络拓扑保持视觉上的区别。
 /// </remarks>
 public sealed class TraceWorldMap : Control
 {
-    /// <summary>跃点集合(<see cref="TraceHopViewModel" />)。</summary>
-    public static readonly StyledProperty<IEnumerable?> HopsProperty =
-        AvaloniaProperty.Register<TraceWorldMap, IEnumerable?>(nameof(Hops));
+    /// <summary>跃点集合属性。</summary>
+    public static readonly StyledProperty<IEnumerable?> HopsProperty = AvaloniaProperty.Register<TraceWorldMap, IEnumerable?>(nameof(Hops));
 
-    /// <summary>数据版本号;每轮采样递增一次,用来触发重绘。</summary>
-    public static readonly StyledProperty<int> RevisionProperty =
-        AvaloniaProperty.Register<TraceWorldMap, int>(nameof(Revision));
+    /// <summary>数据版本属性。</summary>
+    public static readonly StyledProperty<int> RevisionProperty = AvaloniaProperty.Register<TraceWorldMap, int>(nameof(Revision));
+
+    /// <summary>控制地球仪是否自动旋转。</summary>
+    public static readonly StyledProperty<bool> AutoRotateProperty = AvaloniaProperty.Register<TraceWorldMap, bool>(nameof(AutoRotate), true);
+
+    private static readonly Lazy<IReadOnlyList<double[]>> CountryRings = new(() => LoadRings("avares://VelaShell/Assets/world-countries.txt"));
+
+    private static readonly Lazy<SurfaceDot[]> Surface = new(() => BuildSurface(CountryRings.Value));
+    private readonly List<Point>[] _dotBuckets = [.. Enumerable.Range(0, 16).Select(_ => new List<Point>())];
+    private readonly Dictionary<(int From, int To), RouteArc> _arcs = [];
+    private readonly DispatcherTimer _animationTimer;
+    private readonly TimeProvider _clock;
+    private long _lastFrameTicks;
+    private double _yaw;
+    private double _pitch = 0.28;
+    private double _yawVelocity;
+    private double _pitchVelocity;
+    private IPointer? _dragPointer;
+    private Point _lastPointer;
+    private long _lastMoveTicks;
 
     static TraceWorldMap()
     {
         AffectsRender<TraceWorldMap>(HopsProperty, RevisionProperty);
-
-        // 绕经线的弧会画到图幅之外,不裁就会溢到右侧的列表区上。
         ClipToBoundsProperty.OverrideDefaultValue<TraceWorldMap>(true);
     }
 
-    /// <summary>跃点集合。</summary>
+    /// <summary>创建带有连续动画刷新的点阵地球仪。</summary>
+    public TraceWorldMap() : this(TimeProvider.System) { }
+
+    internal TraceWorldMap(TimeProvider clock)
+    {
+        _clock = clock;
+        ActualThemeVariantChanged += (_, _) => InvalidateVisual();
+        ResourcesChanged += (_, _) => InvalidateVisual();
+        _animationTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
+        _animationTimer.Tick += AnimationTimer_Tick;
+    }
+
+    /// <summary>当前链路中可以带有或不带归属地的跃点集合。</summary>
     public IEnumerable? Hops
     {
         get => GetValue(HopsProperty);
         set => SetValue(HopsProperty, value);
     }
 
-    /// <summary>数据版本号。</summary>
+    /// <summary>是否自动旋转地球仪。</summary>
+    public bool AutoRotate
+    {
+        get => GetValue(AutoRotateProperty);
+        set => SetValue(AutoRotateProperty, value);
+    }
+
+    /// <summary>每轮追踪结果的版本号。</summary>
     public int Revision
     {
         get => GetValue(RevisionProperty);
         set => SetValue(RevisionProperty, value);
     }
+
+    /// <inheritdoc />
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _lastFrameTicks = _clock.GetTimestamp();
+        _animationTimer.Start();
+    }
+
+    /// <inheritdoc />
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _dragPointer?.Capture(null);
+        _animationTimer.Stop();
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void AnimationTimer_Tick(object? sender, EventArgs e)
+    {
+        long now = _clock.GetTimestamp();
+        double delta = Math.Min(0.12, _clock.GetElapsedTime(_lastFrameTicks, now).TotalSeconds);
+        _lastFrameTicks = now;
+        if (!AutoRotate)
+        {
+            _yawVelocity = _pitchVelocity = 0;
+        }
+        else if (_dragPointer is null)
+        {
+            Rotate(delta * (0.12 + _yawVelocity), delta * _pitchVelocity);
+            double damping = Math.Exp(-delta * 5);
+            _yawVelocity *= damping;
+            _pitchVelocity *= damping;
+        }
+        InvalidateVisual();
+    }
+
+    private void Rotate(double yaw, double pitch)
+    {
+        _yaw = Math.IEEERemainder(_yaw + yaw, Math.Tau);
+        _pitch = Math.Clamp(_pitch + pitch, -Math.PI / 2, Math.PI / 2);
+    }
+
+    /// <inheritdoc />
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        if (_dragPointer is not null || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+        _lastPointer = e.GetPosition(this);
+        _lastMoveTicks = _clock.GetTimestamp();
+        _yawVelocity = _pitchVelocity = 0;
+        _dragPointer = e.Pointer;
+        e.Pointer.Capture(this);
+        e.Handled = true;
+    }
+
+    /// <inheritdoc />
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (e.Pointer != _dragPointer)
+        {
+            return;
+        }
+        Point position = e.GetPosition(this);
+        Vector delta = position - _lastPointer;
+        double radius = GlobeRadius(Bounds.Size);
+        long now = _clock.GetTimestamp();
+        double seconds = Math.Max(0.016, _clock.GetElapsedTime(_lastMoveTicks, now).TotalSeconds);
+        Rotate(-delta.X / radius, delta.Y / radius);
+        _yawVelocity = Math.Clamp(-delta.X / radius / seconds, -4, 4);
+        _pitchVelocity = Math.Clamp(delta.Y / radius / seconds, -4, 4);
+        _lastPointer = position;
+        _lastMoveTicks = now;
+        InvalidateVisual();
+        e.Handled = true;
+    }
+
+    /// <inheritdoc />
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        if (e.Pointer == _dragPointer)
+        {
+            if (_clock.GetElapsedTime(_lastMoveTicks).TotalSeconds > 0.12)
+            {
+                _yawVelocity = _pitchVelocity = 0;
+            }
+            e.Pointer.Capture(null);
+            e.Handled = true;
+        }
+    }
+
+    /// <inheritdoc />
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        if (e.Pointer == _dragPointer)
+        {
+            _dragPointer = null;
+        }
+    }
+
+    /// <inheritdoc />
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+        Rotate(-0.14 * e.Delta.X, -0.14 * e.Delta.Y);
+        _yawVelocity = _pitchVelocity = 0;
+        InvalidateVisual();
+        e.Handled = true;
+    }
+
+    private static double GlobeRadius(Size size) => Math.Max(1, Math.Min(size.Width, size.Height) * 0.445);
 
     /// <inheritdoc />
     public override void Render(DrawingContext context)
@@ -55,86 +207,233 @@ public sealed class TraceWorldMap : Control
         {
             return;
         }
-        var view = MapView.Fit(full, Hops);
-        IBrush land = Brush("VelaTraceLand", Color.FromRgb(0x33, 0x38, 0x50));
-        IBrush border = Brush("VelaTraceBorder", Color.FromRgb(0x5C, 0x64, 0x88));
-        IBrush labelBg = Brush("VelaTraceLabelBg", Color.FromArgb(0xD2, 0x15, 0x1A, 0x28));
-        IBrush grid = Brush("VelaBorderPrimary", Colors.DimGray);
-        IBrush muted = Brush("VelaTextMuted", Colors.Gray);
-        IBrush route = Brush("VelaTraceLine", Color.FromRgb(0x8B, 0xE9, 0xFD));
-        IBrush routeDim = Brush("VelaTraceLineDim", Color.FromRgb(0x4A, 0x7C, 0x8C));
-        IBrush error = Brush("VelaError", Colors.IndianRed);
-        IBrush labelBrush = Brush("VelaTextSecondary", Colors.LightGray);
-        context.FillRectangle(Brush("VelaBgTerminal", Colors.Black), full);
 
-        DrawLand(context, view, land, border);
-        DrawGraticule(context, view, grid);
+        IBrush background = Brush("VelaBgPage");
+        IBrush land = Brush("VelaTextSecondary");
+        IBrush border = Brush("VelaTraceBorder");
+        IBrush muted = Brush("VelaTextMuted");
+        IBrush route = Brush("VelaAccent");
+        IBrush error = Brush("VelaError");
+        IBrush labelBrush = Brush("VelaTextSecondary");
+        IBrush labelBg = Brush("VelaTraceLabelBg");
 
-        List<(Point Point, TraceHopViewModel Hop)> located = [];
-        if (Hops is { } items)
+        context.FillRectangle(background, full);
+
+        double radius = GlobeRadius(full.Size);
+        var camera = new Projection(_yaw, _pitch, full.Center, radius);
+        using (context.PushOpacity(0.04))
         {
-            foreach (object? item in items)
-            {
-                if (item is TraceHopViewModel { HasLocation: true } hop)
-                {
-                    located.Add((view.Project(hop.Latitude, hop.Longitude), hop));
-                }
-            }
+            context.DrawEllipse(land, null, full.Center, radius, radius);
         }
+        using (context.PushOpacity(0.48))
+        {
+            context.DrawEllipse(null, new Pen(border, 1), full.Center, radius, radius);
+        }
+        DrawSurface(context, camera, radius, land, muted);
+
+        List<TraceHopViewModel> located = LocatedHops();
         if (located.Count == 0)
         {
-            DrawCentered(context, full, muted, Core.Resources.Strings.Get("Trace_MapNoData"));
+            _arcs.Clear();
+            DrawEmptyHint(context, full, muted, Core.Resources.Strings.Get("Trace_MapNoData"));
             return;
         }
 
-        // 视图已按整条链路居中(见 MapView.Fit),跨太平洋的链路会把地图中心挪到太平洋上,
-        // 于是所有跃点都落在同一屏内,不再需要绕边特判 —— 上一版特判的两段弧端点接反了,
-        // 画出来是两条横穿整张图的线。
-        var solid = new Pen(route, 1.8);
-        var dashed = new Pen(routeDim, 1.3) { DashStyle = new DashStyle([4, 3], 0) };
-        for (int i = 1; i < located.Count; i++)
-        {
-            bool last = i == located.Count - 1;
-            context.DrawGeometry(null, last ? solid : dashed, Arc(located[i - 1].Point, located[i].Point));
-        }
-
-        // 落点相同的连续跃点合成一个标注(骨干里同城好几跳很常见),标签写成 "6-7 中国/Guangzhou"。
-        List<Rect> taken = [];
+        List<ProjectedHop> projected = [];
         for (int i = 0; i < located.Count; i++)
         {
-            (Point point, TraceHopViewModel hop) = located[i];
-            int last = i;
-            while (last + 1 < located.Count && Near(located[last + 1].Point, point))
-            {
-                last++;
-            }
-            bool endpoint = i == 0 || last == located.Count - 1;
-            IBrush fill = hop.IsSuspect ? error : endpoint ? route : Brushes.Transparent;
-            var pen = new Pen(hop.IsSuspect ? error : endpoint ? route : routeDim, endpoint ? 2 : 1.2);
-            double radius = endpoint ? 5 : 3.5;
-            context.DrawEllipse(fill, pen, point, radius, radius);
+            TraceHopViewModel hop = located[i];
+            SphereVector location = ToVector(new(hop.Latitude, hop.Longitude));
+            projected.Add(new(camera.Project(location), hop, location));
+        }
 
-            string place = hop.LocationText.Length > 0 ? hop.LocationText : hop.Host;
-            string number = last > i
-                                ? string.Create(CultureInfo.CurrentCulture, $"{located[i].Hop.Ttl}-{located[last].Hop.Ttl}")
-                                : located[i].Hop.Ttl.ToString(CultureInfo.CurrentCulture);
-            // 带上延迟:地图上最想一眼看出的就是"哪一跳开始变慢",光有地名说明不了问题。
-            string latency = located[last].Hop.Average is { Length: > 0 } and not "-"
-                                 ? $"  {located[last].Hop.Average}ms"
-                                 : string.Empty;
-            DrawLabel(context, full, taken, point, $"{number}  {place}{latency}", labelBrush, labelBg, radius);
-            i = last;
+        DrawRoutes(context, projected, camera, route);
+        DrawHops(context, projected, route, background, error);
+        DrawLabels(context, full, projected, labelBrush, labelBg);
+    }
+
+    private void DrawSurface(DrawingContext context, Projection camera, double radius, IBrush land, IBrush sea)
+    {
+        foreach (List<Point> bucket in _dotBuckets)
+        {
+            bucket.Clear();
+        }
+        foreach (SurfaceDot dot in Surface.Value)
+        {
+            SpherePoint point = camera.Project(dot.Location);
+            if (point.Depth > 0)
+            {
+                int level = Math.Min(7, (int)(point.Depth * 8));
+                _dotBuckets[level * 2 + (dot.IsLand ? 1 : 0)].Add(point.Position);
+            }
+        }
+        double scale = radius / 195;
+        for (int level = 0; level < 8; level++)
+        {
+            double half = 0.62 * scale;
+            using (context.PushOpacity(0.025 + level * 0.026))
+            {
+                foreach (Point point in _dotBuckets[level * 2])
+                {
+                    context.FillRectangle(sea, new Rect(point.X - half, point.Y - half, 2 * half, 2 * half));
+                }
+            }
+            double size = (0.76 + level * 0.045) * scale;
+            using (context.PushOpacity(0.06 + level * 0.075))
+            {
+                foreach (Point point in _dotBuckets[level * 2 + 1])
+                {
+                    context.DrawEllipse(land, null, point, size, size);
+                }
+            }
         }
     }
 
-    /// <summary>两个落点是否近到该合并标注(同城的相邻跃点通常只差几像素)。</summary>
-    private static bool Near(Point a, Point b) => Math.Abs(a.X - b.X) < 6 && Math.Abs(a.Y - b.Y) < 6;
+    private void DrawRoutes(DrawingContext context, List<ProjectedHop> hops, Projection camera, IBrush bright)
+    {
+        var active = new HashSet<(int, int)>();
+        var flightPen = new Pen(bright, 1.65);
+        long now = _clock.GetTimestamp();
+        for (int i = 1; i < hops.Count; i++)
+        {
+            ProjectedHop from = hops[i - 1], to = hops[i];
+            if (SphereVector.Dot(from.Location, to.Location) >= 1 - 1e-12)
+            {
+                continue;
+            }
+            (int, int) key = (from.Hop.Ttl, to.Hop.Ttl);
+            active.Add(key);
+            if (!_arcs.TryGetValue(key, out RouteArc? arc) || arc.From != from.Location || arc.To != to.Location)
+            {
+                _arcs[key] = arc = new RouteArc(from.Location, to.Location, now);
+            }
+            double time = _clock.GetElapsedTime(arc.StartTicks, now).TotalSeconds % (arc.FlightSeconds + 1.5);
+            double head = Math.Clamp(time / arc.FlightSeconds, 0, 1);
+            head *= head * (3 - 2 * head);
+            double tail = Math.Clamp((time - arc.FlightSeconds - 0.28) / 0.55, 0, 1);
+            SpherePoint lifted = from.Sphere;
+            int segments = arc.Lifted.Length - 1;
+            double headIndex = head * segments, tailIndex = tail * segments;
+            for (int j = 1; j <= segments; j++)
+            {
+                SpherePoint nextLifted = camera.Project(arc.Lifted[j]);
+                double start = Math.Max(0, tailIndex - j + 1);
+                double end = Math.Min(1, headIndex - j + 1);
+                if (start < end)
+                {
+                    Vector segment = nextLifted.Position - lifted.Position;
+                    using (context.PushOpacity(FlightOpacity(nextLifted.Depth)))
+                    {
+                        context.DrawLine(flightPen, lifted.Position + segment * start, lifted.Position + segment * end);
+                    }
+                }
+                lifted = nextLifted;
+            }
+            if (time < arc.FlightSeconds)
+            {
+                int j = Math.Min((int)headIndex, segments - 1);
+                SphereVector a = arc.Lifted[j], b = arc.Lifted[j + 1];
+                SpherePoint point = camera.Project(a + (b - a) * (headIndex - j));
+                using (context.PushOpacity(FlightOpacity(point.Depth) * 0.18))
+                {
+                    context.DrawEllipse(bright, null, point.Position, 4.5, 4.5);
+                }
+                using (context.PushOpacity(FlightOpacity(point.Depth)))
+                {
+                    context.DrawEllipse(bright, null, point.Position, 2.3, 2.3);
+                }
+            }
+            DrawRing(context, from.Sphere, flightPen, time / 0.72);
+            DrawRing(context, to.Sphere, flightPen, (time - arc.FlightSeconds) / 0.95);
+        }
+        foreach ((int From, int To) key in _arcs.Keys.Where(key => !active.Contains(key)).ToArray())
+        {
+            _arcs.Remove(key);
+        }
+    }
 
-    /// <summary>
-    /// 画跃点标注。同一区域挤满标签会互相盖住,因此逐个尝试上下左右四个位置,
-    /// 都被占了就放弃这一条 —— 少一个标签好过糊成一团。
-    /// </summary>
-    private static void DrawLabel(
+    private static double FlightOpacity(double depth) => depth >= 0 ? 0.92 : depth >= -0.15 ? 0.48 : 0.16;
+
+    private static void DrawRing(DrawingContext context, SpherePoint point, Pen pen, double phase)
+    {
+        if (point.Depth <= 0 || phase is < 0 or >= 1)
+        {
+            return;
+        }
+        double radius = 3 + 8 * (1 - Math.Pow(1 - phase, 3));
+        using (context.PushOpacity((1 - phase) * (0.3 + 0.55 * point.Depth)))
+        {
+            context.DrawEllipse(null, pen, point.Position, radius, radius);
+        }
+    }
+
+    private static void DrawHops(DrawingContext context, IReadOnlyList<ProjectedHop> hops, IBrush route, IBrush background, IBrush error)
+    {
+        for (int i = 0; i < hops.Count; i++)
+        {
+            ProjectedHop hop = hops[i];
+            if (hop.Sphere.Depth <= 0)
+            {
+                continue;
+            }
+            IBrush color = hop.Hop.IsSuspect ? error : route;
+            bool endpoint = i == 0 || hop.Hop.IsTarget;
+            using (context.PushOpacity(0.38 + 0.62 * hop.Sphere.Depth))
+            {
+                if (endpoint)
+                {
+                    context.DrawEllipse(background, new Pen(color, 1), hop.Sphere.Position, 4.8, 4.8);
+                }
+                context.DrawEllipse(color, null, hop.Sphere.Position, 2.6, 2.6);
+            }
+        }
+    }
+
+    private void DrawLabels(
+        DrawingContext context,
+        Rect panel,
+        IReadOnlyList<ProjectedHop> hops,
+        IBrush textBrush,
+        IBrush background)
+    {
+        List<Rect> taken = [];
+        for (int index = 0; index < hops.Count; index++)
+        {
+            ProjectedHop projected = hops[index];
+            if (projected.Sphere.Depth < 0.04)
+            {
+                continue;
+            }
+
+            int last = index;
+            while (last + 1 < hops.Count
+                && hops[last + 1].Sphere.Depth >= 0.04
+                && Distance(hops[last + 1].Sphere.Position, projected.Sphere.Position) < 10)
+            {
+                last++;
+            }
+
+            string place = projected.Hop.LocationText.Length > 0 ? projected.Hop.LocationText : projected.Hop.Host;
+            string number = last > index
+                ? string.Create(CultureInfo.CurrentCulture, $"{projected.Hop.Ttl}-{hops[last].Hop.Ttl}")
+                : projected.Hop.Ttl.ToString(CultureInfo.CurrentCulture);
+            string latency = hops[last].Hop.Average is { Length: > 0 } and not "-"
+                ? $"  {hops[last].Hop.Average}ms"
+                : string.Empty;
+            DrawLabel(
+                context,
+                panel,
+                taken,
+                projected.Sphere.Position,
+                $"{number}  {place}{latency}",
+                textBrush,
+                background,
+                projected.Hop.IsTarget || index == 0 ? 4.8 : 3.2);
+            index = last;
+        }
+    }
+
+    private void DrawLabel(
         DrawingContext context,
         Rect panel,
         List<Rect> taken,
@@ -142,18 +441,16 @@ public sealed class TraceWorldMap : Control
         string text,
         IBrush brush,
         IBrush background,
-        double radius
-    )
+        double radius)
     {
         var label = new FormattedText(
             text,
             CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight,
-            Typeface.Default,
+            UiTypeface(),
             10,
-            brush
-        );
-        double gap = radius + 4;
+            brush);
+        double gap = radius + 5;
         Point[] candidates =
         [
             new(anchor.X + gap, anchor.Y - (label.Height / 2)),
@@ -172,237 +469,145 @@ public sealed class TraceWorldMap : Control
             {
                 continue;
             }
-            // 先垫一层半透明底片再写字:标注经常压在陆地上,直接写字会糊进底图。
-            Rect chip = box.Inflate(new Thickness(5, 2));
-            context.DrawRectangle(background, null, chip, 3, 3);
-            taken.Add(chip.Inflate(2));
+            if (label.BuildGeometry(candidate) is { } outline)
+            {
+                context.DrawGeometry(null, new Pen(background, 2.5), outline);
+            }
             context.DrawText(label, candidate);
+            taken.Add(box.Inflate(2));
             return;
         }
     }
 
-    /// <summary>
-    /// 等距圆柱投影的视口:以某个经纬度为中心、按每度多少像素等比缩放。
-    /// 经度差会归一到 ±180°,因此把中心放到太平洋上时,跨 180° 经线的链路自然落在同一屏内。
-    /// </summary>
-    private readonly record struct MapView(Rect Panel, double CenterLon, double CenterLat, double Scale)
+    private List<TraceHopViewModel> LocatedHops()
     {
-        /// <summary>把经纬度投到控件坐标。</summary>
-        public Point Project(double latitude, double longitude)
-        {
-            double dLon = Normalize(longitude - CenterLon);
-            return new(
-                Panel.Center.X + (dLon * Scale),
-                Panel.Center.Y - ((latitude - CenterLat) * Scale)
-            );
-        }
-
-        /// <summary>把经度差归一到 [-180, 180]。</summary>
-        public static double Normalize(double degrees)
-        {
-            double value = (degrees + 180) % 360;
-            return (value < 0 ? value + 360 : value) - 180;
-        }
-
-        /// <summary>
-        /// 按整条链路自动取景:算出跃点的经纬包围盒(经度用相对中心的差,自动跨越 180° 经线),
-        /// 留一圈边距后等比缩放填满面板。没有跃点时退回一个裁掉两极的全球视图 ——
-        /// 极区没有网络设施,留着只是上下两条空白带。
-        /// </summary>
-        public static MapView Fit(Rect panel, IEnumerable? hops)
-        {
-            List<(double Lat, double Lon)> points = [];
-            if (hops is not null)
-            {
-                foreach (object? item in hops)
-                {
-                    if (item is TraceHopViewModel { HasLocation: true } hop)
-                    {
-                        points.Add((hop.Latitude, hop.Longitude));
-                    }
-                }
-            }
-            if (points.Count == 0)
-            {
-                // 全球视图:横向铺满,纵向按需裁掉南北极。
-                double worldScale = Math.Max(panel.Width / 360, panel.Height / 150);
-                return new(panel, 0, 15, worldScale);
-            }
-
-            // 经度中心取单位圆上的向量平均,避免 113°E 与 118°W 被平均成 0°(非洲外海)。
-            double sumX = 0, sumY = 0;
-            foreach ((_, double lon) in points)
-            {
-                double radians = lon * Math.PI / 180;
-                sumX += Math.Cos(radians);
-                sumY += Math.Sin(radians);
-            }
-            double centerLon = Math.Atan2(sumY, sumX) * 180 / Math.PI;
-
-            double minLon = double.MaxValue, maxLon = double.MinValue;
-            double minLat = double.MaxValue, maxLat = double.MinValue;
-            foreach ((double lat, double lon) in points)
-            {
-                double dLon = Normalize(lon - centerLon);
-                minLon = Math.Min(minLon, dLon);
-                maxLon = Math.Max(maxLon, dLon);
-                minLat = Math.Min(minLat, lat);
-                maxLat = Math.Max(maxLat, lat);
-            }
-            double centerLat = (minLat + maxLat) / 2;
-            centerLon = Normalize(centerLon + ((minLon + maxLon) / 2));
-
-            // 留边:链路两端不贴着窗口边缘,标签也要地方放。
-            double lonSpan = Math.Max(maxLon - minLon, 8) * 1.8;
-            double latSpan = Math.Max(maxLat - minLat, 8) * 1.8;
-            double scale = Math.Min(panel.Width / lonSpan, panel.Height / latSpan);
-
-            // 下限:不比整幅世界更远;上限:不要放大到只剩几个像素的海岸线。
-            scale = Math.Clamp(scale, panel.Width / 360, 12);
-            return new(panel, centerLon, Math.Clamp(centerLat, -60, 75), scale);
-        }
-    }
-
-    /// <summary>两点之间的弧线:向上鼓一个与距离成比例的弧,避免长链路画成一条直线。</summary>
-    private static StreamGeometry Arc(Point from, Point to)
-    {
-        var geometry = new StreamGeometry();
-        using (StreamGeometryContext ctx = geometry.Open())
-        {
-            ctx.BeginFigure(from, false);
-            Point mid = new((from.X + to.X) / 2, (from.Y + to.Y) / 2);
-            double lift = Math.Min(60, Point.Distance(from, to) * 0.22);
-            ctx.QuadraticBezierTo(new(mid.X, mid.Y - lift), to);
-            ctx.EndFigure(false);
-        }
-        return geometry;
-    }
-
-    /// <summary>
-    /// 画各国轮廓。数据是 Natural Earth 110m 国家边界(公有领域),构建时已转成紧凑的
-    /// "经度,纬度 经度,纬度 …" 逐环文本(284 环 / 10630 点 / 128KB),避免运行时解析 GeoJSON。
-    /// 用国家而不是整块陆地:逐国填充 + 描边,国境线才画得出来 —— 只用陆地轮廓的话,
-    /// 整个欧亚大陆就是一坨没有内部分界的色块。
-    /// </summary>
-    private void DrawLand(DrawingContext context, MapView view, IBrush fill, IBrush stroke)
-    {
-        // 省界只在放大到区域尺度后才画:全球视图下它们只是密密麻麻的噪点,还白白多画 5 万个点。
-        var pen = new Pen(stroke, 0.6);
-        if (view.Scale >= ProvinceDetailScale)
-        {
-            var thin = new Pen(stroke, 0.4) { LineCap = PenLineCap.Round };
-            foreach (Geometry geometry in Cached(view, ProvinceRings.Value, ref _provinceCache))
-            {
-                context.DrawGeometry(fill, thin, geometry);
-            }
-            // 省界层已经把陆地铺满,国界层只补一道更重的描边。
-            foreach (Geometry geometry in Cached(view, CountryRings.Value, ref _countryCache))
-            {
-                context.DrawGeometry(null, pen, geometry);
-            }
-            return;
-        }
-        foreach (Geometry geometry in Cached(view, CountryRings.Value, ref _countryCache))
-        {
-            context.DrawGeometry(fill, pen, geometry);
-        }
-    }
-
-    /// <summary>省界起画的缩放门槛(像素/度)。低于此值是全球/洲际视图,画省界只会糊。</summary>
-    private const double ProvinceDetailScale = 2.2;
-
-    private LayerCache? _countryCache;
-    private LayerCache? _provinceCache;
-
-    /// <summary>一层边界在某个视图下投影好的几何,视图不变就一直复用。</summary>
-    private sealed record LayerCache(MapView View, IReadOnlyList<Geometry> Geometries);
-
-    /// <summary>
-    /// 取某一层在当前视图下的几何。视图是值相等的记录,只要取景没变(链路稳定后就不再变),
-    /// 每帧都直接复用上次投影的结果 —— 两层加起来 11 万个点,每轮重投一次是不能接受的。
-    /// </summary>
-    private static IReadOnlyList<Geometry> Cached(MapView view, IReadOnlyList<double[]> rings, ref LayerCache? cache)
-    {
-        if (cache is { } hit && hit.View == view)
-        {
-            return hit.Geometries;
-        }
-        IReadOnlyList<Geometry> built = Build(view, rings);
-        cache = new(view, built);
-        return built;
-    }
-
-    private static List<Geometry> Build(MapView view, IReadOnlyList<double[]> rings)
-    {
-        List<Geometry> result = [];
-        if (rings.Count == 0)
+        List<TraceHopViewModel> result = [];
+        if (Hops is null)
         {
             return result;
         }
-        double world = 360 * view.Scale;
-        double[] dLon = [];
-        foreach (double[] ring in rings)
+        foreach (object? item in Hops)
         {
-            // 关键:先把这个环自身的经度"展开"成连续序列。直接对每个点做 ±180° 归一化,
-            // 会把跨缝的环从中间撕开,画出来是横贯全图的长条 —— 前一版就是这个症状。
-            // 环上相邻两点的经度差本来就很小,逐点累加即可得到不含跳变的连续经度。
-            int count = ring.Length / 2;
-            if (dLon.Length < count)
+            if (item is TraceHopViewModel { HasLocation: true } hop)
             {
-                dLon = new double[count];
-            }
-            dLon[0] = MapView.Normalize(ring[0] - view.CenterLon);
-            for (int i = 1; i < count; i++)
-            {
-                dLon[i] = dLon[i - 1] + MapView.Normalize(ring[i * 2] - ring[(i - 1) * 2]);
-            }
-            // 视图中心可以在任意经度,一个环因此可能被 ±180° 那条缝切开。上一版在缝处断开
-            // 另起一笔,但闭合子路径会给海岸线补上一条直边,南极洲那种横跨整圈的环尤其难看。
-            // 改为把同一个环整体平移 -360°/0°/+360° 各画一遍,由裁剪决定谁可见 ——
-            // 没有缝,填充也不会破。
-            for (int copy = -1; copy <= 1; copy++)
-            {
-                double shift = copy * world;
-                var geometry = new StreamGeometry();
-                double minX = double.MaxValue, maxX = double.MinValue;
-                using (StreamGeometryContext ctx = geometry.Open())
-                {
-                    Point start = Plot(view, dLon[0], ring[1], shift);
-                    ctx.BeginFigure(start, true);
-                    minX = maxX = start.X;
-                    for (int i = 1; i < count; i++)
-                    {
-                        Point point = Plot(view, dLon[i], ring[(i * 2) + 1], shift);
-                        minX = Math.Min(minX, point.X);
-                        maxX = Math.Max(maxX, point.X);
-                        ctx.LineTo(point);
-                    }
-                    ctx.EndFigure(true);
-                }
-                // 整体在屏外的副本直接跳过,省掉大部分绘制。
-                if (maxX >= view.Panel.X && minX <= view.Panel.Right)
-                {
-                    result.Add(geometry);
-                }
+                result.Add(hop);
             }
         }
         return result;
-
-        // 用展开后的经度差直接定位,绕过 Project 里的归一化。
-        static Point Plot(MapView view, double dLon, double latitude, double shift) =>
-            new(
-                view.Panel.Center.X + (dLon * view.Scale) + shift,
-                view.Panel.Center.Y - ((latitude - view.CenterLat) * view.Scale)
-            );
     }
 
-    /// <summary>国界环(Natural Earth 50m,公有领域)。每个环是扁平的 [lon, lat, lon, lat, …]。</summary>
-    private static readonly Lazy<IReadOnlyList<double[]>> CountryRings =
-        new(() => LoadRings("avares://VelaShell/Assets/world-countries.txt"));
+    private sealed class RouteArc
+    {
+        public RouteArc(SphereVector from, SphereVector to, long now)
+        {
+            From = from;
+            To = to;
+            StartTicks = now;
+            double angle = Math.Acos(Math.Clamp(SphereVector.Dot(from, to), -1, 1));
+            FlightSeconds = 1 + angle * 0.34;
+            double height = Math.Min(0.04 + angle * 0.08, angle * 0.24);
+            for (int i = 0; i < Lifted.Length; i++)
+            {
+                double t = i / (double)(Lifted.Length - 1);
+                Lifted[i] = Slerp(from, to, t) * (1 + height * Math.Sin(Math.PI * t));
+            }
+        }
 
-    /// <summary>省/州界环(Natural Earth 50m admin-1)。</summary>
-    private static readonly Lazy<IReadOnlyList<double[]>> ProvinceRings =
-        new(() => LoadRings("avares://VelaShell/Assets/world-provinces.txt"));
+        public SphereVector From { get; }
+        public SphereVector To { get; }
+        public long StartTicks { get; }
+        public double FlightSeconds { get; }
+        public SphereVector[] Lifted { get; } = new SphereVector[57];
+    }
+
+    private readonly struct Projection(double yaw, double pitch, Point center, double radius)
+    {
+        private readonly (double Sin, double Cos) _yaw = Math.SinCos(yaw);
+        private readonly (double Sin, double Cos) _pitch = Math.SinCos(pitch);
+
+        public SpherePoint Project(SphereVector v)
+        {
+            double x = v.X * _yaw.Cos - v.Z * _yaw.Sin;
+            double z = v.X * _yaw.Sin + v.Z * _yaw.Cos;
+            double y = v.Y * _pitch.Cos - z * _pitch.Sin;
+            return new(new(center.X + radius * x, center.Y - radius * y), z * _pitch.Cos + v.Y * _pitch.Sin);
+        }
+    }
+
+    private static SphereVector ToVector(GeoPoint point)
+    {
+        double latitude = point.Latitude * Math.PI / 180;
+        double longitude = point.Longitude * Math.PI / 180;
+        double cosLatitude = Math.Cos(latitude);
+        return new(-cosLatitude * Math.Cos(longitude), Math.Sin(latitude), cosLatitude * Math.Sin(longitude));
+    }
+
+    private static SphereVector Slerp(SphereVector start, SphereVector end, double amount)
+    {
+        double dot = Math.Clamp(SphereVector.Dot(start, end), -1, 1);
+        if (dot > 0.9995)
+        {
+            return SphereVector.Normalize(start + ((end - start) * amount));
+        }
+        double angle = Math.Acos(dot);
+        double sine = Math.Sin(angle);
+        if (Math.Abs(sine) < 0.0001)
+        {
+            return SphereVector.Normalize(start + ((end - start) * amount));
+        }
+        double first = Math.Sin((1 - amount) * angle) / sine;
+        double second = Math.Sin(amount * angle) / sine;
+        return SphereVector.Normalize((start * first) + (end * second));
+    }
+
+    private static SurfaceDot[] BuildSurface(IReadOnlyList<double[]> rings)
+    {
+        List<SurfaceDot> points = [];
+        const double step = 2;
+        for (double latitude = -90 + step / 2; latitude < 90; latitude += step)
+        {
+            List<double> intersections = [];
+            foreach (double[] ring in rings)
+            {
+                int count = ring.Length / 2;
+                for (int index = 0; index < count; index++)
+                {
+                    int next = (index + 1) % count;
+                    double lon1 = ring[index * 2];
+                    double lat1 = ring[(index * 2) + 1];
+                    double lon2 = ring[next * 2];
+                    double lat2 = ring[(next * 2) + 1];
+                    if (Math.Abs(lat2 - lat1) < 0.000001 || latitude < Math.Min(lat1, lat2) || latitude >= Math.Max(lat1, lat2))
+                    {
+                        continue;
+                    }
+                    double delta = NormalizeLongitude(lon2 - lon1);
+                    double crossing = lon1 + (delta * ((latitude - lat1) / (lat2 - lat1)));
+                    intersections.Add(crossing);
+                }
+            }
+
+            intersections.Sort();
+            int columns = Math.Max(1, (int)Math.Round(360 / step * Math.Cos(latitude * Math.PI / 180)));
+            int crossingIndex = 0;
+            for (int column = 0; column < columns; column++)
+            {
+                double longitude = -180 + (column + 0.5) * 360 / columns;
+                while (crossingIndex < intersections.Count && intersections[crossingIndex] <= longitude)
+                {
+                    crossingIndex++;
+                }
+                points.Add(new(ToVector(new(latitude, longitude)), (crossingIndex & 1) != 0));
+            }
+        }
+        return [.. points];
+    }
+
+    private static double NormalizeLongitude(double longitude)
+    {
+        double value = (longitude + 180) % 360;
+        return (value < 0 ? value + 360 : value) - 180;
+    }
 
     private static List<double[]> LoadRings(string uri)
     {
@@ -419,22 +624,22 @@ public sealed class TraceWorldMap : Control
                     continue;
                 }
                 double[] flat = new double[pairs.Length * 2];
-                int n = 0;
+                int count = 0;
                 foreach (string pair in pairs)
                 {
                     int comma = pair.IndexOf(',', StringComparison.Ordinal);
                     if (comma <= 0
-                        || !double.TryParse(pair[..comma], CultureInfo.InvariantCulture, out double lon)
-                        || !double.TryParse(pair[(comma + 1)..], CultureInfo.InvariantCulture, out double lat))
+                        || !double.TryParse(pair[..comma], NumberStyles.Float, CultureInfo.InvariantCulture, out double lon)
+                        || !double.TryParse(pair[(comma + 1)..], NumberStyles.Float, CultureInfo.InvariantCulture, out double lat))
                     {
                         continue;
                     }
-                    flat[n++] = lon;
-                    flat[n++] = lat;
+                    flat[count++] = lon;
+                    flat[count++] = lat;
                 }
-                if (n >= 8)
+                if (count >= 8)
                 {
-                    Array.Resize(ref flat, n);
+                    Array.Resize(ref flat, count);
                     rings.Add(flat);
                 }
             }
@@ -442,55 +647,84 @@ public sealed class TraceWorldMap : Control
         }
         catch (Exception ex) when (ex is IOException or FileNotFoundException)
         {
-            // 底图缺失只是少了轮廓,经纬网和落点照画。
             return [];
         }
     }
 
-    private static void DrawGraticule(DrawingContext context, MapView view, IBrush brush)
+    private Typeface UiTypeface()
     {
-        var pen = new Pen(brush, 0.5);
-        Rect panel = view.Panel;
-        for (int lon = -180; lon < 180; lon += 30)
-        {
-            double x = view.Project(0, lon).X;
-            if (x >= panel.X && x <= panel.Right)
-            {
-                context.DrawLine(pen, new(x, panel.Y), new(x, panel.Bottom));
-            }
-        }
-        for (int lat = -60; lat <= 60; lat += 30)
-        {
-            double y = view.Project(lat, view.CenterLon).Y;
-            if (y >= panel.Y && y <= panel.Bottom)
-            {
-                context.DrawLine(pen, new(panel.X, y), new(panel.Right, y));
-            }
-        }
+        return this.TryFindResource("VelaUiFont", ActualThemeVariant, out object? value) && value is FontFamily family
+            ? new Typeface(family)
+            : Typeface.Default;
     }
 
-    private static void DrawCentered(DrawingContext context, Rect bounds, IBrush brush, string text)
+    private IBrush Brush(string key)
+    {
+        if (this.TryFindResource(key, ActualThemeVariant, out object? value) && value is IBrush brush)
+        {
+            return brush;
+        }
+
+        bool light = ActualThemeVariant == ThemeVariant.Light;
+        return key switch
+        {
+            "VelaBgPage" or "VelaTraceLabelBg" => light ? Brushes.WhiteSmoke : Brushes.Black,
+            "VelaTraceBorder" => Brushes.SlateGray,
+            "VelaTextMuted" => light ? Brushes.DimGray : Brushes.Gray,
+            "VelaAccent" => light ? Brushes.Teal : Brushes.Cyan,
+            "VelaError" => light ? Brushes.Firebrick : Brushes.Red,
+            "VelaTextSecondary" => light ? Brushes.DarkSlateGray : Brushes.LightGray,
+            _ => Brushes.Transparent
+        };
+    }
+
+    private void DrawEmptyHint(DrawingContext context, Rect bounds, IBrush brush, string text)
     {
         var formatted = new FormattedText(
             text,
             CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight,
-            Typeface.Default,
+            UiTypeface(),
             11,
-            brush
-        )
+            brush)
         {
-            MaxTextWidth = Math.Max(40, bounds.Width - 24),
-            TextAlignment = TextAlignment.Center
+            MaxTextWidth = Math.Max(1, bounds.Width - 24)
         };
         context.DrawText(
             formatted,
-            new((bounds.Width - formatted.Width) / 2, (bounds.Height - formatted.Height) / 2)
-        );
+            new(12, Math.Max(0, bounds.Bottom - formatted.Height - 8)));
     }
 
-    private IBrush Brush(string key, Color fallback) =>
-        this.TryFindResource(key, out object? value) && value is IBrush brush
-            ? brush
-            : new SolidColorBrush(fallback);
+    private static double Distance(Point first, Point second)
+    {
+        double x = first.X - second.X;
+        double y = first.Y - second.Y;
+        return Math.Sqrt((x * x) + (y * y));
+    }
+
+    private readonly record struct SurfaceDot(SphereVector Location, bool IsLand);
+
+    private readonly record struct GeoPoint(double Latitude, double Longitude);
+
+    private readonly record struct ProjectedHop(SpherePoint Sphere, TraceHopViewModel Hop, SphereVector Location);
+
+    private readonly record struct SpherePoint(Point Position, double Depth);
+
+    private readonly record struct SphereVector(double X, double Y, double Z)
+    {
+        public static double Dot(SphereVector left, SphereVector right) =>
+            (left.X * right.X) + (left.Y * right.Y) + (left.Z * right.Z);
+
+        public static SphereVector Normalize(SphereVector value)
+        {
+            double length = Math.Sqrt(Dot(value, value));
+            return length < 0.000001 ? new(0, 0, 1) : value * (1 / length);
+        }
+
+        public static SphereVector operator +(SphereVector left, SphereVector right) => new(left.X + right.X, left.Y + right.Y, left.Z + right.Z);
+
+        public static SphereVector operator -(SphereVector left, SphereVector right) => new(left.X - right.X, left.Y - right.Y, left.Z - right.Z);
+
+        public static SphereVector operator *(SphereVector value, double scale) => new(value.X * scale, value.Y * scale, value.Z * scale);
+    }
 }
