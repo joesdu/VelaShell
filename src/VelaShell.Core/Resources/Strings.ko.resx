@@ -9666,6 +9666,9 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Tree_NewChildGroup" xml:space="preserve">
     <value>하위 그룹 만들기</value>
   </data>
+  <data name="Tree_RenameGroupFailed" xml:space="preserve">
+    <value>그룹 이름을 바꿀 수 없습니다. 같은 단계에서 중복되지 않는 이름을 입력하세요. 공백만 있거나 &gt;가 포함된 이름은 사용할 수 없습니다.</value>
+  </data>
   <data name="Tree_GroupNamePrompt" xml:space="preserve">
     <value>그룹 이름 입력</value>
   </data>

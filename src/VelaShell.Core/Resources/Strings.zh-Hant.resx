@@ -10155,6 +10155,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Tree_NewChildGroup" xml:space="preserve">
     <value>新增子群組</value>
   </data>
+  <data name="Tree_RenameGroupFailed" xml:space="preserve">
+    <value>無法重新命名群組。請輸入名稱，不可與同層群組同名，也不可包含 &gt;。</value>
+  </data>
   <data name="Tree_GroupNamePrompt" xml:space="preserve">
     <value>請輸入群組名稱</value>
   </data>

@@ -106,6 +106,21 @@ public partial class SessionTreeView : UserControl
         }
     }
 
+    private void Group_Rename_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
+    {
+        if (DataContext is not SessionTreeViewModel viewModel || TopLevel.GetTopLevel(this) is not Window owner
+            || sender is not Control { DataContext: SessionTreeNodeViewModel { IsGroup: true } group })
+        {
+            return;
+        }
+        string title = Strings.Get("Rename");
+        string? name = await MessageDialog.PromptAsync(owner, title, group.Name, Strings.Get("Tree_GroupNamePrompt"));
+        if (name is not null && !await viewModel.RenameGroupAsync(group.Id, name))
+        {
+            await MessageDialog.ShowMessageAsync(owner, title, Strings.Get("Tree_RenameGroupFailed"), MessageDialogKind.Warning);
+        }
+    });
+
     private void Group_NewChild_Click(object? sender, RoutedEventArgs e) => FireAndForget.Run(async () =>
     {
         if (DataContext is not SessionTreeViewModel viewModel

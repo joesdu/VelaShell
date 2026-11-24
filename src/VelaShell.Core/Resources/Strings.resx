@@ -9672,6 +9672,9 @@ Send anyway?</value>
   <data name="Tree_NewChildGroup" xml:space="preserve">
     <value>New child group</value>
   </data>
+  <data name="Tree_RenameGroupFailed" xml:space="preserve">
+    <value>Could not rename the group. Use a non-empty name that is unique at this level and does not contain &gt;.</value>
+  </data>
   <data name="Tree_GroupNamePrompt" xml:space="preserve">
     <value>Enter a group name</value>
   </data>

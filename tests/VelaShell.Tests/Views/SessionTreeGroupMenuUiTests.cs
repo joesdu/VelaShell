@@ -1,5 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Interactivity;
+using VelaShell.Core.Resources;
+using VelaShell.Tests.TestSupport;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using NSubstitute;
@@ -14,12 +17,7 @@ namespace VelaShell.Tests.Views;
 /// <summary>
 /// 资源管理器树上分组行的右键菜单接线。
 /// </summary>
-/// <remarks>
-/// 视图模型侧的删除逻辑由 <c>SessionTreeViewModelTests</c> 覆盖,这里守的是另一半:
-/// 菜单项确实挂在分组行上、并且真的绑到了 <see cref="SessionTreeViewModel.DeleteGroupCommand" />。
-/// ContextMenu 走的是非编译期校验的反射绑定(<c>$parent[TreeView]</c> 穿弹出层),
-/// 写错了不会有任何编译错误 —— 只会在用户点下去时"菜单点了没反应"。
-/// </remarks>
+/// <remarks>实际打开弹出菜单，验证删除命令的绑定，并通过输入框重命名被点击的分组。</remarks>
 [TestClass]
 [TestCategory("SessionTree")]
 public class SessionTreeGroupMenuUiTests
@@ -33,9 +31,8 @@ public class SessionTreeGroupMenuUiTests
         );
 
     [TestMethod]
-    public void GroupRow_ContextMenu_BindsDeleteGroupCommand()
-    {
-        OnUi(async () =>
+    public Task GroupRow_ContextMenu_RenamesClickedGroup_AndBindsDeleteCommand() =>
+        _session.RunOnUiAsync(async () =>
         {
             ISessionRepository repository = Substitute.For<ISessionRepository>();
             var group = new ServerGroup { Id = Guid.NewGuid(), Name = "Production" };
@@ -65,20 +62,25 @@ public class SessionTreeGroupMenuUiTests
                                   && border.DataContext is SessionTreeNodeViewModel { IsGroup: true });
 
             Assert.IsNotNull(groupRow.ContextMenu, "分组行必须有右键菜单,否则根本没有删除分组的入口。");
-            MenuItem item = groupRow.ContextMenu.Items.OfType<MenuItem>().Single();
+            IEnumerable<MenuItem> items = groupRow.ContextMenu.Items.OfType<MenuItem>();
 
             // 打开菜单才会求值绑定:关掉的 ContextMenu 里 Command 恒为 null,直接断言会假通过。
             groupRow.ContextMenu.Open(groupRow);
             Dispatcher.UIThread.RunJobs();
 
-            Assert.AreSame(viewModel.DeleteGroupCommand, item.Command,
+            MenuItem delete = items.Single(i => Equals(i.Header, Strings.Get("Tree_DeleteGroup")));
+            Assert.AreSame(viewModel.DeleteGroupCommand, delete.Command,
                            "分组菜单的删除项必须绑到 DeleteGroupCommand。");
 
+            items.Single(i => Equals(i.Header, Strings.Get("Rename"))).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            MessageDialog dialog = window.OwnedWindows.OfType<MessageDialog>().Single();
+            TextBox input = dialog.FindControl<TextBox>("InputBox")!;
+            Assert.AreEqual("Production", input.Text);
+            input.Text = "Staging";
+            dialog.FindControl<Button>("ConfirmButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+            Assert.AreEqual("Staging", viewModel.Nodes.Single().Name);
             groupRow.ContextMenu.Close();
             window.Close();
         });
-    }
-
-    private static void OnUi(Func<Task> body) =>
-        _session.Dispatch(body, CancellationToken.None).GetAwaiter().GetResult();
 }

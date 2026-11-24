@@ -10155,6 +10155,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Tree_NewChildGroup" xml:space="preserve">
     <value>新建子分组</value>
   </data>
+  <data name="Tree_RenameGroupFailed" xml:space="preserve">
+    <value>无法重命名分组。请输入名称，不要与同级分组重名，也不要包含 &gt;。</value>
+  </data>
   <data name="Tree_GroupNamePrompt" xml:space="preserve">
     <value>请输入分组名称</value>
   </data>

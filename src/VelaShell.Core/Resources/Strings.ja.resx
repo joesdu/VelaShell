@@ -9666,6 +9666,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Tree_NewChildGroup" xml:space="preserve">
     <value>子グループを新規作成</value>
   </data>
+  <data name="Tree_RenameGroupFailed" xml:space="preserve">
+    <value>グループ名を変更できません。同じ階層で重複しない名前を入力してください。空白のみの名前や &gt; を含む名前は使用できません。</value>
+  </data>
   <data name="Tree_GroupNamePrompt" xml:space="preserve">
     <value>グループ名を入力</value>
   </data>
