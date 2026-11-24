@@ -9,7 +9,7 @@ namespace VelaShell.Plugin.Ai.Auth;
 /// <para>
 /// 订阅型端点常常光有 <c>Authorization</c> 还不够,还要一个"算在哪个账号头上"之类的头
 /// (见 <see cref="Configuration.OAuthConfig.ExtraHeaders" />)。OpenAI SDK 走的是
-/// <c>System.ClientModel</c> 的管道,插一条 per-call 策略就行。
+/// <c>System.ClientModel</c> 的管道,在发送前设置这些头,让显式配置优先于 SDK 的默认值。
 /// </para>
 /// <para>
 /// <b>为什么不换 <c>Transport</c></b>:那要自备 <see cref="HttpClient" />,而客户端是

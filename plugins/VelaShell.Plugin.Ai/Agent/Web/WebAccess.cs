@@ -62,7 +62,7 @@ internal class WebAccess(WebSearchOptions options)
     /// 一眼是脚本的 UA 直接返回 403 / 空页。
     /// </summary>
     private const string UserAgent =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36 VelaShell/1.0";
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36";
 
     private static readonly HttpClient Http = CreateClient();
 
@@ -80,6 +80,7 @@ internal class WebAccess(WebSearchOptions options)
         };
         var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(AiHttp.UserAgent);
         client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en,zh-CN;q=0.9,zh;q=0.8");
         return client;
     }

@@ -16,7 +16,7 @@ namespace VelaShell.Plugin.Ai.Bridge.Channels.Feishu;
 /// </remarks>
 internal sealed class FeishuApi(string appId, string appSecret, bool international, IPluginLogger log) : IDisposable
 {
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly HttpClient _http = AiHttp.CreateClient(TimeSpan.FromSeconds(30));
     private readonly SemaphoreSlim _tokenGate = new(1, 1);
     private string? _token;
     private DateTimeOffset _tokenExpiresAt = DateTimeOffset.MinValue;

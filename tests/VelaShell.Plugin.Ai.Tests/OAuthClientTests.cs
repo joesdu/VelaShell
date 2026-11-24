@@ -44,7 +44,7 @@ internal sealed class OAuthStub : HttpMessageHandler
             ? ""
             : await request.Content.ReadAsStringAsync(cancellationToken);
         Requests.Add((request.RequestUri!.ToString(), body));
-        RequestHeaders.AddRange(request.Headers.Select(h => $"{h.Key}: {string.Join(",", h.Value)}"));
+        RequestHeaders.Add(request.Headers.ToString());
         (HttpStatusCode status, string payload, string mediaType) = _responses.Count > 0
             ? _responses.Dequeue()
             : (HttpStatusCode.InternalServerError, "{\"error\":\"stub_exhausted\"}", "application/json");

@@ -238,16 +238,16 @@ public sealed class AiPlugin : IVelaPlugin
         }
         _commands.Clear();
         _commands.Add(context.Commands.Register(new PluginCommandDescriptor(
-            $"{context.PluginId}.chat", loc["CmdChat"], "AI",
+            $"{context.PluginId}.chat", loc["CmdChat"], Loc.ProductName,
             _ => OpenPanelAsync(PanelDisplayMode.Document))));
         _commands.Add(context.Commands.Register(new PluginCommandDescriptor(
-            $"{context.PluginId}.chat-window", loc["CmdChatWindow"], "AI",
+            $"{context.PluginId}.chat-window", loc["CmdChatWindow"], Loc.ProductName,
             _ => OpenPanelAsync(PanelDisplayMode.Window))));
         _commands.Add(context.Commands.Register(new PluginCommandDescriptor(
-            $"{context.PluginId}.explain-terminal", loc["CmdExplain"], "AI",
+            $"{context.PluginId}.explain-terminal", loc["CmdExplain"], Loc.ProductName,
             ExplainTerminalAsync)));
         _commands.Add(context.Commands.Register(new PluginCommandDescriptor(
-            $"{context.PluginId}.collaboration", loc["CmdCollaboration"], "AI",
+            $"{context.PluginId}.collaboration", loc["CmdCollaboration"], Loc.ProductName,
             _ => OpenCollaborationAsync())));
     }
 
@@ -271,7 +271,7 @@ public sealed class AiPlugin : IVelaPlugin
         _collaborationPanel = await context.Ui.ShowPanelAsync(
             new PanelOptions
             {
-                Title = loc["Collaboration"],
+                Title = $"{Loc.ProductName} · {loc["Collaboration"]}",
                 Icon = AiIcon.Panel,
                 DisplayMode = PanelDisplayMode.Window,
                 WindowWidth = width,

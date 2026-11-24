@@ -2300,7 +2300,7 @@
     <value>终端输出已导出:{0}</value>
   </data>
   <data name="Menu_AiAssistantTip" xml:space="preserve">
-    <value>AI 助手</value>
+    <value>VelaShell Copilot</value>
   </data>
   <data name="Menu_CommandPaletteTip" xml:space="preserve">
     <value>命令面板 (Ctrl+P)</value>
@@ -7185,7 +7185,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>对话框与窗口</value>
   </data>
   <data name="Sc_GroupAi" xml:space="preserve">
-    <value>AI 助手插件</value>
+    <value>VelaShell Copilot插件</value>
   </data>
   <data name="Sc_KeyLeftClick" xml:space="preserve">
     <value>左键</value>
@@ -7452,7 +7452,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>取消会话重命名</value>
   </data>
   <data name="Sc_AiClosePanel" xml:space="preserve">
-    <value>关闭 AI 二级窗口</value>
+    <value>关闭 VelaShell Copilot 窗口</value>
   </data>
   <data name="Sc_NoteDisconnected" xml:space="preserve">
     <value>仅在会话已断开时</value>
@@ -10390,9 +10390,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Relay_CacheFailed" xml:space="preserve">
     <value>无法访问本机传输缓存。请检查磁盘剩余空间及临时目录权限后重试。</value>
   </data>
-  <data name="AiRegion_Pin" xml:space="preserve"><value>固定 / 自动隐藏 AI 助手</value></data>
-  <data name="AiRegion_Collapse" xml:space="preserve"><value>折叠 AI 助手（保留对话）</value></data>
-  <data name="AiRegion_Hide" xml:space="preserve"><value>隐藏 AI 助手</value></data>
+  <data name="AiRegion_Pin" xml:space="preserve"><value>固定 / 自动隐藏 VelaShell Copilot</value></data>
+  <data name="AiRegion_Collapse" xml:space="preserve"><value>折叠 VelaShell Copilot（保留对话）</value></data>
+  <data name="AiRegion_Hide" xml:space="preserve"><value>隐藏 VelaShell Copilot</value></data>
   <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>已存的密码被主密码锁着,这次没有解锁:请在登录框里手动输入,这次输入的密码不会保存。</value></data>
   <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>已存的密码被主密码锁着,没有重连。解锁(状态栏的锁形图标)后再重连。</value></data>
   <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>已锁定:自动重连不会弹出解锁框。解锁(状态栏的锁形图标)后会自动重试一次,也可以按回车或 Ctrl+R 重连。</value></data>
@@ -10575,4 +10575,12 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Msg_SshReconnectBoundary" xml:space="preserve"><value>----- {0} 已重连 · 新 SSH 会话 -----</value></data>
   <data name="SetGeneral_PreserveOutputOnSshReconnect" xml:space="preserve"><value>SSH 重连时保留终端输出</value></data>
   <data name="SetGeneral_PreserveOutputOnSshReconnectDesc" xml:space="preserve"><value>手动或自动重连成功后，用带时间的分隔行区分新旧会话。关闭后会清空此标签的屏幕和回滚历史。</value></data>
+  <data name="PluginUpgrade_Title" xml:space="preserve"><value>需要更新插件</value></data>
+  <data name="PluginUpgrade_Message" xml:space="preserve"><value>以下插件无法在当前 VelaShell 能力下运行。当前版本：{0}
+
+{1}
+
+打开“关于”并检查更新吗？</value></data>
+  <data name="PluginUpgrade_Requirement" xml:space="preserve"><value>• {0} 需要 {1}</value></data>
+  <data name="PluginUpgrade_CheckUpdates" xml:space="preserve"><value>检查更新</value></data>
 </root>

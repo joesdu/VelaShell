@@ -577,7 +577,7 @@ public sealed class BridgeAgentRunner(
     private string BuildSystemPrompt(ChatMode mode, InboundMessage message, SessionInfo? session, bool nativeWebSearch)
     {
         var prompt = new StringBuilder(
-            "You are the VelaShell assistant, reachable from a team chat. " +
+            "You are VelaShell Copilot, reachable from a team chat. " +
             "You help with servers, shell commands, log analysis and DevOps questions. " +
             $"Respond in the user's language (UI locale: {context.Host.Locale}). ");
         // IM 不是聊天面板:没有折叠、没有滚动条,一大段 Markdown 在群里就是刷屏。

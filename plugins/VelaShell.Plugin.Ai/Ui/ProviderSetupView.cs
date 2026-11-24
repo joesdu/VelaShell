@@ -1626,7 +1626,7 @@ public sealed class ProviderSetupView : UserControl
             }
         }));
 
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        using var http = AiHttp.CreateClient(TimeSpan.FromSeconds(60));
         OAuthClient client = DevicePollDelay is { } pollDelay ? new OAuthClient(http) { Delay = pollDelay } : new OAuthClient(http);
         var login = new ProviderLogin(client, LaunchAsync);
         try

@@ -1340,7 +1340,7 @@ public sealed class AiSettingsStore(IPluginContext context)
     /// 刷令牌用的 HTTP 客户端。<b>静态共享</b>:每次刷新新建一个会攒下一堆处于 TIME_WAIT 的连接,
     /// 而这条路上不需要任何自定义 handler(令牌端点不是 SSE,也没有中转站要清洗)。
     /// </summary>
-    private static readonly HttpClient TokenHttp = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private static readonly HttpClient TokenHttp = AiHttp.CreateClient(TimeSpan.FromSeconds(30));
 
     /// <summary>刷令牌走谁。留成可替换的,测试里换成打桩的 handler(生产从不改它)。</summary>
     internal OAuthClient TokenClient { get; set; } = new(TokenHttp);
@@ -1764,10 +1764,7 @@ public sealed class AiSettingsStore(IPluginContext context)
                     {
                         handlers.Add(new AnthropicApiKeyHandler(secret));
                     }
-                    if (credential.Headers is { Count: > 0 } extra)
-                    {
-                        handlers.Add(new ExtraHeadersHandler(extra));
-                    }
+                    handlers.Add(new ExtraHeadersHandler(AiHttp.ProviderHeaders(credential.Headers)));
                     // 属性为 init-only,按凭据形态分别构造:登录换来的短期令牌要走 AuthToken。
                     // 13.x 起 ApiKey 与 AuthToken 发出去都是 Authorization: Bearer,区别只在上面那个改写处理器挂不挂。
                     // 没有凭据时,只有官方 api.anthropic.com 交给 SDK 去读本机的 ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN
@@ -2096,10 +2093,7 @@ public sealed class AiSettingsStore(IPluginContext context)
         var options = new OpenAIClientOptions { Endpoint = new Uri(ClientBaseUrl(EndpointOf(provider, credential), provider.Protocol)) };
         // 多槽的重试由聊天回路统一计数;SDK 隐式重试会把一次 429 重试乘成多次 HTTP。
         if (noRetries || (callerCountsRetries && HasProviderKeyPool(provider))) options.RetryPolicy = NoSdkRetries;
-        if (credential.Headers is { Count: > 0 } headers)
-        {
-            options.AddPolicy(new ExtraHeadersPolicy(headers), PipelinePosition.PerCall);
-        }
+        options.AddPolicy(new ExtraHeadersPolicy(AiHttp.ProviderHeaders(credential.Headers)), PipelinePosition.BeforeTransport);
         return new OpenAIClient(
             // OpenAI SDK 要求凭据非空;Ollama 等本地服务无鉴权,给占位值即可。
             // access token 与 API Key 在这条路上是一回事 —— SDK 都发成 Authorization: Bearer。

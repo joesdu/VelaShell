@@ -37,7 +37,7 @@ internal sealed class WeComChannel(
     /// <summary>会话 id → 是不是群聊(发消息要挑不同的接口)。</summary>
     private readonly ConcurrentDictionary<string, bool> _groups = new();
 
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly HttpClient _http = AiHttp.CreateClient(TimeSpan.FromSeconds(30));
     private readonly SemaphoreSlim _tokenGate = new(1, 1);
     private readonly byte[] _aesKey = WeComCrypto.ParseKey(encodingAesKey);
     private HttpListener? _listener;

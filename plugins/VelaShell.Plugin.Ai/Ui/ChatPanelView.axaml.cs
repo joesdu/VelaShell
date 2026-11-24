@@ -3281,7 +3281,7 @@ public partial class ChatPanelView : UserControl
     private string BuildSystemPrompt(ChatMode mode, bool nativeWebSearch = false)
     {
         string prompt =
-            "You are the AI assistant embedded in VelaShell, an SSH terminal application. " +
+            "You are VelaShell Copilot, the AI assistant embedded in VelaShell, an SSH terminal application. " +
             "Help the user with servers, shell commands, log analysis and DevOps questions. Be concise and practical. " +
             "Format responses in Markdown. " +
             $"Respond in the user's language (UI locale: {_context.Host.Locale}). " +

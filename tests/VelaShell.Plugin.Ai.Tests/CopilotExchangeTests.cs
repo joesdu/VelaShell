@@ -97,7 +97,7 @@ public sealed class CopilotExchangeTests
 
         string headers = string.Join("\n", stub.RequestHeaders);
         Assert.Contains("Editor-Version", headers, $"实际头:{headers}");
-        Assert.Contains("User-Agent", headers, $"实际头:{headers}");
+        Assert.Contains($"User-Agent: {AiHttp.UserAgent}", headers, $"实际头:{headers}");
     }
 
     [TestMethod]

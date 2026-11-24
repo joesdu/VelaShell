@@ -89,7 +89,7 @@ public static class ModelPull
         if (apiKeyOverride is null)
             await store.ValidateProviderCredentialScopeAsync(provider, cancellationToken).ConfigureAwait(false);
 
-        using var http = new HttpClient { Timeout = Timeout };
+        using var http = AiHttp.CreateClient(Timeout);
         // 规格库与上游清单并行:models.dev 只负责补窗口与单价,它连不上(超时、没网、被墙)
         // 绝不能挡住上游清单 —— 以前两步串行,models.dev 一超时整次拉取就失败了。
         // 规格缓存:没点拉取时只在过期了才重下(见 ModelsDevCatalog.CacheLifetime)——

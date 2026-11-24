@@ -1,4 +1,4 @@
-# VelaShell.Plugin.Ai —— AI 助手插件
+# VelaShell Copilot
 
 多提供商 AI 助手:在 VelaShell 内与大模型流式对话。三种对话模式 ——
 **对话**(纯问答)/ **计划**(只给只读工具)/ **Agent**(经审批调用工具:

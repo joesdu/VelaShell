@@ -4,7 +4,7 @@
 
 | 目录 | id | 随包分发 | 装载模式 | 说明 |
 | --- | --- | --- | --- | --- |
-| [VelaShell.Plugin.Ai](VelaShell.Plugin.Ai/) | `velashell.ai` | 是 | 进程内 | AI 助手：多提供商流式对话 + Agent 模式（读终端/执行命令带审批）+ 自定义 MCP 服务器 |
+| [VelaShell.Plugin.Ai](VelaShell.Plugin.Ai/) | `velashell.ai` | 是 | 进程内 | VelaShell Copilot：多提供商流式对话 + Agent 模式（读终端/执行命令带审批）+ 自定义 MCP 服务器 |
 
 其余第一方插件住在各自的仓库里，都以 **`.vpx` 包**（本项目自有的插件包格式）作为
 Release 资产 / 插件商店条目交付：

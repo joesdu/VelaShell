@@ -39,7 +39,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(await WaitForAsync(() => chat.Requests.Count > 0 && !Find<Viewbox>(panel, "StopIcon").IsVisible));
                 string body = chat.Requests[0].Body;
 
-                int builtIn = body.IndexOf("You are the AI assistant embedded in VelaShell", StringComparison.Ordinal);
+                int builtIn = body.IndexOf("You are VelaShell Copilot, the AI assistant embedded in VelaShell", StringComparison.Ordinal);
                 int agentRules = body.IndexOf("You can call tools to inspect", StringComparison.Ordinal);
                 string expected = modelLevel ? "MODEL-LEVEL STYLE" : "GLOBAL STYLE";
                 int custom = body.IndexOf("Operator instructions: " + expected, StringComparison.Ordinal);

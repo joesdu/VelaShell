@@ -25,7 +25,7 @@ internal sealed class TelegramChannel(ChannelConfig config, string token, IPlugi
     /// <summary>只订阅普通消息:其它更新(编辑、频道帖、成员变动)对桥接没有意义,少收一点少解析一点。</summary>
     private static readonly string[] AllowedUpdates = ["message"];
 
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(PollSeconds + 20) };
+    private readonly HttpClient _http = AiHttp.CreateClient(TimeSpan.FromSeconds(PollSeconds + 20));
     private long _offset;
     private string? _botUsername;
 

@@ -62,6 +62,7 @@ internal sealed class FeishuChannel(ChannelConfig config, string appSecret, IPlu
         _botOpenId = await _api.BotOpenIdAsync(cancellationToken).ConfigureAwait(false);
 
         using var socket = new ClientWebSocket();
+        socket.Options.SetRequestHeader("User-Agent", AiHttp.UserAgent);
         // 全局代理:宿主把 HttpClient.DefaultProxy 换成了自己的实现(设置 → 代理),
         // 而 ClientWebSocket 不会自动跟着走,得显式交给它。
         socket.Options.Proxy = HttpClient.DefaultProxy;
