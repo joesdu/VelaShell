@@ -352,7 +352,6 @@ public static class ProviderCatalog
                     ExchangeHeaders =
                         "Editor-Version: VelaShell/1.0\n"
                         + "Editor-Plugin-Version: velashell-ai/0.4.0\n"
-                        + "User-Agent: VelaShell/1.0\n"
                         + "Copilot-Integration-Id: vscode-chat",
                     ClientId = ClientIds.GitHubCopilot,
                     Scopes = "read:user",

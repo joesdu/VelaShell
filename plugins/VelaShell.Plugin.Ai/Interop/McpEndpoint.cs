@@ -383,7 +383,7 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
                     {
                         protocolVersion = version,
                         capabilities = new { tools = new { listChanged = false } },
-                        serverInfo = new { name = "velashell", title = "VelaShell", version = context.PluginVersion },
+                        serverInfo = new { name = "velashell", title = "VelaShell Copilot", version = context.PluginVersion },
                         instructions = host.Instructions
                     }), cancellationToken).ConfigureAwait(false);
                     return;

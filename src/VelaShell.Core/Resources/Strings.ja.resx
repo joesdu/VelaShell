@@ -1701,7 +1701,7 @@
     <value>ターミナル出力をエクスポートしました:{0}</value>
   </data>
   <data name="Menu_AiAssistantTip" xml:space="preserve">
-    <value>AI アシスタント</value>
+    <value>VelaShell Copilot</value>
   </data>
   <data name="Menu_CommandPaletteTip" xml:space="preserve">
     <value>コマンドパレット (Ctrl+P)</value>
@@ -6896,7 +6896,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Sc_GroupCompletion" xml:space="preserve"><value>コマンド補完</value></data>
   <data name="Sc_GroupMouse" xml:space="preserve"><value>ターミナルのマウス操作</value></data>
   <data name="Sc_GroupDialogs" xml:space="preserve"><value>ダイアログとウィンドウ</value></data>
-  <data name="Sc_GroupAi" xml:space="preserve"><value>AI アシスタントプラグイン</value></data>
+  <data name="Sc_GroupAi" xml:space="preserve"><value>VelaShell Copilotプラグイン</value></data>
   <data name="Sc_KeyLeftClick" xml:space="preserve"><value>左クリック</value></data>
   <data name="Sc_KeyRightClick" xml:space="preserve"><value>右クリック</value></data>
   <data name="Sc_KeyDoubleClick" xml:space="preserve"><value>ダブルクリック</value></data>
@@ -7009,7 +7009,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Sc_AiRefDelete" xml:space="preserve"><value>ファイル参照をまとめて削除</value></data>
   <data name="Sc_AiRenameCommit" xml:space="preserve"><value>セッション名の変更を確定</value></data>
   <data name="Sc_AiRenameCancel" xml:space="preserve"><value>セッション名の変更を取消</value></data>
-  <data name="Sc_AiClosePanel" xml:space="preserve"><value>AI サブウィンドウを閉じる</value></data>
+  <data name="Sc_AiClosePanel" xml:space="preserve"><value>VelaShell Copilot ウィンドウを閉じる</value></data>
   <data name="Sc_NoteDisconnected" xml:space="preserve"><value>セッション切断中のみ</value></data>
   <data name="Sc_NoteDisconnectedOverlay" xml:space="preserve"><value>切断オーバーレイの表示中のみ</value></data>
   <data name="Sc_NoteMainScreen" xml:space="preserve"><value>メイン画面かつスクロールバックがある場合のみ</value></data>
@@ -9901,9 +9901,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Relay_CacheFailed" xml:space="preserve">
     <value>ローカル転送キャッシュにアクセスできません。ディスクの空き容量と一時ディレクトリのアクセス権を確認してから再試行してください。</value>
   </data>
-  <data name="AiRegion_Pin" xml:space="preserve"><value>AI アシスタントを固定 / 自動的に隠す</value></data>
-  <data name="AiRegion_Collapse" xml:space="preserve"><value>AI アシスタントを折りたたむ（会話を保持）</value></data>
-  <data name="AiRegion_Hide" xml:space="preserve"><value>AI アシスタントを非表示</value></data>
+  <data name="AiRegion_Pin" xml:space="preserve"><value>VelaShell Copilotを固定 / 自動的に隠す</value></data>
+  <data name="AiRegion_Collapse" xml:space="preserve"><value>VelaShell Copilotを折りたたむ（会話を保持）</value></data>
+  <data name="AiRegion_Hide" xml:space="preserve"><value>VelaShell Copilotを非表示</value></data>
   <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>保存済みのパスワードはマスターパスワードでロックされており、今回はロック解除されませんでした。サインイン画面で手動入力してください。今回入力した内容は保存されません。</value></data>
   <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>保存済みのパスワードがマスターパスワードでロックされているため、再接続しませんでした。ロックを解除(ステータスバーの錠前アイコン)してから再接続してください。</value></data>
   <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>ロック中:自動再接続ではロック解除画面を表示しません。ロックを解除(ステータスバーの錠前アイコン)すると一度だけ再試行します。Enter または Ctrl+R で手動再接続もできます。</value></data>

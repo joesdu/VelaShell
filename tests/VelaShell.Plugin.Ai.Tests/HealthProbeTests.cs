@@ -50,6 +50,7 @@ public sealed class HealthProbeTests
         await using var stub = new SseStub(OpenAiStream(reply));
         using var context = new TestPluginContext();
         (Exception? error, string? text) = await HealthProbe.ProbeAsync(new AiSettingsStore(context), ModelFor(stub.BaseUrl));
+        Assert.AreEqual(AiHttp.UserAgent, stub.RequestHeaders[0]["User-Agent"]);
         if (alive)
         {
             Assert.IsNull(error);

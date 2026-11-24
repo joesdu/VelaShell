@@ -6,6 +6,8 @@ namespace VelaShell.Plugin.Ai.Ui;
 /// </summary>
 public sealed class Loc(string locale)
 {
+    internal const string ProductName = "VelaShell Copilot";
+
     private const int En = 0, ZhHans = 1, ZhHant = 2, Ja = 3, Ko = 4;
 
     private int _index = Resolve(locale);
@@ -252,7 +254,7 @@ public sealed class Loc(string locale)
         ["TaskUnknown"] = ["Paused: a task's outcome is unknown. Check the server; it will not be rerun automatically.", "已暂停:任务结果未知,请检查服务器;不会自动重跑。", "已暫停:工作結果未知,請檢查伺服器;不會自動重跑。", "一時停止:作業結果が不明です。サーバーを確認してください。自動再実行しません。", "일시 중지: 작업 결과를 알 수 없습니다. 서버를 확인하세요. 자동 재실행하지 않습니다."],
         ["ExecutionDenied"] = ["Paused: execution or authentication was denied. No further tools will run until you send a new request.", "已暂停:执行或认证已被拒绝;发送新请求前不会继续调用工具。", "已暫停:執行或認證已被拒絕;傳送新請求前不會繼續呼叫工具。", "一時停止:実行または認証が拒否されました。新しいリクエストまでツールは実行しません。", "일시 중지: 실행 또는 인증이 거부되었습니다. 새 요청 전에는 도구를 실행하지 않습니다."],
         ["NoProgress"] = ["Paused: repeated tool calls made no progress. Review before continuing.", "已暂停:工具调用重复且无进展,请检查后继续。", "已暫停:工具呼叫重複且無進展,請檢查後繼續。", "一時停止:ツール呼び出しが繰り返され進展がありません。確認してください。", "일시 중지: 도구 호출이 반복되어 진행되지 않습니다. 확인하세요."],
-        ["Title"] = ["AI Assistant", "AI 助手", "AI 助手", "AI アシスタント", "AI 어시스턴트"],
+        ["Title"] = [ProductName, ProductName, ProductName, ProductName, ProductName],
         // 只在"用户按了发送、却一个模型都没配"时出现,紧接着就会把配置窗口开出来 ——
         // 所以这句是在交代"接下来发生了什么",不再指路去点哪个按钮(空状态那边有按钮)。
         ["NoProvider"] = ["No model configured — opening the model settings.", "尚未配置模型 —— 已为你打开模型配置。", "尚未設定模型 —— 已為你開啟模型設定。", "モデル未設定 — モデル設定を開きました。", "모델이 없습니다 — 모델 설정을 열었습니다."],
@@ -363,7 +365,7 @@ public sealed class Loc(string locale)
         ["RefreshingTools"] = ["Connecting…", "正在连接…", "正在連接…", "接続中…", "연결 중…"],
         ["ToolsRefreshed"] = ["{0}: {1} tool(s)", "{0}:{1} 个工具", "{0}:{1} 個工具", "{0}: ツール {1} 件", "{0}: 도구 {1}개"],
         ["You"] = ["You", "你", "你", "あなた", "나"],
-        ["AssistantRole"] = ["Assistant", "助手", "助手", "アシスタント", "어시스턴트"],
+        ["AssistantRole"] = [ProductName, ProductName, ProductName, ProductName, ProductName],
         ["Thinking"] = ["Thinking", "思考过程", "思考過程", "思考プロセス", "사고 과정"],
         // 回复气泡:思考折叠区标题 / 头部的步数与耗时 / 底部的复制与元信息
         ["ThinkingActive"] = ["Thinking…", "正在思考…", "正在思考…", "思考中…", "생각 중…"],
@@ -819,7 +821,7 @@ public sealed class Loc(string locale)
         ["LoginCancelled"] = ["Sign-in cancelled.", "已取消登录。", "已取消登入。", "ログインをキャンセルしました。", "로그인을 취소했습니다."],
         ["LoginSignedOut"] = ["Signed out.", "已退出登录。", "已登出。", "ログアウトしました。", "로그아웃했습니다."],
         // 浏览器授权完成后打回本机、由环回端口回给浏览器的那一页
-        ["LoginPageTitle"] = ["Signed in to VelaShell", "已登录 VelaShell", "已登入 VelaShell", "VelaShell にログインしました", "VelaShell에 로그인했습니다"],
+        ["LoginPageTitle"] = ["Signed in to VelaShell Copilot", "已登录 VelaShell Copilot", "已登入 VelaShell Copilot", "VelaShell Copilot にログインしました", "VelaShell Copilot에 로그인했습니다"],
         ["LoginPageBody"] = ["You can close this tab and go back to VelaShell.", "可以关掉这个标签页,回到 VelaShell 了。", "可以關掉這個分頁,回到 VelaShell 了。", "このタブを閉じて VelaShell に戻ってください。", "이 탭을 닫고 VelaShell로 돌아가세요."],
         // 设置页里那家供应商的登录状态(编辑表单上半部分)
         ["SubscriptionAuth"] = ["Subscription sign-in", "订阅登录", "訂閱登入", "サブスクリプションログイン", "구독 로그인"],
@@ -917,9 +919,9 @@ public sealed class Loc(string locale)
         ["McpConnecting"] = ["Connecting MCP servers…", "正在连接 MCP 服务器…", "正在連接 MCP 伺服器…", "MCP サーバーに接続中…", "MCP 서버 연결 중…"],
         ["ExplainPrompt"] = ["Explain the following terminal output. Point out any errors and suggest fixes:\n", "请解释以下终端输出,指出其中的错误并给出可能的解决办法:\n", "請解釋以下終端輸出,指出其中的錯誤並給出可能的解決辦法:\n", "以下のターミナル出力を説明し、エラーがあれば指摘して解決策を提案してください:\n", "다음 터미널 출력을 설명하고, 오류를 지적하고 해결 방법을 제안해 주세요:\n"],
         ["NoConnectedSession"] = ["No connected session.", "没有已连接的会话。", "沒有已連接的會話。", "接続中のセッションがありません。", "연결된 세션이 없습니다."],
-        ["CmdChat"] = ["AI: Open Assistant", "AI:打开助手", "AI:開啟助手", "AI:アシスタントを開く", "AI: 도우미 열기"],
-        ["CmdChatWindow"] = ["AI: Open Chat (Window)", "AI:打开聊天(窗口)", "AI:開啟聊天(視窗)", "AI:チャットを開く(ウィンドウ)", "AI: 채팅 열기(창)"],
-        ["CmdExplain"] = ["AI: Explain Terminal Output", "AI:解释终端输出", "AI:解釋終端輸出", "AI:ターミナル出力を説明", "AI: 터미널 출력 설명"],
+        ["CmdChat"] = ["VelaShell Copilot: Open Assistant", "VelaShell Copilot: 打开助手", "VelaShell Copilot: 開啟助手", "VelaShell Copilot: アシスタントを開く", "VelaShell Copilot: 도우미 열기"],
+        ["CmdChatWindow"] = ["VelaShell Copilot: Open Chat (Window)", "VelaShell Copilot: 打开聊天(窗口)", "VelaShell Copilot: 開啟聊天(視窗)", "VelaShell Copilot: チャットを開く(ウィンドウ)", "VelaShell Copilot: 채팅 열기(창)"],
+        ["CmdExplain"] = ["VelaShell Copilot: Explain Terminal Output", "VelaShell Copilot: 解释终端输出", "VelaShell Copilot: 解釋終端輸出", "VelaShell Copilot: ターミナル出力を説明", "VelaShell Copilot: 터미널 출력 설명"],
         // 回复头部的阶段芯片:辉光只说明"在动",这几个字说明"在干什么"
         ["PhaseThinking"] = ["thinking", "正在思考", "正在思考", "思考中", "생각 중"],
         ["PhaseTool"] = ["running tools", "调用工具", "呼叫工具", "ツール実行中", "도구 실행 중"],
@@ -987,7 +989,7 @@ public sealed class Loc(string locale)
         ["MeterTip"] = ["Share of the context window taken by the last turn.", "上一轮占掉了多大比例的上下文窗口。", "上一輪佔掉了多大比例的上下文視窗。", "直近のターンがコンテキスト長のどれだけを占めたか。", "직전 턴이 컨텍스트 창을 얼마나 차지했는지."],
 
         // ── 协作接入设置页 ──
-        ["CmdCollaboration"] = ["AI: Collaboration (chat bridge & MCP server)", "AI: 协作接入(IM 桥接与 MCP 服务端)", "AI: 協作接入(IM 橋接與 MCP 伺服器)", "AI: 連携設定(チャット連携と MCP サーバー)", "AI: 협업 연동(채팅 브리지 및 MCP 서버)"],
+        ["CmdCollaboration"] = ["VelaShell Copilot: Collaboration (chat bridge & MCP server)", "VelaShell Copilot: 协作接入(IM 桥接与 MCP 服务端)", "VelaShell Copilot: 協作接入(IM 橋接與 MCP 伺服器)", "VelaShell Copilot: 連携設定(チャット連携と MCP サーバー)", "VelaShell Copilot: 협업 연동(채팅 브리지 및 MCP 서버)"],
         ["Collaboration"] = ["Collaboration", "协作接入", "協作接入", "連携", "협업 연동"],
         ["SecBridge"] = ["Chat bridge", "IM 桥接", "IM 橋接", "チャット連携", "채팅 브리지"],
         // 这一条是**总开关**,不是"授权别人用"。原文案写的是"允许团队从 IM 里指使这个助手",
@@ -1210,11 +1212,11 @@ public sealed class Loc(string locale)
         // 设定不写死成静态文案:一个只读、只授权了某个分组的群里,印着"你可以让我重启服务"
         // 比不印更糟 —— 人会照着去下命令,然后撞上一句(按设计)不解释范围的拒绝。
         ["BridgeWelcome"] = [
-            "**VelaShell assistant** is connected to this chat. I can reach the servers you saved in VelaShell — read logs, check services, run commands.\n\n**Right now**\n- Mode: {0}\n- Approval: {1}\n- Can operate: {2}\n- Bound to: {3}\n\n**Commands**\n{4}\n\nOr just ask, e.g. \"any errors in the 32601 service today?\". In a group, @ me first.",
-            "**VelaShell 助手**已接入这个聊天。我能连到你在 VelaShell 里保存的服务器,读日志、看服务、跑命令。\n\n**当前设定**\n- 挡位:{0}\n- 审批:{1}\n- 能操作:{2}\n- 绑定:{3}\n\n**命令**\n{4}\n\n也可以直接问,比如「32601 那个服务今天有报错吗」。群里记得先 @ 我。",
-            "**VelaShell 助手**已接入這個聊天。我能連到你在 VelaShell 裡儲存的伺服器,讀日誌、看服務、跑命令。\n\n**目前設定**\n- 擋位:{0}\n- 審批:{1}\n- 能操作:{2}\n- 綁定:{3}\n\n**命令**\n{4}\n\n也可以直接問,比如「32601 那個服務今天有報錯嗎」。群裡記得先 @ 我。",
-            "**VelaShell アシスタント**がこのチャットに接続しました。VelaShell に保存したサーバーに接続して、ログの確認・サービスの状態確認・コマンド実行ができます。\n\n**現在の設定**\n- モード:{0}\n- 承認:{1}\n- 操作できる範囲:{2}\n- 接続先:{3}\n\n**コマンド**\n{4}\n\nそのまま質問しても構いません(例:「32601 のサービスに今日エラーは出ていますか」)。グループでは先に @ してください。",
-            "**VelaShell 어시스턴트**가 이 대화에 연결되었습니다. VelaShell에 저장한 서버에 접속해 로그 확인, 서비스 상태 확인, 명령 실행을 할 수 있습니다.\n\n**현재 설정**\n- 모드: {0}\n- 승인: {1}\n- 조작 범위: {2}\n- 대상: {3}\n\n**명령**\n{4}\n\n그냥 물어봐도 됩니다(예: \"32601 서비스에 오늘 오류가 있나요?\"). 그룹에서는 먼저 @ 해 주세요."
+            "**VelaShell Copilot** is connected to this chat. I can reach the servers you saved in VelaShell — read logs, check services, run commands.\n\n**Right now**\n- Mode: {0}\n- Approval: {1}\n- Can operate: {2}\n- Bound to: {3}\n\n**Commands**\n{4}\n\nOr just ask, e.g. \"any errors in the 32601 service today?\". In a group, @ me first.",
+            "**VelaShell Copilot**已接入这个聊天。我能连到你在 VelaShell 里保存的服务器,读日志、看服务、跑命令。\n\n**当前设定**\n- 挡位:{0}\n- 审批:{1}\n- 能操作:{2}\n- 绑定:{3}\n\n**命令**\n{4}\n\n也可以直接问,比如「32601 那个服务今天有报错吗」。群里记得先 @ 我。",
+            "**VelaShell Copilot**已接入這個聊天。我能連到你在 VelaShell 裡儲存的伺服器,讀日誌、看服務、跑命令。\n\n**目前設定**\n- 擋位:{0}\n- 審批:{1}\n- 能操作:{2}\n- 綁定:{3}\n\n**命令**\n{4}\n\n也可以直接問,比如「32601 那個服務今天有報錯嗎」。群裡記得先 @ 我。",
+            "**VelaShell Copilot**がこのチャットに接続しました。VelaShell に保存したサーバーに接続して、ログの確認・サービスの状態確認・コマンド実行ができます。\n\n**現在の設定**\n- モード:{0}\n- 承認:{1}\n- 操作できる範囲:{2}\n- 接続先:{3}\n\n**コマンド**\n{4}\n\nそのまま質問しても構いません(例:「32601 のサービスに今日エラーは出ていますか」)。グループでは先に @ してください。",
+            "**VelaShell Copilot**이 이 대화에 연결되었습니다. VelaShell에 저장한 서버에 접속해 로그 확인, 서비스 상태 확인, 명령 실행을 할 수 있습니다.\n\n**현재 설정**\n- 모드: {0}\n- 승인: {1}\n- 조작 범위: {2}\n- 대상: {3}\n\n**명령**\n{4}\n\n그냥 물어봐도 됩니다(예: \"32601 서비스에 오늘 오류가 있나요?\"). 그룹에서는 먼저 @ 해 주세요."
         ],
         ["BridgeHelp"] = [
             "/sessions — list connected servers\n/use <user@host:port> — bind this chat to one\n/mode chat|plan|agent — change the mode\n/new — start a fresh conversation\n/stop — stop the current turn\n/continue — pick up an unfinished task where it stopped\n/status — show what this chat is set to, including which machines it may touch",

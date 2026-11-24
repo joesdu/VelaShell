@@ -2,6 +2,8 @@
   <Sdk Name="PublishWithSatoriGC" Version="11.0.1-satori.44643583273.1" />
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <!-- F5 时插件管理器用宿主的 InformationalVersion 核对 minHostVersion。 -->
+    <Version Condition="'$(Configuration)' == 'Debug' and '$(Version)' == '0.0.1-dev'">1.8.9-dev</Version>
     <!-- Win32 版本资源:AssemblyTitle → FileDescription(任务管理器、文件属性与安全软件
          弹窗里显示的那一行,此前是裸的程序集名 "VelaShell"),Description → Comments。
          刻意用英文并与 build/msix/AppxManifest.template.xml 的 Description 逐字一致:

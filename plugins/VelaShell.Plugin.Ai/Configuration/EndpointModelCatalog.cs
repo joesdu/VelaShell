@@ -106,6 +106,7 @@ internal static class EndpointModelCatalog
         {
             request.Headers.TryAddWithoutValidation(name, value);
         }
+        if (!request.Headers.Contains("User-Agent")) request.Headers.UserAgent.ParseAdd(AiHttp.UserAgent);
         return request;
     }
 

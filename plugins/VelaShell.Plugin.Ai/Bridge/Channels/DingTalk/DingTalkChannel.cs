@@ -29,7 +29,7 @@ internal sealed class DingTalkChannel(ChannelConfig config, string clientSecret,
     /// <summary>会话 id → 发消息需要的那点信息(收到消息时记下)。</summary>
     private readonly ConcurrentDictionary<string, (bool IsGroup, string UserId, string RobotCode)> _routes = new();
 
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly HttpClient _http = AiHttp.CreateClient(TimeSpan.FromSeconds(30));
     private readonly SemaphoreSlim _tokenGate = new(1, 1);
     private string? _token;
     private DateTimeOffset _tokenExpiresAt = DateTimeOffset.MinValue;
@@ -56,6 +56,7 @@ internal sealed class DingTalkChannel(ChannelConfig config, string clientSecret,
     {
         (string endpoint, string ticket) = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         using var socket = new ClientWebSocket();
+        socket.Options.SetRequestHeader("User-Agent", AiHttp.UserAgent);
         socket.Options.Proxy = HttpClient.DefaultProxy;
         await socket.ConnectAsync(new Uri($"{endpoint}?ticket={Uri.EscapeDataString(ticket)}"), cancellationToken)
             .ConfigureAwait(false);

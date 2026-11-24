@@ -80,6 +80,7 @@ public sealed class AnthropicWireTests
     {
         (NameValueCollection headers, _) = await SendAsync(ProviderCredential.Key("sk-ant-key"));
 
+        Assert.AreEqual(AiHttp.UserAgent, headers["User-Agent"]);
         Assert.AreEqual("sk-ant-key", headers["x-api-key"], "手填的 Key 要按 13 之前的老规矩走 x-api-key");
         Assert.IsNull(headers["Authorization"], "API Key 不能再以 Bearer 出现:只读 x-api-key 的中转站会把它当成没带 Key");
         // 版本头不动,照 SDK 的发 —— 请求体就是按这个版本拼的。SDK 再换版本时这里会红,提醒重新核对兼容层
@@ -97,13 +98,15 @@ public sealed class AnthropicWireTests
     public async Task ModelListRequest_SendsTheSameVersionAndAuthHeadersAsChat(bool token)
     {
         ProviderCredential credential = token
-            ? new ProviderCredential("sk-ant-oat-1", true, [new("anthropic-beta", "oauth-2025-04-20")])
+            ? new ProviderCredential("sk-ant-oat-1", true, [new("anthropic-beta", "oauth-2025-04-20"), new("user-agent", "Relay/2")])
             : ProviderCredential.Key("sk-ant-key");
         (NameValueCollection chat, _) = await SendAsync(credential);
 
         using HttpRequestMessage list = EndpointModelCatalog.Request("https://api.anthropic.com",
             ChatProtocol.AnthropicMessages, credential)!;
 
+        Assert.AreEqual(token ? "Relay/2" : AiHttp.UserAgent, chat["User-Agent"]);
+        Assert.AreEqual(chat["User-Agent"], list.Headers.UserAgent.ToString());
         foreach (string name in new[] { "anthropic-version", "x-api-key", "Authorization", "anthropic-beta" })
         {
             string? sent = list.Headers.TryGetValues(name, out IEnumerable<string>? values) ? string.Join(",", values) : null;

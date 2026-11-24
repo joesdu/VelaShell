@@ -504,11 +504,12 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
         {
             Uri endpoint = ValidateHttpEndpoint(server.Url);
             Dictionary<string, string> headers = McpConfigParser.ParseHeaderLines(server.Headers);
+            headers.TryAdd("User-Agent", AiHttp.UserAgent);
             return new HttpClientTransport(new HttpClientTransportOptions
             {
                 Endpoint = endpoint,
                 Name = DisplayName(server),
-                AdditionalHeaders = headers.Count > 0 ? headers : null
+                AdditionalHeaders = headers
                 // TransportMode 默认 AutoDetect:先试 Streamable HTTP,再回落 SSE
             });
         }

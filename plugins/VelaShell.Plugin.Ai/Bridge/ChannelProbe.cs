@@ -26,7 +26,7 @@ public readonly record struct ChannelProbeResult(bool Ok, string Summary, string
 /// </remarks>
 internal static class ChannelProbe
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private static readonly HttpClient Http = AiHttp.CreateClient(TimeSpan.FromSeconds(20));
 
     /// <summary>按渠道类型做对应的体检。</summary>
     public static async Task<ChannelProbeResult> TestAsync(ChannelConfig config, string secret,

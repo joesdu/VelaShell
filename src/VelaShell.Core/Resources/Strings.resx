@@ -2191,7 +2191,7 @@ Paste anyway?</value>
     <value>Terminal output exported: {0}</value>
   </data>
   <data name="Menu_AiAssistantTip" xml:space="preserve">
-    <value>AI Assistant</value>
+    <value>VelaShell Copilot</value>
   </data>
   <data name="Menu_CommandPaletteTip" xml:space="preserve">
     <value>Command Palette (Ctrl+P)</value>
@@ -6902,7 +6902,7 @@ A routine key rotation and a hijacked publishing identity look exactly the same 
   <data name="Sc_GroupCompletion" xml:space="preserve"><value>Command Completion</value></data>
   <data name="Sc_GroupMouse" xml:space="preserve"><value>Terminal Mouse Gestures</value></data>
   <data name="Sc_GroupDialogs" xml:space="preserve"><value>Dialogs and Windows</value></data>
-  <data name="Sc_GroupAi" xml:space="preserve"><value>AI Assistant Plugin</value></data>
+  <data name="Sc_GroupAi" xml:space="preserve"><value>VelaShell Copilot Plugin</value></data>
   <data name="Sc_KeyLeftClick" xml:space="preserve"><value>Left Click</value></data>
   <data name="Sc_KeyRightClick" xml:space="preserve"><value>Right Click</value></data>
   <data name="Sc_KeyDoubleClick" xml:space="preserve"><value>Double Click</value></data>
@@ -7015,7 +7015,7 @@ A routine key rotation and a hijacked publishing identity look exactly the same 
   <data name="Sc_AiRefDelete" xml:space="preserve"><value>Delete a whole file reference</value></data>
   <data name="Sc_AiRenameCommit" xml:space="preserve"><value>Commit the session rename</value></data>
   <data name="Sc_AiRenameCancel" xml:space="preserve"><value>Cancel the session rename</value></data>
-  <data name="Sc_AiClosePanel" xml:space="preserve"><value>Close the AI secondary window</value></data>
+  <data name="Sc_AiClosePanel" xml:space="preserve"><value>Close the VelaShell Copilot window</value></data>
   <data name="Sc_NoteDisconnected" xml:space="preserve"><value>Only while the session is disconnected</value></data>
   <data name="Sc_NoteDisconnectedOverlay" xml:space="preserve"><value>Only while the disconnected overlay is shown</value></data>
   <data name="Sc_NoteMainScreen" xml:space="preserve"><value>Main screen with scrollback only</value></data>
@@ -9907,9 +9907,9 @@ Send anyway?</value>
   <data name="Relay_CacheFailed" xml:space="preserve">
     <value>Unable to access the local transfer cache. Check free disk space and temporary-directory permissions before retrying.</value>
   </data>
-  <data name="AiRegion_Pin" xml:space="preserve"><value>Pin / auto-hide AI assistant</value></data>
-  <data name="AiRegion_Collapse" xml:space="preserve"><value>Collapse AI assistant (keep conversation)</value></data>
-  <data name="AiRegion_Hide" xml:space="preserve"><value>Hide AI assistant</value></data>
+  <data name="AiRegion_Pin" xml:space="preserve"><value>Pin / auto-hide VelaShell Copilot</value></data>
+  <data name="AiRegion_Collapse" xml:space="preserve"><value>Collapse VelaShell Copilot (keep conversation)</value></data>
+  <data name="AiRegion_Hide" xml:space="preserve"><value>Hide VelaShell Copilot</value></data>
   <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>Saved passwords are locked by the master password and were not unlocked this time. Enter the credentials in the sign-in dialog; what you type this time will not be saved.</value></data>
   <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>Saved passwords are locked by the master password, so this tab was not reconnected. Unlock (the lock icon in the status bar), then reconnect.</value></data>
   <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>Locked: automatic reconnects never show the unlock dialog. Once you unlock (the lock icon in the status bar) this tab is retried once; you can also reconnect with Enter or Ctrl+R.</value></data>

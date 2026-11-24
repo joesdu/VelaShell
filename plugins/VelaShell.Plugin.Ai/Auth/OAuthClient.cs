@@ -204,6 +204,7 @@ public sealed class OAuthClient(HttpClient http)
         {
             request.Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
+        if (!request.Headers.Contains("User-Agent")) request.Headers.UserAgent.ParseAdd(AiHttp.UserAgent);
         using HttpResponseMessage response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
         EnsureOAuthResponseStatus(response);
         string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);

@@ -2300,7 +2300,7 @@
     <value>終端機輸出已匯出:{0}</value>
   </data>
   <data name="Menu_AiAssistantTip" xml:space="preserve">
-    <value>AI 助手</value>
+    <value>VelaShell Copilot</value>
   </data>
   <data name="Menu_CommandPaletteTip" xml:space="preserve">
     <value>命令面板 (Ctrl+P)</value>
@@ -7185,7 +7185,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>對話方塊與視窗</value>
   </data>
   <data name="Sc_GroupAi" xml:space="preserve">
-    <value>AI 助理外掛</value>
+    <value>VelaShell Copilot外掛</value>
   </data>
   <data name="Sc_KeyLeftClick" xml:space="preserve">
     <value>左鍵</value>
@@ -7452,7 +7452,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>取消工作階段重新命名</value>
   </data>
   <data name="Sc_AiClosePanel" xml:space="preserve">
-    <value>關閉 AI 次要視窗</value>
+    <value>關閉 VelaShell Copilot 視窗</value>
   </data>
   <data name="Sc_NoteDisconnected" xml:space="preserve">
     <value>僅在工作階段已中斷時</value>
@@ -10390,9 +10390,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Relay_CacheFailed" xml:space="preserve">
     <value>無法存取本機傳輸快取。請檢查磁碟剩餘空間及暫存目錄權限後重試。</value>
   </data>
-  <data name="AiRegion_Pin" xml:space="preserve"><value>固定 / 自動隱藏 AI 助手</value></data>
-  <data name="AiRegion_Collapse" xml:space="preserve"><value>摺疊 AI 助手（保留對話）</value></data>
-  <data name="AiRegion_Hide" xml:space="preserve"><value>隱藏 AI 助手</value></data>
+  <data name="AiRegion_Pin" xml:space="preserve"><value>固定 / 自動隱藏 VelaShell Copilot</value></data>
+  <data name="AiRegion_Collapse" xml:space="preserve"><value>摺疊 VelaShell Copilot（保留對話）</value></data>
+  <data name="AiRegion_Hide" xml:space="preserve"><value>隱藏 VelaShell Copilot</value></data>
   <data name="MasterPassword_ConnectWhileLocked" xml:space="preserve"><value>已儲存的密碼被主密碼鎖著,這次沒有解鎖:請在登入框裡手動輸入,這次輸入的密碼不會儲存。</value></data>
   <data name="MasterPassword_ReconnectLocked" xml:space="preserve"><value>已儲存的密碼被主密碼鎖著,沒有重新連線。解鎖(狀態列的鎖形圖示)後再重新連線。</value></data>
   <data name="MasterPassword_AutoReconnectLocked" xml:space="preserve"><value>已鎖定:自動重新連線不會彈出解鎖框。解鎖(狀態列的鎖形圖示)後會自動重試一次,也可以按 Enter 或 Ctrl+R 重新連線。</value></data>
