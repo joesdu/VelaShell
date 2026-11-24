@@ -10086,4 +10086,12 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Msg_SshReconnectBoundary" xml:space="preserve"><value>----- {0} 再接続 · 新しい SSH セッション -----</value></data>
   <data name="SetGeneral_PreserveOutputOnSshReconnect" xml:space="preserve"><value>SSH 再接続時に端末の出力を保持する</value></data>
   <data name="SetGeneral_PreserveOutputOnSshReconnectDesc" xml:space="preserve"><value>手動または自動で再接続したとき、日時付きの区切り線を表示します。オフにすると、再接続時にタブの画面とスクロール履歴を消去します。</value></data>
+  <data name="PluginUpgrade_Title" xml:space="preserve"><value>プラグインの更新が必要です</value></data>
+  <data name="PluginUpgrade_Message" xml:space="preserve"><value>次のプラグインは現在の VelaShell の機能では実行できません。現在のバージョン：{0}
+
+{1}
+
+「バージョン情報」を開いて更新を確認しますか？</value></data>
+  <data name="PluginUpgrade_Requirement" xml:space="preserve"><value>• {0} には {1} が必要です</value></data>
+  <data name="PluginUpgrade_CheckUpdates" xml:space="preserve"><value>更新を確認</value></data>
 </root>

@@ -115,6 +115,9 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     private bool _started;
     private bool _disposed;
 
+    /// <summary>发现插件时用于兼容性检查的宿主版本。</summary>
+    public string HostVersion => options.HostVersion;
+
     /// <summary>全部已发现插件的描述快照(含失败/禁用者及其原因)。</summary>
     public IReadOnlyList<PluginDescriptor> Plugins
     {

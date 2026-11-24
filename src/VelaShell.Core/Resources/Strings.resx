@@ -10092,4 +10092,12 @@ Send anyway?</value>
   <data name="Msg_SshReconnectBoundary" xml:space="preserve"><value>----- {0} Reconnected · New SSH session -----</value></data>
   <data name="SetGeneral_PreserveOutputOnSshReconnect" xml:space="preserve"><value>Keep terminal output on SSH reconnect</value></data>
   <data name="SetGeneral_PreserveOutputOnSshReconnectDesc" xml:space="preserve"><value>Separate sessions with a timestamp after a manual or automatic reconnect. Turn off to clear the tab’s screen and scrollback on reconnect.</value></data>
+  <data name="PluginUpgrade_Title" xml:space="preserve"><value>Plugin update required</value></data>
+  <data name="PluginUpgrade_Message" xml:space="preserve"><value>These plugins cannot run with the current VelaShell capabilities. Current version: {0}
+
+{1}
+
+Open About and check for an update?</value></data>
+  <data name="PluginUpgrade_Requirement" xml:space="preserve"><value>• {0} requires {1}</value></data>
+  <data name="PluginUpgrade_CheckUpdates" xml:space="preserve"><value>Check for updates</value></data>
 </root>

@@ -10086,4 +10086,12 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Msg_SshReconnectBoundary" xml:space="preserve"><value>----- {0} 다시 연결됨 · 새 SSH 세션 -----</value></data>
   <data name="SetGeneral_PreserveOutputOnSshReconnect" xml:space="preserve"><value>SSH 재연결 시 터미널 출력 유지</value></data>
   <data name="SetGeneral_PreserveOutputOnSshReconnectDesc" xml:space="preserve"><value>수동 또는 자동으로 재연결하면 날짜와 시간이 표시된 구분선을 추가합니다. 끄면 재연결 시 탭의 화면과 스크롤 기록을 지웁니다.</value></data>
+  <data name="PluginUpgrade_Title" xml:space="preserve"><value>플러그인 업데이트 필요</value></data>
+  <data name="PluginUpgrade_Message" xml:space="preserve"><value>다음 플러그인은 현재 VelaShell 기능으로 실행할 수 없습니다. 현재 버전: {0}
+
+{1}
+
+정보를 열고 업데이트를 확인하시겠습니까?</value></data>
+  <data name="PluginUpgrade_Requirement" xml:space="preserve"><value>• {0}에는 {1}이(가) 필요합니다</value></data>
+  <data name="PluginUpgrade_CheckUpdates" xml:space="preserve"><value>업데이트 확인</value></data>
 </root>

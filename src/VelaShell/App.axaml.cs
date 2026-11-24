@@ -443,6 +443,8 @@ public class App : Application
                         // 退回信号引入之前的行为。10 秒远大于实测最慢的冷启动首帧(7.6 s)。
                         await FirstFrameSignal.WaitAsync(TimeSpan.FromSeconds(10));
                         await pluginManager.StartAsync();
+                        await Dispatcher.UIThread.InvokeAsync(
+                            async () => await mainWindow.PromptForPluginUpgradeAsync(pluginManager));
                     }
                     catch (Exception ex)
                     {

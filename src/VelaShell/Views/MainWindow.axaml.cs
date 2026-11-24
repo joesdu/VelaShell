@@ -23,6 +23,7 @@ using VelaShell.Core.Ssh;
 using VelaShell.Docking;
 using VelaShell.Docking.Controls;
 using VelaShell.Infrastructure.Diagnostics;
+using VelaShell.Infrastructure.Plugins;
 using VelaShell.Presentation.Services;
 using VelaShell.Presentation.ViewModels;
 using VelaShell.Security;
@@ -1748,7 +1749,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>打开设置窗口;<paramref name="section" /> 非空时直接落到那一分区。</summary>
-    private async Task OpenSettingsAsync(SettingsSectionKey? section = null)
+    private async Task OpenSettingsAsync(SettingsSectionKey? section = null, bool checkForUpdates = false)
     {
         if (Application.Current is not App app || app.Services?.GetService<SettingsViewModel>() is not { } settingsViewModel)
         {
@@ -1761,7 +1762,55 @@ public partial class MainWindow : Window
             settingsViewModel.SelectSection(target);
         }
         var dialog = new SettingsView { DataContext = settingsViewModel };
+        if (checkForUpdates)
+        {
+            dialog.Opened += (_, _) => FireAndForget.Run(async () =>
+                await settingsViewModel.CheckUpdatesCommand.Execute().FirstAsync());
+        }
         await dialog.ShowDialog(this);
+    }
+
+    /// <summary>提示用户升级宿主,以恢复因版本要求不满足而未启用的插件。</summary>
+    public async Task PromptForPluginUpgradeAsync(PluginManager pluginManager)
+    {
+        ArgumentNullException.ThrowIfNull(pluginManager);
+        if (!IsVisible)
+        {
+            return;
+        }
+
+        var blockedPlugins = pluginManager.Plugins
+            .Where(static plugin => plugin.State == PluginState.Incompatible && plugin.Manifest is not null)
+            .Select(plugin =>
+            {
+                var manifest = plugin.Manifest!;
+                return (Plugin: plugin, Blocker: pluginManager.DescribeUpdateBlocker(
+                    manifest.ApiLevel, manifest.MinHostVersion, manifest.MinSdkVersion));
+            })
+            .Where(static item => item.Blocker is not null)
+            .OrderBy(static item => item.Plugin.Manifest!.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+        if (blockedPlugins.Length == 0)
+        {
+            return;
+        }
+
+        string requirements = string.Join(Environment.NewLine,
+            blockedPlugins.Select(item => Strings.Format(
+                "PluginUpgrade_Requirement",
+                item.Plugin.Manifest!.DisplayName,
+                item.Blocker!)));
+        bool checkUpdates = await MessageDialog.ConfirmAsync(
+            this,
+            Strings.Get("PluginUpgrade_Title"),
+            Strings.Format("PluginUpgrade_Message", pluginManager.HostVersion, requirements),
+            Strings.Get("PluginUpgrade_CheckUpdates"),
+            Strings.Cancel,
+            MessageDialogKind.Warning);
+        if (checkUpdates && IsVisible)
+        {
+            await OpenSettingsAsync(SettingsSectionKey.About, checkForUpdates: true);
+        }
     }
 
     private PluginManagerWindow? _pluginManagerWindow;
