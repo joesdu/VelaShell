@@ -79,7 +79,7 @@
         </MenuItem.Icon>
       </MenuItem>
       <Separator IsVisible="{Binding Terminal.IsSshTerminal}" />
-      <!-- 同步输入频道:四个固定频道以颜色区分,加入后本标签的用户输入与频道内
+      <!-- 同步输入频道:六个固定频道以颜色区分,加入后本标签的用户输入与频道内
            其他标签实时互通(对等转发见 SyncInputCoordinator)。 -->
       <MenuItem Header="{loc:Localize SyncInput_Menu}">
         <MenuItem.Icon>
@@ -89,25 +89,37 @@
         <MenuItem Header="{loc:Localize SyncInput_JoinChannelA}" Click="JoinChannelA_Click">
           <MenuItem.Icon>
             <Border Width="10" Height="10" CornerRadius="2"
-                    Background="{x:Static services:SyncInputChannels.BrushA}" />
+                    Background="{DynamicResource VelaSyncChannelA}" />
           </MenuItem.Icon>
         </MenuItem>
         <MenuItem Header="{loc:Localize SyncInput_JoinChannelB}" Click="JoinChannelB_Click">
           <MenuItem.Icon>
             <Border Width="10" Height="10" CornerRadius="2"
-                    Background="{x:Static services:SyncInputChannels.BrushB}" />
+                    Background="{DynamicResource VelaSyncChannelB}" />
           </MenuItem.Icon>
         </MenuItem>
         <MenuItem Header="{loc:Localize SyncInput_JoinChannelC}" Click="JoinChannelC_Click">
           <MenuItem.Icon>
             <Border Width="10" Height="10" CornerRadius="2"
-                    Background="{x:Static services:SyncInputChannels.BrushC}" />
+                    Background="{DynamicResource VelaSyncChannelC}" />
           </MenuItem.Icon>
         </MenuItem>
         <MenuItem Header="{loc:Localize SyncInput_JoinChannelD}" Click="JoinChannelD_Click">
           <MenuItem.Icon>
             <Border Width="10" Height="10" CornerRadius="2"
-                    Background="{x:Static services:SyncInputChannels.BrushD}" />
+                    Background="{DynamicResource VelaSyncChannelD}" />
+          </MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="{loc:Localize SyncInput_JoinChannelE}" Click="JoinChannelE_Click">
+          <MenuItem.Icon>
+            <Border Width="10" Height="10" CornerRadius="2"
+                    Background="{DynamicResource VelaSyncChannelE}" />
+          </MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="{loc:Localize SyncInput_JoinChannelF}" Click="JoinChannelF_Click">
+          <MenuItem.Icon>
+            <Border Width="10" Height="10" CornerRadius="2"
+                    Background="{DynamicResource VelaSyncChannelF}" />
           </MenuItem.Icon>
         </MenuItem>
         <Separator />

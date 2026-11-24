@@ -200,7 +200,7 @@ public sealed class SessionImportPlannerTests
         SessionImportWriteSet writes = Write(Plan(document, groups: [unrelated, prod, team]), selected: [0]);
         Assert.AreEqual(1, writes.GroupsCreated);
         Assert.AreEqual(prod.Id, writes.Sessions.Single().GroupId);
-        Assert.AreSequenceEqual([prod.Id, empty.Id], writes.Groups.Select(g => g.Id).ToArray());
+        Assert.AreSequenceEqual([prod.Id, empty.Id], [.. writes.Groups.Select(g => g.Id)]);
         Assert.AreEqual(team.Id, writes.Groups[0].ParentGroupId);
         Assert.AreEqual(prod.Id, writes.Groups[1].ParentGroupId);
         Assert.AreEqual("star", writes.Groups[1].Icon);

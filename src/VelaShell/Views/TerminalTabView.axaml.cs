@@ -431,6 +431,15 @@ public partial class TerminalTabView : UserControl
     internal void PickPasswordItem(SharedCredentialMetadata item) =>
         PasswordList.SelectedItem = item;
 
+    private void OpenChannelManager_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is TerminalTabViewModel { SyncChannel: { } channel }
+            && TopLevel.GetTopLevel(this) is MainWindow main)
+        {
+            main.OpenChannelManager(channel);
+        }
+    }
+
     // ---- 终端内搜索(spec §5.3) ------------------------------------
 
     private IReadOnlyList<BufferSearchHit> _searchHits = [];

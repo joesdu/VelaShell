@@ -109,6 +109,14 @@
                                    Foreground="{DynamicResource VelaTextTertiary}" />
                   </MenuItem.Icon>
                 </MenuItem>
+                <Separator />
+                <MenuItem Header="{loc:Localize ChannelManager_Title}"
+                          Click="OpenChannelManager_Click">
+                  <MenuItem.Icon>
+                    <pc:LucideIcon Width="13" Height="13" Data="{StaticResource Icon.link-2}"
+                                   Foreground="{DynamicResource VelaTextTertiary}" />
+                  </MenuItem.Icon>
+                </MenuItem>
               </MenuFlyout>
             </Button.Flyout>
           </Button>

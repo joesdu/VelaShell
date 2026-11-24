@@ -5099,6 +5099,8 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SyncInput_JoinChannelB" xml:space="preserve"><value>채널 B 참여</value></data>
   <data name="SyncInput_JoinChannelC" xml:space="preserve"><value>채널 C 참여</value></data>
   <data name="SyncInput_JoinChannelD" xml:space="preserve"><value>채널 D 참여</value></data>
+  <data name="SyncInput_JoinChannelE" xml:space="preserve"><value>채널 E 참여</value></data>
+  <data name="SyncInput_JoinChannelF" xml:space="preserve"><value>채널 F 참여</value></data>
   <data name="SyncInput_LeaveAll" xml:space="preserve"><value>모든 채널에서 나가기</value></data>
   <data name="SyncInput_BannerPrefix" xml:space="preserve"><value>채널</value></data>
   <data name="SyncInput_BannerSuffix" xml:space="preserve"><value>입력 동기화 중</value></data>
@@ -9305,7 +9307,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>이 연결들은 모두 터미널이 아니어서 입력을 동기화할 대상이 없습니다(SFTP, FTP, 워크스페이스는 터미널이 아닙니다).</value>
   </data>
   <data name="Tree_SyncedNoFreeChannel" xml:space="preserve">
-    <value>입력 동기화 채널 4개(A–D)가 모두 사용 중입니다. 하나를 닫은 뒤 다시 시도하세요.</value>
+    <value>입력 동기화 채널 6개(A–F)가 모두 사용 중입니다. 하나를 닫은 뒤 다시 시도하세요.</value>
   </data>
   <data name="Tree_SyncedDone" xml:space="preserve">
     <value>터미널 {0}개가 입력 동기화 채널 {1}에 참가했습니다</value>
@@ -10051,4 +10053,28 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Sftp_UploadMappingInvalidRemote" xml:space="preserve"><value>원격 폴더를 확인할 수 없습니다.</value></data>
   <data name="Sftp_UploadMappingInvalidLocal" xml:space="preserve"><value>로컬 폴더 경로를 입력하세요.</value></data>
   <data name="Sftp_UploadMappingRemoteUnavailable" xml:space="preserve"><value>원격 폴더를 열 수 없습니다: {0}. 이전 매핑은 변경되지 않았습니다.</value></data>
+  <data name="ChannelManager_PauseSelected" xml:space="preserve"><value>선택 항목 일시 중지</value></data>
+  <data name="ChannelManager_NotJoinedFilter" xml:space="preserve"><value>참여하지 않음</value></data>
+  <data name="ChannelManager_All" xml:space="preserve"><value>모든 터미널</value></data>
+  <data name="ChannelManager_ColumnStatus" xml:space="preserve"><value>상태</value></data>
+  <data name="ChannelManager_Selected" xml:space="preserve"><value>{0}개 선택됨</value></data>
+  <data name="ChannelManager_Paused" xml:space="preserve"><value>일시 중지됨</value></data>
+  <data name="ChannelManager_Title" xml:space="preserve"><value>채널 관리</value></data>
+  <data name="ChannelManager_Empty" xml:space="preserve"><value>일치하는 열린 터미널이 없습니다.</value></data>
+  <data name="ChannelManager_Syncing" xml:space="preserve"><value>동기화 중</value></data>
+  <data name="ChannelManager_NotJoined" xml:space="preserve"><value>참여하지 않음</value></data>
+  <data name="ChannelManager_ColumnTerminal" xml:space="preserve"><value>터미널</value></data>
+  <data name="ChannelManager_ResumeSelected" xml:space="preserve"><value>선택 항목 재개</value></data>
+  <data name="ChannelManager_LeaveSelected" xml:space="preserve"><value>선택 항목 채널 나가기</value></data>
+  <data name="ChannelManager_Search" xml:space="preserve"><value>터미널 검색</value></data>
+  <data name="ChannelManager_MoveTo" xml:space="preserve"><value>참여 / 이동…</value></data>
+  <data name="ChannelManager_MatrixHint" xml:space="preserve"><value>각 터미널은 하나의 채널에 참여</value></data>
+  <data name="ChannelManager_ColumnSelection" xml:space="preserve"><value>선택</value></data>
+  <data name="ChannelManager_ChannelA" xml:space="preserve"><value>채널 A</value></data>
+  <data name="ChannelManager_ChannelB" xml:space="preserve"><value>채널 B</value></data>
+  <data name="ChannelManager_ChannelC" xml:space="preserve"><value>채널 C</value></data>
+  <data name="ChannelManager_ChannelD" xml:space="preserve"><value>채널 D</value></data>
+  <data name="ChannelManager_ChannelE" xml:space="preserve"><value>채널 E</value></data>
+  <data name="ChannelManager_ChannelF" xml:space="preserve"><value>채널 F</value></data>
+  <data name="ChannelManager_Heading" xml:space="preserve"><value>터미널 및 채널</value></data>
 </root>

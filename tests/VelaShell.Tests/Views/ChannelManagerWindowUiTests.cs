@@ -1,0 +1,106 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Shapes;
+using Avalonia.Headless;
+using Avalonia.Input;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using NSubstitute;
+using VelaShell.Core.Data;
+using VelaShell.Core.Models;
+using VelaShell.Docking;
+using VelaShell.Presentation.ViewModels;
+using VelaShell.Services;
+using VelaShell.Tests.TestSupport;
+using VelaShell.ViewModels;
+using VelaShell.Views;
+
+namespace VelaShell.Tests.Views;
+
+[TestClass]
+[TestCategory("SyncInput")]
+public class ChannelManagerWindowUiTests
+{
+    [TestMethod]
+    [DataRow(740)]
+    [DataRow(470)]
+    public Task GroupedMatrix_AlignsWithHeadersAndMovesOnlyClickedTerminal(int width) =>
+        HeadlessUnitTestSession.GetOrStartForAssembly(GetType().Assembly).RunOnUiAsync(() =>
+        {
+            var host = new MainWindowViewModel();
+            var tree = host.Sidebar.SessionTree = new(Substitute.For<ISessionRepository>());
+            var group = new SessionTreeNodeViewModel(Guid.NewGuid(), "Production", true) { IsExpanded = true };
+            tree.Nodes.Add(group);
+            var child = new SessionTreeNodeViewModel(Guid.NewGuid(), "East", true) { IsExpanded = true };
+            group.Children.Add(child);
+            foreach (string title in new[] { "api-01", "api-02", "database-primary-" + new string('x', 90), "metrics", "worker-01", "worker-02" })
+            {
+                var profile = new SessionProfile { Name = title, Host = "example.test" };
+                child.Children.Add(new(profile.Id, title, false) { TabIconId = title.StartsWith("database-", StringComparison.Ordinal) ? "database" : null });
+                var tab = new TerminalTabViewModel(FakeTerminal.Emulator()) { Title = title, Profile = profile, ConnectionStatus = SessionStatus.Connected };
+                host.Layout.AddDocument(new TerminalDocument(tab));
+                tab.JoinSyncChannel(SyncInputChannel.A);
+            }
+            using var manager = new ChannelManagerViewModel(host);
+            var window = new ChannelManagerWindow { Width = width, DataContext = manager };
+            try
+            {
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+                var visuals = window.GetVisualDescendants().ToList();
+                Rect Box(Control control) => new(control.TranslatePoint(default, window)!.Value, control.Bounds.Size);
+                void Click(Control control)
+                {
+                    Point point = Box(control).Center;
+                    window.MouseDown(point, MouseButton.Left);
+                    window.MouseUp(point, MouseButton.Left);
+                    Dispatcher.UIThread.RunJobs();
+                }
+                var folder = visuals.OfType<Border>().First(b => b.Classes.Contains("group"));
+                var check = folder.GetVisualDescendants().OfType<CheckBox>().Single();
+                var arrow = folder.GetVisualDescendants().OfType<Button>().Single(b => b.IsVisible && b is not CheckBox and not RadioButton);
+                Assert.IsTrue(Box(check).Right <= Box(arrow).Left);
+                var row = visuals.OfType<Border>().Single(b => b.Classes.Contains("matrix-row") && b.DataContext is ChannelManagerRow { Label: var label } && label.StartsWith("database-primary-", StringComparison.Ordinal));
+                var radios = row.GetVisualDescendants().OfType<RadioButton>().ToList();
+                Assert.HasCount(6, radios);
+                var name = row.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("matrix-label"));
+                var icons = visuals.OfType<VelaShell.Controls.Controls.LucideIcon>().Where(i => i.Classes.Contains("session-icon") && i.IsVisible).ToList();
+                Assert.HasCount(1, icons);
+                Assert.IsNotNull(icons[0].Data);
+                Assert.IsTrue(Box(icons[0]).Right <= Box(name).Left);
+                Assert.IsTrue(Box(name).Right <= Box(radios[0]).Left);
+                foreach (var radio in radios)
+                {
+                    var header = visuals.OfType<TextBlock>().Single(t => t.Classes.Contains("column-header") && t.Text == (string?)radio.Tag);
+                    Assert.AreEqual(Box(header).Center.X, Box(radio).Center.X, 1);
+                }
+                Click(radios[4]);
+                Assert.AreEqual("E", ((ChannelManagerRow)row.DataContext!).Channel);
+                window.UpdateLayout();
+                Ellipse dot = radios[4].GetVisualDescendants().OfType<Ellipse>().Single(e => e.Name == "Dot");
+                Ellipse ring = radios[4].GetVisualDescendants().OfType<Ellipse>().Single(e => e.Name == "Ring");
+                Assert.IsTrue(dot.IsVisible);
+                Assert.AreEqual(Box(ring).Center, Box(dot).Center);
+                Assert.IsFalse(radios[0].GetVisualDescendants().OfType<Ellipse>().Single(e => e.Name == "Dot").IsVisible);
+                Assert.AreEqual("E 1", visuals.OfType<Button>().Single(b => b.Classes.Contains("filter-chip") && (string?)b.Tag == "6").Content);
+                Click(check);
+                var target = visuals.OfType<ComboBox>().Single();
+                Assert.IsTrue(target.IsEnabled);
+                CollectionAssert.AreEqual("ABCDEF".Select(c => VelaShell.Localization.LocalizedStrings.Instance[$"ChannelManager_Channel{c}"]).ToArray(),
+                    target.Items.OfType<ComboBoxItem>().Skip(1).Select(item => item.Content).ToArray());
+                Border titleBar = visuals.OfType<Border>().Single(b => b.Classes.Contains("window-titlebar"));
+                Assert.AreEqual(window.Title, titleBar.GetVisualDescendants().OfType<TextBlock>().Single().Text);
+                using var frame = window.CaptureRenderedFrame();
+                Assert.IsNotNull(frame);
+                if (width == 740) frame.Save(@"G:\VelaShellLabs\channel-manager-rendered.png");
+                Click(visuals.OfType<Button>().Single(b => b.Classes.Contains("filter-chip") && (string?)b.Tag == "6"));
+                Assert.AreEqual(1, manager.Rows.Count(r => !r.IsGroup));
+                target.SelectedIndex = 6;
+                Assert.IsTrue(manager.IsEmpty);
+                Assert.AreEqual(1, host.TerminalTabs.Count(t => t.SyncChannel == SyncInputChannel.F));
+                Assert.AreEqual(5, host.TerminalTabs.Count(t => t.SyncChannel == SyncInputChannel.A));
+            }
+            finally { window.Close(); }
+        });
+}

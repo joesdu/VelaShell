@@ -2657,10 +2657,9 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
         }
 
         List<ServerGroup> stored = await _sessionRepository.GetAllGroupsAsync();
-        List<string> segments = text.Split('>')
+        List<string> segments = [.. text.Split('>')
             .Select(static segment => segment.Trim())
-            .Where(static segment => segment.Length > 0)
-            .ToList();
+            .Where(static segment => segment.Length > 0)];
         if (segments.Count == 0)
         {
             SelectedGroup = Groups[0];

@@ -225,11 +225,13 @@ internal static class ThemeTokenApplier
             ["VelaAccentPalette6"] = error,
             ["VelaAccentPalette7"] = Blend(info, accent, 0.5),
 
-            // ——— 同步输入通道徽章(A/B/C/D 四个广播组) ———
+            // ——— 同步输入通道徽章(A–F 六个广播组) ———
             ["VelaSyncChannelA"] = magenta,
             ["VelaSyncChannelB"] = info,
             ["VelaSyncChannelC"] = warning,
             ["VelaSyncChannelD"] = success,
+            ["VelaSyncChannelE"] = accent,
+            ["VelaSyncChannelF"] = error,
 
             // ——— 遮罩 ———
             // 两档:轻(点空白处即关的浮层)与重(模态抽屉/对话框)。

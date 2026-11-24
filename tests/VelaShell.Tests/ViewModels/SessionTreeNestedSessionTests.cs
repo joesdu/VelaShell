@@ -33,13 +33,13 @@ public sealed class SessionTreeNestedSessionTests
     [TestMethod]
     public async Task FilteringAndFollowingExpandAncestorChainWhilePinStaysVisible()
     {
-        Assert.AreSequenceEqual(["db", "Projects", "A", "Production", "web"], _vm.Rows.Select(n => n.Name).ToArray());
+        Assert.AreSequenceEqual(["db", "Projects", "A", "Production", "web"], [.. _vm.Rows.Select(n => n.Name)]);
         await _vm.CollapseAllCommand.Execute().FirstAsync();
-        Assert.AreSequenceEqual(["db", "Projects"], _vm.Rows.Select(n => n.Name).ToArray());
+        Assert.AreSequenceEqual(["db", "Projects"], [.. _vm.Rows.Select(n => n.Name)]);
         _vm.FilterText = "projects web";
-        Assert.AreSequenceEqual(["Projects", "A", "Production", "web"], _vm.Rows.Select(n => n.Name).ToArray());
+        Assert.AreSequenceEqual(["Projects", "A", "Production", "web"], [.. _vm.Rows.Select(n => n.Name)]);
         _vm.ClearFilter();
-        Assert.AreSequenceEqual(["db", "Projects"], _vm.Rows.Select(n => n.Name).ToArray());
+        Assert.AreSequenceEqual(["db", "Projects"], [.. _vm.Rows.Select(n => n.Name)]);
         Assert.IsTrue(_vm.SelectSession(_server.Id));
         Assert.AreEqual(3, _vm.SelectedNode!.Depth);
         _vm.SetSessionSyncChannel(_server.Id, "B");

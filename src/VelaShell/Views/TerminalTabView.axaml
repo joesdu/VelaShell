@@ -95,6 +95,9 @@
                      Text="{loc:Localize SyncInput_Paused}" />
         </StackPanel>
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Button Classes="sync-banner"
+                  Content="{loc:Localize ChannelManager_Title}"
+                  Click="OpenChannelManager_Click" />
           <Button Classes="sync-banner" Command="{Binding ToggleSyncPauseCommand}">
             <Panel>
               <TextBlock Text="{loc:Localize SyncInput_Pause}" IsVisible="{Binding !IsSyncPaused}" />

@@ -16,6 +16,8 @@ public partial class DockTabItem : DockTabItemBase
     private void JoinChannelB_Click(object? sender, RoutedEventArgs e) => Terminal?.JoinSyncChannel(SyncInputChannel.B);
     private void JoinChannelC_Click(object? sender, RoutedEventArgs e) => Terminal?.JoinSyncChannel(SyncInputChannel.C);
     private void JoinChannelD_Click(object? sender, RoutedEventArgs e) => Terminal?.JoinSyncChannel(SyncInputChannel.D);
+    private void JoinChannelE_Click(object? sender, RoutedEventArgs e) => Terminal?.JoinSyncChannel(SyncInputChannel.E);
+    private void JoinChannelF_Click(object? sender, RoutedEventArgs e) => Terminal?.JoinSyncChannel(SyncInputChannel.F);
     private void LeaveSyncChannel_Click(object? sender, RoutedEventArgs e) => Terminal?.LeaveSyncChannel();
     private void ConnectionInfo_Click(object? sender, RoutedEventArgs e) => Terminal?.RequestConnectionInfo();
 }

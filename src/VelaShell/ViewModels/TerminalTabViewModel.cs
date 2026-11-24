@@ -208,7 +208,7 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     /// <summary>是否已加入某个同步输入频道(标签头字母与终端上方横条的可见性)。</summary>
     public bool IsInSyncChannel => SyncChannel is not null;
 
-    /// <summary>频道字母(A/B/C/D),未加入频道时为空串。</summary>
+    /// <summary>频道字母(A/B/C/D/E/F),未加入频道时为空串。</summary>
     public string SyncChannelLetter => SyncChannel?.ToString() ?? string.Empty;
 
     /// <summary>频道标识色,未加入频道时透明。</summary>
@@ -241,6 +241,17 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     {
         IsSyncPaused = false;
         SyncChannel = channel;
+    }
+
+    // 管理窗口的“移动”不应把一台已暂停的机器重新接入广播。
+    internal void MoveToSyncChannel(SyncInputChannel channel) => SyncChannel = channel;
+
+    internal void SetSyncPaused(bool paused)
+    {
+        if (IsInSyncChannel)
+        {
+            IsSyncPaused = paused;
+        }
     }
 
     /// <summary>退出当前频道并清除暂停态(未加入时为空操作)。</summary>

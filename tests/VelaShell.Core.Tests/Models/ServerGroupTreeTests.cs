@@ -15,9 +15,9 @@ public sealed class ServerGroupTreeTests
         var otherProd = new ServerGroup { Name = "Prod", ParentGroupId = b.Id };
         var tree = new ServerGroupTree([prod, b, root, a, otherProd]);
         Assert.IsEmpty(tree.Validate());
-        Assert.AreSequenceEqual([root, b, otherProd, a, prod], tree.OrderedGroups.ToArray());
+        Assert.AreSequenceEqual([root, b, otherProd, a, prod], [.. tree.OrderedGroups]);
         Assert.AreEqual("Projects > A > Prod", tree.PathOf(prod.Id));
-        Assert.AreSequenceEqual([a, prod], tree.SubtreeOf(a.Id).ToArray());
+        Assert.AreSequenceEqual([a, prod], [.. tree.SubtreeOf(a.Id)]);
         Assert.IsFalse(tree.CanMoveUnder(root.Id, prod.Id));
         Assert.IsFalse(tree.CanMoveUnder(prod.Id, prod.Id));
         Assert.IsTrue(tree.CanMoveUnder(a.Id, b.Id));

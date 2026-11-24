@@ -6,7 +6,7 @@ using VelaShell.Services;
 namespace VelaShell.Converters;
 
 /// <summary>
-/// 把同步输入频道字母(A/B/C/D)映射为频道标识色画刷,与标签头、终端横条的
+/// 把同步输入频道字母(A–F)映射为频道标识色画刷,与标签头、终端横条的
 /// 频道色联动(会话树节点只持有字母字符串,颜色在视图层解析,避免表现层依赖 UI 类型)。
 /// </summary>
 public sealed class SyncChannelLetterToBrushConverter : IValueConverter
@@ -22,6 +22,8 @@ public sealed class SyncChannelLetterToBrushConverter : IValueConverter
             nameof(SyncInputChannel.B) => SyncInputChannels.BrushB,
             nameof(SyncInputChannel.C) => SyncInputChannels.BrushC,
             nameof(SyncInputChannel.D) => SyncInputChannels.BrushD,
+            nameof(SyncInputChannel.E) => SyncInputChannels.BrushE,
+            nameof(SyncInputChannel.F) => SyncInputChannels.BrushF,
             _ => Brushes.Transparent
         };
 

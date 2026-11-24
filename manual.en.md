@@ -356,9 +356,15 @@ Tailscale mode requires Tailscale installed and signed in locally, a MagicDNS na
 
 **High risk:** Every machine in a channel can receive the same destructive command. Verify host, permissions, and shell state before joining. Pause or leave before entering passwords, switching to production, or running interactive programs, to avoid broadcasting secrets or control keys.
 
-**Entry point and steps:** Use tab context menus to join synchronized-input channel A/B/C/D. Put cooperating tabs in the same channel and check their top banner. Keyboard input, IME text, and pasted text from an active member are broadcast. Pause, leave, or close the channel from the banner; leave promptly when finished. From the Explorer, a group's **Open All with Synced Input** (or **Open N Connections with Synced Input** on a multiple selection) opens only the connections that produce a terminal (SFTP/FTP/workspaces are skipped), always in new tabs, and puts them in the first free channel; if all four channels are in use nothing is opened. Tabs already open for the same machines are left alone. When all have finished connecting a notice says how many joined and how many did not connect — those miss anything typed meanwhile.
+**Entry point and steps:** Use tab context menus to join synchronized-input channel A/B/C/D/E/F. Put cooperating tabs in the same channel and check their top banner. Keyboard input, IME text, and pasted text from an active member are broadcast. Pause, leave, or close the channel from the banner; leave promptly when finished. From the Explorer, a group's **Open All with Synced Input** (or **Open N Connections with Synced Input** on a multiple selection) opens only the connections that produce a terminal (SFTP/FTP/workspaces are skipped), always in new tabs, and puts them in the first free channel; if all six channels are in use nothing is opened. Tabs already open for the same machines are left alone. When all have finished connecting a notice says how many joined and how many did not connect — those miss anything typed meanwhile.
 
 **Result and how it works:** Members are peers, not a permanent master and followers. Pausing stops both sending and receiving for that tab; disconnected tabs do not receive input. Different encodings are transcoded. Writing to the destination PTY does not rebroadcast and form a loop.
+
+### 8.2.1 Channel Manager
+
+Open **Explorer → More → Channel Manager** for all open terminals, or open it from the sync banner to filter by the current channel. Each open tab gets its own row under its Explorer group. Expand a group to see its terminals, or tick the group to select all matching descendants, even when collapsed.
+
+Use the count chips (All, Not joined, A–F) to filter, or press **Ctrl+F** to search names, hosts and group paths. Click a radio button to assign one terminal; use the controls below the selection count to move, pause, resume or remove the selection. Filtering drops selections that no longer match. Moving preserves pause state; offline members can leave but cannot move, pause or resume.
 
 **Caution:** Input is synchronized, not results or server state. Different directories, prompts, programs, or execution speeds can make identical input behave very differently.
 

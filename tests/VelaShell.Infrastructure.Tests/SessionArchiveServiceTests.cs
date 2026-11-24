@@ -64,7 +64,7 @@ public sealed class SessionArchiveServiceTests : IDisposable
         Assert.AreEqual(0, preview.SessionCount);
         Assert.AreEqual(3, preview.GroupCount);
         Assert.AreEqual(preview.GroupCount, doc.Groups.Count);
-        Assert.AreSequenceEqual([root.Id, child.Id, empty.Id], doc.Groups.Select(g => g.Id).ToArray());
+        Assert.AreSequenceEqual([root.Id, child.Id, empty.Id], [.. doc.Groups.Select(g => g.Id)]);
         var options = new SessionImportOptions();
         Assert.AreEqual(3, (await target.ImportAsync(await target.PlanAsync(doc), options)).GroupsCreated);
         Assert.AreEqual(0, (await target.ImportAsync(await target.PlanAsync(doc), options)).GroupsCreated);

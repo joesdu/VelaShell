@@ -85,7 +85,7 @@ public sealed class OpenGroupInSyncChannelTests
     }
 
     [TestMethod]
-    public async Task AllFourChannelsBusy_OpensNothing()
+    public async Task AllChannelsBusy_OpensNothing()
     {
         MainWindowViewModel vm = Refusing();
         foreach (SyncInputChannel busyChannel in Enum.GetValues<SyncInputChannel>())
@@ -98,7 +98,7 @@ public sealed class OpenGroupInSyncChannelTests
         SyncInputChannel? channel = await vm.OpenProfilesInSyncChannelAsync([Ssh("web-1")]);
 
         Assert.IsNull(channel);
-        Assert.HasCount(4, vm.TerminalTabs, "一个都不开");
+        Assert.HasCount(6, vm.TerminalTabs, "一个都不开");
         Assert.AreEqual(Strings.Get("Tree_SyncedNoFreeChannel"), vm.Toasts.Toasts.Single().Message);
     }
 

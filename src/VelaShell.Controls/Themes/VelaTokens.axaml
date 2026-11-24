@@ -71,6 +71,8 @@
       <SolidColorBrush x:Key="VelaSyncChannelB" Color="#8BE9FD" />
       <SolidColorBrush x:Key="VelaSyncChannelC" Color="#FFB86C" />
       <SolidColorBrush x:Key="VelaSyncChannelD" Color="#50FA7B" />
+      <SolidColorBrush x:Key="VelaSyncChannelE" Color="#BD93F9" />
+      <SolidColorBrush x:Key="VelaSyncChannelF" Color="#FF5555" />
       <!-- 文件浏览器行(design frame dyuii):橙色文件夹图标,青色目录名。 -->
       <SolidColorBrush x:Key="VelaFileFolderIcon" Color="#FFB86C" />
       <SolidColorBrush x:Key="VelaFileDirName" Color="#8BE9FD" />
@@ -124,6 +126,8 @@
       <SolidColorBrush x:Key="VelaSyncChannelB" Color="#036A96" />
       <SolidColorBrush x:Key="VelaSyncChannelC" Color="#846E15" />
       <SolidColorBrush x:Key="VelaSyncChannelD" Color="#14710A" />
+      <SolidColorBrush x:Key="VelaSyncChannelE" Color="#644AC9" />
+      <SolidColorBrush x:Key="VelaSyncChannelF" Color="#CB3A2A" />
       <!-- 文件浏览器行:Alucard 黄色文件夹,青色目录名。 -->
       <SolidColorBrush x:Key="VelaFileFolderIcon" Color="#9E841A" />
       <SolidColorBrush x:Key="VelaFileDirName" Color="#036A96" />

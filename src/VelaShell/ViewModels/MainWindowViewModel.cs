@@ -4615,7 +4615,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
     /// 同一台机器因此可能开着两个标签,但只有这一批新开的在频道里,命令不会打两遍。
     /// </para>
     /// <para>
-    /// <b>频道挑第一个空着的</b>(A → D,没有任何标签在里面,也没被另一批正在开的预订);四个都在用就一个都不开,
+    /// <b>频道挑第一个空着的</b>(A → F,没有任何标签在里面,也没被另一批正在开的预订);六个都在用就一个都不开,
     /// 浮层说明原因 —— 混进一个已有成员的频道,这批命令就会打到不相干的机器上。
     /// 每个标签连完(连上或失败)就入频道:失败的那个之后重连上来,照样收得到;握手期间敲的字它收不到
     /// (频道只往连着的标签转发),所以全部连完时报一句「几个进了频道、几个没连上」。
@@ -4623,7 +4623,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
     /// </para>
     /// </remarks>
     /// <param name="profiles">要打开的连接(按树上的顺序)。</param>
-    /// <returns>挑中的频道;没开(没有终端类连接、四个频道都在用)时为 null。</returns>
+    /// <returns>挑中的频道;没开(没有终端类连接、六个频道都在用)时为 null。</returns>
     public async Task<SyncInputChannel?> OpenProfilesInSyncChannelAsync(IReadOnlyList<SessionProfile> profiles)
     {
         ArgumentNullException.ThrowIfNull(profiles);
@@ -4696,7 +4696,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
     /// <summary>正被「打开并同步输入」预订着的频道(那一批还在开,频道里暂时一个标签都没有)。</summary>
     private readonly HashSet<SyncInputChannel> _reservedSyncChannels = [];
 
-    /// <summary>第一个空着的同步输入频道(A → D):没有任何标签在里面,也没被正在开的另一批预订;都在用时为 null。</summary>
+    /// <summary>第一个空着的同步输入频道(A → F):没有任何标签在里面,也没被正在开的另一批预订;都在用时为 null。</summary>
     private SyncInputChannel? FreeSyncChannel()
     {
         var used = TerminalTabs.Select(static tab => tab.SyncChannel).OfType<SyncInputChannel>().ToHashSet();
