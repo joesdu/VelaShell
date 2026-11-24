@@ -10569,4 +10569,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="ChannelManager_ChannelE" xml:space="preserve"><value>頻道E</value></data>
   <data name="ChannelManager_ChannelF" xml:space="preserve"><value>頻道F</value></data>
   <data name="ChannelManager_Heading" xml:space="preserve"><value>終端與頻道</value></data>
+  <data name="Msg_SshReconnectBoundary" xml:space="preserve"><value>----- {0} 已重新連線 · 新 SSH 工作階段 -----</value></data>
+  <data name="SetGeneral_PreserveOutputOnSshReconnect" xml:space="preserve"><value>SSH 重新連線時保留終端機輸出</value></data>
+  <data name="SetGeneral_PreserveOutputOnSshReconnectDesc" xml:space="preserve"><value>手動或自動重新連線成功後，以附時間的分隔線區分新舊工作階段。關閉後會清除此分頁的畫面和捲動記錄。</value></data>
 </root>

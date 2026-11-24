@@ -3590,10 +3590,16 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
                 cancellationToken: reconnectToken
             );
 
-            // 在新会话输出到达前做一次完全复位(RIS),使新的标语不至于附加在旧缓冲内容之后。
-            tab.TerminalEmulator.Feed("\ec"u8.ToArray());
+            bool hadSession = tab.SessionId != Guid.Empty;
             tab.SessionId = session.SessionId;
             await tab.AttachTransportAsync(shellStream).ConfigureAwait(true);
+            if (hadSession)
+            {
+                string? separator = settings.General.PreserveOutputOnSshReconnect
+                    ? Strings.Format("Msg_SshReconnectBoundary", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture))
+                    : null;
+                tab.TerminalEmulator.BeginNewSession(separator);
+            }
             tab.Start();
             tab.ConnectionStatus = SessionStatus.Connected;
             await FeedJumpChainNoticeAsync(tab, tab.Profile);

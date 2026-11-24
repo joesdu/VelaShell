@@ -255,6 +255,14 @@
       <NumericUpDown Grid.Column="1" Width="80" Value="{Binding General.ReconnectIntervalSeconds}" Minimum="1" Maximum="300" Increment="1" FormatString="0" VerticalAlignment="Center" />
     </Grid>
 
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="row-label" Text="{loc:Localize SetGeneral_PreserveOutputOnSshReconnect}" />
+        <TextBlock Classes="row-desc" Text="{loc:Localize SetGeneral_PreserveOutputOnSshReconnectDesc}" />
+      </StackPanel>
+      <ToggleSwitch Grid.Column="1" IsChecked="{Binding General.PreserveOutputOnSshReconnect}" VerticalAlignment="Center" />
+    </Grid>
+
     <Border Classes="sep" />
 
     <!-- 隐私与安全 -->

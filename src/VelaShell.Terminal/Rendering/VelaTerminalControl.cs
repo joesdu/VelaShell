@@ -929,6 +929,14 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// <summary>将原始主机输出字节喂入模拟器以解析并显示。</summary>
     public void Feed(byte[] data) => Emulator.Feed(data);
 
+    /// <inheritdoc />
+    public void BeginNewSession(string? separator)
+    {
+        ClearFolds();
+        ClearSelection();
+        Emulator.BeginNewSession(separator);
+    }
+
     /// <summary>Feed 的 span 重载:桥的合批热路径直喂复用缓冲,避免物化精确尺寸数组。</summary>
     public void Feed(ReadOnlySpan<byte> data) => Emulator.Feed(data);
 

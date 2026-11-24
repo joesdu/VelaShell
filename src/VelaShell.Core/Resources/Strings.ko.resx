@@ -10080,4 +10080,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="ChannelManager_ChannelE" xml:space="preserve"><value>채널 E</value></data>
   <data name="ChannelManager_ChannelF" xml:space="preserve"><value>채널 F</value></data>
   <data name="ChannelManager_Heading" xml:space="preserve"><value>터미널 및 채널</value></data>
+  <data name="Msg_SshReconnectBoundary" xml:space="preserve"><value>----- {0} 다시 연결됨 · 새 SSH 세션 -----</value></data>
+  <data name="SetGeneral_PreserveOutputOnSshReconnect" xml:space="preserve"><value>SSH 재연결 시 터미널 출력 유지</value></data>
+  <data name="SetGeneral_PreserveOutputOnSshReconnectDesc" xml:space="preserve"><value>수동 또는 자동으로 재연결하면 날짜와 시간이 표시된 구분선을 추가합니다. 끄면 재연결 시 탭의 화면과 스크롤 기록을 지웁니다.</value></data>
 </root>

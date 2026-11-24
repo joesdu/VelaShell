@@ -350,7 +350,11 @@ public sealed class MainWindowSshFeatureTests
     }
 
     [TestMethod]
-    public async Task ReconnectTabAsync_ReusesSameTab_AndRestoresConnectedState()
+    [DataRow(false, true)]
+    [DataRow(true, true)]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    public async Task ReconnectTabAsync_ReusesSameTab_AndRestoresConnectedState(bool automatic, bool keepOutput)
     {
         IConnectionWorkflowService? workflow = Substitute.For<IConnectionWorkflowService>();
         ISshConnectionService? sshConnectionService = Substitute.For<ISshConnectionService>();
@@ -386,17 +390,35 @@ public sealed class MainWindowSshFeatureTests
         workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>()).Returns(session);
         sshConnectionService.GetClient(session.SessionId).Returns(sshClient);
         sshClient.CreateShellStreamAsync("xterm-256color", 120, 32, 0, 0, 4096, Arg.Any<IReadOnlyDictionary<TerminalMode, uint>?>(), Arg.Any<CancellationToken>()).Returns(shellStream);
-        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => terminal);
+        ISettingsService settings = Substitute.For<ISettingsService>();
+        settings.GetSettingsAsync().Returns(new AppSettings());
+        var vm = new MainWindowViewModel(workflow, sshConnectionService, () => terminal, settingsService: settings);
         TerminalTabViewModel? tab = await vm.TryConnectProfileAsync(profile);
         Assert.IsNotNull(tab);
         Assert.AreEqual(SessionStatus.Connected, tab.ConnectionStatus);
+
+        if (!keepOutput)
+        {
+            settings.GetSettingsAsync().Returns(new AppSettings { General = { PreserveOutputOnSshReconnect = false } });
+        }
+        terminal.DidNotReceive().BeginNewSession(Arg.Any<string?>());
+        workflow.ReconnectProfileAutomaticallyAsync(profile, Arg.Any<CancellationToken>()).Returns(session);
 
         // The remote drops (exit / reboot).
         tab.MarkDisconnected();
         Assert.AreEqual(SessionStatus.Disconnected, tab.ConnectionStatus);
 
         // Reconnect in place — same tab, not a new one.
-        await vm.ReconnectTabAsync(tab);
+        await (automatic ? vm.AutoReconnectTabAsync(tab) : vm.ReconnectTabAsync(tab));
+        if (keepOutput)
+        {
+            terminal.Received(1).BeginNewSession(Arg.Is<string>(s => System.Text.RegularExpressions.Regex.IsMatch(s,
+                @"^----- [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} .+ -----$")));
+        }
+        else
+        {
+            terminal.Received(1).BeginNewSession(null);
+        }
         Assert.AreEqual(SessionStatus.Connected, tab.ConnectionStatus);
         Assert.HasCount(1, vm.TerminalTabs);
         Assert.AreSame(tab, vm.TerminalTabs.First());
@@ -455,6 +477,7 @@ public sealed class MainWindowSshFeatureTests
         Assert.AreEqual(SessionStatus.Disconnected, tab.ConnectionStatus);
         Assert.IsTrue(tab.HasConnectionError);
         Assert.IsTrue(tab.HostKeyRejected, "败在指纹上的标签不该再被自动重连。");
+        terminal.DidNotReceive().BeginNewSession(Arg.Any<string>());
 
         // 用户核对过、接受了:手动重连连上,自动重连照常。
         workflow.ConnectProfileAsync(profile, Arg.Any<CancellationToken>()).Returns(session);

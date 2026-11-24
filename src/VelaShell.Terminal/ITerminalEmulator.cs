@@ -57,6 +57,9 @@ public interface ITerminalEmulator : IDisposable
     /// </summary>
     void Feed(byte[] data);
 
+    /// <summary>复位终端。提供分隔行时归档主屏输出，否则清空回滚并从空屏开始。</summary>
+    void BeginNewSession(string? separator);
+
     /// <summary>
     /// 改变终端尺寸
     /// </summary>
