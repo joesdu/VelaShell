@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
+  <Sdk Name="PublishWithSatoriGC" Version="11.0.1-satori.44643583273.1" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <!-- 这是发行包里第二个可执行体,隔离插件一开就出现在任务管理器和杀软日志里;
