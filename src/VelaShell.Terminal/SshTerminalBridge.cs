@@ -747,10 +747,6 @@ public class SshTerminalBridge : IAsyncDisposable
         }
     }
 
-    // 多 chunk 合批的复用缓冲:只增不缩,仅在 UI 线程的 FlushPending 内访问,
-    // Feed 同步消费不留引用,因此跨帧复用安全。
-    private byte[] _combineBuffer = [];
-
     // ---- 洪流控制:每帧解析预算 + 读线程背压 ----
     //
     // 合批本身是对的(它把上百次跨线程跳转压成每帧一次),但原先没有上限:
@@ -866,6 +862,7 @@ public class SshTerminalBridge : IAsyncDisposable
             Interlocked.Exchange(ref _flushScheduled, 1);
             Dispatcher.UIThread.Post(FlushPending, DispatcherPriority.Background);
         }
+        byte[]? combinedBuffer = null;
         try
         {
             if (_disposed)
@@ -885,19 +882,17 @@ public class SshTerminalBridge : IAsyncDisposable
                 {
                     total += _draining[i].Length;
                 }
-                if (_combineBuffer.Length < total)
-                {
-                    // 2 倍步进摊平增长成本,避免突发行情下反复重分配。
-                    _combineBuffer = new byte[Math.Max(total, _combineBuffer.Length * 2)];
-                }
+                // 只在当前 Feed 的同步消费期间持有合批数组。长期保留大数组会把一次
+                // 突发输出的峰值变成桥的常驻内存,而 Feed 完成后它已不再有所有者。
+                combinedBuffer = ArrayPool<byte>.Shared.Rent(total);
                 int offset = 0;
                 for (int i = 0; i < _draining.Count; i++)
                 {
                     PendingChunk chunk = _draining[i];
-                    Array.Copy(chunk.Buffer, 0, _combineBuffer, offset, chunk.Length);
+                    Array.Copy(chunk.Buffer, 0, combinedBuffer, offset, chunk.Length);
                     offset += chunk.Length;
                 }
-                buffer = _combineBuffer;
+                buffer = combinedBuffer;
                 length = total;
             }
             if (_echoSuppressor is { } suppressor)
@@ -932,6 +927,10 @@ public class SshTerminalBridge : IAsyncDisposable
         {
             // 归还必须发生在 Feed 之后(它同步消费,不留引用),且每条退出路径都要走到 ——
             // 提前 return(已 Dispose、抑制器把整块吃光)同样得还,否则就是池泄漏。
+            if (combinedBuffer is not null)
+            {
+                ArrayPool<byte>.Shared.Return(combinedBuffer);
+            }
             for (int i = 0; i < _draining.Count; i++)
             {
                 ArrayPool<byte>.Shared.Return(_draining[i].Buffer);
