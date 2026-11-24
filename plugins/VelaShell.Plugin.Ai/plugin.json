@@ -6,6 +6,7 @@
   "publisher": "velashell",
   "entry": "VelaShell.Plugin.Ai.dll",
   "apiLevel": 2,
+  "minHostVersion": "1.8.9",
   "minSdkVersion": "2.2.1",
   "license": "MIT",
   "homepage": "https://github.com/joesdu/VelaShell",
