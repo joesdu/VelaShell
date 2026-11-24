@@ -33,6 +33,50 @@ public sealed class SessionTreeHierarchyTests
     }
 
     [TestMethod]
+    public async Task RenameGroup_UpdatesPathsAndFilter_WithoutMovingDescendants()
+    {
+        var root = new ServerGroup { Name = "Projects", SortOrder = 7 };
+        var child = new ServerGroup { Name = "Production", ParentGroupId = root.Id };
+        var session = new SessionProfile { Name = "web", GroupId = child.Id };
+        ISessionRepository repository = Substitute.For<ISessionRepository>();
+        repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { root, child }));
+        repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile> { session }));
+        var vm = new SessionTreeViewModel(repository);
+        await vm.LoadCommand.Execute().FirstAsync();
+        vm.FilterText = "Projects";
+
+        Assert.IsTrue(await vm.RenameGroupAsync(root.Id, " Production "));
+        await repository.Received(1).SaveGroupAsync(Arg.Is<ServerGroup>(g =>
+            g.Id == root.Id && g.Name == "Production" && g.SortOrder == 7));
+        Assert.IsEmpty(vm.Rows);
+        vm.FilterText = "Production";
+        Assert.IsTrue(await vm.RenameGroupAsync(child.Id, "PRODUCTION"));
+        SessionTreeNodeViewModel leaf = vm.Rows.Single(n => n.Id == session.Id);
+        Assert.AreEqual(child.Id, leaf.ParentGroup?.Id);
+        Assert.AreEqual("Production > PRODUCTION", leaf.GroupPath);
+        Assert.AreEqual(leaf.GroupPath, vm.GroupNodes.Single(n => n.Id == child.Id).GroupPath);
+    }
+
+    [TestMethod]
+    public async Task RenameGroup_InvalidOrUnchangedName_DoesNotWrite()
+    {
+        var root = new ServerGroup { Name = "Projects" };
+        var sibling = new ServerGroup { Name = "Operations" };
+        ISessionRepository repository = Substitute.For<ISessionRepository>();
+        repository.GetAllGroupsAsync().Returns(Task.FromResult(new List<ServerGroup> { root, sibling }));
+        repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>()));
+        var vm = new SessionTreeViewModel(repository);
+        await vm.LoadCommand.Execute().FirstAsync();
+
+        Assert.IsFalse(await vm.RenameGroupAsync(root.Id, "  "));
+        Assert.IsFalse(await vm.RenameGroupAsync(root.Id, " operations "));
+        Assert.IsFalse(await vm.RenameGroupAsync(root.Id, "A > B"));
+        Assert.IsTrue(await vm.RenameGroupAsync(root.Id, " Projects "));
+        Assert.AreEqual("Projects", vm.GroupNodes.Single(n => n.Id == root.Id).Name);
+        await repository.DidNotReceiveWithAnyArgs().SaveGroupAsync(default!);
+    }
+
+    [TestMethod]
     public async Task MoveGroupToAsync_ReparentsAndUpdatesDescendantPaths()
     {
         var root = new ServerGroup { Name = "Projects", SortOrder = 0 };

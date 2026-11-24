@@ -86,6 +86,44 @@ public sealed partial class SessionTreeViewModel
         return node;
     }
 
+    /// <summary>更改分组名称并刷新子树路径，不移动分组或连接。</summary>
+    public async Task<bool> RenameGroupAsync(Guid groupId, string? name)
+    {
+        string trimmed = name?.Trim() ?? string.Empty;
+        if (FindGroupNode(groupId) is not { } node || trimmed.Length == 0)
+        {
+            return false;
+        }
+        if (node.Name == trimmed)
+        {
+            return true;
+        }
+        if (trimmed.Contains('>'))
+        {
+            return false;
+        }
+
+        List<ServerGroup> stored = await _repository.GetAllGroupsAsync();
+        ServerGroup? record = stored.Find(group => group.Id == groupId);
+        if (record is null || stored.Any(group => group.Id != groupId && group.ParentGroupId == record.ParentGroupId
+            && string.Equals(group.Name, trimmed, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+        record.Name = trimmed;
+        await _repository.SaveGroupAsync(record);
+
+        node.Name = trimmed;
+        UpdateHierarchyMetadata(node, node.ParentGroup, node.Depth,
+            node.ParentGroup is { } parent ? $"{parent.GroupPath} > {trimmed}" : trimmed);
+        if (IsFiltering)
+        {
+            ExpandGroupsWithMatches();
+        }
+        SyncRows();
+        return true;
+    }
+
     /// <summary>解析分组拖放目标，支持根级同级、跨父级同级以及放入分组。</summary>
     public GroupDropTarget? ResolveHierarchyGroupDrop(
         Guid movingGroupId,

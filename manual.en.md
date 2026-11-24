@@ -143,7 +143,7 @@ The main window contains a title bar, Explorer, a docking document area, and a b
 
 ### 4.2 Groups, Multiple Selection, and Bulk Actions
 
-In the connection editor, enter `Projects > A > Production` in the group field. Saving creates any missing groups. Each project can have its own Production group. Moving the last connection out leaves the group available for reuse. Deleting a group in the explorer also deletes its subgroups and their connections after confirmation.
+In the connection editor, enter `Projects > A > Production` in the group field. Saving creates any missing groups. Each project can have its own Production group. Right-click a group and choose **Rename** to change its name without moving any connections. Subgroup paths update automatically. The new name cannot be blank, contain `>`, or match a sibling's name (ignoring case). Moving the last connection out leaves the group available for reuse. Deleting a group in the explorer also deletes its subgroups and their connections after confirmation.
 
 **Entry point:** Connection and group context menus.
 
