@@ -22,7 +22,7 @@
     <!-- MMDB 读取器(Apache 2.0)。只是格式读取库,不绑定 MaxMind 的数据 ——
          我们配的是 DB-IP Lite City(CC BY 4.0),同一格式。 -->
     <PackageVersion Include="MaxMind.Db" Version="5.3.0" />
-    <PackageVersion Include="SonnetDB.Core" Version="5.1.1" />
+    <PackageVersion Include="SonnetDB.Core" Version="5.2.0" />
     <!-- BouncyCastle(MIT 改写版许可,与商业授权不冲突)。两个使用者:
          ①VelaShell.Ssh:BCL 缺失的密码学原语(raw ChaCha20、Poly1305、Ed25519、X25519、sntrup761、Argon2id…),
          是那个库唯一的运行时依赖。宿主的密钥生成(SshKeyService)曾经直接拿它现造 Ed25519,
