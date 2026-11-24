@@ -10569,4 +10569,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="ChannelManager_ChannelE" xml:space="preserve"><value>频道E</value></data>
   <data name="ChannelManager_ChannelF" xml:space="preserve"><value>频道F</value></data>
   <data name="ChannelManager_Heading" xml:space="preserve"><value>终端与频道</value></data>
+  <data name="Msg_SshReconnectBoundary" xml:space="preserve"><value>----- {0} 已重连 · 新 SSH 会话 -----</value></data>
+  <data name="SetGeneral_PreserveOutputOnSshReconnect" xml:space="preserve"><value>SSH 重连时保留终端输出</value></data>
+  <data name="SetGeneral_PreserveOutputOnSshReconnectDesc" xml:space="preserve"><value>手动或自动重连成功后，用带时间的分隔行区分新旧会话。关闭后会清空此标签的屏幕和回滚历史。</value></data>
 </root>

@@ -10080,4 +10080,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="ChannelManager_ChannelE" xml:space="preserve"><value>チャンネル E</value></data>
   <data name="ChannelManager_ChannelF" xml:space="preserve"><value>チャンネル F</value></data>
   <data name="ChannelManager_Heading" xml:space="preserve"><value>端末とチャンネル</value></data>
+  <data name="Msg_SshReconnectBoundary" xml:space="preserve"><value>----- {0} 再接続 · 新しい SSH セッション -----</value></data>
+  <data name="SetGeneral_PreserveOutputOnSshReconnect" xml:space="preserve"><value>SSH 再接続時に端末の出力を保持する</value></data>
+  <data name="SetGeneral_PreserveOutputOnSshReconnectDesc" xml:space="preserve"><value>手動または自動で再接続したとき、日時付きの区切り線を表示します。オフにすると、再接続時にタブの画面とスクロール履歴を消去します。</value></data>
 </root>

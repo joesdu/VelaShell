@@ -18,6 +18,52 @@ public class TerminalEmulatorTests
     private static string Line(TerminalEmulator e, int row) => e.Screen.ActiveLine(row).GetText();
 
     [TestMethod]
+    public void BeginNewSession_ArchivesMainScreenAndResetsInterruptedAlternateScreen()
+    {
+        TerminalEmulator e = New(rows: 3);
+        Feed(e, "history\r\nfirst\r\n\r\n\e]8;;https://example.org\aold\e]8;;\a");
+        Feed(e, "\e[2;3r\e[?1049hfull-screen\e[?2004h\e]2;unfinished");
+        e.Feed(new byte[] { 0xe2 }); // 旧流在 OSC 载荷的 UTF-8 字符中间断开。
+        e.BeginNewSession("new session");
+        Feed(e, "ready");
+
+        Assert.IsFalse(e.IsAlternateScreen);
+        Assert.IsFalse(e.Modes.BracketedPaste);
+        Assert.AreEqual(0, e.Screen.ScrollTop);
+        CollectionAssert.AreEqual(new[] { "history", "first", "", "old", "new session", "ready", "" },
+            Enumerable.Range(0, e.Screen.TotalRows).Select(i => e.Screen.ViewLine(i).GetText()).ToArray());
+        Assert.AreEqual("https://example.org", e.Hyperlinks.UriOf(e.Screen.ViewLine(3).LinkAt(0)));
+        Assert.AreEqual(0, e.Screen.ActiveLine(1).LinkAt(0));
+        Feed(e, "\ec");
+        Assert.AreEqual(0, e.Screen.ScrollbackCount); // 真正的 RIS 仍清空历史。
+    }
+
+    [TestMethod]
+    public void BeginNewSession_WithoutSeparatorClearsHistoryAndStartsAtFirstCell()
+    {
+        TerminalEmulator e = New(rows: 2);
+        Feed(e, "history\r\nold\r\nlast\e[?1049happ\e]2;unfinished");
+        e.BeginNewSession(null);
+        Feed(e, "ready");
+        Assert.IsFalse(e.IsAlternateScreen);
+        Assert.AreEqual(0, e.Screen.ScrollbackCount);
+        Assert.AreEqual("ready", Line(e, 0));
+        Assert.AreEqual("", Line(e, 1));
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    public void BeginNewSession_RespectsLimitWithoutArchivingUnusedBottomRows(int limit)
+    {
+        var e = new TerminalEmulator(columns: 12, rows: 5, scrollback: limit);
+        Feed(e, "older\r\nlast\e[H"); // 光标不一定在最后一行内容之后。
+        e.BeginNewSession("new session");
+        Assert.AreEqual(limit, e.Screen.ScrollbackCount);
+        Assert.AreEqual(limit == 0 ? "new session" : "last", e.Screen.ViewLine(0).GetText());
+    }
+
+    [TestMethod]
     public void Print_WritesTextAndAdvancesCursor()
     {
         TerminalEmulator e = New();

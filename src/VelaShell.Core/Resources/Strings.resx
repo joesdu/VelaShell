@@ -10086,4 +10086,7 @@ Send anyway?</value>
   <data name="ChannelManager_ChannelE" xml:space="preserve"><value>Channel E</value></data>
   <data name="ChannelManager_ChannelF" xml:space="preserve"><value>Channel F</value></data>
   <data name="ChannelManager_Heading" xml:space="preserve"><value>Terminals and channels</value></data>
+  <data name="Msg_SshReconnectBoundary" xml:space="preserve"><value>----- {0} Reconnected · New SSH session -----</value></data>
+  <data name="SetGeneral_PreserveOutputOnSshReconnect" xml:space="preserve"><value>Keep terminal output on SSH reconnect</value></data>
+  <data name="SetGeneral_PreserveOutputOnSshReconnectDesc" xml:space="preserve"><value>Separate sessions with a timestamp after a manual or automatic reconnect. Turn off to clear the tab’s screen and scrollback on reconnect.</value></data>
 </root>

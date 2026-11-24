@@ -451,6 +451,27 @@ public sealed class TerminalScreen
         ResetMargins();
     }
 
+    /// <summary>将主屏最后一行内容及其之前的行移入回滚，不让屏尾未用的空行挤掉历史。</summary>
+    internal void ArchiveVisibleRows()
+    {
+        if (MaxScrollback == 0)
+        {
+            return;
+        }
+        int count = Rows;
+        while (count > 0 && _lines[count - 1].LastOccupied() < 0)
+        {
+            count--;
+        }
+        for (int i = 0; i < count; i++)
+        {
+            _lines[i].TrimToContent();
+            _scrollback.Add(_lines[i]);
+            _lines[i] = new(Columns);
+        }
+        TrimScrollbackToMax();
+    }
+
     /// <summary>丢弃全部回滚历史。</summary>
     public void ClearScrollback()
     {

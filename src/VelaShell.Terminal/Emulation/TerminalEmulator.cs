@@ -1610,7 +1610,21 @@ public sealed class TerminalEmulator : IVtActions
         _pendingWrap = false;
     }
 
-    private void FullReset()
+    /// <summary>旧 SSH 流可能停在半个字符或控制序列中，直接复位解析器，不向旧流追加转义序列。</summary>
+    public void BeginNewSession(string? separator)
+    {
+        FullReset(preserveHistory: separator is not null);
+        if (separator is not null)
+        {
+            _feedTimestamp = DateTime.Now;
+            _parser.Parse(separator);
+            _parser.Parse("\r\n");
+            _lastGraphic = -1; // 本地分隔线不是远端可用 REP 重复的字符。
+        }
+        Updated?.Invoke();
+    }
+
+    private void FullReset(bool preserveHistory = false)
     {
         SoftReset();
         _tabStops = BuildDefaultTabs(Screen.Columns);
@@ -1618,13 +1632,23 @@ public sealed class TerminalEmulator : IVtActions
         {
             SwitchAlternate(false);
         }
+        if (preserveHistory)
+        {
+            Screen.ArchiveVisibleRows();
+            ScreenGeneration++;
+        }
+        else
+        {
+            Screen.ClearScrollback();
+        }
         Screen.ResetToBlank(Blank());
-        Screen.ClearScrollback();
-        // RIS 之后整个缓冲区(含回滚)已被清空,没有任何格还引用旧句柄 ——
-        // 这是唯一能安全整表回收 OSC 8 链接的时机。
+        if (Screen.ScrollbackCount == 0)
+        {
+            Hyperlinks.Clear(); // 回滚行上的 OSC 8 句柄仍需按原表解析。
+        }
         _link = 0;
+        _singleShift = -1;
         _lastGraphic = -1;
-        Hyperlinks.Clear();
         _promptRow = null;
         HasPromptMarks = false;
         IsCommandRunning = false;

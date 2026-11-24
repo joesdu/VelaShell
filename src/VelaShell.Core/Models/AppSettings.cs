@@ -493,6 +493,13 @@ public class GeneralOptions : ObservableOptions
         set => Set(ref field, value);
     } = true;
 
+    /// <summary>在同一 SSH 标签重连时保留终端输出并显示会话分隔行。</summary>
+    public bool PreserveOutputOnSshReconnect
+    {
+        get;
+        set => Set(ref field, value);
+    } = true;
+
     /// <summary>自动重连的间隔时间(秒)。</summary>
     public int ReconnectIntervalSeconds
     {
