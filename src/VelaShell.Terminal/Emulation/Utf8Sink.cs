@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text;
 
 namespace VelaShell.Terminal.Emulation;
@@ -10,12 +11,17 @@ namespace VelaShell.Terminal.Emulation;
 public sealed class Utf8Sink(Encoding? encoding = null)
 {
     private char[] _chars = new char[1024];
+    private char[]? _rentedChars;
     private Decoder _decoder = CreateDecoder(encoding);
 
     /// <summary>
     /// 切换解码所用的字符编码,并重置解码器状态(丢弃任何未完成的多字节前缀)。
     /// </summary>
-    public void SetEncoding(Encoding encoding) => _decoder = CreateDecoder(encoding);
+    public void SetEncoding(Encoding encoding)
+    {
+        ReleaseRentedChars();
+        _decoder = CreateDecoder(encoding);
+    }
 
     private static Decoder CreateDecoder(Encoding? encoding)
     {
@@ -31,34 +37,73 @@ public sealed class Utf8Sink(Encoding? encoding = null)
     public string Decode(ReadOnlySpan<byte> bytes)
     {
         ReadOnlySpan<char> decoded = DecodeSpan(bytes);
-        return decoded.IsEmpty ? string.Empty : new(decoded);
+        try
+        {
+            return decoded.IsEmpty ? string.Empty : new(decoded);
+        }
+        finally
+        {
+            ReleaseRentedChars();
+        }
     }
 
     /// <summary>
     /// 增量解码到内部复用缓冲,返回其只读视图(仅在下次 Decode/DecodeSpan 前有效)。
-    /// 输出热路径(每帧一次)用它避免物化中间 string。
+    /// 输出热路径(每帧一次)用它避免物化中间 string。大输出使用一次性池化缓冲,
+    /// 由消费方在解析完成后调用 <see cref="ReleaseBuffer" /> 归还。
     /// </summary>
     public ReadOnlySpan<char> DecodeSpan(ReadOnlySpan<byte> bytes)
     {
+        // 新的 DecodeSpan 会使上一次返回的视图失效,此时可以安全归还临时缓冲。
+        ReleaseRentedChars();
         if (bytes.IsEmpty)
         {
             return [];
         }
         int max = _decoder.GetCharCount(bytes, false);
-        if (_chars.Length < max)
+        char[] chars;
+        if (_chars.Length >= max)
         {
-            _chars = new char[max];
+            chars = _chars;
+        }
+        else
+        {
+            chars = ArrayPool<char>.Shared.Rent(max);
+            _rentedChars = chars;
         }
 
         // 即使 max == 0(整段都是某个多字节字符的前半部分)也必须调用 GetChars:
         // GetCharCount 不改变解码器状态,早退会把这些字节整段丢掉,下一段解码成 U+FFFD
         // (网络分块恰好切在 CJK 字符中间时输出变 �,cat 中文文件偶发乱码的根因)。
-        int written = _decoder.GetChars(bytes, _chars, false);
-        return _chars.AsSpan(0, written);
+        try
+        {
+            int written = _decoder.GetChars(bytes, chars, false);
+            return chars.AsSpan(0, written);
+        }
+        catch
+        {
+            ReleaseRentedChars();
+            throw;
+        }
     }
 
     /// <summary>
     /// 重置解码器状态,丢弃已缓存的部分多字节序列(例如流中断或重连后调用)。
     /// </summary>
     public void Reset() => _decoder.Reset();
+
+    /// <summary>
+    /// 释放一次大输出临时租用的字符缓冲。调用方必须在消费完 <see cref="DecodeSpan" />
+    /// 返回的视图后调用,之后该视图失效。
+    /// </summary>
+    internal void ReleaseBuffer() => ReleaseRentedChars();
+
+    private void ReleaseRentedChars()
+    {
+        if (_rentedChars is { } rented)
+        {
+            ArrayPool<char>.Shared.Return(rented);
+            _rentedChars = null;
+        }
+    }
 }

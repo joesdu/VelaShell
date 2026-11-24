@@ -255,26 +255,35 @@ public sealed class TerminalScreen
     public void ScrollUp(int count, in TerminalCell blank)
     {
         count = Math.Clamp(count, 0, ScrollBottom - ScrollTop + 1);
-        bool intoHistory = ScrollTop == 0 && MaxScrollback > 0;
-        for (int i = 0; i < count; i++)
+        if (count == 0)
         {
-            TerminalRow retired = _lines[ScrollTop];
-            if (intoHistory)
+            return;
+        }
+
+        bool intoHistory = ScrollTop == 0 && MaxScrollback > 0;
+        if (intoHistory)
+        {
+            // Keep the retired objects in their original order. They may be referenced by
+            // folds, search results, or output-trigger state after leaving the viewport.
+            for (int i = 0; i < count; i++)
             {
-                // 退休就是"从此只读"的那一刻:把整行满宽存储截到最后一个有内容的格。
-                // 回滚区是内存大头(200 列 × 20 万行 × 16 B ≈ 640 MB/标签页),而典型日志行
-                // 只有几十列非空。截短无损,理由见 TerminalRow 的类型注释。
+                TerminalRow retired = _lines[ScrollTop + i];
                 retired.TrimToContent();
                 _scrollback.Add(retired);
-                TrimScrollbackToMax();
             }
-            for (int y = ScrollTop; y < ScrollBottom; y++)
-            {
-                _lines[y] = _lines[y + 1];
-            }
-            var fresh = new TerminalRow(Columns);
+            TrimScrollbackToMax();
+        }
+
+        int remaining = ScrollBottom - ScrollTop + 1 - count;
+        if (remaining > 0)
+        {
+            Array.Copy(_lines, ScrollTop + count, _lines, ScrollTop, remaining);
+        }
+        for (int i = 0; i < count; i++)
+        {
+            TerminalRow fresh = new(Columns);
             fresh.Fill(blank);
-            _lines[ScrollBottom] = fresh;
+            _lines[ScrollBottom - count + 1 + i] = fresh;
         }
     }
 
@@ -282,15 +291,21 @@ public sealed class TerminalScreen
     public void ScrollDown(int count, in TerminalCell blank)
     {
         count = Math.Clamp(count, 0, ScrollBottom - ScrollTop + 1);
+        if (count == 0)
+        {
+            return;
+        }
+
+        int remaining = ScrollBottom - ScrollTop + 1 - count;
+        if (remaining > 0)
+        {
+            Array.Copy(_lines, ScrollTop, _lines, ScrollTop + count, remaining);
+        }
         for (int i = 0; i < count; i++)
         {
-            for (int y = ScrollBottom; y > ScrollTop; y--)
-            {
-                _lines[y] = _lines[y - 1];
-            }
-            var fresh = new TerminalRow(Columns);
+            TerminalRow fresh = new(Columns);
             fresh.Fill(blank);
-            _lines[ScrollTop] = fresh;
+            _lines[ScrollTop + i] = fresh;
         }
     }
 
@@ -304,15 +319,21 @@ public sealed class TerminalScreen
             return;
         }
         count = Math.Clamp(count, 0, ScrollBottom - CursorY + 1);
+        if (count == 0)
+        {
+            return;
+        }
+
+        int remaining = ScrollBottom - CursorY + 1 - count;
+        if (remaining > 0)
+        {
+            Array.Copy(_lines, CursorY, _lines, CursorY + count, remaining);
+        }
         for (int i = 0; i < count; i++)
         {
-            for (int y = ScrollBottom; y > CursorY; y--)
-            {
-                _lines[y] = _lines[y - 1];
-            }
-            var fresh = new TerminalRow(Columns);
+            TerminalRow fresh = new(Columns);
             fresh.Fill(blank);
-            _lines[CursorY] = fresh;
+            _lines[CursorY + i] = fresh;
         }
     }
 
@@ -324,15 +345,21 @@ public sealed class TerminalScreen
             return;
         }
         count = Math.Clamp(count, 0, ScrollBottom - CursorY + 1);
+        if (count == 0)
+        {
+            return;
+        }
+
+        int remaining = ScrollBottom - CursorY + 1 - count;
+        if (remaining > 0)
+        {
+            Array.Copy(_lines, CursorY + count, _lines, CursorY, remaining);
+        }
         for (int i = 0; i < count; i++)
         {
-            for (int y = CursorY; y < ScrollBottom; y++)
-            {
-                _lines[y] = _lines[y + 1];
-            }
-            var fresh = new TerminalRow(Columns);
+            TerminalRow fresh = new(Columns);
             fresh.Fill(blank);
-            _lines[ScrollBottom] = fresh;
+            _lines[ScrollBottom - count + 1 + i] = fresh;
         }
     }
 

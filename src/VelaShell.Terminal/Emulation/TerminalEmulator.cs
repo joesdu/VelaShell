@@ -978,9 +978,17 @@ public sealed class TerminalEmulator : IVtActions
         _feedTimestamp = DateTime.Now;
         // DecodeSpan 复用 sink 的内部缓冲,parser 只读遍历不留引用——全程零 string 物化。
         ReadOnlySpan<char> decoded = _utf8.DecodeSpan(bytes);
-        if (decoded.Length > 0)
+        try
         {
-            _parser.Parse(decoded);
+            if (decoded.Length > 0)
+            {
+                _parser.Parse(decoded);
+            }
+        }
+        finally
+        {
+            // 大输出的临时解码数组只需活到这次同步解析结束,避免把峰值变成常驻容量。
+            _utf8.ReleaseBuffer();
         }
         Updated?.Invoke();
     }

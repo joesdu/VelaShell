@@ -287,8 +287,11 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
     /// 两者都不改变正文一个像素,只失效叠加层,这正是拆层的意义。
     /// 外部宿主强制重绘时同样应当调本方法(见 <c>TerminalTabView.ForceFullRepaint</c>)。
     /// </remarks>
-    public void InvalidateTerminal()
+    public void InvalidateTerminal() => InvalidateLayers(forceBands: true);
+
+    private void InvalidateLayers(bool forceBands)
     {
+        UpdateAlternateBands(Bounds.Size, forceBands);
         InvalidateVisual();
         _overlay.InvalidateVisual();
         RaiseSelectionChangedIfNeeded();
@@ -1222,7 +1225,11 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         _scalingSource = null;
     }
 
-    private void OnScalingChanged(object? sender, EventArgs e) => RaisePtySizeChangedIfPixelsMoved();
+    private void OnScalingChanged(object? sender, EventArgs e)
+    {
+        RaisePtySizeChangedIfPixelsMoved();
+        InvalidateTerminal();
+    }
 
     private void ApplyThemePalette()
     {
@@ -1510,7 +1517,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         }
         bool scrollStateChanged = scrollback != _lastScrollbackCount || _scrollOffset != offsetBefore;
         _lastScrollbackCount = scrollback;
-        InvalidateTerminal();
+        InvalidateLayers(forceBands: false);
         // 滚动几何没变(如 htop 原地重绘、进度条刷新)就不惊动滚动条等订阅者:
         // 稳态输出下这是每次 Feed 一趟的下游刷新,省掉是纯赚。
         if (scrollStateChanged)
@@ -2232,6 +2239,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         _overlay.Measure(finalSize);
         _overlay.Arrange(new Rect(finalSize));
         ApplyLayoutSize(finalSize);
+        UpdateAlternateBands(finalSize, force: true);
         return result;
     }
 
@@ -2461,8 +2469,9 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
                 RenderGutter(context, screen, palette, rows);
             }
         }
-        using (context.PushTransform(Matrix.CreateTranslation(pad + GutterWidth(), pad)))
+        if (_alternateBands.Count == 0)
         {
+            using var transform = context.PushTransform(Matrix.CreateTranslation(pad + GutterWidth(), pad));
             for (int screenRow = 0; screenRow < rows; screenRow++)
             {
                 int absoluteRow = _screenToAbs[screenRow];

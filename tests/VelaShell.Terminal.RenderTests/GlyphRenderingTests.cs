@@ -181,6 +181,41 @@ public class GlyphRenderingTests
     }
 
     [TestMethod]
+    public void AlternateScreen_EditRedrawsOnlyOneBand_AndMatchesFullRender()
+    {
+        OnUi(() =>
+        {
+            const string text = "\x1b[?25l\x1b[2;1H\x1b[34;43mworker\x1b[6;3Hsecond\x1b[10;2Hthird";
+            const string edit = "\x1b[6;3H\x1b[31mZ";
+            (VelaTerminalControl control, Window window) = ShowTerminal("");
+            try
+            {
+                control.Feed(Encoding.UTF8.GetBytes(text));
+                uint[] initial = RenderFrame(window).Pixels;
+                control.Feed(Encoding.UTF8.GetBytes(edit));
+                uint[] edited = RenderFrame(window).Pixels;
+                Assert.IsFalse(initial.AsSpan().SequenceEqual(edited));
+
+                control.Feed(Encoding.UTF8.GetBytes("\x1b[0m\x1b[?1049h" + text));
+                uint[] alternateInitial = RenderFrame(window).Pixels;
+                CollectionAssert.AreEqual(initial, alternateInitial);
+                int before = control.AlternateBandRenderCountForTest;
+                Assert.IsGreaterThan(1, before);
+                control.Feed(Encoding.UTF8.GetBytes(edit));
+                CollectionAssert.AreEqual(edited, RenderFrame(window).Pixels);
+                Assert.AreEqual(before + 1, control.AlternateBandRenderCountForTest);
+
+                control.Feed("\x1b[?1049l"u8);
+                CollectionAssert.AreEqual(edited, RenderFrame(window).Pixels);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [TestMethod]
     public void RepeatedRepaints_KeepRasterizingText()
     {
         OnUi(() =>
