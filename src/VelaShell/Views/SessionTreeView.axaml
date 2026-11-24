@@ -165,9 +165,9 @@
       <!-- 会话行按所属分组深度缩进;根级(未分组)与分组行同缩进 12;选中行 bg-active。 -->
       <!-- 右内边距 20 > 滚动条展开宽 16(VelaScrollBarSize):树装在侧栏的 ScrollViewer 里,
            而滚动条是覆盖式的 —— 留 12 时展开的滑道会压住行尾的状态徽标/长会话名的末尾。 -->
-      <Style Selector="Border.session">
+      <Style Selector="Border.session" x:DataType="vm:SessionTreeNodeViewModel">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Padding" Value="36,0,20,0" />
+        <Setter Property="Padding" Value="{Binding Depth, Converter={x:Static conv:DepthToIndentConverter.Instance}, ConverterParameter=session}" />
       </Style>
       <Style Selector="Border.session.rootlevel">
         <Setter Property="Padding" Value="12,0,20,0" />
@@ -388,7 +388,6 @@
                   Classes.rootlevel="{Binding ShowsAtRootIndent}"
                   ToolTip.Tip="{Binding NotesTip}"
                   Height="28"
-                  Padding="{Binding ParentGroup.Depth, Converter={x:Static conv:DepthToIndentConverter.Instance}, ConverterParameter=session}"
                   Cursor="Hand"
                   DoubleTapped="Session_DoubleTapped"
                   PointerPressed="Session_PointerPressed">

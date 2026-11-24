@@ -6090,6 +6090,9 @@ Overwrite it?</value>
   <data name="Trace_Failed" xml:space="preserve">
     <value>Trace failed: {0}</value>
   </data>
+  <data name="Trace_AutoRotate" xml:space="preserve">
+    <value>Auto-rotate globe</value>
+  </data>
   <data name="Trace_Continuous" xml:space="preserve">
     <value>Keep tracing</value>
   </data>

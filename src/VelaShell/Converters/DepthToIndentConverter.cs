@@ -14,9 +14,8 @@ public sealed class DepthToIndentConverter : IValueConverter
     {
         if (parameter is string { } mode && string.Equals(mode, "session", StringComparison.OrdinalIgnoreCase))
         {
-            return value is int level
-                ? new Avalonia.Thickness(36 + Math.Max(0, level) * 16, 0, 0, 0)
-                : new Avalonia.Thickness(12, 0, 0, 0);
+            double left = value is int level and > 0 ? 36 + (level - 1) * 16 : 12;
+            return new Avalonia.Thickness(left, 0, 20, 0);
         }
         int depth = value is int groupDepth ? Math.Max(0, groupDepth) : 0;
         double step = parameter is string text && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed)
@@ -26,6 +25,5 @@ public sealed class DepthToIndentConverter : IValueConverter
     }
 
     /// <summary>该转换只用于显示，不支持反向转换。</summary>
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        throw new NotSupportedException();
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }

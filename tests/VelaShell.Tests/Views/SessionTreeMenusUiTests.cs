@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Logging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using NSubstitute;
@@ -41,11 +42,51 @@ public class SessionTreeMenusUiTests
         repository.GetAllSessionsAsync().Returns(Task.FromResult(new List<SessionProfile>
         {
             new() { Name = "a", Host = "a", GroupId = first.Id },
-            new() { Name = "b", Host = "b", GroupId = second.Id }
+            new() { Name = "b", Host = "b", GroupId = second.Id },
+            new() { Name = "root", Host = "root" }
         }));
         var viewModel = new SessionTreeViewModel(repository);
         await viewModel.LoadCommand.Execute().FirstAsync();
         return viewModel;
+    }
+
+    [TestMethod]
+    public void SessionRowPadding_BindsForRootAndGroupedSessions()
+    {
+        _session.Dispatch(async () =>
+        {
+            var window = new Window { Width = 280, Height = 400 };
+            var sink = Substitute.For<ILogSink>();
+            sink.IsEnabled(Arg.Any<LogEventLevel>(), LogArea.Binding).Returns(true);
+            var previous = Logger.Sink;
+            Logger.Sink = sink;
+            try
+            {
+                var view = new SessionTreeView { DataContext = await LoadTreeAsync() };
+                window.Content = view;
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+                var rows = view.GetVisualDescendants().OfType<Border>()
+                    .Where(row => row.Classes.Contains("session") && row.IsVisible)
+                    .ToDictionary(row => ((SessionTreeNodeViewModel)row.DataContext!).Name);
+                var messages = sink.ReceivedCalls().SelectMany(call => call.GetArguments())
+                    .Select(arg => arg is object?[] values ? string.Join(", ", values) : arg?.ToString());
+                Assert.IsFalse(messages.Any(text => text?.Contains("ParentGroup", StringComparison.Ordinal) == true),
+                    "会话行读取了空的父分组。");
+                Assert.AreEqual(12d, rows["root"].Padding.Left);
+                Assert.AreEqual(36d, rows["a"].Padding.Left);
+                ((SessionTreeNodeViewModel)rows["a"].DataContext!).IsPinned = true;
+                Dispatcher.UIThread.RunJobs();
+                Assert.AreEqual(12d, rows["a"].Padding.Left);
+            }
+            finally
+            {
+                window.Close();
+                Logger.Sink = previous;
+            }
+            return true;
+        }, CancellationToken.None).GetAwaiter().GetResult();
     }
 
     [TestMethod]

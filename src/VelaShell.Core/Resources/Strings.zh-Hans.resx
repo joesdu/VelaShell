@@ -6226,6 +6226,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Trace_Failed" xml:space="preserve">
     <value>追踪失败:{0}</value>
   </data>
+  <data name="Trace_AutoRotate" xml:space="preserve">
+    <value>自动旋转</value>
+  </data>
   <data name="Trace_Continuous" xml:space="preserve">
     <value>持续追踪</value>
   </data>
