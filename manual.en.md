@@ -362,7 +362,7 @@ Tailscale mode requires Tailscale installed and signed in locally, a MagicDNS na
 
 ### 8.2.1 Channel Manager
 
-Open **Explorer → More → Channel Manager** for all open terminals, or open it from the sync banner to filter by the current channel. Each open tab gets its own row under its Explorer group. Expand a group to see its terminals, or tick the group to select all matching descendants, even when collapsed.
+Right-click a terminal tab and choose **Sync Input → Channel Manager**, or open it from the sync banner or **Explorer → More → Channel Manager**. All three entry points select **All**, showing terminals in every channel as well as those that have not joined one. The window defaults to 700 pixels tall and remembers its size. Each open tab gets its own row, with its name aligned to the left edge of its Explorer group’s name. Expand a group to see its terminals, or tick the group to select all matching descendants, even when collapsed.
 
 Use the count chips (All, Not joined, A–F) to filter, or press **Ctrl+F** to search names, hosts and group paths. Click a radio button to assign one terminal; use the controls below the selection count to move, pause, resume or remove the selection. Filtering drops selections that no longer match. Moving preserves pause state; offline members can leave but cannot move, pause or resume.
 

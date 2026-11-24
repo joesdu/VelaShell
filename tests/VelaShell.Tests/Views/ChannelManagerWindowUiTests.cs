@@ -65,6 +65,14 @@ public class ChannelManagerWindowUiTests
                 var radios = row.GetVisualDescendants().OfType<RadioButton>().ToList();
                 Assert.HasCount(6, radios);
                 var name = row.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("matrix-label"));
+                var labels = visuals.OfType<TextBlock>().Where(t => t.Classes.Contains("matrix-label")).ToList();
+                var parentLabel = labels.Single(t => t.DataContext is ChannelManagerRow { IsGroup: true, Name: "East" });
+                foreach (var terminalLabel in labels.Where(t => t.DataContext is ChannelManagerRow { IsGroup: false }))
+                {
+                    Assert.AreEqual(Box(parentLabel).Left, Box(terminalLabel).Left, 0.5);
+                }
+                var checkboxGlyph = row.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "NormalRectangle");
+                Assert.AreEqual(Box(name).Center.Y, Box(checkboxGlyph).Center.Y, 1);
                 var icons = visuals.OfType<VelaShell.Controls.Controls.LucideIcon>().Where(i => i.Classes.Contains("session-icon") && i.IsVisible).ToList();
                 Assert.HasCount(1, icons);
                 Assert.IsNotNull(icons[0].Data);
@@ -93,7 +101,6 @@ public class ChannelManagerWindowUiTests
                 Assert.AreEqual(window.Title, titleBar.GetVisualDescendants().OfType<TextBlock>().Single().Text);
                 using var frame = window.CaptureRenderedFrame();
                 Assert.IsNotNull(frame);
-                if (width == 740) frame.Save(@"G:\VelaShellLabs\channel-manager-rendered.png");
                 Click(visuals.OfType<Button>().Single(b => b.Classes.Contains("filter-chip") && (string?)b.Tag == "6"));
                 Assert.AreEqual(1, manager.Rows.Count(r => !r.IsGroup));
                 target.SelectedIndex = 6;

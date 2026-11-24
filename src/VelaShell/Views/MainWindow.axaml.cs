@@ -197,7 +197,7 @@ public partial class MainWindow : Window
             sidebar.SettingsRequested += (_, _) => _ = OpenSettingsAsync();
             sidebar.PluginsRequested += (_, _) => OpenPluginManager();
             sidebar.ImportSessionsRequested += (_, _) => _ = OpenSessionImportDialogAsync();
-            sidebar.ChannelManagerRequested += (_, _) => FireAndForget.Run(() => OpenChannelManagerAsync(0));
+            sidebar.ChannelManagerRequested += (_, _) => OpenChannelManager();
         }
         // 标签条上的「+」:停靠层只报是哪一格,在那一格里走 Ctrl+T 同一条新建逻辑。
         if (this.FindControl<DockWorkspaceControl>("DockHost") is { } dockHost)
@@ -1572,11 +1572,10 @@ public partial class MainWindow : Window
         window.Show(this);
     }
 
-    /// <summary>打开(或前置)同步输入频道管理窗口。全局入口显示全部频道,横条入口预选对应频道。</summary>
-    internal void OpenChannelManager(SyncInputChannel channel) =>
-        FireAndForget.Run(() => OpenChannelManagerAsync(2 + (int)channel));
+    /// <summary>打开或前置频道管理窗口，默认显示全部终端。</summary>
+    internal void OpenChannelManager() => FireAndForget.Run(OpenChannelManagerAsync);
 
-    private async Task OpenChannelManagerAsync(int filterIndex)
+    private async Task OpenChannelManagerAsync()
     {
         if (DataContext is not MainWindowViewModel host)
         {
@@ -1598,13 +1597,13 @@ public partial class MainWindow : Window
                 existing.Activate();
                 if (existing.DataContext is ChannelManagerViewModel model)
                 {
-                    model.FilterIndex = filterIndex;
+                    model.FilterIndex = 0;
                 }
                 return;
             }
         }
 
-        ChannelManagerViewModel viewModel = new(host) { FilterIndex = filterIndex };
+        ChannelManagerViewModel viewModel = new(host);
         ChannelManagerWindow window = new() { DataContext = viewModel };
         _channelManagerWindow = window;
         window.Closed += (_, _) =>

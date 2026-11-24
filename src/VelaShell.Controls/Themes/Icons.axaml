@@ -129,7 +129,6 @@
   <StreamGeometry x:Key="Icon.list">M3 6h.01 M3 12h.01 M3 18h.01 M8 6h13 M8 12h13 M8 18h13</StreamGeometry>
   <StreamGeometry x:Key="Icon.list-ordered">M10 6h11 M10 12h11 M10 18h11 M4 6h1v4 M4 10h2 M6 18H4c0-1 2-2 2-3s-1-1.5-2-1</StreamGeometry>
   <StreamGeometry x:Key="Icon.network">M9 2h6v6H9Z M2 16h6v6H2Z M16 16h6v6h-6Z M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3 M12 12V8</StreamGeometry>
-  <StreamGeometry x:Key="Icon.rss">M4 4a16 16 0 0 1 16 16 M4 11a9 9 0 0 1 9 9 M6 19a1 1 0 1 1-2 0 1 1 0 1 1 2 0Z</StreamGeometry>
   <!-- 按会话自定义标签页图标(连接对话框「常规 → 整理」里挑,清单在 Core 的 SessionTabIcons)只用到、
        此前图标集里还没有的几枚。清单里的每个 id 都由 SessionTabIconCatalogTests 在这张字典里解析过。 -->
   <StreamGeometry x:Key="Icon.server">M4 2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z M4 14h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2Z M6 6h.01 M6 18h.01</StreamGeometry>

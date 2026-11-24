@@ -456,7 +456,7 @@ public sealed class ChannelManagerRow : ReactiveObject
         TerminalTabViewModel tab = Tab!;
         Label = label;
         TabIconId = iconId;
-        Indent = new Thickness(group.Indent.Left + 14, 0, 0, 0);
+        Indent = group.Indent;
         CanMove = tab.IsConnected;
         Status = !CanMove ? (tab.ConnectionStatus == SessionStatus.Connecting ? Strings.Connecting : Strings.Disconnected)
             : !tab.IsInSyncChannel ? Strings.Get("ChannelManager_NotJoined")

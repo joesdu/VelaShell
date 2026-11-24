@@ -6,12 +6,16 @@
         xmlns:vm="using:VelaShell.ViewModels"
         xmlns:loc="using:VelaShell.Localization"
         xmlns:pc="using:VelaShell.Controls.Controls"
-        mc:Ignorable="d" d:DesignWidth="740" d:DesignHeight="460"
+        mc:Ignorable="d" d:DesignWidth="740" d:DesignHeight="700"
         x:Class="VelaShell.Views.ChannelManagerWindow"
         x:DataType="vm:ChannelManagerViewModel"
         Title="{loc:Localize ChannelManager_Title}"
-        Width="740" Height="460" MinWidth="470" MinHeight="300"
+        Width="740" Height="700" MinWidth="470" MinHeight="300"
         CanResize="True" ShowInTaskbar="False" WindowStartupLocation="CenterOwner">
+  <Window.Resources>
+    <!-- Keep Fluent's inner checkbox glyph container within the compact matrix row. -->
+    <x:Double x:Key="CheckBoxMinHeight">20</x:Double>
+  </Window.Resources>
   <Window.Styles>
     <Style Selector="Button.toolbar-btn">
       <Setter Property="Background" Value="Transparent" />
@@ -127,7 +131,7 @@
               DoubleTapped="Header_DoubleTapped">
         <Grid ColumnDefinitions="*,Auto">
           <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <pc:LucideIcon Width="14" Height="14" Data="{StaticResource Icon.rss}"
+            <pc:LucideIcon Width="14" Height="14" Data="{StaticResource Icon.link-2}"
                            Foreground="{DynamicResource VelaAccent}" />
             <TextBlock Text="{loc:Localize ChannelManager_Title}" Foreground="{DynamicResource VelaTextPrimary}"
                        FontSize="{DynamicResource VelaFontSize12}" FontWeight="SemiBold"
@@ -202,9 +206,9 @@
                                   Click="Selection_Click" MinWidth="0" MinHeight="0" Padding="0"
                                   VerticalAlignment="Center" AutomationProperties.Name="{Binding Label}" />
                       </Grid>
-                      <Grid Grid.Column="1" ColumnDefinitions="Auto,Auto,*" Margin="{Binding Indent}" ClipToBounds="True">
+                      <Grid Grid.Column="1" ColumnDefinitions="18,*" Margin="{Binding Indent}" ClipToBounds="True">
                         <Button Grid.Column="0" IsVisible="{Binding IsGroup}" Click="Expand_Click"
-                                Background="Transparent" BorderThickness="0" MinWidth="0" MinHeight="0" Padding="0" Width="18" Height="24">
+                                Background="Transparent" BorderThickness="0" MinWidth="0" MinHeight="0" Padding="0" HorizontalAlignment="Stretch" Height="24">
                           <Panel>
                             <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.chevron-right}"
                                            Foreground="{DynamicResource VelaTextMuted}" IsVisible="{Binding !IsExpanded}" />
@@ -212,11 +216,11 @@
                                            Foreground="{DynamicResource VelaTextMuted}" IsVisible="{Binding IsExpanded}" />
                           </Panel>
                         </Button>
-                        <pc:LucideIcon Grid.Column="1" Classes="session-icon" Width="12" Height="12" Margin="0,0,4,0"
+                        <pc:LucideIcon Grid.Column="0" Classes="session-icon" Width="12" Height="12" HorizontalAlignment="Center"
                                        Data="{Binding TabIconId, Converter={x:Static conv:TabIconIdToGeometryConverter.Instance}}"
                                        IsVisible="{Binding $self.Data, Converter={x:Static ObjectConverters.IsNotNull}}"
                                        Foreground="{DynamicResource VelaTextPrimary}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="2" Classes="matrix-label" Text="{Binding Label}" ToolTip.Tip="{Binding Label}" />
+                        <TextBlock Grid.Column="1" Classes="matrix-label" Text="{Binding Label}" ToolTip.Tip="{Binding Label}" />
                       </Grid>
                       <RadioButton Grid.Column="2" Classes="channel" Tag="A" GroupName="{Binding RadioGroup}"
                                    IsChecked="{Binding InA, Mode=OneWay}" AutomationProperties.Name="{loc:Localize SyncInput_JoinChannelA}"

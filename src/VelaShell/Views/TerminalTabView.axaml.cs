@@ -433,10 +433,9 @@ public partial class TerminalTabView : UserControl
 
     private void OpenChannelManager_Click(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is TerminalTabViewModel { SyncChannel: { } channel }
-            && TopLevel.GetTopLevel(this) is MainWindow main)
+        if (TopLevel.GetTopLevel(this) is MainWindow main)
         {
-            main.OpenChannelManager(channel);
+            main.OpenChannelManager();
         }
     }
 
