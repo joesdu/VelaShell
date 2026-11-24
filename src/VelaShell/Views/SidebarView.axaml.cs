@@ -61,6 +61,9 @@ public partial class SidebarView : UserControl
     /// <summary>用户在资源管理器「更多」菜单中选择「从其他工具导入会话」时触发。</summary>
     public event EventHandler? ImportSessionsRequested;
 
+    /// <summary>用户从资源管理器「更多」菜单打开同步输入频道管理窗口时触发。</summary>
+    public event EventHandler? ChannelManagerRequested;
+
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
         _viewModel?.PropertyChanged -= OnViewModelPropertyChanged;
@@ -169,6 +172,9 @@ public partial class SidebarView : UserControl
     private void OpenPlugins_Click(object? sender, RoutedEventArgs e) => PluginsRequested?.Invoke(this, EventArgs.Empty);
 
     private void ImportSessions_Click(object? sender, RoutedEventArgs e) => ImportSessionsRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OpenChannelManager_Click(object? sender, RoutedEventArgs e) =>
+        ChannelManagerRequested?.Invoke(this, EventArgs.Empty);
 
     private void ToggleQuickCommands_Click(object? sender, RoutedEventArgs e)
     {

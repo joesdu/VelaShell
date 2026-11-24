@@ -5228,6 +5228,8 @@ Overwrite it?</value>
   <data name="SyncInput_JoinChannelB" xml:space="preserve"><value>Join Channel B</value></data>
   <data name="SyncInput_JoinChannelC" xml:space="preserve"><value>Join Channel C</value></data>
   <data name="SyncInput_JoinChannelD" xml:space="preserve"><value>Join Channel D</value></data>
+  <data name="SyncInput_JoinChannelE" xml:space="preserve"><value>Join Channel E</value></data>
+  <data name="SyncInput_JoinChannelF" xml:space="preserve"><value>Join Channel F</value></data>
   <data name="SyncInput_LeaveAll" xml:space="preserve"><value>Leave All Channels</value></data>
   <data name="SyncInput_BannerPrefix" xml:space="preserve"><value>Syncing input in channel</value></data>
   <data name="SyncInput_BannerSuffix" xml:space="preserve"><value></value></data>
@@ -9311,7 +9313,7 @@ Send anyway?</value>
     <value>None of these connections opens a terminal, so there is nothing to sync input to (SFTP, FTP and workspaces are not terminals).</value>
   </data>
   <data name="Tree_SyncedNoFreeChannel" xml:space="preserve">
-    <value>All four synced input channels (A–D) are in use. Close one, then try again.</value>
+    <value>All six synced input channels (A–F) are in use. Close one, then try again.</value>
   </data>
   <data name="Tree_SyncedDone" xml:space="preserve">
     <value>{0} terminals joined synced input channel {1}</value>
@@ -10057,4 +10059,28 @@ Send anyway?</value>
   <data name="Sftp_UploadMappingInvalidRemote" xml:space="preserve"><value>The remote directory could not be resolved.</value></data>
   <data name="Sftp_UploadMappingInvalidLocal" xml:space="preserve"><value>Enter a local directory path.</value></data>
   <data name="Sftp_UploadMappingRemoteUnavailable" xml:space="preserve"><value>Cannot open the remote directory: {0}. The previous mapping is unchanged.</value></data>
+  <data name="ChannelManager_PauseSelected" xml:space="preserve"><value>Pause selected</value></data>
+  <data name="ChannelManager_NotJoinedFilter" xml:space="preserve"><value>Not joined</value></data>
+  <data name="ChannelManager_All" xml:space="preserve"><value>All terminals</value></data>
+  <data name="ChannelManager_ColumnStatus" xml:space="preserve"><value>Status</value></data>
+  <data name="ChannelManager_Selected" xml:space="preserve"><value>{0} selected</value></data>
+  <data name="ChannelManager_Paused" xml:space="preserve"><value>Paused</value></data>
+  <data name="ChannelManager_Title" xml:space="preserve"><value>Channel manager</value></data>
+  <data name="ChannelManager_Empty" xml:space="preserve"><value>No matching open terminals.</value></data>
+  <data name="ChannelManager_Syncing" xml:space="preserve"><value>Syncing</value></data>
+  <data name="ChannelManager_NotJoined" xml:space="preserve"><value>Not joined</value></data>
+  <data name="ChannelManager_ColumnTerminal" xml:space="preserve"><value>Terminal</value></data>
+  <data name="ChannelManager_ResumeSelected" xml:space="preserve"><value>Resume selected</value></data>
+  <data name="ChannelManager_LeaveSelected" xml:space="preserve"><value>Leave selected</value></data>
+  <data name="ChannelManager_Search" xml:space="preserve"><value>Search terminals</value></data>
+  <data name="ChannelManager_MoveTo" xml:space="preserve"><value>Join / move to…</value></data>
+  <data name="ChannelManager_MatrixHint" xml:space="preserve"><value>Each terminal joins one channel</value></data>
+  <data name="ChannelManager_ColumnSelection" xml:space="preserve"><value>Select</value></data>
+  <data name="ChannelManager_ChannelA" xml:space="preserve"><value>Channel A</value></data>
+  <data name="ChannelManager_ChannelB" xml:space="preserve"><value>Channel B</value></data>
+  <data name="ChannelManager_ChannelC" xml:space="preserve"><value>Channel C</value></data>
+  <data name="ChannelManager_ChannelD" xml:space="preserve"><value>Channel D</value></data>
+  <data name="ChannelManager_ChannelE" xml:space="preserve"><value>Channel E</value></data>
+  <data name="ChannelManager_ChannelF" xml:space="preserve"><value>Channel F</value></data>
+  <data name="ChannelManager_Heading" xml:space="preserve"><value>Terminals and channels</value></data>
 </root>

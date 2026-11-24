@@ -49,6 +49,9 @@ public partial class MainWindow : Window
     /// <summary>「管理布局模板」窗口尺寸与位置在文档存储里的键。</summary>
     private const string LayoutTemplatesLayoutKey = "layoutTemplates";
 
+    /// <summary>同步输入频道管理窗口尺寸与位置在文档存储里的键。</summary>
+    private const string ChannelManagerLayoutKey = "channelManager";
+
     /// <summary>开着(或正在读布局、还没 Show)的「管理布局模板」窗口;读布局那一下之间连点两次也只开一扇。</summary>
     private LayoutTemplatesWindow? _layoutTemplatesWindow;
 
@@ -72,6 +75,9 @@ public partial class MainWindow : Window
 
     /// <summary>开着的会话健康巡检窗口(全程至多一扇)。</summary>
     private SessionHealthCheckWindow? _healthCheckWindow;
+
+    /// <summary>同步输入频道管理窗口;每个主窗口至多一扇,可从全局或频道入口复用。</summary>
+    private ChannelManagerWindow? _channelManagerWindow;
 
     private IDisposable? _fileBrowserVisibilitySub;
     private IDisposable? _sidebarCollapsedSub;
@@ -191,6 +197,7 @@ public partial class MainWindow : Window
             sidebar.SettingsRequested += (_, _) => _ = OpenSettingsAsync();
             sidebar.PluginsRequested += (_, _) => OpenPluginManager();
             sidebar.ImportSessionsRequested += (_, _) => _ = OpenSessionImportDialogAsync();
+            sidebar.ChannelManagerRequested += (_, _) => OpenChannelManager();
         }
         // 标签条上的「+」:停靠层只报是哪一格,在那一格里走 Ctrl+T 同一条新建逻辑。
         if (this.FindControl<DockWorkspaceControl>("DockHost") is { } dockHost)
@@ -225,6 +232,7 @@ public partial class MainWindow : Window
         ActualThemeVariantChanged += (_, _) =>
             ApplyBackgroundOpacities(_lastImageOpacity, _lastContentOpacity);
         Opened += OnWindowOpened;
+        Closed += (_, _) => _channelManagerWindow?.Close();
         Opened += (_, _) =>
             Win32WindowChrome.Attach(
                 this,
@@ -1562,6 +1570,66 @@ public partial class MainWindow : Window
             await layoutStore.RememberAsync(LayoutTemplatesLayoutKey, window);
         }
         window.Show(this);
+    }
+
+    /// <summary>打开或前置频道管理窗口，默认显示全部终端。</summary>
+    internal void OpenChannelManager() => FireAndForget.Run(OpenChannelManagerAsync);
+
+    private async Task OpenChannelManagerAsync()
+    {
+        if (DataContext is not MainWindowViewModel host)
+        {
+            return;
+        }
+
+        if (_channelManagerWindow is { } existing)
+        {
+            if (!existing.IsVisible)
+            {
+                return;
+            }
+            else
+            {
+                if (existing.WindowState == WindowState.Minimized)
+                {
+                    existing.WindowState = WindowState.Normal;
+                }
+                existing.Activate();
+                if (existing.DataContext is ChannelManagerViewModel model)
+                {
+                    model.FilterIndex = 0;
+                }
+                return;
+            }
+        }
+
+        ChannelManagerViewModel viewModel = new(host);
+        ChannelManagerWindow window = new() { DataContext = viewModel };
+        _channelManagerWindow = window;
+        window.Closed += (_, _) =>
+        {
+            viewModel.Dispose();
+            if (ReferenceEquals(_channelManagerWindow, window))
+            {
+                _channelManagerWindow = null;
+            }
+        };
+        if (Application.Current is App app && app.Services?.GetService<WindowLayoutStore>() is { } layoutStore)
+        {
+            await layoutStore.RememberAsync(ChannelManagerLayoutKey, window);
+        }
+        if (IsVisible)
+        {
+            window.Show(this);
+        }
+        else
+        {
+            viewModel.Dispose();
+            if (ReferenceEquals(_channelManagerWindow, window))
+            {
+                _channelManagerWindow = null;
+            }
+        }
     }
 
     /// <summary>打开(或前置)某个目标的链路追踪窗口。非模态,尺寸与位置与任务管理器一样记忆。</summary>

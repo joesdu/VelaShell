@@ -1,0 +1,286 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:conv="using:VelaShell.Converters"
+        xmlns:vm="using:VelaShell.ViewModels"
+        xmlns:loc="using:VelaShell.Localization"
+        xmlns:pc="using:VelaShell.Controls.Controls"
+        mc:Ignorable="d" d:DesignWidth="740" d:DesignHeight="700"
+        x:Class="VelaShell.Views.ChannelManagerWindow"
+        x:DataType="vm:ChannelManagerViewModel"
+        Title="{loc:Localize ChannelManager_Title}"
+        Width="740" Height="700" MinWidth="470" MinHeight="300"
+        CanResize="True" ShowInTaskbar="False" WindowStartupLocation="CenterOwner">
+  <Window.Resources>
+    <!-- Keep Fluent's inner checkbox glyph container within the compact matrix row. -->
+    <x:Double x:Key="CheckBoxMinHeight">20</x:Double>
+  </Window.Resources>
+  <Window.Styles>
+    <Style Selector="Button.toolbar-btn">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="6" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+    </Style>
+    <Style Selector="Button.caption:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="Button.caption-close:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaDangerHover}" />
+    </Style>
+    <Style Selector="Button.action">
+      <Setter Property="Background" Value="{DynamicResource VelaBgSurface}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Height" Value="25" />
+      <Setter Property="Padding" Value="7,0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+    </Style>
+    <Style Selector="Button.action:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="Button.action:disabled /template/ ContentPresenter">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+    <Style Selector="RadioButton.channel">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid Background="Transparent">
+            <Grid Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+              <Ellipse Name="Ring" StrokeThickness="1" Stroke="{DynamicResource VelaTextSecondary}" />
+              <Ellipse Name="Dot" Margin="3" Fill="{DynamicResource VelaAccent}" />
+            </Grid>
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="RadioButton.channel:not(:checked) /template/ Ellipse#Dot">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="RadioButton.channel:checked /template/ Ellipse#Ring, RadioButton.channel:focus-visible /template/ Ellipse#Ring">
+      <Setter Property="Stroke" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="StrokeThickness" Value="2" />
+    </Style>
+    <Style Selector="RadioButton.channel:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+    <Style Selector="TextBlock.column-header">
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.filter-chip">
+      <Setter Property="Background" Value="{DynamicResource VelaBgSurface}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="9,4" />
+      <Setter Property="Height" Value="27" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextSecondary}" />
+    </Style>
+    <Style Selector="Button.filter-chip:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+    </Style>
+    <Style Selector="Button.filter-chip.active /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+    </Style>
+    <Style Selector="Border.matrix-header">
+      <Setter Property="Background" Value="{DynamicResource VelaBgSidebar}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderPrimary}" />
+      <Setter Property="BorderThickness" Value="0,1,0,1" />
+    </Style>
+    <Style Selector="Border.matrix-row.group">
+      <Setter Property="Background" Value="{DynamicResource VelaBgSidebar}" />
+    </Style>
+    <Style Selector="TextBlock.matrix-label">
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="FontFamily" Value="{DynamicResource VelaUiMonoFont}" />
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextPrimary}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.matrix-state">
+      <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </Window.Styles>
+
+  <Border Classes="window-card" ClipToBounds="True"
+          Background="{DynamicResource VelaBgSurface}"
+          BorderBrush="{DynamicResource VelaBorderSecondary}">
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+      <Border Grid.Row="0" Classes="window-titlebar window-card-top" Padding="12,0,0,0"
+              Background="{DynamicResource VelaBgSurface}" BorderBrush="{DynamicResource VelaBorderPrimary}"
+              BorderThickness="0,0,0,1" PointerPressed="Header_PointerPressed"
+              DoubleTapped="Header_DoubleTapped">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <pc:LucideIcon Width="14" Height="14" Data="{StaticResource Icon.link-2}"
+                           Foreground="{DynamicResource VelaAccent}" />
+            <TextBlock Text="{loc:Localize ChannelManager_Title}" Foreground="{DynamicResource VelaTextPrimary}"
+                       FontSize="{DynamicResource VelaFontSize12}" FontWeight="SemiBold"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+          <Button Grid.Column="1" Classes="toolbar-btn caption-close window-caption"
+                  Width="27" Height="27" Padding="0"
+                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                  Click="Close_Click" ToolTip.Tip="{loc:Localize Close}">
+            <pc:LucideIcon Width="12" Height="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Data="{StaticResource Icon.x}" Foreground="{DynamicResource VelaTextSecondary}" />
+          </Button>
+        </Grid>
+      </Border>
+
+      <StackPanel Grid.Row="1" Margin="14,14,14,12" Spacing="12">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Text="{loc:Localize ChannelManager_Heading}" Foreground="{DynamicResource VelaTextPrimary}"
+                     FontSize="{DynamicResource VelaFontSize16}" FontWeight="Bold" />
+          <TextBlock Grid.Column="1" Text="{loc:Localize ChannelManager_MatrixHint}"
+                     Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize11}" />
+        </Grid>
+        <WrapPanel ItemSpacing="4" LineSpacing="4">
+          <Button Classes="filter-chip" Classes.active="{Binding IsAllFilter}" Tag="0" Click="Filter_Click"
+                  Content="{Binding FilterAllText}" />
+          <Button Classes="filter-chip" Classes.active="{Binding IsNotJoinedFilter}" Tag="1" Click="Filter_Click"
+                  Content="{Binding FilterNotJoinedText}" />
+          <Button Classes="filter-chip" Classes.active="{Binding IsAFilter}" Tag="2" Click="Filter_Click"
+                  Content="{Binding FilterAText}" />
+          <Button Classes="filter-chip" Classes.active="{Binding IsBFilter}" Tag="3" Click="Filter_Click"
+                  Content="{Binding FilterBText}" />
+          <Button Classes="filter-chip" Classes.active="{Binding IsCFilter}" Tag="4" Click="Filter_Click"
+                  Content="{Binding FilterCText}" />
+          <Button Classes="filter-chip" Classes.active="{Binding IsDFilter}" Tag="5" Click="Filter_Click"
+                  Content="{Binding FilterDText}" />
+          <Button Classes="filter-chip" Classes.active="{Binding IsEFilter}" Tag="6" Click="Filter_Click"
+                  Content="{Binding FilterEText}" />
+          <Button Classes="filter-chip" Classes.active="{Binding IsFFilter}" Tag="7" Click="Filter_Click"
+                  Content="{Binding FilterFText}" />
+        </WrapPanel>
+        <TextBox x:Name="SearchBox" IsVisible="False" Text="{Binding SearchText, Mode=TwoWay}"
+                 PlaceholderText="{loc:Localize ChannelManager_Search}" />
+      </StackPanel>
+
+      <Grid Grid.Row="2" Margin="14,0" RowDefinitions="Auto,*">
+        <Border Grid.Row="0" Classes="matrix-header" Padding="0" Height="28">
+          <Grid ColumnDefinitions="60,3*,0.55*,0.55*,0.55*,0.55*,0.55*,0.55*,1.4*" ColumnSpacing="4">
+            <TextBlock Grid.Column="0" Classes="column-header" HorizontalAlignment="Center" Text="{loc:Localize ChannelManager_ColumnSelection}" />
+            <TextBlock Grid.Column="1" Classes="column-header" Text="{loc:Localize ChannelManager_ColumnTerminal}" />
+            <TextBlock Grid.Column="2" Classes="column-header" Text="A" Foreground="{DynamicResource VelaSyncChannelA}" FontWeight="Bold" HorizontalAlignment="Center" />
+            <TextBlock Grid.Column="3" Classes="column-header" Text="B" Foreground="{DynamicResource VelaSyncChannelB}" FontWeight="Bold" HorizontalAlignment="Center" />
+            <TextBlock Grid.Column="4" Classes="column-header" Text="C" Foreground="{DynamicResource VelaSyncChannelC}" FontWeight="Bold" HorizontalAlignment="Center" />
+            <TextBlock Grid.Column="5" Classes="column-header" Text="D" Foreground="{DynamicResource VelaSyncChannelD}" FontWeight="Bold" HorizontalAlignment="Center" />
+            <TextBlock Grid.Column="6" Classes="column-header" Text="E" Foreground="{DynamicResource VelaSyncChannelE}" FontWeight="Bold" HorizontalAlignment="Center" />
+            <TextBlock Grid.Column="7" Classes="column-header" Text="F" Foreground="{DynamicResource VelaSyncChannelF}" FontWeight="Bold" HorizontalAlignment="Center" />
+            <TextBlock Grid.Column="8" Classes="column-header" HorizontalAlignment="Center" Text="{loc:Localize ChannelManager_ColumnStatus}" />
+          </Grid>
+        </Border>
+        <Panel Grid.Row="1">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding Rows}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ChannelManagerRow">
+                  <Border Classes="matrix-row" Classes.group="{Binding IsGroup}" Height="30" Padding="0"
+                          BorderThickness="0,0,0,1" BorderBrush="{DynamicResource VelaBorderPrimary}">
+                    <Grid ColumnDefinitions="60,3*,0.55*,0.55*,0.55*,0.55*,0.55*,0.55*,1.4*" ColumnSpacing="4">
+                      <Grid Grid.Column="0" HorizontalAlignment="Center">
+                        <CheckBox IsThreeState="True" IsChecked="{Binding IsChecked, Mode=OneWay}"
+                                  Click="Selection_Click" MinWidth="0" MinHeight="0" Padding="0"
+                                  VerticalAlignment="Center" AutomationProperties.Name="{Binding Label}" />
+                      </Grid>
+                      <Grid Grid.Column="1" ColumnDefinitions="18,*" Margin="{Binding Indent}" ClipToBounds="True">
+                        <Button Grid.Column="0" IsVisible="{Binding IsGroup}" Click="Expand_Click"
+                                Background="Transparent" BorderThickness="0" MinWidth="0" MinHeight="0" Padding="0" HorizontalAlignment="Stretch" Height="24">
+                          <Panel>
+                            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.chevron-right}"
+                                           Foreground="{DynamicResource VelaTextMuted}" IsVisible="{Binding !IsExpanded}" />
+                            <pc:LucideIcon Width="12" Height="12" Data="{StaticResource Icon.chevron-down}"
+                                           Foreground="{DynamicResource VelaTextMuted}" IsVisible="{Binding IsExpanded}" />
+                          </Panel>
+                        </Button>
+                        <pc:LucideIcon Grid.Column="0" Classes="session-icon" Width="12" Height="12" HorizontalAlignment="Center"
+                                       Data="{Binding TabIconId, Converter={x:Static conv:TabIconIdToGeometryConverter.Instance}}"
+                                       IsVisible="{Binding $self.Data, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                       Foreground="{DynamicResource VelaTextPrimary}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Classes="matrix-label" Text="{Binding Label}" ToolTip.Tip="{Binding Label}" />
+                      </Grid>
+                      <RadioButton Grid.Column="2" Classes="channel" Tag="A" GroupName="{Binding RadioGroup}"
+                                   IsChecked="{Binding InA, Mode=OneWay}" AutomationProperties.Name="{loc:Localize SyncInput_JoinChannelA}"
+                                   IsVisible="{Binding !IsGroup}" IsEnabled="{Binding CanMove}" Click="Channel_Click" />
+                      <RadioButton Grid.Column="3" Classes="channel" Tag="B" GroupName="{Binding RadioGroup}"
+                                   IsChecked="{Binding InB, Mode=OneWay}" AutomationProperties.Name="{loc:Localize SyncInput_JoinChannelB}"
+                                   IsVisible="{Binding !IsGroup}" IsEnabled="{Binding CanMove}" Click="Channel_Click" />
+                      <RadioButton Grid.Column="4" Classes="channel" Tag="C" GroupName="{Binding RadioGroup}"
+                                   IsChecked="{Binding InC, Mode=OneWay}" AutomationProperties.Name="{loc:Localize SyncInput_JoinChannelC}"
+                                   IsVisible="{Binding !IsGroup}" IsEnabled="{Binding CanMove}" Click="Channel_Click" />
+                      <RadioButton Grid.Column="5" Classes="channel" Tag="D" GroupName="{Binding RadioGroup}"
+                                   IsChecked="{Binding InD, Mode=OneWay}" AutomationProperties.Name="{loc:Localize SyncInput_JoinChannelD}"
+                                   IsVisible="{Binding !IsGroup}" IsEnabled="{Binding CanMove}" Click="Channel_Click" />
+                      <RadioButton Grid.Column="6" Classes="channel" Tag="E" GroupName="{Binding RadioGroup}"
+                                   IsChecked="{Binding InE, Mode=OneWay}" AutomationProperties.Name="{loc:Localize SyncInput_JoinChannelE}"
+                                   IsVisible="{Binding !IsGroup}" IsEnabled="{Binding CanMove}" Click="Channel_Click" />
+                      <RadioButton Grid.Column="7" Classes="channel" Tag="F" GroupName="{Binding RadioGroup}"
+                                   IsChecked="{Binding InF, Mode=OneWay}" AutomationProperties.Name="{loc:Localize SyncInput_JoinChannelF}"
+                                   IsVisible="{Binding !IsGroup}" IsEnabled="{Binding CanMove}" Click="Channel_Click" />
+                      <TextBlock Grid.Column="8" HorizontalAlignment="Center" Classes="matrix-state" Text="{Binding Status}" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+          <TextBlock IsVisible="{Binding IsEmpty}" Text="{loc:Localize ChannelManager_Empty}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                     Foreground="{DynamicResource VelaTextMuted}" FontSize="{DynamicResource VelaFontSize12}" />
+        </Panel>
+      </Grid>
+
+      <StackPanel Grid.Row="3" Margin="14,8,14,14" Spacing="9">
+          <TextBlock Text="{Binding SelectedText}" Foreground="{DynamicResource VelaTextMuted}"
+                     VerticalAlignment="Center" FontSize="{DynamicResource VelaFontSize11}" />
+          <StackPanel Orientation="Horizontal" Spacing="5">
+            <ComboBox IsEnabled="{Binding CanMove}" FontSize="{DynamicResource VelaFontSize12}" MinHeight="25" Padding="6,1" SelectedIndex="0" SelectionChanged="Target_SelectionChanged"
+                      AutomationProperties.Name="{loc:Localize ChannelManager_MoveTo}">
+              <ComboBoxItem Content="{loc:Localize ChannelManager_MoveTo}" />
+              <ComboBoxItem Content="{loc:Localize ChannelManager_ChannelA}" />
+              <ComboBoxItem Content="{loc:Localize ChannelManager_ChannelB}" />
+              <ComboBoxItem Content="{loc:Localize ChannelManager_ChannelC}" />
+              <ComboBoxItem Content="{loc:Localize ChannelManager_ChannelD}" />
+              <ComboBoxItem Content="{loc:Localize ChannelManager_ChannelE}" />
+              <ComboBoxItem Content="{loc:Localize ChannelManager_ChannelF}" />
+            </ComboBox>
+            <Button Classes="action" IsEnabled="{Binding CanPause}" Click="Pause_Click"
+                    ToolTip.Tip="{loc:Localize ChannelManager_PauseSelected}">
+              <TextBlock Text="{loc:Localize ChannelManager_PauseSelected}" />
+            </Button>
+            <Button Classes="action" IsEnabled="{Binding CanResume}" Click="Resume_Click"
+                    ToolTip.Tip="{loc:Localize ChannelManager_ResumeSelected}">
+              <TextBlock Text="{loc:Localize ChannelManager_ResumeSelected}" />
+            </Button>
+            <Button Classes="action" IsEnabled="{Binding CanLeave}" Click="Leave_Click"
+                    ToolTip.Tip="{loc:Localize ChannelManager_LeaveSelected}">
+              <TextBlock Text="{loc:Localize ChannelManager_LeaveSelected}" />
+            </Button>
+          </StackPanel>
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>

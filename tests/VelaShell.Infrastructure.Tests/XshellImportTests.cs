@@ -73,7 +73,7 @@ public class XshellImportTests
         Assert.AreEqual(4, outcome.Imported);
         Assert.AreEqual(outcome.GroupId, profiles.Single(p => p.Name == "Root").GroupId);
         Assert.AreSequenceEqual(["Xshell > A > Prod", "Xshell > A > Prod", "Xshell > B > Prod"],
-            profiles.Where(p => p.Name != "Root").Select(p => tree.PathOf(p.GroupId!.Value)).Order().ToArray());
+            [.. profiles.Where(p => p.Name != "Root").Select(p => tree.PathOf(p.GroupId!.Value)).Order()]);
     }
 
     [TestMethod]

@@ -1,4 +1,6 @@
+using Avalonia.Controls;
 using Avalonia.Interactivity;
+using VelaShell.Views;
 using VelaShell.Services;
 using VelaShell.ViewModels;
 
@@ -16,6 +18,16 @@ public partial class DockTabItem : DockTabItemBase
     private void JoinChannelB_Click(object? sender, RoutedEventArgs e) => Terminal?.JoinSyncChannel(SyncInputChannel.B);
     private void JoinChannelC_Click(object? sender, RoutedEventArgs e) => Terminal?.JoinSyncChannel(SyncInputChannel.C);
     private void JoinChannelD_Click(object? sender, RoutedEventArgs e) => Terminal?.JoinSyncChannel(SyncInputChannel.D);
+    private void JoinChannelE_Click(object? sender, RoutedEventArgs e) => Terminal?.JoinSyncChannel(SyncInputChannel.E);
+    private void JoinChannelF_Click(object? sender, RoutedEventArgs e) => Terminal?.JoinSyncChannel(SyncInputChannel.F);
+    private void OpenChannelManager_Click(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is MainWindow main)
+        {
+            main.OpenChannelManager();
+        }
+    }
+
     private void LeaveSyncChannel_Click(object? sender, RoutedEventArgs e) => Terminal?.LeaveSyncChannel();
     private void ConnectionInfo_Click(object? sender, RoutedEventArgs e) => Terminal?.RequestConnectionInfo();
 }

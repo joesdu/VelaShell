@@ -5344,6 +5344,12 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SyncInput_JoinChannelD" xml:space="preserve">
     <value>加入频道 D</value>
   </data>
+  <data name="SyncInput_JoinChannelE" xml:space="preserve">
+    <value>加入频道 E</value>
+  </data>
+  <data name="SyncInput_JoinChannelF" xml:space="preserve">
+    <value>加入频道 F</value>
+  </data>
   <data name="SyncInput_LeaveAll" xml:space="preserve">
     <value>离开所有频道</value>
   </data>
@@ -9790,7 +9796,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>这些连接都开不出终端，没有可以同步输入的（SFTP、FTP 与工作台开出来的不是终端）。</value>
   </data>
   <data name="Tree_SyncedNoFreeChannel" xml:space="preserve">
-    <value>四个同步输入频道（A–D）都在用。先关掉一个频道再试。</value>
+    <value>六个同步输入频道（A–F）都在用。先关掉一个频道再试。</value>
   </data>
   <data name="Tree_SyncedDone" xml:space="preserve">
     <value>{0} 个终端已加入同步输入频道 {1}</value>
@@ -10536,4 +10542,28 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Sftp_UploadMappingInvalidRemote" xml:space="preserve"><value>无法解析远端目录。</value></data>
   <data name="Sftp_UploadMappingInvalidLocal" xml:space="preserve"><value>请输入本地目录路径。</value></data>
   <data name="Sftp_UploadMappingRemoteUnavailable" xml:space="preserve"><value>无法打开远端目录：{0}。已保留原映射。</value></data>
+  <data name="ChannelManager_PauseSelected" xml:space="preserve"><value>暂停</value></data>
+  <data name="ChannelManager_NotJoinedFilter" xml:space="preserve"><value>未加入</value></data>
+  <data name="ChannelManager_All" xml:space="preserve"><value>全部</value></data>
+  <data name="ChannelManager_ColumnStatus" xml:space="preserve"><value>状态</value></data>
+  <data name="ChannelManager_Selected" xml:space="preserve"><value>已选 {0} 个终端</value></data>
+  <data name="ChannelManager_Paused" xml:space="preserve"><value>已暂停</value></data>
+  <data name="ChannelManager_Title" xml:space="preserve"><value>频道管理</value></data>
+  <data name="ChannelManager_Empty" xml:space="preserve"><value>没有匹配的已打开终端。</value></data>
+  <data name="ChannelManager_Syncing" xml:space="preserve"><value>同步中</value></data>
+  <data name="ChannelManager_NotJoined" xml:space="preserve"><value>未加入</value></data>
+  <data name="ChannelManager_ColumnTerminal" xml:space="preserve"><value>终端实例</value></data>
+  <data name="ChannelManager_ResumeSelected" xml:space="preserve"><value>恢复</value></data>
+  <data name="ChannelManager_LeaveSelected" xml:space="preserve"><value>离开频道</value></data>
+  <data name="ChannelManager_Search" xml:space="preserve"><value>搜索终端</value></data>
+  <data name="ChannelManager_MoveTo" xml:space="preserve"><value>加入 / 移至…</value></data>
+  <data name="ChannelManager_MatrixHint" xml:space="preserve"><value>每个终端仅加入一个频道</value></data>
+  <data name="ChannelManager_ColumnSelection" xml:space="preserve"><value>选择</value></data>
+  <data name="ChannelManager_ChannelA" xml:space="preserve"><value>频道A</value></data>
+  <data name="ChannelManager_ChannelB" xml:space="preserve"><value>频道B</value></data>
+  <data name="ChannelManager_ChannelC" xml:space="preserve"><value>频道C</value></data>
+  <data name="ChannelManager_ChannelD" xml:space="preserve"><value>频道D</value></data>
+  <data name="ChannelManager_ChannelE" xml:space="preserve"><value>频道E</value></data>
+  <data name="ChannelManager_ChannelF" xml:space="preserve"><value>频道F</value></data>
+  <data name="ChannelManager_Heading" xml:space="preserve"><value>终端与频道</value></data>
 </root>

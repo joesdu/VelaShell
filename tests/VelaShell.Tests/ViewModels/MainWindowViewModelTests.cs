@@ -264,6 +264,76 @@ public class MainWindowViewModelTests
 
     [TestMethod]
     [TestCategory("SyncInput")]
+    public Task ChannelManager_GroupSelectsMatchingOpenInstances_NotSavedProfilesOrHiddenTabs() =>
+        Avalonia.Headless.HeadlessUnitTestSession.GetOrStartForAssembly(GetType().Assembly).RunOnUiAsync(() =>
+        {
+            var host = new MainWindowViewModel();
+            var tree = host.Sidebar.SessionTree = new(Substitute.For<ISessionRepository>());
+            var profile = new SessionProfile { Name = "gateway", Host = "edge.example" };
+            var root = new SessionTreeNodeViewModel(Guid.NewGuid(), "Production", true) { IsExpanded = false };
+            var child = new SessionTreeNodeViewModel(Guid.NewGuid(), "East", true);
+            child.Children.Add(new(profile.Id, profile.Name, false));
+            for (int i = 0; i < 300; i++) child.Children.Add(new(Guid.NewGuid(), $"saved-{i}", false));
+            root.Children.Add(child);
+            tree.Nodes.Add(root);
+            var first = new TerminalTabViewModel(FakeTerminal.Emulator()) { Title = "gateway", Profile = profile, ConnectionStatus = SessionStatus.Connected };
+            var second = new TerminalTabViewModel(FakeTerminal.Emulator()) { Title = "gateway", Profile = profile, ConnectionStatus = SessionStatus.Connected };
+            host.Layout.AddDocument(new TerminalDocument(first));
+            host.Layout.AddDocument(new TerminalDocument(second));
+            first.JoinSyncChannel(SyncInputChannel.A);
+            first.ToggleSyncPauseCommand.Execute().Subscribe();
+            second.JoinSyncChannel(SyncInputChannel.B);
+            using var manager = new ChannelManagerViewModel(host);
+            Assert.AreEqual("Production (2)", manager.Rows.Single().Label);
+            manager.ToggleSelection(manager.Rows.Single());
+            manager.SearchText = "edge.example";
+            CollectionAssert.AreEquivalent(new[] { "gateway #1", "gateway #2" }, manager.Rows.Where(r => !r.IsGroup).Select(r => r.Label).ToArray());
+            manager.FilterIndex = 2;
+            manager.Move(SyncInputChannel.D);
+            Assert.AreEqual(SyncInputChannel.D, first.SyncChannel);
+            Assert.IsTrue(first.IsSyncPaused);
+            Assert.AreEqual(SyncInputChannel.B, second.SyncChannel);
+            Assert.IsTrue(manager.IsEmpty);
+            Assert.IsFalse(manager.CanLeave);
+            manager.FilterIndex = 0;
+            manager.SearchText = "Production > East";
+            Assert.HasCount(4, manager.Rows);
+            manager.SearchText = "";
+            Assert.AreEqual("Production (2)", manager.Rows.Single().Label);
+        });
+
+    [TestMethod]
+    [TestCategory("SyncInput")]
+    public Task ChannelManager_OfflineAndRemovedMembers_AreNotBroadcastTargets() =>
+        Avalonia.Headless.HeadlessUnitTestSession.GetOrStartForAssembly(GetType().Assembly).RunOnUiAsync(() =>
+        {
+            var host = new MainWindowViewModel();
+            var offline = new TerminalTabViewModel(FakeTerminal.Emulator()) { Title = "offline" };
+            var live = new TerminalTabViewModel(FakeTerminal.Emulator()) { Title = "live", ConnectionStatus = SessionStatus.Connected };
+            host.Layout.AddDocument(new TerminalDocument(offline));
+            var doc = new TerminalDocument(live);
+            host.Layout.AddDocument(doc);
+            offline.JoinSyncChannel(SyncInputChannel.C);
+            using var manager = new ChannelManagerViewModel(host);
+            manager.ToggleSelection(manager.Rows.Single(r => r.IsGroup));
+            manager.Move(SyncInputChannel.B);
+            manager.SetPaused(true);
+            Assert.AreEqual(SyncInputChannel.C, offline.SyncChannel);
+            Assert.IsFalse(offline.IsSyncPaused);
+            Assert.AreEqual(SyncInputChannel.B, live.SyncChannel);
+            Assert.IsTrue(live.IsSyncPaused);
+            manager.SetPaused(false);
+            Assert.IsFalse(live.IsSyncPaused);
+            host.Layout.RemoveDocument(doc);
+            manager.Leave();
+            Assert.IsNull(offline.SyncChannel);
+            Assert.IsFalse(manager.CanMove);
+            Assert.HasCount(2, manager.Rows);
+            Assert.IsFalse(manager.Rows.Any(r => r.Label == "live"));
+        });
+
+    [TestMethod]
+    [TestCategory("SyncInput")]
     public void SyncChannel_JoinPauseLeave_UpdatesTabState()
     {
         var tab = new TerminalTabViewModel(FakeTerminal.Emulator());

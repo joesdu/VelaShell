@@ -786,7 +786,7 @@ public sealed class GistSyncServiceTests
         int refreshed = 0;
         service.ProfilesApplied += (_, _) => refreshed++;
         Assert.IsTrue((await service.ApplyRemoteAsync(config, nested, "v1", CancellationToken.None)).Success);
-        Assert.AreSequenceEqual([root.Id, child.Id], saved.Select(g => g.Id).ToArray());
+        Assert.AreSequenceEqual([root.Id, child.Id], [.. saved.Select(g => g.Id)]);
         Assert.AreEqual(root.Id, saved[1].ParentGroupId);
 
         sessions.GetAllGroupsAsync().Returns([new ServerGroup { Id = child.Id, Name = "b" }]);

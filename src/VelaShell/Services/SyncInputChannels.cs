@@ -15,7 +15,13 @@ public enum SyncInputChannel
     C,
 
     /// <summary>频道 D(绿)。</summary>
-    D
+    D,
+
+    /// <summary>频道 E(紫)。</summary>
+    E,
+
+    /// <summary>频道 F(红)。</summary>
+    F
 }
 
 /// <summary>
@@ -23,7 +29,7 @@ public enum SyncInputChannel
 /// 三处同色联动,让"哪些标签在同一频道"可以靠余光辨认。
 /// </summary>
 /// <remarks>
-/// 取当前主题的 <c>VelaSyncChannelA..D</c> 令牌(由种子色派生)。原先写死四个
+/// 取当前主题的 <c>VelaSyncChannelA..F</c> 令牌(由种子色派生)。原先写死四个
 /// Dracula 色值,亮色主题下徽章整体失配且绕过对比度把关。每次现取不缓存 ——
 /// 令牌值会随主题切换整体替换。
 /// </remarks>
@@ -41,6 +47,12 @@ public static class SyncInputChannels
     /// <summary>频道 D 的标识色(绿)。</summary>
     public static IBrush BrushD => ThemeBrushes.Resolve("VelaSyncChannelD", Color.Parse("#50FA7B"));
 
+    /// <summary>频道 E 的标识色。</summary>
+    public static IBrush BrushE => ThemeBrushes.Resolve("VelaSyncChannelE", Color.Parse("#BD93F9"));
+
+    /// <summary>频道 F 的标识色。</summary>
+    public static IBrush BrushF => ThemeBrushes.Resolve("VelaSyncChannelF", Color.Parse("#FF5555"));
+
     /// <summary>返回频道的标识色画刷。</summary>
     /// <param name="channel">频道。</param>
     /// <returns>该频道的标识色画刷。</returns>
@@ -50,6 +62,8 @@ public static class SyncInputChannels
             SyncInputChannel.A => BrushA,
             SyncInputChannel.B => BrushB,
             SyncInputChannel.C => BrushC,
+            SyncInputChannel.E => BrushE,
+            SyncInputChannel.F => BrushF,
             _ => BrushD
         };
 }

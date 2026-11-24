@@ -5099,6 +5099,8 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SyncInput_JoinChannelB" xml:space="preserve"><value>チャンネル B に参加</value></data>
   <data name="SyncInput_JoinChannelC" xml:space="preserve"><value>チャンネル C に参加</value></data>
   <data name="SyncInput_JoinChannelD" xml:space="preserve"><value>チャンネル D に参加</value></data>
+  <data name="SyncInput_JoinChannelE" xml:space="preserve"><value>チャンネル E に参加</value></data>
+  <data name="SyncInput_JoinChannelF" xml:space="preserve"><value>チャンネル F に参加</value></data>
   <data name="SyncInput_LeaveAll" xml:space="preserve"><value>すべてのチャンネルから退出</value></data>
   <data name="SyncInput_BannerPrefix" xml:space="preserve"><value>チャンネル</value></data>
   <data name="SyncInput_BannerSuffix" xml:space="preserve"><value>の入力を同期中</value></data>
@@ -9305,7 +9307,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>これらの接続はどれもターミナルを開かないため、入力を同期できません(SFTP・FTP・ワークスペースはターミナルではありません)。</value>
   </data>
   <data name="Tree_SyncedNoFreeChannel" xml:space="preserve">
-    <value>4 つの入力同期チャンネル(A–D)はすべて使用中です。1 つ閉じてから再試行してください。</value>
+    <value>6 つの入力同期チャンネル(A–F)はすべて使用中です。1 つ閉じてから再試行してください。</value>
   </data>
   <data name="Tree_SyncedDone" xml:space="preserve">
     <value>{0} 個のターミナルが入力同期チャンネル {1} に参加しました</value>
@@ -10051,4 +10053,28 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Sftp_UploadMappingInvalidRemote" xml:space="preserve"><value>リモートフォルダーを解決できません。</value></data>
   <data name="Sftp_UploadMappingInvalidLocal" xml:space="preserve"><value>ローカルフォルダーのパスを入力してください。</value></data>
   <data name="Sftp_UploadMappingRemoteUnavailable" xml:space="preserve"><value>リモートフォルダーを開けません: {0}。元のマッピングは変更されていません。</value></data>
+  <data name="ChannelManager_PauseSelected" xml:space="preserve"><value>選択を一時停止</value></data>
+  <data name="ChannelManager_NotJoinedFilter" xml:space="preserve"><value>未参加</value></data>
+  <data name="ChannelManager_All" xml:space="preserve"><value>すべてのターミナル</value></data>
+  <data name="ChannelManager_ColumnStatus" xml:space="preserve"><value>状態</value></data>
+  <data name="ChannelManager_Selected" xml:space="preserve"><value>{0} 件を選択</value></data>
+  <data name="ChannelManager_Paused" xml:space="preserve"><value>一時停止</value></data>
+  <data name="ChannelManager_Title" xml:space="preserve"><value>チャンネル管理</value></data>
+  <data name="ChannelManager_Empty" xml:space="preserve"><value>一致する開いているターミナルはありません。</value></data>
+  <data name="ChannelManager_Syncing" xml:space="preserve"><value>同期中</value></data>
+  <data name="ChannelManager_NotJoined" xml:space="preserve"><value>未参加</value></data>
+  <data name="ChannelManager_ColumnTerminal" xml:space="preserve"><value>ターミナル</value></data>
+  <data name="ChannelManager_ResumeSelected" xml:space="preserve"><value>選択を再開</value></data>
+  <data name="ChannelManager_LeaveSelected" xml:space="preserve"><value>選択をチャンネルから退出</value></data>
+  <data name="ChannelManager_Search" xml:space="preserve"><value>ターミナルを検索</value></data>
+  <data name="ChannelManager_MoveTo" xml:space="preserve"><value>参加 / 移動先…</value></data>
+  <data name="ChannelManager_MatrixHint" xml:space="preserve"><value>各ターミナルは1つのチャンネルに参加</value></data>
+  <data name="ChannelManager_ColumnSelection" xml:space="preserve"><value>選択</value></data>
+  <data name="ChannelManager_ChannelA" xml:space="preserve"><value>チャンネル A</value></data>
+  <data name="ChannelManager_ChannelB" xml:space="preserve"><value>チャンネル B</value></data>
+  <data name="ChannelManager_ChannelC" xml:space="preserve"><value>チャンネル C</value></data>
+  <data name="ChannelManager_ChannelD" xml:space="preserve"><value>チャンネル D</value></data>
+  <data name="ChannelManager_ChannelE" xml:space="preserve"><value>チャンネル E</value></data>
+  <data name="ChannelManager_ChannelF" xml:space="preserve"><value>チャンネル F</value></data>
+  <data name="ChannelManager_Heading" xml:space="preserve"><value>端末とチャンネル</value></data>
 </root>

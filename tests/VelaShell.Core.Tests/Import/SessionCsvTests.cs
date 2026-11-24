@@ -23,8 +23,8 @@ public sealed class SessionCsvTests
             Groups = [leaf, root], Sessions = [new() { Host = "one.test", GroupId = root.Id }, new() { Host = "two.test", GroupId = leaf.Id }]
         });
         SessionImportDocument document = SessionCsv.Read("tree.csv", csv);
-        Assert.AreSequenceEqual([root.Name], document.Candidates[0].GroupPath.ToArray());
-        Assert.AreSequenceEqual([root.Name, leaf.Name], document.Candidates[1].GroupPath.ToArray());
+        Assert.AreSequenceEqual([root.Name], [.. document.Candidates[0].GroupPath]);
+        Assert.AreSequenceEqual([root.Name, leaf.Name], [.. document.Candidates[1].GroupPath]);
         string tooDeep = string.Join('>', Enumerable.Repeat("x", ServerGroupTree.MaxDepth + 2));
         Assert.IsFalse(SessionCsv.Read("deep.csv", $"host,group_path\na.test,{tooDeep}\n").Candidates.Single().IsValid);
     }

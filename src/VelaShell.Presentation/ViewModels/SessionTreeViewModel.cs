@@ -184,8 +184,12 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
     /// <summary>已经挂上监听的节点(<see cref="Nodes" /> 的 Reset 不带旧项,得自己记着才摘得掉)。</summary>
     private readonly HashSet<SessionTreeNodeViewModel> _watched = [];
 
+    /// <summary>分组或连接位置发生变化（不含搜索、多选、频道字母等显示状态）。</summary>
+    public event Action? StructureChanged;
+
     private void OnNodesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        StructureChanged?.Invoke();
         if (e.Action == NotifyCollectionChangedAction.Reset)
         {
             // Clear() 不给 OldItems,只能照着自己记的那份全摘掉
@@ -385,6 +389,7 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
 
     private void OnChildrenChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        StructureChanged?.Invoke();
         foreach (SessionTreeNodeViewModel node in e.OldItems?.OfType<SessionTreeNodeViewModel>() ?? [])
         {
             Unwatch(node);
@@ -1432,6 +1437,7 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
         {
             Nodes.CollectionChanged += OnNodesChanged;
         }
+        StructureChanged?.Invoke();
         GroupNodes.Add(new(Guid.Empty, Strings.Get("Svc_Ungrouped"), true) { GroupPath = Strings.Get("Svc_Ungrouped") });
         RefreshHasNoSessions();
         if (IsFiltering)

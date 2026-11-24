@@ -54,7 +54,7 @@ public static class SessionArchiveBuilder
         var byId = all.GroupBy(static p => p.Id).ToDictionary(static g => g.Key, static g => g.First());
         var groupTree = new ServerGroupTree(groups);
         var groupIds = scope.ExportAll ? groups.Select(static g => g.Id).ToHashSet()
-            : scope.GroupId is { } selected ? groupTree.SubtreeOf(selected).Select(static g => g.Id).ToHashSet() : [];
+            : scope.GroupId is { } selected ? [.. groupTree.SubtreeOf(selected).Select(static g => g.Id)] : [];
         HashSet<Guid> requested = scope.ExportAll ? [.. byId.Keys]
             : scope.GroupId is not null ? [.. all.Where(p => p.GroupId is { } id && groupIds.Contains(id)).Select(p => p.Id)]
             : [.. scope.ProfileIds.Where(byId.ContainsKey)];

@@ -5344,6 +5344,12 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SyncInput_JoinChannelD" xml:space="preserve">
     <value>加入頻道 D</value>
   </data>
+  <data name="SyncInput_JoinChannelE" xml:space="preserve">
+    <value>加入頻道 E</value>
+  </data>
+  <data name="SyncInput_JoinChannelF" xml:space="preserve">
+    <value>加入頻道 F</value>
+  </data>
   <data name="SyncInput_LeaveAll" xml:space="preserve">
     <value>離開所有頻道</value>
   </data>
@@ -9790,7 +9796,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>這些連線都開不出終端，沒有可以同步輸入的（SFTP、FTP 與工作台開出來的不是終端）。</value>
   </data>
   <data name="Tree_SyncedNoFreeChannel" xml:space="preserve">
-    <value>四個同步輸入頻道（A–D）都在使用中。先關閉一個頻道再試。</value>
+    <value>六個同步輸入頻道（A–F）都在使用中。先關閉一個頻道再試。</value>
   </data>
   <data name="Tree_SyncedDone" xml:space="preserve">
     <value>{0} 個終端已加入同步輸入頻道 {1}</value>
@@ -10536,4 +10542,28 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Sftp_UploadMappingInvalidRemote" xml:space="preserve"><value>無法解析遠端目錄。</value></data>
   <data name="Sftp_UploadMappingInvalidLocal" xml:space="preserve"><value>請輸入本機目錄路徑。</value></data>
   <data name="Sftp_UploadMappingRemoteUnavailable" xml:space="preserve"><value>無法開啟遠端目錄：{0}。已保留原映射。</value></data>
+  <data name="ChannelManager_PauseSelected" xml:space="preserve"><value>暫停所選</value></data>
+  <data name="ChannelManager_NotJoinedFilter" xml:space="preserve"><value>未加入</value></data>
+  <data name="ChannelManager_All" xml:space="preserve"><value>全部終端</value></data>
+  <data name="ChannelManager_ColumnStatus" xml:space="preserve"><value>狀態</value></data>
+  <data name="ChannelManager_Selected" xml:space="preserve"><value>已選取 {0} 項</value></data>
+  <data name="ChannelManager_Paused" xml:space="preserve"><value>已暫停</value></data>
+  <data name="ChannelManager_Title" xml:space="preserve"><value>頻道管理</value></data>
+  <data name="ChannelManager_Empty" xml:space="preserve"><value>沒有符合的已開啟終端。</value></data>
+  <data name="ChannelManager_Syncing" xml:space="preserve"><value>同步中</value></data>
+  <data name="ChannelManager_NotJoined" xml:space="preserve"><value>未加入</value></data>
+  <data name="ChannelManager_ColumnTerminal" xml:space="preserve"><value>終端</value></data>
+  <data name="ChannelManager_ResumeSelected" xml:space="preserve"><value>恢復所選</value></data>
+  <data name="ChannelManager_LeaveSelected" xml:space="preserve"><value>離開所選頻道</value></data>
+  <data name="ChannelManager_Search" xml:space="preserve"><value>搜尋終端</value></data>
+  <data name="ChannelManager_MoveTo" xml:space="preserve"><value>加入 / 移至…</value></data>
+  <data name="ChannelManager_MatrixHint" xml:space="preserve"><value>每個終端僅加入一個頻道</value></data>
+  <data name="ChannelManager_ColumnSelection" xml:space="preserve"><value>選取</value></data>
+  <data name="ChannelManager_ChannelA" xml:space="preserve"><value>頻道A</value></data>
+  <data name="ChannelManager_ChannelB" xml:space="preserve"><value>頻道B</value></data>
+  <data name="ChannelManager_ChannelC" xml:space="preserve"><value>頻道C</value></data>
+  <data name="ChannelManager_ChannelD" xml:space="preserve"><value>頻道D</value></data>
+  <data name="ChannelManager_ChannelE" xml:space="preserve"><value>頻道E</value></data>
+  <data name="ChannelManager_ChannelF" xml:space="preserve"><value>頻道F</value></data>
+  <data name="ChannelManager_Heading" xml:space="preserve"><value>終端與頻道</value></data>
 </root>
