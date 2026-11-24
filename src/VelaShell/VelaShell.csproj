@@ -398,24 +398,6 @@
   </Target>
 
   <!--
-    插件声明「由宿主提供」的包(VelaHostSharedPackage,见 plugins/Directory.Build.targets)不随插件分发,
-    运行时用的是宿主根目录那份。这里把「宿主发行包里真有这个包、而且版本一字不差」从约定变成硬约束:
-    哪天宿主升级了 LiveMarkdown.Avalonia 把 Markdig 带到新版本、插件这边没跟,或者宿主不再间接引它,
-    构建全绿、包也照出,插件却在用户机器上 MissingMethodException / FileNotFoundException。
-  -->
-  <Target Name="VerifyVelaHostSharedPackages" AfterTargets="AddVelaPluginsToPublish">
-    <MSBuild Projects="@(_VelaLocalPluginProject)" Targets="GetVelaHostSharedPackages" Properties="Configuration=$(Configuration)" RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishTrimmed;PublishReadyToRun;PublishAot;PublishDir">
-      <Output TaskParameter="TargetOutputs" ItemName="_VelaHostSharedPackageRequest" />
-    </MSBuild>
-    <ItemGroup>
-      <_VelaHostPackageKey Include="@(RuntimeCopyLocalItems->'%(NuGetPackageId)/%(NuGetPackageVersion)');@(NativeCopyLocalItems->'%(NuGetPackageId)/%(NuGetPackageVersion)')" />
-      <_VelaHostSharedPackageKey Include="@(_VelaHostSharedPackageRequest->'%(Identity)/%(Version)')" />
-      <_VelaHostSharedPackageMissing Include="@(_VelaHostSharedPackageKey)" Exclude="@(_VelaHostPackageKey)" />
-    </ItemGroup>
-    <Error Condition="'@(_VelaHostSharedPackageMissing)' != ''" Text="插件声明由宿主提供的包在宿主发行包里不存在或版本不一致:@(_VelaHostSharedPackageMissing->'%(VelaPluginId) 要 %(Identity)', ', ')。把插件 csproj 里 VelaHostSharedPackage 的版本改成宿主实际带的版本(看 VelaShell.deps.json),或者把这一条改回普通 PackageReference 让插件自带。" />
-  </Target>
-
-  <!--
     原生调试符号不进发行包。osx 的运行时包会把 libcoreclr / libclrjit / libmscordaccore / libmscordbi 等的
     .dwarf 一起交给 publish —— 8 个文件 106 MB,压缩后约 37 MB,占 macOS 包体的四分之一,
     而 DebugType=None 与流水线里的删 *.pdb 都管不到它们(Linux 运行时包的 .dbg 同理,当前没有,一并挡住)。

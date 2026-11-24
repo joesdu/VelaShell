@@ -87,7 +87,7 @@ internal sealed class TextMateLineTokenizer
 }
 
 /// <summary>
-/// TextMate 语法高亮(TextMateSharp,与聊天代码块共用宿主那份程序集与 grammar):
+/// TextMate 语法高亮(TextMateSharp,与聊天代码块共用插件目录里的程序集与 grammar):
 /// 按文件扩展名挑语言,逐行分词并把上一行的状态带下去,按主题规则给每段前景色。
 /// </summary>
 /// <remarks>

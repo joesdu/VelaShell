@@ -28,11 +28,11 @@
          PrivateAssets=all + ExcludeAssets=runtime:编译期能看见类型,输出目录里不留 dll ——
          装载时它必须与宿主是同一份程序集,复制过去就成了两份类型。
          版本须与 src/Directory.Packages.props 里宿主引的那一条一致。 -->
-    <PackageReference Include="VelaShell.PluginSdk" Version="2.2.0" PrivateAssets="all" ExcludeAssets="runtime">
+    <PackageReference Include="VelaShell.PluginSdk" Version="2.2.1" PrivateAssets="all" ExcludeAssets="runtime">
       <IncludeAssets>compile; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <!-- 仅编译期引用 Avalonia,运行时由装载方共享同一套(版本须与宿主一致)。 -->
-    <PackageReference Include="Avalonia" Version="12.1.6" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia" Version="12.2.0" ExcludeAssets="runtime" />
     <!-- 输入框是 AvaloniaEdit(Markdown 高亮 + @ 引用芯片,纯 TextBox 给不了内联富文本)。
          程序集名 AvaloniaEdit 命中 PluginAssemblyLoadContext 的 SharedPrefixes("Avalonia"),
          运行时一律回落到装载方那份,故此处同样只要编译期引用。
@@ -44,7 +44,7 @@
          这些依赖随插件目录分发,由插件 ALC 按 deps.json 隔离解析,与宿主互不干扰。 -->
     <PackageReference Include="Microsoft.Extensions.AI" Version="11.0.1" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="11.0.1" />
-    <PackageReference Include="Anthropic" Version="13.12.0" />
+    <PackageReference Include="Anthropic" Version="13.13.0" />
     <!-- MCP 官方 C# SDK(Core = 纯客户端/低层,无 Hosting/DI 依赖):
          McpClientTool 即 M.E.AI 的 AIFunction,直接并入 Agent 工具循环。 -->
     <PackageReference Include="ModelContextProtocol.Core" Version="2.4.0" />
@@ -62,28 +62,6 @@
     <PackageReference Include="LiveMarkdown.Avalonia.Math" Version="2.7.0" />
     <!-- SVG:给图片管线注册 SVG 解码器。用 Svg.Controls.Avalonia 后端(非 Skia,用户决策)。 -->
     <PackageReference Include="LiveMarkdown.Avalonia.Svg" Version="2.7.0" />
-  </ItemGroup>
-
-  <!--
-    与宿主共用的传递依赖:宿主根目录已经带着同版本的同一份程序集(宿主自己也引
-    LiveMarkdown.Avalonia),插件目录里再放一份只是白占包体,装载后还在内存里多一份。
-    VelaHostSharedPackage 由 plugins/Directory.Build.targets 展开成
-    ExcludeAssets="runtime;native" 的 PackageReference:编译照常,输出目录与 deps.json 里都没有它们,
-    插件 ALC 的依赖解析器找不到就回落默认 ALC,用宿主那份(原生库 libonigwrap 同理)。
-
-    只放**纯函数库**:不在静态里攒调用方对象,插件 ALC 卸载不受影响。LiveMarkdown.Avalonia 本身
-    刻意留在插件 ALC 里(三个节点扩展注册在它的渲染管线上,共享后宿主会攥住插件类型、ALC 卸不掉);
-    System.Numerics.Tensors 两边版本不同(宿主经 SonnetDB 是 10.x),也不共享。
-    版本必须与宿主发行包里的完全一致,发布期由 VelaShell.csproj 的 VerifyVelaHostSharedPackages 核对。
-  -->
-  <ItemGroup>
-    <VelaHostSharedPackage Include="Markdig" Version="1.1.2" />
-    <VelaHostSharedPackage Include="TextMateSharp" Version="2.0.0" />
-    <VelaHostSharedPackage Include="TextMateSharp.Grammars" Version="2.0.0" />
-    <VelaHostSharedPackage Include="Onigwrap" Version="1.0.9" />
-    <VelaHostSharedPackage Include="MicroCom.Runtime" Version="0.11.6" />
-    <!-- Avalonia 的传递依赖;名字命中 SharedPrefixes("Avalonia"),插件目录里那份本来就从不装载。 -->
-    <VelaHostSharedPackage Include="Avalonia.Remote.Protocol" Version="12.1.6" />
     <!-- 二维码(协作接入页上「把机器人拉进群」的链接)自己编,见 Ui/QrCode.cs。
          这里曾经引 QRCoder 1.8.0,当时判断是"MIT,netstandard2.0,无传递依赖" ——
          这条判断是错的:它的 netstandard2.0 目标依赖 System.Drawing.Common 6.0.0
