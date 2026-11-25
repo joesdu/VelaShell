@@ -22,7 +22,7 @@ namespace VelaShell.Infrastructure.Audit;
 /// </remarks>
 /// <param name="inner">真正的仓储。</param>
 /// <param name="auditLog">审计日志;null 时只转发。</param>
-public sealed class AuditedSessionRepository(ISessionRepository inner, IAuditLogService? auditLog) : ISessionRepository
+public sealed class AuditedSessionRepository(ISessionRepository inner, IAuditLogService? auditLog) : ISessionRepository, ISessionTreeDataRepository
 {
     private static readonly HashSet<string> Ignored = ["lastConnectedAt", "directoryBookmarks", "isPinned"];
     private static readonly HashSet<string> AddressFields = ["host", "port", "connectionType"];
@@ -40,6 +40,10 @@ public sealed class AuditedSessionRepository(ISessionRepository inner, IAuditLog
 
     /// <inheritdoc />
     public Task<List<SessionProfile>> GetAllSessionsAsync() => _inner.GetAllSessionsAsync();
+
+    /// <inheritdoc />
+    public Task<(List<ServerGroup> Groups, List<SessionProfile> Sessions)> GetAllTreeDataAsync() =>
+        ISessionTreeDataRepository.ReadAsync(_inner);
 
     /// <inheritdoc />
     public Task<SessionProfile?> GetSessionAsync(Guid id) => _inner.GetSessionAsync(id);

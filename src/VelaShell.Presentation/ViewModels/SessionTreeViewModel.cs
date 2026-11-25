@@ -33,6 +33,14 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
     private readonly Dictionary<Guid, string> _syncChannelCache = [];
 
     private bool _hasNoSessions;
+    private readonly SemaphoreSlim _loadGate = new(1, 1);
+
+    /// <summary>首屏和刷新时显示会话树的加载提示。</summary>
+    public bool IsLoading
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    }
 
     /// <summary>过滤框拆出来的词(见 <see cref="SessionTreeFilter.Terms" />);空 = 不过滤。</summary>
     private string[] _filterTerms = [];
@@ -78,7 +86,7 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
             CopySelectedHostAsync,
             this.WhenAnyValue(x => x.SelectedNode).Select(node => node is { IsGroup: false, HasHost: true })
         );
-        IObservable<bool> hasSelectedSftpProfile =this.WhenAnyValue(x => x.SelectedNode)
+        IObservable<bool> hasSelectedSftpProfile = this.WhenAnyValue(x => x.SelectedNode)
             .Select(node => node is { IsGroup: false, IsSshProfile: true } or
             { IsGroup: false, IsSftpProfile: true });
         IObservable<bool> hasSelectedSshSession = this.WhenAnyValue(x => x.SelectedNode)
@@ -398,7 +406,7 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
         {
             Watch(node);
         }
-        for (var owner = _watched.FirstOrDefault(group => ReferenceEquals(group.Children, sender));
+        for (SessionTreeNodeViewModel? owner = _watched.FirstOrDefault(group => ReferenceEquals(group.Children, sender));
              owner is not null; owner = owner.ParentGroup)
         {
             owner.RefreshSessionCount();
@@ -1366,16 +1374,32 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
         await LoadTreeAsync();
     }
 
+    /// <summary>供命令面板复用本次加载的会话,无需再次读库并解密。</summary>
+    public IReadOnlyCollection<SessionProfile> LoadedSessions => _sessionCache.Values;
+
     private async Task LoadTreeAsync()
     {
+        await _loadGate.WaitAsync();
+        try
+        {
+            IsLoading = true;
+            await ReloadTreeAsync();
+        }
+        finally
+        {
+            IsLoading = false;
+            _loadGate.Release();
+        }
+    }
 
+    private async Task ReloadTreeAsync()
+    {
         // 分组的初始展开态:设置说了算(#474),但用户这次运行里手动改过的以记忆为准。
         bool defaultExpanded = _settings is null
             || !(await _settings.GetSnapshotAsync().ConfigureAwait(true)).General.CollapseGroupsByDefault;
         _defaultExpanded = defaultExpanded;
 
-        List<ServerGroup> groups = await _repository.GetAllGroupsAsync();
-        List<SessionProfile> sessions = await _repository.GetAllSessionsAsync();
+        var (groups, sessions) = await ISessionTreeDataRepository.ReadAsync(_repository);
         var groupTree = new ServerGroupTree(groups);
         Guid? selectedId = SelectedNode?.Id;
         bool selectedGroup = SelectedNode?.IsGroup == true;

@@ -9756,6 +9756,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Tree_ExpandAll" xml:space="preserve">
     <value>全部展開</value>
   </data>
+  <data name="Tree_LoadingSessions" xml:space="preserve">
+    <value>正在載入連線…</value>
+  </data>
   <data name="Tree_FilterPlaceholder" xml:space="preserve">
     <value>依名稱、主機、標籤、備註篩選</value>
   </data>

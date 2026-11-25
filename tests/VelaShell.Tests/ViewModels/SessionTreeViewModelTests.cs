@@ -74,6 +74,21 @@ public class SessionTreeViewModelTests
 
     [TestMethod]
     [TestCategory("SessionTree")]
+    public async Task LoadCommand_ShowsLoadingUntilSnapshotArrives()
+    {
+        var pending = new TaskCompletionSource<List<SessionProfile>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _repository.GetAllGroupsAsync().Returns([]);
+        _repository.GetAllSessionsAsync().Returns(pending.Task);
+        var load = _vm.LoadCommand.Execute().FirstAsync();
+        Assert.IsTrue(_vm.IsLoading);
+        pending.SetResult([CreateSession("saved")]);
+        await load;
+        Assert.IsFalse(_vm.IsLoading);
+        Assert.AreEqual("saved", _vm.Rows.Single().Name);
+    }
+
+    [TestMethod]
+    [TestCategory("SessionTree")]
     public async Task LoadCommand_OrdersGroupsBySortOrder()
     {
         ServerGroup group1 = CreateGroup("Staging", 1);

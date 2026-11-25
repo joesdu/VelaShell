@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using NSubstitute;
+using ReactiveUI.Primitives;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
@@ -176,6 +177,39 @@ public class SidebarQuickCommandsUiTests
             window.Close();
         });
     }
+
+    [TestMethod]
+    public Task LoadingSessions_ShowsOverlayOnlyInsideTreeUntilReadCompletes() =>
+        _session.Dispatch(async () =>
+        {
+            var repository = Substitute.For<ISessionRepository>();
+            var pending = new TaskCompletionSource<List<SessionProfile>>(TaskCreationOptions.RunContinuationsAsynchronously);
+            repository.GetAllGroupsAsync().Returns([]);
+            repository.GetAllSessionsAsync().Returns(pending.Task);
+            var tree = new SessionTreeViewModel(repository);
+            var view = new SidebarView { DataContext = new SidebarViewModel { SessionTree = tree } };
+            var window = new Window { Width = 260, Height = 520, Content = view };
+            window.Show();
+            try
+            {
+                var load = tree.LoadCommand.Execute().FirstAsync();
+                Relayout(window);
+                var overlay = view.FindControl<Panel>("SessionLoadingOverlay")!;
+                Assert.IsTrue(overlay.IsEffectivelyVisible);
+                Assert.IsGreaterThan(0, overlay.Bounds.Height);
+                Assert.IsLessThanOrEqualTo(Bounds(view.FindControl<Border>("RecentConnectionsSection")!, view).Top,
+                    Bounds(overlay, view).Bottom);
+                pending.SetResult([]);
+                await load;
+                Relayout(window);
+                Assert.IsFalse(overlay.IsEffectivelyVisible);
+            }
+            finally
+            {
+                pending.TrySetResult([]);
+                window.Close();
+            }
+        }, CancellationToken.None);
 
     [TestMethod]
     public void SessionTreeProgrammaticSelection_DoesNotTakeKeyboardFocus()

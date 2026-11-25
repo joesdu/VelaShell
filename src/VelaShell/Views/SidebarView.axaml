@@ -153,10 +153,30 @@
         <Grid Grid.Row="0" RowDefinitions="Auto,*">
           <views:SessionTreeFilterBox Grid.Row="0" Margin="8,8,8,0"
                                       DataContext="{Binding SessionTree}" />
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
-                        HorizontalScrollBarVisibility="Disabled">
-            <views:SessionTreeView DataContext="{Binding SessionTree}" Padding="0,6,0,8" />
-          </ScrollViewer>
+          <Panel Grid.Row="1">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          IsEnabled="{Binding !SessionTree.IsLoading}">
+              <views:SessionTreeView DataContext="{Binding SessionTree}" Padding="0,6,0,8" />
+            </ScrollViewer>
+            <Panel x:Name="SessionLoadingOverlay" IsVisible="{Binding SessionTree.IsLoading, FallbackValue=False}">
+              <Border Background="{DynamicResource VelaBgSurface}" Opacity="0.9" />
+              <Border HorizontalAlignment="Center" VerticalAlignment="Center" Padding="16,12"
+                      Background="{DynamicResource VelaBgSurface}" CornerRadius="6"
+                      BorderBrush="{DynamicResource VelaBorderSecondary}" BorderThickness="1">
+                <StackPanel Spacing="8">
+                  <StackPanel Orientation="Horizontal" Spacing="10">
+                    <pc:CircularProgressRing Width="18" Height="18" StrokeThickness="2"
+                                             IsIndeterminate="{Binding SessionTree.IsLoading}"
+                                             TrackBrush="{DynamicResource VelaBorderSecondary}" ArcBrush="{DynamicResource VelaAccent}" />
+                    <TextBlock Text="{loc:Localize Tree_LoadingSessions}" VerticalAlignment="Center"
+                               FontSize="{DynamicResource VelaFontSize12}" Foreground="{DynamicResource VelaTextSecondary}" />
+                  </StackPanel>
+                  <ProgressBar Height="3" IsIndeterminate="{Binding SessionTree.IsLoading}" CornerRadius="2"
+                               Foreground="{DynamicResource VelaAccent}" Background="{DynamicResource VelaBorderPrimary}" />
+                </StackPanel>
+              </Border>
+            </Panel>
+          </Panel>
         </Grid>
 
         <Border x:Name="QuickCommandsDivider" Grid.Row="1" Height="1"

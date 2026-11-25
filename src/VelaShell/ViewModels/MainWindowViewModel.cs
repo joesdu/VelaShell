@@ -2375,6 +2375,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
     /// </summary>
     public async Task InitializeAsync()
     {
+        await RefreshSessionTreeAsync();
         await CommandHistory.LoadAsync();
         if (_quickCommands is not null)
         {
@@ -2392,7 +2393,6 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
             _startupStatePrepared = false;
         }
         await Sidebar.RecentConnections.RefreshAsync();
-        await RefreshSessionTreeAsync();
         await LayoutTemplates.LoadAsync();
         RevealActiveSessionInSidebar();
         // 隧道的启停状态不落盘:重启后一律是已停止,只有勾了「程序启动时自动建立」的在这里替用户建好。
@@ -2907,13 +2907,18 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
             try
             {
                 await tree.LoadCommand.Execute().FirstAsync();
+                _paletteGroupNames = tree.GroupNodes.Where(g => g.Id != Guid.Empty).ToDictionary(g => g.Id, g => g.Name);
+                _paletteProfiles = [.. tree.LoadedSessions.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)];
             }
             catch
             {
                 // 树加载失败不影响其余启动流程。
             }
         }
-        await RefreshPaletteSessionsAsync();
+        else
+        {
+            await RefreshPaletteSessionsAsync();
+        }
         RevealActiveSessionInSidebar();
     }
 

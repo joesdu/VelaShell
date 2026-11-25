@@ -9273,6 +9273,9 @@ Send anyway?</value>
   <data name="Tree_ExpandAll" xml:space="preserve">
     <value>Expand all groups</value>
   </data>
+  <data name="Tree_LoadingSessions" xml:space="preserve">
+    <value>Loading sessions…</value>
+  </data>
   <data name="Tree_FilterPlaceholder" xml:space="preserve">
     <value>Filter by name, host, tag or note</value>
   </data>
