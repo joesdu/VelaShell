@@ -186,12 +186,7 @@ public sealed class MasterKeyResolver
     }
 
     /// <summary>解析一次本机加密密钥(可能阻塞:密钥链解锁要等用户)。除了本地文件也写不进去,不抛异常。</summary>
-    internal MasterKeyResolution Resolve()
-    {
-        Session session = new(this);
-        session.Run();
-        return session.ToResolution();
-    }
+    internal MasterKeyResolution Resolve() => new Session(this).Run();
 
     /// <summary>一次解析的过程状态(只活在 <see cref="Resolve" /> 里)。</summary>
     private sealed class Session(MasterKeyResolver owner)
@@ -216,21 +211,23 @@ public sealed class MasterKeyResolver
         private bool _migrated;
 
         private byte[]? _fileKey;
-        private HeaderRead _headerRead;
-        private MasterPasswordHeader? _header;
         private bool _protected;
         private MasterPasswordProblem _problem;
         private string? _retiredHeader;
 
-        private enum HeaderRead { Absent, Ok, Unreadable }
+        private readonly record struct AbsentHeader;
+        private readonly record struct UnreadableHeader;
+        private readonly union HeaderRead(AbsentHeader, UnreadableHeader, MasterPasswordHeader);
+        private static readonly HeaderRead Absent = new AbsentHeader();
+        private static readonly HeaderRead Unreadable = new UnreadableHeader();
 
-        public void Run()
+        public MasterKeyResolution Run()
         {
             owner.FinishPendingDelete();
-            LoadHeader();
+            HeaderRead header = LoadHeader();
             LoadReferencedKeys();
             LoadLocalKeyFile();
-            DecideProtection();
+            DecideProtection(header);
             if (!_protected)
             {
                 AdoptKeyFile();
@@ -252,9 +249,10 @@ public sealed class MasterKeyResolver
                   + (_missing.Count > 0 ? $", missing: {string.Join(',', _missing)}" : "")
                   + (_storeError is null ? "" : $", keychain error: {_storeError}")
                   + (_retiredHeader is null ? "" : $", retired master password header as '{_retiredHeader}'"));
+            return ToResolution(header);
         }
 
-        public MasterKeyResolution ToResolution()
+        private MasterKeyResolution ToResolution(HeaderRead header)
         {
             MasterKeyStatus status = new()
             {
@@ -277,7 +275,7 @@ public sealed class MasterKeyResolver
             {
                 Sealed = new()
                 {
-                    Header = _header,
+                    Header = header is MasterPasswordHeader parsed ? parsed : null,
                     Problem = _problem,
                     Wrapped = _wrapped,
                     Plain = [.. _keys.Select(static k => new PlainKey(k.InKeychain ? new KeySlot(k.Id) : KeySlot.KeyFile, k.Id, k.Key))]
@@ -297,26 +295,23 @@ public sealed class MasterKeyResolver
         }
 
         /// <summary>主密码的 KDF 头(没开主密码时不存在)。</summary>
-        private void LoadHeader()
+        private HeaderRead LoadHeader()
         {
             string text;
             try
             {
                 if (!File.Exists(owner.HeaderFilePath))
                 {
-                    _headerRead = HeaderRead.Absent;
-                    return;
+                    return Absent;
                 }
                 text = File.ReadAllText(owner.HeaderFilePath, Encoding.UTF8);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 Trace.WriteLine($"[Secrets] {owner.HeaderFilePath} could not be read ({ex.Message})");
-                _headerRead = HeaderRead.Unreadable;
-                return;
+                return Unreadable;
             }
-            _header = MasterPasswordHeader.Parse(text);
-            _headerRead = _header is null ? HeaderRead.Unreadable : HeaderRead.Ok;
+            return MasterPasswordHeader.Parse(text) is { } header ? header : Unreadable;
         }
 
         /// <summary>第一步:清单里记着的密钥逐个去密钥链里取。</summary>
@@ -379,35 +374,35 @@ public sealed class MasterKeyResolver
         /// <summary>
         /// 主密码开没开:看包裹本身,不看设置。头与包裹对不上时,只在确定没有任何一把密钥依赖它的情况下才把头挪开。
         /// </summary>
-        private void DecideProtection()
+        private void DecideProtection(HeaderRead header)
         {
             bool wrappedFound = _wrapped.Count > 0;
             // 有条目这次没问成(密钥链用不了):它是不是包裹过的说不准,宁可当成开着。
             bool undetermined = _unavailable.Count > 0;
-            switch (_headerRead)
+            switch (header)
             {
-                case HeaderRead.Absent:
+                case AbsentHeader:
                     _protected = wrappedFound;
                     _problem = wrappedFound ? MasterPasswordProblem.HeaderMissing : MasterPasswordProblem.None;
                     break;
-                case HeaderRead.Unreadable when wrappedFound || undetermined:
+                case UnreadableHeader when wrappedFound || undetermined:
                     // 读不出来的头原样留着:那可能是解开这些包裹的唯一一份盐。
                     _protected = true;
                     _problem = MasterPasswordProblem.HeaderUnreadable;
                     break;
-                case HeaderRead.Unreadable:
+                case UnreadableHeader:
                     RetireHeader("unreadable");
                     break;
-                case HeaderRead.Ok when wrappedFound:
+                case MasterPasswordHeader when wrappedFound:
                     _protected = true;
                     break;
-                case HeaderRead.Ok when undetermined:
+                case MasterPasswordHeader when undetermined:
                     _protected = true;
                     _problem = MasterPasswordProblem.KeysUnavailable;
                     break;
-                default:
+                case MasterPasswordHeader parsed:
                     // 头好好的,却一把包裹过的密钥都没有,而且每一把都问到了:没有任何东西依赖这份头。
-                    if (_header!.State is MasterPasswordHeaderState.Enabling or MasterPasswordHeaderState.Disabling)
+                    if (parsed.State is MasterPasswordHeaderState.Enabling or MasterPasswordHeaderState.Disabling)
                     {
                         // 开启还没包裹任何一把就断了 / 关闭已经全部写回明文:这份头没用了,删掉它就是收尾。
                         owner.TryDeleteHeader();

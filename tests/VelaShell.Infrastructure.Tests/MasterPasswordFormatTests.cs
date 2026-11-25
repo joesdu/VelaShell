@@ -193,18 +193,28 @@ public sealed class MasterPasswordFormatTests
     }
 
     [TestMethod]
-    public void HeaderMissing_WithWrappedKeys_StaysLocked_AndKeepsEverything()
+    [DataRow(null, MasterPasswordProblem.HeaderMissing)]
+    [DataRow("invalid header", MasterPasswordProblem.HeaderUnreadable)]
+    public void DamagedOrMissingHeader_WithWrappedKeys_StaysLocked_AndKeepsEverything(string? contents, MasterPasswordProblem expectedProblem)
     {
         var store = new MemoryKeychain();
         _ = Protector(store).Protect("hunter2");
         WrapEverything(Resolver(store), Password, withRecovery: false);
         var before = store.Entries.ToDictionary(static e => e.Key, static e => e.Value.ToArray());
-        File.Delete(HeaderFile);
+        if (contents is null)
+        {
+            File.Delete(HeaderFile);
+        }
+        else
+        {
+            File.WriteAllText(HeaderFile, contents);
+        }
 
         AesSecretProtector protector = Protector(store);
 
         Assert.IsTrue(protector.IsLocked);
-        Assert.AreEqual(MasterPasswordProblem.HeaderMissing, protector.GetKeyStatus().MasterPasswordProblem);
+        Assert.AreEqual(expectedProblem, protector.GetKeyStatus().MasterPasswordProblem);
+        Assert.AreEqual(contents, File.Exists(HeaderFile) ? File.ReadAllText(HeaderFile) : null);
         Assert.AreEqual(MasterPasswordUnlockStatus.NothingToUnlock, protector.Vault.Unlock(Utf8(Password)).Status);
         Assert.ThrowsExactly<SecretsLockedException>(() => protector.Protect("x"));
         Assert.HasCount(before.Count, store.Entries);
