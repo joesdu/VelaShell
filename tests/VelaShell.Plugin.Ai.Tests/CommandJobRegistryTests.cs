@@ -124,6 +124,8 @@ public sealed class CommandJobRegistryTests
             peeked = await scope.PeekAsync(id);
         }
         Assert.AreEqual(CommandJobState.Succeeded, peeked.State, "界面读到了终态");
+        Assert.AreEqual(0, peeked.ExitCode);
+        Assert.IsTrue(peeked.RemoteStopConfirmed);
         Assert.IsNotNull(peeked.CompletedAt);
 
         // 界面先读到终态之后,模型这边才来要通知:仍要收得到

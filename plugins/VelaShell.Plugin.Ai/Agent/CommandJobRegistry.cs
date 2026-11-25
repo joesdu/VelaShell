@@ -330,7 +330,7 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
             }
             lock (job.Gate)
             {
-                job.State = CommandJobState.Running;
+                job.Status = new RunningState();
                 job.StartedAt = DateTimeOffset.UtcNow;
                 job.CommandStarted = !job.MergedOutput;
             }
@@ -339,7 +339,12 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
             {
                 lock (job.Gate)
                 {
-                    job.State = state;
+                    job.Status = state switch
+                    {
+                        CommandJobState.Running => new RunningState(),
+                        CommandJobState.AwaitingUser => new AwaitingUserState(),
+                        _ => throw new ArgumentOutOfRangeException(nameof(state))
+                    };
                     if (state == CommandJobState.Running)
                     {
                         job.CommandStarted = true;
@@ -348,10 +353,8 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
             }, job.Cancel.Token).ConfigureAwait(false);
             lock (job.Gate)
             {
-                job.ExitCode = result.ExitCode;
-                job.State = result.ExitCode == 0 ? CommandJobState.Succeeded : CommandJobState.Failed;
                 // 退出码证实受监控的前台进程已退出;不对其自行脱离的子进程作保证。
-                job.RemoteStopConfirmed = true;
+                job.Status = new ExitedState(result.ExitCode);
             }
         }
         catch (OperationCanceledException) when (job.Cancel.IsCancellationRequested)
@@ -361,38 +364,45 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
                 // 与超时分支同一判据:提权命令还停在审批/认证里就取消,用户命令没有启动过。
                 // 对显式监控任务点名取消是结束它的正常方式,不是需要暂停整轮的未知结果。
                 bool unknown = job.CommandStarted && !(job.Monitoring && job.StopRequested);
-                job.State = unknown ? CommandJobState.Unknown : CommandJobState.Cancelled;
-                job.RemoteStopConfirmed = !started;
-                job.Error = unknown ? "Exec channel cancelled; remote process termination is not confirmed."
+                bool remoteStopConfirmed = !started;
+                string? error = unknown ? "Exec channel cancelled; remote process termination is not confirmed."
                     : !started ? null
                     : job.CommandStarted ? "Monitoring task stopped on request; remote process termination is not confirmed."
                     : "Cancelled before the command reported starting.";
+                job.Status = unknown
+                    ? new UnknownState(error)
+                    : new CancelledState(remoteStopConfirmed, error);
             }
         }
         catch (JobOutcomeException ex)
         {
             lock (job.Gate)
             {
-                job.State = ex.State;
-                job.Error = ex.Message;
-                job.RemoteStopConfirmed = ex.Confirmed;
+                job.Status = ex.State switch
+                {
+                    CommandJobState.Failed => new FailedState(ex.Confirmed, ex.Message),
+                    CommandJobState.Cancelled => new CancelledState(ex.Confirmed, ex.Message),
+                    CommandJobState.TimedOut => new TimedOutState(job.CommandStarted, ex.Confirmed, ex.Message),
+                    CommandJobState.Unknown => new UnknownState(ex.Message),
+                    _ => throw new ArgumentOutOfRangeException(nameof(ex.State))
+                };
             }
         }
         catch (TimeoutException)
         {
             lock (job.Gate)
             {
-                job.State = CommandJobState.TimedOut;
-                job.Error = "Execution deadline expired; remote process termination is not confirmed.";
+                job.Status = new TimedOutState(job.CommandStarted, false,
+                    "Execution deadline expired; remote process termination is not confirmed.");
             }
         }
         catch (Exception ex)
         {
             lock (job.Gate)
             {
-                job.State = started && ex is not (NotSupportedException or UnauthorizedAccessException)
-                    ? CommandJobState.Unknown : CommandJobState.Failed;
-                job.Error = ex.Message;
+                job.Status = started && ex is not (NotSupportedException or UnauthorizedAccessException)
+                    ? new UnknownState(ex.Message)
+                    : new FailedState(false, ex.Message);
             }
         }
         finally
@@ -535,6 +545,17 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
         }
     }
 
+    private readonly union JobExecutionState(StartingState, AwaitingUserState, RunningState,
+        ExitedState, FailedState, CancelledState, TimedOutState, UnknownState);
+    private readonly record struct StartingState;
+    private readonly record struct AwaitingUserState;
+    private readonly record struct RunningState;
+    private readonly record struct ExitedState(int ExitCode);
+    private readonly record struct FailedState(bool RemoteStopConfirmed, string Error);
+    private readonly record struct CancelledState(bool RemoteStopConfirmed, string? Error);
+    private readonly record struct TimedOutState(bool CommandStarted, bool RemoteStopConfirmed, string Error);
+    private readonly record struct UnknownState(string? Error);
+
     private sealed class DirectOutput(Job job) : IProgress<ExecOutput>
     {
         public void Report(ExecOutput value) => job.Append(value);
@@ -558,16 +579,13 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
         public readonly CancellationTokenSource Cancel = CancellationTokenSource.CreateLinkedTokenSource(scope.Token);
         public readonly TaskCompletionSource Completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task Execution = Task.CompletedTask;
-        public CommandJobState State = CommandJobState.Starting;
+        public JobExecutionState Status = new StartingState();
         public DateTimeOffset? StartedAt;
         public DateTimeOffset? CompletedAt;
-        public int? ExitCode;
-        public bool RemoteStopConfirmed;
         public bool Background;
         public bool Notified;
         /// <summary>经 task_cancel 点名取消,而不是随整轮停止或撤权被连带取消。</summary>
         public bool StopRequested;
-        public string? Error;
         private readonly Queue<CommandJobOutput> _output = new();
         private int _characters;
         private long _nextCursor;
@@ -579,8 +597,8 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
             {
                 lock (Gate)
                 {
-                    return State == CommandJobState.Unknown
-                        || (State == CommandJobState.TimedOut && CommandStarted && !RemoteStopConfirmed);
+                    return Status is UnknownState
+                        || Status is TimedOutState { CommandStarted: true, RemoteStopConfirmed: false };
                 }
             }
         }
@@ -670,9 +688,20 @@ public sealed class CommandJobRegistry(IRemoteExecApi remoteExec, object? schedu
             {
                 long earliest = _output.TryPeek(out CommandJobOutput? first) ? first.Cursor : _nextCursor;
                 CommandJobOutput[] output = [.. _output.Where(o => o.Cursor >= cursor)];
-                return new CommandJobSnapshot(Id, SessionId, State, ExitCode, CreatedAt, StartedAt, CompletedAt,
-                    Cancel.IsCancellationRequested, RemoteStopConfirmed, Monitoring, output,
-                    _nextCursor, earliest, _truncated || cursor < earliest, false, Error);
+                (CommandJobState state, int? exitCode, bool remoteStopConfirmed, string? error) = Status switch
+                {
+                    StartingState => (CommandJobState.Starting, (int?)null, false, (string?)null),
+                    AwaitingUserState => (CommandJobState.AwaitingUser, null, false, null),
+                    RunningState => (CommandJobState.Running, null, false, null),
+                    ExitedState(var code) => (code == 0 ? CommandJobState.Succeeded : CommandJobState.Failed, code, true, null),
+                    FailedState(var confirmed, var message) => (CommandJobState.Failed, null, confirmed, message),
+                    CancelledState(var confirmed, var message) => (CommandJobState.Cancelled, null, confirmed, message),
+                    TimedOutState(_, var confirmed, var message) => (CommandJobState.TimedOut, null, confirmed, message),
+                    UnknownState(var message) => (CommandJobState.Unknown, null, false, message)
+                };
+                return new CommandJobSnapshot(Id, SessionId, state, exitCode, CreatedAt, StartedAt, CompletedAt,
+                    Cancel.IsCancellationRequested, remoteStopConfirmed, Monitoring, output,
+                    _nextCursor, earliest, _truncated || cursor < earliest, false, error);
             }
         }
     }
