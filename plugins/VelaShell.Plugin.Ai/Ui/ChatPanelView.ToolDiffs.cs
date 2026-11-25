@@ -119,7 +119,7 @@ public partial class ChatPanelView
                 // 「已修改文件」里有这个文件就用合并后的那份(与文件条打开的是同一个标签、同一份内容)
                 ChangedFileEntry? entry = _owner._active.ChangedFiles.Find(change.Location, change.Path);
                 _owner.OpenDiffDocument(key, entry is not null
-                    ? _owner.DocumentOf(entry.Location, entry.Path, entry.OldPath, entry.Kind, entry.Before, entry.After, entry.Diff)
+                    ? _owner.DocumentOf(entry)
                     : _owner.DocumentOf(change.Location, change.Path, change.OldPath, change.Kind, change.Before, change.After, Diff));
                 return;
             }

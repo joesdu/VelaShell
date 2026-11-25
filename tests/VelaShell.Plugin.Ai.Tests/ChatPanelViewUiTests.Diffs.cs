@@ -91,7 +91,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsNotNull(card.FileChange, "改动挂到发起它的那张卡上");
                 Assert.IsTrue(card.Diff!.HasLineNumbers, "换成整份前后文的真实差异");
 
-                RaiseClick(bar.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "ChangedFilesClear"));
+                RaiseClick(bar.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "ChangedFilesKeepAll"));
                 await PumpAsync(3);
                 Assert.IsFalse(bar.IsVisible);
                 Assert.IsEmpty(panel.ActiveChangedFiles.Entries);

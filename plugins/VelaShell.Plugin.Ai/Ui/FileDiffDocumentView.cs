@@ -29,6 +29,8 @@ internal sealed record FileDiffDocument(string Path, string? Location, string? O
     /// <summary>位置原值(<c>local:…</c> / <c>remote:…</c>),读写文件用;不知道在哪儿为 null。</summary>
     public string? RawLocation { get; init; }
 
+    internal ChangedFileEntry? ReviewEntry { get; init; }
+
     /// <summary>改动前的全文(新建为 null)。只有 <see cref="HasFullText" /> 时有意义。</summary>
     public string? Before { get; init; }
 
@@ -59,6 +61,8 @@ internal interface IFileDiffHost
 
     /// <summary>保存成功:更新「已修改文件」里这个文件的 After。</summary>
     void Saved(FileDiffDocument document, string text);
+
+    Task<string?> ReviewAsync(ChangedFileEntry entry, int revision, bool keep);
 }
 
 /// <summary>
@@ -210,7 +214,7 @@ internal sealed class FileDiffDocumentView : DockPanel
         _loadFull = TextButton("DiffLoadFull", _loc["DiffLoadFull"], () => _ = LoadFullFileAsync());
         Grid.SetColumn(_loadFull, 6);
         toolbar.Children.Add(_loadFull);
-        _revert = TextButton("DiffRevert", _loc["DiffRevert"], Revert);
+        _revert = TextButton("DiffRevert", _loc["DiffRevert"], () => _ = RevertOrDiscardAsync());
         Grid.SetColumn(_revert, 7);
         toolbar.Children.Add(_revert);
         _save = TextButton("DiffSave", _loc["DiffSave"], () => _ = SaveAsync());
@@ -397,6 +401,7 @@ internal sealed class FileDiffDocumentView : DockPanel
     {
         TextEditor leftEditor = LeftEditor = Editor("DiffLeftEditor", left, readOnly: true);
         TextEditor rightEditor = RightEditor = Editor("DiffRightEditor", right, readOnly: !Document.CanEdit);
+        if (_busy) rightEditor.IsReadOnly = true;
         _leftTint = new DiffLineBackgroundRenderer(() => Brush("VelaError"));
         _rightTint = new DiffLineBackgroundRenderer(() => Brush("VelaStatusConnected"));
         leftEditor.TextArea.TextView.BackgroundRenderers.Add(_leftTint);
@@ -718,8 +723,52 @@ internal sealed class FileDiffDocumentView : DockPanel
         _added.IsVisible = _removed.IsVisible = CurrentDiff is not null || Document.Diff is not null;
         bool dirty = IsDirty;
         _dirtyDot.IsVisible = dirty;
-        _save.IsVisible = _revert.IsVisible = Document.CanEdit && _host is not null;
-        _save.IsEnabled = _revert.IsEnabled = dirty && RightEditor is not null;
+        bool review = !dirty && Document.ReviewEntry is { } entry && entry.Owner.Entries.Contains(entry);
+        _save.IsVisible = _revert.IsVisible = (Document.CanEdit || review) && _host is not null;
+        _save.IsEnabled = _revert.IsEnabled = !_busy && (dirty || review);
+        _save.Content = _loc[review ? "DiffKeep" : "DiffSave"];
+        _revert.Content = _loc[review ? "DiffDiscard" : "DiffRevert"];
+        AutomationProperties.SetName(_save, (string)_save.Content);
+        AutomationProperties.SetName(_revert, (string)_revert.Content);
+        ToolTip.SetTip(_save, review ? _save.Content : _loc["DiffSaveTip"]);
+    }
+
+    private bool _busy;
+    internal bool IsBusy => _busy;
+
+    internal void SetBusy(bool busy)
+    {
+        _busy = busy;
+        if (RightEditor is { } right) right.IsReadOnly = busy || !Document.CanEdit;
+        UpdateChrome();
+    }
+
+    internal void FinishReview(ChangedFileEntry entry, bool keep)
+    {
+        if (Document.ReviewEntry != entry) return;
+        if (keep) Document = Document with { ReviewEntry = null };
+        else
+        {
+            var restored = new FileDiffDocument(entry.OldPath ?? entry.Path, Document.Location, null, null)
+            { Before = entry.Before, After = entry.Before, HasFullText = entry.Before is not null };
+            Load(restored, keepEdits: false);
+        }
+        ShowStatus(_loc[keep ? "DiffKept" : "DiffDiscarded"]);
+        UpdateChrome();
+    }
+
+    private async Task ReviewAsync(bool keep)
+    {
+        if (_host is null || Document.ReviewEntry is not { } entry) return;
+        string? error = await _host.ReviewAsync(entry, entry.Revision, keep);
+        if (error is not null) ShowStatus(ErrorText(error));
+    }
+
+    internal async Task RevertOrDiscardAsync()
+    {
+        if (_busy) return;
+        if (IsDirty) Revert();
+        else await ReviewAsync(keep: false);
     }
 
     private void ShowStatus(string text)
@@ -730,7 +779,7 @@ internal sealed class FileDiffDocumentView : DockPanel
 
     private string ErrorText(string error) => error switch
     {
-        FileTextStore.ErrorSessionGone or FileTextStore.ErrorPathRejected or FileTextStore.ErrorNotText => _loc[error],
+        FileTextStore.ErrorSessionGone or FileTextStore.ErrorPathRejected or FileTextStore.ErrorNotText or "DiffReviewConflict" or "DiffReviewUnavailable" or "DiffReviewDraft" => _loc[error],
         _ => _loc.F("DiffSaveFailed", error)
     };
 
@@ -741,8 +790,21 @@ internal sealed class FileDiffDocumentView : DockPanel
     /// </summary>
     internal async Task SaveAsync()
     {
-        if (_host is null || RightEditor is null || !Document.CanEdit || !IsDirty || Document.RawLocation is not { } location) return;
-        string text = RightEditor.Text;
+        if (_busy || _host is null) return;
+        if (!IsDirty)
+        {
+            await ReviewAsync(keep: true);
+            return;
+        }
+        SetBusy(true);
+        try { await SaveDraftAsync(); }
+        finally { SetBusy(false); }
+    }
+
+    private async Task SaveDraftAsync()
+    {
+        if (_host is null || !Document.CanEdit || Document.RawLocation is not { } location) return;
+        string text = RightEditor?.Text ?? _editedRight ?? Baseline;
         FileTextReadResult current = await _host.ReadAsync(location, Document.Path);
         if (current.Error is { } readError)
         {
@@ -791,11 +853,12 @@ internal sealed class FileDiffDocumentView : DockPanel
     /// <summary>冲突提示里选「重新载入」:右侧换成磁盘上的当前内容,作为新的基线(放弃本标签里的修改)。</summary>
     internal void ReloadFromDisk()
     {
-        if (RightEditor is null) return;
         string text = _reloadText ?? "";
         Baseline = text;
         Document = Document with { After = text };
-        RightEditor.Text = text;
+        _editedRight = text;
+        if (RightEditor is { } editor) editor.Text = text;
+        else Rebuild();
         _conflict.IsVisible = false;
         _pendingOverwrite = null;
         ShowStatus(_loc["DiffReloaded"]);
@@ -805,8 +868,15 @@ internal sealed class FileDiffDocumentView : DockPanel
     /// <summary>还原:右侧回到基线。</summary>
     internal void Revert()
     {
-        if (RightEditor is null || !Document.CanEdit) return;
-        RightEditor.Text = Baseline;
+        if (!Document.CanEdit) return;
+        if (RightEditor is null)
+        {
+            _editedRight = Baseline;
+            Rebuild();
+        }
+        else RightEditor.Text = Baseline;
+        _conflict.IsVisible = false;
+        _pendingOverwrite = null;
         ShowStatus("");
         Recompute();
     }

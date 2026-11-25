@@ -34,6 +34,8 @@ internal sealed class FileTextStore(IPluginContext context, Func<IReadOnlyList<L
     internal const string ErrorSessionGone = "DiffSaveSessionGone";
     internal const string ErrorPathRejected = "DiffSavePathRejected";
     internal const string ErrorNotText = "DiffSaveNotText";
+    internal const string ErrorReviewConflict = "DiffReviewConflict";
+    internal const string ErrorReviewUnavailable = "DiffReviewUnavailable";
 
     /// <summary>读当前全文。</summary>
     internal async Task<FileTextReadResult> ReadAsync(string location, string path, CancellationToken cancellationToken = default)
@@ -102,6 +104,113 @@ internal sealed class FileTextStore(IPluginContext context, Func<IReadOnlyList<L
         {
             return ex.Message;
         }
+    }
+
+    /// <summary>当前状态仍匹配变更后的快照时，还原操作前的文件内容和路径。</summary>
+    internal async Task<string?> RestoreAsync(FileChange change)
+    {
+        bool complete = change.Kind switch
+        {
+            FileChangeKind.Created => change.After is not null,
+            FileChangeKind.Deleted => change.Before is not null,
+            FileChangeKind.Modified => change.Before is not null && change.After is not null,
+            FileChangeKind.Renamed => change.Before is not null && change.After is not null && !string.IsNullOrWhiteSpace(change.OldPath),
+            _ => false
+        };
+        if (!complete || change.Before?.Contains('\0') == true || change.After?.Contains('\0') == true) return ErrorReviewUnavailable;
+        try
+        {
+            string target = change.OldPath ?? change.Path;
+            if (TryLocal(change.Location, change.Path, write: true, out LocalPath current, out bool isLocal))
+            {
+                if (!TryLocal(change.Location, target, write: true, out LocalPath original, out _)) return ErrorPathRejected;
+                return await RestoreLocalAsync(change, current.FullPath, original.FullPath).ConfigureAwait(false);
+            }
+            if (isLocal || RemoteSession(change.Location) is not { } session) return ErrorPathRejected;
+            if (!await IsConnectedAsync(session, default).ConfigureAwait(false)) return ErrorSessionGone;
+            return await RestoreRemoteAsync(change, session, target).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    private async Task<string?> RestoreLocalAsync(FileChange change, string path, string target)
+    {
+        if (change.OldPath is not null && Path.Exists(target)) return ErrorReviewConflict;
+        if (change.Kind == FileChangeKind.Deleted)
+        {
+            if (Path.Exists(path)) return ErrorReviewConflict;
+            byte[] bytes = Encode(change.Before!, change.BeforeHasBom ?? false);
+            using FileStream created = new(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            await created.WriteAsync(bytes).ConfigureAwait(false);
+            return null;
+        }
+        if (!File.Exists(path) || Directory.Exists(path)) return ErrorReviewConflict;
+        bool remove = change.Kind == FileChangeKind.Created;
+        using FileStream stream = new(path, FileMode.Open, remove ? FileAccess.Read : FileAccess.ReadWrite,
+            remove || change.OldPath is not null ? FileShare.Delete : FileShare.None);
+        if (stream.Length > maxBytes) return ErrorReviewConflict;
+        byte[] current = new byte[(int)stream.Length];
+        await stream.ReadExactlyAsync(current).ConfigureAwait(false);
+        FileTextReadResult read = Decode(current);
+        if (read.Text != change.After) return ErrorReviewConflict;
+        if (remove)
+        {
+            File.Delete(path);
+            return null;
+        }
+        bool bom = change.BeforeHasBom ?? read.HasBom;
+        byte[]? replacement = change.Before != change.After || bom != read.HasBom ? Encode(change.Before!, bom) : null;
+        if (change.OldPath is not null) File.Move(path, target);
+        if (replacement is not null)
+        {
+            stream.Position = 0;
+            await stream.WriteAsync(replacement).ConfigureAwait(false);
+            stream.SetLength(replacement.Length);
+        }
+        return null;
+    }
+
+    private async Task<string?> RestoreRemoteAsync(FileChange change, string session, string target)
+    {
+        var fs = context.RemoteFs;
+        string path = change.Path;
+        var current = await fs.StatAsync(session, path).ConfigureAwait(false);
+        if (change.Kind == FileChangeKind.Deleted)
+        {
+            if (current is not null || (change.OldPath is not null && await fs.StatAsync(session, target).ConfigureAwait(false) is not null))
+                return ErrorReviewConflict;
+            await fs.WriteAllBytesAsync(session, target, Encode(change.Before!, change.BeforeHasBom ?? false)).ConfigureAwait(false);
+            return null;
+        }
+        if (current is null || current.IsDirectory || current.IsSymbolicLink || current.Size > maxBytes) return ErrorReviewConflict;
+        byte[] bytes = await fs.ReadAllBytesAsync(session, path, maxBytes).ConfigureAwait(false);
+        FileTextReadResult read = Decode(bytes);
+        if (read.Text != change.After) return ErrorReviewConflict;
+        var latest = await fs.StatAsync(session, path).ConfigureAwait(false);
+        if (latest is null || latest.IsSymbolicLink || latest.IsDirectory || latest.Size != bytes.Length) return ErrorReviewConflict;
+        if (change.Kind == FileChangeKind.Created)
+        {
+            await fs.DeleteAsync(session, path).ConfigureAwait(false);
+            return null;
+        }
+        bool bom = change.BeforeHasBom ?? read.HasBom;
+        byte[]? replacement = change.Before != change.After || bom != read.HasBom ? Encode(change.Before!, bom) : null;
+        if (change.OldPath is not null)
+        {
+            if (await fs.StatAsync(session, target).ConfigureAwait(false) is not null) return ErrorReviewConflict;
+            await fs.RenameAsync(session, path, target).ConfigureAwait(false);
+        }
+        if (replacement is not null) await fs.WriteAllBytesAsync(session, target, replacement).ConfigureAwait(false);
+        return null;
+    }
+
+    private static byte[] Encode(string text, bool withBom)
+    {
+        byte[] body = Utf8Strict.GetBytes(text);
+        return withBom ? [.. Encoding.UTF8.GetPreamble(), .. body] : body;
     }
 
     /// <summary>

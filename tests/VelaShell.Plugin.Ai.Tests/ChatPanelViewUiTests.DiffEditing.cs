@@ -35,6 +35,8 @@ public sealed partial class ChatPanelViewUiTests
             return Task.FromResult<string?>(null);
         }
 
+        public Task<string?> ReviewAsync(ChangedFileEntry entry, int revision, bool keep) => throw new NotSupportedException();
+
         void IFileDiffHost.Saved(FileDiffDocument document, string text) => Saved.Add(text);
     }
 
@@ -67,7 +69,7 @@ public sealed partial class ChatPanelViewUiTests
         await PumpAsync(3);
         ChangedFileEntry entry = panel.ActiveChangedFiles.Find(change.Location, change.Path)!;
         await panel.OpenDiffDocumentAsync(ChangedFileList.KeyOf(change.Location, change.Path),
-            panel.DocumentOf(entry.Location, entry.Path, entry.OldPath, entry.Kind, entry.Before, entry.After, entry.Diff));
+            panel.DocumentOf(entry));
         return (FileDiffDocumentView)context.FakeUi.LastPanel.CreateContent();
     }
 

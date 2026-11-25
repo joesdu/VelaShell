@@ -93,15 +93,18 @@ public sealed partial class AgentToolbox
     private static string RemoteLocation(string sessionId) => "remote:" + sessionId;
 
     /// <summary>为改动事件读本地文件全文;不存在、超出上限或不是 UTF-8 时返回 null。</summary>
-    private string? TryReadLocalTextForEvent(string fullPath)
+    private string? TryReadLocalTextForEvent(string fullPath, out bool? hasBom)
     {
+        hasBom = null;
         try
         {
             if (!File.Exists(fullPath) || new FileInfo(fullPath).Length > EffectiveLocalMaxFileBytes)
             {
                 return null;
             }
-            return DecodeStrictUtf8(File.ReadAllBytes(fullPath));
+            byte[] bytes = File.ReadAllBytes(fullPath);
+            hasBom = bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble);
+            return DecodeStrictUtf8(bytes);
         }
         catch (Exception)
         {
@@ -110,7 +113,7 @@ public sealed partial class AgentToolbox
     }
 
     /// <summary>为改动事件读远端文件全文;不存在、是目录、超出上限或不是 UTF-8 时返回 null。</summary>
-    private async Task<(bool Exists, bool IsDirectory, string? Text)> TryReadRemoteTextForEventAsync(
+    private async Task<(bool Exists, bool IsDirectory, string? Text, bool? HasBom)> TryReadRemoteTextForEventAsync(
         string sessionId, string path, CancellationToken cancellationToken)
     {
         try
@@ -118,19 +121,19 @@ public sealed partial class AgentToolbox
             RemoteFileEntry? entry = await context.RemoteFs.StatAsync(sessionId, path, cancellationToken).ConfigureAwait(false);
             if (entry is null)
             {
-                return (false, false, null);
+                return (false, false, null, null);
             }
             if (entry.IsDirectory)
             {
-                return (true, true, null);
+                return (true, true, null, null);
             }
             if (entry.Size > MaxFileBytes)
             {
-                return (true, false, null);
+                return (true, false, null, null);
             }
             byte[] bytes = await context.RemoteFs.ReadAllBytesAsync(sessionId, path, MaxFileBytes, cancellationToken)
                 .ConfigureAwait(false);
-            return (true, false, DecodeStrictUtf8(bytes));
+            return (true, false, DecodeStrictUtf8(bytes), bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -138,7 +141,7 @@ public sealed partial class AgentToolbox
         }
         catch (Exception)
         {
-            return (true, false, null);
+            return (true, false, null, null);
         }
     }
 
