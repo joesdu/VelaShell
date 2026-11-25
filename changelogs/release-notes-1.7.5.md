@@ -99,7 +99,7 @@
 
 - 中文与英文用户手册同步说明图片模型配置、剪贴板与预览、`@` / `#` / `/` 输入语义，以及 FTP 单连接、流式提交、完整缓存、重试和完整性限制。
   - 变更：`90ecc2e3`、`509f3dd2`、`ddf5ba4b`、`3a9d75ba`、`1f689ff8` · [PR #681](https://github.com/joesdu/VelaShell/pull/681)、[PR #684](https://github.com/joesdu/VelaShell/pull/684)、[PR #685](https://github.com/joesdu/VelaShell/pull/685)、[PR #686](https://github.com/joesdu/VelaShell/pull/686)、[PR #687](https://github.com/joesdu/VelaShell/pull/687)
-- `VelaShellLabs/velashell-docs` 对应中英文开发文档均已合并：[PR #153](https://github.com/VelaShellLabs/velashell-docs/pull/153)（AI）、[PR #155](https://github.com/VelaShellLabs/velashell-docs/pull/155)（FTP 缓存）、[PR #156](https://github.com/VelaShellLabs/velashell-docs/pull/156)（短读诊断）、[PR #157](https://github.com/VelaShellLabs/velashell-docs/pull/157)（流式提交）、[PR #161](https://github.com/VelaShellLabs/velashell-docs/pull/161)（单连接与双向中转）。
+- `VelaShell/velashell-docs` 对应中英文开发文档均已合并：[PR #153](https://github.com/VelaShell/velashell-docs/pull/153)（AI）、[PR #155](https://github.com/VelaShell/velashell-docs/pull/155)（FTP 缓存）、[PR #156](https://github.com/VelaShell/velashell-docs/pull/156)（短读诊断）、[PR #157](https://github.com/VelaShell/velashell-docs/pull/157)（流式提交）、[PR #161](https://github.com/VelaShell/velashell-docs/pull/161)（单连接与双向中转）。
 
 ## ✅ 验证
 

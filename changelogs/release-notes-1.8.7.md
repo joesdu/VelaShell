@@ -27,7 +27,7 @@
 ## 📚 文档与生态
 
 - 中文和英文用户手册已同步多级分组、导入导出、Gist 同步、团队等待顺序和本机文件链接行为。
-- `velashell-docs` 已同步相关中英文规格与行为说明：[PR #252](https://github.com/VelaShellLabs/velashell-docs/pull/252) · [PR #253](https://github.com/VelaShellLabs/velashell-docs/pull/253)。
+- `velashell-docs` 已同步相关中英文规格与行为说明：[PR #252](https://github.com/VelaShell/velashell-docs/pull/252) · [PR #253](https://github.com/VelaShell/velashell-docs/pull/253)。
 
 ## ✅ 验证
 

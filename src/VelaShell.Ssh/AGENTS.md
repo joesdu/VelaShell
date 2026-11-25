@@ -9,15 +9,15 @@
 ## 一、这是什么
 
 `VelaShell.Ssh` —— 一套**独立实现**的 .NET SSH 客户端库，宿主用它替换了 `Tmds.Ssh`。
-原本是独立仓库 `VelaShellLabs/velashell-ssh`，2026-09-23 并入宿主仓库，不再单独发 NuGet。
+原本是独立仓库 `VelaShell/velashell-ssh`，2026-09-23 并入宿主仓库，不再单独发 NuGet。
 
 - **本目录按 MIT 授权**（[`LICENSE`](LICENSE) / [`NOTICE.md`](NOTICE.md)），与宿主其余部分的授权不同。
   往这里挪代码之前想清楚：宿主那边的代码搬进来就等于以 MIT 再授权一次。
 - **架构与原理**：velashell-docs 仓库
-  [`zh/ssh/design/architecture.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/ssh/design/architecture.md)
+  [`zh/ssh/design/architecture.md`](https://github.com/VelaShell/velashell-docs/blob/main/zh/ssh/design/architecture.md)
   —— 先读这个，读完再读别的。
 - **行为规格**：velashell-docs 仓库
-  [`zh/ssh/spec/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/ssh/spec) —— **实现的唯一依据**。
+  [`zh/ssh/spec/`](https://github.com/VelaShell/velashell-docs/tree/main/zh/ssh/spec) —— **实现的唯一依据**。
 - **独立性声明**：[`NOTICE.md`](NOTICE.md)
 
 代码注释里写的 `velashell-docs/zh/ssh/…` 都指 velashell-docs 仓库里的这两处。

@@ -155,7 +155,7 @@ public class ShortcutCatalogTests
     /// 补文档不用再手抄一遍。
     /// </summary>
     /// <remarks>
-    /// 文档在另一个仓库(<c>VelaShellLabs/velashell-docs</c>),所以这条只在文档仓库就在手边时才跑。
+    /// 文档在另一个仓库(<c>VelaShell/velashell-docs</c>),所以这条只在文档仓库就在手边时才跑。
     /// 那份文档的「维护约定」一节明写着由本用例把关,把它删掉等于让文档那句话变成空头承诺。
     /// </remarks>
     [TestMethod]
@@ -164,7 +164,7 @@ public class ShortcutCatalogTests
         if (DocumentationPath() is not { } path)
         {
             Assert.Inconclusive(
-                "没找到文档仓库,跳过文档比对。把 VelaShellLabs/velashell-docs 检出到本仓库的同级目录"
+                "没找到文档仓库,跳过文档比对。把 VelaShell/velashell-docs 检出到本仓库的同级目录"
                 + $"(即 {Path.Combine(Path.GetDirectoryName(RepoRoot()) ?? "..", DocsRepositoryName)}),"
                 + $"或用环境变量 {DocsDirectoryVariable} 指向它。");
             return;

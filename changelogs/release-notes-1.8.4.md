@@ -45,7 +45,7 @@
 - 中英文用户手册同步：网络代理默认值改为直连；RDP（含 RD Gateway）与 Telnet 插件连接跟随网络代理、经代理时 RDP 只走 TCP，Redis / MongoDB 暂不经此代理；AI 插件按任务选择模型与图片模型选择。变更：`ac3b7473`、`2f673ec5`、`9c29eee6` · [PR #755](https://github.com/joesdu/VelaShell/pull/755)、[PR #756](https://github.com/joesdu/VelaShell/pull/756)、[PR #757](https://github.com/joesdu/VelaShell/pull/757)
 - 中英文 README 重新整理。变更：`8b93d2cf` · [PR #756](https://github.com/joesdu/VelaShell/pull/756)
 - `plugins/README.md` 补充插件与宿主共享依赖（`VelaHostSharedPackage`）、按平台保留原生库的约定。变更：`c396902d` · [PR #758](https://github.com/joesdu/VelaShell/pull/758)
-- velashell-docs 同步：AI 模型路由、图片模型选择与中文预编辑 [velashell-docs PR #225](https://github.com/VelaShellLabs/velashell-docs/pull/225)；代理默认直连与 RD Gateway 代理行为 [velashell-docs PR #226](https://github.com/VelaShellLabs/velashell-docs/pull/226)；`INetworkApi`（SDK 2.2.0）与 RDP 代理行为 [velashell-docs PR #228](https://github.com/VelaShellLabs/velashell-docs/pull/228)。
+- velashell-docs 同步：AI 模型路由、图片模型选择与中文预编辑 [velashell-docs PR #225](https://github.com/VelaShell/velashell-docs/pull/225)；代理默认直连与 RD Gateway 代理行为 [velashell-docs PR #226](https://github.com/VelaShell/velashell-docs/pull/226)；`INetworkApi`（SDK 2.2.0）与 RDP 代理行为 [velashell-docs PR #228](https://github.com/VelaShell/velashell-docs/pull/228)。
 
 ## ✅ 验证
 

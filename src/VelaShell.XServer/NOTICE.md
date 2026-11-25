@@ -15,7 +15,7 @@ Licensed under the MIT License — see [`LICENSE`](LICENSE).
 它不是任何现有 X 服务端的 fork,也不包含来自其它 X 服务端的代码。实现依据是 X.Org 发布的
 *X Window System Protocol, X Version 11* 及各扩展的协议规范、ICCCM 与 EWMH —— 每个协议实现文件的
 头部都注明了它所实现的规范与章节;架构与决策记录在
-[`velashell-docs/zh/xserver/design/architecture.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/xserver/design/architecture.md)。
+[`velashell-docs/zh/xserver/design/architecture.md`](https://github.com/VelaShell/velashell-docs/blob/main/zh/xserver/design/architecture.md)。
 
 GLX 与间接渲染用的软件 GL(`Gl/`)同样是独立实现,不包含来自任何 OpenGL / GLX 实现(Mesa 等)的代码:
 依据是 Khronos 发布的 *OpenGL Graphics with the X Window System* 1.4、*GLX Extensions for OpenGL Protocol

@@ -1356,9 +1356,9 @@ VelaShell.exe -f "C:\Temp\session.xsh"
 
 本手册参考当前源码与以下已有资料；设计/审计类文档可能保留旧结论，行为冲突时以当前运行时接线和界面为准。
 
-- [VelaShell 文档仓库](https://github.com/VelaShellLabs/velashell-docs)
-- [宿主文档目录](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/host)
-- [快捷键参考](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/host/快捷键参考.md)
+- [VelaShell 文档仓库](https://github.com/VelaShell/velashell-docs)
+- [宿主文档目录](https://github.com/VelaShell/velashell-docs/tree/main/zh/host)
+- [快捷键参考](https://github.com/VelaShell/velashell-docs/blob/main/zh/host/快捷键参考.md)
 - 本地资料仓库 `../velashell-docs/zh/host/`：`交互与界面规格.md`、`会话导入.md`、`SFTP双栏与WinSCP差距分析.md`、`隧道功能规划.md`、`Xshell兼容登录.md`、`消息中心与资讯源.md`。
 - 本地资料仓库 `../velashell-docs/zh/plugins/协作接入.md`：IM/MCP 方向、白名单、审批与已保存会话开关。
 - 本地资料仓库 `../velashell-docs/zh/xserver/troubleshooting.md`：X11/图形栈兼容与排障。

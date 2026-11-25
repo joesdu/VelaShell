@@ -24,7 +24,7 @@ public static class SshBackend
     /// <summary>后端名称,关于页与依赖清单都用它。</summary>
     public const string Name = "VelaShell.Ssh";
 
-    /// <summary>后端源码地址(2026-09-23 起在本仓库 src/VelaShell.Ssh,原独立仓库 VelaShellLabs/velashell-ssh)。</summary>
+    /// <summary>后端源码地址(2026-09-23 起在本仓库 src/VelaShell.Ssh,原独立仓库 VelaShell/velashell-ssh)。</summary>
     public const string ProjectUrl = "https://github.com/joesdu/VelaShell/tree/main/src/VelaShell.Ssh";
 
     /// <summary>后端许可证文本地址。该目录按 MIT 授权,与本仓库其余部分不同。</summary>

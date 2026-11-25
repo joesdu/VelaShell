@@ -16,7 +16,7 @@ A terminal as your sail, riding the signal winds to remote hosts.
 
 [简体中文](README.md) · **English**
 
-**[Download VelaShell](https://github.com/joesdu/VelaShell/releases)** · **[User manual](manual.en.md)** · **[Plugin marketplace](https://market.easilynet.top)** · **[Developer docs](https://github.com/VelaShellLabs/velashell-docs)**
+**[Download VelaShell](https://github.com/joesdu/VelaShell/releases)** · **[User manual](manual.en.md)** · **[Plugin marketplace](https://market.easilynet.top)** · **[Developer docs](https://github.com/VelaShell/velashell-docs)**
 
 <img src="mascot/chibi.png" alt="VelaShell mascot trio: holding a cat, using a laptop and waving" width="640">
 
@@ -112,7 +112,7 @@ See the [user manual](manual.en.md) for instructions and requirements.
 Its rootless mode maps remote X top-level windows to native desktop windows, with two-way clipboard, system keyboard layouts and GLX 1.4.
 SSH X11 channels connect to the server in-process. On Windows, you can also select an installed VcXsrv.
 
-[Use X11 forwarding](manual.en.md#x11) · [X Server troubleshooting](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/xserver/troubleshooting.md)
+[Use X11 forwarding](manual.en.md#x11) · [X Server troubleshooting](https://github.com/VelaShell/velashell-docs/blob/main/en/xserver/troubleshooting.md)
 
 <a id="ai"></a>
 
@@ -144,7 +144,7 @@ See the [AI manual](manual.en.md#ai) and [privacy notice](PRIVACY.md) for setup,
 
 Install `.vpx` packages from the **[plugin marketplace](https://market.easilynet.top)** to add connection types and workbenches.
 Apart from the AI assistant, the first-party plugins below are **not preinstalled**. Install them in one click from **Plugin manager → Plugin store**,
-or download signed `.vpx` packages from [velashell-plugins Releases](https://github.com/VelaShellLabs/velashell-plugins/releases) and install them manually.
+or download signed `.vpx` packages from [velashell-plugins Releases](https://github.com/VelaShell/velashell-plugins/releases) and install them manually.
 First-party plugins are released together under one version number and use the same SDK and permission model as third-party plugins.
 
 | Plugin | Entry point | What you can do |
@@ -172,12 +172,12 @@ RDP, Redis, S3, Telnet and serial plug in as connection types and join groups, t
 - **Telnet** is plaintext, with no host fingerprint verification or transport encryption. Do not use it on untrusted networks.
 
 See the [user manual](manual.en.md#plugins) for detailed usage, and the design notes for
-[RDP](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/host/rdp-plugin-design-and-use.md) ·
-[MongoDB](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/host/mongodb-workbench-plugin-design.md) ·
-[Redis](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/host/redis-client-plugin-research-and-design.md) ·
-[S3](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/host/s3-protocol-plugin-design.md) ·
-[Telnet and serial](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/host/telnet-and-serial-feasibility-research.md).
-Plugin sources are in [velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins).
+[RDP](https://github.com/VelaShell/velashell-docs/blob/main/en/host/rdp-plugin-design-and-use.md) ·
+[MongoDB](https://github.com/VelaShell/velashell-docs/blob/main/en/host/mongodb-workbench-plugin-design.md) ·
+[Redis](https://github.com/VelaShell/velashell-docs/blob/main/en/host/redis-client-plugin-research-and-design.md) ·
+[S3](https://github.com/VelaShell/velashell-docs/blob/main/en/host/s3-protocol-plugin-design.md) ·
+[Telnet and serial](https://github.com/VelaShell/velashell-docs/blob/main/en/host/telnet-and-serial-feasibility-research.md).
+Plugin sources are in [velashell-plugins](https://github.com/VelaShell/velashell-plugins).
 
 </details>
 
@@ -187,7 +187,7 @@ Plugins can load **in-process** or run in a **separate process**, sharing one SD
 In-process plugins can embed their UI in the workspace; isolated plugins communicate over named-pipe RPC with heartbeats, restarts and idle recycling.
 Dangerous capabilities require individual consent, and publisher signing keys are pinned at installation. The plugin manager handles installation, enable / disable, removal and update checks.
 
-[Development guide](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/templates/dev-guide.md) · [SDK reference](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/sdk/sdk-reference.md) · [CLI manual](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/cli/cli.md) · [Packaging & publishing](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/templates/publishing.md)
+[Development guide](https://github.com/VelaShell/velashell-docs/blob/main/en/templates/dev-guide.md) · [SDK reference](https://github.com/VelaShell/velashell-docs/blob/main/en/sdk/sdk-reference.md) · [CLI manual](https://github.com/VelaShell/velashell-docs/blob/main/en/cli/cli.md) · [Packaging & publishing](https://github.com/VelaShell/velashell-docs/blob/main/en/templates/publishing.md)
 
 <details>
 <summary><b>Host capabilities and related repositories</b></summary>
@@ -206,11 +206,11 @@ Plugins access the host through `IPluginContext`:
 | Repository | Responsibility |
 | --- | --- |
 | **[VelaShell](https://github.com/joesdu/VelaShell)** | Desktop app, plugin runtime, SSH library, X server and AI plugin |
-| [velashell-plugin-sdk](https://github.com/VelaShellLabs/velashell-plugin-sdk) | SDK contracts, test doubles and build tooling |
-| [velashell-plugin-cli](https://github.com/VelaShellLabs/velashell-plugin-cli) | The `vela-plugin` command-line tool |
-| [velashell-plugin-templates](https://github.com/VelaShellLabs/velashell-plugin-templates) | `dotnet new velaplugin` templates |
-| [velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins) | First-party plugins installed on demand |
-| [velashell-docs](https://github.com/VelaShellLabs/velashell-docs) | Ecosystem design and developer documentation, mirrored in Chinese and English |
+| [velashell-plugin-sdk](https://github.com/VelaShell/velashell-plugin-sdk) | SDK contracts, test doubles and build tooling |
+| [velashell-plugin-cli](https://github.com/VelaShell/velashell-plugin-cli) | The `vela-plugin` command-line tool |
+| [velashell-plugin-templates](https://github.com/VelaShell/velashell-plugin-templates) | `dotnet new velaplugin` templates |
+| [velashell-plugins](https://github.com/VelaShell/velashell-plugins) | First-party plugins installed on demand |
+| [velashell-docs](https://github.com/VelaShell/velashell-docs) | Ecosystem design and developer documentation, mirrored in Chinese and English |
 
 The SDK comes from NuGet, with versions centralised in `src/Directory.Packages.props` and `tests/Directory.Packages.props`.
 Configure debugging with `vela-plugin dev init`, then press F5. Test doubles are provided by `VelaShell.PluginSdk.Testing`.
@@ -302,7 +302,7 @@ Each project's `README.md` describes its responsibilities and dependencies. Core
 | AI plugin | Microsoft.Extensions.AI · ModelContextProtocol · LiveMarkdown.Avalonia |
 | Engineering | MSTest · BenchmarkDotNet · Central package management · SourceLink |
 
-See the [host architecture](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/host/architecture.md)
+See the [host architecture](https://github.com/VelaShell/velashell-docs/blob/main/en/host/architecture.md)
 and [`DESIGN.md`](DESIGN.md) for architectural and UI conventions.
 
 </details>
@@ -359,15 +359,15 @@ Shortcut documentation checks need `velashell-docs` checked out alongside this r
 | I want to… | Start here |
 | --- | --- |
 | Install, connect, transfer files, configure AI or troubleshoot | [English user manual](manual.en.md) · [中文手册](manual.md) |
-| Look up shortcuts and interaction design | [Keyboard shortcuts](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/host/keyboard-shortcuts.md) · [Host documentation](https://github.com/VelaShellLabs/velashell-docs/tree/main/en/host) |
-| Learn how first-party plugins work | [Plugin manual](manual.en.md#plugins) · [First-party plugins repository](https://github.com/VelaShellLabs/velashell-plugins) · [Plugin design docs](https://github.com/VelaShellLabs/velashell-docs/tree/main/en/host) |
-| Build a plugin or understand permissions | [Plugin development guide](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/templates/dev-guide.md) · [Plugin design](https://github.com/VelaShellLabs/velashell-docs/tree/main/en/plugins) |
-| Understand the SSH / X11 implementation | [SSH docs](https://github.com/VelaShellLabs/velashell-docs/tree/main/en/ssh) · [X Server docs](https://github.com/VelaShellLabs/velashell-docs/tree/main/en/xserver) |
-| See completed work and future plans | [Progress log](plan.md) · [Roadmap](feature-plan.md) · [Plugin status](https://github.com/VelaShellLabs/velashell-docs/blob/main/en/plugins/STATUS.md) |
+| Look up shortcuts and interaction design | [Keyboard shortcuts](https://github.com/VelaShell/velashell-docs/blob/main/en/host/keyboard-shortcuts.md) · [Host documentation](https://github.com/VelaShell/velashell-docs/tree/main/en/host) |
+| Learn how first-party plugins work | [Plugin manual](manual.en.md#plugins) · [First-party plugins repository](https://github.com/VelaShell/velashell-plugins) · [Plugin design docs](https://github.com/VelaShell/velashell-docs/tree/main/en/host) |
+| Build a plugin or understand permissions | [Plugin development guide](https://github.com/VelaShell/velashell-docs/blob/main/en/templates/dev-guide.md) · [Plugin design](https://github.com/VelaShell/velashell-docs/tree/main/en/plugins) |
+| Understand the SSH / X11 implementation | [SSH docs](https://github.com/VelaShell/velashell-docs/tree/main/en/ssh) · [X Server docs](https://github.com/VelaShell/velashell-docs/tree/main/en/xserver) |
+| See completed work and future plans | [Progress log](plan.md) · [Roadmap](feature-plan.md) · [Plugin status](https://github.com/VelaShell/velashell-docs/blob/main/en/plugins/STATUS.md) |
 | Read release changes | [Releases](https://github.com/joesdu/VelaShell/releases) · [Changelog archive](changelogs/) |
 
 VelaShell is under **active development**. Refer to the user manual and the relevant release notes for current behaviour and limitations.
-Design and developer documentation lives in [velashell-docs](https://github.com/VelaShellLabs/velashell-docs), with mirrored `zh/` and `en/` trees.
+Design and developer documentation lives in [velashell-docs](https://github.com/VelaShell/velashell-docs), with mirrored `zh/` and `en/` trees.
 User manuals, contribution guidelines and project-level references stay with the code in this repository.
 
 `plan.md`, `feature-plan.md` and `AGENTS.md` are written in Chinese.

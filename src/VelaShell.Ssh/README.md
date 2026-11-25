@@ -5,7 +5,7 @@
 一套**独立实现**的 SSH 客户端库：远程命令、交互式 shell（含 PTY）、SFTP、
 端口转发与隧道。它不是任何现有库的 fork —— 见 [`NOTICE.md`](NOTICE.md)。
 
-> 原本是独立仓库 `VelaShellLabs/velashell-ssh`，2026-09-23 并入本仓库，不再单独发 NuGet。
+> 原本是独立仓库 `VelaShell/velashell-ssh`，2026-09-23 并入本仓库，不再单独发 NuGet。
 > **本目录按 MIT 授权**（[`LICENSE`](LICENSE)），与仓库其余部分的授权不同。
 > 改这里的代码之前先读 [`AGENTS.md`](AGENTS.md) —— 本库有一条净室规程，宿主其余部分没有。
 
@@ -63,9 +63,9 @@ Argon2id（`.ppk` v3）。**没有第二种用途。** BCL 有的一律走 BCL�
 
 | 文档 | 内容 |
 | --- | --- |
-| [`zh/ssh/getting-started.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/ssh/getting-started.md) | **上手** —— 连接、认证、命令、shell、SFTP、转发、读错误 |
-| [`zh/ssh/design/architecture.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/ssh/design/architecture.md) | 架构与原理、独立性论证、性能设计、扩展点、里程碑与逐条决策 |
-| [`zh/ssh/spec/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/ssh/spec) | **行为规格** —— 实现的唯一依据（报文字段表 + 时序图） |
+| [`zh/ssh/getting-started.md`](https://github.com/VelaShell/velashell-docs/blob/main/zh/ssh/getting-started.md) | **上手** —— 连接、认证、命令、shell、SFTP、转发、读错误 |
+| [`zh/ssh/design/architecture.md`](https://github.com/VelaShell/velashell-docs/blob/main/zh/ssh/design/architecture.md) | 架构与原理、独立性论证、性能设计、扩展点、里程碑与逐条决策 |
+| [`zh/ssh/spec/`](https://github.com/VelaShell/velashell-docs/tree/main/zh/ssh/spec) | **行为规格** —— 实现的唯一依据（报文字段表 + 时序图） |
 | [`AGENTS.md`](AGENTS.md) | 开发约定，含净室规程 |
 | [`NOTICE.md`](NOTICE.md) | 独立性声明与第三方组件 |
 

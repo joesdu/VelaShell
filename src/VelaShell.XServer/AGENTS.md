@@ -15,7 +15,7 @@
 
 - **本目录按 MIT 授权**([`LICENSE`](LICENSE) / [`NOTICE.md`](NOTICE.md)),与宿主其余部分的授权不同。
 - **架构与原理、里程碑、决策记录**:velashell-docs
-  [`zh/xserver/design/architecture.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/xserver/design/architecture.md)
+  [`zh/xserver/design/architecture.md`](https://github.com/VelaShell/velashell-docs/blob/main/zh/xserver/design/architecture.md)
   —— 先读这个。
 
 | 位置 | 内容 |

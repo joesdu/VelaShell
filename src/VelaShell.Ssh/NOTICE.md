@@ -14,7 +14,7 @@ Licensed under the MIT License — see [`LICENSE`](LICENSE).
 
 它不是任何现有库的 fork，也不包含来自其它 SSH 实现的代码。
 实现依据是 IETF RFC 与 OpenSSH 的协议文档 —— 每个协议实现文件的头部都注明了
-它所实现的规范与章节，行为规格集中在 [`velashell-docs/zh/ssh/spec/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/ssh/spec)。
+它所实现的规范与章节，行为规格集中在 [`velashell-docs/zh/ssh/spec/`](https://github.com/VelaShell/velashell-docs/tree/main/zh/ssh/spec)。
 
 设计上，我们研究过并受益于以下项目所展示的思路。**它们的源码未被复制或改写：**
 

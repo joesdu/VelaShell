@@ -53,5 +53,5 @@ server.SetClipboardText(text);   // 宿主剪贴板 → X;反方向是 IX11Serve
 | `Input/` | 键码表、抓取的数据结构 |
 
 开发约定(净室规程)见 [`AGENTS.md`](AGENTS.md);架构见
-velashell-docs [`zh/xserver/design/architecture.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/xserver/design/architecture.md)。
+velashell-docs [`zh/xserver/design/architecture.md`](https://github.com/VelaShell/velashell-docs/blob/main/zh/xserver/design/architecture.md)。
 本目录按 **MIT** 授权([`LICENSE`](LICENSE) / [`NOTICE.md`](NOTICE.md))。

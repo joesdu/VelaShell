@@ -11,19 +11,19 @@ Release 资产 / 插件商店条目交付：
 
 | 插件 | 仓库 |
 | --- | --- |
-| Redis / S3 / Telnet / 串口，与 HelloWorld 示例 | **[VelaShellLabs/velashell-plugins](https://github.com/VelaShellLabs/velashell-plugins)** |
-| Docker 管理面板（已发布 `0.3.1`） | **[VelaShellLabs/VelaShell.Plugin.DockerPanel](https://github.com/VelaShellLabs/VelaShell.Plugin.DockerPanel)** |
+| Redis / S3 / Telnet / 串口，与 HelloWorld 示例 | **[VelaShell/velashell-plugins](https://github.com/VelaShell/velashell-plugins)** |
+| Docker 管理面板（已发布 `0.3.1`） | **[VelaShell/VelaShell.Plugin.DockerPanel](https://github.com/VelaShell/VelaShell.Plugin.DockerPanel)** |
 
 本机想连它们一起跑，
 把插件目录铺进 `artifacts/plugins/` 即可（或用 `-p:VelaPluginsStageDir=<目录>` 指别处），
 构建与发布都从那里取件 —— 目录可以从 `.vpx` 解出来，也可以直接指向那边的构建产物。
 
 插件契约 SDK、`dotnet new` 模板与 `vela-plugin` CLI 分别在
-**[velashell-plugin-sdk](https://github.com/VelaShellLabs/velashell-plugin-sdk)**、
-**[velashell-plugin-templates](https://github.com/VelaShellLabs/velashell-plugin-templates)**、
-**[velashell-plugin-cli](https://github.com/VelaShellLabs/velashell-plugin-cli)**，各按自己的节奏
+**[velashell-plugin-sdk](https://github.com/VelaShell/velashell-plugin-sdk)**、
+**[velashell-plugin-templates](https://github.com/VelaShell/velashell-plugin-templates)**、
+**[velashell-plugin-cli](https://github.com/VelaShell/velashell-plugin-cli)**，各按自己的节奏
 以 NuGet 包交付。全部文档（含插件系统设计蓝图）集中在
-**[velashell-docs](https://github.com/VelaShellLabs/velashell-docs)**。
+**[velashell-docs](https://github.com/VelaShell/velashell-docs)**。
 
 ## 为什么 AI 插件留在主仓库
 
