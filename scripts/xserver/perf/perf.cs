@@ -15,7 +15,7 @@
 // 选项:
 //   --headless            不开 Avalonia 宿主:换成一个每 16.7 毫秒按损伤取一次像素的模拟宿主(只量服务端 + 传输 + 客户端)
 //   --ssh                 经 SSH X11 转发(VelaShell.Ssh + 连接器,与宿主同一条路):自己起一个 sshd 容器,客户端在里面跑
-//   --compress            SSH 开 zlib@openssh.com 压缩
+//   --compress            旧参数。本基准测试连接固定使用 none
 //   --netem "<参数>"       sshd 容器的网卡上加 tc netem(比如 "delay 10ms"),模拟链路往返
 //   --seconds N           帧率类场景每个跑多久(默认 10)
 //   --samples N           延迟类场景注入多少次(默认 200)
@@ -65,7 +65,6 @@ using VelaShell.Services.XServer;
 using VelaShell.Views.XServer;
 using VelaShell.Ssh.Auth;
 using VelaShell.Ssh.Channels;
-using VelaShell.Ssh.Crypto;
 using VelaShell.Ssh.Forwarding;
 using VelaShell.Ssh.HostKeys;
 using VelaShell.Ssh.Session;
@@ -179,7 +178,6 @@ sealed class PerfOptions
 {
     public bool Headless { get; set; }
     public bool Ssh { get; set; }
-    public bool Compress { get; set; }
     public string? Netem { get; set; }
     public int Seconds { get; set; } = 10;
     public int Samples { get; set; } = 200;
@@ -202,7 +200,7 @@ sealed class PerfOptions
             {
                 case "--headless": o.Headless = true; break;
                 case "--ssh": o.Ssh = true; break;
-                case "--compress": o.Compress = true; break;
+                case "--compress": Console.Error.WriteLine("--compress 已忽略。本基准测试连接使用 none。"); break;
                 case "--netem": o.Netem = args[++i]; break;
                 case "--seconds": o.Seconds = int.Parse(args[++i]); break;
                 case "--samples": o.Samples = int.Parse(args[++i]); break;
@@ -946,7 +944,6 @@ sealed class SshLauncher : IClientLauncher
         {
             Credentials = [new PasswordCredential("testpass")],
             HostKeyPolicy = new DangerousAcceptAnyHostKeyPolicy(),
-            Algorithms = options.Compress ? SshAlgorithmSet.Default.WithCompression() : SshAlgorithmSet.Default,
         };
         SshConnection? connection = null;
         for (int attempt = 0; connection is null; attempt++)

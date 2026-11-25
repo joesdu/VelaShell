@@ -6316,6 +6316,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="XImport_Duplicate" xml:space="preserve">
     <value>已存在</value>
   </data>
+  <data name="SshCfgImport_NoteCompressionDisabled" xml:space="preserve">
+    <value>已忽略 OpenSSH 的 Compression yes。如需啟用終端機壓縮，請在「SSH 選項」中手動選擇模式。</value>
+  </data>
   <data name="SshCfgImport_NoteForwardsImported" xml:space="preserve">
     <value>{0} 條連接埠轉送匯入為這條連線的通道（停止狀態，在通道面板裡啟動）。</value>
   </data>
@@ -8092,6 +8095,9 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="SshErr_HostKeyAlgorithmMismatch" xml:space="preserve">
     <value>伺服器出示的是 {0} 金鑰,與協商出的主機金鑰演算法 {1} 不相符。</value>
   </data>
+  <data name="SshErr_StrictKexRequired" xml:space="preserve">
+    <value>未協商嚴格金鑰交換。請升級 SSH 伺服器，或在兩個方向都使用 AES-GCM。</value>
+  </data>
   <data name="SshErr_HostKeyTooShort" xml:space="preserve">
     <value>伺服器的 RSA 主機金鑰只有 {0} 位元,低於要求的 {1} 位元。</value>
   </data>
@@ -8470,11 +8476,26 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
   <data name="Profile_SshLegacyAlgorithmsHint" xml:space="preserve">
     <value>在預設清單之後追加 diffie-hellman-group14-sha1、ssh-rsa(SHA-1)與 hmac-sha1,只有對端一個現代演算法都不支援時才會用上。這些演算法已經不安全,只對連不上的舊交換器、舊系統開啟。</value>
   </data>
-  <data name="Profile_SshCompression" xml:space="preserve">
-    <value>啟用壓縮(適合高延遲 / 低頻寬連線)</value>
+  <data name="Profile_TerminalCompression" xml:space="preserve">
+    <value>終端機壓縮</value>
   </data>
-  <data name="Profile_SshCompressionHint" xml:space="preserve">
-    <value>延遲較高(跨境、跨洋,往返 100 ms 以上)或頻寬吃緊時建議開啟:終端輸出與文字檔能省下大量流量。區域網路、或主要傳輸圖片 / 壓縮檔這類已壓縮資料時不建議開啟 —— 只會白白多佔 CPU。伺服器不支援時自動退回不壓縮。</value>
+  <data name="Profile_TerminalCompressionOff" xml:space="preserve">
+    <value>關閉</value>
+  </data>
+  <data name="Profile_TerminalCompressionInput" xml:space="preserve">
+    <value>僅輸入（用戶端到伺服器）</value>
+  </data>
+  <data name="Profile_TerminalCompressionBoth" xml:space="preserve">
+    <value>輸入與輸出（雙向）</value>
+  </data>
+  <data name="Profile_TerminalCompressionHint" xml:space="preserve">
+    <value>伺服器支援時，登入後才會開始壓縮。僅壓縮輸入可以減少貼上大段文字時的流量。共用這條終端機連線的所有通道都使用同一模式。</value>
+  </data>
+  <data name="Profile_TerminalCompressionConfirm" xml:space="preserve">
+    <value>我管理這台伺服器，並已確認其 SSH 編碼器使用僅 Huffman 編碼的 DEFLATE，或採取等效措施來防止字典比對。</value>
+  </data>
+  <data name="Profile_TerminalCompressionRisk" xml:space="preserve">
+    <value>勾選後，即使伺服器使用 LZ77，VelaShell 也會接受壓縮輸出。字典比對可能透過封包長度洩露敏感資訊。請確認伺服器已採用 OpenSSH 10.6 的修正或同等措施。無法確認時請選擇僅壓縮輸入。</value>
   </data>
   <data name="Profile_SshObscureKeystrokeTiming" xml:space="preserve">
     <value>按鍵時序混淆</value>
@@ -10048,7 +10069,7 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
     <value>可用 Excel 編輯後再匯入的表格。只含常用欄位（名稱、主機、連接埠、使用者名稱、分組、驗證、跳板主機……），不含密碼。</value>
   </data>
   <data name="SessExport_SshConfigHint" xml:space="preserve">
-    <value>寫成 ~/.ssh/config 的 Host 區塊：SSH / SFTP 連線的主機、使用者、私鑰與憑證、跳板主機、壓縮、agent 轉送、演算法與連接埠轉送。不含密碼；其他協定略過。</value>
+    <value>寫成 ~/.ssh/config 的 Host 區塊：SSH / SFTP 連線的主機、使用者、私鑰與憑證、跳板主機、agent 轉送、演算法與連接埠轉送。不含密碼；其他協定略過。</value>
   </data>
   <data name="SessExport_IncludeSecrets" xml:space="preserve">
     <value>包含密碼等敏感資訊</value>

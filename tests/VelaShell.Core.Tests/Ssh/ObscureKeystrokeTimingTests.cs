@@ -64,7 +64,7 @@ public sealed class ObscureKeystrokeTimingTests
             Ssh = ssh,
         };
         SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(
-            info, hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
+            info, hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null);
         await using VelaSshClientWrapper wrapper = new(assembled.Connect, assembled.ConnectTimeout, info.Ssh, banners: assembled.Banners);
         using CancellationTokenSource cts = new(Deadline);
         await wrapper.ConnectAsync(cts.Token);

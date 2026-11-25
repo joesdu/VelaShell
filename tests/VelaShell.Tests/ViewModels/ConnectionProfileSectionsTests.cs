@@ -96,7 +96,7 @@ public sealed class ConnectionProfileSectionsTests
             Host = "10.0.0.1",
             Username = "ops",
             Terminal = new TerminalOverrides { Encoding = "GBK" },
-            Ssh = new SshSessionOptions { Compression = true, X11Forwarding = true },
+            Ssh = new SshSessionOptions { ObscureKeystrokeTiming = true, X11Forwarding = true },
         };
 
         var vm = new ConnectionProfileViewModel(existing);

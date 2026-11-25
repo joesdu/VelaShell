@@ -312,20 +312,20 @@ public sealed partial class OpenSshInteropTests
     }
 
     /// <summary>
-    /// 开着压缩跑大块传输，让服务端按它自己的 <c>RekeyLimit</c> 发起重协商：换钥前后的压缩流与新钥都要对得上。
-    /// 曾经「重协商 + zlib@openssh.com」与服务端发起的重协商只与本库自己的测试桩对过。
+    /// 双向延迟压缩在服务端发起的重协商后继续收发数据。
     /// </summary>
     /// <remarks>
     /// 要服务端配了 <c>RekeyLimit</c>（自家镜像与 <c>Start-TestServer.ps1 -X11</c> 配的是 1M）；没配、一次重协商都没发生时
     /// 报 Inconclusive，而不是当成通过 —— 数据对上了也说明不了换钥这一段。
     /// </remarks>
     [TestMethod]
-    public async Task 开着压缩时服务端发起的重协商照常收发()
+    public async Task 双向压缩时服务端发起的重协商照常收发()
     {
         RequireServer();
 
-        await using SshConnection connection = await SshConnection.ConnectAsync(Options(SshAlgorithmSet.Default.WithCompression()));
-        Assert.AreEqual(SshAlgorithmNames.ZlibOpenSsh, connection.Algorithms.CompressionServerToClient, "前提：压缩谈成了");
+        await using SshConnection connection = await SshConnection.ConnectAsync(Options(SshAlgorithmSet.Default.WithCompression(allowServerCompression: true)));
+        Assert.AreEqual(SshAlgorithmNames.ZlibOpenSsh, connection.Algorithms.CompressionClientToServer);
+        Assert.AreEqual(SshAlgorithmNames.ZlibOpenSsh, connection.Algorithms.CompressionServerToClient);
 
         // 随机数据压不小：base64 之后 8 MiB，越过服务端的 RekeyLimit 好几次。
         SshCommandResult bulk = await connection.RunAsync("head -c 6291456 /dev/urandom | base64 -w0");
@@ -333,7 +333,7 @@ public sealed partial class OpenSshInteropTests
         Assert.AreEqual(8 * 1024 * 1024, bulk.StandardOutput.Length);
         Assert.IsTrue(bulk.StandardOutput.All(c => char.IsAsciiLetterOrDigit(c) || c is '+' or '/'), "换钥前后的数据要一字节不差");
 
-        // 反方向也走一大段：换钥之后我们发的压缩流对端要解得开。
+        // 反方向也走一大段：换钥之后数据要完整。
         byte[] upload = new byte[3 * 1024 * 1024];
         Random.Shared.NextBytes(upload);
         await using (SshCommand count = await connection.ExecuteAsync("wc -c"))
@@ -991,28 +991,18 @@ public sealed partial class OpenSshInteropTests
     }
 
     [TestMethod]
-    public async Task 压缩能与OpenSSH协商上()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task 延迟压缩按方向与OpenSSH互通(bool receive)
     {
         RequireServer();
 
-        SshAlgorithmSet withCompression = SshAlgorithmSet.Default.WithCompression();
+        SshAlgorithmSet withCompression = SshAlgorithmSet.Default.WithCompression(receive);
 
         await using SshConnection connection = await SshConnection.ConnectAsync(Options(withCompression));
 
-        // ⚠️ **先断言真的谈成了。**
-        //
-        // 服务端不支持压缩时会静默落到 none，不会报错 —— 只看「输出对不对」
-        // 的话，这条用例在压缩根本没开的情况下照样过，那它就什么都没验。
-        Assert.AreEqual(
-            SshAlgorithmNames.ZlibOpenSsh,
-            connection.Algorithms.CompressionServerToClient,
-            "服务端 → 客户端方向应当谈成 zlib@openssh.com");
-        Assert.AreEqual(
-            SshAlgorithmNames.ZlibOpenSsh,
-            connection.Algorithms.CompressionClientToServer,
-            "客户端 → 服务端方向应当谈成 zlib@openssh.com");
-
-        // 谈成了之后再验数据确实完好 —— 压缩流一旦错位，症状就是内容对不上。
+        Assert.AreEqual(SshAlgorithmNames.ZlibOpenSsh, connection.Algorithms.CompressionClientToServer);
+        Assert.AreEqual(receive ? SshAlgorithmNames.ZlibOpenSsh : SshAlgorithmNames.None, connection.Algorithms.CompressionServerToClient);
         SshCommandResult result = await connection.RunAsync(
             "for i in $(seq 1 2000); do echo '同一行反复出现，非常可压缩'; done");
 
@@ -1024,10 +1014,10 @@ public sealed partial class OpenSshInteropTests
         // 第一版正是这么写的，而它在真实服务端上一跑就红了。
         Assert.HasCount(
             2000, result.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries),
-            "压缩流上的行数要一行不差");
+            "行数要一行不差");
         Assert.AreEqual(
             2000 * 40, Encoding.UTF8.GetByteCount(result.StandardOutput),
-            "字节数也要一字节不差 —— 压缩流错位的典型症状就是少几段");
+            "字节数也要一字节不差");
     }
 
     [TestMethod]

@@ -1373,19 +1373,28 @@
               <!-- ============================== SSH 选项(SSH 与 SFTP) ==============================
                    各项默认全关(按键时序混淆与 OpenSSH 不同,理由是带宽代价),每项下面一行灰字说清「什么时候该开」。 -->
               <StackPanel Grid.Row="1" Spacing="24" IsVisible="{Binding IsSshOptionsSection}">
-                <StackPanel Spacing="12">
+                <StackPanel Spacing="12" IsVisible="{Binding SupportsPostAuthCommand}">
                   <Grid ColumnDefinitions="Auto,*">
                     <TextBlock Classes="section-title" Text="{loc:Localize Profile_SecTransport}" />
                     <Border Grid.Column="1" Classes="section-rule" />
                   </Grid>
                   <StackPanel Spacing="4">
-                    <CheckBox IsChecked="{Binding SshCompression}">
-                      <TextBlock Classes="check-title" Text="{loc:Localize Profile_SshCompression}" />
-                    </CheckBox>
-                    <TextBlock Classes="check-desc" Text="{loc:Localize Profile_SshCompressionHint}" />
+                    <TextBlock Classes="field-label" Text="{loc:Localize Profile_TerminalCompression}" />
+                    <ComboBox SelectedIndex="{Binding TerminalCompressionIndex}" AutomationProperties.Name="{loc:Localize Profile_TerminalCompression}">
+                      <ComboBoxItem Content="{loc:Localize Profile_TerminalCompressionOff}" />
+                      <ComboBoxItem Content="{loc:Localize Profile_TerminalCompressionInput}" />
+                      <ComboBoxItem Content="{loc:Localize Profile_TerminalCompressionBoth}" />
+                    </ComboBox>
+                    <TextBlock Classes="field-hint" Text="{loc:Localize Profile_TerminalCompressionHint}" />
+                    <StackPanel Spacing="4" IsVisible="{Binding IsBidirectionalCompression}">
+                      <CheckBox IsChecked="{Binding TerminalCompressionConfirmed}">
+                        <TextBlock Classes="check-title" TextWrapping="Wrap" Text="{loc:Localize Profile_TerminalCompressionConfirm}" />
+                      </CheckBox>
+                      <TextBlock Classes="check-desc" Text="{loc:Localize Profile_TerminalCompressionRisk}" />
+                    </StackPanel>
                   </StackPanel>
                   <!-- 按键时序混淆只挂在交互式 shell 上:SFTP 配置没有 shell,不显示也不存。灰字说清带宽代价。 -->
-                  <StackPanel Spacing="4" IsVisible="{Binding SupportsPostAuthCommand}">
+                  <StackPanel Spacing="4">
                     <CheckBox IsChecked="{Binding SshObscureKeystrokeTiming}">
                       <TextBlock Classes="check-title" Text="{loc:Localize Profile_SshObscureKeystrokeTiming}" />
                     </CheckBox>

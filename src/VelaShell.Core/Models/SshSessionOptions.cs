@@ -1,12 +1,25 @@
 namespace VelaShell.Core.Models;
 
+/// <summary>交互式 SSH 终端连接在认证后允许协商压缩的方向。枚举值随配置保存。</summary>
+public enum SshTerminalCompressionMode
+{
+    /// <summary>终端连接的两个方向均不压缩。</summary>
+    Off = 0,
+
+    /// <summary>仅允许压缩发往服务器的终端输入。</summary>
+    UploadOnly = 1,
+
+    /// <summary>允许压缩终端输入与服务器发来的输出，需用户确认服务器受其管理。</summary>
+    Bidirectional = 2,
+}
+
 /// <summary>
-/// 一条 SSH 连接配置在协议层的可选能力:压缩、agent 转发、X11 转发、算法清单。
+/// 一条 SSH 连接配置在协议层的可选能力:终端压缩、agent 转发、X11 转发、算法清单。
 /// </summary>
 /// <remarks>
 /// <para>
 /// 默认全关 / 全用默认,与 OpenSSH 的出厂行为一致。它们都是「按机器开」的东西:
-/// 压缩只在慢链路上划算,两个转发都等于把本机的一部分能力借给远端 ——
+/// 两个转发都等于把本机的一部分能力借给远端 ——
 /// 没有理由对所有机器一刀切地打开。
 /// </para>
 /// <para>
@@ -16,15 +29,15 @@ namespace VelaShell.Core.Models;
 /// </remarks>
 public sealed class SshSessionOptions
 {
-    /// <summary>
-    /// 启用 <c>zlib@openssh.com</c> 压缩(服务端不支持时自动退回不压缩)。
-    /// </summary>
-    /// <remarks>
-    /// 高延迟、低带宽的链路上,终端输出与文本文件能省下可观的流量;
-    /// 局域网或传输已压缩的数据(图片、压缩包)时只会白白多耗 CPU。
-    /// 跳板链上只作用于这一跳。
-    /// </remarks>
+    /// <summary>旧版配置字段。保留以兼容已有配置，连接时忽略。</summary>
     public bool Compression { get; set; }
+
+    /// <summary>仅用于交互式终端。双向表示用户已确认信任这台服务器发来的压缩数据。</summary>
+    public SshTerminalCompressionMode TerminalCompression
+    {
+        get;
+        set => field = Enum.IsDefined(value) ? value : SshTerminalCompressionMode.Off;
+    }
 
     /// <summary>
     /// 按键时序混淆(OpenSSH 的 <c>ObscureKeystrokeTiming</c>):交互式 shell 的输入按固定节拍(20 毫秒)发出,
@@ -139,7 +152,8 @@ public sealed class SshSessionOptions
         || !string.IsNullOrWhiteSpace(Ciphers) || !string.IsNullOrWhiteSpace(Macs);
 
     /// <summary>一项都没开(X11 的两个附属字段在没开 X11 时不算数)。</summary>
-    public bool IsEmpty => !Compression && !ObscureKeystrokeTiming && !AgentForwarding && !X11Forwarding && !LegacyAlgorithms
+    public bool IsEmpty => TerminalCompression == SshTerminalCompressionMode.Off && !Compression
+                           && !ObscureKeystrokeTiming && !AgentForwarding && !X11Forwarding && !LegacyAlgorithms
                            && !HasCustomAlgorithms && Ssh.SshAgentEndpoints.IsDefault(AgentEndpoint);
 
     /// <summary>返回本对象的副本。</summary>
@@ -148,6 +162,7 @@ public sealed class SshSessionOptions
         new()
         {
             Compression = Compression,
+            TerminalCompression = TerminalCompression,
             ObscureKeystrokeTiming = ObscureKeystrokeTiming,
             AgentForwarding = AgentForwarding,
             AgentForwardKeys = AgentForwardKeys is null ? null : [.. AgentForwardKeys],

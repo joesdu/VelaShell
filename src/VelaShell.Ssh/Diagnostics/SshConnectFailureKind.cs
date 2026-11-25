@@ -139,4 +139,7 @@ public enum SshConnectFailureKind
 
     /// <summary>跳板 <see cref="SshConnectException.Via"/> 转发到 <see cref="SshConnectException.Target"/> 时外层连接的计时器到点了。</summary>
     JumpForwardTimeout,
+
+    /// <summary>至少一个方向选中了要求严格密钥交换的加密算法，但首次握手未协商此扩展。</summary>
+    StrictKexRequired,
 }

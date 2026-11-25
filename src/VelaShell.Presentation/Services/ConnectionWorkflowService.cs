@@ -373,6 +373,12 @@ public sealed class ConnectionWorkflowService(
             // 跳板只开隧道、不开 SFTP:文件名编码只带在终点那一跳上。
             jump = await BuildChainAsync(jumpProfile, visited, depth + 1, automaticReconnect, unattended, null, packetTrace: null, cancellationToken).ConfigureAwait(false);
         }
+        SshSessionOptions? ssh = effective.Ssh?.Clone();
+        if (ssh is not null && (depth != 0 || effective.ConnectionType != ConnectionType.SSH))
+        {
+            // 独立 SFTP 连接和仅承载隧道的中间跳不使用终端压缩设置。
+            ssh.TerminalCompression = SshTerminalCompressionMode.Off;
+        }
         return new()
         {
             // 早先存下的配置里可能还是 [2001:db8::1]:去掉方括号再交出去(见 HostAddress)。
@@ -387,7 +393,7 @@ public sealed class ConnectionWorkflowService(
             KeyStoreKey = effective.KeyStoreKey,
             // 会话级保活覆盖(F-06);null = 跟随全局。跳板链上每一跳各带各的。
             KeepAliveSeconds = effective.Terminal?.KeepAliveSeconds,
-            Ssh = effective.Ssh?.Clone(),
+            Ssh = ssh,
             FileNameEncoding = fileNameEncoding,
             JumpHost = jump,
             // 一条链共用一个主机指纹策略(由最外层这一跳决定),每一跳都标上只是让每份 ConnectionInfo 自己说得清。

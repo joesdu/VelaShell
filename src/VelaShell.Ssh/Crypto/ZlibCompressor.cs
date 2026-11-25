@@ -16,9 +16,8 @@ namespace VelaShell.Ssh.Crypto;
 /// <summary>zlib 压缩（RFC 4253 §6.2）。</summary>
 /// <remarks>
 /// <para>
-/// 每个报文之后做一次 flush：把当前报文的数据全部吐出来，但<b>保留字典</b>。
-/// 不 flush 的话数据会留在压缩器里出不来，对端收不到完整报文；
-/// 而重置字典（<c>Z_FULL_FLUSH</c>）会把压缩率一起扔掉。
+/// 每个报文之后 flush，保留 zlib 流。发送端只编码字面量，不使用报文内或跨报文的字符串匹配；
+/// 收方在显式启用后仍须接受服务端选择的标准 deflate 编码。
 /// </para>
 /// <para>
 /// .NET 11 的 <see cref="ZLibEncoder"/> 和 <see cref="ZLibDecoder"/> 是运行时自带的原生
@@ -60,9 +59,13 @@ internal sealed class ZlibCompressor : ISshCompressor
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(output);
 
-        _encoder ??= new ZLibEncoder(_level);
+        _encoder ??= new ZLibEncoder(new ZLibCompressionOptions
+        {
+            CompressionLevel = _level,
+            CompressionStrategy = ZLibCompressionStrategy.HuffmanOnly,
+        });
 
-        // isFinalBlock:false 保留跨报文的 zlib 字典。DestinationTooSmall 时，
+        // isFinalBlock:false 保留跨报文的 zlib 流。DestinationTooSmall 时，
         // 编码器报告已经消耗的前缀，下一轮继续喂剩余输入即可。
         int consumedTotal = 0;
         bool called = false;
@@ -97,7 +100,7 @@ internal sealed class ZlibCompressor : ISshCompressor
         }
 
         // ZLibEncoder.Flush 等价于同步 flush：输出当前报文的尾部，
-        // 但不结束流，也不清掉后续报文要复用的字典。
+        // 但不结束流。
         while (true)
         {
             Span<byte> destination = output.GetSpan(OutputChunkSize);

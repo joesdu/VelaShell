@@ -17,7 +17,7 @@ namespace VelaShell.Infrastructure.Import;
 /// 按 OpenSSH 的取值规则解析每个主机别名(<c>HostName</c> / <c>Port</c> / <c>User</c> /
 /// <c>IdentityFile</c> / <c>CertificateFile</c> / <c>IdentityAgent</c> / <c>ProxyJump</c>、
 /// <c>KexAlgorithms</c> / <c>HostKeyAlgorithms</c> / <c>Ciphers</c> / <c>MACs</c> / <c>PubkeyAcceptedAlgorithms</c>(放开 SHA-1 RSA 签名的 → 允许老算法)/
-/// <c>Compression</c> / <c>ForwardAgent</c> /
+/// <c>ForwardAgent</c> /
 /// <c>ForwardX11</c> / <c>ForwardX11Trusted</c> / <c>ObscureKeystrokeTiming</c>、
 /// <c>LocalForward</c> / <c>RemoteForward</c> / <c>DynamicForward</c>),把选中的会话写入 <see cref="ISessionRepository" />。
 /// </summary>
@@ -290,7 +290,7 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
     }
 
     /// <summary>
-    /// 协议层选项:<c>Compression</c>、<c>ForwardAgent</c>、<c>ForwardX11</c> / <c>ForwardX11Trusted</c>、<c>ObscureKeystrokeTiming</c>(后三个只认明写的值),
+    /// 协议层选项:<c>ForwardAgent</c>、<c>ForwardX11</c> / <c>ForwardX11Trusted</c>、<c>ObscureKeystrokeTiming</c>(后三个只认明写的值),
     /// 以及四个算法清单(§134 的自定义清单,写法本来就是 ssh_config 的
     /// <c>+</c> / <c>-</c> / <c>^</c>,原样带过来;本版没实现的名字去掉,拼错的整条不导,都进预览)。
     /// </summary>
@@ -298,12 +298,15 @@ public sealed class SshConfigImportService(ISessionRepository repository, IAppDa
     {
         var ssh = new SshSessionOptions
         {
-            Compression = options.Compression,
             KexAlgorithms = Algorithms(SshAlgorithmKind.KeyExchange, "KexAlgorithms", options.KexAlgorithms, notes),
             HostKeyAlgorithms = Algorithms(SshAlgorithmKind.HostKey, "HostKeyAlgorithms", options.HostKeyAlgorithms, notes),
             Ciphers = Algorithms(SshAlgorithmKind.Cipher, "Ciphers", options.Ciphers, notes),
             Macs = Algorithms(SshAlgorithmKind.Mac, "MACs", options.Macs, notes),
         };
+        if (options.Compression)
+        {
+            notes.Add(Strings.Get("SshCfgImport_NoteCompressionDisabled"));
+        }
         MapLegacyAlgorithms(options, ssh, notes);
 
         MapAgent(options, ssh, auth, identityAgent, notes);

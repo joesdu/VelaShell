@@ -125,7 +125,8 @@ public sealed partial class SshConnection
 
             // 已经记着这台主机哪些类型的主机密钥，就把那些类型排到前面 —— 正常的服务端因此谈成
             // 已知的那一种（见 IHostKeyTypePreference）。重协商用的是同一份清单。
-            SshAlgorithmSet algorithms = options.Algorithms;
+            // 初次交换、认证期间和认证后的重协商共用同一份已经限制方向的清单。
+            SshAlgorithmSet algorithms = options.Algorithms.ApplyCompressionPolicy();
             if (options.HostKeyPolicy is IHostKeyTypePreference preference)
             {
                 IReadOnlyList<string> knownTypes = await SshCallbackFaultException.InvokeAsync(
@@ -160,7 +161,6 @@ public sealed partial class SshConnection
             }
 
             // 认证期间对端发起的重协商（RFC 4253 §9 允许任何时刻）：钉住首次的主机密钥，就地跑完。
-            // 压缩不在这里装 —— 唯一支持的 zlib@openssh.com 要等认证成功之后才启用（下面的 ④ 用最新一次的协商结果）。
             SshKeyExchangeResult latest = kex;
             SshAuthenticator authenticator = new(transport, options.UserName, kex.SessionId)
             {
@@ -201,14 +201,17 @@ public sealed partial class SshConnection
             }
             long authenticatedAt = clock.GetTimestamp();
 
-            // ④ 压缩要在**认证成功之后**才挂上去（zlib@openssh.com 的语义）。
-            //
-            // 推迟不是为了省事：认证之前的报文里有密码与公钥，而压缩会让
-            // 密文长度泄漏明文的可压缩性 —— 对着一个长度可观测的口令做
-            // 压缩旁路攻击（CRIME 那一类）是现实的。
-            ActivateDelayedCompression(transport, latest.Algorithms);
+            // 认证期间可能重协商过。USERAUTH_SUCCESS 本身不压，紧接着的报文按最新的结果逐方向处理。
+            if (SshCompressorFactory.IsDelayed(latest.Algorithms.CompressionClientToServer))
+            {
+                transport.SetSendCompressor(SshCompressorFactory.Create(latest.Algorithms.CompressionClientToServer));
+            }
+            if (SshCompressorFactory.IsDelayed(latest.Algorithms.CompressionServerToClient))
+            {
+                transport.SetReceiveCompressor(SshCompressorFactory.Create(latest.Algorithms.CompressionServerToClient));
+            }
 
-            // ⑤ 认证过了，报文上限放宽到认证后的默认值。
+            // ④ 认证过了，报文上限放宽到认证后的默认值。
             //
             // 握手期锁在 35000 是对的（RFC 4253 §6.1 的下限，也是未认证对端能让我们
             // 分配的最大单块）；认证之后还锁着，通道宣告的包上限一旦超过约 34 KB，
@@ -350,29 +353,6 @@ public sealed partial class SshConnection
             && ConnectionFaults.DisconnectReasonFor(failure) is { } reason)
         {
             await TrySendDisconnectAsync(transport, reason, failure).ConfigureAwait(false);
-        }
-    }
-
-    /// <summary>认证成功之后，挂上「延迟启用」的那种压缩器（<c>zlib@openssh.com</c>）。</summary>
-    /// <remarks>
-    /// <para>
-    /// 两个方向<b>各自独立协商</b> —— 一边压一边不压是合法的，
-    /// 而且在「上传大量数据、下载很少」这类场景里是合理的。
-    /// </para>
-    /// </remarks>
-    private static void ActivateDelayedCompression(
-        SshPacketTransport transport, SshNegotiatedAlgorithms algorithms)
-    {
-        if (SshCompressorFactory.IsDelayed(algorithms.CompressionClientToServer))
-        {
-            transport.SetSendCompressor(
-                SshCompressorFactory.Create(algorithms.CompressionClientToServer));
-        }
-
-        if (SshCompressorFactory.IsDelayed(algorithms.CompressionServerToClient))
-        {
-            transport.SetReceiveCompressor(
-                SshCompressorFactory.Create(algorithms.CompressionServerToClient));
         }
     }
 

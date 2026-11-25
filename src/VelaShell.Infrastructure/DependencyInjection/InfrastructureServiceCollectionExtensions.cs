@@ -315,7 +315,7 @@ public static class InfrastructureServiceCollectionExtensions
     /// 那本来就是同一件事的几个部分，而放在这里让人要在两百行里跳着找。
     /// </remarks>
     private static VelaSshClientWrapper CreateSshClientWrapper(
-        VelaConnectionInfo ci, IHostKeyService? hostKey, ISettingsService? settings,
+        VelaConnectionInfo ci, IHostKeyService hostKey, ISettingsService? settings,
         IHostKeyPrompt? prompt, ISecurityAlertService? alerts, IProxyResolver? proxyResolver = null,
         ILocalXServer? xServer = null, IAgentSignPrompt? agentPrompt = null,
         IKeyboardInteractivePrompt? keyboardPrompt = null,

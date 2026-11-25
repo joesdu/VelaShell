@@ -42,40 +42,23 @@ public sealed class CompressionTests
     }
 
     [TestMethod]
-    public void 字典跨报文保留所以后面的报文越压越小()
+    public void 上行块只编码字面量且仍能压缩()
     {
-        using ZlibCompressor sender = new();
-        using ZlibCompressor receiver = new();
-
-        byte[] payload = Encoding.UTF8.GetBytes("GET /api/status HTTP/1.1\r\nHost: example.com\r\n\r\n");
-
-        int firstSize = 0;
-        int lastSize = 0;
-
-        for (int i = 0; i < 10; i++)
+        using ISshCompressor sender = SshCompressorFactory.Create(SshAlgorithmNames.ZlibOpenSsh);
+        byte[] payload = new byte[4096];
+        for (int packet = 0; packet < 2; packet++)
         {
-            ArrayBufferWriter<byte> compressed = new();
-            sender.Compress(payload, compressed);
-
-            // ⚠️ 收方**每一个报文都要跟着解**，两边的字典才对得上。
-            //    漏解一个，后面所有报文在收方看来都是从流中间开始的 ——
-            //    zlib 会直接报「unknown compression method」。
-            ArrayBufferWriter<byte> sink = new();
-            receiver.Decompress(new ReadOnlySequence<byte>(compressed.WrittenMemory), sink, 1 << 20);
-            Assert.AreSequenceEqual(payload, sink.WrittenSpan.ToArray(), $"第 {i} 个");
-
-            if (i == 0)
-            {
-                firstSize = compressed.WrittenCount;
-            }
-            lastSize = compressed.WrittenCount;
+            ArrayBufferWriter<byte> output = new();
+            sender.Compress(payload, output);
+            // RFC 1951 §3.2.7：单字节值重复时，字面量和块尾各占一位。
+            // HLIT=0 表示字面量表止于 256（块尾），连第一个长度/距离匹配都无法表示。
+            int start = packet == 0 ? 2 : 0; // 只有第一个包有 RFC 1950 头。
+            byte header = output.WrittenSpan[start];
+            Assert.AreEqual(2, (header >> 1) & 3, "动态哈夫曼块");
+            Assert.AreEqual(0, header >> 3, "字面量表不能包含匹配长度");
+            Assert.IsGreaterThan(payload.Length / 8, output.WrittenCount);
+            Assert.IsLessThan(payload.Length / 4, output.WrittenCount);
         }
-
-        // **这就是压缩率的全部来源。**每个报文各压各的话，
-        // SSH 那种几十字节的小报文几乎压不动 —— 共用一本字典才有意义。
-        Assert.IsLessThan(
-            firstSize / 2, lastSize,
-            $"第 10 个相同报文应当明显更小：首个 {firstSize} 字节，第 10 个 {lastSize} 字节");
     }
 
     [TestMethod]
@@ -120,23 +103,20 @@ public sealed class CompressionTests
     [TestMethod]
     public void 压缩炸弹被上限挡住()
     {
-        using ZlibCompressor sender = new();
         using ZlibCompressor receiver = new();
-
-        // 4 MiB 的零 —— 压完只有几 KiB。
+        using ZLibEncoder peer = new(6); // 服务端仍可用常规 deflate 匹配。
         byte[] bomb = new byte[4 * 1024 * 1024];
-
-        ArrayBufferWriter<byte> compressed = new();
-        sender.Compress(bomb, compressed);
-
-        Assert.IsLessThan(64 * 1024, compressed.WrittenCount, "前提：它确实压得很小");
+        byte[] compressed = new byte[64 * 1024];
+        Assert.AreEqual(OperationStatus.Done, peer.Compress(bomb, compressed, out int read, out int written, false));
+        Assert.AreEqual(bomb.Length, read);
+        Assert.AreEqual(OperationStatus.Done, peer.Flush(compressed.AsSpan(written), out int flushed));
 
         ArrayBufferWriter<byte> output = new();
 
         // 上限要在**写出之前**检查 —— 等写完再看就已经把内存吃掉了。
         SshProtocolException error = Assert.ThrowsExactly<SshProtocolException>(
             () => receiver.Decompress(
-                new ReadOnlySequence<byte>(compressed.WrittenMemory), output, maxOutputLength: 64 * 1024));
+                new ReadOnlySequence<byte>(compressed.AsMemory(0, written + flushed)), output, maxOutputLength: 64 * 1024));
 
         Assert.Contains("压缩炸弹", error.Message);
     }
@@ -328,19 +308,15 @@ public sealed class CompressionTests
     }
 
     [TestMethod]
-    public void 算法清单里能打开压缩()
+    public void 只有显式授权才能提议压缩()
     {
-        SshAlgorithmSet withCompression = SshAlgorithmSet.Default.WithCompression();
-
-        Assert.Contains(
-SshAlgorithmNames.ZlibOpenSsh, [.. withCompression.CompressionClientToServer]);
-        Assert.Contains(
-SshAlgorithmNames.None, [.. withCompression.CompressionClientToServer], "none 要留在清单里 —— 对端不支持压缩时还得能连上");
-
-        // 默认**不开**压缩：交互式会话上它几乎没有收益（终端输出本来就小），
-        // 而 OpenSSH 的默认也是 none。
-        Assert.AreSequenceEqual(
-            [SshAlgorithmNames.None], [.. SshAlgorithmSet.Default.CompressionClientToServer]);
+        SshAlgorithmSet both = SshAlgorithmSet.Default.WithCompression(allowServerCompression: true);
+        SshAlgorithmSet upload = both.WithCompression();
+        SshAlgorithmSet custom = upload with { CompressionServerToClient = both.CompressionServerToClient };
+        Assert.AreNotEqual(both, custom); // 清单相同，授权不同。
+        Assert.AreSequenceEqual([SshAlgorithmNames.None], [.. custom.ApplyCompressionPolicy().CompressionServerToClient]);
+        Assert.AreSequenceEqual([SshAlgorithmNames.None], [.. SshAlgorithmSet.Default.CompressionClientToServer]);
+        Assert.AreSequenceEqual([SshAlgorithmNames.None], [.. SshAlgorithmSet.Default.CompressionServerToClient]);
     }
 
     // ------------------------------------------------------------ 接进传输层
@@ -416,7 +392,7 @@ SshAlgorithmNames.None, [.. withCompression.CompressionClientToServer], "none �
         long withCompression = await MeasureWireBytesAsync(payload, compress: true);
 
         Assert.IsLessThan(
-            withoutCompression / 2, withCompression,
+            withoutCompression, withCompression,
             $"压过之后线上字节应当明显更少：{withCompression} vs {withoutCompression}");
     }
 
@@ -448,29 +424,20 @@ SshAlgorithmNames.None, [.. withCompression.CompressionClientToServer], "none �
     }
 
     [TestMethod]
-    public async Task 整条连接开着压缩也能跑通()
+    public async Task 自定义压缩清单在初次交换时只提议none()
     {
-        // 前面那些用例都是手搭传输。这一条走**完整的连接建立流程**，
-        // 因为「认证成功之后才挂压缩」这个切换点只有在真流程里才存在，
-        // 而切换点错一个报文，症状就是连上之后第一个报文解不开。
-        byte[] payload = Encoding.UTF8.GetBytes(
-            string.Concat(Enumerable.Repeat("可压缩的一行\n", 100)));
+        SshAlgorithmSet custom = SshAlgorithmSet.Default with
+        {
+            CompressionClientToServer = [SshAlgorithmNames.ZlibOpenSsh, SshAlgorithmNames.None],
+            CompressionServerToClient = [SshAlgorithmNames.None, SshAlgorithmNames.ZlibOpenSsh],
+        };
+        await using TestKit.TestSshServerHost host = await TestKit.TestSshServerHost.StartAsync(algorithms: custom);
 
-        await using TestKit.TestSshServerHost host = await TestKit.TestSshServerHost.StartAsync(
-            new TestKit.TestChannelScript { StandardOutput = payload, ExitCode = 0 },
-            SshAlgorithmSet.Default.WithCompression());
-
-        Assert.AreEqual(
-            SshAlgorithmNames.ZlibOpenSsh,
-            host.Connection.Algorithms.CompressionServerToClient);
-
-        Ssh.Channels.SshCommandResult output =
-            await Ssh.Session.SshConnectionExtensions.RunAsync(host.Connection, "压", cancellationToken: host.Token);
-
-        Assert.AreSequenceEqual(
-            payload, Encoding.UTF8.GetBytes(output.StandardOutput), "整条连接上压缩要能原样往返");
+        Assert.AreSequenceEqual([SshAlgorithmNames.None], [.. host.LastClientKexInit.CompressionClientToServer]);
+        Assert.AreSequenceEqual([SshAlgorithmNames.None], [.. host.LastClientKexInit.CompressionServerToClient]);
+        Assert.AreEqual(SshAlgorithmNames.None, host.Connection.Algorithms.CompressionClientToServer);
+        Assert.AreEqual(SshAlgorithmNames.None, host.Connection.Algorithms.CompressionServerToClient);
     }
-
     /// <summary>
     /// 使用者手动把裸 <c>zlib</c> 塞进清单、且对端也谈成它时，要在协商当场失败。
     /// </summary>

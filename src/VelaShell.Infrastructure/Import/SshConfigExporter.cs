@@ -24,7 +24,7 @@ public sealed record SshConfigExport(string Content, int Exported, int Skipped);
 /// <para>
 /// 一条 SSH / SFTP 连接一个 <c>Host</c> 块,别名取连接名(空白与 ssh_config 里另有含义的字符换成 <c>-</c>,重名加序号);
 /// 写的是导入那边认得的同一批关键字:<c>HostName</c> / <c>Port</c> / <c>User</c> / <c>IdentityFile</c> / <c>CertificateFile</c> /
-/// <c>ProxyJump</c>(跳板随导出范围一起带上,按别名引用)/ <c>Compression</c> / <c>IdentityAgent</c>(agent 认证;系统默认的那个写 <c>SSH_AUTH_SOCK</c>)/
+/// <c>ProxyJump</c>(跳板随导出范围一起带上,按别名引用)/ <c>IdentityAgent</c>(agent 认证;系统默认的那个写 <c>SSH_AUTH_SOCK</c>)/
 /// <c>ForwardAgent</c>(按连接指定了 agent 端点时写端点)/ <c>ForwardX11</c>(连同 <c>ForwardX11Trusted</c>)/
 /// <c>ObscureKeystrokeTiming</c>(开着才写)/ 四个算法清单 / 三种转发(含 Unix 套接字,远程动态连同 <c>PermitRemoteOpen</c>)。<b>密码与口令从不写</b> —— ssh_config 本来就不存。
 /// </para>
@@ -139,10 +139,6 @@ public static class SshConfigExporter
 
         if (session.Ssh is { } ssh)
         {
-            if (ssh.Compression)
-            {
-                Line("Compression", "yes");
-            }
             if (ssh.AgentForwarding)
             {
                 Setting("ForwardAgent", agentEndpoint ?? "yes");

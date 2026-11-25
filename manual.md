@@ -67,6 +67,8 @@
 
 ### 2.3 完成第一次 SSH 连接
 
+旧服务端若不支持严格密钥交换，两个方向都必须协商到 AES-GCM。若连接因此被拒绝，请升级服务端，或将此连接的加密算法设为 AES-GCM。
+
 **前提：** 已有可达的 SSH 服务器、主机名或 IP、端口、登录用户名，以及密码或私钥；并从管理员或其他可信渠道取得服务器的 SSH 主机指纹。没有服务器权限时，安装客户端本身不会产生可登录的服务器。
 
 **先确认安全：** 第一次显示的指纹不能仅凭「第一次见到」就认定可信。与管理员通过独立渠道核对 SHA-256 指纹；变更更要先查清原因。
@@ -161,7 +163,7 @@
 
 **步骤：** 打开后等待并行扫描 Xshell、WinSCP 和 `~/.ssh/config`；默认位置没找到时手选来源。核对可导入项和重复项，逐条调整选择后导入。不支持的协议无法勾选，原工具被主密码保护的密码不会被还原，应准备重新输入。
 
-**结果与原理：** 导入的是可识别的连接参数，不是完整模拟另一软件。OpenSSH 只把字面 `Host` 转成连接，`Host *` 作为默认参数来源；没有 `HostName` 时用别名。`IdentityFile` 路径不代表已经核实本机存在；导入后应检查私钥。写了 `CertificateFile`（或私钥旁边有 `-cert.pub`）的按证书认证导入；只写了 `IdentityAgent`（默认的 agent，或这台电脑上用得了的别的端点）的按 SSH Agent 认证导入，端点记进连接的「SSH 选项 → Agent 端点」；`ForwardAgent yes` 转发的是 `IdentityAgent` 指的那个，`ForwardAgent <路径>` 同样记成端点 —— 认证走 agent 而转发又指了另一个 agent 时不导转发（一条连接只用一个 agent），别的平台的路径不导，都在预览里说明。`KexAlgorithms` / `HostKeyAlgorithms` / `Ciphers` / `MACs` 原样进连接的自定义算法清单（本版没实现的名字去掉），`PubkeyAcceptedAlgorithms` 放开了 `ssh-rsa` 的打开「允许老算法」（VelaShell 只有这个开关能放开 SHA-1 的 RSA 签名；它同时放开 SHA-1 的密钥交换、主机密钥与 MAC，文件没写这几项时预览里会说明），`Compression`、`ForwardAgent yes` 照开；`ForwardX11` / `ForwardX11Trusted` / `ObscureKeystrokeTiming` 只认明写的值，没写按 VelaShell 自己的默认（不转发 X11、转发时受信任、不混淆按键时序）—— 只写了 `ForwardX11 yes` 的在 VelaShell 里是受信任（`-Y`），与 OpenSSH 不同，预览里会说明；`LocalForward` / `RemoteForward` / `DynamicForward` 成为这条连接的隧道（停止状态，在隧道面板启动）；含 `/` 的一头是 Unix 套接字（本地转发与远程转发的两头都各自可以是），`RemoteForward` 不给目标是远程动态转发，放行名单取这台主机的 `PermitRemoteOpen` —— **没写 `PermitRemoteOpen` 的远程动态转发不导入**（OpenSSH 这时按全放处理，而隧道的放行名单必须明写，全放写 `any`）。没能照原样导入的设置会在「自定义选择」的预览行里逐条列出。`ProxyJump` 需要本批次有对应跳板，否则保留直连并需手工补设。`ServerAliveInterval` 等其余关键字不导入。引号与反斜杠照 ssh 的读法：`\\`、`\"`、`\'`（引号外还有 `\` 加空格）是转义，别的反斜杠原样 —— `C:\Users\me\.ssh\id_ed25519` 这样的普通 Windows 路径照原样导入，而写成单个 `\\` 开头的 UNC 路径与命名管道（`\\server\share\…`、`\\.\pipe\…`）ssh 读成一个 `\` 开头，VelaShell 也这样读并在预览里说明；要在配置里写 UNC 路径或命名管道，写成 `\\\\server\share\…`、`\\\\.\pipe\名字`。引号没配对的行（ssh 读到它整份配置都不读）VelaShell 只跳过那一行，并在这份配置的每条预览里说明是哪个文件的第几行。
+**结果与原理：** 导入的是可识别的连接参数，不是完整模拟另一软件。OpenSSH 只把字面 `Host` 转成连接，`Host *` 作为默认参数来源；没有 `HostName` 时用别名。`IdentityFile` 路径不代表已经核实本机存在；导入后应检查私钥。写了 `CertificateFile`（或私钥旁边有 `-cert.pub`）的按证书认证导入；只写了 `IdentityAgent`（默认的 agent，或这台电脑上用得了的别的端点）的按 SSH Agent 认证导入，端点记进连接的「SSH 选项 → Agent 端点」；`ForwardAgent yes` 转发的是 `IdentityAgent` 指的那个，`ForwardAgent <路径>` 同样记成端点 —— 认证走 agent 而转发又指了另一个 agent 时不导转发（一条连接只用一个 agent），别的平台的路径不导，都在预览里说明。`KexAlgorithms` / `HostKeyAlgorithms` / `Ciphers` / `MACs` 原样进连接的自定义算法清单（本版没实现的名字去掉），`PubkeyAcceptedAlgorithms` 放开了 `ssh-rsa` 的打开「允许老算法」（VelaShell 只有这个开关能放开 SHA-1 的 RSA 签名；它同时放开 SHA-1 的密钥交换、主机密钥与 MAC，文件没写这几项时预览里会说明），`ForwardAgent yes` 照开，`Compression yes` 忽略并在导入预览中说明；`ForwardX11` / `ForwardX11Trusted` / `ObscureKeystrokeTiming` 只认明写的值，没写按 VelaShell 自己的默认（不转发 X11、转发时受信任、不混淆按键时序）—— 只写了 `ForwardX11 yes` 的在 VelaShell 里是受信任（`-Y`），与 OpenSSH 不同，预览里会说明；`LocalForward` / `RemoteForward` / `DynamicForward` 成为这条连接的隧道（停止状态，在隧道面板启动）；含 `/` 的一头是 Unix 套接字（本地转发与远程转发的两头都各自可以是），`RemoteForward` 不给目标是远程动态转发，放行名单取这台主机的 `PermitRemoteOpen` —— **没写 `PermitRemoteOpen` 的远程动态转发不导入**（OpenSSH 这时按全放处理，而隧道的放行名单必须明写，全放写 `any`）。没能照原样导入的设置会在「自定义选择」的预览行里逐条列出。`ProxyJump` 需要本批次有对应跳板，否则保留直连并需手工补设。`ServerAliveInterval` 等其余关键字不导入。引号与反斜杠照 ssh 的读法：`\\`、`\"`、`\'`（引号外还有 `\` 加空格）是转义，别的反斜杠原样 —— `C:\Users\me\.ssh\id_ed25519` 这样的普通 Windows 路径照原样导入，而写成单个 `\\` 开头的 UNC 路径与命名管道（`\\server\share\…`、`\\.\pipe\…`）ssh 读成一个 `\` 开头，VelaShell 也这样读并在预览里说明；要在配置里写 UNC 路径或命名管道，写成 `\\\\server\share\…`、`\\\\.\pipe\名字`。引号没配对的行（ssh 读到它整份配置都不读）VelaShell 只跳过那一行，并在这份配置的每条预览里说明是哪个文件的第几行。
 
 **注意：** 导入前后都不要关闭指纹校验。Xshell 会话导入与[外部启动兼容登录](#desktop)是两个功能。
 
@@ -175,7 +177,7 @@
 
 **步骤：**
 
-1. 完整备份选 JSON；需要在表格软件整理主机选 CSV，先保存模板再按表头填写，`host` 是必填项；要与命令行 ssh 共用选 OpenSSH config（只写 SSH / SFTP 连接的 `Host` 块：主机、用户、私钥与证书、跳板、压缩、agent 认证（`IdentityAgent`：指定了端点写端点，用系统默认的写 `SSH_AUTH_SOCK`，再导入回来仍是 SSH Agent 认证）与转发、X11 转发（连同信任级别）、按键时序混淆（开着才写）、算法（「允许老算法」写成各清单的 `+` 老算法，连同 `PubkeyAcceptedKeyTypes +ssh-rsa`，用的是新旧版本 OpenSSH 都认的旧名）与端口转发，远程动态转发连同 `PermitRemoteOpen` 一起写，从不写密码；路径与 agent 端点按 ssh_config 的转义写，命名管道写成 `\\\\.\pipe\名字`、UNC 路径写成 `\\\\server\share\…`，Windows 上的本机套接字转发写成 `[C:/…]`（ssh 只认这种写法），ssh 与 VelaShell 读回来都是原值），把文件内容并进 `~/.ssh/config` 或用 `Include` 引用。
+1. 完整备份选 JSON；需要在表格软件整理主机选 CSV，先保存模板再按表头填写，`host` 是必填项；要与命令行 ssh 共用选 OpenSSH config（只写 SSH / SFTP 连接的 `Host` 块：主机、用户、私钥与证书、跳板、agent 认证（`IdentityAgent`：指定了端点写端点，用系统默认的写 `SSH_AUTH_SOCK`，再导入回来仍是 SSH Agent 认证）与转发、X11 转发（连同信任级别）、按键时序混淆（开着才写）、算法（「允许老算法」写成各清单的 `+` 老算法，连同 `PubkeyAcceptedKeyTypes +ssh-rsa`，用的是新旧版本 OpenSSH 都认的旧名）与端口转发，远程动态转发连同 `PermitRemoteOpen` 一起写，从不写密码；路径与 agent 端点按 ssh_config 的转义写，命名管道写成 `\\\\.\pipe\名字`、UNC 路径写成 `\\\\server\share\…`，Windows 上的本机套接字转发写成 `[C:/…]`（ssh 只认这种写法），ssh 与 VelaShell 读回来都是原值），把文件内容并进 `~/.ssh/config` 或用 `Include` 引用。
 2. 导出 JSON 默认不含密码；需要包含凭据时显式勾选并设置至少 8 字符的导出口令，凭据部分用口令派生密钥和 AES-GCM 加密，主机、用户名、备注、分组等其余内容仍是明文。**CSV 导出永不包含秘密。**
 3. 导入选文件（上限 16 MB），必要时输入解密口令，在预览中核对目标和分组。
 4. 重复项默认跳过；确需更新再选覆盖，或保留两条。确认后导入，再抽查主机、跳板、认证和路径。
@@ -792,7 +794,26 @@ FTP 源的目标不支持原子提交（例如当前 FTP/FTPS、插件目标或�
 
 **入口：** SSH/SFTP 配置 → SSH 选项。
 
-**步骤与结果：** 压缩默认关闭，需要时启用认证后压缩。老设备协商失败先确认服务器情况，最后才考虑「允许老算法」或四类算法（KEX/HostKey/Ciphers/MACs）文本覆盖；支持 OpenSSH 风格 `+`/`-`/`^` 调整。
+打开最终目标的 SSH 配置，进入**SSH 选项 → 传输 → 终端压缩**。
+
+| 设置 | 适用场景 |
+| --- | --- |
+| **关闭** | 默认值。两个方向都使用 `none`。导入的 `Compression yes` 和旧配置中的压缩布尔值都保持关闭。 |
+| **仅输入（客户端到服务器）** | 需要压缩大段粘贴等输入时选择。客户端仅使用哈夫曼编码，服务端输出保持未压缩。 |
+| **输入和输出（双向）** | 只有在能确认以下声明时才勾选对应的复选框：「我管理这台服务器，并已确认其 SSH 编码器使用仅 Huffman 编码的 DEFLATE，或采取了等效措施来防止字典匹配。」更改目标主机、端口或所选跳板机会清除确认。经由不同的跳板机，同一私网地址可能指向不同的服务器。 |
+
+勾选双向后，即使服务端仍使用 LZ77，VelaShell 也会接受协商好的压缩流量。`zlib@openssh.com` 只标识协议格式，服务端的字典匹配可能通过报文长度泄露其他通道的内容。即使只用 Huffman 编码，报文长度仍然可见。
+
+**管理员如何关闭服务端的 LZ77 并保留压缩？**
+
+- 上游 OpenSSH 从 10.6 起已在 `sshd` 的编码器中禁用 LZ77，无需另设参数。在服务器上用 `sshd -V` 核对版本，并确认运行的服务已切换到更新后的程序。发行版有时会将修复移植到旧版本，可按已安装的 `openssh-server` 软件包版本查询厂商安全公告。[OpenSSH 10.6 安全说明](https://www.openssh.org/txt/release-10.6)
+- 旧版 OpenSSH 的 `sshd_config` 没有单独关闭 LZ77 的开关。无法确认修复时，VelaShell 选「仅输入」即可让下行保持未压缩。若要在服务端为所有客户端关闭 SSH 压缩，在 `sshd_config` 设置 `Compression no`，运行 `sshd -t` 检查配置，通过后重载服务并重新连接。此时两个方向都使用 `none`。[sshd_config 手册](https://man.openbsd.org/sshd_config#Compression)
+
+每个启用压缩的方向独立协商延迟压缩 `zlib@openssh.com`，可回退到 `none`。压缩在认证成功后才启用，换钥沿用该策略。可在 **SSH 连接信息**中查看两个方向实际协商的算法。压缩可能节省带宽，网络往返时间仍然相同。
+
+中间跳板和独立 SFTP 配置均使用 `none`，SFTP 配置编辑器不显示终端压缩设置。已有终端连接上打开的 SOCKS、其他转发通道及 SFTP 通道都共用该连接的压缩协商结果。SFTP 文件打包是单独的应用层操作。
+
+老设备协商失败先确认服务器情况，最后才考虑「允许老算法」或四类算法（KEX/HostKey/Ciphers/MACs）文本覆盖；支持 OpenSSH 风格 `+`/`-`/`^` 调整。
 
 **原理与注意：** 允许老算法只追加有限兼容项（如 group14-sha1、ssh-rsa、hmac-sha1），不提供 CBC。降级兼容削弱算法选择，不能解决指纹或密码问题；变更后只针对确需兼容的连接，不建议作为所有主机默认。
 

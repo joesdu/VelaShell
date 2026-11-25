@@ -94,7 +94,7 @@ See [installation and first connection](manual.en.md#start) for the full walkthr
 - **Complex networks**: ProxyJump with up to 5 hops and cycle detection; HTTP / SOCKS5 / system proxies; keepalive, anti-idle and automatic reconnection after sleep or network recovery.
 - **Authentication choices**: passwords, private keys, SSH certificates, SSH agents and keyboard-interactive two-step verification, including private key + one-time code.
 - **Key management**: generate Ed25519 / ECDSA / RSA 4096 keys; optionally add them to the agent after login; restrict forwarded keys and request confirmation before signing.
-- **Connection settings**: shared credentials, post-login commands, SSH compression and OpenSSH-style algorithm configuration; trust-on-first-use (TOFU) host fingerprints and change confirmation.
+- **Connection settings**: shared credentials, post-login commands, per-direction terminal compression and OpenSSH-style algorithm configuration; trust-on-first-use (TOFU) host fingerprints and change confirmation.
 
 ### Files and workspace
 

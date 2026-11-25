@@ -80,6 +80,7 @@ public sealed class SessionProfileCloneTests
             Ssh = new()
             {
                 Compression = true,
+                TerminalCompression = SshTerminalCompressionMode.Bidirectional,
                 ObscureKeystrokeTiming = true,
                 AgentForwarding = true,
                 AgentForwardKeys = ["SHA256:abc"],

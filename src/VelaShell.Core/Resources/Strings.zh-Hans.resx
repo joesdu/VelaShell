@@ -6316,6 +6316,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="XImport_Duplicate" xml:space="preserve">
     <value>已存在</value>
   </data>
+  <data name="SshCfgImport_NoteCompressionDisabled" xml:space="preserve">
+    <value>已忽略 OpenSSH 的 Compression yes。如需启用终端压缩，请在「SSH 选项」中手动选择模式。</value>
+  </data>
   <data name="SshCfgImport_NoteForwardsImported" xml:space="preserve">
     <value>{0} 条端口转发导入为这条连接的隧道（停止状态，在隧道面板里启动）。</value>
   </data>
@@ -8092,6 +8095,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="SshErr_HostKeyAlgorithmMismatch" xml:space="preserve">
     <value>服务器出示的是 {0} 密钥,与协商出的主机密钥算法 {1} 不匹配。</value>
   </data>
+  <data name="SshErr_StrictKexRequired" xml:space="preserve">
+    <value>未协商严格密钥交换。请升级 SSH 服务端或在两个方向都使用 AES-GCM。</value>
+  </data>
   <data name="SshErr_HostKeyTooShort" xml:space="preserve">
     <value>服务器的 RSA 主机密钥只有 {0} 位,低于要求的 {1} 位。</value>
   </data>
@@ -8470,11 +8476,26 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Profile_SshLegacyAlgorithmsHint" xml:space="preserve">
     <value>在默认清单之后追加 diffie-hellman-group14-sha1、ssh-rsa(SHA-1)与 hmac-sha1,只有对端一个现代算法都不支持时才会用上。这些算法已经不安全,只对连不上的老交换机、老系统打开。</value>
   </data>
-  <data name="Profile_SshCompression" xml:space="preserve">
-    <value>启用压缩(适合高延迟 / 低带宽链路)</value>
+  <data name="Profile_TerminalCompression" xml:space="preserve">
+    <value>终端压缩</value>
   </data>
-  <data name="Profile_SshCompressionHint" xml:space="preserve">
-    <value>延迟较高(跨境、跨洋,往返 100 ms 以上)或带宽紧张时建议开启:终端输出与文本文件能省下大量流量。局域网、或主要传输图片 / 压缩包这类已压缩数据时不建议开 —— 只会白白多占 CPU。服务端不支持时自动退回不压缩。</value>
+  <data name="Profile_TerminalCompressionOff" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="Profile_TerminalCompressionInput" xml:space="preserve">
+    <value>仅输入（客户端到服务器）</value>
+  </data>
+  <data name="Profile_TerminalCompressionBoth" xml:space="preserve">
+    <value>输入和输出（双向）</value>
+  </data>
+  <data name="Profile_TerminalCompressionHint" xml:space="preserve">
+    <value>服务器支持时，登录后才开始压缩。仅压缩输入可以减少粘贴大段文本时的流量。共用这条终端连接的所有通道都使用同一模式。</value>
+  </data>
+  <data name="Profile_TerminalCompressionConfirm" xml:space="preserve">
+    <value>我管理这台服务器，并已确认其 SSH 编码器使用仅 Huffman 编码的 DEFLATE，或采取了等效措施来防止字典匹配。</value>
+  </data>
+  <data name="Profile_TerminalCompressionRisk" xml:space="preserve">
+    <value>勾选后，即使服务器使用 LZ77，VelaShell 也会接受压缩输出。字典匹配可能通过报文长度泄露敏感信息。请确认服务端已采用 OpenSSH 10.6 的修复或等效措施；无法确认时选「仅输入」。</value>
   </data>
   <data name="Profile_SshObscureKeystrokeTiming" xml:space="preserve">
     <value>按键时序混淆</value>
@@ -10048,7 +10069,7 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
     <value>可以用 Excel 编辑后再导入的表格。只含常用字段（名称、主机、端口、用户名、分组、认证、跳板主机……），不含密码。</value>
   </data>
   <data name="SessExport_SshConfigHint" xml:space="preserve">
-    <value>写成 ~/.ssh/config 的 Host 块：SSH / SFTP 连接的主机、用户、私钥与证书、跳板主机、压缩、agent 转发、算法与端口转发。不含密码；别的协议跳过。</value>
+    <value>写成 ~/.ssh/config 的 Host 块：SSH / SFTP 连接的主机、用户、私钥与证书、跳板主机、agent 转发、算法与端口转发。不含密码；别的协议跳过。</value>
   </data>
   <data name="SessExport_IncludeSecrets" xml:space="preserve">
     <value>包含密码等敏感信息</value>

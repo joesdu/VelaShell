@@ -72,7 +72,7 @@ public class ConnectionInfo
     /// 这一跳的 SSH 可选能力(压缩、agent 转发、X11 转发);null = 全关。
     /// </summary>
     /// <remarks>
-    /// 压缩是逐跳协商的,跳板链上每一跳各带各的。两个转发只对<b>终点</b>那一跳的交互式
+    /// 压缩只按终点 SSH 配置协商;同一传输上的通道共享协商结果。两个转发只对<b>终点</b>那一跳的交互式
     /// shell 生效 —— 跳板只负责开隧道,不开 shell,也就没有请求转发的通道。
     /// </remarks>
     public SshSessionOptions? Ssh { get; init; }

@@ -45,7 +45,7 @@ public sealed class AlgorithmCatalogTests
         Assert.AreSequenceEqual([.. SshAlgorithmSet.Default.KeyExchange], [.. kex.Take(SshAlgorithmSet.Default.KeyExchange.Count)]);
         Assert.IsTrue(legacy.HostKey.All(a => SshAlgorithmCatalog.IsImplemented(SshAlgorithmCategory.HostKey, a)));
         Assert.IsTrue(legacy.MacClientToServer.All(a => SshAlgorithmCatalog.IsImplemented(SshAlgorithmCategory.Mac, a)));
-        Assert.IsTrue(SshAlgorithmCatalog.IsImplemented(SshAlgorithmCategory.Compression, SshAlgorithmNames.ZlibOpenSsh));
+        Assert.AreSequenceEqual([SshAlgorithmNames.None, SshAlgorithmNames.ZlibOpenSsh], [.. SshAlgorithmCatalog.Implemented(SshAlgorithmCategory.Compression)]);
     }
 
     /// <summary>FIPS 认可的清单：全都实现了、校验放得过，而且一个不认可的都不在里面。</summary>

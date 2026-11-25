@@ -115,13 +115,12 @@ public sealed partial class SshConnection : ISshChannelHost, IAsyncDisposable
     /// <remarks>
     /// <para>
     /// <b>协商成功的结果同样要交出去，不只是失败时的名单。</b>
-    /// 终端产品要在状态栏上写「aes256-gcm@openssh.com · zlib@openssh.com」，
+    /// 终端产品要在状态栏上写「aes256-gcm@openssh.com · none」，
     /// 排障时第一句话也是「你们这条连接到底谈成了什么」——
     /// 库知道而不说，使用者就只能自己再探一次（架构原则 4）。
     /// </para>
     /// <para>
-    /// 也是唯一能确认<b>压缩到底有没有谈成</b>的地方：服务端不支持时会
-    /// 静默落到 <c>none</c>，<b>不会报错</b>。
+    /// 两个方向的压缩算法都固定为 <c>none</c>。
     /// </para>
     /// <para>
     /// 重协商会把它整个换掉（算法可以谈出不一样的结果），所以读写都走

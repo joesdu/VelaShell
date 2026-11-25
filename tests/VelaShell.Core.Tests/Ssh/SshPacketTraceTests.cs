@@ -175,7 +175,7 @@ public sealed class SshPacketTraceTests
     private static async Task<VelaSshClientWrapper> ConnectAsync(ConnectionInfo info)
     {
         SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(
-            info, hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
+            info, hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null);
         VelaSshClientWrapper wrapper = new(assembled.Connect, assembled.ConnectTimeout, info.Ssh);
         using CancellationTokenSource cts = new(Deadline);
         try

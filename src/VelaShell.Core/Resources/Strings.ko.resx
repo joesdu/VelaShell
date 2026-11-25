@@ -6174,6 +6174,9 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="XImport_Duplicate" xml:space="preserve">
     <value>이미 있음</value>
   </data>
+  <data name="SshCfgImport_NoteCompressionDisabled" xml:space="preserve">
+    <value>OpenSSH의 Compression yes를 무시했습니다. 터미널 압축을 사용하려면 SSH 옵션에서 모드를 직접 선택하세요.</value>
+  </data>
   <data name="SshCfgImport_NoteForwardsImported" xml:space="preserve">
     <value>포트 포워딩 {0}개를 이 연결의 터널로 가져옵니다(중지 상태, 터널 패널에서 시작하세요).</value>
   </data>
@@ -7603,6 +7606,9 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="SshErr_HostKeyAlgorithmMismatch" xml:space="preserve">
     <value>서버가 제시한 {0} 키가 협상된 호스트 키 알고리즘 {1}과(와) 일치하지 않습니다.</value>
   </data>
+  <data name="SshErr_StrictKexRequired" xml:space="preserve">
+    <value>엄격한 키 교환이 협상되지 않았습니다. SSH 서버를 업그레이드하거나 양방향에 AES-GCM을 사용하세요.</value>
+  </data>
   <data name="SshErr_HostKeyTooShort" xml:space="preserve">
     <value>서버의 RSA 호스트 키가 {0}비트뿐입니다(최소 {1}비트 필요).</value>
   </data>
@@ -7981,11 +7987,26 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Profile_SshLegacyAlgorithmsHint" xml:space="preserve">
     <value>기본 목록 뒤에 diffie-hellman-group14-sha1, ssh-rsa(SHA-1), hmac-sha1을 추가합니다. 서버가 최신 알고리즘을 하나도 지원하지 않을 때만 사용됩니다. 더 이상 안전하지 않으므로 달리 접속할 수 없는 오래된 스위치나 시스템에만 켜세요.</value>
   </data>
-  <data name="Profile_SshCompression" xml:space="preserve">
-    <value>압축 사용(지연이 크거나 대역폭이 낮은 회선용)</value>
+  <data name="Profile_TerminalCompression" xml:space="preserve">
+    <value>터미널 압축</value>
   </data>
-  <data name="Profile_SshCompressionHint" xml:space="preserve">
-    <value>지연이 크거나(국경·대륙 간 회선, 왕복 100 ms 이상) 대역폭이 부족할 때 켜는 것을 권장합니다. 터미널 출력과 텍스트 파일의 전송량이 크게 줄어듭니다. LAN이거나 이미지·압축 파일처럼 이미 압축된 데이터를 주로 전송할 때는 CPU만 소모하므로 권장하지 않습니다. 서버가 지원하지 않으면 자동으로 압축 없이 연결합니다.</value>
+  <data name="Profile_TerminalCompressionOff" xml:space="preserve">
+    <value>끄기</value>
+  </data>
+  <data name="Profile_TerminalCompressionInput" xml:space="preserve">
+    <value>입력만 (클라이언트에서 서버로)</value>
+  </data>
+  <data name="Profile_TerminalCompressionBoth" xml:space="preserve">
+    <value>입력과 출력 (양방향)</value>
+  </data>
+  <data name="Profile_TerminalCompressionHint" xml:space="preserve">
+    <value>서버에서 지원하면 로그인 후 압축을 시작합니다. 입력만 압축해도 긴 텍스트를 붙여넣을 때 전송량을 줄일 수 있습니다. 이 터미널 연결을 공유하는 모든 채널에 같은 모드가 적용됩니다.</value>
+  </data>
+  <data name="Profile_TerminalCompressionConfirm" xml:space="preserve">
+    <value>본인은 이 서버의 관리자이며, 서버의 SSH 인코더가 허프만 부호화만 사용하는 DEFLATE 또는 사전 일치를 방지하는 동등한 보호 조치를 사용함을 확인했습니다.</value>
+  </data>
+  <data name="Profile_TerminalCompressionRisk" xml:space="preserve">
+    <value>확인란을 선택하면 서버가 LZ77을 사용해도 VelaShell은 압축된 출력을 수신합니다. 사전 일치로 인해 패킷 길이를 통해 기밀이 드러날 수 있습니다. 서버에 OpenSSH 10.6의 수정 사항이나 동등한 보호 조치가 적용되었는지 확인하세요. 확인할 수 없으면 입력만 압축하세요.</value>
   </data>
   <data name="Profile_SshObscureKeystrokeTiming" xml:space="preserve">
     <value>키 입력 타이밍 숨기기</value>
@@ -9559,7 +9580,7 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
     <value>Excel에서 편집한 뒤 다시 가져올 수 있는 표입니다. 자주 쓰는 항목(이름, 호스트, 포트, 사용자 이름, 그룹, 인증, 점프 호스트 등)만 담고 비밀번호는 포함하지 않습니다.</value>
   </data>
   <data name="SessExport_SshConfigHint" xml:space="preserve">
-    <value>~/.ssh/config의 Host 블록으로 씁니다: SSH / SFTP 연결의 호스트, 사용자, 개인 키와 인증서, 점프 호스트, 압축, 에이전트 포워딩, 알고리즘, 포트 포워딩. 비밀번호는 포함하지 않으며 다른 프로토콜은 건너뜁니다.</value>
+    <value>~/.ssh/config의 Host 블록으로 씁니다: SSH / SFTP 연결의 호스트, 사용자, 개인 키와 인증서, 점프 호스트, 에이전트 포워딩, 알고리즘, 포트 포워딩. 비밀번호는 포함하지 않으며 다른 프로토콜은 건너뜁니다.</value>
   </data>
   <data name="SessExport_IncludeSecrets" xml:space="preserve">
     <value>비밀번호 등 민감한 정보 포함</value>

@@ -411,7 +411,7 @@ public sealed class SshPacketTransportTests
     [TestMethod]
     public async Task 解压失败时报出真正的原因()
     {
-        // 一个压完只有几 KiB 的 1 MiB 零：解压要撞上报文上限（压缩炸弹）。
+        // 能在一帧里发出的 128 KiB 零：解压要撞上报文上限（压缩炸弹）。
         // 曾经解压失败之后 reader 被 AdvanceTo 两次，真正的原因被一个 InvalidOperationException 盖掉。
         (SshPacketTransport a, SshPacketTransport b) = CreatePair();
         await using (a)
@@ -420,7 +420,7 @@ public sealed class SshPacketTransportTests
             a.SetSendCompressor(new ZlibCompressor());
             b.SetReceiveCompressor(new ZlibCompressor());
 
-            a.WritePacket(new byte[1024 * 1024]);
+            a.WritePacket(new byte[128 * 1024]);
             await a.FlushAsync();
 
             SshProtocolException error = await Assert.ThrowsExactlyAsync<SshProtocolException>(

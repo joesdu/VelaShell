@@ -907,7 +907,7 @@ public sealed class TailscaleSshAuthenticationTests
             Service = new SshConnectionService(info =>
             {
                 SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(
-                    info, hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null,
+                    info, hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null,
                     tailscaleCheckPrompt: hasUi ? NotifyAsync : null, authenticationTimeout: authenticationTimeout,
                     tailscaleCheckTimeout: checkTimeout ?? authenticationTimeout);
                 _banners.Enqueue(assembled.Banners);

@@ -115,7 +115,7 @@ public class KeyboardInteractiveIntegrationTests
         RequireContainer();
         ConnectionInfo info = PasswordInfo("vela-otp");
         SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(
-            info, hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
+            info, hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null);
         await using VelaSshClientWrapper ssh = new(assembled.Connect, assembled.ConnectTimeout);
 
         // 没有界面可问(headless)时退回库的「密码兼答」:它把密码也填进验证码那一轮,服务端拒掉 ——
@@ -136,7 +136,7 @@ public class KeyboardInteractiveIntegrationTests
     private async Task<VelaSshClientWrapper> ConnectAsync(ConnectionInfo info, IKeyboardInteractivePrompt prompt)
     {
         SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(
-            info, hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null, keyboardPrompt: prompt);
+            info, hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null, keyboardPrompt: prompt);
         VelaSshClientWrapper wrapper = new(assembled.Connect, assembled.ConnectTimeout);
         try
         {

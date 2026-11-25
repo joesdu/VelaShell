@@ -33,6 +33,8 @@ internal sealed record TestSshServerOptions
     /// <summary>服务端宣告的算法清单；<see langword="null"/> 时用与客户端相同的默认集。</summary>
     public SshAlgorithmSet? Algorithms { get; init; }
 
+    public SshAlgorithmSet? RekeyAlgorithms { get; init; }
+
     /// <summary>主机密钥类型。</summary>
     public string HostKeyType { get; init; } = SshAlgorithmNames.SshEd25519;
 
@@ -98,6 +100,8 @@ internal sealed record TestSshServerHandshake(
 internal sealed class TestSshServer : IAsyncDisposable
 {
     private const int MaxField = 256 * 1024;
+
+    internal SshKexInitMessage LastClientKexInit { get; private set; } = null!;
 
     private readonly TestSshServerOptions _options;
     private readonly TestHostKey _hostKey;
@@ -200,7 +204,7 @@ internal sealed class TestSshServer : IAsyncDisposable
             throw new InvalidOperationException("还没做过首次密钥交换，谈不上重协商。");
         }
 
-        SshAlgorithmSet algorithms = _options.Algorithms ?? SshAlgorithmSet.Default;
+        SshAlgorithmSet algorithms = AlgorithmsFor(isInitial: false);
         byte[] serverKexInit = BuildServerKexInit(algorithms, KeyFor(isInitial: false), includeIndicators: false);
         await send(serverKexInit, cancellationToken);
         return serverKexInit;
@@ -280,7 +284,7 @@ internal sealed class TestSshServer : IAsyncDisposable
         bool isInitial = sessionId is null;
 
         // ② 双向 KEXINIT。重协商时这两份都已经在手上了（见 BeginRekeyAsync）。
-        SshAlgorithmSet algorithms = _options.Algorithms ?? SshAlgorithmSet.Default;
+        SshAlgorithmSet algorithms = AlgorithmsFor(isInitial);
         byte[] serverKexInit = ourKexInitAlreadySent ?? BuildServerKexInit(algorithms, KeyFor(isInitial), isInitial);
         if (ourKexInitAlreadySent is null)
         {
@@ -294,6 +298,7 @@ internal sealed class TestSshServer : IAsyncDisposable
         byte[] clientKexInitPayload = peerKexInitAlreadyRead
             ?? (await ExpectAsync(read, SshMessageNumber.KexInit, cancellationToken)).Payload.ToArray();
         var clientKexInit = SshKexInitMessage.Decode(clientKexInitPayload);
+        LastClientKexInit = clientKexInit;
 
         // 服务端视角的协商：规则相同，但**以客户端的顺序为准**（RFC 4253 §7.1），
         // 所以这里要拿客户端的列表当「我们的偏好」。
@@ -414,10 +419,10 @@ internal sealed class TestSshServer : IAsyncDisposable
         // 客户端派生出的「发送套件」是我们的「接收套件」，反之亦然。
         Transport.SetSendCipherSuite(serverToClient, negotiated.StrictKeyExchange);
 
-        // 重协商时压缩上下文也要跟着换 —— 与客户端对称。
+        // 认证前的重协商也必须等到成功消息之后。
         // 少换一边的症状是对端解压失败（velashell-docs/zh/ssh/spec/01 §六）。
         // 首次 NEWKEYS 不装：zlib@openssh.com 在认证成功之后才装（TestSshServerHost）。
-        if (!isInitial)
+        if (_authenticated)
         {
             Transport.SetSendCompressor(
                 SshCompressorFactory.Create(negotiated.CompressionServerToClient));
@@ -426,13 +431,27 @@ internal sealed class TestSshServer : IAsyncDisposable
         _ = await ExpectAsync(read, SshMessageNumber.NewKeys, cancellationToken);
         Transport.SetReceiveCipherSuite(clientToServer, negotiated.StrictKeyExchange);
 
-        if (!isInitial)
+        if (_authenticated)
         {
             Transport.SetReceiveCompressor(
                 SshCompressorFactory.Create(negotiated.CompressionClientToServer));
         }
 
+        _latestAlgorithms = negotiated;
         return new TestSshServerHandshake(negotiated, exchangeHash, hostKeyBlob);
+    }
+
+    private bool _authenticated;
+    private SshNegotiatedAlgorithms _latestAlgorithms;
+
+    private SshAlgorithmSet AlgorithmsFor(bool isInitial) =>
+        (!isInitial ? _options.RekeyAlgorithms : null) ?? _options.Algorithms ?? SshAlgorithmSet.Default;
+
+    public void AuthenticationSucceeded()
+    {
+        _authenticated = true;
+        Transport.SetReceiveCompressor(SshCompressorFactory.Create(_latestAlgorithms.CompressionClientToServer));
+        Transport.SetSendCompressor(SshCompressorFactory.Create(_latestAlgorithms.CompressionServerToClient));
     }
 
     private byte[] BuildServerKexInit(SshAlgorithmSet algorithms, TestHostKey hostKey, bool includeIndicators = true)

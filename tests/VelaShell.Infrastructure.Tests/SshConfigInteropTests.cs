@@ -114,7 +114,8 @@ public sealed class SshConfigInteropTests
             """);
 
         ImportedSession a = await ScanOneAsync(config, "a");
-        Assert.IsTrue(a.Ssh?.Compression);
+        Assert.AreEqual(SshTerminalCompressionMode.Off, a.Ssh?.TerminalCompression);
+        Assert.Contains(n => n.Contains("Compression yes"), a.Notes);
         Assert.IsTrue(a.Ssh?.AgentForwarding);
         Assert.IsNull(a.Ssh?.AgentEndpoint, "ForwardAgent yes 且没写 IdentityAgent:转发系统默认的 agent");
 
@@ -588,7 +589,7 @@ public sealed class SshConfigInteropTests
         Assert.AreEqual(AuthMethod.Certificate, profile.AuthMethod);
         Assert.AreEqual(Path.GetFullPath("/keys/deploy-cert.pub"), profile.CertificatePath);
         Assert.AreEqual(Path.GetFullPath("/keys/deploy"), profile.PrivateKeyPath);
-        Assert.IsTrue(profile.Ssh?.Compression);
+        Assert.IsFalse(profile.Ssh?.Compression);
         Assert.AreEqual("aes256-gcm@openssh.com", profile.Ssh?.Ciphers);
         await store.Received(1).UpsertAsync("tunnels", profile.Id.ToString("D"),
             Arg.Is<List<TunnelConfig>>(list => list.Count == 1 && list[0].RemoteHost == "db" && list[0].RemotePort == 5432),
@@ -622,7 +623,7 @@ public sealed class SshConfigInteropTests
             PrivateKeyPath = Path.Combine(home, ".ssh", "id_ed25519"),
             CertificatePath = Path.Combine(home, ".ssh", "id_ed25519-cert.pub"),
             JumpHostProfileId = bastion.Id,
-            Ssh = new SshSessionOptions { Compression = true, AgentForwarding = true, Ciphers = "aes256-gcm@openssh.com" },
+            Ssh = new SshSessionOptions { TerminalCompression = SshTerminalCompressionMode.Bidirectional, AgentForwarding = true, Ciphers = "aes256-gcm@openssh.com" },
         };
         SessionProfile ftp = new() { Name = "files", Host = "ftp.example", ConnectionType = ConnectionType.FTP, Port = 21 };
         SessionArchive archive = Archive(bastion, web, ftp);
@@ -652,7 +653,7 @@ public sealed class SshConfigInteropTests
         Assert.AreEqual("bastion", host.ProxyJump);
         Assert.AreSequenceEqual(["~/.ssh/id_ed25519"], [.. host.IdentityFiles], "主目录下的路径写成 ~/…,换台机器也找得到");
         Assert.AreEqual("~/.ssh/id_ed25519-cert.pub", host.First("CertificateFile"));
-        Assert.IsTrue(host.Compression);
+        Assert.IsFalse(host.Compression);
         Assert.IsTrue(host.ForwardAgent);
         Assert.AreEqual("aes256-gcm@openssh.com", host.Ciphers);
         List<SshConfigForward> forwards = [.. host.GetForwards()];

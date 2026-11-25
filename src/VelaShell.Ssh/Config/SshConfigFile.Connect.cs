@@ -151,11 +151,6 @@ public static partial class SshConfigFile
 
         options = ApplyAlgorithmLists(options, config, host);
 
-        if (config.Compression)
-        {
-            options = options with { Algorithms = options.Algorithms.WithCompression() };
-        }
-
         if (config.ServerAliveInterval > 0)
         {
             options = options with

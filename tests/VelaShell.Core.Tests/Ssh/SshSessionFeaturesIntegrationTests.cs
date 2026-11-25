@@ -45,18 +45,16 @@ public class SshSessionFeaturesIntegrationTests
 
     public TestContext TestContext { get; set; } = null!;
 
-    /// <summary>开了压缩:协商结果真的是 <c>zlib@openssh.com</c>,而且会话照常可用。</summary>
     [TestMethod]
     [Timeout(60_000)]
-    public async Task Compression_IsNegotiatedAndTheSessionWorks()
+    public async Task Compression_LegacyOption_NegotiatesNoneAndTheSessionWorks()
     {
         RequireContainer();
         await using VelaSshClientWrapper ssh = await ConnectAsync(new SshSessionOptions { Compression = true });
 
-        Assert.AreEqual("zlib@openssh.com", ssh.InnerConnection!.Algorithms.CompressionClientToServer);
-        Assert.AreEqual("zlib@openssh.com", ssh.InnerConnection.Algorithms.CompressionServerToClient);
+        Assert.AreEqual("none", ssh.InnerConnection!.Algorithms.CompressionClientToServer);
+        Assert.AreEqual("none", ssh.InnerConnection.Algorithms.CompressionServerToClient);
 
-        // 压缩只在认证之后才开始(delayed zlib):这条命令的往返是真正走压缩的那一段。
         string echoed = await ssh.RunCommandAsync("head -c 20000 /dev/zero | tr '\\0' a | wc -c");
         Assert.AreEqual("20000", echoed.Trim());
     }
@@ -269,7 +267,7 @@ public class SshSessionFeaturesIntegrationTests
                     Username = TestUser,
                     AuthMethod = AuthMethod.Agent,
                 },
-                hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
+                hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null);
             await using VelaSshClientWrapper ssh = new(assembled.Connect, assembled.ConnectTimeout);
             await ssh.ConnectAsync(TestContext.CancellationToken);
 
@@ -327,7 +325,7 @@ public class SshSessionFeaturesIntegrationTests
                     AuthMethod = AuthMethod.KeyStore,
                     KeyStoreKey = new SystemKeyReference { Provider = SystemKeyReference.SoftwareProvider, KeyName = keyName },
                 },
-                hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
+                hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null);
             await using VelaSshClientWrapper ssh = new(assembled.Connect, assembled.ConnectTimeout);
             await ssh.ConnectAsync(TestContext.CancellationToken);
 
@@ -357,7 +355,7 @@ public class SshSessionFeaturesIntegrationTests
             Ssh = features,
         };
         SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(
-            info, hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
+            info, hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null);
         VelaSshClientWrapper wrapper = new(
             assembled.Connect, assembled.ConnectTimeout, info.Ssh);
         await wrapper.ConnectAsync(TestContext.CancellationToken);

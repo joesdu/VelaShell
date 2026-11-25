@@ -5,7 +5,7 @@ using VelaShell.Ssh.Crypto;
 
 namespace VelaShell.Infrastructure.Ssh;
 
-/// <summary>算法清单的四个类别(压缩另由开关管)。</summary>
+/// <summary>允许自定义算法清单的四个类别。压缩由独立的按连接选项控制。</summary>
 public enum SshAlgorithmKind
 {
     /// <summary>密钥交换。</summary>
@@ -168,7 +168,7 @@ public static class SshAlgorithmPreferences
         bool legacy = options.LegacyAlgorithms;
         IReadOnlyList<string> cipher = Apply(SshAlgorithmKind.Cipher, options.Ciphers, legacy);
         IReadOnlyList<string> mac = Apply(SshAlgorithmKind.Mac, options.Macs, legacy);
-        SshAlgorithmSet set = (legacy ? Legacy : SshAlgorithmSet.Default) with
+        SshAlgorithmSet algorithms = (legacy ? Legacy : SshAlgorithmSet.Default) with
         {
             KeyExchange = Apply(SshAlgorithmKind.KeyExchange, options.KexAlgorithms, legacy),
             HostKey = Apply(SshAlgorithmKind.HostKey, options.HostKeyAlgorithms, legacy),
@@ -177,7 +177,12 @@ public static class SshAlgorithmPreferences
             MacClientToServer = mac,
             MacServerToClient = mac,
         };
-        return options.Compression ? set.WithCompression() : set;
+        return options.TerminalCompression switch
+        {
+            SshTerminalCompressionMode.UploadOnly => algorithms.WithCompression(),
+            SshTerminalCompressionMode.Bidirectional => algorithms.WithCompression(allowServerCompression: true),
+            _ => algorithms,
+        };
     }
 
     /// <summary>这一类在界面上的名字(复用协商失败诊断里的那几个词)。</summary>

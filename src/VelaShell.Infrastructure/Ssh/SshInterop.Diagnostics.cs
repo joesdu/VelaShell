@@ -320,6 +320,7 @@ internal static partial class SshInterop
         SshConnectFailureKind.HostKeyMalformed => "SshErr_HostKeyMalformed",
         SshConnectFailureKind.HostKeyAlgorithmMismatch => "SshErr_HostKeyAlgorithmMismatch",
         SshConnectFailureKind.HostKeyTooShort => "SshErr_HostKeyTooShort",
+        SshConnectFailureKind.StrictKexRequired => "SshErr_StrictKexRequired",
         SshConnectFailureKind.HostKeySignatureInvalid => "SshErr_HostKeySignatureInvalid",
         SshConnectFailureKind.HostKeyPolicyRejectedWithoutReason => "SshErr_HostKeyPolicyRejected",
         SshConnectFailureKind.ProxyConnectFailed => "SshErr_ProxyConnectFailed",

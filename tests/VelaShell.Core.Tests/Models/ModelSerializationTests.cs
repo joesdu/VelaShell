@@ -65,6 +65,19 @@ public class ModelSerializationTests
     }
 
     [TestMethod]
+    [DataRow("{\"compression\":true}", SshTerminalCompressionMode.Off)]
+    [DataRow("{\"compression\":true,\"terminalCompression\":99}", SshTerminalCompressionMode.Off)]
+    [DataRow("{\"terminalCompression\":1}", SshTerminalCompressionMode.UploadOnly)]
+    [DataRow("{\"terminalCompression\":2}", SshTerminalCompressionMode.Bidirectional)]
+    public void SshTerminalCompression_RoundTripsOnlyTheExplicitMode(string ssh, SshTerminalCompressionMode expected)
+    {
+        SessionProfile? profile = JsonSerializer.Deserialize<SessionProfile>("{\"ssh\":" + ssh + "}", _options);
+        Assert.AreEqual(expected, profile?.Ssh?.TerminalCompression);
+        string saved = JsonSerializer.Serialize(profile, _options);
+        Assert.AreEqual(expected, JsonSerializer.Deserialize<SessionProfile>(saved, _options)?.Ssh?.TerminalCompression);
+    }
+
+    [TestMethod]
     public void SessionProfile_ShouldDeserializeCorrectly()
     {
         var id = Guid.NewGuid();

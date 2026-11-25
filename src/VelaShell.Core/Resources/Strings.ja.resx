@@ -6174,6 +6174,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="XImport_Duplicate" xml:space="preserve">
     <value>既に存在します</value>
   </data>
+  <data name="SshCfgImport_NoteCompressionDisabled" xml:space="preserve">
+    <value>OpenSSH の Compression yes は無視されました。端末の圧縮を有効にするには、「SSH オプション」でモードを手動で選択してください。</value>
+  </data>
   <data name="SshCfgImport_NoteForwardsImported" xml:space="preserve">
     <value>{0} 件のポート転送をこの接続のトンネルとしてインポートします（停止状態。トンネルパネルで開始してください）。</value>
   </data>
@@ -7603,6 +7606,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="SshErr_HostKeyAlgorithmMismatch" xml:space="preserve">
     <value>サーバーが提示した {0} 鍵は、ネゴシエートされたホスト鍵アルゴリズム {1} と一致しません。</value>
   </data>
+  <data name="SshErr_StrictKexRequired" xml:space="preserve">
+    <value>厳格な鍵交換がネゴシエートされませんでした。SSH サーバーを更新するか、双方向で AES-GCM を使用してください。</value>
+  </data>
   <data name="SshErr_HostKeyTooShort" xml:space="preserve">
     <value>サーバーの RSA ホスト鍵は {0} ビットしかありません({1} ビット以上が必要です)。</value>
   </data>
@@ -7981,11 +7987,26 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Profile_SshLegacyAlgorithmsHint" xml:space="preserve">
     <value>既定の一覧の後ろに diffie-hellman-group14-sha1、ssh-rsa(SHA-1)、hmac-sha1 を追加します。接続先が新しいアルゴリズムを一つも持たない場合にだけ使われます。これらはもう安全ではないため、ほかに接続手段のない古いスイッチやシステムに限って有効にしてください。</value>
   </data>
-  <data name="Profile_SshCompression" xml:space="preserve">
-    <value>圧縮を有効にする(高遅延・低帯域の回線向け)</value>
+  <data name="Profile_TerminalCompression" xml:space="preserve">
+    <value>端末の圧縮</value>
   </data>
-  <data name="Profile_SshCompressionHint" xml:space="preserve">
-    <value>遅延が大きい(国境・大陸をまたぐ回線、往復 100 ms 以上)か帯域が限られている場合に有効にしてください。端末出力やテキストファイルの転送量を大きく減らせます。LAN 内や、画像・アーカイブなど圧縮済みデータが中心の場合は CPU を消費するだけなのでおすすめしません。サーバーが対応していない場合は自動的に無圧縮に戻ります。</value>
+  <data name="Profile_TerminalCompressionOff" xml:space="preserve">
+    <value>オフ</value>
+  </data>
+  <data name="Profile_TerminalCompressionInput" xml:space="preserve">
+    <value>入力のみ（クライアントからサーバーへ）</value>
+  </data>
+  <data name="Profile_TerminalCompressionBoth" xml:space="preserve">
+    <value>入力と出力（双方向）</value>
+  </data>
+  <data name="Profile_TerminalCompressionHint" xml:space="preserve">
+    <value>サーバーが対応していれば、ログイン後に圧縮を開始します。入力のみの圧縮でも、大量のテキストを貼り付ける際の通信量を減らせます。この端末接続を共有するすべてのチャネルで同じモードが適用されます。</value>
+  </data>
+  <data name="Profile_TerminalCompressionConfirm" xml:space="preserve">
+    <value>私はこのサーバーを管理しており、SSH エンコーダーがハフマン符号化のみの DEFLATE、または辞書照合を防ぐ同等の対策を使用していることを確認しました。</value>
+  </data>
+  <data name="Profile_TerminalCompressionRisk" xml:space="preserve">
+    <value>チェックすると、サーバーが LZ77 を使っていても VelaShell は圧縮された出力を受け入れます。辞書照合によりパケット長から機密情報が漏れるおそれがあります。サーバーに OpenSSH 10.6 の修正または同等の対策が適用されていることを確認してください。確認できない場合は入力のみを選んでください。</value>
   </data>
   <data name="Profile_SshObscureKeystrokeTiming" xml:space="preserve">
     <value>キー入力のタイミングを隠す</value>
@@ -9559,7 +9580,7 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
     <value>Excel で編集してインポートし直せる表です。よく使う項目（名前、ホスト、ポート、ユーザー名、グループ、認証、踏み台ホストなど）のみで、パスワードは含みません。</value>
   </data>
   <data name="SessExport_SshConfigHint" xml:space="preserve">
-    <value>~/.ssh/config の Host ブロックとして書き出します：SSH / SFTP 接続のホスト、ユーザー、秘密鍵と証明書、踏み台ホスト、圧縮、エージェント転送、アルゴリズム、ポート転送。パスワードは含まず、ほかのプロトコルはスキップします。</value>
+    <value>~/.ssh/config の Host ブロックとして書き出します：SSH / SFTP 接続のホスト、ユーザー、秘密鍵と証明書、踏み台ホスト、エージェント転送、アルゴリズム、ポート転送。パスワードは含まず、ほかのプロトコルはスキップします。</value>
   </data>
   <data name="SessExport_IncludeSecrets" xml:space="preserve">
     <value>パスワードなどの機密情報を含める</value>
