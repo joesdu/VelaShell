@@ -76,6 +76,9 @@
              否则 XAML 空白折叠会在冒号前多出一个空格。 -->
         <ctl:CapCenteredTextBlock IsVisible="{Binding Latency, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><Run Text="{loc:Localize Latency}" Foreground="{DynamicResource VelaTextTertiary}" /><Run Text=": " Foreground="{DynamicResource VelaTextTertiary}" /><Run Text="{Binding Latency}" Foreground="{DynamicResource VelaAccent}" /></ctl:CapCenteredTextBlock>
         <Border Classes="divider"
+                IsVisible="{Binding PacketLoss, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <ctl:CapCenteredTextBlock IsVisible="{Binding PacketLoss, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"><Run Text="{loc:Localize PacketLoss}" Foreground="{DynamicResource VelaTextTertiary}" /><Run Text=": " Foreground="{DynamicResource VelaTextTertiary}" /><Run Text="{Binding PacketLoss}" Foreground="{DynamicResource VelaAccent}" /></ctl:CapCenteredTextBlock>
+        <Border Classes="divider"
                 IsVisible="{Binding Uptime, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <ctl:CapCenteredTextBlock Foreground="{DynamicResource VelaTextTertiary}"
                                   Text="{Binding Uptime, StringFormat='↑ {0}'}"

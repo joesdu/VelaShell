@@ -598,6 +598,8 @@ Type conflicts, case-only name differences, and illegal local filenames are not 
 
 ### 13.1 Resource Monitoring
 
+**Packet loss** in the lower-left status bar shows the percentage of the current connection’s last 20 latency probes that received no reply. It uses the available samples until there are 20 and starts over on reconnect. SSH probes travel over the active connection, so TCP retransmissions can mask underlying network loss.
+
 **Entry point and prerequisites:** From a connected SSH session, use the status-bar resource entry or corresponding Command Palette action. The server must support the sampling commands and data sources.
 
 **Steps:** Inspect CPU, memory, network, and available disk/GPU metrics; choose a 1/2/5/10-second refresh. Correlate sampling times with the event under investigation. Close the window when done.

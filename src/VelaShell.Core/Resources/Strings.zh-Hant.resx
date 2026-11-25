@@ -1149,6 +1149,9 @@
   <data name="Disconnected" xml:space="preserve">
     <value>已中斷</value>
   </data>
+  <data name="PacketLoss" xml:space="preserve">
+    <value>丟包率</value>
+  </data>
   <data name="Latency" xml:space="preserve">
     <value>延遲</value>
   </data>

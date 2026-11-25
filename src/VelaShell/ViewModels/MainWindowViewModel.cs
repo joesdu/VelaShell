@@ -454,7 +454,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
             .SwitchMap(tab =>
                 tab is null
                     ? Signal.Emit(RxVoid.Default)
-                    : tab.WhenAnyValue(t => t.ConnectionStatus, t => t.Latency)
+                    : tab.WhenAnyValue(t => t.ConnectionStatus, t => t.Latency, t => t.PacketLossPercent)
                         .Select(_ => RxVoid.Default)
             )
             .Subscribe(_ => UpdateStatusBarForActiveTab());
@@ -7517,6 +7517,7 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
             StatusBar.StatusText = Strings.Ready;
             StatusBar.ConnectionInfo = string.Empty;
             StatusBar.Latency = string.Empty;
+            StatusBar.PacketLoss = string.Empty;
             StatusBar.WindowSize = string.Empty;
             return;
         }
@@ -7528,7 +7529,8 @@ public partial class MainWindowViewModel : ReactiveObject, Services.Plugins.ITer
         StatusBar.Encoding = tab.EncodingName;
         StatusBar.WindowSize = $"{tab.TerminalEmulator.Columns}×{tab.TerminalEmulator.Rows}";
         // 设计 gzmsb sbLatency 的写法是 "Latency: 12ms"(前缀由视图 StringFormat 提供)。
-        StatusBar.Latency = tab.Latency is { } latency
+        StatusBar.PacketLoss = connected && tab.PacketLossPercent is { } loss ? $"{loss:0.#}%" : string.Empty;
+        StatusBar.Latency = connected && tab.Latency is { } latency
             ? $"{(int)latency.TotalMilliseconds}ms"
             : string.Empty;
     }

@@ -1663,6 +1663,9 @@
   <data name="Language" xml:space="preserve">
     <value>言語</value>
   </data>
+  <data name="PacketLoss" xml:space="preserve">
+    <value>パケット損失率</value>
+  </data>
   <data name="Latency" xml:space="preserve">
     <value>遅延</value>
   </data>

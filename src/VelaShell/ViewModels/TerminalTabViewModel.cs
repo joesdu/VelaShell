@@ -625,7 +625,43 @@ public class TerminalTabViewModel : TabViewModel, IAsyncDisposable, INestedShell
     /// <summary>连接 shell 流与终端模拟器的桥接器;未连接时为 null。</summary>
     public SshTerminalBridge? Bridge { get; private set; }
 
-    internal long ConnectionGeneration { get; private set; }
+    private const int ProbeWindowSize = 20;
+    private readonly Queue<bool> _recentProbeReplies = new(ProbeWindowSize);
+
+    internal long ConnectionGeneration
+    {
+        get;
+        private set
+        {
+            field = value;
+            ClearLatencyProbes();
+        }
+    }
+
+    internal void ClearLatencyProbes()
+    {
+        _recentProbeReplies.Clear();
+        PacketLossPercent = null;
+        Latency = null;
+    }
+
+    internal void RecordLatencyProbe(TimeSpan? latency)
+    {
+        if (_recentProbeReplies.Count == ProbeWindowSize)
+        {
+            _recentProbeReplies.Dequeue();
+        }
+        _recentProbeReplies.Enqueue(latency.HasValue);
+        Latency = latency;
+        PacketLossPercent = 100d * _recentProbeReplies.Count(reply => !reply) / _recentProbeReplies.Count;
+    }
+
+    /// <summary>最近最多二十次延迟探测中未收到应答的百分比。</summary>
+    public double? PacketLossPercent
+    {
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
+    }
 
     /// <summary>
     /// 本标签的连接状态。赋值时同步 <see cref="IsConnected" />、在连接成功时清除错误,

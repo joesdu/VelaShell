@@ -161,9 +161,11 @@ public sealed class StatusMetricsPoller(
         TerminalTabViewModel? tab = activeTab();
         if (tab?.Profile is null || tab.ConnectionStatus != SessionStatus.Connected)
         {
-            tab?.Latency = null;
+            tab?.ClearLatencyProbes();
             return;
         }
+        long generation = tab.ConnectionGeneration;
+        bool IsCurrent() => ReferenceEquals(activeTab(), tab) && generation == tab.ConnectionGeneration;
         _latencyPolling = true;
         try
         {
@@ -176,15 +178,18 @@ public sealed class StatusMetricsPoller(
             }
 
             // 探测期间用户可能切换了标签;不要把结果写到别的会话上。
-            if (!ReferenceEquals(activeTab(), tab))
+            if (IsCurrent())
             {
-                return;
+                tab.RecordLatencyProbe(latency);
             }
-            tab.Latency = latency;
         }
         catch
         {
-            tab.Latency = null;
+            // DNS、权限等本地错误无法判断远端是否丢包。
+            if (IsCurrent())
+            {
+                tab.ClearLatencyProbes();
+            }
         }
         finally
         {
