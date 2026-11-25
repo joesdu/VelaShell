@@ -63,8 +63,8 @@ internal static class XAuthorityFile
         }
         try
         {
-            byte[] content = File.Exists(path) ? File.ReadAllBytes(path) : [];
-            if (!XAuthority.TryDecode(content, out IReadOnlyList<XAuthorityEntry>? decoded))
+            byte[]? content = ReadSnapshot(path);
+            if (content is null || !XAuthority.TryDecode(content, out IReadOnlyList<XAuthorityEntry>? decoded))
             {
                 Trace.WriteLine($"[XServer] {path} is not a valid Xauthority file; leaving it alone");
                 return false;
@@ -73,6 +73,12 @@ internal static class XAuthorityFile
             if (!change(entries))
             {
                 return true;
+            }
+            byte[] encoded = XAuthority.Encode(entries);
+            if (encoded.Length > XAuthority.MaxFileBytes)
+            {
+                Trace.WriteLine($"[XServer] updating {path} would exceed {XAuthority.MaxFileBytes} bytes; leaving it alone");
+                return false;
             }
             string temporary = path + "-n";
             File.Delete(temporary);   // 上次没收拾干净的残留:权限只在新建时生效,得先删掉
@@ -83,7 +89,7 @@ internal static class XAuthorityFile
             }
             using (FileStream stream = new(temporary, options))
             {
-                stream.Write(XAuthority.Encode(entries));
+                stream.Write(encoded);
             }
             File.Move(temporary, path, overwrite: true);
             return true;
@@ -106,6 +112,31 @@ internal static class XAuthorityFile
                     Trace.WriteLine($"[XServer] cannot remove {held}: {ex.Message}");
                 }
             }
+        }
+    }
+
+    private static byte[]? ReadSnapshot(string path)
+    {
+        try
+        {
+            using FileStream stream = File.OpenRead(path);
+            if (!stream.CanSeek)
+            {
+                return null;
+            }
+            long length = stream.Length;
+            if (length > XAuthority.MaxFileBytes)
+            {
+                return null;
+            }
+            byte[] content = new byte[(int)length];
+            stream.ReadExactly(content);
+            // 读的过程中变长了也不改写,否则会丢掉后加的记录。
+            return stream.ReadByte() == -1 ? content : null;
+        }
+        catch (FileNotFoundException)
+        {
+            return [];
         }
     }
 

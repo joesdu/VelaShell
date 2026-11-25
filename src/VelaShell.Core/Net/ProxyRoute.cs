@@ -13,6 +13,9 @@ public enum ProxyKind
 
     /// <summary>SOCKS5 代理(RFC 1928 / 1929)。</summary>
     Socks5,
+
+    /// <summary>通过经验证的 TLS 连接发送 HTTP CONNECT。</summary>
+    Https,
 }
 
 /// <summary>
@@ -30,6 +33,16 @@ public sealed record ProxyRoute(
 {
     /// <summary>直连路由(未启用代理,或目标本身是环回地址)。</summary>
     public static ProxyRoute Direct { get; } = new(ProxyKind.None);
+
+    /// <summary>代理端点的 URI 协议。直连没有代理端点。</summary>
+    public string? Scheme => Kind switch
+    {
+        ProxyKind.None => null,
+        ProxyKind.Http => "http",
+        ProxyKind.Https => "https",
+        ProxyKind.Socks5 => "socks5",
+        _ => throw new ArgumentOutOfRangeException(nameof(Kind)),
+    };
 
     /// <summary>是否携带代理认证凭据。</summary>
     public bool HasCredentials => Username.Length > 0;
@@ -50,7 +63,7 @@ public interface IProxyResolver
     /// none 返回 <see cref="ProxyRoute.Direct" />(强制直连,绝不再回看系统代理或环境变量);
     /// 环回目标同样直连;http / socks5 校验主机端口与凭据长度,不成立时抛
     /// <see cref="ProxyMisconfiguredException" />(用户显式要求走代理时绝不静默直连);
-    /// system 是**解析器不是协议**:读 OS 当前代理,折成 http 或 socks5,作用于全部出站 TCP
+    /// system 是**解析器不是协议**:读 OS 当前代理,保留代理的 http / https / socks5 协议,作用于全部出站 TCP
     /// (SSH / SFTP / FTP 控制与数据 / HTTP);解析不出(系统没配、bypass、PAC 求值失败)
     /// 则直连。
     /// </summary>

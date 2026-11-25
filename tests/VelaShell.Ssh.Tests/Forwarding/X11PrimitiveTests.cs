@@ -16,6 +16,25 @@ namespace VelaShell.Ssh.Tests.Forwarding;
 [TestCategory("Forwarding")]
 public sealed class X11PrimitiveTests
 {
+    [TestMethod]
+    public async Task OversizedAuthorityDoesNotReturnPartialCookies()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            byte[] content = new byte[XAuthority.MaxFileBytes + 1];
+            content.AsSpan().Fill(0xff);
+            XAuthority.Encode([new XAuthorityEntry(XAuthority.FamilyLocal, Array.Empty<byte>(), "0", "MIT-MAGIC-COOKIE-1", new byte[16])]).CopyTo(content, 0);
+            await File.WriteAllBytesAsync(path, content);
+            Assert.IsFalse(XAuthority.TryDecode(content, out _));
+            Assert.IsEmpty(await XAuthority.LoadAsync(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     // ------------------------------------------------------------ DISPLAY 解析
 
     [TestMethod]

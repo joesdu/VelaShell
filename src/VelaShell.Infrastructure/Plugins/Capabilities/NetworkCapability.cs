@@ -101,10 +101,7 @@ internal sealed class NetworkCapability(IProxyResolver? proxyResolver, ISshTrans
             targetHost = await LocalDnsResolver.ResolveAsync(host, cancellationToken).ConfigureAwait(false);
         }
 
-        SshProxyCredentials? credentials = route.HasCredentials ? new(route.Username, route.Password) : null;
-        ISshTransportDialer dialer = route.Kind == ProxyKind.Http
-            ? DialerChain.HttpConnect(route.Host, route.Port, credentials, _direct)
-            : DialerChain.Socks5(route.Host, route.Port, credentials, _direct);
+        ISshTransportDialer dialer = ProxyTransportDialer.ProxyDialer(route, _direct);
 
         Stream stream;
         try
@@ -187,5 +184,5 @@ internal sealed class NetworkCapability(IProxyResolver? proxyResolver, ISshTrans
     }
 
     private static string Via(ProxyRoute route, string host, int port) =>
-        $" (via {(route.Kind == ProxyKind.Socks5 ? "socks5" : "http")} {HostAddress.FormatEndPoint(route.Host, route.Port)} → {HostAddress.FormatEndPoint(host, port)})";
+        $" (via {route.Scheme} {HostAddress.FormatEndPoint(route.Host, route.Port)} → {HostAddress.FormatEndPoint(host, port)})";
 }

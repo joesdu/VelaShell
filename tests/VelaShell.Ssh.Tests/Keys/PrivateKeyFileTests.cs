@@ -23,6 +23,45 @@ namespace VelaShell.Ssh.Tests.Keys;
 [TestCategory("Keys")]
 public sealed class PrivateKeyFileTests
 {
+    [TestMethod]
+    public async Task KeySizeLimitAppliesToFilesAndText()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            string text = key.ExportPkcs8PrivateKeyPem().PadRight(BoundedFileReader.MaxBytes);
+            await File.WriteAllTextAsync(path, text);
+            using InMemorySshSigner signer = await SshPrivateKeyFile.LoadAsync(path);
+            await File.AppendAllTextAsync(path, " ");
+            SshPrivateKeyException ex = await Assert.ThrowsExactlyAsync<SshPrivateKeyException>(
+                () => SshPrivateKeyFile.LoadAsync(path).AsTask());
+            Assert.AreEqual(path, ex.Origin);
+            Assert.AreEqual(SshFailureReason.KeyFormatInvalid, ex.Reason);
+            text += " ";
+            Assert.ThrowsExactly<SshPrivateKeyException>(() => SshPrivateKeyFile.Parse(text));
+            Assert.IsFalse(SshPrivateKeyFile.TryReadPublicKey(text, out _));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public async Task ReaderChecksActualBytesEvenWhenFileGrows()
+    {
+        using GrowingStream stream = new(new byte[BoundedFileReader.MaxBytes + 32]);
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => BoundedFileReader.ReadAsync(stream,
+            static (_, _) => true, CancellationToken.None).AsTask());
+        Assert.AreEqual(BoundedFileReader.MaxBytes + 1L, stream.Position);
+    }
+
+    private sealed class GrowingStream(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override long Length => 1;
+    }
+
     /// <summary>按 openssh-key-v1 拼一个**未加密**的私钥文件。</summary>
     private static string BuildOpenSshKey(Action<SshDataWriterBox> writePrivateFields, byte[] publicBlob)
     {

@@ -98,6 +98,9 @@ public sealed record XAuthorityEntry
 /// </remarks>
 public static class XAuthority
 {
+    /// <summary>授权文件可导入的最大字节数。</summary>
+    public const int MaxFileBytes = BoundedFileReader.MaxBytes;
+
     /// <summary>本机族：地址字段里是主机名。</summary>
     public const ushort FamilyLocal = 256;
 
@@ -197,6 +200,10 @@ public static class XAuthority
     /// </summary>
     private static bool DecodeInto(ReadOnlySpan<byte> content, List<XAuthorityEntry> entries, bool strict)
     {
+        if (content.Length > MaxFileBytes)
+        {
+            return false;
+        }
         int offset = 0;
         while (offset < content.Length)
         {
@@ -246,8 +253,12 @@ public static class XAuthority
 
         try
         {
-            byte[] content = await File.ReadAllBytesAsync(actual, cancellationToken).ConfigureAwait(false);
-            return Decode(content);
+            return await BoundedFileReader.ReadAsync(actual,
+                static (bytes, count) => Decode(bytes.AsSpan(0, count)), cancellationToken).ConfigureAwait(false);
+        }
+        catch (InvalidDataException)
+        {
+            return [];
         }
         catch (IOException)
         {

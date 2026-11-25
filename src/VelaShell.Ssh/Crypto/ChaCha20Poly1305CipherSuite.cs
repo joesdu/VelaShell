@@ -56,6 +56,7 @@ internal sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
     private readonly ChaChaEngine _lengthEngine = new(Rounds);    // K_1：只加密长度字段
     private readonly Poly1305 _poly = new();
     private readonly byte[] _nonce = new byte[8];
+    internal ArrayPool<byte> BufferPool { get; init; } = ArrayPool<byte>.Shared;
     private bool _disposed;
 
     /// <summary>用 64 字节密钥材料构造。</summary>
@@ -120,7 +121,7 @@ internal sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
         {
             DerivePolyKey(engine, polyKey);
 
-            byte[] rented = ArrayPool<byte>.Shared.Rent(packetLength);
+            byte[] rented = BufferPool.Rent(packetLength);
             try
             {
                 Span<byte> plaintext = rented.AsSpan(0, packetLength);
@@ -130,11 +131,11 @@ internal sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
 
                 Span<byte> ciphertext = frame.Slice(SshPacketFormat.LengthFieldBytes, packetLength);
                 engine.ProcessBytes(plaintext, ciphertext);
-                CryptographicOperations.ZeroMemory(plaintext);
             }
             finally
             {
-                ArrayPool<byte>.Shared.Return(rented);
+                CryptographicOperations.ZeroMemory(rented.AsSpan(0, packetLength));
+                BufferPool.Return(rented);
             }
 
             // ③ tag 覆盖**整段密文，含那 4 字节已加密的长度**。
@@ -216,7 +217,7 @@ internal sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
             return SshOpenStatus.Opened;
         }
 
-        byte[] rented = ArrayPool<byte>.Shared.Rent((int)total);
+        byte[] rented = BufferPool.Rent((int)total);
         try
         {
             Span<byte> frame = rented.AsSpan(0, (int)total);
@@ -250,12 +251,12 @@ internal sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
                 payload.Advance(payloadLength);
             }
 
-            CryptographicOperations.ZeroMemory(frame);
         }
         finally
         {
+            CryptographicOperations.ZeroMemory(rented.AsSpan(0, (int)total));
             CryptographicOperations.ZeroMemory(polyKey);
-            ArrayPool<byte>.Shared.Return(rented);
+            BufferPool.Return(rented);
         }
 
         consumed = total;

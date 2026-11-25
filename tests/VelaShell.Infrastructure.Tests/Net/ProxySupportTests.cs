@@ -1,6 +1,10 @@
 using System.Globalization;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using NSubstitute;
 using VelaShell.Core.Data;
@@ -8,6 +12,8 @@ using VelaShell.Core.Models;
 using VelaShell.Core.Net;
 using VelaShell.Core.Resources;
 using VelaShell.Infrastructure.Net;
+using VelaShell.Infrastructure.Plugins.Capabilities;
+using VelaShell.PluginSdk.Network;
 using VelaShell.Infrastructure.Ssh;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Transport;
@@ -247,6 +253,68 @@ public class ProxySupportTests
         Assert.AreEqual("SSH-2.0-Fake\r\n", Encoding.ASCII.GetString(await ReadAsync(tunnel, 14, cts.Token)));
     }
 
+    [TestMethod]
+    [DataRow("SSH")]
+    [DataRow("Plugin TCP")]
+    [DataRow("HTTP client")]
+    public async Task HttpsProxy_UntrustedCertificate_StopsBeforeConnect(string consumer)
+    {
+        using CancellationTokenSource cts = Deadline();
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        CertificateRequest request = new("CN=localhost", key, HashAlgorithmName.SHA256);
+        SubjectAlternativeNameBuilder names = new();
+        names.AddDnsName("localhost");
+        request.CertificateExtensions.Add(names.Build());
+        using X509Certificate2 generated = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
+        using X509Certificate2 certificate = X509CertificateLoader.LoadPkcs12(generated.Export(X509ContentType.Pfx), null);
+        string? sni = null;
+        await using (var server = new FakeServer(async s =>
+        {
+            await using SslStream tls = new(s);
+            try
+            {
+                await tls.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
+                {
+                    ServerCertificateSelectionCallback = (_, host) => { sni = host; return certificate; },
+                }, cts.Token);
+                Assert.AreEqual(0, await tls.ReadAsync(new byte[1], cts.Token), "No CONNECT or credentials before certificate validation");
+            }
+            catch (Exception ex) when (ex is AuthenticationException or IOException)
+            {
+                // 客户端因不信任证书发送 TLS 告警或直接关闭连接。
+            }
+        }))
+        {
+            var route = new ProxyRoute(ProxyKind.Https, "localhost", server.Port, "user", "secret");
+            if (consumer == "HTTP client")
+            {
+                IProxyResolver resolver = Substitute.For<IProxyResolver>();
+                resolver.Resolve("target.example", 443, "https").Returns(route);
+                using var client = new HttpClient(new HttpClientHandler { Proxy = new VelaWebProxy(resolver) });
+                HttpRequestException error = await Assert.ThrowsExactlyAsync<HttpRequestException>(() =>
+                    client.GetAsync("https://target.example/", cts.Token));
+                Assert.AreEqual(HttpRequestError.SecureConnectionError, error.HttpRequestError);
+            }
+            else if (consumer == "Plugin TCP")
+            {
+                IProxyResolver resolver = Substitute.For<IProxyResolver>();
+                resolver.Resolve("target.example", 22).Returns(route);
+                NetworkProxyException error = await Assert.ThrowsExactlyAsync<NetworkProxyException>(() =>
+                    new NetworkCapability(resolver).ConnectTcpAsync("target.example", 22, cancellationToken: cts.Token));
+                Assert.Contains("via https localhost:", error.Message);
+                Assert.IsTrue(error.InnerException is SshConnectException { Reason: SshFailureReason.TlsFailed });
+            }
+            else
+            {
+                SshConnectException error = await Assert.ThrowsExactlyAsync<SshConnectException>(() =>
+                    DialThroughAsync(route, "target.example", 22, cts.Token));
+                Assert.AreEqual(SshFailureReason.TlsFailed, error.Reason);
+                Assert.Contains("via https localhost:", error.Message);
+            }
+        }
+        Assert.AreEqual("localhost", sni, "TLS must authenticate the proxy, not the destination");
+    }
+
     /// <summary>非 2xx 应答(如 502)必须抛错。</summary>
     [TestMethod]
     public async Task HttpConnect_NonSuccessStatus_Throws()
@@ -480,6 +548,33 @@ public class ProxySupportTests
             ProxyRoute https = resolver.Resolve("example.com", 443, "https");
             Assert.AreEqual(ProxyKind.Http, https.Kind);
             Assert.AreEqual("u", https.Username);
+        }
+        finally
+        {
+            ProxyResolver.SystemProxySource = saved;
+        }
+    }
+
+    [TestMethod]
+    [DataRow("https://user:pw@proxy.example", 443)]
+    [DataRow("https://user:pw@proxy.example:8443", 8443)]
+    public void SystemHttpsProxy_PreservesSchemePortAndCredentialScope(string proxy, int port)
+    {
+        IWebProxy? saved = ProxyResolver.SystemProxySource;
+        try
+        {
+            IWebProxy pac = Substitute.For<IWebProxy>();
+            pac.GetProxy(Arg.Any<Uri>()).Returns(call =>
+                call.Arg<Uri>().Host == "target.example" ? new Uri(proxy) : new Uri("http://proxy.example:" + port));
+            ProxyResolver.SystemProxySource = pac;
+            ProxyResolver resolver = CreateResolver(new ProxyOptions { Type = "system" });
+            Assert.AreEqual(new ProxyRoute(ProxyKind.Https, "proxy.example", port, "user", "pw"), resolver.Resolve("target.example", 22));
+            var webProxy = new VelaWebProxy(resolver);
+            Uri? endpoint = webProxy.GetProxy(new Uri("http://target.example/"));
+            Assert.IsNotNull(endpoint);
+            Assert.AreEqual(new Uri($"https://proxy.example:{port}"), endpoint);
+            Assert.AreEqual("pw", webProxy.Credentials?.GetCredential(endpoint, "Basic")?.Password);
+            Assert.IsNull(webProxy.Credentials?.GetCredential(new Uri($"http://proxy.example:{port}"), "Basic"));
         }
         finally
         {
