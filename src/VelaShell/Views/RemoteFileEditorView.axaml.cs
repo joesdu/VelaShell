@@ -22,7 +22,7 @@ namespace VelaShell.Views;
 /// </summary>
 public partial class RemoteFileEditorView : Window
 {
-    /// <summary>超过这个大小就不再加载进编辑器(内置编辑器面向的是配置文件,不是日志)。</summary>
+    /// <summary>初次加载和自动刷新共用的文件大小上限。</summary>
     private const long LargeFileThresholdBytes = 5L * 1024 * 1024;
 
     private readonly string _localPath = string.Empty;
@@ -81,6 +81,7 @@ public partial class RemoteFileEditorView : Window
     {
         InitializeComponent();
         WindowChrome.Apply(this, WindowChromeKind.Tool, ResizeGrip);
+        InitializeAutoRefresh();
     }
 
     /// <summary>
@@ -93,17 +94,24 @@ public partial class RemoteFileEditorView : Window
     /// <param name="sessionEncoding">
     /// UTF-8 严格解码失败时的回落编码(当前会话的终端编码);null 表示仍按 UTF-8 处理。
     /// </param>
+    /// <param name="downloadAsync">重新从远端下载到指定暂存路径的回调。</param>
+    /// <param name="sourceLifetime">来源文件面板的生命周期,结束后停止刷新。</param>
     public RemoteFileEditorView(
         string fileName,
         string remotePath,
         string localPath,
         Func<Task> uploadAsync,
-        Encoding? sessionEncoding = null)
+        Encoding? sessionEncoding = null,
+        Func<string, CancellationToken, Task>? downloadAsync = null,
+        CancellationToken sourceLifetime = default)
         : this()
     {
         _localPath = localPath;
         _uploadAsync = uploadAsync;
         _sessionEncoding = sessionEncoding;
+        _downloadAsync = downloadAsync;
+        _sourceLifetime = sourceLifetime;
+        _sourceLifetimeRegistration = sourceLifetime.Register(() => Dispatcher.UIThread.Post(OnRefreshSourceEnded));
         Title = fileName;
         TitleText.Text = fileName;
         PathText.Text = remotePath;
@@ -116,10 +124,14 @@ public partial class RemoteFileEditorView : Window
         _themeService = (Application.Current as App)?.Services?.GetService<IThemeService>();
         _themeService?.EffectiveThemeChanged += OnEffectiveThemeChanged;
 
-        _ = LoadFileAsync();
+        _loadTask = LoadFileAsync();
         Editor.TextChanged += (_, _) =>
         {
             _revision++;
+            if (_applyingRefresh)
+            {
+                return;
+            }
             StatusText.Text = Strings.Get("Editor_Unsaved");
             RefreshSaveIndicator();
         };
@@ -161,6 +173,10 @@ public partial class RemoteFileEditorView : Window
             StatusText.Text = ex.Message;
             return;
         }
+        if (_closed)
+        {
+            return;
+        }
         EditorEncodingDetector.Result detected = EditorEncodingDetector.Detect(bytes, _sessionEncoding);
         _encoding = detected.Encoding;
         Editor.Text = EditorEncodingDetector.Decode(bytes, detected);
@@ -169,6 +185,7 @@ public partial class RemoteFileEditorView : Window
         RefreshSaveIndicator();
         Editor.IsReadOnly = false;
         _loaded = true;
+        AutoRefreshCheckBox.IsEnabled = _downloadAsync is not null && !_sourceLifetime.IsCancellationRequested;
         ApplySyntaxHighlighting();
         StatusText.Text = detected.FellBackToSessionEncoding
             // 明说回落到了哪个编码:猜错时用户得看得见,才知道该怎么办
@@ -225,7 +242,20 @@ public partial class RemoteFileEditorView : Window
     }
 
     /// <summary>发起一次保存并记住这个任务(关窗要等它)。</summary>
-    private void BeginSave() => _saveTask = SaveAsync();
+    private void BeginSave()
+    {
+        if (!_loaded || _closed || Editor.IsReadOnly)
+        {
+            return;
+        }
+        if (_saving)
+        {
+            _resaveRequested = true;
+            return; // 保留真正的在途任务,关窗仍要等到它完成。
+        }
+        CancelRefresh();
+        _saveTask = SaveAsync();
+    }
 
     private async Task SaveAsync()
     {
@@ -272,6 +302,7 @@ public partial class RemoteFileEditorView : Window
         finally
         {
             _saving = false;
+            ScheduleRefresh();
         }
     }
 
@@ -339,6 +370,8 @@ public partial class RemoteFileEditorView : Window
     /// </summary>
     protected override void OnClosing(WindowClosingEventArgs e)
     {
+        _closingRequested = true;
+        CancelRefresh();
         if (_forceClose)
         {
             base.OnClosing(e);
@@ -350,14 +383,22 @@ public partial class RemoteFileEditorView : Window
             // 那个文件;上传即便成功,结果也没人再看得到。先等它落地,再走正常的脏检查。
             e.Cancel = true;
             StatusText.Text = Strings.Get("Editor_Saving");
-            _ = WaitForSaveThenCloseAsync();
+            if (!_waitingToClose)
+            {
+                _waitingToClose = true;
+                _ = WaitForSaveThenCloseAsync();
+            }
             base.OnClosing(e);
             return;
         }
         if (IsDirty)
         {
             e.Cancel = true;
-            _ = ConfirmDiscardAndCloseAsync();
+            if (!_closeConfirmationOpen)
+            {
+                _closeConfirmationOpen = true;
+                _ = ConfirmDiscardAndCloseAsync();
+            }
         }
         base.OnClosing(e);
     }
@@ -377,6 +418,7 @@ public partial class RemoteFileEditorView : Window
         }
         // 推迟一拍再关:此刻仍在被取消的那次 Close 的调用栈上。
         this.PostClose();
+        _waitingToClose = false;
     }
 
     private async Task ConfirmDiscardAndCloseAsync()
@@ -384,10 +426,16 @@ public partial class RemoteFileEditorView : Window
         bool discard = await MessageDialog.ConfirmAsync(this, Strings.Get("Editor_UnsavedTitle"),
                            Strings.Get("Editor_UnsavedBody"), Strings.Get("Editor_DiscardAndClose"),
                            kind: MessageDialogKind.Warning, danger: true);
+        _closeConfirmationOpen = false;
         if (discard)
         {
             _forceClose = true;
             Close();
+        }
+        else
+        {
+            _closingRequested = false;
+            ScheduleRefresh();
         }
     }
 
@@ -396,8 +444,27 @@ public partial class RemoteFileEditorView : Window
     /// </summary>
     protected override void OnClosed(EventArgs e)
     {
+        _closed = true;
+        CancelRefresh();
+        _sourceLifetimeRegistration.Dispose();
         // 先退订:主题服务活得比窗口久,悬着的委托会把已关闭的窗口一直吊在内存里。
         _themeService?.EffectiveThemeChanged -= OnEffectiveThemeChanged;
+
+        // 后端可能忽略取消并继续写暂存文件。保留租约到实际读取结束,再清理目录。
+        _ = CleanupAfterReadsAsync();
+        base.OnClosed(e);
+    }
+
+    private async Task CleanupAfterReadsAsync()
+    {
+        try
+        {
+            await Task.WhenAll(_loadTask ?? Task.CompletedTask, _refreshTask ?? Task.CompletedTask);
+        }
+        catch (Exception)
+        {
+            // 读取路径已负责显示错误,这里仅确保最后清理。
+        }
 
         // 清理本地临时副本(整个独占子目录)。
         try
@@ -417,7 +484,6 @@ public partial class RemoteFileEditorView : Window
             _directoryLease?.Dispose();
             _directoryLease = null;
         }
-        base.OnClosed(e);
     }
 
     private void Save_Click(object? sender, RoutedEventArgs e) => BeginSave();

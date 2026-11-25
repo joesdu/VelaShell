@@ -858,7 +858,9 @@ public partial class FileBrowserView : UserControl
     private Task OpenInBuiltInEditorAsync(
         RemoteFileInfoViewModel file,
         string localPath,
-        Func<Task> uploadAsync
+        Func<Task> uploadAsync,
+        Func<string, CancellationToken, Task> downloadAsync,
+        CancellationToken sourceLifetime
     )
     {
         if (TopLevel.GetTopLevel(this) is not Window owner)
@@ -870,7 +872,8 @@ public partial class FileBrowserView : UserControl
         Encoding sessionEncoding = owner.DataContext is MainWindowViewModel main
             ? main.ActiveSessionEncoding
             : Encoding.UTF8;
-        var editor = new RemoteFileEditorView(file.Name, file.FullPath, localPath, uploadAsync, sessionEncoding);
+        var editor = new RemoteFileEditorView(file.Name, file.FullPath, localPath, uploadAsync, sessionEncoding,
+                                             downloadAsync, sourceLifetime);
         editor.Show(owner);
         return Task.CompletedTask;
     }

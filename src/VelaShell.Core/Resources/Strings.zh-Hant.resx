@@ -10583,4 +10583,13 @@ Windows 填 exe 完整路徑或命令名稱(如 notepad);Linux 填命令名稱(�
 要開啟「關於」並檢查更新嗎？</value></data>
   <data name="PluginUpgrade_Requirement" xml:space="preserve"><value>• {0} 需要 {1}</value></data>
   <data name="PluginUpgrade_CheckUpdates" xml:space="preserve"><value>檢查更新</value></data>
+  <data name="Editor_AutoRefresh" xml:space="preserve"><value>自動重新整理</value></data>
+  <data name="Editor_AutoRefreshTip" xml:space="preserve"><value>重新讀取遠端內容並覆寫未儲存的修改；重新整理期間仍可編輯。</value></data>
+  <data name="Editor_RefreshInterval" xml:space="preserve"><value>重新整理間隔（毫秒，最小 100）</value></data>
+  <data name="Editor_RefreshMilliseconds" xml:space="preserve"><value>ms</value></data>
+  <data name="Editor_KeepViewPosition" xml:space="preserve"><value>保持檢視位置</value></data>
+  <data name="Editor_KeepViewPositionTip" xml:space="preserve"><value>重新整理時保持捲動位置、游標和選取範圍；不勾選則移至檔案結尾。</value></data>
+  <data name="Editor_RefreshedStatus" xml:space="preserve"><value>已重新整理 · {0}</value></data>
+  <data name="Editor_RefreshFailed" xml:space="preserve"><value>自動重新整理已停止：{0}</value></data>
+  <data name="Editor_RefreshSourceEnded" xml:space="preserve"><value>來源連線或檔案面板已關閉，自動重新整理已停止。</value></data>
 </root>

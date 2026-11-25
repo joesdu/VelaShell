@@ -27,6 +27,7 @@ public class VelaHeadlessApp : Application
     {
         RequestedThemeVariant = ThemeVariant.Dark;
         Styles.Add(new FluentTheme());
+        Styles.Add(LoadStyles("avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml"));
         Resources.MergedDictionaries.Add(LoadDictionary("avares://VelaShell.Controls/Themes/VelaTokens.axaml"));
         Resources.MergedDictionaries.Add(LoadDictionary("avares://VelaShell.Controls/Themes/VelaShellTokens.axaml"));
         Resources.MergedDictionaries.Add(LoadDictionary("avares://VelaShell.Controls/Themes/Icons.axaml"));
