@@ -210,6 +210,64 @@ public sealed class StatusMetricsPollerTests
     }
 
     [TestMethod]
+    public async Task PacketLossUsesTheLastTwentyCompletedProbes()
+    {
+        TerminalTabViewModel tab = ConnectedTab();
+        ISessionMetricsService metrics = Substitute.For<ISessionMetricsService>();
+        metrics.MeasureRoundTripAsync(tab.SessionId, Arg.Any<CancellationToken>()).Returns(
+            Task.FromException<TimeSpan?>(new TimeoutException()),
+            Task.FromResult<TimeSpan?>(TimeSpan.FromMilliseconds(12)));
+        StatusMetricsPoller poller = new(new StatusBarViewModel(), () => tab, metrics);
+
+        await poller.PollLatencyAsync();
+        Assert.IsNull(tab.Latency);
+        Assert.AreEqual(100d, tab.PacketLossPercent);
+        for (int sample = 2; sample <= 21; sample++)
+        {
+            for (int tick = 0; tick < 3; tick++)
+            {
+                await poller.PollLatencyAsync();
+            }
+            double expected = sample <= 20 ? 100d / sample : 0d;
+            Assert.AreEqual(expected, tab.PacketLossPercent);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task LateProbeCannotOverwriteAnotherConnection(bool reconnect)
+    {
+        TerminalTabViewModel original = ConnectedTab();
+        TerminalTabViewModel active = original;
+        var gate = new TaskCompletionSource<TimeSpan?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ISessionMetricsService metrics = Substitute.For<ISessionMetricsService>();
+        metrics.MeasureRoundTripAsync(original.SessionId, Arg.Any<CancellationToken>()).Returns(gate.Task);
+        StatusMetricsPoller poller = new(new StatusBarViewModel(), () => active, metrics);
+        original.RecordLatencyProbe(null);
+
+        Task pending = poller.PollLatencyAsync();
+        if (reconnect)
+        {
+            original.ConnectionStatus = SessionStatus.Disconnected;
+            original.ConnectionStatus = SessionStatus.Connected;
+        }
+        else
+        {
+            active = ConnectedTab();
+        }
+        gate.SetResult(TimeSpan.FromMilliseconds(12));
+        await pending;
+
+        Assert.IsNull(active.PacketLossPercent);
+        Assert.IsNull(original.Latency);
+        if (!reconnect)
+        {
+            Assert.AreEqual(100d, original.PacketLossPercent);
+        }
+    }
+
+    [TestMethod]
     public async Task LatencyIsProbedOnlyEveryThirdTick()
     {
         // ping 比指标采样便宜得多,但也没必要每次都发 —— 延迟不会两秒一变。

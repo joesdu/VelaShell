@@ -1079,6 +1079,9 @@
   <data name="Disconnected" xml:space="preserve">
     <value>Disconnected</value>
   </data>
+  <data name="PacketLoss" xml:space="preserve">
+    <value>Packet loss</value>
+  </data>
   <data name="Latency" xml:space="preserve">
     <value>Latency</value>
   </data>

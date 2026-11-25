@@ -48,6 +48,7 @@ public sealed class StatusBarAlignmentTests
                 bar.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t is not CapCenteredTextBlock),
                 "状态栏上的文字都应走 CapCenteredTextBlock;普通 TextBlock 的基线会随回退字体漂移。");
 
+            Assert.Contains(t => TextOf(t) == $"{Strings.Get("PacketLoss")}: 5%", texts);
             double? shared = null;
             foreach (CapCenteredTextBlock text in texts)
             {
@@ -100,6 +101,7 @@ public sealed class StatusBarAlignmentTests
         {
             ConnectionInfo = "SSH • 生产机",
             Latency = "1ms",
+            PacketLoss = "5%",
             Uptime = "00:00:29",
             StatusText = "已连接",
             TerminalType = "xterm-256color",

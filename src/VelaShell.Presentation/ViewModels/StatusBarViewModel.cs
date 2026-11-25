@@ -105,6 +105,13 @@ public sealed class StatusBarViewModel(ISequencer scheduler) : ReactiveObject, I
         set => this.RaiseAndSetIfChanged(ref field, value);
     } = string.Empty;
 
+    /// <summary>活动连接的探测丢包率文本。</summary>
+    public string PacketLoss
+    {
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
+    } = string.Empty;
+
     /// <summary>终端类型标识,默认 xterm-256color。</summary>
     public string TerminalType
     {
