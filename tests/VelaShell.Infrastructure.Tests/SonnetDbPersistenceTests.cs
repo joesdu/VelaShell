@@ -60,6 +60,11 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         SessionProfile? single = await repo.GetSessionAsync(profile.Id);
         Assert.IsNotNull(single);
         Assert.AreEqual(profile.Host, single.Host);
+
+        var snapshot = await repo.GetAllTreeDataAsync();
+        Assert.AreEqual(group.Id, snapshot.Groups.Single().Id);
+        Assert.AreEqual(group.Id, snapshot.Sessions.Single().GroupId);
+        Assert.AreEqual(profile.Password, snapshot.Sessions.Single().Password);
     }
 
     [TestMethod]

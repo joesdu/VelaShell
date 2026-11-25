@@ -104,6 +104,8 @@ Older servers without strict key exchange must negotiate AES-GCM in both directi
 
 The main window contains a title bar, Explorer, a docking document area, and a bottom status bar. Explorer is normally on the left and can be moved to the right in Appearance. The central area can host terminals and independent dual-pane file documents. Each split pane has its own tab strip.
 
+At startup or during a refresh, the connection list in Explorer shows a “Loading sessions…” indicator. You can type in the filter while it loads. Matching connections appear when the list is ready.
+
 ### 3.1 Find a Feature by Task
 
 | I want to… | Preferred entry point | Prerequisite or result |

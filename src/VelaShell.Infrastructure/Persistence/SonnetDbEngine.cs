@@ -225,6 +225,14 @@ public sealed class SonnetDbEngine : IDisposable
             action(OpenStore(ProfilesCollection), OpenStore(GroupsCollection));
         }, CancellationToken.None);
 
+    /// <summary>在同一把锁内读取会话及直属组成员,避免资源树加载分两次访问数据库。</summary>
+    internal Task<T> ReadSessionsAndGroupsAsync<T>(Func<DocumentCollectionStore, DocumentCollectionStore, T> read) =>
+        InLockAsync(() =>
+        {
+            ThrowIfDisposed();
+            return read(OpenStore(ProfilesCollection), OpenStore(GroupsCollection));
+        }, CancellationToken.None);
+
     /// <summary>写入一条时序数据点。</summary>
     public Task WritePointAsync(
         string measurement,

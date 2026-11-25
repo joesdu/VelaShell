@@ -9267,6 +9267,9 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
   <data name="Tree_ExpandAll" xml:space="preserve">
     <value>모두 펼치기</value>
   </data>
+  <data name="Tree_LoadingSessions" xml:space="preserve">
+    <value>세션을 불러오는 중…</value>
+  </data>
   <data name="Tree_FilterPlaceholder" xml:space="preserve">
     <value>이름, 호스트, 태그, 메모로 필터</value>
   </data>

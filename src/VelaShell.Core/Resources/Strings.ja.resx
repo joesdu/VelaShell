@@ -9267,6 +9267,9 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
   <data name="Tree_ExpandAll" xml:space="preserve">
     <value>すべて展開</value>
   </data>
+  <data name="Tree_LoadingSessions" xml:space="preserve">
+    <value>セッションを読み込み中…</value>
+  </data>
   <data name="Tree_FilterPlaceholder" xml:space="preserve">
     <value>名前・ホスト・タグ・メモで絞り込み</value>
   </data>

@@ -14,7 +14,7 @@ namespace VelaShell.Infrastructure.Persistence;
 /// 密码与私钥口令通过 <see cref="ISecretProtector" /> 以 AES-256 加密后落盘。
 /// 首次运行时自动导入既有 sessions.json。
 /// </summary>
-public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProtector protector, string? legacySessionsFile = null) : ISessionRepository
+public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProtector protector, string? legacySessionsFile = null) : ISessionRepository, ISessionTreeDataRepository
 {
     private readonly SonnetDbEngine _engine = engine ?? throw new ArgumentNullException(nameof(engine));
     private readonly SemaphoreSlim _migrationLock = new(1, 1);
@@ -37,6 +37,23 @@ public sealed class SonnetDbSessionRepository(SonnetDbEngine engine, ISecretProt
         List<SessionProfile?> sessions = await _engine.WithCollectionAsync(SonnetDbEngine.ProfilesCollection, store =>
                                              store.Scan().Select(row => SonnetDbJson.Deserialize<SessionProfile>(row.Json)).ToList()).ConfigureAwait(false);
         return [.. sessions.OfType<SessionProfile>().Select(Unprotect)];
+    }
+
+    /// <summary>一次读取资源树所需的分组和会话,避免两次数据库锁和重复迁移检查。</summary>
+    public async Task<(List<ServerGroup> Groups, List<SessionProfile> Sessions)> GetAllTreeDataAsync()
+    {
+        await EnsureMigratedAsync().ConfigureAwait(false);
+        (List<ServerGroup?> groups, List<SessionProfile?> sessions) =
+            await _engine.ReadSessionsAndGroupsAsync((profiles, groups) =>
+                (
+                    groups.Scan().Select(row => SonnetDbJson.Deserialize<ServerGroup>(row.Json)).ToList(),
+                    profiles.Scan().Select(row => SonnetDbJson.Deserialize<SessionProfile>(row.Json)).ToList()))
+                .ConfigureAwait(false);
+        return
+        (
+            [.. groups.OfType<ServerGroup>()],
+            [.. sessions.OfType<SessionProfile>().Select(Unprotect)]
+        );
     }
 
     /// <summary>按 Id 获取单个会话配置(密码已解密);不存在时返回 <c>null</c>。</summary>
