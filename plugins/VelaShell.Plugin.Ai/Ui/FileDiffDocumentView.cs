@@ -29,6 +29,8 @@ internal sealed record FileDiffDocument(string Path, string? Location, string? O
     /// <summary>位置原值(<c>local:…</c> / <c>remote:…</c>),读写文件用;不知道在哪儿为 null。</summary>
     public string? RawLocation { get; init; }
 
+    internal ChangedFileEntry? ReviewEntry { get; init; }
+
     /// <summary>改动前的全文(新建为 null)。只有 <see cref="HasFullText" /> 时有意义。</summary>
     public string? Before { get; init; }
 
@@ -59,6 +61,8 @@ internal interface IFileDiffHost
 
     /// <summary>保存成功:更新「已修改文件」里这个文件的 After。</summary>
     void Saved(FileDiffDocument document, string text);
+
+    Task<string?> ReviewAsync(ChangedFileEntry entry, int revision, bool keep);
 }
 
 /// <summary>
@@ -98,9 +102,12 @@ internal sealed class FileDiffDocumentView : DockPanel
     private readonly Button _loadFull;
     private readonly ToggleButton _sideBySide;
     private readonly ToggleButton _inline;
+    private readonly ToggleButton _ignoreWhitespace;
     private readonly Border _conflict;
     private readonly Border _host2 = new();
     private readonly DispatcherTimer _recompute;
+    private long _diffRevision;
+    private bool _computing;
     // 滚动同步的锚点:两侧未改动行的行顶(以行为单位、从 0 起),下标一一对应;两个锚点之间夹着的改动按比例摊开
     private double[] _oldAnchors = [0];
     private double[] _newAnchors = [0];
@@ -129,7 +136,7 @@ internal sealed class FileDiffDocumentView : DockPanel
     internal string Baseline { get; private set; } = "";
 
     /// <summary>右侧有没有未保存的修改。</summary>
-    internal bool IsDirty => RightEditor is not null && Document.CanEdit && !SameText(RightEditor.Text, Baseline);
+    internal bool IsDirty => Document.CanEdit && (RightEditor?.Text ?? _editedRight) is { } draft && !SameText(draft, Baseline);
 
     /// <summary>当前左右两侧之间的差异(并排模式按编辑器内容重算)。</summary>
     internal LineDiffResult? CurrentDiff { get; private set; }
@@ -160,15 +167,11 @@ internal sealed class FileDiffDocumentView : DockPanel
         });
         this[!BackgroundProperty] = new DynamicResourceExtension("VelaBgTerminal");
         _recompute = new DispatcherTimer { Interval = RecomputeDelay };
-        _recompute.Tick += (_, _) =>
-        {
-            _recompute.Stop();
-            Recompute();
-        };
+        _recompute.Tick += async (_, _) => await RecomputeEditsAsync();
 
         var toolbar = new Grid
         {
-            ColumnDefinitions = [with("Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto")],
+            ColumnDefinitions = [with("Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto")],
             Margin = new Thickness(12, 8, 12, 4)
         };
         toolbar.Children.Add(new Decorator
@@ -211,7 +214,7 @@ internal sealed class FileDiffDocumentView : DockPanel
         _loadFull = TextButton("DiffLoadFull", _loc["DiffLoadFull"], () => _ = LoadFullFileAsync());
         Grid.SetColumn(_loadFull, 6);
         toolbar.Children.Add(_loadFull);
-        _revert = TextButton("DiffRevert", _loc["DiffRevert"], Revert);
+        _revert = TextButton("DiffRevert", _loc["DiffRevert"], () => _ = RevertOrDiscardAsync());
         Grid.SetColumn(_revert, 7);
         toolbar.Children.Add(_revert);
         _save = TextButton("DiffSave", _loc["DiffSave"], () => _ = SaveAsync());
@@ -238,6 +241,17 @@ internal sealed class FileDiffDocumentView : DockPanel
         toolbar.Children.Add(_inline);
         _sideBySide.Click += (_, _) => SetMode(sideBySide: true);
         _inline.Click += (_, _) => SetMode(sideBySide: false);
+        _ignoreWhitespace = ModeToggle("DiffIgnoreWhitespace", "␠");
+        _ignoreWhitespace.Margin = new Thickness(4, 0, 0, 0);
+        ToolTip.SetTip(_ignoreWhitespace, _loc["DiffIgnoreWhitespace"]);
+        AutomationProperties.SetName(_ignoreWhitespace, _loc["DiffIgnoreWhitespace"]);
+        Grid.SetColumn(_ignoreWhitespace, 13);
+        toolbar.Children.Add(_ignoreWhitespace);
+        _ignoreWhitespace.Click += (_, _) =>
+        {
+            if (IsSideBySide) Recompute();
+            else Rebuild();
+        };
 
         _status = DiffView.Text("", "VelaTextTertiary");
         _status.Name = "DiffDocStatus";
@@ -273,9 +287,13 @@ internal sealed class FileDiffDocumentView : DockPanel
         if (IsDirty && document.HasFullText)
         {
             Document = document with { After = Document.After };
-            LeftEditor?.Text = document.Before ?? "";
+            if (LeftEditor is { } left)
+            {
+                left.Text = document.Before ?? "";
+                Recompute();
+            }
+            else Rebuild();
             ShowStatus(_loc["DiffChangedWhileEditing"]);
-            Recompute();
             return;
         }
         Load(document, keepEdits: false);
@@ -287,7 +305,11 @@ internal sealed class FileDiffDocumentView : DockPanel
         _pendingOverwrite = null;
         _reloadText = null;
         _conflict.IsVisible = false;
-        if (!keepEdits) Baseline = document.After ?? "";
+        if (!keepEdits)
+        {
+            Baseline = document.After ?? "";
+            _editedRight = null;
+        }
         _path.Text = document.OldPath is { Length: > 0 } old ? $"{old} → {document.Path}" : document.Path;
         ToolTip.SetTip(_path, _path.Text);
         _location.Text = document.Location ?? "";
@@ -319,9 +341,10 @@ internal sealed class FileDiffDocumentView : DockPanel
     private void SetMode(bool sideBySide)
     {
         // 切到内联前把右侧的修改记下来,内联显示的就是当前内容;切回并排时再放回编辑器
-        if (!sideBySide && RightEditor is not null) _editedRight = RightEditor.Text;
         _sideBySide.IsChecked = sideBySide;
         _inline.IsChecked = !sideBySide;
+        if (sideBySide && RightEditor is not null || !sideBySide && InlineView is not null) return;
+        if (!sideBySide && RightEditor is not null) _editedRight = RightEditor.Text;
         Rebuild();
     }
 
@@ -358,13 +381,15 @@ internal sealed class FileDiffDocumentView : DockPanel
         }
         else
         {
-            CurrentDiff = LineDiff.Compute(left, right);
+            CurrentDiff = LineDiff.Compute(left, right, _ignoreWhitespace.IsChecked == true);
             var diff = new ToolFileDiff(Document.Path, [CurrentDiff], Document.HasFullText);
             InlineView = new DiffView(diff, _loc, DiffViewMode.Window, languagePath: Document.Path) { Margin = new Thickness(12, 8, 12, 12) };
             // 头部的 +N −M 工具条上已经有了,不重复
             InlineView.Children[0].IsVisible = false;
             _host2.Child = InlineView;
-            ChangeStarts = FindRowStarts(InlineView.Rows);
+            DiffView inline = InlineView;
+            ChangeStarts = FindRowStarts(inline.Rows);
+            inline.RowsChanged += () => ChangeStarts = FindRowStarts(inline.Rows);
             if (Document.CanEdit) ShowStatus(_loc["DiffInlineReadOnly"]);
             UpdateChrome();
         }
@@ -376,6 +401,7 @@ internal sealed class FileDiffDocumentView : DockPanel
     {
         TextEditor leftEditor = LeftEditor = Editor("DiffLeftEditor", left, readOnly: true);
         TextEditor rightEditor = RightEditor = Editor("DiffRightEditor", right, readOnly: !Document.CanEdit);
+        if (_busy) rightEditor.IsReadOnly = true;
         _leftTint = new DiffLineBackgroundRenderer(() => Brush("VelaError"));
         _rightTint = new DiffLineBackgroundRenderer(() => Brush("VelaStatusConnected"));
         leftEditor.TextArea.TextView.BackgroundRenderers.Add(_leftTint);
@@ -384,6 +410,7 @@ internal sealed class FileDiffDocumentView : DockPanel
 
         rightEditor.Document.TextChanged += (_, _) =>
         {
+            _diffRevision++;
             UpdateChrome();
             _recompute.Stop();
             _recompute.Start();
@@ -453,7 +480,7 @@ internal sealed class FileDiffDocumentView : DockPanel
     /// <summary>测试用:当前左栏比例。</summary>
     internal double LeftShare { get; private set; } = 0.5;
 
-    private static TextEditor Editor(string name, string text, bool readOnly)
+    private TextEditor Editor(string name, string text, bool readOnly)
     {
         var editor = new TextEditor
         {
@@ -471,6 +498,13 @@ internal sealed class FileDiffDocumentView : DockPanel
         editor[!TemplatedControl.ForegroundProperty] = new DynamicResourceExtension("VelaTextPrimary");
         editor[!TemplatedControl.BackgroundProperty] = new DynamicResourceExtension("VelaBgInput");
         editor[!TextEditor.LineNumbersForegroundProperty] = new DynamicResourceExtension("VelaTextMuted");
+        if (!readOnly)
+        {
+            if (System.IO.Path.GetExtension(Document.Path).ToLowerInvariant() is ".cs" or ".csx")
+                editor.TextArea.IndentationStrategy = new AvaloniaEdit.Indentation.CSharp.CSharpIndentationStrategy(editor.Options);
+            editor.Options.HighlightCurrentLine = true;
+            editor.TextArea.TextView[!AvaloniaEdit.Rendering.TextView.CurrentLineBackgroundProperty] = new DynamicResourceExtension("VelaBgHover");
+        }
         AutomationProperties.SetName(editor, name);
         return editor;
     }
@@ -503,6 +537,7 @@ internal sealed class FileDiffDocumentView : DockPanel
 
     private void DetachEditors()
     {
+        _diffRevision++;
         _recompute.Stop();
         _leftColorizer?.Detach();
         RightColorizer?.Detach();
@@ -511,12 +546,39 @@ internal sealed class FileDiffDocumentView : DockPanel
         _leftTint = _rightTint = null;
     }
 
-    /// <summary>按左右编辑器当前内容重算差异:底色、行映射、统计与导航。</summary>
+    private async Task RecomputeEditsAsync()
+    {
+        if (_computing) return;
+        _recompute.Stop();
+        if (LeftEditor is null || RightEditor is null) return;
+        var before = LeftEditor.Document.CreateSnapshot();
+        var after = RightEditor.Document.CreateSnapshot();
+        bool ignoreWhitespace = _ignoreWhitespace.IsChecked == true;
+        long revision = _diffRevision;
+        _computing = true;
+        try
+        {
+            var diff = await Task.Run(() => LineDiff.Compute(before.Text, after.Text, ignoreWhitespace));
+            if (revision == _diffRevision) ApplyDiff(diff);
+        }
+        finally
+        {
+            _computing = false;
+        }
+    }
+
     internal void Recompute()
     {
         if (LeftEditor is null || RightEditor is null) return;
+        _diffRevision++;
         _recompute.Stop();
-        LineDiffResult diff = CurrentDiff = LineDiff.Compute(LeftEditor.Text, RightEditor.Text);
+        ApplyDiff(LineDiff.Compute(LeftEditor.Text, RightEditor.Text, _ignoreWhitespace.IsChecked == true));
+    }
+
+    private void ApplyDiff(LineDiffResult diff)
+    {
+        if (LeftEditor is null || RightEditor is null) return;
+        CurrentDiff = diff;
         int oldCount = Math.Max(1, LeftEditor.Document.LineCount);
         int newCount = Math.Max(1, RightEditor.Document.LineCount);
         var oldAnchors = new List<double> { 0 };
@@ -554,6 +616,9 @@ internal sealed class FileDiffDocumentView : DockPanel
         ChangeStarts = starts;
         _leftTint?.Lines = removed;
         _rightTint?.Lines = added;
+        var (oldSpans, newSpans) = diff.ChangedSpans();
+        _leftTint?.ChangedSpans = oldSpans;
+        _rightTint?.ChangedSpans = newSpans;
         LeftEditor.TextArea.TextView.InvalidateLayer(AvaloniaEdit.Rendering.KnownLayer.Background);
         RightEditor.TextArea.TextView.InvalidateLayer(AvaloniaEdit.Rendering.KnownLayer.Background);
         UpdateChrome();
@@ -658,8 +723,52 @@ internal sealed class FileDiffDocumentView : DockPanel
         _added.IsVisible = _removed.IsVisible = CurrentDiff is not null || Document.Diff is not null;
         bool dirty = IsDirty;
         _dirtyDot.IsVisible = dirty;
-        _save.IsVisible = _revert.IsVisible = Document.CanEdit && _host is not null;
-        _save.IsEnabled = _revert.IsEnabled = dirty;
+        bool review = !dirty && Document.ReviewEntry is { } entry && entry.Owner.Entries.Contains(entry);
+        _save.IsVisible = _revert.IsVisible = (Document.CanEdit || review) && _host is not null;
+        _save.IsEnabled = _revert.IsEnabled = !_busy && (dirty || review);
+        _save.Content = _loc[review ? "DiffKeep" : "DiffSave"];
+        _revert.Content = _loc[review ? "DiffDiscard" : "DiffRevert"];
+        AutomationProperties.SetName(_save, (string)_save.Content);
+        AutomationProperties.SetName(_revert, (string)_revert.Content);
+        ToolTip.SetTip(_save, review ? _save.Content : _loc["DiffSaveTip"]);
+    }
+
+    private bool _busy;
+    internal bool IsBusy => _busy;
+
+    internal void SetBusy(bool busy)
+    {
+        _busy = busy;
+        if (RightEditor is { } right) right.IsReadOnly = busy || !Document.CanEdit;
+        UpdateChrome();
+    }
+
+    internal void FinishReview(ChangedFileEntry entry, bool keep)
+    {
+        if (Document.ReviewEntry != entry) return;
+        if (keep) Document = Document with { ReviewEntry = null };
+        else
+        {
+            var restored = new FileDiffDocument(entry.OldPath ?? entry.Path, Document.Location, null, null)
+            { Before = entry.Before, After = entry.Before, HasFullText = entry.Before is not null };
+            Load(restored, keepEdits: false);
+        }
+        ShowStatus(_loc[keep ? "DiffKept" : "DiffDiscarded"]);
+        UpdateChrome();
+    }
+
+    private async Task ReviewAsync(bool keep)
+    {
+        if (_host is null || Document.ReviewEntry is not { } entry) return;
+        string? error = await _host.ReviewAsync(entry, entry.Revision, keep);
+        if (error is not null) ShowStatus(ErrorText(error));
+    }
+
+    internal async Task RevertOrDiscardAsync()
+    {
+        if (_busy) return;
+        if (IsDirty) Revert();
+        else await ReviewAsync(keep: false);
     }
 
     private void ShowStatus(string text)
@@ -670,7 +779,7 @@ internal sealed class FileDiffDocumentView : DockPanel
 
     private string ErrorText(string error) => error switch
     {
-        FileTextStore.ErrorSessionGone or FileTextStore.ErrorPathRejected or FileTextStore.ErrorNotText => _loc[error],
+        FileTextStore.ErrorSessionGone or FileTextStore.ErrorPathRejected or FileTextStore.ErrorNotText or "DiffReviewConflict" or "DiffReviewUnavailable" or "DiffReviewDraft" => _loc[error],
         _ => _loc.F("DiffSaveFailed", error)
     };
 
@@ -681,8 +790,21 @@ internal sealed class FileDiffDocumentView : DockPanel
     /// </summary>
     internal async Task SaveAsync()
     {
-        if (_host is null || RightEditor is null || !Document.CanEdit || !IsDirty || Document.RawLocation is not { } location) return;
-        string text = RightEditor.Text;
+        if (_busy || _host is null) return;
+        if (!IsDirty)
+        {
+            await ReviewAsync(keep: true);
+            return;
+        }
+        SetBusy(true);
+        try { await SaveDraftAsync(); }
+        finally { SetBusy(false); }
+    }
+
+    private async Task SaveDraftAsync()
+    {
+        if (_host is null || !Document.CanEdit || Document.RawLocation is not { } location) return;
+        string text = RightEditor?.Text ?? _editedRight ?? Baseline;
         FileTextReadResult current = await _host.ReadAsync(location, Document.Path);
         if (current.Error is { } readError)
         {
@@ -731,11 +853,12 @@ internal sealed class FileDiffDocumentView : DockPanel
     /// <summary>冲突提示里选「重新载入」:右侧换成磁盘上的当前内容,作为新的基线(放弃本标签里的修改)。</summary>
     internal void ReloadFromDisk()
     {
-        if (RightEditor is null) return;
         string text = _reloadText ?? "";
         Baseline = text;
         Document = Document with { After = text };
-        RightEditor.Text = text;
+        _editedRight = text;
+        if (RightEditor is { } editor) editor.Text = text;
+        else Rebuild();
         _conflict.IsVisible = false;
         _pendingOverwrite = null;
         ShowStatus(_loc["DiffReloaded"]);
@@ -745,8 +868,15 @@ internal sealed class FileDiffDocumentView : DockPanel
     /// <summary>还原:右侧回到基线。</summary>
     internal void Revert()
     {
-        if (RightEditor is null || !Document.CanEdit) return;
-        RightEditor.Text = Baseline;
+        if (!Document.CanEdit) return;
+        if (RightEditor is null)
+        {
+            _editedRight = Baseline;
+            Rebuild();
+        }
+        else RightEditor.Text = Baseline;
+        _conflict.IsVisible = false;
+        _pendingOverwrite = null;
         ShowStatus("");
         Recompute();
     }

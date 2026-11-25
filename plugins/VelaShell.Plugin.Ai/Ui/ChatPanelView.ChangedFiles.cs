@@ -144,24 +144,18 @@ public partial class ChatPanelView : IFileDiffHost
     Task<string?> IFileDiffHost.WriteAsync(string location, string path, string text, bool withBom)
         => FileTexts.WriteAsync(location, path, text, withBom);
 
-    /// <summary>差异文档保存成功:各份对话里这个文件的条目换成新的 After,文件条的 +/- 与标签保持一致。</summary>
+    /// <summary>保存草稿只更新发起审阅的记录，其他对话仍用各自的快照核对外部修改。</summary>
     void IFileDiffHost.Saved(FileDiffDocument document, string text)
     {
-        if (document.RawLocation is not { } location) return;
-        foreach (Conversation conversation in _conversations.Values.Append(_active).Distinct())
-        {
-            if (conversation.ChangedFiles.Find(location, document.Path) is { } entry)
-            {
-                entry.After = text;
-                entry.Recompute();
-            }
-        }
-        RefreshChangedFiles();
+        if (document.ReviewEntry is not { } entry || !entry.Owner.Entries.Contains(entry)) return;
+        entry.After = text;
+        entry.Recompute();
+        if (entry.Owner == _active.ChangedFiles) RefreshChangedFiles();
     }
 
     /// <summary>按「已修改文件」里的条目建文档:前后全文都在,能编辑。</summary>
-    private FileDiffDocument DocumentOf(ChangedFileEntry entry) => DocumentOf(entry.Location, entry.Path, entry.OldPath,
-        entry.Kind, entry.Before, entry.After, entry.Diff);
+    internal FileDiffDocument DocumentOf(ChangedFileEntry entry) => DocumentOf(entry.Location, entry.Path, entry.OldPath,
+        entry.Kind, entry.Before, entry.After, entry.Diff) with { ReviewEntry = entry };
 
     /// <summary>按一条文件改动(或合并后的条目)建文档。</summary>
     internal FileDiffDocument DocumentOf(string location, string path, string? oldPath, FileChangeKind kind,
@@ -249,14 +243,16 @@ public partial class ChatPanelView : IFileDiffHost
             _context.Log.Warn($"Opening the diff tab failed, falling back to a window: {ex.Message}");
             IPluginPanel? fallback = null;
             (double width, double height) = FallbackWindowSize();
-            await OpenAsync(title, width, height, [], () => new FileDiffDocumentView(document, _loc, this),
+            await OpenAsync(title, width, height, [], () => view,
                 panel =>
                 {
                     fallback = panel;
                     _diffFallbackWindows.Add(panel);
+                    _fallbackDiffViews.Add(view);
                 },
                 () =>
                 {
+                    _fallbackDiffViews.Remove(view);
                     if (fallback is not null) _diffFallbackWindows.Remove(fallback);
                 });
         }
@@ -293,6 +289,11 @@ public partial class ChatPanelView : IFileDiffHost
     internal void RefreshChangedFiles()
     {
         ChangedFileList list = _active.ChangedFiles;
+        if (_confirmDiscardList != list || list.Entries.Count == 0)
+        {
+            _confirmDiscardList = null;
+            _confirmDiscardEntries = [];
+        }
         ChangedFilesBar.IsVisible = list.Entries.Count > 0;
         if (list.Entries.Count == 0)
         {
@@ -342,23 +343,6 @@ public partial class ChatPanelView : IFileDiffHost
         Grid.SetColumn(removed, 4);
         header.Children.Add(removed);
 
-        var clear = new Button
-        {
-            Name = "ChangedFilesClear",
-            Content = MakeIcon("AiIcon.x", "VelaTextMuted", 12),
-            Padding = new Thickness(4, 2),
-            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
-        };
-        clear[!ThemeProperty] = new DynamicResourceExtension("AiGhostIconButtonTheme");
-        ToolTip.SetTip(clear, _loc["ChangedFilesClear"]);
-        AutomationProperties.SetName(clear, _loc["ChangedFilesClear"]);
-        clear.Click += (_, e) =>
-        {
-            e.Handled = true;
-            ClearChangedFiles();
-        };
-        Grid.SetColumn(clear, 6);
-        header.Children.Add(clear);
         header.PointerPressed += (_, e) =>
         {
             e.Handled = true;
@@ -370,6 +354,12 @@ public partial class ChatPanelView : IFileDiffHost
         foreach (ChangedFileEntry entry in list.Entries)
         {
             rows.Children.Add(ChangedFileRow(entry));
+            if (entry.ReviewError is { } error)
+            {
+                var message = DiffView.Text(error, "VelaWarning");
+                message.TextWrapping = TextWrapping.Wrap;
+                rows.Children.Add(message);
+            }
         }
         var scroll = new ScrollViewer
         {
@@ -381,7 +371,12 @@ public partial class ChatPanelView : IFileDiffHost
         };
 
         var stack = new StackPanel();
-        stack.Children.Add(header);
+        var titleRow = new Grid { ColumnDefinitions = [with("*,Auto")] };
+        titleRow.Children.Add(header);
+        var actions = BatchActions(list);
+        Grid.SetColumn(actions, 1);
+        titleRow.Children.Add(actions);
+        stack.Children.Add(titleRow);
         stack.Children.Add(scroll);
         ChangedFilesBar.Child = stack;
     }

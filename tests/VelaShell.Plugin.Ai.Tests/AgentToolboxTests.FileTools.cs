@@ -500,10 +500,10 @@ public sealed partial class AgentToolboxTests
 
             Assert.HasCount(5, changes, "建目录不是文件改动,不发事件");
             Assert.AreEqual(new FileChange("write_local_file", "local:local", "a.txt", FileChangeKind.Created, null, "one\n"), changes[0]);
-            Assert.AreEqual(new FileChange("write_local_file", "local:local", "a.txt", FileChangeKind.Modified, "one\n", "two\n"), changes[1]);
-            Assert.AreEqual(new FileChange("patch_local_file", "local:local", "a.txt", FileChangeKind.Modified, "two\n", "three\n"), changes[2]);
-            Assert.AreEqual(new FileChange("rename_local_path", "local:local", "b.txt", FileChangeKind.Renamed, "three\n", "three\n", "a.txt"), changes[3]);
-            Assert.AreEqual(new FileChange("delete_local_path", "local:local", "b.txt", FileChangeKind.Deleted, "three\n", null), changes[4]);
+            Assert.AreEqual(new FileChange("write_local_file", "local:local", "a.txt", FileChangeKind.Modified, "one\n", "two\n") { BeforeHasBom = false }, changes[1]);
+            Assert.AreEqual(new FileChange("patch_local_file", "local:local", "a.txt", FileChangeKind.Modified, "two\n", "three\n") { BeforeHasBom = false }, changes[2]);
+            Assert.AreEqual(new FileChange("rename_local_path", "local:local", "b.txt", FileChangeKind.Renamed, "three\n", "three\n", "a.txt") { BeforeHasBom = false }, changes[3]);
+            Assert.AreEqual(new FileChange("delete_local_path", "local:local", "b.txt", FileChangeKind.Deleted, "three\n", null) { BeforeHasBom = false }, changes[4]);
         }
         finally
         {
@@ -558,9 +558,9 @@ public sealed partial class AgentToolboxTests
 
         Assert.HasCount(4, changes);
         Assert.AreEqual(new FileChange("write_remote_file", location, "/etc/app.conf", FileChangeKind.Created, null, "a=1\n"), changes[0]);
-        Assert.AreEqual(new FileChange("write_remote_file", location, "/etc/app.conf", FileChangeKind.Modified, "a=1\n", "a=2\n"), changes[1]);
-        Assert.AreEqual(new FileChange("patch_remote_file", location, "/etc/app.conf", FileChangeKind.Modified, "a=2\n", "a=3\n"), changes[2]);
-        Assert.AreEqual(new FileChange("rename_remote_path", location, "/etc/app.conf.bak", FileChangeKind.Renamed, "a=3\n", "a=3\n", "/etc/app.conf"), changes[3]);
+        Assert.AreEqual(new FileChange("write_remote_file", location, "/etc/app.conf", FileChangeKind.Modified, "a=1\n", "a=2\n") { BeforeHasBom = false }, changes[1]);
+        Assert.AreEqual(new FileChange("patch_remote_file", location, "/etc/app.conf", FileChangeKind.Modified, "a=2\n", "a=3\n") { BeforeHasBom = false }, changes[2]);
+        Assert.AreEqual(new FileChange("rename_remote_path", location, "/etc/app.conf.bak", FileChangeKind.Renamed, "a=3\n", "a=3\n", "/etc/app.conf") { BeforeHasBom = false }, changes[3]);
     }
 
     /// <summary>子 Agent 的改动也要汇总到聊天面板:子工具箱没有自己的订阅时沿用父工具箱的。</summary>

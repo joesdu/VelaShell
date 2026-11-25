@@ -26,7 +26,12 @@ public enum DiffLineKind
 /// <param name="NewNumber">新文本里的行号(从 1 起);删除行与折叠行为 0。</param>
 /// <param name="Text">行内容(不含换行符);折叠行为空。</param>
 /// <param name="HiddenCount">折叠行藏起来的行数;其它种类为 0。</param>
-public sealed record DiffLine(DiffLineKind Kind, int OldNumber, int NewNumber, string Text, int HiddenCount = 0);
+public sealed record DiffLine(DiffLineKind Kind, int OldNumber, int NewNumber, string Text, int HiddenCount = 0)
+{
+    internal int HiddenStart { get; init; } = -1;
+}
+
+internal readonly record struct DiffTextSpan(int Start, int Length);
 
 /// <summary>一次行级比对的结果:逐行对齐的全量结果,外加增删统计与「只留改动附近几行」的折叠视图。</summary>
 public sealed class LineDiffResult
@@ -39,6 +44,29 @@ public sealed class LineDiffResult
             if (line.Kind == DiffLineKind.Added) Added++;
             else if (line.Kind == DiffLineKind.Removed) Removed++;
         }
+    }
+
+    internal (Dictionary<int, DiffTextSpan> Old, Dictionary<int, DiffTextSpan> New) ChangedSpans()
+    {
+        var oldSpans = new Dictionary<int, DiffTextSpan>();
+        var newSpans = new Dictionary<int, DiffTextSpan>();
+        int i = 0;
+        while (i < Lines.Count)
+        {
+            if (Lines[i].Kind != DiffLineKind.Removed) { i++; continue; }
+            int start = i;
+            while (i < Lines.Count && Lines[i].Kind == DiffLineKind.Removed) i++;
+            int pairs = Math.Min(i - start, Lines.Count - i);
+            for (int offset = 0; offset < pairs; offset++)
+            {
+                DiffLine oldLine = Lines[start + offset], newLine = Lines[i + offset];
+                if (newLine.Kind != DiffLineKind.Added) break;
+                var (oldSpan, newSpan) = LineDiff.InlineSpans(oldLine.Text, newLine.Text);
+                if (oldSpan.Length > 0) oldSpans.Add(oldLine.OldNumber, oldSpan);
+                if (newSpan.Length > 0) newSpans.Add(newLine.NewNumber, newSpan);
+            }
+        }
+        return (oldSpans, newSpans);
     }
 
     /// <summary>全量对齐结果(只有 Context / Added / Removed,不含折叠行)。</summary>
@@ -80,7 +108,7 @@ public sealed class LineDiffResult
             {
                 if (hidden > 0)
                 {
-                    result.Add(new DiffLine(DiffLineKind.Gap, 0, 0, "", hidden));
+                    result.Add(new DiffLine(DiffLineKind.Gap, 0, 0, "", hidden) { HiddenStart = i - hidden });
                     hidden = 0;
                 }
                 result.Add(Lines[i]);
@@ -92,7 +120,7 @@ public sealed class LineDiffResult
         }
         if (hidden > 0)
         {
-            result.Add(new DiffLine(DiffLineKind.Gap, 0, 0, "", hidden));
+            result.Add(new DiffLine(DiffLineKind.Gap, 0, 0, "", hidden) { HiddenStart = count - hidden });
         }
         return result;
     }
@@ -210,26 +238,32 @@ public static class LineDiff
     /// <summary>比对两段文本(null 视为空)。</summary>
     /// <param name="before">旧文本。</param>
     /// <param name="after">新文本。</param>
-    public static LineDiffResult Compute(string? before, string? after)
-        => Compute(SplitLines(before), SplitLines(after));
+    public static LineDiffResult Compute(string? before, string? after) => Compute(before, after, false);
+
+    internal static LineDiffResult Compute(string? before, string? after, bool ignoreWhitespace)
+        => Compute(SplitLines(before), SplitLines(after), ignoreWhitespace);
 
     /// <summary>比对两组行。</summary>
     /// <param name="a">旧行。</param>
     /// <param name="b">新行。</param>
-    public static LineDiffResult Compute(IReadOnlyList<string> a, IReadOnlyList<string> b)
+    public static LineDiffResult Compute(IReadOnlyList<string> a, IReadOnlyList<string> b) => Compute(a, b, false);
+
+    private static LineDiffResult Compute(IReadOnlyList<string> a, IReadOnlyList<string> b, bool ignoreWhitespace)
     {
         int n = a.Count, m = b.Count;
+        IReadOnlyList<string> oldKeys = ignoreWhitespace ? a.Select(line => line.Trim()).ToArray() : a;
+        IReadOnlyList<string> newKeys = ignoreWhitespace ? b.Select(line => line.Trim()).ToArray() : b;
         int prefix = 0;
-        while (prefix < n && prefix < m && string.Equals(a[prefix], b[prefix], StringComparison.Ordinal)) prefix++;
+        while (prefix < n && prefix < m && string.Equals(oldKeys[prefix], newKeys[prefix], StringComparison.Ordinal)) prefix++;
         int suffix = 0;
-        while (suffix < n - prefix && suffix < m - prefix && string.Equals(a[n - 1 - suffix], b[m - 1 - suffix], StringComparison.Ordinal))
+        while (suffix < n - prefix && suffix < m - prefix && string.Equals(oldKeys[n - 1 - suffix], newKeys[m - 1 - suffix], StringComparison.Ordinal))
         {
             suffix++;
         }
 
         var ops = new List<Op>(n + m);
         for (int i = 0; i < prefix; i++) ops.Add(Op.Equal);
-        ops.AddRange(Middle(a, prefix, n - suffix, b, prefix, m - suffix));
+        ops.AddRange(Middle(oldKeys, prefix, n - suffix, newKeys, prefix, m - suffix));
         for (int i = 0; i < suffix; i++) ops.Add(Op.Equal);
         Reorder(ops);
 
@@ -346,7 +380,34 @@ public static class LineDiff
         static int At(int[] snapshot, int d, int k) => snapshot[k + d];
     }
 
-    /// <summary>每一段连续的改动里把删除行挪到新增行前面(git 的习惯),相对顺序不变。</summary>
+    /// <summary>
+    /// 共同前后缀之间的片段用于行内强调。极长行仅保留整行底色。
+    /// </summary>
+    internal static (DiffTextSpan Old, DiffTextSpan New) InlineSpans(string oldText, string newText)
+    {
+        const int maxLength = 16_000;
+        if (oldText.Length > maxLength || newText.Length > maxLength || string.Equals(oldText, newText, StringComparison.Ordinal))
+        {
+            return default;
+        }
+        int prefix = 0;
+        while (prefix < oldText.Length && prefix < newText.Length && oldText[prefix] == newText[prefix]) prefix++;
+        int oldEnd = oldText.Length;
+        int newEnd = newText.Length;
+        while (oldEnd > prefix && newEnd > prefix && oldText[oldEnd - 1] == newText[newEnd - 1])
+        {
+            oldEnd--;
+            newEnd--;
+        }
+        if (prefix > 0 && prefix < oldText.Length && char.IsLowSurrogate(oldText[prefix])) prefix--;
+        if (oldEnd < oldText.Length && char.IsLowSurrogate(oldText[oldEnd]))
+        {
+            oldEnd++;
+            newEnd++;
+        }
+        return (new(prefix, oldEnd - prefix), new(prefix, newEnd - prefix));
+    }
+
     private static void Reorder(List<Op> ops)
     {
         int i = 0;

@@ -1084,6 +1084,12 @@
   <data name="Editor_DiscardAndClose" xml:space="preserve">
     <value>破棄して閉じる</value>
   </data>
+  <data name="Editor_CaretStatus" xml:space="preserve">
+    <value>行 {0}、列 {1}</value>
+  </data>
+  <data name="Editor_WordWrap" xml:space="preserve">
+    <value>折り返し</value>
+  </data>
   <data name="Editor_LoadedStatusFallback" xml:space="preserve">
     <value>{0} バイトを読み込みました —— 正しい UTF-8 ではないため {1} として解釈しました</value>
   </data>

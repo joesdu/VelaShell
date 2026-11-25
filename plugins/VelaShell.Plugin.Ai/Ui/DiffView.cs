@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
@@ -41,10 +42,14 @@ internal sealed class DiffView : DockPanel
     private readonly double _numberWidth;
     private readonly bool _numbers;
     private readonly ToolFileDiff _diff;
-    private readonly int _context;
+    private readonly IReadOnlyList<DiffLine>[] _collapsed;
+    private readonly (Dictionary<int, DiffTextSpan> Old, Dictionary<int, DiffTextSpan> New)[] _changed;
+    private readonly Dictionary<(int Section, int Start), int> _expanded = [];
+    private readonly int _collapsedRowCount;
     private readonly string? _languagePath;
     private ThemeVariant? _builtFor;
-    private int _rendered;
+
+    internal event Action? RowsChanged;
 
     /// <summary>每段的旧 / 新两侧逐行着色(按段内行号 - 1 取);拿不到为 null。</summary>
     private (IReadOnlyList<HighlightSpan>[]? Old, IReadOnlyList<HighlightSpan>[]? New)[] _highlights = [];
@@ -70,7 +75,9 @@ internal sealed class DiffView : DockPanel
     {
         _loc = loc;
         _diff = diff;
-        _context = context;
+        _collapsed = [.. diff.Sections.Select(section => section.Collapse(context))];
+        _collapsedRowCount = _collapsed.Sum(section => section.Count) + Math.Max(0, _collapsed.Count(section => section.Count > 0) - 1);
+        _changed = [.. diff.Sections.Select(section => section.ChangedSpans())];
         _languagePath = languagePath ?? diff.Path;
         Name = "DiffView";
         _numbers = diff.HasLineNumbers;
@@ -118,8 +125,6 @@ internal sealed class DiffView : DockPanel
     private void BuildRows(ThemeVariant? variant)
     {
         _builtFor = variant;
-        _rendered = 0;
-        Rows.Children.Clear();
         TextMateSharp.Grammars.ThemeName theme = TextMateHighlighter.ThemeFor(variant);
         _highlights = [.. _diff.Sections.Select(section =>
         {
@@ -129,37 +134,77 @@ internal sealed class DiffView : DockPanel
                     TextMateHighlighter.HighlightLines(newLines, _languagePath, theme));
         })];
 
-        var sections = new List<(int Index, IReadOnlyList<DiffLine> Lines)>();
-        for (int i = 0; i < _diff.Sections.Count; i++)
+        RenderRows();
+    }
+
+    private IEnumerable<(int Section, DiffLine? Line)> VisibleRows()
+    {
+        bool first = true;
+        for (int section = 0; section < _collapsed.Length; section++)
         {
-            IReadOnlyList<DiffLine> collapsed = _diff.Sections[i].Collapse(_context);
-            if (collapsed.Count > 0) sections.Add((i, collapsed));
-        }
-        int total = sections.Sum(l => l.Lines.Count);
-        for (int s = 0; s < sections.Count && _rendered < total; s++)
-        {
-            if (s > 0)
+            if (_collapsed[section].Count == 0) continue;
+            if (!first) yield return (section, null); // 补丁片段之间没有原文可展开
+            first = false;
+            foreach (DiffLine line in _collapsed[section])
             {
-                // 补丁的几处替换之间:不知道隔了多少行,只画一行 ⋯
-                Rows.Children.Add(GapRow("⋯"));
-            }
-            foreach (DiffLine line in sections[s].Lines)
-            {
-                if (_rendered >= MaxRenderedLines)
+                yield return (section, line);
+                if (line.Kind != DiffLineKind.Gap || !_expanded.ContainsKey((section, line.HiddenStart))) continue;
+                for (int i = 0; i < line.HiddenCount; i++)
                 {
-                    Rows.Children.Add(GapRow(_loc.F("DiffTruncated", total - _rendered)));
-                    _rendered = total;
-                    break;
+                    yield return (section, _diff.Sections[section].Lines[line.HiddenStart + i]);
                 }
-                Rows.Children.Add(line.Kind == DiffLineKind.Gap
-                    ? GapRow("⋯ " + _loc.F("DiffHiddenLines", line.HiddenCount))
-                    : LineRow(line, SpansFor(sections[s].Index, line)));
-                _rendered++;
             }
         }
-        if (sections.Count == 0)
+    }
+
+    private void RenderRows(int keep = 0)
+    {
+        // 保留点过的按钮与它上面的行,键盘焦点和滚动位置都留在原处。
+        Rows.Children.RemoveRange(keep, Rows.Children.Count - keep);
+        foreach ((int section, DiffLine? line) in VisibleRows().Take(MaxRenderedLines).Skip(keep))
         {
-            Rows.Children.Add(GapRow(_loc["DiffNoChanges"]));
+            Rows.Children.Add(line switch
+            {
+                null => GapRow("⋯"),
+                { Kind: DiffLineKind.Gap } => FoldRow(section, line),
+                _ => LineRow(section, line)
+            });
+        }
+        int total = _collapsedRowCount + _expanded.Values.Sum();
+        if (total > MaxRenderedLines) Rows.Children.Add(GapRow(_loc.F("DiffTruncated", total - MaxRenderedLines)));
+        if (total == 0) Rows.Children.Add(GapRow(_loc["DiffNoChanges"]));
+        RowsChanged?.Invoke();
+    }
+
+    private ToggleButton FoldRow(int section, DiffLine gap)
+    {
+        var key = (section, gap.HiddenStart);
+        string label = _loc.F("DiffHiddenLines", gap.HiddenCount);
+        var toggle = new ToggleButton
+        {
+            Classes = { "diffGap" },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(_numbers ? _numberWidth * 2 + 16 : 16, 1, 8, 1),
+            BorderThickness = new Thickness(0)
+        };
+        toggle[!TemplatedControl.BackgroundProperty] = new DynamicResourceExtension("VelaBgHover");
+        AutomationProperties.SetName(toggle, label);
+        UpdateLabel();
+        toggle.Click += (_, e) =>
+        {
+            e.Handled = true;
+            if (!_expanded.Remove(key)) _expanded.Add(key, gap.HiddenCount);
+            UpdateLabel();
+            RenderRows(Rows.Children.IndexOf(toggle) + 1);
+        };
+        return toggle;
+
+        void UpdateLabel()
+        {
+            bool open = _expanded.ContainsKey(key);
+            toggle.IsChecked = open;
+            toggle.Content = Mono((open ? "▾ " : "▸ ") + label, "VelaTextSecondary");
         }
     }
 
@@ -176,9 +221,9 @@ internal sealed class DiffView : DockPanel
     /// <summary>
     /// 把一行文本按着色段拆成若干 Run(制表符展开成 4 个空格);没有着色的部分沿用 TextBlock 自己的前景色。
     /// </summary>
-    internal static void ApplySpans(TextBlock block, string text, IReadOnlyList<HighlightSpan>? spans)
+    internal static void ApplySpans(TextBlock block, string text, IReadOnlyList<HighlightSpan>? spans, DiffTextSpan changed = default)
     {
-        if (spans is not { Count: > 0 } || text.Length == 0)
+        if ((spans is not { Count: > 0 } && changed.Length == 0) || text.Length == 0)
         {
             block.Text = text.Length == 0 ? " " : Expand(text);
             return;
@@ -186,15 +231,31 @@ internal sealed class DiffView : DockPanel
         block.Text = null;
         var inlines = new InlineCollection();
         int at = 0;
-        foreach (HighlightSpan span in spans)
+        foreach (HighlightSpan span in spans ?? [])
         {
             if (span.Start < at || span.Start + span.Length > text.Length) continue;
-            if (span.Start > at) inlines.Add(new Run(Expand(text[at..span.Start])));
-            inlines.Add(new Run(Expand(text.Substring(span.Start, span.Length))) { Foreground = span.Brush });
+            AddRuns(at, span.Start, null);
             at = span.Start + span.Length;
+            AddRuns(span.Start, at, span.Brush);
         }
-        if (at < text.Length) inlines.Add(new Run(Expand(text[at..])));
+        AddRuns(at, text.Length, null);
         block.Inlines = inlines;
+
+        // 字符差异只加下划线,保留 TextMate 的前景色。按原始下标切好再展开制表符。
+        void AddRuns(int start, int end, IBrush? brush)
+        {
+            while (start < end)
+            {
+                bool underline = start >= changed.Start && start < changed.Start + changed.Length;
+                int next = start < changed.Start ? Math.Min(end, changed.Start)
+                    : underline ? Math.Min(end, changed.Start + changed.Length) : end;
+                var run = new Run(Expand(text[start..next]));
+                if (brush is not null) run.Foreground = brush;
+                if (underline) run.TextDecorations = TextDecorations.Underline;
+                inlines.Add(run);
+                start = next;
+            }
+        }
 
         static string Expand(string s) => s.Replace("\t", "    ", StringComparison.Ordinal);
     }
@@ -239,7 +300,7 @@ internal sealed class DiffView : DockPanel
         return header;
     }
 
-    private Panel LineRow(DiffLine line, IReadOnlyList<HighlightSpan>? spans)
+    private Panel LineRow(int section, DiffLine line)
     {
         var grid = new Grid { ColumnDefinitions = [with("Auto,Auto,Auto,*")] };
         string tone = line.Kind switch
@@ -264,7 +325,13 @@ internal sealed class DiffView : DockPanel
         Grid.SetColumn(prefix, 2);
         grid.Children.Add(prefix);
         TextBlock text = Mono("", line.Kind == DiffLineKind.Context ? "VelaTextSecondary" : "VelaTextPrimary");
-        ApplySpans(text, line.Text, spans);
+        DiffTextSpan changed = line.Kind switch
+        {
+            DiffLineKind.Removed => _changed[section].Old.GetValueOrDefault(line.OldNumber),
+            DiffLineKind.Added => _changed[section].New.GetValueOrDefault(line.NewNumber),
+            _ => default
+        };
+        ApplySpans(text, line.Text, SpansFor(section, line), changed);
         text.Margin = new Thickness(0, 0, 8, 0);
         Grid.SetColumn(text, 3);
         grid.Children.Add(text);

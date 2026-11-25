@@ -1220,11 +1220,11 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             }
             bool existed = File.Exists(localPath.FullPath);
             bool keepBom = existed && LocalFileHasUtf8Bom(localPath.FullPath);
-            string? before = existed && FileChangedHandler is not null ? TryReadLocalTextForEvent(localPath.FullPath) : null;
+            string? before = existed && FileChangedHandler is not null ? TryReadLocalTextForEvent(localPath.FullPath, out _) : null;
             await WriteLocalTextAsync(localPath.FullPath, content, keepBom, cancellationToken)
                 .ConfigureAwait(false);
             RaiseFileChanged(new FileChange("write_local_file", LocalLocation(localPath), localPath.RelativePath,
-                existed ? FileChangeKind.Modified : FileChangeKind.Created, before, content));
+                existed ? FileChangeKind.Modified : FileChangeKind.Created, before, content) { BeforeHasBom = existed ? keepBom : null });
             return $"Wrote {byteCount} bytes to {localPath.RelativePath}.";
         }
         catch (Exception ex)
@@ -1300,7 +1300,7 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             await WriteLocalTextAsync(localPath.FullPath, patched, hasBom, cancellationToken)
                 .ConfigureAwait(false);
             RaiseFileChanged(new FileChange("patch_local_file", LocalLocation(localPath), localPath.RelativePath,
-                FileChangeKind.Modified, original, patched));
+                FileChangeKind.Modified, original, patched) { BeforeHasBom = hasBom });
             return DescribePatchResult(localPath.RelativePath, original, patched, editList, replacements);
         }
         catch (Exception ex)
@@ -1392,9 +1392,9 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
                 // 只为文件发事件:目录改名牵动的是一整棵子树,逐个文件报既贵又不准
                 if (FileChangedHandler is not null)
                 {
-                    string? text = TryReadLocalTextForEvent(destination.FullPath);
+                    string? text = TryReadLocalTextForEvent(destination.FullPath, out bool? hasBom);
                     RaiseFileChanged(new FileChange("rename_local_path", LocalLocation(destination), destination.RelativePath,
-                        FileChangeKind.Renamed, text, text, source.RelativePath));
+                        FileChangeKind.Renamed, text, text, source.RelativePath) { BeforeHasBom = hasBom });
                 }
             }
             return $"Renamed {source.RelativePath} → {destination.RelativePath}.";
@@ -1444,10 +1444,11 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             }
             else
             {
-                string? before = FileChangedHandler is not null ? TryReadLocalTextForEvent(localPath.FullPath) : null;
+                bool? hasBom = null;
+                string? before = FileChangedHandler is not null ? TryReadLocalTextForEvent(localPath.FullPath, out hasBom) : null;
                 File.Delete(localPath.FullPath);
                 RaiseFileChanged(new FileChange("delete_local_path", LocalLocation(localPath), localPath.RelativePath,
-                    FileChangeKind.Deleted, before, null));
+                    FileChangeKind.Deleted, before, null) { BeforeHasBom = hasBom });
             }
             return $"Deleted {localPath.RelativePath}.";
         }
@@ -2027,13 +2028,13 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
         }
         try
         {
-            (bool existed, _, string? before) = FileChangedHandler is not null
+            (bool existed, _, string? before, bool? keepBom) = FileChangedHandler is not null
                 ? await TryReadRemoteTextForEventAsync(id, path, cancellationToken).ConfigureAwait(false)
-                : (false, false, null);
+                : (false, false, null, null);
             await context.RemoteFs.WriteAllBytesAsync(id, path, Encoding.UTF8.GetBytes(content), cancellationToken)
                          .ConfigureAwait(false);
             RaiseFileChanged(new FileChange("write_remote_file", RemoteLocation(id), path,
-                existed ? FileChangeKind.Modified : FileChangeKind.Created, before, content));
+                existed ? FileChangeKind.Modified : FileChangeKind.Created, before, content) { BeforeHasBom = existed ? keepBom : null });
             return $"Wrote {Encoding.UTF8.GetByteCount(content)} bytes to {path}.";
         }
         catch (Exception ex)
@@ -2073,10 +2074,14 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             return editError;
         }
         string original;
+        string? beforeSnapshot;
+        bool hadBom;
         try
         {
             byte[] bytes = await context.RemoteFs.ReadAllBytesAsync(id, path, MaxFileBytes, cancellationToken).ConfigureAwait(false);
             original = Encoding.UTF8.GetString(bytes);
+            beforeSnapshot = FileChangedHandler is not null ? DecodeStrictUtf8(bytes) : null;
+            hadBom = bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble);
         }
         catch (InvalidOperationException)
         {
@@ -2106,7 +2111,7 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             await context.RemoteFs.WriteAllBytesAsync(id, path, Encoding.UTF8.GetBytes(patched), cancellationToken)
                          .ConfigureAwait(false);
             RaiseFileChanged(new FileChange("patch_remote_file", RemoteLocation(id), path,
-                FileChangeKind.Modified, original, patched));
+                FileChangeKind.Modified, beforeSnapshot, patched.StartsWith('\uFEFF') ? patched[1..] : patched) { BeforeHasBom = hadBom });
             return DescribePatchResult(path, original, patched, editList, replacements);
         }
         catch (Exception ex)
@@ -2164,12 +2169,12 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             if (FileChangedHandler is not null)
             {
                 // 只为文件发事件(目录改名牵动整棵子树);内容不变,改动前后给同一份
-                (bool exists, bool isDirectory, string? text) =
+                (bool exists, bool isDirectory, string? text, bool? hasBom) =
                     await TryReadRemoteTextForEventAsync(id, newPath, CancellationToken.None).ConfigureAwait(false);
                 if (exists && !isDirectory)
                 {
                     RaiseFileChanged(new FileChange("rename_remote_path", RemoteLocation(id), newPath,
-                        FileChangeKind.Renamed, text, text, oldPath));
+                        FileChangeKind.Renamed, text, text, oldPath) { BeforeHasBom = hasBom });
                 }
             }
             return $"Renamed {oldPath} → {newPath}.";

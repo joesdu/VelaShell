@@ -36,4 +36,8 @@ public sealed record FileChange(
     FileChangeKind Kind,
     string? Before,
     string? After,
-    string? OldPath = null);
+    string? OldPath = null)
+{
+    /// <summary>捕获原文时记录的 UTF-8 BOM 状态，供还原时复用。</summary>
+    public bool? BeforeHasBom { get; init; }
+}

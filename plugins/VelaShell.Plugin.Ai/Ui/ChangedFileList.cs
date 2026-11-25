@@ -5,13 +5,22 @@ namespace VelaShell.Plugin.Ai.Ui;
 /// <summary>「已修改文件」列表里的一个文件:同一文件的多次改动合并成一条。</summary>
 internal sealed class ChangedFileEntry
 {
-    internal ChangedFileEntry(FileChange first)
+    internal ChangedFileList Owner { get; }
+    internal int Revision { get; private set; }
+    internal bool CanRestore { get; set; } = true;
+    internal string? ReviewError { get; set; }
+    private bool? BeforeHasBom { get; }
+    internal FileChange Snapshot() => new("review", Location, Path, Kind, Before, After, OldPath) { BeforeHasBom = BeforeHasBom };
+
+    internal ChangedFileEntry(ChangedFileList owner, FileChange first)
     {
+        Owner = owner;
         Location = first.Location;
         Path = first.Path;
         OldPath = first.Kind == FileChangeKind.Renamed ? first.OldPath : null;
         Kind = first.Kind;
         Before = first.Before;
+        BeforeHasBom = first.BeforeHasBom;
         After = first.After;
         Recompute();
     }
@@ -52,7 +61,12 @@ internal sealed class ChangedFileEntry
         _ => "M"
     };
 
-    internal void Recompute() => Diff = ToolDiff.FromTexts(Path, Before, After, Kind);
+    internal void Recompute()
+    {
+        Revision++;
+        ReviewError = null;
+        Diff = ToolDiff.FromTexts(Path, Before, After, Kind);
+    }
 }
 
 /// <summary>
@@ -97,7 +111,7 @@ internal sealed class ChangedFileList
         ChangedFileEntry? entry = Find(change.Location, change.Path);
         if (entry is null)
         {
-            entry = new ChangedFileEntry(change);
+            entry = new ChangedFileEntry(this, change);
             _entries.Add(entry);
             return entry;
         }
@@ -133,10 +147,11 @@ internal sealed class ChangedFileList
         {
             // 改名覆盖了一个也改过的文件:那一条并进来,不留两条指向同一路径
             _entries.Remove(target);
+            if (source is not null) source.CanRestore = false;
         }
         if (source is null)
         {
-            var entry = new ChangedFileEntry(change);
+            var entry = new ChangedFileEntry(this, change) { CanRestore = target is null };
             _entries.Add(entry);
             return entry;
         }
@@ -150,6 +165,8 @@ internal sealed class ChangedFileList
         source.Recompute();
         return source;
     }
+
+    internal bool Remove(ChangedFileEntry entry) => _entries.Remove(entry);
 
     /// <summary>清空。</summary>
     public void Clear() => _entries.Clear();
