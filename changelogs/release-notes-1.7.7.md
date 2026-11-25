@@ -18,7 +18,7 @@
 - **提前启用 Unix 托管 NTLM**：主程序与隔离插件宿主在启动时启用 .NET 托管 NTLM，避免其他插件先使用认证 API 后，RDP 的 NLA 认证仍选中 Linux 原生提供程序并报 `Unsupported`。
   - Linux / macOS 需要同时使用含配套修复的 RDP 插件，并完整退出、重启 VelaShell；服务器仍须允许 NTLM，无需为绕过这个客户端错误而关闭 NLA，也无需另装 `gss-ntlmssp`。
   - Windows 继续使用原有 SSPI 路径；Unix 上该开关也影响同进程其他使用 `NegotiateAuthentication` 的客户端。macOS 真实连接故障仍待日志确认，本次不宣称已完成 macOS RDP 端到端验证。
-  - 变更：`ab724220` · [PR #707](https://github.com/joesdu/VelaShell/pull/707)；配套插件变更：[velashell-plugins PR #109](https://github.com/VelaShellLabs/velashell-plugins/pull/109)
+  - 变更：`ab724220` · [PR #707](https://github.com/joesdu/VelaShell/pull/707)；配套插件变更：[velashell-plugins PR #109](https://github.com/VelaShell/velashell-plugins/pull/109)
 
 ## 🔐 安全与隐私
 
@@ -42,7 +42,7 @@
 
 - 中英文用户手册补充片段开关、保存与同步兼容性、RDP 更新与重启要求，以及对外 MCP 的 root 命令操作说明。
   - 变更：`654abe1d` · [PR #708](https://github.com/joesdu/VelaShell/pull/708)；`ab724220` · [PR #707](https://github.com/joesdu/VelaShell/pull/707)；`2ca1d7a9` · [PR #705](https://github.com/joesdu/VelaShell/pull/705)
-- velashell-docs 的配套中英文开发文档均已合并：[PR #180（MCP 提权）](https://github.com/VelaShellLabs/velashell-docs/pull/180)、[PR #182（RDP 认证）](https://github.com/VelaShellLabs/velashell-docs/pull/182)、[PR #184（代码片段）](https://github.com/VelaShellLabs/velashell-docs/pull/184)。
+- velashell-docs 的配套中英文开发文档均已合并：[PR #180（MCP 提权）](https://github.com/VelaShell/velashell-docs/pull/180)、[PR #182（RDP 认证）](https://github.com/VelaShell/velashell-docs/pull/182)、[PR #184（代码片段）](https://github.com/VelaShell/velashell-docs/pull/184)。
 - 归档上一版 1.7.6 的完整发布日志，便于历史追溯。
   - 变更：`e35b72a0` · [PR #704](https://github.com/joesdu/VelaShell/pull/704)
 

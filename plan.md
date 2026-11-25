@@ -630,7 +630,7 @@ SonnetDB **保留全局信号量**(文档与时序共用一个 Tsdb 实例,分�
 - **三、** 只导字面量别名;`Match` 整块跳过;无 `HostName` 时别名即主机名。
 - **四、** `IdentityFile` → 私钥认证;`ProxyJump` 第二趟解析、取最后一跳、成环即断。
 - **五、** 配置不存密码,预览多一态「使用密钥文件」。
-- **六、验收**:17 条用例;文档 [velashell-docs#26](https://github.com/VelaShellLabs/velashell-docs/pull/26) 新开「会话导入」一篇。
+- **六、验收**:17 条用例;文档 [velashell-docs#26](https://github.com/VelaShell/velashell-docs/pull/26) 新开「会话导入」一篇。
 
 
 ## ✅ 59. 2026-09-09 选区对比度再抬一档:暗底 20 / 亮底 16,两个数不该相同(用户反馈)
@@ -1955,7 +1955,7 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **动态策略与恢复**：accept/check 由服务器当前应答决定，不保存模式、批准结果、checkPeriod 或链接；同一配置/进程可在连续握手中经历 accept→check→accept。等待中更新 URI 使用同一窗口，旧动作不串到其它尝试；现有连接由服务器决定是否终止。终端/SFTP 的当前跳失败不进入目标密码重试，终端和隧道认证暂停阻止唤醒、旧倒计时、代理变更与刷新反复触发验证；手动尝试始终允许，成功才解除。隧道先完成认证再移除旧服务记录，取消保留定义。
 - **已执行验证**：步骤1 Core 114、Infrastructure 57、宿主 123 项；步骤2真实环回协议/动态握手/URI 66、banner 8、headless 等待窗 10 项；步骤3消费者 211 项全部通过，无跳过。Debug 全解构建成功；全量回归 7848 通过、163 跳过、1 失败：`PrivateKeyWriteTests.真ssh_keygen读得出本库写的私钥` 被 Windows OpenSSH 因临时文件继承的 UNKNOWN SID ACL 过宽拒绝。未修改无关权限或测试；TestContext 的环境早退未计作互操作验收。
 - **桌面与真实服务边界**：隔离数据启动实际应用，核对五段认证选择及材料显隐；原生等待窗检查英文暗色、中文亮色实际截图与读屏名称，显示不等待验证、程序性 End 收窗且不触发用户取消。窗口输入用明确的演示链接，不是实际 Tailscale 登录。实施初期 Linux peer 的 TCP22 与 tailnet ping 无响应，未进入该轮认证；后续用户已明确确认实际桌面运行连接 Tailscale 测试通过，据此记录实际连接通过，不再把旧节点不可达作为当前阻塞。该确认不扩大为未逐项记录的 check/MFA、管理面板热变、checkPeriod 或撤销权限测试均已验收，也不用协议模拟冒充真实策略验收。
-- **文档**：中英文「交互与界面规格」及「会话导入」已同步，相对链接检查通过；[velashell-docs PR #125](https://github.com/VelaShellLabs/velashell-docs/pull/125)。`feature-plan.md` 无对应 Tailscale 待办条目，保持不变。
+- **文档**：中英文「交互与界面规格」及「会话导入」已同步，相对链接检查通过；[velashell-docs PR #125](https://github.com/VelaShell/velashell-docs/pull/125)。`feature-plan.md` 无对应 Tailscale 待办条目，保持不变。
 
 ## 211. 2026-10-15 选区同文高亮(#628 第 2 项)
 
@@ -2004,7 +2004,7 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - 高亮样式与补全弹层同款(bg-active + 2px 强调色左边条);快捷键目录新增「填入共享密码」一组(Down / Up / Enter / Esc,五份 resx)。
 **顺带**:`Picker_CancelWhileReading_DoesNotSendLateResult` 原先在窗口第一轮调度之前就喂提示,列表根本没弹,点选什么都没做,「迟到的密码没发出去」是空断言(§214 以为它跟着受益,其实没跑到那条路径)。补一轮调度,并断言弹层确实打开、读取确实发起。
 **验证**:新增 7 行提示识别用例(git/svn 引号对象含冒号、`Username for` 不认、尾随输入不认等)与 5 条视图用例(折行提示与陈旧折行标志、↑↓ 只挪高亮不读不发、Enter 填入不带回车且下一个 Enter 才提交、无高亮 Enter 直通终端、读取在途吞掉 Enter、点中已高亮行仍能填入)。逐项回退修复验证用例会失败:回退正则、回退逻辑行、去掉光标行兜底、去掉键位处理、去掉按下撤高亮,对应用例均失败。`SharedPasswordFill` 44 项通过;Debug 全解构建 0 警告 / 0 错误;宿主全量 2256 项通过 / 11 项因平台、发布或 shell 环境跳过;终端 551 项通过;`Doc_ListsEveryCatalogEntry` 指向改后的文档实际执行通过。未在真实 Linux 桌面上对 git 远端做人工验收。
-**文档**:同步 velashell-docs 中英文「交互与界面规格」§5.2.1 与「快捷键参考」,[velashell-docs PR #132](https://github.com/VelaShellLabs/velashell-docs/pull/132)。
+**文档**:同步 velashell-docs 中英文「交互与界面规格」§5.2.1 与「快捷键参考」,[velashell-docs PR #132](https://github.com/VelaShell/velashell-docs/pull/132)。
 
 ## ✅ 216. 2026-10-19 跟随终端目录:su / sudo 切进新 shell 后就不跟了(#637,用户反馈)
 
@@ -2017,7 +2017,7 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - 测试靶子 `ssh-shells` 加装 `sudo`(vela-bash 免密)与 `busybox-suid`(Alpine 的 busybox 默认不带 setuid,普通用户敲 su 只会得到 "must be suid")。
 **不补的情形**:密码提示、跑着的脚本或命令、REPL 与 vim / less / top、`ssh` 到别的机器与 `docker exec`(那些目录不在 SFTP 看得到的这台机器上)、tmux / screen 里的 shell。代价是在没有上报的回车之后多一次 exec 往返:装了钩子的 bash / zsh / sh 每个提示符都上报,平时走不到;走到的是 REPL、长命令与 fish(它的钩子只在目录变化时报)。
 **验证**:探针先在 Debian 13(dash 作 `/bin/sh`、sudo `use_pty`)真机上跑过 `su - node`、`sudo -i`、`sudo su -` 后敲 `zsh`、`su node`、`ssh` 出去几种形态,判定用例直接取这些真实输出;`ForegroundShellProbeTests` 57 项、`NestedShellFollowerTests` 14 项、桥 3 项;Docker 端到端 `ShellIntegrationDockerTests` 新增 8 项(五种登录 shell 下认出自己、su 问密码时认不出、su 进去后认出并补注后跟随、sudo 经中转终端认出、卡在 `read` 的脚本不认),`NestedShellFollowDockerTests` 走宿主整条链路:只在终端里敲 `su - vela-zsh` 与密码,新 shell 的目录自动报上来,`cd`、`exit` 之后都照样跟 —— 去掉补注这条用例就停在"新 shell 的首报"上,即 #637 本身。全量:Core 1026 通过 / 16 跳过,Terminal 554,ShellIntegration 46(无跳过),宿主 2271 通过 / 11 跳过;构建 0 警告。
-**文档**:velashell-docs 中英文「交互与界面规格」§6 补上「跟随终端目录」一条(此前文档里没有),[velashell-docs PR #133](https://github.com/VelaShellLabs/velashell-docs/pull/133)。
+**文档**:velashell-docs 中英文「交互与界面规格」§6 补上「跟随终端目录」一条(此前文档里没有),[velashell-docs PR #133](https://github.com/VelaShell/velashell-docs/pull/133)。
 
 ## ✅ 217. 2026-10-19 AI 插件:Base URL 换到另一台主机时,旧 Key 不再跟过去(#582 复审遗留)
 
@@ -2086,7 +2086,7 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **选区同文高亮与共享密码填入(#632 / #633 / #642)**:拖过行尾的选区按 `LastNonBlank` 收尾;查询不足 2 个字素不高亮,单字只在本身是整词时生效且只匹配整词;`BufferSearch.FindVisible` 把视口内相邻的软换行行接起来找,命中按行切段(Ctrl+F 不变)。弹层锚点改为 `GetCursorRect().Inflate(0, 2)` 并去掉 `VerticalOffset`(Avalonia 翻转时 offset 不反向,原写法翻到上方正好盖住提示行)。请求新增 `Expired`(被键入作废时收起列表、不记为拒绝)与 `PromptChanged`(输错重新提示时按新请求重开);命令面板入口先把焦点交给终端;重开前 Dispose 旧请求、订阅 `Closed` 对账;列表读取失败如实提示并写 Trace;每批输出先看光标行是否以冒号结尾,不是就不拼逻辑行、不跑正则。
 **留待维护者定**(已记入 `feature-plan.md`):AI `store` 默认值、复用窗口时「管理登录」同样会掐登录、桥接模型被手动删除后静默换到别家、「8 批」上限实际到不了(100 ÷ 25)、审批框批准键是否加延迟启用、SDK `RpcConnection.WriteAsync` 取消落在写帧中途可能写出半帧;防空闲 NUL 与同步输入不走 TypedInput,密码列表不会主动收起;补全弹层同样的 `VerticalOffset` 翻转问题;「复制配置」用树缓存副本可能缺收藏。
 **验证**:每组新增用例都在临时撤掉对应修复后确认会失败。集成分支按 CI 口径(`scripts/ci/run-tests.sh`,排除 DockerIntegration / CrossPlatform / Interop)全量 8249 通过 / 0 失败 / 28 跳过(平台、Docker、Interop 条件用例);另在 ssh-sudo 靶机上真跑 `VelaShell.Sudo.Kernel.Tests` 24 项全过。Debug 全解 `-warnaserror` 0 警告;`EnforceCodeStyleInBuild` 下本次新增代码零告警(基线另有 107 处 IDE0055 等,多来自 #631,未在本次处理)。GPU 探针在 WSL Debian 13 上以 dash / bash / busybox sh 与四种 awk 真跑;sudo 包装在 ssh-sudo 靶机上以 bash / fish / tcsh 登录 shell 真跑。macOS 由 CI 覆盖(首轮暴露的两处已修:上面的 os-release,以及确认进度用例原先按固定 500ms 数补报拍数,改为等到补报出现)。
-**文档**:同步 velashell-docs 中英文「架构设计」「消息中心与资讯源」「交互与界面规格」(§5.2 / §5.2.1 / §6 / §9 / §11 / §13 / §14)、「快捷键参考」「凭据管理器集成设计」,以及插件文档 05 / 07 / 11 / 12 与「协作接入」,[velashell-docs PR #134](https://github.com/VelaShellLabs/velashell-docs/pull/134)。
+**文档**:同步 velashell-docs 中英文「架构设计」「消息中心与资讯源」「交互与界面规格」(§5.2 / §5.2.1 / §6 / §9 / §11 / §13 / §14)、「快捷键参考」「凭据管理器集成设计」,以及插件文档 05 / 07 / 11 / 12 与「协作接入」,[velashell-docs PR #134](https://github.com/VelaShell/velashell-docs/pull/134)。
 
 ## 223. 2026-10-20 AI 插件:空回复有限重试,恢复模型步骤而非工具副作用
 
@@ -2536,7 +2536,7 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 
 ## 247. 2026-10-24 插件模板:velaplugin-protocol 与 velaplugin-workspace(velashell-plugin-templates)
 
-**来由**:`feature-plan.md` 二、G 的 🟠 P1(上一轮建议第 3 条):Telnet / 串口 / Redis / S3 / DockerPanel 五个插件已把 `Protocols` 与 `Workspaces` 走通,把公共骨架沉淀成模板,第三方接新协议的成本会掉一个数量级 —— 生态能不能长起来的关键杠杆。在 velashell-plugin-templates 仓库完成(五个提交,VelaShellLabs/velashell-plugin-templates#11),本仓库没有代码改动。
+**来由**:`feature-plan.md` 二、G 的 🟠 P1(上一轮建议第 3 条):Telnet / 串口 / Redis / S3 / DockerPanel 五个插件已把 `Protocols` 与 `Workspaces` 走通,把公共骨架沉淀成模板,第三方接新协议的成本会掉一个数量级 —— 生态能不能长起来的关键杠杆。在 velashell-plugin-templates 仓库完成(五个提交,VelaShell/velashell-plugin-templates#11),本仓库没有代码改动。
 
 **骨架与业务怎么分**(逐个读五个插件之后定的):进模板的是清单字段(contributes + 惰性激活 + `hostMode: "inProcess"` + 显式的 `minSdkVersion: "2.0.4"`,用到了 `PluginIcon`)、入口生命周期(只注册、换语言重注册、停用撤注册)、插件自带的 Loc、表单声明与解析放同一个文件、Protocol* 异常族的翻译、终端会话的读泵 / 写闸 / EOF / 可唤醒的 Dispose、工作台的状态发布与按端点留存、测试工程的形态(MSTest 4.5.1 + `VelaShell.PluginSdk.Testing` + InternalsVisibleTo + 激活时校验描述符);不进的是 Telnet 协商、串口枚举与带外命令、Redis 的发现、S3 的文件协议、Docker 的隧道 API 这类业务。清单里没有权限字段(权限系统按用户决策不做),唯一的门槛是 inProcess 与 minSdkVersion,模板里写清了。两个模板都没有 `--hostMode`(协议与工作台能力只在 inProcess 下可用);插件工程在根目录,`<名称>.Tests/` 与 `tools/EchoServer.cs`(file-based app,`dotnet run --file` 的 `--file` 不能省)用 `DefaultItemExcludes` 挡在插件编译与 `.vpx` 之外;根目录不放 .slnx(同时有 .csproj 与 .slnx 时 `dotnet build` 报 MSB1011)。要改的地方在代码里标了 ✏️。
 - `velaplugin-protocol`(终端协议):注册 `ProtocolDescriptor`;`ProtocolSession` 沿用 Telnet / 串口的「读泵 + 单出口通道」,写侧串行化、掉线归一成 EOF、`DisposeAsync` 能唤醒挂着的读并带 2 秒兜底、连接超时与连不上翻成带端点的异常,另有回车改写(CR LF 粘贴算一个回车)与本地回显。测试 13 条。
@@ -3587,7 +3587,7 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **更新**:解包失败清理部分 payload;无事务记录的孤立解包内容在启动回收。应用目录租约保护解包、换版与修复,PID/启动时间标记保护等待交接的暂存;损坏事务记录、回滚未完成时保留恢复内容,下载包和可续传半截继续保留供重试。
 - **验证**:Windows 完整 Debug 解决方案严格构建通过,0 警告、0 错误。中转测试 46 通过;编辑/更新/原生 UI 组合 135 通过、2 跳过;插件与拖放组合 71 通过、3 跳过;最终更新/插件商店组合 106 通过、1 跳过(与前述组合有重叠,不累计为独立用例)。平台或符号链接权限限制的跳过不计为通过;Unix 分支留待三平台 CI 验证。
 - **跨平台校正**:首轮 CI `42025525161` 的 Windows 通过,Linux/macOS 各有四个编辑租约用例失败。编辑目录租约在 Unix 改用 `FileShare.None`,配合根目录清理锁和退休目录恢复,避免活跃编辑被误判为空闲或删除;另补清理中断恢复用例。
-- **文档**:同提交更新中英文用户手册;设计规格与插件分发文档同步于 [velashell-docs PR #198](https://github.com/VelaShellLabs/velashell-docs/pull/198),六份文档 74 条相对链接检查通过。
+- **文档**:同提交更新中英文用户手册;设计规格与插件分发文档同步于 [velashell-docs PR #198](https://github.com/VelaShell/velashell-docs/pull/198),六份文档 74 条相对链接检查通过。
 
 ## 316. 2026-11-12 Linux CI:远程编辑测试等待上传收尾
 
@@ -3816,7 +3816,7 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **恢复与存储**:入口远端目录没有记录时自动创建并选中,本地依次使用全局最近可用目录、配置下载目录、主目录,初始不勾选;已有记录时优先恢复本连接最后一次提交上传的映射(可指向其他远端目录),无提交历史则使用入口目录最近保存的一条。只有提交上传才更新最近上传 Id,浏览、切换和取消不更新。旧记录自动补稳定 Id 并保留目录及勾选,仍保存在本机 `uploadPickerState/state`。按映射 Id 串行更新,删除之后的过期写入不重新插入;存储或参数失败不阻断后续操作,关闭前排空最新写入。失效本地映射的保护及临时连接的全局记忆降级保留。
 - **上传接口与竞争处理**:增加携带本地路径、远端路径及映射 Id 的选择结果和对应选择回调;原纯路径回调、公开纯路径选择重载和拖放入口继续可用。提交后规划、空间预检和传输使用同一目标快照,不随主面板后台导航变化。切换映射时重新读取最近保存的勾选;删除与目录加载并发时同时使映射请求和本地面板旧请求失效。
 - **验证**:使用官方 .NET 11.0.100 SDK,在仓库忽略的 `artifacts/upload-mapping` 独立输出目录完成 Debug 全解决方案 `-warnaserror` 构建,0 警告 / 0 错误;上传、映射绑定、Headless UI、本地化、外框与设计约束定向 244 项通过。全量 12 个测试项目报告 11816 通过、274 显式跳过、0 失败;逐条审计输出发现另有 30 项环境早退被框架记为通过,实际执行通过 11786 项,合计 304 项跳过或环境早退(真实 SSH、Docker、Unix、跨平台发布及 X11 互操作条件不足)。宿主 3486 项和 AI 2374 项均通过。核对双栏绑定窗口及上传列表 / 图标视图截图;中英文外部规格的 56 条相对链接均可达。初次默认输出构建遇到正在运行的 VelaShell 文件锁,未关闭该程序;首次仓库外临时输出的 15 项源码扫描检查因无法定位仓库失败,改用仓库内独立输出后通过。未运行 Release 或真实远端 / macOS / Linux 实机验收。
-- **文档**:同步五份界面资源、中英文用户手册及 velashell-docs 中英文交互规格;延续互相引用的 [代码 PR #776](https://github.com/joesdu/VelaShell/pull/776) 与 [文档 PR #244](https://github.com/VelaShellLabs/velashell-docs/pull/244)。
+- **文档**:同步五份界面资源、中英文用户手册及 velashell-docs 中英文交互规格;延续互相引用的 [代码 PR #776](https://github.com/joesdu/VelaShell/pull/776) 与 [文档 PR #244](https://github.com/VelaShell/velashell-docs/pull/244)。
 ## 336. 上传映射原位标记、打开定位与左键远端联动 (2026-11-18)
 
 - **原顺序与标记**:映射栏按持久化列表的原始顺序显示,取消选中置顶及远端/本地路径排序;新增追加末尾,删除只移除对应记录。按稳定 Id 复用条目及控件,切换、勾选、刷新和保存只更新属性,不重建列表或重置滚动位置。五份资源将标记改为「上一次映射」,跟随最近成功选中的记录;最近提交上传的恢复规则保持不变。本节取代 §334/335 中映射置顶与排序的描述。
@@ -3824,7 +3824,7 @@ AI 插件上一轮整体放大的字号恢复一档:聊天正文回到 13 号,�
 - **左键联动**:只有点击映射按钮才同步打开上传窗口的主远端资源列表,包括再次点击已经选中的记录。通过内部的明确成功/失败回调复用原远端导航、历史和目录列举,不另开面板。自动恢复、新建后选中、右键管理及绑定窗口浏览不联动。取消上传窗口保留已经完成的主远端浏览,上传提交后仍固定本批目标。
 - **暂存、取消与失败**:提取本地目录的只读暂存及同步提交步骤,与普通本地导航共用目录应用逻辑。先暂存目标本地内容,远端成功后一起提交本地内容、勾选、上传目标和标记;本地失败不发远端导航,远端失败保留原本地列表对象、勾选和映射并提示。映射栏保持可点击,新选择取消旧请求;远端列举返回后检查取消令牌,防止忽略取消的后端写回过期内容。关闭时取消未完成导航,仅排空已入队存储写入,不等待忽略取消的列举,关闭后的结果作废。公开路径选择接口及存储格式未改变。
 - **验证与输出**:官方 .NET 11.0.100 的 Debug 全解决方案 `-warnaserror` 默认目录构建 0 警告 / 0 错误,输出 `src/VelaShell/bin/Debug/net11.0/VelaShell.exe`。状态、Headless UI、主远端导航、本地面板、本地化、外框与设计约束定向 303 项通过。全量 12 个测试项目报告 11830 通过、274 显式跳过、0 失败;另有 30 项 [SKIP] 环境早退被框架记为通过,实际执行通过 11800 项,合计 304 项跳过或环境早退(真实 SSH、Docker、Unix、跨平台发布与 X11 互操作条件不足)。宿主 3500 项、AI 2374 项均通过。应用源码自全量运行开始后未再修改;最后仅拆开一条测试断言中 await 的求值,之后默认 Debug 再构建 0 警告 / 0 错误并复核 303 项通过。覆盖长列表顶部/中部/末尾定位、无选中项、手动滚动、条目控件身份、同远端多映射、远端权限失败、快速点击与关闭时晚到响应。最初的旧独立输出被正在运行的程序占用;另一个独立目录构建及 302 项定向检查通过后,按用户要求回到默认输出,完成最后的快速点击用例和 303 项验证。未运行 Release 或真实远端、macOS/Linux 实机验收。
-- **文档**:同步中英文使用手册、五份界面资源及 velashell-docs 中英文交互规格;外部规格 56 条相对链接可达。继续在 [代码 PR #776](https://github.com/joesdu/VelaShell/pull/776) 与 [文档 PR #244](https://github.com/VelaShellLabs/velashell-docs/pull/244) 中互相引用。
+- **文档**:同步中英文使用手册、五份界面资源及 velashell-docs 中英文交互规格;外部规格 56 条相对链接可达。继续在 [代码 PR #776](https://github.com/joesdu/VelaShell/pull/776) 与 [文档 PR #244](https://github.com/VelaShell/velashell-docs/pull/244) 中互相引用。
 ## 337. 上传映射与主窗口外框的合并后修正 (2026-11-18)
 
 - **映射绑定不再被浏览改写**:#776 合并后,在选择器里进入子目录或其他目录,勾选保存会把当前映射的本地目录静默改成那个目录。现在 `UploadPickerStateStore.SaveSelectionAsync` 只在当前目录就是映射的本地目录时更新它的勾选,映射的本地 / 远端目录只由添加映射决定;别处的勾选只进全局最近状态。失效映射回退到其他目录时同理不改写,`_protectMapping` 随之删除。本节取代 §334–336 中「用户修改勾选后映射改为回退目录」的规则。

@@ -39686,7 +39686,7 @@
                       "fill": "$text-muted",
                       "textGrowth": "fixed-width",
                       "width": "fill_container",
-                      "content": "com.velashell.ai  •  作者:VelaShellLabs",
+                      "content": "com.velashell.ai  •  作者:VelaShell",
                       "fontFamily": "JetBrains Mono",
                       "fontSize": 10,
                       "fontWeight": "normal"
@@ -39894,7 +39894,7 @@
                       "fill": "$text-muted",
                       "textGrowth": "fixed-width",
                       "width": "fill_container",
-                      "content": "com.velashell.docker  •  作者:VelaShellLabs",
+                      "content": "com.velashell.docker  •  作者:VelaShell",
                       "fontFamily": "JetBrains Mono",
                       "fontSize": 10,
                       "fontWeight": "normal"

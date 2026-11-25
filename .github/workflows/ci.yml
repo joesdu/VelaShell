@@ -91,11 +91,11 @@ jobs:
           numbers=$(printf '%s' "$PR_BODY" | grep -oE 'velashell-docs(#|/pull/)[0-9]+' | grep -oE '[0-9]+$' | awk '!seen[$0]++' || true)
           for number in $numbers; do
             # 查询失败(号码不存在、限流)时 gh 会把错误响应打到 stdout,不能当成结果读。
-            if ! info=$(gh api "repos/VelaShellLabs/velashell-docs/pulls/$number" --jq '[.state, .head.repo.full_name, .head.ref] | @tsv' 2>/dev/null); then
+            if ! info=$(gh api "repos/VelaShell/velashell-docs/pulls/$number" --jq '[.state, .head.repo.full_name, .head.ref] | @tsv' 2>/dev/null); then
               info=""
             fi
             IFS=$'\t' read -r state repo ref <<< "$info"
-            if [ "$state" = "open" ] && [ "$repo" = "VelaShellLabs/velashell-docs" ]; then
+            if [ "$state" = "open" ] && [ "$repo" = "VelaShell/velashell-docs" ]; then
               echo "检出文档 PR #$number 的分支 $ref。"
               echo "ref=$ref" >> "$GITHUB_OUTPUT"
               exit 0
@@ -109,7 +109,7 @@ jobs:
         continue-on-error: true
         uses: actions/checkout@v7
         with:
-          repository: VelaShellLabs/velashell-docs
+          repository: VelaShell/velashell-docs
           # dev 分支与宿主同步推进时，文档改动也落在 velashell-docs/dev；否则手动触发
           # dev CI 会检出默认 main，看不到刚补的快捷键表。main 仍使用文档默认分支。
           ref: ${{ steps.docsref.outputs.ref || (github.ref_name == 'dev' && 'dev' || '') }}

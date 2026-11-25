@@ -113,8 +113,8 @@
 
 - 中英文用户手册同步说明本地 Agent、子 Agent、MCP 运行管理与连接策略、上传下载免确认、Token 用量显示、断线遮罩和空密码。
   - 变更：`15c9eba5` · [PR #732](https://github.com/joesdu/VelaShell/pull/732)；`061d8871` · [PR #735](https://github.com/joesdu/VelaShell/pull/735)；`58978b2d` · [PR #740](https://github.com/joesdu/VelaShell/pull/740)；`fd84c8a6` · [PR #741](https://github.com/joesdu/VelaShell/pull/741)
-- velashell-docs 同步插件自动化与 AI、安全威胁模型等文档：[velashell-docs PR #203](https://github.com/VelaShellLabs/velashell-docs/pull/203)、[velashell-docs PR #210](https://github.com/VelaShellLabs/velashell-docs/pull/210)。
-- 插件 SDK 2.1.9 的契约变更：[velashell-plugin-sdk PR #55](https://github.com/VelaShellLabs/velashell-plugin-sdk/pull/55)。
+- velashell-docs 同步插件自动化与 AI、安全威胁模型等文档：[velashell-docs PR #203](https://github.com/VelaShell/velashell-docs/pull/203)、[velashell-docs PR #210](https://github.com/VelaShell/velashell-docs/pull/210)。
+- 插件 SDK 2.1.9 的契约变更：[velashell-plugin-sdk PR #55](https://github.com/VelaShell/velashell-plugin-sdk/pull/55)。
 - README 新增捐赠信息。变更：`ed390563` · [PR #743](https://github.com/joesdu/VelaShell/pull/743)；`134c0b7e`、`6e4d134c` · [PR #738](https://github.com/joesdu/VelaShell/pull/738)；`a7f44a21` · [PR #739](https://github.com/joesdu/VelaShell/pull/739)
 
 ## ✅ 验证

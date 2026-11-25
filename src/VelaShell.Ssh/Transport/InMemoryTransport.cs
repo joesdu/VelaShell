@@ -13,7 +13,7 @@ namespace VelaShell.Ssh.Transport;
 /// <remarks>
 /// <para>
 /// <b>它是「协议测试不需要网络、不需要容器」这条路的地基</b>
-/// （<see href="https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/ssh/design/architecture.md">velashell-docs/zh/ssh/design/architecture.md</see> §10.2）。
+/// （<see href="https://github.com/VelaShell/velashell-docs/blob/main/zh/ssh/design/architecture.md">velashell-docs/zh/ssh/design/architecture.md</see> §10.2）。
 /// 有了它，分帧、状态机、通道窗口、SFTP 管线的绝大部分用例都能毫秒级跑完，
 /// 因而可以进每次提交的门禁 —— 而不是被排除在门禁之外、等到某次手动跑集成测试才发现问题。
 /// </para>

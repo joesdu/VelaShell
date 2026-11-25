@@ -10,11 +10,11 @@
 
 | 你想做的事 | 先读 |
 |---|---|
-| 改任何代码 | [`velashell-docs zh/host/architecture.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/host/architecture.md) —— 分层基线与**依赖方向**,这是本仓最硬的约束 |
-| 改界面 / 交互 | [`velashell-docs zh/host/交互与界面规格.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/host/交互与界面规格.md) |
-| 改终端引擎 | `velashell-docs zh/host/architecture.md` 的 Terminal Design Notes、[`velashell-docs zh/host/终端输入乱序问题分析与架构建议.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/host/终端输入乱序问题分析与架构建议.md) |
-| 改插件系统 | [`velashell-docs zh/plugins/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/plugins) 全 15 篇,尤其 [12-security-threat-model.md](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/plugins/12-security-threat-model.md) |
-| 写第三方插件 | 不用改本仓库 —— 见[插件开发指南](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/templates/dev-guide.md) |
+| 改任何代码 | [`velashell-docs zh/host/architecture.md`](https://github.com/VelaShell/velashell-docs/blob/main/zh/host/architecture.md) —— 分层基线与**依赖方向**,这是本仓最硬的约束 |
+| 改界面 / 交互 | [`velashell-docs zh/host/交互与界面规格.md`](https://github.com/VelaShell/velashell-docs/blob/main/zh/host/交互与界面规格.md) |
+| 改终端引擎 | `velashell-docs zh/host/architecture.md` 的 Terminal Design Notes、[`velashell-docs zh/host/终端输入乱序问题分析与架构建议.md`](https://github.com/VelaShell/velashell-docs/blob/main/zh/host/终端输入乱序问题分析与架构建议.md) |
+| 改插件系统 | [`velashell-docs zh/plugins/`](https://github.com/VelaShell/velashell-docs/tree/main/zh/plugins) 全 15 篇,尤其 [12-security-threat-model.md](https://github.com/VelaShell/velashell-docs/blob/main/zh/plugins/12-security-threat-model.md) |
+| 写第三方插件 | 不用改本仓库 —— 见[插件开发指南](https://github.com/VelaShell/velashell-docs/blob/main/zh/templates/dev-guide.md) |
 
 **动手前先开 Issue。** 尤其是涉及架构、新增依赖、改动终端引擎或插件契约的改动 —— 这些地方的取舍往往有历史原因(很多都写在代码注释里),先聊一句能省下双方大量返工。小修小补(拼写、明显 bug、文档)可以直接提 PR。
 
@@ -196,9 +196,9 @@ Strings.ko.resx
 
 ## 文档
 
-文档不在本仓库 —— 2026-08-30 起全部集中到 [VelaShellLabs/velashell-docs](https://github.com/VelaShellLabs/velashell-docs)。
-本仓库的那批在 [`zh/host/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/host) 与
-[`en/host/`](https://github.com/VelaShellLabs/velashell-docs/tree/main/en/host),插件系统蓝图在
+文档不在本仓库 —— 2026-08-30 起全部集中到 [VelaShell/velashell-docs](https://github.com/VelaShell/velashell-docs)。
+本仓库的那批在 [`zh/host/`](https://github.com/VelaShell/velashell-docs/tree/main/zh/host) 与
+[`en/host/`](https://github.com/VelaShell/velashell-docs/tree/main/en/host),插件系统蓝图在
 `zh/plugins/` 与 `en/plugins/`。改了代码要改文档的,去那个仓库开 PR。
 
 中英两棵树是**互为镜像**的,改了一份就要同步另一份,文件名一一对应:
@@ -214,11 +214,11 @@ README 同理:`README.md` ↔ `README.en.md`。
 
 ## 新增快捷键?先改目录
 
-快捷键有唯一事实来源:[`src/VelaShell/ViewModels/ShortcutCatalog.cs`](src/VelaShell/ViewModels/ShortcutCatalog.cs)。设置 → 快捷键页和 [`velashell-docs zh/host/快捷键参考.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/host/快捷键参考.md) 都从它取数。
+快捷键有唯一事实来源:[`src/VelaShell/ViewModels/ShortcutCatalog.cs`](src/VelaShell/ViewModels/ShortcutCatalog.cs)。设置 → 快捷键页和 [`velashell-docs zh/host/快捷键参考.md`](https://github.com/VelaShell/velashell-docs/blob/main/zh/host/快捷键参考.md) 都从它取数。
 
-加了新键位却没登记,`ShortcutCatalogTests` 会直接失败并**打印出可粘贴的 Markdown 行**。完整规则见 [`velashell-docs zh/host/快捷键参考.md`](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/host/快捷键参考.md) 的「维护约定」。
+加了新键位却没登记,`ShortcutCatalogTests` 会直接失败并**打印出可粘贴的 Markdown 行**。完整规则见 [`velashell-docs zh/host/快捷键参考.md`](https://github.com/VelaShell/velashell-docs/blob/main/zh/host/快捷键参考.md) 的「维护约定」。
 
-其中比对文档的那一条(`Doc_ListsEveryCatalogEntry`)要读到文档仓库才跑得起来:把 [velashell-docs](https://github.com/VelaShellLabs/velashell-docs) 检出到本仓库的**同级目录**,或用环境变量 `VELASHELL_DOCS_DIR` 指过去;都没有时它报 Inconclusive 跳过,不会拦住你 —— 但**改快捷键时请务必让它真的跑一次**,否则文档漏行不会有人发现。
+其中比对文档的那一条(`Doc_ListsEveryCatalogEntry`)要读到文档仓库才跑得起来:把 [velashell-docs](https://github.com/VelaShell/velashell-docs) 检出到本仓库的**同级目录**,或用环境变量 `VELASHELL_DOCS_DIR` 指过去;都没有时它报 Inconclusive 跳过,不会拦住你 —— 但**改快捷键时请务必让它真的跑一次**,否则文档漏行不会有人发现。
 
 全局键位(用户可在设置里改键、解绑)的出厂表在 [`src/VelaShell/Services/ShortcutKeymap.cs`](src/VelaShell/Services/ShortcutKeymap.cs) 的 `ShortcutBindings`,主窗口按它登记 KeyBindings —— `MainWindow.axaml` 里不许写死 `KeyBinding`,新的出厂键位也不许占 `Ctrl+字母` 这类终端控制字符,两条都有测试拦着。
 

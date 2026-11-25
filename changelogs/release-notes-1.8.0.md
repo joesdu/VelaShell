@@ -41,7 +41,7 @@
 ## 📚 文档与生态
 
 - 中英文用户手册同步说明缓存回收、自动上传关闭时的草稿保护及更新恢复边界；设计规格、SFTP 与插件分发文档已同步。
-  - 变更：`e337b78d` · [PR #722](https://github.com/joesdu/VelaShell/pull/722)；文档仓库 `b5c3a26` · [velashell-docs PR #198](https://github.com/VelaShellLabs/velashell-docs/pull/198)
+  - 变更：`e337b78d` · [PR #722](https://github.com/joesdu/VelaShell/pull/722)；文档仓库 `b5c3a26` · [velashell-docs PR #198](https://github.com/VelaShell/velashell-docs/pull/198)
 
 ## ✅ 验证
 

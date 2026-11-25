@@ -30,7 +30,7 @@ docker-compose -f docker-compose.test.yml up
 > **几条会「跳过」而不是失败的用例**，缺了外部依赖时报 Inconclusive：
 >
 > - `ShortcutCatalogTests.Doc_ListsEveryCatalogEntry` 要拿快捷键总表比对
->   [velashell-docs](https://github.com/VelaShellLabs/velashell-docs) 的 `zh/host/快捷键参考.md`。把文档仓库检出到本仓库**同级目录**即可，
+>   [velashell-docs](https://github.com/VelaShell/velashell-docs) 的 `zh/host/快捷键参考.md`。把文档仓库检出到本仓库**同级目录**即可，
 >   或用 `VELASHELL_DOCS_DIR` 指向它。
 > - `PromptHookShellTests` 要起一个真正的 `bash` 跑 SSH 目录上报钩子（那段是 shell 语义，
 >   C# 只断言得了字符串里有什么）。Linux/macOS 自带；Windows 上来自 Git for Windows。

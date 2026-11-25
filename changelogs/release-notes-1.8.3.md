@@ -31,7 +31,7 @@
 ## 🐛 修复与稳定性
 
 - **停用进程内插件后内存可以正常回收**：此前插件控件渲染过之后，停用插件时其程序集无法卸载，日志报 `load context is still alive`；现在卸载前会清理 Avalonia 以插件类型为键的属性缓存，退出程序时跳过此步骤。
-  - 插件自己登记的 Avalonia 属性需由插件自行处理：远程桌面插件已在 [velashell-plugins PR #156](https://github.com/VelaShellLabs/velashell-plugins/pull/156) 修复，Docker 面板与 MongoDB 插件尚未处理。
+  - 插件自己登记的 Avalonia 属性需由插件自行处理：远程桌面插件已在 [velashell-plugins PR #156](https://github.com/VelaShell/velashell-plugins/pull/156) 修复，Docker 面板与 MongoDB 插件尚未处理。
   - 变更：`c40f0067` · [PR #748](https://github.com/joesdu/VelaShell/pull/748)
 
 ## ⚠️ 升级说明 / 不兼容变更
@@ -43,8 +43,8 @@
 
 - 中英文用户手册同步插件管理窗口的新布局与筛选，以及 Linux 钥匙环的原理与排障说明。变更：`b52e4d27` · [PR #747](https://github.com/joesdu/VelaShell/pull/747)；`d302fd1d` · [PR #751](https://github.com/joesdu/VelaShell/pull/751)
 - `DESIGN.md` 新增插件卡片（Plugin card）组件规范。变更：`b52e4d27` · [PR #747](https://github.com/joesdu/VelaShell/pull/747)
-- velashell-docs 同步：影子副本装载（SDK 参考、开发指南、打包与分发）[velashell-docs PR #215](https://github.com/VelaShellLabs/velashell-docs/pull/215)；插件管理窗口交互规格 [velashell-docs PR #216](https://github.com/VelaShellLabs/velashell-docs/pull/216)；插件卸载与共享状态（开发指南）[velashell-docs PR #217](https://github.com/VelaShellLabs/velashell-docs/pull/217)；系统密钥链调研 [velashell-docs PR #218](https://github.com/VelaShellLabs/velashell-docs/pull/218)。
-- 远程桌面插件修复自身登记的 Avalonia 属性，配合本版实现停用后回收：[velashell-plugins PR #156](https://github.com/VelaShellLabs/velashell-plugins/pull/156)。
+- velashell-docs 同步：影子副本装载（SDK 参考、开发指南、打包与分发）[velashell-docs PR #215](https://github.com/VelaShell/velashell-docs/pull/215)；插件管理窗口交互规格 [velashell-docs PR #216](https://github.com/VelaShell/velashell-docs/pull/216)；插件卸载与共享状态（开发指南）[velashell-docs PR #217](https://github.com/VelaShell/velashell-docs/pull/217)；系统密钥链调研 [velashell-docs PR #218](https://github.com/VelaShell/velashell-docs/pull/218)。
+- 远程桌面插件修复自身登记的 Avalonia 属性，配合本版实现停用后回收：[velashell-plugins PR #156](https://github.com/VelaShell/velashell-plugins/pull/156)。
 
 ## ✅ 验证
 

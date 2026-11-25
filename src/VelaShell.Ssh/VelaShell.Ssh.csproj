@@ -20,7 +20,7 @@
     而答案永远是「引主包」。真正需要只引协议核心的场景至今一个都没有。
     扩展点靠接口开放（见 velashell-docs/zh/ssh/design/architecture.md §8），不靠拆程序集。
 
-    2026-09-23 起本库并入宿主仓库，不再单独发 NuGet（原 VelaShellLabs/velashell-ssh）。
+    2026-09-23 起本库并入宿主仓库，不再单独发 NuGet（原 VelaShell/velashell-ssh）。
     本目录仍按 MIT 授权（见同目录 LICENSE / NOTICE.md），与仓库其余部分的授权不同；
     开发纪律（净室规程、依赖纪律）见同目录 AGENTS.md。
   -->

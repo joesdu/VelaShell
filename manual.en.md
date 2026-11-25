@@ -1356,9 +1356,9 @@ These boundaries prevent mistakes. Editing files or skipping validation does not
 
 This manual uses current source and existing references below. Design/audit documents may retain older conclusions; current runtime integration and interface take precedence when they conflict.
 
-- [VelaShell documentation repository](https://github.com/VelaShellLabs/velashell-docs)
-- [Host documentation directory](https://github.com/VelaShellLabs/velashell-docs/tree/main/zh/host)
-- [Shortcut reference](https://github.com/VelaShellLabs/velashell-docs/blob/main/zh/host/快捷键参考.md)
+- [VelaShell documentation repository](https://github.com/VelaShell/velashell-docs)
+- [Host documentation directory](https://github.com/VelaShell/velashell-docs/tree/main/zh/host)
+- [Shortcut reference](https://github.com/VelaShell/velashell-docs/blob/main/zh/host/快捷键参考.md)
 - Local documentation repository `../velashell-docs/zh/host/`: `交互与界面规格.md` (interaction/interface specification), `会话导入.md` (session import), `SFTP双栏与WinSCP差距分析.md` (dual-pane comparison), `隧道功能规划.md` (tunnel design), `Xshell兼容登录.md` (compatible login), and `消息中心与资讯源.md` (Message Center/feeds).
 - `../velashell-docs/zh/plugins/协作接入.md`: IM/MCP direction, allowlists, approvals, and saved-profile sessions.
 - `../velashell-docs/zh/xserver/troubleshooting.md`: X11/graphics compatibility and troubleshooting.
