@@ -274,6 +274,7 @@ public sealed class RemoteEditDraftReuploadTests
         gate.SetResult(target);
 
         Assert.AreEqual(RemoteEditDraftReuploadResult.Busy, second.Result);
+        Assert.IsNull(second.Message);
         Assert.AreEqual(RemoteEditDraftReuploadResult.Uploaded, (await first).Result);
         Assert.AreEqual(1, connects);
         Assert.HasCount(1, target.Uploads);

@@ -595,8 +595,7 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
             _latest = await _market.GetLatestAsync(ids).ConfigureAwait(false);
             await ReloadAsync().ConfigureAwait(false);
             int outdated = _manager.Plugins.Count(p =>
-                ResolveUpdate(p, _manager.IsUninstallable(p.Id)).State
-                    is PluginUpdateState.Available or PluginUpdateState.BlockedByHost);
+                ResolveUpdate(p, _manager.IsUninstallable(p.Id)) is Available or BlockedByHost);
             SetNotice(outdated == 0
                 ? Strings.Get("PluginManager_NoUpdates")
                 : Strings.Format("PluginManager_UpdatesFound", outdated));
@@ -724,7 +723,13 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
             bool grant = _gate is not null && await _gate.HasGrantAsync(descriptor.Id).ConfigureAwait(false);
             bool uninstallable = _manager.IsUninstallable(descriptor.Id);
             string? pinned = await _manager.GetPinnedPublisherFingerprintAsync(descriptor.Id).ConfigureAwait(false);
-            (PluginUpdateState state, string? available, string? blocker) = ResolveUpdate(descriptor, uninstallable);
+            (PluginUpdateState state, string? available, string? blocker) = ResolveUpdate(descriptor, uninstallable) switch
+            {
+                Unknown or null => (PluginUpdateState.Unknown, null, null),
+                UpToDate => (PluginUpdateState.UpToDate, null, null),
+                Available update => (PluginUpdateState.Available, update.Version, null),
+                BlockedByHost update => (PluginUpdateState.BlockedByHost, update.Version, update.Reason)
+            };
             bool muted = _notifications is not null && await _notifications.IsMutedAsync(descriptor.Id).ConfigureAwait(false);
             rows.Add(new(descriptor, grant)
             {
@@ -787,6 +792,12 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
             || row.AuthorText.Contains(filter, StringComparison.CurrentCultureIgnoreCase);
     }
 
+    internal readonly union UpdateResolution(Unknown, UpToDate, Available, BlockedByHost);
+    internal readonly record struct Unknown;
+    internal readonly record struct UpToDate;
+    internal readonly record struct Available(string Version);
+    internal readonly record struct BlockedByHost(string Version, string Reason);
+
     /// <summary>把「商店上那一版」与「本地这一版」对起来:该不该升、升不升得上去。</summary>
     /// <remarks>
     /// 「哪个更新」按 <see cref="SemanticVersion.CompareTo" /> 的完整优先级比(与应用自更新、CLI、商店同一份),**不是**
@@ -795,7 +806,7 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
     /// </remarks>
     /// <param name="descriptor">本地插件。</param>
     /// <param name="uninstallable">是不是用户自己装的(只有这种才谈得上更新)。</param>
-    private (PluginUpdateState State, string? Available, string? Blocker) ResolveUpdate(
+    private UpdateResolution ResolveUpdate(
         PluginDescriptor descriptor, bool uninstallable)
     {
         if (!uninstallable
@@ -803,20 +814,20 @@ public sealed class PluginManagerViewModel : ReactiveObject, IDisposable
             || !_latest.TryGetValue(descriptor.Id, out PluginMarketVersion? latest))
         {
             // 应用自带、开发期挂载、商店上查不到的,都没有"更新"这个动作。
-            return (PluginUpdateState.Unknown, null, null);
+            return new Unknown();
         }
-        if (CompareForUpdate(latest.Version, manifest.Version) is { } settled)
+        switch (CompareForUpdate(latest.Version, manifest.Version))
         {
-            if (settled == PluginUpdateState.Unknown)
-            {
+            case PluginUpdateState.Unknown:
                 Trace.WriteLine($"[PluginManager] Cannot compare versions of {descriptor.Id}: local '{manifest.Version}', store '{latest.Version}'.");
-            }
-            return (settled, null, null);
+                return new Unknown();
+            case PluginUpdateState.UpToDate:
+                return new UpToDate();
         }
         string? blocker = _manager.DescribeUpdateBlocker(latest.ApiLevel, latest.MinHostVersion, latest.MinSdkVersion);
         return blocker is null
-            ? (PluginUpdateState.Available, latest.Version, null)
-            : (PluginUpdateState.BlockedByHost, latest.Version, blocker);
+            ? new Available(latest.Version)
+            : new BlockedByHost(latest.Version, blocker);
     }
 
     /// <summary>

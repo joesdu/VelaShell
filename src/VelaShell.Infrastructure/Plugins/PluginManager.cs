@@ -38,6 +38,38 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     private PluginTrustState? _trustState;
     private string? _trustLoadError;
     private bool _trustInitialized;
+    private readonly union PluginTransition(Discovered, Disabled, Invalid, Incompatible, Active, Failed, Crashed, Deactivated);
+    private readonly record struct Discovered;
+    private readonly record struct Disabled;
+    private sealed record Invalid(string Reason);
+    private sealed record Incompatible(string Reason);
+    private readonly record struct Active;
+    private sealed record Failed(string Reason);
+    private sealed record Crashed(string Reason, TimeSpan RestartDelay);
+    private readonly record struct Deactivated;
+
+    private static PluginDescriptor ApplyTransition(PluginDescriptor descriptor, PluginTransition transition)
+    {
+        (PluginState state, string? error) = transition switch
+        {
+            Discovered => (PluginState.Discovered, (string?)null),
+            Disabled => (PluginState.Disabled, null),
+            Invalid invalid => (PluginState.Invalid, invalid.Reason),
+            Incompatible incompatible => (PluginState.Incompatible, incompatible.Reason),
+            Active => (PluginState.Active, null),
+            Failed failed => (PluginState.Failed, failed.Reason),
+            Crashed crashed => (PluginState.Crashed, crashed.Reason),
+            Deactivated => (PluginState.Deactivated, null)
+        };
+        descriptor.State = state;
+        // 重启成功或随后停机时,公开描述仍保留上一次崩溃的诊断。
+        if (transition is not (Active or Deactivated))
+        {
+            descriptor.Error = error;
+        }
+        return descriptor;
+    }
+
     private sealed class PluginRuntime
     {
         public required PluginDescriptor Descriptor { get; init; }
@@ -182,8 +214,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             runtime.CommandsApi = null;
             // 先写终态再撤注册,顺序固定:反过来的话,撤注册与写状态之间的窗口里
             // 若有激活线程完成,它会把 State 覆盖回 Active 并重新注册协议。
-            runtime.Descriptor.State = PluginState.Disabled;
-            runtime.Descriptor.Error = null;
+            ApplyTransition(runtime.Descriptor, new Disabled());
             // 连声明一起撤:禁用后连接页不该还留着一个点了就报"协议不可用"的页签。
             options.ProtocolRegistry?.RemovePlugin(pluginId);
             Log($"Disabled plugin '{pluginId}'.");
@@ -219,8 +250,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                 return;
             }
             SetDisabledMarker(runtime.Descriptor, disabled: false);
-            runtime.Descriptor.State = PluginState.Discovered;
-            runtime.Descriptor.Error = null;
+            ApplyTransition(runtime.Descriptor, new Discovered());
             DeclareProtocols(runtime);
             if (runtime.Descriptor.Manifest.ActivatesOnStartup)
             {
@@ -1595,8 +1625,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     {
         // 先写终态再撤注册(与 DisableAsync 同一顺序):反过来的话,两步之间的窗口里
         // 若有激活线程完成,它会把 State 覆盖回 Active 并重新注册协议。
-        runtime.Descriptor.State = PluginState.Invalid;
-        runtime.Descriptor.Error = rejection;
+        ApplyTransition(runtime.Descriptor, new Invalid(rejection));
         runtime.CommandsApi?.Dispose();
         runtime.CommandsApi = null;
         options.ProtocolRegistry?.RemovePlugin(runtime.Descriptor.Id);
@@ -1864,8 +1893,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                 : $"Recycling idle in-process plugin '{runtime.Descriptor.Id}' "
                   + "(no open panels, documents or sessions, no running commands or tunnels).");
             await DeactivateAsync(runtime).ConfigureAwait(false);
-            runtime.Descriptor.State = PluginState.Discovered;
-            runtime.Descriptor.Error = null;
+            ApplyTransition(runtime.Descriptor, new Discovered());
             RegisterActivationTriggers(runtime);
         }
         finally
@@ -2184,48 +2212,43 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         catch (PluginManifestException ex)
         {
             Log($"Rejected plugin at '{dir}': {ex.Message}");
-            return new() { Directory = dir, State = PluginState.Invalid, Error = ex.Message };
+            return ApplyTransition(new() { Directory = dir }, new Invalid(ex.Message));
         }
         var descriptor = new PluginDescriptor { Manifest = manifest, Directory = dir };
         needsVerification = !isDevelopment && options.TrustRepository is not null && IsUserPluginDirectory(dir);
         if (!seenIds.Add(manifest.Id))
         {
-            descriptor.State = PluginState.Invalid;
-            descriptor.Error = $"Duplicate plugin id '{manifest.Id}' (already provided by an earlier plugin root).";
+            ApplyTransition(descriptor, new Invalid($"Duplicate plugin id '{manifest.Id}' (already provided by an earlier plugin root)."));
         }
         else if (DescribeManifestVersionProblem(manifest) is { } versionProblem)
         {
             // 清单留在描述上(与重复 id 同一处置):管理页照常显示插件名、可卸载,id 也还是它自己的 ——
             // 置空清单的话,卸载清扫会按目录名认人,数据可能被当成孤儿删掉。
             Log($"Rejected plugin at '{dir}': {versionProblem}");
-            descriptor.State = PluginState.Invalid;
-            descriptor.Error = versionProblem;
+            ApplyTransition(descriptor, new Invalid(versionProblem));
         }
         else if (isDevelopment
                      ? _devDisabled.Contains(manifest.Id)
                      : File.Exists(Path.Combine(dir, PluginContentHash.DisabledMarkerName))
                        || (UsesHostDisabledList(dir) && _hostDisabled.Contains(manifest.Id)))
         {
-            descriptor.State = PluginState.Disabled;
+            ApplyTransition(descriptor, new Disabled());
         }
         else if (manifest.ApiLevel > VelaPluginApi.Level)
         {
-            descriptor.State = PluginState.Incompatible;
-            descriptor.Error = $"Plugin targets apiLevel {manifest.ApiLevel}, host supports up to {VelaPluginApi.Level}. Update VelaShell.";
+            ApplyTransition(descriptor, new Incompatible($"Plugin targets apiLevel {manifest.ApiLevel}, host supports up to {VelaPluginApi.Level}. Update VelaShell."));
         }
         else if (manifest.MinHostVersion is { } minHost && IsHostOlderThan(minHost))
         {
-            descriptor.State = PluginState.Incompatible;
-            descriptor.Error = $"Plugin requires host >= {minHost}, current host is {options.HostVersion}.";
+            ApplyTransition(descriptor, new Incompatible($"Plugin requires host >= {minHost}, current host is {options.HostVersion}."));
         }
         else if (manifest.MinSdkVersion is { } minSdk && IsOlder(VelaPluginApi.SdkVersion, minSdk))
         {
             // apiLevel 拦不住这一档:它只在**破坏性**变更时才动,而新增的接口方法 / DTO 字段
             // 不算破坏性。不在这里拦,插件就会装上、激活、然后在第一次调用新方法时
             // 抛一个 MissingMethodException —— 正是 apiLevel 当初要消灭的那种异常。
-            descriptor.State = PluginState.Incompatible;
-            descriptor.Error =
-                $"Plugin requires plugin SDK >= {minSdk}, this host ships {VelaPluginApi.SdkVersion}. Update VelaShell.";
+            ApplyTransition(descriptor, new Incompatible(
+                $"Plugin requires plugin SDK >= {minSdk}, this host ships {VelaPluginApi.SdkVersion}. Update VelaShell."));
         }
         return descriptor;
     }
@@ -2432,7 +2455,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             {
                 await ActivateInProcessAsync(runtime, manifest, entryPath, context, cancellationToken).ConfigureAwait(false);
             }
-            descriptor.State = PluginState.Active;
+            ApplyTransition(descriptor, new Active());
             // 空闲回收从激活完成起计:命令触发激活后,插件往往还要再过一会儿才把面板弹出来。
             runtime.LastActivityTicks = Environment.TickCount64;
             Log($"Activated '{manifest.Id}' v{manifest.Version} ({manifest.HostMode}) in {stopwatch.ElapsedMilliseconds}ms.");
@@ -2441,19 +2464,18 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         }
         catch (Exception ex)
         {
-            descriptor.State = PluginState.Failed;
             // 取消的两种来源要分开说:宿主在关(那不是插件的错,也不是超时),与激活真的超时。
             // 原先一律写成「Activation timed out after <激活超时>s」,于是任何一段
             // 被取消的等待都顶着激活超时的名字与秒数出现 —— 报告里那个数字对不上实际
             // 等过的时间,查的人先被送错方向(隔离插件的连接超时曾整整绕了一圈)。
-            descriptor.Error = ex switch
+            ApplyTransition(descriptor, new Failed(ex switch
             {
                 OperationCanceledException when cancellationToken.IsCancellationRequested
                                                 || _shutdown.IsCancellationRequested
                     => "Activation was cancelled (the host is shutting down).",
                 OperationCanceledException => $"Activation timed out after {options.ActivationTimeout.TotalSeconds:0}s.",
                 _ => ex.Message
-            };
+            }));
             Log($"Failed to activate '{manifest.Id}': {descriptor.Error}");
             // 插件自己的日志里留完整异常:管理页那一行只放得下 Message,排障要的是堆栈。
             GetOrCreateLogger(runtime).WriteHostEvent($"Failed to activate: {descriptor.Error}{Environment.NewLine}{ex}");
@@ -2542,7 +2564,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     /// </summary>
     private void OnIsolatedCrashed(PluginRuntime runtime)
     {
-        TimeSpan? restartDelay = null;
+        PluginTransition transition;
         lock (_gate)
         {
             if (_disposed || runtime.Descriptor.State != PluginState.Active)
@@ -2555,25 +2577,24 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
             int attempt = runtime.CrashTimes.Count;
             if (attempt > options.CrashRestartBackoff.Count)
             {
-                runtime.Descriptor.State = PluginState.Failed;
-                runtime.Descriptor.Error =
-                    $"Plugin process crashed {attempt} times within {options.CrashRestartWindow.TotalMinutes:0} minutes; giving up.";
+                transition = new Failed(
+                    $"Plugin process crashed {attempt} times within {options.CrashRestartWindow.TotalMinutes:0} minutes; giving up.");
             }
             else
             {
-                restartDelay = options.CrashRestartBackoff[attempt - 1];
-                runtime.Descriptor.State = PluginState.Crashed;
-                runtime.Descriptor.Error =
-                    $"Plugin process exited unexpectedly; restarting in {restartDelay.Value.TotalSeconds:0.#}s (attempt {attempt}/{options.CrashRestartBackoff.Count}).";
+                TimeSpan delay = options.CrashRestartBackoff[attempt - 1];
+                transition = new Crashed(
+                    $"Plugin process exited unexpectedly; restarting in {delay.TotalSeconds:0.#}s (attempt {attempt}/{options.CrashRestartBackoff.Count}).", delay);
             }
+            ApplyTransition(runtime.Descriptor, transition);
         }
         Log($"Plugin '{runtime.Descriptor.Id}' crashed: {runtime.Descriptor.Error}");
         GetOrCreateLogger(runtime).WriteHostEvent($"Crashed: {runtime.Descriptor.Error}");
         CleanupRuntime(runtime);
         RaiseChanged();
-        if (restartDelay is { } delay)
+        if (transition is Crashed crashed)
         {
-            _ = RestartAfterAsync(runtime, delay);
+            _ = RestartAfterAsync(runtime, crashed.RestartDelay);
         }
     }
 
@@ -2799,11 +2820,11 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
                 using var cts = new CancellationTokenSource(options.DeactivationTimeout);
                 await instance.DeactivateAsync(cts.Token).WaitAsync(cts.Token).ConfigureAwait(false);
             }
-            runtime.Descriptor.State = PluginState.Deactivated;
+            ApplyTransition(runtime.Descriptor, new Deactivated());
         }
         catch (Exception ex)
         {
-            runtime.Descriptor.State = PluginState.Deactivated;
+            ApplyTransition(runtime.Descriptor, new Deactivated());
             Log($"Plugin '{runtime.Descriptor.Id}' deactivation did not finish cleanly: {ex.Message}");
         }
         finally
@@ -3206,12 +3227,8 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
         bool needsVerification = false;
         PluginDescriptor descriptor = File.Exists(manifestPath)
             ? Describe(directory, manifestPath, seenIds, isDevelopment, out needsVerification)
-            : new()
-            {
-                Directory = directory,
-                State = PluginState.Invalid,
-                Error = $"{PluginManifestReader.FileName} is no longer present in '{directory}'."
-            };
+            : ApplyTransition(new() { Directory = directory },
+                new Invalid($"{PluginManifestReader.FileName} is no longer present in '{directory}'."));
         descriptor.IsDevelopment = isDevelopment;
         // 全新的运行时 = 全新的校验记忆:重载正是"目录内容可能变了"的那个场景,
         // 沿用旧的记忆化结果等于把改动过的插件放行。

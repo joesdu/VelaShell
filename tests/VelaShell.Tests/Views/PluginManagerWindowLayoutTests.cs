@@ -82,7 +82,8 @@ public sealed class PluginManagerWindowLayoutTests
         await manager.StartAsync();
         var market = new LatestOnlyMarket(new()
         {
-            ["acme.rdp"] = new() { Id = "acme.rdp", Version = "2.1.5" }
+            ["acme.rdp"] = new() { Id = "acme.rdp", Version = "2.1.5" },
+            ["acme.mongo"] = new() { Id = "acme.mongo", Version = "2.2.0", MinHostVersion = "3.0.0" }
         });
         using var vm = new PluginManagerViewModel(manager, null, market);
         var window = new PluginManagerWindow { DataContext = vm, Width = 980, Height = 640 };
@@ -100,6 +101,12 @@ public sealed class PluginManagerWindowLayoutTests
             Assert.HasCount(3, vm.Plugins);
             Assert.IsTrue(vm.HasUpdates, string.Join("; ", vm.Plugins.Select(p => $"{p.Id}: {p.Error}")));
             Assert.Contains("3", vm.SummaryText);
+            PluginRowViewModel blocked = vm.Plugins.Single(p => p.Id == "acme.mongo");
+            Assert.IsTrue(blocked.IsUpdateBlocked);
+            Assert.IsFalse(blocked.CanUpdate);
+            Assert.AreEqual("2.2.0", blocked.AvailableVersion);
+            Assert.AreEqual("VelaShell 3.0.0", blocked.UpdateBlocker);
+            Assert.AreEqual(PluginUpdateState.Unknown, vm.Plugins.Single(p => p.Id == "acme.redis").UpdateState);
 
             Button[] buttons = [.. window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible)];
             Button update = buttons.Single(b => b.DataContext is PluginRowViewModel { Id: "acme.rdp" }

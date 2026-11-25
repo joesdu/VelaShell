@@ -110,6 +110,36 @@ public sealed record RemoteEditDraftReuploadOutcome(RemoteEditDraftReuploadResul
 /// </remarks>
 public sealed class RemoteEditDraftReuploader
 {
+    private readonly record struct Uploaded(string Message);
+    private readonly record struct UploadedButChanged(string Message);
+    private readonly record struct DraftGone(string Message);
+    private readonly record struct NoProfile(string Message);
+    private readonly record struct ProfileMissing(string Message);
+    private readonly record struct NotConnected;
+    private readonly record struct RemoteDirectoryMissing(string Message);
+    private readonly record struct RemoteIsDirectory(string Message);
+    private readonly record struct Declined;
+    private readonly record struct UploadFailed(string Message);
+    private readonly record struct Busy;
+
+    private readonly union ReuploadResult(Uploaded, UploadedButChanged, DraftGone, NoProfile, ProfileMissing, NotConnected,
+        RemoteDirectoryMissing, RemoteIsDirectory, Declined, UploadFailed, Busy);
+
+    private static RemoteEditDraftReuploadOutcome ToOutcome(ReuploadResult result) => result switch
+    {
+        Uploaded value => new(RemoteEditDraftReuploadResult.Uploaded, value.Message),
+        UploadedButChanged value => new(RemoteEditDraftReuploadResult.UploadedButChanged, value.Message),
+        DraftGone value => new(RemoteEditDraftReuploadResult.DraftGone, value.Message),
+        NoProfile value => new(RemoteEditDraftReuploadResult.NoProfile, value.Message),
+        ProfileMissing value => new(RemoteEditDraftReuploadResult.ProfileMissing, value.Message),
+        NotConnected => new(RemoteEditDraftReuploadResult.NotConnected, null),
+        RemoteDirectoryMissing value => new(RemoteEditDraftReuploadResult.RemoteDirectoryMissing, value.Message),
+        RemoteIsDirectory value => new(RemoteEditDraftReuploadResult.RemoteIsDirectory, value.Message),
+        Declined => new(RemoteEditDraftReuploadResult.Declined, null),
+        UploadFailed value => new(RemoteEditDraftReuploadResult.Failed, value.Message),
+        Busy => new(RemoteEditDraftReuploadResult.Busy, null),
+    };
+
     private readonly Func<SessionProfile, Task<IRemoteEditDraftTarget?>> _connect;
     private readonly Func<string, string, string, Task<bool>>? _confirm;
     private readonly Func<Guid, Task<SessionProfile?>> _findProfile;
@@ -150,11 +180,11 @@ public sealed class RemoteEditDraftReuploader
         ArgumentNullException.ThrowIfNull(key);
         if (!_inFlight.Add(key))
         {
-            return new(RemoteEditDraftReuploadResult.Busy, null);
+            return ToOutcome(new Busy());
         }
         try
         {
-            return await ReuploadCoreAsync(key, cancellationToken);
+            return ToOutcome(await ReuploadCoreAsync(key, cancellationToken));
         }
         finally
         {
@@ -162,7 +192,7 @@ public sealed class RemoteEditDraftReuploader
         }
     }
 
-    private async Task<RemoteEditDraftReuploadOutcome> ReuploadCoreAsync(string key, CancellationToken cancellationToken)
+    private async Task<ReuploadResult> ReuploadCoreAsync(string key, CancellationToken cancellationToken)
     {
         IReadOnlyCollection<string> active = _activeDirectories();
         (RemoteEditDraft? draft, RemoteEditMarker? marker) = await Task.Run(() =>
@@ -173,23 +203,22 @@ public sealed class RemoteEditDraftReuploader
         if (draft is null)
         {
             await WithdrawAsync(key);
-            return new(RemoteEditDraftReuploadResult.DraftGone, Strings.Get("RemoteEditDraft_Gone"));
+            return new DraftGone(Strings.Get("RemoteEditDraft_Gone"));
         }
         if (!draft.CanReupload || marker is null || draft.ProfileId is not { } profileId)
         {
-            return new(RemoteEditDraftReuploadResult.NoProfile, Strings.Format("RemoteEditDraft_NoProfile", draft.FileName, draft.LocalPath));
+            return new NoProfile(Strings.Format("RemoteEditDraft_NoProfile", draft.FileName, draft.LocalPath));
         }
         string remotePath = draft.RemotePath!;
         string where = draft.Server is { Length: > 0 } server ? $"{server}:{remotePath}" : remotePath;
         if (await _findProfile(profileId) is not { } profile)
         {
-            return new(RemoteEditDraftReuploadResult.ProfileMissing,
-                Strings.Format("RemoteEditDraft_ProfileMissing", draft.FileName, draft.LocalPath));
+            return new ProfileMissing(Strings.Format("RemoteEditDraft_ProfileMissing", draft.FileName, draft.LocalPath));
         }
         if (await _connect(profile) is not { } target)
         {
             // 失败原因(认证失败、指纹被拒、登录框取消)已经由打开连接的那一路报过了
-            return new(RemoteEditDraftReuploadResult.NotConnected, null);
+            return new NotConnected();
         }
 
         RemoteFileInfo? remote;
@@ -231,18 +260,17 @@ public sealed class RemoteEditDraftReuploader
             }
             if (!parentExists)
             {
-                return new(RemoteEditDraftReuploadResult.RemoteDirectoryMissing,
-                    Strings.Format("RemoteEditDraft_RemoteDirMissing", parent, draft.FileName));
+                return new RemoteDirectoryMissing(Strings.Format("RemoteEditDraft_RemoteDirMissing", parent, draft.FileName));
             }
             if (!await ConfirmAsync(Strings.Get("RemoteEditDraft_RemoteMissingTitle"),
                     Strings.Format("RemoteEditDraft_RemoteMissingBody", where), Strings.Get("RemoteEditDraft_Recreate")))
             {
-                return new(RemoteEditDraftReuploadResult.Declined, null);
+                return new Declined();
             }
         }
         else if (remote is { IsDirectory: true })
         {
-            return new(RemoteEditDraftReuploadResult.RemoteIsDirectory, Strings.Format("RemoteEditDraft_RemoteIsDirectory", where));
+            return new RemoteIsDirectory(Strings.Format("RemoteEditDraft_RemoteIsDirectory", where));
         }
         else if (!MatchesBaseline(marker, remote))
         {
@@ -255,7 +283,7 @@ public sealed class RemoteEditDraftReuploader
                     remote.LastModified.ToLocalTime().ToString("g", CultureInfo.CurrentCulture));
             if (!await ConfirmAsync(Strings.Get("RemoteEditDraft_ConflictTitle"), body, Strings.Get("Sftp_ConflictOverwrite")))
             {
-                return new(RemoteEditDraftReuploadResult.Declined, null);
+                return new Declined();
             }
         }
 
@@ -264,7 +292,7 @@ public sealed class RemoteEditDraftReuploader
         if (before is null)
         {
             await WithdrawAsync(key);
-            return new(RemoteEditDraftReuploadResult.DraftGone, Strings.Get("RemoteEditDraft_Gone"));
+            return new DraftGone(Strings.Get("RemoteEditDraft_Gone"));
         }
         try
         {
@@ -273,7 +301,7 @@ public sealed class RemoteEditDraftReuploader
         catch (OperationCanceledException)
         {
             // 在传输浮窗里点了取消:草稿与消息照旧留着
-            return new(RemoteEditDraftReuploadResult.Declined, null);
+            return new Declined();
         }
         catch (Exception ex)
         {
@@ -284,12 +312,11 @@ public sealed class RemoteEditDraftReuploader
         if (SnapshotOf(draft.LocalPath) != before)
         {
             // 传的过程中又存了一次:远端拿到的是之前那一份,这份副本还不能删
-            return new(RemoteEditDraftReuploadResult.UploadedButChanged,
-                Strings.Format("RemoteEditDraft_ChangedDuringUpload", draft.FileName, where, draft.LocalPath));
+            return new UploadedButChanged(Strings.Format("RemoteEditDraft_ChangedDuringUpload", draft.FileName, where, draft.LocalPath));
         }
         Settle(draft, marker, before.Value);
         await WithdrawAsync(key);
-        return new(RemoteEditDraftReuploadResult.Uploaded, Strings.Format("RemoteEditDraft_Uploaded", draft.FileName, where));
+        return new Uploaded(Strings.Format("RemoteEditDraft_Uploaded", draft.FileName, where));
     }
 
     /// <summary>远端此刻的样子是不是标记里记着的那一份(长度与修改时间都对得上)。标记里没记、后端查不了的都算对不上。</summary>
@@ -301,10 +328,10 @@ public sealed class RemoteEditDraftReuploader
     private async Task<bool> ConfirmAsync(string title, string body, string confirmText) =>
         _confirm is not null && await _confirm(title, body, confirmText);
 
-    private static RemoteEditDraftReuploadOutcome Failed(RemoteEditDraft draft, string where, Exception ex)
+    private static ReuploadResult Failed(RemoteEditDraft draft, string where, Exception ex)
     {
         RemoteEditLog.Write("reupload", $"failed {where}: {ex.Message}");
-        return new(RemoteEditDraftReuploadResult.Failed, Strings.Format("RemoteEditDraft_Failed", draft.FileName, where, ex.Message));
+        return new UploadFailed(Strings.Format("RemoteEditDraft_Failed", draft.FileName, where, ex.Message));
     }
 
     /// <summary>

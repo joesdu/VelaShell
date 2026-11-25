@@ -30,9 +30,11 @@ public sealed partial class GistSyncService
     private static readonly string[] SyncFileNames = [GistFileName, LayoutTemplatesFileName];
 
     /// <summary>云端那份布局模板读出来的样子。</summary>
-    /// <param name="State">模板与墓碑;云端没有(或文件坏了、按没有处理)时为 null。</param>
-    /// <param name="SkipNote">这一次跳过模板同步的原因(附在同步结果后面);能读时为 null。</param>
-    internal readonly record struct RemoteLayoutTemplates(LayoutTemplateSyncState? State, string? SkipNote);
+    /// <remarks>可读时是模板状态,需要跳过时是原因文字,没有可用文件时是 <see cref="MissingRemoteLayoutTemplates" />。</remarks>
+    internal readonly union RemoteLayoutTemplates(LayoutTemplateSyncState, string, MissingRemoteLayoutTemplates);
+
+    /// <summary>云端没有布局模板文件,或文件坏了并按没有处理。</summary>
+    internal readonly record struct MissingRemoteLayoutTemplates;
 
     /// <summary>成功合并的结果或跳过这次合并的原因。</summary>
     internal readonly union LayoutMergeOutcome(LayoutTemplateMergeResult, string);
@@ -156,13 +158,14 @@ public sealed partial class GistSyncService
     {
         cancellationToken.ThrowIfCancellationRequested();
         RemoteLayoutTemplates remote = ReadLayoutTemplatesFile(config, remoteContent);
-        if (remote.SkipNote is { } skip)
-        {
-            return skip;
-        }
         try
         {
-            return await layoutTemplates!.MergeAsync(remote.State).ConfigureAwait(false);
+            return remote switch
+            {
+                LayoutTemplateSyncState state => await layoutTemplates!.MergeAsync(state).ConfigureAwait(false),
+                MissingRemoteLayoutTemplates => await layoutTemplates!.MergeAsync(null).ConfigureAwait(false),
+                string skip => skip,
+            };
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
         {
@@ -183,10 +186,14 @@ public sealed partial class GistSyncService
             return null;
         }
         RemoteLayoutTemplates revision = ReadLayoutTemplatesFile(config, revisionContent);
-        if (revision.SkipNote is not null || revision.State is not { } state)
+        if (revision is string note)
+        {
+            return note;
+        }
+        if (revision is not LayoutTemplateSyncState state)
         {
             // 那个版本里没有模板文件(功能上线之前的版本)就什么都不动。
-            return revision.SkipNote;
+            return null;
         }
         try
         {
@@ -236,7 +243,7 @@ public sealed partial class GistSyncService
     {
         if (string.IsNullOrWhiteSpace(content))
         {
-            return new(null, null);
+            return new MissingRemoteLayoutTemplates();
         }
         try
         {
@@ -245,11 +252,11 @@ public sealed partial class GistSyncService
                 || !string.Equals(envelope.Format, LayoutTemplatesSyncEnvelope.FormatId, StringComparison.OrdinalIgnoreCase))
             {
                 Trace.WriteLine("[Sync] 云端的布局模板文件格式不对,按没有处理。");
-                return new(null, null);
+                return new MissingRemoteLayoutTemplates();
             }
             if (envelope.SchemaVersion > LayoutTemplatesSyncEnvelope.CurrentSchemaVersion)
             {
-                return new(null, Strings.Get("SyncSvc_LayoutsNewer"));
+                return Strings.Get("SyncSvc_LayoutsNewer");
             }
             LayoutTemplatesSyncData? data = envelope.Data;
             if (envelope.Encrypted)
@@ -257,21 +264,21 @@ public sealed partial class GistSyncService
                 string? passphrase = Passphrase(config);
                 if (string.IsNullOrEmpty(passphrase))
                 {
-                    return new(null, Strings.Get("SyncSvc_LayoutsLocked"));
+                    return Strings.Get("SyncSvc_LayoutsLocked");
                 }
                 data = JsonSerializer.Deserialize<LayoutTemplatesSyncData>(
                     SyncCrypto.Decrypt(envelope.CipherText ?? string.Empty, passphrase), JsonOptions);
             }
-            return new(new LayoutTemplateSyncState(data?.Templates ?? [], data?.Tombstones ?? []), null);
+            return new LayoutTemplateSyncState(data?.Templates ?? [], data?.Tombstones ?? []);
         }
         catch (CryptographicException)
         {
-            return new(null, Strings.Get("SyncSvc_LayoutsLocked"));
+            return Strings.Get("SyncSvc_LayoutsLocked");
         }
         catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException or NotSupportedException)
         {
             Trace.WriteLine($"[Sync] 云端的布局模板文件读不出来,按没有处理:{ex.Message}");
-            return new(null, null);
+            return new MissingRemoteLayoutTemplates();
         }
     }
 }

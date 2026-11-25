@@ -300,7 +300,8 @@ public sealed class GistSyncLayoutTemplatesTests
         string? rewritten = await desktop.Sync.BuildLayoutTemplatesUploadAsync(desktop.Config, damaged, CancellationToken.None);
 
         Assert.IsNotNull(rewritten, "坏文件没法合并,用本机的重写;旧内容还在 Gist 的历史版本里");
-        Assert.AreEqual("mine", desktop.Sync.ReadLayoutTemplatesFile(desktop.Config, rewritten).State!.Templates.Single().Name);
+        LayoutTemplateSyncState state = (LayoutTemplateSyncState)desktop.Sync.ReadLayoutTemplatesFile(desktop.Config, rewritten).Value;
+        Assert.AreEqual("mine", state.Templates.Single().Name);
     }
 
     [TestMethod]
@@ -338,8 +339,8 @@ public sealed class GistSyncLayoutTemplatesTests
         string? pushed = await desktop.Sync.BuildLayoutTemplatesUploadAsync(desktop.Config, current, CancellationToken.None);
 
         Assert.AreSequenceEqual(["prod"], await desktop.NamesAsync());
-        Assert.AreEqual("prod", desktop.Sync.ReadLayoutTemplatesFile(desktop.Config, pushed).State!.Templates.Single().Name,
-            "恢复之后的推送胜过云端那块墓碑");
+        LayoutTemplateSyncState state = (LayoutTemplateSyncState)desktop.Sync.ReadLayoutTemplatesFile(desktop.Config, pushed).Value;
+        Assert.AreEqual("prod", state.Templates.Single().Name, "恢复之后的推送胜过云端那块墓碑");
     }
 
     /// <summary>
