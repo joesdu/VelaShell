@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using AvaloniaEdit;
 using AvaloniaEdit.Search;
 using Microsoft.Extensions.DependencyInjection;
 using VelaShell.Core.Models;
@@ -138,7 +139,7 @@ public partial class RemoteFileEditorView : Window
 
     private void UpdateCaretStatus()
     {
-        var position = Editor.TextArea.Caret.Position;
+        TextViewPosition position = Editor.TextArea.Caret.Position;
         CaretStatusText.Text = Strings.Format("Editor_CaretStatus", position.Line, position.Column);
     }
 
