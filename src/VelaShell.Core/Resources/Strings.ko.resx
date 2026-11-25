@@ -1084,6 +1084,12 @@
   <data name="Editor_DiscardAndClose" xml:space="preserve">
     <value>버리고 닫기</value>
   </data>
+  <data name="Editor_CaretStatus" xml:space="preserve">
+    <value>행 {0}, 열 {1}</value>
+  </data>
+  <data name="Editor_WordWrap" xml:space="preserve">
+    <value>자동 줄바꿈</value>
+  </data>
   <data name="Editor_LoadedStatusFallback" xml:space="preserve">
     <value>{0} 바이트를 불러왔습니다 —— 올바른 UTF-8 이 아니라 {1} 로 해석했습니다</value>
   </data>

@@ -2066,6 +2066,12 @@ If this keeps happening, close any other VelaShell windows and try again.</value
   <data name="Editor_DiscardAndClose" xml:space="preserve">
     <value>Discard and close</value>
   </data>
+  <data name="Editor_CaretStatus" xml:space="preserve">
+    <value>Ln {0}, Col {1}</value>
+  </data>
+  <data name="Editor_WordWrap" xml:space="preserve">
+    <value>Word wrap</value>
+  </data>
   <data name="Editor_LoadedStatusFallback" xml:space="preserve">
     <value>Loaded {0} bytes — not valid UTF-8, decoded as {1}</value>
   </data>

@@ -2175,6 +2175,12 @@
   <data name="Editor_DiscardAndClose" xml:space="preserve">
     <value>放弃并关闭</value>
   </data>
+  <data name="Editor_CaretStatus" xml:space="preserve">
+    <value>行 {0}，列 {1}</value>
+  </data>
+  <data name="Editor_WordWrap" xml:space="preserve">
+    <value>自动换行</value>
+  </data>
   <data name="Editor_LoadedStatusFallback" xml:space="preserve">
     <value>已加载 {0} 字节 —— 不是合法 UTF-8,按 {1} 解码</value>
   </data>

@@ -47,6 +47,12 @@
     <Style Selector="Button#SaveButton.dirty pc|LucideIcon">
       <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
     </Style>
+    <Style Selector="ToggleButton#WordWrapToggle pc|LucideIcon">
+      <Setter Property="Foreground" Value="{DynamicResource VelaTextMuted}" />
+    </Style>
+    <Style Selector="ToggleButton#WordWrapToggle:checked pc|LucideIcon">
+      <Setter Property="Foreground" Value="{DynamicResource VelaAccent}" />
+    </Style>
   </Window.Styles>
 
   <Border Classes="window-card"
@@ -78,6 +84,15 @@
                      TextTrimming="CharacterEllipsis" />
           <StackPanel x:Name="TitleActions" Grid.Column="2" Orientation="Horizontal" Spacing="4"
                       VerticalAlignment="Center" Margin="12,0,10,0">
+            <ToggleButton x:Name="WordWrapToggle" Theme="{StaticResource VelaTitleActionButtonTheme}"
+                          Click="WordWrap_Click"
+                          AutomationProperties.Name="{loc:Localize Editor_WordWrap}">
+              <ToolTip.Tip>
+                <TextBlock Text="{loc:Localize Editor_WordWrap}" />
+              </ToolTip.Tip>
+              <pc:LucideIcon Width="12" Height="12"
+                             Data="{DynamicResource Icon.arrow-right-left}" />
+            </ToggleButton>
             <Button x:Name="SaveButton" Theme="{StaticResource VelaTitleActionButtonTheme}"
                     Click="Save_Click"
                     AutomationProperties.Name="{loc:Localize Save}">
@@ -140,15 +155,21 @@
       <Border Grid.Row="3" Padding="20,0,6,0"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,1,0,0">
-        <Grid ColumnDefinitions="*,Auto">
+        <Grid ColumnDefinitions="*,Auto,Auto">
           <TextBlock Name="StatusText"
                      Foreground="{DynamicResource VelaTextMuted}"
                      FontFamily="{DynamicResource VelaUiMonoFont}"
                      FontSize="{DynamicResource VelaFontSize10}"
                      VerticalAlignment="Center"
                      TextTrimming="CharacterEllipsis" />
+          <TextBlock Name="CaretStatusText" Grid.Column="1"
+                     Margin="16,0,12,0"
+                     Foreground="{DynamicResource VelaTextMuted}"
+                     FontFamily="{DynamicResource VelaUiMonoFont}"
+                     FontSize="{DynamicResource VelaFontSize10}"
+                     VerticalAlignment="Center" />
           <!-- 右下角缩放手柄;系统自带边缘缩放时(macOS、Wayland)与最大化时由 WindowChrome 隐去。 -->
-          <Border x:Name="ResizeGrip" Grid.Column="1" Width="18" Height="18"
+          <Border x:Name="ResizeGrip" Grid.Column="2" Width="18" Height="18"
                   Background="Transparent"
                   Cursor="BottomRightCorner"
                   PointerPressed="ResizeGrip_PointerPressed">

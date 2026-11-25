@@ -116,6 +116,54 @@ public sealed partial class ChatPanelViewUiTests
     }
 
     [TestMethod]
+    public void DiffDocument_CSharpIndentationFollowsBlockDepth()
+    {
+        OnUi(() =>
+        {
+            const string code = "class Example\n{\nint value;\n}";
+            var view = new FileDiffDocumentView(FullDocument("local:w", "sample.CS", code, code), new Loc("en"), new MemoryDiffHost());
+            var editor = view.RightEditor!;
+            editor.TextArea.IndentationStrategy.IndentLine(editor.Document, editor.Document.GetLineByNumber(3));
+            Assert.AreEqual("class Example\n{\n" + editor.Options.IndentationString + "int value;\n}", editor.Text);
+            return Task.CompletedTask;
+        });
+    }
+
+    [TestMethod]
+    public void DiffDocument_WhitespaceFilterPreservesEditsWhenSwitchingModesAndSaving()
+    {
+        OnUi(async () =>
+        {
+            var host = new MemoryDiffHost();
+            host.Files["a.txt"] = "x\n";
+            var view = new FileDiffDocumentView(FullDocument("local:w", "a.txt", "x\n", "x\n"), new Loc("en"), host);
+            var window = new Window { Width = 1000, Height = 700, Content = view };
+            window.Show();
+            try
+            {
+                await PumpAsync(3);
+                view.RightEditor!.Text = "  x \n";
+                var toggle = view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(b => b.Name == "DiffIgnoreWhitespace");
+                toggle.IsChecked = true;
+                RaiseClick(toggle);
+                Assert.IsFalse(view.CurrentDiff!.HasChanges);
+                Assert.IsTrue(view.IsDirty);
+                RaiseClick(view.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DiffInlineToggle"));
+                Assert.IsFalse(view.CurrentDiff.HasChanges);
+                Assert.IsTrue(view.IsDirty);
+                view.Update(FullDocument("local:w", "a.txt", "x\n", "agent\n"));
+                toggle.IsChecked = false;
+                RaiseClick(toggle);
+                Assert.IsTrue(view.CurrentDiff.HasChanges);
+                RaiseClick(view.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DiffSideBySideToggle"));
+                await view.SaveAsync();
+                Assert.AreEqual("  x \n", host.Files["a.txt"]);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [TestMethod]
     public void DiffDocument_SplitterResizesPanes_AndWidthSurvivesModeSwitch()
     {
         OnUi(async () =>

@@ -84,17 +84,27 @@ internal sealed class DiffLineBackgroundRenderer(Func<IBrush?> brush) : IBackgro
     /// <summary>要垫底色的行号(从 1 起)。</summary>
     internal HashSet<int> Lines { get; set; } = [];
 
+    internal Dictionary<int, DiffTextSpan> ChangedSpans { get; set; } = [];
+
     public KnownLayer Layer => KnownLayer.Background;
 
     public void Draw(TextView textView, DrawingContext drawingContext)
     {
         if (Lines.Count == 0 || brush() is not { } fill || !textView.VisualLinesValid) return;
-        using DrawingContext.PushedState _ = drawingContext.PushOpacity(TintOpacity);
         foreach (VisualLine line in textView.VisualLines)
         {
-            if (!Lines.Contains(line.FirstDocumentLine.LineNumber)) continue;
+            DocumentLine documentLine = line.FirstDocumentLine;
+            if (!Lines.Contains(documentLine.LineNumber)) continue;
             double top = line.VisualTop - textView.VerticalOffset;
-            drawingContext.FillRectangle(fill, new Rect(0, top, Math.Max(textView.Bounds.Width, 1), line.Height));
+            using (drawingContext.PushOpacity(TintOpacity))
+                drawingContext.FillRectangle(fill, new Rect(0, top, Math.Max(textView.Bounds.Width, 1), line.Height));
+            if (!ChangedSpans.TryGetValue(documentLine.LineNumber, out var span) || span.Start + span.Length > documentLine.Length) continue;
+            var segment = new TextSegment { StartOffset = documentLine.Offset + span.Start, Length = span.Length };
+            using (drawingContext.PushOpacity(0.3))
+            {
+                foreach (Rect rect in BackgroundGeometryBuilder.GetRectsForSegment(textView, segment))
+                    drawingContext.FillRectangle(fill, rect);
+            }
         }
     }
 }

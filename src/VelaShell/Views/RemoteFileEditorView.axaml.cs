@@ -80,6 +80,9 @@ public partial class RemoteFileEditorView : Window
     public RemoteFileEditorView()
     {
         InitializeComponent();
+        Editor.Options.HighlightCurrentLine = true;
+        Editor.TextArea.TextView.Bind(AvaloniaEdit.Rendering.TextView.CurrentLineBackgroundProperty,
+            this.GetResourceObservable("VelaAccentDim"));
         WindowChrome.Apply(this, WindowChromeKind.Tool, ResizeGrip);
     }
 
@@ -122,11 +125,27 @@ public partial class RemoteFileEditorView : Window
             _revision++;
             StatusText.Text = Strings.Get("Editor_Unsaved");
             RefreshSaveIndicator();
+            UpdateCaretStatus();
         };
+        Editor.TextArea.Caret.PositionChanged += Caret_PositionChanged;
+        UpdateCaretStatus();
     }
 
     /// <summary>标题栏的保存图标:有未保存的改动时挂 <c>dirty</c> 类转强调色(修订号每次变动后调一次)。</summary>
     private void RefreshSaveIndicator() => SaveButton.Classes.Set("dirty", IsDirty);
+
+    private void Caret_PositionChanged(object? sender, EventArgs e) => UpdateCaretStatus();
+
+    private void UpdateCaretStatus()
+    {
+        var position = Editor.TextArea.Caret.Position;
+        CaretStatusText.Text = Strings.Format("Editor_CaretStatus", position.Line, position.Column);
+    }
+
+    private void WordWrap_Click(object? sender, RoutedEventArgs e)
+    {
+        Editor.WordWrap = WordWrapToggle.IsChecked == true;
+    }
 
     private async Task LoadFileAsync()
     {
@@ -398,6 +417,7 @@ public partial class RemoteFileEditorView : Window
     {
         // 先退订:主题服务活得比窗口久,悬着的委托会把已关闭的窗口一直吊在内存里。
         _themeService?.EffectiveThemeChanged -= OnEffectiveThemeChanged;
+        Editor.TextArea.Caret.PositionChanged -= Caret_PositionChanged;
 
         // 清理本地临时副本(整个独占子目录)。
         try

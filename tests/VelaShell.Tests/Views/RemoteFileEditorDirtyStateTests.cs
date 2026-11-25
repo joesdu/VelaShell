@@ -1,10 +1,13 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using AvaloniaEdit;
 using VelaShell.Controls.Controls;
+using VelaShell.Core.Resources;
 using VelaShell.Views;
 
 namespace VelaShell.Tests.Views;
@@ -158,6 +161,35 @@ public sealed class RemoteFileEditorDirtyStateTests
 
         static Color IconColor(Button button) =>
             ((ISolidColorBrush)button.GetVisualDescendants().OfType<LucideIcon>().Single().Foreground!).Color;
+    }
+
+    /// <summary>编辑器状态栏、当前行高亮和换行开关走真实宿主视图。</summary>
+    [TestMethod]
+    public void EditorShowsLocalizedCaretPositionAndTogglesWordWrap()
+    {
+        OnUi(() =>
+        {
+            using var fixture = Fixture.Open("first\nsecond");
+            TextBlock caretStatus = fixture.View.GetVisualDescendants().OfType<TextBlock>()
+                .Single(text => text.Name == "CaretStatusText");
+            ToggleButton wordWrap = fixture.View.GetVisualDescendants().OfType<ToggleButton>()
+                .Single(toggle => toggle.Name == "WordWrapToggle");
+
+            Assert.IsTrue(fixture.Editor.Options.HighlightCurrentLine);
+            var highlight = new SolidColorBrush(Color.FromArgb(48, 90, 100, 180));
+            fixture.View.Resources["VelaAccentDim"] = highlight;
+            Assert.AreSame(highlight, fixture.Editor.TextArea.TextView.CurrentLineBackground);
+            Assert.AreEqual(Strings.Format("Editor_CaretStatus", 1, 1), caretStatus.Text);
+
+            fixture.Editor.CaretOffset = 7;
+            Assert.AreEqual(Strings.Format("Editor_CaretStatus", 2, 2), caretStatus.Text);
+
+            Assert.IsFalse(fixture.Editor.WordWrap);
+            wordWrap.IsChecked = true;
+            wordWrap.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.IsTrue(fixture.Editor.WordWrap);
+            return Task.CompletedTask;
+        });
     }
 
     private static void OnUi(Func<Task> action) =>

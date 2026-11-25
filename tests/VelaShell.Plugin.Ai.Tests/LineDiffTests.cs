@@ -97,6 +97,28 @@ public sealed partial class LineDiffTests
     }
 
     [TestMethod]
+    public void IgnoringEdgeWhitespacePreservesContentAndInternalSpaces()
+    {
+        const string before = "remove\n  keep\t\na b", after = "insert\n\tkeep \nab";
+        Assert.AreEqual("---+++", Kinds(LineDiff.Compute(before, after)));
+        var filtered = LineDiff.Compute(before, after, ignoreWhitespace: true);
+        Assert.AreEqual("-+ -+", Kinds(filtered));
+        Assert.AreEqual("\tkeep ", filtered.Lines[2].Text);
+    }
+
+    [TestMethod]
+    public void ChangedSpansPairLinesWithinEachHunkAndKeepEmojiWhole()
+    {
+        var diff = LineDiff.Compute("x=😀;\nkeep\nport=8\nend", "x=😁;\nnew\nkeep\nport=80\nend");
+        var (removed, added) = diff.ChangedSpans();
+        Assert.AreEqual(new DiffTextSpan(2, 2), removed[1]);
+        Assert.AreEqual(new DiffTextSpan(2, 2), added[1]);
+        Assert.IsFalse(added.ContainsKey(2));
+        Assert.IsFalse(removed.ContainsKey(3));
+        Assert.AreEqual(new DiffTextSpan(6, 1), added[4]);
+    }
+
+    [TestMethod]
     public void ToUnified_WritesGitHunks()
     {
         string before = string.Join('\n', Enumerable.Range(1, 10).Select(i => $"l{i}"));

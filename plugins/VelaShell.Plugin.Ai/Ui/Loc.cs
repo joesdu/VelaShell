@@ -154,6 +154,7 @@ public sealed class Loc(string locale)
         ["DiffUnavailable"] = ["No text diff is available for this file (binary, too large, or content not captured).", "此文件没有可显示的文本差异(二进制、过大或未捕获到内容)。", "此檔案沒有可顯示的文字差異(二進位、過大或未擷取到內容)。", "このファイルにはテキストの差分がありません(バイナリ、サイズ超過、または内容を取得していません)。", "이 파일에는 표시할 텍스트 차이가 없습니다(바이너리, 너무 큼 또는 내용 미수집)."],
         ["DiffTabTitle"] = ["{0} (changes)", "{0} (改动)", "{0} (變更)", "{0} (変更)", "{0} (변경)"],
         ["DiffSideBySide"] = ["Side by side", "并排", "並排", "左右に並べる", "나란히"],
+        ["DiffIgnoreWhitespace"] = ["Ignore leading and trailing whitespace", "忽略行首和行尾空白", "忽略行首和行尾空白", "行頭と行末の空白を無視", "줄 앞뒤 공백 무시"],
         ["DiffInline"] = ["Inline", "内联", "內嵌", "インライン", "인라인"],
         ["DiffSplitterTip"] = ["Drag to resize; double-click to split evenly", "拖动调整宽度,双击恢复对半", "拖曳調整寬度,按兩下恢復對半", "ドラッグで幅を調整、ダブルクリックで均等に戻す", "드래그하여 너비 조정, 두 번 클릭하면 반반으로 복원"],
         ["DiffPrevious"] = ["Previous change", "上一处改动", "上一處變更", "前の変更", "이전 변경"],
