@@ -48,10 +48,9 @@ public class SshTerminalBridge : IAsyncDisposable
     public long InputGeneration => Interlocked.Read(ref _inputGeneration);
 
     /// <summary>
-    /// 出站队列元素:待发载荷 + 可选的排空信号(仅测试探针使用,写循环处理到该元素
-    /// 且其前所有写都已完成后置位)。
+    /// 字节载荷或排空信号。写循环处理完整批载荷后才完成该批的信号。
     /// </summary>
-    private readonly record struct OutboundItem(byte[] Data, TaskCompletionSource? Drained);
+    private readonly union OutboundItem(byte[], TaskCompletionSource);
 
     // 输出合批泵:读线程把原始分块入队,并只请求一次 UI 线程的合并刷新,
     // 而非每次读取都编组并喂入一次。在突发输出(apt/yum、cat、进度条)下,这把
@@ -476,7 +475,7 @@ public class SshTerminalBridge : IAsyncDisposable
                 return false;
             }
             _antiIdle.NoteActivity();
-            if (!_writeQueue.Writer.TryWrite(new(data, null)))
+            if (!_writeQueue.Writer.TryWrite(data))
             {
                 return false;
             }
@@ -506,7 +505,7 @@ public class SshTerminalBridge : IAsyncDisposable
             }
             OpenInjectionWindow(sentinel);
             _antiIdle.NoteActivity();
-            if (!_writeQueue.Writer.TryWrite(new(data, null)))
+            if (!_writeQueue.Writer.TryWrite(data))
             {
                 return false;
             }
@@ -548,12 +547,12 @@ public class SshTerminalBridge : IAsyncDisposable
 
     /// <summary>
     /// 测试探针:返回的任务在"此刻已入队的所有写全部落到底层流"后完成。
-    /// 借道队列本身实现(入队一个空载荷哨兵),因此对时序零假设——替代测试里的 Thread.Sleep。
+    /// 借道队列本身实现(入队一个排空信号),因此对时序零假设——替代测试里的 Thread.Sleep。
     /// </summary>
     internal Task DrainWritesAsync()
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_writeQueue.Writer.TryWrite(new([], tcs)))
+        if (!_writeQueue.Writer.TryWrite(tcs))
         {
             tcs.SetResult(); // 队列已封口(Dispose 后):没有在途写可等。
         }
@@ -985,7 +984,7 @@ public class SshTerminalBridge : IAsyncDisposable
         lock (_outboundGate)
         {
             _antiIdle.NoteActivity();
-            if (!_writeQueue.Writer.TryWrite(new(data, null)))
+            if (!_writeQueue.Writer.TryWrite(data))
             {
                 return;
             }
@@ -1006,32 +1005,29 @@ public class SshTerminalBridge : IAsyncDisposable
         {
             while (_writeQueue.Reader.TryRead(out OutboundItem item))
             {
-                byte[] payload = item.Data;
+                byte[] payload = [];
                 List<TaskCompletionSource>? drains = null;
-                CollectDrain(ref drains, item);
-
-                // 排空本轮已积压的元素。只有攒到第二段非空载荷才物化合并缓冲:
-                // 常态(单段 + 至多一个哨兵)保持零拷贝直传原数组。
                 MemoryStream? merged = null;
-                while (_writeQueue.Reader.TryRead(out OutboundItem more))
+                do
                 {
-                    CollectDrain(ref drains, more);
-                    if (more.Data.Length == 0)
+                    switch (item)
                     {
-                        continue; // 哨兵:只收信号,不参与载荷。
+                        case TaskCompletionSource drain:
+                            (drains ??= []).Add(drain);
+                            break;
+                        case byte[] { Length: > 0 } data when payload.Length == 0:
+                            payload = data;
+                            break;
+                        case byte[] { Length: > 0 } data:
+                            if (merged is null)
+                            {
+                                merged = new MemoryStream(payload.Length + data.Length + 64);
+                                merged.Write(payload);
+                            }
+                            merged.Write(data);
+                            break;
                     }
-                    if (payload.Length == 0)
-                    {
-                        payload = more.Data;
-                        continue;
-                    }
-                    if (merged is null)
-                    {
-                        merged = new MemoryStream(payload.Length + more.Data.Length + 64);
-                        merged.Write(payload);
-                    }
-                    merged.Write(more.Data);
-                }
+                } while (_writeQueue.Reader.TryRead(out item));
                 if (merged is not null)
                 {
                     payload = merged.ToArray();
@@ -1055,14 +1051,6 @@ public class SshTerminalBridge : IAsyncDisposable
                 // 写成功、写失败、拆除弃段——排空信号一律置位:探针等的是"处理完",不是"送达"。
                 drains?.ForEach(d => d.TrySetResult());
             }
-        }
-    }
-
-    private static void CollectDrain(ref List<TaskCompletionSource>? drains, in OutboundItem item)
-    {
-        if (item.Drained is { } tcs)
-        {
-            (drains ??= []).Add(tcs);
         }
     }
 }

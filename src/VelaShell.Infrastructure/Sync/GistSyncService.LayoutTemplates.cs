@@ -34,6 +34,9 @@ public sealed partial class GistSyncService
     /// <param name="SkipNote">这一次跳过模板同步的原因(附在同步结果后面);能读时为 null。</param>
     internal readonly record struct RemoteLayoutTemplates(LayoutTemplateSyncState? State, string? SkipNote);
 
+    /// <summary>成功合并的结果或跳过这次合并的原因。</summary>
+    internal readonly union LayoutMergeOutcome(LayoutTemplateMergeResult, string);
+
     /// <summary>这台设备同不同步布局模板。</summary>
     private bool LayoutTemplatesInScope(SyncSettings config) => layoutTemplates is not null && config.SyncLayoutTemplates;
 
@@ -94,14 +97,14 @@ public sealed partial class GistSyncService
         {
             return null;
         }
-        (LayoutTemplateMergeResult? merge, string? note) = await MergeRemoteLayoutTemplatesAsync(config, remoteContent, cancellationToken)
+        LayoutMergeOutcome outcome = await MergeRemoteLayoutTemplatesAsync(config, remoteContent, cancellationToken)
             .ConfigureAwait(false);
-        if (note is not null)
+        if (outcome is string note)
         {
             // 推送这条路上没有结果消息可附,原因只记日志;拉取与核对那条路会把它报给用户。
             Trace.WriteLine($"[Sync] 布局模板这次没有推送:{note}");
         }
-        return merge is { RemoteChanged: true } ? BuildLayoutTemplatesContent(config, merge.Merged) : null;
+        return outcome is LayoutTemplateMergeResult { RemoteChanged: true } merge ? BuildLayoutTemplatesContent(config, merge.Merged) : null;
     }
 
     /// <summary>
@@ -121,13 +124,13 @@ public sealed partial class GistSyncService
         {
             return result;
         }
-        (LayoutTemplateMergeResult? merge, string? note) = await MergeRemoteLayoutTemplatesAsync(config, remoteContent, cancellationToken)
+        LayoutMergeOutcome outcome = await MergeRemoteLayoutTemplatesAsync(config, remoteContent, cancellationToken)
             .ConfigureAwait(false);
-        if (note is not null)
+        if (outcome is string note)
         {
             return result with { Message = result.Message + note };
         }
-        if (merge is not { RemoteChanged: true } || !allowUpload)
+        if (outcome is not LayoutTemplateMergeResult { RemoteChanged: true } || !allowUpload)
         {
             return result;
         }
@@ -146,7 +149,7 @@ public sealed partial class GistSyncService
     /// <param name="remoteContent">云端那份文件的内容;null = 还没有。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>合并结果与跳过的原因。</returns>
-    internal async Task<(LayoutTemplateMergeResult? Merge, string? Note)> MergeRemoteLayoutTemplatesAsync(
+    internal async Task<LayoutMergeOutcome> MergeRemoteLayoutTemplatesAsync(
         SyncSettings config,
         string? remoteContent,
         CancellationToken cancellationToken)
@@ -155,17 +158,17 @@ public sealed partial class GistSyncService
         RemoteLayoutTemplates remote = ReadLayoutTemplatesFile(config, remoteContent);
         if (remote.SkipNote is { } skip)
         {
-            return (null, skip);
+            return skip;
         }
         try
         {
-            return (await layoutTemplates!.MergeAsync(remote.State).ConfigureAwait(false), null);
+            return await layoutTemplates!.MergeAsync(remote.State).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
         {
             // 本机库读写失败只跳过模板这一份:设置与连接已经同步了,不该因为它整次报失败。
             Trace.WriteLine($"[Sync] 合并布局模板失败:{ex.Message}");
-            return (null, Strings.Format("SyncSvc_LayoutsFailed", ex.Message));
+            return Strings.Format("SyncSvc_LayoutsFailed", ex.Message);
         }
     }
 
