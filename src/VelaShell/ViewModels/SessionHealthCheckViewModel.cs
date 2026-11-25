@@ -56,13 +56,43 @@ public enum SessionHealthStatus
 /// <param name="ElapsedMs">这一台查了多久;没查时为 null。</param>
 public sealed record SessionHealthOutcome(SessionHealthStatus Status, string? Step, string? Detail, long? ElapsedMs);
 
+internal readonly union HealthCheckResult(HealthCheckResult.Healthy, HealthCheckResult.Reachable, HealthCheckResult.NeedsCredentials,
+    HealthCheckResult.NeedsAttention, HealthCheckResult.Failed, HealthCheckResult.TimedOut, HealthCheckResult.Unsupported,
+    HealthCheckResult.NotStarted, HealthCheckResult.Stopped)
+{
+    internal readonly record struct Healthy(string? Detail, long ElapsedMs);
+    internal readonly record struct Reachable(string? Detail, long ElapsedMs);
+    internal readonly record struct NeedsCredentials(string? Step, string? Detail, long ElapsedMs);
+    internal readonly record struct NeedsAttention(string? Step, string Detail, long ElapsedMs);
+    internal readonly record struct Failed(string? Step, string Detail, long ElapsedMs);
+    internal readonly record struct TimedOut(string? Step, string Detail, long ElapsedMs);
+    internal readonly record struct Unsupported(string Detail);
+    internal readonly record struct NotStarted(string Detail);
+    internal readonly record struct Stopped(string? Step, string Detail, long ElapsedMs);
+
+    internal SessionHealthOutcome ToOutcome() => this switch
+    {
+        Healthy value => new(SessionHealthStatus.Healthy, null, value.Detail, value.ElapsedMs),
+        Reachable value => new(SessionHealthStatus.Reachable, null, value.Detail, value.ElapsedMs),
+        NeedsCredentials value => new(SessionHealthStatus.NeedsCredentials, value.Step, value.Detail, value.ElapsedMs),
+        NeedsAttention value => new(SessionHealthStatus.NeedsAttention, value.Step, value.Detail, value.ElapsedMs),
+        Failed value => new(SessionHealthStatus.Failed, value.Step, value.Detail, value.ElapsedMs),
+        TimedOut value => new(SessionHealthStatus.TimedOut, value.Step, value.Detail, value.ElapsedMs),
+        Unsupported value => new(SessionHealthStatus.Unsupported, null, value.Detail, null),
+        NotStarted value => new(SessionHealthStatus.Cancelled, null, value.Detail, null),
+        Stopped value => new(SessionHealthStatus.Cancelled, value.Step, value.Detail, value.ElapsedMs),
+    };
+}
+
 /// <summary>把一份四步诊断报告归成巡检表里的一行结论。</summary>
 public static class SessionHealthClassifier
 {
     /// <summary>按报告归类:第一个失败的步骤就是「卡在哪一步」。</summary>
     /// <param name="report">诊断报告。</param>
     /// <param name="elapsedMs">这一台查了多久。</param>
-    public static SessionHealthOutcome Classify(DiagnosticReport report, long elapsedMs)
+    public static SessionHealthOutcome Classify(DiagnosticReport report, long elapsedMs) => ClassifyResult(report, elapsedMs).ToOutcome();
+
+    internal static HealthCheckResult ClassifyResult(DiagnosticReport report, long elapsedMs)
     {
         ArgumentNullException.ThrowIfNull(report);
         DiagnosticStepUpdate? failed = report.Steps.FirstOrDefault(step => step.Status == DiagnosticStepStatus.Failed);
@@ -71,24 +101,24 @@ public static class SessionHealthClassifier
             // 主机指纹待确认、要动态码、要先改密码、Tailscale 要复核:不是机器坏了,是巡检不替人回答。
             if (RequiresUser(report.Failure))
             {
-                return new(SessionHealthStatus.NeedsAttention, failed?.Name, Join(title, failed?.Detail), elapsedMs);
+                return new HealthCheckResult.NeedsAttention(failed?.Name, Join(title, failed?.Detail), elapsedMs);
             }
             // 私钥带口令、配置里没存口令:手动连接时会问口令,巡检不问 —— 与「没存凭据」同一类,不是机器连不上。
             // 系统密钥库的钥要 PIN / 确认才能用(巡检以「不许弹框」打开它)同理。
             if (MissingPassphrase(report.Failure) || KeyStoreNeedsUser(report.Failure))
             {
-                return new(SessionHealthStatus.NeedsCredentials, failed?.Name, failed?.Detail ?? title, elapsedMs);
+                return new HealthCheckResult.NeedsCredentials(failed?.Name, failed?.Detail ?? title, elapsedMs);
             }
             // 跳板链本身配错了(被删、成环):四步都无从谈起,卡在配置上。
-            return new(SessionHealthStatus.Failed, failed?.Name ?? Strings.Get("Health_StepConfiguration"),
+            return new HealthCheckResult.Failed(failed?.Name ?? Strings.Get("Health_StepConfiguration"),
                 Join(title, failed?.Detail ?? report.IssueDescription), elapsedMs);
         }
         DiagnosticStepUpdate auth = report.Steps[^1];
         return auth.Status switch
         {
-            DiagnosticStepStatus.Warning => new(SessionHealthStatus.NeedsCredentials, auth.Name, auth.Detail, elapsedMs),
-            DiagnosticStepStatus.Skipped => new(SessionHealthStatus.Reachable, null, auth.Detail, elapsedMs),
-            _ => new(SessionHealthStatus.Healthy, null, auth.Detail, elapsedMs),
+            DiagnosticStepStatus.Warning => new HealthCheckResult.NeedsCredentials(auth.Name, auth.Detail, elapsedMs),
+            DiagnosticStepStatus.Skipped => new HealthCheckResult.Reachable(auth.Detail, elapsedMs),
+            _ => new HealthCheckResult.Healthy(auth.Detail, elapsedMs),
         };
     }
 
@@ -162,7 +192,7 @@ public static class SessionHealthClassifier
         }
     }
 
-    private static string? Join(string head, string? tail) =>
+    private static string Join(string head, string? tail) =>
         string.IsNullOrWhiteSpace(tail) || tail == head ? head : $"{head} · {tail}";
 }
 
@@ -298,8 +328,9 @@ public sealed class SessionHealthRowViewModel : ReactiveObject
         }
     }
 
-    internal void Apply(SessionHealthOutcome outcome)
+    internal void Apply(HealthCheckResult result)
     {
+        SessionHealthOutcome outcome = result.ToOutcome();
         Status = outcome.Status;
         Step = outcome.Step;
         Detail = outcome.Detail;
@@ -620,7 +651,7 @@ public sealed class SessionHealthCheckViewModel : ReactiveObject
     {
         if (row.Profile.ConnectionType is not (ConnectionType.SSH or ConnectionType.SFTP))
         {
-            row.Apply(new(SessionHealthStatus.Unsupported, null, Strings.Get("Health_UnsupportedDetail"), null));
+            row.Apply(new HealthCheckResult.Unsupported(Strings.Get("Health_UnsupportedDetail")));
             RefreshSummary();
             return;
         }
@@ -630,7 +661,7 @@ public sealed class SessionHealthCheckViewModel : ReactiveObject
         }
         catch (OperationCanceledException)
         {
-            row.Apply(new(SessionHealthStatus.Cancelled, null, Strings.Get("Health_NotChecked"), null));
+            row.Apply(new HealthCheckResult.NotStarted(Strings.Get("Health_NotChecked")));
             RefreshSummary();
             return;
         }
@@ -638,7 +669,7 @@ public sealed class SessionHealthCheckViewModel : ReactiveObject
         {
             // 停下的那一刻,别的行正好放出一个名额、先给了这一行:不再开始新的一台。
             gate.Release();
-            row.Apply(new(SessionHealthStatus.Cancelled, null, Strings.Get("Health_NotChecked"), null));
+            row.Apply(new HealthCheckResult.NotStarted(Strings.Get("Health_NotChecked")));
             RefreshSummary();
             return;
         }
@@ -669,21 +700,21 @@ public sealed class SessionHealthCheckViewModel : ReactiveObject
                 DiagnosticReport report = await _diagnostics
                                                 .DiagnoseUnattendedAsync(row.Profile, verifyLogin, progress, deadline.Token)
                                                 .ConfigureAwait(true);
-                row.Apply(SessionHealthClassifier.Classify(report, stopwatch.ElapsedMilliseconds));
+                row.Apply(SessionHealthClassifier.ClassifyResult(report, stopwatch.ElapsedMilliseconds));
             }
             catch (OperationCanceledException) when (runToken.IsCancellationRequested)
             {
-                row.Apply(new(SessionHealthStatus.Cancelled, row.Step, Strings.Get("Health_Stopped"), stopwatch.ElapsedMilliseconds));
+                row.Apply(new HealthCheckResult.Stopped(row.Step, Strings.Get("Health_Stopped"), stopwatch.ElapsedMilliseconds));
             }
             catch (OperationCanceledException) when (deadline.IsCancellationRequested)
             {
-                row.Apply(new(SessionHealthStatus.TimedOut, row.Step,
+                row.Apply(new HealthCheckResult.TimedOut(row.Step,
                     Strings.Format("Health_TimedOutDetail", (int)_perHostTimeout.TotalSeconds), stopwatch.ElapsedMilliseconds));
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 // 诊断本身出了岔子(读库失败之类):照「连不上」记,原因如实写出来,别让一台掀掉整批。
-                row.Apply(new(SessionHealthStatus.Failed, row.Step, ex.Message, stopwatch.ElapsedMilliseconds));
+                row.Apply(new HealthCheckResult.Failed(row.Step, ex.Message, stopwatch.ElapsedMilliseconds));
             }
         }
         finally

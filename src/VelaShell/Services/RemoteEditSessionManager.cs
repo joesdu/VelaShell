@@ -410,23 +410,26 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>编辑器保存往往触发多个事件(写入 + 改名 + 属性),攒这么久再传一次(生产值;见 <see cref="RemoteEditRequest.DebounceWindow" />)。</summary>
     internal static readonly TimeSpan DefaultDebounceWindow = TimeSpan.FromMilliseconds(600);
 
+    private readonly union LifecycleState(ActiveLifecycle, ClosingLifecycle, DisposedLifecycle);
+
+    private readonly record struct ActiveLifecycle(RemoteEditState State);
+
+    private readonly record struct ClosingLifecycle(RemoteEditState State, bool ShutdownTimedOut);
+
+    private readonly record struct DisposedLifecycle(RemoteEditState State, bool ShutdownTimedOut);
+
     private readonly Action<string>? _onError;
     private readonly RemoteEditRequest _request;
     private readonly SemaphoreSlim _uploadGate = new(1, 1);
     private readonly FileSystemWatcher _watcher;
+    private readonly Lock _lifecycleGate = new();
+    private LifecycleState _lifecycle = new ActiveLifecycle(RemoteEditState.Watching);
     private Timer? _debounce;
-    private bool _disposed;
     private IDisposable? _directoryLease;
-    private bool _shutdownTimedOut;
-
-    /// <summary>已进入收尾:不再接受新的文件变化(但正在跑的收尾还要把最后一次改动传完)。</summary>
-    private bool _closing;
 
     /// <summary>有一次改动还没落到远端(防抖还没到点,或者刚攒下)。0/1,用 Interlocked 读写。</summary>
     private int _pendingSave;
 
-    /// <summary>最近一次上传是否失败(失败就保留本地副本,不删临时目录)。</summary>
-    private bool _lastUploadFailed;
     private int _uploadCount;
 
     /// <summary>状态标记的写入闸:watcher 线程(变脏)与上传线程(变干净)都会写。</summary>
@@ -500,7 +503,103 @@ public sealed class RemoteEditSession : IDisposable
     public bool HasPendingChange => Volatile.Read(ref _pendingSave) == 1;
 
     /// <summary>此刻的处境(回归用例与诊断日志读它)。</summary>
-    public RemoteEditState State { get; private set; } = RemoteEditState.Watching;
+    public RemoteEditState State
+    {
+        get
+        {
+            lock (_lifecycleGate)
+            {
+                return _lifecycle switch
+                {
+                    ActiveLifecycle active => active.State,
+                    ClosingLifecycle closing => closing.State,
+                    DisposedLifecycle disposed => disposed.State,
+                    _ => throw new InvalidOperationException("Unknown remote edit lifecycle state."),
+                };
+            }
+        }
+    }
+
+    private bool IsDisposed
+    {
+        get
+        {
+            lock (_lifecycleGate)
+            {
+                return _lifecycle is DisposedLifecycle;
+            }
+        }
+    }
+
+    private bool IsClosing
+    {
+        get
+        {
+            lock (_lifecycleGate)
+            {
+                return _lifecycle is ClosingLifecycle or DisposedLifecycle;
+            }
+        }
+    }
+
+    private bool IsShutdownTimedOut
+    {
+        get
+        {
+            lock (_lifecycleGate)
+            {
+                return _lifecycle switch
+                {
+                    ClosingLifecycle closing => closing.ShutdownTimedOut,
+                    DisposedLifecycle disposed => disposed.ShutdownTimedOut,
+                    _ => false,
+                };
+            }
+        }
+    }
+
+    private bool IsUploadFailed => State == RemoteEditState.Failed;
+
+    private void BeginShutdown()
+    {
+        lock (_lifecycleGate)
+        {
+            _lifecycle = _lifecycle switch
+            {
+                ActiveLifecycle active => new ClosingLifecycle(active.State, ShutdownTimedOut: false),
+                ClosingLifecycle or DisposedLifecycle => _lifecycle,
+                _ => throw new InvalidOperationException("Unknown remote edit lifecycle state."),
+            };
+        }
+    }
+
+    private void MarkShutdownTimedOut()
+    {
+        lock (_lifecycleGate)
+        {
+            _lifecycle = _lifecycle switch
+            {
+                ClosingLifecycle closing => new ClosingLifecycle(closing.State, ShutdownTimedOut: true),
+                DisposedLifecycle disposed => new DisposedLifecycle(disposed.State, ShutdownTimedOut: true),
+                ActiveLifecycle active => new ActiveLifecycle(active.State),
+                _ => throw new InvalidOperationException("Unknown remote edit lifecycle state."),
+            };
+        }
+    }
+
+    private void SetState(RemoteEditState state)
+    {
+        lock (_lifecycleGate)
+        {
+            _lifecycle = _lifecycle switch
+            {
+                ActiveLifecycle => new ActiveLifecycle(state),
+                ClosingLifecycle closing => new ClosingLifecycle(state, closing.ShutdownTimedOut),
+                DisposedLifecycle disposed => new DisposedLifecycle(state, disposed.ShutdownTimedOut),
+                _ => throw new InvalidOperationException("Unknown remote edit lifecycle state."),
+            };
+        }
+    }
 
     /// <summary>拆除会话。上传没能落地时<b>保留</b>本地副本,不删临时目录。</summary>
     public void Dispose()
@@ -577,12 +676,19 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>停掉监视与防抖;已经拆过时返回 false。</summary>
     private bool StopWatching()
     {
-        if (_disposed)
+        lock (_lifecycleGate)
         {
-            return false;
+            if (_lifecycle is DisposedLifecycle)
+            {
+                return false;
+            }
+            _lifecycle = _lifecycle switch
+            {
+                ActiveLifecycle active => new DisposedLifecycle(active.State, ShutdownTimedOut: false),
+                ClosingLifecycle closing => new DisposedLifecycle(closing.State, closing.ShutdownTimedOut),
+                _ => throw new InvalidOperationException("Unknown remote edit lifecycle state."),
+            };
         }
-        _disposed = true;
-        _closing = true;
         _watcher.EnableRaisingEvents = false;
         Interlocked.Exchange(ref _debounce, null)?.Dispose();
         _watcher.Dispose();
@@ -592,7 +698,7 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>有改动没落到远端时保留副本、标成草稿并说一声;返回是否保留了。</summary>
     private bool KeepDraft(Action<string>? notify)
     {
-        if (!_shutdownTimedOut && _uploadGate.CurrentCount != 0 && !_lastUploadFailed
+        if (!IsShutdownTimedOut && _uploadGate.CurrentCount != 0 && !IsUploadFailed
             && Volatile.Read(ref _pendingSave) == 0 && MatchesClean(Snapshot()))
         {
             return false;
@@ -612,7 +718,7 @@ public sealed class RemoteEditSession : IDisposable
     /// <returns>全部内容都已落到远端时为 <see langword="true" />。</returns>
     public async Task<bool> ShutdownAsync(TimeSpan timeout)
     {
-        _closing = true;
+        BeginShutdown();
         _watcher.EnableRaisingEvents = false;
         // 防抖还没到点的那一次不能就这么丢掉 —— 那正是"改完立刻关编辑器"的常见情形。
         // 计时器停掉,但 _pendingSave 保持置位,下面的 UploadAsync 会把它兑现。
@@ -624,11 +730,11 @@ public sealed class RemoteEditSession : IDisposable
         }
         catch (TimeoutException)
         {
-            _shutdownTimedOut = true;
+            MarkShutdownTimedOut();
             MarkDirty();
             return false;
         }
-        return !_lastUploadFailed && Volatile.Read(ref _pendingSave) == 0;
+        return !IsUploadFailed && Volatile.Read(ref _pendingSave) == 0;
     }
 
     /// <summary>
@@ -643,11 +749,11 @@ public sealed class RemoteEditSession : IDisposable
     /// <param name="cancellationToken">取消下载。</param>
     public async Task RefreshFromRemoteAsync(CancellationToken cancellationToken = default)
     {
-        if (_disposed || _closing)
+        if (IsDisposed || IsClosing)
         {
             return;
         }
-        if (HasPendingChange || _lastUploadFailed || _uploadGate.CurrentCount == 0 || !MatchesClean(Snapshot()))
+        if (HasPendingChange || IsUploadFailed || _uploadGate.CurrentCount == 0 || !MatchesClean(Snapshot()))
         {
             RemoteEditLog.Write("open", $"skip refresh (pending changes) {RemotePath}");
             _onError?.Invoke(Strings.Format("Svc_RemoteEditReusedDraft", FileName, LocalPath));
@@ -775,7 +881,7 @@ public sealed class RemoteEditSession : IDisposable
 
     private void ScheduleUpload()
     {
-        if (_disposed || _closing)
+        if (IsDisposed || IsClosing)
         {
             return;
         }
@@ -803,14 +909,14 @@ public sealed class RemoteEditSession : IDisposable
     /// </summary>
     private async Task UploadAsync()
     {
-        if (_disposed)
+        if (IsDisposed)
         {
             return;
         }
         await _uploadGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            while (!_disposed && Interlocked.Exchange(ref _pendingSave, 0) == 1)
+            while (!IsDisposed && Interlocked.Exchange(ref _pendingSave, 0) == 1)
             {
                 if (!File.Exists(LocalPath))
                 {
@@ -818,7 +924,7 @@ public sealed class RemoteEditSession : IDisposable
                     RemoteEditLog.Write("upload", $"skip, local copy missing {LocalPath}");
                     return;
                 }
-                State = RemoteEditState.Uploading;
+                SetState(RemoteEditState.Uploading);
                 try
                 {
                     // 编辑器保存后可能短暂持锁:先等到文件可读再上传,保证传输浮窗里只出现一行。
@@ -830,8 +936,7 @@ public sealed class RemoteEditSession : IDisposable
                     {
                         // 排队的那几个事件过后,副本又是与远端一致的那一份了(改名挪开再挪回来、保存后又原样还原):不传。
                         // 远端本来就是这份内容,之前那次失败(如果有)也就没什么要补的了。
-                        _lastUploadFailed = false;
-                        State = RemoteEditState.Watching;
+                        SetState(RemoteEditState.Watching);
                         if (Volatile.Read(ref _pendingSave) == 0)
                         {
                             MarkClean(uploaded);
@@ -847,11 +952,10 @@ public sealed class RemoteEditSession : IDisposable
                     {
                         await _request.SftpService.UploadFileAsync(SessionId, LocalPath, RemotePath).ConfigureAwait(false);
                     }
-                    _lastUploadFailed = false;
                     _uploadCount++;
                     // 远端现在就是这一份:记下它的长度与修改时间,之后的标记(干净或又变脏)都带着
                     await CaptureRemoteBaselineAsync().ConfigureAwait(false);
-                    State = RemoteEditState.Watching;
+                    SetState(RemoteEditState.Watching);
                     if (Volatile.Read(ref _pendingSave) == 0)
                     {
                         MarkClean(uploaded);
@@ -867,8 +971,7 @@ public sealed class RemoteEditSession : IDisposable
                 catch (Exception ex)
                 {
                     // 失败要留痕:本地副本是这份改动唯一的存身之处,Dispose 据此决定不删目录。
-                    _lastUploadFailed = true;
-                    State = RemoteEditState.Failed;
+                    SetState(RemoteEditState.Failed);
                     Interlocked.Exchange(ref _pendingSave, 1);
                     RemoteEditLog.Write("upload", $"failed {RemotePath}: {ex.Message}");
                     _onError?.Invoke(Strings.Format("Svc_RemoteUpdateFailed", FileName, ex.Message));
@@ -892,7 +995,7 @@ public sealed class RemoteEditSession : IDisposable
     /// <summary>标记:本地副本(就是 <paramref name="copy" /> 这一份)与远端一致。</summary>
     private void MarkClean(FileInfo copy)
     {
-        if (_disposed || _shutdownTimedOut)
+        if (IsDisposed || IsShutdownTimedOut)
         {
             MarkDirty();
             return;
@@ -959,7 +1062,7 @@ public sealed class RemoteEditSession : IDisposable
     {
         lock (_markerGate)
         {
-            if (state == RemoteEditDrafts.Clean && (_disposed || _shutdownTimedOut))
+            if (state == RemoteEditDrafts.Clean && (IsDisposed || IsShutdownTimedOut))
             {
                 state = RemoteEditDrafts.Dirty;
                 length = 0;

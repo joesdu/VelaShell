@@ -243,6 +243,8 @@ public sealed class SessionHealthCheckViewModelTests
 
         Assert.IsTrue(vm.Rows.All(r => r.Status == SessionHealthStatus.Cancelled), string.Join(", ", vm.Rows.Select(r => r.Status)));
         Assert.AreEqual(SessionHealthCheckViewModel.Concurrency, Volatile.Read(ref started), "排着队的那两台没开始查。");
+        Assert.AreEqual(SessionHealthCheckViewModel.Concurrency, vm.Rows.Count(row => row.ElapsedMs.HasValue));
+        Assert.IsNull(vm.Rows[^1].ElapsedMs);
         Assert.AreEqual(Strings.Get("Health_NotChecked"), vm.Rows[^1].Detail);
     }
 
