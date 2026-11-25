@@ -73,12 +73,16 @@ public sealed partial class X11Server
             case 4:   // QueryClientIds:ClientXIDMask 与 LocalClientPidMask(只有经 Unix 套接字连进来、取得到 pid 的客户端有)
                 {
                     uint count = r.U32();
+                    if ((ulong)count * 8 != (ulong)r.Remaining)
+                    {
+                        throw new XProtocolError(XErrorCode.Length);
+                    }
                     // 规范:LocalClientPid 只回给本身也是本机客户端的请求方(远端问本机进程的 pid 没有意义)—— 这里指经 Unix 套接字连进来的。
                     bool askerLocal = c.PeerUid is not null || c.PeerPid > 0;
                     // 每个客户端的每种标识只回一次:client = 0 表示「全部客户端」,两百万条这样的 spec 各展开一遍就是几 GB 的回复。
                     List<(XClient Client, uint Mask)> ids = [];
                     HashSet<(XClient, uint)> seen = [];
-                    for (uint i = 0; i < count && r.Remaining >= 8; i++)
+                    for (uint i = 0; i < count; i++)
                     {
                         uint client = r.U32();
                         uint mask = r.U32();

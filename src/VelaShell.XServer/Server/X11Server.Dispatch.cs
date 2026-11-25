@@ -108,7 +108,7 @@ public sealed partial class X11Server
             case XOpcode.InternAtom: InternAtom(c, r); break;
             case XOpcode.GetAtomName: GetAtomName(c, r); break;
             case XOpcode.ChangeProperty: ChangeProperty(c, r); break;
-            case XOpcode.DeleteProperty: DeleteProperty(r); break;
+            case XOpcode.DeleteProperty: DeleteProperty(c, r); break;
             case XOpcode.GetProperty: GetProperty(c, r); break;
             case XOpcode.ListProperties: ListProperties(c, r); break;
             case XOpcode.SetSelectionOwner: SetSelectionOwner(c, r); break;

@@ -362,6 +362,67 @@ public sealed class ClipboardTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task 交接选区时新的普通或INCR传输只接受当前属主的回应(bool incremental)
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(new X11ServerOptions { ClipboardFollowsFocus = false }, host);
+        await using XTestClient previous = await XTestClient.ConnectAsync(server);
+        await using XTestClient current = await XTestClient.ConnectAsync(server, bigEndian: true, untrusted: true);
+        uint clipboard = await InternAsync(previous, "CLIPBOARD"), utf8 = await InternAsync(previous, "UTF8_STRING");
+        uint oldWindow = await CreateWindowAsync(previous), newWindow = await CreateWindowAsync(current);
+        await previous.SendAsync(22, 0, b => b.U32(oldWindow).U32(clipboard).U32(0));
+        XMessage oldRequest = await TextRequestAsync(previous);
+        await current.SendAsync(22, 0, b => b.U32(newWindow).U32(clipboard).U32(0));
+        XMessage request = await TextRequestAsync(current);
+        uint requestor = request.U32(12), property = request.U32(24);
+        if (incremental)
+        {
+            uint incr = await InternAsync(current, "INCR");
+            await current.SendAsync(18, 0, b => b.U32(requestor).U32(property).U32(incr).U8(32).U8(0).U16(0).U32(1).U32(3));
+            await SendSelectionNotifyAsync(current, request, property);
+        }
+        await ChangePropertyAsync(current, requestor, property, utf8, "new"u8.ToArray());
+        await current.SyncAsync();
+
+        // 前一个属主处理自己先前收到的请求时,新的传输已经开始了。
+        await AnswerAsync(previous, oldRequest, utf8, "old"u8.ToArray());
+        await previous.SyncAsync();
+        if (incremental)
+        {
+            await ChangePropertyAsync(current, requestor, property, utf8, []);
+        }
+        else
+        {
+            await SendSelectionNotifyAsync(current, request, property);
+        }
+        await host.WaitForAsync(() => host.Clipboard == "new");
+    }
+
+    [TestMethod]
+    public async Task 切走焦点时取消待答的传输_切回来也不接收迟到的答复()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        var (a, windowA, b, windowB) = await TwoSessionsAsync(server, host);
+        await using XTestClient owner = a;
+        await using XTestClient other = b;
+        uint clipboard = await InternAsync(owner, "CLIPBOARD"), utf8 = await InternAsync(owner, "UTF8_STRING");
+        server.FocusTopLevel(host.Mapped[windowA]);
+        await owner.SendAsync(22, 0, w => w.U32(windowA).U32(clipboard).U32(0));
+        XMessage request = await TextRequestAsync(owner);
+        server.FocusTopLevel(host.Mapped[windowB]);
+        await other.SyncAsync();
+        server.FocusTopLevel(host.Mapped[windowA]);
+        await AnswerAsync(owner, request, utf8, "old"u8.ToArray());
+        await owner.SyncAsync();
+        Assert.IsNull(host.Clipboard);
+        await CopyAsync(owner, windowA, clipboard, utf8, "new");
+        await host.WaitForAsync(() => host.Clipboard == "new");
+    }
+
+    [TestMethod]
     public async Task 大文本走INCR分块()
     {
         using RecordingHost host = new();
@@ -461,9 +522,10 @@ public sealed class ClipboardTests
     {
         using RecordingHost host = new();
         await using X11Server server = new(host: host);
-        await using XTestClient a = await XTestClient.ConnectAsync(server, label: "joe@a:22");
-        await using XTestClient xclip = await XTestClient.ConnectAsync(server, label: "joe@a:22");   // 同一个 SSH 会话里的 xclip
-        await using XTestClient b = await XTestClient.ConnectAsync(server, label: "joe@b:22");
+        object session = new();
+        await using XTestClient a = await XTestClient.ConnectAsync(server, label: "joe@a:22", session: session);
+        await using XTestClient xclip = await XTestClient.ConnectAsync(server, label: "xclip", session: session);
+        await using XTestClient b = await XTestClient.ConnectAsync(server, label: "joe@a:22", session: new object());
         uint clipboard = await InternAsync(a, "CLIPBOARD");
         uint utf8 = await InternAsync(a, "UTF8_STRING");
 
@@ -491,7 +553,7 @@ public sealed class ClipboardTests
             await c.SendAsync(24, 0, w => w.U32(requestor).U32(clipboard).U32(utf8).U32(property).U32(0));
             return (await c.NextEventAsync(SelectionNotify)).U32(20);
         }
-        Assert.AreNotEqual(0u, await ConvertAsync(xclip), "同一个会话(连接名相同)读得到");
+        Assert.AreNotEqual(0u, await ConvertAsync(xclip), "同一个会话的另一个通道读得到");
         Assert.AreEqual(0u, await ConvertAsync(b), "别的会话读不到:原先点一下任意 X 窗口,所有会话都读得到");
 
         // 后台会话 B 抢 CLIPBOARD:不去取它的内容,系统剪贴板不被改写。
@@ -537,11 +599,50 @@ public sealed class ClipboardTests
             "别的会话收不到:原先它据此精确得知宿主剪贴板何时有了新内容");
     }
 
-    /// <summary>两个 SSH 会话(连接名不同)各连一个客户端,各映射一个顶层窗口。</summary>
+    [TestMethod]
+    public async Task 未提供会话标识的转发通道与本机程序分开()
+    {
+        await using X11Server server = new();
+        await using XTestClient local = await XTestClient.ConnectAsync(server);
+        await using XTestClient otherLocal = await XTestClient.ConnectAsync(server);
+        await using XTestClient forwarded = await XTestClient.ConnectAsync(server, authenticated: true);
+        uint window = await CreateWindowAsync(local);
+        uint selection = await InternAsync(local, "CLIPBOARD");
+        await local.SendAsync(22, 0, b => b.U32(window).U32(selection).U32(0));
+        await local.SyncAsync();
+        Assert.AreEqual(window, (await otherLocal.RequestAsync(23, 0, b => b.U32(selection))).U32(8));
+        Assert.AreEqual(0u, (await forwarded.RequestAsync(23, 0, b => b.U32(selection))).U32(8));
+    }
+
+    [TestMethod]
+    public async Task 最后一条通道断开时清除会话代持的选区()
+    {
+        using RecordingHost host = new();
+        await using X11Server server = new(host: host);
+        object session = new();
+        XTestClient a = await XTestClient.ConnectAsync(server, session: session);
+        XTestClient b = await XTestClient.ConnectAsync(server, session: session);
+        uint window = a.NewId();
+        await a.SendAsync(1, 0, w => w.U32(window).U32(a.RootWindow).I16(0).I16(0).U16(40).U16(30).U16(0).U16(1).U32(0).U32(0));
+        await a.SendAsync(8, 0, w => w.U32(window));
+        await host.WaitForAsync(() => host.Mapped.ContainsKey(window));
+        uint selection = await InternAsync(a, "CLIPBOARD");
+        server.FocusTopLevel(host.Mapped[window]);
+        server.SetClipboardText("test");
+        uint owner = (await a.RequestAsync(23, 0, w => w.U32(selection))).U32(8);
+        Assert.AreNotEqual(0u, owner);
+        await a.DisconnectAsync(server);
+        Assert.AreEqual(owner, (await b.RequestAsync(23, 0, w => w.U32(selection))).U32(8));
+        await b.DisconnectAsync(server);
+        await using XTestClient later = await XTestClient.ConnectAsync(server, session: session);
+        Assert.AreEqual(0u, (await later.RequestAsync(23, 0, w => w.U32(selection))).U32(8));
+    }
+
+    /// <summary>两个未提供会话标识的转发客户端,各映射一个顶层窗口。</summary>
     private static async Task<(XTestClient A, uint WindowA, XTestClient B, uint WindowB)> TwoSessionsAsync(X11Server server, RecordingHost host)
     {
         XTestClient a = await XTestClient.ConnectAsync(server, label: "joe@a:22");
-        XTestClient b = await XTestClient.ConnectAsync(server, label: "joe@b:22");
+        XTestClient b = await XTestClient.ConnectAsync(server, label: "joe@a:22");
         async Task<uint> MapAsync(XTestClient c)
         {
             uint id = c.NewId();

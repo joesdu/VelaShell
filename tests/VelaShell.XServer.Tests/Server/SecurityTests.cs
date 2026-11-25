@@ -102,10 +102,18 @@ public sealed class SecurityTests
     }
 
     [TestMethod]
-    public async Task 签出的cookie连得进来_信任级别照授权_撤销时断开用它连着的客户端并通知签它的客户端()
+    [DataRow(true, false)]
+    [DataRow(true, true)]
+    [DataRow(false, false)]
+    [DataRow(false, true)]
+    public async Task 签出的cookie连得进来_信任级别照授权_撤销时断开用它连着的客户端并通知签它的客户端(bool configured, bool sameUser)
     {
-        await using X11Server server = new(new X11ServerOptions { AuthorizationCookie = MainCookie });
-        await using XTestClient admin = await XTestClient.ConnectAsync(server, authName: "MIT-MAGIC-COOKIE-1", authData: MainCookie);
+        const string mit = "MIT-MAGIC-COOKIE-1";
+        await using X11Server server = new(new X11ServerOptions { AuthorizationCookie = configured ? MainCookie : null });
+        await using XTestClient admin = configured ? await XTestClient.ConnectAsync(server, authName: mit, authData: MainCookie)
+            : await XTestClient.ConnectAsync(server);
+        X11Server.Peer peer = new(IsLocal: true, SameHost: sameUser, Uid: sameUser ? 1000u : null, LocalUser: sameUser, Authenticated: false);
+        Task<XTestClient> ConnectAsync(byte[] data) => XTestClient.ConnectAsPeerAsync(server, peer, mit, data);
         (byte major, byte firstEvent, _) = (await QueryAsync(admin, "SECURITY"))!.Value;
 
         // 默认非受信、timeout 60;选了 AuthorizationRevoked。
@@ -116,18 +124,19 @@ public sealed class SecurityTests
         Assert.AreNotEqual(0u, authId);
         Assert.HasCount(16, cookie);
 
-        await using XTestClient guest = await XTestClient.ConnectAsync(server, authName: "MIT-MAGIC-COOKIE-1", authData: cookie);
+        await using XTestClient forwarded = await XTestClient.ConnectAsync(server, authenticated: true, authName: mit, authData: cookie);
+        await using XTestClient guest = await ConnectAsync(cookie);
         Assert.AreEqual(1, guest.SetupReply[0], "签出的 cookie 连得进来");
         XClientInfo info = (await server.GetClientsAsync()).Single(c => c.Id == guest.ResourceBase >> 21);
         Assert.AreEqual(XClientTrust.Untrusted, info.Trust);
         Assert.IsNull(await QueryAsync(guest, "XTEST"), "非受信:看不到 XTEST");
 
-        await using XTestClient forged = await XTestClient.ConnectAsync(server, authName: "MIT-MAGIC-COOKIE-1", authData: RandomNumberGenerator.GetBytes(16));
+        await using XTestClient forged = await ConnectAsync(RandomNumberGenerator.GetBytes(16));
         Assert.AreEqual(0, forged.SetupReply[0], "对不上的 cookie 照旧拒");
 
         // 受信级别的授权。
         byte[] trustedCookie = CookieOf(await GenerateAsync(admin, major, 0x2, 0));
-        await using (XTestClient trustedGuest = await XTestClient.ConnectAsync(server, authName: "MIT-MAGIC-COOKIE-1", authData: trustedCookie))
+        await using (XTestClient trustedGuest = await ConnectAsync(trustedCookie))
         {
             Assert.IsNotNull(await QueryAsync(trustedGuest, "XTEST"), "受信级别的授权连进来的是受信客户端");
         }
@@ -136,8 +145,9 @@ public sealed class SecurityTests
         XMessage revoked = await admin.NextEventAsync(firstEvent);
         Assert.AreEqual(authId, revoked.U32(4));
         await guest.ServerTask.WaitAsync(TimeSpan.FromSeconds(5));   // 用它连着的客户端被断开
-        await using XTestClient late = await XTestClient.ConnectAsync(server, authName: "MIT-MAGIC-COOKIE-1", authData: cookie);
+        await using XTestClient late = await ConnectAsync(cookie);
         Assert.AreEqual(0, late.SetupReply[0], "撤销之后再也连不进来");
+        Assert.IsNotNull(await QueryAsync(forwarded, "XTEST"), "调用方已验证的流保留调用方的信任级别,也不随报文里的 cookie 撤销");
     }
 
     [TestMethod]

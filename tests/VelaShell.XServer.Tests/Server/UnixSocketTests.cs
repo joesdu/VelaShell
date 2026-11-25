@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using VelaShell.XServer.Tests.TestKit;
 
 namespace VelaShell.XServer.Tests.Server;
 
@@ -97,6 +98,9 @@ public sealed partial class UnixSocketTests
         byte[] head = new byte[8];
         await stream.ReadExactlyAsync(head).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.AreEqual(1, head[0], "同一个用户经套接字文件连进来,不必带 cookie");
+
+        await using XTestClient wrong = await XTestClient.ConnectUnixAsync(path, "MIT-MAGIC-COOKIE-1", [1]);
+        Assert.AreEqual(0, wrong.SetupReply[0], "同一个用户显式提供错误的 cookie 时拒绝连接");
     }
 
     [TestMethod]

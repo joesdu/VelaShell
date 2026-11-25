@@ -76,8 +76,8 @@ public sealed record XServerGrabStallNotice(string ClientKey, int Id, string Nam
 /// 非受信语义限制它 —— 只碰得到非受信程序的窗口,拿不到别的程序的画面与键盘、不能伪造输入。
 /// </param>
 /// <param name="Session">
-/// 发起它的 SSH 会话(同一个对象就是同一个会话)。设置里开了「每个 SSH 会话一个显示」时,内置服务端按它把会话分到各自的显示上;
-/// <see langword="null" /> = 不分(落在共用的显示上)。
+/// 发起它的 SSH 连接(按对象引用区分)。同一连接的通道共用剪贴板作用域;开了「每个 SSH 会话一个显示」时也共用会话显示。
+/// <see langword="null" /> 时落在共用的显示上,每条通道有独立的剪贴板作用域。
 /// </param>
 /// <param name="SessionEnded">会话结束时取消:按会话分出来的显示随之收掉。</param>
 public sealed record XServerChannelSource(
