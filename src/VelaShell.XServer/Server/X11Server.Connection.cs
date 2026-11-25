@@ -211,8 +211,9 @@ public sealed partial class X11Server
     /// <param name="Label">宿主给这条连接起的名字(比如它来自哪个 SSH 会话);进日志与 <see cref="XClientInfo" />。</param>
     /// <param name="Untrusted">宿主指明这条连接非受信(<see cref="XClientTrust.Untrusted" />)。</param>
     /// <param name="Pid">对端进程的 pid(Unix 套接字:Linux 经 SO_PEERCRED,macOS 经 LOCAL_PEERPID);不知道为 0。X-Resource 的 LocalClientPid 用。</param>
+    /// <param name="ClipboardSession">宿主给同一 SSH 连接的各条通道共用的剪贴板作用域。</param>
     internal readonly record struct Peer(bool IsLocal, bool SameHost, uint? Uid, bool LocalUser, bool Authenticated, string? Label = null,
-        bool Untrusted = false, int Pid = 0);
+        bool Untrusted = false, int Pid = 0, object? ClipboardSession = null);
     /// <summary>
     /// 连接建立的时限:读连接建立报文(12 字节的头与授权名 / 数据)、回失败,都要在这之内做完。
     /// 对端连上来却迟迟不发完(卡住的,或者故意占着不放的),到点就断开 —— 否则每个这样的连接都一直占着一个套接字和一个任务,
@@ -401,8 +402,8 @@ public sealed partial class X11Server
     /// <summary>
     /// 授权检查;通过返回 null,否则返回给客户端看的原因。依次:
     /// ① 调用方已经验过身份的流(<see cref="ServeAuthenticatedAsync(Stream, CancellationToken)" />)放行;
-    /// ② 带了对的 MIT-MAGIC-COOKIE-1 放行;
-    /// ③ 能确定对端就是运行服务端的这个用户(取得到对端 uid 时 uid 相同;取不到时连的是权限 0600 的套接字文件)放行;
+    /// ② 显式提供的授权必须有效:配置的 cookie 直接放行,SECURITY 签出的 cookie 由 RegisterClient 核对并绑定;
+    /// ③ 只有授权名和数据都为空时才按来路判断。能确定是同一个用户(uid 相同,或取不到 uid 但套接字权限为 0600)放行;
     /// ④ 知道对端 uid 而它是别的用户:拒 —— Linux 抽象命名空间里的套接字没有文件权限可言,不看 uid 的话
     ///    本机任何用户都能连进来读窗口、记键盘、经 XTEST 注入输入;
     /// ⑤ 配置了 cookie 时其余一律拒(环回 TCP 也一样:本机别的进程、别的用户都连得到那个端口);
@@ -414,10 +415,14 @@ public sealed partial class X11Server
         {
             return null;
         }
-        // ⚠️ 常数时间比较:逐字节短路会泄漏「前几个字节对了几个」。
-        if (_cookie is { } cookie && name == "MIT-MAGIC-COOKIE-1" && CryptographicOperations.FixedTimeEquals(data, cookie))
+        if (name == "MIT-MAGIC-COOKIE-1")
         {
-            return null;
+            // 配置的 cookie 不匹配时由连接建立流程检查签出的授权,不能降级成本机访问。
+            return _cookie is { } cookie && CryptographicOperations.FixedTimeEquals(data, cookie) ? null : "Invalid MIT-MAGIC-COOKIE-1 key";
+        }
+        if (name.Length != 0 || data.Length != 0)
+        {
+            return "Unsupported authorization protocol";
         }
         if (peer.LocalUser)
         {
@@ -510,6 +515,7 @@ public sealed partial class X11Server
             XClient client = new(index, bigEndian)
             {
                 Label = peer.Label,
+                ClipboardSession = peer.Authenticated ? peer.ClipboardSession ?? new object() : XClient.LocalClipboardSession,
                 SameHost = peer.SameHost,
                 Forwarded = peer.Authenticated,
                 PeerUid = peer.Uid,
@@ -863,6 +869,7 @@ public sealed partial class X11Server
         {
             extension.ClientResourcesDestroyed?.Invoke(client);
         }
+        ReleaseClipboardSession(client);
     }
 
     private void ReleaseSelectionsAndGrabs(XClient client)

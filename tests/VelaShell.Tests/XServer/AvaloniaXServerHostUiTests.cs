@@ -188,39 +188,54 @@ public sealed class AvaloniaXServerHostUiTests
     [TestMethod]
     public async Task DesktopKeyboard_IsReadInTheBackground_AndActivationsCoalesce() => await _session.RunOnUiAsync(async () =>
     {
-        using ManualResetEventSlim gate = new();
+        Dispatcher ui = Dispatcher.UIThread;
+        TaskCompletionSource<bool> startedOnUi = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using CancellationTokenSource timeout = new(TimeSpan.FromMinutes(1));
+        using var registration = timeout.Token.Register(() => release.TrySetCanceled());
         int reads = 0;
         AvaloniaXServerHost host = new()
         {
             DesktopKeyboardReader = _ =>
             {
                 Interlocked.Increment(ref reads);
-                gate.Wait(TimeSpan.FromSeconds(10));   // 慢的显示
+                bool onUi = ui.CheckAccess();
+                startedOnUi.TrySetResult(onUi);
+                if (!onUi)
+                {
+                    release.Task.GetAwaiter().GetResult();   // 由测试模拟慢的显示读完
+                }
                 return new DesktopKeyboard(HostKeymap.FromBundled("de"), (CapsLock: false, NumLock: true));
             },
         };
         await using X11Server server = new(new X11ServerOptions { ListenTcp = false, UnixSocketPath = "" }, host);
-        var elapsed = System.Diagnostics.Stopwatch.StartNew();
-        await host.AttachAsync(server, CancellationToken.None);
-        (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
-        _ = server.ServeAsync(serverSide, isLocal: true);
-        (uint idBase, uint root) = await HandshakeAsync(client);
-        await SendAsync(client, 1, 24, w => w.U32(idBase | 1).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
-        await SendAsync(client, 8, 0, w => w.U32(idBase | 1));
-        XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
-        for (int i = 0; i < 3; i++)
+        try
         {
-            native.Activate();
-            Dispatcher.UIThread.RunJobs();
-        }
-        Assert.IsLessThan(TimeSpan.FromSeconds(5), elapsed.Elapsed, "附着与激活都没等桌面的键盘读完");
-        Assert.AreEqual(1, Volatile.Read(ref reads), "同一时刻只读一次");
-        Assert.IsFalse(host.HasAltGr);
+            await host.AttachAsync(server, CancellationToken.None);
+            Assert.IsFalse(await startedOnUi.Task.WaitAsync(timeout.Token), "桌面键盘应在后台读");
+            (InMemoryDuplexStream serverSide, InMemoryDuplexStream client) = InMemoryTransport.CreatePair();
+            _ = server.ServeAsync(serverSide, isLocal: true);
+            (uint idBase, uint root) = await HandshakeAsync(client);
+            await SendAsync(client, 1, 24, w => w.U32(idBase | 1).U32(root).I16(0).I16(0).U16(60).U16(40).U16(0).U16(1).U32(0).U32(0));
+            await SendAsync(client, 8, 0, w => w.U32(idBase | 1));
+            XNativeWindow native = await WaitForAsync(() => host.Windows.FirstOrDefault());
+            for (int i = 0; i < 3; i++)
+            {
+                native.Activate();
+                ui.RunJobs();
+            }
+            Assert.AreEqual(1, Volatile.Read(ref reads), "同一时刻只读一次");
+            Assert.IsFalse(host.HasAltGr);
 
-        gate.Set();
-        await WaitForAsync(() => host.HasAltGr ? host : null);   // 德语布局有 AltGr 层:键位表交给了服务端
-        await WaitForAsync(() => Volatile.Read(ref reads) == 2 ? host : null);   // 读的期间激活的合成了读完之后的一次
-        host.Detach();
+            release.SetResult();
+            await WaitForAsync(() => host.HasAltGr ? host : null);   // 德语布局有 AltGr 层:键位表交给了服务端
+            await WaitForAsync(() => Volatile.Read(ref reads) == 2 ? host : null);   // 读的期间激活的合成了读完之后的一次
+        }
+        finally
+        {
+            release.TrySetResult();
+            host.Detach();
+        }
     });
 
     [TestMethod]

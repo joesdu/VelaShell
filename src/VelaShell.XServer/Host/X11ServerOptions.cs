@@ -85,10 +85,10 @@ public sealed class X11ServerOptions
     public bool SyncPrimary { get; init; }
 
     /// <summary>
-    /// 剪贴板跟着键盘焦点走:宿主的文本只给焦点所在的那个会话读 —— 焦点窗口的客户端,以及与它连接名相同的客户端(同一个 SSH 会话里的
-    /// <c>xclip</c> / <c>xsel</c>,见 <see cref="X11Server.ServeAuthenticatedAsync(Stream, string?, CancellationToken)" />);X 这边的复制也只收那个会话的。
+    /// 剪贴板跟着键盘焦点走:宿主的文本只给焦点所在的那个会话读,包括同一 SSH 连接里另开的 <c>xclip</c> / <c>xsel</c>
+    /// (见 <see cref="X11Server.ServeAuthenticatedAsync(Stream, string?, XClientTrust, object?, CancellationToken)" />);X 这边的复制也只收那个会话的。
     /// 默认开:否则本机复制的密码在用户点一下任意 X 窗口后对所有会话可读,后台会话里的程序也能反复改写本机剪贴板(pastejacking)。
-    /// 没有 X 窗口有焦点时谁都读不到。没有连接名的本机程序同属一个会话。
+    /// 没有 X 窗口有焦点时谁都读不到。普通 X 连接共用本机作用域,没有会话标识的转发通道各自隔离。
     /// <para>
     /// 开着时 PRIMARY、SECONDARY、CLIPBOARD 还按会话隔离:每个会话各有各的属主,别的会话看不到属主变化、收不到因此发的 SelectionClear
     /// 与 XFIXES 通知,也读不到另一个会话里的复制。跨会话的复制粘贴经宿主的剪贴板中转 —— 在 A 里复制、切到 B 再粘贴,

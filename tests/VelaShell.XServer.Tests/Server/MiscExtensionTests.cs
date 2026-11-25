@@ -270,6 +270,25 @@ public sealed class MiscExtensionTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task QueryClientIds要求声明条数与请求长度一致(bool bigEndian)
+    {
+        await using X11Server server = new();
+        await using XTestClient c = await XTestClient.ConnectAsync(server, bigEndian);
+        byte xres = await MajorAsync(c, "X-Resource");
+        foreach (uint count in new[] { 0u, 2u, uint.MaxValue })
+        {
+            XMessage error = await c.RequestAsync(xres, 4, b => b.U32(count).U32(0).U32(1));
+            Assert.IsTrue(error.IsError);
+            Assert.AreEqual((byte)16, error.Bytes[1], "BadLength");
+        }
+        XMessage empty = await c.RequestAsync(xres, 4, b => b.U32(0));
+        Assert.IsTrue(empty.IsReply);
+        Assert.AreEqual(0u, empty.U32(8));
+    }
+
+    [TestMethod]
     public async Task QueryClientIds每个客户端只回一次_GetXIDList一次最多给上限个()
     {
         await using X11Server server = new();

@@ -11,6 +11,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using VelaShell.XServer.Input;
 using VelaShell.XServer.Resources;
@@ -58,6 +59,9 @@ public sealed partial class X11Server : IAsyncDisposable
     /// 构造时拷下来的 <see cref="X11ServerOptions.AuthorizationCookie" />:选项只持有调用方数组的引用,原先构造之后调用方改了那个数组,授权跟着变。
     /// </summary>
     private readonly byte[]? _cookie;
+
+    // 以宿主对象的引用为键,选区表只保留作用域,不持有 SSH 连接。
+    private readonly ConditionalWeakTable<object, object> _clipboardSessions = new();
 
     /// <summary>对宿主的回调都经它排队,执行线程放锁之后再调(见 RunLoopAsync)。</summary>
     private readonly DeferredHost _host;
@@ -208,6 +212,7 @@ public sealed partial class X11Server : IAsyncDisposable
 
     /// <summary>
     /// 在一条<b>调用方已经验过身份</b>的双工流上服务一个 X 客户端:不再查授权(不看 cookie,也不看是不是本机)。
+    /// 没有提供会话标识的重载让每条流独占一个剪贴板作用域。要与同一 SSH 连接的其它通道互通,请用带 session 的重载。
     /// </summary>
     /// <param name="stream">
     /// 只能是进程内接过来的流,比如 SSH 的 x11 通道经连接器接进来 —— 转发层已经核对过远端给的假 cookie。
@@ -242,7 +247,16 @@ public sealed partial class X11Server : IAsyncDisposable
     /// <exception cref="ArgumentNullException"><paramref name="stream" /> 为 null(当场抛)。</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="trust" /> 不是定义了的值(当场抛)。</exception>
     /// <exception cref="ObjectDisposedException">服务端已经释放(当场抛)。</exception>
-    public Task ServeAuthenticatedAsync(Stream stream, string? label, XClientTrust trust, CancellationToken cancellationToken = default)
+    public Task ServeAuthenticatedAsync(Stream stream, string? label, XClientTrust trust, CancellationToken cancellationToken = default) =>
+        ServeAuthenticatedAsync(stream, label, trust, session: null, cancellationToken);
+
+    /// <summary>在已经验过身份的流上服务 X 客户端,让同一 SSH 连接的通道共用剪贴板作用域。</summary>
+    /// <param name="stream">见 <see cref="ServeAuthenticatedAsync(Stream, CancellationToken)" />。</param>
+    /// <param name="label">显示在日志与客户端清单里的名字。</param>
+    /// <param name="trust">信任级别。</param>
+    /// <param name="session">宿主为同一 SSH 连接的所有通道提供同一个对象(按引用区分)。为 null 时每条流独占一个作用域。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    public Task ServeAuthenticatedAsync(Stream stream, string? label, XClientTrust trust, object? session, CancellationToken cancellationToken = default)
     {
         CheckServable(stream);
         if (trust is not (XClientTrust.Trusted or XClientTrust.Untrusted))
@@ -250,7 +264,7 @@ public sealed partial class X11Server : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(trust), trust, "未定义的信任级别。");
         }
         return ServeCoreAsync(stream, new Peer(IsLocal: true, SameHost: false, Uid: null, LocalUser: false, Authenticated: true, label,
-            Untrusted: trust == XClientTrust.Untrusted), cancellationToken);
+            Untrusted: trust == XClientTrust.Untrusted, ClipboardSession: session is null ? null : _clipboardSessions.GetOrCreateValue(session)), cancellationToken);
     }
 
     /// <summary>

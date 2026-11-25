@@ -166,6 +166,7 @@ public sealed partial class X11Server
             XWindow old = current.Window;
             previous.Event(XEventCode.SelectionClear, 0, w => w.U32(now).U32(old.Id).U32(selection));
         }
+        CancelFetchForSlot(slot);
         _selections[slot] = (SelectionWindow, null, now);
         // 多于三种类型时目标要从源窗口的 XdndTypeList 读全(协议「XdndTypeList」);少于等于三种时也写上,无害。
         byte[] list = new byte[types.Length * 4];

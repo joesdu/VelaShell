@@ -345,13 +345,11 @@ public sealed partial class X11Server
     /// (规范许的做法之一;根窗口上的属性是给所有客户端共用的约定,不让非受信的改)。
     /// </summary>
     /// <remarks>
-    /// 例外:服务端选区窗口上 <c>_VELASHELL_*</c> 的属性 —— 服务端替宿主向选区属主要剪贴板时让它写到这里;非受信程序复制的内容
-    /// 照样能经宿主到本机剪贴板(选区经宿主中转)。XSETTINGS 的属性也在这个窗口上,不在例外里。
+    /// 选区传输另由 ChangeProperty 核对正在等待的属主与属性,数据随该次传输保存。
     /// XIM 连接的服务端通信窗口也是例外:程序把长的 XIM 包写成它上面的属性(X 传输的「属性 + ClientMessage」),窗口只属于那条连接。
     /// </remarks>
-    private bool IgnoredPropertyWrite(XWindow window, uint property) =>
+    private bool IgnoredPropertyWrite(XWindow window) =>
         RequesterUntrusted && window.Owner is null
-        && !(ReferenceEquals(window, _selectionWindow) && AtomName(property) is { } name && name.StartsWith("_VELASHELL_", StringComparison.Ordinal))
         && !(Xim?.OwnsWindow(window) == true && !ReferenceEquals(window, Xim.ServerWindow));
 
     /// <summary>

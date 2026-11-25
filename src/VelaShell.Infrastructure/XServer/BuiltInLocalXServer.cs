@@ -879,7 +879,7 @@ public sealed class BuiltInLocalXServer : ILocalXServer, IAsyncDisposable, IDisp
             // 服务端不拥有流:连接结束(客户端断开、服务端停下)后在这里释放,SSH 那一端随之读到 EOF。
             // SSH 转发层已经核对过远端给的假 cookie:这条流不再查授权(服务端的 cookie 给 TCP 与以别的用户身份连 Unix 套接字的本机程序)。
             // 没勾「受信任」的会话(ssh -X)以非受信级别连进去:服务端按 SECURITY 扩展的语义限制它。
-            await server.ServeAuthenticatedAsync(stream, source.Label, source.Trusted ? XClientTrust.Trusted : XClientTrust.Untrusted)
+            await server.ServeAuthenticatedAsync(stream, source.Label, source.Trusted ? XClientTrust.Trusted : XClientTrust.Untrusted, source.Session)
                 .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is ObjectDisposedException or IOException or OperationCanceledException)

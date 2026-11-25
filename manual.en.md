@@ -567,7 +567,7 @@ Type conflicts, case-only name differences, and illegal local filenames are not 
 <a id="x11"></a>
 ## 12. X11 Forwarding and X Server
 
-**Trust warning:** X11 clients can potentially inspect windows, simulate input, and access clipboard data. Trusted programs sharing one display are not isolated security containers. Enable trusted forwarding only for trusted hosts. For less trusted targets, consider untrusted forwarding, per-session displays, and forwarded-program restrictions.
+**Trust warning:** X11 clients can potentially inspect windows, simulate input, and access clipboard data. Trusted programs sharing one display are not isolated security containers. Enable trusted forwarding only for trusted hosts. For less trusted targets, consider untrusted forwarding, per-session displays, and forwarded-program restrictions. When the clipboard follows focus, separate SSH connections to the same account and host each have their own clipboard session. Only the focused session can sync with the system clipboard.
 
 ### 12.1 Run a Remote Graphical Application
 

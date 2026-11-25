@@ -118,29 +118,30 @@ internal sealed class XTestClient : IAsyncDisposable
     /// ServeAuthenticatedAsync 以非受信级别连进去(SECURITY 的 SecurityClientUntrusted)。
     /// </summary>
     public static async Task<XTestClient> ConnectAsync(X11Server server, bool bigEndian = false, bool isLocal = true,
-        string authName = "", byte[]? authData = null, bool authenticated = false, string? label = null, bool untrusted = false)
+        string authName = "", byte[]? authData = null, bool authenticated = false, string? label = null, bool untrusted = false, object? session = null)
     {
         (Stream serverSide, Stream clientSide) = DuplexPair.Create();
-        Task serverTask = untrusted ? server.ServeAuthenticatedAsync(serverSide, label, XClientTrust.Untrusted)
+        Task serverTask = session is not null ? server.ServeAuthenticatedAsync(serverSide, label, untrusted ? XClientTrust.Untrusted : XClientTrust.Trusted, session)
+            : untrusted ? server.ServeAuthenticatedAsync(serverSide, label, XClientTrust.Untrusted)
             : authenticated || label is not null ? server.ServeAuthenticatedAsync(serverSide, label)
             : server.ServeAsync(serverSide, isLocal);
         return await HandshakeAsync(clientSide, serverTask, bigEndian, authName, authData);
     }
 
     /// <summary>以给定的对端身份连上服务端(内存双工):uid、pid 这些只有 Unix 套接字才取得到的,在别的平台上也能测。</summary>
-    public static async Task<XTestClient> ConnectAsPeerAsync(X11Server server, X11Server.Peer peer)
+    public static async Task<XTestClient> ConnectAsPeerAsync(X11Server server, X11Server.Peer peer, string authName = "", byte[]? authData = null)
     {
         (Stream serverSide, Stream clientSide) = DuplexPair.Create();
-        return await HandshakeAsync(clientSide, server.ServeCoreAsync(serverSide, peer, CancellationToken.None), false, "", null);
+        return await HandshakeAsync(clientSide, server.ServeCoreAsync(serverSide, peer, CancellationToken.None), false, authName, authData);
     }
 
     /// <summary>经 Unix 套接字连服务端(服务端当它是同一台机器上的客户端 —— MIT-SHM 之类只对这样的客户端可见)。</summary>
-    public static async Task<XTestClient> ConnectUnixAsync(string path)
+    public static async Task<XTestClient> ConnectUnixAsync(string path, string authName = "", byte[]? authData = null)
     {
         System.Net.Sockets.Socket socket = new(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream,
             System.Net.Sockets.ProtocolType.Unspecified);
         await socket.ConnectAsync(new System.Net.Sockets.UnixDomainSocketEndPoint(path));
-        return await HandshakeAsync(new System.Net.Sockets.NetworkStream(socket, ownsSocket: true), Task.CompletedTask, false, "", null);
+        return await HandshakeAsync(new System.Net.Sockets.NetworkStream(socket, ownsSocket: true), Task.CompletedTask, false, authName, authData);
     }
 
     private static async Task<XTestClient> HandshakeAsync(Stream clientSide, Task serverTask, bool bigEndian, string authName, byte[]? authData)

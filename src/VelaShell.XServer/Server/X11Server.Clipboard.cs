@@ -87,8 +87,15 @@ public sealed partial class X11Server
     internal TimeSpan FetchStepTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>一次进行中的「从 X 客户端取选区」。</summary>
-    private sealed class SelectionFetch(SelectionSlot slot, uint target, uint time, uint property)
+    private sealed class SelectionFetch(SelectionSlot slot, XClient owner, XWindow ownerWindow, uint target, uint time, uint property)
     {
+        public XClient Owner { get; } = owner;
+
+        public XWindow OwnerWindow { get; } = ownerWindow;
+
+        /// <summary>只有收到 SelectionRequest 的连接能写。与窗口普通属性分开,以免其它协议写入的属性被当作选区回应。</summary>
+        public XProperty? Value { get; set; }
+
         /// <summary>取的是哪一份选区(按会话隔离时带着焦点所在的会话)。</summary>
         public SelectionSlot Slot { get; } = slot;
 
@@ -150,15 +157,6 @@ public sealed partial class X11Server
 
     // ------------------------------------------------------------------ 会话与选区的作用域
 
-    /// <summary>没有连接名的客户端(本机经 TCP / Unix 套接字连进来的程序)同属的那个会话;连接名不会是这个值。</summary>
-    private const string LocalSession = "\0local";
-
-    /// <summary>
-    /// 客户端所属的会话:连接名相同的算一个(同一个 SSH 会话里的程序,见 <see cref="ServeAuthenticatedAsync(Stream, string?, CancellationToken)" />),
-    /// 没有连接名的本机程序同属一个本机会话。
-    /// </summary>
-    private static string SessionOf(XClient client) => client.Label ?? LocalSession;
-
     /// <summary>
     /// 按会话隔离的选区:开着 <see cref="X11ServerOptions.ClipboardFollowsFocus" /> 时,PRIMARY、SECONDARY、CLIPBOARD 每个会话各有各的属主 ——
     /// 别的会话看不到属主变化、收不到因此发的 SelectionClear 与 XFIXES 通知,也读不到另一个会话里的复制(xs_plan WN-S11)。
@@ -168,23 +166,41 @@ public sealed partial class X11Server
         Options.ClipboardFollowsFocus && (atom == XAtom.Primary || atom == XAtom.Secondary || atom == Intern("CLIPBOARD"));
 
     /// <summary>这个客户端眼里的那一份选区。</summary>
-    private SelectionSlot SlotOf(uint atom, XClient client) => new(atom, IsIsolatedSelection(atom) ? SessionOf(client) : null);
+    private SelectionSlot SlotOf(uint atom, XClient client) => new(atom, IsIsolatedSelection(atom) ? client.ClipboardSession : null);
 
     /// <summary>这一份选区的变化该让这个客户端知道吗:全显示共享的谁都知道,按会话隔离的只有那个会话的。</summary>
-    private static bool InScope(XClient client, SelectionSlot slot) => slot.Scope is null || SessionOf(client) == slot.Scope;
+    private static bool InScope(XClient client, SelectionSlot slot) => slot.Scope is null || client.ClipboardSession == slot.Scope;
 
     /// <summary>键盘焦点所在的会话(焦点是 PointerRoot 时看指针所在的顶层);没有 X 窗口有焦点时为 null。</summary>
-    private string? FocusedSession()
+    private object? FocusedSession()
     {
         XWindow? focused = _focus is null ? null : ReferenceEquals(_focus, Root) ? _pointerWindow : _focus;
-        return focused?.TopLevel?.Owner is { } peer ? SessionOf(peer) : null;
+        return focused?.TopLevel?.Owner?.ClipboardSession;
     }
 
     /// <summary>
     /// 这个客户端此刻能不能与宿主的剪贴板来往(<see cref="X11ServerOptions.ClipboardFollowsFocus" />):它属于键盘焦点所在的会话
-    /// (与焦点窗口的客户端连接名相同;本机程序同属一个会话)。
+    /// (与焦点窗口属于同一个 SSH 连接,或同属本机作用域)。
     /// </summary>
-    private bool InFocusedSession(XClient client) => !Options.ClipboardFollowsFocus || FocusedSession() == SessionOf(client);
+    private bool InFocusedSession(XClient client) => !Options.ClipboardFollowsFocus || FocusedSession() == client.ClipboardSession;
+
+    private void ReleaseClipboardSession(XClient client)
+    {
+        object session = client.ClipboardSession;
+        if (!client.Forwarded || !Options.ClipboardFollowsFocus
+            || _clients.Values.Any(c => c.ClipboardSession == session) || _retainedClients.Values.Any(c => c.ClipboardSession == session))
+        {
+            return;
+        }
+        // 最后一条通道及其保留资源都没了。服务端代持的属主与时间戳不能随每次重连积累。
+        foreach (uint atom in (uint[])[XAtom.Primary, XAtom.Secondary, Intern("CLIPBOARD")])
+        {
+            SelectionSlot slot = new(atom, session);
+            _selections.Remove(slot);
+            _selectionLastChange.Remove(slot);
+            _slotStamps.Remove(slot);
+        }
+    }
 
     // ------------------------------------------------------------------ 宿主 → X
 
@@ -218,11 +234,15 @@ public sealed partial class X11Server
     /// </summary>
     private void SyncFocusedSessionClipboard()
     {
+        if (Options.ClipboardFollowsFocus && _fetches.Count != 0)
+        {
+            DropOrphanedFetches();
+        }
         if (!Options.SyncClipboard || _clipboardStamp == 0)
         {
             return;
         }
-        string? session = Options.ClipboardFollowsFocus ? FocusedSession() : null;
+        object? session = Options.ClipboardFollowsFocus ? FocusedSession() : null;
         if (Options.ClipboardFollowsFocus && session is null)
         {
             return;   // 没有 X 窗口有焦点:等用户回到某个会话再交
@@ -252,6 +272,7 @@ public sealed partial class X11Server
 
     private void TakeSelectionForHost(SelectionSlot slot)
     {
+        CancelFetchForSlot(slot);
         uint selection = slot.Atom;
         // 宿主的占有也是一次换属主:不早于最后一次换属主的时间(否则之后带着更早事件时间的客户端反而能抢回来),并推进它。
         uint now = Now;
@@ -277,6 +298,7 @@ public sealed partial class X11Server
     /// </summary>
     private void OnSelectionOwnerLost(SelectionSlot slot)
     {
+        CancelFetchForSlot(slot);
         if (IsSyncedSelection(slot.Atom) && _clipboardStamp != 0 && !_selections.ContainsKey(slot))
         {
             TakeSelectionForHost(slot);
@@ -591,21 +613,65 @@ public sealed partial class X11Server
             return;   // 后台会话的复制不进系统剪贴板:否则远端程序可以反复改写本机剪贴板,用户往别处粘贴时中招
         }
         bool clipboard = selection == Intern("CLIPBOARD");
-        SelectionFetch fetch = new(slot, clipboard ? Intern("TARGETS") : Intern("UTF8_STRING"), time,
-            Intern("_VELASHELL_" + (AtomName(selection) ?? "SELECTION")));
-        if (_fetches.Remove(selection, out SelectionFetch? replaced))
-        {
-            FinishFetch(replaced, delivered: false);   // 同一个选区又换了属主:旧的那次作废
-        }
-        _fetches[selection] = fetch;
-        RequestFetch(fetch, owner, ownerWindow);
+        StartFetch(new SelectionFetch(slot, owner, ownerWindow, clipboard ? Intern("TARGETS") : Intern("UTF8_STRING"), time,
+            Intern(clipboard ? "_VELASHELL_CLIPBOARD" : "_VELASHELL_PRIMARY")));
     }
 
-    private void RequestFetch(SelectionFetch fetch, XClient owner, XWindow ownerWindow)
+    private bool CanReceiveFetch(SelectionFetch fetch, XClient sender) =>
+        ReferenceEquals(fetch.Owner, sender) && !sender.Closed
+        && _selections.TryGetValue(fetch.Slot, out var owner) && ReferenceEquals(owner.Client, sender) && ReferenceEquals(owner.Window, fetch.OwnerWindow)
+        && (fetch.Completed is not null || InFocusedSession(sender));
+
+    private bool IsFetchProperty(XWindow window, uint property) => ReferenceEquals(window, _selectionWindow)
+        && AtomName(property) is "_VELASHELL_CLIPBOARD" or "_VELASHELL_PRIMARY" or "_VELASHELL_XdndSelection";
+
+    private SelectionFetch? FetchForProperty(XWindow window, uint property)
+    {
+        if (ReferenceEquals(window, _selectionWindow))
+        {
+            foreach (SelectionFetch fetch in _fetches.Values)
+            {
+                if (fetch.Property == property)
+                {
+                    return fetch;
+                }
+            }
+        }
+        return null;
+    }
+
+    private void StartFetch(SelectionFetch fetch)
+    {
+        if (_fetches.TryGetValue(fetch.Selection, out SelectionFetch? replaced))
+        {
+            CancelFetch(replaced);
+        }
+        _fetches[fetch.Selection] = fetch;
+        RequestFetch(fetch);
+    }
+
+    private void CancelFetch(SelectionFetch fetch)
+    {
+        _fetches.Remove(fetch.Selection);
+        DeleteFetchProperty(fetch);
+        fetch.Incr = null;
+        fetch.Results.Clear();
+        FinishFetch(fetch, delivered: false);
+    }
+
+    private void CancelFetchForSlot(SelectionSlot slot)
+    {
+        if (_fetches.TryGetValue(slot.Atom, out SelectionFetch? fetch) && fetch.Slot == slot)
+        {
+            CancelFetch(fetch);
+        }
+    }
+
+    private void RequestFetch(SelectionFetch fetch)
     {
         uint requestor = SelectionWindow.Id;
-        owner.Event(XEventCode.SelectionRequest, 0, w => w
-            .U32(fetch.Time).U32(ownerWindow.Id).U32(requestor).U32(fetch.Selection).U32(fetch.Target).U32(fetch.Property));
+        fetch.Owner.Event(XEventCode.SelectionRequest, 0, w => w
+            .U32(fetch.Time).U32(fetch.OwnerWindow.Id).U32(requestor).U32(fetch.Selection).U32(fetch.Target).U32(fetch.Property));
         ExpireFetchLater(fetch);
     }
 
@@ -694,14 +760,19 @@ public sealed partial class X11Server
         return atoms;
     }
 
-    /// <summary>取计划里的下一个目标;没有了(或者属主已经不在)就结束这次,把取到的交给宿主。</summary>
+    /// <summary>属主仍有效时取下一个目标,都取完了交给宿主。</summary>
     private void NextFetch(SelectionFetch fetch)
     {
-        DeleteSelectionProperty(fetch.Property);
-        if (fetch.Plan.Count > 0 && _selections.TryGetValue(fetch.Slot, out (XWindow Window, XClient? Client, uint Time) owner) && owner.Client is { } client)
+        if (!CanReceiveFetch(fetch, fetch.Owner))
+        {
+            CancelFetch(fetch);
+            return;
+        }
+        DeleteFetchProperty(fetch);
+        if (fetch.Plan.Count > 0)
         {
             fetch.Target = fetch.Plan.Dequeue();
-            RequestFetch(fetch, client, owner.Window);
+            RequestFetch(fetch);
             return;
         }
         if (_fetches.TryGetValue(fetch.Selection, out SelectionFetch? current) && ReferenceEquals(current, fetch))
@@ -727,16 +798,14 @@ public sealed partial class X11Server
         fetch.Finished.Clear();
     }
 
-    /// <summary>某个客户端断开了:正在取的选区若已没了属主,不再要后面的目标,已经取到的照样交出去。</summary>
+    /// <summary>焦点或属主变了,撤销原连接尚未完成的传输。</summary>
     private void DropOrphanedFetches()
     {
         foreach (SelectionFetch fetch in _fetches.Values.ToArray())
         {
-            if (!_selections.ContainsKey(fetch.Slot))
+            if (!CanReceiveFetch(fetch, fetch.Owner))
             {
-                fetch.Incr = null;
-                fetch.Plan.Clear();
-                NextFetch(fetch);
+                CancelFetch(fetch);
             }
         }
     }
@@ -773,7 +842,7 @@ public sealed partial class X11Server
                 to.Event(XEventCode.SelectionNotify, 0, w => w.U32(time).U32(requestor.Id).U32(manager).U32(save).U32(saved ? property : 0));
             }
         }
-        if (_fetches.TryGetValue(slot.Atom, out SelectionFetch? fetch) && fetch.Slot == slot)
+        if (_fetches.TryGetValue(slot.Atom, out SelectionFetch? fetch) && fetch.Slot == slot && CanReceiveFetch(fetch, c))
         {
             fetch.Finished.Add(Reply);
             return;
@@ -783,28 +852,31 @@ public sealed partial class X11Server
     }
 
     /// <summary>属主用 SendEvent 把 SelectionNotify 发到了我们的请求窗口。</summary>
-    private void OnSelectionWindowEvent(byte[] raw, bool bigEndian)
+    private void OnSelectionWindowEvent(XClient sender, byte[] raw)
     {
-        if ((raw[0] & 0x7F) != XEventCode.SelectionNotify)
+        uint Read(int offset) => sender.BigEndian ? BinaryPrimitives.ReadUInt32BigEndian(raw.AsSpan(offset)) : BinaryPrimitives.ReadUInt32LittleEndian(raw.AsSpan(offset));
+        uint property = Read(20);
+        if ((raw[0] & 0x7F) != XEventCode.SelectionNotify || Read(8) != SelectionWindowId
+            || !_fetches.TryGetValue(Read(12), out SelectionFetch? fetch) || !CanReceiveFetch(fetch, sender) || fetch.Incr is not null
+            || Read(4) != fetch.Time || Read(16) != fetch.Target || (property != 0 && property != fetch.Property))
         {
             return;
         }
-        uint selection = bigEndian ? BinaryPrimitives.ReadUInt32BigEndian(raw.AsSpan(12)) : BinaryPrimitives.ReadUInt32LittleEndian(raw.AsSpan(12));
-        uint property = bigEndian ? BinaryPrimitives.ReadUInt32BigEndian(raw.AsSpan(20)) : BinaryPrimitives.ReadUInt32LittleEndian(raw.AsSpan(20));
-        if (!_fetches.TryGetValue(selection, out SelectionFetch? fetch) || fetch.Incr is not null)
+        if (property == 0)
         {
+            OnFetched(fetch, 0, null);   // 属主明确拒绝了这个目标
             return;
         }
-        if (property == 0 || property != fetch.Property || !SelectionWindow.Properties.TryGetValue(property, out XProperty? value))
+        if (fetch.Value is not { } value)
         {
-            OnFetched(fetch, 0, null);   // 属主不给这个目标
             return;
         }
         if (value.Type == Intern("INCR"))
         {
             // 大数据:删掉属性表示「准备好了」,属主随后一块块往里写(ICCCM §2.5)。
             fetch.Incr = [];
-            DeleteSelectionProperty(property);
+            fetch.IncrType = 0;
+            DeleteFetchProperty(fetch);
             ExpireFetchLater(fetch);
             return;
         }
@@ -812,50 +884,49 @@ public sealed partial class X11Server
     }
 
     /// <summary>INCR 传输中:属主往请求窗口写了一块。空块表示结束。</summary>
-    private void OnSelectionWindowProperty(uint property, bool deleted)
+    private void WriteFetchProperty(SelectionFetch fetch, XProperty chunk)
     {
-        if (deleted || _fetches.Count == 0)
+        fetch.Value = chunk;
+        NotifyFetchProperty(fetch, deleted: false);
+        if (fetch.Incr is not { } buffer)
         {
             return;
         }
-        SelectionFetch? fetch = null;
-        foreach (SelectionFetch candidate in _fetches.Values)
-        {
-            if (candidate.Property == property && candidate.Incr is not null)
-            {
-                fetch = candidate;
-            }
-        }
-        if (fetch is not { Incr: { } buffer })
-        {
-            return;
-        }
-        XProperty chunk = SelectionWindow.Properties[property];
-        DeleteSelectionProperty(property);
+        DeleteFetchProperty(fetch);
         if (chunk.Data.Length == 0)
         {
             OnFetched(fetch, fetch.IncrType, [.. buffer]);
             return;
         }
         fetch.IncrType = chunk.Type;
-        buffer.AddRange(chunk.Data);
-        if (buffer.Count > MaxFetchBytes(fetch.Target))
+        if (chunk.Length > MaxFetchBytes(fetch.Target) - buffer.Count)
         {
             // 太大:这个目标不要了,接着要下一个(属主写下一块时没人删属性,它自己会超时)。
             OnFetched(fetch, 0, null);
             return;
         }
+        buffer.AddRange(chunk.Data);
         ExpireFetchLater(fetch);
     }
 
     private static bool IsLatin1(string text) => !text.AsSpan().ContainsAnyExceptInRange('\0', '\u00FF');
 
-    private void DeleteSelectionProperty(uint property)
+    private void DeleteFetchProperty(SelectionFetch fetch)
     {
-        if (SelectionWindow.Properties.Remove(property, out XProperty? removed))
+        if (fetch.Value is { } removed)
         {
+            fetch.Value = null;
             ReleaseProperty(removed);
-            SendPropertyNotify(SelectionWindow, property, deleted: true);
+            NotifyFetchProperty(fetch, deleted: true);
+        }
+    }
+
+    private void NotifyFetchProperty(SelectionFetch fetch, bool deleted)
+    {
+        if (!fetch.Owner.Closed && SelectionWindow.Selects(fetch.Owner, XEventMask.PropertyChange))
+        {
+            uint time = Now;
+            fetch.Owner.Event(XEventCode.PropertyNotify, 0, w => w.U32(SelectionWindowId).U32(fetch.Property).U32(time).U8(deleted ? (byte)1 : (byte)0));
         }
     }
 

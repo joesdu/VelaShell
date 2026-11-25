@@ -1012,7 +1012,7 @@ sealed class SshLauncher : IClientLauncher
     {
         try
         {
-            await _server.ServeAuthenticatedAsync(stream, "perf@sshd");
+            await _server.ServeAuthenticatedAsync(stream, "perf@sshd", XClientTrust.Trusted, _connection);
         }
         catch (Exception ex) when (ex is ObjectDisposedException or IOException or OperationCanceledException)
         {

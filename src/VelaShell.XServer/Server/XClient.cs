@@ -47,6 +47,11 @@ internal sealed class XClient(int index, bool bigEndian) : IDisposable
     /// <summary>宿主给这条连接起的名字(<see cref="X11Server.ServeAuthenticatedAsync(Stream, string?, CancellationToken)" />);没给为 null。</summary>
     public string? Label { get; init; }
 
+    /// <summary>剪贴板作用域。普通 X 连接共用本机作用域,转发通道按 SSH 连接分组。</summary>
+    public object ClipboardSession { get; init; } = LocalClipboardSession;
+
+    internal static object LocalClipboardSession { get; } = new();
+
     public uint ResourceBase { get; } = (uint)index << 21;
 
     public bool BigEndian { get; } = bigEndian;

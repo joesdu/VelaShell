@@ -386,19 +386,48 @@ public class BuiltInLocalXServerTests
         }
     }
 
-    /// <summary>设置没开(默认):带着会话的通道照旧进共用的显示,不另建服务端。</summary>
     [TestMethod]
-    public async Task DisplayPerSession_Off_SessionsShareTheDisplay()
+    public async Task DisplayPerSession_Off_SharesDisplayButScopesSelectionOwnersByConnection()
     {
         await using BuiltInLocalXServer server = Create(new XServerOptions(), new RecordingHost());
         XServerDisplayResolution resolution = await server.ResolveForwardingDisplayAsync();
-        await using Stream a = await resolution.Connector!(new("alice@a:22", Session: new object()), CancellationToken.None);
-        await using Stream b = await resolution.Connector!(new("bob@b:22", Session: new object()), CancellationToken.None);
-        Assert.AreEqual(1, await HandshakeAsync(a));
-        Assert.AreEqual(1, await HandshakeAsync(b));
-
+        XServerChannelSource source = new("alice@a:22", Session: new Version(1, 0));
+        await using Stream a = await resolution.Connector!(source, CancellationToken.None);
+        await using Stream sibling = await resolution.Connector!(source, CancellationToken.None);
+        await using Stream b = await resolution.Connector!(source with { Session = new Version(1, 0) }, CancellationToken.None);
+        uint root = await ReadRootAsync(a);
+        Assert.AreEqual(root, await ReadRootAsync(sibling));
+        Assert.AreEqual(root, await ReadRootAsync(b));
         Assert.HasCount(1, server.Instances);
-        Assert.HasCount(2, await server.Instances[0].Server.GetClientsAsync());
+        Assert.HasCount(3, await server.Instances[0].Server.GetClientsAsync());
+
+        // SECONDARY(2)也是按会话隔离的选区,不需要宿主剪贴板或焦点。
+        byte[] setOwner = [22, 0, 4, 0, .. BitConverter.GetBytes(root), 2, 0, 0, 0, 0, 0, 0, 0];
+        await a.WriteAsync(setOwner);
+        Assert.AreEqual(root, await OwnerAsync(a));
+        Assert.AreEqual(root, await OwnerAsync(sibling));
+        Assert.AreEqual(0u, await OwnerAsync(b));
+
+        static async Task<uint> ReadRootAsync(Stream stream)
+        {
+            await stream.WriteAsync(new byte[] { (byte)'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+            byte[] head = new byte[8];
+            await stream.ReadExactlyAsync(head).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(1, head[0]);
+            byte[] setup = new byte[BitConverter.ToUInt16(head, 6) * 4];
+            await stream.ReadExactlyAsync(setup).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            int paddedVendorLength = (BitConverter.ToUInt16(setup, 16) + 3) & ~3;
+            return BitConverter.ToUInt32(setup, 32 + paddedVendorLength + (setup[21] * 8));
+        }
+
+        static async Task<uint> OwnerAsync(Stream stream)
+        {
+            await stream.WriteAsync(new byte[] { 23, 0, 2, 0, 2, 0, 0, 0 });
+            byte[] reply = new byte[32];
+            await stream.ReadExactlyAsync(reply).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(1, reply[0]);
+            return BitConverter.ToUInt32(reply, 8);
+        }
     }
 
     /// <summary>

@@ -35,9 +35,9 @@ public sealed partial class X11Server
     private long _atomNameBytes;
     /// <summary>
     /// 选区表的键:选区原子与它的作用域。作用域为 null 的是全显示共享的选区(协议的本义);开着
-    /// <see cref="X11ServerOptions.ClipboardFollowsFocus" /> 时 PRIMARY、SECONDARY、CLIPBOARD 按会话各存一份(作用域是会话,见 <c>SessionOf</c>)。
+    /// <see cref="X11ServerOptions.ClipboardFollowsFocus" /> 时 PRIMARY、SECONDARY、CLIPBOARD 按 <see cref="XClient.ClipboardSession" /> 各存一份。
     /// </summary>
-    private readonly record struct SelectionSlot(uint Atom, string? Scope);
+    private readonly record struct SelectionSlot(uint Atom, object? Scope);
 
     private readonly Dictionary<SelectionSlot, (XWindow Window, XClient? Client, uint Time)> _selections = [];
 
@@ -127,9 +127,10 @@ public sealed partial class X11Server
         byte format = r.U8();
         r.Skip(3);
         uint count = r.U32();
-        if (IgnoredPropertyWrite(window, property))
+        SelectionFetch? fetch = FetchForProperty(window, property);
+        if (fetch is not null ? !CanReceiveFetch(fetch, c) : IgnoredPropertyWrite(window) || IsFetchProperty(window, property))
         {
-            return;   // SECURITY:非受信客户端改服务端窗口上的属性,当作 NoOperation
+            return;
         }
         CheckAtom(property);
         CheckAtom(type);
@@ -146,7 +147,8 @@ public sealed partial class X11Server
         {
             throw new XProtocolError(XErrorCode.Length);
         }
-        XProperty? existing = mode != 0 ? window.Properties.GetValueOrDefault(property) : null;
+        XProperty? replaced = fetch is null ? window.Properties.GetValueOrDefault(property) : fetch.Value;
+        XProperty? existing = mode != 0 ? replaced : null;
         if (existing is not null && (existing.Type != type || existing.Format != format))
         {
             throw new XProtocolError(XErrorCode.Match);
@@ -156,7 +158,6 @@ public sealed partial class X11Server
             throw new XProtocolError(XErrorCode.Alloc);   // 先算再拼:不为一个注定超限的值分配
         }
         // 记账(xs_plan X-2):新值记在写它的客户端名下,旧值退还给当初写它的客户端;记不下回 Alloc,属性不变。
-        XProperty? replaced = window.Properties.GetValueOrDefault(property);
         ReleaseProperty(replaced);
         try
         {
@@ -169,9 +170,15 @@ public sealed partial class X11Server
         }
         byte[] data = ToNativeOrder(r.Bytes((int)byteCount), format, c.BigEndian);
         // 追加接在留了余量的存储后面,只拷新字节(xs_plan WN-P1);前插少见,照旧整份拼一次。
-        window.Properties[property] = existing is null ? new XProperty(type, format, data) { ChargedTo = c }
+        XProperty value = existing is null ? new XProperty(type, format, data) { ChargedTo = c }
             : mode == 2 ? existing.Append(data, c)
             : new XProperty(type, format, [.. data, .. existing.Data]) { ChargedTo = c };
+        if (fetch is not null)
+        {
+            WriteFetchProperty(fetch, value);
+            return;
+        }
+        window.Properties[property] = value;
         SendPropertyNotify(window, property, deleted: false);
         OnTopLevelPropertyChanged(window, property);
     }
@@ -212,11 +219,19 @@ public sealed partial class X11Server
         }
     }
 
-    private void DeleteProperty(XRequestReader r)
+    private void DeleteProperty(XClient c, XRequestReader r)
     {
         XWindow window = Window(r.U32());
         uint property = r.U32();
-        if (IgnoredPropertyWrite(window, property))
+        if (FetchForProperty(window, property) is { } fetch)
+        {
+            if (CanReceiveFetch(fetch, c))
+            {
+                DeleteFetchProperty(fetch);
+            }
+            return;
+        }
+        if (IgnoredPropertyWrite(window))
         {
             return;
         }
@@ -243,12 +258,14 @@ public sealed partial class X11Server
             CheckAtom(type);
         }
 
-        if (!window.Properties.TryGetValue(property, out XProperty? prop) || (c.Untrusted && HiddenFromUntrusted(window, property)))
+        SelectionFetch? fetch = FetchForProperty(window, property);
+        XProperty? prop = fetch is null ? window.Properties.GetValueOrDefault(property) : CanReceiveFetch(fetch, c) ? fetch.Value : null;
+        if (prop is null || (c.Untrusted && HiddenFromUntrusted(window, property)))
         {
             c.Reply(0, w => w.U32(0).U32(0).U32(0).Zero(12));
             return;
         }
-        if (delete && IgnoredPropertyWrite(window, property))
+        if (delete && fetch is null && IgnoredPropertyWrite(window))
         {
             delete = false;   // 非受信客户端读服务端窗口上的属性:照读,不删
         }
@@ -289,6 +306,11 @@ public sealed partial class X11Server
 
         if (delete && after == 0)
         {
+            if (fetch is not null)
+            {
+                DeleteFetchProperty(fetch);
+                return;
+            }
             window.Properties.Remove(property);
             ReleaseProperty(prop);
             SendPropertyNotify(window, property, deleted: true);
@@ -299,7 +321,13 @@ public sealed partial class X11Server
     private void ListProperties(XClient c, XRequestReader r)
     {
         XWindow window = Window(r.U32());
-        uint[] atoms = [.. window.Properties.Keys.Where(a => !c.Untrusted || !HiddenFromUntrusted(window, a))];
+        IEnumerable<uint> visible = window.Properties.Keys.Where(a => !c.Untrusted || !HiddenFromUntrusted(window, a));
+        if (ReferenceEquals(window, _selectionWindow))
+        {
+            visible = visible.Where(a => !IsFetchProperty(window, a)).Concat(_fetches.Values
+                .Where(fetch => fetch.Value is not null && CanReceiveFetch(fetch, c)).Select(fetch => fetch.Property));
+        }
+        uint[] atoms = [.. visible];
         c.Reply(0, w =>
         {
             w.U16((ushort)atoms.Length).Zero(22);
@@ -313,7 +341,7 @@ public sealed partial class X11Server
     private void RotateProperties(XRequestReader r)
     {
         XWindow window = Window(r.U32());
-        if (IgnoredPropertyWrite(window, XAtom.None))
+        if (IgnoredPropertyWrite(window))
         {
             return;
         }
@@ -362,11 +390,7 @@ public sealed partial class X11Server
                 c.Event(XEventCode.PropertyNotify, 0, w => w.U32(window.Id).U32(atom).U32(time).U8(deleted ? (byte)1 : (byte)0));
             }
         });
-        if (ReferenceEquals(window, _selectionWindow))
-        {
-            OnSelectionWindowProperty(atom, deleted);
-        }
-        else if (deleted && _outgoingIncr.Count != 0)
+        if (deleted && _outgoingIncr.Count != 0 && !ReferenceEquals(window, _selectionWindow))
         {
             OnIncrPropertyDeleted(window, atom);   // 服务端当剪贴板属主的 INCR 传输:请求方取走了一块
         }
@@ -393,6 +417,7 @@ public sealed partial class X11Server
         {
             return;
         }
+        CancelFetchForSlot(slot);
         _selectionLastChange[slot] = time;
         if (_selections.TryGetValue(slot, out (XWindow Window, XClient? Client, uint Time) current))
         {
@@ -546,7 +571,7 @@ public sealed partial class X11Server
             // 或者选区属主回的 SelectionNotify。
             if (!OnXdndClientMessage(raw, c.BigEndian) && !OnSystemTrayClientMessage(raw, c.BigEndian))
             {
-                OnSelectionWindowEvent(raw, c.BigEndian);
+                OnSelectionWindowEvent(c, raw);
             }
             return;
         }

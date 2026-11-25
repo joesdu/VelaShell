@@ -287,7 +287,7 @@ public sealed partial class X11Server
             drag.Failed = true;
             return;
         }
-        SelectionFetch fetch = new(slot, targets[0], drag.Time, Intern("_VELASHELL_XdndSelection"))
+        SelectionFetch fetch = new(slot, client, owner.Window, targets[0], drag.Time, Intern("_VELASHELL_XdndSelection"))
         {
             StringFallback = false,
             Completed = done => OnOutgoingDataFetched(drag, done),
@@ -296,12 +296,7 @@ public sealed partial class X11Server
         {
             fetch.Plan.Enqueue(target);
         }
-        if (_fetches.Remove(slot.Atom, out SelectionFetch? replaced))
-        {
-            FinishFetch(replaced, delivered: false);
-        }
-        _fetches[slot.Atom] = fetch;
-        RequestFetch(fetch, client, owner.Window);
+        StartFetch(fetch);
     }
 
     /// <summary>数据取回来了:解出 URI 与文字,交给宿主(这一次已经结束、或什么都没取到的不交)。</summary>
@@ -386,6 +381,7 @@ public sealed partial class X11Server
             return;
         }
         _outgoing = null;
+        CancelFetchForSlot(new SelectionSlot(Intern("XdndSelection"), null));
         if (drag.Announced is { } announced && drag.Dropped is null)
         {
             _host.OutgoingDragEnded(announced);

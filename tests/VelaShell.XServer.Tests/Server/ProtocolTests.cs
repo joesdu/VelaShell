@@ -48,7 +48,7 @@ public sealed class ProtocolTests
         await using XTestClient local = await XTestClient.ConnectAsync(server, isLocal: true);
         Assert.AreEqual(0, local.SetupReply[0], "环回 TCP 也要 cookie:本机别的进程、别的用户都连得到那个端口");
 
-        await using XTestClient authenticated = await XTestClient.ConnectAsync(server, authenticated: true);
+        await using XTestClient authenticated = await XTestClient.ConnectAsync(server, authenticated: true, authName: "MIT-MAGIC-COOKIE-1", authData: [7]);
         Assert.AreEqual(1, authenticated.SetupReply[0], "SSH 的 x11 通道经进程内连接器接进来:转发层已经核对过假 cookie");
     }
 
@@ -71,6 +71,12 @@ public sealed class ProtocolTests
         Assert.IsNull(withCookie.Authorize(mit, cookie, otherUser), "别的用户带了对的 cookie 也行");
         Assert.IsNull(withCookie.Authorize("", [], tcpLocal with { Authenticated = true }), "调用方验过身份");
 
+        foreach (X11Server server in new[] { withCookie, without })
+        {
+            Assert.IsNotNull(server.Authorize(mit, [], ownerSocket), "带了授权名却没有 cookie");
+            Assert.IsNotNull(server.Authorize("", cookie, ownerSocket), "带了数据却没有授权名");
+            Assert.IsNotNull(server.Authorize("unknown", cookie, ownerSocket), "不支持的授权方式不能回退到套接字属主");
+        }
         Assert.IsNull(without.Authorize("", [], tcpLocal), "没配 cookie:本机放行");
         Assert.IsNotNull(without.Authorize("", [], tcpRemote), "没配 cookie:外面的拒");
         Assert.IsNotNull(without.Authorize("", [], otherUser), "抽象命名空间里连进来的别的用户:没配 cookie 也拒");

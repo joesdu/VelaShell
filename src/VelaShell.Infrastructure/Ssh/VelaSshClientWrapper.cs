@@ -178,7 +178,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
             XServerDisplayResolution? localServer = await ResolveLocalXServerAsync(notices, cancellationToken).ConfigureAwait(false);
             // 连接器带上这个会话的来历(user@host:port)与信任级别:内置 X 服务端的日志与客户端清单据此说得出是哪个会话的程序,
             // 非受信的会话按 SECURITY 的语义受限(见 X11ChannelSource)。
-            Func<CancellationToken, ValueTask<Stream>>? connector = localServer?.Connector is { } connect ? ct => connect(X11ChannelSource(), ct) : null;
+            Func<CancellationToken, ValueTask<Stream>>? connector = localServer?.Connector is { } connect ? ct => connect(X11ChannelSource(connection), ct) : null;
             X11ForwardOptions? x11 = SshForwardingOptions.X11(_features, notices, localServer?.Display, connector);
             // agent 的端点交给库的默认值(Windows 上指向命名管道的 SSH_AUTH_SOCK 也认),与认证时连 agent 是同一个。
             AgentForwardOptions? agent = SshForwardingOptions.Agent(_features, notices, _agentPrompt, _target, hostKeys: _hostKeys);
@@ -279,7 +279,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
         try
         {
-            SshCommandOptions? options = await ResolveCommandOptionsAsync(cancellationToken).ConfigureAwait(false);
+            SshCommandOptions? options = await ResolveCommandOptionsAsync(connection, cancellationToken).ConfigureAwait(false);
             SshCommandResult output = await connection
                 .RunAsync(commandText, options, cancellationToken).ConfigureAwait(false);
             return output.StandardOutput;
@@ -302,7 +302,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
         try
         {
-            SshCommandOptions? options = await ResolveCommandOptionsAsync(cancellationToken).ConfigureAwait(false);
+            SshCommandOptions? options = await ResolveCommandOptionsAsync(connection, cancellationToken).ConfigureAwait(false);
             SshCommandResult output = await connection
                 .RunAsync(commandText, options, cancellationToken).ConfigureAwait(false);
 
@@ -374,7 +374,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
         try
         {
-            SshCommandOptions? forwarding = await ResolveCommandOptionsAsync(cancellationToken).ConfigureAwait(false);
+            SshCommandOptions? forwarding = await ResolveCommandOptionsAsync(connection, cancellationToken).ConfigureAwait(false);
 
             // 不要 stderr 时让库直接丢弃,而不是缓冲着没人读:缓冲的那份只有被读走才回补窗口,
             // 窗口一满对端就停发 —— stdout 也跟着停住,`docker logs -f` 这类长驻命令会就此卡死。
@@ -431,7 +431,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     /// 这个会话的 x11 通道交给内置 X 服务端时带上的来历:哪个会话(user@host:port)、勾没勾「受信任」、
     /// 会话对象本身与它断开的信号(设置里开了「每个 SSH 会话一个显示」时,服务端按它们分显示、在会话断开时收掉)。
     /// </summary>
-    private XServerChannelSource X11ChannelSource() => new(_target, _features?.X11Trusted ?? true, this, Disconnected);
+    private XServerChannelSource X11ChannelSource(SshConnection connection) => new(_target, _features?.X11Trusted ?? true, connection, connection.Disconnected);
 
     /// <summary>
     /// 为非交互式 exec 通道补上连接级 X11 转发。
@@ -441,7 +441,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
     /// 命令 / 插件任务走的是另一条 session channel，若这里不发 x11-req，
     /// 远端 GUI 程序会拿到空的 DISPLAY 或直接连接失败。
     /// </remarks>
-    private async Task<SshCommandOptions?> ResolveCommandOptionsAsync(CancellationToken cancellationToken)
+    private async Task<SshCommandOptions?> ResolveCommandOptionsAsync(SshConnection connection, CancellationToken cancellationToken)
     {
         if (_features is not { X11Forwarding: true })
         {
@@ -450,7 +450,7 @@ public sealed class VelaSshClientWrapper : ISshClientWrapper
 
         XServerDisplayResolution? localServer = await ResolveLocalXServerAsync([], cancellationToken).ConfigureAwait(false);
         Func<CancellationToken, ValueTask<Stream>>? connector =
-            localServer?.Connector is { } connect ? ct => connect(X11ChannelSource(), ct) : null;
+            localServer?.Connector is { } connect ? ct => connect(X11ChannelSource(connection), ct) : null;
         X11ForwardOptions? x11 = SshForwardingOptions.X11(
             _features,
             [],
