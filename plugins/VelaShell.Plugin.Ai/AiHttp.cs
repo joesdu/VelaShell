@@ -14,7 +14,7 @@ internal static class AiHttp
             CommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true
         });
-        return $"VelaShell-Copilot/{json.RootElement.GetProperty("version").GetString()} (VelaShell Copilot)";
+        return $"VelaShell Copilot/{json.RootElement.GetProperty("version").GetString()} (VelaShell Copilot)";
     }
 
     internal static IReadOnlyList<KeyValuePair<string, string>> ProviderHeaders(IReadOnlyList<KeyValuePair<string, string>>? headers)
