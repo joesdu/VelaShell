@@ -209,6 +209,8 @@ public class SidebarQuickCommandsUiTests
                 pending.TrySetResult([]);
                 window.Close();
             }
+
+            return true;
         }, CancellationToken.None);
 
     [TestMethod]
