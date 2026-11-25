@@ -60,11 +60,14 @@ public sealed record SshAlgorithmSet
     /// <exception cref="ArgumentNullException">设成 <see langword="null"/>。</exception>
     public required IReadOnlyList<string> MacServerToClient { get; init => field = Freeze(value, nameof(MacServerToClient)); }
 
-    /// <summary>压缩算法（客户端 → 服务端）。</summary>
+    private enum CompressionConsent { Disabled, Upload, Both }
+    private CompressionConsent Consent { get; init; }
+
+    /// <summary>压缩算法（客户端 → 服务端）。只有显式调用 <see cref="WithCompression()"/> 或 <see cref="WithCompression(bool)"/> 才能开启压缩。</summary>
     /// <exception cref="ArgumentNullException">设成 <see langword="null"/>。</exception>
     public required IReadOnlyList<string> CompressionClientToServer { get; init => field = Freeze(value, nameof(CompressionClientToServer)); }
 
-    /// <summary>压缩算法（服务端 → 客户端）。</summary>
+    /// <summary>压缩算法（服务端 → 客户端）。只有显式允许服务端压缩才会提议延迟压缩。</summary>
     /// <exception cref="ArgumentNullException">设成 <see langword="null"/>。</exception>
     public required IReadOnlyList<string> CompressionServerToClient { get; init => field = Freeze(value, nameof(CompressionServerToClient)); }
 
@@ -80,6 +83,7 @@ public sealed record SshAlgorithmSet
     public bool Equals(SshAlgorithmSet? other) =>
         ReferenceEquals(this, other)
         || (other is not null
+            && Consent == other.Consent
             && KeyExchange.SequenceEqual(other.KeyExchange)
             && HostKey.SequenceEqual(other.HostKey)
             && EncryptionClientToServer.SequenceEqual(other.EncryptionClientToServer)
@@ -93,6 +97,7 @@ public sealed record SshAlgorithmSet
     public override int GetHashCode()
     {
         HashCode hash = new();
+        hash.Add(Consent);
         foreach (IReadOnlyList<string> list in (IReadOnlyList<string>[])[
             KeyExchange, HostKey, EncryptionClientToServer, EncryptionServerToClient,
             MacClientToServer, MacServerToClient, CompressionClientToServer, CompressionServerToClient])
@@ -329,12 +334,34 @@ public sealed record SshAlgorithmSet
         MacServerToClient = [.. MacServerToClient, SshAlgorithmNames.HmacSha1Etm, SshAlgorithmNames.HmacSha1],
     };
 
-    /// <summary>启用压缩（<c>zlib@openssh.com</c>，认证后才开始压缩）。</summary>
-    public SshAlgorithmSet WithCompression() => this with
+    /// <summary>仅开启认证后的上行压缩，等同于 <see cref="WithCompression(bool)"/> 传入 <see langword="false"/>。</summary>
+    public SshAlgorithmSet WithCompression() => WithCompression(allowServerCompression: false);
+
+    /// <summary>允许认证后的上行使用仅哈夫曼编码的延迟压缩；对端不支持时退回 <c>none</c>。</summary>
+    /// <param name="allowServerCompression">也允许压缩下行。服务端自行选择编码策略，可能通过密文长度泄露内容。</param>
+    public SshAlgorithmSet WithCompression(bool allowServerCompression) => this with
     {
+        Consent = allowServerCompression ? CompressionConsent.Both : CompressionConsent.Upload,
         CompressionClientToServer = [SshAlgorithmNames.ZlibOpenSsh, SshAlgorithmNames.None],
-        CompressionServerToClient = [SshAlgorithmNames.ZlibOpenSsh, SshAlgorithmNames.None],
+        CompressionServerToClient = allowServerCompression
+            ? [SshAlgorithmNames.ZlibOpenSsh, SshAlgorithmNames.None] : [SshAlgorithmNames.None],
     };
+
+    // 原始清单可以收窄已授权的算法，但不能越过授权；两个方向都保留 none 以供回退。
+    internal SshAlgorithmSet ApplyCompressionPolicy() => this with
+    {
+        CompressionClientToServer = Allowed(CompressionClientToServer, Consent != CompressionConsent.Disabled),
+        CompressionServerToClient = Allowed(CompressionServerToClient, Consent == CompressionConsent.Both),
+    };
+
+    private static IReadOnlyList<string> Allowed(IReadOnlyList<string> names, bool enabled)
+    {
+        if (!enabled)
+        {
+            return [SshAlgorithmNames.None];
+        }
+        return names.Contains(SshAlgorithmNames.None, StringComparer.Ordinal) ? names : [.. names, SshAlgorithmNames.None];
+    }
 
     /// <summary>把这些密钥类型的主机密钥算法排到前面，其余保持原有的相对顺序。</summary>
     /// <param name="keyTypes">已经记下的密钥类型（<c>ssh-ed25519</c>、<c>ssh-rsa</c>…）。</param>

@@ -141,7 +141,7 @@ public class SshAlgorithmPreferencesTests
     }
 
     [TestMethod]
-    public void Build_AppliesEveryList_BothDirections_AndCompression()
+    public void Build_AppliesEveryList_BothDirections_AndIgnoresLegacyCompression()
     {
         SshAlgorithmSet set = SshAlgorithmPreferences.Build(new SshSessionOptions
         {
@@ -159,7 +159,22 @@ public class SshAlgorithmPreferencesTests
         Assert.AreSequenceEqual(["aes128-ctr"], [.. set.EncryptionServerToClient]);
         Assert.AreSequenceEqual(["hmac-sha1"], [.. set.MacClientToServer]);
         Assert.AreSequenceEqual(["hmac-sha1"], [.. set.MacServerToClient]);
-        Assert.AreEqual("zlib@openssh.com", set.CompressionClientToServer[0]);
+        Assert.AreSequenceEqual(["none"], [.. set.CompressionClientToServer]);
+        Assert.AreSequenceEqual(["none"], [.. set.CompressionServerToClient]);
+    }
+
+    [TestMethod]
+    [DataRow(SshTerminalCompressionMode.UploadOnly, "zlib@openssh.com", "none")]
+    [DataRow(SshTerminalCompressionMode.Bidirectional, "zlib@openssh.com", "zlib@openssh.com")]
+    [DataRow((SshTerminalCompressionMode)99, "none", "none")]
+    public void Build_OnlyOffersApprovedCompressionDirections(SshTerminalCompressionMode mode, string upload, string download)
+    {
+        SshAlgorithmSet set = SshAlgorithmPreferences.Build(new SshSessionOptions { TerminalCompression = mode });
+
+        Assert.AreEqual(upload, set.CompressionClientToServer[0]);
+        Assert.AreEqual(download, set.CompressionServerToClient[0]);
+        Assert.AreEqual("none", set.CompressionClientToServer[^1]);
+        Assert.AreEqual("none", set.CompressionServerToClient[^1]);
     }
 
     [TestMethod]

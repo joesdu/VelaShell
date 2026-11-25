@@ -45,6 +45,8 @@ internal sealed class TestSshServerHost : IAsyncDisposable
     /// <summary>客户端连接。</summary>
     public SshConnection Connection { get; }
 
+    public SshKexInitMessage LastClientKexInit => _server.LastClientKexInit;
+
     /// <summary>服务端的通道层 —— 从这里发起重协商。</summary>
     public TestChannelServer Channels { get; }
 
@@ -72,6 +74,9 @@ internal sealed class TestSshServerHost : IAsyncDisposable
     /// <param name="corruptRekeySignature">设了就让服务端在重协商时把签名弄坏。</param>
     /// <param name="wrapClient">把客户端那一头的流包一层（模拟写被卡住之类）。</param>
     /// <param name="timeProvider">客户端连接用的时钟；验时间阈值的用例传手动拨的那个。</param>
+    /// <param name="serverAlgorithms">服务端首次提议，默认沿用客户端清单。</param>
+    /// <param name="serverRekeyAlgorithms">服务端重协商提议，默认沿用首次提议。</param>
+    /// <param name="rekeyDuringAuth">在成功消息之前再交换一次密钥。</param>
     public static async Task<TestSshServerHost> StartAsync(
         TestChannelScript? script = null,
         SshAlgorithmSet? algorithms = null,
@@ -83,7 +88,10 @@ internal sealed class TestSshServerHost : IAsyncDisposable
         long? rekeyHardPacketLimit = null,
         bool corruptRekeySignature = false,
         Func<Stream, Stream>? wrapClient = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        SshAlgorithmSet? serverAlgorithms = null,
+        SshAlgorithmSet? serverRekeyAlgorithms = null,
+        bool rekeyDuringAuth = false)
     {
         CancellationTokenSource cts = new(TimeSpan.FromSeconds(25));
 
@@ -95,11 +103,10 @@ internal sealed class TestSshServerHost : IAsyncDisposable
                 ResumeWriterThreshold = 4 * 1024 * 1024,
             });
 
-        // 服务端要宣告的算法清单必须与客户端一致，否则协商不上
-        // （压缩那一组用例正是靠这一点让两边都谈成 zlib@openssh.com）。
         TestSshServer server = new(serverStream, new TestSshServerOptions
         {
-            Algorithms = algorithms,
+            Algorithms = serverAlgorithms ?? algorithms,
+            RekeyAlgorithms = serverRekeyAlgorithms,
             RekeyHostKeyType = rekeyHostKeyType,
             CorruptRekeySignature = corruptRekeySignature,
         });
@@ -114,29 +121,13 @@ internal sealed class TestSshServerHost : IAsyncDisposable
 
             TestAuthServer auth = new(
                 server.Transport, handshake.ExchangeHash,
-                new TestAuthPolicy { AcceptPassword = "hunter2" });
+                new TestAuthPolicy { AcceptPassword = "hunter2", RekeyBeforeSuccess = rekeyDuringAuth })
+            {
+                SshServer = server,
+            };
             await auth.RunAsync(cts.Token);
 
-            // ⚠️ **认证成功之后才挂压缩** —— 与客户端对称。
-            //
-            // zlib@openssh.com 的语义就是「推迟到认证之后」，客户端在
-            // SshConnectionFactory 里正是这么做的。服务端这一侧漏掉的话，
-            // 客户端开始压而我们还在按明文读，症状是连上之后第一个报文就解不开
-            // （表现成一个看不出原因的挂死）。
-            //
-            // 方向要对：客户端→服务端那一路是我们**收**，反之是我们**发**。
-            // 只管延迟的那种：普通 zlib 在 NEWKEYS 时已经装上了。
-            if (SshCompressorFactory.IsDelayed(handshake.Negotiated.CompressionClientToServer))
-            {
-                server.Transport.SetReceiveCompressor(
-                    SshCompressorFactory.Create(handshake.Negotiated.CompressionClientToServer));
-            }
-
-            if (SshCompressorFactory.IsDelayed(handshake.Negotiated.CompressionServerToClient))
-            {
-                server.Transport.SetSendCompressor(
-                    SshCompressorFactory.Create(handshake.Negotiated.CompressionServerToClient));
-            }
+            server.AuthenticationSucceeded();
 
             await channels.RunAsync(cts.Token);
         });

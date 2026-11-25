@@ -425,35 +425,75 @@ public sealed class RekeyTests
     }
 
     [TestMethod]
-    public async Task 开着压缩重协商之后数据依然对得上()
+    public async Task 自定义压缩清单在重协商时只提议none()
     {
-        // 这一条钉的是 velashell-docs/zh/ssh/spec/01 §六：**压缩上下文必须随密钥一起重置**。
-        //
-        // 不重置的症状极具迷惑性：重协商之前一切正常，之后对端解压失败 ——
-        // 而那时已经完全看不出是压缩的问题了。所以必须有一条用例
-        // 跨过重协商去读数据。
-        byte[] compressible = Encoding.UTF8.GetBytes(
-            string.Concat(Enumerable.Repeat("同一行反复出现，非常可压缩\n", 200)));
-
-        await using TestSshServerHost host = await TestSshServerHost.StartAsync(
-            new TestChannelScript { StandardOutput = compressible, ExitCode = 0 },
-            SshAlgorithmSet.Default.WithCompression());
-
-        Assert.AreEqual(
-            SshAlgorithmNames.ZlibOpenSsh,
-            host.Connection.Algorithms.CompressionServerToClient,
-            "前提：压缩要真的谈成了，不然这条用例什么都没验");
-
-        SshCommandResult before = await host.Connection.RunAsync("压", cancellationToken: host.Token);
-        Assert.AreSequenceEqual(compressible, Encoding.UTF8.GetBytes(before.StandardOutput));
-
+        SshAlgorithmSet custom = SshAlgorithmSet.Default with
+        {
+            CompressionClientToServer = [SshAlgorithmNames.ZlibOpenSsh, SshAlgorithmNames.None],
+            CompressionServerToClient = [SshAlgorithmNames.ZlibOpenSsh, SshAlgorithmNames.None],
+        };
+        await using TestSshServerHost host = await TestSshServerHost.StartAsync(algorithms: custom);
         await host.Channels.RequestRekeyAsync().WaitAsync(host.Token);
 
-        SshCommandResult after = await host.Connection.RunAsync("压", cancellationToken: host.Token);
-        Assert.AreSequenceEqual(
-            compressible, Encoding.UTF8.GetBytes(after.StandardOutput), "重协商之后压缩流要能继续对上 —— 两边的压缩上下文都重置了才行");
+        Assert.AreSequenceEqual([SshAlgorithmNames.None], [.. host.LastClientKexInit.CompressionClientToServer]);
+        Assert.AreSequenceEqual([SshAlgorithmNames.None], [.. host.LastClientKexInit.CompressionServerToClient]);
+        Assert.AreEqual(SshAlgorithmNames.None, host.Connection.Algorithms.CompressionClientToServer);
+        Assert.AreEqual(SshAlgorithmNames.None, host.Connection.Algorithms.CompressionServerToClient);
+    }
 
-        Assert.AreEqual(1, host.Connection.RekeyCount);
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task 压缩授权在认证前后重协商都按方向生效(bool receive)
+    {
+        SshAlgorithmSet peer = SshAlgorithmSet.Default.WithCompression(allowServerCompression: true);
+        // 模拟旧清单或后续 with 覆盖：即使列出了下行压缩，也必须单独授权。
+        SshAlgorithmSet client = SshAlgorithmSet.Default.WithCompression(receive) with
+        {
+            CompressionServerToClient = peer.CompressionServerToClient,
+        };
+        byte[] reply = Encoding.UTF8.GetBytes(new string('a', 4096));
+        await using TestSshServerHost host = await TestSshServerHost.StartAsync(
+            new TestChannelScript { StandardOutput = reply, ExitCode = 0 }, client,
+            serverAlgorithms: SshAlgorithmSet.Default, serverRekeyAlgorithms: peer, rekeyDuringAuth: true);
+
+        // 首次两个方向都落到 none，认证期间改谈压缩；成功报文仍按未压缩收，下一包才开始压。
+        CheckNegotiation();
+        SshCommandResult before = await host.Connection.RunAsync("before", cancellationToken: host.Token);
+        Assert.AreSequenceEqual(reply, Encoding.UTF8.GetBytes(before.StandardOutput));
+        await host.Channels.RequestRekeyAsync().WaitAsync(host.Token);
+        CheckNegotiation();
+        SshCommandResult after = await host.Connection.RunAsync("after", cancellationToken: host.Token);
+        Assert.AreSequenceEqual(reply, Encoding.UTF8.GetBytes(after.StandardOutput));
+
+        void CheckNegotiation()
+        {
+            Assert.AreSequenceEqual([SshAlgorithmNames.ZlibOpenSsh, SshAlgorithmNames.None], host.LastClientKexInit.CompressionClientToServer);
+            string[] down = receive ? [SshAlgorithmNames.ZlibOpenSsh, SshAlgorithmNames.None] : [SshAlgorithmNames.None];
+            Assert.AreSequenceEqual(down, host.LastClientKexInit.CompressionServerToClient);
+            Assert.AreEqual(SshAlgorithmNames.ZlibOpenSsh, host.Connection.Algorithms.CompressionClientToServer);
+            Assert.AreEqual(down[0], host.Connection.Algorithms.CompressionServerToClient);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task 服务端只支持下行延迟压缩时上行退回none(bool receive)
+    {
+        SshAlgorithmSet client = SshAlgorithmSet.Default.WithCompression(receive);
+        SshAlgorithmSet server = SshAlgorithmSet.Default.WithCompression(allowServerCompression: true) with
+        {
+            CompressionClientToServer = [SshAlgorithmNames.None],
+        };
+        await using TestSshServerHost host = await TestSshServerHost.StartAsync(
+            new TestChannelScript { StandardOutput = "ok"u8.ToArray() }, client, serverAlgorithms: server);
+        Assert.AreSequenceEqual(client.CompressionClientToServer, host.LastClientKexInit.CompressionClientToServer);
+        Assert.AreSequenceEqual(client.CompressionServerToClient, host.LastClientKexInit.CompressionServerToClient);
+        Assert.AreEqual(SshAlgorithmNames.None, host.Connection.Algorithms.CompressionClientToServer);
+        Assert.AreEqual(receive ? SshAlgorithmNames.ZlibOpenSsh : SshAlgorithmNames.None, host.Connection.Algorithms.CompressionServerToClient);
+        SshCommandResult result = await host.Connection.RunAsync("ok", cancellationToken: host.Token);
+        Assert.AreEqual("ok", result.StandardOutput);
     }
 
     [TestMethod]

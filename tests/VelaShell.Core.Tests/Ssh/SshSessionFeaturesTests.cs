@@ -10,7 +10,7 @@ namespace VelaShell.Core.Tests.Ssh;
 
 /// <summary>
 /// 一条配置的 SSH 可选能力(<see cref="SshSessionOptions" />)怎么落到库的选项上:
-/// 压缩进算法集,两个转发进 shell 选项。
+/// 旧压缩选项不生效,两个转发进 shell 选项。
 /// </summary>
 [TestClass]
 [TestCategory("Ssh")]
@@ -35,22 +35,15 @@ public class SshSessionFeaturesTests
         Assert.AreSequenceEqual(["none"], [.. algorithms.CompressionServerToClient]);
     }
 
-    /// <summary>
-    /// 开了压缩:<c>zlib@openssh.com</c> 排在 <c>none</c> 前面 ——
-    /// 服务端不支持时协商落回 <c>none</c>,不会因此连不上。
-    /// </summary>
-    /// <remarks>
-    /// 不能出现老式的 <c>zlib</c>:它在认证之前就开始压缩,是 CRIME 一类攻击的入口。
-    /// </remarks>
     [TestMethod]
-    public void Compression_On_PrefersDelayedZlibAndKeepsNoneAsFallback()
+    public void Compression_LegacyOption_OffersOnlyNone()
     {
         SshAlgorithmSet algorithms = SshConnectionAssembler.Algorithms(Info(new SshSessionOptions { Compression = true }));
 
         Assert.AreSequenceEqual(
-            ["zlib@openssh.com", "none"], [.. algorithms.CompressionClientToServer]);
+            ["none"], [.. algorithms.CompressionClientToServer]);
         Assert.AreSequenceEqual(
-            ["zlib@openssh.com", "none"], [.. algorithms.CompressionServerToClient]);
+            ["none"], [.. algorithms.CompressionServerToClient]);
     }
 
     /// <summary>只开压缩不影响其余算法 —— 那一套是安全默认值,不该被顺手改掉。</summary>
@@ -503,6 +496,7 @@ public class SshSessionFeaturesTests
         {
             object value = property.PropertyType switch
             {
+                Type t when t == typeof(SshTerminalCompressionMode) => SshTerminalCompressionMode.Bidirectional,
                 Type t when t == typeof(bool) => !(bool)property.GetValue(source)!,
                 Type t when t == typeof(string) => "x-" + property.Name,
                 Type t when t == typeof(List<string>) => new List<string> { "k-" + property.Name },

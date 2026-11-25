@@ -219,6 +219,29 @@ public sealed class ConnectionWorkflowServiceTests
         Assert.AreEqual(automatic, connected.JumpHost?.IsAutomaticReconnect);
     }
 
+    [TestMethod]
+    [DataRow(ConnectionType.SSH, SshTerminalCompressionMode.UploadOnly)]
+    [DataRow(ConnectionType.SFTP, SshTerminalCompressionMode.Off)]
+    public async Task TerminalCompression_AppliesOnlyToTheSshEndpoint(ConnectionType type, SshTerminalCompressionMode expected)
+    {
+        SessionProfile jump = CreateProfile("bastion");
+        jump.Ssh = new() { TerminalCompression = SshTerminalCompressionMode.Bidirectional };
+        SessionProfile target = CreateProfile("web-01");
+        target.ConnectionType = type;
+        target.Ssh = new() { TerminalCompression = SshTerminalCompressionMode.UploadOnly };
+        target.JumpHostProfileId = jump.Id;
+        _sessionRepository.GetSessionAsync(jump.Id).Returns(jump);
+        _sshConnectionService.ConnectAsync(Arg.Any<ConnectionInfo>(), Arg.Any<CancellationToken>())
+            .Returns(call => new SshSession { ConnectionInfo = (ConnectionInfo)call[0] });
+
+        SshSession session = await CreateService().ConnectProfileAsync(target);
+
+        Assert.AreEqual(expected, session.ConnectionInfo.Ssh!.TerminalCompression);
+        Assert.AreEqual(SshTerminalCompressionMode.Off, session.ConnectionInfo.JumpHost!.Ssh!.TerminalCompression);
+        Assert.AreEqual(SshTerminalCompressionMode.UploadOnly, target.Ssh.TerminalCompression);
+        Assert.AreEqual(SshTerminalCompressionMode.Bidirectional, jump.Ssh.TerminalCompression);
+    }
+
     /// <summary>
     /// 巡检的连接测试按「没人看着」连:跳板链上每一跳都标上(要人回答的一律不问),连完随即断开;
     /// 普通的「测试」一跳也不标。

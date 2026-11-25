@@ -93,7 +93,7 @@ public sealed class UnattendedProbeTests
         IKeyboardInteractivePrompt keyboard = Substitute.For<IKeyboardInteractivePrompt>();
 
         Exception failure = await Assert.ThrowsAsync<Exception>(
-            () => ConnectAsync(Info(server.Port, unattended: true), keyboardPrompt: keyboard));
+            () => ConnectAsync(Info(server.Port, unattended: true), FixtureHostKeys.Create(), keyboardPrompt: keyboard));
 
         Assert.Contains(e => e is VelaSshAuthenticationCancelledException, Chain(failure), failure.ToString());
         Assert.Contains(Strings.Get("SshErr_KbdAuthUnattended"), failure.Message);
@@ -141,7 +141,7 @@ public sealed class UnattendedProbeTests
 
     private static async Task<VelaSshClientWrapper> ConnectAsync(
         ConnectionInfo info,
-        IHostKeyService? hostKey = null,
+        IHostKeyService hostKey,
         ISettingsService? settings = null,
         IHostKeyPrompt? prompt = null,
         ISecurityAlertService? alerts = null,

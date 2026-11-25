@@ -62,7 +62,7 @@ internal static class SshConnectionAssembler
 
     /// <summary>按连接信息装配。</summary>
     /// <param name="info">连接信息(含跳板链)。</param>
-    /// <param name="hostKey">主机指纹信任库;<see langword="null" /> 时不校验(测试用)。</param>
+    /// <param name="hostKey">终点与各跳板共用的主机指纹信任库。缺少信任库时拒绝装配连接。</param>
     /// <param name="settings">设置。</param>
     /// <param name="prompt">主机指纹的人工确认。</param>
     /// <param name="alerts">安全告警。</param>
@@ -78,7 +78,7 @@ internal static class SshConnectionAssembler
     /// <param name="tailscaleCheckTimeout">Tailscale 跳收到验证链接之后的等待上限;生产三十分钟,仅测试覆盖短期限。</param>
     public static Assembled Create(
         VelaConnectionInfo info,
-        IHostKeyService? hostKey,
+        IHostKeyService hostKey,
         ISettingsService? settings,
         IHostKeyPrompt? prompt,
         ISecurityAlertService? alerts,
@@ -89,6 +89,7 @@ internal static class SshConnectionAssembler
         TimeSpan? tailscaleCheckTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(info);
+        ArgumentNullException.ThrowIfNull(hostKey);
 
         // 没人在等(自动重连、健康巡检):要人裁决的主机指纹直接拒绝,Tailscale 复核也不开验证窗。
         // 巡检更进一步,动态码框也不弹(见 ConnectionInfo.IsUnattended):换成一个谁都不问、直接谢绝的应答界面 ——
@@ -101,9 +102,7 @@ internal static class SshConnectionAssembler
         }
 
         // 链上每一跳共用同一个策略实例 —— 跳板与终点走同一套信任判定,自动重连时也一起不弹窗。
-        IHostKeyPolicy policy = hostKey is null
-            ? new DangerousAcceptAnyHostKeyPolicy()
-            : new VelaHostKeyPolicy(hostKey, settings, prompt, alerts, nobodyWaiting, unattended: info.IsUnattended);
+        VelaHostKeyPolicy policy = new(hostKey, settings, prompt, alerts, nobodyWaiting, unattended: info.IsUnattended);
 
         TimeSpan connectTimeout = ConnectTimeout(settings);
         SshServerBanners banners = new();
@@ -532,13 +531,8 @@ internal static class SshConnectionAssembler
 
     /// <summary>
     /// 这一跳的算法集:老算法开关与四个自定义清单(见 <see cref="SshAlgorithmPreferences" />),
-    /// 开了压缩就把 <c>zlib@openssh.com</c> 排在 <c>none</c> 前面。跳板链上每一跳各带各的。
+    /// 跳板链上每一跳各带各的。终端压缩只采用工作流为终点保留的显式方向设置。
     /// </summary>
-    /// <remarks>
-    /// 压缩是**协商**出来的:服务端没开(<c>Compression no</c>)时自动落回不压缩,
-    /// 不会因此连不上。用的是 <c>zlib@openssh.com</c>(认证之后才开始压缩)而不是
-    /// 老式的 <c>zlib</c> —— 后者在认证之前就压缩,是历史上 CRIME 一类攻击的入口。
-    /// </remarks>
     internal static SshAlgorithmSet Algorithms(VelaConnectionInfo info) => SshAlgorithmPreferences.Build(info.Ssh);
 
     /// <summary>连本机系统默认的 agent(按连接指定了端点的见 <see cref="ConnectAgentAtAsync" />)。</summary>

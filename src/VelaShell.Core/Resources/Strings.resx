@@ -6180,6 +6180,9 @@ Overwrite it?</value>
   <data name="XImport_Duplicate" xml:space="preserve">
     <value>Already exists</value>
   </data>
+  <data name="SshCfgImport_NoteCompressionDisabled" xml:space="preserve">
+    <value>OpenSSH Compression yes was ignored. To enable terminal compression, choose a mode manually in SSH options.</value>
+  </data>
   <data name="SshCfgImport_NoteForwardsImported" xml:space="preserve">
     <value>{0} port forwards are imported as tunnels of this connection (stopped; start them in the tunnel panel).</value>
   </data>
@@ -7609,6 +7612,9 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="SshErr_HostKeyAlgorithmMismatch" xml:space="preserve">
     <value>The server presented a {0} key, which does not match the negotiated host key algorithm {1}.</value>
   </data>
+  <data name="SshErr_StrictKexRequired" xml:space="preserve">
+    <value>Strict key exchange was not negotiated. Upgrade the SSH server or use AES-GCM in both directions.</value>
+  </data>
   <data name="SshErr_HostKeyTooShort" xml:space="preserve">
     <value>The server&apos;s RSA host key has only {0} bits (at least {1} are required).</value>
   </data>
@@ -7987,11 +7993,26 @@ Choose how much to clean up. Every option rebuilds the store so the space is gen
   <data name="Profile_SshLegacyAlgorithmsHint" xml:space="preserve">
     <value>Appends diffie-hellman-group14-sha1, ssh-rsa (SHA-1) and hmac-sha1 after the defaults; they are only used when the server supports nothing newer. These are no longer considered secure — turn this on only for old switches and systems you cannot reach otherwise.</value>
   </data>
-  <data name="Profile_SshCompression" xml:space="preserve">
-    <value>Enable compression (for high-latency or low-bandwidth links)</value>
+  <data name="Profile_TerminalCompression" xml:space="preserve">
+    <value>Terminal compression</value>
   </data>
-  <data name="Profile_SshCompressionHint" xml:space="preserve">
-    <value>Turn it on when latency is high (cross-border or intercontinental links, round trips above ~100 ms) or bandwidth is scarce: terminal output and text files shrink a lot. Leave it off on a LAN or when you mostly move already-compressed data (images, archives) — it would only cost CPU. Falls back to no compression if the server does not support it.</value>
+  <data name="Profile_TerminalCompressionOff" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="Profile_TerminalCompressionInput" xml:space="preserve">
+    <value>Input only (client to server)</value>
+  </data>
+  <data name="Profile_TerminalCompressionBoth" xml:space="preserve">
+    <value>Input and output (both directions)</value>
+  </data>
+  <data name="Profile_TerminalCompressionHint" xml:space="preserve">
+    <value>Compression starts after login if the server supports it. Input only can reduce traffic from large pastes. All channels sharing this terminal connection use the same mode.</value>
+  </data>
+  <data name="Profile_TerminalCompressionConfirm" xml:space="preserve">
+    <value>I manage this server and have verified that its SSH encoder uses Huffman-only DEFLATE or equivalent protection against dictionary matches.</value>
+  </data>
+  <data name="Profile_TerminalCompressionRisk" xml:space="preserve">
+    <value>If you confirm, VelaShell accepts compressed output even from servers using LZ77. Dictionary matches can expose secrets through packet sizes. Verify that the server has the OpenSSH 10.6 fix or equivalent protection. If unsure, choose Input only.</value>
   </data>
   <data name="Profile_SshObscureKeystrokeTiming" xml:space="preserve">
     <value>Obscure keystroke timing</value>
@@ -9565,7 +9586,7 @@ Send anyway?</value>
     <value>A spreadsheet you can edit in Excel and import back. Common fields only (name, host, port, username, group, authentication, jump host…); never includes passwords.</value>
   </data>
   <data name="SessExport_SshConfigHint" xml:space="preserve">
-    <value>Host blocks for ~/.ssh/config: SSH / SFTP connections with host, user, keys and certificates, jump hosts, compression, agent forwarding, algorithms and port forwards. Never includes passwords; other protocols are skipped.</value>
+    <value>Host blocks for ~/.ssh/config: SSH / SFTP connections with host, user, keys and certificates, jump hosts, agent forwarding, algorithms and port forwards. Never includes passwords; other protocols are skipped.</value>
   </data>
   <data name="SessExport_IncludeSecrets" xml:space="preserve">
     <value>Include passwords and other sensitive data</value>

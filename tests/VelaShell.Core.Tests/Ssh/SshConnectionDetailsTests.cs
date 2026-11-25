@@ -17,6 +17,25 @@ public sealed class SshConnectionDetailsTests
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(20);
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void MissingHostKeyService_RejectsRouteDuringAssembly(bool viaJump)
+    {
+        ConnectionInfo info = new()
+        {
+            Host = "target.internal",
+            Username = "joe",
+            AuthMethod = AuthMethod.Password,
+            JumpHost = viaJump ? Info(22) : null,
+        };
+
+        ArgumentNullException failure = Assert.ThrowsExactly<ArgumentNullException>(() =>
+            SshConnectionAssembler.Create(info, hostKey: null!, settings: null, prompt: null, alerts: null, proxyResolver: null));
+
+        Assert.AreEqual("hostKey", failure.ParamName);
+    }
+
+    [TestMethod]
     public async Task Direct_ReportsPeerAlgorithmsAuthTimingTrafficAndTheOpenShellChannel()
     {
         await using LoopbackSshHost host = new(options: new TestSshServerOptions { Identification = "SSH-2.0-TargetServer_9.9" });
@@ -102,7 +121,7 @@ public sealed class SshConnectionDetailsTests
             JumpHost = Info(jump.Port),
         };
         SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(
-            info, hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
+            info, hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null);
         using CancellationTokenSource cts = new(Deadline);
 
         await using (await assembled.Connect(cts.Token))
@@ -120,7 +139,7 @@ public sealed class SshConnectionDetailsTests
         await using LoopbackSshHost host = new();
         ConnectionInfo info = Info(host.Port);
         SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(
-            info, hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
+            info, hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null);
         VelaSshClientWrapper wrapper = new(assembled.Connect, assembled.ConnectTimeout, info.Ssh) { Route = assembled.Route };
 
         Assert.IsNull(wrapper.GetConnectionDetails(), "还没连上。");
@@ -143,7 +162,7 @@ public sealed class SshConnectionDetailsTests
     private static async Task<Connected> ConnectAsync(ConnectionInfo info)
     {
         SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(
-            info, hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
+            info, hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null);
         VelaSshClientWrapper wrapper = new(assembled.Connect, assembled.ConnectTimeout, info.Ssh,
             target: Core.Net.HostAddress.FormatTarget(info.Username, info.Host, info.Port), banners: assembled.Banners)
         {

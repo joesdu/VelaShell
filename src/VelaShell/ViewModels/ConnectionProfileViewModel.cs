@@ -141,8 +141,9 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     private int _overrideKeepAliveSeconds = -1;
     private int _antiIdleSeconds;
 
-    // ---- SSH 协议层可选能力(压缩 / agent 转发 / X11 转发);默认全关 ----
-    private bool _sshCompression;
+    // ---- SSH 协议层可选能力(agent 转发 / X11 转发);默认全关 ----
+    private SshTerminalCompressionMode _terminalCompression;
+    private bool _terminalCompressionConfirmed;
     private bool _sshObscureKeystrokeTiming;
     private bool _sshAgentForwarding;
     private bool _sshAgentForwardRestrict;
@@ -287,7 +288,8 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
             }
             if (existing.Ssh is { } ssh)
             {
-                _sshCompression = ssh.Compression;
+                _terminalCompression = SupportsPostAuthCommand ? ssh.TerminalCompression : SshTerminalCompressionMode.Off;
+                _terminalCompressionConfirmed = IsBidirectionalCompression;
                 _sshObscureKeystrokeTiming = ssh.ObscureKeystrokeTiming;
                 _sshAgentForwarding = ssh.AgentForwarding;
                 _sshAgentForwardRestrict = ssh.AgentForwardKeys is not null;
@@ -357,7 +359,15 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
             });
         this.WhenAnyValue(x => x.SelectedJumpHost)
             .Skip(1)
-            .Subscribe(option => _jumpHostProfileId = option?.Id);
+            .Subscribe(option =>
+            {
+                if (_jumpHostProfileId != option?.Id)
+                {
+                    // 同一内网地址经过另一台跳板可能指向不同的服务器。
+                    TerminalCompressionConfirmed = false;
+                    _jumpHostProfileId = option?.Id;
+                }
+            });
         // 「必须填用户名」这条并非对所有协议成立:FTP 匿名登录,以及声明了
         // AnonymousAccess 的插件协议(如 S3 的公开只读桶)都不需要。
         // 保存/连接按钮不能因为这个永远灰着(串口调研里踩过同一个坑)。
@@ -387,7 +397,8 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
                  // 插件不可用时也放行:否则一条「用户名为空的 S3 配置」在禁用插件后
                  // 保存/连接/测试三个按钮同时灰死,连改个名字都存不下去。
                  (type == ConnectionType.Plugin && (pluginAnonymous || pluginUnavailable))) &&
-                port is >= 1 and <= 65535);
+                port is >= 1 and <= 65535)
+            .CombineLatest(this.WhenAnyValue(x => x.NeedsTerminalCompressionConfirmation), (valid, needsConfirmation) => valid && !needsConfirmation);
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync, canExecute);
         ConnectCommand = ReactiveCommand.CreateFromTask(ConnectAsync, canExecute);
         CancelCommand = ReactiveCommand.Create(() => (SessionProfile?)null);
@@ -492,7 +503,9 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
             {
                 return;
             }
+            TerminalCompressionConfirmed = false;
             this.RaiseAndSetIfChanged(ref _connectionType, normalized);
+            this.RaisePropertyChanged(nameof(NeedsTerminalCompressionConfirmation));
             this.RaisePropertyChanged(nameof(IsSshSelected));
             this.RaisePropertyChanged(nameof(IsSftpSelected));
             this.RaisePropertyChanged(nameof(IsFtpSelected));
@@ -760,6 +773,10 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
         get => _host;
         set
         {
+            if (_host != value)
+            {
+                TerminalCompressionConfirmed = false;
+            }
             this.RaiseAndSetIfChanged(ref _host, value);
             // 下拉形态下当前值与选中项是同一件事;不补这一发,程序化改 Host
             // (读入既有配置、刷新后归位)时下拉显示的还是上一项。
@@ -774,6 +791,10 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
         get => _port;
         set
         {
+            if (_port != value)
+            {
+                TerminalCompressionConfirmed = false;
+            }
             this.RaiseAndSetIfChanged(ref _port, value);
             this.RaisePropertyChanged(nameof(PortError));
         }
@@ -1456,7 +1477,7 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// <summary>「终端」页:认证后命令与会话级终端覆盖都只对有 shell 的 SSH 成立。</summary>
     public bool ShowTerminalSection => SupportsPostAuthCommand;
 
-    /// <summary>「SSH 选项」页:压缩与算法协商对 SSH 与 SFTP 都有意义(同一条 SSH 连接)。</summary>
+    /// <summary>「SSH 选项」页:算法协商对 SSH 与 SFTP 都有意义(同一条 SSH 连接)。</summary>
     public bool ShowSshOptionsSection => RequiresSshAuth;
 
     /// <summary>「转发」页:两个转发只挂在交互式 shell 上,只对 SSH 出现。</summary>
@@ -1512,7 +1533,7 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
 
     /// <summary>「SSH 选项」页是否有非默认值。</summary>
     public bool IsSshOptionsSectionModified =>
-        _sshCompression || (SupportsPostAuthCommand && _sshObscureKeystrokeTiming) || _sshLegacyAlgorithms || _sshCustomAlgorithms
+        (SupportsPostAuthCommand && (_terminalCompression != SshTerminalCompressionMode.Off || _sshObscureKeystrokeTiming)) || _sshLegacyAlgorithms || _sshCustomAlgorithms
         || !SshAgentEndpoints.IsDefault(_sshAgentEndpoint);
 
     /// <summary>「转发」页是否有非默认值。</summary>
@@ -1616,7 +1637,7 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     }.ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly FrozenSet<string> SshOptionsSectionInputs =
-        new[] { nameof(SshCompression), nameof(SshObscureKeystrokeTiming), nameof(SshLegacyAlgorithms), nameof(SshCustomAlgorithms), nameof(SshAgentEndpoint) }
+        new[] { nameof(TerminalCompressionIndex), nameof(SshObscureKeystrokeTiming), nameof(SshLegacyAlgorithms), nameof(SshCustomAlgorithms), nameof(SshAgentEndpoint) }
             .ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly FrozenSet<string> ForwardingSectionInputs =
@@ -1739,7 +1760,6 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
 
     // ---- SSH 协议层可选能力 ----
     //
-    // 压缩对 SSH 与 SFTP 都有意义(两者走同一条 SSH 连接),显示条件跟 RequiresSshAuth;
     // 两个转发只挂在交互式 shell 上,SFTP 配置没有 shell,显示条件跟 SupportsPostAuthCommand。
 
     /// <summary>当前是否选了 SSH Agent 认证;控制那一行说明的可见性。</summary>
@@ -1866,12 +1886,39 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
     /// <summary>认证方式分段按钮:点哪段切到哪种认证。</summary>
     public ReactiveCommand<AuthMethod, RxVoid> SelectAuthMethodCommand { get; }
 
-    /// <summary>启用压缩(高延迟 / 低带宽链路)。</summary>
-    public bool SshCompression
+    /// <summary>下拉选项与配置枚举顺序一致。切走再选双向时需重新确认。</summary>
+    public int TerminalCompressionIndex
     {
-        get => _sshCompression;
-        set => this.RaiseAndSetIfChanged(ref _sshCompression, value);
+        get => (int)_terminalCompression;
+        set
+        {
+            if (!Enum.IsDefined((SshTerminalCompressionMode)value) || value == (int)_terminalCompression)
+            {
+                return;
+            }
+            TerminalCompressionConfirmed = false;
+            this.RaiseAndSetIfChanged(ref _terminalCompression, (SshTerminalCompressionMode)value);
+            this.RaisePropertyChanged(nameof(IsBidirectionalCompression));
+            this.RaisePropertyChanged(nameof(NeedsTerminalCompressionConfirmation));
+        }
     }
+
+    /// <summary>双向模式显示单独的受管服务器确认项。</summary>
+    public bool IsBidirectionalCompression => _terminalCompression == SshTerminalCompressionMode.Bidirectional;
+
+    /// <summary>用户已核实当前目标服务器发送压缩数据时同样防止字典匹配。</summary>
+    public bool TerminalCompressionConfirmed
+    {
+        get => _terminalCompressionConfirmed;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _terminalCompressionConfirmed, value);
+            this.RaisePropertyChanged(nameof(NeedsTerminalCompressionConfirmation));
+        }
+    }
+
+    /// <summary>缺少针对当前终端服务器的确认时，禁止保存或连接。</summary>
+    public bool NeedsTerminalCompressionConfirmation => SupportsPostAuthCommand && IsBidirectionalCompression && !TerminalCompressionConfirmed;
 
     /// <summary>
     /// 按键时序混淆(OpenSSH 的 <c>ObscureKeystrokeTiming</c>);只挂在交互式 shell 上,显示条件跟 <see cref="SupportsPostAuthCommand" />。
@@ -1884,7 +1931,7 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
 
     // ---- 算法清单(连老设备)----
     //
-    // 与压缩同一个显示条件(SSH 与 SFTP 都有):两者走同一条 SSH 连接。
+    // SSH 与 SFTP 都显示:两者走同一条 SSH 连接。
     // 「默认」取决于有没有放开老算法,所以老算法开关一变,四个提示与校验都要跟着重算。
 
     /// <summary>放开老算法(<c>diffie-hellman-group14-sha1</c>、<c>ssh-rsa</c>、<c>hmac-sha1</c>),追加在默认之后。</summary>
@@ -2512,6 +2559,10 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
             BeginBusy();
             ErrorMessage = null;
             await ResolveGroupFromTextAsync();
+            if (NeedsTerminalCompressionConfirmation)
+            {
+                throw new InvalidOperationException(Strings.Get("Profile_TerminalCompressionConfirm"));
+            }
             // 限定了密钥却一把都没勾:存下去就是一条永远不转发的配置,而用户以为转发开着。
             if (SupportsPostAuthCommand && RequiresSshAuth && _sshAgentForwarding
                 && SelectedAgentForwardKeys() is { Count: 0 })
@@ -2810,8 +2861,8 @@ public partial class ConnectionProfileViewModel : ReactiveObject, IDisposable
         bool shell = SupportsPostAuthCommand;
         SshSessionOptions options = new()
         {
-            Compression = _sshCompression,
             // 与两个转发同理:SFTP 配置没有交互式 shell,存下来永远不生效,切回 SSH 时却会突然起作用。
+            TerminalCompression = shell && !NeedsTerminalCompressionConfirmation ? _terminalCompression : SshTerminalCompressionMode.Off,
             ObscureKeystrokeTiming = shell && _sshObscureKeystrokeTiming,
             AgentForwarding = shell && _sshAgentForwarding,
             AgentForwardKeys = shell && _sshAgentForwarding ? SelectedAgentForwardKeys() : null,

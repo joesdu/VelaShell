@@ -250,7 +250,7 @@ public sealed class ConnectionProfileViewModelTests
     }
 
     /// <summary>
-    /// SSH 可选能力(压缩 / agent 转发 / X11 转发)打开编辑对话框要回显,保存要原样带回;
+    /// SSH 可选能力(agent 转发 / X11 转发)打开编辑对话框要回显,保存要原样带回;
     /// 全部关掉要存回 null,不给配置留一段全 false 的对象。
     /// </summary>
     [TestMethod]
@@ -272,7 +272,6 @@ public sealed class ConnectionProfileViewModelTests
         };
 
         var vm = new ConnectionProfileViewModel(existing);
-        Assert.IsTrue(vm.SshCompression);
         Assert.IsTrue(vm.SshAgentForwarding);
         Assert.IsTrue(vm.SshX11Forwarding);
         Assert.AreEqual("localhost:1.0", vm.SshX11Display);
@@ -280,33 +279,73 @@ public sealed class ConnectionProfileViewModelTests
 
         SessionProfile? saved = await vm.SaveCommand.Execute().FirstAsync();
         Assert.IsNotNull(saved?.Ssh);
-        Assert.IsTrue(saved.Ssh.Compression);
+        Assert.IsFalse(saved.Ssh.Compression);
         Assert.IsTrue(saved.Ssh.AgentForwarding);
         Assert.IsTrue(saved.Ssh.X11Forwarding);
         Assert.AreEqual("localhost:1.0", saved.Ssh.X11Display);
         Assert.IsFalse(saved.Ssh.X11Trusted);
 
-        vm.SshCompression = false;
         vm.SshAgentForwarding = false;
         vm.SshX11Forwarding = false;
         SessionProfile? off = await vm.SaveCommand.Execute().FirstAsync();
         Assert.IsNotNull(off);
-        Assert.IsNull(off.Ssh, "三项都关了就不该留下一个全 false 的对象。");
+        Assert.IsNull(off.Ssh, "转发都关了就不该留下一个全 false 的对象。");
+    }
+
+    [TestMethod]
+    public async Task TerminalCompression_RequiresManagedServerConfirmationAndRoundTripsForSshOnly()
+    {
+        var vm = new ConnectionProfileViewModel(new SessionProfile
+        {
+            Host = "managed.example.com", Username = "ops", Ssh = new() { Compression = true },
+        });
+        Assert.AreEqual((int)SshTerminalCompressionMode.Off, vm.TerminalCompressionIndex);
+        Assert.IsFalse(vm.IsSshOptionsSectionModified);
+
+        vm.TerminalCompressionIndex = (int)SshTerminalCompressionMode.UploadOnly;
+        SessionProfile? input = await vm.SaveCommand.Execute().FirstAsync();
+        Assert.AreEqual(SshTerminalCompressionMode.UploadOnly, input?.Ssh?.TerminalCompression);
+
+        vm.TerminalCompressionIndex = (int)SshTerminalCompressionMode.Bidirectional;
+        Assert.IsTrue(vm.IsSshOptionsSectionModified);
+        Assert.IsFalse(await vm.SaveCommand.CanExecute.FirstAsync());
+        Assert.IsNull(await vm.SaveCommand.Execute().FirstAsync());
+        vm.TerminalCompressionConfirmed = true;
+        SessionProfile? both = await vm.SaveCommand.Execute().FirstAsync();
+        Assert.AreEqual(SshTerminalCompressionMode.Bidirectional, both?.Ssh?.TerminalCompression);
+
+        var reopened = new ConnectionProfileViewModel(both);
+        Assert.IsTrue(reopened.TerminalCompressionConfirmed);
+        reopened.Host = "other.example.com";
+        Assert.IsTrue(reopened.NeedsTerminalCompressionConfirmation);
+        reopened.TerminalCompressionConfirmed = true;
+        reopened.Port = 2222;
+        Assert.IsTrue(reopened.NeedsTerminalCompressionConfirmation);
+        reopened.TerminalCompressionConfirmed = true;
+        reopened.SelectedJumpHost = new(Guid.NewGuid(), "another-bastion");
+        Assert.IsTrue(reopened.NeedsTerminalCompressionConfirmation);
+
+        reopened.SelectConnectionTypeCommand.Execute(ConnectionType.SFTP).Subscribe();
+        Assert.IsFalse(reopened.NeedsTerminalCompressionConfirmation);
+        Assert.IsFalse(reopened.IsSshOptionsSectionModified);
+        SessionProfile? sftp = await reopened.SaveCommand.Execute().FirstAsync();
+        Assert.IsNotNull(sftp);
+        Assert.IsNull(sftp.Ssh);
     }
 
     /// <summary>
     /// SFTP 配置没有交互式 shell:两个转发存下来永远不生效,切回 SSH 时却会突然起作用 ——
-    /// 所以只留压缩。
+    /// 因此不存转发。
     /// </summary>
     [TestMethod]
-    public async Task SshFeatures_SftpKeepsCompressionButDropsForwarding()
+    public async Task SshFeatures_SftpDropsForwarding()
     {
         var vm = new ConnectionProfileViewModel
         {
             Host = "files.example.com",
             Username = "root",
             Password = SecureStringConvert.FromPlaintext("secret"),
-            SshCompression = true,
+            SshAgentEndpoint = "/agent.sock",
             SshAgentForwarding = true,
             SshX11Forwarding = true,
         };
@@ -315,7 +354,7 @@ public sealed class ConnectionProfileViewModelTests
         SessionProfile? profile = await vm.SaveCommand.Execute().FirstAsync();
 
         Assert.IsNotNull(profile?.Ssh);
-        Assert.IsTrue(profile.Ssh.Compression);
+        Assert.IsFalse(profile.Ssh.Compression);
         Assert.IsFalse(profile.Ssh.AgentForwarding);
         Assert.IsFalse(profile.Ssh.X11Forwarding);
         Assert.IsNull(profile.Ssh.AgentForwardKeys, "SFTP 没有 shell,限定的密钥也不该留下");

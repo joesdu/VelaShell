@@ -78,7 +78,7 @@ public class SshDisconnectLogIntegrationTests
             Password = "testpass",
         };
         SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(
-            info, hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
+            info, hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null);
         VelaSshClientWrapper wrapper = new(assembled.Connect, assembled.ConnectTimeout, info.Ssh);
         try
         {

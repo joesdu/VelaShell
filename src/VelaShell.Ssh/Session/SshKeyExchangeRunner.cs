@@ -247,6 +247,18 @@ internal sealed class SshKeyExchangeRunner
             negotiated = negotiated with { StrictKeyExchange = InitialStrictKeyExchange };
         }
 
+        // 兼容旧服务端时只接受双向 AES-GCM，其 nonce 独立于 SSH 报文序号。
+        if (!negotiated.StrictKeyExchange &&
+            (negotiated.EncryptionClientToServer is not (SshAlgorithmNames.Aes128Gcm or SshAlgorithmNames.Aes256Gcm) ||
+             negotiated.EncryptionServerToClient is not (SshAlgorithmNames.Aes128Gcm or SshAlgorithmNames.Aes256Gcm)))
+        {
+            throw new SshConnectException(SshFailureReason.NegotiationFailed, SshPhase.KeyExchange,
+                "未协商严格密钥交换。请升级 SSH 服务端或在两个方向都使用 AES-GCM。")
+            {
+                FailureKind = SshConnectFailureKind.StrictKexRequired,
+            };
+        }
+
         // 规则 (a)「密钥交换期间出现 IGNORE / DEBUG / UNIMPLEMENTED 即断开」只管首次交换；
         // 重协商期间它们是合法的普通报文。
         bool strictReads = isInitial && negotiated.StrictKeyExchange;

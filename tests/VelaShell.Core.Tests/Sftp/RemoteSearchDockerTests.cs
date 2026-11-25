@@ -4,6 +4,7 @@ using NSubstitute;
 using VelaShell.Core.Models;
 using VelaShell.Core.Sftp;
 using VelaShell.Core.Ssh;
+using VelaShell.Core.Tests.Ssh;
 using VelaShell.Infrastructure.Ssh;
 
 namespace VelaShell.Core.Tests.Sftp;
@@ -293,7 +294,7 @@ public sealed class RemoteSearchDockerTests
             Password = TestPassword,
         };
         SshConnectionAssembler.Assembled assembled = SshConnectionAssembler.Create(
-            info, hostKey: null, settings: null, prompt: null, alerts: null, proxyResolver: null);
+            info, hostKey: FixtureHostKeys.Create(), settings: null, prompt: null, alerts: null, proxyResolver: null);
         VelaSshClientWrapper wrapper = new(assembled.Connect, assembled.ConnectTimeout, info.Ssh);
         await wrapper.ConnectAsync(cancellationToken);
         return wrapper;

@@ -56,7 +56,8 @@ public sealed class SshConfigConnectTests
         Assert.AreEqual("deploy", options.UserName);
         Assert.AreEqual("10.0.0.9", options.Host);
         Assert.AreEqual(2222, options.Port);
-        Assert.AreEqual(SshAlgorithmNames.ZlibOpenSsh, options.Algorithms.CompressionClientToServer[0], "Compression yes 没生效");
+        Assert.AreSequenceEqual([SshAlgorithmNames.None], [.. options.Algorithms.CompressionClientToServer]);
+        Assert.AreSequenceEqual([SshAlgorithmNames.None], [.. options.Algorithms.CompressionServerToClient]);
         Assert.AreEqual(TimeSpan.FromSeconds(15), options.KeepAlive.Interval);
         Assert.AreEqual(4, options.KeepAlive.MaxMissed);
         Assert.AreEqual(TimeSpan.FromSeconds(7), options.ConnectTimeout);

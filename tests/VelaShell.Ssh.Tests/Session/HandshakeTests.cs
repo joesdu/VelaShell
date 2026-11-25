@@ -427,11 +427,32 @@ public sealed class HandshakeTests
         Assert.Contains("第一个报文", ex.Message);
     }
 
+    private static SshAlgorithmSet GcmAlgorithms => SshAlgorithmSet.Default with
+    {
+        EncryptionClientToServer = [SshAlgorithmNames.Aes128Gcm],
+        EncryptionServerToClient = [SshAlgorithmNames.Aes256Gcm],
+    };
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task 任一方向使用ChaCha20时都要求严格KEX(bool clientToServer)
+    {
+        SshAlgorithmSet algorithms = clientToServer
+            ? GcmAlgorithms with { EncryptionClientToServer = [SshAlgorithmNames.ChaCha20Poly1305] }
+            : GcmAlgorithms with { EncryptionServerToClient = [SshAlgorithmNames.ChaCha20Poly1305] };
+        SshConnectException ex = await Assert.ThrowsExactlyAsync<SshConnectException>(async () =>
+            await HandshakeAsync(algorithms, new TestSshServerOptions { AdvertiseStrictKex = false }));
+
+        Assert.AreEqual(SshFailureReason.NegotiationFailed, ex.Reason);
+        Assert.AreEqual(SshConnectFailureKind.StrictKexRequired, ex.FailureKind);
+    }
+
     [TestMethod]
     public async Task 不启用严格KEX时KEXINIT之前的IGNORE照常跳过()
     {
         (SshKeyExchangeResult client, _) = await HandshakeAsync(
-            serverOptions: new TestSshServerOptions { AdvertiseStrictKex = false, InjectIgnoreBeforeKexInit = true });
+            GcmAlgorithms, new TestSshServerOptions { AdvertiseStrictKex = false, InjectIgnoreBeforeKexInit = true });
 
         Assert.IsFalse(client.StrictKeyExchange);
     }
@@ -442,7 +463,7 @@ public sealed class HandshakeTests
         // 老服务端不宣告严格 KEX。此时按 RFC 4253 §11.2 忽略这些报文 ——
         // 拒绝连接会把大量合法场景打死。
         (SshKeyExchangeResult client, _) = await HandshakeAsync(
-            serverOptions: new TestSshServerOptions
+            GcmAlgorithms, new TestSshServerOptions
             {
                 AdvertiseStrictKex = false,
                 InjectIgnoreDuringKex = true,
