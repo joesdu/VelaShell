@@ -140,15 +140,38 @@
       <Border Grid.Row="3" Padding="20,0,6,0"
               BorderBrush="{DynamicResource VelaBorderPrimary}"
               BorderThickness="0,1,0,0">
-        <Grid ColumnDefinitions="*,Auto">
+        <Grid ColumnDefinitions="*,Auto,Auto">
           <TextBlock Name="StatusText"
                      Foreground="{DynamicResource VelaTextMuted}"
                      FontFamily="{DynamicResource VelaUiMonoFont}"
                      FontSize="{DynamicResource VelaFontSize10}"
                      VerticalAlignment="Center"
                      TextTrimming="CharacterEllipsis" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0"
+                      VerticalAlignment="Center">
+            <CheckBox x:Name="AutoRefreshCheckBox" Content="{loc:Localize Editor_AutoRefresh}"
+                      IsEnabled="False" MinHeight="0" Height="24" Padding="0"
+                      FontSize="{DynamicResource VelaFontSize10}"
+                      Foreground="{DynamicResource VelaTextSecondary}"
+                      ToolTip.Tip="{loc:Localize Editor_AutoRefreshTip}"
+                      AutomationProperties.Name="{loc:Localize Editor_AutoRefresh}" />
+            <NumericUpDown x:Name="RefreshIntervalInput" Value="1000" Minimum="100" Maximum="2147483647"
+                           Increment="100" FormatString="0" ShowButtonSpinner="False" Width="76" Height="24" MinHeight="0"
+                           Padding="4,0" FontSize="{DynamicResource VelaFontSize10}"
+                           ToolTip.Tip="{loc:Localize Editor_RefreshInterval}"
+                           AutomationProperties.Name="{loc:Localize Editor_RefreshInterval}" />
+            <TextBlock Text="{loc:Localize Editor_RefreshMilliseconds}" VerticalAlignment="Center"
+                       FontSize="{DynamicResource VelaFontSize10}"
+                       Foreground="{DynamicResource VelaTextMuted}" />
+            <CheckBox x:Name="KeepViewPositionCheckBox" Content="{loc:Localize Editor_KeepViewPosition}"
+                      MinHeight="0" Height="24" Padding="0"
+                      FontSize="{DynamicResource VelaFontSize10}"
+                      Foreground="{DynamicResource VelaTextSecondary}"
+                      ToolTip.Tip="{loc:Localize Editor_KeepViewPositionTip}"
+                      AutomationProperties.Name="{loc:Localize Editor_KeepViewPosition}" />
+          </StackPanel>
           <!-- 右下角缩放手柄;系统自带边缘缩放时(macOS、Wayland)与最大化时由 WindowChrome 隐去。 -->
-          <Border x:Name="ResizeGrip" Grid.Column="1" Width="18" Height="18"
+          <Border x:Name="ResizeGrip" Grid.Column="2" Width="18" Height="18"
                   Background="Transparent"
                   Cursor="BottomRightCorner"
                   PointerPressed="ResizeGrip_PointerPressed">

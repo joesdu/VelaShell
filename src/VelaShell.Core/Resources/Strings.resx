@@ -10100,4 +10100,13 @@ Send anyway?</value>
 Open About and check for an update?</value></data>
   <data name="PluginUpgrade_Requirement" xml:space="preserve"><value>• {0} requires {1}</value></data>
   <data name="PluginUpgrade_CheckUpdates" xml:space="preserve"><value>Check for updates</value></data>
+  <data name="Editor_AutoRefresh" xml:space="preserve"><value>Auto refresh</value></data>
+  <data name="Editor_AutoRefreshTip" xml:space="preserve"><value>Reloads remote content and overwrites unsaved edits. Editing remains available.</value></data>
+  <data name="Editor_RefreshInterval" xml:space="preserve"><value>Refresh interval in milliseconds (minimum 100)</value></data>
+  <data name="Editor_RefreshMilliseconds" xml:space="preserve"><value>ms</value></data>
+  <data name="Editor_KeepViewPosition" xml:space="preserve"><value>Keep view position</value></data>
+  <data name="Editor_KeepViewPositionTip" xml:space="preserve"><value>Keep scroll position, caret and selection when refreshing. Otherwise, follow the end of the file.</value></data>
+  <data name="Editor_RefreshedStatus" xml:space="preserve"><value>Refreshed at {0}</value></data>
+  <data name="Editor_RefreshFailed" xml:space="preserve"><value>Auto refresh stopped: {0}</value></data>
+  <data name="Editor_RefreshSourceEnded" xml:space="preserve"><value>Auto refresh stopped because the source connection or file pane has closed.</value></data>
 </root>

@@ -10583,4 +10583,13 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
 打开“关于”并检查更新吗？</value></data>
   <data name="PluginUpgrade_Requirement" xml:space="preserve"><value>• {0} 需要 {1}</value></data>
   <data name="PluginUpgrade_CheckUpdates" xml:space="preserve"><value>检查更新</value></data>
+  <data name="Editor_AutoRefresh" xml:space="preserve"><value>自动刷新</value></data>
+  <data name="Editor_AutoRefreshTip" xml:space="preserve"><value>重新读取远端内容并覆盖未保存修改；刷新期间仍可编辑。</value></data>
+  <data name="Editor_RefreshInterval" xml:space="preserve"><value>刷新间隔（毫秒，最小 100）</value></data>
+  <data name="Editor_RefreshMilliseconds" xml:space="preserve"><value>ms</value></data>
+  <data name="Editor_KeepViewPosition" xml:space="preserve"><value>保持视图位置</value></data>
+  <data name="Editor_KeepViewPositionTip" xml:space="preserve"><value>刷新时保持滚动位置、光标和选区；不勾选则定位到文件末尾。</value></data>
+  <data name="Editor_RefreshedStatus" xml:space="preserve"><value>已刷新 · {0}</value></data>
+  <data name="Editor_RefreshFailed" xml:space="preserve"><value>自动刷新已停止：{0}</value></data>
+  <data name="Editor_RefreshSourceEnded" xml:space="preserve"><value>来源连接或文件面板已关闭，自动刷新已停止。</value></data>
 </root>

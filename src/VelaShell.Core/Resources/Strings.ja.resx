@@ -10094,4 +10094,13 @@ Windows は exe のフルパスまたはコマンド名(例: notepad)、Linux �
 「バージョン情報」を開いて更新を確認しますか？</value></data>
   <data name="PluginUpgrade_Requirement" xml:space="preserve"><value>• {0} には {1} が必要です</value></data>
   <data name="PluginUpgrade_CheckUpdates" xml:space="preserve"><value>更新を確認</value></data>
+  <data name="Editor_AutoRefresh" xml:space="preserve"><value>自動更新</value></data>
+  <data name="Editor_AutoRefreshTip" xml:space="preserve"><value>リモートの内容を再読み込みし、未保存の変更を上書きします。更新中も編集できます。</value></data>
+  <data name="Editor_RefreshInterval" xml:space="preserve"><value>更新間隔（ミリ秒、最小 100）</value></data>
+  <data name="Editor_RefreshMilliseconds" xml:space="preserve"><value>ms</value></data>
+  <data name="Editor_KeepViewPosition" xml:space="preserve"><value>表示位置を保持</value></data>
+  <data name="Editor_KeepViewPositionTip" xml:space="preserve"><value>更新時にスクロール位置、カーソル、選択範囲を保持します。オフの場合はファイル末尾に移動します。</value></data>
+  <data name="Editor_RefreshedStatus" xml:space="preserve"><value>更新済み · {0}</value></data>
+  <data name="Editor_RefreshFailed" xml:space="preserve"><value>自動更新を停止しました: {0}</value></data>
+  <data name="Editor_RefreshSourceEnded" xml:space="preserve"><value>接続元の接続またはファイルパネルが閉じられたため、自動更新を停止しました。</value></data>
 </root>

@@ -10094,4 +10094,13 @@ Windows는 exe 전체 경로 또는 명령 이름(예: notepad), Linux는 명령
 정보를 열고 업데이트를 확인하시겠습니까?</value></data>
   <data name="PluginUpgrade_Requirement" xml:space="preserve"><value>• {0}에는 {1}이(가) 필요합니다</value></data>
   <data name="PluginUpgrade_CheckUpdates" xml:space="preserve"><value>업데이트 확인</value></data>
+  <data name="Editor_AutoRefresh" xml:space="preserve"><value>자동 새로 고침</value></data>
+  <data name="Editor_AutoRefreshTip" xml:space="preserve"><value>원격 내용을 다시 읽어 저장하지 않은 변경 사항을 덮어씁니다. 새로 고침 중에도 편집할 수 있습니다.</value></data>
+  <data name="Editor_RefreshInterval" xml:space="preserve"><value>새로 고침 간격(밀리초, 최소 100)</value></data>
+  <data name="Editor_RefreshMilliseconds" xml:space="preserve"><value>ms</value></data>
+  <data name="Editor_KeepViewPosition" xml:space="preserve"><value>보기 위치 유지</value></data>
+  <data name="Editor_KeepViewPositionTip" xml:space="preserve"><value>새로 고칠 때 스크롤 위치, 커서와 선택 영역을 유지합니다. 해제하면 파일 끝으로 이동합니다.</value></data>
+  <data name="Editor_RefreshedStatus" xml:space="preserve"><value>새로 고침 완료 · {0}</value></data>
+  <data name="Editor_RefreshFailed" xml:space="preserve"><value>자동 새로 고침 중지: {0}</value></data>
+  <data name="Editor_RefreshSourceEnded" xml:space="preserve"><value>원본 연결 또는 파일 패널이 닫혀 자동 새로 고침이 중지되었습니다.</value></data>
 </root>

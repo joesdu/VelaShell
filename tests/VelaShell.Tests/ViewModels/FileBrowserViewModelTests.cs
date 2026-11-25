@@ -1344,7 +1344,7 @@ c => c.GetMethodInfo().Name == nameof(ISftpService.DownloadFileAsync),
     [TestCategory("FileBrowser")]
     public async Task OpenItem_RejectsUnsafeRemoteLeafNameBeforeSftp()
     {
-        _vm.OpenInBuiltInEditor = (_, _, _) => Task.CompletedTask;
+        _vm.OpenInBuiltInEditor = (_, _, _, _, _) => Task.CompletedTask;
         var file = new RemoteFileInfoViewModel(
             new()
             {
@@ -1370,6 +1370,64 @@ c => c.GetMethodInfo().Name == nameof(ISftpService.DownloadFileAsync),
                 Arg.Any<IProgress<TransferProgress>?>(),
                 cancellationToken: Arg.Any<CancellationToken>()
             );
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task BuiltInRefresh_UsesOriginalSessionAndPath_AndStopsWhenSourceDetaches()
+    {
+        RemoteFileInfo remote = CreateTestFiles()[1];
+        _sftpService.GetFileInfoAsync(_sessionId, remote.FullPath, Arg.Any<CancellationToken>()).Returns(remote);
+        _sftpService.ListDirectoryAsync(_sessionId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new List<RemoteFileInfo>());
+        string staging = Path.Combine(Path.GetTempPath(), "vela-editor-callback-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            bool opened = false;
+            _vm.OpenInBuiltInEditor = async (_, _, _, download, lifetime) =>
+            {
+                opened = true;
+                await _vm.NavigateToAsync("/different-directory");
+                await download(staging, CancellationToken.None);
+                await _sftpService.Received(1).DownloadFileAsync(_sessionId, remote.FullPath, staging,
+                                                              cancellationToken: Arg.Any<CancellationToken>());
+                using var cancelled = new CancellationTokenSource();
+                cancelled.Cancel();
+                await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => download(staging, cancelled.Token));
+                _vm.Detach();
+                Assert.IsTrue(lifetime.IsCancellationRequested);
+                await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => download(staging, CancellationToken.None));
+                await _sftpService.Received(1).GetFileInfoAsync(_sessionId, remote.FullPath, Arg.Any<CancellationToken>());
+            };
+            await _vm.OpenItemCommand.Execute(new RemoteFileInfoViewModel(remote)).FirstAsync();
+            Assert.IsTrue(opened);
+            Assert.IsNull(_vm.ErrorMessage);
+        }
+        finally { File.Delete(staging); }
+    }
+
+    [TestMethod]
+    [TestCategory("FileBrowser")]
+    public async Task BuiltInRefresh_ChecksCurrentRemoteSizeBeforeDownloading()
+    {
+        RemoteFileInfo remote = CreateTestFiles()[1];
+        _sftpService.GetFileInfoAsync(_sessionId, remote.FullPath, Arg.Any<CancellationToken>()).Returns(new RemoteFileInfo
+        {
+            Name = remote.Name, FullPath = remote.FullPath, Size = 5L * 1024 * 1024 + 1,
+            IsDirectory = false, Permissions = remote.Permissions, LastModified = remote.LastModified,
+            Owner = remote.Owner, Group = remote.Group
+        });
+        bool checkedSize = false;
+        _vm.OpenInBuiltInEditor = async (_, _, _, download, _) =>
+        {
+            await Assert.ThrowsExactlyAsync<IOException>(() => download("unused-stage-path", CancellationToken.None));
+            checkedSize = true;
+        };
+        await _vm.OpenItemCommand.Execute(new RemoteFileInfoViewModel(remote)).FirstAsync();
+        Assert.IsTrue(checkedSize);
+        await _sftpService.Received(1).DownloadFileAsync(_sessionId, remote.FullPath, Arg.Any<string>(),
+                                                       cancellationToken: Arg.Any<CancellationToken>());
+        Assert.IsNull(_vm.ErrorMessage);
     }
 
     [TestMethod]

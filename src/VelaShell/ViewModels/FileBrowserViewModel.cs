@@ -1385,12 +1385,14 @@ public class FileBrowserViewModel : ReactiveObject
 
     /// <summary>
     /// 由视图设置:打开内置 AvaloniaEdit 编辑器窗口。
-    /// (文件, 本地临时路径, 上传回调) —— 编辑器在每次保存后调用此回调。
+    /// (文件, 本地临时路径, 上传回调, 重新下载回调, 来源生命周期)。
     /// </summary>
     public Func<
         RemoteFileInfoViewModel,
         string,
         Func<Task>,
+        Func<string, CancellationToken, Task>,
+        CancellationToken,
         Task
     >? OpenInBuiltInEditor
     { get; set; }
@@ -1861,7 +1863,22 @@ public class FileBrowserViewModel : ReactiveObject
                 await OpenInBuiltInEditor(
                     file,
                     localPath,
-                    () => UploadEditedFileAsync(localPath, remotePath)
+                    () => UploadEditedFileAsync(localPath, remotePath),
+                    async (destination, refreshToken) =>
+                    {
+                        using LifetimeScope scope = LinkToLifetime(refreshToken);
+                        CancellationToken token = scope.Token;
+                        token.ThrowIfCancellationRequested();
+                        RemoteFileInfo info = await _sftpService.GetFileInfoAsync(_sessionId, remotePath, token);
+                        token.ThrowIfCancellationRequested();
+                        if (info.Size > MaxBuiltInEditSize)
+                        {
+                            throw new IOException(Strings.Get("Msg_FileTooLargeForBuiltInEditor"));
+                        }
+                        await _sftpService.DownloadFileAsync(_sessionId, remotePath, destination, null, cancellationToken: token);
+                        token.ThrowIfCancellationRequested();
+                    },
+                    _lifetime.Token
                 );
             });
         }
