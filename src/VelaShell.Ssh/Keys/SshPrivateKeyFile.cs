@@ -28,6 +28,9 @@ public static class SshPrivateKeyFile
 {
     private const string OpenSshMagic = "openssh-key-v1\0";
 
+    /// <summary>可导入密钥文件的最大字节数。</summary>
+    public const int MaxFileBytes = BoundedFileReader.MaxBytes;
+
     /// <summary>KDF 轮数的上限。</summary>
     /// <remarks>
     /// <para>
@@ -67,6 +70,10 @@ public static class SshPrivateKeyFile
     {
         ArgumentNullException.ThrowIfNull(pem);
 
+        if (pem.Length > BoundedFileReader.MaxBytes)
+        {
+            return SshPrivateKeyFormat.Unknown;
+        }
         if (PuttyPrivateKeyFile.IsPuttyKey(pem))
         {
             return SshPrivateKeyFormat.Putty;
@@ -308,7 +315,11 @@ public static class SshPrivateKeyFile
         string pem;
         try
         {
-            pem = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+            pem = await ReadKeyTextAsync(path, cancellationToken).ConfigureAwait(false);
+        }
+        catch (InvalidDataException ex)
+        {
+            throw OversizedKey(path, ex);
         }
         catch (IOException ex)
         {
@@ -331,6 +342,23 @@ public static class SshPrivateKeyFile
         return Parse(pem, passphrase.Span, path, cancellationToken);
     }
 
+    /// <summary>读取至多 1 MiB 的密钥文本，默认使用 UTF-8，并识别 BOM。</summary>
+    /// <exception cref="InvalidDataException">文件超过大小限制。</exception>
+    public static ValueTask<string> ReadKeyTextAsync(string path, CancellationToken cancellationToken = default) =>
+        BoundedFileReader.ReadAsync(path, static (bytes, length) =>
+        {
+            using MemoryStream input = new(bytes, 0, length, writable: false);
+            using StreamReader reader = new(input);
+            return reader.ReadToEnd();
+        }, cancellationToken);
+
+    private static SshPrivateKeyException OversizedKey(string? origin, Exception? cause = null) =>
+        new(SshFailureReason.KeyFormatInvalid, $"私钥超过 1 MiB 的大小限制（{origin}）。", cause)
+        {
+            Origin = origin,
+            ProblemKind = SshKeyProblemKind.Malformed,
+        };
+
     /// <summary>从一段 PEM 文本解出私钥。</summary>
     /// <param name="pem">PEM 文本。</param>
     /// <param name="passphrase">口令；不需要就给 <see langword="null"/>。</param>
@@ -351,6 +379,10 @@ public static class SshPrivateKeyFile
         ArgumentNullException.ThrowIfNull(pem);
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (pem.Length > BoundedFileReader.MaxBytes)
+        {
+            throw OversizedKey(origin);
+        }
         SshPrivateKeyFormat format = DetectFormat(pem);
         string where = origin is null ? "" : $"（{origin}）";
 

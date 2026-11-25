@@ -118,6 +118,14 @@ internal static class SshConfigSyntax
         return true;
     }
 
+    // ReadLine 已经检查过整行的引号。只为预算内的路径分词、分配字符串。
+    internal static List<string> SplitIncludePaths(string value, int maxWords)
+    {
+        List<string> words = [];
+        Scan(value, 0, words, out _, maxWords);
+        return words;
+    }
+
     /// <summary>
     /// 一个参数写成本库与 <c>ssh</c> 读回都是原值的样子；值里有换行或 NUL 时写不出来。
     /// </summary>
@@ -199,8 +207,9 @@ internal static class SshConfigSyntax
     /// <param name="start">值从哪里开始。</param>
     /// <param name="words">切出来的词往这里加；为 <see langword="null"/> 时只找边界。</param>
     /// <param name="end">最后一个词的末尾（其后只剩空白与注释）。</param>
-    /// <returns>引号配上了为 <see langword="true"/>。</returns>
-    private static bool Scan(string text, int start, List<string>? words, out int end)
+    /// <param name="maxWords">取够这么多个词就停。只给已检查过引号的 Include 用。</param>
+    /// <returns>扫过的部分引号配上了为 <see langword="true"/>。</returns>
+    private static bool Scan(string text, int start, List<string>? words, out int end, int maxWords = int.MaxValue)
     {
         StringBuilder current = new();
         bool inWord = false;
@@ -238,6 +247,10 @@ internal static class SshConfigSyntax
                 if (inWord)
                 {
                     words?.Add(current.ToString());
+                    if (words?.Count == maxWords)
+                    {
+                        return true;
+                    }
                     current.Clear();
                     inWord = false;
                 }

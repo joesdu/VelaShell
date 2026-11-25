@@ -1,3 +1,4 @@
+using System.Text;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Ssh.Auth;
@@ -27,7 +28,7 @@ public sealed class SshKeyService(
     /// <summary>枚举 ~/.ssh 目录下的密钥对,按公钥文件解析类型与指纹后返回。</summary>
     public Task<List<SshKeyInfo>> ListKeysAsync(CancellationToken cancellationToken = default)
     {
-        return Task.Run(() =>
+        return Task.Run(async () =>
         {
             var keys = new List<SshKeyInfo>();
             if (!Directory.Exists(_sshDirectory))
@@ -39,7 +40,7 @@ public sealed class SshKeyService(
                 cancellationToken.ThrowIfCancellationRequested();
                 string name = Path.GetFileNameWithoutExtension(pubFile);
                 string privatePath = Path.Combine(_sshDirectory, name);
-                SshKeyInfo? info = TryParsePublicKey(name, privatePath, pubFile);
+                SshKeyInfo? info = await TryReadPublicKeyAsync(name, privatePath, pubFile, cancellationToken).ConfigureAwait(false);
                 if (info is not null)
                 {
                     keys.Add(info);
@@ -111,13 +112,21 @@ public sealed class SshKeyService(
         }
         (bool needsPassphrase, SshPublicKey? keyPublic) = await Task.Run(
             () => ValidatePrivateKey(privateText, name, cancellationToken), cancellationToken).ConfigureAwait(false);
-        string? derivedPublicLine = null;
+        string publicText;
+        SshPublicKey importedPublic;
         if (File.Exists(sourcePub))
         {
             // .pub 要真是公钥,而且与私钥是同一把:拼错的一对导进来,列表里显示的指纹是 .pub 的,
             // 认证用的却是私钥 —— 服务端只回一句「不接受这把公钥」,用户无从查起。
-            string pubLine = await File.ReadAllTextAsync(sourcePub, cancellationToken).ConfigureAwait(false);
-            if (!SshPublicKey.TryParse(pubLine.Trim(), out SshPublicKey? filePublic))
+            try
+            {
+                publicText = await SshPrivateKeyFile.ReadKeyTextAsync(sourcePub, cancellationToken).ConfigureAwait(false);
+            }
+            catch (InvalidDataException ex)
+            {
+                throw new InvalidDataException(Strings.Format("KeySvc_ImportBadPublicKey", Path.GetFileName(sourcePub)), ex);
+            }
+            if (!SshPublicKey.TryParse(publicText.Trim(), out SshPublicKey? filePublic))
             {
                 throw new InvalidDataException(Strings.Format("KeySvc_ImportBadPublicKey", Path.GetFileName(sourcePub)));
             }
@@ -126,6 +135,7 @@ public sealed class SshKeyService(
                 throw new InvalidDataException(
                     Strings.Format("KeySvc_ImportPublicKeyMismatch", Path.GetFileName(sourcePub), name));
             }
+            importedPublic = filePublic;
         }
         else
         {
@@ -134,43 +144,73 @@ public sealed class SshKeyService(
                 throw new FileNotFoundException(
                     Strings.Format("KeySvc_ImportPublicKeyMissing", Path.GetFileName(sourcePub)), sourcePub);
             }
-            derivedPublicLine = keyPublic.ToOpenSshFormat(name);
+            importedPublic = keyPublic;
+            publicText = keyPublic.ToOpenSshFormat(name) + Environment.NewLine;
         }
 
-        // ——— 再抄:两份一起,任一失败就把已抄的清掉,不留半套 ———
+        var keyInfo = new SshKeyInfo(name, DescribeType(importedPublic), importedPublic.Sha256Fingerprint, targetPrivate, publicText.Trim());
+        if (!await WriteNewKeyAsync(targetPrivate, privateText, isPrivate: true, cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
         try
         {
-            File.Copy(sourcePrivateKeyPath, targetPrivate);
-            ApplyPrivateKeyPermissions(targetPrivate);
-            if (derivedPublicLine is null)
+            if (await WriteNewKeyAsync(targetPub, publicText, isPrivate: false, cancellationToken).ConfigureAwait(false))
             {
-                File.Copy(sourcePub, targetPub);
-            }
-            else
-            {
-                File.WriteAllText(targetPub, derivedPublicLine + Environment.NewLine);
+                return new SshKeyImportResult(keyInfo, needsPassphrase);
             }
         }
         catch
         {
             TryDelete(targetPrivate);
-            TryDelete(targetPub);
             throw;
         }
-
-        // ——— 最后按真实解析结果回报。解析不出来说明 .pub 不是公钥,一并回滚 ———
-        List<SshKeyInfo> keys = await ListKeysAsync(cancellationToken).ConfigureAwait(false);
-        if (keys.FirstOrDefault(k => k.Name == name) is { } imported)
-        {
-            return new SshKeyImportResult(imported, needsPassphrase);
-        }
         TryDelete(targetPrivate);
-        TryDelete(targetPub);
-        throw new InvalidDataException(Strings.Format("KeySvc_ImportBadPublicKey", Path.GetFileName(sourcePub)));
+        return null;
     }
 
-    /// <summary>私钥文件最大多少字节:最大的 RSA 私钥也不过十几 KiB,再大的不会是私钥。</summary>
-    private const long MaxPrivateKeyFileBytes = 1024 * 1024;
+    private static async Task<bool> WriteNewKeyAsync(string path, string text, bool isPrivate, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        // UTF-16 的注释换成 UTF-8 可能超出重新读取时的字节上限,这种情况保留 BOM 与 UTF-16。
+        Encoding encoding = new UTF8Encoding(false);
+        if (encoding.GetByteCount(text) > SshPrivateKeyFile.MaxFileBytes)
+        {
+            encoding = Encoding.Unicode;
+            if (encoding.Preamble.Length + encoding.GetByteCount(text) > SshPrivateKeyFile.MaxFileBytes)
+            {
+                throw new InvalidDataException(Strings.Format(isPrivate ? "KeySvc_ImportNotAPrivateKey" : "KeySvc_ImportBadPublicKey", Path.GetFileName(path)));
+            }
+        }
+        var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None, Options = FileOptions.Asynchronous };
+        if (isPrivate && !OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+        FileStream stream;
+        try
+        {
+            stream = new FileStream(path, options);
+        }
+        catch (IOException) when (File.Exists(path))
+        {
+            return false;
+        }
+        try
+        {
+            using (stream)
+            {
+                using StreamWriter writer = new(stream, encoding);
+                await writer.WriteAsync(text.AsMemory(), cancellationToken).ConfigureAwait(false);
+            }
+            return true;
+        }
+        catch
+        {
+            TryDelete(path);
+            throw;
+        }
+    }
 
     /// <summary>
     /// 读出私钥文件的文本;认不出是私钥(或读不了)时为 <see langword="null" />。够用来挡住"选错文件"。
@@ -183,14 +223,10 @@ public sealed class SshKeyService(
     {
         try
         {
-            if (new FileInfo(path).Length > MaxPrivateKeyFileBytes)
-            {
-                return null;
-            }
-            string text = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+            string text = await SshPrivateKeyFile.ReadKeyTextAsync(path, cancellationToken).ConfigureAwait(false);
             return SshPrivateKeyFile.DetectFormat(text) == SshPrivateKeyFormat.Unknown ? null : text;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
         {
             return null;
         }
@@ -234,7 +270,7 @@ public sealed class SshKeyService(
         ArgumentNullException.ThrowIfNull(key);
         ArgumentException.ThrowIfNullOrEmpty(destinationPath);
         string line = key.PublicKeyLine
-                      ?? (await File.ReadAllTextAsync(key.PrivateKeyPath + ".pub", cancellationToken).ConfigureAwait(false)).Trim();
+                      ?? (await SshPrivateKeyFile.ReadKeyTextAsync(key.PrivateKeyPath + ".pub", cancellationToken).ConfigureAwait(false)).Trim();
         await File.WriteAllTextAsync(destinationPath, line + "\n", cancellationToken).ConfigureAwait(false);
     }
 
@@ -408,16 +444,16 @@ public sealed class SshKeyService(
     /// 解析、指纹、位数都交给 SSH 库的 <see cref="SshPublicKey" /> —— 宿主不另写一份 blob 解析。
     /// 库认不出的类型(早已弃用的 DSA 之类)不列出:列出来也连不上。
     /// </remarks>
-    private static SshKeyInfo? TryParsePublicKey(string name, string privatePath, string pubFile)
+    private static async Task<SshKeyInfo?> TryReadPublicKeyAsync(string name, string privatePath, string pubFile, CancellationToken cancellationToken)
     {
         try
         {
-            string line = File.ReadAllText(pubFile).Trim();
+            string line = (await SshPrivateKeyFile.ReadKeyTextAsync(pubFile, cancellationToken).ConfigureAwait(false)).Trim();
             return SshPublicKey.TryParse(line, out SshPublicKey? key)
                 ? new(name, DescribeType(key), key.Sha256Fingerprint, privatePath, line)
                 : null;
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
         {
             return null;
         }

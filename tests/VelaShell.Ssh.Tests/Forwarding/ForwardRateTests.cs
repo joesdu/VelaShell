@@ -35,22 +35,61 @@ public sealed class ForwardRateTests
         Assert.AreEqual(0, meter.PerSecond, "早就没动静了");
     }
 
-    /// <summary>一秒的额度可以一次用掉；之后欠着、按欠额等；歇够了额度补回来、但不超过一秒的量。</summary>
+    /// <summary>定时器回调来晚了，等在同一个桶上的连接合起来也只能突发一秒的量。</summary>
     [TestMethod]
-    public void 令牌桶允许一秒的突发_之后按速率等()
+    public async Task 共用令牌桶的连接在延迟唤醒后仍按速率放行()
     {
         ManualTimeProvider time = new();
         ByteRateLimiter limiter = new(1000, time);
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        Assert.AreEqual(1000, await limiter.AcquireAsync(1000, timeout.Token));
 
-        Assert.AreEqual(TimeSpan.Zero, limiter.Reserve(1000), "一秒的额度可以一次用掉");
-        Assert.AreEqual(TimeSpan.FromSeconds(0.5), limiter.Reserve(500), "欠 500，按 1000/秒要等半秒");
-
-        time.Advance(TimeSpan.FromSeconds(0.5));
-        Assert.AreEqual(TimeSpan.FromSeconds(0.5), limiter.Reserve(500), "补回来的刚好还清旧账，新的 500 又要等半秒");
-
+        Task<int> first = limiter.AcquireAsync(5000, timeout.Token).AsTask();
+        Task<int> second = limiter.AcquireAsync(500, timeout.Token).AsTask();
         time.Advance(TimeSpan.FromSeconds(60));
-        Assert.AreEqual(TimeSpan.Zero, limiter.Reserve(1000), "歇了很久：额度补满，但不超过一秒的量");
-        Assert.AreNotEqual(TimeSpan.Zero, limiter.Reserve(1), "补满也只有一秒的量");
+        Assert.AreEqual(1000, await first.WaitAsync(timeout.Token));
+        await time.WaitUntilArmedAsync(TimeSpan.FromMilliseconds(500), timeout.Token);
+        Assert.IsFalse(second.IsCompleted, "即使两个请求都等了很久，也不能一起透支这一秒的额度");
+        time.Advance(TimeSpan.FromMilliseconds(500));
+        Assert.AreEqual(500, await second.WaitAsync(timeout.Token));
+    }
+
+    [TestMethod]
+    public async Task 已取消的请求保留整桶额度()
+    {
+        ManualTimeProvider time = new();
+        ByteRateLimiter limiter = new(1000, time);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => limiter.AcquireAsync(1000, new CancellationToken(true)).AsTask());
+        ValueTask<int> next = limiter.AcquireAsync(1000, CancellationToken.None);
+        Assert.IsTrue(next.IsCompletedSuccessfully);
+        Assert.AreEqual(1000, await next);
+    }
+
+    [TestMethod]
+    public async Task 取消等待中的连接后_其他连接可立即用已补的额度()
+    {
+        ManualTimeProvider time = new();
+        ByteRateLimiter limiter = new(1000, time);
+        using CancellationTokenSource head = new();
+        using CancellationTokenSource middle = new();
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        Assert.AreEqual(1000, await limiter.AcquireAsync(1000, timeout.Token));
+        Task<int> waiting = limiter.AcquireAsync(5000, head.Token).AsTask();
+        Task<int> queued = limiter.AcquireAsync(1000, middle.Token).AsTask();
+        Task<int> survivor = limiter.AcquireAsync(250, timeout.Token).AsTask();
+
+        time.Advance(TimeSpan.FromMilliseconds(250));
+        await middle.CancelAsync();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => queued.WaitAsync(timeout.Token));
+        Assert.IsFalse(survivor.IsCompleted);
+        await head.CancelAsync();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => waiting.WaitAsync(timeout.Token));
+        Assert.AreEqual(250, await survivor.WaitAsync(timeout.Token), "只拨过四分之一秒，这 250 字节都属于仍在搬的连接");
+
+        Task<int> next = limiter.AcquireAsync(250, timeout.Token).AsTask();
+        Assert.IsFalse(next.IsCompleted, "已经放行的 250 字节应当扣掉");
+        time.Advance(TimeSpan.FromMilliseconds(250));
+        Assert.AreEqual(250, await next.WaitAsync(timeout.Token));
     }
 
     /// <summary>

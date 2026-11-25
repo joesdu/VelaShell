@@ -3,18 +3,22 @@
 //
 // 行为规格: velashell-docs/zh/ssh/spec/07-forwarding.md §5.1
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace VelaShell.Ssh.Forwarding;
 
-/// <summary>令牌桶限速：一秒的额度可以一次用掉（突发），之后按速率补；不够时欠着、按欠额等。</summary>
+/// <summary>令牌桶限速：一秒的额度可以一次用掉（突发），之后按速率补，放行时才扣额度。</summary>
 /// <remarks>
 /// 一个转发器的全部连接共用一个（每个方向一个）：「这条隧道最多占多少带宽」是转发器的事，不是单条连接的 ——
 /// 否则开十条连接就是十倍。在搬运循环里、写到另一头之前等：等的时候不再读，背压自然传回发送方。
 /// </remarks>
+[SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
+    Justification = "闸门只用 WaitAsync，没有访问 AvailableWaitHandle，不持有系统句柄。")]
 internal sealed class ByteRateLimiter
 {
     private readonly long _bytesPerSecond;
     private readonly TimeProvider _time;
-    private readonly Lock _gate = new();
+    private readonly SemaphoreSlim _gate = new(1, 1);
     private double _available;
     private long _last;
 
@@ -43,24 +47,31 @@ internal sealed class ByteRateLimiter
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(wanted, 1);
         int granted = Math.Min(wanted, MaxBurst);
-        TimeSpan delay = Reserve(granted);
-        if (delay > TimeSpan.Zero)
+        // 只有队首等时钟；取消时让下一条连接直接按当前余额算，无需撤销预扣或改排后续定时器。
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            await Task.Delay(delay, _time, cancellationToken).ConfigureAwait(false);
-        }
-        return granted;
-    }
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                long now = _time.GetTimestamp();
+                double elapsed = _time.GetElapsedTime(_last, now).TotalSeconds;
+                _last = now;
+                _available = Math.Min(_bytesPerSecond, _available + (elapsed * _bytesPerSecond));
+                if (_available >= granted)
+                {
+                    _available -= granted;
+                    return granted;
+                }
 
-    /// <summary>记账并算出要等多久（测试直接看它）。</summary>
-    internal TimeSpan Reserve(int bytes)
-    {
-        lock (_gate)
+                // Task.Delay 按整毫秒计时，向上取整，避免不足一毫秒时空转。
+                double milliseconds = Math.Ceiling((granted - _available) * 1000 / _bytesPerSecond);
+                await Task.Delay(TimeSpan.FromMilliseconds(milliseconds), _time, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
         {
-            long now = _time.GetTimestamp();
-            double elapsed = _time.GetElapsedTime(_last, now).TotalSeconds;
-            _last = now;
-            _available = Math.Min(_bytesPerSecond, _available + (elapsed * _bytesPerSecond)) - bytes;
-            return _available >= 0 ? TimeSpan.Zero : TimeSpan.FromSeconds(-_available / _bytesPerSecond);
+            _gate.Release();
         }
     }
 }

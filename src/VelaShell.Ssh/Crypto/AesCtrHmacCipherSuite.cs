@@ -72,6 +72,7 @@ internal sealed class AesCtrHmacCipherSuite : ISshCipherSuite
     /// <see cref="IncrementalHash.GetHashAndReset(Span{byte})"/> 之后它就回到只装了密钥的初始状态。
     /// </remarks>
     private readonly IncrementalHash _hmac;
+    internal ArrayPool<byte> BufferPool { get; init; } = ArrayPool<byte>.Shared;
     private bool _disposed;
 
     /// <summary>构造一个 AES-CTR + HMAC 套件。</summary>
@@ -221,7 +222,7 @@ internal sealed class AesCtrHmacCipherSuite : ISshCipherSuite
             return SshOpenStatus.NeedMoreData;
         }
 
-        byte[] rented = ArrayPool<byte>.Shared.Rent((int)total);
+        byte[] rented = BufferPool.Rent((int)total);
         try
         {
             Span<byte> frame = rented.AsSpan(0, (int)total);
@@ -242,11 +243,11 @@ internal sealed class AesCtrHmacCipherSuite : ISshCipherSuite
             AdvanceCounter((int)packetLength);
 
             EmitPayload(region, (int)packetLength, payload);
-            CryptographicOperations.ZeroMemory(frame);
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(rented);
+            CryptographicOperations.ZeroMemory(rented.AsSpan(0, (int)total));
+            BufferPool.Return(rented);
         }
 
         consumed = total;
@@ -279,7 +280,7 @@ internal sealed class AesCtrHmacCipherSuite : ISshCipherSuite
             return SshOpenStatus.NeedMoreData;   // 计数器未动
         }
 
-        byte[] rented = ArrayPool<byte>.Shared.Rent((int)total);
+        byte[] rented = BufferPool.Rent((int)total);
         try
         {
             Span<byte> frame = rented.AsSpan(0, (int)total);
@@ -300,11 +301,11 @@ internal sealed class AesCtrHmacCipherSuite : ISshCipherSuite
 
             AdvanceCounter(encryptedBytes);
             EmitPayload(region[SshPacketFormat.LengthFieldBytes..], (int)packetLength, payload);
-            CryptographicOperations.ZeroMemory(frame);
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(rented);
+            CryptographicOperations.ZeroMemory(rented.AsSpan(0, (int)total));
+            BufferPool.Return(rented);
         }
 
         consumed = total;
@@ -350,7 +351,7 @@ internal sealed class AesCtrHmacCipherSuite : ISshCipherSuite
         int blocks = (data.Length + AesBlockBytes - 1) / AesBlockBytes;
         int streamBytes = blocks * AesBlockBytes;
 
-        byte[] rented = ArrayPool<byte>.Shared.Rent(streamBytes * 2);
+        byte[] rented = BufferPool.Rent(streamBytes * 2);
         try
         {
             Span<byte> counters = rented.AsSpan(0, streamBytes);
@@ -366,11 +367,11 @@ internal sealed class AesCtrHmacCipherSuite : ISshCipherSuite
 
             _aes.EncryptEcb(counters, keyStream, PaddingMode.None);
             Xor(data, keyStream);
-            CryptographicOperations.ZeroMemory(keyStream);
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(rented);
+            CryptographicOperations.ZeroMemory(rented.AsSpan(streamBytes, streamBytes));
+            BufferPool.Return(rented);
         }
     }
 

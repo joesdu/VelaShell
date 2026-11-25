@@ -7,6 +7,7 @@
 //             velashell-docs/zh/ssh/spec/09-dialing.md §7.1(Include / Match)、§7.4(分词:引号、反斜杠与注释)
 
 using System.Diagnostics;
+using System.IO.Enumeration;
 using VelaShell.Ssh.Protocol;
 
 namespace VelaShell.Ssh.Config;
@@ -26,7 +27,8 @@ namespace VelaShell.Ssh.Config;
 ///   <c>Include</c> 只在 <see cref="LoadAsync"/> 里展开（<see cref="Parse"/> 是
 ///   纯文本解析，没有基准目录也不该碰文件系统）。展开时有<b>深度上限与环检测</b> ——
 ///   两个文件互相 include 是很容易写出来的，而那会把解析变成死循环；还有<b>总量上限</b>
-///   （<see cref="MaxIncludedFiles"/>），并且只读不超过 <see cref="MaxConfigFileBytes"/> 的普通文件。
+///   （<see cref="MaxIncludedFiles"/>），路径参数与通配扫描也共用上限（<see cref="MaxIncludeCandidates"/>）。
+///   只读不超过 <see cref="MaxConfigFileBytes"/> 的普通文件。
 ///   </description></item>
 ///   <item><description>
 ///   <c>Match exec</c> <b>默认不执行</b>。它意味着「解析一份配置文件就能在本机跑任意程序」，
@@ -266,6 +268,9 @@ public static partial class SshConfigFile
     /// </remarks>
     public const int MaxIncludedFiles = 256;
 
+    // 每个 Include 参数、通配扫描遇到的每个目录项各用一份。扫不完整的通配整个跳过。
+    internal const int MaxIncludeCandidates = 4096;
+
     /// <summary>单个配置文件的大小上限；超过的整个跳过。</summary>
     public const int MaxConfigFileBytes = 1024 * 1024;
 
@@ -289,11 +294,6 @@ public static partial class SshConfigFile
         CancellationToken cancellationToken = default)
     {
         string actual = path ?? DefaultPath;
-
-        if (!File.Exists(actual))
-        {
-            return [];
-        }
 
         List<SshConfigBlock> blocks = [];
         ParserState state = new() { OnSkipped = onSkippedLine };
@@ -323,6 +323,12 @@ public static partial class SshConfigFile
         int depth,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (budget.FilesLeft == 0)
+        {
+            return;
+        }
+
         string full;
         try
         {
@@ -338,14 +344,18 @@ public static partial class SshConfigFile
         //    没有这一步就是死循环 —— 而那表现为「读配置的时候整个进程不动了」。
         //    只看**当前这条 include 链**：同一个文件在两个 Host 块里各被 include 一次是正常写法，
         //    按「读过就不再读」算的话，第二次会被当成环悄悄跳过。
-        if (!File.Exists(full) || budget.FilesLeft <= 0 || !visited.Add(full))
+        if (!visited.Add(full))
         {
             return;
         }
-        budget.FilesLeft--;
 
         try
         {
+            if (!File.Exists(full))
+            {
+                return;
+            }
+            budget.FilesLeft--;
             if (await ReadConfigFileAsync(full, cancellationToken).ConfigureAwait(false) is not { } content)
             {
                 return;
@@ -361,6 +371,7 @@ public static partial class SshConfigFile
             int chunkStart = 1;
             foreach (string raw in content.Split('\n'))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 lineNumber++;
 
                 // Include 的参数照 spec/09 §7.4 分词（带空格的路径写成 "~/my dir/x"）。
@@ -380,7 +391,8 @@ public static partial class SshConfigFile
                 {
                     state.Skip(full, lineNumber, raw);
                 }
-                if (depth >= MaxIncludeDepth || !line.QuotesBalanced)
+                cancellationToken.ThrowIfCancellationRequested();
+                if (depth >= MaxIncludeDepth || !line.QuotesBalanced || !budget.CanExpand)
                 {
                     continue;   // 太深了（或者引号没配对），不再往下。不报错 —— 配置文件的其余部分仍然可用。
                 }
@@ -393,7 +405,7 @@ public static partial class SshConfigFile
                     (state.Patterns, state.Match, state.Enclosing, state.IncludeScope);
                 state.IncludeScope = state.CurrentCondition();
 
-                foreach (string included in ExpandIncludePaths(line.Value, baseDirectory))
+                foreach (string included in ExpandIncludePaths(line.Value, baseDirectory, budget, cancellationToken))
                 {
                     await LoadIntoAsync(included, includeDirectory, blocks, state, visited, budget, depth + 1, cancellationToken)
                         .ConfigureAwait(false);
@@ -405,6 +417,7 @@ public static partial class SshConfigFile
             }
 
             ParseInto(chunk.ToString(), blocks, state, full, chunkStart);
+            cancellationToken.ThrowIfCancellationRequested();
         }
         finally
         {
@@ -412,10 +425,11 @@ public static partial class SshConfigFile
         }
     }
 
-    /// <summary>一次 <see cref="LoadAsync"/> 还能读几个文件（见 <see cref="MaxIncludedFiles"/>）。</summary>
     private sealed class IncludeBudget
     {
         public int FilesLeft { get; set; } = MaxIncludedFiles;
+        public int CandidatesLeft { get; set; } = MaxIncludeCandidates;
+        public bool CanExpand => FilesLeft > 0 && CandidatesLeft > 0;
     }
 
     /// <summary>读一个配置文件：只读普通文件，超过 <see cref="MaxConfigFileBytes"/> 的不读。</summary>
@@ -484,14 +498,29 @@ public static partial class SshConfigFile
     /// 相对路径按<b>包含它的那个文件所在的目录</b>解析。
     /// 〔FW-E15〕曾经先去掉整行的引号再按空格切：带空格的路径被切成了两个。
     /// </remarks>
-    internal static IReadOnlyList<string> ExpandIncludePaths(string spec, string baseDirectory)
+    private static IEnumerable<string> ExpandIncludePaths(
+        string spec, string baseDirectory, IncludeBudget budget, CancellationToken cancellationToken)
     {
-        List<string> result = [];
-
-        foreach (string one in SshConfigSyntax.TrySplit(spec, out List<string>? words) ? words : [])
+        foreach (string one in SshConfigSyntax.SplitIncludePaths(spec, budget.CandidatesLeft))
         {
-            string candidate = one;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!budget.CanExpand)
+            {
+                yield break; // 上一个文件的嵌套 Include 可能用完了本次读取的预算。
+            }
+            budget.CandidatesLeft--;
 
+            ReadOnlySpan<char> parent = Path.GetDirectoryName(one.AsSpan());
+            if (OperatingSystem.IsWindows() && parent.StartsWith(@"\\?\", StringComparison.Ordinal))
+            {
+                parent = parent[4..];
+            }
+            if (parent.ContainsAny('*', '?'))
+            {
+                continue;
+            }
+
+            string candidate = one;
             if (candidate.StartsWith('~'))
             {
                 string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -502,34 +531,66 @@ public static partial class SshConfigFile
                 candidate = Path.Combine(baseDirectory, candidate);
             }
 
-            string directory = Path.GetDirectoryName(candidate) ?? baseDirectory;
             string leaf = Path.GetFileName(candidate);
-
-            if (!leaf.Contains('*', StringComparison.Ordinal)
-                && !leaf.Contains('?', StringComparison.Ordinal))
+            if (!leaf.AsSpan().ContainsAny('*', '?'))
             {
-                result.Add(candidate);
+                yield return candidate;
                 continue;
             }
 
-            if (!Directory.Exists(directory))
+            if (!budget.CanExpand)
             {
-                continue;
+                yield break;
             }
-
-            // 通配的结果要**排序**：目录枚举的顺序在不同文件系统上不一样，
-            // 而 ssh_config 是「先出现的值赢」—— 顺序不定就意味着结果不定。
-            try
+            string directory = Path.GetDirectoryName(candidate) ?? baseDirectory;
+            foreach (string path in ScanIncludeDirectory(directory, leaf, budget, cancellationToken))
             {
-                result.AddRange(Directory.EnumerateFiles(directory, leaf).Order(StringComparer.Ordinal));
-            }
-            catch (Exception)
-            {
-                // 目录读不了（权限）—— 跳过这一条，别让整份配置失效。
+                if (!budget.CanExpand)
+                {
+                    yield break;
+                }
+                yield return path;
             }
         }
+    }
 
-        return result;
+    private static List<string> ScanIncludeDirectory(
+        string directory, string leaf, IncludeBudget budget, CancellationToken cancellationToken)
+    {
+        // 保留 EnumerateFiles 的 Win32 通配语义；Unix 文件名里的 DOS 通配元字符是普通字符。
+        if (!OperatingSystem.IsWindows())
+        {
+            leaf = leaf.Replace(@"\", @"\\", StringComparison.Ordinal).Replace("<", @"\<", StringComparison.Ordinal)
+                .Replace(">", @"\>", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
+        }
+        string pattern = FileSystemName.TranslateWin32Expression(leaf);
+        bool ignoreCase = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+        List<string> matches = [];
+        try
+        {
+            using IEnumerator<FileSystemInfo> entries = new DirectoryInfo(directory).EnumerateFileSystemInfos().GetEnumerator();
+            while (budget.CandidatesLeft > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!entries.MoveNext())
+                {
+                    matches.Sort(StringComparer.Ordinal);
+                    return matches;
+                }
+                budget.CandidatesLeft--;
+                if (entries.Current is FileInfo file && FileSystemName.MatchesWin32Expression(pattern, file.Name, ignoreCase))
+                {
+                    matches.Add(file.FullName);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // 目录不存在或读不了，配置的其余部分仍然可用。
+        }
+
+        // 没扫完就不能知道哪一个应当排第一；使用枚举顺序的任意前缀会改变「先出现的值赢」。
+        return [];
     }
 
     /// <summary>算出某台主机最终生效的设置。</summary>

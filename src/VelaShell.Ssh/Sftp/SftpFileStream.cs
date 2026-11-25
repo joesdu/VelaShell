@@ -69,7 +69,13 @@ public sealed class SftpFileStream : Stream
     private sealed record ReadAheadBlock(long Offset, int Length, Task<SftpResponse> Response);
 
     private readonly Queue<ReadAheadBlock> _readAhead = new();
+    private ReadAheadBlock? _gapRead;
     private readonly int _maxReadAhead;
+    private readonly bool _readAheadPastLength;
+
+    // 长度未知时，每个流同时限制请求数（含 EOF 探测）与请求的总字节数。
+    private const int UnknownLengthMaxRequests = 8;
+    private const int UnknownLengthMaxBytes = 1024 * 1024;
 
     /// <summary>当前的预读窗口（慢启动：从 1 起，每交出一整块翻一倍）。</summary>
     private int _readAheadDepth = 1;
@@ -102,7 +108,9 @@ public sealed class SftpFileStream : Stream
         int blockSize,
         SftpWriteMode writeMode,
         int maxInFlightWrites,
-        int maxReadAhead)
+        int maxReadAhead,
+        bool lengthKnown,
+        bool isRegularFile)
     {
         _pipeline = pipeline;
         _handle = handle;
@@ -113,7 +121,13 @@ public sealed class SftpFileStream : Stream
         _readable = canRead;
         _writable = canWrite;
         WriteMode = writeMode;
-        _maxReadAhead = Math.Max(1, maxReadAhead);
+        LengthKnown = lengthKnown;
+        _readAheadPastLength = !lengthKnown && isRegularFile;
+        _maxReadAhead = lengthKnown ? maxReadAhead : 1;
+        if (_readAheadPastLength)
+        {
+            _maxReadAhead = Math.Min(maxReadAhead, Math.Min(UnknownLengthMaxRequests, UnknownLengthMaxBytes / blockSize));
+        }
 
         int slots = writeMode == SftpWriteMode.Sequential ? 1 : Math.Max(1, maxInFlightWrites);
         _writeSlots = new SemaphoreSlim(slots, slots);
@@ -168,7 +182,7 @@ public sealed class SftpFileStream : Stream
     public override long Length => _knownLength;
 
     /// <summary>打开时拿到了文件的真实长度（或者是截断打开的，长度就是 0）。</summary>
-    internal bool LengthKnown { get; init; }
+    internal bool LengthKnown { get; }
 
     /// <summary>句柄关掉之后（不论 CLOSE 成没成）调一次：还文件系统的句柄额度。</summary>
     internal Action? OnHandleClosed { get; init; }
@@ -183,7 +197,11 @@ public sealed class SftpFileStream : Stream
         set
         {
             ArgumentOutOfRangeException.ThrowIfNegative(value);
-            _position = value;
+            if (value != _position)
+            {
+                ResetReadAhead();
+                _position = value;
+            }
         }
     }
 
@@ -214,6 +232,7 @@ public sealed class SftpFileStream : Stream
             return 0;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         // 读写同一个句柄：攒着没发的写要先发，读到的才是写过之后的内容。
         await FlushCoalescedAsync(cancellationToken).ConfigureAwait(false);
 
@@ -227,21 +246,28 @@ public sealed class SftpFileStream : Stream
             DropPartial();
         }
 
-        // ② 读位置被挪过（Seek / Position）：队伍里的偏移都对不上了，整队作废。
-        if (_readAhead.TryPeek(out ReadAheadBlock? head) && head.Offset != _position)
+        ReadAheadBlock head;
+        if (_readAhead.TryPeek(out ReadAheadBlock? next) && next.Offset > _position)
         {
-            DiscardReadAhead();
+            // 短读留下的缺口。一次只补一段，抵消已交出的那一块，即使学到的块很小也不超出窗口。
+            head = _gapRead ??= SendRead(_position, (int)Math.Min(next.Offset - _position, _readAheadLength));
         }
-        if (_readAhead.Count == 0)
+        else
         {
-            _readAheadNext = _position;
+            if (_readAhead.Count == 0)
+            {
+                _readAheadNext = _position;
+            }
+            FillReadAhead();
+            head = _readAhead.Peek();
         }
 
-        FillReadAhead();
-
-        head = _readAhead.Peek();
         SftpResponse response = await head.Response.WaitAsync(cancellationToken).ConfigureAwait(false);
-        _readAhead.Dequeue();
+        if (_gapRead is null)
+        {
+            _readAhead.Dequeue();
+        }
+        _gapRead = null;
 
         ReadOnlySequence<byte> data;
         try
@@ -266,6 +292,10 @@ public sealed class SftpFileStream : Stream
 
             response.ExpectType(Path, SftpOperation.Read, SftpMessageType.Data);
             data = SftpWire.ReadData(response.Payload, head.Length);
+            if (data.Length > long.MaxValue - head.Offset)
+            {
+                throw new IOException("远端数据的结束偏移超出流能表示的范围。");
+            }
         }
         catch (Exception)
         {
@@ -285,17 +315,10 @@ public sealed class SftpFileStream : Stream
 
         if (data.Length < head.Length)
         {
-            // 〔Q11，velashell-docs/zh/ssh/spec/06 §5.5〕短读：读位置之后、下一个已发请求之前隔着一个洞。只为这个洞补发请求、插到队首，
-            // 后面已发的请求照用，窗口不动。曾经整队作废、窗口回到 1 —— 对每一块都短读的服务端（实际读上限比块小、又没宣告 limits），
-            // 吞吐塌到一块 / RTT，已经读回来的后面几块也白读了。洞那里要是到了文件末尾，补发的会回 EOF，照常当读完了。
-            if (head.Offset + head.Length <= _knownLength)
+            // 服务端可能有未宣告的读上限。普通文件长度未知时也按实际返回的长度试读，是否 EOF 由下一次 READ 决定。
+            if (_readAheadPastLength || head.Length <= _knownLength - head.Offset)
             {
-                // 整块都在已知长度之内还读不满：服务端的读上限比块小。之后的请求按它实际给的长度发，不再每块都短读。
                 _readAheadLength = Math.Min(_readAheadLength, Math.Max(MinReadAheadLength, (int)data.Length));
-            }
-            if (_readAhead.Count > 0)
-            {
-                RequestGap(head.Offset + data.Length, head.Length - data.Length);
             }
         }
         else
@@ -311,36 +334,16 @@ public sealed class SftpFileStream : Stream
 
     /// <summary>把预读队伍补到当前窗口。</summary>
     /// <remarks>
-    /// 已知长度之内才预发；之外至多一个请求 —— 用来读到 EOF，或者发现文件在打开之后变长了。
+    /// 有长度时仅在界内预发。没有长度时，只对 FSTAT 明确识别的普通文件预发；路径的 STAT 可能已经是另一个文件。
     /// </remarks>
     private void FillReadAhead()
     {
-        while (_readAhead.Count < _readAheadDepth
-               && (_readAhead.Count == 0 || _readAheadNext < _knownLength))
+        while (_readAheadNext >= 0 && _readAhead.Count < _readAheadDepth
+               && (_readAhead.Count == 0 || _readAheadPastLength || _readAheadNext < _knownLength))
         {
             ReadAheadBlock block = SendRead(_readAheadNext, _readAheadLength);
             _readAhead.Enqueue(block);
-            _readAheadNext += block.Length;
-        }
-    }
-
-    /// <summary>〔Q11〕为短读留下的洞补发请求（按当前的请求长度切开），排在队首；后面已发的请求原样留着。</summary>
-    private void RequestGap(long offset, long length)
-    {
-        List<ReadAheadBlock> requeued = [];
-        while (length > 0)
-        {
-            ReadAheadBlock block = SendRead(offset, (int)Math.Min(length, _readAheadLength));
-            requeued.Add(block);
-            offset += block.Length;
-            length -= block.Length;
-        }
-
-        requeued.AddRange(_readAhead);
-        _readAhead.Clear();
-        foreach (ReadAheadBlock block in requeued)
-        {
-            _readAhead.Enqueue(block);
+            _readAheadNext = _readAheadNext <= long.MaxValue - block.Length ? _readAheadNext + block.Length : -1;
         }
     }
 
@@ -382,6 +385,11 @@ public sealed class SftpFileStream : Stream
     /// </remarks>
     private void DiscardReadAhead()
     {
+        if (_gapRead is not null)
+        {
+            _readAhead.Enqueue(_gapRead);
+            _gapRead = null;
+        }
         while (_readAhead.TryDequeue(out ReadAheadBlock? block))
         {
             _ = block.Response.ContinueWith(
@@ -809,7 +817,7 @@ public sealed class SftpFileStream : Stream
         };
 
         ArgumentOutOfRangeException.ThrowIfNegative(target, nameof(offset));
-        _position = target;
+        Position = target;
         return target;
     }
 

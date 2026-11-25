@@ -11,7 +11,7 @@ namespace VelaShell.Infrastructure.Net;
 /// 读取廉价),保存代理设置后新建的连接立即生效,无需订阅保存事件。
 /// </summary>
 /// <remarks>
-/// <b>system 是解析器,不是协议</b>:读 OS 当前代理并折成 http / socks5,作用于**全部出站 TCP**
+/// <b>system 是解析器,不是协议</b>:读 OS 当前代理并折成 http / https / socks5,作用于**全部出站 TCP**
 /// (SSH / SFTP / FTP 控制与数据 / 全部 HTTP 请求)。数据源是**实时**的
 /// <see cref="HttpClient.DefaultProxy" />(Windows 上会给 Internet Settings 注册变更通知,
 /// Clash 开关系统代理后不需要重启应用)。
@@ -38,7 +38,7 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
         {
             "http" => Explicit(ProxyKind.Http, o),
             "socks5" => Explicit(ProxyKind.Socks5, o),
-            // system 是**解析器**,不是协议:读 OS 当前代理,折成 http / socks5 再交给调用方,
+            // system 是**解析器**,不是协议:读 OS 当前代理,折成 http / https / socks5 再交给调用方,
             // 作用于**全部出站 TCP**(SSH / SFTP / FTP 控制与数据 / HTTP)。
             "system" => FromSystem(targetHost, targetPort, o, schemeHint),
             // none = 强制直连。到这里就**不再回看系统代理、也不读 HTTP_PROXY / ALL_PROXY**
@@ -110,7 +110,7 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
                 return ProxyRoute.Direct;
             }
             (string user, string pass) = ExtractProxyCredentials(sys, p);
-            return new(kind, p.Host, port, user, pass, o.ProxyDns);
+            return new(kind, p.IdnHost, port, user, pass, o.ProxyDns);
         }
         catch
         {
@@ -165,13 +165,17 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
     private static bool IsSameTarget(Uri proxy, Uri probe) =>
         Uri.Compare(proxy, probe, UriComponents.HostAndPort | UriComponents.Scheme, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0;
 
-    /// <summary>代理协议映射:socks 系一律按 SOCKS5 处理(含 socks5h),http/https 按 HTTP CONNECT 处理。</summary>
+    /// <summary>socks 系按 SOCKS5 处理(含 socks5h);HTTPS 必须保留到代理的 TLS。</summary>
     internal static ProxyKind MapProxyScheme(string scheme) =>
-        scheme.StartsWith("socks", StringComparison.OrdinalIgnoreCase)
-            ? ProxyKind.Socks5
-            : ProxyKind.Http;
+        scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ? ProxyKind.Https :
+        scheme.StartsWith("socks", StringComparison.OrdinalIgnoreCase) ? ProxyKind.Socks5 : ProxyKind.Http;
 
-    private static int DefaultProxyPort(ProxyKind kind) => kind == ProxyKind.Socks5 ? 1080 : 80;
+    private static int DefaultProxyPort(ProxyKind kind) => kind switch
+    {
+        ProxyKind.Https => 443,
+        ProxyKind.Socks5 => 1080,
+        _ => 80,
+    };
 
     /// <summary>
     /// 系统代理凭据提取(#464):优先解析代理 URI 自带的 userinfo,
@@ -223,8 +227,8 @@ public sealed class ProxyResolver(ISettingsService settings) : IProxyResolver
 
     /// <summary>IPv6 字面量拼进 URL 需要方括号。</summary>
     /// <remarks>
-    /// 入参可能**已经**是带方括号的 <see cref="Uri.Host" />(<c>VelaWebProxy</c> 传的就是它,
-    /// 系统代理折出来的 <c>p.Host</c> 同理)。再套一层会得到 <c>[[::1]]</c>,
+    /// 入参可能**已经**是带方括号的 <see cref="Uri.Host" />(<c>VelaWebProxy</c> 传的就是它)。
+    /// 再套一层会得到 <c>[[::1]]</c>,
     /// 后面的 <see cref="Uri" /> 构造直接抛 —— 必须先认出来。
     /// </remarks>
     internal static string FormatHost(string host)

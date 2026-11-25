@@ -38,6 +38,7 @@ internal sealed class AesGcmCipherSuite : ISshCipherSuite
 
     private readonly AesGcm _aes;
     private readonly byte[] _nonce = new byte[NonceBytes];
+    internal ArrayPool<byte> BufferPool { get; init; } = ArrayPool<byte>.Shared;
     private bool _disposed;
 
     /// <summary>用给定密钥与初始 IV 构造。</summary>
@@ -84,7 +85,7 @@ internal sealed class AesGcmCipherSuite : ISshCipherSuite
         BinaryPrimitives.WriteUInt32BigEndian(lengthField, (uint)packetLength);
 
         // 明文区：padding_length ‖ payload ‖ padding
-        byte[] rented = ArrayPool<byte>.Shared.Rent(packetLength);
+        byte[] rented = BufferPool.Rent(packetLength);
         try
         {
             Span<byte> plaintext = rented.AsSpan(0, packetLength);
@@ -97,11 +98,11 @@ internal sealed class AesGcmCipherSuite : ISshCipherSuite
 
             // 长度字段是 AAD：它明文传输，但被 tag 保护，改不了。
             _aes.Encrypt(_nonce, plaintext, ciphertext, tag, lengthField);
-            CryptographicOperations.ZeroMemory(plaintext);
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(rented);
+            CryptographicOperations.ZeroMemory(rented.AsSpan(0, packetLength));
+            BufferPool.Return(rented);
         }
 
         AdvanceNonce();
@@ -165,7 +166,7 @@ internal sealed class AesGcmCipherSuite : ISshCipherSuite
             return SshOpenStatus.Opened;
         }
 
-        byte[] rented = ArrayPool<byte>.Shared.Rent((int)packetLength * 2);
+        byte[] rented = BufferPool.Rent((int)packetLength * 2);
         try
         {
             Span<byte> ciphertext = rented.AsSpan(0, (int)packetLength);
@@ -198,11 +199,11 @@ internal sealed class AesGcmCipherSuite : ISshCipherSuite
                 payload.Advance(payloadLength);
             }
 
-            CryptographicOperations.ZeroMemory(plaintext);
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(rented);
+            CryptographicOperations.ZeroMemory(rented.AsSpan((int)packetLength, (int)packetLength));
+            BufferPool.Return(rented);
         }
 
         // 只有成功解出一帧才推进计数器 —— NeedMoreData 的路径上不得改动任何状态。

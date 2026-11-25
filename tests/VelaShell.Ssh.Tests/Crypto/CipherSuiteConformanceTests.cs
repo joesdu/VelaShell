@@ -353,6 +353,46 @@ public sealed class CipherSuiteConformanceTests
         return new ReadOnlySequence<byte>(first, 0, last, last.Memory.Length);
     }
 
+    [TestMethod]
+    [DataRow("gcm")]
+    [DataRow("chacha")]
+    [DataRow("ctr-etm")]
+    [DataRow("ctr-mte")]
+    public void ReturningBuffersAfterWriterFailureClearsPlaintext(string algorithm)
+    {
+        byte[] marker = RandomNumberGenerator.GetBytes(48);
+        RecordingPool pool = new();
+        ISshCipherSuite Create() => algorithm switch
+        {
+            "gcm" => new AesGcmCipherSuite(new byte[16], new byte[12]) { BufferPool = pool },
+            "chacha" => new ChaCha20Poly1305CipherSuite(new byte[64]) { BufferPool = pool },
+            _ => new AesCtrHmacCipherSuite(new byte[16], new byte[16], SshMacAlgorithm.HmacSha256,
+                new byte[32], algorithm == "ctr-etm")
+            { BufferPool = pool },
+        };
+        using ISshCipherSuite sender = Create();
+        using ISshCipherSuite receiver = Create();
+        byte[] frame = Seal(sender, marker, 0);
+        pool.Returned.Clear();
+        Assert.ThrowsExactly<IOException>(() => receiver.TryOpen(Segmented(frame, 5), 0, MaxPacket, new FailingWriter(), out _));
+        Assert.IsNotEmpty(pool.Returned);
+        Assert.IsFalse(pool.Returned.Any(bytes => bytes.AsSpan().IndexOf(marker) >= 0));
+    }
+
+    private sealed class RecordingPool : ArrayPool<byte>
+    {
+        public List<byte[]> Returned { get; } = [];
+        public override byte[] Rent(int minimumLength) => new byte[minimumLength];
+        public override void Return(byte[] array, bool clearArray = false) => Returned.Add(array);
+    }
+
+    private sealed class FailingWriter : IBufferWriter<byte>
+    {
+        public void Advance(int count) => throw new IOException();
+        public Memory<byte> GetMemory(int sizeHint = 0) => throw new IOException();
+        public Span<byte> GetSpan(int sizeHint = 0) => throw new IOException();
+    }
+
     private sealed class Segment : ReadOnlySequenceSegment<byte>
     {
         public Segment(ReadOnlyMemory<byte> memory) => Memory = memory;

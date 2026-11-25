@@ -62,6 +62,44 @@ public class XAuthorityFileTests
     }
 
     [TestMethod]
+    [DataRow(0, true)]
+    [DataRow(1, false)]
+    public void Add_EnforcesTheLimitOnTheResult(int extraBytes, bool expectedSuccess)
+    {
+        byte[] cookie = [1, 2, 3];
+        byte[] record = XAuthority.Encode([Other("box", "10", cookie)]);
+        byte[] original = Padding(XAuthority.MaxFileBytes - record.Length + extraBytes);
+        File.WriteAllBytes(_path, original);
+
+        Assert.AreEqual(expectedSuccess, XAuthorityFile.Add(_path, "box", 10, cookie));
+
+        byte[] expected = expectedSuccess ? [.. original, .. record] : original;
+        Assert.AreSequenceEqual(expected, File.ReadAllBytes(_path));
+        Assert.IsFalse(File.Exists(_path + "-n"));
+    }
+
+    [TestMethod]
+    public void Remove_LeavesAnOversizedFileEvenIfRemovalWouldBringItUnderTheLimit()
+    {
+        byte[] cookie = [1, 2, 3];
+        byte[] record = XAuthority.Encode([Other("box", "10", cookie)]);
+        byte[] original = [.. record, .. Padding(XAuthority.MaxFileBytes + 1 - record.Length)];
+        File.WriteAllBytes(_path, original);
+
+        Assert.IsFalse(XAuthorityFile.Remove(_path, "box", 10, cookie));
+        Assert.AreSequenceEqual(original, File.ReadAllBytes(_path));
+        Assert.IsFalse(File.Exists(_path + "-c") || File.Exists(_path + "-l"));
+    }
+
+    private static byte[] Padding(int size)
+    {
+        // 每条空地址、空显示号、空协议名的记录有 10 个字节的固定字段。
+        const int chunk = 64 * 1024;
+        static XAuthorityEntry Entry(int bytes) => new(XAuthority.FamilyWild, Array.Empty<byte>(), "", "", new byte[bytes - 10]);
+        return XAuthority.Encode(Enumerable.Repeat(Entry(chunk), size / chunk).Append(Entry(size % chunk)));
+    }
+
+    [TestMethod]
     public void Add_WhileAnotherProgramHoldsTheLock_GivesUp()
     {
         File.WriteAllBytes(_path + "-c", []);

@@ -134,6 +134,7 @@ public sealed partial class SftpFileSystem
         // 曾经只有读才问，续写打开的流 Length 一直报 0，Seek(0, End) 回到了文件开头。
         long length = 0;
         bool lengthKnown = (flags & SftpOpenModes.Truncate) != 0;
+        bool isRegularFile = false;
         if (!lengthKnown)
         {
             try
@@ -144,6 +145,7 @@ public sealed partial class SftpFileSystem
 
                 stat.ThrowIfError(path, SftpOperation.GetAttributes, SftpMessageType.Attrs);
                 SftpFileAttributes current = SftpWire.ReadAttrs(stat.Payload);
+                isRegularFile = current.IsRegularFile;
                 if (current.HasSize)
                 {
                     length = (long)current.Size;
@@ -166,9 +168,8 @@ public sealed partial class SftpFileSystem
 
         return new SftpFileStream(
             _pipeline, handle, path, canRead, canWrite, length, BlockSize, writeMode,
-            maxInFlightWrites: StreamWindow, maxReadAhead: StreamWindow)
+            maxInFlightWrites: StreamWindow, maxReadAhead: StreamWindow, lengthKnown, isRegularFile)
         {
-            LengthKnown = lengthKnown,
             OnHandleClosed = ReleaseHandleSlot,
             CloseTimeout = _options.CloseTimeout,
         };

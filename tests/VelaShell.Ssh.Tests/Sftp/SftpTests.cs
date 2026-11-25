@@ -493,6 +493,100 @@ public sealed class SftpTests
     }
 
     [TestMethod]
+    [DataRow(32 * 1024, 32, 8)]
+    [DataRow(256 * 1024, 32, 4)]
+    [DataRow(32 * 1024, 2, 2)]
+    public async Task UnknownLengthRegularFilePipelinesWithinBudget(int blockSize, int depth, int maxRequests)
+    {
+        byte[] payload = new byte[16 * blockSize + 123];
+        Random.Shared.NextBytes(payload);
+        await using Harness harness = await Harness.StartAsync(
+            server => server.AddFile("/home/joe/data", payload),
+            new TestSftpOptions
+            {
+                Limits = new((ulong)(blockSize + SftpProtocol.RequestHeaderAllowance), (ulong)blockSize, (ulong)blockSize, 0),
+                FStatAttributes = SftpFileAttributes.WithPermissions(SftpProtocol.FileTypeRegular),
+                HoldReadReplyAtOffset = blockSize,
+                ShuffleResponses = true,
+                ShortReadAtOffset = 6 * blockSize,
+            },
+            new SftpOptions { BlockSize = blockSize, MaxInFlight = depth, IsPipelineDepthAdaptive = false });
+        Assert.AreEqual(blockSize, harness.Sftp.BlockSize);
+
+        byte[] content = await harness.Sftp.ReadAllBytesAsync("/home/joe/data", harness.Token)
+            .AsTask().WaitAsync(TimeSpan.FromSeconds(10), harness.Token);
+        await EventuallyAsync(() => harness.SftpServer.OpenHandleCount == 0, harness.Token);
+
+        Console.WriteLine($"Negotiated block {harness.Sftp.BlockSize} bytes, depth limit {depth}, EOF replies {harness.SftpServer.EofReadRequests}");
+        Assert.IsTrue(harness.SftpServer.PipelinedReadObserved);
+        Assert.IsGreaterThan(0, harness.SftpServer.ReversedBatches);
+        Assert.AreSequenceEqual(payload, content);
+        Assert.AreEqual(0L, harness.SftpServer.RereadBytes);
+        Assert.IsGreaterThan(0, harness.SftpServer.EofReadRequests);
+        Assert.IsLessThanOrEqualTo(maxRequests, harness.SftpServer.EofReadRequests);
+    }
+
+    [TestMethod]
+    public async Task UnknownLengthGapSurvivesCancellationAndSeekDropsPartial()
+    {
+        const int block = 8192;
+        byte[] payload = new byte[8 * block];
+        Random.Shared.NextBytes(payload);
+        await using Harness harness = await Harness.StartAsync(
+            server => server.AddFile("/home/joe/data", payload),
+            new TestSftpOptions
+            {
+                FStatAttributes = SftpFileAttributes.WithPermissions(SftpProtocol.FileTypeRegular),
+                ShortReadAtOffset = block,
+                HoldReadReplyAtOffset = block + block / 2,
+            },
+            new SftpOptions { BlockSize = block });
+        await using SftpFileStream stream = await harness.Sftp.OpenReadAsync("/home/joe/data", harness.Token);
+        byte[] prefix = await ReadExactlyAsync(stream, block + block / 2, block, harness.Token);
+        Assert.AreSequenceEqual(payload[..prefix.Length], prefix);
+
+        using CancellationTokenSource wait = new();
+        byte[] peek = new byte[17];
+        Task<int> gap = stream.ReadAsync(peek, wait.Token).AsTask();
+        _ = await harness.Sftp.GetAttributesAsync("/home/joe/data", harness.Token);
+        await wait.CancelAsync();
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await gap);
+        Assert.AreEqual(prefix.LongLength, stream.Position);
+
+        // 随机读放行扣住的缺口。下一次顺序读复用迟到的应答，不重读，也不丢掉尚未交出的块尾。
+        Assert.AreEqual(0, await stream.ReadAtAsync(payload.Length, peek, harness.Token));
+        Assert.AreEqual(peek.Length, await stream.ReadAsync(peek, harness.Token));
+        Assert.AreSequenceEqual(payload[prefix.Length..(prefix.Length + peek.Length)], peek);
+        Assert.AreEqual(0L, harness.SftpServer.RereadBytes);
+        stream.Seek(5 * block, SeekOrigin.Begin);
+        Assert.AreEqual(peek.Length, await stream.ReadAsync(peek, harness.Token));
+        Assert.AreSequenceEqual(payload[(5 * block)..(5 * block + peek.Length)], peek);
+    }
+
+    [TestMethod]
+    [DataRow(false, 0x2000u)] // 字符设备
+    [DataRow(false, 0u)]     // 没给类型
+    [DataRow(true, 0u)]      // FSTAT 被拒
+    public async Task UnknownLengthUnidentifiedOrSpecialHandleReadsOnDemand(bool reject, uint mode)
+    {
+        const int blockSize = 8192;
+        byte[] payload = new byte[10 * blockSize];
+        Random.Shared.NextBytes(payload);
+        await using Harness harness = await Harness.StartAsync(
+            server => server.AddFile("/home/joe/source", payload),
+            new TestSftpOptions { FStatAttributes = SftpFileAttributes.WithPermissions(mode), RejectFStat = reject },
+            new SftpOptions { BlockSize = blockSize });
+
+        await using SftpFileStream stream = await harness.Sftp.OpenReadAsync("/home/joe/source", harness.Token);
+        byte[] prefix = await ReadExactlyAsync(stream, 4 * blockSize, blockSize, harness.Token);
+        // 后续 STAT 的应答是屏障，此前发出的投机 READ 已全部到达服务端。
+        _ = await harness.Sftp.GetAttributesAsync("/home/joe/source", harness.Token);
+
+        Assert.AreSequenceEqual(payload[..prefix.Length], prefix);
+        Assert.AreEqual(4, harness.SftpServer.ReceivedTypes.Count(type => type == SftpMessageType.Read));
+    }
+
+    [TestMethod]
     public async Task 预读下小缓冲逐段读_中途Seek_读到的都与文件一致()
     {
         byte[] payload = new byte[1024 * 1024 + 123];

@@ -76,6 +76,8 @@ Older servers without strict key exchange must negotiate AES-GCM in both directi
 1. Click **+** at the top of Explorer or press `Ctrl+N`.
 2. Select **SSH**. Enter a name, host, port (commonly 22), and username. For example: name `Test server`, host `192.0.2.10`, user `demo`.
 3. Choose an authentication method. For password authentication, enter the password. For private-key authentication, select a local private-key file and supply its passphrase if required. A `.pub` public key is not a private key.
+
+   The private-key file size limit is 1 MiB.
 4. Select a group if needed; keep other defaults initially. **Test** checks the connection, but a successful test is not an established, long-lived interactive terminal.
 5. Choose **Save** to save the profile or **Connect** to begin a session. Handle first-use fingerprint confirmation and any multifactor authentication challenge.
 6. Once the remote shell prompt appears, use read-only commands such as `pwd` and `hostname` to confirm the target before working.
@@ -242,6 +244,8 @@ Tailscale mode requires Tailscale installed and signed in locally, a MagicDNS na
 ## 6. Proxies, Jump Hosts, Keepalive, and Reconnection
 
 ### 6.1 Global Proxy
+
+When the system selects an HTTPS proxy, SSH and SFTP validate its TLS certificate before sending the destination address or proxy credentials. FTP and FTPS report a connection error for this proxy type.
 
 **Entry point:** **Settings → Network Proxy**.
 

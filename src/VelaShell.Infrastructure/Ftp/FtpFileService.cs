@@ -503,7 +503,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
             // 完成回复由 LeasedStream 自己收(与 OpenReadOnceAsync 同一个做法)。
             if (inner is FtpDataStream data)
             {
-                data.ControlConnection = null!;
+                data.ControlConnection = null;
             }
             stream = new LeasedStream(inner, lease, path, fileLength - start, cancellationToken);
         }
@@ -859,7 +859,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
                 // LeasedStream alone consumes the final reply, including after read failure.
                 if (inner is FtpDataStream data)
                 {
-                    data.ControlConnection = null!;
+                    data.ControlConnection = null;
                 }
                 return new LeasedStream(inner, lease, remotePath, length, cancellationToken);
             }
@@ -1409,7 +1409,7 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
         {
             return translated;
         }
-        string via = $" (via {(route.Kind == ProxyKind.Socks5 ? "socks5" : "http")} {HostAddress.FormatEndPoint(route.Host, route.Port)} → {HostAddress.FormatEndPoint(info.Host, info.Port)})";
+        string via = $" (via {route.Scheme} {HostAddress.FormatEndPoint(route.Host, route.Port)} → {HostAddress.FormatEndPoint(info.Host, info.Port)})";
         // FTP :21 经 HTTP CONNECT 同样常被代理软件限制(只放行 80/443),直指换 SOCKS5/直连。
         string hint = route.Kind == ProxyKind.Http
             ? " " + Strings.Get("Msg_ProxyHttpFtpHint")
@@ -1425,6 +1425,11 @@ public sealed class FtpFileService(IProxyResolver? proxyResolver = null) : ISftp
     private static async Task<AsyncFtpClient> CreateClientAsync(
         FtpConnectionInfo info, ProxyRoute route, FtpConfig config, CancellationToken cancellationToken)
     {
+        // FluentFTP 的 HTTP 代理在明文 socket 上发 CONNECT;FTPS 的 TLS 是给目标服务器的。
+        if (route.Kind == ProxyKind.Https)
+        {
+            throw new VelaFtpConnectionException(Strings.Get("Msg_ProxyHttpsFtpUnsupported"));
+        }
         if (route.Kind == ProxyKind.None)
         {
             return new BoundedFtpClient(info.Host, info.EffectiveUsername, info.EffectivePassword, info.Port, config);

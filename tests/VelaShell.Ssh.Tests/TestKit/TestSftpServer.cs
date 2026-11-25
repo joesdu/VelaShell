@@ -182,6 +182,12 @@ internal sealed record TestSftpOptions
     /// <summary><c>FSTAT</c> 回一个被截断的 ATTRS：宣告带 size，却没有那 8 个字节。</summary>
     public bool MalformedFStat { get; init; }
 
+    /// <summary>替代 FSTAT 的属性集，用于只返回部分字段的服务端。</summary>
+    public SftpFileAttributes? FStatAttributes { get; init; }
+
+    /// <summary>服务端拒绝 FSTAT，但仍允许 READ。</summary>
+    public bool RejectFStat { get; init; }
+
     /// <summary><c>READLINK</c> 回一个被截断的 NAME：宣告 1 项，却只有半个文件名。</summary>
     public bool MalformedReadLink { get; init; }
 
@@ -248,6 +254,8 @@ internal sealed class TestSftpServer
 
     /// <summary>收到过的最长一个 <c>READ</c> 请求的长度。</summary>
     public long LargestReadRequest { get; private set; }
+
+    public int EofReadRequests { get; private set; }
 
     /// <summary>同一个文件里被 <c>READ</c> 回了不止一遍的字节数（预读作废后重读的浪费）。</summary>
     public long RereadBytes { get; private set; }
@@ -686,6 +694,7 @@ internal sealed class TestSftpServer
         TestSftpNode node = _nodes[state.Path];
         if (offset >= (ulong)node.Content.Count)
         {
+            EofReadRequests++;
             return BuildStatus(id, SftpStatusCode.EndOfFile, "读完了");
         }
 
@@ -791,7 +800,9 @@ internal sealed class TestSftpServer
             return Frame(SftpMessageType.Attrs, payload.WrittenSpan);
         }
 
-        return BuildAttrs(id, AttributesOf(_nodes.GetValueOrDefault(state.Path)));
+        return _options.RejectFStat
+            ? BuildStatus(id, SftpStatusCode.PermissionDenied, "不允许 FSTAT")
+            : BuildAttrs(id, _options.FStatAttributes ?? AttributesOf(_nodes.GetValueOrDefault(state.Path)));
     }
 
     private byte[] HandleFSetStat(uint id, ReadOnlySequence<byte> rest)

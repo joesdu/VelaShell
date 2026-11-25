@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using VelaShell.Core.Resources;
 using VelaShell.Core.Ssh;
 using VelaShell.Infrastructure.Ssh;
@@ -211,6 +212,53 @@ public sealed class SshKeyServiceTests : IDisposable
         Assert.IsEmpty(await _service.ListKeysAsync());
     }
 
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Import_RejectsAnOversizedKeyFileBeforeWriting(bool oversizedPublic)
+    {
+        (string privatePath, string publicPath) = await CreateExternalKeyAsync("large");
+        string path = oversizedPublic ? publicPath : privatePath;
+        string original = await File.ReadAllTextAsync(path);
+        await File.WriteAllTextAsync(path, original.PadRight(SshPrivateKeyFile.MaxFileBytes + 1));
+
+        InvalidDataException ex = await Assert.ThrowsExactlyAsync<InvalidDataException>(() => _service.ImportKeyAsync(privatePath));
+
+        Assert.AreEqual(oversizedPublic ? Strings.Format("KeySvc_ImportBadPublicKey", "large.pub")
+            : Strings.Format("KeySvc_ImportNotAPrivateKey", "large"), ex.Message);
+        Assert.IsEmpty(Directory.EnumerateFileSystemEntries(_sshDir));
+    }
+
+    [TestMethod]
+    public async Task Import_PreservesAReadablySizedUnicodePublicKey()
+    {
+        (string privatePath, string publicPath) = await CreateExternalKeyAsync("unicode");
+        string privateText = await File.ReadAllTextAsync(privatePath);
+        string publicLine = (await File.ReadAllTextAsync(publicPath)).Trim() + new string('界', 360_000);
+        await File.WriteAllTextAsync(privatePath, privateText, Encoding.Unicode);
+        await File.WriteAllTextAsync(publicPath, publicLine, Encoding.Unicode);
+
+        SshKeyImportResult? result = await _service.ImportKeyAsync(privatePath);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(privateText, await SshPrivateKeyFile.ReadKeyTextAsync(result.Key.PrivateKeyPath));
+        Assert.AreEqual(publicLine, (await _service.ListKeysAsync()).Single().PublicKeyLine);
+    }
+
+    [TestMethod]
+    public async Task ConcurrentImports_KeepOneCompletePair()
+    {
+        (string privatePath, string publicPath) = await CreateExternalKeyAsync("shared");
+        File.Delete(publicPath);
+
+        SshKeyImportResult?[] results = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => _service.ImportKeyAsync(privatePath)));
+
+        SshKeyImportResult? winner = results.Single(result => result is not null);
+        Assert.IsNotNull(winner);
+        Assert.AreEqual(winner.Key, (await _service.ListKeysAsync()).Single());
+        Assert.AreEqual(await File.ReadAllTextAsync(privatePath), await File.ReadAllTextAsync(winner.Key.PrivateKeyPath));
+    }
+
     /// <summary>.pub 解析不出来时整体回滚,不留下一份进不了列表的私钥。</summary>
     [TestMethod]
     public async Task Import_WithAnUnreadablePublicKey_RollsBack()
@@ -356,6 +404,19 @@ public sealed class SshKeyServiceTests : IDisposable
         await _service.ExportPublicKeyAsync(key, target);
 
         Assert.AreEqual(key.PublicKeyLine, (await File.ReadAllTextAsync(target)).Trim());
+    }
+
+    [TestMethod]
+    public async Task OversizedPublicKey_IsSkippedByListAndRejectedByExport()
+    {
+        SshKeyInfo key = await _service.GenerateKeyAsync("large_pub");
+        await File.WriteAllTextAsync(key.PrivateKeyPath + ".pub", key.PublicKeyLine!.PadRight(SshPrivateKeyFile.MaxFileBytes + 1));
+        string destination = Path.Combine(_sshDir, "exported");
+
+        Assert.IsEmpty(await _service.ListKeysAsync());
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() =>
+            _service.ExportPublicKeyAsync(key with { PublicKeyLine = null }, destination));
+        Assert.IsFalse(File.Exists(destination));
     }
 
     [TestMethod]

@@ -685,6 +685,88 @@ public sealed class SshConfigTests
     }
 
     [TestMethod]
+    [DataRow("conf")]
+    [DataRow("other")]
+    [DataRow("dir")]
+    public async Task Include扫描共享预算并丢弃未扫完整的通配(string extension)
+    {
+        string root = Path.GetFullPath($"velashell-cfg-{Guid.NewGuid():N}");
+        string entries = Directory.CreateDirectory(Path.Combine(root, "entries")).FullName;
+        try
+        {
+            for (int i = 0; i < 6; i++)
+            {
+                string path = Path.Combine(entries, $"{i}.{extension}");
+                if (extension == "dir")
+                {
+                    Directory.CreateDirectory(path);
+                }
+                else
+                {
+                    await File.WriteAllTextAsync(path, "User partial\n");
+                }
+            }
+            await File.WriteAllTextAsync(Path.Combine(root, "child"), "Include entries/*.conf\n");
+            await File.WriteAllTextAsync(Path.Combine(root, "tail"), "Port 2222\n");
+            // 循环引用耗候选预算，不耗文件预算。进入 child 后只够检查三个目录项。
+            string cycles = string.Join(' ', Enumerable.Repeat("config", SshConfigFile.MaxIncludeCandidates - 5));
+            string main = Path.Combine(root, "config");
+            await File.WriteAllTextAsync(main, $"Include {cycles}\nInclude child tail\nUser outer\n");
+
+            var resolved = SshConfigFile.Resolve(await SshConfigFile.LoadAsync(main), "host");
+            Assert.AreEqual("outer", resolved.User);
+            Assert.AreEqual(22, resolved.Port, "子文件里用完的预算阻止外层同一行的下一个路径");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Include目录段中的通配不展开()
+    {
+        string root = Path.GetFullPath($"velashell-cfg-{Guid.NewGuid():N}");
+        string nested = Directory.CreateDirectory(Path.Combine(root, "parts", "x")).FullName;
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(nested, "one.conf"), "User nested\n");
+            if (!OperatingSystem.IsWindows())
+            {
+                string literal = Directory.CreateDirectory(Path.Combine(root, "parts", "*")).FullName;
+                await File.WriteAllTextAsync(Path.Combine(literal, "one.conf"), "User literal\n");
+            }
+            string main = Path.Combine(root, "config");
+            await File.WriteAllTextAsync(main, "Include parts/*/one.conf parts/?/*.conf\nUser outer\n");
+            var resolved = SshConfigFile.Resolve(await SshConfigFile.LoadAsync(main), "host");
+            Assert.AreEqual("outer", resolved.User);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public async Task Include扫描前取消不被当作无匹配()
+    {
+        string root = Path.GetFullPath($"velashell-cfg-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            string main = Path.Combine(root, "config");
+            await File.WriteAllTextAsync(main, "User \"broken\nInclude *.absent\n");
+            using CancellationTokenSource cancel = new();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => SshConfigFile.LoadAsync(
+                main, onSkippedLine: _ => cancel.Cancel(), cancellationToken: cancel.Token).AsTask());
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public async Task Include的通配结果是排好序的()
     {
         // 目录枚举的顺序在不同文件系统上不一样，而 ssh_config 是

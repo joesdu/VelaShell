@@ -54,10 +54,9 @@ internal sealed class SshRouteRecorder
         {
             return;
         }
-        string scheme = route.Kind == ProxyKind.Socks5 ? "socks5" : "http";
         lock (_gate)
         {
-            Proxy = $"{scheme} {HostAddress.FormatEndPoint(route.Host, route.Port)}";
+            Proxy = $"{route.Scheme} {HostAddress.FormatEndPoint(route.Host, route.Port)}";
         }
     }
 

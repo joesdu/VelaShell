@@ -43,6 +43,24 @@ public class FtpSupportTests
         VelaFtpAuthenticationException auth = new("530");
         Assert.AreSame(auth, FtpFileService.WithProxyContext(auth, info, new ProxyRoute(ProxyKind.Http, "127.0.0.1", 7890)));
     }
+
+    [TestMethod]
+    public async Task HttpsProxy_FtpRejectsRouteBeforeDialing()
+    {
+        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        var info = new FtpConnectionInfo { Host = "ftp.example", Settings = new FtpSettings() };
+        IProxyResolver resolver = Substitute.For<IProxyResolver>();
+        resolver.Resolve(info.Host, info.Port).Returns(new ProxyRoute(ProxyKind.Https, "127.0.0.1", port, "user", "pw"));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        VelaFtpConnectionException error = await Assert.ThrowsExactlyAsync<VelaFtpConnectionException>(() =>
+            new FtpFileService(resolver).OpenSessionAsync(info, timeout.Token));
+        Assert.StartsWith(Strings.Get("Msg_ProxyHttpsFtpUnsupported"), error.Message);
+        Assert.Contains($"via https 127.0.0.1:{port}", error.Message);
+        Assert.IsFalse(listener.Pending());
+    }
+
     /// <summary>WinSCP 的 FTP 会话(FSProtocol=5)现在应被判为受支持,并按 Ftps 值带出加密方式。</summary>
     [TestMethod]
     [DataRow(3, FtpEncryptionMode.Explicit, 21)]   // 显式 TLS

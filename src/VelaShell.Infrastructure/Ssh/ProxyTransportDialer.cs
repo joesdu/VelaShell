@@ -92,6 +92,7 @@ internal sealed class ProxyTransportDialer(IProxyResolver? proxyResolver, SshRou
             SshFailureReason reason = ex.Reason is SshFailureReason.ProxyUnreachable
                 or SshFailureReason.ProxyAuthRequired
                 or SshFailureReason.ProxyAuthFailed
+                or SshFailureReason.TlsFailed
                 or SshFailureReason.InvalidConfiguration
                 ? ex.Reason
                 : SshFailureReason.ProxyRefused;
@@ -108,12 +109,16 @@ internal sealed class ProxyTransportDialer(IProxyResolver? proxyResolver, SshRou
     }
 
     /// <summary>按路由选库的代理拨号器。</summary>
-    private static ISshTransportDialer ProxyDialer(ProxyRoute route)
+    internal static ISshTransportDialer ProxyDialer(ProxyRoute route, ISshTransportDialer? via = null)
     {
         SshProxyCredentials? credentials = route.HasCredentials ? new(route.Username, route.Password) : null;
-        return route.Kind == ProxyKind.Http
-            ? DialerChain.HttpConnect(route.Host, route.Port, credentials)
-            : DialerChain.Socks5(route.Host, route.Port, credentials);
+        return route.Kind switch
+        {
+            ProxyKind.Https => DialerChain.HttpConnect(route.Host, route.Port, credentials, DialerChain.Tls(via: via)),
+            ProxyKind.Http => DialerChain.HttpConnect(route.Host, route.Port, credentials, via),
+            ProxyKind.Socks5 => DialerChain.Socks5(route.Host, route.Port, credentials, via),
+            _ => throw new ArgumentOutOfRangeException(nameof(route)),
+        };
     }
 
     /// <summary>
@@ -136,7 +141,7 @@ internal sealed class ProxyTransportDialer(IProxyResolver? proxyResolver, SshRou
     /// </remarks>
     internal static string DescribeProxyFailure(ProxyRoute route, string host, int port, Exception error)
     {
-        string via = $" (via {(route.Kind == ProxyKind.Socks5 ? "socks5" : "http")} {HostAddress.FormatEndPoint(route.Host, route.Port)} → {HostAddress.FormatEndPoint(host, port)})";
+        string via = $" (via {route.Scheme} {HostAddress.FormatEndPoint(route.Host, route.Port)} → {HostAddress.FormatEndPoint(host, port)})";
         if (error is SshConnectException { Reason: SshFailureReason.ProxyAuthRequired or SshFailureReason.ProxyAuthFailed } auth)
         {
             return Strings.Get(auth.Reason == SshFailureReason.ProxyAuthFailed ? "Msg_ProxyAuthFailed" : "SshErr_ProxyAuthRequired") + via;

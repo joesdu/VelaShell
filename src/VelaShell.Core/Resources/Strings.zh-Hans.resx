@@ -6752,6 +6752,9 @@ Windows 填 exe 完整路径或命令名(如 notepad);Linux 填命令名(如 ged
   <data name="Msg_ProxyHttpSshPortHint" xml:space="preserve">
     <value>代理要是不肯 CONNECT 到 22 端口,把代理类型改成 SOCKS5(如 127.0.0.1:10808);开着 TUN 模式的话改成「无代理」。</value>
   </data>
+  <data name="Msg_ProxyHttpsFtpUnsupported" xml:space="preserve">
+    <value>FTP 和 FTPS 无法通过 HTTPS 代理连接。请为此次连接选择受支持的代理。</value>
+  </data>
   <data name="Msg_ProxyHttpFtpHint" xml:space="preserve">
     <value>代理要是不肯 CONNECT,把代理类型改成 SOCKS5;开着 TUN 模式的话改成「无代理」。</value>
   </data>
