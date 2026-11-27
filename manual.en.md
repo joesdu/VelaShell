@@ -1111,6 +1111,8 @@ Delegation accepts an optional `modelId` selecting an already configured chat mo
 
 ### 19.6 Let External Agents Call VelaShell: Exposed MCP Server
 
+**Reconnecting after a restart:** A client using an expired MCP session receives HTTP 404 and should send `initialize` again without the old session ID. If it does not recover automatically, reconnect the VelaShell MCP server in the client. There is no need to reinstall VelaShell; this error does not mean SSH has disconnected.
+
 **Token/permission warning:** Other same-user processes can reach loopback, so protect the token; do not post it in issues/chats. Restrict allowed servers before enabling Agent/bypass, especially for production hosts and token-bearing local tools.
 
 **Entry point and steps:** Command Palette → AI collaboration integration → exposed MCP. It is currently enabled by default at `127.0.0.1:8391`, requires a random token, and defaults to read-only Plan mode. Copy the page-generated HTTP configuration to the external client using its current address and Bearer token. Update clients after token regeneration.

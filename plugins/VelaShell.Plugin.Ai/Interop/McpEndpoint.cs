@@ -269,15 +269,23 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
         switch (request.HttpMethod)
         {
             case "DELETE":
-                if (SessionId(request) is { Length: > 0 } ending)
+                string? ending = SessionId(request);
+                if (string.IsNullOrEmpty(ending) || !_sessions.TryRemove(ending, out McpToolHost? endingHost))
                 {
-                    if (_sessions.TryRemove(ending, out McpToolHost? endingHost))
-                        await endingHost.DisposeAsync().ConfigureAwait(false);
+                    await WriteSessionErrorAsync(response, ending, null, cancellationToken).ConfigureAwait(false);
+                    return;
                 }
+                await endingHost.DisposeAsync().ConfigureAwait(false);
                 response.StatusCode = 200;
                 return;
 
             case "GET":
+                string? listening = SessionId(request);
+                if (string.IsNullOrEmpty(listening) || !_sessions.ContainsKey(listening))
+                {
+                    await WriteSessionErrorAsync(response, listening, null, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
                 // 服务端不主动推消息,所以不开 SSE 流。协议允许这么回。
                 response.StatusCode = 405;
                 response.AddHeader("Allow", "POST, DELETE");
@@ -341,7 +349,14 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
         JsonElement? id = request.TryGetProperty("id", out JsonElement idElement) ? idElement : null;
         JsonElement parameters = request.TryGetProperty("params", out JsonElement p) ? p : default;
 
-        // 通知(没有 id)一律 202,没有响应体
+        string? requestedSession = SessionId(http.Request);
+        McpToolHost? session = null;
+        if (method != "initialize" && (string.IsNullOrEmpty(requestedSession) || !_sessions.TryGetValue(requestedSession, out session)))
+        {
+            await WriteSessionErrorAsync(response, requestedSession, id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        // 已接受的通知没有响应体。
         if (id is null)
         {
             response.StatusCode = 202;
@@ -395,15 +410,9 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
 
             case "tools/list":
                 {
-                    if (Resolve(http) is not { } host)
-                    {
-                        await WriteAsync(response, Error(id, -32001, "Unknown or expired session; call initialize first."),
-                            cancellationToken).ConfigureAwait(false);
-                        return;
-                    }
                     object[] tools =
                     [
-                        .. host.Tools.Select(t => new
+                        .. session!.Tools.Select(t => new
                     {
                         name = t.Name,
                         description = t.Description,
@@ -416,12 +425,6 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
 
             case "tools/call":
                 {
-                    if (Resolve(http) is not { } host)
-                    {
-                        await WriteAsync(response, Error(id, -32001, "Unknown or expired session; call initialize first."),
-                            cancellationToken).ConfigureAwait(false);
-                        return;
-                    }
                     string name = parameters.ValueKind == JsonValueKind.Object
                                   && parameters.TryGetProperty("name", out JsonElement n)
                         ? n.GetString() ?? ""
@@ -438,7 +441,7 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
                     }
                     try
                     {
-                        string text = await host.CallAsync(name, arguments, cancellationToken, id.Value.GetRawText()).ConfigureAwait(false);
+                        string text = await session!.CallAsync(name, arguments, cancellationToken, id.Value.GetRawText()).ConfigureAwait(false);
                         await WriteAsync(response, Result(id.Value, new
                         {
                             content = new[] { new { type = "text", text } },
@@ -465,10 +468,16 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
         }
     }
 
-    private McpToolHost? Resolve(HttpListenerContext http)
-        => SessionId(http.Request) is { Length: > 0 } id && _sessions.TryGetValue(id, out McpToolHost? host)
-            ? host
-            : null;
+    private static Task WriteSessionErrorAsync(HttpListenerResponse response, string? sessionId, JsonElement? id,
+        CancellationToken cancellationToken)
+    {
+        // Streamable HTTP 客户端靠 404 触发重新初始化;只在 200 的正文里报错会让它继续复用旧 ID。
+        bool missing = string.IsNullOrEmpty(sessionId);
+        response.StatusCode = missing ? 400 : 404;
+        return WriteAsync(response, Error(id, -32001, missing
+            ? "Missing Mcp-Session-Id; call initialize first."
+            : "Unknown or expired session; call initialize first."), cancellationToken);
+    }
 
     /// <summary>
     /// 限长读取请求正文;超过 <see cref="MaxRequestBytes" /> 返回 <see langword="null" />。
