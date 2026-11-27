@@ -509,8 +509,8 @@ public sealed class McpManager(IPluginContext context) : IAsyncDisposable
             {
                 Endpoint = endpoint,
                 Name = DisplayName(server),
-                AdditionalHeaders = headers
-                // TransportMode 默认 AutoDetect:先试 Streamable HTTP,再回落 SSE
+                AdditionalHeaders = headers,
+                TransportMode = HttpTransportMode.StreamableHttp
             });
         }
         return new StdioClientTransport(CreateStdioOptions(server, localWorkspaces));

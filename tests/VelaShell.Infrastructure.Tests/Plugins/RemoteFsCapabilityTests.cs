@@ -92,17 +92,13 @@ public sealed class RemoteFsCapabilityTests
             });
         var plugin = new Recorder();
 
-        Task upload = new RemoteFsCapability(_sftp, _connections)
-            .UploadFileAsync(_sessionId.ToString(), "local.bin", "/remote.bin", plugin);
-        await Task.Delay(150); // 转发经线程池投递(测试线程没有同步上下文),给它时间落地。
+        Task upload = StartUpload(plugin);
         Assert.IsFalse(upload.IsCompleted);
         Assert.AreEqual(new RemoteTransferProgress(40, 100), plugin.Frames.Single(), "中间帧照常转发");
 
         hostProgress!.Report(Frame(100)); // 宿主成功收尾时那一帧。
         closing.SetResult();
         await upload;
-        await EventuallyAsync(() => plugin.Frames.Count == 2);
-        await Task.Delay(150);
 
         Assert.AreSequenceEqual([new RemoteTransferProgress(40, 100), new RemoteTransferProgress(100, 100)], [.. plugin.Frames],
             "满格只在任务成功后报一次");
@@ -120,20 +116,30 @@ public sealed class RemoteFsCapabilityTests
             });
         var plugin = new Recorder();
 
-        await Assert.ThrowsExactlyAsync<IOException>(() => new RemoteFsCapability(_sftp, _connections)
-            .UploadFileAsync(_sessionId.ToString(), "local.bin", "/remote.bin", plugin));
-        await Task.Delay(150);
+        await Assert.ThrowsExactlyAsync<IOException>(() => StartUpload(plugin));
 
         Assert.DoesNotContain(static f => f.TransferredBytes >= f.TotalBytes, plugin.Frames);
     }
 
-    private static async Task EventuallyAsync(Func<bool> condition)
+    private Task StartUpload(IProgress<RemoteTransferProgress> progress)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        while (!condition())
+        // Progress<T> 在创建时捕获上下文。同步投递让断言只依赖传输状态,不依赖线程池调度。
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new InlineContext());
+        try
         {
-            await Task.Delay(10, timeout.Token);
+            return new RemoteFsCapability(_sftp, _connections)
+                .UploadFileAsync(_sessionId.ToString(), "local.bin", "/remote.bin", progress);
         }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+    }
+
+    private sealed class InlineContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state) => d(state);
     }
 
     private static TransferProgress Frame(long bytes) => new()
