@@ -61,6 +61,12 @@ public sealed class McpEndpointTests
 
     private static async Task<JsonDocument> RpcAsync(HttpClient client, object request, string? sessionId = null)
     {
+        using HttpResponseMessage response = await PostRpcAsync(client, request, sessionId);
+        return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+    }
+
+    private static async Task<HttpResponseMessage> PostRpcAsync(HttpClient client, object request, string? sessionId = null)
+    {
         using var message = new HttpRequestMessage(HttpMethod.Post, "mcp")
         {
             Content = JsonContent.Create(request)
@@ -69,8 +75,7 @@ public sealed class McpEndpointTests
         {
             message.Headers.TryAddWithoutValidation("Mcp-Session-Id", sessionId);
         }
-        using HttpResponseMessage response = await client.SendAsync(message);
-        return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return await client.SendAsync(message);
     }
 
     [TestMethod]
@@ -438,10 +443,38 @@ public sealed class McpEndpointTests
         {
             using HttpClient client = CreateClient(port, token);
 
-            using JsonDocument document = await RpcAsync(client,
+            using HttpResponseMessage response = await PostRpcAsync(client,
                 new { jsonrpc = "2.0", id = 9, method = "tools/list" });
-
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             Assert.AreEqual(-32001, document.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+        }
+    }
+
+    [TestMethod]
+    public async Task EndpointRestart_StaleToolCallReturns404_ThenNewSessionCanListSshSessions()
+    {
+        using var context = new TestPluginContext();
+        context.FakeSessions.AddConnected(host: "test-host", username: "user");
+        (McpEndpoint endpoint, int port, string token) = await StartAsync(context);
+        await using (endpoint)
+        {
+            using HttpClient client = CreateClient(port, token);
+            string stale = await InitializeAsync(client);
+            await endpoint.ReloadAsync();
+
+            using HttpResponseMessage response = await PostRpcAsync(client, new
+            {
+                jsonrpc = "2.0", id = 7, method = "tools/call", @params = new { name = "list_sessions" }
+            }, stale);
+            Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+            using var error = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.AreEqual(7, error.RootElement.GetProperty("id").GetInt32());
+            Assert.AreEqual(-32001, error.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+
+            string fresh = await InitializeAsync(client);
+            Assert.AreNotEqual(stale, fresh);
+            Assert.Contains("test-host", await CallTextAsync(client, fresh, "list_sessions", new { }));
         }
     }
 
