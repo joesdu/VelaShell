@@ -1111,7 +1111,7 @@ Delegation accepts an optional `modelId` selecting an already configured chat mo
 
 ### 19.6 Let External Agents Call VelaShell: Exposed MCP Server
 
-**Reconnecting after a restart:** A client using an expired MCP session receives HTTP 404 and should send `initialize` again without the old session ID. If it does not recover automatically, reconnect the VelaShell MCP server in the client. There is no need to reinstall VelaShell; this error does not mean SSH has disconnected.
+**Reconnecting after a restart:** A client using an expired MCP session receives HTTP 404 and should send `initialize` again without the old session ID. If it does not recover automatically, reconnect the VelaShell MCP server in the client. There is no need to reinstall VelaShell; this error does not mean SSH has disconnected. The server negotiates MCP `2025-11-25` (compatible with `2025-06-18`); newer sessions require a matching `MCP-Protocol-Version` on later requests. POST requests must accept both `application/json` and `text/event-stream` and use `application/json` bodies. Only loopback Host/Origin values are accepted, and each tool text result is limited to 256 KiB (262,144 characters), with a truncation notice when exceeded.
 
 **Token/permission warning:** Other same-user processes can reach loopback, so protect the token; do not post it in issues/chats. Restrict allowed servers before enabling Agent/bypass, especially for production hosts and token-bearing local tools.
 

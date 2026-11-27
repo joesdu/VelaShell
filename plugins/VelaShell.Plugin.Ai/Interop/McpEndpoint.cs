@@ -28,8 +28,11 @@ namespace VelaShell.Plugin.Ai.Interop;
 public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore store,
     Configuration.AiSettingsStore? aiStore = null) : IAsyncDisposable
 {
-    /// <summary>本实现对齐的协议版本。客户端要更老的版本时按它要的回。</summary>
-    private const string ProtocolVersion = "2025-06-18";
+    /// <summary>本实现对齐的最新协议版本。</summary>
+    private const string LatestProtocolVersion = "2025-11-25";
+
+    /// <summary>仍兼容上一版 HTTP 会话客户端。</summary>
+    private static readonly string[] SupportedProtocolVersions = [LatestProtocolVersion, "2025-06-18"];
 
     /// <summary>一个外部会话闲置多久后丢掉。</summary>
     private static readonly TimeSpan SessionIdleTimeout = TimeSpan.FromHours(2);
@@ -47,6 +50,9 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
 
     /// <summary>单个请求的处理时限。tools/call 可能是一条远程命令,给得宽,但不能没有。</summary>
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromMinutes(5);
+
+    /// <summary>防止异常大的工具输出一次性塞进客户端和模型上下文。</summary>
+    private const int MaxToolResultCharacters = 256 * 1024;
 
     /// <summary>同时保有的外部会话数上限。</summary>
     private const int MaxSessions = 32;
@@ -259,6 +265,12 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
     {
         HttpListenerRequest request = http.Request;
         HttpListenerResponse response = http.Response;
+        if (!IsAllowedHost(request) || !IsAllowedOrigin(request))
+        {
+            response.StatusCode = 403;
+            await WriteAsync(response, """{"error":"forbidden origin or host"}""", cancellationToken).ConfigureAwait(false);
+            return;
+        }
         if (!Authorized(request))
         {
             response.StatusCode = 401;
@@ -270,7 +282,17 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
         {
             case "DELETE":
                 string? ending = SessionId(request);
-                if (string.IsNullOrEmpty(ending) || !_sessions.TryRemove(ending, out McpToolHost? endingHost))
+                if (string.IsNullOrEmpty(ending) || !_sessions.TryGetValue(ending, out McpToolHost? endingHost))
+                {
+                    await WriteSessionErrorAsync(response, ending, null, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+                if (!await ValidateProtocolHeaderAsync(request, endingHost.NegotiatedProtocolVersion, response, null, cancellationToken)
+                        .ConfigureAwait(false))
+                {
+                    return;
+                }
+                if (!_sessions.TryRemove(ending, out endingHost))
                 {
                     await WriteSessionErrorAsync(response, ending, null, cancellationToken).ConfigureAwait(false);
                     return;
@@ -281,9 +303,14 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
 
             case "GET":
                 string? listening = SessionId(request);
-                if (string.IsNullOrEmpty(listening) || !_sessions.ContainsKey(listening))
+                if (string.IsNullOrEmpty(listening) || !_sessions.TryGetValue(listening, out McpToolHost? listeningHost))
                 {
                     await WriteSessionErrorAsync(response, listening, null, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+                if (!await ValidateProtocolHeaderAsync(request, listeningHost.NegotiatedProtocolVersion, response, null, cancellationToken)
+                        .ConfigureAwait(false))
+                {
                     return;
                 }
                 // 服务端不主动推消息,所以不开 SSE 流。协议允许这么回。
@@ -296,6 +323,7 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
 
             default:
                 response.StatusCode = 405;
+                response.AddHeader("Allow", "POST, GET, DELETE");
                 return;
         }
 
@@ -306,6 +334,20 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
         {
             response.StatusCode = 413;
             await WriteAsync(response, """{"error":"request body too large"}""", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        if (!Accepts(request, "application/json", "text/event-stream"))
+        {
+            response.StatusCode = 406;
+            await WriteAsync(response, """{"error":"Accept must include application/json and text/event-stream"}""", cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+        if (!IsJsonContentType(request))
+        {
+            response.StatusCode = 415;
+            await WriteAsync(response, """{"error":"Content-Type must be application/json"}""", cancellationToken)
+                .ConfigureAwait(false);
             return;
         }
         string? body = await ReadBodyAsync(request, cancellationToken).ConfigureAwait(false);
@@ -356,6 +398,12 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
             await WriteSessionErrorAsync(response, requestedSession, id, cancellationToken).ConfigureAwait(false);
             return;
         }
+        if (method != "initialize" && session is not null
+            && !await ValidateProtocolHeaderAsync(http.Request, session.NegotiatedProtocolVersion, response, id, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return;
+        }
         // 已接受的通知没有响应体。
         if (id is null)
         {
@@ -389,11 +437,9 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
                         await host.DisposeAsync().ConfigureAwait(false);
                         throw;
                     }
+                    string version = NegotiateProtocolVersion(parameters);
+                    host.NegotiatedProtocolVersion = version;
                     response.AddHeader("Mcp-Session-Id", sessionId);
-                    string version = parameters.ValueKind == JsonValueKind.Object
-                                     && parameters.TryGetProperty("protocolVersion", out JsonElement requested)
-                        ? requested.GetString() ?? ProtocolVersion
-                        : ProtocolVersion;
                     await WriteAsync(response, Result(id.Value, new
                     {
                         protocolVersion = version,
@@ -441,7 +487,8 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
                     }
                     try
                     {
-                        string text = await session!.CallAsync(name, arguments, cancellationToken, id.Value.GetRawText()).ConfigureAwait(false);
+                        string text = LimitToolResult(await session!.CallAsync(name, arguments, cancellationToken, id.Value.GetRawText())
+                            .ConfigureAwait(false));
                         await WriteAsync(response, Result(id.Value, new
                         {
                             content = new[] { new { type = "text", text } },
@@ -466,6 +513,83 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
                     .ConfigureAwait(false);
                 return;
         }
+    }
+
+    private static bool IsAllowedHost(HttpListenerRequest request)
+    {
+        string host = request.Url?.Host ?? "";
+        return host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || IPAddress.TryParse(host, out IPAddress? address) && IPAddress.IsLoopback(address);
+    }
+
+    private static bool IsAllowedOrigin(HttpListenerRequest request)
+    {
+        string? origin = request.Headers["Origin"];
+        if (string.IsNullOrWhiteSpace(origin))
+        {
+            return true;
+        }
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out Uri? value)
+            || value.AbsolutePath != "/"
+            || value.UserInfo.Length > 0)
+        {
+            return false;
+        }
+        return (value.Scheme == Uri.UriSchemeHttp || value.Scheme == Uri.UriSchemeHttps)
+            && (value.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                || IPAddress.TryParse(value.Host, out IPAddress? address) && IPAddress.IsLoopback(address));
+    }
+
+    private static bool Accepts(HttpListenerRequest request, params string[] mediaTypes)
+    {
+        string[] accepted = (request.Headers["Accept"] ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(static item => item.Split(';', 2)[0].Trim())
+            .ToArray();
+        return mediaTypes.All(mediaType => accepted.Any(item => item == "*/*"
+            || item.Equals(mediaType, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool IsJsonContentType(HttpListenerRequest request)
+        => (request.ContentType ?? "").Split(';', 2)[0].Trim()
+            .Equals("application/json", StringComparison.OrdinalIgnoreCase);
+
+    private static string NegotiateProtocolVersion(JsonElement parameters)
+    {
+        if (parameters.ValueKind == JsonValueKind.Object
+            && parameters.TryGetProperty("protocolVersion", out JsonElement requested)
+            && requested.ValueKind == JsonValueKind.String
+            && requested.GetString() is string version
+            && SupportedProtocolVersions.Contains(version, StringComparer.Ordinal))
+        {
+            return version;
+        }
+        // Clients predating the protocol-version field are kept on the legacy wire behavior.
+        return parameters.ValueKind == JsonValueKind.Object
+            && parameters.TryGetProperty("protocolVersion", out _)
+            ? LatestProtocolVersion
+            : "2025-06-18";
+    }
+
+    private static async Task<bool> ValidateProtocolHeaderAsync(HttpListenerRequest request, string negotiated,
+        HttpListenerResponse response, JsonElement? id, CancellationToken cancellationToken)
+    {
+        string? header = request.Headers["MCP-Protocol-Version"];
+        if (string.IsNullOrEmpty(header) && negotiated == "2025-06-18")
+        {
+            return true;
+        }
+        if (header == negotiated)
+        {
+            return true;
+        }
+        response.StatusCode = 400;
+        await WriteAsync(response, Error(id, -32600,
+            string.IsNullOrEmpty(header)
+                ? $"Missing MCP-Protocol-Version; expected {negotiated}."
+                : $"Unsupported or mismatched MCP-Protocol-Version: {header}."), cancellationToken)
+            .ConfigureAwait(false);
+        return false;
     }
 
     private static Task WriteSessionErrorAsync(HttpListenerResponse response, string? sessionId, JsonElement? id,
@@ -525,6 +649,12 @@ public sealed class McpEndpoint(IPluginContext context, McpServerSettingsStore s
         byte[] expected = Encoding.UTF8.GetBytes(_token);
         return presented.Length == expected.Length && CryptographicOperations.FixedTimeEquals(presented, expected);
     }
+
+    private static string LimitToolResult(string text)
+        => text.Length <= MaxToolResultCharacters
+            ? text
+            : text[..MaxToolResultCharacters]
+              + $"\n[Output truncated at {MaxToolResultCharacters:N0} characters by VelaShell MCP.]";
 
     private static string Result(JsonElement id, object result)
         => JsonSerializer.Serialize(new { jsonrpc = "2.0", id, result });

@@ -52,6 +52,9 @@ internal sealed class McpToolHost : IAsyncDisposable
     /// <summary>暴露给外部 agent 的工具(建好就不变)。</summary>
     public IReadOnlyList<AIFunction> Tools { get; }
 
+    /// <summary>本会话在 initialize 中协商出的 MCP 协议版本。</summary>
+    public string NegotiatedProtocolVersion { get; set; } = "2025-06-18";
+
     /// <summary>最后一次活动时刻(空闲会话回收看它)。</summary>
     public DateTimeOffset LastActivity { get; set; } = DateTimeOffset.UtcNow;
 

@@ -1111,7 +1111,7 @@ IM 机器人在 Agent 模式下同样可以委派子 Agent，候选同样覆盖�
 
 ### 19.6 让外部 Agent 调用 VelaShell：对外 MCP
 
-**重启后恢复连接：** 外部客户端使用旧 MCP 会话会收到 HTTP 404，应不带旧会话 ID 重新发送 `initialize`。如果客户端没有自动恢复，重新连接其 VelaShell MCP 服务即可，无需重装 VelaShell。这个错误不表示 SSH 已断开。
+**重启后恢复连接：** 外部客户端使用旧 MCP 会话会收到 HTTP 404，应不带旧会话 ID 重新发送 `initialize`。如果客户端没有自动恢复，重新连接其 VelaShell MCP 服务即可，无需重装 VelaShell。这个错误不表示 SSH 已断开。服务端协商 MCP `2025-11-25`（兼容 `2025-06-18`）；新版会话的后续请求要带匹配的 `MCP-Protocol-Version`，POST 要声明同时接受 `application/json` 与 `text/event-stream`，正文使用 `application/json`。服务端只接受回环 Host/Origin，单次工具文本结果限制为 256 KiB（262,144 个字符），超出会附截断提示。
 
 **令牌与权限风险：** 本机回环也可被同用户进程访问，必须保护令牌；不要贴进 issue 或群聊。提升 Agent 模式/绕过审批前先限制服务器范围，尤其不要把生产机默认暴露给所有持令牌的本机工具。
 

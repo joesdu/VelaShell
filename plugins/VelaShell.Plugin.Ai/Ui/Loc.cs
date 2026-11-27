@@ -1170,6 +1170,23 @@ public sealed class Loc(string locale)
             "이 컴퓨터의 어떤 프로그램도 로컬 포트에 접근할 수 있습니다. 이를 막는 것은 이 토큰뿐입니다."
         ],
         ["McpServerCommand"] = ["How to connect", "接入方式", "接入方式", "接続方法", "연결 방법"],
+        ["McpServerCommandHint"] = [
+            "Choose your client, then copy the complete configuration for that client.",
+            "先选客户端,再复制该客户端可直接使用的完整配置。",
+            "先選客戶端,再複製該客戶端可直接使用的完整設定。",
+            "クライアントを選び、そのクライアントでそのまま使える設定全体をコピーします。",
+            "클라이언트를 선택한 뒤 해당 클라이언트에서 바로 사용할 전체 설정을 복사하세요."
+        ],
+        ["McpClaudeTab"] = ["Claude Code", "Claude Code", "Claude Code", "Claude Code", "Claude Code"],
+        ["McpCodexTab"] = ["Codex", "Codex", "Codex", "Codex", "Codex"],
+        ["McpCopilotTab"] = ["GitHub Copilot", "GitHub Copilot", "GitHub Copilot", "GitHub Copilot", "GitHub Copilot"],
+        ["McpJsonTab"] = ["Generic JSON", "通用 JSON", "通用 JSON", "汎用 JSON", "일반 JSON"],
+        ["McpClaudeHint"] = ["Paste this command into Claude Code.", "把这条命令粘贴到 Claude Code。", "把這條命令貼到 Claude Code。", "このコマンドを Claude Code に貼り付けます。", "이 명령을 Claude Code에 붙여넣으세요."],
+        ["McpCodexHint"] = ["Paste this TOML into ~/.codex/config.toml.", "把这段 TOML 粘贴到 ~/.codex/config.toml。", "把這段 TOML 貼到 ~/.codex/config.toml。", "この TOML を ~/.codex/config.toml に貼り付けます。", "이 TOML을 ~/.codex/config.toml에 붙여넣으세요."],
+        ["McpCopilotHint"] = ["Paste this JSON into .vscode/mcp.json for GitHub Copilot in VS Code.", "把这段 JSON 粘贴到 VS Code 的 .vscode/mcp.json,供 GitHub Copilot 使用。", "把這段 JSON 貼到 VS Code 的 .vscode/mcp.json,供 GitHub Copilot 使用。", "この JSON を VS Code の .vscode/mcp.json に貼り付けて GitHub Copilot で使います。", "이 JSON을 VS Code의 .vscode/mcp.json에 붙여 넣어 GitHub Copilot에서 사용하세요."],
+        ["McpJsonHint"] = ["Use this mcpServers JSON with clients that support the standard format.", "支持标准格式的客户端可使用这段 mcpServers JSON。", "支援標準格式的客戶端可使用這段 mcpServers JSON。", "標準形式に対応するクライアントでこの mcpServers JSON を使います。", "표준 형식을 지원하는 클라이언트에서 이 mcpServers JSON을 사용하세요."],
+        ["McpCopyConfig"] = ["Copy config", "复制配置", "複製設定", "設定をコピー", "설정 복사"],
+        ["McpCopied"] = ["Copied to clipboard.", "已复制到剪贴板。", "已複製到剪貼簿。", "クリップボードにコピーしました。", "클립보드에 복사했습니다."],
         ["McpServerRotate"] = ["Regenerate", "重新生成", "重新產生", "再生成", "재생성"],
         ["McpServerRotated"] = ["New token generated — update your agent's config.", "已生成新令牌 —— 记得同步改你 agent 那边的配置。", "已產生新權杖 —— 記得同步改你 agent 那邊的設定。", "新しいトークンを生成しました。エージェント側の設定も更新してください。", "새 토큰을 생성했습니다. 에이전트 설정도 업데이트하세요."],
 
