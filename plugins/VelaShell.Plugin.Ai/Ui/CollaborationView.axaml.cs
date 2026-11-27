@@ -119,8 +119,11 @@ public partial class CollaborationView : UserControl
         McpPortBox.TextChanged += (_, _) => UpdateCommandSample();
         AddChannelButton.Click += (_, _) => AddChannel();
         SaveButton.Click += (_, _) => _ = SaveAsync();
-        CopyTokenButton.Click += (_, _) => _ = _context.Clipboard.SetTextAsync(_token);
-        CopyCommandButton.Click += (_, _) => _ = _context.Clipboard.SetTextAsync(McpCommandBox.Text ?? "");
+        CopyTokenButton.Click += (_, _) => _ = CopyMcpTextAsync(_token);
+        CopyCommandButton.Click += (_, _) => _ = CopyMcpTextAsync(McpCommandBox.Text);
+        CopyCodexButton.Click += (_, _) => _ = CopyMcpTextAsync(McpCodexBox.Text);
+        CopyCopilotButton.Click += (_, _) => _ = CopyMcpTextAsync(McpCopilotBox.Text);
+        CopyJsonButton.Click += (_, _) => _ = CopyMcpTextAsync(McpJsonBox.Text);
         RotateTokenButton.Click += (_, _) => _ = RotateTokenAsync();
 
         _ = LoadAsync();
@@ -173,8 +176,20 @@ public partial class CollaborationView : UserControl
         McpTokenLabel.Text = _loc["McpServerToken"];
         McpTokenHint.Text = _loc["McpServerTokenHint"];
         McpCommandLabel.Text = _loc["McpServerCommand"];
+        McpCommandHint.Text = _loc["McpServerCommandHint"];
+        McpClaudeHint.Text = _loc["McpClaudeHint"];
+        McpCodexHint.Text = _loc["McpCodexHint"];
+        McpCopilotHint.Text = _loc["McpCopilotHint"];
+        McpJsonHint.Text = _loc["McpJsonHint"];
+        McpClaudeTab.Header = _loc["McpClaudeTab"];
+        McpCodexTab.Header = _loc["McpCodexTab"];
+        McpCopilotTab.Header = _loc["McpCopilotTab"];
+        McpJsonTab.Header = _loc["McpJsonTab"];
         CopyTokenButton.Content = _loc["Copy"];
-        CopyCommandButton.Content = _loc["Copy"];
+        CopyCommandButton.Content = _loc["McpCopyConfig"];
+        CopyCodexButton.Content = _loc["McpCopyConfig"];
+        CopyCopilotButton.Content = _loc["McpCopyConfig"];
+        CopyJsonButton.Content = _loc["McpCopyConfig"];
         RotateTokenButton.Content = _loc["McpServerRotate"];
         SaveButton.Content = _loc["Save"];
 
@@ -801,17 +816,25 @@ public partial class CollaborationView : UserControl
         McpDetailPanel.IsVisible = McpEnabledCheck.IsChecked == true;
     }
 
-    /// <summary>把接入方式写成可以直接粘走的两段:Claude Code 的命令,以及通用的 mcp.json 片段。</summary>
+    /// <summary>为每种客户端生成可以直接粘贴的 MCP 配置。</summary>
     private void UpdateCommandSample()
     {
         int port = int.TryParse(McpPortBox.Text, out int parsed) ? parsed : _mcp.Port;
         string url = $"http://127.0.0.1:{port}/mcp";
-        // 两段:Claude Code 的一行命令,以及其它客户端通用的 mcp.json 片段。
-        // 大括号在插值字符串里要转义,索性用拼接写 —— 这段是要被原样复制走的,不能写错一个字符。
-        string json = "{\"mcpServers\":{\"velashell\":{\"type\":\"http\",\"url\":\"" + url
-                      + "\",\"headers\":{\"Authorization\":\"Bearer " + _token + "\"}}}}";
-        McpCommandBox.Text = $"claude mcp add --transport http velashell {url} --header \"Authorization: Bearer {_token}\""
-                             + Environment.NewLine + Environment.NewLine + json;
+        string auth = $"Bearer {_token}";
+        McpCommandBox.Text = $"claude mcp add --transport http velashell {url} --header \"Authorization: {auth}\"";
+        McpCodexBox.Text = $"[mcp_servers.velashell]{Environment.NewLine}url = \"{url}\"{Environment.NewLine}http_headers = {{ Authorization = \"{auth}\" }}";
+        McpCopilotBox.Text = $"{{{Environment.NewLine}  \"servers\": {{{Environment.NewLine}    \"velashell\": {{{Environment.NewLine}      \"type\": \"http\",{Environment.NewLine}      \"url\": \"{url}\",{Environment.NewLine}      \"headers\": {{ \"Authorization\": \"{auth}\" }}{Environment.NewLine}    }}{Environment.NewLine}  }}{Environment.NewLine}}}";
+        McpJsonBox.Text = $"{{{Environment.NewLine}  \"mcpServers\": {{{Environment.NewLine}    \"velashell\": {{{Environment.NewLine}      \"url\": \"{url}\",{Environment.NewLine}      \"headers\": {{ \"Authorization\": \"{auth}\" }}{Environment.NewLine}    }}{Environment.NewLine}  }}{Environment.NewLine}}}";
+    }
+
+    private async Task CopyMcpTextAsync(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        await _context.Clipboard.SetTextAsync(text);
+        McpCopyStatus.Text = _loc["McpCopied"];
     }
 
     private async Task SaveAsync()

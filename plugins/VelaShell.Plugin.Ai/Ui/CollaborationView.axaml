@@ -194,20 +194,56 @@
                   <TextBlock x:Name="McpTokenHint" Classes="hint" />
                 </StackPanel>
 
-                <!-- 复制键放在标题行上,文本框自己占满一行。
-                     **这里刻意用 NoWrap,别改成 Wrap。**外层 ScrollViewer 的竖滚动条是 Auto:
-                     会换行的文本一旦让内容高度正好卡在"要不要出滚动条"的边界上,出滚动条 → 可用宽度变窄
-                     → 文本重排变高 → 还是要滚动条 → 收回滚动条…… measure/arrange 就这么来回震荡,
-                     表现是窗口整个卡死(headless 测试里是一分钟超时,连异常都没有)。
-                     实测:同一个框内容为空时没事,填上接入命令(两行长串)就必挂。
-                     这里的内容本来就是给人整段复制走的,横向滚动完全够用。 -->
                 <StackPanel>
-                  <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,4">
-                    <TextBlock x:Name="McpCommandLabel" Classes="label" VerticalAlignment="Center" />
-                    <Button x:Name="CopyCommandButton" Grid.Column="1" MinWidth="64" Classes="host" />
-                  </Grid>
-                  <TextBox x:Name="McpCommandBox" IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True"
-                           MinHeight="64" FontFamily="{DynamicResource VelaUiMonoFont}" />
+                  <TextBlock x:Name="McpCommandLabel" Classes="label" />
+                  <TextBlock x:Name="McpCommandHint" Classes="hint" TextWrapping="Wrap" Margin="0,2,0,6" />
+                  <TabControl x:Name="McpFormatTabs">
+                    <TabItem x:Name="McpClaudeTab">
+                      <TabItem.Header>Claude Code</TabItem.Header>
+                      <StackPanel Margin="0,6,0,0">
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+                          <TextBlock x:Name="McpClaudeHint" Classes="hint" VerticalAlignment="Center" />
+                          <Button x:Name="CopyCommandButton" Grid.Column="1" MinWidth="64" Classes="host" />
+                        </Grid>
+                        <TextBox x:Name="McpCommandBox" IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True"
+                                 MinHeight="64" FontFamily="{DynamicResource VelaUiMonoFont}" />
+                      </StackPanel>
+                    </TabItem>
+                    <TabItem x:Name="McpCodexTab">
+                      <TabItem.Header>Codex</TabItem.Header>
+                      <StackPanel Margin="0,6,0,0">
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+                          <TextBlock x:Name="McpCodexHint" Classes="hint" VerticalAlignment="Center" />
+                          <Button x:Name="CopyCodexButton" Grid.Column="1" MinWidth="64" Classes="host" />
+                        </Grid>
+                        <TextBox x:Name="McpCodexBox" IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True"
+                                 MinHeight="100" FontFamily="{DynamicResource VelaUiMonoFont}" />
+                      </StackPanel>
+                    </TabItem>
+                    <TabItem x:Name="McpCopilotTab">
+                      <TabItem.Header>GitHub Copilot</TabItem.Header>
+                      <StackPanel Margin="0,6,0,0">
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+                          <TextBlock x:Name="McpCopilotHint" Classes="hint" VerticalAlignment="Center" />
+                          <Button x:Name="CopyCopilotButton" Grid.Column="1" MinWidth="64" Classes="host" />
+                        </Grid>
+                        <TextBox x:Name="McpCopilotBox" IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True"
+                                 MinHeight="100" FontFamily="{DynamicResource VelaUiMonoFont}" />
+                      </StackPanel>
+                    </TabItem>
+                    <TabItem x:Name="McpJsonTab">
+                      <TabItem.Header>Generic JSON</TabItem.Header>
+                      <StackPanel Margin="0,6,0,0">
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+                          <TextBlock x:Name="McpJsonHint" Classes="hint" VerticalAlignment="Center" />
+                          <Button x:Name="CopyJsonButton" Grid.Column="1" MinWidth="64" Classes="host" />
+                        </Grid>
+                        <TextBox x:Name="McpJsonBox" IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True"
+                                 MinHeight="100" FontFamily="{DynamicResource VelaUiMonoFont}" />
+                      </StackPanel>
+                    </TabItem>
+                  </TabControl>
+                  <TextBlock x:Name="McpCopyStatus" Classes="hint" Margin="0,6,0,0" />
                 </StackPanel>
               </StackPanel>
             </StackPanel>

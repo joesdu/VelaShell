@@ -196,6 +196,20 @@ public sealed class CollaborationViewUiTests
                 Assert.Contains("http://127.0.0.1:9123/mcp", sample);
                 Assert.Contains(token, sample);
                 Assert.Contains("claude mcp add --transport http", sample);
+
+                string codex = view.FindControl<TextBox>("McpCodexBox")!.Text ?? "";
+                Assert.Contains("[mcp_servers.velashell]", codex);
+                Assert.Contains("http_headers", codex);
+                Assert.Contains(token, codex);
+
+                string copilot = view.FindControl<TextBox>("McpCopilotBox")!.Text ?? "";
+                Assert.Contains("\"servers\"", copilot);
+                Assert.Contains("\"type\": \"http\"", copilot);
+                Assert.Contains(token, copilot);
+
+                string generic = view.FindControl<TextBox>("McpJsonBox")!.Text ?? "";
+                Assert.Contains("\"mcpServers\"", generic);
+                Assert.Contains(token, generic);
                 return Task.CompletedTask;
             });
         });
