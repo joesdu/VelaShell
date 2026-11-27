@@ -14,23 +14,9 @@ using VelaShell.PluginSdk.Testing;
 namespace VelaShell.Plugin.Ai.Tests;
 
 /// <summary>
-/// 外部 MCP 服务器配成「HTTP」(自动探测)那一档时,插件真实的连接代码(<see cref="McpManager" />)
-/// 连得上两种 HTTP 服务器:老式 HTTP + SSE(2024-11-05 规范:<c>GET /sse</c> + <c>POST /messages?sessionId=</c>),
-/// 以及 Streamable HTTP(带会话的 2025-11-25 与无会话的 2026-07-28 两种)。
+/// 外部 MCP 服务器配成 HTTP 时,插件真实的 Streamable HTTP 连接代码(<see cref="McpManager" />)。
+/// 覆盖带会话的 2025-11-25、无会话的新版 Streamable HTTP，以及无响应服务器。
 /// </summary>
-/// <remarks>
-/// <para>
-/// 起因(#651 复审④):#654 把 MCP C# SDK 升到 2.3 之后,自动探测的第一步换成了 2026-07-28 的 <c>server/discover</c> 探测
-/// (<c>AutoDetectingClientSessionTransport.IsDiscoverProbeRejection</c>、<c>ServerDiscoverSkippedForSseException</c>),
-/// 读代码判断不了老式 SSE 服务器还连不连得上。这里在进程内用 SDK 自带的服务端传输
-/// (<see cref="SseResponseStreamTransport" />、<see cref="StreamableHttpServerTransport" />)加 <see cref="HttpListener" />
-/// 起服务器,不要 Docker、不出本机。
-/// </para>
-/// <para>
-/// 老式服务器对发到 <c>/sse</c> 的 POST 怎么答各家不一(没有这条路由的 404、只认 GET 的 405、拒收的 400),三种都测;
-/// 400 / 404 会先被当成「这台只认 initialize 握手」再用 Streamable HTTP 试一次 initialize,再失败才回落 SSE。
-/// </para>
-/// </remarks>
 [TestClass]
 [TestCategory("Plugins")]
 public sealed class McpHttpTransportTests
@@ -174,30 +160,9 @@ public sealed class McpHttpTransportTests
     }
 
     [TestMethod]
-    [DataRow(400)]
-    [DataRow(404)]
-    [DataRow(405)]
-    public async Task AutoDetect_FallsBackToLegacySse_ListsAndCallsTheTool(int postStatus)
-    {
-        await using var server = new McpTestServer(McpTestServer.Kind.LegacySse, postStatus);
-        var config = new McpServerConfig { Name = "legacy", Transport = McpTransportType.Http, Url = server.BaseUrl + "/sse" };
-
-        await AssertListsAndCallsEchoAsync(config);
-
-        string[] log = server.Log;
-        Assert.Contains(line => line.StartsWith("GET /sse", StringComparison.Ordinal), log, "回落到了老式 SSE 的 GET 长连接");
-        Assert.Contains(line => line.StartsWith("POST /messages?sessionId=", StringComparison.Ordinal) && line.Contains("\"tools/call\"", StringComparison.Ordinal), log,
-            "工具调用走的是 endpoint 事件给出的 /messages 地址");
-        Assert.Contains("\"protocolVersion\":\"2024-11-05\"", server.SseTranscript, "服务器按自己认的老版本答 initialize");
-        int initialize = Array.FindIndex(log, line => line.Contains("\"initialize\"", StringComparison.Ordinal));
-        Assert.IsTrue(initialize >= 0 && Array.FindIndex(log, initialize, line => line.Contains("\"tools/list\"", StringComparison.Ordinal)) > initialize,
-            "客户端接受降级,接着列工具");
-    }
-
-    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public async Task AutoDetect_UsesStreamableHttp_WhenTheServerSpeaksIt(bool stateless)
+    public async Task StreamableHttp_ListsAndCallsTheTool(bool stateless)
     {
         await using var server = new McpTestServer(stateless ? McpTestServer.Kind.StreamableStateless : McpTestServer.Kind.StreamableSession, 400);
         var config = new McpServerConfig { Name = "modern", Transport = McpTransportType.Http, Url = server.BaseUrl + "/mcp" };
@@ -207,7 +172,7 @@ public sealed class McpHttpTransportTests
         string[] log = server.Log;
         Assert.Contains(line => line.StartsWith("POST /mcp", StringComparison.Ordinal) && line.Contains("\"tools/call\"", StringComparison.Ordinal), log);
         Assert.DoesNotContain(line => line.Contains("/messages", StringComparison.Ordinal) || line.StartsWith("GET /sse", StringComparison.Ordinal), log,
-            "对照组:说 Streamable HTTP 的服务器不该被回落成 SSE");
+            "Streamable HTTP 连接不应访问旧版端点");
         if (stateless)
         {
             Assert.DoesNotContain(line => line.Contains("\"initialize\"", StringComparison.Ordinal), log, "2026-07-28 无会话:探测通过就不再握手");
@@ -242,9 +207,6 @@ public sealed class McpHttpTransportTests
     {
         public enum Kind
         {
-            /// <summary>2024-11-05 的 HTTP + SSE:<c>GET /sse</c> 收事件,<c>POST /messages?sessionId=</c> 发消息。</summary>
-            LegacySse,
-
             /// <summary>带 <c>Mcp-Session-Id</c> 的 Streamable HTTP:不认 <c>server/discover</c>,按 initialize 握手。</summary>
             StreamableSession,
 
@@ -258,8 +220,6 @@ public sealed class McpHttpTransportTests
         private readonly HttpListener _listener;
         private readonly CancellationTokenSource _stop = new();
         private readonly ConcurrentQueue<string> _log = new();
-        private readonly StringBuilder _sseTranscript = new();
-        private readonly ConcurrentDictionary<string, SseResponseStreamTransport> _sse = new();
         private readonly ConcurrentDictionary<string, StreamableHttpServerTransport> _sessions = new();
         private readonly ConcurrentBag<IAsyncDisposable> _owned = [];
         private readonly Task _loop;
@@ -294,14 +254,9 @@ public sealed class McpHttpTransportTests
         /// <summary>收到的每个请求一行:「方法 路径+查询 正文」。</summary>
         public string[] Log => [.. _log];
 
-        /// <summary>老式 SSE 长连接上服务器写出去的全部字节(endpoint 事件与各条响应)。</summary>
-        public string SseTranscript { get { lock (_sseTranscript) return _sseTranscript.ToString(); } }
-
-        private McpServerOptions Options() => new()
+        private static McpServerOptions Options() => new()
         {
             ServerInfo = new Implementation { Name = "vela-test", Version = "1.0" },
-            // 老式服务器只认 2024-11-05:按它答 initialize,看客户端肯不肯降级
-            ProtocolVersion = _kind == Kind.LegacySse ? "2024-11-05" : null,
             ToolCollection = [McpServerTool.Create((string text) => text == "__fail__"
                 ? throw new InvalidOperationException("test tool failure") : "echo:" + text,
                 new McpServerToolCreateOptions { Name = "echo", Description = "Echo the text back." })]
@@ -336,9 +291,6 @@ public sealed class McpHttpTransportTests
                     case Kind.Unresponsive:
                         await Task.Delay(Timeout.Infinite, _stop.Token);
                         break;
-                    case Kind.LegacySse:
-                        await HandleLegacyAsync(request, response, body);
-                        break;
                     default:
                         await HandleStreamableAsync(request, response, body);
                         break;
@@ -357,41 +309,6 @@ public sealed class McpHttpTransportTests
             {
                 try { response.Close(); } catch (Exception) { /* 客户端已断开 */ }
             }
-        }
-
-        private async Task HandleLegacyAsync(HttpListenerRequest request, HttpListenerResponse response, string body)
-        {
-            string path = request.Url!.AbsolutePath;
-            if (request.HttpMethod == "GET" && path == "/sse")
-            {
-                string id = Guid.NewGuid().ToString("N");
-                response.ContentType = "text/event-stream";
-                response.SendChunked = true;
-                response.Headers["Cache-Control"] = "no-cache";
-                var transport = new SseResponseStreamTransport(new TeeStream(response.OutputStream, _sseTranscript), $"/messages?sessionId={id}", id);
-                _owned.Add(transport);
-                _sse[id] = transport;
-                Task pump = transport.RunAsync(_stop.Token);
-                var server = McpServer.Create(transport, Options());
-                _owned.Add(server);
-                await server.RunAsync(_stop.Token);
-                await pump;
-                return;
-            }
-            if (request.HttpMethod == "POST" && path == "/messages")
-            {
-                if (request.QueryString["sessionId"] is not { } id || !_sse.TryGetValue(id, out SseResponseStreamTransport? transport))
-                {
-                    response.StatusCode = 404;
-                    return;
-                }
-                JsonRpcMessage message = JsonSerializer.Deserialize<JsonRpcMessage>(body, McpJsonUtilities.DefaultOptions)!;
-                await transport.OnMessageReceivedAsync(message, _stop.Token);
-                response.StatusCode = 202;
-                return;
-            }
-            // 发到 /sse 的 POST(Streamable HTTP 探测):老式服务器不认
-            response.StatusCode = _rejectStatus;
         }
 
         private async Task HandleStreamableAsync(HttpListenerRequest request, HttpListenerResponse response, string body)
@@ -448,42 +365,6 @@ public sealed class McpHttpTransportTests
             if (!await transport.HandlePostRequestAsync(message, response.OutputStream, _stop.Token))
             {
                 response.StatusCode = 202;
-            }
-        }
-
-        /// <summary>写进响应流的同时抄一份,用来核对服务器真正答了什么。</summary>
-        private sealed class TeeStream(Stream inner, StringBuilder copy) : Stream
-        {
-            public override bool CanRead => false;
-            public override bool CanSeek => false;
-            public override bool CanWrite => true;
-            public override long Length => throw new NotSupportedException();
-            public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
-            public override void Flush() => inner.Flush();
-            public override Task FlushAsync(CancellationToken cancellationToken) => inner.FlushAsync(cancellationToken);
-            public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-            public override void SetLength(long value) => throw new NotSupportedException();
-
-            public override void Write(byte[] buffer, int offset, int count)
-            {
-                Record(buffer.AsSpan(offset, count));
-                inner.Write(buffer, offset, count);
-            }
-
-            public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
-            {
-                Record(buffer.Span);
-                await inner.WriteAsync(buffer, cancellationToken);
-            }
-
-            public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-                => WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
-
-            private void Record(ReadOnlySpan<byte> bytes)
-            {
-                string text = Encoding.UTF8.GetString(bytes);
-                lock (copy) copy.Append(text);
             }
         }
 

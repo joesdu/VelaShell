@@ -898,7 +898,7 @@ public sealed class Loc(string locale)
         ["McpToolsKnown"] = ["Tool library: {0} tools · updated {1}", "工具库:{0} 个 · 更新于 {1}", "工具庫:{0} 個 · 更新於 {1}", "ツールライブラリ:{0} 件 · 更新 {1}", "도구 라이브러리: {0}개 · 갱신 {1}"],
         ["McpToolsUnknown"] = ["Tool library not fetched yet — hit Test to connect and pull it in.", "工具库尚未拉取 —— 点「测试」连一次就会带回来。", "工具庫尚未拉取 —— 點「測試」連一次就會帶回來。", "ツールライブラリ未取得 —— 「テスト」で接続すると取り込まれます。", "도구 라이브러리 미조회 —— 「테스트」로 접속하면 가져옵니다."],
         ["McpStdioHint"] = ["Arguments go on one line; quote any fragment containing spaces.", "参数写在一行里,含空格的片段用引号括起来。", "參數寫在一行裡,含空格的片段用引號括起來。", "引数は 1 行に。空白を含む断片は引用符で囲みます。", "인수는 한 줄에 작성하고, 공백이 포함된 조각은 따옴표로 묶으세요."],
-        ["McpHttpHint"] = ["Streamable HTTP / SSE is detected automatically.", "Streamable HTTP / SSE 会自动探测。", "Streamable HTTP / SSE 會自動探測。", "Streamable HTTP / SSE は自動判定します。", "Streamable HTTP / SSE 는 자동으로 판별합니다."],
+        ["McpHttpHint"] = ["Streamable HTTP is supported.", "支持 Streamable HTTP。", "支援 Streamable HTTP。", "Streamable HTTP に対応します。", "Streamable HTTP를 지원합니다."],
         ["McpTransport"] = ["Transport", "传输方式", "傳輸方式", "トランスポート", "전송 방식"],
         ["McpCommand"] = ["Command (e.g. npx / uvx / python)", "命令(如 npx / uvx / python)", "命令(如 npx / uvx / python)", "コマンド(例:npx / uvx / python)", "명령(예: npx / uvx / python)"],
         ["McpArguments"] = ["Arguments (one line, quote items with spaces)", "参数(单行,含空格的片段用引号包裹)", "參數(單行,含空格的片段用引號包裹)", "引数(1 行、空白を含む場合は引用符で囲む)", "인수(한 줄, 공백 포함 시 따옴표 사용)"],

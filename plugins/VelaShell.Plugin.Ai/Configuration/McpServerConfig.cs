@@ -9,7 +9,7 @@ public enum McpTransportType
     /// <summary>本地进程,标准输入输出通信(npx / uvx / 任意可执行文件)。</summary>
     Stdio,
 
-    /// <summary>远端 HTTP 端点(Streamable HTTP / SSE,自动探测)。</summary>
+    /// <summary>远端 HTTP 端点(Streamable HTTP)。</summary>
     Http
 }
 
