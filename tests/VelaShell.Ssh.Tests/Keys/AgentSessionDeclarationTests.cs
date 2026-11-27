@@ -100,7 +100,16 @@ public sealed class AgentSessionDeclarationTests
         {
             while (!cts.IsCancellationRequested)
             {
-                Socket accepted = await listener.AcceptAsync(cts.Token);
+                Socket accepted;
+                try
+                {
+                    accepted = await listener.AcceptAsync(cts.Token);
+                }
+                catch (SocketException ex) when (cts.IsCancellationRequested && ex.SocketErrorCode == SocketError.OperationAborted)
+                {
+                    // Windows 上取消挂起的 Accept 也可能直接返回套接字错误。
+                    break;
+                }
                 lock (sessions)
                 {
                     sessions.Add(agent.ServeAsync(new NetworkStream(accepted, ownsSocket: true), cts.Token));
