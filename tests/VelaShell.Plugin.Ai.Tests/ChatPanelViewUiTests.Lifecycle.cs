@@ -129,7 +129,7 @@ public sealed partial class ChatPanelViewUiTests
                 SuggestFollowUps = false
             });
             (Window window, ChatPanelView panel) = await ShowAsync(context);
-            Window? settingsHost = null, catalogHost = null;
+            Window? settingsHost = null;
             try
             {
                 var health = (ProviderHealth)typeof(ChatPanelView)
@@ -143,8 +143,7 @@ public sealed partial class ChatPanelViewUiTests
                 settings.GetControl<Button>("AddButton")
                     .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
                 await PumpAsync(5);
-                var catalog = (ProviderSetupView)context.FakeUi.LastPanel.CreateContent();
-                catalogHost = Host(catalog);
+                var catalog = settings.GetLogicalDescendants().OfType<ProviderSetupView>().Single();
                 catalog.FocusEntry(provider.CatalogId, provider.Id);
                 await PumpAsync(5);
                 T CatalogControl<T>(string name) where T : Control => catalog.GetLogicalDescendants()
@@ -197,7 +196,6 @@ public sealed partial class ChatPanelViewUiTests
             finally
             {
                 endpoint.Release();
-                catalogHost?.Close();
                 settingsHost?.Close();
                 panel.Detach();
                 window.Close();
@@ -225,7 +223,7 @@ public sealed partial class ChatPanelViewUiTests
             var store = new AiSettingsStore(context);
             await store.SaveAsync(new AiSettings { Providers = [provider], ActiveModelId = editedId });
             (Window window, ChatPanelView panel) = await ShowAsync(context);
-            Window? settingsHost = null, catalogHost = null;
+            Window? settingsHost = null;
             try
             {
                 var health = (ProviderHealth)typeof(ChatPanelView)
@@ -236,8 +234,7 @@ public sealed partial class ChatPanelViewUiTests
                 settingsHost = Host(settings);
                 RaiseClick(settings.GetControl<Button>("AddButton"));
                 await PumpAsync(5);
-                var catalog = (ProviderSetupView)context.FakeUi.LastPanel.CreateContent();
-                catalogHost = Host(catalog);
+                var catalog = settings.GetLogicalDescendants().OfType<ProviderSetupView>().Single();
                 catalog.FocusEntry(provider.CatalogId, provider.Id);
                 await PumpAsync(5);
                 T CatalogControl<T>(string name) where T : Control => catalog.GetLogicalDescendants()
@@ -267,7 +264,7 @@ public sealed partial class ChatPanelViewUiTests
             }
             finally
             {
-                endpoint.Release(); catalogHost?.Close(); settingsHost?.Close(); panel.Detach(); window.Close();
+                endpoint.Release(); settingsHost?.Close(); panel.Detach(); window.Close();
             }
         });
     }
@@ -288,7 +285,7 @@ public sealed partial class ChatPanelViewUiTests
             var store = new AiSettingsStore(context);
             await store.SaveAsync(new AiSettings { Providers = [provider], ActiveModelId = provider.Models[0].Id });
             (Window window, ChatPanelView panel) = await ShowAsync(context);
-            Window? settingsHost = null, catalogHost = null;
+            Window? settingsHost = null;
             try
             {
                 var health = (ProviderHealth)typeof(ChatPanelView)
@@ -299,8 +296,7 @@ public sealed partial class ChatPanelViewUiTests
                 settingsHost = Host(settings);
                 RaiseClick(settings.GetControl<Button>("AddButton"));
                 await PumpAsync(5);
-                var catalog = (ProviderSetupView)context.FakeUi.LastPanel.CreateContent();
-                catalogHost = Host(catalog);
+                var catalog = settings.GetLogicalDescendants().OfType<ProviderSetupView>().Single();
                 catalog.FocusEntry(provider.CatalogId, provider.Id);
                 await PumpAsync(5);
                 T CatalogControl<T>(string name) where T : Control => catalog.GetLogicalDescendants()
@@ -329,7 +325,7 @@ public sealed partial class ChatPanelViewUiTests
             }
             finally
             {
-                endpoint.Release(); catalogHost?.Close(); settingsHost?.Close(); panel.Detach(); window.Close();
+                endpoint.Release(); settingsHost?.Close(); panel.Detach(); window.Close();
             }
         });
     }

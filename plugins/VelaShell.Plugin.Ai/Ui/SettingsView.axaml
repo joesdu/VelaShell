@@ -26,6 +26,7 @@
   <!-- 版式对齐宿主设置页:左边一条 bg-sidebar 导航(贴着窗口边,跟着卡片左下圆角),
        右边留足内边距的可滚动内容区,内容按"节"分块。
        左栏是"供应商 › 模型"两层:供应商一行、其下模型缩进一档;右侧表单随选中的是哪一层切换。 -->
+  <Panel x:Name="WorkspacePages">
   <Grid x:Name="SettingsLayout">
     <Grid.ColumnDefinitions>
       <ColumnDefinition Width="230" MinWidth="120" MaxWidth="420" />
@@ -47,20 +48,6 @@
                      Foreground="{DynamicResource VelaTextSecondary}" />
         </Border>
         <StackPanel DockPanel.Dock="Bottom" Spacing="6" Margin="10,8,10,10">
-          <!-- 新增模型挂在当前选中的供应商(或选中模型所属的供应商)下面 -->
-          <Button x:Name="AddModelButton" Theme="{DynamicResource VelaOutlineButtonTheme}"
-                  HorizontalAlignment="Stretch" Height="26">
-            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-              <Viewbox Width="11" Height="11" VerticalAlignment="Center">
-                <Path Width="24" Height="24" Data="{DynamicResource Icon.plus}"
-                      Stroke="{DynamicResource VelaTextSecondary}" StrokeThickness="2"
-                      StrokeLineCap="Round" StrokeJoin="Round" />
-              </Viewbox>
-              <TextBlock x:Name="AddModelText" VerticalAlignment="Center"
-                         FontSize="{DynamicResource VelaFontSize11}" />
-            </StackPanel>
-          </Button>
-          <Border Classes="sep" />
           <!-- 「新增供应商」不再是一个只有名字的预设下拉,而是打开「连接供应商」那一页:
                哪家能直接登账号、哪家要填 Key、走什么协议,在下拉里一个字都放不下。 -->
           <Button x:Name="AddButton" Theme="{DynamicResource VelaOutlineButtonTheme}"
@@ -143,18 +130,26 @@
          左右都是 24:滚动条是<b>浮在</b>内容上的(不占布局),所以左右留白就等于这里写的数,
          右边不需要为它另外扣一块。它会飘在这 24 的空档里,压不到卡片。 -->
     <Border Grid.Column="2" Background="{DynamicResource VelaBgTerminal}" CornerRadius="0,0,7,0">
-      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="24,18" Spacing="14">
+      <Grid RowDefinitions="*,Auto">
+        <ScrollViewer x:Name="EditorScroller" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Margin="24,18" Spacing="14">
 
           <!-- 面包屑:正在编辑的是谁。左栏是两层树,模型行只写模型名 ——
                滚到表单中段时"这是哪家的模型"就没了着落,所以在表单顶上钉一行。
                右边那枚徽章是本次窗口内的测试结果(没测过就不显示,不假装知道)。 -->
-          <Grid ColumnDefinitions="Auto,Auto,*">
-            <TextBlock x:Name="BreadcrumbText" VerticalAlignment="Center"
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <Button x:Name="BackToProviderButton" IsVisible="False" Margin="0,0,8,0" Width="28" Height="26"
+                    Theme="{DynamicResource VelaOutlineButtonTheme}" Padding="0">
+              <Viewbox Width="12" Height="12">
+                <Path Width="24" Height="24" Data="M19 12H5m7-7-7 7 7 7" StrokeThickness="2"
+                      Stroke="{DynamicResource VelaTextPrimary}" StrokeLineCap="Round" StrokeJoin="Round" />
+              </Viewbox>
+            </Button>
+            <TextBlock Grid.Column="1" x:Name="BreadcrumbText" VerticalAlignment="Center"
                        FontSize="{DynamicResource VelaFontSize13}" FontWeight="SemiBold"
                        Foreground="{DynamicResource VelaTextPrimary}" TextTrimming="CharacterEllipsis" />
             <!-- 只有淡底、没有描边(设计图 E):它紧挨着面包屑,描一圈边会让这枚小标签看起来像个可点的按钮 -->
-            <Border x:Name="TestBadge" Grid.Column="1" IsVisible="False" CornerRadius="3"
+            <Border x:Name="TestBadge" Grid.Column="2" IsVisible="False" CornerRadius="3"
                     Padding="7,2" Margin="8,0,0,0" VerticalAlignment="Center">
               <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                 <Viewbox Width="10" Height="10" VerticalAlignment="Center">
@@ -166,6 +161,53 @@
               </StackPanel>
             </Border>
           </Grid>
+
+          <StackPanel x:Name="ProviderModelsWorkspace" Spacing="8" IsVisible="False">
+            <TextBlock x:Name="ProviderModelsTitle" Classes="section-title" />
+            <Border Classes="section">
+              <StackPanel Spacing="8">
+                <WrapPanel>
+                  <Button x:Name="AddModelButton" Theme="{DynamicResource VelaOutlineButtonTheme}"
+                          Height="26" Padding="12,0" Margin="0,0,8,0">
+                    <TextBlock x:Name="AddModelText" FontSize="{DynamicResource VelaFontSize11}" />
+                  </Button>
+                  <StackPanel x:Name="PullModelsPanel">
+                    <Button x:Name="PullModelsButton" Theme="{DynamicResource VelaOutlineButtonTheme}"
+                            Height="26" Padding="12,0">
+                      <TextBlock x:Name="PullModelsText" FontSize="{DynamicResource VelaFontSize11}" />
+                    </Button>
+                  </StackPanel>
+                </WrapPanel>
+                <ItemsControl x:Name="ProviderModelsList" MaxHeight="172">
+                  <ItemsControl.Template>
+                    <ControlTemplate>
+                      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                        <ItemsPresenter x:Name="PART_ItemsPresenter" ItemsPanel="{TemplateBinding ItemsPanel}" />
+                      </ScrollViewer>
+                    </ControlTemplate>
+                  </ItemsControl.Template>
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="ui:WorkspaceModelRow">
+                      <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                              Theme="{DynamicResource VelaOutlineButtonTheme}" Height="30" Margin="0,1" Padding="10,0"
+                              Click="OnWorkspaceModelClick" AutomationProperties.Name="{Binding Label}" ToolTip.Tip="{Binding Label}">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                          <Viewbox Grid.Column="1" Width="10" Height="10" Margin="8,0,0,0">
+                            <Path Width="24" Height="24" Data="{DynamicResource Icon.chevron-right}"
+                                  Stroke="{DynamicResource VelaTextSecondary}" StrokeThickness="2" StrokeLineCap="Round" />
+                          </Viewbox>
+                        </Grid>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </StackPanel>
 
           <!-- ═══ 供应商编辑器:选中左栏供应商行时显示 ═══ -->
           <StackPanel x:Name="ProviderEditor" Spacing="8">
@@ -254,20 +296,6 @@
                   <TextBlock x:Name="ProviderAuthHintText" Classes="hint" />
                 </StackPanel>
 
-                <!-- 「拉取模型」摆在鉴权那两块<b>外面</b>:填 Key 的和订阅登录的都要拉,
-                     而且用户十有八九是在这一页发现"怎么只有一个模型"的,让他再跑去
-                     「连接供应商」那边未免绕。 -->
-                <StackPanel x:Name="PullModelsPanel" Classes="field">
-                  <Grid ColumnDefinitions="Auto,10,*">
-                    <Button x:Name="PullModelsButton"
-                            Theme="{DynamicResource VelaOutlineButtonTheme}" Height="26" Padding="12,0">
-                      <TextBlock x:Name="PullModelsText" VerticalAlignment="Center"
-                                 FontSize="{DynamicResource VelaFontSize11}" />
-                    </Button>
-                    <TextBlock x:Name="PullModelsHintText" Grid.Column="2" Classes="hint"
-                               Margin="0" TextWrapping="Wrap" VerticalAlignment="Center" />
-                  </Grid>
-                </StackPanel>
               </StackPanel>
             </Border>
           </StackPanel>
@@ -458,17 +486,17 @@
           <!-- MCP 服务器搬去「配置工具」窗口了:配好服务器紧接着就要挑它的工具,
                那份勾选列表就在那边;隔着两个窗口来回切很别扭。 -->
 
-          <!-- 操作行落在表单最末、靠右,上方一道分隔线跟配置项断开。
-               不钉死在窗口底部:一条常驻横栏会一直占着高度,而这页大多数时候在读、在填,
-               真要按保存时滚到底就是了。
-               测试 / 删除作用于左栏当前选中的那一层(供应商 or 模型)。 -->
-          <Border BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,1,0,0"
-                  Padding="0,12,0,0">
+          </StackPanel>
+        </ScrollViewer>
+        <Border Grid.Row="1" BorderBrush="{DynamicResource VelaBorderPrimary}" BorderThickness="0,1,0,0"
+                Padding="16,8">
             <!-- 侧栏宽度不在这儿(也不在任何一节里):它跟着用户拖分割条走,拖完就记住,
                  下次打开还是那个宽度。让人来填一个百分比,不如直接把他拖出来的结果记下来。 -->
             <Grid ColumnDefinitions="*,Auto">
-              <TextBlock x:Name="StatusText" Classes="dim" TextWrapping="Wrap"
-                         Margin="0,0,12,0" VerticalAlignment="Center" />
+              <ScrollViewer MaxHeight="80" Margin="0,0,12,0" VerticalAlignment="Center"
+                            HorizontalScrollBarVisibility="Disabled">
+                <TextBlock x:Name="StatusText" Classes="dim" TextWrapping="Wrap" />
+              </ScrollViewer>
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <Button x:Name="SaveButton" Theme="{DynamicResource VelaAccentPillButtonTheme}" Height="26" Padding="12,0">
                   <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
@@ -506,12 +534,12 @@
                 </Button>
               </StackPanel>
             </Grid>
-          </Border>
-        </StackPanel>
-      </ScrollViewer>
+        </Border>
+      </Grid>
     </Border>
 
     <!-- 会删东西的确认(换源清 Key)用独立的确认框,盖住左右两栏;不再靠同一个按钮点两下 -->
-    <ui:ConfirmOverlay x:Name="KeyResetConfirm" Grid.ColumnSpan="2" ScrimCornerRadius="0,0,7,7" />
+    <ui:ConfirmOverlay x:Name="KeyResetConfirm" Grid.ColumnSpan="3" ScrimCornerRadius="0,0,7,7" />
   </Grid>
+  </Panel>
 </UserControl>

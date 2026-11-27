@@ -12,6 +12,8 @@ using VelaShell.PluginSdk;
 
 namespace VelaShell.Plugin.Ai.Ui;
 
+internal sealed record WorkspaceModelRow(AiModelConfig Model, string Label);
+
 /// <summary>左栏一行:供应商行(<see cref="Model" /> 为 null)或其下的模型行。</summary>
 /// <remarks>
 /// 是<b>类</b>不是 record:行尾那颗连通性状态点要在"测试"跑完的那一刻就地变色。
@@ -353,7 +355,19 @@ public partial class SettingsView : UserControl
         };
         BaseUrlBox.TextChanged += (_, _) => UpdateCrossOriginKeyHint();
         CrossOriginKeyFillButton.Click += (_, _) => _ = FillCrossOriginKeyAsync();
-        AddButton.Click += (_, _) => ProviderCatalogRequested?.Invoke(null);
+        AddButton.Click += (_, _) =>
+        {
+            if (CanLeaveWorkspace()) ProviderCatalogRequested?.Invoke(null);
+        };
+        BackToProviderButton.Click += (_, _) =>
+        {
+            if (SelectedItem is { Model: not null } row && CanLeaveWorkspace())
+            {
+                ReloadList(row.Provider.Id);
+                EditorScroller.ScrollToHome();
+                AddModelButton.Focus();
+            }
+        };
         // 同目录多账号按左栏选中的实例定位,不是随目录 id 找最近一份。
         ManageSignInButton.Click += (_, _) => ProviderCatalogRequested?.Invoke(SelectedProvider?.Id);
         PullModelsButton.Click += (_, _) => _ = PullModelsAsync();
@@ -429,7 +443,10 @@ public partial class SettingsView : UserControl
         ProviderAuthHintText.Text = _loc["SubscriptionHint"];
         ManageSignInText.Text = _loc["ManageSignIn"];
         PullModelsText.Text = _loc["ModelsPull"];
-        PullModelsHintText.Text = _loc["ModelsPullHint"];
+        ToolTip.SetTip(PullModelsButton, _loc["ModelsPullHint"]);
+        ToolTip.SetTip(BackToProviderButton, _loc["WorkspaceBackToProvider"]);
+        Avalonia.Automation.AutomationProperties.SetName(BackToProviderButton, _loc["WorkspaceBackToProvider"]);
+        RefreshWorkspace(SelectedProvider, SelectedModel);
         NameLabel.Text = _loc["DisplayName"];
         ProtocolLabel.Text = _loc["Protocol"];
         BaseUrlLabel.Text = _loc["BaseUrlOverride"];
@@ -739,6 +756,7 @@ public partial class SettingsView : UserControl
     private async Task LoadEditorCoreAsync(int run)
     {
         ResetKeyEditor();
+        RevealKeyToggle.IsChecked = false;
         _loadingEditor = true;
         try
         {
@@ -750,7 +768,6 @@ public partial class SettingsView : UserControl
             SaveButton.IsEnabled = hasSelection;
             TestButton.IsEnabled = hasSelection;
             DeleteButton.IsEnabled = hasSelection;
-            AddModelButton.IsEnabled = hasSelection;
             StatusText.Text = "";
             RefreshEditorContext(provider, model);
             UpdateTestBadge();
@@ -935,10 +952,26 @@ public partial class SettingsView : UserControl
         BreadcrumbText.Text = model is null ? providerName : $"{providerName}  ›  {modelName}";
         if (provider is not null && model is null) UpdateCrossOriginModelsHint(provider);
         else CrossOriginModelsHintText.IsVisible = false;
-        // 拉取是整家的事;端点或目录任意一条路可用就显示入口。
+        RefreshWorkspace(provider, model);
+    }
+
+    private void RefreshWorkspace(AiProvider? provider, AiModelConfig? model)
+    {
+        BackToProviderButton.IsVisible = model is not null;
+        bool show = provider is not null && model is null;
+        ProviderModelsWorkspace.IsVisible = AddModelButton.IsEnabled = show;
+        ProviderModelsTitle.Text = _loc.F("WorkspaceProviderModels", provider?.Models.Count ?? 0);
+        ProviderModelsList.ItemsSource = model is null ? provider?.Models.Select(WorkspaceRow).ToList() : null;
         PullModelsPanel.IsVisible = provider is not null && model is null
                                     && (!string.IsNullOrWhiteSpace(provider.BaseUrl)
                                         || ProviderCatalog.Find(provider.CatalogId)?.ModelsDevId.Length > 0);
+    }
+
+    private WorkspaceModelRow WorkspaceRow(AiModelConfig model)
+    {
+        string label = string.IsNullOrWhiteSpace(model.DisplayName) ? _loc["Unnamed"] : model.DisplayName;
+        if (!string.IsNullOrWhiteSpace(model.Model) && label != model.Model) label += $" · {model.Model}";
+        return new WorkspaceModelRow(model, label);
     }
 
     private bool RefreshAuthPanels(AiProvider? provider)
@@ -1035,7 +1068,7 @@ public partial class SettingsView : UserControl
     /// </remarks>
     private async Task PullModelsAsync()
     {
-        if (SelectedProvider is not { } provider)
+        if (SelectedProvider is not { } provider || SelectedModel is not null)
         {
             return;
         }
@@ -2156,16 +2189,39 @@ public partial class SettingsView : UserControl
             // 外部删除时保留原表单与独立 Key 草稿，不能自动将它们换绑到第一行。
             if (before is not null) ++_editorRun;
             _loadingEditor = false;
-            SaveButton.IsEnabled = TestButton.IsEnabled = DeleteButton.IsEnabled = AddModelButton.IsEnabled = false;
+            SaveButton.IsEnabled = TestButton.IsEnabled = DeleteButton.IsEnabled = false;
+            RefreshWorkspace(null, null);
             if (before is not null) StatusText.Text = _loc["SetupConfigChanged"];
             return;
         }
         RefreshAfterCatalog(before);
     }
 
+    private bool CanLeaveWorkspace()
+    {
+        bool dirty = ModelEditor.IsVisible
+            ? _windowEdited || _windowSpecDraft is not null || CaptureModelForm().Any(field =>
+                !_loadedModelForm.TryGetValue(field.Key, out object? loaded) || !Equals(field.Value, loaded))
+            : ProviderEditor.IsVisible && (ProviderNameBox.Text != _loadedProviderName
+                || ProviderBaseUrlBox.Text != _loadedProviderUrl || ProviderProtocolCombo.SelectedIndex != _loadedProviderProtocol
+                || _keyDraft is not null || !string.IsNullOrEmpty(ProviderNewApiKeyBox.Text));
+        if (dirty) StatusText.Text = _loc["WorkspaceUnsavedChanges"];
+        return !dirty;
+    }
+
+    private void OnWorkspaceModelClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { DataContext: WorkspaceModelRow row }
+            || SelectedItem is not { Model: null } item || !item.Provider.Models.Contains(row.Model)
+            || !CanLeaveWorkspace()) return;
+        ReloadList(row.Model.Id);
+        EditorScroller.ScrollToHome();
+        BackToProviderButton.Focus();
+    }
+
     private void OnAddModelClick(object? sender, RoutedEventArgs e)
     {
-        if (SelectedProvider is not { } provider)
+        if (SelectedProvider is not { } provider || SelectedModel is not null || !CanLeaveWorkspace())
         {
             return;
         }
