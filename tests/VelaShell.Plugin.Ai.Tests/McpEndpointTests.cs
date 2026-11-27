@@ -40,6 +40,7 @@ public sealed class McpEndpointTests
             BaseAddress = new Uri($"http://127.0.0.1:{port}/"),
             Timeout = TimeSpan.FromSeconds(30)
         };
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json, text/event-stream");
         if (token is not null)
         {
             client.DefaultRequestHeaders.Authorization = new("Bearer", token);
@@ -65,7 +66,8 @@ public sealed class McpEndpointTests
         return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
     }
 
-    private static async Task<HttpResponseMessage> PostRpcAsync(HttpClient client, object request, string? sessionId = null)
+    private static async Task<HttpResponseMessage> PostRpcAsync(HttpClient client, object request, string? sessionId = null,
+        string? protocolVersion = null)
     {
         using var message = new HttpRequestMessage(HttpMethod.Post, "mcp")
         {
@@ -74,6 +76,10 @@ public sealed class McpEndpointTests
         if (sessionId is not null)
         {
             message.Headers.TryAddWithoutValidation("Mcp-Session-Id", sessionId);
+        }
+        if (protocolVersion is not null)
+        {
+            message.Headers.TryAddWithoutValidation("MCP-Protocol-Version", protocolVersion);
         }
         return await client.SendAsync(message);
     }
@@ -107,6 +113,56 @@ public sealed class McpEndpointTests
             JsonElement result = document.RootElement.GetProperty("result");
             Assert.AreEqual("velashell", result.GetProperty("serverInfo").GetProperty("name").GetString());
             Assert.AreEqual("2025-06-18", result.GetProperty("protocolVersion").GetString());
+        }
+    }
+
+    [TestMethod]
+    public async Task Initialize_NegotiatesLatestVersion_AndRequiresItsHeader()
+    {
+        using var context = new TestPluginContext();
+        (McpEndpoint endpoint, int port, string token) = await StartAsync(context);
+        await using (endpoint)
+        {
+            using HttpClient client = CreateClient(port, token);
+            using HttpResponseMessage initializeResponse = await PostRpcAsync(client, new
+            {
+                jsonrpc = "2.0",
+                id = 1,
+                method = "initialize",
+                @params = new { protocolVersion = "2025-11-25", clientInfo = new { name = "test", version = "1" } }
+            });
+            Assert.AreEqual(HttpStatusCode.OK, initializeResponse.StatusCode);
+            string sessionId = initializeResponse.Headers.GetValues("Mcp-Session-Id").Single();
+            using (JsonDocument initialize = JsonDocument.Parse(await initializeResponse.Content.ReadAsStringAsync()))
+            {
+                Assert.AreEqual("2025-11-25", initialize.RootElement.GetProperty("result").GetProperty("protocolVersion").GetString());
+            }
+
+            using HttpResponseMessage missing = await PostRpcAsync(client,
+                new { jsonrpc = "2.0", id = 2, method = "tools/list" }, sessionId);
+            Assert.AreEqual(HttpStatusCode.BadRequest, missing.StatusCode);
+
+            using HttpResponseMessage valid = await PostRpcAsync(client,
+                new { jsonrpc = "2.0", id = 3, method = "tools/list" }, sessionId, "2025-11-25");
+            Assert.AreEqual(HttpStatusCode.OK, valid.StatusCode);
+        }
+    }
+
+    [TestMethod]
+    public async Task Request_FromNonLoopbackOrigin_IsRejected()
+    {
+        using var context = new TestPluginContext();
+        (McpEndpoint endpoint, int port, string token) = await StartAsync(context);
+        await using (endpoint)
+        {
+            using HttpClient client = CreateClient(port, token);
+            using var message = new HttpRequestMessage(HttpMethod.Post, "mcp")
+            {
+                Content = JsonContent.Create(new { jsonrpc = "2.0", id = 1, method = "initialize" })
+            };
+            message.Headers.TryAddWithoutValidation("Origin", "https://attacker.example");
+            using HttpResponseMessage response = await client.SendAsync(message);
+            Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
         }
     }
 
@@ -565,6 +621,18 @@ public sealed class McpEndpointTests
 
             Assert.IsTrue(document.RootElement.TryGetProperty("result", out _));
         }
+    }
+
+    [TestMethod]
+    public void OversizedToolResult_IsTruncated()
+    {
+        var limit = typeof(McpEndpoint).GetMethod("LimitToolResult", BindingFlags.Static | BindingFlags.NonPublic)!;
+        string source = new('x', 300 * 1024);
+        string result = (string)limit.Invoke(null, [source])!;
+
+        Assert.AreEqual(256 * 1024 + "\n[Output truncated at 262,144 characters by VelaShell MCP.]".Length, result.Length);
+        Assert.StartsWith(new string('x', 256 * 1024), result);
+        Assert.Contains("[Output truncated at 262,144 characters by VelaShell MCP.]", result);
     }
 
     /// <summary>
