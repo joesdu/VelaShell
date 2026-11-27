@@ -29,8 +29,6 @@ public partial class ChatPanelView
     private IPluginPanel? _globalSettingsPanel;
     private IPluginPanel? _toolsPanel;
     private IPluginPanel? _mcpPanel;
-    private IPluginPanel? _catalogPanel;
-    private ProviderSetupView? _catalogView;
     private (string Id, AiProvider Provider, long Version)[] _confirmedProviderRequests = [];
 
     // 健康表跨窗口存在：初始化和真正清旧健康之后才确认，不让显示刷新吞掉提前发布的 Key 代次。
@@ -64,9 +62,8 @@ public partial class ChatPanelView
             () =>
             {
                 var view = new SettingsView(_context, _store, _settings, _loc, OnProvidersChanged, _health);
-                // 「新增供应商」与「管理登录」都通向目录页,窗口的开合仍统一在这里记账
-                view.ProviderCatalogRequested += OpenProviderCatalogDialog;
                 view.ModelsChanged += () => RefreshProviderViews();
+                view.EnableProviderSetup();
                 return _settingsView = view;
             },
             panel => _settingsPanel = panel,
@@ -74,57 +71,7 @@ public partial class ChatPanelView
             {
                 _settingsPanel = null;
                 _settingsView = null; // 语言切换时只刷还开着的那个
-                // 入口没了,附属的全局设置 / 供应商目录窗口也一起收
                 _ = _globalSettingsPanel?.CloseAsync();
-                _ = _catalogPanel?.CloseAsync();
-            });
-    }
-
-    /// <summary>
-    /// 打开「连接供应商」窗口:内置目录 + 订阅登录(已开着就置前)。
-    /// </summary>
-    /// <remarks>
-    /// 单独一扇窗而不是压在设置页上:这一页是"挑一家",设置页是"调一家",
-    /// 两件事的信息密度完全不同 —— 目录要留出说明和状态灯的地方,
-    /// 挤进设置页那条 220 宽的侧栏里就只剩一列名字了(那正是它取代的东西)。
-    /// </remarks>
-    /// <param name="focusProviderId">要编辑的实例 id;null 打开新建供应商目录。</param>
-    private void OpenProviderCatalogDialog(string? focusProviderId)
-    {
-        AiProvider? focused = _settings.Providers.Find(p => p.Id == focusProviderId);
-        string? catalogId = focused?.CatalogId;
-        if (Activate(_catalogPanel))
-        {
-            if (focusProviderId is null) _catalogView?.StartNewProvider();
-            else _catalogView?.FocusEntry(catalogId, focused?.Id);
-            return;
-        }
-        _ = OpenAsync(
-            _loc["SetupProviders"], 860, 820, [],
-            () =>
-            {
-                var view = new ProviderSetupView(_context, _store, _settings, _loc,
-                    catalogId, focused?.Id, _health);
-                view.ProviderChanged += id =>
-                {
-                    // 目录那边已经落过盘,这里只把设置页的左栏与顶栏的模型下拉刷一遍
-                    _settingsView?.ReloadFromCatalog(id);
-                    OnProvidersChanged();
-                };
-                view.ModelsChanged += () =>
-                {
-                    _settingsView?.RefreshCatalogModels();
-                    RefreshProviderViews();
-                };
-                return _catalogView = view;
-            },
-            panel => _catalogPanel = panel,
-            () =>
-            {
-                // 窗口关了,还挂着的那次登录(环回监听 / 设备码轮询)也该收摊
-                _catalogView?.CancelPendingLogin();
-                _catalogView = null;
-                _catalogPanel = null;
             });
     }
 
@@ -364,10 +311,6 @@ public partial class ChatPanelView
         _ = _globalSettingsPanel?.CloseAsync();
         _globalSettingsPanel = null;
         _settingsPanel = null;
-        _catalogView?.CancelPendingLogin();
-        _ = _catalogPanel?.CloseAsync();
-        _catalogView = null;
-        _catalogPanel = null;
         _ = _mcpPanel?.CloseAsync();
         _mcpPanel = null;
         _ = _toolsPanel?.CloseAsync();

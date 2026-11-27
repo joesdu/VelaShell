@@ -2748,6 +2748,34 @@ public sealed partial class SettingsViewUiTests
         return (window, view, settings, store);
     }
 
+    [TestMethod]
+    public void ScrollingALongEditor_KeepsSaveAndTestInReach()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            (Window window, SettingsView view, _, _) = await ShowAsync(context, TwoProviders());
+            try
+            {
+                window.Height = 420;
+                view.GetControl<ListBox>("ProvidersList").SelectedIndex = 1;
+                await PumpAsync();
+                ScrollViewer scroller = view.GetControl<ScrollViewer>("EditorScroller");
+                Button save = view.GetControl<Button>("SaveButton");
+                Button test = view.GetControl<Button>("TestButton");
+                double Y(Button button) => button.TranslatePoint(default, view)!.Value.Y;
+                double before = Y(save);
+                Assert.IsTrue(before >= 0 && before + save.Bounds.Height <= view.Bounds.Height);
+                scroller.ScrollToEnd();
+                await PumpAsync();
+                Assert.IsTrue(scroller.Offset.Y > 0);
+                Assert.AreEqual(before, Y(save));
+                Assert.AreEqual(before, Y(test));
+            }
+            finally { window.Close(); }
+        });
+    }
+
     private static AiSettings TwoProviders()
     {
         var routin = new AiProvider
@@ -3204,6 +3232,99 @@ public sealed partial class SettingsViewUiTests
             {
                 window.Close();
             }
+        });
+    }
+
+    [TestMethod]
+    public void ProviderWorkspace_OpensConfiguredModelAndReturnsToItsOwner()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            var active = new AiModelConfig { Name = "Alias", Model = "other-account" };
+            var first = new AiProvider { Name = "First", Models = [active] };
+            var second = new AiProvider
+            {
+                Name = "Second", BaseUrl = "https://example.test/v1", ModelsExpanded = false,
+                Models = [new() { Name = "Alias", Model = "a" }, new() { Name = "Alias", Model = "b" }],
+                AvailableModels = ["candidate-only"]
+            };
+            var settings = new AiSettings { Providers = [first, second], ActiveModelId = active.Id };
+            (Window window, SettingsView view, _, _) = await ShowAsync(context, settings);
+            try
+            {
+                ListBox tree = view.GetControl<ListBox>("ProvidersList");
+                ItemsControl models = view.GetControl<ItemsControl>("ProviderModelsList");
+                Button add = view.GetControl<Button>("AddModelButton");
+                Button pull = view.GetControl<Button>("PullModelsButton");
+                Button back = view.GetControl<Button>("BackToProviderButton");
+                Assert.HasCount(1, models.Items);
+                tree.SelectedIndex = 1;
+                await PumpAsync();
+                Assert.HasCount(2, tree.Items);
+                Assert.HasCount(2, models.Items);
+                Assert.IsTrue(add.IsEffectivelyVisible && pull.IsEffectivelyVisible && !back.IsEffectivelyVisible);
+                Button[] rows = models.GetVisualDescendants().OfType<Button>().ToArray();
+                Button target = rows.Single(b => Avalonia.Automation.AutomationProperties.GetName(b) == "Alias · b");
+                Click(target);
+                await PumpAsync();
+                Assert.AreSame(second.Models[1], ((ProviderNavItem)tree.SelectedItem!).Model);
+                Assert.AreEqual("b", view.GetControl<TextBox>("ModelBox").Text);
+                Assert.IsFalse(add.IsEffectivelyVisible || pull.IsEffectivelyVisible);
+                Assert.IsTrue(back.IsEffectivelyVisible);
+                Click(back);
+                await PumpAsync();
+                Assert.AreSame(second, ((ProviderNavItem)tree.SelectedItem!).Provider);
+                Assert.IsNull(((ProviderNavItem)tree.SelectedItem!).Model);
+                Assert.AreEqual(active.Id, settings.ActiveModelId);
+                Assert.HasCount(2, tree.Items, "Opening a model does not persist branch expansion.");
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [TestMethod]
+    public void ProviderWorkspace_BlocksNavigationWithUnsavedProviderAndModelDrafts()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            var provider = new AiProvider { Name = "Account", Models = [new() { Model = "model" }] };
+            (Window window, SettingsView view, _, _) = await ShowAsync(context, new AiSettings { Providers = [provider] });
+            try
+            {
+                int requests = 0;
+                view.ProviderCatalogRequested += _ => ++requests;
+                Button addProvider = view.GetControl<Button>("AddButton");
+                ItemsControl models = view.GetControl<ItemsControl>("ProviderModelsList");
+                Button ModelRow() => models.GetVisualDescendants().OfType<Button>()
+                    .Single(b => Avalonia.Automation.AutomationProperties.GetName(b) == "model");
+                TextBox key = view.GetControl<TextBox>("ProviderNewApiKeyBox");
+                key.Text = "unfinished";
+                Click(addProvider);
+                Click(view.GetControl<Button>("AddModelButton"));
+                Click(ModelRow());
+                Assert.AreEqual(0, requests);
+                Assert.HasCount(1, provider.Models);
+                Assert.IsTrue(view.GetControl<StackPanel>("ProviderEditor").IsVisible);
+                Assert.AreEqual("unfinished", key.Text);
+                Assert.AreEqual(new Loc("en")["WorkspaceUnsavedChanges"], view.GetControl<TextBlock>("StatusText").Text);
+
+                key.Text = "";
+                Click(ModelRow());
+                await PumpAsync();
+                TextBox model = view.GetControl<TextBox>("ModelBox");
+                model.Text = "edited";
+                Click(addProvider);
+                Click(view.GetControl<Button>("BackToProviderButton"));
+                Assert.AreEqual(0, requests);
+                Assert.IsTrue(view.GetControl<StackPanel>("ModelEditor").IsVisible);
+                Assert.AreEqual("edited", model.Text);
+                model.Text = "model";
+                Click(addProvider);
+                Assert.AreEqual(1, requests);
+            }
+            finally { window.Close(); }
         });
     }
 
@@ -4214,7 +4335,6 @@ public sealed partial class SettingsViewUiTests
             var chat = new ChatPanelView(context, store);
             var chatHost = new Window { Width = 900, Height = 700, Content = chat };
             Window? settingsHost = null;
-            Window? catalogHost = null;
             chatHost.Show();
             try
             {
@@ -4229,24 +4349,23 @@ public sealed partial class SettingsViewUiTests
                 await PumpAsync();
                 TextBox name = editor.GetControl<TextBox>("ProviderNameBox");
                 TextBox address = editor.GetControl<TextBox>("ProviderBaseUrlBox");
-                TextBox? key = dirty ? EditProviderKey(editor, provider.Id) : null;
                 Assert.AreEqual(provider.Name, editor.GetControl<TextBlock>("BreadcrumbText").Text);
                 Assert.IsFalse(editor.GetControl<Control>("PullModelsPanel").IsVisible);
+                editor.GetControl<Button>("AddButton")
+                    .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                var catalog = editor.GetLogicalDescendants().OfType<ProviderSetupView>().Single();
+                catalog.FocusEntry(provider.CatalogId, provider.Id);
+                await PumpAsync();
+                T Find<T>(string controlName) where T : Control => catalog.GetLogicalDescendants()
+                    .OfType<T>().Single(control => control.Name == controlName);
+                // A draft entered while setup is open must survive its passive refresh.
+                TextBox? key = dirty ? EditProviderKey(editor, provider.Id) : null;
                 if (dirty)
                 {
                     name.Text = "unfinished account";
                     address.Text = "https://unfinished.example/v1";
                     key!.Text = "unfinished-key";
                 }
-                editor.GetControl<Button>("AddButton")
-                    .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-                var catalog = (ProviderSetupView)context.FakeUi.LastPanel.CreateContent();
-                catalogHost = new Window { Width = 900, Height = 700, Content = catalog };
-                catalogHost.Show();
-                catalog.FocusEntry(provider.CatalogId, provider.Id);
-                await PumpAsync();
-                T Find<T>(string controlName) where T : Control => catalog.GetLogicalDescendants()
-                    .OfType<T>().Single(control => control.Name == controlName);
                 string savedName = "renamed account";
                 string savedKey = "catalog-key";
                 Find<TextBox>("SetupNameBox").Text = savedName;
@@ -4282,7 +4401,6 @@ public sealed partial class SettingsViewUiTests
             }
             finally
             {
-                catalogHost?.Close();
                 settingsHost?.Close();
                 chat.Detach();
                 chatHost.Close();
@@ -4363,12 +4481,15 @@ public sealed partial class SettingsViewUiTests
                 TextBox name = view.GetControl<TextBox>("ProviderNameBox");
                 TextBlock status = view.GetControl<TextBlock>("StatusText");
                 Assert.AreEqual(new Loc("en")["NoModels"], status.Text);
+                ItemsControl workspace = view.GetControl<ItemsControl>("ProviderModelsList");
+                Assert.IsEmpty(workspace.Items);
                 name.Text = "unsaved provider draft";
                 provider.Models.Add(new AiModelConfig { Model = "first-model" });
                 view.ReloadFromCatalog(provider.Id);
                 Assert.AreEqual("", status.Text);
                 Assert.AreEqual("unsaved provider draft", name.Text);
                 Assert.AreEqual(provider.Id, ((ProviderNavItem)view.GetControl<ListBox>("ProvidersList").SelectedItem!).Provider.Id);
+                Assert.HasCount(1, workspace.Items);
                 status.Text = new Loc("en")["NoModels"];
                 view.RefreshCatalogModels();
                 Assert.AreEqual("", status.Text);

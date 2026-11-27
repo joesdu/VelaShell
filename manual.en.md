@@ -975,8 +975,8 @@ These are separate paths, not one switch. Closing chat does not necessarily disa
 
 **Steps:**
 
-1. Open AI chat → model settings → add provider. Select a catalog entry; configured OAuth entries open browser authorization, while API-key entries need a key and required base address.
-2. Check name, Base URL, default protocol, and multiple-key slots. Test/fetch models. Multiple independent instances of one provider are supported.
+1. Open AI chat → model settings. With no providers, you start in the picker; otherwise choose **Add provider**. Search by name or example model. Selecting a provider replaces the picker with its connection form in the same window. Enter the key and required address, or choose **Sign in** to open the browser. **Choose a provider** returns to your search, asking before discarding changes or stopping sign-in.
+2. Creating a connection takes you directly to that provider while model discovery continues. Open a model from its provider and return to its owner without hunting through the tree. The provider page also manages the name, Base URL, default protocol and key slots.
 3. Add a model under that provider, using its real model ID, not only a display name. Set protocol/address/key overrides, input/output token limits, reasoning, caching, temperature/top-p/stop sequences, and model system prompt as needed.
 4. Save/test and send a nonsensitive question with the chosen model. Distinguish authentication, model permission, address/protocol, and quota errors.
 

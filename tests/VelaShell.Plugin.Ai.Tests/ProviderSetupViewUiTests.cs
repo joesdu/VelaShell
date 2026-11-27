@@ -278,7 +278,7 @@ public sealed class ProviderSetupViewUiTests
     /// <summary>展开区里此刻<b>真正露在外面</b>的输入框(收在「高级设置」里的不算)。</summary>
     private static List<string> VisibleBoxes(Control root)
         => [.. root.GetLogicalDescendants().OfType<TextBox>()
-                   .Where(box => box.Name is not null && IsShown(box))
+                   .Where(box => box.Name is not (null or "SetupSearch") && IsShown(box))
                    .Select(box => box.Name!)];
 
     private static bool IsShown(Control control)
@@ -353,7 +353,18 @@ public sealed class ProviderSetupViewUiTests
     private static async Task ClickRowAsync(Window window, ProviderSetupView view, string entryId)
     {
         Border card = Find<Border>(view, $"SetupRow.{entryId}");
-        // 先滚到可见区:目录一长,靠后的行落在窗口外面,坐标算出来是负的,点了什么也不会发生
+        if (!IsShown(card))
+        {
+            Click(Find<Button>(view, "SetupBack"));
+            await PumpAsync();
+            if (ConfirmBox(view).IsOpen)
+            {
+                Click(Find<Button>(ConfirmBox(view), "ConfirmAcceptButton"));
+                await PumpAsync();
+            }
+        }
+        // 从详情返回时先等目录重新排版，再把长列表中的目标行滚到视口。
+        await PumpAsync(2);
         card.BringIntoView();
         await PumpAsync(10);
         // 点行的左上角一带:那儿是字母牌/标题,肯定落在行内
@@ -363,6 +374,11 @@ public sealed class ProviderSetupViewUiTests
         window.MouseDown(spot, MouseButton.Left);
         window.MouseUp(spot, MouseButton.Left);
         await PumpAsync(20);
+        if (ConfirmBox(view).IsOpen)
+        {
+            Click(Find<Button>(ConfirmBox(view), "ConfirmAcceptButton"));
+            await PumpAsync();
+        }
     }
 
     /// <summary>
@@ -586,6 +602,89 @@ public sealed class ProviderSetupViewUiTests
     }
 
     // ---- 交互约定 ----
+
+    [TestMethod]
+    public void FirstConnection_UsesOneWindowAndLandsOnTheCreatedProviderBeforeModelDiscoveryFinishes()
+    {
+        OnUi(async () =>
+        {
+            using var endpoint = new HeldModelsEndpoint();
+            using var context = new TestPluginContext();
+            EnsureFreshModelCache(context);
+            var store = new AiSettingsStore(context);
+            var settings = new AiSettings { Providers = [] };
+            await store.SaveAsync(settings);
+            var discovered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var workspace = new SettingsView(context, store, settings, new Loc("en"), () => { });
+            workspace.ModelsChanged += () => discovered.TrySetResult();
+            workspace.EnableProviderSetup();
+            Panel pages = workspace.GetControl<Panel>("WorkspacePages");
+            Grid editor = workspace.GetControl<Grid>("SettingsLayout");
+            var window = new Window { Width = 900, Height = 700, Content = workspace };
+            window.Show();
+            try
+            {
+                await PumpAsync();
+                ProviderSetupView setup = pages.Children.OfType<ProviderSetupView>().Single();
+                Assert.IsFalse(editor.IsVisible);
+                await ClickRowAsync(window, setup, "custom-openai");
+                Assert.IsFalse(IsShown(Find<Border>(setup, "SetupRow.deepseek")));
+                Find<TextBox>(setup, "SetupBaseUrlBox").Text = endpoint.BaseUrl + "/v1";
+                Find<TextBox>(setup, "SetupKeyBox").Text = "test-only";
+                Click(Find<Button>(setup, "SetupPrimaryButton"));
+                await endpoint.Requested.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.IsTrue(editor.IsVisible);
+                Assert.IsFalse(pages.Children.Contains(setup));
+                ListBox list = workspace.GetControl<ListBox>("ProvidersList");
+                Assert.AreSame(settings.Providers.Single(), ((ProviderNavItem)list.SelectedItem!).Provider);
+                Assert.IsNull(((ProviderNavItem)list.SelectedItem!).Model);
+                endpoint.Release();
+                await discovered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.Contains("old-model", settings.Providers.Single().AvailableModels);
+            }
+            finally { endpoint.Release(); window.Close(); }
+        });
+    }
+
+    [TestMethod]
+    public void CatalogSearch_FiltersPresetsAndBackProtectsTheDraft()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            (Window window, ProviderSetupView view, _, _) = await ShowAsync(context);
+            try
+            {
+                TextBox search = Find<TextBox>(view, "SetupSearch");
+                Border deepseek = Find<Border>(view, "SetupRow.deepseek");
+                Border other = Find<Border>(view, "SetupRow.openrouter");
+                search.Text = "  V4-FLASH  ";
+                await PumpAsync();
+                Assert.IsTrue(deepseek.IsVisible);
+                Assert.IsFalse(other.IsVisible);
+                await ClickRowAsync(window, view, "deepseek");
+                Assert.IsFalse(IsShown(search));
+                TextBox key = Find<TextBox>(view, "SetupKeyBox");
+                key.Text = "test-draft";
+                Click(Find<Button>(view, "SetupBack"));
+                await WaitForConfirmAsync(view);
+                await AnswerConfirmAsync(view, false);
+                Assert.AreSame(key, Find<TextBox>(view, "SetupKeyBox"));
+                Assert.AreEqual("test-draft", key.Text);
+                Click(Find<Button>(view, "SetupBack"));
+                await WaitForConfirmAsync(view);
+                Click(Find<Button>(ConfirmBox(view), "ConfirmAcceptButton"));
+                await PumpAsync();
+                Assert.IsTrue(IsShown(search));
+                Assert.IsFalse(other.IsVisible);
+                Assert.IsNull(FindOrNull<TextBox>(view, "SetupKeyBox"));
+                search.Text = "no-such-preset";
+                await PumpAsync();
+                Assert.IsTrue(Find<TextBlock>(view, "SetupNoMatch").IsVisible);
+            }
+            finally { window.Close(); }
+        });
+    }
 
     [TestMethod]
     public void RowsCarryNoActionButtonAndStartCollapsed()

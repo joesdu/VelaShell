@@ -16,12 +16,11 @@ using VelaShell.PluginSdk;
 namespace VelaShell.Plugin.Ai.Ui;
 
 /// <summary>
-/// 「连接供应商」:一页列出内置目录,<b>点一下就登进去</b>。
+/// 「连接供应商」：搜索内置目录，点行展开配置，点「登录」才开始授权。
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>设计的第一条:能自动的绝不问用户。</b>参数齐全的那些家,点行(或点行尾的「登录」)
-/// 立刻开浏览器,授权完成后自动落库、自动建好模型 —— 全程零输入。
+/// 参数齐全的 OAuth 供应商在用户点「登录」后打开浏览器，授权完成后自动保存配置并建好模型。
 /// 只有"程序确实不知道"的东西才会露出输入框,而且<b>只露缺的那几个</b>:
 /// 自行部署的服务不知道地址,那就问地址;还没注册 OAuth 应用,那就问客户端 id;
 /// 走 API Key 的,那就只问一把 Key。名称、模型 id、协议这些目录里都有,
@@ -75,6 +74,12 @@ public sealed class ProviderSetupView : UserControl
     private readonly ModelsDevCatalog _models;
 
     private readonly StackPanel _rows = new() { Spacing = 6 };
+    private readonly TextBox _search = new() { Name = "SetupSearch" };
+    private readonly TextBlock _noMatch;
+    private readonly Button _back = new() { Name = "SetupBack", Classes = { "host" } };
+    private readonly ScrollViewer _pageScroller = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+    internal event Action? BackRequested;
+    internal event Action? Created;
 
     /// <summary>每行的把手:展开往 <c>Slot</c> 里塞内容,状态变了改 <c>Dot</c>/<c>Pill</c>/行尾按钮。</summary>
     private readonly List<Row> _cards = [];
@@ -135,11 +140,27 @@ public sealed class ProviderSetupView : UserControl
             Source = new Uri("avares://VelaShell.Plugin.Ai/Ui/AiTheme.axaml")
         });
 
-        // 顶部说明与底部脚注都拿掉了:每一行自己已经说清了状态和下一步,
-        // 两大段常驻文案只是把列表往下挤(用户验收时点名要删)。
-        // 右侧留白拆成 10(根)+ 10(滚动区内):覆盖式滚动条贴着滚动区右缘画,
-        // 全放根上它就压在卡片边上了(与「配置工具」同一处理)。
-        // 最上面盖一层确认框:换源清 Key 这种会删东西的确认用独立的框,不再靠同一个按钮点两下
+        _search.PlaceholderText = _loc["SetupFindProvider"];
+        Avalonia.Automation.AutomationProperties.SetName(_search, _search.PlaceholderText);
+        _noMatch = Hint(_loc["ToolsNoMatch"]);
+        _noMatch.Name = "SetupNoMatch";
+        _noMatch.IsVisible = false;
+        _rows.Children.Add(_noMatch);
+        _search.TextChanged += (_, _) => FilterCatalog();
+
+        // 返回按钮不随长目录或配置表单滚动；确认遮罩覆盖整个页面。
+        var catalog = new DockPanel();
+        _search.Margin = new Thickness(0, 0, Gutter, 10);
+        DockPanel.SetDock(_search, Dock.Top);
+        _back.Content = _loc["SetupBackSettings"];
+        _back.HorizontalAlignment = HorizontalAlignment.Left;
+        _back.Margin = new Thickness(0, 0, 0, 12);
+        _back.Click += (_, _) => _ = BackAsync();
+        DockPanel.SetDock(_back, Dock.Top);
+        catalog.Children.Add(_back);
+        catalog.Children.Add(_search);
+        _pageScroller.Content = new Border { Padding = new Thickness(0, 0, Gutter, 0), Child = _rows };
+        catalog.Children.Add(_pageScroller);
         Content = new Panel
         {
             Children =
@@ -147,11 +168,7 @@ public sealed class ProviderSetupView : UserControl
                 new Border
                 {
                     Padding = new Thickness(20, 16, 20 - Gutter, 16),
-                    Child = new ScrollViewer
-                    {
-                        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                        Content = new Border { Padding = new Thickness(0, 0, Gutter, 0), Child = _rows }
-                    }
+                    Child = catalog
                 },
                 _confirm
             }
@@ -196,6 +213,7 @@ public sealed class ProviderSetupView : UserControl
     private void ResetToNewProvider()
     {
         Collapse();
+        FocusNavigation();
         _focusedProviderId = null;
         _newProviderEntry = _creatingProvider = true;
     }
@@ -246,6 +264,62 @@ public sealed class ProviderSetupView : UserControl
     }
 
     // ---- 行 ----
+
+    private void FilterCatalog()
+    {
+        string query = _search.Text?.Trim() ?? "";
+        bool picking = _openId is null;
+        _search.IsVisible = picking;
+        _back.Content = _loc[!picking && _newProviderEntry ? "SetupBackCatalog" : "SetupBackSettings"];
+        bool anyMatch = false;
+        foreach (Row row in _cards)
+        {
+            bool match = row.Entry.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || row.Entry.Id.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || row.Entry.Models.Contains(query, StringComparison.OrdinalIgnoreCase);
+            anyMatch |= match;
+            row.Card.IsVisible = picking ? match : _openId == row.Entry.Id;
+        }
+        _noMatch.IsVisible = picking && !anyMatch;
+    }
+
+    internal void FocusNavigation() => (_openId is null ? (Control)_search : _back).Focus();
+
+    /// <inheritdoc />
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (!e.Handled && e.Key == Key.Escape && !_confirm.IsOpen)
+        {
+            e.Handled = true;
+            _ = BackAsync();
+            return;
+        }
+        base.OnKeyDown(e);
+    }
+
+    private async Task BackAsync()
+    {
+        if (_confirm.IsOpen) return;
+        if (_openId is not null)
+        {
+            // A write may already have committed. Do not offer to discard it during publication.
+            if (!_primary.IsEnabled && _login is null && !_addingKey) return;
+            if (_login is not null || (_addingKey ? !string.IsNullOrEmpty(_keyBox.Text)
+                    : _keyEdited || CaptureFormInputs() != _formInputBaseline))
+            {
+                if (!await _confirm.AskAsync(_loc["SetupLeaveTitle"], _loc["SetupLeaveBody"],
+                        _loc["SetupLeaveAction"], _loc["Cancel"])) return;
+            }
+            Collapse();
+            _focusedProviderId = null;
+            if (_newProviderEntry || BackRequested is null)
+            {
+                FocusNavigation();
+                return;
+            }
+        }
+        BackRequested?.Invoke();
+    }
 
     private Border BuildCard(ProviderCatalogEntry entry)
     {
@@ -349,15 +423,23 @@ public sealed class ProviderSetupView : UserControl
             Child = new StackPanel { Children = { header, slot } }
         };
         var row = new Row(entry, card, dot, pillText, slot);
-        header.PointerPressed += (_, _) => Activate(row);
+        header.Focusable = true;
+        Avalonia.Automation.AutomationProperties.SetName(header, entry.Name);
+        header.PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(header).Properties.IsLeftButtonPressed) Activate(row);
+        };
+        header.KeyDown += (_, e) =>
+        {
+            if (e.Key is not (Key.Enter or Key.Space)) return;
+            e.Handled = true;
+            Activate(row);
+        };
         _cards.Add(row);
         return card;
     }
 
-    /// <summary>
-    /// 点了某一行。<b>能直接登的就直接登</b>,不能的才展开那几个缺的框。
-    /// </summary>
-    /// <summary>点某一行:只管展开 / 收起,<b>绝不自动发起登录</b>。</summary>
+    /// <summary>目录只负责选择，登录必须由用户在详情页主动发起。</summary>
     private void Activate(Row row)
     {
         // 登录正跑着就别再碰这一行:重进会把自己刚起的那次掐掉(Expand → Collapse → CancelPendingLogin),
@@ -368,8 +450,7 @@ public sealed class ProviderSetupView : UserControl
         }
         if (_openId == row.Entry.Id)
         {
-            Collapse();
-            _focusedProviderId = null;
+            _ = BackAsync();
             return;
         }
         _focusedProviderId = null;
@@ -400,6 +481,7 @@ public sealed class ProviderSetupView : UserControl
             row.Slot.IsVisible = false;
         }
         _openId = null;
+        FilterCatalog();
     }
 
     private void Expand(Row row, bool startAnother = false)
@@ -410,6 +492,8 @@ public sealed class ProviderSetupView : UserControl
         // 只有真有实例可克隆才算「另一个」;该类型的第一份按首次添加走,不套克隆的签发地址核对
         _addingAnother = startAnother && Existing(row.Entry) is not null;
         _openId = row.Entry.Id;
+        FilterCatalog();
+        _pageScroller.ScrollToHome();
         row.Slot.Children.Add(BuildDetail(row));
         row.Slot.IsVisible = true;
     }
@@ -1138,6 +1222,7 @@ public sealed class ProviderSetupView : UserControl
             _addingKeyProviderId = source.Id;
             _keyDraftCancellation = CancellationTokenSource.CreateLinkedTokenSource(_context.Shutdown);
             _openId = row.Entry.Id;
+            FilterCatalog();
             row.Slot.Children.Add(BuildDetail(row));
             row.Slot.IsVisible = true;
             return;
@@ -1480,6 +1565,7 @@ public sealed class ProviderSetupView : UserControl
 
         await RefreshStatusAsync().ConfigureAwait(true);
         ProviderChanged?.Invoke(provider.Id);
+        if (created && OwnsForm() && !_confirm.IsOpen && CaptureFormInputs() == submittedInputs && !_keyEdited) Created?.Invoke();
         // 「再添加一个」跟着落库就露出 —— 按钮收尾(PrimaryAsync 的 finally)要等下面这次
         // 拉取模型的网络请求回来才跑,慢网下能等到 30 秒,期间想加第二份却没钮可按
         // (review⑨)。此刻必然是"已落库、不在起草态",与收尾那句的条件一致。
@@ -1676,6 +1762,7 @@ public sealed class ProviderSetupView : UserControl
         if (ReferenceEquals(_progress, loginProgress)) loginProgress.Text = _loc["LoginDone"];
         await RefreshStatusAsync().ConfigureAwait(true);
         ProviderChanged?.Invoke(provider.Id);
+        if (created && ReferenceEquals(_secondary, loginSecondary) && !_confirm.IsOpen && CaptureFormInputs() == submittedInputs) Created?.Invoke();
         // 同 AddOrSaveKeyAsync:按钮收尾排在拉取模型之后,落库了就先露出「再添加一个」,
         // 别让一次慢网拉取把"加下一份"的入口扣住 30 秒(同样的收尾条件,review⑨)。
         if (ReferenceEquals(_secondary, loginSecondary))
