@@ -1,4 +1,5 @@
 using System.Text.Json;
+using VelaShell.Plugin.Ai.Chat.Runtime;
 using VelaShell.PluginSdk;
 using VelaShell.PluginSdk.TimeSeries;
 
@@ -41,6 +42,7 @@ public sealed record ChatGeneratedImage(string FileName, string MediaType);
 /// <param name="Switch">这一轮的故障转移 / 换 Key 记录(界面上那张切换提示卡);没切过为 null。</param>
 /// <param name="Subagents">这一轮委派出去的子 Agent 的终态快照(界面上那组运行卡片);没委派过为 null。</param>
 /// <param name="Team">这一轮团队的终态看板(界面上的团队入口卡与团队控制台看的就是它);没组过团队为 null。</param>
+/// <param name="Runtime">这一轮脱敏后的 Agent 状态与指标;非 Agent 回合为 null。</param>
 public sealed record ChatTurnMeta(
     string Model = "",
     long ElapsedMs = 0,
@@ -50,11 +52,12 @@ public sealed record ChatTurnMeta(
     IReadOnlyList<ChatGeneratedImage>? Images = null,
     ChatSwitchNotice? Switch = null,
     IReadOnlyList<Agent.SubagentSnapshot>? Subagents = null,
-    Agent.TeamBoardSnapshot? Team = null)
+    Agent.TeamBoardSnapshot? Team = null,
+    AgentRunTelemetry? Runtime = null)
 {
     /// <summary>这一轮有没有值得存的东西 —— 全空就别白占一行。</summary>
     public bool HasContent => Model.Length > 0 || ElapsedMs > 0 || Thinking.Length > 0 || Tools is { Count: > 0 } || Images is { Count: > 0 }
-                              || Switch is { Hops.Count: > 0 } || Subagents is { Count: > 0 } || Team is not null;
+                              || Switch is { Hops.Count: > 0 } || Subagents is { Count: > 0 } || Team is not null || Runtime is not null;
 }
 
 /// <summary>切换提示里点名的那一把 Key:与设置页 Key 行同一种写法(「第 N 把 Key · ●●●●末四位」),不存 Key 本身。</summary>
@@ -263,7 +266,8 @@ public sealed class ChatHistoryStore(IPluginContext context)
                 [.. (meta.Images ?? []).Where(GeneratedImageStore.IsValidReference).Take(GeneratedImageStore.MaxImagesPerTurn)],
                 StoredSwitch.From(meta.Switch),
                 StoredSubagent.From(meta.Subagents),
-                ClipTeam(meta.Team));
+                ClipTeam(meta.Team),
+                meta.Runtime);
             await series.WriteAsync(new(_clock.Next(),
                 new Dictionary<string, string> { [ConversationTag] = conversationId },
                 new Dictionary<string, TimeSeriesValue>
@@ -528,7 +532,8 @@ public sealed class ChatHistoryStore(IPluginContext context)
                     stored.Images is null ? null : [.. stored.Images.Where(GeneratedImageStore.IsValidReference).Take(GeneratedImageStore.MaxImagesPerTurn)],
                     stored.Switch?.ToNotice(),
                     StoredSubagent.ToSnapshots(stored.Subagents),
-                    stored.Team);
+                    stored.Team,
+                    stored.Runtime);
             }
         }
         catch (Exception ex)
@@ -542,7 +547,7 @@ public sealed class ChatHistoryStore(IPluginContext context)
     // 落盘用的形状(与对外的记录分开:对外那套将来可以改,存量 JSON 不受影响)
     private sealed record StoredMeta(string? Model, long ElapsedMs, string? Thinking, long ThinkingMs, StoredTool[]? Tools,
         ChatGeneratedImage[]? Images = null, StoredSwitch? Switch = null, StoredSubagent[]? Subagents = null,
-        Agent.TeamBoardSnapshot? Team = null);
+        Agent.TeamBoardSnapshot? Team = null, AgentRunTelemetry? Runtime = null);
 
     /// <summary>团队看板落盘前截短:报告与消息都可能很长,历史里留够翻看的量即可。</summary>
     private static Agent.TeamBoardSnapshot? ClipTeam(Agent.TeamBoardSnapshot? team)

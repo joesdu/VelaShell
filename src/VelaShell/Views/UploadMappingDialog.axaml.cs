@@ -11,7 +11,7 @@ namespace VelaShell.Views;
 /// <summary>仅选择目录的远端、本地映射绑定窗口;关闭即丢弃未确认的草稿。</summary>
 public partial class UploadMappingDialog : Window
 {
-    private UploadMappingEditor? _editor;
+    private readonly UploadMappingEditor? _editor;
     private bool _closed;
     private bool _saving;
 
@@ -67,7 +67,7 @@ public partial class UploadMappingDialog : Window
     {
         if (!_saving && sender is Control { DataContext: UploadDirectoryPane pane })
         {
-            FireAndForget.Run(async () => { await pane.GoUpAsync(); });
+            FireAndForget.Run(pane.GoUpAsync);
         }
     }
     private void OnRefresh(object? sender, RoutedEventArgs e)

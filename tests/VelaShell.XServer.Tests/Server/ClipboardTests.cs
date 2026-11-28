@@ -405,7 +405,7 @@ public sealed class ClipboardTests
     {
         using RecordingHost host = new();
         await using X11Server server = new(host: host);
-        var (a, windowA, b, windowB) = await TwoSessionsAsync(server, host);
+        (XTestClient? a, uint windowA, XTestClient? b, uint windowB) = await TwoSessionsAsync(server, host);
         await using XTestClient owner = a;
         await using XTestClient other = b;
         uint clipboard = await InternAsync(owner, "CLIPBOARD"), utf8 = await InternAsync(owner, "UTF8_STRING");

@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Chat;
+using VelaShell.Plugin.Ai.Chat.Runtime;
 
 namespace VelaShell.Plugin.Ai.Ui;
 
@@ -88,6 +89,9 @@ public partial class ChatPanelView
 
         /// <summary>顶栏状态行的当前内容 —— 后台轮次写这里,切回本对话时照原样贴回共享的状态行。</summary>
         public string Status = "";
+
+        /// <summary>最近一轮 Agent 的脱敏运行指标,用于切换会话后恢复运行卡片。</summary>
+        public AgentRunTelemetry? RuntimeTelemetry;
 
         // ---------- 本段对话里 Agent 改过的文件(输入框上方那条,只在内存里)----------
         public ChangedFileList ChangedFiles { get; } = new();

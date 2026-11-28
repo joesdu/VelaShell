@@ -720,7 +720,7 @@ public sealed partial class RemoteTransferTests
                 await WaitIdle(api);
             }
             Assert.HasCount(3, temporaries);
-            foreach ((string temporary, string directory) in temporaries.Zip(new[] { "/data/sub/", "/data/sub/", "/" }))
+            foreach ((string temporary, string directory) in temporaries.Zip(["/data/sub/", "/data/sub/", "/"]))
             {
                 Assert.StartsWith(directory + ".vela-up-", temporary);
                 string name = temporary[directory.Length..];

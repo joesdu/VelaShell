@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using NSubstitute;
@@ -29,7 +30,7 @@ public class ChannelManagerWindowUiTests
         HeadlessUnitTestSession.GetOrStartForAssembly(GetType().Assembly).RunOnUiAsync(() =>
         {
             var host = new MainWindowViewModel();
-            var tree = host.Sidebar.SessionTree = new(Substitute.For<ISessionRepository>());
+            SessionTreeViewModel tree = host.Sidebar.SessionTree = new(Substitute.For<ISessionRepository>());
             var group = new SessionTreeNodeViewModel(Guid.NewGuid(), "Production", true) { IsExpanded = true };
             tree.Nodes.Add(group);
             var child = new SessionTreeNodeViewModel(Guid.NewGuid(), "East", true) { IsExpanded = true };
@@ -58,30 +59,30 @@ public class ChannelManagerWindowUiTests
                     window.MouseUp(point, MouseButton.Left);
                     Dispatcher.UIThread.RunJobs();
                 }
-                var folder = visuals.OfType<Border>().First(b => b.Classes.Contains("group"));
-                var check = folder.GetVisualDescendants().OfType<CheckBox>().Single();
-                var arrow = folder.GetVisualDescendants().OfType<Button>().Single(b => b.IsVisible && b is not CheckBox and not RadioButton);
-                Assert.IsTrue(Box(check).Right <= Box(arrow).Left);
-                var row = visuals.OfType<Border>().Single(b => b.Classes.Contains("matrix-row") && b.DataContext is ChannelManagerRow { Label: var label } && label.StartsWith("database-primary-", StringComparison.Ordinal));
+                Border folder = visuals.OfType<Border>().First(b => b.Classes.Contains("group"));
+                CheckBox check = folder.GetVisualDescendants().OfType<CheckBox>().Single();
+                Button arrow = folder.GetVisualDescendants().OfType<Button>().Single(b => b.IsVisible && b is not CheckBox and not RadioButton);
+                Assert.IsLessThanOrEqualTo(Box(arrow).Left, Box(check).Right);
+                Border row = visuals.OfType<Border>().Single(b => b.Classes.Contains("matrix-row") && b.DataContext is ChannelManagerRow { Label: var label } && label.StartsWith("database-primary-", StringComparison.Ordinal));
                 var radios = row.GetVisualDescendants().OfType<RadioButton>().ToList();
                 Assert.HasCount(6, radios);
-                var name = row.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("matrix-label"));
+                TextBlock name = row.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("matrix-label"));
                 var labels = visuals.OfType<TextBlock>().Where(t => t.Classes.Contains("matrix-label")).ToList();
-                var parentLabel = labels.Single(t => t.DataContext is ChannelManagerRow { IsGroup: true, Name: "East" });
-                foreach (var terminalLabel in labels.Where(t => t.DataContext is ChannelManagerRow { IsGroup: false }))
+                TextBlock parentLabel = labels.Single(t => t.DataContext is ChannelManagerRow { IsGroup: true, Name: "East" });
+                foreach (TextBlock? terminalLabel in labels.Where(t => t.DataContext is ChannelManagerRow { IsGroup: false }))
                 {
                     Assert.AreEqual(Box(parentLabel).Left, Box(terminalLabel).Left, 0.5);
                 }
-                var checkboxGlyph = row.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "NormalRectangle");
+                Border checkboxGlyph = row.GetVisualDescendants().OfType<Border>().Single(b => b.Name == "NormalRectangle");
                 Assert.AreEqual(Box(name).Center.Y, Box(checkboxGlyph).Center.Y, 1);
                 var icons = visuals.OfType<VelaShell.Controls.Controls.LucideIcon>().Where(i => i.Classes.Contains("session-icon") && i.IsVisible).ToList();
                 Assert.HasCount(1, icons);
                 Assert.IsNotNull(icons[0].Data);
-                Assert.IsTrue(Box(icons[0]).Right <= Box(name).Left);
-                Assert.IsTrue(Box(name).Right <= Box(radios[0]).Left);
-                foreach (var radio in radios)
+                Assert.IsLessThanOrEqualTo(Box(name).Left, Box(icons[0]).Right);
+                Assert.IsLessThanOrEqualTo(Box(radios[0]).Left, Box(name).Right);
+                foreach (RadioButton? radio in radios)
                 {
-                    var header = visuals.OfType<TextBlock>().Single(t => t.Classes.Contains("column-header") && t.Text == (string?)radio.Tag);
+                    TextBlock header = visuals.OfType<TextBlock>().Single(t => t.Classes.Contains("column-header") && t.Text == (string?)radio.Tag);
                     Assert.AreEqual(Box(header).Center.X, Box(radio).Center.X, 1);
                 }
                 Click(radios[4]);
@@ -94,19 +95,18 @@ public class ChannelManagerWindowUiTests
                 Assert.IsFalse(radios[0].GetVisualDescendants().OfType<Ellipse>().Single(e => e.Name == "Dot").IsVisible);
                 Assert.AreEqual("E 1", visuals.OfType<Button>().Single(b => b.Classes.Contains("filter-chip") && (string?)b.Tag == "6").Content);
                 Click(check);
-                var target = visuals.OfType<ComboBox>().Single();
+                ComboBox target = visuals.OfType<ComboBox>().Single();
                 Assert.IsTrue(target.IsEnabled);
-                CollectionAssert.AreEqual("ABCDEF".Select(c => VelaShell.Localization.LocalizedStrings.Instance[$"ChannelManager_Channel{c}"]).ToArray(),
-                    target.Items.OfType<ComboBoxItem>().Skip(1).Select(item => item.Content).ToArray());
+                Assert.AreSequenceEqual("ABCDEF".Select(c => VelaShell.Localization.LocalizedStrings.Instance[$"ChannelManager_Channel{c}"]).ToArray(), target.Items.OfType<ComboBoxItem>().Skip(1).Select(item => item.Content).ToArray());
                 Border titleBar = visuals.OfType<Border>().Single(b => b.Classes.Contains("window-titlebar"));
                 Assert.AreEqual(window.Title, titleBar.GetVisualDescendants().OfType<TextBlock>().Single().Text);
-                using var frame = window.CaptureRenderedFrame();
+                using WriteableBitmap? frame = window.CaptureRenderedFrame();
                 Assert.IsNotNull(frame);
                 Click(visuals.OfType<Button>().Single(b => b.Classes.Contains("filter-chip") && (string?)b.Tag == "6"));
-                Assert.AreEqual(1, manager.Rows.Count(r => !r.IsGroup));
+                Assert.ContainsSingle(r => !r.IsGroup, manager.Rows);
                 target.SelectedIndex = 6;
                 Assert.IsTrue(manager.IsEmpty);
-                Assert.AreEqual(1, host.TerminalTabs.Count(t => t.SyncChannel == SyncInputChannel.F));
+                Assert.ContainsSingle(t => t.SyncChannel == SyncInputChannel.F, host.TerminalTabs);
                 Assert.AreEqual(5, host.TerminalTabs.Count(t => t.SyncChannel == SyncInputChannel.A));
             }
             finally { window.Close(); }

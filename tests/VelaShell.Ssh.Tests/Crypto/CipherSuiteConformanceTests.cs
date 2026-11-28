@@ -376,7 +376,7 @@ public sealed class CipherSuiteConformanceTests
         pool.Returned.Clear();
         Assert.ThrowsExactly<IOException>(() => receiver.TryOpen(Segmented(frame, 5), 0, MaxPacket, new FailingWriter(), out _));
         Assert.IsNotEmpty(pool.Returned);
-        Assert.IsFalse(pool.Returned.Any(bytes => bytes.AsSpan().IndexOf(marker) >= 0));
+        Assert.DoesNotContain(bytes => bytes.AsSpan().IndexOf(marker) >= 0, pool.Returned);
     }
 
     private sealed class RecordingPool : ArrayPool<byte>

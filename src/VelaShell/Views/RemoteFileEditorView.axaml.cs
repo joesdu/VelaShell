@@ -143,10 +143,7 @@ public partial class RemoteFileEditorView : Window
         CaretStatusText.Text = Strings.Format("Editor_CaretStatus", position.Line, position.Column);
     }
 
-    private void WordWrap_Click(object? sender, RoutedEventArgs e)
-    {
-        Editor.WordWrap = WordWrapToggle.IsChecked == true;
-    }
+    private void WordWrap_Click(object? sender, RoutedEventArgs e) => Editor.WordWrap = WordWrapToggle.IsChecked == true;
 
     private async Task LoadFileAsync()
     {

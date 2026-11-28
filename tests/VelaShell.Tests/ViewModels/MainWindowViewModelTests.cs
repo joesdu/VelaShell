@@ -268,7 +268,7 @@ public class MainWindowViewModelTests
         Avalonia.Headless.HeadlessUnitTestSession.GetOrStartForAssembly(GetType().Assembly).RunOnUiAsync(() =>
         {
             var host = new MainWindowViewModel();
-            var tree = host.Sidebar.SessionTree = new(Substitute.For<ISessionRepository>());
+            SessionTreeViewModel tree = host.Sidebar.SessionTree = new(Substitute.For<ISessionRepository>());
             var profile = new SessionProfile { Name = "gateway", Host = "edge.example" };
             var root = new SessionTreeNodeViewModel(Guid.NewGuid(), "Production", true) { IsExpanded = false };
             var child = new SessionTreeNodeViewModel(Guid.NewGuid(), "East", true);
@@ -287,7 +287,7 @@ public class MainWindowViewModelTests
             Assert.AreEqual("Production (2)", manager.Rows.Single().Label);
             manager.ToggleSelection(manager.Rows.Single());
             manager.SearchText = "edge.example";
-            CollectionAssert.AreEquivalent(new[] { "gateway #1", "gateway #2" }, manager.Rows.Where(r => !r.IsGroup).Select(r => r.Label).ToArray());
+            Assert.AreSequenceEqual(["gateway #1", "gateway #2"], manager.Rows.Where(r => !r.IsGroup).Select(r => r.Label).ToArray(), Microsoft.VisualStudio.TestTools.UnitTesting.SequenceOrder.InAnyOrder);
             manager.FilterIndex = 2;
             manager.Move(SyncInputChannel.D);
             Assert.AreEqual(SyncInputChannel.D, first.SyncChannel);
@@ -329,7 +329,7 @@ public class MainWindowViewModelTests
             Assert.IsNull(offline.SyncChannel);
             Assert.IsFalse(manager.CanMove);
             Assert.HasCount(2, manager.Rows);
-            Assert.IsFalse(manager.Rows.Any(r => r.Label == "live"));
+            Assert.DoesNotContain(r => r.Label == "live", manager.Rows);
         });
 
     [TestMethod]

@@ -1,6 +1,7 @@
 using System.Text;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
+using VelaShell.PluginSdk.RemoteFs;
 using VelaShell.PluginSdk.Sessions;
 
 namespace VelaShell.Plugin.Ai.Agent;
@@ -175,9 +176,9 @@ internal sealed class FileTextStore(IPluginContext context, Func<IReadOnlyList<L
 
     private async Task<string?> RestoreRemoteAsync(FileChange change, string session, string target)
     {
-        var fs = context.RemoteFs;
+        IRemoteFsApi fs = context.RemoteFs;
         string path = change.Path;
-        var current = await fs.StatAsync(session, path).ConfigureAwait(false);
+        RemoteFileEntry? current = await fs.StatAsync(session, path).ConfigureAwait(false);
         if (change.Kind == FileChangeKind.Deleted)
         {
             if (current is not null || (change.OldPath is not null && await fs.StatAsync(session, target).ConfigureAwait(false) is not null))
@@ -189,7 +190,7 @@ internal sealed class FileTextStore(IPluginContext context, Func<IReadOnlyList<L
         byte[] bytes = await fs.ReadAllBytesAsync(session, path, maxBytes).ConfigureAwait(false);
         FileTextReadResult read = Decode(bytes);
         if (read.Text != change.After) return ErrorReviewConflict;
-        var latest = await fs.StatAsync(session, path).ConfigureAwait(false);
+        RemoteFileEntry? latest = await fs.StatAsync(session, path).ConfigureAwait(false);
         if (latest is null || latest.IsSymbolicLink || latest.IsDirectory || latest.Size != bytes.Length) return ErrorReviewConflict;
         if (change.Kind == FileChangeKind.Created)
         {

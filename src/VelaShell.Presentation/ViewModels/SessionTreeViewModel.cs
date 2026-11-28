@@ -985,7 +985,7 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
     public void AddSession(SessionProfile session)
     {
         SessionTreeNodeViewModel? groupNode = session.GroupId is { } groupId ? FindGroupNode(groupId) : null;
-        var sessionNode = CreateSessionNode(session, groupNode is null);
+        SessionTreeNodeViewModel sessionNode = CreateSessionNode(session, groupNode is null);
         if (groupNode is null)
         {
             InsertRootSessionSorted(sessionNode);
@@ -1066,7 +1066,7 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
             // 置顶的会话不用:它本来就摊在树顶,展开目标分组只是平白多铺开一片。
             if (!sourceNode.IsPinned)
             {
-                for (var ancestor = targetGroup; ancestor is not null; ancestor = ancestor.ParentGroup)
+                for (SessionTreeNodeViewModel? ancestor = targetGroup; ancestor is not null; ancestor = ancestor.ParentGroup)
                 {
                     ancestor.IsExpanded = true;
                 }
@@ -1399,7 +1399,7 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
             || !(await _settings.GetSnapshotAsync().ConfigureAwait(true)).General.CollapseGroupsByDefault;
         _defaultExpanded = defaultExpanded;
 
-        var (groups, sessions) = await ISessionTreeDataRepository.ReadAsync(_repository);
+        (List<ServerGroup>? groups, List<SessionProfile>? sessions) = await ISessionTreeDataRepository.ReadAsync(_repository);
         var groupTree = new ServerGroupTree(groups);
         Guid? selectedId = SelectedNode?.Id;
         bool selectedGroup = SelectedNode?.IsGroup == true;
@@ -1410,7 +1410,7 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
         var groupNodes = new Dictionary<Guid, SessionTreeNodeViewModel>();
         foreach (ServerGroup group in groupTree.OrderedGroups)
         {
-            var parent = groupTree.ParentOf(group.Id) is { } parentId ? groupNodes[parentId] : null;
+            SessionTreeNodeViewModel? parent = groupTree.ParentOf(group.Id) is { } parentId ? groupNodes[parentId] : null;
             var groupNode = new SessionTreeNodeViewModel(group.Id, group.Name, true)
             {
                 ParentGroup = parent,
@@ -1432,8 +1432,8 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
         }
         foreach (SessionProfile session in sessions.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
         {
-            var parent = session.GroupId is { } id ? groupNodes.GetValueOrDefault(id) : null;
-            var node = CreateSessionNode(session, parent is null);
+            SessionTreeNodeViewModel? parent = session.GroupId is { } id ? groupNodes.GetValueOrDefault(id) : null;
+            SessionTreeNodeViewModel node = CreateSessionNode(session, parent is null);
             if (parent is null)
             {
                 roots.Add(node);
@@ -1449,9 +1449,9 @@ public sealed partial class SessionTreeViewModel : ReactiveObject
         Nodes.CollectionChanged -= OnNodesChanged;
         try
         {
-            foreach (var old in Nodes) Unwatch(old);
+            foreach (SessionTreeNodeViewModel old in Nodes) Unwatch(old);
             Nodes.Clear();
-            foreach (var root in roots)
+            foreach (SessionTreeNodeViewModel root in roots)
             {
                 Nodes.Add(root);
                 Watch(root);

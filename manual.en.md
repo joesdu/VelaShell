@@ -1131,7 +1131,7 @@ Delegation accepts an optional `modelId` selecting an already configured chat mo
 
 **Group-chat warning:** Authorizing a group can let members within the permitted-user scope issue instructions. Configure questioners and approvers separately where appropriate. Messages, output, and approvals traverse the platform. Default Plan is read-only; do not switch to writes merely to test connectivity.
 
-**Entry point and prerequisites:** Command Palette → AI collaboration integration. Enable the IM master switch (off by default), and prepare model access and channel credentials.
+**Entry point and prerequisites:** Click the cable icon at the top right of the AI chat panel to open **Collaboration**. If chat is closed, you can also search for **Collaboration** in the Command Palette. Enable the IM master switch (off by default), and prepare model access and channel credentials.
 
 | Channel | Required information | Network/platform prerequisites |
 | --- | --- | --- |

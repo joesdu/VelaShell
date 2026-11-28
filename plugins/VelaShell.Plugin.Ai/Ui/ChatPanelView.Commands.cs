@@ -12,7 +12,7 @@ public partial class ChatPanelView
     private static readonly string[] LocalCommands = ["/clear", "/resume", "/help"];
 
     /// <summary>候选里的技能命令 → 它的一句说明(内置命令的说明走 <see cref="CommandDescription" />)。</summary>
-    private readonly Dictionary<string, string> _skillCommandDescriptions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _skillCommandDescriptions = [with(StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>
     /// 可以用 <c>/技能名</c> 调用的技能:与模型看到的技能目录同一套(用户级 + 当前工作区,去掉停用的);
@@ -43,7 +43,11 @@ public partial class ChatPanelView
         {
             string command = "/" + skill.Name;
             if (LocalCommands.Contains(command, StringComparer.OrdinalIgnoreCase)
-                || !command.StartsWith(text[..caret], StringComparison.OrdinalIgnoreCase)) continue;
+                || !command.StartsWith(text[..caret], StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             _commandCandidates.Add(command);
             _skillCommandDescriptions[command] = skill.Description;
         }
@@ -53,7 +57,11 @@ public partial class ChatPanelView
             string command = "/" + name;
             if (_commandCandidates.Contains(command, StringComparer.OrdinalIgnoreCase)
                 || LocalCommands.Contains(command, StringComparer.OrdinalIgnoreCase)
-                || !command.StartsWith(text[..caret], StringComparison.OrdinalIgnoreCase)) continue;
+                || !command.StartsWith(text[..caret], StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             _commandCandidates.Add(command);
             _skillCommandDescriptions[command] = _loc.F("CommandFromPack", description.Length > 0 ? description : name, pack);
         }
@@ -118,7 +126,11 @@ public partial class ChatPanelView
         {
             // /技能名 或扩展包的 /命令:不是本地命令,照常发给模型,由 SendAsync 展开(见 SkillInvocation / ExtensionRuntime)
             if (SkillInvocation.Match(text, InvocableSkills()) is not null
-                || ExtensionRuntime.TryExpandCommand(text, ActivePacks()) is not null) return false;
+                || ExtensionRuntime.TryExpandCommand(text, ActivePacks()) is not null)
+            {
+                return false;
+            }
+
             SetStatus(_loc["CommandUnknown"]);
             return true;
         }

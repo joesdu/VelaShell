@@ -2,9 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
-using VelaShell.Core.Models;
-using SyncInputChannel = VelaShell.Services.SyncInputChannel;
 using VelaShell.ViewModels;
+using SyncInputChannel = VelaShell.Services.SyncInputChannel;
 
 namespace VelaShell.Views;
 
@@ -114,7 +113,11 @@ public partial class ChannelManagerWindow : Window
                 SearchBox.Text = string.Empty;
                 SearchBox.IsVisible = false;
             }
-            else this.PostClose();
+            else
+            {
+                this.PostClose();
+            }
+
             e.Handled = true;
             return;
         }

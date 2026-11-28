@@ -2213,7 +2213,11 @@ public partial class SettingsView : UserControl
     {
         if (sender is not Button { DataContext: WorkspaceModelRow row }
             || SelectedItem is not { Model: null } item || !item.Provider.Models.Contains(row.Model)
-            || !CanLeaveWorkspace()) return;
+            || !CanLeaveWorkspace())
+        {
+            return;
+        }
+
         ReloadList(row.Model.Id);
         EditorScroller.ScrollToHome();
         BackToProviderButton.Focus();

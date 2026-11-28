@@ -179,7 +179,9 @@ public sealed class ChannelManagerViewModel : ReactiveObject, IDisposable
     {
         if (args.PropertyName is nameof(TerminalTabViewModel.SyncChannel) or nameof(TerminalTabViewModel.IsSyncPaused)
             or nameof(TerminalTabViewModel.ConnectionStatus) or nameof(TerminalTabViewModel.IsConnected) or nameof(TerminalTabViewModel.Title))
+        {
             ScheduleRefresh();
+        }
     }
 
     private void ScheduleRefresh()

@@ -45,7 +45,7 @@ public sealed partial class ChatPanelViewUiTests
                 Press(cards[0].GetVisualDescendants().OfType<Grid>().First());
                 await PumpAsync(5);
                 DiffView diff = cards[0].GetVisualDescendants().OfType<DiffView>().Single();
-                Assert.AreEqual(1, diff.Rows.Children.Count(r => r.Classes.Contains("diffRemoved")));
+                Assert.ContainsSingle(r => r.Classes.Contains("diffRemoved"), diff.Rows.Children);
                 Assert.AreEqual(2, diff.Rows.Children.Count(r => r.Classes.Contains("diffAdded")));
                 string details = string.Join("\n", cards[0].GetVisualDescendants().OfType<SelectableTextBlock>().Select(t => t.Text));
                 Assert.DoesNotContain("oldText", details, "差异已经画出来了,原始的 oldText / newText 不再整段列出");
@@ -160,7 +160,7 @@ public sealed partial class ChatPanelViewUiTests
                 RaiseClick(view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(t => t.Name == "DiffInlineToggle"));
                 Assert.IsFalse(view.IsSideBySide);
                 Assert.IsNotNull(view.InlineView);
-                Assert.AreEqual(1, view.InlineView.Rows.Children.Count(r => r.Classes.Contains("diffRemoved")));
+                Assert.ContainsSingle(r => r.Classes.Contains("diffRemoved"), view.InlineView.Rows.Children);
 
                 // 标签关了:再点就重开一个
                 await tab.CloseAsync();

@@ -29,7 +29,7 @@ public sealed class PrivateKeyFileTests
         string path = Path.GetTempFileName();
         try
         {
-            using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
             string text = key.ExportPkcs8PrivateKeyPem().PadRight(BoundedFileReader.MaxBytes);
             await File.WriteAllTextAsync(path, text);
             using InMemorySshSigner signer = await SshPrivateKeyFile.LoadAsync(path);

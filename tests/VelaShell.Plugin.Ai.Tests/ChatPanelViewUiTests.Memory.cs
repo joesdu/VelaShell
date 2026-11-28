@@ -23,7 +23,7 @@ public sealed partial class ChatPanelViewUiTests
             Window host = Host(picker);
             try
             {
-                MemoryStore memories = MemoryStore.For(context.DataDirectory);
+                var memories = MemoryStore.For(context.DataDirectory);
                 picker.ShowPage(ToolPickerView.Page.Memory);
                 await PumpAsync(2);
                 Assert.AreEqual("0", NavCount(picker, ToolPickerView.Page.Memory));
@@ -117,7 +117,7 @@ public sealed partial class ChatPanelViewUiTests
                     ? LifecycleAnswer
                     : ImageToolCall(MemoryToolSource.SaveToolName, JsonSerializer.Serialize(new { title = "Prefers tables", content = "Show comparisons as tables." }))));
             using var context = new TestPluginContext();
-            MemoryStore memories = MemoryStore.For(context.DataDirectory);
+            var memories = MemoryStore.For(context.DataDirectory);
             if (mode == ChatMode.Chat) memories.Add("Prefers tables", "Show comparisons as tables.", "user");
             var store = new AiSettingsStore(context);
             AiProvider provider = StubProvider("current", chat.BaseUrl, "chat-model");

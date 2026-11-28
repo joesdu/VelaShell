@@ -52,7 +52,7 @@ public sealed class PluginManager(PluginManagerOptions options) : IAsyncDisposab
     {
         (PluginState state, string? error) = transition switch
         {
-            Discovered => (PluginState.Discovered, (string?)null),
+            Discovered => (PluginState.Discovered, null),
             Disabled => (PluginState.Disabled, null),
             Invalid invalid => (PluginState.Invalid, invalid.Reason),
             Incompatible incompatible => (PluginState.Incompatible, incompatible.Reason),

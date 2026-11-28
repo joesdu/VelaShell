@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using VelaShell.Plugin.Ai.Chat.Runtime;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.Plugin.Ai.Ui;
 
@@ -10,10 +11,12 @@ namespace VelaShell.Plugin.Ai.Chat;
 
 /// <summary>运行级工具账本:恢复可以复用调用,不能重新解释同一调用身份。</summary>
 internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome = null,
-    Func<bool>? hasDeniedExecution = null)
+    Func<bool>? hasDeniedExecution = null, AgentRunEventLog? eventLog = null,
+    AgentRunSnapshotProjector? snapshot = null)
 {
     private sealed record Invocation(string Signature, Task<object?> Result);
     private readonly Lock _gate = new();
+    private int _snapshotAttached = snapshot is null ? 0 : 1;
     private readonly Dictionary<string, Invocation> _calls = [with(StringComparer.Ordinal)];
     private readonly List<ChatMessage> _checkpoint = [];
     private readonly List<ChatMessage> _completed = [];
@@ -43,7 +46,53 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
     private int _stepCalls, _idleSteps;
     private bool _stepAdvanced;
     internal string RunId { get; } = runId;
+    /// <summary>本轮最近的有界事件。订阅事件只用于观测，不应改变执行决策。</summary>
+    internal AgentRunEventLog Events { get; } = eventLog ?? new();
+
+    /// <summary>从运行事件实时投影出的状态与指标，供 UI、Bridge 和未来宿主读取。</summary>
+    internal AgentRunSnapshot Snapshot
+    {
+        get
+        {
+            if (Interlocked.Exchange(ref _snapshotAttached, 1) == 0) SnapshotProjector.AttachTo(Events);
+            return SnapshotProjector.Snapshot;
+        }
+    }
+
+    internal AgentRunSnapshotProjector SnapshotProjector { get; } = snapshot ?? new(runId);
+
+    /// <summary>把运行事件转发给 UI、Bridge 或测试；订阅者异常会被事件日志吞掉。</summary>
+    internal event Action<AgentRunEvent>? EventRecorded
+    {
+        add => Events.Appended += value;
+        remove => Events.Appended -= value;
+    }
+
     internal Agent.SubagentOrchestrator? Subagents { get; set; }
+
+    internal void RecordRuntimeEvent(AgentRunEventKind kind, string? callId = null, string? toolName = null,
+        string? outcome = null, long? startedAt = null, string? summary = null)
+    {
+        int? duration = startedAt is long started
+            ? checked((int)Math.Min(int.MaxValue, Environment.TickCount64 - started))
+            : null;
+        Events.Append(RunId, kind, _batchSteps, callId, toolName, outcome, duration, summary);
+    }
+
+    private void EnsureRunnableLocked()
+    {
+        if (hasDeniedExecution?.Invoke() == true)
+        {
+            RecordRuntimeEvent(AgentRunEventKind.RunPaused, outcome: "ExecutionDenied", summary: "execution policy denied the run");
+            throw new AgentPausedException("ExecutionDenied");
+        }
+        if (hasUnknownOutcome?.Invoke() == true)
+        {
+            RecordRuntimeEvent(AgentRunEventKind.RunPaused, outcome: "TaskUnknown", summary: "a previous side effect has unknown outcome");
+            throw new AgentPausedException("TaskUnknown");
+        }
+        if (_paused is { } paused) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(paused).Throw();
+    }
 
     /// <summary>
     /// 只读的轮询工具:同参连调本就是为了看进度,结果变了就算有进展,不计入重复;
@@ -92,19 +141,19 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
         token.ThrowIfCancellationRequested();
         string callId = context.CallContent.CallId;
         string signature = context.Function.Name + ":" + CanonicalArguments(context.CallContent.Arguments);
-        TaskCompletionSource<object?>? completion = null;
         Task<object?> result;
+        TaskCompletionSource<object?>? completion;
         lock (_gate)
         {
-            if (hasDeniedExecution?.Invoke() == true) throw new AgentPausedException("ExecutionDenied");
-            if (hasUnknownOutcome?.Invoke() == true) throw new AgentPausedException("TaskUnknown");
-            if (_paused is { } paused) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(paused).Throw();
+            EnsureRunnableLocked();
             _stepCalls++;
             if (_calls.TryGetValue(callId, out Invocation? previous))
             {
                 if (previous.Signature != signature)
                 {
                     _paused = new InvalidOperationException("A tool call id was reused with different arguments; execution paused.");
+                    RecordRuntimeEvent(AgentRunEventKind.RunPaused, callId, context.Function.Name, "CallIdArgumentsChanged",
+                        summary: "tool call identity changed");
                     throw _paused;
                 }
                 return new ValueTask<object?>(previous.Result.WaitAsync(token));
@@ -113,19 +162,21 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
             if (_repeated >= 3)
             {
                 _paused = new AgentPausedException("NoProgress");
+                RecordRuntimeEvent(AgentRunEventKind.RunPaused, outcome: "NoProgress", summary: "repeated tool invocation");
                 throw _paused;
             }
             completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             result = completion.Task;
             _calls.Add(callId, new(signature, result));
         }
+        RecordRuntimeEvent(AgentRunEventKind.ToolCallStarted, callId, context.Function.Name);
         // 失败/取消也占据账本身份:副作用未知时不能重放。
-        _ = CompleteAsync(context, signature, completion, token);
+        _ = CompleteAsync(context, signature, completion, token, Environment.TickCount64);
         return new ValueTask<object?>(result);
     }
 
     private async Task CompleteAsync(FunctionInvocationContext context, string signature,
-        TaskCompletionSource<object?> completion, CancellationToken token)
+        TaskCompletionSource<object?> completion, CancellationToken token, long startedAt)
     {
         string? previousIdentity = Agent.AgentToolbox.InvocationIdentity.Value;
         Agent.AgentToolbox.InvocationIdentity.Value = context.CallContent.CallId;
@@ -157,6 +208,9 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
                 }
             }
             completion.TrySetResult(value);
+            RecordRuntimeEvent(AgentRunEventKind.ToolCallCompleted, context.CallContent.CallId, context.Function.Name,
+                invalid is null ? "succeeded" : "invalid_arguments", startedAt,
+                invalid is null ? null : "tool did not run");
             RaiseProgressed();
         }
         catch (OperationCanceledException ex)
@@ -174,6 +228,8 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
                 _completed.Add(result);
             }
             completion.TrySetCanceled(ex.CancellationToken);
+            RecordRuntimeEvent(AgentRunEventKind.ToolCallCancelled, context.CallContent.CallId, context.Function.Name,
+                "cancelled", startedAt, "outcome is unknown unless the local process was terminated");
         }
         catch (Exception ex)
         {
@@ -186,6 +242,8 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
                 _completed.Add(result);
             }
             completion.TrySetException(ex);
+            RecordRuntimeEvent(AgentRunEventKind.ToolCallFailed, context.CallContent.CallId, context.Function.Name,
+                "failed", startedAt, ex.GetType().Name);
         }
         finally { Agent.AgentToolbox.InvocationIdentity.Value = previousIdentity; }
     }
@@ -194,15 +252,14 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
     {
         lock (_gate)
         {
-            if (hasDeniedExecution?.Invoke() == true) throw new AgentPausedException("ExecutionDenied");
-            if (hasUnknownOutcome?.Invoke() == true) throw new AgentPausedException("TaskUnknown");
-            if (_paused is { } paused) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(paused).Throw();
+            EnsureRunnableLocked();
             if (_stepCalls > 0) _idleSteps = _stepAdvanced ? 0 : _idleSteps + 1;
             _stepCalls = 0;
             _stepAdvanced = false;
             if (_idleSteps >= 3)
             {
                 _paused = new AgentPausedException("NoProgress");
+                RecordRuntimeEvent(AgentRunEventKind.RunPaused, outcome: "NoProgress", summary: "idle agent steps");
                 throw _paused;
             }
             if (Subagents?.Team?.HasPendingReport == true) throw new TeamReportPendingException();
@@ -211,6 +268,7 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
             _checkpoint.Clear();
             _checkpoint.AddRange(messages);
         }
+        RecordRuntimeEvent(AgentRunEventKind.StepStarted);
     }
 
     internal void RecordInterruptedText(string text)
@@ -221,6 +279,7 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
     internal void RecordNotification(ChatMessage notification)
     {
         lock (_gate) { _completed.Add(notification); _checkpoint.Add(notification); }
+        RecordRuntimeEvent(AgentRunEventKind.NotificationRecorded, summary: "background completion notification");
         RaiseProgressed();
     }
 
@@ -249,7 +308,11 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
         }
     }
 
-    internal void ContinueBatch() { lock (_gate) _batchSteps = 0; }
+    internal void ContinueBatch()
+    {
+        lock (_gate) _batchSteps = 0;
+        RecordRuntimeEvent(AgentRunEventKind.BatchContinued);
+    }
 
     internal void CompleteStep(ChatResponse response)
     {
@@ -258,6 +321,7 @@ internal sealed class AgentExecution(string runId, Func<bool>? hasUnknownOutcome
             _checkpoint.AddRange(response.Messages);
             _completed.AddRange(response.Messages);
         }
+        RecordRuntimeEvent(AgentRunEventKind.StepCompleted, outcome: "model response received");
         RaiseProgressed();
     }
 

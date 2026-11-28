@@ -171,7 +171,7 @@ public sealed class TeamConsoleModelTests
                 Assert.IsFalse(box.Intersects(new Rect(node.X - 42, node.Y - 42, 84, 84)), "标签不压节点");
                 Assert.IsFalse(box.Intersects(new Rect(node.X - 90, node.Y + 50, 180, 34)), "标签不压节点下面的名字");
             }
-            Assert.AreEqual(1, boxes.Count(other => other.Intersects(box)), "标签之间互不重叠(只和自己相交)");
+            Assert.ContainsSingle(other => other.Intersects(box), boxes, "标签之间互不重叠(只和自己相交)");
         }
     }
 
@@ -198,7 +198,7 @@ public sealed class TeamConsoleModelTests
 
         TeamMemberState[] states = [.. members.Select(m => TeamConsoleModel.StateOf(m, team, runs))];
 
-        Assert.AreSequenceEqual((TeamMemberState[])
+        Assert.AreSequenceEqual(
         [
             TeamMemberState.Working, TeamMemberState.Thinking, TeamMemberState.Waiting,
             TeamMemberState.Waiting, TeamMemberState.Blocked, TeamMemberState.Idle
@@ -249,9 +249,9 @@ public sealed class TeamConsoleModelTests
         Assert.IsTrue(telemetry.Sample(start + TeamTelemetry.Interval, Totals(700, 50)));
         Assert.IsTrue(telemetry.Sample(start + (TeamTelemetry.Interval * 2), Totals(700, 80)));
 
-        Assert.AreSequenceEqual((double[])[600, 0], [.. telemetry.Member("a")]);
-        Assert.AreSequenceEqual((double[])[50, 30], [.. telemetry.Member("b")]);
-        Assert.AreSequenceEqual((double[])[650, 30], [.. telemetry.Team]);
+        Assert.AreSequenceEqual([600, 0], [.. telemetry.Member("a")]);
+        Assert.AreSequenceEqual([50, 30], [.. telemetry.Member("b")]);
+        Assert.AreSequenceEqual([650, 30], [.. telemetry.Team]);
         Assert.IsEmpty(telemetry.Member("nobody"));
 
         for (int i = 3; i < 80; i++) telemetry.Sample(start + (TeamTelemetry.Interval * i), Totals(700 + i, 80));

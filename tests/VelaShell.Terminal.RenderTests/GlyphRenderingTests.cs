@@ -198,15 +198,15 @@ public class GlyphRenderingTests
 
                 control.Feed(Encoding.UTF8.GetBytes("\x1b[0m\x1b[?1049h" + text));
                 uint[] alternateInitial = RenderFrame(window).Pixels;
-                CollectionAssert.AreEqual(initial, alternateInitial);
+                Assert.AreSequenceEqual(initial, alternateInitial);
                 int before = control.AlternateBandRenderCountForTest;
                 Assert.IsGreaterThan(1, before);
                 control.Feed(Encoding.UTF8.GetBytes(edit));
-                CollectionAssert.AreEqual(edited, RenderFrame(window).Pixels);
+                Assert.AreSequenceEqual(edited, RenderFrame(window).Pixels);
                 Assert.AreEqual(before + 1, control.AlternateBandRenderCountForTest);
 
                 control.Feed("\x1b[?1049l"u8);
-                CollectionAssert.AreEqual(edited, RenderFrame(window).Pixels);
+                Assert.AreSequenceEqual(edited, RenderFrame(window).Pixels);
             }
             finally
             {

@@ -61,7 +61,7 @@ public sealed partial class X11Server : IAsyncDisposable
     private readonly byte[]? _cookie;
 
     // 以宿主对象的引用为键,选区表只保留作用域,不持有 SSH 连接。
-    private readonly ConditionalWeakTable<object, object> _clipboardSessions = new();
+    private readonly ConditionalWeakTable<object, object> _clipboardSessions = [];
 
     /// <summary>对宿主的回调都经它排队,执行线程放锁之后再调(见 RunLoopAsync)。</summary>
     private readonly DeferredHost _host;

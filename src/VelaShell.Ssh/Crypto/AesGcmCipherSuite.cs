@@ -198,7 +198,6 @@ internal sealed class AesGcmCipherSuite : ISshCipherSuite
                          .CopyTo(payload.GetSpan(payloadLength));
                 payload.Advance(payloadLength);
             }
-
         }
         finally
         {

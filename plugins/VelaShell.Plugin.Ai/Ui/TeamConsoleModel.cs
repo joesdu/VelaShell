@@ -210,7 +210,7 @@ internal static class TeamConsoleModel
         double cx = width / 2, cy = RingTop + ry;
         height = cy + ry + RingBottom;
 
-        Ring ring = Ring.Sample(rx, ry);
+        var ring = Ring.Sample(rx, ry);
         double step = ring.Length / n;
         // 从正上方起等弧长取点;人数是 4 的倍数时错开半步,四角各坐一人、上下左右对称
         double offset = n % 4 == 0 ? step / 2 : 0;

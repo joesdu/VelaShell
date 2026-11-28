@@ -103,7 +103,10 @@ public sealed class ExtensionPackTests
         string a = ExtensionManifest.Load(Pack(SampleManifest(), "a")).McpFingerprint();
         string same = ExtensionManifest.Load(Pack(new
         {
-            id = "acme-ops", name = "Renamed", version = "9.9", description = "changed",
+            id = "acme-ops",
+            name = "Renamed",
+            version = "9.9",
+            description = "changed",
             commands = Array.Empty<object>(),
             ((dynamic)SampleManifest()).mcpServers
         }, "b")).McpFingerprint();

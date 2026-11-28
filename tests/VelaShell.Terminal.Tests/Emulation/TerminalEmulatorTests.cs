@@ -23,15 +23,14 @@ public class TerminalEmulatorTests
         TerminalEmulator e = New(rows: 3);
         Feed(e, "history\r\nfirst\r\n\r\n\e]8;;https://example.org\aold\e]8;;\a");
         Feed(e, "\e[2;3r\e[?1049hfull-screen\e[?2004h\e]2;unfinished");
-        e.Feed(new byte[] { 0xe2 }); // 旧流在 OSC 载荷的 UTF-8 字符中间断开。
+        e.Feed([0xe2]); // 旧流在 OSC 载荷的 UTF-8 字符中间断开。
         e.BeginNewSession("new session");
         Feed(e, "ready");
 
         Assert.IsFalse(e.IsAlternateScreen);
         Assert.IsFalse(e.Modes.BracketedPaste);
         Assert.AreEqual(0, e.Screen.ScrollTop);
-        CollectionAssert.AreEqual(new[] { "history", "first", "", "old", "new session", "ready", "" },
-            Enumerable.Range(0, e.Screen.TotalRows).Select(i => e.Screen.ViewLine(i).GetText()).ToArray());
+        Assert.AreSequenceEqual(["history", "first", "", "old", "new session", "ready", ""], Enumerable.Range(0, e.Screen.TotalRows).Select(i => e.Screen.ViewLine(i).GetText()).ToArray());
         Assert.AreEqual("https://example.org", e.Hyperlinks.UriOf(e.Screen.ViewLine(3).LinkAt(0)));
         Assert.AreEqual(0, e.Screen.ActiveLine(1).LinkAt(0));
         Feed(e, "\ec");

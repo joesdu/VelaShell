@@ -20,206 +20,87 @@ public readonly record struct RequestContext(
 /// </summary>
 public static class ContextBuilder
 {
-    /// <summary>无论怎么裁,末尾这些条数一定留着 —— 裁到只剩系统提示词就没法对话了。</summary>
-    private const int AlwaysKeep = 4;
-
     /// <summary>每条消息的固定开销(角色、分隔符之类),各家协议都有,量级一致。</summary>
     private const int PerMessageOverhead = 4;
 
     /// <summary>
-    /// 装配请求。<paramref name="windowTokens" /> ≤ 0(用户没填上下文窗口)时不裁剪 ——
-    /// 宁可让服务端报"超长",也不擅自丢用户的上下文。
+    /// 装配请求。窗口未知时不裁剪历史；已知时按预算裁剪并规整工具轮次。
     /// </summary>
-    /// <param name="systemPrompt">本轮的系统提示词。</param>
-    /// <param name="history">对话历史(不含系统提示词);<b>本方法不修改它</b>。</param>
-    /// <param name="windowTokens">模型的上下文窗口(接入配置里的"最大输入 tokens")。</param>
-    /// <param name="reserveTokens">给回复留出的余量(通常就是最大输出 tokens)。</param>
-    /// <param name="summary">早期对话的摘要(空 = 没压缩过);它替代 <paramref name="summarizedThrough" /> 之前的那些消息。</param>
-    /// <param name="summarizedThrough">摘要覆盖到 <c>history</c> 的哪个下标为止(不含)。</param>
+
     public static RequestContext Build(string systemPrompt, IReadOnlyList<ChatMessage> history,
         int windowTokens, int reserveTokens, string summary = "", int summarizedThrough = 0)
     {
         ArgumentNullException.ThrowIfNull(history);
-        var system = new ChatMessage(ChatRole.System, systemPrompt);
-        int from = Math.Clamp(summarizedThrough, 0, history.Count);
-        bool hasSummary = summary.Length > 0 && from > 0;
-        // 摘要以一条 user 消息的身份排在最前:system 每轮都重建、放不住它,
-        // 而 user 这个角色在所有协议里都能安全地打头。
-        ChatMessage? digest = hasSummary ? new ChatMessage(ChatRole.User, summary) : null;
-
-        int start = from;
-        if (windowTokens > 0)
-        {
-            // 留出回复的余量,再留 10% 给估算误差 —— 估出来的 token 不可能和服务端完全一致
-            int budget = (int)((windowTokens - Math.Max(0, reserveTokens)) * 0.9);
-            int fixedCost = Estimate(system) + (digest is null ? 0 : Estimate(digest));
-            start = FirstIndexThatFits(fixedCost, history, from, Math.Max(budget, 0));
-        }
-
-        // 没有摘要打头时,发出去的第一条必须是 user
-        if (digest is null)
-        {
-            start = FirstUserFrom(history, start);
-        }
-
-        var messages = new List<ChatMessage>(history.Count - start + 2) { system };
-        if (digest is not null)
-        {
-            messages.Add(digest);
-        }
-        AppendNormalized(messages, history, start);
-        return new RequestContext(messages, start - from, Estimate(messages));
+        ContextCompilationInput<ChatMessage> input = new(
+            systemPrompt, history, windowTokens, reserveTokens, summary, summarizedThrough);
+        ContextCompilationResult<ChatMessage> result = PromptContextCompiler.CompileContext(input, ChatMessageAdapter.Instance);
+        return new RequestContext([.. result.Messages], result.DroppedMessages, result.EstimatedTokens);
     }
 
-    /// <summary>
-    /// 从 <paramref name="start" /> 起找第一条用户消息;找不到就<b>原样返回</b>。
-    /// </summary>
-    /// <remarks>
-    /// <b>Anthropic 协议要求 messages 的第一条是 user</b>(system 单独走一个字段),
-    /// 否则整个请求 400。切点本来只落在用户消息上,但 <see cref="AlwaysKeep" /> 是硬底线,
-    /// 顶到它时会停在半轮中间 —— 那时第一条就可能是 assistant 或工具结果。
-    /// 摘要在场时不必管:摘要本身就是一条 user,由它打头。
-    ///
-    /// <para>一条 user 都没有(整段窗口全是 assistant/工具消息)时不动 —— 那时无论怎么切都不合法,
-    /// 与其把上下文清空,不如原样发出去让服务端报准确的错。</para>
-    /// </remarks>
-    private static int FirstUserFrom(IReadOnlyList<ChatMessage> history, int start)
+    private sealed class ChatMessageAdapter : IContextMessageAdapter<ChatMessage>
     {
-        for (int i = start; i < history.Count; i++)
-        {
-            if (history[i].Role == ChatRole.User)
-            {
-                return i;
-            }
-        }
-        return start;
-    }
+        public static ChatMessageAdapter Instance { get; } = new();
 
-    /// <summary>
-    /// 从最早往后找第一个"留下之后就装得下"的起点。只在<b>用户消息</b>处切 ——
-    /// 从 assistant 或工具结果中间切会留下没有来由的半截上下文,
-    /// 更糟的是把工具调用和它的结果拆开(有些协议直接报错)。
-    /// </summary>
-    private static int FirstIndexThatFits(int fixedCost, IReadOnlyList<ChatMessage> history, int from, int budget)
-    {
-        int total = fixedCost + Estimate(history, from);
-        int lastCuttable = Math.Max(from, history.Count - AlwaysKeep);
-        int start = from;
-        while (total > budget && start < lastCuttable)
+        public ContextMessageInfo Describe(ChatMessage message)
         {
-            total -= Estimate(history[start]);
-            start++;
-            // 切到下一条用户消息为止,别把一轮拦腰截断
-            while (start < lastCuttable && history[start].Role != ChatRole.User)
-            {
-                total -= Estimate(history[start]);
-                start++;
-            }
-        }
-        return start;
-    }
-
-    /// <summary>
-    /// 追加历史,并做两件规整:丢掉<b>落单的工具调用/结果</b>,再把<b>相邻同角色</b>的消息并成一条。
-    /// </summary>
-    /// <remarks>
-    /// 合并的理由:用户按停止之后,那条没有得到回复的 user 消息会留在历史里,
-    /// 下一轮就是两条挨着的 user。实测 Anthropic 适配器<b>不会</b>替你合并,原样发两条,
-    /// 而 Anthropic 协议要求角色交替。与其在每个可能产生该状态的地方各补一次,
-    /// 不如在唯一的出口这里兜住 —— 配对也是同一个道理。
-    /// </remarks>
-    private static void AppendNormalized(List<ChatMessage> sink, IReadOnlyList<ChatMessage> history, int start)
-    {
-        (HashSet<string> calls, HashSet<string> results) = CollectCallIds(history, start);
-        for (int i = start; i < history.Count; i++)
-        {
-            ChatMessage message = history[i];
-            IReadOnlyList<AIContent> contents = Paired(message, calls, results);
-            if (contents.Count == 0)
-            {
-                continue; // 整条只剩落单的调用/结果,发出去只会被服务端拒
-            }
-            if (sink.Count > 1 && sink[^1].Role == message.Role)
-            {
-                // 并成新的一条,不要就地改 —— sink[^1] 可能就是 history 里那个对象
-                sink[^1] = new ChatMessage(message.Role, [.. sink[^1].Contents, .. contents]);
-                continue;
-            }
-            sink.Add(ReferenceEquals(contents, message.Contents)
-                ? message
-                : new ChatMessage(message.Role, [.. contents]));
-        }
-    }
-
-    /// <summary>窗口内出现过的工具调用 id 与工具结果 id。</summary>
-    private static (HashSet<string> Calls, HashSet<string> Results) CollectCallIds(
-        IReadOnlyList<ChatMessage> history, int start)
-    {
-        HashSet<string> calls = [], results = [];
-        for (int i = start; i < history.Count; i++)
-        {
-            foreach (AIContent content in history[i].Contents)
+            List<ContextToolPart> tools = [];
+            foreach (AIContent content in message.Contents)
             {
                 switch (content)
                 {
                     case FunctionCallContent call:
-                        calls.Add(call.CallId);
+                        tools.Add(new(ContextToolPartKind.Call, call.CallId));
                         break;
                     case FunctionResultContent result:
-                        results.Add(result.CallId);
+                        tools.Add(new(ContextToolPartKind.Result, result.CallId));
                         break;
                 }
             }
-        }
-        return (calls, results);
-    }
 
-    /// <summary>
-    /// 去掉这条消息里落单的工具内容:结果没有对应的调用、或调用没有对应的结果。
-    /// 没有落单的就原样返回(不分配)。
-    /// </summary>
-    /// <remarks>
-    /// <b>这不是洁癖,是两家协议都会直接报错的东西</b>:
-    /// OpenAI Responses 回 <c>400 No tool call found for tool output with call_id …</c>,
-    /// Anthropic 回 <c>tool_use ids must have corresponding tool_result</c>。
-    /// 落单在正常使用中真的会出现,两个方向都有:
-    /// <list type="bullet">
-    /// <item>
-    /// <b>结果落单</b> —— 裁剪把调用切掉了。切点本来只落在用户消息上,但
-    /// <see cref="AlwaysKeep" /> 是硬底线,顶到它时切点会停在半轮中间。
-    /// </item>
-    /// <item>
-    /// <b>调用落单</b> —— 模型发起调用后用户按了停止(或审批未答就取消),工具从未执行;
-    /// 半截回复是有意留在历史里的(用户看得见,模型也该知道自己说过什么)。
-    /// </item>
-    /// </list>
-    /// 丢掉落单的那一半,比整轮丢弃保住的上下文多,也比原样发出去强。
-    /// </remarks>
-    private static IReadOnlyList<AIContent> Paired(ChatMessage message, HashSet<string> calls, HashSet<string> results)
-    {
-        bool orphaned = false;
-        foreach (AIContent content in message.Contents)
+            ContextMessageRole role = message.Role == ChatRole.System ? ContextMessageRole.System
+                : message.Role == ChatRole.User ? ContextMessageRole.User
+                : message.Role == ChatRole.Assistant ? ContextMessageRole.Assistant
+                : message.Role == ChatRole.Tool ? ContextMessageRole.Tool
+                : ContextMessageRole.Other;
+            return new ContextMessageInfo(role, message.Role.Value, Estimate(message), tools);
+        }
+
+        public ChatMessage CreateSystem(string text) => new(ChatRole.System, text);
+
+        public ChatMessage CreateUser(string text) => new(ChatRole.User, text);
+
+        public ChatMessage Merge(ChatMessage first, ChatMessage second)
+            => new(first.Role, [.. first.Contents, .. second.Contents]);
+
+        public ContextMessageNormalization<ChatMessage> RemoveOrphanedToolParts(ChatMessage message,
+            IReadOnlySet<string> callIds, IReadOnlySet<string> resultIds)
         {
-            if (IsOrphan(content, calls, results))
+            int removed = 0;
+            List<AIContent> retained = [];
+            foreach (AIContent content in message.Contents)
             {
-                orphaned = true;
-                break;
+                bool orphaned = content switch
+                {
+                    FunctionCallContent call => !resultIds.Contains(call.CallId),
+                    FunctionResultContent result => !callIds.Contains(result.CallId),
+                    _ => false
+                };
+                if (orphaned)
+                {
+                    removed++;
+                }
+                else
+                {
+                    retained.Add(content);
+                }
             }
-        }
-        if (!orphaned)
-        {
-            return (IReadOnlyList<AIContent>)message.Contents;
-        }
-        return [.. message.Contents.Where(c => !IsOrphan(c, calls, results))];
-    }
 
-    private static bool IsOrphan(AIContent content, HashSet<string> calls, HashSet<string> results)
-        => content switch
-        {
-            FunctionCallContent call => !results.Contains(call.CallId),
-            FunctionResultContent result => !calls.Contains(result.CallId),
-            _ => false
-        };
+            return removed == 0
+                ? new ContextMessageNormalization<ChatMessage>(message, true, 0)
+                : new ContextMessageNormalization<ChatMessage>(
+                    new ChatMessage(message.Role, retained), retained.Count > 0, removed);
+        }
+    }
 
     /// <summary>
     /// 把打头那条 <c>system</c> 消息从列表里摘出来,返回它的文本。

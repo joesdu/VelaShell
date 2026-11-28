@@ -8,10 +8,10 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using NSubstitute;
-using VelaShell.Core.Models;
-using VelaShell.Core.Sftp;
 using VelaShell.Core.Localization;
+using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
+using VelaShell.Core.Sftp;
 using VelaShell.Localization;
 using VelaShell.Services;
 using VelaShell.Tests.TestSupport;
@@ -47,7 +47,7 @@ public sealed class UploadPickerCheckboxUiTests
 
         Click(dialog, dialog.SelectAllCheck);
         Assert.IsTrue(dialog.SelectAllCheck.IsChecked, "部分勾选时点击应全选。");
-        Assert.AreEqual(browser.Entries.Count - 1, dialog.Picker.CheckedEntries.Count);
+        Assert.HasCount(browser.Entries.Count - 1, dialog.Picker.CheckedEntries);
         Assert.IsNull(dialog.FileList.ContainerFromIndex(browser.Entries.Count - 1), "末行不在视口,全选仍需包含它。");
         dialog.View = LocalPickerView.Icons;
         Pump(dialog);
@@ -72,12 +72,12 @@ public sealed class UploadPickerCheckboxUiTests
         dialog.PickDirectory = () => Task.FromResult<string?>(null);
         Click(dialog, dialog.ChooseDirectoryButton);
         Assert.AreEqual(root, browser.CurrentPath);
-        Assert.AreEqual(count, dialog.Picker.CheckedEntries.Count);
+        Assert.HasCount(count, dialog.Picker.CheckedEntries);
 
         dialog.PickDirectory = () => Task.FromResult<string?>(root);
         Click(dialog, dialog.ChooseDirectoryButton);
         await WaitForAsync(dialog, () => browser.IsDirectoryLoading);
-        Assert.AreEqual(count, dialog.Picker.CheckedEntries.Count);
+        Assert.HasCount(count, dialog.Picker.CheckedEntries);
         dialog.PickDirectory = () => Task.FromResult<string?>(Path.Combine(root, "sub"));
         Click(dialog, dialog.ChooseDirectoryButton);
         await WaitForAsync(dialog, () => browser.IsDirectoryLoading);
@@ -92,7 +92,7 @@ public sealed class UploadPickerCheckboxUiTests
         LocalFileEntry file = browser.Entries.First(entry => !entry.IsDirectory);
         bool closed = false;
         dialog.Closed += (_, _) => closed = true;
-        var row = (Control)dialog.FileList.ContainerFromItem(file)!;
+        Control row = dialog.FileList.ContainerFromItem(file)!;
         Point at = row.TranslatePoint(new(100, row.Bounds.Height / 2), dialog)!.Value;
         ClickAt(dialog, at);
         ClickAt(dialog, at);

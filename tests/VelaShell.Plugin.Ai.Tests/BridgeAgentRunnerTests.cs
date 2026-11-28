@@ -485,6 +485,32 @@ public sealed class BridgeAgentRunnerTests
                + System.Text.Json.JsonSerializer.Serialize(text) + "},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
     }
 
+    [TestMethod]
+    public async Task AgentRun_ReturnsRuntimeTelemetryWithoutRunningPowerShell()
+    {
+        await using var endpoint = new SseStub(
+            "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+        using var context = new TestPluginContext();
+        var provider = new AiProvider
+        {
+            Name = "stub",
+            BaseUrl = endpoint.BaseUrl,
+            DefaultProtocol = ChatProtocol.OpenAiChatCompletions,
+            Models = [new AiModelConfig { Model = "m" }]
+        };
+        await new AiSettingsStore(context).SaveAsync(new AiSettings
+        { Providers = [provider], ActiveModelId = provider.Models[0].Id });
+
+        BridgeTurn turn = await Create(context).RunAsync(new BridgeConversation("ch1", "chat-1"),
+            new BridgeSettings { Mode = ChatMode.Agent }, Message(), Deny, English, null, null, CancellationToken.None);
+
+        Assert.IsNotNull(turn.Runtime);
+        Assert.AreEqual("Completed", turn.Runtime!.Status);
+        Assert.AreEqual(0, turn.Runtime.ToolCalls);
+        Assert.AreEqual(0, turn.Runtime.SuccessfulToolCalls);
+        Assert.IsGreaterThan(0L, turn.Runtime.LastSequence);
+    }
+
     /// <summary>
     /// #651 复审①②(维护者 2026-10-25 决定):被截断的回答照常送进群里、附一句提示,而不是整轮报错;
     /// 工具之后补了「请继续」模型还是空的,回一句说明而不是报失败。

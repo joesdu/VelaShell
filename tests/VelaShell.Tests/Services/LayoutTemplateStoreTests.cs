@@ -75,14 +75,14 @@ public sealed class LayoutTemplateStoreTests
     {
         LayoutTemplate ten = Sample("机房 10");
         LayoutTemplate two = Sample("机房 2");
-        using (var engine = SonnetDbTestTemplate.Open(_root))
+        using (SonnetDbEngine engine = SonnetDbTestTemplate.Open(_root))
         {
             var store = new LayoutTemplateStore(new SonnetDbAppDataStore(engine));
             await store.SaveAsync(ten);
             await store.SaveAsync(two);
         }
 
-        using (var engine = SonnetDbTestTemplate.Open(_root))
+        using (SonnetDbEngine engine = SonnetDbTestTemplate.Open(_root))
         {
             var store = new LayoutTemplateStore(new SonnetDbAppDataStore(engine));
             IReadOnlyList<LayoutTemplate> loaded = await store.LoadAllAsync();
@@ -115,7 +115,7 @@ public sealed class LayoutTemplateStoreTests
     [TestMethod]
     public async Task SessionLayout_IsKeptApartFromTheNamedTemplates_AndCanBeCleared()
     {
-        using var engine = SonnetDbTestTemplate.Open(_root);
+        using SonnetDbEngine engine = SonnetDbTestTemplate.Open(_root);
         var store = new LayoutTemplateStore(new SonnetDbAppDataStore(engine));
         LayoutTemplate session = Sample(string.Empty);
         session.Id = Guid.Empty;
@@ -140,7 +140,7 @@ public sealed class LayoutTemplateStoreTests
     public async Task Delete_LeavesATombstone_AndSavingTheSameIdAgainLiftsIt()
     {
         var time = new FixedTime(new DateTimeOffset(2026, 10, 25, 10, 0, 0, TimeSpan.Zero));
-        using var engine = SonnetDbTestTemplate.Open(_root);
+        using SonnetDbEngine engine = SonnetDbTestTemplate.Open(_root);
         var store = new LayoutTemplateStore(new SonnetDbAppDataStore(engine), time);
         int changed = 0;
         store.Changed += (_, _) => changed++;
@@ -165,7 +165,7 @@ public sealed class LayoutTemplateStoreTests
     public async Task Merge_WritesTheCloudChanges_AndRaisesSyncAppliedRatherThanChanged()
     {
         var time = new FixedTime(new DateTimeOffset(2026, 10, 25, 10, 0, 0, TimeSpan.Zero));
-        using var engine = SonnetDbTestTemplate.Open(_root);
+        using SonnetDbEngine engine = SonnetDbTestTemplate.Open(_root);
         var store = new LayoutTemplateStore(new SonnetDbAppDataStore(engine), time);
         LayoutTemplate keep = Sample("keep");
         LayoutTemplate doomed = Sample("doomed");
@@ -195,7 +195,7 @@ public sealed class LayoutTemplateStoreTests
     public async Task FieldsWrittenByANewerVersion_SurviveBeingLoadedAndSavedHere()
     {
         var id = Guid.NewGuid();
-        using var engine = SonnetDbTestTemplate.Open(_root);
+        using SonnetDbEngine engine = SonnetDbTestTemplate.Open(_root);
         var data = new SonnetDbAppDataStore(engine);
         // 更新的版本存下来的形状:模板、节点、标签上各多一个本版本不认识的字段。
         await data.UpsertAsync(LayoutTemplateStore.Collection, id.ToString("D"), new
@@ -222,7 +222,7 @@ public sealed class LayoutTemplateStoreTests
     public async Task Restore_BringsDeletedTemplatesBack_StampedNow()
     {
         var time = new FixedTime(new DateTimeOffset(2026, 10, 25, 10, 0, 0, TimeSpan.Zero));
-        using var engine = SonnetDbTestTemplate.Open(_root);
+        using SonnetDbEngine engine = SonnetDbTestTemplate.Open(_root);
         var store = new LayoutTemplateStore(new SonnetDbAppDataStore(engine), time);
         LayoutTemplate template = Sample("prod");
         await store.SaveAsync(template);

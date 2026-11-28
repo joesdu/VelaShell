@@ -56,9 +56,9 @@ public class SessionTreeMenusUiTests
         _session.Dispatch(async () =>
         {
             var window = new Window { Width = 280, Height = 400 };
-            var sink = Substitute.For<ILogSink>();
+            ILogSink sink = Substitute.For<ILogSink>();
             sink.IsEnabled(Arg.Any<LogEventLevel>(), LogArea.Binding).Returns(true);
-            var previous = Logger.Sink;
+            ILogSink? previous = Logger.Sink;
             Logger.Sink = sink;
             try
             {
@@ -70,9 +70,9 @@ public class SessionTreeMenusUiTests
                 var rows = view.GetVisualDescendants().OfType<Border>()
                     .Where(row => row.Classes.Contains("session") && row.IsVisible)
                     .ToDictionary(row => ((SessionTreeNodeViewModel)row.DataContext!).Name);
-                var messages = sink.ReceivedCalls().SelectMany(call => call.GetArguments())
+                IEnumerable<string?> messages = sink.ReceivedCalls().SelectMany(call => call.GetArguments())
                     .Select(arg => arg is object?[] values ? string.Join(", ", values) : arg?.ToString());
-                Assert.IsFalse(messages.Any(text => text?.Contains("ParentGroup", StringComparison.Ordinal) == true),
+                Assert.DoesNotContain(text => text?.Contains("ParentGroup", StringComparison.Ordinal) == true, messages,
                     "会话行读取了空的父分组。");
                 Assert.AreEqual(12d, rows["root"].Padding.Left);
                 Assert.AreEqual(36d, rows["a"].Padding.Left);

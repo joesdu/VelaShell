@@ -10,7 +10,7 @@ namespace VelaShell.Terminal.Emulation;
 /// </summary>
 public sealed class Utf8Sink(Encoding? encoding = null)
 {
-    private char[] _chars = new char[1024];
+    private readonly char[] _chars = new char[1024];
     private char[]? _rentedChars;
     private Decoder _decoder = CreateDecoder(encoding);
 

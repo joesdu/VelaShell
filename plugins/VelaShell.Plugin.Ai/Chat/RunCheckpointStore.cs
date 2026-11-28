@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Agent;
+using VelaShell.Plugin.Ai.Core.Runtime;
 
 namespace VelaShell.Plugin.Ai.Chat;
 
@@ -21,6 +22,19 @@ public sealed record RunCheckpointCall(string Id, string Name, string Arguments)
 /// <summary>一次工具结果(已截断)。</summary>
 public sealed record RunCheckpointResult(string Id, string Text);
 
+/// <summary>检查点中保存的脱敏运行事件，供恢复诊断与未来独立宿主读取。</summary>
+public sealed record RunCheckpointEvent(
+    long Sequence,
+    DateTimeOffset Timestamp,
+    string Kind,
+    int BatchStep,
+    string? CallId = null,
+    string? ToolName = null,
+    string? Outcome = null,
+    int? DurationMilliseconds = null,
+    string? Summary = null,
+    string RunId = "");
+
 /// <summary>
 /// 一轮 Agent 运行的检查点:任务、已完成的步骤与后台通知、运行内进度摘要。
 /// 程序退出、崩溃、被停下或出错时留在磁盘上,下次打开这段对话时可以从这里接着跑。
@@ -34,6 +48,8 @@ public sealed record RunCheckpointResult(string Id, string Text);
 /// <param name="Steps">已完成的步骤。</param>
 /// <param name="ProgressSummary">运行内压缩写下的进度摘要(没压过为空)。</param>
 /// <param name="ModelLabel">跑这一轮的模型,只用于显示。</param>
+/// <param name="Events">脱敏运行事件，供恢复诊断和宿主观测。</param>
+/// <param name="Orchestration">写入时的计划、当前步骤和验证状态；旧检查点可以没有此字段。</param>
 public sealed record RunCheckpoint(
     string ConversationId,
     string RunId,
@@ -43,7 +59,9 @@ public sealed record RunCheckpoint(
     string Status,
     IReadOnlyList<RunCheckpointMessage> Steps,
     string ProgressSummary = "",
-    string ModelLabel = "")
+    string ModelLabel = "",
+    IReadOnlyList<RunCheckpointEvent>? Events = null,
+    AgentOrchestrationState? Orchestration = null)
 {
     /// <summary>已经跑过的工具调用次数。</summary>
     public int ToolCalls => Steps.Sum(s => s.Calls?.Count ?? 0);
@@ -218,6 +236,15 @@ public sealed class RunCheckpointStore(string dataDirectory)
                 calls.Count > 0 ? calls : null, results.Count > 0 ? results : null));
         }
         return result.Count <= MaxMessages ? result : result[^MaxMessages..];
+    }
+
+    /// <summary>把运行事件转换为检查点格式；事件本身不含提示词、参数或工具输出。</summary>
+    internal static IReadOnlyList<RunCheckpointEvent> CaptureEvents(IEnumerable<AgentRunEvent> events)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        return [.. events.Select(item => new RunCheckpointEvent(item.Sequence, item.Timestamp,
+            item.Kind.ToString(), item.BatchStep, item.CallId, item.ToolName, item.Outcome,
+            item.DurationMilliseconds, item.Summary, item.RunId))];
     }
 
     /// <summary>

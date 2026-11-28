@@ -152,6 +152,14 @@
       <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
       <Setter Property="BorderBrush" Value="Transparent" />
     </Style>
+    <Style Selector="Border.runtimeCard">
+      <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="8,5" />
+      <Setter Property="Margin" Value="2,6,2,0" />
+    </Style>
     <Style Selector="Border.toolCard">
       <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
       <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
@@ -718,7 +726,7 @@
   </UserControl.Styles>
 
   <DockPanel Margin="10">
-    <!-- 顶栏:会话(SSH)| 历史 / 新会话 / 设置。
+    <!-- 顶栏:会话(SSH)| 历史 / 新会话 / 协作接入 / 设置。
          模型选择与 Agent 开关不在这里 —— 它们跟着输入框走(见下方 InputToolbar),
          与 GitHub Copilot 一致:决定"这条消息怎么发"的东西,应当挨着输入框。 -->
     <Grid x:Name="TopBar" DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
@@ -746,6 +754,13 @@
         <Button x:Name="NewChatButton" Theme="{DynamicResource VelaOutlineButtonTheme}" Height="26" Width="30" Padding="0">
           <Viewbox Width="13" Height="13">
             <Path Width="24" Height="24" Data="{DynamicResource Icon.plus}"
+                  Stroke="{DynamicResource VelaTextSecondary}" StrokeThickness="2"
+                  StrokeLineCap="Round" StrokeJoin="Round" />
+          </Viewbox>
+        </Button>
+        <Button x:Name="CollaborationButton" Theme="{DynamicResource VelaOutlineButtonTheme}" Height="26" Width="30" Padding="0">
+          <Viewbox Width="13" Height="13">
+            <Path Width="24" Height="24" Data="{StaticResource AiIcon.cable}"
                   Stroke="{DynamicResource VelaTextSecondary}" StrokeThickness="2"
                   StrokeLineCap="Round" StrokeJoin="Round" />
           </Viewbox>
@@ -996,6 +1011,9 @@
          摆在附件行之上 —— 附件属于"正在写的这一条",排队属于"已经发出去的那些"。 -->
     <WrapPanel x:Name="QueuedBar" DockPanel.Dock="Bottom" IsVisible="False" Margin="2,6,2,0" />
     <WrapPanel x:Name="SuggestionBar" DockPanel.Dock="Bottom" IsVisible="False" Margin="2,6,2,0" />
+    <Border x:Name="RuntimeBar" Classes="runtimeCard" DockPanel.Dock="Bottom" IsVisible="False">
+      <TextBlock x:Name="RuntimeText" Classes="dim" TextWrapping="Wrap" />
+    </Border>
     <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Classes="dim" Margin="2,6,2,0" TextWrapping="Wrap" />
 
     <!-- 中部:消息流 / 设置页(二选一显示)。

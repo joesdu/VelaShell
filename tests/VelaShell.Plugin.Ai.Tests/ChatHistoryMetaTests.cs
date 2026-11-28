@@ -1,5 +1,7 @@
 using VelaShell.Plugin.Ai.Chat;
+using VelaShell.Plugin.Ai.Chat.Runtime;
 using VelaShell.PluginSdk.Testing;
+using VelaShell.PluginSdk.TimeSeries;
 
 namespace VelaShell.Plugin.Ai.Tests;
 
@@ -120,6 +122,51 @@ public sealed class ChatHistoryMetaTests
         Assert.IsTrue(editor.AllowWrites);
         Assert.Contains("120 seconds", editor.Errors.Single());
         Assert.IsNull(meta.Tools is { Count: > 0 } ? meta.Tools : null);
+    }
+
+    [TestMethod]
+    public async Task RuntimeTelemetry_RoundTrips_WithTheAssistantMessageItBelongsTo()
+    {
+        using var context = new TestPluginContext();
+        (ChatHistoryStore store, string id, DateTimeOffset created) = await NewStoreAsync(context);
+        var telemetry = new AgentRunTelemetry(
+            "run-telemetry", "Completed", 3, 5, 4, 3, 1, 1, 2, 2, 1, 1_234, 9);
+
+        await store.AppendAsync(id, created, 0, "assistant", "已完成");
+        await store.AppendMetaAsync(id, 0, new ChatTurnMeta(Runtime: telemetry));
+
+        AgentRunTelemetry restored = (await store.LoadAsync(id))[0].Meta!.Runtime!;
+
+        Assert.AreEqual(telemetry, restored);
+    }
+
+    [TestMethod]
+    public async Task RuntimeTelemetry_IsNull_WhenLoadingLegacyMetaWithoutRuntimeField()
+    {
+        using var context = new TestPluginContext();
+        (ChatHistoryStore store, string id, DateTimeOffset created) = await NewStoreAsync(context);
+        await store.AppendAsync(id, created, 0, "assistant", "旧回答");
+
+        ITimeSeries meta = await context.TimeSeries.OpenAsync(new TimeSeriesDefinition("chat_meta",
+        [
+            TimeSeriesColumn.Tag("conv"),
+            TimeSeriesColumn.Field("seq", TimeSeriesValueKind.Integer),
+            TimeSeriesColumn.Field("payload", TimeSeriesValueKind.Text)
+        ]));
+        await meta.WriteAsync(new(DateTimeOffset.UtcNow,
+            new Dictionary<string, string> { ["conv"] = id },
+            new Dictionary<string, TimeSeriesValue>
+            {
+                ["seq"] = TimeSeriesValue.FromInteger(0),
+                ["payload"] = TimeSeriesValue.FromText(
+                    "{\"Model\":\"legacy-model\",\"ElapsedMs\":42,\"Thinking\":\"old\",\"ThinkingMs\":7,\"Tools\":[]}")
+            }));
+
+        ChatTurnMeta restored = (await store.LoadAsync(id))[0].Meta!;
+
+        Assert.AreEqual("legacy-model", restored.Model);
+        Assert.AreEqual(42, restored.ElapsedMs);
+        Assert.IsNull(restored.Runtime);
     }
 
     [TestMethod]

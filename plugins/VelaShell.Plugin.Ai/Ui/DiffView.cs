@@ -178,7 +178,7 @@ internal sealed class DiffView : DockPanel
 
     private ToggleButton FoldRow(int section, DiffLine gap)
     {
-        var key = (section, gap.HiddenStart);
+        (int section, int HiddenStart) key = (section, gap.HiddenStart);
         string label = _loc.F("DiffHiddenLines", gap.HiddenCount);
         var toggle = new ToggleButton
         {

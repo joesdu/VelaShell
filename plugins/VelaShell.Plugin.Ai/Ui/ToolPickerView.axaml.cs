@@ -58,8 +58,6 @@ public sealed partial class ToolPickerView : UserControl
     private readonly TextBox _search = new() { Name = "ToolsSearch", Height = 28, MinHeight = 28, Padding = new Avalonia.Thickness(8, 0) };
     private readonly StackPanel _content = new() { Name = "PageContent", Spacing = 2 };
     private readonly TextBlock _status = new() { Name = "ToolsStatus", Classes = { "dim" }, TextWrapping = TextWrapping.Wrap };
-
-    private Page _page = Page.Tools;
     private bool _syncingNav;
 
     /// <summary>
@@ -98,8 +96,8 @@ public sealed partial class ToolPickerView : UserControl
         // ── 左栏:分节导航 ──
         _nav.SelectionChanged += (_, _) =>
         {
-            if (_syncingNav || _nav.SelectedItem is not ListBoxItem { Tag: Page page } || page == _page) return;
-            _page = page;
+            if (_syncingNav || _nav.SelectedItem is not ListBoxItem { Tag: Page page } || page == CurrentPage) return;
+            CurrentPage = page;
             _search.Text = "";
             RenderPage();
         };
@@ -161,12 +159,12 @@ public sealed partial class ToolPickerView : UserControl
     }
 
     /// <summary>当前在哪一节(测试用)。</summary>
-    internal Page CurrentPage => _page;
+    internal Page CurrentPage { get; private set; } = Page.Tools;
 
     /// <summary>切到某一节(测试用;界面上由左栏切换)。</summary>
     internal void ShowPage(Page page)
     {
-        _page = page;
+        CurrentPage = page;
         _search.Text = "";
         Rebuild();
     }
@@ -189,7 +187,7 @@ public sealed partial class ToolPickerView : UserControl
             AddNav(Page.Skills, _loc["SkillsGroup"], ScanSkills().Count(s => s.IsValid));
             AddNav(Page.Memory, _loc["MemoryNav"], Memories.List().Count);
             AddNav(Page.Tools, _loc["ToolsNavTools"], CountEnabled());
-            _nav.SelectedItem = _nav.Items.OfType<ListBoxItem>().First(i => (Page)i.Tag! == _page);
+            _nav.SelectedItem = _nav.Items.OfType<ListBoxItem>().First(i => (Page)i.Tag! == CurrentPage);
         }
         finally
         {
@@ -213,7 +211,7 @@ public sealed partial class ToolPickerView : UserControl
     private void RenderPage()
     {
         _pageActions.Children.Clear();
-        (string title, string description) = _page switch
+        (string title, string description) = CurrentPage switch
         {
             Page.Extensions => (_loc["ExtensionsGroup"], _loc["PageExtensionsDesc"]),
             Page.McpServers => (_loc["McpServers"], _loc["McpHint"]),
@@ -223,7 +221,7 @@ public sealed partial class ToolPickerView : UserControl
         };
         _title.Text = title;
         _description.Text = description;
-        switch (_page)
+        switch (CurrentPage)
         {
             case Page.Extensions: AddExtensionActions(); break;
             case Page.McpServers: AddServerActions(); break;
@@ -237,7 +235,7 @@ public sealed partial class ToolPickerView : UserControl
     private void RenderContent()
     {
         _content.Children.Clear();
-        switch (_page)
+        switch (CurrentPage)
         {
             case Page.Extensions: BuildExtensionsPage(); break;
             case Page.McpServers: BuildServersPage(); break;
@@ -270,7 +268,7 @@ public sealed partial class ToolPickerView : UserControl
     /// <param name="rows">分区里的行;标题上的计数即其条数。</param>
     private void AddSection(string text, List<Control> rows)
     {
-        string key = $"section:{_page}:{text}";
+        string key = $"section:{CurrentPage}:{text}";
         bool expanded = Query.Length > 0 || _expanded.GetValueOrDefault(key, true);
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };

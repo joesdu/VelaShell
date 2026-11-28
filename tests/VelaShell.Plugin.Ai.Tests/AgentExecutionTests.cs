@@ -1234,8 +1234,8 @@ public sealed class AgentExecutionTests
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
-        var releases = new[] { new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
-            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+        TaskCompletionSource[] releases = [ new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) ];
         int attempts = 0;
         await using var orchestrator = new SubagentOrchestrator(async (request, token) =>
         {
@@ -1253,19 +1253,22 @@ public sealed class AgentExecutionTests
         });
         var execution = new AgentExecution("run");
         await using var registry = new CommandJobRegistry(new ControlledExec());
-        await using var scope = registry.BeginRun("owner", "run");
+        await using CommandJobRunScope scope = registry.BeginRun("owner", "run");
         using IChatClient client = new RecoveringChatClient(wire, execution, "boundary")
             .AsBuilder().UseFunctionInvocation(configure: c => execution.Configure(c, 1)).Build();
         var coordinator = new AgentRunCoordinator(scope, execution) { Subagents = orchestrator };
-        var options = new ChatOptions { Tools = [AIFunctionFactory.Create(() =>
+        var options = new ChatOptions
+        {
+            Tools = [AIFunctionFactory.Create(() =>
         {
             orchestrator.Start("check", "independent");
             return orchestrator.EnsureTeam().Run("review", [new("checker", "tester")], [new("t", "review", "check", "checker")]);
-        }, "team_run"), AIFunctionFactory.Create(() => orchestrator.EnsureTeam().Retry("t"), "team_retry")] };
+        }, "team_run"), AIFunctionFactory.Create(() => orchestrator.EnsureTeam().Retry("t"), "team_retry")]
+        };
         int waits = 0;
         async Task Run()
         {
-            await foreach (var _ in coordinator.RunAsync(client, [new(ChatRole.User, "go")], options, () =>
+            await foreach (ChatResponseUpdate _ in coordinator.RunAsync(client, [new(ChatRole.User, "go")], options, () =>
             {
                 if (cancelWhileWaiting) stop.Cancel();
                 // 第一次只等独立任务；它的完成通知不能在团队报告之前唤醒主模型。
@@ -1284,7 +1287,7 @@ public sealed class AgentExecutionTests
         Assert.Contains("independent result", wire.Requests[1][^1].Text);
         Assert.Contains("review failed", wire.Requests[1][^1].Text);
         Assert.Contains("review succeeded", wire.Requests[2][^1].Text);
-        foreach (var (request, callId) in new[] { (wire.Requests[1], "start"), (wire.Requests[2], "retry") })
+        foreach ((List<ChatMessage>? request, string? callId) in new[] { (wire.Requests[1], "start"), (wire.Requests[2], "retry") })
             Assert.HasCount(1, request.SelectMany(m => m.Contents).OfType<FunctionResultContent>().Where(r => r.CallId == callId));
     }
 

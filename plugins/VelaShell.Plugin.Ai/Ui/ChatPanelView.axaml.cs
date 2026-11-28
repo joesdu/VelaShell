@@ -16,6 +16,7 @@ using VelaShell.Plugin.Ai.Agent.Web;
 using VelaShell.Plugin.Ai.Chat;
 using VelaShell.Plugin.Ai.Chat.Extensions;
 using VelaShell.Plugin.Ai.Chat.Memory;
+using VelaShell.Plugin.Ai.Chat.Runtime;
 using VelaShell.Plugin.Ai.Chat.Skills;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
@@ -306,6 +307,7 @@ public partial class ChatPanelView : UserControl
         SetUpInputEditor();
         SetUpAttachments();
         FilePopup.PlacementTarget = InputWrap;
+        CollaborationButton.Click += (_, _) => _context.Commands.TryExecute($"{_context.PluginId}.collaboration");
         SettingsButton.Click += (_, _) => OpenSettingsDialog();
         ToolsButton.Click += (_, _) => OpenToolsDialog();
         HistoryToggle.IsCheckedChanged += (_, _) =>
@@ -547,6 +549,8 @@ public partial class ChatPanelView : UserControl
         ToolTip.SetTip(NewChatButton, $"{_loc["NewChat"]} — {_loc["NewChatTip"]}");
         ToolTip.SetTip(JumpToBottomButton, _loc["ScrollToBottom"]);
         ToolTip.SetTip(UsageMeterTrack, _loc["MeterTip"]);
+        ToolTip.SetTip(CollaborationButton, _loc["CmdCollaboration"]);
+        Avalonia.Automation.AutomationProperties.SetName(CollaborationButton, _loc["CmdCollaboration"]);
         ToolTip.SetTip(SettingsButton, _loc["ModelSettings"]);
         ToolTip.SetTip(ToolsButton, _loc["ConfigureTools"]);
         ToolTip.SetTip(HistoryToggle, _loc["History"]);
@@ -1381,6 +1385,7 @@ public partial class ChatPanelView : UserControl
         RefreshChangedFiles();
         RefreshNotes();
         ClearSuggestions();
+        RenderRuntimeCard(_active.RuntimeTelemetry);
         RequestAutoScroll(force: true);
         UpdateJumpToBottomButton();
     }
@@ -1395,6 +1400,24 @@ public partial class ChatPanelView : UserControl
         if (IsForeground)
         {
             StatusText.Text = text;
+        }
+    }
+
+    private void RenderRuntimeCard(AgentRunTelemetry? telemetry)
+    {
+        RuntimeBar.IsVisible = telemetry is not null;
+        if (telemetry is not { } value) return;
+        RuntimeText.Text = _loc.F("AgentRuntime", value.Status, value.ToolCalls,
+            value.SuccessfulToolCalls, value.FailedToolCalls,
+            value.ElapsedMilliseconds / 1000d);
+    }
+
+    private void RecordRuntimeTelemetry(Conversation conversation, AgentRunTelemetry telemetry)
+    {
+        conversation.RuntimeTelemetry = telemetry;
+        if (ReferenceEquals(_active, conversation))
+        {
+            RenderRuntimeCard(telemetry);
         }
     }
 
@@ -1687,9 +1710,19 @@ public partial class ChatPanelView : UserControl
         CancellationToken token = Cts.Token;
         string runId = Guid.NewGuid().ToString("N");
         CommandJobRunScope runScope = _toolbox.BeginRun(conv.ConversationId, runId, cancellationToken: token);
-        var execution = new AgentExecution(runId, () => runScope.HasUnknownOutcome, () => runScope.HasDeniedExecution);
-        var coordinator = new AgentRunCoordinator(runScope, execution);
+        AgentRuntimeBundle runtime = AgentRuntimeFactory.Create(runId, runScope, _settings.Approval,
+            _toolbox.ApprovalHandler, () => runScope.HasUnknownOutcome, () => runScope.HasDeniedExecution,
+            runScope.MarkExecutionDenied, _toolbox);
+        AgentExecution execution = runtime.Execution;
+        AgentRunCoordinator coordinator = runtime.Coordinator;
         conv.RunScope = runScope;
+        conv.RuntimeTelemetry = null;
+        void OnRuntimeEvent(AgentRunEvent _)
+        {
+            AgentRunTelemetry telemetry = runtime.Snapshot.ToTelemetry();
+            Dispatcher.UIThread.Post(() => RecordRuntimeTelemetry(conv, telemetry));
+        }
+        runtime.Events.Appended += OnRuntimeEvent;
         var runCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         conv.RunCompleted = runCompleted;
         AssistantBubble? bubble = null;
@@ -1792,6 +1825,10 @@ public partial class ChatPanelView : UserControl
             // 中途有人改了模式下拉,也不该把正在跑的这一轮升格成 Agent:那会让同一轮
             // 前后带的工具不一致,甚至给本该只读的对话补上能动手的。
             ChatMode mode = _settings.Mode;
+            if (mode == ChatMode.Agent)
+            {
+                runtime.BeginImplicitPlan(userMessage.Text);
+            }
             string? imageModelId = _settings.ImageModelId;
             bool imageToolsEnabled = mode != ChatMode.Plan && _settings.ImageToolsEnabled && !AiSettingsStore.IsImageModel(provider);
             bool usesToolLoop = !AiSettingsStore.IsImageModel(provider) && (mode != ChatMode.Chat || imageToolsEnabled);
@@ -1805,7 +1842,8 @@ public partial class ChatPanelView : UserControl
             if (usesToolLoop && mode == ChatMode.Agent)
             {
                 checkpointWriter = new RunCheckpointWriter(Checkpoints, execution, turnConversationId, runId,
-                    userMessage.Text, modelLabel, () => activeCompactor?.Summary ?? "");
+                    userMessage.Text, modelLabel, () => activeCompactor?.Summary ?? "",
+                    () => runtime.Orchestration.State);
             }
 
             ReasoningLevel? turnOverride = provider.ReasoningOverride;
@@ -2374,6 +2412,10 @@ public partial class ChatPanelView : UserControl
                         }
                     }
                     answered = true;
+                    if (mode == ChatMode.Agent)
+                    {
+                        runtime.CompleteWithVerification(["The model response completed without an execution failure."]);
+                    }
                     // 成功也是健康数据:不记的话,一家失败后被手动切过去、这轮又答成功了,
                     // 它先前那次失败的 60s 冷却还压着,后续自动转移会跳过这个已被证明可用的选择
                     _health.Record(current.Id, true, verifiedVersion, verifiedObservation);
@@ -2559,7 +2601,8 @@ public partial class ChatPanelView : UserControl
                 // 思考、工具调用、模型、耗时另存一行 —— 翻回旧会话时这些才是"Agent 做了什么"的证据
                 await _historyStore.AppendMetaAsync(ConversationId, sequence,
                     bubble.Snapshot(modelLabel,
-                        TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt)));
+                        TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt),
+                        mode == ChatMode.Agent ? runtime.Snapshot.ToTelemetry() : null));
             }
             if (bubble is { HasImages: true })
                 History.Add(new ChatMessage(ChatRole.Assistant, $"Generated image IDs: {string.Join(", ", bubble.ImageIds)}"));
@@ -2573,6 +2616,7 @@ public partial class ChatPanelView : UserControl
         }
         catch (OperationCanceledException)
         {
+            runtime.MarkCancelled();
             // 取消是"这条回复"的属性,记在气泡头部;状态行不留话(留了就一直挂着,见截图反馈)
             cancelled = true;
             // 故障转移途中状态行可能挂着「已切换到 X」,取消回滚后它就成了无主的话 ——
@@ -2589,7 +2633,7 @@ public partial class ChatPanelView : UserControl
                 if (partial.Length == 0 && bubble is { HasImages: true }) partial = _loc["GeneratedImage"];
                 History.AddRange(execution.InterruptedHistory(partial));
                 int interruptedSequence = await PersistAsync("assistant", partial);
-                await PersistInterruptedMetaAsync(interruptedSequence, bubble, modelLabel, startedAt);
+                await PersistInterruptedMetaAsync(interruptedSequence, bubble, modelLabel, startedAt, runtime);
                 KeepCheckpoint(checkpointWriter, bubble);
             }
             else
@@ -2601,6 +2645,8 @@ public partial class ChatPanelView : UserControl
         catch (Exception ex)
         {
             failed = true;
+            runtime.MarkFailure(ex.GetBaseException() is AgentPausedException agentPaused ? agentPaused.ReasonKey : ex.GetType().Name,
+                ex.GetBaseException() is AgentPausedException);
             // 故障转移途中状态行可能还挂着"已切换到 X"——错误卡才是这次的结论,那句话撤掉
             SetStatus("");
             // 带上服务端正文:Anthropic 的异常消息只有一句 "Status Code: BadRequest",
@@ -2633,7 +2679,7 @@ public partial class ChatPanelView : UserControl
                 if (partial.Length == 0 && bubble is { HasImages: true }) partial = _loc["GeneratedImage"];
                 History.AddRange(execution.InterruptedHistory(partial));
                 int interruptedSequence = await PersistAsync("assistant", partial);
-                await PersistInterruptedMetaAsync(interruptedSequence, bubble, modelLabel, startedAt);
+                await PersistInterruptedMetaAsync(interruptedSequence, bubble, modelLabel, startedAt, runtime);
                 KeepCheckpoint(checkpointWriter, bubble);
             }
             else
@@ -2718,6 +2764,11 @@ public partial class ChatPanelView : UserControl
                 try { await runScope.DisposeAsync(); }
                 finally
                 {
+                    runtime.Events.Appended -= OnRuntimeEvent;
+                    conv.RuntimeTelemetry = runtime.Snapshot.ToTelemetry();
+                    if (ReferenceEquals(_active, conv))
+                        RenderRuntimeCard(conv.RuntimeTelemetry);
+                    runtime.Dispose();
                     runCompleted.TrySetResult();
                     conv.RunCompleted = null;
                 }
@@ -3132,7 +3183,8 @@ public partial class ChatPanelView : UserControl
     /// 工具调用之后被停下 / 出错的那一轮:半截回复已入库(<paramref name="sequence" />),附加信息只在有东西要留时写 ——
     /// 生成过图片就整份快照(图片引用不能丢),否则只留这一轮的切换提示(没切过就不写)。
     /// </summary>
-    private async Task PersistInterruptedMetaAsync(int sequence, AssistantBubble? bubble, string modelLabel, long startedAt)
+    private async Task PersistInterruptedMetaAsync(int sequence, AssistantBubble? bubble, string modelLabel,
+        long startedAt, AgentRuntimeBundle? runtime = null)
     {
         if (sequence < 0 || bubble is null)
         {
@@ -3141,13 +3193,15 @@ public partial class ChatPanelView : UserControl
         if (bubble.HasImages)
         {
             await _historyStore.AppendMetaAsync(ConversationId, sequence,
-                bubble.Snapshot(modelLabel, TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt)));
+                bubble.Snapshot(modelLabel, TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt),
+                    runtime?.Snapshot.ToTelemetry()));
         }
-        else if (bubble.SwitchNotice is not null || bubble.HasSubagents || bubble.HasTeam)
+        else if (bubble.SwitchNotice is not null || bubble.HasSubagents || bubble.HasTeam || runtime is not null)
         {
             // 中断的一轮照旧不存思考与工具卡;切换提示、子任务卡片与团队入口是这一轮"发生过什么"的仅有记录,留下
             await _historyStore.AppendMetaAsync(ConversationId, sequence,
-                new ChatTurnMeta(Switch: bubble.SwitchNotice, Subagents: bubble.SubagentRuns, Team: bubble.TeamRun));
+                new ChatTurnMeta(Switch: bubble.SwitchNotice, Subagents: bubble.SubagentRuns, Team: bubble.TeamRun,
+                    Runtime: runtime?.Snapshot.ToTelemetry()));
         }
     }
 
@@ -3917,7 +3971,7 @@ public partial class ChatPanelView : UserControl
         public bool HasThinking => _thinkingText.Length > 0;
 
         /// <summary>这一轮除正文以外的东西,用于入库(见 <see cref="ChatTurnMeta" />)。</summary>
-        public ChatTurnMeta Snapshot(string model, TimeSpan elapsed) => new(
+        public ChatTurnMeta Snapshot(string model, TimeSpan elapsed, AgentRunTelemetry? runtime = null) => new(
             model,
             (long)elapsed.TotalMilliseconds,
             _thinkingText.ToString(),
@@ -3926,7 +3980,8 @@ public partial class ChatPanelView : UserControl
             [.. _images],
             SwitchNotice,
             SubagentRuns,
-            TeamRun);
+            TeamRun,
+            runtime);
 
         /// <summary>从历史回放:先摆切换提示与思考,再摆工具卡,最后才是正文(与直播时的先后一致)。</summary>
         public void Restore(ChatTurnMeta meta)

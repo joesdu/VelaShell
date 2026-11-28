@@ -7,27 +7,41 @@ namespace VelaShell.Plugin.Ai.Configuration;
 /// 旧版(2026-08-16 之前)的扁平接入配置:一条 = 一个模型,地址 / 协议 / Key 都长在它身上。
 /// 只在迁移时反序列化用,新代码不要碰。
 /// </summary>
-#pragma warning disable CS1591 // 纯迁移用的旧形状,逐字段注释没有价值
 public sealed class LegacyProviderConfig
 {
+    /// <summary>旧接入标识；迁移后仍用作模型 ID，以保留当前选择。</summary>
     public string Id { get; set; } = "";
+    /// <summary>用户为旧接入设置的显示名称。</summary>
     public string Name { get; set; } = "";
+    /// <summary>该模型原来使用的请求协议，可能与合并后的供应商默认协议不同。</summary>
     public ChatProtocol Protocol { get; set; } = ChatProtocol.OpenAiChatCompletions;
+    /// <summary>原请求基地址；迁移时用于归并供应商，并保留模型自己的地址差异。</summary>
     public string BaseUrl { get; set; } = "";
+    /// <summary>请求中发送给供应商的模型名，不是本地配置 ID。</summary>
     public string Model { get; set; } = "";
+    /// <summary>旧配置允许一次回复生成的最大 token 数。</summary>
     public int MaxTokens { get; set; } = 8192;
+    /// <summary>旧配置声明的模型输入 token 上限。</summary>
     public int MaxInputTokens { get; set; } = 128000;
+    /// <summary>旧接入是否启用提示词缓存。</summary>
     public bool PromptCaching { get; set; } = true;
+    /// <summary>迁移到模型配置的采样温度；为空表示未指定。</summary>
     public float? Temperature { get; set; }
+    /// <summary>旧配置的核采样概率阈值；为空表示未指定。</summary>
     public float? TopP { get; set; }
+    /// <summary>旧格式中配置的生成停止序列文本。</summary>
     public string StopSequences { get; set; } = "";
+    /// <summary>该接入附带的可选系统提示词。</summary>
     public string? SystemPrompt { get; set; }
+    /// <summary>每百万普通输入 token 的配置单价。</summary>
     public double InputPricePerMillion { get; set; }
+    /// <summary>每百万输出 token 的配置单价。</summary>
     public double OutputPricePerMillion { get; set; }
+    /// <summary>每百万命中缓存的输入 token 的配置单价。</summary>
     public double CachedInputPricePerMillion { get; set; }
+    /// <summary>旧接入为该模型选择的推理强度。</summary>
     public ReasoningLevel Reasoning { get; set; } = ReasoningLevel.Default;
 }
-#pragma warning restore CS1591
 
 /// <summary>
 /// 把旧版扁平接入列表折成"供应商 → 模型"两层。

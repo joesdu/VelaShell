@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.Extensions.AI;
 
 namespace VelaShell.Plugin.Ai.Chat;
@@ -44,15 +43,15 @@ internal sealed class SystemPromptBuilder
     /// <summary>自定义提示词前的引导语;桌面与 IM 同一句。</summary>
     internal const string CustomPrefix = "\n\nOperator instructions: ";
 
-    private readonly List<(string Id, string Text)> _sections = [];
+    private readonly List<PromptSection> _sections = [];
 
     /// <summary>已加入的分段 id(按顺序)。</summary>
-    public IReadOnlyList<string> SectionIds => [.. _sections.Select(s => s.Id)];
+    public IReadOnlyList<string> SectionIds => [.. _sections.Select(section => section.Id)];
 
     /// <summary>追加一段;文字为空时跳过。</summary>
     public SystemPromptBuilder Add(string id, string? text)
     {
-        if (!string.IsNullOrEmpty(text)) _sections.Add((id, text));
+        if (!string.IsNullOrEmpty(text)) _sections.Add(new PromptSection(id, text));
         return this;
     }
 
@@ -101,9 +100,5 @@ internal sealed class SystemPromptBuilder
 
     /// <summary>拼成最终的系统提示词。</summary>
     public string Build()
-    {
-        var text = new StringBuilder();
-        foreach ((_, string section) in _sections) text.Append(section);
-        return text.ToString();
-    }
+        => new PromptCompiler().Compile(new PromptCompilationInput(_sections)).Text;
 }

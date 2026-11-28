@@ -1,4 +1,3 @@
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -107,7 +106,7 @@ public sealed class UploadMappingEditorTests
             await editor.InitializeAsync("/app", tree.Root);
             Pump(dialog);
             Assert.IsTrue(dialog.SaveButton.IsEnabled);
-            Assert.IsTrue(dialog.Classes.Any(value => value.StartsWith("chrome-", StringComparison.Ordinal)));
+            Assert.Contains(value => value.StartsWith("chrome-", StringComparison.Ordinal), dialog.Classes);
             if (Environment.GetEnvironmentVariable("VELASHELL_VISUAL_QA_DIR") is { Length: > 0 } directory)
             {
                 Directory.CreateDirectory(directory);

@@ -39,12 +39,10 @@ internal sealed class SkillToolSource(IReadOnlyList<SkillInfo> skills) : ITurnTo
     /// <summary><c>load_skill</c> 最多列几个附带文件。</summary>
     public const int MaxListedFiles = 100;
 
-    private readonly IReadOnlyList<SkillInfo> _skills = [.. skills.Where(s => s.IsValid)];
-
     /// <summary>可交给模型的技能(已排除解析失败的)。</summary>
-    public IReadOnlyList<SkillInfo> Skills => _skills;
+    public IReadOnlyList<SkillInfo> Skills { get; } = [.. skills.Where(s => s.IsValid)];
 
-    public bool AppliesTo(ChatMode mode) => mode != ChatMode.Chat && _skills.Count > 0;
+    public bool AppliesTo(ChatMode mode) => mode != ChatMode.Chat && Skills.Count > 0;
 
     public ValueTask ContributeAsync(IList<AITool> tools, CancellationToken cancellationToken)
     {
@@ -127,7 +125,7 @@ internal sealed class SkillToolSource(IReadOnlyList<SkillInfo> skills) : ITurnTo
     }
 
     private SkillInfo Find(string name)
-        => _skills.FirstOrDefault(s => string.Equals(s.Name, name?.Trim(), StringComparison.OrdinalIgnoreCase))
+        => Skills.FirstOrDefault(s => string.Equals(s.Name, name?.Trim(), StringComparison.OrdinalIgnoreCase))
            ?? throw new InvalidOperationException($"Unknown skill '{name}'. Use a name from the skills list in the system prompt.");
 
     private static List<string> ListFiles(SkillInfo skill)

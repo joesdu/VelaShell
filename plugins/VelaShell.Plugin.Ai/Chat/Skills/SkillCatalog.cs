@@ -142,8 +142,11 @@ internal static class SkillCatalog
             (Dictionary<string, string> header, _) = Parse(File.ReadAllText(file.FullName, Encoding.UTF8));
             string name = header.TryGetValue("name", out string? n) && n.Length > 0 ? n : fallbackName;
             if (!IsValidName(name))
+            {
                 return new SkillInfo(name, "", folder, source,
                     $"Invalid name \"{name}\": use letters, digits, '-' or '_' (at most {MaxNameLength} characters).");
+            }
+
             if (!header.TryGetValue("description", out string? description) || description.Length == 0)
                 return new SkillInfo(name, "", folder, source, "Missing 'description' in the SKILL.md header.");
             return new SkillInfo(name, Clip(description, MaxDescriptionLength), folder, source);

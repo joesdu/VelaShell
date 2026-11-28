@@ -122,7 +122,7 @@ public sealed class GistSyncLayoutTemplatesTests
             {
                 return null;
             }
-            var outcome = await Sync.MergeRemoteLayoutTemplatesAsync(
+            GistSyncService.LayoutMergeOutcome outcome = await Sync.MergeRemoteLayoutTemplatesAsync(
                 Config, gist.GetValueOrDefault(GistSyncService.LayoutTemplatesFileName), CancellationToken.None);
             return outcome is string note ? note : null;
         }
@@ -259,7 +259,7 @@ public sealed class GistSyncLayoutTemplatesTests
         var other = new Device("other", passphrase: passphrase);
         await other.Templates.SaveAsync(Template("mine"));
 
-        var outcome =
+        GistSyncService.LayoutMergeOutcome outcome =
             await other.Sync.MergeRemoteLayoutTemplatesAsync(other.Config, file, CancellationToken.None);
 
         Assert.IsTrue(outcome is string);
@@ -279,7 +279,7 @@ public sealed class GistSyncLayoutTemplatesTests
               "data": { "templates": [], "tombstones": [] }, "somethingNew": {} }
             """;
 
-        var outcome =
+        GistSyncService.LayoutMergeOutcome outcome =
             await desktop.Sync.MergeRemoteLayoutTemplatesAsync(desktop.Config, newer, CancellationToken.None);
 
         Assert.IsTrue(outcome is string);
@@ -300,7 +300,7 @@ public sealed class GistSyncLayoutTemplatesTests
         string? rewritten = await desktop.Sync.BuildLayoutTemplatesUploadAsync(desktop.Config, damaged, CancellationToken.None);
 
         Assert.IsNotNull(rewritten, "坏文件没法合并,用本机的重写;旧内容还在 Gist 的历史版本里");
-        LayoutTemplateSyncState state = (LayoutTemplateSyncState)desktop.Sync.ReadLayoutTemplatesFile(desktop.Config, rewritten).Value;
+        var state = (LayoutTemplateSyncState)desktop.Sync.ReadLayoutTemplatesFile(desktop.Config, rewritten).Value;
         Assert.AreEqual("mine", state.Templates.Single().Name);
     }
 
@@ -339,7 +339,7 @@ public sealed class GistSyncLayoutTemplatesTests
         string? pushed = await desktop.Sync.BuildLayoutTemplatesUploadAsync(desktop.Config, current, CancellationToken.None);
 
         Assert.AreSequenceEqual(["prod"], await desktop.NamesAsync());
-        LayoutTemplateSyncState state = (LayoutTemplateSyncState)desktop.Sync.ReadLayoutTemplatesFile(desktop.Config, pushed).Value;
+        var state = (LayoutTemplateSyncState)desktop.Sync.ReadLayoutTemplatesFile(desktop.Config, pushed).Value;
         Assert.AreEqual("prod", state.Templates.Single().Name, "恢复之后的推送胜过云端那块墓碑");
     }
 
@@ -374,7 +374,7 @@ public sealed class GistSyncLayoutTemplatesTests
                 Revision++;
             }
             var files = new System.Text.Json.Nodes.JsonObject();
-            var requested = request.RequestUri!.AbsolutePath.EndsWith("/older", StringComparison.Ordinal) ? OlderRevision : Files;
+            Dictionary<string, string> requested = request.RequestUri!.AbsolutePath.EndsWith("/older", StringComparison.Ordinal) ? OlderRevision : Files;
             foreach ((string name, string content) in requested)
             {
                 files[name] = new System.Text.Json.Nodes.JsonObject { ["content"] = content };
@@ -490,7 +490,11 @@ public sealed class GistSyncLayoutTemplatesTests
             Substitute.For<IQuickCommandRepository>(), protector);
         await service.SaveSyncSettingsAsync(new SyncSettings
         {
-            Enabled = true, GistId = "gist-1", ProtectedToken = "token", SyncAppSettings = false, SyncSnippets = false
+            Enabled = true,
+            GistId = "gist-1",
+            ProtectedToken = "token",
+            SyncAppSettings = false,
+            SyncSnippets = false
         });
         GistApiClient.UseHttpClientForTests(new HttpClient(api));
         try

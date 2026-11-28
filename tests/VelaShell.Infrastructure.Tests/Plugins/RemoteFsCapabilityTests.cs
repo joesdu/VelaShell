@@ -124,7 +124,7 @@ public sealed class RemoteFsCapabilityTests
     private Task StartUpload(IProgress<RemoteTransferProgress> progress)
     {
         // Progress<T> 在创建时捕获上下文。同步投递让断言只依赖传输状态,不依赖线程池调度。
-        var previous = SynchronizationContext.Current;
+        SynchronizationContext? previous = SynchronizationContext.Current;
         SynchronizationContext.SetSynchronizationContext(new InlineContext());
         try
         {

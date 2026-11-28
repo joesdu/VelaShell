@@ -10,9 +10,9 @@ using Microsoft.Extensions.DependencyInjection;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Models;
 using VelaShell.Core.Resources;
-using VelaShell.ViewModels;
-using VelaShell.Services;
 using VelaShell.Core.Sftp;
+using VelaShell.Services;
+using VelaShell.ViewModels;
 using KeyModifiers = Avalonia.Input.KeyModifiers;
 using WindowLayout = VelaShell.Services.WindowLayout;
 using WindowLayoutStore = VelaShell.Services.WindowLayoutStore;
@@ -221,11 +221,13 @@ public partial class LocalPathPickerDialog : Window
     {
         IServiceProvider? services = (Application.Current as App)?.Services;
         UploadPickerStateStore store = services?.GetService<UploadPickerStateStore>() ?? new(null);
-        var dialog = new LocalPathPickerDialog(new LocalFilePaneViewModel(transferOptions), false, store, context);
-        dialog._remoteDirectories = remoteDirectories;
-        dialog._sessionId = sessionId;
-        dialog._returnSelection = true;
-        dialog.NavigateRemoteForMapping = navigateRemote;
+        var dialog = new LocalPathPickerDialog(new LocalFilePaneViewModel(transferOptions), false, store, context)
+        {
+            _remoteDirectories = remoteDirectories,
+            _sessionId = sessionId,
+            _returnSelection = true,
+            NavigateRemoteForMapping = navigateRemote
+        };
         await dialog.Picker.InitializeAsync();
         if ((Application.Current as App)?.Services?.GetService<WindowLayoutStore>() is { } layoutStore)
         {

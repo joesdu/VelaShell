@@ -4,6 +4,7 @@ using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Agent.Web;
 using VelaShell.Plugin.Ai.Chat;
 using VelaShell.Plugin.Ai.Chat.Extensions;
+using VelaShell.Plugin.Ai.Chat.Runtime;
 using VelaShell.Plugin.Ai.Chat.Skills;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.Plugin.Ai.Ui;
@@ -17,7 +18,9 @@ namespace VelaShell.Plugin.Ai.Bridge;
 /// <param name="Model">用的模型(日志与页脚)。</param>
 /// <param name="Elapsed">耗时。</param>
 /// <param name="ToolCalls">这一轮调了几次工具。</param>
-public readonly record struct BridgeTurn(string Text, string Model, TimeSpan Elapsed, int ToolCalls);
+/// <param name="Runtime">脱敏后的 Agent 状态与指标;普通聊天或早期失败时为 null。</param>
+public readonly record struct BridgeTurn(string Text, string Model, TimeSpan Elapsed, int ToolCalls,
+    AgentRunTelemetry? Runtime = null);
 
 /// <summary>
 /// 无头的 agent 回合:没有气泡、没有状态行,只有"一段文本进、一段文本出"。
@@ -243,8 +246,15 @@ public sealed class BridgeAgentRunner(
 
         string runId = Guid.NewGuid().ToString("N");
         await using CommandJobRunScope runScope = toolbox.BeginRun(conversation.ConversationId, runId, cancellationToken: cancellationToken);
-        var execution = new AgentExecution(runId, () => runScope.HasUnknownOutcome, () => runScope.HasDeniedExecution);
-        var coordinator = new AgentRunCoordinator(runScope, execution);
+        AgentRuntimeBundle runtime = AgentRuntimeFactory.Create(runId, runScope, approval, approve,
+            () => runScope.HasUnknownOutcome, () => runScope.HasDeniedExecution,
+            runScope.MarkExecutionDenied, toolbox);
+        AgentExecution execution = runtime.Execution;
+        AgentRunCoordinator coordinator = runtime.Coordinator;
+        if (mode == ChatMode.Agent)
+        {
+            runtime.BeginImplicitPlan(message.Text);
+        }
         ProviderCredential fixedCredential = await store.ResolveCredentialAsync(model, cancellationToken: cancellationToken).ConfigureAwait(false);
         long providerVersion = AiSettingsStore.ProviderConfigurationVersion(model.Provider);
         string endpoint = model.BaseUrl;
@@ -295,7 +305,8 @@ public sealed class BridgeAgentRunner(
         // 断点续跑(见 RunCheckpointStore):Agent 一轮有进展就落盘;停下 / 超时 / 出错时留着,聊天里发 /continue 接着跑
         using RunCheckpointWriter? checkpoints = mode == ChatMode.Agent
             ? new RunCheckpointWriter(Checkpoints, execution, CheckpointKey(conversation), runId, message.Text,
-                $"{model.ProviderName} / {model.Name}", () => runCompactor?.Summary ?? "")
+                $"{model.ProviderName} / {model.Name}", () => runCompactor?.Summary ?? "",
+                () => runtime.Orchestration.State)
             : null;
         McpManager.ToolLease? mcpLease = null;
         CancellationToken transferLifetime;
@@ -506,12 +517,15 @@ public sealed class BridgeAgentRunner(
             }
             catch (OperationCanceledException)
             {
+                runtime.MarkCancelled();
                 conversation.History.AddRange(execution.InterruptedHistory(accumulated.ToString()));
                 checkpoints?.Keep();
                 throw;
             }
             catch (Exception ex)
             {
+                runtime.MarkFailure(ex is AgentPausedException agentPaused ? agentPaused.ReasonKey : ex.GetType().Name,
+                    ex is AgentPausedException);
                 conversation.History.AddRange(execution.InterruptedHistory(accumulated.ToString()));
                 checkpoints?.Keep();
                 // 把<b>哪个模型</b>带进错误里。群里只看到一句 "401 Unauthorized" 时,
@@ -538,11 +552,16 @@ public sealed class BridgeAgentRunner(
             // 被截断 / 过滤的回答照常送出,后面附一句;工具之后补了「请继续」还是空的,说一句而不是报失败(#651 复审①②)
             string? notice = execution.TerminationNotice is { } reason ? loc[TransientFailure.TruncationNoticeKey(reason)]
                 : execution.EmptyAfterTools ? loc["NoticeEmptyAfterTools"] : null;
+            if (mode == ChatMode.Agent)
+            {
+                runtime.CompleteWithVerification(["The bridge response completed without an execution failure."]);
+            }
             return new BridgeTurn(
                 reply.Length > 0 ? notice is null ? reply : $"{reply}\n\n_{notice}_" : notice ?? loc["BridgeEmptyReply"],
                 modelLabel,
                 TimeSpan.FromMilliseconds(Environment.TickCount64 - startedAt),
-                toolCalls);
+                toolCalls,
+                mode == ChatMode.Agent ? runtime.Snapshot.ToTelemetry() : null);
         }
         finally
         {
@@ -561,6 +580,7 @@ public sealed class BridgeAgentRunner(
             }
             if (subagentTemplate is not null) await subagentTemplate.DisposeAsync().ConfigureAwait(false);
             await runScope.CancelAsync().ConfigureAwait(false);
+            runtime.Dispose();
             client.Dispose();
         }
     }

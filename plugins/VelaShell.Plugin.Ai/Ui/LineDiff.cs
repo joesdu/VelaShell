@@ -61,7 +61,7 @@ public sealed class LineDiffResult
             {
                 DiffLine oldLine = Lines[start + offset], newLine = Lines[i + offset];
                 if (newLine.Kind != DiffLineKind.Added) break;
-                var (oldSpan, newSpan) = LineDiff.InlineSpans(oldLine.Text, newLine.Text);
+                (DiffTextSpan oldSpan, DiffTextSpan newSpan) = LineDiff.InlineSpans(oldLine.Text, newLine.Text);
                 if (oldSpan.Length > 0) oldSpans.Add(oldLine.OldNumber, oldSpan);
                 if (newSpan.Length > 0) newSpans.Add(newLine.NewNumber, newSpan);
             }

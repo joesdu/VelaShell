@@ -24,6 +24,7 @@ using VelaShell.Docking;
 using VelaShell.Docking.Controls;
 using VelaShell.Infrastructure.Diagnostics;
 using VelaShell.Infrastructure.Plugins;
+using VelaShell.PluginSdk;
 using VelaShell.Presentation.Services;
 using VelaShell.Presentation.ViewModels;
 using VelaShell.Security;
@@ -1779,11 +1780,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        var blockedPlugins = pluginManager.Plugins
+        (PluginDescriptor Plugin, string? Blocker)[] blockedPlugins = pluginManager.Plugins
             .Where(static plugin => plugin.State == PluginState.Incompatible && plugin.Manifest is not null)
             .Select(plugin =>
             {
-                var manifest = plugin.Manifest!;
+                PluginManifest manifest = plugin.Manifest!;
                 return (Plugin: plugin, Blocker: pluginManager.DescribeUpdateBlocker(
                     manifest.ApiLevel, manifest.MinHostVersion, manifest.MinSdkVersion));
             })

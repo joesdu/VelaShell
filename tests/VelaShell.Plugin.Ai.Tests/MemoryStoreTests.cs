@@ -26,7 +26,7 @@ public sealed class MemoryStoreTests
     [TestMethod]
     public void AddUpdateDelete_NewestFirst_AndChangedFires()
     {
-        MemoryStore store = MemoryStore.For(_dir);
+        var store = MemoryStore.For(_dir);
         int changes = 0;
         store.Changed += () => changes++;
 
@@ -34,7 +34,7 @@ public sealed class MemoryStoreTests
         Thread.Sleep(5);
         MemoryEntry b = store.Add("Prod bastion", "Prod servers are reached through bastion-1.", "user");
         Assert.AreEqual("Prefers concise answers", a.Title, "去掉首尾空白");
-        CollectionAssert.AreEqual(new[] { b.Id, a.Id }, store.List().Select(e => e.Id).ToArray(), "最近改过的在前");
+        Assert.AreSequenceEqual([b.Id, a.Id], store.List().Select(e => e.Id).ToArray(), "最近改过的在前");
 
         Thread.Sleep(5);
         MemoryEntry updated = store.Update(a.Id, null, "Keep replies very short.", "user");
@@ -54,7 +54,7 @@ public sealed class MemoryStoreTests
     [TestMethod]
     public void Validation_RejectsEmptyTooLongAndSecrets()
     {
-        MemoryStore store = MemoryStore.For(_dir);
+        var store = MemoryStore.For(_dir);
         Assert.ThrowsExactly<ArgumentException>(() => store.Add(" ", "c", "user"));
         Assert.ThrowsExactly<ArgumentException>(() => store.Add("t", "", "user"));
         Assert.ThrowsExactly<ArgumentException>(() => store.Add(new string('t', MemoryStore.MaxTitleLength + 1), "c", "user"));
@@ -107,7 +107,7 @@ public sealed class MemoryStoreTests
     [TestMethod]
     public async Task Tools_OnlyInAgentModeWhenEnabled_AndWriteTheStore()
     {
-        MemoryStore store = MemoryStore.For(_dir);
+        var store = MemoryStore.For(_dir);
         var source = new MemoryToolSource(store);
         Assert.IsTrue(source.AppliesTo(ChatMode.Agent));
         Assert.IsFalse(source.AppliesTo(ChatMode.Plan), "计划模式只读");

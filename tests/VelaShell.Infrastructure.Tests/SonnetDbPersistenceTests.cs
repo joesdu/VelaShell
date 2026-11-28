@@ -61,10 +61,10 @@ public sealed class SonnetDbPersistenceTests : IDisposable
         Assert.IsNotNull(single);
         Assert.AreEqual(profile.Host, single.Host);
 
-        var snapshot = await repo.GetAllTreeDataAsync();
-        Assert.AreEqual(group.Id, snapshot.Groups.Single().Id);
-        Assert.AreEqual(group.Id, snapshot.Sessions.Single().GroupId);
-        Assert.AreEqual(profile.Password, snapshot.Sessions.Single().Password);
+        (List<ServerGroup> Groups, List<SessionProfile> Sessions) = await repo.GetAllTreeDataAsync();
+        Assert.AreEqual(group.Id, Groups.Single().Id);
+        Assert.AreEqual(group.Id, Sessions.Single().GroupId);
+        Assert.AreEqual(profile.Password, Sessions.Single().Password);
     }
 
     [TestMethod]

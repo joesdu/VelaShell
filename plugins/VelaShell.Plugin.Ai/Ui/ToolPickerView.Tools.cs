@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Layout;
 using Avalonia.Media;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Chat.Extensions;
@@ -59,7 +58,7 @@ public sealed partial class ToolPickerView
                     server.DisabledTools = string.Join('\n', off);
                     AfterChange();
                 }))];
-            var refresh = HeaderButton("McpRefresh", _loc["RefreshTools"]);
+            Button refresh = HeaderButton("McpRefresh", _loc["RefreshTools"]);
             refresh.Click += async (_, _) => await RefreshAsync(server, refresh);
             string? count = server.KnownTools.Count > 0 ? $"{server.KnownTools.Count(t => !off.Contains(t.Name))}/{server.KnownTools.Count}" : null;
             mcp.Add(SourceRow("mcp:" + server.Id, name, ServerDetail(server), count, refresh, server.Enabled, on => SetServerEnabled(server, on), items));
@@ -111,7 +110,7 @@ public sealed partial class ToolPickerView
 
     private void AddServerActions()
     {
-        var add = HeaderButton("McpAddButton", _loc["McpAdd"]);
+        Button add = HeaderButton("McpAddButton", _loc["McpAdd"]);
         add.Click += (_, _) => _openServerEditor(null);
         _pageActions.Children.Add(add);
     }

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Host-neutral Agent Core runtime contracts shared by desktop, Bridge, MCP, and future application hosts.</Description>
+    <AssemblyName>VelaShell.AgentCore</AssemblyName>
+  </PropertyGroup>
+
+</Project>

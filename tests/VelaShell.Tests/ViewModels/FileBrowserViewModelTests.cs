@@ -51,7 +51,7 @@ public class FileBrowserViewModelTests
         delayed.SetResult([]);
         Assert.IsFalse(await pending);
         Assert.AreEqual("/home/user", _vm.CurrentPath);
-        Assert.IsTrue(_vm.Files.Any(file => file.Name == "readme.txt"));
+        Assert.Contains(file => file.Name == "readme.txt", _vm.Files);
         Assert.IsFalse(_vm.IsDirectoryLoading);
     }
 
@@ -2264,7 +2264,7 @@ c => c.GetMethodInfo().Name == nameof(ISftpService.DownloadFileAsync),
                 Assert.AreEqual("/original", destination);
                 await Task.Yield();
                 _vm.CurrentPath = "/changed-by-background";
-                return new[] { file };
+                return [file];
             };
             await _vm.UploadCommand.Execute().FirstAsync();
             await _sftpService.Received(1).UploadFileAsync(_sessionId, file,
