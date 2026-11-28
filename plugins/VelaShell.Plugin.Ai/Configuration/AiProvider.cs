@@ -138,10 +138,8 @@ public sealed class AiProvider
     /// </summary>
     public string? CatalogId { get; set; }
 
-    /// <summary>
-    /// 订阅登录的参数;<see cref="Auth" /> 不是 <see cref="AuthMethod.Subscription" /> 时为 null。
-    /// 令牌本身不在这儿 —— 那是机密,单独存(键 <c>oauth:&lt;Id&gt;</c>)。
-    /// </summary>
+    /// <summary>仅保留旧接口；配置中的 OAuth 参数可能含客户端机密，不再读写。</summary>
+    [JsonIgnore]
     public OAuthConfig? OAuth { get; set; }
 
     /// <summary>该供应商下的模型。</summary>
@@ -217,35 +215,9 @@ public sealed class AiProvider
     /// </remarks>
     public string UnsupportedParameters { get; set; } = "";
 
-    /// <summary>订阅登录且参数齐全(能真的发起一次登录)。</summary>
-    /// <remarks>
-    /// 目录里带占位端点、等着用户填客户端 id 的那几条(Azure / 自定义)在这里必须判 false ——
-    /// 不然点「登录」会发出一个 <c>client_id=</c> 空着的请求,换回来一句服务端的天书,
-    /// 而用户真正该看到的是"先把客户端 id 填上"。
-    /// </remarks>
+    /// <summary>不再提供帐户登录。</summary>
     [JsonIgnore]
-    public bool CanSignIn => Auth == AuthMethod.Subscription && OAuth is { } oauth && Ready(oauth);
-
-    /// <summary>这一套 OAuth 参数够不够发起一次登录。每种流程要的东西不一样,分开判。</summary>
-    private static bool Ready(OAuthConfig oauth)
-    {
-        // OpenRouter 那一路本来就没有 client_id,别把它一起卡掉
-        if (oauth.Flow != OAuthFlow.OpenRouterPkce && string.IsNullOrWhiteSpace(oauth.ClientId))
-        {
-            return false;
-        }
-        return oauth.Flow switch
-        {
-            // 设备码类要的是设备码地址,用不到授权页(别只判 DeviceCode 一个值 ——
-            // 两段式的 Copilot 也是设备码起手,漏了它就永远"登不了")
-            OAuthFlow.DeviceCode or OAuthFlow.GitHubCopilotDevice =>
-                !string.IsNullOrWhiteSpace(oauth.DeviceCodeUrl) && !string.IsNullOrWhiteSpace(oauth.TokenUrl),
-            // 隐式流<b>没有 token 端点</b> —— 令牌直接从授权页的 #fragment 回来。
-            // 拿 TokenUrl 一刀切会把这一路整条判死,而界面上只会显示"登不了",查不出为什么
-            OAuthFlow.ImplicitFragment => !string.IsNullOrWhiteSpace(oauth.AuthorizationUrl),
-            _ => !string.IsNullOrWhiteSpace(oauth.AuthorizationUrl) && !string.IsNullOrWhiteSpace(oauth.TokenUrl)
-        };
-    }
+    public bool CanSignIn { get; } = false;
 }
 
 /// <summary>

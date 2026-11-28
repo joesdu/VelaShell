@@ -94,18 +94,18 @@ public sealed class AnthropicWireTests
     /// </summary>
     [TestMethod]
     [DataRow(false, DisplayName = "手填的 Key")]
-    [DataRow(true, DisplayName = "登录换回来的令牌")]
-    public async Task ModelListRequest_SendsTheSameVersionAndAuthHeadersAsChat(bool token)
+    [DataRow(true, DisplayName = "手动指定附加头")]
+    public async Task ModelListRequest_SendsTheSameVersionAndAuthHeadersAsChat(bool extraHeaders)
     {
-        ProviderCredential credential = token
-            ? new ProviderCredential("sk-ant-oat-1", true, [new("anthropic-beta", "oauth-2025-04-20"), new("user-agent", "Relay/2")])
+        ProviderCredential credential = extraHeaders
+            ? new ProviderCredential("sk-ant-key", false, [new("user-agent", "Relay/2")])
             : ProviderCredential.Key("sk-ant-key");
         (NameValueCollection chat, _) = await SendAsync(credential);
 
         using HttpRequestMessage list = EndpointModelCatalog.Request("https://api.anthropic.com",
             ChatProtocol.AnthropicMessages, credential)!;
 
-        Assert.AreEqual(token ? "Relay/2" : AiHttp.UserAgent, chat["User-Agent"]);
+        Assert.AreEqual(extraHeaders ? "Relay/2" : AiHttp.UserAgent, chat["User-Agent"]);
         Assert.AreEqual(chat["User-Agent"], list.Headers.UserAgent.ToString());
         foreach (string name in new[] { "anthropic-version", "x-api-key", "Authorization", "anthropic-beta" })
         {
@@ -115,15 +115,11 @@ public sealed class AnthropicWireTests
     }
 
     [TestMethod]
-    public async Task LoginToken_StaysBearer_AndKeepsItsBetaHeader()
+    public void ClientRejectsBearerCredentialsBeforeIssuingARequest()
     {
-        var credential = new ProviderCredential("sk-ant-oat-1", true, [new("anthropic-beta", "oauth-2025-04-20")]);
-
-        (NameValueCollection headers, _) = await SendAsync(credential);
-
-        Assert.AreEqual("Bearer sk-ant-oat-1", headers["Authorization"], "登录换回来的短期令牌本来就该走 Bearer");
-        Assert.IsNull(headers["x-api-key"], "令牌不能被改写成 x-api-key");
-        Assert.AreEqual("oauth-2025-04-20", headers["anthropic-beta"]);
+        using var context = new TestPluginContext();
+        var store = new AiSettingsStore(context);
+        Assert.Throws<NotSupportedException>(() => store.CreateClient(ModelFor("https://api.anthropic.com"), new ProviderCredential("old-token", true)));
     }
 
     [TestMethod]
@@ -179,7 +175,7 @@ public sealed class AnthropicWireTests
     }
 
     [TestMethod]
-    public void NoCredential_OnTheOfficialHost_StillUsesTheMachineAuthToken()
+    public void NoCredential_OnTheOfficialHost_NeverUsesTheMachineAuthToken()
     {
         using var machine = new MachineAnthropicVariables(null, "machine-token");
         using var context = new TestPluginContext();
@@ -188,7 +184,7 @@ public sealed class AnthropicWireTests
             .CreateClient(ModelFor("https://api.anthropic.com"), ProviderCredential.Key(null));
 
         var sdk = (Anthropic.IAnthropicClient)client.GetService(typeof(Anthropic.IAnthropicClient))!;
-        Assert.AreEqual("machine-token", sdk.AuthToken);
+        Assert.IsNull(sdk.AuthToken);
     }
 
     [TestMethod]

@@ -552,118 +552,6 @@ public sealed partial class SettingsViewUiTests
         });
     }
 
-    /// <summary>已登录的自定义 OAuth 供应商,另挂一个自带 Key、跟着供应商地址走的模型。</summary>
-    private static async Task<(AiSettingsStore Store, AiSettings Settings, AiProvider Provider, AiModelConfig Own)> SignedInCustomOAuthAsync(
-        TestPluginContext context, string baseUrl)
-    {
-        var store = new AiSettingsStore(context);
-        AiProvider provider = ProviderCatalog.Find("custom-oauth")!.CreateProvider();
-        provider.BaseUrl = baseUrl;
-        provider.ModelsExpanded = true;
-        provider.Models[0].Model = "m";
-        var own = new AiModelConfig { Name = "Own model", Model = "own", HasOwnApiKey = true };
-        provider.Models.Add(own);
-        var settings = new AiSettings { Providers = [provider] };
-        await store.SaveAsync(settings);
-        await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "at-old", ExpiresAt = DateTimeOffset.UtcNow.AddHours(1) });
-        await store.SetApiKeyAsync(own.Id, "own-old");
-        return (store, settings, provider, own);
-    }
-
-    [TestMethod]
-    public void SubscriptionBaseUrlToAnotherOrigin_SaveAsksThenSignsOutAndClearsModelKeys()
-    {
-        OnUi(async () =>
-        {
-            await using var oldHost = new SseStub(ProbeAnswerSse);
-            await using var newHost = new SseStub(ProbeAnswerSse);
-            using var context = new TestPluginContext();
-            (AiSettingsStore store, AiSettings settings, AiProvider provider, AiModelConfig own) =
-                await SignedInCustomOAuthAsync(context, oldHost.BaseUrl);
-            var loc = new Loc("en");
-            var view = new SettingsView(context, store, settings, loc, () => { });
-            var window = new Window { Content = view, Width = 900, Height = 700 };
-            window.Show(); await PumpAsync();
-            try
-            {
-                view.GetControl<ListBox>("ProvidersList").SelectedIndex = 0;
-                await PumpAsync();
-                Assert.IsTrue(view.GetControl<StackPanel>("ProviderAuthPanel").IsVisible, "前提:订阅登录的供应商页");
-                Button save = view.GetControl<Button>("SaveButton");
-                TextBlock status = view.GetControl<TextBlock>("StatusText");
-                view.GetControl<TextBox>("ProviderBaseUrlBox").Text = newHost.BaseUrl;
-
-                // 先说清:保存会退出登录、哪个模型自带的 Key 一起清;取消就什么都不动
-                Click(save);
-                string expected = loc["SetupBaseUrlSignOutConfirm"] + "\n" + loc.F("SetupBaseUrlKeyResetConfirmAlso", 1)
-                    + "\n" + loc.F("SetupBaseUrlKeyResetModels", "Own model");
-                Assert.AreEqual(expected, await WaitForConfirmAsync(view));
-                Assert.AreEqual(loc["SetupSignOutResetTitle"],
-                    ConfirmBox(view).GetLogicalDescendants().OfType<TextBlock>().Single(text => text.Name == "ConfirmTitle").Text);
-                AnswerConfirm(view, accept: false);
-                await WaitUntilAsync(() => save.IsEnabled && status.Text == loc["SetupResetCancelled"]);
-                Assert.AreEqual(oldHost.BaseUrl, provider.BaseUrl);
-                Assert.AreEqual("at-old", (await store.GetTokensAsync(provider.Id))?.AccessToken);
-                Assert.AreEqual("own-old", await store.GetApiKeyAsync(own.Id));
-
-                Click(save);
-                Assert.AreEqual(expected, await WaitForConfirmAsync(view));
-                AnswerConfirm(view, accept: true);
-                await WaitUntilAsync(() => save.IsEnabled
-                    && status.Text == loc["SetupSavedSignedOut"] + "\n" + loc.F("SetupModelKeysCleared", "Own model"));
-                Assert.AreEqual(newHost.BaseUrl, provider.BaseUrl);
-                Assert.IsNull(await store.GetTokensAsync(provider.Id), "旧地址签出的令牌不留");
-                Assert.IsNull(await store.GetApiKeyAsync(own.Id));
-                await WaitUntilAsync(() => view.GetControl<TextBlock>("ProviderAuthStatusText").Text == loc["SubscriptionNotSignedIn"]);
-                Assert.IsEmpty(oldHost.Requests);
-                Assert.IsEmpty(newHost.Requests);
-            }
-            finally { window.Close(); }
-        });
-    }
-
-    [TestMethod]
-    [DataRow(true)]
-    [DataRow(false)]
-    public void SubscriptionBaseUrlToAnotherOrigin_UnsavedTestNeverCarriesTheSignIn(bool signedIn)
-    {
-        OnUi(async () =>
-        {
-            await using var oldHost = new SseStub(ProbeAnswerSse);
-            await using var newHost = new SseStub(ProbeAnswerSse);
-            using var context = new TestPluginContext();
-            (AiSettingsStore store, AiSettings settings, AiProvider provider, AiModelConfig own) =
-                await SignedInCustomOAuthAsync(context, oldHost.BaseUrl);
-            if (!signedIn) await store.ClearTokensAsync(provider.Id);
-            var loc = new Loc("en");
-            var view = new SettingsView(context, store, settings, loc, () => { });
-            var window = new Window { Content = view, Width = 900, Height = 700 };
-            window.Show(); await PumpAsync();
-            try
-            {
-                view.GetControl<ListBox>("ProvidersList").SelectedIndex = 0;
-                await PumpAsync();
-                view.GetControl<TextBox>("ProviderBaseUrlBox").Text = newHost.BaseUrl;
-                await StartTestAsync(view).WaitAsync(TimeSpan.FromSeconds(15));
-                if (signedIn)
-                {
-                    // 还登着:请用户先保存(会退出登录),在新地址登录后再测
-                    Assert.AreEqual(loc["SetupTestNeedsSaveSignIn"], view.GetControl<TextBlock>("StatusText").Text);
-                    Assert.IsEmpty(newHost.Requests);
-                }
-                else
-                {
-                    // 没登录:照常测,不带任何已存的凭据
-                    Assert.AreEqual("Bearer not-needed", newHost.Authorizations.Single(), view.GetControl<TextBlock>("StatusText").Text);
-                }
-                Assert.IsEmpty(oldHost.Requests);
-                Assert.AreEqual(oldHost.BaseUrl, provider.BaseUrl, "测试不落库");
-                Assert.AreEqual(signedIn ? "at-old" : null, (await store.GetTokensAsync(provider.Id))?.AccessToken);
-            }
-            finally { window.Close(); }
-        });
-    }
-
     [TestMethod]
     public void RemovedKeyOne_StillShowsAnEmptyPrimarySlotThatCanBeFilledBackIn()
     {
@@ -1544,99 +1432,6 @@ public sealed partial class SettingsViewUiTests
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public void Review_ExternalAuthSwitchRefreshesRealPanelsAndKeepsKeyDraftBoundAndMasked(bool subscriptionFirst)
-    {
-        OnUi(async () =>
-        {
-            using var context = new TestPluginContext();
-            var model = new AiModelConfig { Model = "m" };
-            var provider = new AiProvider
-            {
-                ModelsExpanded = true,
-                Name = "original",
-                BaseUrl = "https://same.example",
-                Models = [model],
-                Auth = subscriptionFirst ? AuthMethod.Subscription : AuthMethod.ApiKey,
-                OAuth = new OAuthConfig()
-            };
-            var settings = new AiSettings { Providers = [provider] };
-            var store = new AiSettingsStore(context);
-            await store.SetApiKeyAsync(provider.Id, "original-secret");
-            await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "subscription-token" });
-            await store.SaveAsync(settings);
-            AiSettings live = await store.LoadAsync();
-            var loc = new Loc("en");
-            var view = new SettingsView(context, store, live, loc, () => { });
-            var window = new Window { Content = view, Width = 900, Height = 700 };
-            window.Show(); await PumpAsync();
-            try
-            {
-                TextBox? keyDraft = null;
-                view.GetControl<TextBox>("ProviderNameBox").Text = "name draft";
-                if (!subscriptionFirst)
-                {
-                    keyDraft = EditProviderKey(view, provider.Id);
-                    keyDraft.Text = "manual-key-draft";
-                    Click(KeyControl<Button>(view, provider.Id, "ProviderKeyRevealButton"));
-                    Assert.Contains("original-secret", ((TextBlock)KeyControl<Button>(view, provider.Id, "ProviderKeyRevealButton").Content!).Text!);
-                }
-                var external = new AiSettingsStore(context);
-                AiSettings newer = await external.LoadAsync();
-                newer.Providers.Single().Auth = subscriptionFirst ? AuthMethod.ApiKey : AuthMethod.Subscription;
-                await external.SaveAsync(newer);
-                Click(view.GetControl<Button>("SaveButton"));
-                await WaitUntilAsync(() => view.GetControl<TextBlock>("StatusText").Text == loc["SetupConfigChanged"]);
-                Assert.AreEqual(subscriptionFirst, view.GetControl<Control>("ProviderKeyPanel").IsVisible);
-                Assert.AreEqual(!subscriptionFirst, view.GetControl<Control>("ProviderAuthPanel").IsVisible);
-                Assert.AreEqual("name draft", view.GetControl<TextBox>("ProviderNameBox").Text);
-                if (keyDraft is not null)
-                {
-                    Assert.AreEqual("manual-key-draft", keyDraft.Text);
-                    Assert.IsFalse(keyDraft.IsEffectivelyVisible);
-                    Assert.DoesNotContain("original-secret", ((TextBlock)KeyControl<Button>(view, provider.Id, "ProviderKeyRevealButton").Content!).Text!);
-                    Click(view.GetControl<Button>("SaveButton")); await PumpAsync();
-                    Assert.AreEqual(loc["SetupConfigChanged"], view.GetControl<TextBlock>("StatusText").Text);
-                    Assert.AreEqual("original", (await store.LoadAsync()).Providers.Single().Name);
-                    Assert.AreEqual("original-secret", await store.GetApiKeyAsync(provider.Id));
-                }
-                else
-                {
-                    await WaitUntilAsync(() => HasKeyRow(view, provider.Id));
-                    keyDraft = EditProviderKey(view, provider.Id);
-                    keyDraft.Text = "manual-key-draft";
-                }
-                // 同实例回到 API Key 时保留真正草稿，但不恢复完整旧 Key 展示。
-                newer = await external.LoadAsync();
-                newer.Providers.Single().Auth = AuthMethod.ApiKey;
-                await external.SaveAsync(newer);
-                await store.ReloadIntoAsync(live);
-                view.RefreshCatalogModels(); await PumpAsync();
-                Assert.IsTrue(view.GetControl<Control>("ProviderKeyPanel").IsVisible);
-                Assert.IsFalse(view.GetControl<Control>("ProviderAuthPanel").IsVisible);
-                Assert.AreEqual("manual-key-draft", keyDraft.Text);
-                Assert.DoesNotContain("original-secret", ((TextBlock)KeyControl<Button>(view, provider.Id, "ProviderKeyRevealButton").Content!).Text!);
-                Click(view.GetControl<Button>("SaveButton"));
-                await WaitUntilAsync(() => view.GetControl<TextBlock>("StatusText").Text == loc["Saved"]);
-                Assert.AreEqual("manual-key-draft", await store.GetApiKeyAsync(provider.Id));
-                Assert.AreEqual("name draft", (await store.LoadAsync()).Providers.Single().Name);
-                // 真正导航必须清掉原实例草稿与旧机密显示。
-                view.GetControl<ListBox>("ProvidersList").SelectedIndex = 1;
-                await PumpAsync();
-                view.GetControl<ListBox>("ProvidersList").SelectedIndex = 0;
-                await PumpAsync();
-                TextBox returnedDraft = KeyControl<TextBox>(view, provider.Id, "ProviderKeyEditBox");
-                Assert.IsTrue(string.IsNullOrEmpty(returnedDraft.Text), "导航后不能保留原实例 Key 草稿");
-                Assert.AreEqual('●', returnedDraft.PasswordChar);
-                Assert.IsFalse(returnedDraft.IsEffectivelyVisible);
-                Assert.DoesNotContain("manual-key-draft", ((TextBlock)KeyControl<Button>(view, provider.Id, "ProviderKeyRevealButton").Content!).Text!);
-            }
-            finally { window.Close(); }
-        });
-    }
-
-    [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
     public void DefaultContextWindow_SameNumberEditedDuringHeldSaveKeepsLatestIntentAndFields(bool editedBeforeSave)
     {
         OnUi(async () =>
@@ -1957,7 +1752,7 @@ public sealed partial class SettingsViewUiTests
             await store.AddProviderApiKeyAsync(live, provider, "primary");
             string extra = await store.AddProviderApiKeyAsync(live, provider, "extra");
             await store.SetApiKeyAsync(model.Id, "model-key");
-            await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "token", RefreshToken = "refresh", AccountId = "account" });
+            await context.Secrets.SetAsync("oauth:" + provider.Id, "legacy-bytes");
             string? tokenJson = await context.Secrets.GetAsync("oauth:" + provider.Id);
             int notifications = 0;
             var view = new SettingsView(context, store, live, new Loc("en"), () => notifications++);
@@ -2685,7 +2480,7 @@ public sealed partial class SettingsViewUiTests
         return KeyControl<TextBox>(view, keyId, "ProviderKeyEditBox");
     }
 
-    private sealed class DelayedSecrets(ISecretsApi inner, string delayedName, bool delayMutation = false) : ISecretsApi
+    internal sealed class DelayedSecrets(ISecretsApi inner, string delayedName, bool delayMutation = false) : ISecretsApi
     {
         private int _reads;
         private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -3998,190 +3793,6 @@ public sealed partial class SettingsViewUiTests
     }
 
     [TestMethod]
-    public void SubscriptionRefresh_SameTokenNewEndpoint_DoesNotCoolTheNewCredential()
-    {
-        OnUi(async () =>
-        {
-            using var context = new TestPluginContext();
-            await using var oldEndpoint = new SseStub("", jsonContent: "", hold: true);
-            await using var newEndpoint = new SseStub(ProbeAnswerSse);
-            var model = new AiModelConfig { Model = "m1" };
-            var provider = new AiProvider
-            {
-                ModelsExpanded = true,
-                Name = "subscription",
-                BaseUrl = oldEndpoint.BaseUrl,
-                Auth = AuthMethod.Subscription,
-                OAuth = new OAuthConfig { Flow = OAuthFlow.GitHubCopilotDevice, ExchangeUrl = "https://auth.example/exchange" },
-                Models = [model]
-            };
-            var settings = new AiSettings { Providers = [provider], ActiveModelId = model.Id };
-            var health = new ProviderHealth();
-            var store = new AiSettingsStore(context);
-            await store.SaveAsync(settings);
-            await store.SaveTokensAsync(provider.Id, new OAuthTokens
-            {
-                AccessToken = "same-token",
-                RefreshToken = "long-lived",
-                BaseUrl = oldEndpoint.BaseUrl,
-                ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
-            });
-            var view = new SettingsView(context, store, settings, new Loc("en"), () => { }, health);
-            var window = new Window { Width = 900, Height = 700, Content = view };
-            window.Show();
-            await PumpAsync();
-            try
-            {
-                Task oldRun = StartTestAsync(view);
-                await oldEndpoint.RequestBodyAsync.WaitAsync(TimeSpan.FromSeconds(15));
-                Assert.AreEqual("Bearer same-token", oldEndpoint.Authorizations[0]);
-
-                // 旧请求正挂在原端点。下一次解析自动刷新:字符串不变,服务端却下发新端点。
-                OAuthStub exchange = new OAuthStub().Json(System.Text.Json.JsonSerializer.Serialize(new
-                {
-                    token = "same-token",
-                    expires_at = 4102444800L,
-                    endpoints = new { api = newEndpoint.BaseUrl }
-                }));
-                using var http = new HttpClient(exchange);
-                store.TokenClient = new Auth.OAuthClient(http);
-                await store.SaveTokensAsync(provider.Id, new OAuthTokens
-                {
-                    AccessToken = "same-token",
-                    RefreshToken = "long-lived",
-                    BaseUrl = oldEndpoint.BaseUrl,
-                    ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(20)
-                });
-                ProviderCredential refreshed = await store.ResolveCredentialAsync(new ResolvedModel(provider, model));
-                Assert.AreEqual(newEndpoint.BaseUrl, refreshed.BaseUrl);
-                Assert.AreEqual("same-token", refreshed.Value, "真正发生的是同文本令牌刷新");
-                Assert.HasCount(1, exchange.Requests, "令牌确实从 OAuth 交换端点刷新");
-
-                oldEndpoint.Release();
-                await oldRun.WaitAsync(TimeSpan.FromSeconds(15));
-                Assert.IsFalse(health.IsCooling(model.Id), "旧地址上的失败不能冷却同字符串的新地址");
-                health.Record(model.Id, false); // 新地址探活成功必须解除这次冷却,否则只断言初始默认值会假绿
-                Task newRun = StartTestAsync(view);
-                await newEndpoint.RequestBodyAsync.WaitAsync(TimeSpan.FromSeconds(15));
-                Assert.AreEqual("Bearer same-token", newEndpoint.Authorizations[0]);
-                await newRun.WaitAsync(TimeSpan.FromSeconds(15));
-                Assert.IsFalse(health.IsCooling(model.Id), "新地址的成功应该写入健康记录");
-            }
-            finally
-            {
-                oldEndpoint.Release();
-                window.Close();
-            }
-        });
-    }
-
-    [TestMethod]
-    public void SubscriptionSameToken_NewAccountHeader_DoesNotCoolTheNewAccount()
-    {
-        OnUi(async () =>
-        {
-            using var context = new TestPluginContext();
-            // 旧账号首次与补试都空答,这一轮才真有失败;新一轮(第 3 个流)正常作答
-            await using var endpoint = new SseStub(ProbeAnswerSse, holdFirstStream: true, firstStreamContent: "",
-                streamingReply: n => n == 2 ? "data: [DONE]\n\n" : ProbeAnswerSse);
-            var model = new AiModelConfig { Model = "m1" };
-            var provider = new AiProvider
-            {
-                ModelsExpanded = true,
-                Name = "subscription",
-                BaseUrl = endpoint.BaseUrl,
-                Auth = AuthMethod.Subscription,
-                OAuth = new OAuthConfig { ExtraHeaders = "chatgpt-account-id: {account_id}" },
-                Models = [model]
-            };
-            var settings = new AiSettings { Providers = [provider], ActiveModelId = model.Id };
-            var health = new ProviderHealth();
-            var store = new AiSettingsStore(context);
-            await store.SaveAsync(settings);
-            await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "same-token", AccountId = "old-account" });
-            var loc = new Loc("en");
-            var view = new SettingsView(context, store, settings, loc, () => { }, health);
-            var window = new Window { Width = 900, Height = 700, Content = view };
-            window.Show();
-            await PumpAsync();
-            try
-            {
-                Task oldRun = StartTestAsync(view);
-                await endpoint.RequestBodyAsync.WaitAsync(TimeSpan.FromSeconds(15));
-                Assert.AreEqual("old-account", endpoint.AccountIds[0], "旧请求真正发了旧账号头");
-                await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "same-token", AccountId = "new-account" });
-                endpoint.Release();
-                await oldRun.WaitAsync(TimeSpan.FromSeconds(15));
-                Assert.HasCount(2, endpoint.Requests, "旧探活补试过一次");
-                Assert.AreEqual(loc.F("TestFail", loc["ProbeEmptyReply"]), view.GetControl<TextBlock>("StatusText").Text,
-                    "前提:旧账号这一轮真的失败了,下面的冷却断言才有东西可拦");
-                Assert.IsFalse(health.IsCooling(model.Id), "旧账号的失败不能冷却同 token 的新账号");
-
-                health.Record(model.Id, false);
-                Task newRun = StartTestAsync(view);
-                await WaitUntilAsync(() => endpoint.Requests.Count == 3);
-                await newRun.WaitAsync(TimeSpan.FromSeconds(15));
-                Assert.AreEqual("old-account", endpoint.AccountIds[1], "旧探活补试仍固定原账号");
-                Assert.AreEqual("new-account", endpoint.AccountIds[2], "第二轮真实请求必须改用新账号头");
-                Assert.IsFalse(health.IsCooling(model.Id), "新账号成功应清掉已有冷却");
-            }
-            finally
-            {
-                endpoint.Release();
-                window.Close();
-            }
-        });
-    }
-
-    [TestMethod]
-    public void SubscriptionSameToken_ChangedBearerShape_DoesNotCoolTheKeyCredential()
-    {
-        OnUi(async () =>
-        {
-            using var context = new TestPluginContext();
-            await using var endpoint = new SseStub("", jsonContent: "", hold: true);
-            var model = new AiModelConfig { Model = "m1" };
-            var provider = new AiProvider
-            {
-                ModelsExpanded = true,
-                BaseUrl = endpoint.BaseUrl,
-                Auth = AuthMethod.Subscription,
-                OAuth = new OAuthConfig { Credential = OAuthCredential.AccessToken },
-                Models = [model]
-            };
-            var settings = new AiSettings { Providers = [provider], ActiveModelId = model.Id };
-            var health = new ProviderHealth();
-            var store = new AiSettingsStore(context);
-            await store.SaveAsync(settings);
-            await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "same-token" });
-            var view = new SettingsView(context, store, settings, new Loc("en"), () => { }, health);
-            var window = new Window { Width = 900, Height = 700, Content = view };
-            window.Show();
-            await PumpAsync();
-            try
-            {
-                Task run = StartTestAsync(view);
-                await endpoint.RequestBodyAsync.WaitAsync(TimeSpan.FromSeconds(15));
-                Assert.AreEqual("Bearer same-token", endpoint.Authorizations[0]);
-                provider.OAuth!.Credential = OAuthCredential.ApiKey;
-                await store.SaveAsync(settings);
-                ProviderCredential now = await store.ResolveCredentialAsync(new ResolvedModel(provider, model));
-                Assert.AreEqual("same-token", now.Value);
-                Assert.IsFalse(now.IsBearerToken, "落库凭据现在是普通 Key,不再是 Bearer 令牌");
-
-                endpoint.Release();
-                await run.WaitAsync(TimeSpan.FromSeconds(15));
-                Assert.IsFalse(health.IsCooling(model.Id), "相同文本不能将 Bearer 请求的失败记给新 Key");
-            }
-            finally
-            {
-                endpoint.Release();
-                window.Close();
-            }
-        });
-    }
-
-    [TestMethod]
     public void UnsavedProviderKey_StillOverridesTheProbeWithoutChangingSavedHealth()
     {
         OnUi(async () =>
@@ -4277,38 +3888,6 @@ public sealed partial class SettingsViewUiTests
             {
                 window.Close();
             }
-        });
-    }
-    [TestMethod]
-    public void ManageSignIn_FromEarlierSubscription_PassesSelectedInstanceRatherThanCatalog()
-    {
-        OnUi(async () =>
-        {
-            using var context = new TestPluginContext();
-            AiProvider first = ProviderCatalog.Find("openrouter")!.CreateProvider();
-            AiProvider last = ProviderCatalog.Find("openrouter")!.CreateProvider();
-            AiSettings settings = new() { Providers = [first, last], ActiveModelId = first.Models[0].Id };
-            (Window window, SettingsView view, _, _) = await ShowAsync(context, settings);
-            try
-            {
-                ListBox list = view.GetControl<ListBox>("ProvidersList");
-                string? requested = "unset";
-                view.ProviderCatalogRequested += id => requested = id;
-                list.SelectedIndex = 0;
-                await PumpAsync();
-                view.GetControl<Button>("ManageSignInButton")
-                    .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-                Assert.AreEqual(first.Id, requested);
-                list.SelectedIndex = 1;
-                await PumpAsync();
-                view.GetControl<Button>("ManageSignInButton")
-                    .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-                Assert.AreEqual(last.Id, requested);
-                view.GetControl<Button>("AddButton")
-                    .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-                Assert.IsNull(requested, "新建入口仍无指定实例");
-            }
-            finally { window.Close(); }
         });
     }
 
@@ -4424,47 +4003,6 @@ public sealed partial class SettingsViewUiTests
                 }
                 finally { button.PropertyChanged -= OnChanged; }
             }
-        });
-    }
-
-    [TestMethod]
-    public void CatalogSignIn_RefreshesSubscriptionStatusWithoutReplacingDraft()
-    {
-        OnUi(async () =>
-        {
-            using var context = new TestPluginContext();
-            AiProvider provider = ProviderCatalog.Find("openrouter")!.CreateProvider();
-            AiSettings settings = new() { Providers = [provider], ActiveModelId = provider.Models[0].Id };
-            (Window window, SettingsView view, _, AiSettingsStore store) = await ShowAsync(context, settings);
-            try
-            {
-                view.GetControl<ListBox>("ProvidersList").SelectedIndex = 0;
-                var loc = new Loc("en");
-                TextBlock status = view.GetControl<TextBlock>("ProviderAuthStatusText");
-                await WaitUntilAsync(() => status.Text == loc["SubscriptionNotSignedIn"]);
-                TextBox name = view.GetControl<TextBox>("ProviderNameBox");
-                TextBox address = view.GetControl<TextBox>("ProviderBaseUrlBox");
-                name.Text = "unsaved account name";
-                address.Text = "https://draft.example/v1";
-                var obtainedAt = new DateTimeOffset(2026, 9, 30, 12, 0, 0, TimeSpan.Zero);
-                await store.SaveTokensAsync(provider.Id, new OAuthTokens
-                {
-                    AccessToken = "new-account-token",
-                    ObtainedAt = obtainedAt
-                });
-                view.ReloadFromCatalog(provider.Id);
-                string signedIn = loc.F("SubscriptionSignedIn", obtainedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"));
-                await WaitUntilAsync(() => status.Text == signedIn);
-                Assert.AreEqual("unsaved account name", name.Text);
-                Assert.AreEqual("https://draft.example/v1", address.Text);
-
-                await store.ClearTokensAsync(provider.Id);
-                view.ReloadFromCatalog(provider.Id);
-                await WaitUntilAsync(() => status.Text == loc["SubscriptionNotSignedIn"]);
-                Assert.AreEqual("unsaved account name", name.Text);
-                Assert.AreEqual("https://draft.example/v1", address.Text);
-            }
-            finally { window.Close(); }
         });
     }
 
@@ -6039,7 +5577,7 @@ public sealed partial class SettingsViewUiTests
             await store.AddProviderApiKeyAsync(settings, provider, "primary");
             string extra = await store.AddProviderApiKeyAsync(settings, provider, "additional");
             await store.SetApiKeyAsync(model.Id, "own-secret"); await store.SetApiKeyAsync(other.Id, "keep-secret");
-            await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "old-oauth-secret" });
+            await context.Secrets.SetAsync("oauth:" + provider.Id, "legacy-bytes");
             provider.AdditionalApiKeyIds.Add(other.Id); // 损坏 JSON 槽绝不能被当成自己的机密删掉。
             await store.SaveAsync(settings);
             var view = new SettingsView(context, store, settings, new Loc("en"), () => { });
@@ -6051,7 +5589,7 @@ public sealed partial class SettingsViewUiTests
                 Click(view.GetControl<Button>("DeleteButton")); await PumpAsync();
                 Assert.AreSame(other, settings.Providers.Single());
                 foreach (string id in new[] { provider.Id, extra, model.Id }) Assert.IsNull(await store.GetApiKeyAsync(id));
-                Assert.IsNull(await store.GetTokensAsync(provider.Id));
+                Assert.AreEqual("legacy-bytes", await context.Secrets.GetAsync("oauth:" + provider.Id));
                 Assert.AreEqual("keep-secret", await store.GetApiKeyAsync(other.Id));
             }
             finally { window.Close(); }

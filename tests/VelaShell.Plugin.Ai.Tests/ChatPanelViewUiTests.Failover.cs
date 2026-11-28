@@ -1773,95 +1773,7 @@ public sealed partial class ChatPanelViewUiTests
     }
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void FailoverProbe_OAuthTokenRefresh_ReprobesSameEndpointButRejectsUntrustedMove(bool moveEndpoint)
-    {
-        OnUi(async () =>
-        {
-            await using var broken = new ErrorStub();
-            await using var oldTarget = new SseStub(LifecycleAnswer, hold: true);
-            await using var newTarget = new SseStub("""
-                data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"订阅端点回答"},"finish_reason":"stop"}]}
-
-                data: [DONE]
-
-
-                """, jsonContent: "OK");
-            using var context = new TestPluginContext();
-            AiProvider first = StubProvider("alpha", broken.BaseUrl, "m");
-            AiProvider second = StubProvider("beta", oldTarget.BaseUrl, "m");
-            second.Auth = AuthMethod.Subscription;
-            second.OAuth = new OAuthConfig { Credential = OAuthCredential.AccessToken };
-            var store = new AiSettingsStore(context);
-            await store.SaveTokensAsync(second.Id, new OAuthTokens { AccessToken = "old-token", BaseUrl = oldTarget.BaseUrl, AccountId = "same-account" });
-            await store.SaveAsync(new AiSettings
-            {
-                Providers = [first, second],
-                ActiveModelId = first.Models[0].Id,
-                FailoverChain = [new FailoverEntry { ModelId = second.Models[0].Id }],
-                SuggestFollowUps = false
-            });
-            var panel = new ChatPanelView(context, store); // 同一登录管理器更新令牌,真实 UI 的订阅登录路径
-            var window = new Window { Width = 800, Height = 600, Content = panel };
-            window.Show();
-            try
-            {
-                await PumpAsync();
-                panel.SendExternal("本轮消息");
-                Assert.IsTrue(await WaitForAsync(() => oldTarget.Requests.Count == 1), "旧登录端点探活已经发出");
-                await store.SaveTokensAsync(second.Id,
-                    new OAuthTokens
-                    {
-                        AccessToken = "new-token",
-                        BaseUrl = moveEndpoint ? newTarget.BaseUrl : oldTarget.BaseUrl,
-                        AccountId = "same-account"
-                    });
-                oldTarget.Release();
-                StackPanel messages = Find<StackPanel>(panel, "MessagesPanel");
-                Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count == 1
-                    && !Find<Viewbox>(panel, "StopIcon").IsVisible), "令牌更新后旧回合必须完成或安全失败,不能等未经授权的新端点");
-                Assert.AreEqual("Bearer old-token", oldTarget.Authorizations[0]);
-                Assert.IsEmpty(newTarget.Requests, "相同账号身份也不能授权旧回合向新来源发送探活、摘要或历史");
-                if (moveEndpoint)
-                {
-                    Assert.HasCount(1, oldTarget.Requests, "地址移动后旧端点仅保留原令牌的已发探活");
-                    Assert.Contains(card => card.Classes.Contains("errorCard"), messages.GetVisualDescendants().OfType<Border>());
-                    Assert.AreEqual(first.Models[0].Id, (await store.LoadAsync()).ActiveModelId);
-
-                    panel.SendExternal("新用户回合使用更新后的订阅端点");
-                    Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count == 2
-                        && !Find<Viewbox>(panel, "StopIcon").IsVisible));
-                    Assert.HasCount(1, oldTarget.Requests, "新回合不能把新令牌发回旧端点");
-                    Assert.HasCount(2, newTarget.Requests, "新用户回合才在新的令牌端点探活并正式回答");
-                    Assert.AreSequenceEqual(["Bearer new-token", "Bearer new-token"], newTarget.Authorizations);
-                    Assert.Contains("Reply with exactly:", newTarget.Requests[0]);
-                    Assert.Contains("新用户回合使用更新后的订阅端点", newTarget.Requests[1]);
-                    Assert.AreEqual("订阅端点回答", AnswerRenderers(messages).Last().MarkdownBuilder.ToString());
-                }
-                else
-                {
-                    Assert.HasCount(3, oldTarget.Requests, "同端点续期仍应以新令牌重探,然后正式回答");
-                    Assert.AreSequenceEqual(["Bearer old-token", "Bearer new-token", "Bearer new-token"], oldTarget.Authorizations);
-                    Assert.Contains("Reply with exactly:", oldTarget.Requests[1]);
-                    Assert.Contains("本轮消息", oldTarget.Requests[2]);
-                    Assert.AreEqual("回答", AnswerRenderers(messages).Last().MarkdownBuilder.ToString());
-                }
-                Assert.AreEqual(second.Models[0].Id, (await store.LoadAsync()).ActiveModelId);
-            }
-            finally
-            {
-                oldTarget.Release();
-                panel.Detach();
-                window.Close();
-            }
-        });
-    }
-
-    [TestMethod]
     [DataRow("unrelated")]
-    [DataRow("refresh")]
-    [DataRow("moved")]
     [DataRow("model")]
     [DataRow("config")]
     public void FirstStation_SummaryWindowKeepsCredentialsAndEndpointPaired(string change)
@@ -1883,26 +1795,11 @@ public sealed partial class ChatPanelViewUiTests
 
                 """);
             using var context = new TestPluginContext();
-            OAuthStub oauth = new OAuthStub().Json("""{"access_token":"new-token","expires_in":3600}""");
-            using var http = new HttpClient(oauth);
-            var store = new AiSettingsStore(context) { TokenClient = new OAuthClient(http) };
+            var store = new AiSettingsStore(context);
             AiProvider first = StubProvider("alpha", stub.BaseUrl, change == "model" ? "m1" : "m", maxInputTokens: 40);
             first.Models[0].MaxTokens = 1;
-            first.Auth = AuthMethod.Subscription;
-            first.OAuth = new OAuthConfig
-            {
-                Credential = OAuthCredential.AccessToken,
-                TokenUrl = "https://auth.example/token",
-                ClientId = "test"
-            };
             AiProvider unrelated = StubProvider("beta", "http://127.0.0.1:1/v1", "m");
-            await store.SaveTokensAsync(first.Id, new OAuthTokens
-            {
-                AccessToken = "old-token",
-                RefreshToken = "refresh",
-                ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
-                AccountId = "same-account"
-            });
+            await store.SetApiKeyAsync(first.Id, "original-key");
             await store.SaveAsync(new AiSettings
             {
                 Providers = [first, unrelated],
@@ -1928,36 +1825,13 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(await WaitForAsync(() => stub.Requests.Any(body => !body.Contains("\"stream\":true", StringComparison.Ordinal))),
                     "首站已经用旧凭据发出摘要请求,服务端保持挂起");
                 int summaryIndex = stub.Requests.Count - 1;
-                Assert.AreEqual("Bearer old-token", stub.Authorizations[summaryIndex]);
+                Assert.AreEqual("Bearer original-key", stub.Authorizations[summaryIndex]);
                 if (change == "model")
                 {
                     Assert.Contains("\"model\":\"m1\"", stub.Requests[summaryIndex],
                         "压缩请求已实际用本轮最初的型号发出");
                 }
 
-                if (change == "refresh")
-                {
-                    // 摘要等待期间令牌进入续期窗:下一次 ResolveCredentialAsync 必须真走 OAuth 刷新。
-                    await store.SaveTokensAsync(first.Id, new OAuthTokens
-                    {
-                        AccessToken = "old-token",
-                        RefreshToken = "refresh",
-                        ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(20),
-                        AccountId = "same-account"
-                    });
-                }
-                else if (change == "moved")
-                {
-                    await store.SaveTokensAsync(first.Id, new OAuthTokens
-                    {
-                        AccessToken = "new-token",
-                        RefreshToken = "refresh",
-                        BaseUrl = newTarget.BaseUrl,
-                        ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
-                        AccountId = "same-account"
-                    });
-                }
-                else
                 {
                     Click(panel, "SettingsButton");
                     await PumpAsync(5);
@@ -1981,9 +1855,8 @@ public sealed partial class ChatPanelViewUiTests
                     RaiseClick(FindIn<Button>(editor, "SaveButton"));
                     if (change == "config")
                     {
-                        // 订阅登录换到别的源:先在确认框里同意退出登录(旧地址签出的令牌不跟去新地址)
                         Assert.IsTrue(await AcceptConfirmAsync(editor));
-                        Assert.IsTrue(await WaitForAsync(() => FindIn<TextBlock>(editor, "StatusText").Text == new Loc("en")["SetupSavedSignedOut"]));
+                        Assert.IsTrue(await WaitForAsync(() => FindIn<TextBlock>(editor, "StatusText").Text == new Loc("en")["SetupSavedKeysCleared"]));
                     }
                     else
                     {
@@ -1999,9 +1872,9 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count >= 5
                     && !Find<Viewbox>(panel, "StopIcon").IsVisible),
                     "摘要后应结束本轮:同端点续期继续发送,配置变更或令牌移到不可信来源则安全拒绝");
-                Assert.HasCount(summaryIndex + 1 + (change is "moved" or "config" or "model" ? 0 : 1), stub.Requests,
+                Assert.HasCount(summaryIndex + 1 + (change is "config" or "model" ? 0 : 1), stub.Requests,
                     "目标变更后不能把新凭据发到旧站");
-                if (change is "moved" or "config" or "model")
+                if (change is "config" or "model")
                 {
                     Assert.IsEmpty(newTarget.Requests, "保存请求变更或同账号令牌移到不可信来源都不授权旧回合发送");
                     Assert.Contains(card => card.Classes.Contains("errorCard"), messages.GetVisualDescendants().OfType<Border>());
@@ -2009,148 +1882,13 @@ public sealed partial class ChatPanelViewUiTests
                 else
                 {
                     Assert.Contains("\"stream\":true", stub.Requests[summaryIndex + 1]);
-                    Assert.AreEqual(change == "unrelated" ? "Bearer old-token" : "Bearer new-token",
-                        stub.Authorizations[summaryIndex + 1], "同端点续期的正式客户端与令牌必须配对固定");
+                    Assert.AreEqual("Bearer original-key", stub.Authorizations[summaryIndex + 1]);
                 }
-                if (change == "moved")
-                {
-                    panel.SendExternal("新用户回合使用订阅的新端点");
-                    Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count >= 6
-                        && !Find<Viewbox>(panel, "StopIcon").IsVisible));
-                    Assert.HasCount(summaryIndex + 1, stub.Requests, "新的用户回合不能带新令牌回到旧端点");
-                    Assert.Contains(body => body.Contains("\"stream\":true", StringComparison.Ordinal), newTarget.Requests,
-                        "新用户回合才可向新端点发送正式消息");
-                    Assert.IsTrue(newTarget.Authorizations.All(value => value == "Bearer new-token"));
-                    Assert.AreEqual("来自新端点", AnswerRenderers(messages).Last().MarkdownBuilder.ToString());
-                }
-                Assert.HasCount(change == "refresh" ? 1 : 0, oauth.Requests,
-                    "只有令牌进入续期窗才真正调用 OAuth 刷新端点");
             }
             finally
             {
                 stub.Release();
                 editorHost?.Close();
-                panel.Detach();
-                window.Close();
-            }
-        });
-    }
-
-    [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void FailoverSummary_OAuthRenewsDuringCompaction_ReprobesSameEndpointButRejectsUntrustedMove(bool moveEndpoint)
-    {
-        OnUi(async () =>
-        {
-            using var summaryGate = new ManualResetEventSlim();
-            await using var broken = new ErrorStub();
-            await using var oldTarget = new SseStub("""
-                data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"旧站答复"},"finish_reason":"stop"}]}
-
-                data: [DONE]
-
-                """, nonStreamingReply: body =>
-            {
-                if (body.Contains("You are compacting", StringComparison.Ordinal))
-                {
-                    summaryGate.Wait(); // 真实 HTTP 摘要已抵达，令牌在响应挂起时更新
-                    return "摘要";
-                }
-                return "OK";
-            });
-            await using var renewedTarget = new SseStub("""
-                data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"续期后答复"},"finish_reason":"stop"}]}
-
-                data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"m","choices":[],"usage":{"prompt_tokens":13,"completion_tokens":4,"total_tokens":17}}
-
-                data: [DONE]
-
-                """, jsonContent: "OK");
-            using var context = new TestPluginContext();
-            AiProvider first = StubProvider("broken", broken.BaseUrl, "m");
-            AiProvider second = StubProvider("subscription", oldTarget.BaseUrl, "m", maxInputTokens: 40);
-            second.Models[0].MaxTokens = 1;
-            second.Auth = AuthMethod.Subscription;
-            second.OAuth = new OAuthConfig { Credential = OAuthCredential.AccessToken };
-            var store = new AiSettingsStore(context);
-            await store.SaveTokensAsync(second.Id, new OAuthTokens { AccessToken = "old", BaseUrl = oldTarget.BaseUrl, AccountId = "same-account" });
-            await store.SaveAsync(new AiSettings
-            {
-                Providers = [first, second],
-                ActiveModelId = second.Models[0].Id,
-                FailoverChain = [new FailoverEntry { ModelId = second.Models[0].Id }],
-                SuggestFollowUps = false
-            });
-            var panel = new ChatPanelView(context, store);
-            var window = new Window { Width = 800, Height = 600, Content = panel };
-            window.Show();
-            try
-            {
-                await PumpAsync();
-                StackPanel messages = Find<StackPanel>(panel, "MessagesPanel");
-                for (int turn = 1; turn <= 4; turn++)
-                {
-                    panel.SendExternal($"历史第{turn}条问题");
-                    int finished = turn;
-                    Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count >= finished));
-                }
-                Find<ListBox>(panel, "ProviderList").SelectedIndex = 0;
-                panel.SendExternal("第五条触发故障转移和压缩");
-                Assert.IsTrue(await WaitForAsync(() => oldTarget.Requests.Any(body => body.Contains("You are compacting", StringComparison.Ordinal))),
-                    "备用站探活之后旧凭据的真实摘要请求已挂住");
-                await store.SaveTokensAsync(second.Id,
-                    new OAuthTokens
-                    {
-                        AccessToken = "renewed",
-                        BaseUrl = moveEndpoint ? renewedTarget.BaseUrl : oldTarget.BaseUrl,
-                        AccountId = "same-account"
-                    });
-                summaryGate.Set();
-
-                Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count >= 5
-                    && !Find<Viewbox>(panel, "StopIcon").IsVisible), "摘要后同端点续期应答完,不可信来源变更应安全拒绝");
-                Assert.AreEqual("Bearer old", oldTarget.Authorizations[5]);
-                Assert.DoesNotContain("\"stream\":true", oldTarget.Requests[5]);
-                Assert.IsEmpty(renewedTarget.Requests, "摘要期间的同账号令牌地址移动不能授权旧回合向新来源探活或发送历史");
-                TextBlock usage = Find<TextBlock>(panel, "UsageText");
-                Assert.Contains("Conversation total: in 1 / out 1", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "",
-                    "已完成的摘要 1/1 仍须入账;未发出的新站请求及无用量的旧流不可估造");
-                if (moveEndpoint)
-                {
-                    Assert.HasCount(6, oldTarget.Requests, "旧站只有四次历史流、一次探活和一次摘要,不再接收第五轮正式流");
-                    Assert.Contains(card => card.Classes.Contains("errorCard"), messages.GetVisualDescendants().OfType<Border>());
-                    Assert.AreEqual(first.Models[0].Id, (await store.LoadAsync()).ActiveModelId);
-
-                    panel.SendExternal("新回合");
-                    Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count >= 6
-                        && !Find<Viewbox>(panel, "StopIcon").IsVisible));
-                    Assert.HasCount(6, oldTarget.Requests, "新回合也不能把续期令牌带回旧站");
-                    Assert.AreEqual(2, renewedTarget.Requests.Count(body => body.Contains("\"stream\":true", StringComparison.Ordinal)),
-                        "新用户回合在新端点先探活、后真实回答");
-                    Assert.IsTrue(renewedTarget.Authorizations.All(value => value == "Bearer renewed"));
-                    Assert.Contains("Reply with exactly:", renewedTarget.Requests[0]);
-                    Assert.Contains("新回合", renewedTarget.Requests[^1]);
-                    Assert.AreEqual("续期后答复", AnswerRenderers(messages).Last().MarkdownBuilder.ToString());
-                    Assert.Contains("Last turn context: 13 / 40", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "", "新回合重探用量不替代正式输入占窗");
-                    int summaries = renewedTarget.Requests.Count(body => !body.Contains("\"stream\":true", StringComparison.Ordinal));
-                    Assert.Contains($"Conversation total: in {27 + summaries} / out {9 + summaries}", ToolTip.GetTip(Find<Grid>(panel, "UsageArea"))?.ToString() ?? "",
-                        "旧轮摘要与新回合探活、正式流及实际发生的新摘要各入账一次");
-                }
-                else
-                {
-                    Assert.HasCount(8, oldTarget.Requests, "同端点续期保留旧探活和摘要,以新令牌重探后正式回答");
-                    Assert.AreEqual("Bearer renewed", oldTarget.Authorizations[6]);
-                    Assert.AreEqual(oldTarget.Authorizations[6], oldTarget.Authorizations[7]);
-                    Assert.Contains("Reply with exactly:", oldTarget.Requests[6]);
-                    Assert.Contains("\"stream\":true", oldTarget.Requests[7]);
-                    Assert.AreEqual("旧站答复", AnswerRenderers(messages).Last().MarkdownBuilder.ToString());
-                }
-                Assert.AreEqual(second.Models[0].Id, (await store.LoadAsync()).ActiveModelId);
-            }
-            finally
-            {
-                summaryGate.Set();
                 panel.Detach();
                 window.Close();
             }
@@ -2812,70 +2550,6 @@ public sealed partial class ChatPanelViewUiTests
     }
 
     /// <summary>
-    /// 令牌刷新超时不是「本批次被取消」,只是这一行不通:批次得接着测下一行并给出汇总,
-    /// 不能悄悄收摊、让状态行一直停在「正在检测」。
-    /// </summary>
-    [TestMethod]
-    public void ProbeAll_TokenRefreshTimeoutFailsOnlyThatRow()
-    {
-        OnUi(async () =>
-        {
-            using var context = new TestPluginContext();
-            await using var healthy = new SseStub(LifecycleAnswer);
-            using var tokenHttp = new HttpClient(new RefreshTimeoutHandler());
-            var signedIn = new AiProvider
-            {
-                Name = "signed-in",
-                BaseUrl = healthy.BaseUrl,
-                DefaultProtocol = ChatProtocol.OpenAiChatCompletions,
-                Auth = AuthMethod.Subscription,
-                OAuth = new OAuthConfig
-                {
-                    Flow = OAuthFlow.AuthorizationCodePkce,
-                    TokenUrl = "https://auth.example/token",
-                    ClientId = "vela-client"
-                },
-                Models = [new AiModelConfig { Name = "m1", Model = "a" }]
-            };
-            AiProvider backup = StubProvider("backup", healthy.BaseUrl, "b");
-            backup.Models[0].Name = "m2";
-            var store = new AiSettingsStore(context) { TokenClient = new OAuthClient(tokenHttp) };
-            await store.SaveTokensAsync(signedIn.Id, new OAuthTokens
-            {
-                AccessToken = "expiring",
-                RefreshToken = "rt",
-                ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(20)
-            });
-            var settings = new AiSettings
-            {
-                Providers = [signedIn, backup],
-                FailoverChain =
-                [
-                    new FailoverEntry { ModelId = signedIn.Models[0].Id },
-                    new FailoverEntry { ModelId = backup.Models[0].Id }
-                ]
-            };
-            var view = new GlobalSettingsView(context, store, settings, new Loc("en"), _ => Task.CompletedTask, _ => { });
-            var window = new Window { Width = 640, Height = 700, Content = view };
-            window.Show();
-            try
-            {
-                await PumpAsync(5);
-                TextBlock status = FindIn<TextBlock>(view, "FailoverStatusText");
-                RaiseClick(FindIn<Button>(view, "FailoverProbeAllButton"));
-                Assert.IsTrue(await WaitForAsync(() => status.Text == "Done: 1 passed, 1 failed."),
-                    $"刷新超时那行记失败,后面的行照测;实际状态:{status.Text}");
-                Assert.HasCount(1, healthy.Requests, "只有备用行真的发出了探活");
-                Assert.IsTrue(FindIn<Button>(view, "FailoverProbeAllButton").IsEnabled);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
-    }
-
-    /// <summary>
     /// 某一行的旧结果过期(聊天里那家粘到了另一把 Key)只作废那一行;
     /// 不能顺手掐掉整个在途批次,让其余行一个都测不完、汇总也不出来。
     /// </summary>
@@ -3093,70 +2767,6 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsEmpty(AnswerRenderers(Find<StackPanel>(panel, "MessagesPanel")));
             }
             finally { candidate.Release(); panel.Detach(); window.Close(); }
-        });
-    }
-
-    [TestMethod]
-    [DataRow("en", false)]
-    [DataRow("zh-Hans", false)]
-    [DataRow("zh-Hant", false)]
-    [DataRow("ja", false)]
-    [DataRow("ko", false)]
-    [DataRow("en", true)]
-    public void BuiltinOAuthAtForeignHost_NeverLeaksAndUsesBackupOrLocalizedError(string locale, bool useBackup)
-    {
-        OnUi(async () =>
-        {
-            await using var foreign = new SseStub(LifecycleAnswer);
-            await using var backup = new SseStub(LifecycleAnswer, firstStreamContent: "OK");
-            using var context = new TestPluginContext();
-            AiProvider first = ProviderCatalog.Find("openrouter")!.CreateProvider();
-            first.BaseUrl = foreign.BaseUrl;
-            AiProvider second = StubProvider("backup", backup.BaseUrl, "m");
-            var store = new AiSettingsStore(context);
-            await store.SaveTokensAsync(first.Id, new OAuthTokens { AccessToken = "sk-or-secret" });
-            await store.SetApiKeyAsync(second.Id, "backup-key");
-            await store.SaveAsync(new AiSettings
-            {
-                Providers = useBackup ? [first, second] : [first],
-                ActiveModelId = first.Models[0].Id,
-                FailoverChain = useBackup ? [new FailoverEntry { ModelId = second.Models[0].Id }] : [],
-                SuggestFollowUps = false
-            });
-            (Window window, ChatPanelView panel) = await ShowAsync(context);
-            try
-            {
-                var loc = (Loc)typeof(ChatPanelView).GetField("_loc",
-                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(panel)!;
-                loc.Switch(locale);
-                panel.SendExternal("请回答");
-                StackPanel messages = Find<StackPanel>(panel, "MessagesPanel");
-                Assert.IsTrue(await WaitForAsync(() => Footers(messages).Count > 0
-                    && !Find<Viewbox>(panel, "StopIcon").IsVisible));
-                Assert.IsEmpty(foreign.Requests, "内置 OAuth Key 不得发往异站，连探活也不许发");
-                Assert.IsEmpty(foreign.Authorizations);
-                if (useBackup)
-                {
-                    Assert.HasCount(2, backup.Requests, "备用站只探活一次并正式回答一次");
-                    Assert.AreSequenceEqual(["Bearer backup-key", "Bearer backup-key"], backup.Authorizations);
-                    Assert.Contains("Reply with exactly:", backup.Requests[0]);
-                    Assert.DoesNotContain("Reply with exactly:", backup.Requests[1]);
-                    Assert.AreEqual("回答", AnswerRenderers(messages).Single().MarkdownBuilder.ToString());
-                    Assert.AreEqual(second.Models[0].Id, (await store.LoadAsync()).ActiveModelId);
-                    Assert.AreEqual(1, Find<ListBox>(panel, "ProviderList").SelectedIndex);
-                }
-                else
-                {
-                    Assert.IsEmpty(backup.Requests);
-                    Border card = messages.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("errorCard"));
-                    string detail = card.GetVisualDescendants().OfType<SelectableTextBlock>()
-                        .Single(t => t.Classes.Contains("mono")).Text ?? "";
-                    Assert.AreEqual(loc["SetupBuiltinOAuthHostMismatch"], detail);
-                    Assert.DoesNotContain("sk-or-secret", detail);
-                    Assert.AreEqual(first.Models[0].Id, (await store.LoadAsync()).ActiveModelId);
-                }
-            }
-            finally { panel.Detach(); window.Close(); }
         });
     }
 

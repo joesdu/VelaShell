@@ -27,27 +27,23 @@ public sealed class AiSettingsStore(IPluginContext context)
 {
     private const string SettingsKey = "settings";
     private AiSettings? _knownSettings;
-    private static readonly Dictionary<string, Uri> BuiltInOAuthOrigins = ProviderCatalog.All
-        .Where(entry => entry.IsSubscription && !entry.NeedsOAuthSetup)
-        .ToDictionary(entry => entry.Id, entry => new Uri(entry.CreateProvider().BaseUrl), StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>内置订阅凭据不能发送到未经该登录授权的地址;可换用其他接入,但不能原地重试。</summary>
+    /// <summary>保留旧错误类型供现有调用方识别。</summary>
     public sealed class BuiltinOAuthHostMismatchException() : InvalidOperationException(
         "Built-in OAuth credentials cannot be sent to another host. Use a custom provider with its own credential.");
 
     /// <summary>设置快照已过期或选定 Key 槽已改变；保留草稿，重新加载后才能提交，不得换凭据重放。</summary>
     public sealed class ApiKeySlotChangedException() : InvalidOperationException("The selected API Key slot changed.");
 
-    /// <summary>表单把 Base URL 换到了另一个源,保存会清掉这家供应商已存的 Key(订阅登录的还要退出登录);须经用户确认后重新提交。</summary>
+    /// <summary>表单把 Base URL 换到了另一个源,清除已存 Key 须经用户确认。</summary>
     /// <remarks>
-    /// 确认的是提示时列出的那几把(以及那一份登录令牌):调用方把 <see cref="Confirmation" /> 原样交回。提示之后别处又存进一把、
-    /// 同一个槽换了值、或换了一次登录,都不在确认之内,提交时会再拒绝一次,不会被一并清掉。
+    /// 调用方把 <see cref="Confirmation" /> 原样交回。新存入的 Key 或更换过值的槽须重新确认。
     /// </remarks>
     public sealed class ApiKeyResetRequiredException(IReadOnlyList<string> keyOwners, IReadOnlyList<string> confirmation,
         bool signsOut = false)
         : InvalidOperationException("The Base URL points to another origin; saved credentials must be cleared first.")
     {
-        /// <summary>确认之后还要退出这家的订阅登录:旧地址签出的令牌不发往新地址,之后要在新地址重新登录。</summary>
+        /// <summary>旧界面兼容字段；API Key 提交不会退出账号。</summary>
         public bool SignsOut { get; } = signsOut;
 
         /// <summary>确认后会被清掉的已存 Key 数。</summary>
@@ -75,10 +71,6 @@ public sealed class AiSettingsStore(IPluginContext context)
         public readonly ConcurrentDictionary<string, byte> Updating = new(StringComparer.Ordinal);
         public readonly ConditionalWeakTable<AiSettings, SettingsBaseline> SettingsBaselines = [];
         public readonly ConditionalWeakTable<AiProvider, SettingsScope> ProviderSettings = [];
-        public readonly ConcurrentDictionary<string, OAuthTokens?> Tokens = new(StringComparer.Ordinal);
-        public readonly ConcurrentDictionary<string, long> LoginVersions = new(StringComparer.Ordinal);
-        public readonly SemaphoreSlim RefreshGate = new(1, 1);
-        public readonly SemaphoreSlim TokenWriteGate = new(1, 1);
     }
 
     private static readonly ConcurrentDictionary<string, ProviderEpoch> ProviderEpochs = new(StringComparer.Ordinal);
@@ -113,7 +105,6 @@ public sealed class AiSettingsStore(IPluginContext context)
         provider.BaseUrl,
         provider.DefaultProtocol,
         provider.Auth,
-        provider.OAuth,
         provider.CatalogId,
         provider.AdditionalApiKeyIds,
         provider.StoreResponses,
@@ -139,7 +130,7 @@ public sealed class AiSettingsStore(IPluginContext context)
         })
     });
 
-    private void PublishProviderRequests(AiSettings settings, AiSettings snapshot, AiProvider? newLogin = null,
+    private void PublishProviderRequests(AiSettings settings, AiSettings snapshot,
         string? changedKeyOwnerId = null)
     {
         // 弱引用登记也保留已从当前列表移除的活对象；仅比较成功发布的请求快照。
@@ -158,7 +149,7 @@ public sealed class AiSettingsStore(IPluginContext context)
             AiProvider? saved = snapshot.Providers.Find(candidate => candidate.Id == provider.Id);
             string? requestJson = saved is null ? null : ProviderRequestJson(saved);
             if ((epoch.RequestJson is not null || epoch.Deleted) && epoch.RequestJson != requestJson
-                || ReferenceEquals(provider, newLogin) || keyChanged)
+                || keyChanged)
             {
                 if (advancedProviderIds.Add(provider.Id)) Interlocked.Increment(ref epoch.Value);
             }
@@ -207,50 +198,39 @@ public sealed class AiSettingsStore(IPluginContext context)
         try
         {
             AiSettings fresh = await LoadSettingsCoreAsync(cancellationToken).ConfigureAwait(false);
-            await _providerKeys.TokenWriteGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
+            PublishProviderRequests(settings, fresh);
+            var providers = fresh.Providers.Select(saved =>
             {
-                foreach (AiProvider old in settings.Providers)
-                {
-                    AiProvider? saved = fresh.Providers.Find(provider => provider.Id == old.Id);
-                    if (saved is not null && ProviderRequestJson(old) == ProviderRequestJson(saved)) continue;
-                    _providerKeys.LoginVersions.AddOrUpdate(old.Id, 1, static (_, version) => version + 1);
-                }
-                PublishProviderRequests(settings, fresh);
-                var providers = fresh.Providers.Select(saved =>
-                {
-                    AiProvider? live = settings.Providers.Find(provider => provider.Id == saved.Id);
-                    if (live is null) return saved;
-                    CopyProvider(live, saved);
-                    return live;
-                }).ToList();
-                settings.Providers = providers;
-                settings.ActiveModelId = fresh.ActiveModelId;
-                settings.ActiveProviderId = fresh.ActiveProviderId;
-                settings.Mode = fresh.Mode;
-                settings.Approval = fresh.Approval;
-                settings.DisabledBuiltinTools = fresh.DisabledBuiltinTools;
-                settings.DisabledSkills = fresh.DisabledSkills;
-                settings.ExtensionPacks = fresh.ExtensionPacks;
-                settings.MemoryEnabled = fresh.MemoryEnabled;
-                settings.AgentMode = fresh.AgentMode;
-                settings.AutoApproveCommands = fresh.AutoApproveCommands;
-                settings.SystemPrompt = fresh.SystemPrompt;
-                settings.SuggestFollowUps = fresh.SuggestFollowUps;
-                settings.ImageModelId = fresh.ImageModelId;
-                settings.ImageGenerationEnabled = fresh.ImageGenerationEnabled;
-                settings.CompactContext = fresh.CompactContext;
-                settings.PanelWidthPercent = fresh.PanelWidthPercent;
-                settings.McpServers = fresh.McpServers;
-                settings.WebSearch = fresh.WebSearch;
-                settings.FailoverChain = fresh.FailoverChain;
-                settings.AutoFailoverAcrossAccounts = fresh.AutoFailoverAcrossAccounts;
-                _providerKeys.SettingsBaselines.GetValue(settings, static _ => new()).Json
-                    = _providerKeys.SettingsBaselines.GetValue(fresh, static _ => new()).Json;
-                _knownSettings = settings;
-                RegisterSettingsScope(settings);
-            }
-            finally { _providerKeys.TokenWriteGate.Release(); }
+                AiProvider? live = settings.Providers.Find(provider => provider.Id == saved.Id);
+                if (live is null) return saved;
+                CopyProvider(live, saved);
+                return live;
+            }).ToList();
+            settings.Providers = providers;
+            settings.ActiveModelId = fresh.ActiveModelId;
+            settings.ActiveProviderId = fresh.ActiveProviderId;
+            settings.Mode = fresh.Mode;
+            settings.Approval = fresh.Approval;
+            settings.DisabledBuiltinTools = fresh.DisabledBuiltinTools;
+            settings.DisabledSkills = fresh.DisabledSkills;
+            settings.ExtensionPacks = fresh.ExtensionPacks;
+            settings.MemoryEnabled = fresh.MemoryEnabled;
+            settings.AgentMode = fresh.AgentMode;
+            settings.AutoApproveCommands = fresh.AutoApproveCommands;
+            settings.SystemPrompt = fresh.SystemPrompt;
+            settings.SuggestFollowUps = fresh.SuggestFollowUps;
+            settings.ImageModelId = fresh.ImageModelId;
+            settings.ImageGenerationEnabled = fresh.ImageGenerationEnabled;
+            settings.CompactContext = fresh.CompactContext;
+            settings.PanelWidthPercent = fresh.PanelWidthPercent;
+            settings.McpServers = fresh.McpServers;
+            settings.WebSearch = fresh.WebSearch;
+            settings.FailoverChain = fresh.FailoverChain;
+            settings.AutoFailoverAcrossAccounts = fresh.AutoFailoverAcrossAccounts;
+            _providerKeys.SettingsBaselines.GetValue(settings, static _ => new()).Json
+                = _providerKeys.SettingsBaselines.GetValue(fresh, static _ => new()).Json;
+            _knownSettings = settings;
+            RegisterSettingsScope(settings);
         }
         finally { ProviderKeyGate.Release(); }
     }
@@ -265,7 +245,7 @@ public sealed class AiSettingsStore(IPluginContext context)
         target.ActiveApiKeyId = source.ActiveApiKeyId;
         target.BalanceApiKeys = source.BalanceApiKeys;
         target.CatalogId = source.CatalogId;
-        target.OAuth = source.OAuth;
+        target.OAuth = null;
         target.AvailableModels = source.AvailableModels;
         target.ModelsExpanded = source.ModelsExpanded;
         target.StoreResponses = source.StoreResponses;
@@ -318,6 +298,8 @@ public sealed class AiSettingsStore(IPluginContext context)
     private async Task<AiSettings> LoadSettingsCoreAsync(CancellationToken cancellationToken)
     {
         JsonElement raw = await context.Storage.GetAsync<JsonElement>(SettingsKey, cancellationToken).ConfigureAwait(false);
+        // AiProvider.OAuth 在反序列化时忽略；迁移只需判断旧字段是否存在，不解析其中的客户端密钥。
+        bool removedSubscriptionAccess = ContainsLegacyAuthentication(raw);
         AiSettings settings = raw.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
             ? new AiSettings() : raw.Deserialize<AiSettings>() ?? new AiSettings();
         _providerKeys.SettingsBaselines.GetValue(settings, static _ => new()).Json = SavedSettingsJson(raw);
@@ -333,6 +315,22 @@ public sealed class AiSettingsStore(IPluginContext context)
             await SaveSettingsCoreAsync(settings, cancellationToken).ConfigureAwait(false);
             context.Log.Info($"AI settings: migrated {legacy.Count} legacy provider entries into {settings.Providers.Count} provider(s).");
         }
+
+        // OAuth/订阅配置不再是可用凭据。只改写普通配置并按密钥名删除旧令牌，
+        // 不读取、不解析、也不把旧账号信息带入内存或请求链路。
+        foreach (AiProvider provider in settings.Providers.Where(provider => provider.Auth != AuthMethod.ApiKey))
+        {
+            if (provider.Auth == AuthMethod.Subscription)
+                await context.Secrets.DeleteAsync(TokenSecretName(provider.Id), cancellationToken).ConfigureAwait(false);
+            provider.Auth = AuthMethod.ApiKey;
+        }
+        if (removedSubscriptionAccess)
+        {
+            settings.Migrate();
+            await SaveSettingsCoreAsync(settings, cancellationToken).ConfigureAwait(false);
+            context.Log.Info("AI settings: removed legacy subscription authentication and credentials.");
+        }
+
         RegisterSettingsScope(settings);
         PublishProviderRequests(settings, settings);
         _knownSettings = settings;
@@ -344,27 +342,7 @@ public sealed class AiSettingsStore(IPluginContext context)
         OAuthTokens? tokens = null, CancellationToken cancellationToken = default)
         => CommitProviderConfigurationAsync(settings, null, draft, null, apiKey, tokens, cancellationToken);
 
-    /// <summary>原子提交订阅供应商的登录配置与新账号令牌，晚到的旧账号刷新不能覆盖新登录。</summary>
-    /// <remarks>
-    /// 地址换到了另一个源:新令牌本来就是新地址签的,但模型自带、跟着供应商地址走的 Key 属于旧地址,
-    /// 要经 <paramref name="confirmedKeyReset" /> 确认后一并清掉(见 <see cref="SaveProviderFormAsync" />)。
-    /// 目录页对配齐了的订阅行不摆地址框,重新登录走不到这一步;这里是保底:没确认就拒绝,不悄悄留着旧 Key。
-    /// </remarks>
-    /// <returns>清掉的已存 Key 的归属者。</returns>
-    public async Task<IReadOnlyList<string>> SaveProviderOAuthFormAsync(AiSettings settings, AiProvider provider, AiProvider draft,
-        string expectedProviderJson, OAuthTokens tokens, IReadOnlyCollection<string>? confirmedKeyReset = null,
-        CancellationToken cancellationToken = default)
-        => (await CommitProviderConfigurationAsync(settings, provider, draft, expectedProviderJson, null, tokens,
-            cancellationToken, confirmedKeyReset).ConfigureAwait(false)).Cleared;
-
-    /// <summary>提交供应商表单(名称、地址、协议);设置页给订阅登录的供应商用。</summary>
-    /// <remarks>
-    /// Base URL 换到另一个源时,旧地址签出的登录令牌不能跟着发过去:退出登录(删令牌、推进登录代次,
-    /// 在途的刷新与请求复验时都认得出来),模型自带、跟着供应商地址走的 Key 一并清掉。
-    /// 有东西要清就默认拒绝、抛 <see cref="ApiKeyResetRequiredException" />(<see cref="ApiKeyResetRequiredException.SignsOut" />
-    /// 说明会不会退出登录),调用方让用户确认后把确认凭据经 <paramref name="confirmedKeyReset" /> 交回。
-    /// </remarks>
-    /// <returns>清掉的已存 Key 的归属者,以及这次保存有没有退出登录。</returns>
+    /// <summary>提交供应商表单；换源清除旧 API Key 仍须用户确认。</summary>
     internal async Task<(IReadOnlyList<string> Cleared, bool SignedOut)> SaveProviderFormAsync(AiSettings settings,
         AiProvider provider, AiProvider draft, string expectedProviderJson,
         IReadOnlyCollection<string>? confirmedKeyReset = null, CancellationToken cancellationToken = default)
@@ -375,6 +353,7 @@ public sealed class AiSettingsStore(IPluginContext context)
     internal async Task SaveProviderCatalogueAsync(AiSettings settings, AiProvider provider, AiProvider draft,
         string expectedProviderJson, CancellationToken cancellationToken = default)
     {
+        EnsureApiKeyProvider(draft);
         AiProvider frozen = JsonSerializer.Deserialize<AiProvider>(JsonSerializer.Serialize(draft))!;
         AiModelConfig[] models = [.. provider.Models];
         await ProviderKeyGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -442,29 +421,15 @@ public sealed class AiSettingsStore(IPluginContext context)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(draft);
+        if (tokens is not null) throw AccountSignInNotSupported();
+        EnsureApiKeyProvider(draft);
         AiProvider frozen = JsonSerializer.Deserialize<AiProvider>(JsonSerializer.Serialize(draft))!;
-        OAuthTokens? frozenTokens = tokens is null ? null : JsonSerializer.Deserialize<OAuthTokens>(JsonSerializer.Serialize(tokens));
-        if ((apiKey is not null && frozen.Auth != AuthMethod.ApiKey)
-            || (frozenTokens is not null && (frozen.Auth != AuthMethod.Subscription || frozen.OAuth is null)))
-        {
-            throw new ArgumentException("Credentials do not match the provider authentication.");
-        }
-
-        if (frozenTokens is not null)
-        {
-            EnsureBuiltinOAuthCredentialDestination(new ResolvedModel(frozen, new AiModelConfig()),
-                new ProviderCredential(frozenTokens.AccessToken, frozen.OAuth!.Credential != OAuthCredential.ApiKey,
-                    null, frozenTokens.BaseUrl));
-        }
-
         await ProviderKeyGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        bool tokenGateHeld = false, keyWritten = false, tokenWritten = false, settingsWritten = false, resetWritten = false;
-        string? oldKey = null, oldTokenJson = null;
-        OAuthTokens? oldTokens = null;
+        bool keyWritten = false, settingsWritten = false, resetWritten = false;
+        string? oldKey = null;
         // 换源时动过的机密:归属者 → 原值,失败时逐个恢复
         Dictionary<string, string?> resetKeys = [with(StringComparer.Ordinal)];
         List<(string Id, string Key)> cleared = [];
-        bool signOut = false;
         try
         {
             await ValidateSettingsBaselineAsync(settings, cancellationToken).ConfigureAwait(false);
@@ -500,10 +465,8 @@ public sealed class AiSettingsStore(IPluginContext context)
             }
 
             // 地址换到别的源:跟着供应商地址走的已存 Key(主槽、补充槽、没填覆盖地址的模型自带 Key)属于旧地址;
-            // 订阅登录又没换来新令牌的(设置页只改了表单),旧地址签出的令牌也不能跟去 —— 退出登录。
             // 先读、先核确认,一样都还没动;确认过的才清,失败逐个恢复
             bool originChanged = provider is not null && MovesOrigin(provider.BaseUrl, frozen.BaseUrl);
-            signOut = originChanged && provider!.Auth == AuthMethod.Subscription && frozenTokens is null;
             List<string> resetOwners = originChanged ? [.. KeysBoundToProviderOrigin(provider!)] : [];
             foreach (string id in resetOwners)
             {
@@ -511,31 +474,10 @@ public sealed class AiSettingsStore(IPluginContext context)
                 resetKeys[id] = saved;
                 if (!string.IsNullOrWhiteSpace(saved)) cleared.Add((id, saved));
             }
-            if (frozenTokens is not null || signOut)
-            {
-                // 全部嵌套提交遵循 KeyGate → TokenWriteGate；刷新只使用 TokenWriteGate。
-                await _providerKeys.TokenWriteGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-                tokenGateHeld = true;
-                oldTokenJson = await context.Secrets.GetAsync(TokenSecretName(frozen.Id), cancellationToken).ConfigureAwait(false);
-                oldTokens = await GetTokensAsync(frozen.Id, cancellationToken).ConfigureAwait(false);
-            }
-            signOut &= !string.IsNullOrEmpty(oldTokenJson); // 本来就没登录:没有令牌可退
-            RequireKeyResetConfirmed(cleared, confirmedKeyReset, signOut ? LoginResetToken(frozen.Id, oldTokenJson!) : null);
+            RequireKeyResetConfirmed(cleared, confirmedKeyReset);
 
             _providerKeys.Updating[frozen.Id] = 0;
             foreach (string id in resetOwners) _providerKeys.Updating[id] = 0;
-            if (frozenTokens is not null)
-            {
-                tokenWritten = true;
-                await context.Secrets.SetAsync(TokenSecretName(frozen.Id), JsonSerializer.Serialize(frozenTokens), cancellationToken).ConfigureAwait(false);
-            }
-            else if (signOut)
-            {
-                // 缓存跟着机密一起清:提交期间别处(凭据解析先看 Updating 闸)不会拿到旧令牌;失败在 catch 里恢复
-                tokenWritten = true;
-                await context.Secrets.DeleteAsync(TokenSecretName(frozen.Id), cancellationToken).ConfigureAwait(false);
-                TokenCache[frozen.Id] = null;
-            }
             if (resetOwners.Count > 0)
             {
                 resetWritten = true;
@@ -554,21 +496,11 @@ public sealed class AiSettingsStore(IPluginContext context)
             if (provider is null) settings.Providers.Add(draft);
             RegisterSettingsScope(settings);
             settings.ActiveModelId = detached.ActiveModelId;
-            if (frozenTokens is not null)
-            {
-                TokenCache[frozen.Id] = frozenTokens;
-                _providerKeys.LoginVersions.AddOrUpdate(frozen.Id, 1, static (_, version) => version + 1);
-            }
-            else if (signOut)
-            {
-                // 推进登录代次:在途的令牌刷新回来对不上号就不写回,复验旧令牌的请求也会被拒(与退出登录同一条路)
-                _providerKeys.LoginVersions.AddOrUpdate(frozen.Id, 1, static (_, version) => version + 1);
-            }
-            PublishProviderRequests(settings, detached, frozenTokens is not null || signOut ? provider : null,
+            PublishProviderRequests(settings, detached, changedKeyOwnerId:
                 keyWritten && oldKey != (string.IsNullOrEmpty(apiKey) ? null : apiKey) ? frozen.Id : null);
             // 清掉的模型 Key:别处设置里的同一供应商副本也一并作废
             foreach ((string id, _) in cleared) PublishApiKeyChange(id);
-            return ([.. cleared.Select(item => item.Id)], signOut);
+            return ([.. cleared.Select(item => item.Id)], false);
         }
         catch
         {
@@ -577,18 +509,11 @@ public sealed class AiSettingsStore(IPluginContext context)
                 foreach ((string id, string? saved) in resetKeys) await RestoreApiKeyCoreAsync(id, saved).ConfigureAwait(false);
             }
             if (keyWritten) await RestoreApiKeyCoreAsync(frozen.Id, oldKey).ConfigureAwait(false);
-            if (tokenWritten)
-            {
-                TokenCache[frozen.Id] = oldTokens;
-                if (oldTokenJson is null) await context.Secrets.DeleteAsync(TokenSecretName(frozen.Id), CancellationToken.None).ConfigureAwait(false);
-                else await context.Secrets.SetAsync(TokenSecretName(frozen.Id), oldTokenJson, CancellationToken.None).ConfigureAwait(false);
-            }
             if (settingsWritten) await SaveSettingsCoreAsync(settings, CancellationToken.None).ConfigureAwait(false);
             throw;
         }
         finally
         {
-            if (tokenGateHeld) _providerKeys.TokenWriteGate.Release();
             _providerKeys.Updating.TryRemove(frozen.Id, out _);
             foreach (string id in resetKeys.Keys) _providerKeys.Updating.TryRemove(id, out _);
             ProviderKeyGate.Release();
@@ -701,8 +626,19 @@ public sealed class AiSettingsStore(IPluginContext context)
     private static string? SavedSettingsJson(JsonElement raw)
         => raw.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ? null : JsonSerializer.Serialize(raw);
 
+    private static bool ContainsLegacyAuthentication(JsonElement settings)
+        => settings.ValueKind == JsonValueKind.Object
+            && settings.TryGetProperty(nameof(AiSettings.Providers), out JsonElement providers)
+            && providers.ValueKind == JsonValueKind.Array && providers.EnumerateArray().Any(UsesLegacyAuthentication);
+
+    private static bool UsesLegacyAuthentication(JsonElement provider)
+        => provider.ValueKind == JsonValueKind.Object
+            && ((provider.TryGetProperty(nameof(AiProvider.OAuth), out JsonElement oauth) && oauth.ValueKind != JsonValueKind.Null)
+                || (provider.TryGetProperty(nameof(AiProvider.Auth), out JsonElement auth) && auth.Deserialize<AuthMethod>() != AuthMethod.ApiKey));
+
     private async Task ValidateSettingsBaselineAsync(AiSettings settings, CancellationToken cancellationToken)
     {
+        foreach (AiProvider provider in settings.Providers) EnsureApiKeyProvider(provider);
         JsonElement saved = await context.Storage.GetAsync<JsonElement>(SettingsKey, cancellationToken).ConfigureAwait(false);
         string? baseline = _providerKeys.SettingsBaselines.GetValue(settings, static _ => new()).Json;
         if (SavedSettingsJson(saved) != baseline) throw new ApiKeySlotChangedException();
@@ -715,6 +651,8 @@ public sealed class AiSettingsStore(IPluginContext context)
         // 原样写成 "+08:00",经 JsonElement 再写一遍会按默认编码器转成 "\u002B08:00" —— 直接拿 json 当基线,
         // 东八区下 MCP 刷过工具清单之后,保存一次就再也对不上,之后的保存与发送全被当成配置已变而拒绝。
         JsonElement snapshot = JsonSerializer.Deserialize<JsonElement>(json);
+        // 最终写入边界同样检查分离的表单与回滚快照，不能把已淘汰的凭据配置写回。
+        if (ContainsLegacyAuthentication(snapshot)) throw AccountSignInNotSupported();
         await context.Storage.SetAsync(SettingsKey, snapshot, cancellationToken).ConfigureAwait(false);
         _providerKeys.SettingsBaselines.GetValue(settings, static _ => new()).Json = SavedSettingsJson(snapshot);
         _knownSettings = settings;
@@ -851,10 +789,9 @@ public sealed class AiSettingsStore(IPluginContext context)
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(provider);
         await ProviderKeyGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        bool tokenGateHeld = false, settingsWritten = false;
+        bool settingsWritten = false;
         int touched = 0;
-        var secrets = new List<(string Name, string? Value)>();
-        var caches = new List<(string Id, string? Key, OAuthTokens? Tokens)>();
+        var keys = new List<(string OwnerId, string? Key)>();
         string[] ownerIds = [];
         try
         {
@@ -876,22 +813,12 @@ public sealed class AiSettingsStore(IPluginContext context)
                 detached.ActiveProviderId = null;
             _providerKeys.Updating[provider.Id] = 0;
             foreach (string ownerId in ownerIds) _providerKeys.Updating[ownerId] = 0;
-            await _providerKeys.TokenWriteGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            tokenGateHeld = true;
             foreach (string ownerId in ownerIds)
-            {
-                string keyName = SecretName(ownerId), tokenName = TokenSecretName(ownerId);
-                string? key = await context.Secrets.GetAsync(keyName, cancellationToken).ConfigureAwait(false);
-                string? tokenJson = await context.Secrets.GetAsync(tokenName, cancellationToken).ConfigureAwait(false);
-                secrets.Add((keyName, key));
-                secrets.Add((tokenName, tokenJson));
-                caches.Add((ownerId, KeyCache.TryGetValue(ownerId, out string? cachedKey) ? cachedKey : key,
-                    TokenCache.TryGetValue(ownerId, out OAuthTokens? cachedTokens) ? cachedTokens : ParseTokens(ownerId, tokenJson)));
-            }
-            foreach ((string Name, string? Value) secret in secrets)
+                keys.Add((ownerId, await context.Secrets.GetAsync(SecretName(ownerId), cancellationToken).ConfigureAwait(false)));
+            foreach ((string ownerId, _) in keys)
             {
                 ++touched;
-                await context.Secrets.DeleteAsync(secret.Name, cancellationToken).ConfigureAwait(false);
+                await context.Secrets.DeleteAsync(SecretName(ownerId), cancellationToken).ConfigureAwait(false);
             }
             await WriteSettingsSnapshotAsync(settings, JsonSerializer.Serialize(detached), cancellationToken).ConfigureAwait(false);
             settingsWritten = true;
@@ -902,25 +829,14 @@ public sealed class AiSettingsStore(IPluginContext context)
             settings.ActiveModelId = detached.ActiveModelId;
             settings.ActiveProviderId = detached.ActiveProviderId;
             settings.FailoverChain = detached.FailoverChain;
-            foreach (string ownerId in ownerIds)
-            {
-                KeyCache[ownerId] = null;
-                TokenCache[ownerId] = null;
-                _providerKeys.LoginVersions.AddOrUpdate(ownerId, 1, static (_, version) => version + 1);
-            }
+            foreach (string ownerId in ownerIds) KeyCache[ownerId] = null;
         }
         catch
         {
-            foreach ((string id, string? key, OAuthTokens? tokens) in caches)
-            {
-                KeyCache[id] = key;
-                TokenCache[id] = tokens;
-            }
             for (int index = 0; index < touched; ++index)
             {
-                (string Name, string? Value) secret = secrets[index];
-                if (secret.Value is null) await context.Secrets.DeleteAsync(secret.Name, CancellationToken.None).ConfigureAwait(false);
-                else await context.Secrets.SetAsync(secret.Name, secret.Value, CancellationToken.None).ConfigureAwait(false);
+                (string ownerId, string? key) = keys[index];
+                await RestoreApiKeyCoreAsync(ownerId, key).ConfigureAwait(false);
             }
             if (settingsWritten) await SaveSettingsCoreAsync(settings, CancellationToken.None).ConfigureAwait(false);
             throw;
@@ -929,54 +845,13 @@ public sealed class AiSettingsStore(IPluginContext context)
         {
             _providerKeys.Updating.TryRemove(provider.Id, out _);
             foreach (string ownerId in ownerIds) _providerKeys.Updating.TryRemove(ownerId, out _);
-            if (tokenGateHeld) _providerKeys.TokenWriteGate.Release();
             ProviderKeyGate.Release();
         }
     }
 
-    /// <summary>删除供应商 / 模型时连带清除其机密(API Key 与订阅令牌一并清)。</summary>
-    public async Task DeleteApiKeyAsync(string ownerId, CancellationToken cancellationToken = default)
-    {
-        await ProviderKeyGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        List<string>? updating = null;
-        bool tokenGateHeld = false, keyTouched = false, tokenTouched = false;
-        string? oldKey = null, oldTokenJson = null;
-        OAuthTokens? oldTokens = null;
-        try
-        {
-            // 唯一嵌套顺序是 KeyGate → TokenWriteGate；令牌刷新不拿 KeyGate。
-            await _providerKeys.TokenWriteGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            tokenGateHeld = true;
-            oldKey = await context.Secrets.GetAsync(SecretName(ownerId), cancellationToken).ConfigureAwait(false);
-            oldTokenJson = await context.Secrets.GetAsync(TokenSecretName(ownerId), cancellationToken).ConfigureAwait(false);
-            oldTokens = await GetTokensAsync(ownerId, cancellationToken).ConfigureAwait(false);
-            updating = MarkApiKeyUpdating(ownerId);
-            keyTouched = true;
-            await SetApiKeyCoreAsync(ownerId, null, cancellationToken).ConfigureAwait(false);
-            tokenTouched = true;
-            await context.Secrets.DeleteAsync(TokenSecretName(ownerId), cancellationToken).ConfigureAwait(false);
-            TokenCache[ownerId] = null;
-            _providerKeys.LoginVersions.AddOrUpdate(ownerId, 1, static (_, version) => version + 1);
-            if (oldKey is not null) PublishApiKeyChange(ownerId);
-        }
-        catch
-        {
-            if (keyTouched) await RestoreApiKeyCoreAsync(ownerId, oldKey).ConfigureAwait(false);
-            if (tokenTouched)
-            {
-                TokenCache[ownerId] = oldTokens;
-                if (oldTokenJson is null) await context.Secrets.DeleteAsync(TokenSecretName(ownerId), CancellationToken.None).ConfigureAwait(false);
-                else await context.Secrets.SetAsync(TokenSecretName(ownerId), oldTokenJson, CancellationToken.None).ConfigureAwait(false);
-            }
-            throw;
-        }
-        finally
-        {
-            if (updating is not null) foreach (string id in updating) _providerKeys.Updating.TryRemove(id, out _);
-            if (tokenGateHeld) _providerKeys.TokenWriteGate.Release();
-            ProviderKeyGate.Release();
-        }
-    }
+    /// <summary>只删除指定归属者的 API Key。</summary>
+    public Task DeleteApiKeyAsync(string ownerId, CancellationToken cancellationToken = default)
+        => SetApiKeyAsync(ownerId, null, cancellationToken);
 
     private SemaphoreSlim ProviderKeyGate => _providerKeys.Gate;
 
@@ -1061,6 +936,7 @@ public sealed class AiSettingsStore(IPluginContext context)
         List<(string Id, string Key)> cleared = [];
         try
         {
+            EnsureApiKeyProvider(draft);
             ValidateProvider(settings, provider);
             await ValidateSettingsBaselineAsync(settings, cancellationToken).ConfigureAwait(false);
             await ValidateProviderSlotTopologyAsync(provider, cancellationToken);
@@ -1174,18 +1050,15 @@ public sealed class AiSettingsStore(IPluginContext context)
     internal static string KeyResetToken(string ownerId, string key)
         => ownerId + ":" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
 
-    /// <summary>确认凭据里的登录令牌那一项:换了一次登录(令牌组变了),摘要就对不上,要重新问。</summary>
-    internal static string LoginResetToken(string providerId, string tokenJson) => KeyResetToken(TokenSecretName(providerId), tokenJson);
+    // 旧调用方保留的兼容入口；不再读取或散列旧令牌，也不会生成有效的 Key 确认凭据。
+    internal static string LoginResetToken(string providerId, string tokenJson) => "";
 
-    // 确认的是提示时列出的那几把(归属者与值都算)与那一份登录:别处又存进一把、同一个槽换了值、换了一次登录,
-    // 都要重新问,不能连它一起清;要清的变少了(提示后在主槽填了新 Key)仍在确认之内
-    private static void RequireKeyResetConfirmed(List<(string Id, string Key)> cleared, IReadOnlyCollection<string>? confirmed,
-        string? loginToken = null)
+    private static void RequireKeyResetConfirmed(List<(string Id, string Key)> cleared, IReadOnlyCollection<string>? confirmed)
     {
-        if (cleared.Count == 0 && loginToken is null) return;
-        string[] tokens = [.. cleared.Select(item => KeyResetToken(item.Id, item.Key)), .. loginToken is null ? [] : new[] { loginToken }];
+        if (cleared.Count == 0) return;
+        string[] tokens = [.. cleared.Select(item => KeyResetToken(item.Id, item.Key))];
         if (confirmed is null || !tokens.All(token => confirmed.Contains(token, StringComparer.Ordinal)))
-            throw new ApiKeyResetRequiredException([.. cleared.Select(item => item.Id)], tokens, signsOut: loginToken is not null);
+            throw new ApiKeyResetRequiredException([.. cleared.Select(item => item.Id)], tokens);
     }
 
     private async Task ValidateUniqueKeyAsync(AiProvider provider, string key, string? exceptId,
@@ -1323,129 +1196,47 @@ public sealed class AiSettingsStore(IPluginContext context)
         finally { _providerKeys.Updating.TryRemove(provider.Id, out _); ProviderKeyGate.Release(); }
     }
 
-    // ---- 订阅登录的令牌 ----
+    private static NotSupportedException AccountSignInNotSupported()
+        => new("Account sign-in is no longer supported; configure an API key or custom provider.");
 
-    /// <summary>
-    /// 已解出的登录令牌。与 <see cref="KeyCache" /> 同一个理由:每发一条消息都要取一次,
-    /// 而取一次是"读库 + DPAPI 解包 + 反序列化"。
-    /// </summary>
-    private ConcurrentDictionary<string, OAuthTokens?> TokenCache => _providerKeys.Tokens;
-
-    /// <summary>刷新令牌时的单飞闸:一轮对话会并发建好几个客户端,没有它就会同时刷好几次。</summary>
-    private SemaphoreSlim RefreshGate => _providerKeys.RefreshGate;
-
-    internal long TokenLoginVersion(string providerId) => _providerKeys.LoginVersions.GetValueOrDefault(providerId);
-
-    /// <summary>
-    /// 刷令牌用的 HTTP 客户端。<b>静态共享</b>:每次刷新新建一个会攒下一堆处于 TIME_WAIT 的连接,
-    /// 而这条路上不需要任何自定义 handler(令牌端点不是 SSE,也没有中转站要清洗)。
-    /// </summary>
-    private static readonly HttpClient TokenHttp = AiHttp.CreateClient(TimeSpan.FromSeconds(30));
-
-    /// <summary>刷令牌走谁。留成可替换的,测试里换成打桩的 handler(生产从不改它)。</summary>
-    internal OAuthClient TokenClient { get; set; } = new(TokenHttp);
-
-    /// <summary>读取某供应商的订阅登录令牌;没登录过返回 null。</summary>
-    public async Task<OAuthTokens?> GetTokensAsync(string providerId, CancellationToken cancellationToken = default)
+    private static void EnsureApiKeyProvider(AiProvider provider)
     {
-        bool updating = _providerKeys.Updating.ContainsKey(providerId);
-        if (TokenCache.TryGetValue(providerId, out OAuthTokens? cached))
-        {
-            return cached;
-        }
-        string? json = await context.Secrets.GetAsync(TokenSecretName(providerId), cancellationToken).ConfigureAwait(false);
-        OAuthTokens? tokens = ParseTokens(providerId, json);
-        return updating || _providerKeys.Updating.ContainsKey(providerId) ? tokens : TokenCache.GetOrAdd(providerId, tokens);
+        if (provider.Auth != AuthMethod.ApiKey || provider.OAuth is not null) throw AccountSignInNotSupported();
     }
 
-    private OAuthTokens? ParseTokens(string providerId, string? json)
-    {
-        OAuthTokens? tokens = null;
-        if (!string.IsNullOrEmpty(json))
-        {
-            try
-            {
-                tokens = JsonSerializer.Deserialize<OAuthTokens>(json);
-            }
-            catch (JsonException ex)
-            {
-                // 存坏了就当没登录 —— 让用户重登一次,好过每条消息都炸一次
-                context.Log.Warn($"Stored sign-in for provider {providerId} could not be read: {ex.Message}");
-            }
-        }
-        return tokens;
-    }
+#pragma warning disable CA1822 // 保留旧实例方法签名，禁止为访问旧状态而创建缓存或读取存储。
+    /// <summary>兼容旧调用方；不再接受登录凭据，也不改动设置或机密。</summary>
+    public Task<IReadOnlyList<string>> SaveProviderOAuthFormAsync(AiSettings settings, AiProvider provider, AiProvider draft,
+        string expectedProviderJson, OAuthTokens tokens, IReadOnlyCollection<string>? confirmedKeyReset = null,
+        CancellationToken cancellationToken = default)
+        => Task.FromException<IReadOnlyList<string>>(AccountSignInNotSupported());
 
-    internal async Task<(OAuthTokens? Tokens, long Version)> GetTokenSnapshotAsync(string providerId, CancellationToken token)
-    {
-        await _providerKeys.TokenWriteGate.WaitAsync(token).ConfigureAwait(false);
-        try { return (await GetTokensAsync(providerId, token).ConfigureAwait(false), TokenLoginVersion(providerId)); }
-        finally { _providerKeys.TokenWriteGate.Release(); }
-    }
+    // 兼容旧调用方；不创建客户端、不访问令牌、不刷新。
+    internal long TokenLoginVersion(string providerId) => 0;
 
-    /// <summary>写入登录令牌(整组 JSON 加密落盘)。</summary>
+    /// <summary>账号登录已移除;旧令牌不会被读取。</summary>
+    public Task<OAuthTokens?> GetTokensAsync(string providerId, CancellationToken cancellationToken = default)
+        => Task.FromResult<OAuthTokens?>(null);
+
+    internal Task<(OAuthTokens? Tokens, long Version)> GetTokenSnapshotAsync(string providerId, CancellationToken token)
+        => Task.FromResult<(OAuthTokens? Tokens, long Version)>((null, 0));
+
+    /// <summary>账号登录已移除;不再写入旧 OAuth 令牌。</summary>
     public Task SaveTokensAsync(string providerId, OAuthTokens tokens, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(tokens);
-        return SaveTokensCoreAsync(providerId, tokens, true, cancellationToken);
-    }
+        => Task.FromException(AccountSignInNotSupported());
 
-    private async Task SaveTokensCoreAsync(string providerId, OAuthTokens? tokens, bool newLogin,
-        CancellationToken cancellationToken, long? expectedLoginVersion = null)
-    {
-        await _providerKeys.TokenWriteGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        bool tokenWritten = false;
-        string? oldJson = null;
-        OAuthTokens? oldTokens = null;
-        try
-        {
-            if (expectedLoginVersion is { } expected && TokenLoginVersion(providerId) != expected)
-                throw new ApiKeySlotChangedException();
-            oldJson = await context.Secrets.GetAsync(TokenSecretName(providerId), cancellationToken).ConfigureAwait(false);
-            oldTokens = TokenCache.TryGetValue(providerId, out OAuthTokens? cached) ? cached : ParseTokens(providerId, oldJson);
-            // 即使宿主先改内存再写盘，冷读也只能取得仍与活配置配对的旧令牌。
-            TokenCache[providerId] = oldTokens;
-            tokenWritten = true;
-            if (tokens is null) await context.Secrets.DeleteAsync(TokenSecretName(providerId), cancellationToken).ConfigureAwait(false);
-            else await context.Secrets.SetAsync(TokenSecretName(providerId), JsonSerializer.Serialize(tokens), cancellationToken).ConfigureAwait(false);
-            TokenCache[providerId] = tokens;
-            if (newLogin) _providerKeys.LoginVersions.AddOrUpdate(providerId, 1, static (_, version) => version + 1);
-        }
-        catch
-        {
-            if (tokenWritten)
-            {
-                TokenCache[providerId] = oldTokens;
-                if (oldJson is null) await context.Secrets.DeleteAsync(TokenSecretName(providerId), CancellationToken.None).ConfigureAwait(false);
-                else await context.Secrets.SetAsync(TokenSecretName(providerId), oldJson, CancellationToken.None).ConfigureAwait(false);
-            }
-            throw;
-        }
-        finally { _providerKeys.TokenWriteGate.Release(); }
-    }
+    /// <summary>兼容旧退出登录入口；不读取或删除任何机密。</summary>
+    public Task ClearTokensAsync(string providerId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+#pragma warning restore CA1822
 
-    /// <summary>退出登录:清掉令牌；失败保持原账号、缓存与登录代次。</summary>
-    public Task ClearTokensAsync(string providerId, CancellationToken cancellationToken = default)
-        => SaveTokensCoreAsync(providerId, null, true, cancellationToken);
-
-    /// <summary>
-    /// 解出这个模型发请求时该用的凭据:模型自带 Key > 供应商订阅登录 > 供应商 API Key。
-    /// </summary>
-    /// <remarks>
-    /// 订阅登录且换回来的是短期 access token 时,这里会<b>顺手把快过期的刷掉</b> ——
-    /// 客户端是每发一条消息现建的,在建之前刷新,就等于每条消息都拿着一把新鲜的令牌上路,
-    /// 不必再往请求管道里塞一层"401 就重试"。
-    /// </remarks>
-    /// <param name="model">已解出继承链的模型。</param>
-    /// <param name="refreshTokens">发送准备时刷新;仅核对已解析凭据时设为 false,避免核对本身旋转令牌。</param>
-    /// <param name="cancellationToken">取消。</param>
+    /// <summary>解出模型自带或继承的 API Key；兼容参数 refreshTokens 不再触发登录刷新。</summary>
     public async Task<ProviderCredential> ResolveCredentialAsync(ResolvedModel model,
         bool refreshTokens = true, CancellationToken cancellationToken = default)
         => (await ResolveCredentialWithKeyIdAsync(model, refreshTokens, cancellationToken: cancellationToken).ConfigureAwait(false)).Credential;
 
     internal async Task<(ProviderCredential Credential, string? KeyId)> ResolveCredentialWithKeyIdAsync(
         ResolvedModel model, bool refreshTokens = true, string? keyId = null, CancellationToken cancellationToken = default)
-        => await ResolveSavedCredentialAsync(model, false, cancellationToken, refreshTokens, keyId).ConfigureAwait(false);
+        => await ResolveSavedCredentialAsync(model, false, cancellationToken, keyId).ConfigureAwait(false);
     internal Task<(ProviderCredential Credential, string? KeyId)> ResolveProviderCredentialWithKeyIdAsync(
         AiProvider provider, string? keyId = null, CancellationToken cancellationToken = default)
         => ResolveSavedCredentialAsync(new ResolvedModel(provider, new AiModelConfig()), true, cancellationToken, keyId: keyId);
@@ -1490,6 +1281,7 @@ public sealed class AiSettingsStore(IPluginContext context)
             foreach (JsonElement owner in owners.EnumerateArray())
             {
                 if (!owner.TryGetProperty(nameof(AiProvider.Id), out JsonElement id) || id.GetString() != model.Provider.Id) continue;
+                if (UsesLegacyAuthentication(owner)) throw new ApiKeySlotChangedException();
                 saved = owner.Deserialize<AiProvider>();
                 break;
             }
@@ -1511,13 +1303,13 @@ public sealed class AiSettingsStore(IPluginContext context)
     }
 
     private async Task<(ProviderCredential Credential, string? KeyId)> ResolveSavedCredentialAsync(
-        ResolvedModel model, bool providerOnly, CancellationToken cancellationToken, bool refreshTokens = true, string? keyId = null)
+        ResolvedModel model, bool providerOnly, CancellationToken cancellationToken, string? keyId = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         if (_providerKeys.Updating.ContainsKey(model.Provider.Id)) throw new ApiKeySlotChangedException();
         long version = ProviderConfigurationVersion(model.Provider);
         await ValidateCredentialScopeAsync(model, providerOnly, cancellationToken).ConfigureAwait(false);
-        (ProviderCredential Credential, string? KeyId) credential = await ResolveCredentialCoreAsync(model, refreshTokens, keyId, cancellationToken).ConfigureAwait(false);
+        (ProviderCredential Credential, string? KeyId) credential = await ResolveCredentialCoreAsync(model, keyId, cancellationToken).ConfigureAwait(false);
         if (_providerKeys.Updating.ContainsKey(model.Provider.Id) || ProviderConfigurationVersion(model.Provider) != version)
             throw new ApiKeySlotChangedException();
         await ValidateCredentialScopeAsync(model, providerOnly, cancellationToken).ConfigureAwait(false);
@@ -1527,66 +1319,44 @@ public sealed class AiSettingsStore(IPluginContext context)
     }
 
     private async Task<(ProviderCredential Credential, string? KeyId)> ResolveCredentialCoreAsync(
-        ResolvedModel model, bool refreshTokens, string? keyId, CancellationToken cancellationToken)
+        ResolvedModel model, string? keyId, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(model);
         AiProvider provider = model.Provider;
+        if (provider.Auth != AuthMethod.ApiKey || provider.OAuth is not null) return (ProviderCredential.Key(null), null);
         if (model.Config.HasOwnApiKey)
             return (ProviderCredential.Key(await GetApiKeyAsync(model.ApiKeyOwnerId, cancellationToken).ConfigureAwait(false)), null);
-        if (provider.Auth != AuthMethod.Subscription)
+        if (_providerKeys.Updating.ContainsKey(provider.Id)) throw new ApiKeySlotChangedException();
+        // 模型的覆盖地址与供应商不同源时,供应商的 Key(主槽也一样)都不跟去:那是给供应商自己那个地址的。
+        // 覆盖地址要 Key 就勾「自带 Key」填上;没勾就是不带 Key 的请求(设置页对这类模型给迁移提示)。
+        // 以前跨源时借主槽 —— 供应商换源之后,为新地址填的主 Key 会被发往这个旧覆盖地址(§217 留下的口径)
+        bool sameOrigin = SameOrigin(model.BaseUrl, provider.BaseUrl);
+        bool crossOriginOverride = InheritsNoKeyAcrossOrigins(provider, model.Config);
+        if (!string.IsNullOrEmpty(keyId))
         {
-            if (_providerKeys.Updating.ContainsKey(provider.Id)) throw new ApiKeySlotChangedException();
-            // 模型的覆盖地址与供应商不同源时,供应商的 Key(主槽也一样)都不跟去:那是给供应商自己那个地址的。
-            // 覆盖地址要 Key 就勾「自带 Key」填上;没勾就是不带 Key 的请求(设置页对这类模型给迁移提示)。
-            // 以前跨源时借主槽 —— 供应商换源之后,为新地址填的主 Key 会被发往这个旧覆盖地址(§217 留下的口径)
-            bool sameOrigin = SameOrigin(model.BaseUrl, provider.BaseUrl);
-            bool crossOriginOverride = InheritsNoKeyAcrossOrigins(provider, model.Config);
-            if (!string.IsNullOrEmpty(keyId))
+            if (crossOriginOverride || !ProviderApiKeyIds(provider).Contains(keyId, StringComparer.Ordinal)
+                || (!sameOrigin && keyId != provider.Id))
             {
-                if (crossOriginOverride || !ProviderApiKeyIds(provider).Contains(keyId, StringComparer.Ordinal)
-                    || (!sameOrigin && keyId != provider.Id))
-                {
-                    throw new ApiKeySlotChangedException();
-                }
+                throw new ApiKeySlotChangedException();
+            }
 
-                string? selected = await GetApiKeyAsync(keyId, cancellationToken).ConfigureAwait(false);
-                if (string.IsNullOrWhiteSpace(selected)) throw new ApiKeySlotChangedException();
-                return (ProviderCredential.Key(selected), sameOrigin ? keyId : null);
-            }
-            if (crossOriginOverride) return (ProviderCredential.Key(null), null);
-            // 供应商自己的地址解析不出 origin(空着或写错)时照旧只用主槽,不进 Key 池
-            if (!sameOrigin)
-                return (ProviderCredential.Key(await GetApiKeyAsync(provider.Id, cancellationToken).ConfigureAwait(false)), null);
-            IEnumerable<string> ids = ProviderApiKeyIds(provider);
-            if (provider.ActiveApiKeyId is { } active && ids.Contains(active, StringComparer.Ordinal))
-                ids = new[] { active }.Concat(ids.Where(id => id != active));
-            foreach (string id in ids)
-            {
-                string? key = await GetApiKeyAsync(id, cancellationToken).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(key)) return (ProviderCredential.Key(key), id);
-            }
-            return (ProviderCredential.Key(null), null);
+            string? selected = await GetApiKeyAsync(keyId, cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(selected)) throw new ApiKeySlotChangedException();
+            return (ProviderCredential.Key(selected), sameOrigin ? keyId : null);
         }
-        (OAuthTokens? tokens, long loginVersion) = await GetTokenSnapshotAsync(provider.Id, cancellationToken).ConfigureAwait(false);
-        if (tokens is null)
+        if (crossOriginOverride) return (ProviderCredential.Key(null), null);
+        // 供应商自己的地址解析不出 origin(空着或写错)时照旧只用主槽,不进 Key 池
+        if (!sameOrigin)
+            return (ProviderCredential.Key(await GetApiKeyAsync(provider.Id, cancellationToken).ConfigureAwait(false)), null);
+        IEnumerable<string> ids = ProviderApiKeyIds(provider);
+        if (provider.ActiveApiKeyId is { } active && ids.Contains(active, StringComparer.Ordinal))
+            ids = new[] { active }.Concat(ids.Where(id => id != active));
+        foreach (string id in ids)
         {
-            return (ProviderCredential.Key(null), null); // 尚未登录,保持旧空凭据行为。
+            string? key = await GetApiKeyAsync(id, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(key)) return (ProviderCredential.Key(key), id);
         }
-        // 登录换回来的是一把长期 API Key(OpenRouter 那类):与手填的 Key 走同一条路
-        if (provider.OAuth?.Credential == OAuthCredential.ApiKey)
-        {
-            var key = ProviderCredential.Key(tokens.AccessToken);
-            EnsureBuiltinOAuthCredentialDestination(model, key);
-            return (key, null);
-        }
-        if (refreshTokens && tokens.NeedsRefresh && !string.IsNullOrEmpty(tokens.RefreshToken) && provider.OAuth is { } oauth)
-        {
-            tokens = await RefreshAsync(provider, oauth, tokens, loginVersion, cancellationToken).ConfigureAwait(false);
-        }
-        ProviderCredential bearer = new(tokens.AccessToken, true,
-            ExtraHeadersPolicy.Parse(provider.OAuth?.ExtraHeaders, tokens.AccountId), tokens.BaseUrl);
-        EnsureBuiltinOAuthCredentialDestination(model, bearer);
-        return (bearer, null);
+        return (ProviderCredential.Key(null), null);
     }
 
     /// <summary>
@@ -1622,76 +1392,8 @@ public sealed class AiSettingsStore(IPluginContext context)
         => (await ResolveSavedCredentialAsync(new ResolvedModel(provider, new AiModelConfig()), true, cancellationToken)
             .ConfigureAwait(false)).Credential;
 
-    /// <summary>换新令牌并落盘;HTTP 400/401/403 授权拒绝沿用旧令牌,网络及其他 HTTP 故障交给调用方。</summary>
-    private async Task<OAuthTokens> RefreshAsync(AiProvider provider, OAuthConfig oauth, OAuthTokens tokens,
-        long loginVersion, CancellationToken cancellationToken)
-    {
-        OAuthConfig fixedOAuth = oauth.Clone();
-        string oauthSnapshot = JsonSerializer.Serialize(fixedOAuth);
-        await RefreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            // 等闸期间别人可能已经刷过了
-            (OAuthTokens? Tokens, long Version) snapshot = await GetTokenSnapshotAsync(provider.Id, cancellationToken).ConfigureAwait(false);
-            OAuthTokens? latest = snapshot.Tokens;
-            if (snapshot.Version != loginVersion || JsonSerializer.Serialize(provider.OAuth) != oauthSnapshot)
-                throw new ApiKeySlotChangedException();
-            if (latest is not null && !latest.NeedsRefresh)
-            {
-                return latest;
-            }
-            OAuthTokens fresh = await TokenClient.RefreshAsync(fixedOAuth, latest ?? tokens, cancellationToken)
-                                                 .ConfigureAwait(false);
-            if (TokenLoginVersion(provider.Id) != loginVersion || JsonSerializer.Serialize(provider.OAuth) != oauthSnapshot)
-                throw new ApiKeySlotChangedException();
-            await SaveTokensCoreAsync(provider.Id, fresh, false, cancellationToken, loginVersion).ConfigureAwait(false);
-            context.Log.Info($"Refreshed the sign-in for '{provider.Name}'.");
-            return fresh;
-        }
-        catch (OAuthException ex) // OAuthClient已把400/401/403授权响应解析为OAuth错误。
-        {
-            context.Log.Warn($"Refreshing the sign-in for '{provider.Name}' failed: {ex.Message}");
-            if ((await GetTokenSnapshotAsync(provider.Id, cancellationToken).ConfigureAwait(false)).Version != loginVersion
-                || JsonSerializer.Serialize(provider.OAuth) != oauthSnapshot)
-            {
-                throw new ApiKeySlotChangedException();
-            }
-
-            return tokens;
-        }
-        catch (HttpRequestException ex) when (ex.StatusCode is System.Net.HttpStatusCode.BadRequest
-            or System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
-        {
-            // 传输处理器直接抛出带授权状态的HTTP异常时，保持相同回退语义。
-            context.Log.Warn($"Refreshing the sign-in for '{provider.Name}' failed: {ex.Message}");
-            if ((await GetTokenSnapshotAsync(provider.Id, cancellationToken).ConfigureAwait(false)).Version != loginVersion
-                || JsonSerializer.Serialize(provider.OAuth) != oauthSnapshot)
-            {
-                throw new ApiKeySlotChangedException();
-            }
-
-            return tokens;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException
-            and not HttpRequestException and not IOException and not TimeoutException and not ApiKeySlotChangedException)
-        {
-            context.Log.Warn($"Refreshing the sign-in for '{provider.Name}' failed: {ex.Message}");
-            if ((await GetTokenSnapshotAsync(provider.Id, cancellationToken).ConfigureAwait(false)).Version != loginVersion
-                || JsonSerializer.Serialize(provider.OAuth) != oauthSnapshot)
-            {
-                throw new ApiKeySlotChangedException();
-            }
-
-            return tokens;
-        }
-        finally
-        {
-            RefreshGate.Release();
-        }
-    }
-
     /// <summary>
-    /// 为模型构造 <see cref="IChatClient" />(每次调用按继承链取最新凭据:API Key 或订阅令牌)。
+    /// 为模型构造 <see cref="IChatClient" />(每次调用按继承链取最新凭据:API Key)。
     /// 返回的是"裸"客户端;Agent 模式的函数调用循环由调用方经
     /// <c>AsBuilder().UseFunctionInvocation()</c> 叠加。
     /// </summary>
@@ -1714,7 +1416,7 @@ public sealed class AiSettingsStore(IPluginContext context)
         ArgumentNullException.ThrowIfNull(model);
         if (!IsImageModel(model)) throw new ArgumentException("The selected model is not an image model.", nameof(model));
         ProviderCredential credential = await ResolveCredentialAsync(model, cancellationToken: token).ConfigureAwait(false);
-        EnsureBuiltinOAuthCredentialDestination(model, credential);
+        EnsureApiKeyCredential(model, credential);
         ImageClient client = CreateOpenAiClient(model, credential, callerCountsRetries: false, noRetries: true).GetImageClient(model.Model);
         return await new ImageGenerationService(client, model.Model, model.Model.StartsWith("dall-e-", StringComparison.OrdinalIgnoreCase))
             .GenerateAsync(prompt, inputs, token).ConfigureAwait(false);
@@ -1727,9 +1429,7 @@ public sealed class AiSettingsStore(IPluginContext context)
     internal IChatClient CreateClient(ResolvedModel provider, ProviderCredential credential, bool callerCountsRetries = false)
     {
         ArgumentNullException.ThrowIfNull(provider);
-        EnsureBuiltinOAuthCredentialDestination(provider, credential);
-        // OpenAI 系协议无论 Key 还是 access token 都走 Authorization: Bearer,一条路即可;
-        // Anthropic 分岔(Key 是 x-api-key,令牌是 Bearer —— SDK 13.x 一律发 Bearer,Key 由插件改回),见下。
+        EnsureApiKeyCredential(provider, credential);
         string? secret = credential.Value;
         if (IsImageModel(provider))
         {
@@ -1752,40 +1452,28 @@ public sealed class AiSettingsStore(IPluginContext context)
 
             case ChatProtocol.AnthropicMessages:
                 {
-                    // 少数供应商按账户下发端点(Copilot 的企业账户),那时以登录带回来的为准
-                    string baseUrl = ClientBaseUrl(EndpointOf(provider, credential), provider.Protocol);
+                    string baseUrl = ClientBaseUrl(provider.BaseUrl, provider.Protocol);
                     // 中转站常在 Anthropic 流末尾补一行 OpenAI 习惯的 data: DONE,
                     // 而 SDK 对每个 data: 行无条件反序列化 —— 整轮回复会在最后一刻炸掉(见 SseRepairHandler)
                     List<DelegatingHandler> handlers = [new SseRepairHandler(ReportSseDrop)];
                     // SDK 13.x 把 ApiKey 也发成 Authorization: Bearer(12.x 是 x-api-key),只认 x-api-key 的
                     // 中转站因此 401:手填的 Key 改回 x-api-key。必须排在附加头之前 —— 用户明确配置的头最后落定,
                     // 不被它盖掉(见 AnthropicApiKeyHandler)。anthropic-version 照 SDK 的发(13.x 是 2026-10-21)。
-                    if (!string.IsNullOrWhiteSpace(secret) && !credential.IsBearerToken)
+                    if (!string.IsNullOrWhiteSpace(secret))
                     {
                         handlers.Add(new AnthropicApiKeyHandler(secret));
                     }
                     handlers.Add(new ExtraHeadersHandler(AiHttp.ProviderHeaders(credential.Headers)));
-                    // 属性为 init-only,按凭据形态分别构造:登录换来的短期令牌要走 AuthToken。
-                    // 13.x 起 ApiKey 与 AuthToken 发出去都是 Authorization: Bearer,区别只在上面那个改写处理器挂不挂。
-                    // 没有凭据时,只有官方 api.anthropic.com 交给 SDK 去读本机的 ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN
-                    // (那两个变量本来就是给官方 API 的,只配环境变量直连官方是原设计);中转站、自行部署的网关、
-                    // 换源后还没填新 Key 的地址一律把两者显式置空 —— SDK 里每个属性只关掉自己那个变量,
-                    // 只置一个,另一个照样被读出来发过去(13.2.1 实测)。
-                    bool noSdkRetries = callerCountsRetries && HasProviderKeyPool(provider);
-                    AnthropicClient anthropic = !string.IsNullOrWhiteSpace(secret)
-                        ? credential.IsBearerToken
-                            ? new AnthropicClient { BaseUrl = baseUrl, AuthToken = secret, Handlers = handlers, MaxRetries = noSdkRetries ? 0 : null }
-                            : new AnthropicClient { BaseUrl = baseUrl, ApiKey = secret, Handlers = handlers, MaxRetries = noSdkRetries ? 0 : null }
-                        : IsOfficialAnthropicEndpoint(baseUrl)
-                            ? new AnthropicClient { BaseUrl = baseUrl, Handlers = handlers, MaxRetries = noSdkRetries ? 0 : null }
-                            : new AnthropicClient
-                            {
-                                BaseUrl = baseUrl,
-                                ApiKey = null,
-                                AuthToken = null,
-                                Handlers = handlers,
-                                MaxRetries = noSdkRetries ? 0 : null
-                            };
+                    // 只允许官方 HTTPS 地址使用环境变量中的 API Key；SDK 不得回退到账号令牌。
+                    AnthropicClient anthropic = new()
+                    {
+                        BaseUrl = baseUrl,
+                        ApiKey = !string.IsNullOrWhiteSpace(secret) ? secret : IsOfficialAnthropicEndpoint(baseUrl)
+                            ? Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") : null,
+                        AuthToken = null,
+                        Handlers = handlers,
+                        MaxRetries = callerCountsRetries && HasProviderKeyPool(provider) ? 0 : null
+                    };
                     return anthropic.AsIChatClient(provider.Model, provider.MaxTokens);
                 }
 
@@ -2023,34 +1711,10 @@ public sealed class AiSettingsStore(IPluginContext context)
         return (budget, Math.Max(provider.MaxTokens, budget + AnthropicMinThinkingBudget));
     }
 
-    /// <summary>
-    /// 这次请求该打到哪儿:登录带回来的端点优先,没有才用供应商配置里的。
-    /// </summary>
-    /// <remarks>
-    /// 少数供应商按账户下发地址(Copilot 的企业账户与个人账户不是同一个),而那个地址
-    /// <b>只有登录之后才知道</b> —— 没有这一层,就只能让用户手填一个他根本无从知道的值。
-    /// </remarks>
-    private static string EndpointOf(ResolvedModel provider, ProviderCredential credential)
-        => string.IsNullOrWhiteSpace(credential.BaseUrl) ? provider.BaseUrl : credential.BaseUrl;
-
-    private static void EnsureBuiltinOAuthCredentialDestination(ResolvedModel model, ProviderCredential credential)
+    private static void EnsureApiKeyCredential(ResolvedModel model, ProviderCredential credential)
     {
-        if (model.Provider.Auth != AuthMethod.Subscription || model.Config.HasOwnApiKey
-            || string.IsNullOrEmpty(credential.Value)
-            || model.Provider.CatalogId is not { } catalog
-            || !BuiltInOAuthOrigins.TryGetValue(catalog, out Uri? trusted)
-            || (string.Equals(catalog, "github-copilot", StringComparison.OrdinalIgnoreCase)
-                && !string.IsNullOrWhiteSpace(credential.BaseUrl)))
-        {
-            return;
-        }
-        if (!Uri.TryCreate(EndpointOf(model, credential), UriKind.Absolute, out Uri? target)
-            || !string.Equals(target.Scheme, trusted.Scheme, StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(target.IdnHost, trusted.IdnHost, StringComparison.OrdinalIgnoreCase)
-            || target.Port != trusted.Port)
-        {
-            throw new BuiltinOAuthHostMismatchException();
-        }
+        EnsureApiKeyProvider(model.Provider);
+        if (credential.IsBearerToken || credential.BaseUrl is not null) throw AccountSignInNotSupported();
     }
 
     /// <summary>官方 Anthropic API 的主机:没有凭据时只有它可以用本机的环境变量(见 <see cref="CreateClient" />)。</summary>
@@ -2090,19 +1754,18 @@ public sealed class AiSettingsStore(IPluginContext context)
 
     private OpenAIClient CreateOpenAiClient(ResolvedModel provider, ProviderCredential credential, bool callerCountsRetries, bool noRetries = false)
     {
-        var options = new OpenAIClientOptions { Endpoint = new Uri(ClientBaseUrl(EndpointOf(provider, credential), provider.Protocol)) };
+        var options = new OpenAIClientOptions { Endpoint = new Uri(ClientBaseUrl(provider.BaseUrl, provider.Protocol)) };
         // 多槽的重试由聊天回路统一计数;SDK 隐式重试会把一次 429 重试乘成多次 HTTP。
         if (noRetries || (callerCountsRetries && HasProviderKeyPool(provider))) options.RetryPolicy = NoSdkRetries;
         options.AddPolicy(new ExtraHeadersPolicy(AiHttp.ProviderHeaders(credential.Headers)), PipelinePosition.BeforeTransport);
         return new OpenAIClient(
             // OpenAI SDK 要求凭据非空;Ollama 等本地服务无鉴权,给占位值即可。
-            // access token 与 API Key 在这条路上是一回事 —— SDK 都发成 Authorization: Bearer。
             new ApiKeyCredential(string.IsNullOrWhiteSpace(credential.Value) ? "not-needed" : credential.Value),
             options);
     }
 
     private static string SecretName(string ownerId) => LegacySettingsMigration.SecretName(ownerId);
 
-    /// <summary>订阅登录的令牌组存在哪个机密键下。与 API Key 分开,退出登录时不误伤手填的 Key。</summary>
+    /// <summary>仅供迁移按名称删除旧条目，不读它的值。</summary>
     private static string TokenSecretName(string providerId) => $"oauth:{providerId}";
 }

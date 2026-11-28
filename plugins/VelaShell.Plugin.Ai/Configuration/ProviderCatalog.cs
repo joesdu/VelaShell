@@ -61,9 +61,9 @@ public sealed record EndpointQuirks(
 /// 列表左侧那枚方牌上的字。<b>刻意用字母而不是各家的商标</b>:商标是别人的资产,
 /// 随程序分发要看授权脸色,而一枚字母牌在这套等宽、克制的界面里也并不吃亏。
 /// </param>
-/// <param name="Auth">出厂的接入方式(订阅登录 / 填 Key)。</param>
+/// <param name="Auth">出厂的接入方式。</param>
 /// <remarks>见 <see cref="EndpointQuirks" />。</remarks>
-/// <param name="Create">造一份出厂配置(含模型、协议、地址,订阅项还含 <see cref="AiProvider.OAuth" />)。</param>
+/// <param name="Create">造一份出厂配置(含模型、协议、地址)。</param>
 public sealed record ProviderCatalogEntry(
     string Id,
     string Name,
@@ -74,16 +74,6 @@ public sealed record ProviderCatalogEntry(
 {
     /// <summary>要用户自己填地址才用得起来(自行部署 / 自定义 / 按资源分配地址的云服务)。</summary>
     public bool NeedsBaseUrl { get; init; }
-
-    /// <summary>要用户自己填 OAuth 参数(客户端 id、端点)才登得上。</summary>
-    public bool NeedsOAuthSetup { get; init; }
-
-    /// <summary>
-    /// 去哪儿给 VelaShell 注册一个 OAuth 应用、拿到 <see cref="OAuthConfig.ClientId" />。
-    /// 目录里客户端 id 还空着的条目,界面上就把这个地址显出来 ——
-    /// 让人对着一个空框猜"这玩意儿哪儿来的"是最糟的设计。
-    /// </summary>
-    public string RegistrationUrl { get; init; } = "";
 
     /// <summary>
     /// 这一家在 <b>models.dev</b> 里的供应商 id;空 = 那边没有收录(本地自部署、自定义端点)。
@@ -111,14 +101,13 @@ public sealed record ProviderCatalogEntry(
     public bool IsSubscription => Auth == AuthMethod.Subscription;
 
     /// <summary>
-    /// 用户自己接的端点(「自定义」那几条:OpenAI / Anthropic 兼容与 OAuth):地址、协议都是用户定的,
+    /// 用户自己接的端点：地址、协议都是用户定的，
     /// 目录里没有一份可信的脾气可抄,<c>store</c> 由设置页的开关决定(见 <see cref="AiProvider.CustomResponsesStore" />)。
     /// </summary>
     public bool UserDefinedEndpoint => Id.StartsWith("custom-", StringComparison.Ordinal);
 
     /// <summary>
-    /// 按这一条造一个供应商,并把目录 id 打上去 —— 界面据此知道"这一家已经加过了",
-    /// 以及该显示登录状态还是 API Key 输入框。
+    /// 根据模板和目录 id 初始化供应商。
     /// </summary>
     public AiProvider CreateProvider()
     {
@@ -140,79 +129,9 @@ public sealed record ProviderCatalogEntry(
     }
 }
 
-/// <summary>
-/// 内置的供应商目录 —— 设置页「新增供应商」打开的那一页就是它。
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>两类接入并列</b>:多数家是"自己去后台开一把 API Key 填进来";少数家把
-/// <b>第三方应用的 OAuth 登录</b>作为公开能力(OpenRouter 就是),那种直接点「登录」,
-/// 浏览器里认证一次,凭据自动落进机密存储,用户从头到尾不用见到 Key。
-/// </para>
-/// <para>
-/// <b>目录是数据,不是代码</b>。想接一家这里没有的,不必改任何逻辑:
-/// 走「自定义(OAuth 登录)」把授权/令牌端点、客户端 id、scope 填进去即可 ——
-/// 授权码 + PKCE 与设备码两套标准流程本程序都实现了。
-/// 也正因为如此,本目录<b>只收各家公开面向第三方应用的登录方式</b>:
-/// 冒用别家官方客户端的 client id 去蹭订阅,既不稳(对方一改就全断)也不该由本程序代做决定。
-/// </para>
-/// </remarks>
+/// <summary>新建仅使用自定义端点，已保存的命名模板仍可解析。</summary>
 public static class ProviderCatalog
 {
-    /// <summary>
-    /// VelaShell 在各家注册的 OAuth 应用的客户端 id。
-    /// </summary>
-    /// <remarks>
-    /// <b>拿到一个就填一个,填完那一行当场变成"点一下即登"</b>,不需要改任何逻辑。
-    /// 各家的申请入口写在对应条目的 <see cref="ProviderCatalogEntry.RegistrationUrl" /> 上,
-    /// 界面也会把它显出来。
-    /// <para>
-    /// 申请时按<b>公共客户端</b>(native / desktop,不要密钥)登记,回调地址填
-    /// <c>http://127.0.0.1/callback</c> 与 <c>http://localhost/callback</c> 两条 ——
-    /// 遵循 RFC 8252 §7.3 的服务端(Hugging Face 明确支持)只比对 scheme/host/path,
-    /// 端口在请求时任意,正好对上本程序"每次随机取一个空闲环回端口"的做法。
-    /// </para>
-    /// </remarks>
-    private static class ClientIds
-    {
-        /// <summary>https://huggingface.co/settings/applications/new(公共应用,免密钥)。</summary>
-        public const string HuggingFace = "";
-
-        /// <summary>
-        /// Codex CLI 的公共客户端 id。
-        /// </summary>
-        /// <remarks>
-        /// <b>这一条与上面几条性质不同</b>:它不是 VelaShell 自己注册来的,而是 Codex 命令行工具
-        /// 公开使用的那个标识。用它意味着本程序以 Codex 客户端的身份去换取用户的 ChatGPT 订阅权益 ——
-        /// 对方一旦更换 id 或加一道客户端校验,这条路就整体失效,且其适用条款需使用者自行确认。
-        /// 目录条目因此标了 <see cref="ProviderCatalogEntry.Experimental" />,界面上也如实标出。
-        /// </remarks>
-        public const string OpenAiCodex = "app_EMoamEEZ73f0CkXaXp7hrann";
-
-        /// <summary>Claude Code 的公共客户端 id。性质同 <see cref="OpenAiCodex" />(借的是别家官方客户端的身份)。</summary>
-        public const string AnthropicClaude = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-
-        /// <summary>GitHub 官方 Copilot 编辑器插件的客户端 id。性质同上。</summary>
-        public const string GitHubCopilot = "Iv1.b507a08c87ecfe98";
-
-        /// <summary>Grok CLI 的公共客户端 id。性质同 <see cref="OpenAiCodex" />。</summary>
-        /// <remarks>
-        /// xAI 在 <c>auth.x.ai/.well-known/openid-configuration</c> 里公开声明了
-        /// <c>device_authorization_endpoint</c> 与对应的 <c>device_code</c> 授权类型 ——
-        /// 也就是说设备码这条路是它自己宣告支持的,不是猜出来的。
-        /// </remarks>
-        public const string XaiGrok = "b1a00492-073a-47ea-816f-4c329264a828";
-
-        /// <summary>
-        /// DigitalOcean Gradient 的公共 OAuth 客户端 id(隐式流,见 <see cref="OAuthFlow.ImplicitFragment" />)。
-        /// </summary>
-        public const string DigitalOcean =
-            "b1a6c5158156caac821fd1b30253ca8acb52454a48fa744420e41889cb589f82";
-
-        /// <summary>Google Cloud Console → API 和服务 → 凭据 → OAuth 客户端 ID(类型选"桌面应用")。</summary>
-        public const string Google = "";
-    }
-
     /// <summary>
     /// 本目录的 id → <b>models.dev</b> 里的供应商 id。
     /// </summary>
@@ -223,19 +142,13 @@ public static class ProviderCatalog
     /// 散在各处对不上时是<b>静默</b>拉不到模型,最难查的那一类。
     /// <para>
     /// 没列进来的是那边确实没有的:本地自部署(Ollama)与两条自定义端点。
-    /// <c>openai-codex</c> 映到 <c>openai</c> —— ChatGPT 订阅能用的就是 OpenAI 那批模型。
     /// </para>
     /// </remarks>
     private static readonly Dictionary<string, string> ModelsDevIds = new(StringComparer.Ordinal)
     {
         ["openai"] = "openai",
-        ["openai-codex"] = "openai",
         ["anthropic"] = "anthropic",
-        ["anthropic-claude"] = "anthropic",
-        ["github-copilot"] = "github-copilot",
         ["xai"] = "xai",
-        ["xai-grok"] = "xai",
-        ["digitalocean"] = "digitalocean",
         ["google"] = "google",
         ["deepseek"] = "deepseek",
         ["moonshot"] = "moonshotai",
@@ -255,207 +168,11 @@ public static class ProviderCatalog
         ["minimax"] = "minimax",
         ["zenmux"] = "zenmux",
         ["llmgateway"] = "llmgateway",
-        ["openrouter"] = "openrouter",
-        ["huggingface"] = "huggingface",
-        ["azure-openai"] = "azure"
     };
 
-    /// <summary>出厂条目本身;对外的 <see cref="All" /> 是它贴上 models.dev id 之后的样子。</summary>
+    /// <summary>包括既有 API Key 配置使用的命名模板。</summary>
     private static IReadOnlyList<ProviderCatalogEntry> Entries { get; } =
     [
-        // ── 订阅登录 ────────────────────────────────────────────────
-        new("openrouter", "OpenRouter", "Multiple models · e.g. Claude · GPT · Gemini · Llama", "OR",
-            AuthMethod.Subscription, () => Subscription(
-                "OpenRouter", "https://openrouter.ai/api/v1", ChatProtocol.OpenAiChatCompletions,
-                new AiModelConfig { Model = "openai/gpt-5", MaxInputTokens = 200000 },
-                new OAuthConfig
-                {
-                    // OpenRouter 公开支持第三方应用用 PKCE 接自家账号,换回来的是一把普通 Key
-                    Flow = OAuthFlow.OpenRouterPkce,
-                    AuthorizationUrl = "https://openrouter.ai/auth",
-                    TokenUrl = "https://openrouter.ai/api/v1/auth/keys",
-                    Credential = OAuthCredential.ApiKey
-                })),
-
-        new("openai-codex", "OpenAI Codex (ChatGPT 订阅)", "e.g. gpt-5.3-codex · gpt-5.3-codex-spark", "CX",
-            AuthMethod.Subscription, () => Subscription(
-                "OpenAI Codex", "https://chatgpt.com/backend-api/codex", ChatProtocol.OpenAiResponses,
-                new AiModelConfig { Model = "gpt-5.3-codex", MaxInputTokens = 400000, MaxTokens = 128000 },
-                new OAuthConfig
-                {
-                    Flow = OAuthFlow.AuthorizationCodePkce,
-                    AuthorizationUrl = "https://auth.openai.com/oauth/authorize",
-                    TokenUrl = "https://auth.openai.com/oauth/token",
-                    ClientId = ClientIds.OpenAiCodex,
-                    Scopes = "openid profile email offline_access",
-                    // 回调地址必须与 Codex 客户端注册的那条<b>逐字节一致</b>:
-                    // 固定端口 1455,而且主机名是 localhost 不是 127.0.0.1(两者不通用)
-                    RedirectPort = 1455,
-                    RedirectPath = "/auth/callback",
-                    RedirectHost = "localhost",
-                    ExtraAuthorizeParams = "id_token_add_organizations=true\ncodex_cli_simplified_flow=true",
-                    // 订阅端点光有 Bearer 还不够,得同时说清楚算在哪个 ChatGPT 账号头上
-                    AccountIdClaim = "https://api.openai.com/auth/chatgpt_account_id",
-                    ExtraHeaders = "chatgpt-account-id: {account_id}\nOpenAI-Beta: responses=experimental",
-                    Credential = OAuthCredential.AccessToken
-                }))
-        {
-            Experimental = true,
-            // ChatGPT 那个后端是 Responses 的受限子集,多发一个字段就整轮 400,一次只报一个。
-            // 实测撞过的顺序:store → system 角色 → max_output_tokens。
-            // 其余几个采样参数本插件默认就不发,一并列上是为了别再多来几轮试错
-            // (Codex 官方客户端同样不发它们)。
-            Quirks = new EndpointQuirks(
-                StoreResponses: false,
-                AllowSystemMessages: false,
-                UnsupportedParameters:
-                "max_output_tokens\ntemperature\ntop_p\nstop\nfrequency_penalty\npresence_penalty\nseed")
-        },
-
-        new("anthropic-claude", "Anthropic Claude (Pro/Max 订阅)", "e.g. claude-opus-5 · claude-sonnet-5", "CL",
-            AuthMethod.Subscription, () => Subscription(
-                "Claude 订阅", "https://api.anthropic.com", ChatProtocol.AnthropicMessages,
-                new AiModelConfig { Model = "claude-opus-5", MaxInputTokens = 200000 },
-                new OAuthConfig
-                {
-                    Flow = OAuthFlow.AuthorizationCodePkce,
-                    AuthorizationUrl = "https://claude.ai/oauth/authorize",
-                    TokenUrl = "https://platform.claude.com/v1/oauth/token",
-                    ClientId = ClientIds.AnthropicClaude,
-                    Scopes = "org:create_api_key user:profile user:inference",
-                    // 回调要与 Claude Code 注册的那条逐字节一致:端口固定 53692,主机名是 localhost
-                    RedirectPort = 53692,
-                    RedirectPath = "/callback",
-                    RedirectHost = "localhost",
-                    // 订阅令牌走 Authorization: Bearer(不是 x-api-key),另需这个 beta 标记
-                    ExtraHeaders = "anthropic-beta: oauth-2025-04-20",
-                    Credential = OAuthCredential.AccessToken
-                }))
-        {
-            Experimental = true
-        },
-
-        new("github-copilot", "GitHub Copilot", "e.g. gpt-5.3-codex · claude-sonnet-5", "GH",
-            AuthMethod.Subscription, () => Subscription(
-                "GitHub Copilot", "https://api.individual.githubcopilot.com",
-                ChatProtocol.OpenAiChatCompletions,
-                new AiModelConfig { Model = "gpt-5.3-codex", MaxInputTokens = 128000 },
-                new OAuthConfig
-                {
-                    // 两段式:先按 RFC 8628 拿 GitHub 的长期 token,再换一枚短命的 Copilot 会话令牌
-                    Flow = OAuthFlow.GitHubCopilotDevice,
-                    DeviceCodeUrl = "https://github.com/login/device/code",
-                    TokenUrl = "https://github.com/login/oauth/access_token",
-                    ExchangeUrl = "https://api.github.com/copilot_internal/v2/token",
-                    // 这个交换端点会校验调用方是不是一个编辑器:只带 Authorization 会被 403,
-                    // 而报错正文里一个字都不提缺了什么(实测)。
-                    ExchangeHeaders =
-                        "Editor-Version: VelaShell/1.0\n"
-                        + "Editor-Plugin-Version: velashell-ai/0.4.0\n"
-                        + "Copilot-Integration-Id: vscode-chat",
-                    ClientId = ClientIds.GitHubCopilot,
-                    Scopes = "read:user",
-                    // 交换响应里会带 endpoints.api —— 企业账户与个人账户不是同一个地址,
-                    // 那时以它为准(见 ProviderCredential.BaseUrl)
-                    ExtraHeaders = "Copilot-Integration-Id: vscode-chat\nEditor-Version: VelaShell/1.0",
-                    Credential = OAuthCredential.AccessToken
-                }))
-        {
-            Experimental = true
-        },
-
-        new("xai-grok", "xAI Grok (SuperGrok 订阅)", "e.g. grok-4.6 · grok-code-fast", "XG",
-            AuthMethod.Subscription, () => Subscription(
-                "xAI Grok", "https://api.x.ai/v1", ChatProtocol.OpenAiChatCompletions,
-                new AiModelConfig { Model = "grok-4.6", MaxInputTokens = 256000 },
-                new OAuthConfig
-                {
-                    // 只走设备码:xAI 在自己的 openid-configuration 里公开声明了
-                    // device_authorization_endpoint 与 device_code 授权类型,
-                    // 而授权码那一路它没有登记任何第三方可用的回调地址
-                    Flow = OAuthFlow.DeviceCode,
-                    DeviceCodeUrl = "https://auth.x.ai/oauth2/device/code",
-                    TokenUrl = "https://auth.x.ai/oauth2/token",
-                    ClientId = ClientIds.XaiGrok,
-                    Scopes = "openid profile email offline_access grok-cli:access api:access",
-                    // 设备码请求里带上来路,便于对方区分是哪个客户端在用
-                    ExtraAuthorizeParams = "referrer=velashell",
-                    Credential = OAuthCredential.AccessToken
-                }))
-        {
-            Experimental = true
-        },
-
-        new("digitalocean", "DigitalOcean Gradient", "e.g. Llama · Qwen · DeepSeek(托管推理)", "DO",
-            AuthMethod.Subscription, () => Subscription(
-                "DigitalOcean", "https://inference.do-ai.run/v1", ChatProtocol.OpenAiChatCompletions,
-                new AiModelConfig { Model = "llama3.3-70b-instruct", MaxInputTokens = 128000 },
-                new OAuthConfig
-                {
-                    // 隐式流:令牌落在回调地址的 #fragment 里,得靠一页 HTML 把它回传
-                    Flow = OAuthFlow.ImplicitFragment,
-                    AuthorizationUrl = "https://cloud.digitalocean.com/v1/oauth/authorize",
-                    ClientId = ClientIds.DigitalOcean,
-                    Scopes = "genai:read inference:query",
-                    // 回调必须与登记的那条完全一致,所以端口固定
-                    RedirectPort = 43920,
-                    RedirectPath = "/callback",
-                    Credential = OAuthCredential.AccessToken
-                }))
-        {
-            Experimental = true
-        },
-
-        new("huggingface", "Hugging Face", "Inference Providers · e.g. DeepSeek · Qwen · Llama", "HF",
-            AuthMethod.Subscription, () => Subscription(
-                "Hugging Face", "https://router.huggingface.co/v1", ChatProtocol.OpenAiChatCompletions,
-                new AiModelConfig { Model = "deepseek-ai/DeepSeek-V3", MaxInputTokens = 128000 },
-                new OAuthConfig
-                {
-                    // 官方文档明确支持"公共应用(无密钥)+ PKCE + 环回任意端口",正好是本程序的形态
-                    Flow = OAuthFlow.AuthorizationCodePkce,
-                    AuthorizationUrl = "https://huggingface.co/oauth/authorize",
-                    TokenUrl = "https://huggingface.co/oauth/token",
-                    DeviceCodeUrl = "https://huggingface.co/oauth/device",
-                    ClientId = ClientIds.HuggingFace,
-                    // inference-api = 代表用户向 Inference Providers 发推理请求
-                    Scopes = "openid profile inference-api",
-                    Credential = OAuthCredential.AccessToken
-                }))
-        {
-            RegistrationUrl = "https://huggingface.co/settings/applications/new"
-        },
-
-        new("azure-openai", "Azure OpenAI", "Your deployments · e.g. gpt-4o · o4-mini", "AZ",
-            AuthMethod.Subscription, () => Subscription(
-                "Azure OpenAI", "https://<resource>.openai.azure.com/openai/v1", ChatProtocol.OpenAiChatCompletions,
-                new AiModelConfig { Model = "gpt-4o", MaxInputTokens = 128000 },
-                new OAuthConfig
-                {
-                    // Entra ID 的设备码流程:把 common 换成自己的租户 id,client id 填自己注册的应用。
-                    // 用设备码而不是环回:企业环境里回调地址往往要走审批,而设备码只要一个公共客户端。
-                    Flow = OAuthFlow.DeviceCode,
-                    DeviceCodeUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode",
-                    TokenUrl = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-                    Scopes = "https://cognitiveservices.azure.com/.default offline_access",
-                    Credential = OAuthCredential.AccessToken
-                }))
-        {
-            NeedsBaseUrl = true,
-            NeedsOAuthSetup = true,
-            RegistrationUrl = "https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
-        },
-
-        new("custom-oauth", "Custom (OAuth sign-in)", "Any OpenAI/Anthropic-compatible endpoint behind OAuth", "OA",
-            AuthMethod.Subscription, () => Subscription(
-                "Custom (OAuth)", "", ChatProtocol.OpenAiChatCompletions,
-                new AiModelConfig(),
-                new OAuthConfig { Flow = OAuthFlow.AuthorizationCodePkce, Credential = OAuthCredential.AccessToken }))
-        {
-            NeedsBaseUrl = true,
-            NeedsOAuthSetup = true
-        },
-
         // ── 填 API Key ──────────────────────────────────────────────
         new("openai", "OpenAI", "e.g. gpt-5 · gpt-5-mini · o4-mini", "AI", AuthMethod.ApiKey,
             () => Key("OpenAI", "https://api.openai.com/v1", ChatProtocol.OpenAiResponses,
@@ -572,21 +289,19 @@ public static class ProviderCatalog
         }
     ];
 
-    /// <summary>
-    /// 全部条目,按"能登录的在前"排;models.dev 的 id 由 <see cref="ModelsDevIds" /> 统一贴上。
-    /// </summary>
-    /// <remarks>
-    /// <b>必须声明在 <see cref="Entries" /> 之后</b>:静态初始化按声明顺序跑,
-    /// 摆在前面的话这里读到的是 null,首次访问目录就是一个 <c>TypeInitializationException</c>。
-    /// </remarks>
-    public static IReadOnlyList<ProviderCatalogEntry> All { get; } =
+    /// <summary>完整模板目录供已保存的配置解析端点限制和模型规格；不作为新增入口。</summary>
+    private static IReadOnlyList<ProviderCatalogEntry> Templates { get; } =
         [.. Entries.Select(entry => ModelsDevIds.TryGetValue(entry.Id, out string? id)
             ? entry with { ModelsDevId = id }
             : entry)];
 
-    /// <summary>按目录 id 找;没有返回 null(用户手工建的供应商没有目录 id)。</summary>
+    /// <summary>新增供应商仅提供这两种自定义 API 端点。</summary>
+    public static IReadOnlyList<ProviderCatalogEntry> All { get; } =
+        [.. Templates.Where(entry => entry.Id is "custom-openai" or "custom-anthropic")];
+
+    /// <summary>按已保存的目录 id 解析完整模板，包括不再提供新建入口的模板。</summary>
     public static ProviderCatalogEntry? Find(string? catalogId)
-        => catalogId is null ? null : All.FirstOrDefault(e => e.Id == catalogId);
+        => catalogId is null ? null : Templates.FirstOrDefault(entry => entry.Id == catalogId);
 
     /// <summary>「自定义(OpenAI 兼容)」那一条 —— 手工新建供应商时的兜底出厂值。</summary>
     public static ProviderCatalogEntry Custom => All.First(e => e.Id == "custom-openai");
@@ -598,18 +313,6 @@ public static class ProviderCatalog
             BaseUrl = baseUrl,
             DefaultProtocol = protocol,
             Auth = AuthMethod.ApiKey,
-            Models = [model]
-        };
-
-    private static AiProvider Subscription(string name, string baseUrl, ChatProtocol protocol,
-        AiModelConfig model, OAuthConfig oauth)
-        => new()
-        {
-            Name = name,
-            BaseUrl = baseUrl,
-            DefaultProtocol = protocol,
-            Auth = AuthMethod.Subscription,
-            OAuth = oauth,
             Models = [model]
         };
 }

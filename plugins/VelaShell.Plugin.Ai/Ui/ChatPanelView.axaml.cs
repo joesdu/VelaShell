@@ -190,45 +190,6 @@ public partial class ChatPanelView : UserControl
         }
     }
 
-    private readonly record struct OAuthAccountSnapshot(string? Id, string? Account, string? Catalog,
-        string? Client, string? Authorization, string? Token, string? Device, string? AccountClaim,
-        string? Exchange, OAuthFlow? Flow, long LoginVersion)
-    {
-        public bool Known => !string.IsNullOrEmpty(Id); // 显示名不是账号身份,不能授权外部令牌替换。
-    }
-
-    private async Task<OAuthAccountSnapshot?> CaptureOAuthAccountAsync(ResolvedModel model,
-        ProviderCredential credential, CancellationToken token)
-    {
-        if (!credential.IsBearerToken) return null;
-        (OAuthTokens? Tokens, long Version) snapshot = await _store.GetTokenSnapshotAsync(model.Provider.Id, token);
-        OAuthTokens? tokens = snapshot.Tokens;
-        if (tokens is null || tokens.AccessToken != credential.Value) throw new ProviderConfigurationChangedException();
-        return CaptureOAuthIssuer(model.Provider) with
-        { Id = tokens.AccountId, Account = tokens.Account, LoginVersion = snapshot.Version };
-    }
-
-    private static OAuthAccountSnapshot CaptureOAuthIssuer(AiProvider provider)
-    {
-        OAuthConfig? oauth = provider.OAuth;
-        return new OAuthAccountSnapshot(null, null, provider.CatalogId, oauth?.ClientId,
-            oauth?.AuthorizationUrl, oauth?.TokenUrl, oauth?.DeviceCodeUrl, oauth?.AccountIdClaim,
-            oauth?.ExchangeUrl, oauth?.Flow, 0);
-    }
-
-    private static bool SameOAuthAccount(OAuthAccountSnapshot? a, OAuthAccountSnapshot? b)
-    {
-        if (a is not { } left || b is not { } right) return a == b;
-        if (left.Known && right.Known)
-            return left with { Account = null, LoginVersion = 0 } == right with { Account = null, LoginVersion = 0 };
-        return left == right;
-    }
-
-    private static bool SameRenewingAccount(ProviderCredential before, ProviderCredential after,
-        OAuthAccountSnapshot? oldAccount, OAuthAccountSnapshot? newAccount, ResolvedModel model)
-        => before.IsBearerToken && after.IsBearerToken && SameOAuthAccount(oldAccount, newAccount)
-            && SameSuggestionDestination(model, before, after)
-            && SameCredential(before with { Value = after.Value, BaseUrl = after.BaseUrl }, after);
     private bool _detached;
     private List<SessionInfo> _sessions = [];
     private bool _switchingView;
@@ -1749,7 +1710,6 @@ public partial class ChatPanelView : UserControl
         // 这一轮的回答是被截断 / 过滤收尾的(照常完成):终止原因的文案键,收尾时附一句提示
         string? truncation = null;
         ProviderCredential verifiedCredential = default;
-        OAuthAccountSnapshot? verifiedAccount = null;
         long verifiedProviderVersion = AiSettingsStore.ProviderConfigurationVersion(provider.Provider);
         string? selectedKeyId = null;
         var keyStates = _settings.Providers.Where(p => p.Auth == AuthMethod.ApiKey && p.Models.Any(m => !m.HasOwnApiKey))
@@ -1910,7 +1870,7 @@ public partial class ChatPanelView : UserControl
             }
 
             void RecordProbeUsage(UsageDetails usage) => RecordUsage(usage, isContext: false);
-            // 已选 Key 槽保持固定;MCP/摘要等待后订阅续期和思考能力变化仍须重新证明。
+            // 已选 Key 槽保持固定;MCP/摘要等待后仍须复验凭据与思考能力。
             async Task<bool> RefreshBeforeSendAsync()
             {
                 if (AiSettingsStore.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
@@ -1921,11 +1881,9 @@ public partial class ChatPanelView : UserControl
                     throw new ProviderConfigurationChangedException();
                 }
                 (ProviderCredential latest, string? latestKeyId) = await _store.ResolveCredentialWithKeyIdAsync(current, keyId: selectedKeyId, cancellationToken: token);
-                OAuthAccountSnapshot? latestAccount = await CaptureOAuthAccountAsync(current, latest, token);
-                bool renewal = SameRenewingAccount(verifiedCredential, latest, verifiedAccount, latestAccount, current);
-                if (!SameOAuthAccount(verifiedAccount, latestAccount) || (!SameCredential(verifiedCredential, latest) && !renewal))
+                if (!SameCredential(verifiedCredential, latest))
                     throw new ProviderConfigurationChangedException();
-                bool stillVerified = latestKeyId == selectedKeyId && SameCredential(verifiedCredential, latest)
+                bool stillVerified = latestKeyId == selectedKeyId
                     && await StillVerifiedAsync(current, verifiedCredential, token, verifiedModel, selectedKeyId, verifiedProviderVersion);
                 ResolvedModel? latestModel = _settings.FindModel(current.Id);
                 if (stillVerified && latestModel is not null
@@ -1938,7 +1896,6 @@ public partial class ChatPanelView : UserControl
                 {
                     throw new ProviderConfigurationChangedException();
                 }
-                // 已在发送前刷新;下面的复验只读取落库凭据,不再次旋转令牌。
                 if (hop == 0 && !mustRevalidateProbe && selectedKeyId is null)
                 {
                     current = WithTurn(_settings.FindModel(current.Id)!);
@@ -1946,10 +1903,6 @@ public partial class ChatPanelView : UserControl
                 }
                 else
                 {
-                    if (!renewal && !SameCredential(verifiedCredential, latest))
-                    {
-                        throw new ProviderConfigurationChangedException();
-                    }
                     ResolvedModel fresh = _settings.FindModel(current.Id)!;
                     current = WithTurn(fresh);
                     verifiedVersion = _health.Version;
@@ -1962,7 +1915,6 @@ public partial class ChatPanelView : UserControl
                     }
                     verifiedCredential = latest;
                 }
-                verifiedAccount = latestAccount;
                 if (!await StillVerifiedAsync(current, verifiedCredential, token, verifiedModel, selectedKeyId, verifiedProviderVersion)
                     || _settings.FindModel(current.Id) is not { } verifiedFresh
                     || current.Reasoning != WithTurn(verifiedFresh).Reasoning)
@@ -1988,28 +1940,13 @@ public partial class ChatPanelView : UserControl
                 }
 
                 (ProviderCredential latestCredential, string? latestKeyId) = await _store.ResolveCredentialWithKeyIdAsync(current, keyId: selectedKeyId, cancellationToken: cancellationToken);
-                OAuthAccountSnapshot? account = await CaptureOAuthAccountAsync(current, latestCredential, cancellationToken);
-                bool renewed = !SameCredential(verifiedCredential, latestCredential);
-                if (latestKeyId != selectedKeyId || !SameOAuthAccount(verifiedAccount, account)
-                    || (renewed && !SameRenewingAccount(verifiedCredential, latestCredential, verifiedAccount, account, current))
-                    || !await StillVerifiedAsync(current, latestCredential, cancellationToken, verifiedModel, selectedKeyId, verifiedProviderVersion)
-                    || !SameOAuthAccount(account, await CaptureOAuthAccountAsync(current, latestCredential, cancellationToken)))
+                if (latestKeyId != selectedKeyId || !SameCredential(verifiedCredential, latestCredential)
+                    || !await StillVerifiedAsync(current, latestCredential, cancellationToken, verifiedModel, selectedKeyId, verifiedProviderVersion))
                 {
                     throw new ProviderConfigurationChangedException();
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
-                if (hop > 0 && renewed)
-                {
-                    string oldEndpoint = string.IsNullOrWhiteSpace(verifiedCredential.BaseUrl) ? current.BaseUrl : verifiedCredential.BaseUrl;
-                    string newEndpoint = string.IsNullOrWhiteSpace(latestCredential.BaseUrl) ? current.BaseUrl : latestCredential.BaseUrl;
-                    // 最后发送护栏不重新授权目的地；下一站必须先经过正常候选探活。
-                    if (!string.Equals(oldEndpoint, newEndpoint, StringComparison.Ordinal))
-                        throw new ProviderConfigurationChangedException();
-                }
-                if (renewed) Steering!.ReplaceInnerClient(_store.CreateClient(current, latestCredential, callerCountsRetries: true));
-                verifiedCredential = latestCredential;
-                verifiedAccount = account;
                 ApiKeyTurnState? state = keyStates.GetValueOrDefault(current.Provider.Id);
                 if (formal && selectedKeyId is { } firstKey && state is { Balance: true, CursorAdvanced: false })
                 {
@@ -2157,11 +2094,8 @@ public partial class ChatPanelView : UserControl
                     {
                         throw new ProviderConfigurationChangedException();
                     }
-                    OAuthAccountSnapshot issuerBeforeResolve = CaptureOAuthIssuer(current.Provider);
                     (ProviderCredential initialCredential, string? initialKeyId) = await SelectFirstApiKeyAsync(current, keyStates.GetValueOrDefault(current.Provider.Id), automatic: false, token)
                         ?? throw new ProviderConfigurationChangedException();
-                    if (initialCredential.IsBearerToken && CaptureOAuthIssuer(current.Provider) != issuerBeforeResolve)
-                        throw new ProviderConfigurationChangedException();
                     if (AiSettingsStore.ProviderConfigurationVersion(current.Provider) != verifiedProviderVersion)
                         throw new ProviderConfigurationChangedException();
                     if (!string.Equals(current.Model, verifiedModel, StringComparison.Ordinal)
@@ -2170,7 +2104,6 @@ public partial class ChatPanelView : UserControl
                         throw new ProviderConfigurationChangedException();
                     }
                     verifiedCredential = initialCredential;
-                    verifiedAccount = await CaptureOAuthAccountAsync(current, verifiedCredential, token);
                     selectedKeyId = initialKeyId;
                     credentialReady = true;
                 }
@@ -2466,7 +2399,6 @@ public partial class ChatPanelView : UserControl
                                 if (replacement.ProviderVersion != verifiedProviderVersion)
                                     throw new ProviderConfigurationChangedException();
                                 verifiedCredential = replacement.Credential;
-                                verifiedAccount = await CaptureOAuthAccountAsync(current, verifiedCredential, token);
                                 verifiedModel = replacement.ProbedModel;
                                 selectedKeyId = replacement.KeyId;
                                 mustRevalidateProbe = true;
@@ -2505,7 +2437,6 @@ public partial class ChatPanelView : UserControl
                     current = nextStop.Value.Model;
                     verifiedCredential = nextStop.Value.Credential;
                     verifiedProviderVersion = nextStop.Value.ProviderVersion;
-                    verifiedAccount = await CaptureOAuthAccountAsync(current, verifiedCredential, token);
                     verifiedModel = nextStop.Value.ProbedModel;
                     selectedKeyId = nextStop.Value.KeyId;
                     credentialReady = true;
@@ -2808,7 +2739,7 @@ public partial class ChatPanelView : UserControl
         if (replyText.Length > 0 && IsForeground)
         {
             await SuggestFollowUpsAsync(provider, text, replyText, verifiedCredential,
-                turnConversationId, verifiedModel, verifiedAccount, verifiedProviderVersion, selectedKeyId);
+                turnConversationId, verifiedModel, verifiedProviderVersion, selectedKeyId);
         }
     }
 
@@ -2843,36 +2774,28 @@ public partial class ChatPanelView : UserControl
             ResolvedModel target = WithTurn(candidate);
             if (AiSettingsStore.IsImageModel(target) || _health.IsCooling(target.Id)) continue;
             long candidateProviderVersion = AiSettingsStore.ProviderConfigurationVersion(target.Provider);
-            OAuthAccountSnapshot issuerBeforeResolve = CaptureOAuthIssuer(target.Provider);
             for (int round = 0; round < 2; round++)
             {
                 int version = _health.Version;
                 long observation = _health.BeginObservation();
                 string? probedKeyId = null;
                 ProviderCredential? probedCredential = null;
-                OAuthAccountSnapshot? probedAccount = null;
                 try
                 {
                     ApiKeyTurnState? state = keyStates.GetValueOrDefault(target.Provider.Id);
                     (ProviderCredential Credential, string? KeyId)? first = await SelectFirstApiKeyAsync(target, state, automatic: true, token);
                     probedKeyId = first?.KeyId;
                     if (first is null) break;
-                    if (first.Value.Credential.IsBearerToken && CaptureOAuthIssuer(target.Provider) != issuerBeforeResolve)
-                        throw new ProviderConfigurationChangedException();
                     probedCredential = first.Value.Credential;
-                    probedAccount = await CaptureOAuthAccountAsync(target, first.Value.Credential, token);
                     (ProviderCredential Credential, string ProbedModel, string? KeyId, long ProviderVersion)? result = await ProbeApiKeysAsync(target, turnOverride, state, first, recordProbeUsage, candidateProviderVersion, token);
                     if (result is not null)
                     {
-                        OAuthAccountSnapshot? afterProbe = await CaptureOAuthAccountAsync(target, result.Value.Credential, token);
-                        if (!SameOAuthAccount(probedAccount, afterProbe)) throw new ProviderConfigurationChangedException();
                         return (target, result.Value.Credential, result.Value.ProbedModel, result.Value.KeyId, result.Value.ProviderVersion);
                     }
                     break;
                 }
                 catch (ProviderConfigurationChangedException) when (round == 0)
                 {
-                    if (CaptureOAuthIssuer(target.Provider) != issuerBeforeResolve) break;
                     if (probedKeyId is not null) break; // 固定槽不得换值重试;无槽模型保留原有一次新配置探测。
                     if (_settings.FindModel(target.Id) is not { } fresh) break;
                     if (probedCredential is { } previous)
@@ -2880,9 +2803,7 @@ public partial class ChatPanelView : UserControl
                         try
                         {
                             ProviderCredential latest = await _store.ResolveCredentialAsync(fresh, refreshTokens: false, cancellationToken: token);
-                            OAuthAccountSnapshot? account = await CaptureOAuthAccountAsync(fresh, latest, token);
-                            if (!SameOAuthAccount(probedAccount, account) || (!SameCredential(previous, latest)
-                                && !SameRenewingAccount(previous, latest, probedAccount, account, target)))
+                            if (!SameCredential(previous, latest))
                             {
                                 break;
                             }

@@ -33,15 +33,6 @@ public sealed class BridgeEndpointQuirksTests
     private static InboundMessage Message(string text = "服务器磁盘满了")
         => new("ch1", "chat-1", false, "u1", "Ann", text, "m1", true);
 
-    /// <summary>照目录里 Codex 那条建供应商,只把端点换成本地假的。</summary>
-    private static AiProvider CodexPointedAt(string baseUrl)
-    {
-        AiProvider provider = ProviderCatalog.Find("openai-codex")!.CreateProvider();
-        provider.BaseUrl = baseUrl;
-        provider.Auth = AuthMethod.ApiKey; // 免得走登录那条路;要测的是<b>发出去的报文</b>
-        provider.OAuth = null;
-        return provider;
-    }
 
     /// <summary>跑一个回合,把 runner 真正发出去的请求体抓回来。</summary>
     private static async Task<string> WireBodyAsync(BridgeSettings bridge)
@@ -49,7 +40,8 @@ public sealed class BridgeEndpointQuirksTests
         using var context = new TestPluginContext();
         await using var stub = new SseStub("", jsonContent: "{}");
         var store = new AiSettingsStore(context);
-        AiProvider provider = CodexPointedAt(stub.BaseUrl);
+        AiProvider provider = ApiKeyEndpointTests.RestrictedResponsesProvider();
+        provider.BaseUrl = stub.BaseUrl;
         await store.SaveAsync(new AiSettings
         {
             Providers = [provider],
@@ -122,16 +114,16 @@ public sealed class BridgeEndpointQuirksTests
     [TestMethod]
     public void Quirks_AreReadFromTheCatalogue_NotFromWhateverGotSaved()
     {
-        AiProvider stale = ProviderCatalog.Find("openai-codex")!.CreateProvider();
-        // 模拟一份"登录那天存下来的"旧配置:三项怪癖全是出厂默认
-        stale.AllowSystemMessages = true;
-        stale.StoreResponses = true;
-        stale.UnsupportedParameters = "";
+        AiProvider stale = ProviderCatalog.Find("openai")!.CreateProvider();
+        // 保存的旧配置与现行目录冲突时，仍以目录为准。
+        stale.AllowSystemMessages = false;
+        stale.StoreResponses = false;
+        stale.UnsupportedParameters = "max_output_tokens";
 
         var quirks = EndpointQuirks.Of(stale);
 
-        Assert.IsFalse(quirks.AllowSystemMessages, "该以目录为准,而不是用户库里那份旧快照");
-        Assert.IsFalse(quirks.StoreResponses);
-        Assert.Contains("max_output_tokens", quirks.UnsupportedParameters);
+        Assert.IsTrue(quirks.AllowSystemMessages, "该以目录为准,而不是用户库里那份旧快照");
+        Assert.IsTrue(quirks.StoreResponses);
+        Assert.DoesNotContain("max_output_tokens", quirks.UnsupportedParameters);
     }
 }

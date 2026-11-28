@@ -13,48 +13,17 @@ namespace VelaShell.Plugin.Ai.Tests;
 public sealed partial class ChatPanelViewUiTests
 {
     [TestMethod]
-    [DataRow("owned-key")]
-    [DataRow("account")]
-    [DataRow("display")]
-    [DataRow("issuer")]
-    [DataRow("exchange")]
-    [DataRow("flow")]
-    [DataRow("display-refresh")]
-    [DataRow("parallel-refresh")]
-    public void Review_FirstStationCredentialChangesDuringMcpCannotReceiveHistory(string change)
+    public void Review_ModelKeyChangedDuringMcpCannotReceiveHistory()
     {
         OnUi(async () =>
         {
             await using var mcp = new SseStub("", hold: true);
             await using var target = new SseStub(LifecycleAnswer);
-            using var refreshHttp = new HttpClient(new OAuthStub().Json("{\"access_token\":\"new-token\",\"expires_in\":3600}"));
             using var context = new TestPluginContext();
             var store = new AiSettingsStore(context);
             AiProvider provider = StubProvider("account", target.BaseUrl, "m");
-            bool subscription = change != "owned-key";
-            if (subscription)
-            {
-                provider.Auth = AuthMethod.Subscription;
-                provider.OAuth = new OAuthConfig { Credential = OAuthCredential.AccessToken };
-                if (change == "parallel-refresh")
-                {
-                    provider.OAuth.TokenUrl = "https://auth.example/token";
-                    store.TokenClient = new OAuthClient(refreshHttp);
-                }
-                await store.SaveTokensAsync(provider.Id, new OAuthTokens
-                {
-                    AccessToken = "old-token",
-                    AccountId = change is "display" or "parallel-refresh" ? null : "same-account",
-                    Account = change == "display" ? "same display name" : change == "display-refresh" ? "old display" : null,
-                    RefreshToken = "refresh",
-                    ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
-                });
-            }
-            else
-            {
-                provider.Models[0].HasOwnApiKey = true;
-                await store.SetApiKeyAsync(provider.Models[0].Id, "old-key");
-            }
+            provider.Models[0].HasOwnApiKey = true;
+            await store.SetApiKeyAsync(provider.Models[0].Id, "old-key");
             await store.SaveAsync(new AiSettings
             {
                 Providers = [provider],
@@ -71,39 +40,10 @@ public sealed partial class ChatPanelViewUiTests
                 await PumpAsync();
                 panel.SendExternal("private-history");
                 Assert.IsTrue(await WaitForAsync(() => mcp.RequestBodyAsync.IsCompleted));
-                if (change == "parallel-refresh")
-                {
-                    (await store.GetTokensAsync(provider.Id))!.ExpiresAt = DateTimeOffset.UtcNow;
-                    await store.ResolveProviderCredentialAsync(PanelSettings(panel).Providers[0]);
-                }
-                else if (subscription)
-                {
-                    if (change == "issuer") PanelSettings(panel).Providers[0].OAuth!.ClientId = "different-client";
-                    if (change == "exchange") PanelSettings(panel).Providers[0].OAuth!.ExchangeUrl = "https://different.example/token";
-                    if (change == "flow") PanelSettings(panel).Providers[0].OAuth!.Flow = OAuthFlow.GitHubCopilotDevice;
-                    await store.SaveTokensAsync(provider.Id, new OAuthTokens
-                    {
-                        AccessToken = "new-token",
-                        AccountId = change == "display" ? null : change == "account" ? "different-account" : "same-account",
-                        Account = change == "display" ? "same display name" : change == "display-refresh" ? "new display" : null
-                    });
-                }
-                else
-                {
-                    await store.SetApiKeyAsync(provider.Models[0].Id, "new-key");
-                }
-
+                await store.SetApiKeyAsync(provider.Models[0].Id, "new-key");
                 mcp.Release();
                 Assert.IsTrue(await WaitForAsync(() => Footers(Find<StackPanel>(panel, "MessagesPanel")).Count == 1));
-                if (change is "display-refresh" or "parallel-refresh")
-                {
-                    Assert.HasCount(1, target.Requests, "稳定账号 ID 不因显示名变化而失去合法续期");
-                    Assert.AreEqual("Bearer new-token", target.Authorizations[0]);
-                }
-                else
-                {
-                    Assert.IsEmpty(target.Requests, "MCP 等待期间换凭据不能将旧轮次历史送给新身份");
-                }
+                Assert.IsEmpty(target.Requests);
             }
             finally { mcp.Release(); panel.Detach(); window.Close(); }
         });
@@ -244,68 +184,8 @@ public sealed partial class ChatPanelViewUiTests
             finally { mcp.Release(); panel.Detach(); window.Close(); }
         });
     }
-
     [TestMethod]
-    [DataRow("token")]
-    [DataRow("issuer")]
-    [DataRow("account")]
-    public void Review_BackupOAuthAccountChangedDuringProbeCannotReceiveHistory(string change)
-    {
-        OnUi(async () =>
-        {
-            await using var broken = new ErrorStub();
-            await using var target = new SseStub(LifecycleAnswer, hold: true);
-            using var context = new TestPluginContext();
-            var store = new AiSettingsStore(context);
-            AiProvider first = StubProvider("first", broken.BaseUrl, "m");
-            AiProvider second = StubProvider("second", target.BaseUrl, "m");
-            second.Auth = AuthMethod.Subscription;
-            second.OAuth = new OAuthConfig { Credential = OAuthCredential.AccessToken };
-            await store.SaveTokensAsync(second.Id, new OAuthTokens { AccessToken = "old-token", AccountId = "old-account" });
-            await store.SaveAsync(new AiSettings
-            {
-                Providers = [first, second],
-                ActiveModelId = first.Models[0].Id,
-                FailoverChain = [new FailoverEntry { ModelId = second.Models[0].Id }],
-                SuggestFollowUps = false
-            });
-            var panel = new ChatPanelView(context, store);
-            var window = new Window { Width = 800, Height = 600, Content = panel };
-            window.Show();
-            try
-            {
-                await PumpAsync();
-                panel.SendExternal("private-history");
-                Assert.IsTrue(await WaitForAsync(() => target.Requests.Count == 1));
-                if (change == "issuer") PanelSettings(panel).Providers[1].OAuth!.ClientId = "different-client";
-                if (change != "issuer")
-                {
-                    await store.SaveTokensAsync(second.Id, new OAuthTokens
-                    {
-                        AccessToken = change == "token" ? "new-token" : "old-token",
-                        AccountId = "new-account"
-                    });
-                }
-
-                target.Release();
-                Assert.IsTrue(await WaitForAsync(() => Footers(Find<StackPanel>(panel, "MessagesPanel")).Count == 1));
-                Assert.HasCount(1, target.Requests, "新账号不许获得第二次探活或旧轮次正式历史");
-                Assert.AreEqual("Bearer old-token", target.Authorizations[0]);
-                Assert.IsTrue(target.Requests.All(body => !body.Contains("private-history", StringComparison.Ordinal)),
-                    "任何账号/issuer 变化后的请求都不能含旧轮次历史,不只检查 old-token");
-                Assert.AreEqual(first.Models[0].Id, PanelSettings(panel).ActiveModelId);
-                Assert.AreEqual(first.Models[0].Id, (await store.LoadAsync()).ActiveModelId,
-                    "身份失效的备用不能粘住为 active");
-            }
-            finally { target.Release(); panel.Detach(); window.Close(); }
-        });
-    }
-    [TestMethod]
-    [DataRow("renew")]
-    [DataRow("account")]
-    [DataRow("issuer")]
-    [DataRow("key")]
-    public void Review_ToolContinuationUsesRenewedStableAccountWithoutReplayingEffects(string change)
+    public void Review_KeyRotationStopsToolContinuationWithoutReplayingEffects()
     {
         OnUi(async () =>
         {
@@ -325,16 +205,7 @@ public sealed partial class ChatPanelViewUiTests
             var store = new AiSettingsStore(context);
             AiProvider provider = StubProvider("account", target.BaseUrl, "m");
             AiProvider spare = StubProvider("spare", backup.BaseUrl, "m");
-            if (change == "key")
-            {
-                await store.SetApiKeyAsync(provider.Id, "old-key");
-            }
-            else
-            {
-                provider.Auth = AuthMethod.Subscription;
-                provider.OAuth = new OAuthConfig { Credential = OAuthCredential.AccessToken };
-                await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "old-token", AccountId = "stable-account" });
-            }
+            await store.SetApiKeyAsync(provider.Id, "old-key");
             await store.SaveAsync(new AiSettings
             {
                 Providers = [provider, spare],
@@ -349,32 +220,13 @@ public sealed partial class ChatPanelViewUiTests
             {
                 panel.SendExternal("private-tool-history");
                 Assert.IsTrue(await WaitForAsync(() => toolStarted.Task.IsCompleted));
-                if (change == "key")
-                {
-                    await store.SetApiKeyAsync(provider.Id, "new-key");
-                }
-                else
-                {
-                    if (change == "issuer") PanelSettings(panel).Providers[0].OAuth!.ClientId = "new-issuer";
-                    await store.SaveTokensAsync(provider.Id, new OAuthTokens
-                    {
-                        AccessToken = "new-token",
-                        AccountId = change == "account" ? "other-account" : "stable-account"
-                    });
-                }
+                await store.SetApiKeyAsync(provider.Id, "new-key");
                 toolGate.Set();
                 target.Release();
                 Assert.IsTrue(await WaitForAsync(() => !Find<Viewbox>(panel, "StopIcon").IsVisible));
                 Assert.HasCount(1, context.FakeRemoteExec.Executed, "工具副作用只执行一次");
                 Assert.IsEmpty(backup.Requests, "工具已执行后禁止故障重放,连备份探活都不做");
-                Assert.AreEqual(change == "renew" ? 2 : 1, target.FormalRequests,
-                    "同稳定账号续期须更新工具续流客户端;换身份或Key则禁止旧历史出境");
-                if (change == "renew")
-                {
-                    Assert.Contains("executed-once", await target.ContinuationRequest);
-                    Assert.AreSequenceEqual(["Bearer old-token", "Bearer new-token"], target.Authorizations.ToArray());
-                    Assert.AreEqual("备用站回答", AnswerRenderers(Find<StackPanel>(panel, "MessagesPanel")).Single().MarkdownBuilder.ToString());
-                }
+                Assert.AreEqual(1, target.FormalRequests);
                 Assert.AreEqual(provider.Models[0].Id, (await store.LoadAsync()).ActiveModelId);
             }
             finally { toolGate.Set(); target.Release(); panel.Detach(); window.Close(); }
@@ -518,11 +370,7 @@ public sealed partial class ChatPanelViewUiTests
     }
 
     [TestMethod]
-    [DataRow("key")]
-    [DataRow("account")]
-    [DataRow("issuer")]
-    [DataRow("renew")]
-    public void Review_CompactionRevalidatesFixedKeyAtActualSummaryBoundary(string change)
+    public void Review_CompactionRevalidatesFixedKeyAtActualSummaryBoundary()
     {
         OnUi(async () =>
         {
@@ -531,16 +379,7 @@ public sealed partial class ChatPanelViewUiTests
             var store = new AiSettingsStore(context);
             AiProvider provider = StubProvider("fixed", target.BaseUrl, "m", maxInputTokens: 40);
             provider.Models[0].MaxTokens = 1;
-            if (change == "key")
-            {
-                await store.SetApiKeyAsync(provider.Id, "old-key");
-            }
-            else
-            {
-                provider.Auth = AuthMethod.Subscription;
-                provider.OAuth = new OAuthConfig { Credential = OAuthCredential.AccessToken };
-                await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "old-token", AccountId = "stable-account" });
-            }
+            await store.SetApiKeyAsync(provider.Id, "old-key");
             await store.SaveAsync(new AiSettings { Providers = [provider], ActiveModelId = provider.Models[0].Id, SuggestFollowUps = false });
             var panel = new ChatPanelView(context, store);
             var window = new Window { Width = 800, Height = 600, Content = panel };
@@ -554,19 +393,7 @@ public sealed partial class ChatPanelViewUiTests
                 if (!armed || changed || e.Property != TextBlock.TextProperty || status.Text != new Loc("en")["Compacting"]) return;
                 // 状态更新发生在真正摘要Task.Run之前;公开UI事件同步换凭据,不靠内部读取次数或延时抢跑。
                 changed = true;
-                if (change == "key")
-                {
-                    store.SetApiKeyAsync(provider.Id, "new-key").GetAwaiter().GetResult();
-                }
-                else
-                {
-                    if (change == "issuer") PanelSettings(panel).Providers[0].OAuth!.ClientId = "new-issuer";
-                    store.SaveTokensAsync(provider.Id, new OAuthTokens
-                    {
-                        AccessToken = "new-token",
-                        AccountId = change == "account" ? "other-account" : "stable-account"
-                    }).GetAwaiter().GetResult();
-                }
+                store.SetApiKeyAsync(provider.Id, "new-key").GetAwaiter().GetResult();
             }
             status.PropertyChanged += BeforeSummary;
             try
@@ -583,16 +410,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(await WaitForAsync(() => Footers(Find<StackPanel>(panel, "MessagesPanel")).Count == 5
                     && !Find<Viewbox>(panel, "StopIcon").IsVisible));
                 Assert.IsTrue(changed, "已在装配复验后、实际摘要出境前同步换凭据");
-                if (change == "renew")
-                {
-                    Assert.HasCount(6, target.Requests, "同账号合法续期可做一次摘要和一次正式回答");
-                    Assert.AreEqual("Bearer new-token", target.Authorizations[4], "摘要本身必须使用续期后的客户端");
-                    Assert.AreEqual("Bearer new-token", target.Authorizations[5]);
-                }
-                else
-                {
-                    Assert.HasCount(4, target.Requests, "固定Key或身份失效后裸摘要和正文都不得出境");
-                }
+                Assert.HasCount(4, target.Requests, "固定 Key 失效后摘要和正文都不得出境");
             }
             finally { status.PropertyChanged -= BeforeSummary; panel.Detach(); window.Close(); }
         });

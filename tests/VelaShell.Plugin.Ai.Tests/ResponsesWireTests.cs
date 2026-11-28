@@ -146,7 +146,7 @@ public sealed class ResponsesWireTests
     [TestMethod]
     public async Task TheCodexShapedRequest_SendsNothingOutsideWhatThatBackendAccepts()
     {
-        AiProvider codex = ProviderCatalog.Find("openai-codex")!.CreateProvider();
+        AiProvider codex = ApiKeyEndpointTests.RestrictedResponsesProvider();
         var resolved = new ResolvedModel(codex, codex.Models[0]);
         List<ChatMessage> messages =
         [
@@ -185,7 +185,7 @@ public sealed class ResponsesWireTests
     [TestMethod]
     public async Task TheCodexShapedRequest_SatisfiesEveryKnownRestriction()
     {
-        AiProvider codex = ProviderCatalog.Find("openai-codex")!.CreateProvider();
+        AiProvider codex = ApiKeyEndpointTests.RestrictedResponsesProvider();
         var resolved = new ResolvedModel(codex, codex.Models[0]);
         List<ChatMessage> messages =
         [
@@ -219,7 +219,6 @@ public sealed class ResponsesWireTests
     [TestMethod]
     [DataRow("custom-openai", null, true, DisplayName = "自定义接入,没动过开关:发 store:false")]
     [DataRow("custom-openai", true, false, DisplayName = "自定义接入,勾上了:不发")]
-    [DataRow("custom-oauth", false, true, DisplayName = "自定义 OAuth 接入,关着:发 store:false")]
     [DataRow(null, null, true, DisplayName = "没有目录 id 的老配置:发 store:false")]
     [DataRow("openai", null, false, DisplayName = "官方 openai:照旧不发")]
     [DataRow("openai", false, false, DisplayName = "官方 openai 不看这个开关")]
@@ -239,7 +238,7 @@ public sealed class ResponsesWireTests
 
         Assert.AreEqual(expectStoreFalse, body.Contains("\"store\":false", StringComparison.Ordinal), $"实际请求体:{body}");
         if (!expectStoreFalse) Assert.DoesNotContain("\"store\"", body, $"实际请求体:{body}");
-        Assert.AreEqual(catalogId is null or "custom-openai" or "custom-oauth", EndpointQuirks.HasCustomStoreSwitch(provider));
+        Assert.AreEqual(catalogId is null or "custom-openai", EndpointQuirks.HasCustomStoreSwitch(provider));
     }
 
     /// <summary>每一步都让模型调一次 <c>peek</c> 的 Responses 流(response id 是真的会被拿去续接的那种)。</summary>

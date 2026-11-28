@@ -244,40 +244,29 @@ public sealed class AiSettingsStoreTests
     [DataRow("provider-form")]
     [DataRow("model-form")]
     [DataRow("create-key")]
-    [DataRow("create-oauth")]
-    [DataRow("relogin")]
-    [DataRow("oauth-form")]
-    [DataRow("oauth-form-late")]
     [DataRow("set")]
     [DataRow("delete")]
-    [DataRow("delete-token")]
     [DataRow("add")]
     [DataRow("replace")]
     [DataRow("remove")]
-    [DataRow("tokens")]
-    [DataRow("clear-tokens")]
     [DataRow("delete-provider")]
-    [DataRow("delete-provider-token")]
     [DataRow("delete-model")]
-    [DataRow("delete-model-token")]
     public async Task SecretMutationThenThrow_RestoresRawEntryCacheAndEpochBeforeRealConsumers(string operation)
     {
         await using var oldHost = new SseStub(GuardReplySse);
         await using var newHost = new SseStub(GuardReplySse);
         using var source = new TestPluginContext();
         var secrets = new MutateThenFailSecrets(source.Secrets);
-        using var context = new TestPluginContext { Secrets = secrets };
+        var guard = new SubscriptionProviderTests.GuardedSecrets(secrets);
+        using var context = new TestPluginContext { Secrets = guard };
         var store = new AiSettingsStore(context);
-        bool subscription = operation is "create-oauth" or "relogin" or "oauth-form" or "oauth-form-late" or "tokens" or "clear-tokens";
-        var model = new AiModelConfig { Model = "old-model", HasOwnApiKey = operation is "model-form" or "delete-model" or "delete-model-token" };
+        var model = new AiModelConfig { Model = "old-model", HasOwnApiKey = operation is "model-form" or "delete-model" };
         string slot = Guid.NewGuid().ToString("N");
         var provider = new AiProvider
         {
             BaseUrl = oldHost.BaseUrl,
             Models = [model],
-            AdditionalApiKeyIds = [slot],
-            Auth = subscription ? AuthMethod.Subscription : AuthMethod.ApiKey,
-            OAuth = subscription ? new OAuthConfig { Credential = OAuthCredential.AccessToken } : null
+            AdditionalApiKeyIds = [slot]
         };
         var settings = new AiSettings { Providers = [provider], ActiveModelId = model.Id };
         await store.SaveAsync(settings);
@@ -286,9 +275,9 @@ public sealed class AiSettingsStoreTests
         await context.Secrets.SetAsync("apikey:" + model.Id, "model-old");
         var oldTokens = new OAuthTokens { AccessToken = "token-old", AccountId = "old-account", ExpiresAt = DateTimeOffset.UtcNow.AddHours(1) };
         string oldTokenJson = System.Text.Json.JsonSerializer.Serialize(oldTokens);
-        await context.Secrets.SetAsync("oauth:" + provider.Id, oldTokenJson);
+        await source.Secrets.SetAsync("oauth:" + provider.Id, oldTokenJson);
         string oldModelTokenJson = System.Text.Json.JsonSerializer.Serialize(new OAuthTokens { AccessToken = "model-token-old" });
-        await context.Secrets.SetAsync("oauth:" + model.Id, oldModelTokenJson);
+        await source.Secrets.SetAsync("oauth:" + model.Id, oldModelTokenJson);
         string settingsJson = System.Text.Json.JsonSerializer.Serialize(settings);
         string expected = System.Text.Json.JsonSerializer.Serialize(provider);
         AiProvider draft = System.Text.Json.JsonSerializer.Deserialize<AiProvider>(expected)!;
@@ -296,19 +285,12 @@ public sealed class AiSettingsStoreTests
         var created = new AiProvider
         {
             BaseUrl = newHost.BaseUrl,
-            Models = [new AiModelConfig { Model = "new-model" }],
-            Auth = subscription ? AuthMethod.Subscription : AuthMethod.ApiKey,
-            OAuth = subscription ? new OAuthConfig() : null
+            Models = [new AiModelConfig { Model = "new-model" }]
         };
-        var newTokens = new OAuthTokens { AccessToken = "token-new", AccountId = "new-account" };
         string modelExpected = System.Text.Json.JsonSerializer.Serialize(model);
         AiModelConfig modelDraft = System.Text.Json.JsonSerializer.Deserialize<AiModelConfig>(modelExpected)!;
         modelDraft.BaseUrlOverride = newHost.BaseUrl;
         secrets.FailNextMutation = true;
-        secrets.SkipMutationsBeforeFailure = operation is "delete-token" or "delete-provider-token" or "delete-model-token"
-            or "oauth-form-late" ? 1 : 0;
-        // 换源时跟着供应商地址走的旧 Key(主槽与补充槽)与登录令牌都要经确认才清
-        string[] originReset = [AiSettingsStore.KeyResetToken(provider.Id, "primary-old"), AiSettingsStore.KeyResetToken(slot, "extra-old")];
         Task Mutation() => operation switch
         {
             // 换源:主槽写新 Key、补充槽一并清掉,写到一半抛错要把每一把都恢复
@@ -316,48 +298,42 @@ public sealed class AiSettingsStoreTests
                 confirmedKeyReset: [AiSettingsStore.KeyResetToken(slot, "extra-old")]),
             "model-form" => store.SaveModelFormAsync(settings, provider, model, modelDraft, modelExpected, "key-new", "model-old"),
             "create-key" => store.CreateProviderAsync(settings, created, "key-new"),
-            "create-oauth" => store.CreateProviderAsync(settings, created, tokens: newTokens),
-            "relogin" => store.SaveProviderOAuthFormAsync(settings, provider, draft, expected, newTokens, confirmedKeyReset: originReset),
-            // 设置页换源保存订阅供应商:退出登录(先删令牌),再清旧 Key;删令牌时或清第一把 Key 时抛错都要整个恢复
-            "oauth-form" or "oauth-form-late" => store.SaveProviderFormAsync(settings, provider, draft, expected,
-                confirmedKeyReset: [.. originReset, AiSettingsStore.LoginResetToken(provider.Id, oldTokenJson)]),
             "set" => store.SetApiKeyAsync(provider.Id, "key-new"),
-            "delete" or "delete-token" => store.DeleteApiKeyAsync(provider.Id),
+            "delete" => store.DeleteApiKeyAsync(provider.Id),
             "add" => store.AddProviderApiKeyAsync(settings, provider, "key-new"),
             "replace" => store.ReplaceProviderApiKeyAsync(settings, provider, slot, "key-new"),
             "remove" => store.RemoveProviderApiKeyAsync(settings, provider, slot),
-            "tokens" => store.SaveTokensAsync(provider.Id, newTokens),
-            "clear-tokens" => store.ClearTokensAsync(provider.Id),
-            "delete-provider" or "delete-provider-token" => store.DeleteProviderAsync(settings, provider),
-            "delete-model" or "delete-model-token" => store.DeleteModelAsync(settings, provider, model),
+            "delete-provider" => store.DeleteProviderAsync(settings, provider),
+            "delete-model" => store.DeleteModelAsync(settings, provider, model),
             _ => throw new InvalidOperationException(operation)
         };
         await Assert.ThrowsAsync<IOException>(Mutation);
+        Assert.IsEmpty(guard.OAuthAccesses, "Rollback must not snapshot, restore, or delete any retired token.");
         Assert.IsFalse(secrets.FailNextMutation, "用例必须经过真实机密变更后才抛错");
         Assert.AreEqual(settingsJson, System.Text.Json.JsonSerializer.Serialize(settings));
         Assert.AreEqual("primary-old", await context.Secrets.GetAsync("apikey:" + provider.Id));
         Assert.AreEqual("extra-old", await context.Secrets.GetAsync("apikey:" + slot));
         Assert.AreEqual("model-old", await context.Secrets.GetAsync("apikey:" + model.Id));
-        Assert.AreEqual(oldTokenJson, await context.Secrets.GetAsync("oauth:" + provider.Id));
-        Assert.AreEqual(oldModelTokenJson, await context.Secrets.GetAsync("oauth:" + model.Id));
+        Assert.AreEqual(oldTokenJson, await source.Secrets.GetAsync("oauth:" + provider.Id));
+        Assert.AreEqual(oldModelTokenJson, await source.Secrets.GetAsync("oauth:" + model.Id));
         Assert.IsNull(await context.Secrets.GetAsync("apikey:" + created.Id));
-        Assert.IsNull(await context.Secrets.GetAsync("oauth:" + created.Id));
+        Assert.IsNull(await source.Secrets.GetAsync("oauth:" + created.Id));
         foreach (string name in secrets.MutationNames)
         {
             if (name != "apikey:" + provider.Id && name != "apikey:" + model.Id
-                && name != "apikey:" + slot && name != "oauth:" + provider.Id && name != "oauth:" + model.Id)
+                && name != "apikey:" + slot)
             {
                 Assert.IsNull(await context.Secrets.GetAsync(name), "新增槽或账号失败不能留下未提交机密");
             }
         }
 
         Assert.AreEqual("primary-old", await new AiSettingsStore(context).GetApiKeyAsync(provider.Id));
-        Assert.AreEqual("token-old", (await new AiSettingsStore(context).GetTokensAsync(provider.Id))?.AccessToken);
+        Assert.IsNull(await new AiSettingsStore(context).GetTokensAsync(provider.Id));
         Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(provider));
         Assert.AreEqual(0L, store.TokenLoginVersion(provider.Id));
         (Exception? error, _) = await HealthProbe.ProbeAsync(new AiSettingsStore(context), settings.FindModel(model.Id)!);
         Assert.IsNull(error, error?.ToString());
-        Assert.AreEqual("Bearer " + (subscription ? "token-old" : model.HasOwnApiKey ? "model-old" : "primary-old"), oldHost.Authorizations.Single());
+        Assert.AreEqual("Bearer " + (model.HasOwnApiKey ? "model-old" : "primary-old"), oldHost.Authorizations.Single());
         Assert.IsEmpty(newHost.Requests, "写后抛错的未提交凭据不能发往新站点，也不能配对旧地址出境");
         await store.SaveAsync(settings);
         Assert.AreEqual(settingsJson, System.Text.Json.JsonSerializer.Serialize(await context.Storage.GetAsync<System.Text.Json.JsonElement>("settings")));
@@ -410,138 +386,6 @@ public sealed class AiSettingsStoreTests
         Assert.AreEqual(extra, keyId);
     }
 
-    /// <summary>已经登录的自定义订阅供应商:主模型继承登录,另一个模型自带 Key(没填覆盖地址,跟着供应商地址走)。</summary>
-    private static async Task<(TestPluginContext Context, AiSettingsStore Store, AiSettings Settings, AiProvider Provider,
-        AiModelConfig Own, string TokenJson)> SignedInSubscriptionAsync(string baseUrl)
-    {
-        var context = new TestPluginContext();
-        var store = new AiSettingsStore(context);
-        var own = new AiModelConfig { Name = "Own", Model = "own", HasOwnApiKey = true };
-        var provider = new AiProvider
-        {
-            BaseUrl = baseUrl,
-            Auth = AuthMethod.Subscription,
-            OAuth = new OAuthConfig { Credential = OAuthCredential.AccessToken },
-            Models = [new AiModelConfig { Model = "m" }, own]
-        };
-        var settings = new AiSettings { Providers = [provider], ActiveModelId = provider.Models[0].Id };
-        await store.SaveAsync(settings);
-        await store.SaveTokensAsync(provider.Id, new OAuthTokens
-        {
-            AccessToken = "old-token",
-            RefreshToken = "old-refresh",
-            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
-        });
-        await store.SetApiKeyAsync(own.Id, "old-own");
-        string tokenJson = (await context.Secrets.GetAsync("oauth:" + provider.Id))!;
-        return (context, store, settings, provider, own, tokenJson);
-    }
-
-    [TestMethod]
-    public async Task SubscriptionOriginChange_AsksThenSignsOutAndClearsTheModelKeys()
-    {
-        (TestPluginContext context, AiSettingsStore store, AiSettings settings, AiProvider provider, AiModelConfig own, string tokenJson) =
-            await SignedInSubscriptionAsync("https://login.example/v1");
-        using TestPluginContext owned = context;
-        string expected = System.Text.Json.JsonSerializer.Serialize(provider);
-        AiProvider draft = System.Text.Json.JsonSerializer.Deserialize<AiProvider>(expected)!;
-        draft.BaseUrl = "https://elsewhere.example/v1";
-        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider), login = store.TokenLoginVersion(provider.Id);
-
-        // 没确认:一样都不动,并说清会退出登录、要清哪把模型 Key
-        AiSettingsStore.ApiKeyResetRequiredException reset = await Assert.ThrowsAsync<AiSettingsStore.ApiKeyResetRequiredException>(
-            () => store.SaveProviderFormAsync(settings, provider, draft, expected));
-        Assert.IsTrue(reset.SignsOut);
-        Assert.AreSequenceEqual([own.Id], [.. reset.KeyOwners]);
-        Assert.AreEqual("https://login.example/v1", provider.BaseUrl);
-        Assert.AreEqual("old-token", (await store.GetTokensAsync(provider.Id))?.AccessToken);
-        Assert.AreEqual("old-own", await store.GetApiKeyAsync(own.Id));
-
-        // 确认之后换了一次登录(令牌组变了):旧的确认不算数,再拒一次
-        await store.SaveTokensAsync(provider.Id, new OAuthTokens { AccessToken = "relogged", ExpiresAt = DateTimeOffset.UtcNow.AddHours(1) });
-        await Assert.ThrowsAsync<AiSettingsStore.ApiKeyResetRequiredException>(
-            () => store.SaveProviderFormAsync(settings, provider, draft, expected, reset.Confirmation));
-        Assert.AreEqual("relogged", (await store.GetTokensAsync(provider.Id))?.AccessToken);
-        reset = await Assert.ThrowsAsync<AiSettingsStore.ApiKeyResetRequiredException>(
-            () => store.SaveProviderFormAsync(settings, provider, draft, expected));
-        Assert.AreNotEqual(tokenJson, await context.Secrets.GetAsync("oauth:" + provider.Id), "前提:确实换了一份令牌");
-        epoch = AiSettingsStore.ProviderConfigurationVersion(provider);
-        login = store.TokenLoginVersion(provider.Id);
-
-        (IReadOnlyList<string> cleared, bool signedOut) = await store.SaveProviderFormAsync(settings, provider, draft, expected, reset.Confirmation);
-        Assert.AreSequenceEqual([own.Id], [.. cleared]);
-        Assert.IsTrue(signedOut);
-        Assert.AreEqual("https://elsewhere.example/v1", provider.BaseUrl);
-        Assert.IsNull(await context.Secrets.GetAsync("oauth:" + provider.Id), "旧地址签出的令牌不留");
-        Assert.IsNull(await store.GetTokensAsync(provider.Id));
-        Assert.IsNull(await store.GetApiKeyAsync(own.Id));
-        Assert.IsTrue(own.HasOwnApiKey, "仍标着自带 Key,不悄悄改用登录");
-        Assert.IsGreaterThan(epoch, AiSettingsStore.ProviderConfigurationVersion(provider), "在途请求复验时认得出配置变了");
-        Assert.AreEqual(login + 1, store.TokenLoginVersion(provider.Id), "在途的令牌刷新回来对不上号,不会把旧令牌写回");
-        // 新地址上:没有任何凭据会被带出去,登录后才有
-        foreach (ResolvedModel model in settings.ResolveModels())
-            Assert.IsNull((await store.ResolveCredentialAsync(model)).Value, model.Model);
-        // 已存的配置照样读得回来
-        AiProvider reloaded = (await new AiSettingsStore(new TestPluginContext { Storage = context.Storage, Secrets = context.Secrets })
-            .LoadAsync()).Providers.Single();
-        Assert.AreEqual("https://elsewhere.example/v1", reloaded.BaseUrl);
-    }
-
-    [TestMethod]
-    [DataRow("same-origin")]
-    [DataRow("signed-out")]
-    public async Task SubscriptionFormSave_NeedsNoConfirmationWhenNothingWouldLeave(string scenario)
-    {
-        (TestPluginContext context, AiSettingsStore store, AiSettings settings, AiProvider provider, AiModelConfig own, _) =
-            await SignedInSubscriptionAsync("https://login.example/v1");
-        using TestPluginContext owned = context;
-        if (scenario == "signed-out")
-        {
-            await store.ClearTokensAsync(provider.Id);
-            await store.SetApiKeyAsync(own.Id, null);
-        }
-        string expected = System.Text.Json.JsonSerializer.Serialize(provider);
-        AiProvider draft = System.Text.Json.JsonSerializer.Deserialize<AiProvider>(expected)!;
-        // 同源只改路径与大小写不算换源;已经退出登录、模型也没 Key 时换源没有东西可清
-        draft.BaseUrl = scenario == "same-origin" ? "https://LOGIN.example:443/v2" : "https://elsewhere.example/v1";
-
-        (IReadOnlyList<string> cleared, bool signedOut) = await store.SaveProviderFormAsync(settings, provider, draft, expected);
-        Assert.IsEmpty(cleared);
-        Assert.IsFalse(signedOut);
-        Assert.AreEqual(draft.BaseUrl, provider.BaseUrl);
-        if (scenario == "same-origin")
-        {
-            Assert.AreEqual("old-token", (await store.GetTokensAsync(provider.Id))?.AccessToken, "同源不退出登录");
-            Assert.AreEqual("old-own", await store.GetApiKeyAsync(own.Id));
-        }
-    }
-
-    [TestMethod]
-    public async Task SubscriptionRelogin_OnAnotherOrigin_NeedsConfirmationAndClearsModelKeys()
-    {
-        (TestPluginContext context, AiSettingsStore store, AiSettings settings, AiProvider provider, AiModelConfig own, _) =
-            await SignedInSubscriptionAsync("https://login.example/v1");
-        using TestPluginContext owned = context;
-        string expected = System.Text.Json.JsonSerializer.Serialize(provider);
-        AiProvider draft = System.Text.Json.JsonSerializer.Deserialize<AiProvider>(expected)!;
-        draft.BaseUrl = "https://elsewhere.example/v1";
-        var fresh = new OAuthTokens { AccessToken = "new-token", ExpiresAt = DateTimeOffset.UtcNow.AddHours(1) };
-
-        // 没确认就交上去:拒绝,登录换来的新令牌不落盘;要清的只有模型自带的旧 Key(新令牌是新地址签的,不算「清」,也不退出登录)
-        AiSettingsStore.ApiKeyResetRequiredException preview = await Assert.ThrowsAsync<AiSettingsStore.ApiKeyResetRequiredException>(
-            () => store.SaveProviderOAuthFormAsync(settings, provider, draft, expected, fresh));
-        Assert.IsFalse(preview.SignsOut);
-        Assert.AreSequenceEqual([own.Id], [.. preview.KeyOwners]);
-        Assert.AreEqual("old-token", (await store.GetTokensAsync(provider.Id))?.AccessToken);
-        Assert.AreEqual("old-own", await store.GetApiKeyAsync(own.Id));
-
-        IReadOnlyList<string> cleared = await store.SaveProviderOAuthFormAsync(settings, provider, draft, expected, fresh,
-            confirmedKeyReset: preview.Confirmation);
-        Assert.AreSequenceEqual([own.Id], [.. cleared]);
-        Assert.AreEqual("new-token", (await store.GetTokensAsync(provider.Id))?.AccessToken);
-        Assert.IsNull(await store.GetApiKeyAsync(own.Id), "模型自带的旧 Key 不跟去新地址");
-        Assert.AreEqual("https://elsewhere.example/v1", provider.BaseUrl);
-    }
 
     [TestMethod]
     public async Task CrossOriginOverride_WithoutOwnKey_SendsNoProviderKey_AndExistingConfigLoadsThatWay()
@@ -679,7 +523,7 @@ public sealed class AiSettingsStoreTests
         await context.Secrets.SetAsync("oauth:" + ownerId,
             System.Text.Json.JsonSerializer.Serialize(new OAuthTokens { AccessToken = "original-token", AccountId = "original-account" }));
         ResolvedModel retained = settings.FindModel(model.Id)!;
-        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider), login = store.TokenLoginVersion(ownerId);
+        long epoch = AiSettingsStore.ProviderConfigurationVersion(provider);
         using var cancellation = new CancellationTokenSource();
         storage.Hold = true;
         storage.FailHeldWrite = outcome == "storage";
@@ -707,7 +551,6 @@ public sealed class AiSettingsStoreTests
             secrets.ReadRelease.TrySetResult();
             Assert.IsNull(await lateRawRead.WaitAsync(TimeSpan.FromSeconds(15)), "原始读取返回其删除窗口快照，不得污染晚缓存");
             Assert.AreEqual(epoch + (outcome == "success" ? 1 : 0), AiSettingsStore.ProviderConfigurationVersion(provider));
-            Assert.AreEqual(login + (outcome == "success" ? 1 : 0), store.TokenLoginVersion(ownerId));
             if (outcome == "success")
             {
                 await Assert.ThrowsAsync<AiSettingsStore.ApiKeySlotChangedException>(() => store.ResolveCredentialAsync(retained));
@@ -718,7 +561,7 @@ public sealed class AiSettingsStoreTests
             else
             {
                 Assert.AreEqual(originalKey, await store.GetApiKeyAsync(ownerId));
-                Assert.AreEqual("original-account", (await store.GetTokensAsync(ownerId))!.AccountId);
+                Assert.IsNull(await store.GetTokensAsync(ownerId));
                 (Exception? error, _) = await HealthProbe.ProbeAsync(store, retained);
                 Assert.IsNull(error);
                 Assert.AreEqual("Bearer " + originalKey, host.Authorizations.Single(), "失败恢复后必须真正携带原 Key 发出探活");
@@ -794,7 +637,7 @@ public sealed class AiSettingsStoreTests
         string extra = await store.AddProviderApiKeyAsync(live, provider, "supplementary");
         await store.SetApiKeyAsync(model.Id, "model-key");
         foreach (string id in new[] { provider.Id, extra, model.Id })
-            await store.SaveTokensAsync(id, new OAuthTokens { AccessToken = "token-" + id, RefreshToken = "refresh-" + id, AccountId = "account-" + id });
+            await context.Secrets.SetAsync("oauth:" + id, "legacy-" + id);
         string liveJson = System.Text.Json.JsonSerializer.Serialize(live);
         var originals = new Dictionary<string, string?>();
         foreach (string id in new[] { provider.Id, extra, model.Id })
@@ -808,7 +651,7 @@ public sealed class AiSettingsStoreTests
             await external.SaveAsync(newer);
         }
         storage.Fail = failure == "storage";
-        secrets.FailDeleteNumber = failure == "secret" ? modelOnly ? 2 : 3 : 0;
+        secrets.FailDeleteNumber = failure == "secret" ? modelOnly ? 1 : 3 : 0;
         Task Delete() => modelOnly ? store.DeleteModelAsync(live, provider, model) : store.DeleteProviderAsync(live, provider);
         if (failure == "conflict") await Assert.ThrowsAsync<AiSettingsStore.ApiKeySlotChangedException>(Delete);
         else await Assert.ThrowsAsync<IOException>(Delete);
@@ -830,7 +673,7 @@ public sealed class AiSettingsStoreTests
         Assert.AreEqual(remaining.Models[0].Id, live.ActiveModelId);
         Assert.HasCount(1, live.FailoverChain);
         Assert.IsNull(await context.Secrets.GetAsync("apikey:" + model.Id));
-        Assert.IsNull(await context.Secrets.GetAsync("oauth:" + model.Id));
+        Assert.AreEqual("legacy-" + model.Id, await context.Secrets.GetAsync("oauth:" + model.Id));
         Assert.AreEqual(modelOnly ? "primary" : null, await store.GetApiKeyAsync(provider.Id));
         Assert.AreEqual(modelOnly ? "supplementary" : null, await store.GetApiKeyAsync(extra));
     }
@@ -1100,50 +943,6 @@ public sealed class AiSettingsStoreTests
     }
 
     [TestMethod]
-    [DataRow(false, false)]
-    [DataRow(false, true)]
-    [DataRow(true, false)]
-    [DataRow(true, true)]
-    public async Task Review_FailedOrCancelledTokenClearKeepsOriginalAccountAndPendingBodyUsable(bool directDelete, bool cancel)
-    {
-        await using var host = new SseStub(GuardReplySse);
-        using var source = new TestPluginContext();
-        var secrets = new DeleteFailingSecrets(source.Secrets);
-        using var context = new TestPluginContext { Secrets = secrets };
-        var store = new AiSettingsStore(context);
-        var provider = new AiProvider
-        {
-            BaseUrl = host.BaseUrl,
-            Auth = AuthMethod.Subscription,
-            OAuth = new OAuthConfig { Credential = OAuthCredential.AccessToken, ExtraHeaders = "chatgpt-account-id: {account_id}" },
-            Models = [new AiModelConfig { Model = "m" }]
-        };
-        var settings = new AiSettings { Providers = [provider] };
-        await store.SaveAsync(settings);
-        await store.SetApiKeyAsync(provider.Id, "retained-unused-key");
-        var original = new OAuthTokens { AccessToken = "original-token", AccountId = "original-account" };
-        await store.SaveTokensAsync(provider.Id, original);
-        ResolvedModel target = settings.FindModel(provider.Models[0].Id)!;
-        ProviderCredential credential = await store.ResolveCredentialAsync(target, refreshTokens: false);
-        long login = store.TokenLoginVersion(provider.Id), epoch = AiSettingsStore.ProviderConfigurationVersion(provider);
-        if (cancel) secrets.CancelDeleteNumber = directDelete ? 2 : 1;
-        else secrets.FailDeleteNumber = directDelete ? 2 : 1;
-        Task Clear() => directDelete ? store.DeleteApiKeyAsync(provider.Id) : store.ClearTokensAsync(provider.Id);
-        if (cancel) await Assert.ThrowsAsync<OperationCanceledException>(Clear);
-        else await Assert.ThrowsAsync<IOException>(Clear);
-        Assert.AreEqual(login, store.TokenLoginVersion(provider.Id));
-        Assert.AreEqual(epoch, AiSettingsStore.ProviderConfigurationVersion(provider));
-        Assert.AreSame(original, await store.GetTokensAsync(provider.Id), "失败不得清除原缓存账号");
-        Assert.AreEqual("retained-unused-key", await context.Secrets.GetAsync("apikey:" + provider.Id));
-        Assert.AreEqual(credential.Value, (await store.ResolveCredentialAsync(target, refreshTokens: false)).Value);
-        using IChatClient client = store.CreateClient(target, credential);
-        await foreach (ChatResponseUpdate _ in client.GetStreamingResponseAsync([new ChatMessage(ChatRole.User, "original-account-pending-body")])) { }
-        Assert.AreEqual("Bearer original-token", host.Authorizations.Single());
-        Assert.AreEqual("original-account", host.AccountIds.Single());
-        Assert.Contains("original-account-pending-body", host.Requests.Single());
-    }
-
-    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task Review_PlainSavePublishesActualRequestEpochIncludingMaterialisedLimits(bool materialise)
@@ -1225,9 +1024,7 @@ public sealed class AiSettingsStoreTests
     }
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task Review_CreationRejectsConcurrentLiveEditsWithoutPublishingProviderOrCredentials(bool subscription)
+    public async Task Review_CreationRejectsConcurrentLiveEditsWithoutPublishingProviderOrCredentials()
     {
         var storage = new FailingStorage(new InMemoryStorage());
         using var context = new TestPluginContext { Storage = storage };
@@ -1236,13 +1033,10 @@ public sealed class AiSettingsStoreTests
         var draft = new AiProvider
         {
             BaseUrl = "https://custom.example",
-            Models = [new AiModelConfig { Model = "m" }],
-            Auth = subscription ? AuthMethod.Subscription : AuthMethod.ApiKey,
-            OAuth = subscription ? new OAuthConfig { TokenUrl = "https://issuer.example/token" } : null
+            Models = [new AiModelConfig { Model = "m" }]
         };
         storage.Hold = true;
-        Task pending = store.CreateProviderAsync(live, draft, subscription ? null : "new-key",
-            subscription ? new OAuthTokens { AccessToken = "new-token" } : null);
+        Task pending = store.CreateProviderAsync(live, draft, "new-key");
         await storage.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
         try
         {
@@ -1258,56 +1052,8 @@ public sealed class AiSettingsStoreTests
         AiSettings saved = await store.LoadAsync();
         Assert.IsEmpty(saved.Providers);
         Assert.AreEqual(63, saved.PanelWidthPercent);
-        await store.CreateProviderAsync(live, draft, subscription ? null : "new-key",
-            subscription ? new OAuthTokens { AccessToken = "new-token" } : null);
+        await store.CreateProviderAsync(live, draft, "new-key");
         Assert.HasCount(1, (await store.LoadAsync()).Providers);
-    }
-
-    [TestMethod]
-    public async Task Review_OAuthFormFailureKeepsOldEndpointAccountAndLoginVersionUntilExplicitRetry()
-    {
-        var storage = new FailingStorage(new InMemoryStorage());
-        using var context = new TestPluginContext { Storage = storage };
-        var store = new AiSettingsStore(context);
-        var provider = new AiProvider
-        {
-            Name = "old account",
-            BaseUrl = "https://old.example",
-            Auth = AuthMethod.Subscription,
-            OAuth = new OAuthConfig { TokenUrl = "https://issuer.example/token" },
-            Models = [new AiModelConfig { Model = "m" }]
-        };
-        AiSettings live = await store.LoadAsync();
-        await store.CreateProviderAsync(live, provider, tokens: new OAuthTokens { AccessToken = "old-token", AccountId = "old-account" });
-        long version = store.TokenLoginVersion(provider.Id);
-        string expected = System.Text.Json.JsonSerializer.Serialize(provider);
-        AiProvider draft = System.Text.Json.JsonSerializer.Deserialize<AiProvider>(expected)!;
-        draft.Name = "new account";
-        draft.BaseUrl = "https://new.example";
-        var tokens = new OAuthTokens { AccessToken = "new-token", AccountId = "new-account" };
-        storage.Hold = true;
-        storage.FailHeldWrite = true;
-        Task pending = store.SaveProviderOAuthFormAsync(live, provider, draft, expected, tokens);
-        await storage.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
-        try
-        {
-            Assert.AreEqual("https://old.example", provider.BaseUrl);
-            Assert.AreEqual("old-token", (await store.GetTokensAsync(provider.Id))!.AccessToken);
-            Assert.AreEqual(version, store.TokenLoginVersion(provider.Id));
-        }
-        finally { storage.Release.TrySetResult(); }
-        await Assert.ThrowsAsync<IOException>(() => pending);
-        Assert.AreEqual("old account", provider.Name);
-        Assert.AreEqual("old-account", (await store.GetTokensAsync(provider.Id))!.AccountId);
-        Assert.AreEqual(version, store.TokenLoginVersion(provider.Id));
-        Assert.AreEqual(0L, AiSettingsStore.ProviderConfigurationVersion(provider));
-        storage.FailHeldWrite = false;
-        await store.SaveProviderOAuthFormAsync(live, provider, draft, expected, tokens).WaitAsync(TimeSpan.FromSeconds(15));
-        Assert.AreEqual("https://new.example", provider.BaseUrl);
-        Assert.AreEqual("new-account", (await store.GetTokenSnapshotAsync(provider.Id, default)).Tokens!.AccountId);
-        Assert.AreEqual(version + 1, store.TokenLoginVersion(provider.Id));
-        Assert.AreEqual(1L, AiSettingsStore.ProviderConfigurationVersion(provider), "订阅登录提交不能丢失已有epoch护栏");
-        Assert.AreEqual("https://new.example", (await store.LoadAsync()).Providers[0].BaseUrl);
     }
 
     [TestMethod]
@@ -1387,9 +1133,7 @@ public sealed class AiSettingsStoreTests
     }
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public async Task Review_ProviderCreationFailureRollsBackSecretsAndPublishesNoGhost(bool subscription)
+    public async Task Review_ProviderCreationFailureRollsBackSecretsAndPublishesNoGhost()
     {
         var storage = new FailingStorage(new InMemoryStorage());
         using var context = new TestPluginContext { Storage = storage };
@@ -1398,14 +1142,11 @@ public sealed class AiSettingsStoreTests
         var draft = new AiProvider
         {
             BaseUrl = "https://custom.example",
-            Models = [new AiModelConfig { Model = "m" }],
-            Auth = subscription ? AuthMethod.Subscription : AuthMethod.ApiKey,
-            OAuth = subscription ? new OAuthConfig { TokenUrl = "https://issuer.example/token" } : null
+            Models = [new AiModelConfig { Model = "m" }]
         };
-        string secretName = (subscription ? "oauth:" : "apikey:") + draft.Id;
+        string secretName = "apikey:" + draft.Id;
         storage.Fail = true;
-        Task Create() => store.CreateProviderAsync(live, draft, subscription ? null : "creation-key",
-            subscription ? new OAuthTokens { AccessToken = "creation-token" } : null);
+        Task Create() => store.CreateProviderAsync(live, draft, "creation-key");
         await Assert.ThrowsAsync<IOException>(Create);
         Assert.IsEmpty(live.Providers);
         Assert.IsNull(live.ActiveModelId);
@@ -1422,7 +1163,7 @@ public sealed class AiSettingsStoreTests
         string json = (await context.Storage.GetAsync<System.Text.Json.JsonElement>("settings")).GetRawText();
         Assert.DoesNotContain("creation-key", json);
         Assert.DoesNotContain("creation-token", json);
-        Assert.AreEqual(subscription ? 1L : 0L, store.TokenLoginVersion(draft.Id));
+        Assert.AreEqual(0L, store.TokenLoginVersion(draft.Id));
     }
 
     [TestMethod]

@@ -221,25 +221,12 @@ public sealed partial class ChatPanelViewUiTests
             await using var first = new SseStub(failover ? whitespace : SlowReply,
                 holdFirstStream: true, firstStreamContent: " \t\n ");
             await using var backup = new SseStub(SlowReply, firstStreamContent: "OK");
-            using var refresh = new HeldCredentialRefresh();
-            using var http = new HttpClient(refresh);
-            using var context = new TestPluginContext();
             AiProvider original = StubProvider("original", first.BaseUrl, "m");
-            original.Auth = AuthMethod.Subscription;
-            original.OAuth = new OAuthConfig
-            {
-                Credential = OAuthCredential.AccessToken,
-                TokenUrl = "https://auth.example/token",
-                ClientId = "test"
-            };
             AiProvider next = StubProvider("backup", backup.BaseUrl, "m");
-            var store = new AiSettingsStore(context) { TokenClient = new OAuthClient(http) };
-            await store.SaveTokensAsync(original.Id, new OAuthTokens
-            {
-                AccessToken = "expired",
-                RefreshToken = "refresh",
-                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1)
-            });
+            using var backing = new TestPluginContext();
+            var keyRead = new SettingsViewUiTests.DelayedSecrets(backing.Secrets, "apikey:" + original.Id);
+            using var context = new TestPluginContext { Secrets = keyRead };
+            var store = new AiSettingsStore(context);
             await store.SaveAsync(new AiSettings
             {
                 Providers = failover ? [original, next] : [original],
@@ -254,12 +241,12 @@ public sealed partial class ChatPanelViewUiTests
             {
                 await PumpAsync();
                 panel.SendExternal("FIRST_PROMPT");
-                await refresh.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
+                await keyRead.Started.WaitAsync(TimeSpan.FromSeconds(15));
                 TextEditor input = Find<TextEditor>(panel, "InputBox");
                 input.Text = "STEERING_MARKER";
                 PressEnter(input);
                 Assert.IsTrue(await WaitForAsync(() => Find<WrapPanel>(panel, "QueuedBar").IsVisible));
-                refresh.Release();
+                keyRead.Release();
                 await first.RequestBodyAsync.WaitAsync(TimeSpan.FromSeconds(15));
                 StackPanel messages = Find<StackPanel>(panel, "MessagesPanel");
                 List<Border> Cards() => [.. messages.GetVisualDescendants().OfType<Border>()
@@ -287,7 +274,7 @@ public sealed partial class ChatPanelViewUiTests
                     Assert.IsEmpty(backup.Requests);
                 }
             }
-            finally { refresh.Release(); first.Release(); panel.Detach(); window.Close(); }
+            finally { keyRead.Release(); first.Release(); panel.Detach(); window.Close(); }
         });
     }
 }

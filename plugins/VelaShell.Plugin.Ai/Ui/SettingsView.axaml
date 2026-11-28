@@ -271,7 +271,8 @@
                     <Button x:Name="ProviderAddApiKeyButton" Grid.Column="2"
                             Theme="{DynamicResource VelaOutlineButtonTheme}" Padding="10,0" MinHeight="28" />
                   </Grid>
-                  <TextBlock x:Name="ProviderApiKeyHintText" Classes="hint" TextWrapping="Wrap" />
+                  <TextBlock x:Name="ProviderApiKeyHintText" Classes="hint" />
+                  <Decorator x:Name="ProviderPolicyNotice" />
                   <CheckBox x:Name="BalanceApiKeysCheck" IsChecked="False" Margin="0,8,0,0"
                             Theme="{StaticResource AiCheckBoxTheme}"
                             FontSize="{DynamicResource VelaFontSize12}"
@@ -282,19 +283,6 @@
                              Foreground="{DynamicResource VelaWarning}" />
                 </StackPanel>
 
-                <StackPanel x:Name="ProviderAuthPanel" Classes="field" IsVisible="False">
-                  <TextBlock x:Name="ProviderAuthLabel" Classes="label" />
-                  <Grid ColumnDefinitions="*,12,Auto">
-                    <TextBlock x:Name="ProviderAuthStatusText" Classes="dim"
-                               TextWrapping="Wrap" VerticalAlignment="Center" />
-                    <Button x:Name="ManageSignInButton" Grid.Column="2"
-                            Theme="{DynamicResource VelaOutlineButtonTheme}" Height="26" Padding="12,0">
-                      <TextBlock x:Name="ManageSignInText" VerticalAlignment="Center"
-                                 FontSize="{DynamicResource VelaFontSize11}" />
-                    </Button>
-                  </Grid>
-                  <TextBlock x:Name="ProviderAuthHintText" Classes="hint" />
-                </StackPanel>
 
               </StackPanel>
             </Border>

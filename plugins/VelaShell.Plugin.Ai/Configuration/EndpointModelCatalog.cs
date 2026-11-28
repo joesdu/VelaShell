@@ -33,8 +33,7 @@ internal static class EndpointModelCatalog
     /// <remarks>
     /// 与聊天请求一致:聊天请求由 SDK 自己带版本头,13.x 起是 <c>2026-10-21</c>,这条自己拼的列表请求跟着发同一个
     /// (维护者 2026-10-25 决定,#657 复审跟进②)。以前这里留着 <c>2023-06-01</c>,同一把 Key 在拉清单与聊天两条路上
-    /// 碰到的是两个版本的接口,清单拉得到、聊天却 400 这类问题就无从对照。鉴权头本来就一致(Key 走 <c>x-api-key</c>、
-    /// 令牌走 Bearer,见 <see cref="Request" />)。<c>AnthropicWireTests</c> 拿真 SDK 的请求头比对,SDK 换版本号时会红。
+    /// 碰到的是两个版本的接口,清单拉得到、聊天却 400 这类问题就无从对照。两条路都用 <c>x-api-key</c>。<c>AnthropicWireTests</c> 拿真 SDK 的请求头比对,SDK 换版本号时会红。
     /// </remarks>
     public const string AnthropicVersion = "2026-10-21";
 
@@ -70,17 +69,15 @@ internal static class EndpointModelCatalog
     /// 拼一条带好鉴权的请求;地址不可用时返回 null。
     /// </summary>
     /// <remarks>
-    /// 鉴权方式跟着协议走,与发对话请求时同一套:OpenAI 系无论 Key 还是订阅令牌都是
-    /// <c>Authorization: Bearer</c>;Anthropic 分岔 —— 手填的 Key 是 <c>x-api-key</c>,
-    /// 登录换回来的令牌才是 Bearer(SDK 13.x 一律发 Bearer,聊天那边由 <c>AnthropicApiKeyHandler</c>
-    /// 把 Key 改回 <c>x-api-key</c>,两边才对得上)。凭据为空也照发:让服务端回一个准确的 401,
-    /// 比本地猜"大概是没填 Key"要有用。
+    /// API Key 的请求头跟随协议：OpenAI 用 <c>Authorization: Bearer</c>，Anthropic 用 <c>x-api-key</c>。
     /// </remarks>
     /// <param name="baseUrl">供应商基地址。</param>
     /// <param name="protocol">线协议。</param>
-    /// <param name="credential">凭据(含订阅端点要求的额外头)。</param>
+    /// <param name="credential">API Key 凭据。</param>
     public static HttpRequestMessage? Request(string? baseUrl, ChatProtocol protocol, ProviderCredential credential)
     {
+        if (credential.IsBearerToken || credential.BaseUrl is not null)
+            throw new NotSupportedException("Account sign-in is no longer supported; configure an API key instead.");
         if (Endpoint(baseUrl, protocol) is not { } url)
         {
             return null;
@@ -93,9 +90,7 @@ internal static class EndpointModelCatalog
             request.Headers.TryAddWithoutValidation("anthropic-version", AnthropicVersion);
             if (!string.IsNullOrWhiteSpace(secret))
             {
-                request.Headers.TryAddWithoutValidation(
-                    credential.IsBearerToken ? "Authorization" : "x-api-key",
-                    credential.IsBearerToken ? $"Bearer {secret}" : secret);
+                request.Headers.TryAddWithoutValidation("x-api-key", secret);
             }
         }
         else if (!string.IsNullOrWhiteSpace(secret))

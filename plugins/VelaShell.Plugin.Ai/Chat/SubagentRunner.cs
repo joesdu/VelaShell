@@ -145,18 +145,10 @@ internal sealed class SubagentRunner(
     }
 
     /// <summary>
-    /// 这个模型本轮用不了、值得换一个:型号没开通,或它那家的凭据被拒(401 / 403)、额度用尽(429)、OAuth 续期失败。
+    /// 这个模型本轮用不了、值得换一个:型号没开通,或它那家的凭据被拒(401 / 403)、额度用尽(429)。
     /// 只在什么都还没发生时才会被用到(见调用处),所以换模型不会让副作用做两遍。
     /// </summary>
-    internal static bool CannotUseModel(Exception exception)
-    {
-        if (TransientFailure.IsApiKeyFailure(exception)) return true; // 已含 IsModelUnavailable
-        for (Exception? current = exception; current is not null; current = current.InnerException)
-        {
-            if (current is Auth.OAuthException) return true;
-        }
-        return false;
-    }
+    internal static bool CannotUseModel(Exception exception) => TransientFailure.IsApiKeyFailure(exception); // 已含 IsModelUnavailable
 
     private async Task<SubagentExecutionResult> RunCoreAsync(SubagentOrchestrator owner, SubagentRequest request,
         StrongBox<bool> progressed, CancellationToken cancellationToken)
