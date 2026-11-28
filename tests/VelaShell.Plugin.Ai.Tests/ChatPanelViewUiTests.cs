@@ -1521,9 +1521,9 @@ public sealed partial class ChatPanelViewUiTests
         });
     }
     /// <summary>
-    /// 设置窗口的 保存/测试/删除 落在表单<b>最末、靠右</b>,跟着内容滚(不是钉死的常驻横栏 ——
-    /// 那会一直占着高度,而这页大多数时候在读、在填)。全局设置(系统提示词/压缩/后续提问)
-    /// 不在这页:它从窗口标题栏、最小化键左侧的 ⚙(<c>PanelOptions.TitleActions</c>)进另一个窗口。
+    /// 设置窗口的 保存/测试/删除 固定在编辑区底部的操作栏内、靠右,不会随表单滚动。
+    /// 全局设置(系统提示词/压缩/后续提问)不在这页:它从窗口标题栏、最小化键左侧的 ⚙
+    /// (<c>PanelOptions.TitleActions</c>)进另一个窗口。
     /// </summary>
     [TestMethod]
     public void SettingsDialog_PutsTheActionRow_AtTheEndOfTheFormAndOnTheRight()
@@ -1544,15 +1544,10 @@ public sealed partial class ChatPanelViewUiTests
                 host = Host(settings);
 
                 Button save = settings.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "SaveButton");
-                TextBox lastField = settings.GetVisualDescendants().OfType<TextBox>()
-                    .Single(t => t.Name == "ProviderPromptBox");
-                ScrollViewer form = settings.GetVisualDescendants().OfType<ScrollViewer>()
-                    .First(s => s.GetVisualDescendants().OfType<Button>().Any(b => b.Name == "SaveButton"));
+                ScrollViewer form = settings.GetControl<ScrollViewer>("EditorScroller");
 
-                Assert.Contains(save, form.GetVisualDescendants().OfType<Button>(),
-                    "操作行跟着表单滚,所以它在滚动区里");
-                Assert.IsGreaterThan(CentreY(lastField, settings), CentreY(save, settings),
-                    "操作行排在最后一个配置项之后");
+                Assert.DoesNotContain(save, form.GetVisualDescendants().OfType<Button>(),
+                    "操作行固定在编辑区底部,不应随表单滚动");
                 Assert.IsGreaterThan(settings.Bounds.Width / 2, CentreX(save, settings), "靠右");
 
                 // 侧栏宽度不该出现在设置页的任何地方:它由用户拖分割条决定,拖完自动记住
