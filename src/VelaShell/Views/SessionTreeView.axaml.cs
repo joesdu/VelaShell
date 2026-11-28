@@ -516,7 +516,7 @@ public partial class SessionTreeView : UserControl
     /// </summary>
     private double? GroupSlotLineY(SessionTreeViewModel viewModel, GroupDropTarget target)
     {
-        var parent = target.ParentGroupId is { } id ? viewModel.GroupNodes.FirstOrDefault(node => node.Id == id) : null;
+        SessionTreeNodeViewModel? parent = target.ParentGroupId is { } id ? viewModel.GroupNodes.FirstOrDefault(node => node.Id == id) : null;
         List<SessionTreeNodeViewModel> groups = [.. (parent?.Children ?? viewModel.Nodes).Where(static node => node.IsGroup)];
         int slot = target.Index;
         if (groups.Count == 0)

@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using VelaShell.Controls;
@@ -72,8 +73,8 @@ public sealed class TraceRouteUiTests
             window.Show();
             try
             {
-                var toggle = window.FindControl<CheckBox>("AutoRotateToggle")!;
-                var map = window.GetVisualDescendants().OfType<TraceWorldMap>().Single();
+                CheckBox toggle = window.FindControl<CheckBox>("AutoRotateToggle")!;
+                TraceWorldMap map = window.GetVisualDescendants().OfType<TraceWorldMap>().Single();
                 Assert.IsTrue(toggle.IsChecked);
                 toggle.IsChecked = false;
                 Assert.IsFalse(map.AutoRotate);
@@ -248,7 +249,7 @@ public sealed class TraceRouteUiTests
             window.Show();
             try
             {
-                foreach (var (variant, color) in new[]
+                foreach ((Avalonia.Styling.ThemeVariant? variant, Avalonia.Media.Color color) in new[]
                 {
                     (Avalonia.Styling.ThemeVariant.Light, Avalonia.Media.Colors.Wheat),
                     (Avalonia.Styling.ThemeVariant.Dark, Avalonia.Media.Colors.MidnightBlue)
@@ -279,7 +280,7 @@ public sealed class TraceRouteUiTests
     {
         using WriteableBitmap? frame = window.CaptureRenderedFrame();
         Assert.IsNotNull(frame);
-        using var pixels = frame.Lock();
+        using ILockedFramebuffer pixels = frame.Lock();
         Assert.AreEqual(new PixelSize(400, 400), pixels.Size);
         int rowBytes = pixels.Size.Width * 4;
         byte[] result = new byte[rowBytes * pixels.Size.Height];

@@ -248,7 +248,8 @@ public sealed class SteeringTests
         var inner = new ScriptedChatClient();
         var steering = new SteeringChatClient(inner, queue);
         using var compactor = new RunContextCompactor(steering, 1000, 0,
-            (_, _, _) => Task.FromResult<string?>("progress")) { PrefixCount = 2 };
+            (_, _, _) => Task.FromResult<string?>("progress"))
+        { PrefixCount = 2 };
         List<ChatMessage> context = Context();
         AddStep("c1", "first");
         queue.Enqueue(Note("补充条件"));

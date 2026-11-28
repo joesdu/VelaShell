@@ -147,7 +147,7 @@ internal sealed class ChangedFileList
         {
             // 改名覆盖了一个也改过的文件:那一条并进来,不留两条指向同一路径
             _entries.Remove(target);
-            if (source is not null) source.CanRestore = false;
+            source?.CanRestore = false;
         }
         if (source is null)
         {

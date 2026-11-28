@@ -39,8 +39,5 @@ public class ChatFileLinkTests
     [DataRow(@"\\server\share\app.exe", @"\\server\share\app.exe")]
     [DataRow("/C:/My%20Tools/app.exe", "C:/My Tools/app.exe")]
     [OSCondition(OperatingSystems.Windows)]
-    public void WindowsMarkdownPath_ResolvesToLocalPath(string href, string expected)
-    {
-        Assert.AreEqual(expected, ChatPanelView.GetLocalLinkPath(new Uri(href, UriKind.RelativeOrAbsolute)));
-    }
+    public void WindowsMarkdownPath_ResolvesToLocalPath(string href, string expected) => Assert.AreEqual(expected, ChatPanelView.GetLocalLinkPath(new Uri(href, UriKind.RelativeOrAbsolute)));
 }

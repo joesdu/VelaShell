@@ -44,7 +44,7 @@ public sealed class FileTextStoreTests
             Assert.IsFalse(File.Exists(path));
             CollectionAssert.AreEqual((byte[])[.. Encoding.UTF8.Preamble, .. "old"u8], File.ReadAllBytes(old));
 
-            var modified = rename with { Kind = FileChangeKind.Modified, OldPath = null, Path = "old.txt", Before = "base", After = "old", BeforeHasBom = false };
+            FileChange modified = rename with { Kind = FileChangeKind.Modified, OldPath = null, Path = "old.txt", Before = "base", After = "old", BeforeHasBom = false };
             Assert.IsNull(await store.RestoreAsync(modified));
             CollectionAssert.AreEqual("base"u8.ToArray(), File.ReadAllBytes(old));
         }
@@ -72,7 +72,7 @@ public sealed class FileTextStoreTests
             Assert.IsNull(await store.RestoreAsync(change));
             Assert.IsFalse(File.Exists(path));
 
-            var deleted = change with { Kind = FileChangeKind.Deleted, Before = "original", After = null, OldPath = "old", BeforeHasBom = true };
+            FileChange deleted = change with { Kind = FileChangeKind.Deleted, Before = "original", After = null, OldPath = "old", BeforeHasBom = true };
             Assert.IsNull(await store.RestoreAsync(deleted));
             Assert.IsFalse(File.Exists(path));
             CollectionAssert.AreEqual((byte[])[.. Encoding.UTF8.Preamble, .. "original"u8], File.ReadAllBytes(Path.Combine(root, "old")));
@@ -89,7 +89,7 @@ public sealed class FileTextStoreTests
     {
         using var context = new TestPluginContext();
         string session = context.FakeSessions.AddConnected().SessionId;
-        var fs = context.FakeRemoteFs;
+        FakeRemoteFs fs = context.FakeRemoteFs;
         var store = new FileTextStore(context, () => [], 1024);
         var create = new FileChange("create", $"remote:{session}", "/new", FileChangeKind.Created, null, "ai");
         fs.AddFile(session, "/new/child", "child"u8.ToArray());
@@ -100,13 +100,13 @@ public sealed class FileTextStoreTests
         fs.AddFile(session, create.Path, "changed"u8.ToArray());
         Assert.AreEqual(FileTextStore.ErrorReviewConflict, await store.RestoreAsync(create));
         fs.AddFile(session, create.Path, "ai"u8.ToArray());
-        var rename = create with { Kind = FileChangeKind.Renamed, OldPath = "/old", Before = "original", BeforeHasBom = true };
+        FileChange rename = create with { Kind = FileChangeKind.Renamed, OldPath = "/old", Before = "original", BeforeHasBom = true };
         Assert.IsNull(await store.RestoreAsync(rename));
         Assert.IsNull(fs.GetFile(session, create.Path));
         CollectionAssert.AreEqual((byte[])[.. Encoding.UTF8.Preamble, .. "original"u8], fs.GetFile(session, "/old"));
         Assert.IsNull(await store.RestoreAsync(create with { Path = "/old", After = "original" }));
         Assert.IsNull(fs.GetFile(session, "/old"));
-        var deleted = create with { Kind = FileChangeKind.Deleted, Before = "before", After = null };
+        FileChange deleted = create with { Kind = FileChangeKind.Deleted, Before = "before", After = null };
         Assert.IsNull(await store.RestoreAsync(deleted));
         CollectionAssert.AreEqual("before"u8.ToArray(), fs.GetFile(session, create.Path));
         Assert.AreEqual(FileTextStore.ErrorSessionGone, await store.RestoreAsync(deleted with { Location = "remote:disconnected" }));

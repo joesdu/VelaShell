@@ -143,7 +143,7 @@ public sealed partial class ChatPanelViewUiTests
                 settings.GetControl<Button>("AddButton")
                     .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
                 await PumpAsync(5);
-                var catalog = settings.GetLogicalDescendants().OfType<ProviderSetupView>().Single();
+                ProviderSetupView catalog = settings.GetLogicalDescendants().OfType<ProviderSetupView>().Single();
                 catalog.FocusEntry(provider.CatalogId, provider.Id);
                 await PumpAsync(5);
                 T CatalogControl<T>(string name) where T : Control => catalog.GetLogicalDescendants()
@@ -234,7 +234,7 @@ public sealed partial class ChatPanelViewUiTests
                 settingsHost = Host(settings);
                 RaiseClick(settings.GetControl<Button>("AddButton"));
                 await PumpAsync(5);
-                var catalog = settings.GetLogicalDescendants().OfType<ProviderSetupView>().Single();
+                ProviderSetupView catalog = settings.GetLogicalDescendants().OfType<ProviderSetupView>().Single();
                 catalog.FocusEntry(provider.CatalogId, provider.Id);
                 await PumpAsync(5);
                 T CatalogControl<T>(string name) where T : Control => catalog.GetLogicalDescendants()
@@ -296,7 +296,7 @@ public sealed partial class ChatPanelViewUiTests
                 settingsHost = Host(settings);
                 RaiseClick(settings.GetControl<Button>("AddButton"));
                 await PumpAsync(5);
-                var catalog = settings.GetLogicalDescendants().OfType<ProviderSetupView>().Single();
+                ProviderSetupView catalog = settings.GetLogicalDescendants().OfType<ProviderSetupView>().Single();
                 catalog.FocusEntry(provider.CatalogId, provider.Id);
                 await PumpAsync(5);
                 T CatalogControl<T>(string name) where T : Control => catalog.GetLogicalDescendants()

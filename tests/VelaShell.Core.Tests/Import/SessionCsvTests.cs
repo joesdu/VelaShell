@@ -20,7 +20,8 @@ public sealed class SessionCsvTests
         var leaf = new SessionArchiveGroup { Id = Guid.NewGuid(), Name = "Prod>1", ParentGroupId = root.Id };
         string csv = SessionCsv.Write(new SessionArchive
         {
-            Groups = [leaf, root], Sessions = [new() { Host = "one.test", GroupId = root.Id }, new() { Host = "two.test", GroupId = leaf.Id }]
+            Groups = [leaf, root],
+            Sessions = [new() { Host = "one.test", GroupId = root.Id }, new() { Host = "two.test", GroupId = leaf.Id }]
         });
         SessionImportDocument document = SessionCsv.Read("tree.csv", csv);
         Assert.AreSequenceEqual([root.Name], [.. document.Candidates[0].GroupPath]);

@@ -713,7 +713,7 @@ public sealed class SshConfigTests
             string main = Path.Combine(root, "config");
             await File.WriteAllTextAsync(main, $"Include {cycles}\nInclude child tail\nUser outer\n");
 
-            var resolved = SshConfigFile.Resolve(await SshConfigFile.LoadAsync(main), "host");
+            SshHostConfig resolved = SshConfigFile.Resolve(await SshConfigFile.LoadAsync(main), "host");
             Assert.AreEqual("outer", resolved.User);
             Assert.AreEqual(22, resolved.Port, "子文件里用完的预算阻止外层同一行的下一个路径");
         }
@@ -738,7 +738,7 @@ public sealed class SshConfigTests
             }
             string main = Path.Combine(root, "config");
             await File.WriteAllTextAsync(main, "Include parts/*/one.conf parts/?/*.conf\nUser outer\n");
-            var resolved = SshConfigFile.Resolve(await SshConfigFile.LoadAsync(main), "host");
+            SshHostConfig resolved = SshConfigFile.Resolve(await SshConfigFile.LoadAsync(main), "host");
             Assert.AreEqual("outer", resolved.User);
         }
         finally

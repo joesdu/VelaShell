@@ -250,7 +250,6 @@ internal sealed class ChaCha20Poly1305CipherSuite : ISshCipherSuite
                           .CopyTo(payload.GetSpan(payloadLength));
                 payload.Advance(payloadLength);
             }
-
         }
         finally
         {

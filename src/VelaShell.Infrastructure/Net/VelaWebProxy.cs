@@ -14,7 +14,7 @@ namespace VelaShell.Infrastructure.Net;
 public sealed class VelaWebProxy(IProxyResolver resolver) : IWebProxy, ICredentials
 {
     // SocketsHttpHandler 在认证时传回 GetProxy 返回的 URI。只随它保留 PAC 的查询参数,不缓存密码。
-    private readonly ConditionalWeakTable<Uri, ProxyQuery> _queries = new();
+    private readonly ConditionalWeakTable<Uri, ProxyQuery> _queries = [];
     private sealed record ProxyQuery(string Host, int Port, string Scheme);
 
     /// <summary>

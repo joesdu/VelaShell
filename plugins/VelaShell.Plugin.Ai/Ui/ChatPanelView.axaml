@@ -152,6 +152,14 @@
       <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
       <Setter Property="BorderBrush" Value="Transparent" />
     </Style>
+    <Style Selector="Border.runtimeCard">
+      <Setter Property="Background" Value="{DynamicResource VelaAccentDim}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource VelaAccent}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="8,5" />
+      <Setter Property="Margin" Value="2,6,2,0" />
+    </Style>
     <Style Selector="Border.toolCard">
       <Setter Property="Background" Value="{DynamicResource VelaBgHover}" />
       <Setter Property="BorderBrush" Value="{DynamicResource VelaBorderSecondary}" />
@@ -996,6 +1004,9 @@
          摆在附件行之上 —— 附件属于"正在写的这一条",排队属于"已经发出去的那些"。 -->
     <WrapPanel x:Name="QueuedBar" DockPanel.Dock="Bottom" IsVisible="False" Margin="2,6,2,0" />
     <WrapPanel x:Name="SuggestionBar" DockPanel.Dock="Bottom" IsVisible="False" Margin="2,6,2,0" />
+    <Border x:Name="RuntimeBar" Classes="runtimeCard" DockPanel.Dock="Bottom" IsVisible="False">
+      <TextBlock x:Name="RuntimeText" Classes="dim" TextWrapping="Wrap" />
+    </Border>
     <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Classes="dim" Margin="2,6,2,0" TextWrapping="Wrap" />
 
     <!-- 中部:消息流 / 设置页(二选一显示)。

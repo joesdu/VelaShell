@@ -1,10 +1,8 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
-using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
-using VelaShell.Plugin.Ai.Agent;
 
 namespace VelaShell.Plugin.Ai.Ui;
 
@@ -25,12 +23,12 @@ public partial class ChatPanelView
     {
         ChangedFileList list = entry.Owner;
         if (!list.Entries.Contains(entry) || revision != entry.Revision || !_reviewing.Add(entry)) return "DiffReviewConflict";
-        var views = ReviewViews().Where(view => view.Document.RawLocation == entry.Location && view.Document.Path == entry.Path).ToArray();
+        FileDiffDocumentView[] views = ReviewViews().Where(view => view.Document.RawLocation == entry.Location && view.Document.Path == entry.Path).ToArray();
         bool locked = false;
         try
         {
             if (views.Any(view => view.IsDirty || view.IsBusy)) return "DiffReviewDraft";
-            foreach (var view in views) view.SetBusy(true);
+            foreach (FileDiffDocumentView? view in views) view.SetBusy(true);
             locked = true;
             if (!keep)
             {
@@ -39,13 +37,13 @@ public partial class ChatPanelView
                 if (error is not null) return error;
             }
             if (revision != entry.Revision || !list.Remove(entry)) return "DiffReviewConflict";
-            foreach (var view in ReviewViews().ToArray()) view.FinishReview(entry, keep);
+            foreach (FileDiffDocumentView? view in ReviewViews().ToArray()) view.FinishReview(entry, keep);
             return null;
         }
         finally
         {
             _reviewing.Remove(entry);
-            if (locked) foreach (var view in views) view.SetBusy(false);
+            if (locked) foreach (FileDiffDocumentView? view in views) view.SetBusy(false);
             if (list == _active.ChangedFiles && !_batchReviews.Contains(list)) RefreshChangedFiles();
         }
     }
@@ -58,7 +56,7 @@ public partial class ChatPanelView
         RefreshChangedFiles();
         try
         {
-            foreach (var (entry, revision) in entries.Reverse())
+            foreach ((ChangedFileEntry? entry, int revision) in entries.Reverse())
             {
                 if (!list.Entries.Contains(entry)) continue;
                 string? error = await ReviewFileAsync(entry, revision, keep);

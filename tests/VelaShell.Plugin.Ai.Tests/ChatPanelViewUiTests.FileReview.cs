@@ -16,13 +16,13 @@ public sealed partial class ChatPanelViewUiTests
         OnUi(async () =>
         {
             using var context = new TestPluginContext();
-            var (window, panel, root) = await ShowWithWorkspaceAsync(context);
+            (Window? window, ChatPanelView? panel, string? root) = await ShowWithWorkspaceAsync(context);
             try
             {
                 var change = new FileChange("patch_local_file", "local:w", "app.txt", FileChangeKind.Modified, "before\r\n", "after\r\n");
                 string path = Path.Combine(root, change.Path);
                 await File.WriteAllTextAsync(path, change.After);
-                var view = await OpenChangedAsync(context, panel, change);
+                FileDiffDocumentView view = await OpenChangedAsync(context, panel, change);
                 Assert.IsFalse(view.IsDirty);
                 Assert.IsTrue(ReviewAction(view, "DiffSave").IsEnabled);
                 Assert.IsTrue(ReviewAction(view, "DiffRevert").IsEnabled);
@@ -48,14 +48,14 @@ public sealed partial class ChatPanelViewUiTests
         OnUi(async () =>
         {
             using var context = new TestPluginContext();
-            var (window, panel, root) = await ShowWithWorkspaceAsync(context);
+            (Window? window, ChatPanelView? panel, string? root) = await ShowWithWorkspaceAsync(context);
             try
             {
                 Border bar = Find<Border>(panel, "ChangedFilesBar");
                 foreach (string name in new[] { "external", "ok", "draft" })
                 {
                     await File.WriteAllTextAsync(Path.Combine(root, name), name == "external" ? "external edit" : "after");
-                    var view = await OpenChangedAsync(context, panel, new FileChange("patch_local_file", "local:w", name, FileChangeKind.Modified, "before", "after"));
+                    FileDiffDocumentView view = await OpenChangedAsync(context, panel, new FileChange("patch_local_file", "local:w", name, FileChangeKind.Modified, "before", "after"));
                     if (name == "draft") view.RightEditor!.Text = "unsaved";
                 }
                 RaiseClick(ReviewAction(bar, "ChangedFilesDiscardAll"));

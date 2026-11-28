@@ -13,8 +13,8 @@ using VelaShell.Core.Net;
 using VelaShell.Core.Resources;
 using VelaShell.Infrastructure.Net;
 using VelaShell.Infrastructure.Plugins.Capabilities;
-using VelaShell.PluginSdk.Network;
 using VelaShell.Infrastructure.Ssh;
+using VelaShell.PluginSdk.Network;
 using VelaShell.Ssh.Diagnostics;
 using VelaShell.Ssh.Transport;
 

@@ -57,9 +57,9 @@ internal static class SessionImportWriter
             ServerGroup parent = root;
             foreach (string segment in item.GroupPath)
             {
-                if (!children.TryGetValue(parent.Id, out var siblings))
+                if (!children.TryGetValue(parent.Id, out Dictionary<string, ServerGroup>? siblings))
                 {
-                    children.Add(parent.Id, siblings = new(StringComparer.Ordinal));
+                    children.Add(parent.Id, siblings = [with(StringComparer.Ordinal)]);
                 }
                 if (!siblings.TryGetValue(segment, out ServerGroup? child))
                 {

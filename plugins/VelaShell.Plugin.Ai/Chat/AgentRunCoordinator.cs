@@ -100,12 +100,23 @@ internal sealed class AgentRunCoordinator(CommandJobRunScope jobs, AgentExecutio
                     && jobs.Transfers?.HasRunningTransfers == true && subagentCompletion is null
                     && commandCompletion is null && !jobs.HasActiveJobs && !jobs.HasMonitoringJobs;
                 if (waitingForTransfer) await localWaiting!(true, cancellationToken).ConfigureAwait(false);
+                string waitSource = string.Join(",", new[]
+                {
+                    commandCompletion is not null ? "command" : null,
+                    transferCompletion is not null ? "transfer" : null,
+                    subagentCompletion is not null ? "subagent" : null
+                }.OfType<string>());
+                long waitStartedAt = Environment.TickCount64;
+                execution.RecordRuntimeEvent(AgentRunEventKind.BackgroundWaitStarted, summary: waitSource);
                 try { await Task.WhenAny(pending).WaitAsync(cancellationToken).ConfigureAwait(false); }
                 finally
                 {
                     // 取回在下一次调模型之前完成;已取消就不再回头排队抢名额,本轮就此收尾。
                     if (waitingForTransfer && !cancellationToken.IsCancellationRequested)
                         await localWaiting!(false, cancellationToken).ConfigureAwait(false);
+                    execution.RecordRuntimeEvent(AgentRunEventKind.BackgroundWaitCompleted,
+                        outcome: cancellationToken.IsCancellationRequested ? "cancelled" : "completed",
+                        startedAt: waitStartedAt, summary: waitSource);
                 }
                 if (commandCompletion?.IsCompleted == true)
                 {

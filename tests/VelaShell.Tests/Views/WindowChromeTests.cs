@@ -110,7 +110,7 @@ public sealed class WindowChromeTests
                     Assert.IsFalse(shadow.ClipToBounds);
                     Assert.IsTrue(content.ClipToBounds);
                     Assert.AreEqual(new Thickness(16), shadow.Margin);
-                    Assert.IsFalse(shadow.GetVisualAncestors().Contains(content), "阴影在内容裁剪之外。");
+                    Assert.DoesNotContain(content, shadow.GetVisualAncestors(), "阴影在内容裁剪之外。");
                     Assert.AreEqual(new Thickness(0), frame.Margin);
                     var flyout = new Flyout { Content = new Border { Width = 20, Height = 20 } };
                     flyout.ShowAt(anchor);
@@ -149,9 +149,9 @@ public sealed class WindowChromeTests
                 window.Show();
                 Dispatcher.UIThread.RunJobs();
                 window.UpdateLayout();
-                Assert.IsFalse(window.GetVisualDescendants().OfType<Border>().Any(border => border.Name is "WindowShadow" or "WindowContentFrame"));
+                Assert.DoesNotContain(border => border.Name is "WindowShadow" or "WindowContentFrame", window.GetVisualDescendants().OfType<Border>());
                 Assert.AreNotEqual(Brushes.Transparent, window.Background);
-                Assert.IsFalse(window.TransparencyLevelHint.Contains(WindowTransparencyLevel.Transparent));
+                Assert.DoesNotContain(WindowTransparencyLevel.Transparent, window.TransparencyLevelHint);
                 Assert.AreEqual(window.Bounds.Size, content.Bounds.Size, "内容铺满窗口,没有阴影边距。");
             }
             finally

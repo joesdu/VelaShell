@@ -819,7 +819,8 @@ public sealed class GistSyncServiceTests
         service.ProfilesApplied += (_, _) => refreshed = true;
         var payload = new SyncPayload
         {
-            SchemaVersion = 4, Settings = new AppSettings(),
+            SchemaVersion = 4,
+            Settings = new AppSettings(),
             Groups = [new ServerGroup { Id = root.Id, ParentGroupId = missingParent ? Guid.NewGuid() : localOnly.Id }]
         };
         SyncResult result = await service.ApplyRemoteAsync(new SyncSettings(), new SyncEnvelope { SchemaVersion = 4, Payload = payload },

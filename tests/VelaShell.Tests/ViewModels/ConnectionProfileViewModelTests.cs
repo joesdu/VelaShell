@@ -297,7 +297,9 @@ public sealed class ConnectionProfileViewModelTests
     {
         var vm = new ConnectionProfileViewModel(new SessionProfile
         {
-            Host = "managed.example.com", Username = "ops", Ssh = new() { Compression = true },
+            Host = "managed.example.com",
+            Username = "ops",
+            Ssh = new() { Compression = true },
         });
         Assert.AreEqual((int)SshTerminalCompressionMode.Off, vm.TerminalCompressionIndex);
         Assert.IsFalse(vm.IsSshOptionsSectionModified);

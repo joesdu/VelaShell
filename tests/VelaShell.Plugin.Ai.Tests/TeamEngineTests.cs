@@ -72,7 +72,7 @@ public sealed class TeamEngineTests
         StringAssert.Contains(second.Prompt, "nginx upstream points at port 8081");
         StringAssert.Contains(second.Instructions!, "engineer");
         Assert.AreEqual(TeamEngine.MemberMaxSteps, second.MaxSteps);
-        Assert.IsTrue(second.ExtraTools!.OfType<AIFunction>().Any(t => t.Name == "team_message"));
+        Assert.Contains(t => t.Name == "team_message", second.ExtraTools!.OfType<AIFunction>());
         JsonElement report = Report(reports[0]);
         Assert.AreEqual("completed", report.GetProperty("phase").GetString());
         Assert.AreEqual(2, report.GetProperty("tasks").GetArrayLength());
@@ -167,9 +167,9 @@ public sealed class TeamEngineTests
         Assert.IsTrue(board.Members.All(m => m.ModelId == "lead-model"), "没指定模型的成员沿用主控的");
 
         TeamMessageInfo[] handoffs = [.. board.Messages.Where(m => m.Kind == "handoff")];
-        Assert.IsTrue(handoffs.Any(m => (m.From, m.To, m.TaskId) == ("scout", "fixer", "look")), "调研报告交给了修改的人");
-        Assert.IsTrue(handoffs.Any(m => (m.From, m.To, m.TaskId) == ("fixer", "checker", "fix")), "修改报告交给了审查的人");
-        Assert.IsFalse(handoffs.Any(m => m.From == m.To));
+        Assert.Contains(m => (m.From, m.To, m.TaskId) == ("scout", "fixer", "look"), handoffs, "调研报告交给了修改的人");
+        Assert.Contains(m => (m.From, m.To, m.TaskId) == ("fixer", "checker", "fix"), handoffs, "修改报告交给了审查的人");
+        Assert.DoesNotContain(m => m.From == m.To, handoffs);
 
         TeamMessageInfo[] reviews = [.. board.Messages.Where(m => m.Kind == "review")];
         Assert.HasCount(2, reviews, "第一次不通过(返工)+ 第二次通过,各一条");
@@ -227,9 +227,9 @@ public sealed class TeamEngineTests
         TeamBoardSnapshot board = orchestrator.Team!.Snapshot()!;
         TeamTaskInfo task = board.Tasks.Single(t => t.Id == "t1");
         Assert.AreEqual(("completed", 2, 1), (task.Status, task.Attempts, task.Retries));
-        Assert.IsTrue(board.Messages.Any(m => m.Kind == "system" && m.TaskId == "t1"
-            && m.Text.Contains("retrying automatically (1/2)", StringComparison.Ordinal)), "看板上留一条自动重试的记录");
-        Assert.IsTrue(board.Messages.Any(m => m.Kind == "assign" && m.Text.EndsWith("(retry)", StringComparison.Ordinal)));
+        Assert.Contains(m => m.Kind == "system" && m.TaskId == "t1"
+            && m.Text.Contains("retrying automatically (1/2)", StringComparison.Ordinal), board.Messages, "看板上留一条自动重试的记录");
+        Assert.Contains(m => m.Kind == "assign" && m.Text.EndsWith("(retry)", StringComparison.Ordinal), board.Messages);
     }
 
     /// <summary>自动重试有上限:接口一直断,试满 1 + <see cref="TeamEngine.MaxAutoRetries" /> 次后照常记为失败、下游受阻。</summary>
@@ -278,7 +278,7 @@ public sealed class TeamEngineTests
         Assert.AreEqual("completed", board.Phase);
         Assert.AreEqual(("completed", 2, 1), (board.Tasks[0].Status, board.Tasks[0].Attempts, board.Tasks[0].Retries));
         Assert.AreEqual(("completed", 1, 0), (board.Tasks[1].Status, board.Tasks[1].Attempts, board.Tasks[1].Retries), "受阻的任务本身没跑过,不算重试");
-        Assert.IsTrue(board.Messages.Any(m => m.Text == "#t1 retried by the user."));
+        Assert.Contains(m => m.Text == "#t1 retried by the user.", board.Messages);
         StringAssert.Contains(runner.Requests.Last(r => r.Prompt.Contains("## Your task #t1", StringComparison.Ordinal)).Prompt, "What stopped it: boom");
     }
 
@@ -298,7 +298,7 @@ public sealed class TeamEngineTests
         Assert.AreEqual("completed", reports[0].Status);
         TeamBoardSnapshot board = team.Snapshot()!;
         Assert.AreEqual("b", board.Tasks.Single(t => t.Id == "t1").Assignee);
-        Assert.IsTrue(board.Messages.Any(m => m.Text == "#t1 reassigned from a to b."));
+        Assert.Contains(m => m.Text == "#t1 reassigned from a to b.", board.Messages);
         SubagentRequest rerun = runner.Requests.Last(r => r.Prompt.Contains("## Your task #t1", StringComparison.Ordinal));
         StringAssert.StartsWith(rerun.Prompt, "You are \"b\"");
         StringAssert.Contains(rerun.Instructions!, "engineer", "按接手成员的角色跑");
@@ -380,7 +380,7 @@ public sealed class TeamEngineTests
         Assert.AreEqual("failed", status["t1"]);
         Assert.AreEqual("blocked", status["t2"]);
         Assert.AreEqual("completed", status["t3"], "不依赖失败任务的照常完成");
-        Assert.IsFalse(runner.Requests.Any(r => r.Prompt.Contains("## Your task #t2", StringComparison.Ordinal)));
+        Assert.DoesNotContain(r => r.Prompt.Contains("## Your task #t2", StringComparison.Ordinal), runner.Requests);
     }
 
     [TestMethod]
@@ -410,8 +410,8 @@ public sealed class TeamEngineTests
         JsonElement toLead = Report(reports[0]).GetProperty("messagesToLead");
         Assert.AreEqual("found a second problem in cron", toLead[0].GetProperty("text").GetString());
         TeamBoardSnapshot board = team.Snapshot()!;
-        Assert.IsTrue(board.Messages.Any(m => m.Kind == "peer" && m.From == "a" && m.To == "b"));
-        Assert.IsTrue(board.Messages.Any(m => m.Kind == "report" && m.To == "lead"));
+        Assert.Contains(m => m.Kind == "peer" && m.From == "a" && m.To == "b", board.Messages);
+        Assert.Contains(m => m.Kind == "report" && m.To == "lead", board.Messages);
     }
 
     [TestMethod]

@@ -192,7 +192,7 @@ public sealed class AvaloniaXServerHostUiTests
         TaskCompletionSource<bool> startedOnUi = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using CancellationTokenSource timeout = new(TimeSpan.FromMinutes(1));
-        using var registration = timeout.Token.Register(() => release.TrySetCanceled());
+        using CancellationTokenRegistration registration = timeout.Token.Register(() => release.TrySetCanceled());
         int reads = 0;
         AvaloniaXServerHost host = new()
         {

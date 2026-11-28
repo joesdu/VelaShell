@@ -51,7 +51,7 @@ public class FileBrowserViewModelTests
         delayed.SetResult([]);
         Assert.IsFalse(await pending);
         Assert.AreEqual("/home/user", _vm.CurrentPath);
-        Assert.IsTrue(_vm.Files.Any(file => file.Name == "readme.txt"));
+        Assert.Contains(file => file.Name == "readme.txt", _vm.Files);
         Assert.IsFalse(_vm.IsDirectoryLoading);
     }
 

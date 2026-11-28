@@ -182,7 +182,7 @@ public class SidebarQuickCommandsUiTests
     public Task LoadingSessions_ShowsOverlayOnlyInsideTreeUntilReadCompletes() =>
         _session.Dispatch(async () =>
         {
-            var repository = Substitute.For<ISessionRepository>();
+            ISessionRepository repository = Substitute.For<ISessionRepository>();
             var pending = new TaskCompletionSource<List<SessionProfile>>(TaskCreationOptions.RunContinuationsAsynchronously);
             repository.GetAllGroupsAsync().Returns([]);
             repository.GetAllSessionsAsync().Returns(pending.Task);
@@ -192,9 +192,9 @@ public class SidebarQuickCommandsUiTests
             window.Show();
             try
             {
-                var load = tree.LoadCommand.Execute().FirstAsync();
+                Task<RxVoid> load = tree.LoadCommand.Execute().FirstAsync();
                 Relayout(window);
-                var overlay = view.FindControl<Panel>("SessionLoadingOverlay")!;
+                Panel overlay = view.FindControl<Panel>("SessionLoadingOverlay")!;
                 Assert.IsTrue(overlay.IsEffectivelyVisible);
                 Assert.IsGreaterThan(0, overlay.Bounds.Height);
                 Assert.IsLessThanOrEqualTo(Bounds(view.FindControl<Border>("RecentConnectionsSection")!, view).Top,

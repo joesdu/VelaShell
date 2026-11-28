@@ -592,7 +592,7 @@ public static class SessionImportPlanner
             {
                 return sameId.Id;
             }
-            var key = (parent, name.Trim().ToUpperInvariant());
+            (Guid? parent, string) key = (parent, name.Trim().ToUpperInvariant());
             if (_siblings.TryGetValue(key, out ServerGroup? sibling))
             {
                 return sibling.Id;
@@ -879,8 +879,8 @@ public static class SessionImportPlanner
         /// <summary>新建的分组接在已有分组之后,彼此之间按文件里的先后排。</summary>
         private void FinishGroups()
         {
-            var existingSiblings = plan.ExistingGroups.ToLookup(static g => g.ParentGroupId);
-            foreach (var siblings in _newGroups.Values.GroupBy(static g => g.ParentGroupId))
+            ILookup<Guid?, ServerGroup> existingSiblings = plan.ExistingGroups.ToLookup(static g => g.ParentGroupId);
+            foreach (IGrouping<Guid?, ServerGroup> siblings in _newGroups.Values.GroupBy(static g => g.ParentGroupId))
             {
                 int next = existingSiblings[siblings.Key].Select(static g => g.SortOrder).DefaultIfEmpty(-1).Max() + 1;
                 foreach (ServerGroup group in siblings.OrderBy(static g => g.SortOrder))

@@ -488,9 +488,13 @@ public sealed class ConversationRouter(
 
     /// <summary>回复末尾那行小字:哪个模型、跑了多久、动了几次工具。</summary>
     private string Compose(BridgeTurn turn)
-        => turn.Model.Length == 0
-            ? turn.Text
-            : $"{turn.Text}\n\n{Loc.F("BridgeFooter", turn.Model, turn.Elapsed.TotalSeconds.ToString("0.0"), turn.ToolCalls)}";
+    {
+        if (turn.Model.Length == 0) return turn.Text;
+        string footer = Loc.F("BridgeFooter", turn.Model, turn.Elapsed.TotalSeconds.ToString("0.0"), turn.ToolCalls);
+        return turn.Runtime is { } runtime
+            ? $"{turn.Text}\n\n{footer}\n{Loc.F("BridgeRuntimeFooter", runtime.Status, runtime.SuccessfulToolCalls, runtime.FailedToolCalls)}"
+            : $"{turn.Text}\n\n{footer}";
+    }
 
     private async Task<bool> TryCommandAsync(BridgeConversation conversation, ChannelConfig config,
         ChatGrant grant, InboundMessage message, string text)

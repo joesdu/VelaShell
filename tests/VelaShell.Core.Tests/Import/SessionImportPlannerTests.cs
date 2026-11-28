@@ -210,7 +210,7 @@ public sealed class SessionImportPlannerTests
     public void CsvGroups_PathTakesPrecedence_AndBlankClearsWhileMissingPreserves()
     {
         var local = new ServerGroup { Name = "Prod" };
-        var session = Session("s", "local.test", group: local.Id);
+        SessionProfile session = Session("s", "local.test", group: local.Id);
         SessionImportWriteSet Apply(string columns, string cells) => Write(Plan(Csv($"id,host{columns}\n{session.Id},{session.Host}{cells}\n"), [session], [local]), SessionImportConflict.Overwrite);
         Assert.AreEqual(local.Id, Apply("", "").Sessions.Single().GroupId);
         Assert.IsNull(Apply(",group,group_path", ",Prod,").Sessions.Single().GroupId);

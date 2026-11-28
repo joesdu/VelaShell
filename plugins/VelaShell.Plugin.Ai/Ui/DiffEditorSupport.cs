@@ -98,7 +98,7 @@ internal sealed class DiffLineBackgroundRenderer(Func<IBrush?> brush) : IBackgro
             double top = line.VisualTop - textView.VerticalOffset;
             using (drawingContext.PushOpacity(TintOpacity))
                 drawingContext.FillRectangle(fill, new Rect(0, top, Math.Max(textView.Bounds.Width, 1), line.Height));
-            if (!ChangedSpans.TryGetValue(documentLine.LineNumber, out var span) || span.Start + span.Length > documentLine.Length) continue;
+            if (!ChangedSpans.TryGetValue(documentLine.LineNumber, out DiffTextSpan span) || span.Start + span.Length > documentLine.Length) continue;
             var segment = new TextSegment { StartOffset = documentLine.Offset + span.Start, Length = span.Length };
             using (drawingContext.PushOpacity(0.3))
             {

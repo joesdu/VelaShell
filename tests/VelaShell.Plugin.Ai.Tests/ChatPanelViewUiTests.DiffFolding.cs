@@ -33,10 +33,10 @@ public sealed partial class ChatPanelViewUiTests
                 window.RequestedThemeVariant = ThemeVariant.Dark;
                 await PumpAsync(3);
                 Assert.AreSequenceEqual(expanded, view.ChangeStarts.ToArray());
-                Assert.IsTrue(diff.Rows.Children.OfType<ToggleButton>().First().IsChecked == true);
+                Assert.AreEqual(true, diff.Rows.Children.OfType<ToggleButton>().First().IsChecked);
                 TextBlock firstLine = diff.Rows.Children[1].GetVisualDescendants().OfType<TextBlock>().Last();
                 Assert.AreEqual("int value1 = 1;", string.Concat(firstLine.Inlines!.OfType<Run>().Select(r => r.Text)));
-                Assert.IsTrue(firstLine.Inlines!.OfType<Run>().Any(r => r.Foreground is not null));
+                Assert.Contains(r => r.Foreground is not null, firstLine.Inlines!.OfType<Run>());
                 foreach ((int index, string digit) in new[] { (expanded[0], "1"), (expanded[0] + 1, "2") })
                 {
                     TextBlock code = diff.Rows.Children[index].GetVisualDescendants().OfType<TextBlock>().Last();
@@ -65,7 +65,7 @@ public sealed partial class ChatPanelViewUiTests
             Assert.HasCount(2, folds);
             RaiseClick(folds[1]);
             Assert.HasCount(DiffView.MaxRenderedLines + 1, view.Rows.Children);
-            Assert.IsFalse(folds[0].IsChecked == true);
+            Assert.AreNotEqual(true, folds[0].IsChecked);
             Assert.IsTrue(view.Rows.Children[^1].Classes.Contains("diffGap"));
             Assert.IsFalse(view.Rows.Children[^1] is ToggleButton);
             RaiseClick(folds[1]);

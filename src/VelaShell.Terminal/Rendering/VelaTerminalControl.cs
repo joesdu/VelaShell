@@ -2471,7 +2471,7 @@ public sealed partial class VelaTerminalControl : Control, ITerminalEmulator
         }
         if (_alternateBands.Count == 0)
         {
-            using var transform = context.PushTransform(Matrix.CreateTranslation(pad + GutterWidth(), pad));
+            using DrawingContext.PushedState transform = context.PushTransform(Matrix.CreateTranslation(pad + GutterWidth(), pad));
             for (int screenRow = 0; screenRow < rows; screenRow++)
             {
                 int absoluteRow = _screenToAbs[screenRow];

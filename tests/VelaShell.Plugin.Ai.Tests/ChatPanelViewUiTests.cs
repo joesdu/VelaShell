@@ -352,13 +352,13 @@ public sealed partial class ChatPanelViewUiTests
                 input.Text = longText;
                 input.CaretOffset = longText.Length;
                 await PumpAsync(3);
-                Assert.IsTrue(input.TextArea.TextView.GetOrConstructVisualLine(input.Document.GetLineByNumber(1)).TextLines.Count > 1,
+                Assert.IsGreaterThan(1, input.TextArea.TextView.GetOrConstructVisualLine(input.Document.GetLineByNumber(1)).TextLines.Count,
                     "前提:内容要真的折成了多行");
 
                 window.KeyPressQwerty(PhysicalKey.ArrowUp, RawInputModifiers.None);
                 await PumpAsync(3);
                 Assert.AreEqual(longText, input.Text, "光标不在显示首行时 ↑ 只移动光标,不该换成历史消息");
-                Assert.IsTrue(input.CaretOffset < longText.Length, "↑ 应把光标上移一行");
+                Assert.IsLessThan(longText.Length, input.CaretOffset, "↑ 应把光标上移一行");
 
                 window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
                 await PumpAsync(3);
@@ -1641,7 +1641,7 @@ public sealed partial class ChatPanelViewUiTests
                     .Single(b => b.Classes.Contains("sectionHeader") && (string?)b.Tag == $"section:{ToolPickerView.Page.Tools}:Built-in");
                 Press(builtinSection());
                 await PumpAsync(2);
-                Assert.IsFalse(Sources(picker).Any(s => ((string?)s.Tag)!.StartsWith("builtin:", StringComparison.Ordinal)), "折起内置区");
+                Assert.DoesNotContain(s => ((string?)s.Tag)!.StartsWith("builtin:", StringComparison.Ordinal), Sources(picker), "折起内置区");
                 Assert.IsNotNull(Source(picker, mcpKey), "MCP 区仍在");
                 Press(builtinSection());
                 await PumpAsync(2);

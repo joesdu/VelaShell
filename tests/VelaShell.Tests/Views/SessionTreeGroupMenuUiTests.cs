@@ -1,15 +1,15 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
-using VelaShell.Core.Resources;
-using VelaShell.Tests.TestSupport;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using NSubstitute;
 using ReactiveUI.Primitives;
 using VelaShell.Core.Data;
 using VelaShell.Core.Models;
+using VelaShell.Core.Resources;
 using VelaShell.Presentation.ViewModels;
+using VelaShell.Tests.TestSupport;
 using VelaShell.Views;
 
 namespace VelaShell.Tests.Views;

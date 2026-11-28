@@ -26,7 +26,7 @@ public sealed class MemoryStoreTests
     [TestMethod]
     public void AddUpdateDelete_NewestFirst_AndChangedFires()
     {
-        MemoryStore store = MemoryStore.For(_dir);
+        var store = MemoryStore.For(_dir);
         int changes = 0;
         store.Changed += () => changes++;
 
@@ -54,7 +54,7 @@ public sealed class MemoryStoreTests
     [TestMethod]
     public void Validation_RejectsEmptyTooLongAndSecrets()
     {
-        MemoryStore store = MemoryStore.For(_dir);
+        var store = MemoryStore.For(_dir);
         Assert.ThrowsExactly<ArgumentException>(() => store.Add(" ", "c", "user"));
         Assert.ThrowsExactly<ArgumentException>(() => store.Add("t", "", "user"));
         Assert.ThrowsExactly<ArgumentException>(() => store.Add(new string('t', MemoryStore.MaxTitleLength + 1), "c", "user"));
@@ -107,7 +107,7 @@ public sealed class MemoryStoreTests
     [TestMethod]
     public async Task Tools_OnlyInAgentModeWhenEnabled_AndWriteTheStore()
     {
-        MemoryStore store = MemoryStore.For(_dir);
+        var store = MemoryStore.For(_dir);
         var source = new MemoryToolSource(store);
         Assert.IsTrue(source.AppliesTo(ChatMode.Agent));
         Assert.IsFalse(source.AppliesTo(ChatMode.Plan), "计划模式只读");

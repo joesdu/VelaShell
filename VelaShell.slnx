@@ -31,6 +31,7 @@
     <File Path="src/Directory.Build.props" />
     <File Path="src/Directory.Build.targets" />
 	<File Path="src/Directory.Packages.props" />
+    <Project Path="src/VelaShell.AgentCore/VelaShell.AgentCore.csproj" />
     <Project Path="src/VelaShell.Controls/VelaShell.Controls.csproj" />
     <Project Path="src/VelaShell.Core/VelaShell.Core.csproj" />
     <Project Path="src/VelaShell.Infrastructure/VelaShell.Infrastructure.csproj" />

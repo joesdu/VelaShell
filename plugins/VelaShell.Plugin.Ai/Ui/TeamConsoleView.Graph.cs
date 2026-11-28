@@ -132,11 +132,10 @@ internal sealed partial class TeamConsoleView
     private readonly TextBlock _tickerTime = TeamUi.Text("", "VelaTextTertiary", 11, mono: true);
     private readonly TextBlock _tickerPair = TeamUi.Text("", "VelaTextPrimary", 12, FontWeight.SemiBold);
     private readonly TextBlock _tickerText = TeamUi.Line("", "VelaTextSecondary", 12);
-    private TeamMessageInfo? _tickerMessage;
     private string _tickerColor = "";
 
     /// <summary>拓扑图下面那一行此刻显示的消息(测试用;还没有通信时为 null)。</summary>
-    internal TeamMessageInfo? TickerMessage => _tickerMessage;
+    internal TeamMessageInfo? TickerMessage { get; private set; }
 
     /// <summary>图下面一行:最新的一条通信(类型色点 · 时刻 · 谁 → 谁:内容),点它看这条消息。</summary>
     private Border BuildTicker()
@@ -150,7 +149,7 @@ internal sealed partial class TeamConsoleView
         grid.Children.Add(_tickerText.At(4));
         Border row = Clickable(new Border { Name = "TeamGraphTickerRow", Classes = { "tcRow" }, Child = grid }, () =>
         {
-            if (_tickerMessage is { } message) OpenView(new DrawerView("pair", message.From, message.To, message));
+            if (TickerMessage is { } message) OpenView(new DrawerView("pair", message.From, message.To, message));
         });
         return new Border
         {
@@ -165,8 +164,8 @@ internal sealed partial class TeamConsoleView
     private void RefreshTicker()
     {
         TeamMessageInfo? last = Team.Messages.Count > 0 ? Team.Messages[^1] : null;
-        if (ReferenceEquals(last, _tickerMessage) && last is not null) return;
-        _tickerMessage = last;
+        if (ReferenceEquals(last, TickerMessage) && last is not null) return;
+        TickerMessage = last;
         if (last is null)
         {
             _tickerDot.IsVisible = _tickerTime.IsVisible = _tickerPair.IsVisible = false;

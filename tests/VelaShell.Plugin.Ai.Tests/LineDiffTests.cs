@@ -93,7 +93,7 @@ public sealed partial class LineDiffTests
         Assert.AreEqual(12, collapsed[1].OldNumber, "改动前留 3 行");
         Assert.AreEqual(DiffLineKind.Gap, collapsed[^1].Kind);
         Assert.AreEqual(12, collapsed[^1].HiddenCount);
-        Assert.AreEqual(1 + 3 + 2 + 3 + 1, collapsed.Count);
+        Assert.HasCount(1 + 3 + 2 + 3 + 1, collapsed);
     }
 
     [TestMethod]
@@ -101,7 +101,7 @@ public sealed partial class LineDiffTests
     {
         const string before = "remove\n  keep\t\na b", after = "insert\n\tkeep \nab";
         Assert.AreEqual("---+++", Kinds(LineDiff.Compute(before, after)));
-        var filtered = LineDiff.Compute(before, after, ignoreWhitespace: true);
+        LineDiffResult filtered = LineDiff.Compute(before, after, ignoreWhitespace: true);
         Assert.AreEqual("-+ -+", Kinds(filtered));
         Assert.AreEqual("\tkeep ", filtered.Lines[2].Text);
     }
@@ -109,8 +109,8 @@ public sealed partial class LineDiffTests
     [TestMethod]
     public void ChangedSpansPairLinesWithinEachHunkAndKeepEmojiWhole()
     {
-        var diff = LineDiff.Compute("x=😀;\nkeep\nport=8\nend", "x=😁;\nnew\nkeep\nport=80\nend");
-        var (removed, added) = diff.ChangedSpans();
+        LineDiffResult diff = LineDiff.Compute("x=😀;\nkeep\nport=8\nend", "x=😁;\nnew\nkeep\nport=80\nend");
+        (Dictionary<int, DiffTextSpan>? removed, Dictionary<int, DiffTextSpan>? added) = diff.ChangedSpans();
         Assert.AreEqual(new DiffTextSpan(2, 2), removed[1]);
         Assert.AreEqual(new DiffTextSpan(2, 2), added[1]);
         Assert.IsFalse(added.ContainsKey(2));

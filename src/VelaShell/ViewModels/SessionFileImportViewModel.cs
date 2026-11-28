@@ -415,7 +415,7 @@ public sealed class SessionFileImportViewModel : ReactiveObject
                 item.GroupLabel = existing.GroupId is { } current && byId.TryGetValue(current, out string? currentName) ? currentName : ungrouped;
                 continue;
             }
-            item.GroupLabel = _fileGroups.TryGetValue(candidate.Index, out var group)
+            item.GroupLabel = _fileGroups.TryGetValue(candidate.Index, out (string Path, bool Exists) group)
                 ? group.Exists ? group.Path : Strings.Format("SessImport_NewGroupFmt", group.Path)
                 : ungrouped;
         }

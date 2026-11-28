@@ -50,10 +50,10 @@ public sealed partial class AgentToolboxTests
         };
         await using CommandJobRunScope run = toolbox.BeginRun("desktop", "turn");
         const string name = "run_local_command";
-        Assert.IsFalse(toolbox.CreateTools(ChatMode.Agent).Any(t => t.Name == name));
-        Assert.IsFalse(toolbox.CreateTools(ChatMode.Plan, interactiveLocal: true).Any(t => t.Name == name));
-        Assert.IsFalse(toolbox.CreateSubagentTools(true, run, allowCommands: true).Any(t => t.Name == name));
-        Assert.IsFalse(toolbox.CreateTools(ChatMode.Agent, runScope: run, interactiveLocal: true).Any(t => t.Name == name));
+        Assert.DoesNotContain(t => t.Name == name, toolbox.CreateTools(ChatMode.Agent));
+        Assert.DoesNotContain(t => t.Name == name, toolbox.CreateTools(ChatMode.Plan, interactiveLocal: true));
+        Assert.DoesNotContain(t => t.Name == name, toolbox.CreateSubagentTools(true, run, allowCommands: true));
+        Assert.DoesNotContain(t => t.Name == name, toolbox.CreateTools(ChatMode.Agent, runScope: run, interactiveLocal: true));
         AIFunction cli = toolbox.CreateTools(ChatMode.Agent, runScope: run, interactiveLocal: true,
                 workspaceGate: action => Task.FromResult(action(toolbox.LocalWorkspaces)))
             .OfType<AIFunction>().Single(t => t.Name == name);
@@ -154,7 +154,7 @@ public sealed partial class AgentToolboxTests
                 File.WriteAllText(modern, "not an executable"); // Discovery must never run a probe.
                 string[] candidates = AgentToolbox.FindLocalInterpreters($".;\"{root.FullName}\";{root.FullName}", null);
                 Assert.AreEqual(modern, candidates[0]);
-                Assert.AreEqual(1, candidates.Count(p => p == modern));
+                Assert.ContainsSingle(p => p == modern, candidates);
                 Assert.IsTrue(candidates.All(Path.IsPathFullyQualified));
                 if (candidates.Any(p => Path.GetFileName(p) == "powershell.exe"))
                     Assert.AreEqual("powershell.exe", Path.GetFileName(candidates[^1]));
@@ -202,7 +202,7 @@ public sealed partial class AgentToolboxTests
             StartLocalProcess = process =>
             {
                 starts.Add(process.StartInfo.FileName);
-                Assert.AreEqual(starts.Count, approvals.Count);
+                Assert.HasCount(starts.Count, approvals);
                 StringAssert.Contains(approvals[^1], process.StartInfo.FileName);
                 if (starts.Count == 1) throw new System.ComponentModel.Win32Exception(2);
                 return process.Start();
@@ -214,8 +214,8 @@ public sealed partial class AgentToolboxTests
             .OfType<AIFunction>().Single(t => t.Name == "run_local_command");
         var args = new Dictionary<string, object?> { ["command"] = "exit 7" };
         string result = (await cli.InvokeAsync([with(args)], CancellationToken.None))?.ToString() ?? "";
-        Assert.AreEqual(2, approvals.Count);
-        Assert.AreEqual(approveFallback ? 2 : 1, starts.Count);
+        Assert.HasCount(2, approvals);
+        Assert.HasCount(approveFallback ? 2 : 1, starts);
         StringAssert.Contains(result, approveFallback ? "\"exitCode\":7" : "DENIED");
     }
 

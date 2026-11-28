@@ -308,7 +308,10 @@ public sealed class ProviderSetupView : UserControl
                     : _keyEdited || CaptureFormInputs() != _formInputBaseline))
             {
                 if (!await _confirm.AskAsync(_loc["SetupLeaveTitle"], _loc["SetupLeaveBody"],
-                        _loc["SetupLeaveAction"], _loc["Cancel"])) return;
+                        _loc["SetupLeaveAction"], _loc["Cancel"]))
+                {
+                    return;
+                }
             }
             Collapse();
             _focusedProviderId = null;
@@ -1712,7 +1715,7 @@ public sealed class ProviderSetupView : UserControl
             }
         }));
 
-        using var http = AiHttp.CreateClient(TimeSpan.FromSeconds(60));
+        using HttpClient http = AiHttp.CreateClient(TimeSpan.FromSeconds(60));
         OAuthClient client = DevicePollDelay is { } pollDelay ? new OAuthClient(http) { Delay = pollDelay } : new OAuthClient(http);
         var login = new ProviderLogin(client, LaunchAsync);
         try

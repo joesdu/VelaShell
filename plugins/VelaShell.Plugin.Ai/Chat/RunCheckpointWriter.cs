@@ -1,3 +1,5 @@
+using VelaShell.Plugin.Ai.Core.Runtime;
+
 namespace VelaShell.Plugin.Ai.Chat;
 
 /// <summary>
@@ -19,6 +21,7 @@ internal sealed class RunCheckpointWriter : IDisposable
     private readonly string _task;
     private readonly string _modelLabel;
     private readonly Func<string> _summary;
+    private readonly Func<AgentOrchestrationState?>? _orchestration;
     private readonly DateTimeOffset _startedAt = DateTimeOffset.UtcNow;
     private readonly Lock _gate = new();
     private readonly Lock _writeGate = new();
@@ -26,7 +29,8 @@ internal sealed class RunCheckpointWriter : IDisposable
     private bool _closed;
 
     public RunCheckpointWriter(RunCheckpointStore store, AgentExecution execution, string conversationId,
-        string runId, string task, string modelLabel, Func<string> summary)
+        string runId, string task, string modelLabel, Func<string> summary,
+        Func<AgentOrchestrationState?>? orchestration = null)
     {
         _store = store;
         _execution = execution;
@@ -35,6 +39,7 @@ internal sealed class RunCheckpointWriter : IDisposable
         _task = task;
         _modelLabel = modelLabel;
         _summary = summary;
+        _orchestration = orchestration;
         _execution.Progressed += Schedule;
     }
 
@@ -65,8 +70,9 @@ internal sealed class RunCheckpointWriter : IDisposable
             {
                 IReadOnlyList<RunCheckpointMessage> steps = RunCheckpointStore.Capture(_execution.CompletedMessages);
                 if (steps.Count == 0) return;
+                IReadOnlyList<RunCheckpointEvent> events = RunCheckpointStore.CaptureEvents(_execution.Events.Snapshot);
                 _store.Save(new RunCheckpoint(_conversationId, _runId, _task, _startedAt, DateTimeOffset.UtcNow,
-                    status, steps, _summary(), _modelLabel));
+                    status, steps, _summary(), _modelLabel, events, _orchestration?.Invoke()));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
             {

@@ -2768,7 +2768,7 @@ public sealed partial class SettingsViewUiTests
                 Assert.IsTrue(before >= 0 && before + save.Bounds.Height <= view.Bounds.Height);
                 scroller.ScrollToEnd();
                 await PumpAsync();
-                Assert.IsTrue(scroller.Offset.Y > 0);
+                Assert.IsGreaterThan(0, scroller.Offset.Y);
                 Assert.AreEqual(before, Y(save));
                 Assert.AreEqual(before, Y(test));
             }
@@ -3245,7 +3245,9 @@ public sealed partial class SettingsViewUiTests
             var first = new AiProvider { Name = "First", Models = [active] };
             var second = new AiProvider
             {
-                Name = "Second", BaseUrl = "https://example.test/v1", ModelsExpanded = false,
+                Name = "Second",
+                BaseUrl = "https://example.test/v1",
+                ModelsExpanded = false,
                 Models = [new() { Name = "Alias", Model = "a" }, new() { Name = "Alias", Model = "b" }],
                 AvailableModels = ["candidate-only"]
             };
@@ -4353,7 +4355,7 @@ public sealed partial class SettingsViewUiTests
                 Assert.IsFalse(editor.GetControl<Control>("PullModelsPanel").IsVisible);
                 editor.GetControl<Button>("AddButton")
                     .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-                var catalog = editor.GetLogicalDescendants().OfType<ProviderSetupView>().Single();
+                ProviderSetupView catalog = editor.GetLogicalDescendants().OfType<ProviderSetupView>().Single();
                 catalog.FocusEntry(provider.CatalogId, provider.Id);
                 await PumpAsync();
                 T Find<T>(string controlName) where T : Control => catalog.GetLogicalDescendants()

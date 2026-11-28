@@ -233,25 +233,24 @@ internal sealed partial class TeamConsoleView
     private sealed class ElasticHost : Decorator
     {
         private double _arranged = double.NaN;
-        private bool _elastic = true;
 
         public double MinElasticHeight { get; init; } = 300;
 
         public bool Elastic
         {
-            get => _elastic;
+            get;
             set
             {
-                if (_elastic == value) return;
-                _elastic = value;
+                if (field == value) return;
+                field = value;
                 _arranged = double.NaN;
                 InvalidateMeasure();
             }
-        }
+        } = true;
 
         protected override Size MeasureOverride(Size availableSize)
         {
-            if (!_elastic || Child is not { } child) return base.MeasureOverride(availableSize);
+            if (!Elastic || Child is not { } child) return base.MeasureOverride(availableSize);
             // 按上一次实际排到的高度量,前后两遍的约束一致,不会来回失效
             double height = double.IsNaN(_arranged) ? MinElasticHeight : _arranged;
             child.Measure(new Size(availableSize.Width, Math.Min(height, availableSize.Height)));
@@ -260,7 +259,7 @@ internal sealed partial class TeamConsoleView
 
         protected override Size ArrangeOverride(Size finalSize)
         {
-            if (_elastic && Child is { } child && !finalSize.Height.Equals(_arranged))
+            if (Elastic && Child is { } child && !finalSize.Height.Equals(_arranged))
             {
                 _arranged = finalSize.Height;
                 child.Measure(finalSize);

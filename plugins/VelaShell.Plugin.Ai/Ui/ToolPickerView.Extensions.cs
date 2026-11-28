@@ -1,7 +1,6 @@
 using System.Text;
 using Avalonia.Controls;
 using Avalonia.Layout;
-using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using VelaShell.Plugin.Ai.Chat.Extensions;
@@ -132,7 +131,7 @@ public sealed partial class ToolPickerView
     private async Task PickAndInstallAsync(bool folder)
     {
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage) return;
-        string? path = null;
+        string? path;
         if (folder)
         {
             IReadOnlyList<IStorageFolder> folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using VelaShell.Plugin.Ai.Chat;
+using VelaShell.Plugin.Ai.Core.Runtime;
 using VelaShell.Plugin.Ai.Ui;
 
 namespace VelaShell.Plugin.Ai.Tests;
@@ -69,6 +70,56 @@ public sealed class RunCheckpointStoreTests
 
         Assert.IsNull(store.Load("conv-1"));
         Assert.IsFalse(File.Exists(path));
+    }
+
+    [TestMethod]
+    public void Load_LegacyCheckpointWithoutEvents_RemainsCompatible()
+    {
+        var store = new RunCheckpointStore(_directory);
+        Directory.CreateDirectory(Path.Combine(_directory, "run-checkpoints"));
+        string path = Path.Combine(_directory, "run-checkpoints", "conv-1.json");
+        File.WriteAllText(path, "{\"ConversationId\":\"conv-1\",\"RunId\":\"run-1\",\"Task\":\"task\",\"StartedAt\":\"2026-01-01T00:00:00Z\",\"UpdatedAt\":\"2026-01-01T00:00:00Z\",\"Status\":\"running\",\"Steps\":[{\"Role\":\"assistant\",\"Text\":\"done\"}]}");
+
+        RunCheckpoint? loaded = store.Load("conv-1");
+
+        Assert.IsNotNull(loaded);
+        Assert.IsNull(loaded.Events);
+        Assert.AreEqual("task", loaded.Task);
+    }
+
+    [TestMethod]
+    public void SaveLoad_PreservesOrchestrationState()
+    {
+        var store = new RunCheckpointStore(_directory);
+        AgentOrchestrationState state = AgentOrchestrationState.Create("run-1")
+            .StartPlanning()
+            .AcceptPlan(new AgentPlan("清理", [], [new AgentPlanStep("inspect", "检查")], []));
+
+        store.Save(Checkpoint(Steps(1)) with { Orchestration = state });
+        RunCheckpoint? loaded = store.Load("conv-1");
+
+        Assert.IsNotNull(loaded?.Orchestration);
+        Assert.AreEqual(AgentOrchestrationPhase.Executing, loaded.Orchestration.Phase);
+        Assert.AreEqual("inspect", loaded.Orchestration.Plan!.Steps[0].Id);
+    }
+
+    [TestMethod]
+    public void SaveLoad_PreservesDiagnosticEvents()
+    {
+        var store = new RunCheckpointStore(_directory);
+        RunCheckpoint saved = Checkpoint(Steps(1)) with
+        {
+            Events = [new RunCheckpointEvent(7, DateTimeOffset.UtcNow, "ToolCallCompleted", 1,
+                "call-1", "read_file", "succeeded", 12, "completed")]
+        };
+
+        store.Save(saved);
+        RunCheckpoint? loaded = store.Load("conv-1");
+
+        Assert.IsNotNull(loaded?.Events);
+        Assert.HasCount(1, loaded.Events);
+        Assert.AreEqual("ToolCallCompleted", loaded.Events[0].Kind);
+        Assert.AreEqual("read_file", loaded.Events[0].ToolName);
     }
 
     [TestMethod]

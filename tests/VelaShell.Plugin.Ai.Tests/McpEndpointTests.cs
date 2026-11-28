@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Net;
-using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text.Json;
@@ -133,7 +132,7 @@ public sealed class McpEndpointTests
             });
             Assert.AreEqual(HttpStatusCode.OK, initializeResponse.StatusCode);
             string sessionId = initializeResponse.Headers.GetValues("Mcp-Session-Id").Single();
-            using (JsonDocument initialize = JsonDocument.Parse(await initializeResponse.Content.ReadAsStringAsync()))
+            using (var initialize = JsonDocument.Parse(await initializeResponse.Content.ReadAsStringAsync()))
             {
                 Assert.AreEqual("2025-11-25", initialize.RootElement.GetProperty("result").GetProperty("protocolVersion").GetString());
             }
@@ -521,7 +520,10 @@ public sealed class McpEndpointTests
 
             using HttpResponseMessage response = await PostRpcAsync(client, new
             {
-                jsonrpc = "2.0", id = 7, method = "tools/call", @params = new { name = "list_sessions" }
+                jsonrpc = "2.0",
+                id = 7,
+                method = "tools/call",
+                @params = new { name = "list_sessions" }
             }, stale);
             Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
             using var error = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -626,7 +628,7 @@ public sealed class McpEndpointTests
     [TestMethod]
     public void OversizedToolResult_IsTruncated()
     {
-        var limit = typeof(McpEndpoint).GetMethod("LimitToolResult", BindingFlags.Static | BindingFlags.NonPublic)!;
+        MethodInfo limit = typeof(McpEndpoint).GetMethod("LimitToolResult", BindingFlags.Static | BindingFlags.NonPublic)!;
         string source = new('x', 300 * 1024);
         string result = (string)limit.Invoke(null, [source])!;
 

@@ -35,7 +35,7 @@ public sealed class SessionArchiveServiceTests : IDisposable
     {
         string directory = Path.Combine(_root, name);
         Directory.CreateDirectory(directory);
-        var engine = SonnetDbTestTemplate.Open(Path.Combine(directory, "sonnetdb"));
+        SonnetDbEngine engine = SonnetDbTestTemplate.Open(Path.Combine(directory, "sonnetdb"));
         _engines.Add(engine);
         var protector = new AesSecretProtector(Path.Combine(directory, "secret.key"));
         var sessions = new SonnetDbSessionRepository(engine, protector);
@@ -47,7 +47,7 @@ public sealed class SessionArchiveServiceTests : IDisposable
     [TestMethod]
     public async Task GroupOnlyExport_PreviewAndArchiveContainTheSameSubtree_AndRestoreItOnce()
     {
-        var (source, repo, _, _) = Machine("source");
+        (SessionArchiveService? source, SonnetDbSessionRepository? repo, SonnetDbSharedCredentialRepository _, SonnetDbAppDataStore _) = Machine("source");
         var root = new ServerGroup { Name = "Root" };
         var child = new ServerGroup { Name = "Child", ParentGroupId = root.Id };
         var empty = new ServerGroup { Name = "Empty", ParentGroupId = child.Id };
@@ -59,11 +59,11 @@ public sealed class SessionArchiveServiceTests : IDisposable
         var scope = new SessionExportScope([], child.Id);
         SessionExportPreview preview = await source.PreviewExportAsync(scope);
         SessionExportFile file = await source.ExportAsync(scope, SessionFileFormat.Json, null);
-        var (target, targetRepo, _, _) = Machine("target");
+        (SessionArchiveService? target, SonnetDbSessionRepository? targetRepo, SonnetDbSharedCredentialRepository _, SonnetDbAppDataStore _) = Machine("target");
         SessionImportDocument doc = target.Parse("empty.json", file.Content);
         Assert.AreEqual(0, preview.SessionCount);
         Assert.AreEqual(3, preview.GroupCount);
-        Assert.AreEqual(preview.GroupCount, doc.Groups.Count);
+        Assert.HasCount(preview.GroupCount, doc.Groups);
         Assert.AreSequenceEqual([root.Id, child.Id, empty.Id], [.. doc.Groups.Select(g => g.Id)]);
         var options = new SessionImportOptions();
         Assert.AreEqual(3, (await target.ImportAsync(await target.PlanAsync(doc), options)).GroupsCreated);

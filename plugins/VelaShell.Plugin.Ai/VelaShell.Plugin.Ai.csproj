@@ -72,4 +72,10 @@
          记的插件目录名那次是同一个坑)。**再加包之前先看清它的传递依赖。** -->
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Host-neutral Agent contracts live in a standalone assembly so desktop, Bridge, MCP,
+         and future application hosts can reference them without the plugin implementation. -->
+    <ProjectReference Include="..\..\src\VelaShell.AgentCore\VelaShell.AgentCore.csproj" />
+  </ItemGroup>
+
 </Project>

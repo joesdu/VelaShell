@@ -619,7 +619,7 @@ public sealed partial class X11Server
 
     private bool CanReceiveFetch(SelectionFetch fetch, XClient sender) =>
         ReferenceEquals(fetch.Owner, sender) && !sender.Closed
-        && _selections.TryGetValue(fetch.Slot, out var owner) && ReferenceEquals(owner.Client, sender) && ReferenceEquals(owner.Window, fetch.OwnerWindow)
+        && _selections.TryGetValue(fetch.Slot, out (XWindow Window, XClient? Client, uint Time) owner) && ReferenceEquals(owner.Client, sender) && ReferenceEquals(owner.Window, fetch.OwnerWindow)
         && (fetch.Completed is not null || InFocusedSession(sender));
 
     private bool IsFetchProperty(XWindow window, uint property) => ReferenceEquals(window, _selectionWindow)

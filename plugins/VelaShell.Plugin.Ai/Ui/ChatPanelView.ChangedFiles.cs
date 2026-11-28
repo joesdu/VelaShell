@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Media;
 using Avalonia.Threading;
 using VelaShell.Plugin.Ai.Agent;
@@ -155,7 +154,8 @@ public partial class ChatPanelView : IFileDiffHost
 
     /// <summary>按「已修改文件」里的条目建文档:前后全文都在,能编辑。</summary>
     internal FileDiffDocument DocumentOf(ChangedFileEntry entry) => DocumentOf(entry.Location, entry.Path, entry.OldPath,
-        entry.Kind, entry.Before, entry.After, entry.Diff) with { ReviewEntry = entry };
+        entry.Kind, entry.Before, entry.After, entry.Diff) with
+    { ReviewEntry = entry };
 
     /// <summary>按一条文件改动(或合并后的条目)建文档。</summary>
     internal FileDiffDocument DocumentOf(string location, string path, string? oldPath, FileChangeKind kind,
@@ -356,7 +356,7 @@ public partial class ChatPanelView : IFileDiffHost
             rows.Children.Add(ChangedFileRow(entry));
             if (entry.ReviewError is { } error)
             {
-                var message = DiffView.Text(error, "VelaWarning");
+                TextBlock message = DiffView.Text(error, "VelaWarning");
                 message.TextWrapping = TextWrapping.Wrap;
                 rows.Children.Add(message);
             }
@@ -373,7 +373,7 @@ public partial class ChatPanelView : IFileDiffHost
         var stack = new StackPanel();
         var titleRow = new Grid { ColumnDefinitions = [with("*,Auto")] };
         titleRow.Children.Add(header);
-        var actions = BatchActions(list);
+        StackPanel actions = BatchActions(list);
         Grid.SetColumn(actions, 1);
         titleRow.Children.Add(actions);
         stack.Children.Add(titleRow);

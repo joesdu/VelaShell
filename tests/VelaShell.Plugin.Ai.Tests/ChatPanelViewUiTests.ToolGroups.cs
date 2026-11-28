@@ -60,11 +60,11 @@ public sealed partial class ChatPanelViewUiTests
                 bubble.FinishStreaming("model", DateTimeOffset.Now, TimeSpan.FromSeconds(42));
                 await PumpAsync();
                 Border fold = bubble.Root.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("processFold"));
-                Assert.IsTrue(fold.GetVisualDescendants().Contains(group), "工具组收进「工作过程」");
+                Assert.Contains(group, fold.GetVisualDescendants(), "工具组收进「工作过程」");
                 Assert.Contains(t => t.Text?.StartsWith("Work log · 4 actions", StringComparison.Ordinal) == true,
                     fold.GetVisualDescendants().OfType<TextBlock>());
                 MarkdownRenderer conclusion = bubble.Root.GetVisualDescendants().OfType<MarkdownRenderer>().Single();
-                Assert.IsFalse(fold.GetVisualDescendants().Contains(conclusion), "结论正文留在外面");
+                Assert.DoesNotContain(conclusion, fold.GetVisualDescendants(), "结论正文留在外面");
             }
             finally { panel.Detach(); window.Close(); }
         });
@@ -96,7 +96,7 @@ public sealed partial class ChatPanelViewUiTests
                 cancelled.AppendText("partial");
                 cancelled.FinishStreaming(cancelled: true);
                 await PumpAsync();
-                Assert.IsFalse(cancelled.Root.GetVisualDescendants().OfType<Border>().Any(b => b.Classes.Contains("processFold")));
+                Assert.DoesNotContain(b => b.Classes.Contains("processFold"), cancelled.Root.GetVisualDescendants().OfType<Border>());
             }
             finally { panel.Detach(); window.Close(); }
         });

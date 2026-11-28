@@ -48,11 +48,11 @@ public sealed class ServerGroupTreeTests
         }
         var root = new ServerGroup();
         var child = new ServerGroup { ParentGroupId = root.Id };
-        var tree = new ServerGroupTree([..chain, root, child]);
+        var tree = new ServerGroupTree([.. chain, root, child]);
         Assert.IsEmpty(tree.Validate());
         Assert.IsFalse(tree.CanMoveUnder(root.Id, chain[^2].Id));
         Assert.IsTrue(tree.CanMoveUnder(root.Id, chain[^3].Id));
         child.ParentGroupId = chain[^1].Id;
-        Assert.IsNotEmpty(new ServerGroupTree([..chain, child]).Validate());
+        Assert.IsNotEmpty(new ServerGroupTree([.. chain, child]).Validate());
     }
 }

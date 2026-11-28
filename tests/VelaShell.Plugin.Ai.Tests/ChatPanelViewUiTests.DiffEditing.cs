@@ -1,7 +1,9 @@
 using System.Text;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Controls.Primitives;
 using Avalonia.VisualTree;
+using AvaloniaEdit;
 using VelaShell.Plugin.Ai.Agent;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.Plugin.Ai.Ui;
@@ -124,7 +126,7 @@ public sealed partial class ChatPanelViewUiTests
         {
             const string code = "class Example\n{\nint value;\n}";
             var view = new FileDiffDocumentView(FullDocument("local:w", "sample.CS", code, code), new Loc("en"), new MemoryDiffHost());
-            var editor = view.RightEditor!;
+            TextEditor editor = view.RightEditor!;
             editor.TextArea.IndentationStrategy.IndentLine(editor.Document, editor.Document.GetLineByNumber(3));
             Assert.AreEqual("class Example\n{\n" + editor.Options.IndentationString + "int value;\n}", editor.Text);
             return Task.CompletedTask;
@@ -145,7 +147,7 @@ public sealed partial class ChatPanelViewUiTests
             {
                 await PumpAsync(3);
                 view.RightEditor!.Text = "  x \n";
-                var toggle = view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(b => b.Name == "DiffIgnoreWhitespace");
+                ToggleButton toggle = view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(b => b.Name == "DiffIgnoreWhitespace");
                 toggle.IsChecked = true;
                 RaiseClick(toggle);
                 Assert.IsFalse(view.CurrentDiff!.HasChanges);
@@ -471,7 +473,7 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(diff.IsHighlighted);
                 TextBlock removed = diff.Rows.Children.First(r => r.Classes.Contains("diffRemoved"))
                     .GetVisualDescendants().OfType<TextBlock>().Last();
-                Assert.IsTrue(removed.Inlines!.OfType<Run>().Any(r => r.Foreground is not null), "int 关键字着色");
+                Assert.Contains(r => r.Foreground is not null, removed.Inlines!.OfType<Run>(), "int 关键字着色");
 
                 FileDiffDocumentView view = await OpenChangedAsync(context, panel,
                     new FileChange("patch_local_file", "local:w", "src/x.cs", FileChangeKind.Modified, "int a;\n", "int b;\n"));

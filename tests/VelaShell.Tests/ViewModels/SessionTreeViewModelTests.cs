@@ -79,7 +79,7 @@ public class SessionTreeViewModelTests
         var pending = new TaskCompletionSource<List<SessionProfile>>(TaskCreationOptions.RunContinuationsAsynchronously);
         _repository.GetAllGroupsAsync().Returns([]);
         _repository.GetAllSessionsAsync().Returns(pending.Task);
-        var load = _vm.LoadCommand.Execute().FirstAsync();
+        Task<RxVoid> load = _vm.LoadCommand.Execute().FirstAsync();
         Assert.IsTrue(_vm.IsLoading);
         pending.SetResult([CreateSession("saved")]);
         await load;

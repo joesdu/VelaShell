@@ -1,5 +1,5 @@
-using System.Collections.Specialized;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using ReactiveUI;
 using ReactiveUI.Primitives;
@@ -38,7 +38,6 @@ internal sealed class UploadPickerSelection : IDisposable
     private readonly UploadPickerContext? _context;
     private readonly HashSet<string> _checked = [with(PathComparer)];
     private string _directory;
-    private bool _restoring;
     private bool _disposed;
     private long _restoreVersion;
     private long _saveVersion;
@@ -69,7 +68,7 @@ internal sealed class UploadPickerSelection : IDisposable
     public string ServerName => _context?.ServerName ?? string.Empty;
     public Guid? ActiveMappingId { get; private set; }
     public bool CanManageMappings => _context?.ProfileId is not null;
-    public bool IsRestoring => _restoring;
+    public bool IsRestoring { get; private set; }
     public IReadOnlyList<LocalFileEntry> CheckedEntries =>
         [.. _browser.Entries.Where(entry => !entry.IsParentEntry && _checked.Contains(entry.FullPath))];
     public bool HasEntries => _browser.Entries.Any(entry => !entry.IsParentEntry);
@@ -80,7 +79,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     public void SetChecked(LocalFileEntry entry, bool value)
     {
-        if (_disposed || _stopping || _restoring || entry.IsParentEntry || !_browser.Entries.Contains(entry))
+        if (_disposed || _stopping || IsRestoring || entry.IsParentEntry || !_browser.Entries.Contains(entry))
         {
             return;
         }
@@ -95,7 +94,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     public void SetAll(bool value)
     {
-        if (_disposed || _stopping || _restoring)
+        if (_disposed || _stopping || IsRestoring)
         {
             return;
         }
@@ -112,7 +111,7 @@ internal sealed class UploadPickerSelection : IDisposable
     public async Task InitializeAsync()
     {
         long version = ++_restoreVersion;
-        _restoring = true;
+        IsRestoring = true;
         RaiseChanged();
         try
         {
@@ -165,13 +164,13 @@ internal sealed class UploadPickerSelection : IDisposable
             _directory = _browser.CurrentPath;
             if (mapping is null && CanManageMappings && _browser.CurrentPath.Length > 0 && _browser.ErrorMessage is null)
             {
-                (UploadPickerState State, bool Saved, Guid Id) added = await _store.AddMappingAsync(_context!, _browser.CurrentPath);
+                (UploadPickerState State, bool Saved, Guid Id) = await _store.AddMappingAsync(_context!, _browser.CurrentPath);
                 if (!IsCurrent(version))
                 {
                     return;
                 }
-                ActiveMappingId = added.Id;
-                AcceptState(added.State, added.Saved);
+                ActiveMappingId = Id;
+                AcceptState(State, Saved);
                 paths = [];
             }
             RestoreChecks(paths);
@@ -197,7 +196,7 @@ internal sealed class UploadPickerSelection : IDisposable
         _mappingNavigation = navigation;
         long version = ++_restoreVersion;
         ++_saveVersion;
-        _restoring = true;
+        IsRestoring = true;
         bool applied = false;
         RaiseChanged();
         try
@@ -268,15 +267,15 @@ internal sealed class UploadPickerSelection : IDisposable
 
     private async Task AddMappingCoreAsync(string remotePath, string localPath)
     {
-        if (_disposed || _stopping || !CanManageMappings || _restoring)
+        if (_disposed || _stopping || !CanManageMappings || IsRestoring)
         {
             return;
         }
-        (UploadPickerState State, bool Saved, Guid Id) added = await _store.AddMappingAsync(_context! with { RemotePath = remotePath }, localPath);
+        (UploadPickerState State, bool Saved, Guid Id) = await _store.AddMappingAsync(_context! with { RemotePath = remotePath }, localPath);
         if (!_disposed && !_stopping)
         {
-            AcceptState(added.State, added.Saved);
-            await ApplyMappingAsync(Mappings.Single(item => item.Mapping.Id == added.Id));
+            AcceptState(State, Saved);
+            await ApplyMappingAsync(Mappings.Single(item => item.Mapping.Id == Id));
         }
     }
 
@@ -296,7 +295,7 @@ internal sealed class UploadPickerSelection : IDisposable
         CancelMappingNavigation();
         long version = ++_restoreVersion;
         ++_saveVersion;
-        _restoring = true;
+        IsRestoring = true;
         if (ActiveMappingId == item.Mapping.Id)
         {
             ActiveMappingId = null;
@@ -306,18 +305,18 @@ internal sealed class UploadPickerSelection : IDisposable
         RaiseChanged();
         try
         {
-            (UploadPickerState State, bool Saved) deleted = await _store.DeleteMappingAsync(profile, item.Mapping.Id);
+            (UploadPickerState State, bool Saved) = await _store.DeleteMappingAsync(profile, item.Mapping.Id);
             if (IsCurrent(version))
             {
                 ErrorMessage = null;
-                AcceptState(deleted.State, deleted.Saved);
+                AcceptState(State, Saved);
             }
         }
         finally
         {
             if (IsCurrent(version))
             {
-                _restoring = false;
+                IsRestoring = false;
                 RaiseChanged();
             }
         }
@@ -325,7 +324,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     public UploadSelectionResult? Submit()
     {
-        if (_disposed || _stopping || _restoring || _browser.IsDirectoryLoading || CheckedEntries.Count == 0)
+        if (_disposed || _stopping || IsRestoring || _browser.IsDirectoryLoading || CheckedEntries.Count == 0)
         {
             return null;
         }
@@ -340,10 +339,10 @@ internal sealed class UploadPickerSelection : IDisposable
 
     private async Task MarkUploadedAsync(long version, Guid profile, Guid id)
     {
-        (UploadPickerState State, bool Saved) saved = await _store.MarkUploadedAsync(profile, id);
+        (UploadPickerState State, bool Saved) = await _store.MarkUploadedAsync(profile, id);
         if (!_disposed && version == _saveVersion)
         {
-            AcceptState(saved.State, saved.Saved);
+            AcceptState(State, Saved);
         }
     }
 
@@ -388,7 +387,7 @@ internal sealed class UploadPickerSelection : IDisposable
     {
         if (IsCurrent(version))
         {
-            _restoring = false;
+            IsRestoring = false;
             if (save) { Save(); }
             RaiseChanged();
         }
@@ -421,7 +420,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     private void OnBrowserPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!_restoring && e.PropertyName == nameof(LocalFilePaneViewModel.CurrentPath)
+        if (!IsRestoring && e.PropertyName == nameof(LocalFilePaneViewModel.CurrentPath)
             && !PathComparer.Equals(NormalizeDirectory(_directory), NormalizeDirectory(_browser.CurrentPath)))
         {
             _directory = _browser.CurrentPath;
@@ -433,7 +432,7 @@ internal sealed class UploadPickerSelection : IDisposable
 
     private void OnEntriesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (!_restoring)
+        if (!IsRestoring)
         {
             ReconcileChecks();
             Save();
@@ -456,10 +455,10 @@ internal sealed class UploadPickerSelection : IDisposable
 
     private async Task SaveCoreAsync(long version, Guid? id, string directory, string[] paths)
     {
-        (UploadPickerState State, bool Saved) saved = await _store.SaveSelectionAsync(_context, id, directory, paths, updateMapping: true);
+        (UploadPickerState State, bool Saved) = await _store.SaveSelectionAsync(_context, id, directory, paths, updateMapping: true);
         if (!_disposed && version == _saveVersion)
         {
-            AcceptState(saved.State, saved.Saved);
+            AcceptState(State, Saved);
         }
     }
 

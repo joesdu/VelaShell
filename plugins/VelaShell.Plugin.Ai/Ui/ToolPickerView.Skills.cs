@@ -25,9 +25,9 @@ public sealed partial class ToolPickerView
 
     private void AddSkillActions()
     {
-        var open = HeaderButton("SkillsOpenFolder", _loc["SkillsOpenFolder"]);
+        Button open = HeaderButton("SkillsOpenFolder", _loc["SkillsOpenFolder"]);
         open.Click += async (_, _) => await OpenSkillsFolderAsync();
-        var rescan = HeaderButton("SkillsRescan", _loc["SkillsRescan"]);
+        Button rescan = HeaderButton("SkillsRescan", _loc["SkillsRescan"]);
         rescan.Click += (_, _) => Rebuild();
         _pageActions.Children.Add(open);
         _pageActions.Children.Add(rescan);

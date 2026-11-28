@@ -88,6 +88,6 @@ public sealed class CacheUsageChatClientTests
 
             """);
         Assert.AreEqual(800, usage.CachedInputTokenCount);
-        Assert.IsFalse(usage.AdditionalCounts?.ContainsKey(CacheUsageChatClient.CacheWriteKey) == true, "官方接口不报写入就不编一个");
+        Assert.AreNotEqual(true, usage.AdditionalCounts?.ContainsKey(CacheUsageChatClient.CacheWriteKey), "官方接口不报写入就不编一个");
     }
 }

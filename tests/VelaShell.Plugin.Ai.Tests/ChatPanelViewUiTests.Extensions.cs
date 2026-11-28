@@ -21,7 +21,10 @@ public sealed partial class ChatPanelViewUiTests
             await File.WriteAllTextAsync(Path.Combine(source, "skills", "incident", "SKILL.md"), "---\nname: incident\ndescription: Handle an incident.\n---");
             object Manifest(string command) => new
             {
-                id = "acme-ops", name = "Acme Ops", version = "1.0", description = "Ops helpers",
+                id = "acme-ops",
+                name = "Acme Ops",
+                version = "1.0",
+                description = "Ops helpers",
                 commands = new[] { new { name = "deploy", prompt = "Deploy {{args}}." } },
                 mcpServers = new[] { new { name = "tickets", command, args = new[] { "server.js", "--read only" }, env = new Dictionary<string, string> { ["MODE"] = "ro" } } }
             };

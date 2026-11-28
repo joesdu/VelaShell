@@ -112,7 +112,7 @@ public sealed class AiAssistantRegionUiTests
                 new() { Title = "a.cs (changes)", Placement = PanelPlacement.Tabs }, () => diff);
 
             Assert.AreSame(chat, vm.AiAssistant.Content, "the chat panel keeps the AI region");
-            Assert.AreEqual(2, vm.Layout.AllDocuments().Count());
+            Assert.HasCount(2, vm.Layout.AllDocuments());
             Assert.AreSame(vm.Layout.FindGroup(terminal), vm.Layout.FindGroup(vm.Layout.ActiveDocument!),
                 "the diff lands in the main tab group, next to the terminal");
             Assert.AreSame(diff, ((VelaShell.Docking.PluginDocument)vm.Layout.ActiveDocument!).CreateView());

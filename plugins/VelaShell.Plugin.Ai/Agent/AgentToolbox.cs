@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.AI;
+using VelaShell.Plugin.Ai.Agent.Policy;
 using VelaShell.Plugin.Ai.Agent.Web;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
@@ -73,6 +74,7 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             DisabledTools = new HashSet<string>(DisabledTools, StringComparer.OrdinalIgnoreCase),
             WebSearch = WebSearch,
             _fileMutationGate = _fileMutationGate,
+            PolicyGate = PolicyGate,
             _parentToolbox = _parentToolbox ?? this
         };
     }
@@ -175,6 +177,9 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
 
     /// <summary>审批方式(见 <see cref="ApprovalMode" />)。</summary>
     public ApprovalMode Approval { get; set; } = ApprovalMode.Ask;
+
+    /// <summary>宿主无关的策略闸门；审批 UI 仍由本工具箱保持兼容处理。</summary>
+    internal IAgentPolicyGate? PolicyGate { get; set; }
 
     internal RemoteTransferApprovalContext TransferApprovalContext { get; init; }
     internal bool AutoApproveUploads { get; init; }
@@ -1224,7 +1229,8 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             await WriteLocalTextAsync(localPath.FullPath, content, keepBom, cancellationToken)
                 .ConfigureAwait(false);
             RaiseFileChanged(new FileChange("write_local_file", LocalLocation(localPath), localPath.RelativePath,
-                existed ? FileChangeKind.Modified : FileChangeKind.Created, before, content) { BeforeHasBom = existed ? keepBom : null });
+                existed ? FileChangeKind.Modified : FileChangeKind.Created, before, content)
+            { BeforeHasBom = existed ? keepBom : null });
             return $"Wrote {byteCount} bytes to {localPath.RelativePath}.";
         }
         catch (Exception ex)
@@ -1300,7 +1306,8 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             await WriteLocalTextAsync(localPath.FullPath, patched, hasBom, cancellationToken)
                 .ConfigureAwait(false);
             RaiseFileChanged(new FileChange("patch_local_file", LocalLocation(localPath), localPath.RelativePath,
-                FileChangeKind.Modified, original, patched) { BeforeHasBom = hasBom });
+                FileChangeKind.Modified, original, patched)
+            { BeforeHasBom = hasBom });
             return DescribePatchResult(localPath.RelativePath, original, patched, editList, replacements);
         }
         catch (Exception ex)
@@ -1394,7 +1401,8 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
                 {
                     string? text = TryReadLocalTextForEvent(destination.FullPath, out bool? hasBom);
                     RaiseFileChanged(new FileChange("rename_local_path", LocalLocation(destination), destination.RelativePath,
-                        FileChangeKind.Renamed, text, text, source.RelativePath) { BeforeHasBom = hasBom });
+                        FileChangeKind.Renamed, text, text, source.RelativePath)
+                    { BeforeHasBom = hasBom });
                 }
             }
             return $"Renamed {source.RelativePath} → {destination.RelativePath}.";
@@ -1448,7 +1456,8 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
                 string? before = FileChangedHandler is not null ? TryReadLocalTextForEvent(localPath.FullPath, out hasBom) : null;
                 File.Delete(localPath.FullPath);
                 RaiseFileChanged(new FileChange("delete_local_path", LocalLocation(localPath), localPath.RelativePath,
-                    FileChangeKind.Deleted, before, null) { BeforeHasBom = hasBom });
+                    FileChangeKind.Deleted, before, null)
+                { BeforeHasBom = hasBom });
             }
             return $"Deleted {localPath.RelativePath}.";
         }
@@ -2034,7 +2043,8 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             await context.RemoteFs.WriteAllBytesAsync(id, path, Encoding.UTF8.GetBytes(content), cancellationToken)
                          .ConfigureAwait(false);
             RaiseFileChanged(new FileChange("write_remote_file", RemoteLocation(id), path,
-                existed ? FileChangeKind.Modified : FileChangeKind.Created, before, content) { BeforeHasBom = existed ? keepBom : null });
+                existed ? FileChangeKind.Modified : FileChangeKind.Created, before, content)
+            { BeforeHasBom = existed ? keepBom : null });
             return $"Wrote {Encoding.UTF8.GetByteCount(content)} bytes to {path}.";
         }
         catch (Exception ex)
@@ -2111,7 +2121,8 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             await context.RemoteFs.WriteAllBytesAsync(id, path, Encoding.UTF8.GetBytes(patched), cancellationToken)
                          .ConfigureAwait(false);
             RaiseFileChanged(new FileChange("patch_remote_file", RemoteLocation(id), path,
-                FileChangeKind.Modified, beforeSnapshot, patched.StartsWith('\uFEFF') ? patched[1..] : patched) { BeforeHasBom = hadBom });
+                FileChangeKind.Modified, beforeSnapshot, patched.StartsWith('\uFEFF') ? patched[1..] : patched)
+            { BeforeHasBom = hadBom });
             return DescribePatchResult(path, original, patched, editList, replacements);
         }
         catch (Exception ex)
@@ -2174,7 +2185,8 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
                 if (exists && !isDirectory)
                 {
                     RaiseFileChanged(new FileChange("rename_remote_path", RemoteLocation(id), newPath,
-                        FileChangeKind.Renamed, text, text, oldPath) { BeforeHasBom = hasBom });
+                        FileChangeKind.Renamed, text, text, oldPath)
+                    { BeforeHasBom = hasBom });
                 }
             }
             return $"Renamed {oldPath} → {newPath}.";
@@ -2802,6 +2814,16 @@ public sealed partial class AgentToolbox(IPluginContext context) : IAsyncDisposa
             finally
             {
                 parent._invocationScope.Value = previous;
+            }
+        }
+        if (PolicyGate is { } policy)
+        {
+            AgentPolicyDecision preflight = policy.Preflight(new AgentPolicyRequest(
+                request.Kind, request.Detail, AgentSideEffect.Possible, isKnownSafe: false,
+                request.RepeatKey, request.Origin));
+            if (preflight.Kind is AgentPolicyDecisionKind.ExecutionDenied or AgentPolicyDecisionKind.UnknownOutcome)
+            {
+                return false;
             }
         }
         if ((request.Kind is "upload_local_file" or "transfer_resume" && AutoApprovesTransfer(RemoteTransferDirection.Upload))

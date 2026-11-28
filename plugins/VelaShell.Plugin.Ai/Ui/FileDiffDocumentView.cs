@@ -292,7 +292,11 @@ internal sealed class FileDiffDocumentView : DockPanel
                 left.Text = document.Before ?? "";
                 Recompute();
             }
-            else Rebuild();
+            else
+            {
+                Rebuild();
+            }
+
             ShowStatus(_loc["DiffChangedWhileEditing"]);
             return;
         }
@@ -401,7 +405,7 @@ internal sealed class FileDiffDocumentView : DockPanel
     {
         TextEditor leftEditor = LeftEditor = Editor("DiffLeftEditor", left, readOnly: true);
         TextEditor rightEditor = RightEditor = Editor("DiffRightEditor", right, readOnly: !Document.CanEdit);
-        if (_busy) rightEditor.IsReadOnly = true;
+        if (IsBusy) rightEditor.IsReadOnly = true;
         _leftTint = new DiffLineBackgroundRenderer(() => Brush("VelaError"));
         _rightTint = new DiffLineBackgroundRenderer(() => Brush("VelaStatusConnected"));
         leftEditor.TextArea.TextView.BackgroundRenderers.Add(_leftTint);
@@ -551,14 +555,14 @@ internal sealed class FileDiffDocumentView : DockPanel
         if (_computing) return;
         _recompute.Stop();
         if (LeftEditor is null || RightEditor is null) return;
-        var before = LeftEditor.Document.CreateSnapshot();
-        var after = RightEditor.Document.CreateSnapshot();
+        ITextSource before = LeftEditor.Document.CreateSnapshot();
+        ITextSource after = RightEditor.Document.CreateSnapshot();
         bool ignoreWhitespace = _ignoreWhitespace.IsChecked == true;
         long revision = _diffRevision;
         _computing = true;
         try
         {
-            var diff = await Task.Run(() => LineDiff.Compute(before.Text, after.Text, ignoreWhitespace));
+            LineDiffResult diff = await Task.Run(() => LineDiff.Compute(before.Text, after.Text, ignoreWhitespace));
             if (revision == _diffRevision) ApplyDiff(diff);
         }
         finally
@@ -616,7 +620,7 @@ internal sealed class FileDiffDocumentView : DockPanel
         ChangeStarts = starts;
         _leftTint?.Lines = removed;
         _rightTint?.Lines = added;
-        var (oldSpans, newSpans) = diff.ChangedSpans();
+        (Dictionary<int, DiffTextSpan>? oldSpans, Dictionary<int, DiffTextSpan>? newSpans) = diff.ChangedSpans();
         _leftTint?.ChangedSpans = oldSpans;
         _rightTint?.ChangedSpans = newSpans;
         LeftEditor.TextArea.TextView.InvalidateLayer(AvaloniaEdit.Rendering.KnownLayer.Background);
@@ -725,7 +729,7 @@ internal sealed class FileDiffDocumentView : DockPanel
         _dirtyDot.IsVisible = dirty;
         bool review = !dirty && Document.ReviewEntry is { } entry && entry.Owner.Entries.Contains(entry);
         _save.IsVisible = _revert.IsVisible = (Document.CanEdit || review) && _host is not null;
-        _save.IsEnabled = _revert.IsEnabled = !_busy && (dirty || review);
+        _save.IsEnabled = _revert.IsEnabled = !IsBusy && (dirty || review);
         _save.Content = _loc[review ? "DiffKeep" : "DiffSave"];
         _revert.Content = _loc[review ? "DiffDiscard" : "DiffRevert"];
         AutomationProperties.SetName(_save, (string)_save.Content);
@@ -733,12 +737,11 @@ internal sealed class FileDiffDocumentView : DockPanel
         ToolTip.SetTip(_save, review ? _save.Content : _loc["DiffSaveTip"]);
     }
 
-    private bool _busy;
-    internal bool IsBusy => _busy;
+    internal bool IsBusy { get; private set; }
 
     internal void SetBusy(bool busy)
     {
-        _busy = busy;
+        IsBusy = busy;
         if (RightEditor is { } right) right.IsReadOnly = busy || !Document.CanEdit;
         UpdateChrome();
     }
@@ -746,7 +749,10 @@ internal sealed class FileDiffDocumentView : DockPanel
     internal void FinishReview(ChangedFileEntry entry, bool keep)
     {
         if (Document.ReviewEntry != entry) return;
-        if (keep) Document = Document with { ReviewEntry = null };
+        if (keep)
+        {
+            Document = Document with { ReviewEntry = null };
+        }
         else
         {
             var restored = new FileDiffDocument(entry.OldPath ?? entry.Path, Document.Location, null, null)
@@ -766,7 +772,7 @@ internal sealed class FileDiffDocumentView : DockPanel
 
     internal async Task RevertOrDiscardAsync()
     {
-        if (_busy) return;
+        if (IsBusy) return;
         if (IsDirty) Revert();
         else await ReviewAsync(keep: false);
     }
@@ -790,7 +796,7 @@ internal sealed class FileDiffDocumentView : DockPanel
     /// </summary>
     internal async Task SaveAsync()
     {
-        if (_busy || _host is null) return;
+        if (IsBusy || _host is null) return;
         if (!IsDirty)
         {
             await ReviewAsync(keep: true);
@@ -874,7 +880,11 @@ internal sealed class FileDiffDocumentView : DockPanel
             _editedRight = Baseline;
             Rebuild();
         }
-        else RightEditor.Text = Baseline;
+        else
+        {
+            RightEditor.Text = Baseline;
+        }
+
         _conflict.IsVisible = false;
         _pendingOverwrite = null;
         ShowStatus("");

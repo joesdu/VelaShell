@@ -267,7 +267,7 @@ public class NotificationCenterTests
         string directory = Path.Combine(Path.GetTempPath(), $"vela-inbox-{Guid.NewGuid():N}");
         try
         {
-            using (var engine = SonnetDbTestTemplate.Open(Path.Combine(directory, "sonnetdb")))
+            using (SonnetDbEngine engine = SonnetDbTestTemplate.Open(Path.Combine(directory, "sonnetdb")))
             {
                 await engine.WithCollectionAsync<object?>("notifications", store =>
                 {

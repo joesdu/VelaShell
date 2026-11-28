@@ -65,8 +65,6 @@ public class FileBrowserViewModel : ReactiveObject
     private readonly BatchObservableCollection<RemoteFileInfoViewModel> _files;
 
     private readonly Guid _sessionId;
-    private readonly ISftpService _sftpService;
-
     private string _currentPath;
     private long _navigationVersion;
 
@@ -100,7 +98,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     public FileBrowserViewModel(ISftpService? sftpService, Guid sessionId)
     {
-        _sftpService = sftpService!;
+        UploadDirectoryService = sftpService!;
         _sessionId = sessionId;
         SessionId = sessionId;
         _currentPath = "/";
@@ -185,7 +183,7 @@ public class FileBrowserViewModel : ReactiveObject
     /// </summary>
     public async Task RefreshSilentlyAsync()
     {
-        if (_sftpService is null || _sessionId == Guid.Empty)
+        if (UploadDirectoryService is null || _sessionId == Guid.Empty)
         {
             return;
         }
@@ -199,7 +197,7 @@ public class FileBrowserViewModel : ReactiveObject
                 .Where(file => !file.IsParentEntry)
                 .Select(file => file.FullPath)
                 .ToHashSet(StringComparer.Ordinal);
-            List<RemoteFileInfo> files = await _sftpService.ListDirectoryAsync(
+            List<RemoteFileInfo> files = await UploadDirectoryService.ListDirectoryAsync(
                 _sessionId,
                 path,
                 _lifetime.Token
@@ -604,7 +602,7 @@ public class FileBrowserViewModel : ReactiveObject
     private void BeginPathEdit()
     {
         // 未绑定会话的占位面板没有可导航的目标,别把用户丢进一个提交不了的输入框。
-        if (IsPathEditing || _sftpService is null || _sessionId == Guid.Empty)
+        if (IsPathEditing || UploadDirectoryService is null || _sessionId == Guid.Empty)
         {
             return;
         }
@@ -668,13 +666,13 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task<string?> TryExpandOnServerAsync(string path)
     {
-        if (_sftpService is null || _sessionId == Guid.Empty)
+        if (UploadDirectoryService is null || _sessionId == Guid.Empty)
         {
             return null;
         }
         try
         {
-            return await _sftpService.ExpandPathAsync(_sessionId, path, _lifetime.Token);
+            return await UploadDirectoryService.ExpandPathAsync(_sessionId, path, _lifetime.Token);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -684,13 +682,13 @@ public class FileBrowserViewModel : ReactiveObject
 
     private async Task EnsureHomePathAsync()
     {
-        if (_homePath is not null || _sftpService is null || _sessionId == Guid.Empty)
+        if (_homePath is not null || UploadDirectoryService is null || _sessionId == Guid.Empty)
         {
             return;
         }
         try
         {
-            string working = await _sftpService.GetWorkingDirectoryAsync(_sessionId, _lifetime.Token);
+            string working = await UploadDirectoryService.GetWorkingDirectoryAsync(_sessionId, _lifetime.Token);
             if (!string.IsNullOrWhiteSpace(working))
             {
                 _homePath = working;
@@ -1274,7 +1272,7 @@ public class FileBrowserViewModel : ReactiveObject
     public Func<string, Task<UploadSelectionResult?>>? PickUploadSelection { get; set; }
 
     // 绑定窗口使用文档已有的串行目录服务,但不借用主面板的导航状态。
-    internal ISftpService UploadDirectoryService => _sftpService;
+    internal ISftpService UploadDirectoryService { get; }
 
     /// <summary>
     /// 由视图设置:询问下载保存位置(参数 = 建议的文件名)。选了已有的文件时,由对话框自己问「要替换吗」——
@@ -1548,7 +1546,7 @@ public class FileBrowserViewModel : ReactiveObject
                 .Where(file => !file.IsParentEntry)
                 .Select(file => file.FullPath)
                 .ToHashSet(StringComparer.Ordinal);
-            List<RemoteFileInfo> files = await _sftpService.ListDirectoryAsync(
+            List<RemoteFileInfo> files = await UploadDirectoryService.ListDirectoryAsync(
                 _sessionId,
                 path,
                 ct
@@ -1648,7 +1646,7 @@ public class FileBrowserViewModel : ReactiveObject
         }
         try
         {
-            string working = await _sftpService.GetWorkingDirectoryAsync(_sessionId, ct);
+            string working = await UploadDirectoryService.GetWorkingDirectoryAsync(_sessionId, ct);
             if (!string.IsNullOrWhiteSpace(working))
             {
                 candidates.Add(working);
@@ -1782,13 +1780,13 @@ public class FileBrowserViewModel : ReactiveObject
     /// 上传与外部编辑的自动回传同一条路、进传输浮窗。面板没绑会话时为 null。
     /// </summary>
     internal IRemoteEditDraftTarget? EditDraftTarget =>
-        _sftpService is null || _sessionId == Guid.Empty
+        UploadDirectoryService is null || _sessionId == Guid.Empty
             ? null
-            : new RemoteFileServiceDraftTarget(_sftpService, _sessionId, UploadEditedFileAsync);
+            : new RemoteFileServiceDraftTarget(UploadDirectoryService, _sessionId, UploadEditedFileAsync);
 
     private async Task UploadEditedFileAsync(string localPath, string remotePath)
     {
-        if (_sftpService is null)
+        if (UploadDirectoryService is null)
         {
             throw new InvalidOperationException(Strings.Get("Msg_SftpUnavailable"));
         }
@@ -1814,7 +1812,7 @@ public class FileBrowserViewModel : ReactiveObject
         });
         try
         {
-            await _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress);
+            await UploadDirectoryService.UploadFileAsync(_sessionId, localPath, remotePath, progress);
             item?.Status = TransferStatus.Completed;
         }
         catch
@@ -1855,7 +1853,7 @@ public class FileBrowserViewModel : ReactiveObject
             }
             await BuiltInEditTempFiles.OpenOwnedAsync(tempDir, async () =>
             {
-                await _sftpService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, cancellationToken: ct);
+                await UploadDirectoryService.DownloadFileAsync(_sessionId, file.FullPath, localPath, null, cancellationToken: ct);
                 ct.ThrowIfCancellationRequested();
                 string remotePath = file.FullPath;
                 await OpenInBuiltInEditor(
@@ -1928,7 +1926,7 @@ public class FileBrowserViewModel : ReactiveObject
             await RemoteEditSessionManager.OpenAsync(
                 new()
                 {
-                    SftpService = _sftpService,
+                    SftpService = UploadDirectoryService,
                     SessionId = _sessionId,
                     RemotePath = remotePath,
                     FileName = file.Name,
@@ -2052,7 +2050,7 @@ public class FileBrowserViewModel : ReactiveObject
         RemoteSpaceInfo? space;
         try
         {
-            space = await _sftpService.GetSpaceAsync(_sessionId, path);
+            space = await UploadDirectoryService.GetSpaceAsync(_sessionId, path);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -2102,7 +2100,7 @@ public class FileBrowserViewModel : ReactiveObject
         RemoteSpaceInfo? space;
         try
         {
-            space = await _sftpService.GetSpaceAsync(_sessionId, destination, ct);
+            space = await UploadDirectoryService.GetSpaceAsync(_sessionId, destination, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
         {
@@ -2258,7 +2256,7 @@ public class FileBrowserViewModel : ReactiveObject
                 localPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
             );
             string remoteSub = RemotePath.Combine(remoteDir, name);
-            await _sftpService.EnsureDirectoryAsync(_sessionId, remoteSub, ct);
+            await UploadDirectoryService.EnsureDirectoryAsync(_sessionId, remoteSub, ct);
             foreach (string child in Directory.EnumerateFileSystemEntries(localPath))
             {
                 await BuildUploadPlanAsync(child, remoteSub, plan, ct);
@@ -2354,7 +2352,7 @@ public class FileBrowserViewModel : ReactiveObject
                 throw new InvalidOperationException(Strings.Get("KeySvc_InvalidName"));
             }
             Directory.CreateDirectory(localSub);
-            List<RemoteFileInfo> children = await _sftpService.ListDirectoryAsync(
+            List<RemoteFileInfo> children = await UploadDirectoryService.ListDirectoryAsync(
                 _sessionId,
                 remotePath,
                 ct
@@ -2487,7 +2485,7 @@ public class FileBrowserViewModel : ReactiveObject
         {
             return;
         }
-        var source = new RelaySource(peer._sftpService, peer._sessionId, peer.ServerDisplayName, peer.UseStagedRelaySource, peer.UseStreamedRelay);
+        var source = new RelaySource(peer.UploadDirectoryService, peer._sessionId, peer.ServerDisplayName, peer.UseStagedRelaySource, peer.UseStreamedRelay);
         string destination = CurrentPath;
         try
         {
@@ -2537,7 +2535,7 @@ public class FileBrowserViewModel : ReactiveObject
             TransferSink?.UpdatePreparingCount(plan.Count);
             return;
         }
-        await _sftpService.EnsureDirectoryAsync(_sessionId, destination, ct);
+        await UploadDirectoryService.EnsureDirectoryAsync(_sessionId, destination, ct);
         List<RemoteFileInfo> children = await source.Service.ListDirectoryAsync(source.SessionId, sourcePath, ct);
         foreach (RemoteFileInfo child in children)
         {
@@ -2926,7 +2924,7 @@ public class FileBrowserViewModel : ReactiveObject
                 {
                     return null;
                 }
-                RemoteFileInfo remoteInfo = await _sftpService.GetFileInfoAsync(
+                RemoteFileInfo remoteInfo = await UploadDirectoryService.GetFileInfoAsync(
                     _sessionId,
                     item.RemotePath,
                     ct
@@ -2980,7 +2978,7 @@ public class FileBrowserViewModel : ReactiveObject
             {
                 return -1;
             }
-            RemoteFileInfo info = await _sftpService.GetFileInfoAsync(_sessionId, remotePath, ct);
+            RemoteFileInfo info = await UploadDirectoryService.GetFileInfoAsync(_sessionId, remotePath, ct);
             return info.Size;
         }
         catch (OperationCanceledException)
@@ -3092,7 +3090,7 @@ public class FileBrowserViewModel : ReactiveObject
         {
             try
             {
-                List<RemoteFileInfo> entries = await _sftpService.ListDirectoryAsync(
+                List<RemoteFileInfo> entries = await UploadDirectoryService.ListDirectoryAsync(
                     _sessionId,
                     dir,
                     ct
@@ -3125,7 +3123,7 @@ public class FileBrowserViewModel : ReactiveObject
         {
             return names.Contains(NameOf(remotePath));
         }
-        return await _sftpService.ExistsAsync(_sessionId, remotePath, ct);
+        return await UploadDirectoryService.ExistsAsync(_sessionId, remotePath, ct);
     }
 
     private static string NameOf(string remotePath) =>
@@ -3478,14 +3476,14 @@ public class FileBrowserViewModel : ReactiveObject
         Task TransferOnceAsync(long startAt) => type switch
         {
             TransferType.Upload =>
-                _sftpService.UploadFileAsync(_sessionId, localPath, remotePath, progress, startAt, itemCt),
+                UploadDirectoryService.UploadFileAsync(_sessionId, localPath, remotePath, progress, startAt, itemCt),
             // Copy:LocalPath = 远端源路径,RemotePath = 远端目标路径。
             TransferType.Copy =>
-                _sftpService.CopyAsync(_sessionId, localPath, remotePath, progress, itemCt),
+                UploadDirectoryService.CopyAsync(_sessionId, localPath, remotePath, progress, itemCt),
             // Relay:LocalPath = 另一栏会话上的源路径,RemotePath = 本会话上的目标路径。
             TransferType.Relay => TransferRelayAsync(startAt),
             _ =>
-                _sftpService.DownloadFileAsync(_sessionId, remotePath, localPath, progress, startAt, itemCt),
+                UploadDirectoryService.DownloadFileAsync(_sessionId, remotePath, localPath, progress, startAt, itemCt),
         };
 
         async Task TransferRelayAsync(long startAt)
@@ -3496,7 +3494,7 @@ public class FileBrowserViewModel : ReactiveObject
                 // 目标支持安全提交时，先把有界内存流直接写到目标同目录的临时文件，
                 // 源确认完成后再原子发布；这样大文件不需要在本机落一份完整缓存。
                 if (stagedSource is null && startAt == 0 && await RemoteRelay.TryCopyFileWithRemoteCommitAsync(
-                        source.Service, source.SessionId, localPath, _sftpService, _sessionId, remotePath,
+                        source.Service, source.SessionId, localPath, UploadDirectoryService, _sessionId, remotePath,
                         progress, () => remoteCommitRelay = true, cancellationToken: itemCt))
                 {
                     return;
@@ -3515,13 +3513,13 @@ public class FileBrowserViewModel : ReactiveObject
                         item?.IsPreparingSource = false;
                     }
                 }
-                await stagedSource.UploadAsync(_sftpService, _sessionId, remotePath,
+                await stagedSource.UploadAsync(UploadDirectoryService, _sessionId, remotePath,
                     progress, () => targetTouched = true, startAt, itemCt);
                 return;
             }
 
             await RemoteRelay.CopyFileAsync(
-                source.Service, source.SessionId, localPath, _sftpService, _sessionId, remotePath,
+                source.Service, source.SessionId, localPath, UploadDirectoryService, _sessionId, remotePath,
                 progress, () => targetTouched = true, startAt, cancellationToken: itemCt);
         }
     }
@@ -3750,7 +3748,7 @@ public class FileBrowserViewModel : ReactiveObject
         {
             try
             {
-                await _sftpService.DeleteAsync(_sessionId, remotePath);
+                await UploadDirectoryService.DeleteAsync(_sessionId, remotePath);
             }
             catch
             {
@@ -3807,7 +3805,7 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
-            await _sftpService.CreateDirectoryAsync(
+            await UploadDirectoryService.CreateDirectoryAsync(
                 _sessionId,
                 RemotePath.Combine(CurrentPath, trimmedName),
                 ct
@@ -3840,7 +3838,7 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
-            await _sftpService.CreateFileAsync(
+            await UploadDirectoryService.CreateFileAsync(
                 _sessionId,
                 RemotePath.Combine(CurrentPath, trimmedName),
                 ct
@@ -3887,7 +3885,7 @@ public class FileBrowserViewModel : ReactiveObject
         try
         {
             ErrorMessage = null;
-            await _sftpService.CreateSymbolicLinkAsync(
+            await UploadDirectoryService.CreateSymbolicLinkAsync(
                 _sessionId,
                 RemotePath.Combine(CurrentPath, trimmedName),
                 trimmedTarget,
@@ -3922,7 +3920,7 @@ public class FileBrowserViewModel : ReactiveObject
         {
             ErrorMessage = null;
             string target = RemotePath.Combine(RemotePath.Parent(file.FullPath), trimmedName);
-            await _sftpService.RenameAsync(_sessionId, file.FullPath, target, ct);
+            await UploadDirectoryService.RenameAsync(_sessionId, file.FullPath, target, ct);
             await RefreshAsync(ct);
         }
         catch (Exception ex)
@@ -3972,7 +3970,7 @@ public class FileBrowserViewModel : ReactiveObject
             try
             {
                 ErrorMessage = null;
-                await _sftpService.RenameAsync(_sessionId, only.FullPath, destination.Trim(), ct);
+                await UploadDirectoryService.RenameAsync(_sessionId, only.FullPath, destination.Trim(), ct);
                 await RefreshAsync(ct);
             }
             catch (Exception ex)
@@ -4000,7 +3998,7 @@ public class FileBrowserViewModel : ReactiveObject
             }
             try
             {
-                await _sftpService.RenameAsync(_sessionId, item.FullPath, dest, ct);
+                await UploadDirectoryService.RenameAsync(_sessionId, item.FullPath, dest, ct);
             }
             catch (Exception ex)
             {
@@ -4152,7 +4150,7 @@ public class FileBrowserViewModel : ReactiveObject
         RemoteOwnerChoices? ownerChoices = null;
         try
         {
-            ownerChoices = await _sftpService.GetOwnerChoicesAsync(_sessionId, ct);
+            ownerChoices = await UploadDirectoryService.GetOwnerChoicesAsync(_sessionId, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -4175,12 +4173,12 @@ public class FileBrowserViewModel : ReactiveObject
             // 放在前面,它被拒时什么都还没改。
             if (change.Owner is not null || change.Group is not null)
             {
-                await _sftpService.SetOwnerAsync(_sessionId, file.FullPath, change.Owner, change.Group, ct);
+                await UploadDirectoryService.SetOwnerAsync(_sessionId, file.FullPath, change.Owner, change.Group, ct);
                 applied = true;
             }
             if (change.Mode is { } mode)
             {
-                await _sftpService.SetPermissionsAsync(_sessionId, file.FullPath, mode, ct);
+                await UploadDirectoryService.SetPermissionsAsync(_sessionId, file.FullPath, mode, ct);
                 applied = true;
             }
         }
@@ -4291,7 +4289,7 @@ public class FileBrowserViewModel : ReactiveObject
                         BusyText = Strings.Deleting;
                     }
                 });
-                await _sftpService.DeleteAsync(
+                await UploadDirectoryService.DeleteAsync(
                     _sessionId,
                     targets[i].FullPath,
                     progress,
