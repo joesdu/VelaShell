@@ -255,8 +255,7 @@ public sealed class AiPlugin : IVelaPlugin
     /// 打开「协作接入」设置窗口(IM 桥接 + 对外 MCP 服务端)。
     /// </summary>
     /// <remarks>
-    /// 这一页<b>不挂在聊天面板下面</b>:它配的是两条常驻服务,与"当前这段对话"无关,
-    /// 而且用户很可能根本没开过聊天面板就想去配它。所以入口在命令面板上,自己一个窗口。
+    /// 两条常驻服务与当前对话无关。命令面板与聊天顶栏共用这个独立窗口。
     /// </remarks>
     private async Task OpenCollaborationAsync()
     {

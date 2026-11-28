@@ -14,6 +14,25 @@ namespace VelaShell.Plugin.Ai.Tests;
 public sealed partial class ChatPanelViewUiTests
 {
     [TestMethod]
+    public void CollaborationButton_InvokesPaletteCommandFromChatToolbar()
+    {
+        OnUi(async () =>
+        {
+            using var context = new TestPluginContext();
+            (Window window, ChatPanelView panel) = await ShowAsync(context);
+            try
+            {
+                Button button = Find<Button>(panel, "CollaborationButton");
+                Assert.IsTrue(button.IsEffectivelyVisible);
+                Assert.IsFalse(string.IsNullOrWhiteSpace(AutomationProperties.GetName(button)));
+                button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                Assert.AreEqual($"{context.PluginId}.collaboration", context.RecordingCommands.ExecutedIds.Single());
+            }
+            finally { panel.Detach(); window.Close(); }
+        });
+    }
+
+    [TestMethod]
     [DataRow(true)]
     [DataRow(false)]
     [DataRow(null)]

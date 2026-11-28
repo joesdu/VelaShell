@@ -307,6 +307,7 @@ public partial class ChatPanelView : UserControl
         SetUpInputEditor();
         SetUpAttachments();
         FilePopup.PlacementTarget = InputWrap;
+        CollaborationButton.Click += (_, _) => _context.Commands.TryExecute($"{_context.PluginId}.collaboration");
         SettingsButton.Click += (_, _) => OpenSettingsDialog();
         ToolsButton.Click += (_, _) => OpenToolsDialog();
         HistoryToggle.IsCheckedChanged += (_, _) =>
@@ -548,6 +549,8 @@ public partial class ChatPanelView : UserControl
         ToolTip.SetTip(NewChatButton, $"{_loc["NewChat"]} — {_loc["NewChatTip"]}");
         ToolTip.SetTip(JumpToBottomButton, _loc["ScrollToBottom"]);
         ToolTip.SetTip(UsageMeterTrack, _loc["MeterTip"]);
+        ToolTip.SetTip(CollaborationButton, _loc["CmdCollaboration"]);
+        Avalonia.Automation.AutomationProperties.SetName(CollaborationButton, _loc["CmdCollaboration"]);
         ToolTip.SetTip(SettingsButton, _loc["ModelSettings"]);
         ToolTip.SetTip(ToolsButton, _loc["ConfigureTools"]);
         ToolTip.SetTip(HistoryToggle, _loc["History"]);

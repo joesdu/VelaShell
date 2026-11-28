@@ -726,7 +726,7 @@
   </UserControl.Styles>
 
   <DockPanel Margin="10">
-    <!-- 顶栏:会话(SSH)| 历史 / 新会话 / 设置。
+    <!-- 顶栏:会话(SSH)| 历史 / 新会话 / 协作接入 / 设置。
          模型选择与 Agent 开关不在这里 —— 它们跟着输入框走(见下方 InputToolbar),
          与 GitHub Copilot 一致:决定"这条消息怎么发"的东西,应当挨着输入框。 -->
     <Grid x:Name="TopBar" DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
@@ -754,6 +754,13 @@
         <Button x:Name="NewChatButton" Theme="{DynamicResource VelaOutlineButtonTheme}" Height="26" Width="30" Padding="0">
           <Viewbox Width="13" Height="13">
             <Path Width="24" Height="24" Data="{DynamicResource Icon.plus}"
+                  Stroke="{DynamicResource VelaTextSecondary}" StrokeThickness="2"
+                  StrokeLineCap="Round" StrokeJoin="Round" />
+          </Viewbox>
+        </Button>
+        <Button x:Name="CollaborationButton" Theme="{DynamicResource VelaOutlineButtonTheme}" Height="26" Width="30" Padding="0">
+          <Viewbox Width="13" Height="13">
+            <Path Width="24" Height="24" Data="{StaticResource AiIcon.cable}"
                   Stroke="{DynamicResource VelaTextSecondary}" StrokeThickness="2"
                   StrokeLineCap="Round" StrokeJoin="Round" />
           </Viewbox>
