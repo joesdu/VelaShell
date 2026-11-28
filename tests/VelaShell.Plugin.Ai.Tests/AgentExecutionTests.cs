@@ -1234,8 +1234,8 @@ public sealed class AgentExecutionTests
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
-        TaskCompletionSource[] releases = new[] { new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
-            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) };
+        TaskCompletionSource[] releases = [ new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) ];
         int attempts = 0;
         await using var orchestrator = new SubagentOrchestrator(async (request, token) =>
         {

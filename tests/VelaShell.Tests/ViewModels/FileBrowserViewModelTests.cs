@@ -2264,7 +2264,7 @@ c => c.GetMethodInfo().Name == nameof(ISftpService.DownloadFileAsync),
                 Assert.AreEqual("/original", destination);
                 await Task.Yield();
                 _vm.CurrentPath = "/changed-by-background";
-                return new[] { file };
+                return [file];
             };
             await _vm.UploadCommand.Execute().FirstAsync();
             await _sftpService.Received(1).UploadFileAsync(_sessionId, file,

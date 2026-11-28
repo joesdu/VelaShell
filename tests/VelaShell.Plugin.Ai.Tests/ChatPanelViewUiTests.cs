@@ -1611,8 +1611,7 @@ public sealed partial class ChatPanelViewUiTests
                 string mcpKey = "mcp:" + server.Id;
                 string readKey = "builtin:" + ToolKind.Read;
 
-                CollectionAssert.AreEqual(new[] { "NavExtensions", "NavMcpServers", "NavSkills", "NavMemory", "NavTools" },
-                    picker.GetVisualDescendants().OfType<ListBoxItem>().Select(i => i.Name).ToArray(), "左栏五节");
+                Assert.AreSequenceEqual(["NavExtensions", "NavMcpServers", "NavSkills", "NavMemory", "NavTools"], picker.GetVisualDescendants().OfType<ListBoxItem>().Select(i => i.Name).ToArray(), "左栏五节");
                 Assert.AreEqual("1", NavCount(picker, ToolPickerView.Page.McpServers));
                 Assert.AreEqual((Agent.AgentToolbox.Catalog.Count + 2).ToString(System.Globalization.CultureInfo.InvariantCulture),
                     NavCount(picker, ToolPickerView.Page.Tools), "工具计数 = 内置 + 启用中服务器的工具");
@@ -1632,13 +1631,13 @@ public sealed partial class ChatPanelViewUiTests
                 Assert.IsTrue(Rows(Source(picker, mcpKey)).IsVisible);
 
                 // 分区标题:点「内置」把所有内置类别一起收起(MCP 区不受影响),再点展开回来
-                Border builtinSection() => picker.GetVisualDescendants().OfType<Border>()
+                Border BuiltinSection() => picker.GetVisualDescendants().OfType<Border>()
                     .Single(b => b.Classes.Contains("sectionHeader") && (string?)b.Tag == $"section:{ToolPickerView.Page.Tools}:Built-in");
-                Press(builtinSection());
+                Press(BuiltinSection());
                 await PumpAsync(2);
                 Assert.DoesNotContain(s => ((string?)s.Tag)!.StartsWith("builtin:", StringComparison.Ordinal), Sources(picker), "折起内置区");
                 Assert.IsNotNull(Source(picker, mcpKey), "MCP 区仍在");
-                Press(builtinSection());
+                Press(BuiltinSection());
                 await PumpAsync(2);
                 Assert.IsNotNull(Source(picker, readKey), "再点展开");
 
@@ -1669,8 +1668,7 @@ public sealed partial class ChatPanelViewUiTests
                 Border filtered = Sources(picker).Single();
                 Assert.AreEqual(mcpKey, filtered.Tag);
                 Assert.IsTrue(Rows(filtered).IsVisible, "搜索时自动展开");
-                CollectionAssert.AreEqual(new[] { "beta_tool" },
-                    filtered.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("itemRow")).Select(b => (string?)b.Tag).ToArray());
+                Assert.AreSequenceEqual(["beta_tool"], filtered.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("itemRow")).Select(b => (string?)b.Tag).ToArray());
                 search.Text = "no-such-tool-anywhere";
                 await PumpAsync(2);
                 Assert.IsEmpty(Sources(picker));

@@ -17,15 +17,15 @@ public sealed class AgentRunSnapshotTests
     {
         var projector = new AgentRunSnapshotProjector("run");
         DateTimeOffset start = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        projector.Apply(new[]
-        {
+        projector.Apply(
+        [
             Event(1, AgentRunEventKind.StepStarted, 2, start),
             Event(2, AgentRunEventKind.ToolCallStarted, 2, start.AddSeconds(1), "call-1", "read"),
             Event(3, AgentRunEventKind.ToolCallCompleted, 2, start.AddSeconds(3), "call-1", "read", "succeeded", 2000),
             Event(4, AgentRunEventKind.BackgroundWaitStarted, 2, start.AddSeconds(4), summary: "transfer"),
             Event(5, AgentRunEventKind.BackgroundWaitCompleted, 2, start.AddSeconds(7), outcome: "completed", durationMilliseconds: 3000),
             Event(6, AgentRunEventKind.RunPaused, 2, start.AddSeconds(8), outcome: "NoProgress"),
-        });
+        ]);
 
         AgentRunSnapshot snapshot = projector.Snapshot;
         Assert.AreEqual(AgentProjectionStatus.Paused, snapshot.Status);
@@ -49,13 +49,13 @@ public sealed class AgentRunSnapshotTests
     {
         var projector = new AgentRunSnapshotProjector("run");
         DateTimeOffset start = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        projector.Apply(new[]
-        {
+        projector.Apply(
+        [
             Event(1, AgentRunEventKind.StepStarted, 0, start),
             Event(2, AgentRunEventKind.ToolCallStarted, 0, start.AddSeconds(1), "call-1", "read"),
             Event(3, AgentRunEventKind.ToolCallCompleted, 0, start.AddSeconds(2), "call-1", "read", "succeeded"),
             Event(4, AgentRunEventKind.RunCompleted, 0, start.AddSeconds(3), outcome: "verified")
-        });
+        ]);
 
         AgentRunTelemetry telemetry = projector.Snapshot.ToTelemetry();
         Assert.AreEqual("run", telemetry.RunId);
@@ -71,12 +71,12 @@ public sealed class AgentRunSnapshotTests
     {
         var projector = new AgentRunSnapshotProjector("run", recentEventCapacity: 2);
         DateTimeOffset start = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        projector.Apply(new[]
-        {
+        projector.Apply(
+        [
             Event(1, AgentRunEventKind.StepStarted, 1, start),
             Event(2, AgentRunEventKind.ToolCallStarted, 1, start.AddSeconds(1), "call-1", "read"),
             Event(3, AgentRunEventKind.ToolCallCompleted, 1, start.AddSeconds(2), "call-1", "read", "succeeded"),
-        });
+        ]);
 
         ImmutableArray<AgentRunEvent> first = projector.Snapshot.RecentEvents;
         ImmutableArray<AgentRunEvent> second = projector.Snapshot.RecentEvents;
@@ -91,12 +91,12 @@ public sealed class AgentRunSnapshotTests
     {
         var projector = new AgentRunSnapshotProjector("run");
         DateTimeOffset start = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        projector.Apply(new[]
-        {
+        projector.Apply(
+        [
             Event(3, AgentRunEventKind.ToolCallCompleted, 1, start.AddSeconds(2), "call-1", "read", "succeeded"),
             Event(1, AgentRunEventKind.StepStarted, 1, start),
             Event(2, AgentRunEventKind.ToolCallStarted, 1, start.AddSeconds(1), "call-1", "read"),
-        });
+        ]);
         projector.Apply(Event(2, AgentRunEventKind.RunPaused, 1, start.AddSeconds(3), outcome: "late"));
 
         AgentRunSnapshot snapshot = projector.Snapshot;
@@ -104,6 +104,6 @@ public sealed class AgentRunSnapshotTests
         Assert.AreEqual(3L, snapshot.LastSequence);
         Assert.AreEqual(1, snapshot.Metrics.ToolCalls);
         Assert.AreEqual(1, snapshot.Metrics.CompletedToolCalls);
-        Assert.AreSequenceEqual(new long[] { 1, 2, 3 }, snapshot.RecentEvents.Select(item => item.Sequence));
+        Assert.AreSequenceEqual([1, 2, 3], snapshot.RecentEvents.Select(item => item.Sequence));
     }
 }

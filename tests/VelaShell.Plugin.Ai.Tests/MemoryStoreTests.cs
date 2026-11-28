@@ -34,7 +34,7 @@ public sealed class MemoryStoreTests
         Thread.Sleep(5);
         MemoryEntry b = store.Add("Prod bastion", "Prod servers are reached through bastion-1.", "user");
         Assert.AreEqual("Prefers concise answers", a.Title, "去掉首尾空白");
-        CollectionAssert.AreEqual(new[] { b.Id, a.Id }, store.List().Select(e => e.Id).ToArray(), "最近改过的在前");
+        Assert.AreSequenceEqual([b.Id, a.Id], store.List().Select(e => e.Id).ToArray(), "最近改过的在前");
 
         Thread.Sleep(5);
         MemoryEntry updated = store.Update(a.Id, null, "Keep replies very short.", "user");

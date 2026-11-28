@@ -212,7 +212,7 @@ public sealed class SteeringTests
             TextContent text => text.Text,
             _ => ""
         })];
-        Assert.AreSequenceEqual(new[] { "c1", "result:c1", "只看最近一小时的", "c2", "result:c2", "按时间排序" },
+        Assert.AreSequenceEqual(["c1", "result:c1", "只看最近一小时的", "c2", "result:c2", "按时间排序"],
             third.Skip(2).ToList());
         Assert.HasCount(2, steering.Delivered);
         client.Dispose();
@@ -236,7 +236,7 @@ public sealed class SteeringTests
         List<ChatMessage> retry = inner.Requests[1];
         Assert.HasCount(context.Count, retry);
         Assert.AreEqual(ChatRole.Tool, retry[^2].Role);
-        Assert.AreSequenceEqual(new[] { "补充条件", RecoveringChatClient.ContinueAfterTools },
+        Assert.AreSequenceEqual(["补充条件", RecoveringChatClient.ContinueAfterTools],
             retry[^1].Contents.OfType<TextContent>().Select(c => c.Text));
         Assert.HasCount(1, context[^1].Contents, "补试传入的原始消息不应被改写");
     }

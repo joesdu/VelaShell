@@ -287,7 +287,7 @@ public class MainWindowViewModelTests
             Assert.AreEqual("Production (2)", manager.Rows.Single().Label);
             manager.ToggleSelection(manager.Rows.Single());
             manager.SearchText = "edge.example";
-            CollectionAssert.AreEquivalent(new[] { "gateway #1", "gateway #2" }, manager.Rows.Where(r => !r.IsGroup).Select(r => r.Label).ToArray());
+            Assert.AreSequenceEqual(["gateway #1", "gateway #2"], manager.Rows.Where(r => !r.IsGroup).Select(r => r.Label).ToArray(), Microsoft.VisualStudio.TestTools.UnitTesting.SequenceOrder.InAnyOrder);
             manager.FilterIndex = 2;
             manager.Move(SyncInputChannel.D);
             Assert.AreEqual(SyncInputChannel.D, first.SyncChannel);

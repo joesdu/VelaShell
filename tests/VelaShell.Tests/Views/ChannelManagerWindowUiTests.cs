@@ -97,8 +97,7 @@ public class ChannelManagerWindowUiTests
                 Click(check);
                 ComboBox target = visuals.OfType<ComboBox>().Single();
                 Assert.IsTrue(target.IsEnabled);
-                CollectionAssert.AreEqual("ABCDEF".Select(c => VelaShell.Localization.LocalizedStrings.Instance[$"ChannelManager_Channel{c}"]).ToArray(),
-                    target.Items.OfType<ComboBoxItem>().Skip(1).Select(item => item.Content).ToArray());
+                Assert.AreSequenceEqual("ABCDEF".Select(c => VelaShell.Localization.LocalizedStrings.Instance[$"ChannelManager_Channel{c}"]).ToArray(), target.Items.OfType<ComboBoxItem>().Skip(1).Select(item => item.Content).ToArray());
                 Border titleBar = visuals.OfType<Border>().Single(b => b.Classes.Contains("window-titlebar"));
                 Assert.AreEqual(window.Title, titleBar.GetVisualDescendants().OfType<TextBlock>().Single().Text);
                 using WriteableBitmap? frame = window.CaptureRenderedFrame();

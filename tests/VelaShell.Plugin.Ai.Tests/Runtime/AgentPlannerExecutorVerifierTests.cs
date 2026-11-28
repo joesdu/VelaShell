@@ -26,7 +26,7 @@ public sealed class AgentPlannerExecutorVerifierTests
             request, planner, executor, verifier, execution);
 
         Assert.IsTrue(result.Passed);
-        CollectionAssert.AreEqual(new[] { "inspect", "change", "change" }, executor.StepIds);
+        Assert.AreSequenceEqual(["inspect", "change", "change"], executor.StepIds);
         Assert.HasCount(3, execution.BegunSteps);
         Assert.HasCount(2, verifier.Context!.StepResults);
         Assert.AreEqual(AgentOrchestrationPhase.Completed, session.State.Phase);

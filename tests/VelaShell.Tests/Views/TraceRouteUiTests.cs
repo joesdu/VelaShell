@@ -179,7 +179,7 @@ public sealed class TraceRouteUiTests
                 byte[] start = FramePixels(window);
                 clock.Advance(TimeSpan.FromMilliseconds(500));
                 map.InvalidateVisual();
-                CollectionAssert.AreEqual(start, FramePixels(window));
+                Assert.AreSequenceEqual(start, FramePixels(window));
             }
             finally
             {
