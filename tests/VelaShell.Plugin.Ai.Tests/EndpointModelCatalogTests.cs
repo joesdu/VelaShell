@@ -74,15 +74,13 @@ public sealed class EndpointModelCatalogTests
     }
 
     [TestMethod]
-    public void Request_AnthropicWithASignInTokenSwitchesToBearer()
+    [DataRow(true, null)]
+    [DataRow(false, "https://account.example/v1")]
+    public void Request_RejectsSubscriptionCredentials(bool bearer, string? accountEndpoint)
     {
-        // 登录换回来的令牌与手填的 Key 走的不是同一个头 —— 与发对话请求时同一套判断
-        using HttpRequestMessage request = EndpointModelCatalog.Request(
+        Assert.Throws<NotSupportedException>(() => EndpointModelCatalog.Request(
             "https://api.anthropic.com", ChatProtocol.AnthropicMessages,
-            new ProviderCredential("tok", true))!;
-
-        Assert.AreEqual("Bearer tok", request.Headers.GetValues("Authorization").Single());
-        Assert.IsFalse(request.Headers.Contains("x-api-key"));
+            new ProviderCredential("retired", bearer, BaseUrl: accountEndpoint)));
     }
 
     [TestMethod]
@@ -90,9 +88,9 @@ public sealed class EndpointModelCatalogTests
     {
         using HttpRequestMessage request = EndpointModelCatalog.Request(
             "https://relay.example/v1", ChatProtocol.OpenAiResponses,
-            new ProviderCredential("tok", true, [new KeyValuePair<string, string>("chatgpt-account-id", "acc-1")]))!;
+            new ProviderCredential("api-key", false, [new("x-relay-project", "project-1")]))!;
 
-        Assert.AreEqual("acc-1", request.Headers.GetValues("chatgpt-account-id").Single());
+        Assert.AreEqual("project-1", request.Headers.GetValues("x-relay-project").Single());
     }
 
     [TestMethod]

@@ -196,10 +196,8 @@ public static class ModelPull
             ProviderCredential credential = apiKeyOverride is null
                 ? await store.ResolveProviderCredentialAsync(provider, cancellationToken).ConfigureAwait(false)
                 : ProviderCredential.Key(apiKeyOverride);
-            // 订阅登录换回来的令牌可能自带地址(见 OAuthTokens.BaseUrl),那时以它为准
-            string baseUrl = string.IsNullOrWhiteSpace(credential.BaseUrl) ? provider.BaseUrl : credential.BaseUrl;
             return await EndpointModelCatalog
-                         .FetchAsync(http, baseUrl, provider.DefaultProtocol, credential, cancellationToken)
+                         .FetchAsync(http, provider.BaseUrl, provider.DefaultProtocol, credential, cancellationToken)
                          .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not AiSettingsStore.ApiKeySlotChangedException)

@@ -6,7 +6,7 @@ VelaShell AI 是一个面向终端工作流的多供应商 AI 插件。它把聊
 
 ## 能力概览
 
-- 多供应商、多模型和订阅型端点接入；支持流式响应、故障转移和健康检查。
+- 支持多个自定义 OpenAI / Anthropic 兼容端点和模型，认证只用 API Key。VelaShell 不再代办账号登录或订阅授权，以降低账号安全和封号风险，减少维护成本并简化界面。需要登录时，可使用 [Magpie](https://usemagpie.ai) 或 [Astra](https://astra-gate.si)提供兼容端点，或在官方 Agent 工具中登录并通过 MCP 调用 VelaShell。
 - Chat、Plan、Agent 三种工作模式。
 - 远端 SSH/SFTP 工具、附件和 MCP 工具的统一工具箱。
 - 工具审批、只读筛选、CallId 去重、取消和未知副作用保护。

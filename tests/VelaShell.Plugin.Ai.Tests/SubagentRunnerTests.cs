@@ -98,7 +98,6 @@ public sealed class SubagentRunnerTests
         Assert.IsTrue(SubagentRunner.CannotUseModel(new HttpRequestException("bad key", null, System.Net.HttpStatusCode.Unauthorized)));
         Assert.IsTrue(SubagentRunner.CannotUseModel(new HttpRequestException("forbidden", null, System.Net.HttpStatusCode.Forbidden)));
         Assert.IsTrue(SubagentRunner.CannotUseModel(new HttpRequestException("quota", null, System.Net.HttpStatusCode.TooManyRequests)));
-        Assert.IsTrue(SubagentRunner.CannotUseModel(new InvalidOperationException("wrapped", new Auth.OAuthException("invalid_grant", "refresh failed"))));
         Assert.IsFalse(SubagentRunner.CannotUseModel(new HttpRequestException("bad input", null, System.Net.HttpStatusCode.BadRequest)));
         Assert.IsFalse(SubagentRunner.CannotUseModel(new HttpRequestException("down", null, System.Net.HttpStatusCode.InternalServerError)));
         Assert.IsFalse(SubagentRunner.CannotUseModel(new OperationCanceledException()));

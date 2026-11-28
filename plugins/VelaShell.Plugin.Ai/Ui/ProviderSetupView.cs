@@ -8,60 +8,22 @@ using Avalonia.Layout;
 using Avalonia.Markup.Xaml.MarkupExtensions;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
-using Avalonia.Threading;
-using VelaShell.Plugin.Ai.Auth;
 using VelaShell.Plugin.Ai.Configuration;
 using VelaShell.PluginSdk;
 
 namespace VelaShell.Plugin.Ai.Ui;
 
-/// <summary>
-/// 「连接供应商」：搜索内置目录，点行展开配置，点「登录」才开始授权。
-/// </summary>
-/// <remarks>
-/// <para>
-/// 参数齐全的 OAuth 供应商在用户点「登录」后打开浏览器，授权完成后自动保存配置并建好模型。
-/// 只有"程序确实不知道"的东西才会露出输入框,而且<b>只露缺的那几个</b>:
-/// 自行部署的服务不知道地址,那就问地址;还没注册 OAuth 应用,那就问客户端 id;
-/// 走 API Key 的,那就只问一把 Key。名称、模型 id、协议这些目录里都有,
-/// 收进「高级」里,想改的人找得到,不想改的人看不见。
-/// </para>
-/// <para>
-/// <b>登录不落任何明文</b>:PKCE 的 verifier 只活在这一次调用的栈上,换回来的令牌整组
-/// 序列化后经宿主机密存储加密落盘(键 <c>oauth:&lt;供应商 id&gt;</c>),界面上从头到尾不显示它。
-/// </para>
-/// <para>
-/// 整页代码里搭、不写 AXAML:行是按目录动态生成的,而且每行展开出来的东西各不相同
-/// (缺什么显什么),写成模板反倒要为这套规则再造一层状态。
-/// </para>
-/// <para>
-/// <b>同一家允许加多份</b>:「新建提供商」选择已有类型时拷最近一份配置,
-/// 实例与模型使用新 id、机密不跟过来;「管理登录」仍编辑指定实例。
-/// 已有实例里的「添加 API Key」只加密钥槽,「添加另一个账号」创建独立 OAuth 实例。
-/// </para>
-/// </remarks>
+/// <summary>配置自定义 API 端点、模型与密钥。</summary>
 public sealed class ProviderSetupView : UserControl
 {
     private const double Gutter = 10;
 
-    /// <summary>这一条还缺什么才登得上 / 用得起来。</summary>
     [Flags]
     private enum Missing
     {
-        /// <summary>什么都不缺 —— 点一下直接登录。</summary>
         None = 0,
-
-        /// <summary>没有 API Key。</summary>
         ApiKey = 1,
-
-        /// <summary>没有基地址(自行部署 / 按资源分配地址的云服务)。</summary>
-        BaseUrl = 2,
-
-        /// <summary>OAuth 客户端 id 还空着(VelaShell 尚未在这家注册应用)。</summary>
-        ClientId = 4,
-
-        /// <summary>OAuth 端点还空着(完全自定义的那一条)。</summary>
-        Endpoints = 8
+        BaseUrl = 2
     }
 
     private readonly IPluginContext _context;
@@ -95,13 +57,6 @@ public sealed class ProviderSetupView : UserControl
     // 窗口从「新增供应商」入口打开:落库只让当前那一行转入编辑,换行或收起重开仍是新建。
     private bool _newProviderEntry;
 
-    /// <summary>正在跑的那次登录 —— 「取消」按的就是它,窗口关掉也要一并取消。</summary>
-    private CancellationTokenSource? _login;
-
-    /// <summary>
-    /// 克隆已有实例的独立草稿(新建供应商选了已有类型,或 OAuth「添加另一个账号」);
-    /// 该类型还没有实例时不算克隆。收起或落库后清除。
-    /// </summary>
     private bool _addingAnother;
     private bool _addingKey;
     private string? _addingKeyProviderId;
@@ -127,7 +82,7 @@ public sealed class ProviderSetupView : UserControl
         _settings = settings;
         _loc = loc;
         _health = health;
-        _newProviderEntry = _creatingProvider = focusCatalogId is null;
+        _newProviderEntry = _creatingProvider = true;
         _models = new ModelsDevCatalog(context);
         DetachedFromVisualTree += (_, _) => CancelPendingLogin();
 
@@ -142,6 +97,7 @@ public sealed class ProviderSetupView : UserControl
 
         _search.PlaceholderText = _loc["SetupFindProvider"];
         Avalonia.Automation.AutomationProperties.SetName(_search, _search.PlaceholderText);
+        _rows.Children.Add(ProviderProxyLinks.CreateNotice(_loc));
         _noMatch = Hint(_loc["ToolsNoMatch"]);
         _noMatch.Name = "SetupNoMatch";
         _noMatch.IsVisible = false;
@@ -187,22 +143,18 @@ public sealed class ProviderSetupView : UserControl
         FocusEntry(focusCatalogId, focusProviderId);
     }
 
-    /// <summary>窗口关掉时把还在跑的登录掐掉,别留一个环回端口和一轮轮询在后台空转。</summary>
+    /// <summary>关闭表单时取消尚未提交的密钥草稿。</summary>
     public void CancelPendingLogin()
     {
-        _login?.Cancel();
         _keyDraftCancellation?.Cancel();
         _keyDraftCancellation?.Dispose();
         _keyDraftCancellation = null;
-        _login = null;
     }
 
     /// <summary>复用目录窗口时回到新建入口,不继续编辑上一次选中的实例。</summary>
     public void StartNewProvider()
     {
-        // 登录正跑着或草稿还没提交:只把窗口提到前面,不掐登录、不丢草稿(与 Activate / StartAnother 同理);
-        // 之后再点别的行仍按新建处理
-        if (_login is not null || _addingAnother || _addingKey || _newProviderDraft is not null)
+        if (_addingAnother || _addingKey || _newProviderDraft is not null)
         {
             _newProviderEntry = true;
             return;
@@ -221,10 +173,6 @@ public sealed class ProviderSetupView : UserControl
     /// <summary>
     /// 展开目录里的某一条并滚到眼前;传 null / 认不出的 id 就什么都不做。
     /// </summary>
-    /// <remarks>
-    /// 从设置页点「管理登录」过来时用。<b>这条路不自动发起登录</b> ——
-    /// 用户是来"看看/改改"的,窗口一开就把浏览器弹出去太粗暴。
-    /// </remarks>
     /// <param name="catalogId">目录 id。</param>
     /// <param name="providerId">要操作的那份实例;null 取最近一份。</param>
     public void FocusEntry(string? catalogId, string? providerId = null)
@@ -239,12 +187,10 @@ public sealed class ProviderSetupView : UserControl
             {
                 continue;
             }
-            string? focused = _settings.Providers.Any(p => p.Id == providerId && p.CatalogId == catalogId)
+            string? focused = _settings.Providers.Any(p => p.Id == providerId && p.Auth == AuthMethod.ApiKey && p.CatalogId == catalogId)
                 ? providerId : null;
-            // 复用窗口时与 StartNewProvider 同一道守卫:登录正跑着或草稿还没提交,只把窗口提到前面 ——
-            // Expand 先 Collapse,会掐掉浏览器那边正等着回调的登录、丢掉填到一半的表单(#616–#636 复审②)。
-            // 之后再点别的行按编辑处理(这个入口是来"管理"已有实例的)
-            if (_login is not null || _addingAnother || _addingKey || _newProviderDraft is not null)
+            if (providerId is not null && focused is null) return;
+            if (_addingAnother || _addingKey || _newProviderDraft is not null)
             {
                 _newProviderEntry = false;
                 return;
@@ -303,9 +249,9 @@ public sealed class ProviderSetupView : UserControl
         if (_openId is not null)
         {
             // A write may already have committed. Do not offer to discard it during publication.
-            if (!_primary.IsEnabled && _login is null && !_addingKey) return;
-            if (_login is not null || (_addingKey ? !string.IsNullOrEmpty(_keyBox.Text)
-                    : _keyEdited || CaptureFormInputs() != _formInputBaseline))
+            if (!_primary.IsEnabled && !_addingKey) return;
+            if (_addingKey ? !string.IsNullOrEmpty(_keyBox.Text)
+                    : _keyEdited || CaptureFormInputs() != _formInputBaseline)
             {
                 if (!await _confirm.AskAsync(_loc["SetupLeaveTitle"], _loc["SetupLeaveBody"],
                         _loc["SetupLeaveAction"], _loc["Cancel"]))
@@ -347,12 +293,7 @@ public sealed class ProviderSetupView : UserControl
         var name = new TextBlock { Text = entry.Name, FontWeight = FontWeight.Medium };
         name[!ForegroundProperty] = new DynamicResourceExtension("VelaTextPrimary");
         name[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize13");
-        // 走非公开接口的那几条挂个小标:哪天"AI 突然不能用了",用户得知道该往哪儿想
         var nameRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { name } };
-        if (entry.Experimental)
-        {
-            nameRow.Children.Add(Badge(_loc["SetupExperimental"]));
-        }
         var models = new TextBlock
         {
             Text = entry.Models,
@@ -393,7 +334,7 @@ public sealed class ProviderSetupView : UserControl
         };
         pill[!BorderBrushProperty] = new DynamicResourceExtension("VelaBorderPrimary");
 
-        // 行上<b>不放</b>动作按钮:点行只负责展开,登录/添加一律在展开区里点。
+        // 点行只负责展开，添加操作在展开区里完成。
         // 一来"点一下就弹浏览器"太突然 —— 用户还没看清这一家要什么就被推去授权;
         // 二来按钮坐在行的命中区里,按下会冒泡、抬起才是 Click,天然是个双触发的坑。
         var header = new Grid
@@ -442,15 +383,8 @@ public sealed class ProviderSetupView : UserControl
         return card;
     }
 
-    /// <summary>目录只负责选择，登录必须由用户在详情页主动发起。</summary>
     private void Activate(Row row)
     {
-        // 登录正跑着就别再碰这一行:重进会把自己刚起的那次掐掉(Expand → Collapse → CancelPendingLogin),
-        // 而用户那边浏览器已经开着了 —— 掐完再开一次,回调就落到一个没人等的端口上。
-        if (_openId == row.Entry.Id && _login is not null)
-        {
-            return;
-        }
         if (_openId == row.Entry.Id)
         {
             _ = BackAsync();
@@ -461,12 +395,6 @@ public sealed class ProviderSetupView : UserControl
         _creatingProvider = _newProviderEntry;
         Expand(row, startAnother: _creatingProvider);
     }
-
-    private bool IsConnected(ProviderCatalogEntry entry)
-        => Existing(entry) is { } provider && _connected.Contains(provider.Id);
-
-    /// <summary>已登录的供应商 id(<see cref="RefreshStatusAsync" /> 刷新;读机密是异步的,不能在点击路径上现读)。</summary>
-    private readonly HashSet<string> _connected = [with(StringComparer.Ordinal)];
 
     /// <summary>已配好 Key 的供应商 id。</summary>
     private readonly HashSet<string> _keyed = [with(StringComparer.Ordinal)];
@@ -512,25 +440,14 @@ public sealed class ProviderSetupView : UserControl
     private string? _providerFormBaseline;
     // 输入基线独立于目录吸收后的提交基线,避免未编辑控件被误判为用户草稿。
     private FormInputs? _formInputBaseline;
-    private sealed record FormInputs(string? Name, string? BaseUrl, string? Model, int Protocol, int Flow,
-        string? ClientId, string? AuthorizationUrl, string? TokenUrl, string? DeviceCodeUrl, string? Scopes);
+    private sealed record FormInputs(string? Name, string? BaseUrl, string? Model, int Protocol);
     private AiProvider? _newProviderDraft;
     private string? _primaryKeyId;
     private Task<string?> _primaryKeyBaseline = Task.FromResult<string?>(null);
 
     /// <summary>换源清 Key 的确认框;换了表单就按取消收起(<see cref="BuildDetail" />)。</summary>
     private readonly ConfirmOverlay _confirm = new() { Name = "SetupConfirm", ScrimCornerRadius = new CornerRadius(0, 0, 7, 7) };
-    // 克隆的授权参数只属于完整的签发地址;同一主机的不同路径也可能是不同租户。
-    private string? _oauthConfiguredBaseUrl;
-    private string? _oauthSourceBaseUrl;
-    private (string? Api, string? Auth, string? Device, string? Token, string? Client)? _scopesForOrigin;
     private ComboBox _protocolCombo = new();
-    private ComboBox _flowCombo = new();
-    private TextBox _authUrlBox = new();
-    private TextBox _tokenUrlBox = new();
-    private TextBox _deviceUrlBox = new();
-    private TextBox _clientIdBox = new();
-    private TextBox _scopesBox = new();
     private TextBlock _progress = new();
     private TextBlock _conflictValues = new();
     private Button _primary = new();
@@ -541,8 +458,6 @@ public sealed class ProviderSetupView : UserControl
     private Button _secondary = new();
     private ComboBox? _modelPicker;
     private bool _modelPickerUpdating;
-    private StackPanel _deviceCodePanel = new();
-    private TextBlock _deviceCodeText = new();
 
     /// <summary>协议下拉的标签,顺序 = <see cref="ChatProtocol" /> 枚举。</summary>
     private static readonly string[] ProtocolLabels =
@@ -576,13 +491,9 @@ public sealed class ProviderSetupView : UserControl
         _primaryKeyBaseline = Task.FromResult<string?>(null);
         _confirm.Dismiss();
         AiModelConfig model = draft.Models.Count > 0 ? draft.Models[0] : new AiModelConfig();
-        Missing missing = MissingOf(entry, draft);
+        Missing missing = MissingOf(draft);
 
         var panel = new StackPanel();
-        if (entry.Experimental)
-        {
-            panel.Children.Add(Hint(_loc["SetupExperimentalHint"]));
-        }
         // 每个控件都先造出来:后面按"缺不缺"决定摆不摆,ApplyForm 一律照读,
         // 没摆出来的就是目录里那个值,不会被清空。
         _nameBox = new TextBox { Name = "SetupNameBox", Text = draft.Name };
@@ -601,8 +512,6 @@ public sealed class ProviderSetupView : UserControl
         };
         _modelPickerRow = null;
         _modelPicker = null;
-        _oauthConfiguredBaseUrl = adding && entry.NeedsOAuthSetup ? draft.BaseUrl : null;
-        _oauthSourceBaseUrl = _oauthConfiguredBaseUrl;
         _protocolCombo = new ComboBox
         {
             Name = "SetupProtocolCombo",
@@ -611,136 +520,15 @@ public sealed class ProviderSetupView : UserControl
             // 显示首模型的**生效**协议(没有模型级覆盖才是默认值):显示的必须等于实际在用的 ——
             SelectedIndex = (int)(model.Protocol ?? draft.DefaultProtocol)
         };
-        BuildOAuthControls(draft);
         _formInputBaseline = CaptureFormInputs();
-        _scopesForOrigin = adding && entry.NeedsOAuthSetup
-            ? (_baseUrlBox.Text, _authUrlBox.Text, _deviceUrlBox.Text, _tokenUrlBox.Text, _clientIdBox.Text)
-            : null;
-        if (_scopesForOrigin is not null)
-        {
-            TextBox scopesBox = _scopesBox;
-            scopesBox.PropertyChanged += (_, change) =>
-            {
-                if (change.Property == TextBox.TextProperty && ReferenceEquals(scopesBox, _scopesBox)
-                    && _addingAnother && !string.IsNullOrEmpty(scopesBox.Text))
-                {
-                    // 与旧值逐字相同也可能是用户为新 issuer 明确重填的权限。
-                    _scopesForOrigin = CurrentScopesOrigin();
-                }
-            };
-        }
-        if (adding && entry.NeedsOAuthSetup)
-        {
-            TextBox scopesBox = _scopesBox;
-            foreach (TextBox endpointBox in new[] { _authUrlBox, _deviceUrlBox, _tokenUrlBox, _clientIdBox })
-            {
-                endpointBox.TextChanged += (_, _) =>
-                {
-                    if (ReferenceEquals(scopesBox, _scopesBox) && _addingAnother)
-                    {
-                        ClearScopesOnIssuerChange();
-                    }
-                };
-            }
-        }
-        if (adding && entry.NeedsOAuthSetup)
-        {
-            // 每次 API 地址切换都必须重新确认授权信息,防止已为第二台主机配置的令牌
-            // 又被原样带到第三台。同主机的路径也可能区分 OAuth 租户,不能推定安全。
-            TextBox addressBox = _baseUrlBox;
-            addressBox.TextChanged += (_, _) =>
-            {
-                if (!ReferenceEquals(addressBox, _baseUrlBox) || !_addingAnother)
-                {
-                    return; // 上一次展开区晚到的事件不能改写当前草稿
-                }
-                string? address = addressBox.Text;
-                if (!Uri.TryCreate(address, UriKind.Absolute, out Uri? uri)
-                    || string.IsNullOrEmpty(uri.Host) || SameOAuthIssuer(_oauthConfiguredBaseUrl, address))
-                {
-                    return;
-                }
-                _oauthConfiguredBaseUrl = address;
-                _clientIdBox.Text = "";
-                _authUrlBox.Text = "";
-                _tokenUrlBox.Text = "";
-                _deviceUrlBox.Text = "";
-                _scopesBox.Text = "";
-                ClearScopesOnIssuerChange();
-            };
-        }
-
-        if (entry.IsSubscription)
-        {
-            BuildSubscriptionDetail(panel, entry, missing, adding);
-        }
-        else
-        {
-            BuildApiKeyDetail(panel, entry, missing);
-        }
+        BuildApiKeyDetail(panel, entry, missing);
         panel.Children.Add(BuildActions(row, existing, missing, adding));
 
-        if (existing is not null && !adding && !entry.IsSubscription)
+        if (existing is not null && !adding)
         {
             _primaryKeyBaseline = LoadKeyAsync(existing, _keyBox);
         }
         return panel;
-    }
-
-    /// <summary>订阅项:缺什么摆什么。什么都不缺时这里<b>一个输入框都没有</b>,只有一行进度。</summary>
-    /// <param name="panel">展开区的容器。</param>
-    /// <param name="entry">这一行是目录里的哪一条。</param>
-    /// <param name="missing">这一条还缺什么才登得上。</param>
-    /// <param name="adding">正在「再添加一个」—— 已连接的状态提示要让位给一次全新的登录。</param>
-    private void BuildSubscriptionDetail(StackPanel panel, ProviderCatalogEntry entry, Missing missing, bool adding)
-    {
-        if (!adding && IsConnected(entry))
-        {
-            panel.Children.Add(Hint(_loc["SetupConnectedHint"]));
-            return;
-        }
-        if (missing == Missing.None)
-        {
-            panel.Children.Add(Hint(_loc["SetupSignInHint"]));
-            if (!adding)
-            {
-                return;
-            }
-            // 起草第二份:字段一个都不缺,但「高级」不能省 —— 新实例得能改地址与协议,
-            // 否则已配齐的 Azure / 自定义 OAuth 只能原样再登一份,连换个地址都做不到。
-            // 落到函数末尾的 Advanced(entry);缺字段的那些分支因为是 None 一个都不摆。
-        }
-        // 起草第二份的自定义 OAuth:端点与客户端 id 两块**无条件摆出来**(missing 是 None
-        // 也摆)—— 换台主机多半要换一套注册,授权 / 令牌端点不可改的话,旧主机签出的令牌
-        // 会被当成新主机的凭据发过去(review⑥#3)。内置项不适用:端点由目录定,
-        // ApplyForm 对非 NeedsOAuthSetup 根本不落库,摆出来就是骗人的。
-        bool addingCustom = adding && entry.NeedsOAuthSetup;
-        if (missing.HasFlag(Missing.ClientId) || addingCustom)
-        {
-            if (missing.HasFlag(Missing.ClientId))
-            {
-                // 客户端 id 空着 = VelaShell 还没在这家注册应用。别只摆个空框让人猜它哪儿来的:
-                // 把申请入口一并给出来,愿意自己注册的人当场就能填。clone 起草时框里已有值,
-                // 这句提示就成了假话,只在真缺时才摆。
-                panel.Children.Add(Hint(_loc["SetupClientIdPending"]));
-                if (entry.RegistrationUrl.Length > 0)
-                {
-                    panel.Children.Add(LinkRow(_loc["SetupOpenRegistration"], entry.RegistrationUrl));
-                }
-            }
-            panel.Children.Add(Label(_loc["OAuthClientId"]));
-            panel.Children.Add(_clientIdBox);
-        }
-        if (missing.HasFlag(Missing.BaseUrl))
-        {
-            panel.Children.Add(Label(_loc["BaseUrl"]));
-            panel.Children.Add(_baseUrlBox);
-        }
-        if (missing.HasFlag(Missing.Endpoints) || addingCustom)
-        {
-            BuildEndpointFields(panel);
-        }
-        panel.Children.Add(Advanced(entry));
     }
 
     /// <summary>填 Key 的那一路:只问一把 Key(地址不知道时才多问一句),其余全收进「高级」。</summary>
@@ -751,78 +539,17 @@ public sealed class ProviderSetupView : UserControl
             panel.Children.Add(Label(_loc["BaseUrl"]));
             panel.Children.Add(_baseUrlBox);
         }
-        if (NeedsKey(entry))
-        {
-            panel.Children.Add(Label(_loc["ApiKey"]));
-            panel.Children.Add(KeyRow(_keyBox));
-            panel.Children.Add(Hint(_loc["ApiKeyHint"]));
-        }
-        else
-        {
-            panel.Children.Add(Hint(_loc["SetupNoKeyNeeded"]));
-        }
+        panel.Children.Add(Label(_loc["ApiKey"]));
+        panel.Children.Add(KeyRow(_keyBox));
+        panel.Children.Add(Hint(_loc["ApiKeyHint"]));
         panel.Children.Add(Advanced(entry));
     }
-
-    private void BuildEndpointFields(StackPanel panel)
-    {
-        // 客户端 id 那一格由 BuildSubscriptionDetail 按 Missing.ClientId 摆,这里不能再摆一次 ——
-        // 同一个控件挂进两个父容器,Avalonia 直接抛
-        panel.Children.Add(Label(_loc["OAuthFlow"]));
-        panel.Children.Add(_flowCombo);
-        TextBlock authLabel = Label(_loc["OAuthAuthorizeUrl"]);
-        panel.Children.Add(authLabel);
-        panel.Children.Add(_authUrlBox);
-        TextBlock deviceLabel = Label(_loc["OAuthDeviceUrl"]);
-        panel.Children.Add(deviceLabel);
-        panel.Children.Add(_deviceUrlBox);
-        panel.Children.Add(Label(_loc["OAuthTokenUrl"]));
-        panel.Children.Add(_tokenUrlBox);
-        panel.Children.Add(Label(_loc["OAuthScopes"]));
-        panel.Children.Add(_scopesBox);
-
-        // 授权码那一行与设备码那一行互斥,连标签一起收
-        void SyncFlow()
-        {
-            bool device = _flowCombo.SelectedIndex == 1;
-            authLabel.IsVisible = !device;
-            _authUrlBox.IsVisible = !device;
-            deviceLabel.IsVisible = device;
-            _deviceUrlBox.IsVisible = device;
-        }
-        _flowCombo.SelectionChanged += (_, _) => SyncFlow();
-        SyncFlow();
-    }
-
-    private void BuildOAuthControls(AiProvider draft)
-    {
-        OAuthConfig oauth = draft.OAuth ?? new OAuthConfig();
-        _flowCombo = new ComboBox
-        {
-            Name = "SetupFlowCombo",
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            ItemsSource = new[] { _loc["OAuthFlowPkce"], _loc["OAuthFlowDevice"] },
-            // OpenRouter 那套 PKCE 变体在界面上仍归"授权码"一档:用户看到的行为一样,
-            // 差别全在协议细节里,摆出第三个选项只会让人不知道该选哪个
-            SelectedIndex = oauth.Flow == OAuthFlow.DeviceCode ? 1 : 0
-        };
-        _authUrlBox = Mono(new TextBox { Name = "SetupAuthUrlBox", Text = oauth.AuthorizationUrl });
-        _tokenUrlBox = Mono(new TextBox { Name = "SetupTokenUrlBox", Text = oauth.TokenUrl });
-        _deviceUrlBox = Mono(new TextBox { Name = "SetupDeviceUrlBox", Text = oauth.DeviceCodeUrl });
-        _clientIdBox = Mono(new TextBox { Name = "SetupClientIdBox", Text = oauth.ClientId });
-        _scopesBox = Mono(new TextBox { Name = "SetupScopesBox", Text = oauth.Scopes });
-    }
-
-    /// <summary>协议下拉什么时候归用户选:填 Key 的一律可选;订阅类只有那两条要填地址的自定义项。</summary>
-    private static bool ProtocolSelectable(ProviderCatalogEntry entry)
-        => entry.NeedsBaseUrl || !entry.IsSubscription;
 
     /// <summary>
     /// 「高级」:名称 / 模型 id / 基地址 / 协议。默认收起。
     /// </summary>
     /// <remarks>
-    /// 这些目录里都有出厂值,九成用户一辈子不用改;摆在正面就是"填一堆东西"的由来。
-    /// 但走中转站的人确实要改地址和模型 id,所以留一个折叠入口,而不是干脆删掉。
+    /// 支持模型拉取的端点不需要手填模型 id；其他端点可在此直接指定。
     /// </remarks>
     private StackPanel Advanced(ProviderCatalogEntry entry)
     {
@@ -852,13 +579,8 @@ public sealed class ProviderSetupView : UserControl
             body.Children.Add(Label(_loc["BaseUrl"]));
             body.Children.Add(_baseUrlBox);
         }
-        // 协议下拉:缺地址的自定义项照旧摆;填 Key 的一律可选 ——
-        // 目录里 openai 出厂是 Responses,想走 Chat Completions 的人得有个地方改它
-        if (ProtocolSelectable(entry))
-        {
-            body.Children.Add(Label(_loc["DefaultProtocol"]));
-            body.Children.Add(_protocolCombo);
-        }
+        body.Children.Add(Label(_loc["DefaultProtocol"]));
+        body.Children.Add(_protocolCombo);
 
         var toggle = new ToggleButton
         {
@@ -904,7 +626,6 @@ public sealed class ProviderSetupView : UserControl
         finally { _modelPickerUpdating = false; }
     }
 
-    /// <summary>底下那一行:主按钮 + 「再添加一个」+ 次按钮(退出登录 / 移除 / 取消)+ 进度,设备码时上面还有一枚用户码。</summary>
     private StackPanel BuildActions(Row row, AiProvider? existing, Missing missing, bool adding)
     {
         ProviderCatalogEntry entry = row.Entry;
@@ -916,36 +637,17 @@ public sealed class ProviderSetupView : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 12, 0)
         };
-        _deviceCodeText = new TextBlock { FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-        _deviceCodeText[!ForegroundProperty] = new DynamicResourceExtension("VelaAccent");
-        _deviceCodeText[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize13");
-        _deviceCodeText[!FontFamilyProperty] = new DynamicResourceExtension("VelaUiMonoFont");
-        var copy = new Button { Content = _loc["Copy"], Height = 24, Padding = new Thickness(10, 0) };
-        copy[!ThemeProperty] = new DynamicResourceExtension("VelaOutlineButtonTheme");
-        copy.Click += (_, _) => _ = _context.Clipboard.SetTextAsync(_deviceCodeText.Text ?? "");
-        _deviceCodePanel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            IsVisible = false,
-            Margin = new Thickness(0, 10, 0, 0),
-            Children = { _deviceCodeText, copy }
-        };
-
         _primary = new Button { Name = "SetupPrimaryButton", Height = 26, Padding = new Thickness(14, 0) };
         _primary[!ThemeProperty] = new DynamicResourceExtension("VelaAccentPillButtonTheme");
-        _primary.Content = PrimaryLabel(entry, existing, missing, adding);
+        _primary.Content = PrimaryLabel(existing, missing, adding);
         _primary.Click += (_, _) => _ = PrimaryAsync(row);
 
-        // API Key 只新增槽;订阅仍新增独立账号。两种草稿期间都隐藏入口。
         _another = new Button { Name = "SetupAddAnotherButton", Height = 26, Padding = new Thickness(12, 0) };
         _another[!ThemeProperty] = new DynamicResourceExtension("VelaOutlineButtonTheme");
-        _another.Content = _loc[entry.IsSubscription ? "SetupAddAnotherAccount" : "SetupAddApiKey"];
-        _another.IsVisible = existing is not null && !adding && (entry.IsSubscription || NeedsKey(entry));
+        _another.Content = _loc["SetupAddApiKey"];
+        _another.IsVisible = existing is not null && !adding;
         _another.Click += (_, _) => StartAnother(row);
 
-        // 「拉取模型」:接上之后自动拉过一次,但那一次可能没网、可能缓存是旧的,
-        // 各家也会不断出新型号 —— 没有这个按钮,用户就只能靠"退出登录再登一次"来重来一遍。
         _pull = new Button { Name = "SetupPullButton", Height = 26, Padding = new Thickness(12, 0) };
         _pull[!ThemeProperty] = new DynamicResourceExtension("VelaOutlineButtonTheme");
         _pull.Content = _loc["ModelsPull"];
@@ -957,10 +659,7 @@ public sealed class ProviderSetupView : UserControl
 
         _secondary = new Button { Name = "SetupSecondaryButton", Height = 26, Padding = new Thickness(12, 0) };
         _secondary[!ThemeProperty] = new DynamicResourceExtension("VelaOutlineButtonTheme");
-        // 新建态的次按钮是「取消」:放弃这次起草,回到编辑最近一份(登录期间它被借去掐登录,同名同义)
-        _secondary.Content = adding
-            ? _loc["Cancel"]
-            : entry.IsSubscription ? _loc["SetupSignOut"] : _loc["SetupRemove"];
+        _secondary.Content = _loc[adding ? "Cancel" : "SetupRemove"];
         _secondary.IsVisible = existing is not null;
         _secondary.Click += (_, _) => _ = SecondaryAsync(row);
 
@@ -979,59 +678,29 @@ public sealed class ProviderSetupView : UserControl
         _conflictValues = Hint("");
         _conflictValues.Name = "SetupConflictValues";
         _conflictValues.IsVisible = false;
-        return new StackPanel { Children = { _conflictValues, _deviceCodePanel, line } };
+        return new StackPanel { Children = { _conflictValues, line } };
     }
 
-    private string PrimaryLabel(ProviderCatalogEntry entry, AiProvider? existing, Missing missing, bool adding)
+    private string PrimaryLabel(AiProvider? existing, Missing missing, bool adding)
     {
-        if (entry.IsSubscription)
-        {
-            // 新建态是去登<b>另一个账号</b>:哪怕最近一份连着,这里也得说「登录」而不是「重新登录」
-            return !adding && IsConnected(entry) ? _loc["SetupReconnect"] : _loc["SetupSignIn"];
-        }
         return adding || existing is null || missing.HasFlag(Missing.ApiKey) ? _loc["SetupAdd"] : _loc["Save"];
     }
 
     // ---- 缺什么 ----
 
     /// <summary>这一条离"能用"还差哪几样。</summary>
-    private Missing MissingOf(ProviderCatalogEntry entry, AiProvider provider)
+    private Missing MissingOf(AiProvider provider)
     {
         Missing missing = Missing.None;
         if (IsPlaceholder(provider.BaseUrl))
         {
             missing |= Missing.BaseUrl;
         }
-        if (entry.IsSubscription)
-        {
-            OAuthConfig oauth = provider.OAuth ?? new OAuthConfig();
-            // OpenRouter 那一路本来就没有 client_id,不算缺
-            if (oauth.Flow != OAuthFlow.OpenRouterPkce && string.IsNullOrWhiteSpace(oauth.ClientId))
-            {
-                missing |= Missing.ClientId;
-            }
-            if (string.IsNullOrWhiteSpace(oauth.TokenUrl)
-                || string.IsNullOrWhiteSpace(oauth.Flow == OAuthFlow.DeviceCode
-                    ? oauth.DeviceCodeUrl
-                    : oauth.AuthorizationUrl))
-            {
-                missing |= Missing.Endpoints;
-            }
-            return missing;
-        }
-        if (NeedsKey(entry) && !_keyed.Contains(provider.Id))
+        if (!_keyed.Contains(provider.Id))
         {
             missing |= Missing.ApiKey;
         }
         return missing;
-    }
-
-    /// <summary>本地自部署(Ollama 之类)不需要鉴权,别对着它一直挂个"还没填 Key"。</summary>
-    private static bool NeedsKey(ProviderCatalogEntry entry)
-    {
-        string url = entry.CreateProvider().BaseUrl;
-        return !url.Contains("localhost", StringComparison.OrdinalIgnoreCase)
-               && !url.Contains("127.0.0.1", StringComparison.Ordinal);
     }
 
     /// <summary>地址还是空的、或者还带着 <c>&lt;resource&gt;</c> 这种占位符。</summary>
@@ -1048,13 +717,11 @@ public sealed class ProviderSetupView : UserControl
         // 一次落库后还会异步拉模型;这期间同一目录可以打开下一份表单。
         Button primary = _primary;
         TextBlock progress = _progress;
-        if (!primary.IsEnabled || _login is not null || ReferenceEquals(primary, _removingPrimary))
+        if (!primary.IsEnabled || ReferenceEquals(primary, _removingPrimary))
         {
             return;
         }
         ProviderCatalogEntry entry = row.Entry;
-        // 新建草稿交给各自的提交路径判断:Key 草稿自成一体(不带来源的 Key 与模型清单),来源被删也照样能加;
-        // OAuth 克隆带着来源的隐藏授权参数,来源已删时由 SignInAsync 拒绝
         if (_newProviderDraft is null && _focusedProviderId is not null && Existing(entry) is null)
         {
             progress.Text = _loc["SetupSourceRemoved"];
@@ -1068,20 +735,13 @@ public sealed class ProviderSetupView : UserControl
                 await AddKeyDraftAsync(row).ConfigureAwait(true);
                 return;
             }
-            if (entry.IsSubscription)
-            {
-                await SignInAsync(row).ConfigureAwait(true);
-            }
-            else
-            {
-                await AddOrSaveKeyAsync(entry).ConfigureAwait(true);
-            }
+            await AddOrSaveKeyAsync(entry).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
             if (ReferenceEquals(_primary, primary))
             {
-                progress.Text = _loc["LoginCancelled"];
+                progress.Text = _loc["Cancelled"];
             }
         }
         catch (AiSettingsStore.ApiKeySlotChangedException)
@@ -1089,7 +749,7 @@ public sealed class ProviderSetupView : UserControl
             if (ReferenceEquals(_primary, primary))
                 await ReloadConflictedFormAsync(entry, primary).ConfigureAwait(true);
         }
-        catch (ArgumentException) when (!entry.IsSubscription)
+        catch (ArgumentException)
         {
             if (ReferenceEquals(_primary, primary)) progress.Text = _loc["SetupUniqueApiKey"];
         }
@@ -1098,7 +758,7 @@ public sealed class ProviderSetupView : UserControl
             _context.Log.Warn($"Provider setup for '{entry.Name}' failed: {ex.Message}");
             if (ReferenceEquals(_primary, primary))
             {
-                progress.Text = _loc.F("LoginFailed", Chat.ApiErrorText.Describe(ex, _loc["ErrorUnreachable"]));
+                progress.Text = _loc.F("SetupFailed", Chat.ApiErrorText.Describe(ex, _loc["ErrorUnreachable"]));
             }
         }
         finally
@@ -1107,17 +767,13 @@ public sealed class ProviderSetupView : UserControl
             {
                 _primary.IsEnabled = true;
                 _secondary.IsEnabled = true;
-                _deviceCodePanel.IsVisible = false;
-                // 这一轮之后这家的处境可能变了(刚加进来 / 刚登上 / 起草到一半失败了),按钮文字跟着改。
                 AiProvider? existing = Existing(entry);
                 bool adding = _addingAnother || _addingKey || _newProviderDraft is not null;
-                _primary.Content = PrimaryLabel(entry, existing,
-                    existing is null ? Missing.None : MissingOf(entry, existing), adding);
-                _secondary.Content = adding
-                    ? _loc["Cancel"]
-                    : entry.IsSubscription ? _loc["SetupSignOut"] : _loc["SetupRemove"];
+                _primary.Content = PrimaryLabel(existing,
+                    existing is null ? Missing.None : MissingOf(existing), adding);
+                _secondary.Content = _loc[adding ? "Cancel" : "SetupRemove"];
                 _secondary.IsVisible = existing is not null || adding;
-                _another.IsVisible = existing is not null && !adding && (entry.IsSubscription || NeedsKey(entry));
+                _another.IsVisible = existing is not null && !adding;
                 _pull.IsVisible = existing is not null && !adding
                                   && (entry.ModelsDevId.Length > 0 || !string.IsNullOrWhiteSpace(existing.BaseUrl));
             }
@@ -1153,12 +809,7 @@ public sealed class ProviderSetupView : UserControl
             _conflictValues.Text = string.Join("\n", latest.Select(provider =>
                 $"{_loc["Name"]}: {provider.Name}\n{_loc["BaseUrl"]}: {provider.BaseUrl}\n"
                 + $"{_loc["Model"]}: {provider.Models.FirstOrDefault()?.Model}\n"
-                + $"{_loc["Protocol"]}: {provider.Models.FirstOrDefault()?.Protocol ?? provider.DefaultProtocol}"
-                + (provider.OAuth is { } oauth
-                    ? $"\n{_loc["OAuthClientId"]}: {oauth.ClientId}\n{_loc["OAuthTokenUrl"]}: {oauth.TokenUrl}"
-                      + $"\n{_loc["OAuthAuthorizeUrl"]}: {oauth.AuthorizationUrl}\n{_loc["OAuthDeviceUrl"]}: {oauth.DeviceCodeUrl}"
-                      + $"\n{_loc["OAuthScopes"]}: {oauth.Scopes}\n{_loc["OAuthFlow"]}: "
-                      + _loc[oauth.Flow == OAuthFlow.DeviceCode ? "OAuthFlowDevice" : "OAuthFlowPkce"] : "")));
+                + $"{_loc["Protocol"]}: {provider.Models.FirstOrDefault()?.Protocol ?? provider.DefaultProtocol}"));
             _conflictValues.IsVisible = !string.IsNullOrEmpty(_conflictValues.Text);
             _progress.Text = _focusedProviderId is not null && current is null
                 ? _loc["SetupSourceRemoved"] : _loc["SetupConfigChanged"];
@@ -1168,21 +819,17 @@ public sealed class ProviderSetupView : UserControl
         {
             _context.Log.Warn($"Reloading provider setup failed: {ex.Message}");
             if (ReferenceEquals(_primary, primary))
-                _progress.Text = _loc.F("LoginFailed", Chat.ApiErrorText.Describe(ex, _loc["ErrorUnreachable"]));
+                _progress.Text = _loc.F("SetupFailed", Chat.ApiErrorText.Describe(ex, _loc["ErrorUnreachable"]));
         }
     }
     private FormInputs CaptureFormInputs() => new(_nameBox.Text, _baseUrlBox.Text, _modelBox.Text,
-        _protocolCombo.SelectedIndex, _flowCombo.SelectedIndex, _clientIdBox.Text,
-        _authUrlBox.Text, _tokenUrlBox.Text, _deviceUrlBox.Text, _scopesBox.Text);
+        _protocolCombo.SelectedIndex);
 
     private static FormInputs ProviderFormInputs(AiProvider provider)
     {
         AiModelConfig? model = provider.Models.Count == 0 ? null : provider.Models[0];
-        OAuthConfig? oauth = provider.OAuth;
         return new(provider.Name, Placeholder(provider.BaseUrl), model?.Model ?? "",
-            (int)(model?.Protocol ?? provider.DefaultProtocol), oauth?.Flow == OAuthFlow.DeviceCode ? 1 : 0,
-            oauth?.ClientId ?? "", oauth?.AuthorizationUrl ?? "", oauth?.TokenUrl ?? "",
-            oauth?.DeviceCodeUrl ?? "", oauth?.Scopes ?? "");
+            (int)(model?.Protocol ?? provider.DefaultProtocol));
     }
 
     private void FollowUntouchedFields(FormInputs opened, FormInputs latest)
@@ -1191,19 +838,11 @@ public sealed class ProviderSetupView : UserControl
         if (_baseUrlBox.Text == opened.BaseUrl) _baseUrlBox.Text = latest.BaseUrl;
         if (_modelBox.Text == opened.Model) _modelBox.Text = latest.Model;
         if (_protocolCombo.SelectedIndex == opened.Protocol) _protocolCombo.SelectedIndex = latest.Protocol;
-        if (_flowCombo.SelectedIndex == opened.Flow) _flowCombo.SelectedIndex = latest.Flow;
-        if (_clientIdBox.Text == opened.ClientId) _clientIdBox.Text = latest.ClientId;
-        if (_authUrlBox.Text == opened.AuthorizationUrl) _authUrlBox.Text = latest.AuthorizationUrl;
-        if (_tokenUrlBox.Text == opened.TokenUrl) _tokenUrlBox.Text = latest.TokenUrl;
-        if (_deviceUrlBox.Text == opened.DeviceCodeUrl) _deviceUrlBox.Text = latest.DeviceCodeUrl;
-        if (_scopesBox.Text == opened.Scopes) _scopesBox.Text = latest.Scopes;
     }
 
-    /// <summary>API Key 开启空的槽草稿;OAuth 开启独立账号草稿。</summary>
     private void StartAnother(Row row)
     {
-        // 登录正跑着就别碰这一行:重建会把刚起的那次掐掉(与 Activate 同一条理由)
-        if (_addingKey || _addingAnother || _newProviderDraft is not null || _login is not null || !_another.IsEnabled || ReferenceEquals(_primary, _removingPrimary))
+        if (_addingKey || _addingAnother || _newProviderDraft is not null || !_another.IsEnabled || ReferenceEquals(_primary, _removingPrimary))
         {
             return;
         }
@@ -1218,19 +857,14 @@ public sealed class ProviderSetupView : UserControl
             _progress.Text = _loc["SetupSaveProviderFirst"];
             return;
         }
-        if (!row.Entry.IsSubscription)
-        {
-            Collapse();
-            _addingKey = true;
-            _addingKeyProviderId = source.Id;
-            _keyDraftCancellation = CancellationTokenSource.CreateLinkedTokenSource(_context.Shutdown);
-            _openId = row.Entry.Id;
-            FilterCatalog();
-            row.Slot.Children.Add(BuildDetail(row));
-            row.Slot.IsVisible = true;
-            return;
-        }
-        Expand(row, startAnother: true);
+        Collapse();
+        _addingKey = true;
+        _addingKeyProviderId = source.Id;
+        _keyDraftCancellation = CancellationTokenSource.CreateLinkedTokenSource(_context.Shutdown);
+        _openId = row.Entry.Id;
+        FilterCatalog();
+        row.Slot.Children.Add(BuildDetail(row));
+        row.Slot.IsVisible = true;
     }
 
     private async Task AddKeyDraftAsync(Row row)
@@ -1274,7 +908,7 @@ public sealed class ProviderSetupView : UserControl
     /// 「拉取模型」按下去:重新问一次清单,把这一家的模型重新落地。
     /// </summary>
     /// <remarks>
-    /// 与登录后那次自动拉的区别是 <c>force</c> —— 规格缓存还在有效期内也重下。
+    /// 与保存后自动拉取的区别是 <c>force</c> —— 规格缓存还在有效期内也重下。
     /// 用户是明确点了"拉取"才走到这儿的,这时还拿七天前的缓存糊弄他就没意义了。
     /// </remarks>
     private async Task PullNowAsync(Row row)
@@ -1299,7 +933,7 @@ public sealed class ProviderSetupView : UserControl
             _context.Log.Warn($"Pulling models for '{provider.Name}' failed: {ex.Message}");
             if (ReferenceEquals(_progress, progress) && ReferenceEquals(Existing(row.Entry), provider))
             {
-                progress.Text = _loc.F("LoginFailed", Chat.ApiErrorText.Describe(ex, _loc["ErrorUnreachable"]));
+                progress.Text = _loc.F("SetupFailed", Chat.ApiErrorText.Describe(ex, _loc["ErrorUnreachable"]));
             }
         }
         finally
@@ -1308,16 +942,10 @@ public sealed class ProviderSetupView : UserControl
         }
     }
 
-    /// <summary>次按钮:登录中是「取消」,新建态是「取消」(放弃起草),平时是「退出登录」/「移除」。</summary>
     private async Task SecondaryAsync(Row row)
     {
         Button secondary = _secondary;
         if (!secondary.IsEnabled) return;
-        if (_login is not null)
-        {
-            CancelPendingLogin();
-            return;
-        }
         if (_addingAnother || _addingKey || _newProviderDraft is not null)
         {
             if (_creatingProvider)
@@ -1340,30 +968,19 @@ public sealed class ProviderSetupView : UserControl
         TextBlock progress = _progress;
         Button primary = _primary;
         Button another = _another;
-        if (!row.Entry.IsSubscription)
-        {
-            _removingPrimary = primary;
-            primary.IsEnabled = another.IsEnabled = false;
-        }
+        _removingPrimary = primary;
+        primary.IsEnabled = another.IsEnabled = false;
         try
         {
-            if (row.Entry.IsSubscription)
+            // 「移除」连着它下面的模型和机密一起走,与设置页删供应商同一套语义
+            await _store.DeleteProviderAsync(_settings, provider, _context.Shutdown).ConfigureAwait(true);
+            // 删除后重建幸存者的表单;不能让旧表单指向另一份实例。
+            if (ReferenceEquals(_secondary, secondary))
             {
-                await _store.ClearTokensAsync(provider.Id).ConfigureAwait(true);
-                if (ReferenceEquals(_secondary, secondary)) progress.Text = _loc["LoginSignedOut"];
-            }
-            else
-            {
-                // 「移除」连着它下面的模型和机密一起走,与设置页删供应商同一套语义
-                await _store.DeleteProviderAsync(_settings, provider, _context.Shutdown).ConfigureAwait(true);
-                // 删除后重建幸存者的表单;不能让旧表单指向另一份实例。
-                if (ReferenceEquals(_secondary, secondary))
-                {
-                    _focusedProviderId = null;
-                    if (Existing(row.Entry) is not null) Expand(row);
-                    else Collapse();
-                    _progress.Text = _loc["SetupRemoved"];
-                }
+                _focusedProviderId = null;
+                if (Existing(row.Entry) is not null) Expand(row);
+                else Collapse();
+                _progress.Text = _loc["SetupRemoved"];
             }
             await RefreshStatusAsync().ConfigureAwait(true);
             ProviderChanged?.Invoke(provider.Id);
@@ -1377,18 +994,15 @@ public sealed class ProviderSetupView : UserControl
         {
             _context.Log.Warn($"Removing provider '{provider.Name}' failed: {ex.Message}");
             if (ReferenceEquals(_secondary, secondary))
-                progress.Text = _loc.F("LoginFailed", Chat.ApiErrorText.Describe(ex, _loc["ErrorUnreachable"]));
+                progress.Text = _loc.F("SetupFailed", Chat.ApiErrorText.Describe(ex, _loc["ErrorUnreachable"]));
         }
         finally
         {
             secondary.IsEnabled = true;
-            if (!row.Entry.IsSubscription)
+            if (ReferenceEquals(_removingPrimary, primary)) _removingPrimary = null;
+            if (ReferenceEquals(_secondary, secondary))
             {
-                if (ReferenceEquals(_removingPrimary, primary)) _removingPrimary = null;
-                if (ReferenceEquals(_secondary, secondary))
-                {
-                    primary.IsEnabled = another.IsEnabled = true;
-                }
+                primary.IsEnabled = another.IsEnabled = true;
             }
         }
     }
@@ -1403,7 +1017,6 @@ public sealed class ProviderSetupView : UserControl
             DefaultProtocol = source.DefaultProtocol,
             Auth = source.Auth,
             CatalogId = source.CatalogId,
-            OAuth = source.OAuth?.Clone(),
             StoreResponses = source.StoreResponses,
             CustomResponsesStore = source.CustomResponsesStore,
             AllowSystemMessages = source.AllowSystemMessages,
@@ -1588,205 +1201,12 @@ public sealed class ProviderSetupView : UserControl
             progress.Text = _loc.WithClearedModelKeys(progress.Text ?? "", clearedModels);
     }
 
-    // OAuth 身份不能只看 origin:同 host 的 /tenant-a 与 /tenant-b 也会签不同凭据。
-    private static bool SameOAuthIssuer(string? a, string? b)
-        => string.Equals(a, b, StringComparison.Ordinal);
-
-    private (string? Api, string? Auth, string? Device, string? Token, string? Client) CurrentScopesOrigin()
-        => (_baseUrlBox.Text, _authUrlBox.Text, _deviceUrlBox.Text, _tokenUrlBox.Text, _clientIdBox.Text);
-
-    private void ClearScopesOnIssuerChange()
-    {
-        if (_scopesForOrigin is not { } previous) return;
-        (string? Api, string? Auth, string? Device, string? Token, string? Client) current = CurrentScopesOrigin();
-        if (SameOAuthIssuer(previous.Api, current.Api)
-            && SameOAuthIssuer(previous.Auth, current.Auth)
-            && SameOAuthIssuer(previous.Device, current.Device)
-            && SameOAuthIssuer(previous.Token, current.Token)
-            && SameOAuthIssuer(previous.Client, current.Client))
-        {
-            return;
-        }
-
-        _scopesForOrigin = current;
-        _scopesBox.Text = "";
-    }
-
-    /// <summary>
-    /// 订阅登录那一路。<b>先登成功再把供应商写进设置</b> —— 登录失败(或用户中途放弃)时,
-    /// 列表里不该多出一个连不上的空壳。已经加过的那家默认原地重登、不产生副本;
-    /// 「再添加一个」按下后则落到一个新实例上(独立 <c>oauth:&lt;id&gt;</c>,即多账号)。
-    /// </summary>
-    private async Task SignInAsync(Row row)
-    {
-        ProviderCatalogEntry entry = row.Entry;
-        if (!entry.NeedsOAuthSetup && !AiSettingsStore.SameOrigin(entry.CreateProvider().BaseUrl, _baseUrlBox.Text))
-        {
-            // 内置 OAuth 凭据只属于官方 API 主机;中转站需另建自定义接入并提供自己的凭据。
-            _progress.Text = _loc["SetupBuiltinOAuthHostMismatch"];
-            return;
-        }
-        AiProvider? existing = _newProviderDraft is not null && !_addingAnother ? null : Existing(entry);
-        if (_focusedProviderId is not null && existing is null)
-        {
-            _progress.Text = _loc["SetupSourceRemoved"];
-            return;
-        }
-        bool created = _newProviderDraft is not null;
-        string expectedProviderJson = _providerFormBaseline!;
-        AiProvider provider = JsonSerializer.Deserialize<AiProvider>(expectedProviderJson)!;
-        AiProvider sourceProvider = JsonSerializer.Deserialize<AiProvider>(expectedProviderJson)!;
-        if (created && _addingAnother && entry.NeedsOAuthSetup)
-        {
-            ClearScopesOnIssuerChange(); // TextChanged 可能尚未派发,提交前也必须核对实际目标
-        }
-        FormInputs submittedInputs = CaptureFormInputs();
-        ApplyForm(provider, entry);
-        if (IsPlaceholder(provider.BaseUrl))
-        {
-            _progress.Text = _loc["SetupNeedsBaseUrl"];
-            return;
-        }
-        // TextChanged 可能排在点击事件之后:提交时以当前输入框的地址为准再查一遍。
-        // 若新签发地址尚未清空旧授权参数,这里同步清掉并拒绝本次登录,绝不发旧 issuer 的 token。
-        if (created && _addingAnother && entry.NeedsOAuthSetup
-            && !SameOAuthIssuer(_oauthConfiguredBaseUrl, provider.BaseUrl))
-        {
-            _oauthConfiguredBaseUrl = provider.BaseUrl;
-            _clientIdBox.Text = _authUrlBox.Text = _tokenUrlBox.Text = _deviceUrlBox.Text = _scopesBox.Text = "";
-            ClearScopesOnIssuerChange();
-            _progress.Text = _loc["SetupNeedsOAuth"];
-            return;
-        }
-        OAuthConfig oauth = provider.OAuth!;
-        if (entry.NeedsOAuthSetup && sourceProvider.OAuth is { } sourceOAuth
-            && (!SameOAuthIssuer(created && _addingAnother ? _oauthSourceBaseUrl : sourceProvider.BaseUrl, provider.BaseUrl)
-                || !SameOAuthIssuer(sourceOAuth.TokenUrl, oauth.TokenUrl)
-                || !SameOAuthIssuer(sourceOAuth.DeviceCodeUrl, oauth.DeviceCodeUrl)
-                || !SameOAuthIssuer(sourceOAuth.AuthorizationUrl, oauth.AuthorizationUrl)
-                || !string.Equals(sourceOAuth.ClientId, oauth.ClientId, StringComparison.Ordinal)))
-        {
-            // 可见输入由 ApplyForm 覆盖;换 API 或授权端点的完整地址时,
-            // 旧 issuer 的隐藏凭据和参数不得进入任何授权请求。
-            oauth.ClientSecret = "";
-            oauth.ExtraHeaders = "";
-            oauth.ExchangeHeaders = "";
-            oauth.ExchangeUrl = "";
-            oauth.ExtraAuthorizeParams = "";
-            oauth.AccountIdClaim = "";
-        }
-        if (!provider.CanSignIn)
-        {
-            _progress.Text = _loc["SetupNeedsOAuth"];
-            return;
-        }
-
-        _secondary.Content = _loc["Cancel"];
-        _secondary.IsVisible = true;
-        // 登录期间「再添加一个」藏起来:点击虽已被 StartAnother 挡住,但摆着一颗按了没反应的钮
-        // 只会让用户怀疑是不是卡了
-        _another.IsVisible = false;
-        _deviceCodePanel.IsVisible = false;
-        _progress.Text = _loc["LoginStarting"];
-        // 取消源在这儿开、在这儿收:CancelPendingLogin 只置 null 不 Dispose,
-        // 否则窗口关掉之后再有人碰它就是一个 ObjectDisposedException。
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_context.Shutdown);
-        _login = cancellation;
-        TextBlock loginProgress = _progress;
-        TextBlock deviceCode = _deviceCodeText;
-        StackPanel devicePanel = _deviceCodePanel;
-        Button loginSecondary = _secondary;
-        Button loginAnother = _another;
-
-        var prompts = new LoginPrompts(
-            _loc["LoginPageTitle"], _loc["LoginPageBody"],
-            _loc["LoginWaiting"], _loc["LoginExchanging"], _loc["LoginUserCode"]);
-        var progress = new Progress<LoginProgress>(step => Dispatcher.UIThread.Post(() =>
-        {
-            if (!ReferenceEquals(_login, cancellation) || !ReferenceEquals(_progress, loginProgress))
-            {
-                return;
-            }
-            loginProgress.Text = step.Message;
-            if (step.Device is { } device)
-            {
-                deviceCode.Text = device.UserCode;
-                devicePanel.IsVisible = true;
-            }
-        }));
-
-        using HttpClient http = AiHttp.CreateClient(TimeSpan.FromSeconds(60));
-        OAuthClient client = DevicePollDelay is { } pollDelay ? new OAuthClient(http) { Delay = pollDelay } : new OAuthClient(http);
-        var login = new ProviderLogin(client, LaunchAsync);
-        try
-        {
-            OAuthTokens tokens = await login.SignInAsync(provider.OAuth!, prompts, progress, cancellation.Token)
-                .ConfigureAwait(true);
-            cancellation.Token.ThrowIfCancellationRequested();
-            if (!ReferenceEquals(_secondary, loginSecondary)) return;
-            if (existing is not null && (!ReferenceEquals(Existing(entry), existing)
-                || !_settings.Providers.Contains(existing)))
-            {
-                loginProgress.Text = _loc["SetupSourceRemoved"];
-                return;
-            }
-            if (created)
-            {
-                await _store.CreateProviderAsync(_settings, provider, tokens: tokens,
-                    cancellationToken: cancellation.Token).ConfigureAwait(true);
-                if (ReferenceEquals(_secondary, loginSecondary))
-                {
-                    _creatingProvider = false;
-                    _focusedProviderId = provider.Id;
-                    _addingAnother = false;
-                    _newProviderDraft = null;
-                    loginSecondary.Content = _loc["SetupSignOut"];
-                    loginSecondary.IsEnabled = false;
-                }
-            }
-            else
-            {
-                await _store.SaveProviderOAuthFormAsync(_settings, existing!, provider, expectedProviderJson,
-                    tokens, cancellationToken: cancellation.Token).ConfigureAwait(true);
-                provider = existing!;
-            }
-            if (ReferenceEquals(_secondary, loginSecondary))
-            {
-                _providerFormBaseline = JsonSerializer.Serialize(provider);
-                _formInputBaseline = submittedInputs;
-                _conflictValues.IsVisible = false;
-            }
-        }
-        finally
-        {
-            // 取消覆盖登录和原子提交;成功后立即释放,不妨碍模型拉取期间开启下一份草稿。
-            if (ReferenceEquals(_login, cancellation)) _login = null;
-        }
-        if (ReferenceEquals(_progress, loginProgress)) loginProgress.Text = _loc["LoginDone"];
-        await RefreshStatusAsync().ConfigureAwait(true);
-        ProviderChanged?.Invoke(provider.Id);
-        if (created && ReferenceEquals(_secondary, loginSecondary) && !_confirm.IsOpen && CaptureFormInputs() == submittedInputs) Created?.Invoke();
-        // 同 AddOrSaveKeyAsync:按钮收尾排在拉取模型之后,落库了就先露出「再添加一个」,
-        // 别让一次慢网拉取把"加下一份"的入口扣住 30 秒(同样的收尾条件,review⑨)。
-        if (ReferenceEquals(_secondary, loginSecondary))
-        {
-            loginAnother.IsVisible = true;
-            loginSecondary.IsEnabled = true;
-        }
-        await PullModelsAsync(entry, provider).ConfigureAwait(true);
-    }
-
     /// <summary>
     /// 接上之后把这一家的模型清单配好:id、上下文窗口、三档单价一次填齐。
     /// </summary>
     /// <remarks>
     /// 清单先问端点自己的 <c>/models</c>(只有它知道这个地址实际供应什么),再拿 id 去
     /// <see cref="ModelsDevCatalog" />(models.dev)配窗口与单价;未匹配时保留接口 context_length。
-    /// 订阅型私有后端可能没有清单接口。两条路的取舍全在 <see cref="ModelPull" /> 里。
-    /// <para>
-    /// 放在登录/添加<b>成功之后</b>单独跑,拉不到也只是少个便利:
-    /// 这一步失败不该让"已经连上了"这个结果打折扣,更不该把异常冒到登录的错误处理里去。
-    /// </para>
     /// </remarks>
     private async Task PullModelsAsync(ProviderCatalogEntry entry, AiProvider provider, bool force = false)
     {
@@ -1887,13 +1307,6 @@ public sealed class ProviderSetupView : UserControl
         _modelBox.Text = latest;
         _formInputBaseline = inputs with { Model = latest };
     }
-
-    // 目录只接纳自己实际改过的规格字段;网络期间的外部编辑不能混进表单基线。
-    /// <summary>
-    /// 设备码登录两次轮询之间怎么等(见 <see cref="OAuthClient.Delay" />);null 即生产的 <see cref="Task.Delay(TimeSpan, CancellationToken)" />。
-    /// 只给测试用:假授权端点回的 1 秒间隔是占位,真等的话每条走登录的用例都白挂一秒。
-    /// </summary>
-    internal Func<TimeSpan, CancellationToken, Task>? DevicePollDelay { get; set; }
 
     internal static void MergeCatalogue(AiProvider target, AiProvider before, AiProvider catalogue,
         AiProvider? baseline, List<string>? changedModels)
@@ -2024,7 +1437,7 @@ public sealed class ProviderSetupView : UserControl
     {
         provider.Name = string.IsNullOrWhiteSpace(_nameBox.Text) ? entry.Name : _nameBox.Text.Trim();
         provider.BaseUrl = _baseUrlBox.Text?.Trim() ?? "";
-        if (ProtocolSelectable(entry) && _protocolCombo.SelectedIndex >= 0)
+        if (_protocolCombo.SelectedIndex >= 0)
         {
             var selected = (ChatProtocol)_protocolCombo.SelectedIndex;
             // 下拉显示的是首模型的**生效**协议(见 BuildDetail 处的初始化):与生效值一致
@@ -2049,36 +1462,6 @@ public sealed class ProviderSetupView : UserControl
             provider.Models.Add(new AiModelConfig());
         }
         provider.Models[0].Model = _modelBox.Text?.Trim() ?? "";
-        if (!entry.IsSubscription)
-        {
-            return;
-        }
-        OAuthConfig oauth = provider.OAuth ??= new OAuthConfig();
-        oauth.ClientId = _clientIdBox.Text?.Trim() ?? "";
-        if (!entry.NeedsOAuthSetup)
-        {
-            return; // 内置项的端点是目录给的,不让界面覆盖掉
-        }
-        oauth.Flow = _flowCombo.SelectedIndex == 1 ? OAuthFlow.DeviceCode : OAuthFlow.AuthorizationCodePkce;
-        oauth.AuthorizationUrl = _authUrlBox.Text?.Trim() ?? "";
-        oauth.TokenUrl = _tokenUrlBox.Text?.Trim() ?? "";
-        oauth.DeviceCodeUrl = _deviceUrlBox.Text?.Trim() ?? "";
-        oauth.Scopes = _scopesBox.Text?.Trim() ?? "";
-    }
-
-    private async Task LaunchAsync(Uri uri, CancellationToken cancellationToken)
-    {
-        _ = cancellationToken;
-        if (TopLevel.GetTopLevel(this)?.Launcher is { } launcher)
-        {
-            await launcher.LaunchUriAsync(uri).ConfigureAwait(true);
-            return;
-        }
-        // 拿不到 Launcher(理论上只在没挂进窗口时)—— 把地址显示出来让用户自己开,别静默失败。
-        // 但<b>日志里只留主机名</b>:完整授权地址带着 state 与 code_challenge,
-        // 那是一次登录握手的一半,不该躺在日志文件里(见汇报 §10.2)。
-        _context.Log.Warn($"No launcher available; asking the user to open the sign-in page at {uri.Host} manually.");
-        _progress.Text = uri.ToString();
     }
 
     private async Task<string?> LoadKeyAsync(AiProvider source, TextBox target)
@@ -2111,14 +1494,10 @@ public sealed class ProviderSetupView : UserControl
     /// </summary>
     public async Task RefreshStatusAsync()
     {
-        _connected.Clear();
         _keyed.Clear();
         foreach (AiProvider provider in _settings.Providers)
         {
-            if (await _store.GetTokensAsync(provider.Id).ConfigureAwait(true) is not null)
-            {
-                _connected.Add(provider.Id);
-            }
+            if (provider.Auth != AuthMethod.ApiKey || !_cards.Any(row => row.Entry.Id == provider.CatalogId)) continue;
             foreach (string keyId in _store.ProviderApiKeyIds(provider))
             {
                 if (string.IsNullOrWhiteSpace(await _store.GetApiKeyAsync(keyId).ConfigureAwait(true))) continue;
@@ -2141,52 +1520,26 @@ public sealed class ProviderSetupView : UserControl
         List<AiProvider> mine = Matching(entry);
         if (mine.Count == 0)
         {
-            return entry.IsSubscription
-                ? (_loc["StatusNotConnected"], "VelaTextMuted")
-                : (_loc["StatusNotAdded"], "VelaTextMuted");
+            return (_loc["StatusNotAdded"], "VelaTextMuted");
         }
-        if (entry.IsSubscription)
-        {
-            return mine.Any(p => _connected.Contains(p.Id))
-                ? (_loc["StatusConnected"], "VelaShellGreen")
-                : (_loc["StatusNotConnected"], "VelaWarning");
-        }
-        return !NeedsKey(entry) || mine.Any(p => _keyed.Contains(p.Id))
+        return mine.Any(p => _keyed.Contains(p.Id))
             ? (_loc["StatusReady"], "VelaShellGreen")
             : (_loc["StatusNeedsKey"], "VelaWarning");
     }
 
     /// <summary>设置里同一家的<b>全部</b>实例(目录 id 相同即同一家,允许加多份)。</summary>
     private List<AiProvider> Matching(ProviderCatalogEntry entry)
-        => [.. _settings.Providers.Where(p => p.CatalogId == entry.Id)];
+        => [.. _settings.Providers.Where(p => p.Auth == AuthMethod.ApiKey && p.CatalogId == entry.Id)];
 
     /// <summary>查找表单绑定的实例;仅尚未绑定的首次目录展开默认最新,失效绑定不回退。</summary>
     private AiProvider? Existing(ProviderCatalogEntry entry)
         => _focusedProviderId is { } id
-            ? _settings.Providers.Find(p => p.Id == id && p.CatalogId == entry.Id)
-            : _settings.Providers.FindLast(p => p.CatalogId == entry.Id);
+            ? _settings.Providers.Find(p => p.Id == id && p.Auth == AuthMethod.ApiKey && p.CatalogId == entry.Id)
+            : _settings.Providers.FindLast(p => p.Auth == AuthMethod.ApiKey && p.CatalogId == entry.Id);
 
     // ---- 小零件 ----
 
     private static TextBlock Label(string text) => new() { Classes = { "label" }, Text = text };
-
-    /// <summary>一枚警示色的小标(目前只有"实验性"用它)。</summary>
-    private static Border Badge(string text)
-    {
-        var label = new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center };
-        label[!ForegroundProperty] = new DynamicResourceExtension("VelaWarning");
-        label[!TextBlock.FontSizeProperty] = new DynamicResourceExtension("VelaFontSize11");
-        var badge = new Border
-        {
-            CornerRadius = new CornerRadius(3),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(5, 1),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = label
-        };
-        badge[!BorderBrushProperty] = new DynamicResourceExtension("VelaWarning");
-        return badge;
-    }
 
     private static TextBlock Hint(string text) => new() { Classes = { "hint" }, Text = text };
 
@@ -2194,28 +1547,6 @@ public sealed class ProviderSetupView : UserControl
     {
         box[!FontFamilyProperty] = new DynamicResourceExtension("VelaUiMonoFont");
         return box;
-    }
-
-    /// <summary>一枚"去这儿注册"的按钮,点了开浏览器。</summary>
-    private Button LinkRow(string text, string url)
-    {
-        var button = new Button
-        {
-            Content = text,
-            Height = 24,
-            Padding = new Thickness(10, 0),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Margin = new Thickness(0, 6, 0, 0)
-        };
-        button[!ThemeProperty] = new DynamicResourceExtension("VelaOutlineButtonTheme");
-        button.Click += (_, _) =>
-        {
-            if (Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
-            {
-                _ = LaunchAsync(uri, CancellationToken.None);
-            }
-        };
-        return button;
     }
 
     /// <summary>Key 输入框 + 右边一枚"看一眼"的眼睛,与设置页同一形状。</summary>

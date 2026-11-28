@@ -80,14 +80,7 @@ public enum OAuthCredential
     ApiKey
 }
 
-/// <summary>
-/// 一个供应商的订阅登录参数。目录里的内置项自带这份配置;"自定义 OAuth"由用户自己填。
-/// </summary>
-/// <remarks>
-/// <b>刻意做成数据而不是代码</b>:各家的端点、client id、scope 只是配置,
-/// 写死在 switch 里的话每加一家都要改 <see cref="Auth.OAuthClient" />。
-/// 现在加一家 = 往 <see cref="ProviderCatalog" /> 里加一条记录,或者用户在界面上填一份。
-/// </remarks>
+/// <summary>仅供识别旧配置；不再用于登录或授权请求。</summary>
 public sealed class OAuthConfig
 {
     /// <summary>走哪套流程。</summary>

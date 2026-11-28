@@ -27,6 +27,19 @@
     <Setter Property="Margin" Value="0,3,0,0" />
     <Setter Property="TextWrapping" Value="Wrap" />
   </Style>
+  <Style Selector="Border.provider-notice">
+    <Setter Property="Background" Value="{DynamicResource VelaBgSurface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource VelaInfo}" />
+    <Setter Property="BorderThickness" Value="3,0,0,0" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="Margin" Value="0,6,0,4" />
+  </Style>
+  <Style Selector="TextBlock.provider-notice-title">
+    <Setter Property="Foreground" Value="{DynamicResource VelaInfo}" />
+    <Setter Property="FontSize" Value="{DynamicResource VelaFontSize12}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
   <!-- ═══ 按钮 ═══
        用 class 而不是在每个按钮上写 Theme="{DynamicResource …}",原因有两条,都是踩出来的:
 

@@ -8,13 +8,12 @@ public partial class SettingsView
     internal void EnableProviderSetup()
     {
         ProviderCatalogRequested += ShowSetup;
-        if (_settings.Providers.Count == 0) ShowSetup(null);
+        if (!_settings.Providers.Any(p => p.Auth == AuthMethod.ApiKey)) ShowSetup(null);
 
         void ShowSetup(string? id)
         {
-            if (!SettingsLayout.IsVisible) return;
-            AiProvider? provider = _settings.Providers.Find(p => p.Id == id);
-            var setup = new ProviderSetupView(_context, _store, _settings, _loc, provider?.CatalogId, id, _health);
+            if (id is not null || !SettingsLayout.IsVisible) return;
+            var setup = new ProviderSetupView(_context, _store, _settings, _loc, health: _health);
             SettingsLayout.IsVisible = false;
             WorkspacePages.Children.Add(setup);
             setup.FocusNavigation();

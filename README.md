@@ -121,15 +121,15 @@ SSH X11 通道在进程内直接接入服务端。Windows 上也可选择已安�
 第一方 **AI 助手插件随应用发布**，在工作区内提供流式对话与 Agent 模式。
 
 - **多提供商**：支持 OpenAI Responses、Chat Completions 兼容接口与 Anthropic Messages，覆盖 OpenAI、Anthropic、Grok、Gemini、DeepSeek、Kimi、GLM 等服务。
-- **灵活接入**：提供商目录支持 API Key；部分提供商支持浏览器登录或设备码授权。模型列表优先读取端点，并从 models.dev 补充上下文窗口与价格信息。
+- **自定义供应商**：填写 OpenAI 或 Anthropic 兼容端点和 API Key，无需在 VelaShell 登录供应商账号。模型列表优先读取端点，并从 models.dev 补充上下文窗口与价格信息。
 - **结合会话工作**：Agent 可调用会话、终端、远端命令与文件工具；支持自定义 MCP 服务器、网页检索与抓取，危险操作逐项审批。
 - **连续协作**：运行中可插话，用 `@` 引用所选会话的远端文件，浏览、续聊与管理历史对话。
 - **团队接入**：支持飞书、钉钉、Telegram 与企业微信，通过配对码授权聊天并检查连通性。
 
 <details>
-<summary><b>订阅登录与对外 MCP 服务说明</b></summary>
+<summary><b>为什么只支持 API Key？需要账号登录时怎么接入？</b></summary>
 
-ChatGPT Plus / Claude Pro / GitHub Copilot 等订阅接入在界面中标为**实验性**，具体可用性以提供商和当前接入方式为准。
+VelaShell 不再代管供应商账号或订阅凭据，以降低账号安全和封号风险，也让设置和维护更简单。需要账号登录时，可在 [Magpie](https://usemagpie.ai) 或 [Astra](https://astra-gate.si)中登录，再将其兼容端点配置为自定义供应商；也可在官方 Agent 工具中登录，通过 MCP 调用 VelaShell。
 
 插件还提供 **Streamable HTTP MCP 服务端**，让外部 Agent 调用 VelaShell 会话能力。
 服务仅绑定 `127.0.0.1`，每个请求必须携带令牌；此路径没有审批界面，因此「询问」模式会拒绝写操作。

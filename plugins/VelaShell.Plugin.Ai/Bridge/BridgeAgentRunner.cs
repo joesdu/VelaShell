@@ -184,16 +184,7 @@ public sealed class BridgeAgentRunner(
         ArgumentNullException.ThrowIfNull(message);
 
         long startedAt = Environment.TickCount64;
-        // AI 设置**每轮现读**,不吃桥接启动时的那份快照。
-        //
-        // 踩过:用户在设置窗口登录了订阅制供应商(OpenAI Codex),面板立刻好用,
-        // 而桥接手里那份 provider 还是登录之前的形态(Auth 仍是 ApiKey、没有 OAuth 配置),
-        // 于是 ResolveCredentialAsync 走了"取 API Key"那条岔路,把一个空 Key 发了出去 ——
-        // 群里看到的是 401「Could not parse your authentication token」,
-        // 而同一刻聊天面板一切正常,极难往"快照过期"上想。
-        //
-        // 代价是每轮多读一次 JSON,与一次模型调用比可以忽略;换来的是"面板里改了什么,
-        // 桥接下一句就跟上"——换模型、重新登录、改 MCP 配置,都不必再去重启桥接。
+        // 每轮重新读取设置，让面板中的模型、API Key 和 MCP 配置变更也对桥接生效。
         AiSettings ai = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
         // 桥接指定的模型被删掉了:拒绝并提示,不落到全局第一个模型 —— 那可能换了一家供应商、换了计费归属
         // (#616–#636 复审③,维护者 2026-10-25 决定)。没指定(跟随面板)的照旧按面板走
@@ -259,9 +250,7 @@ public sealed class BridgeAgentRunner(
         long providerVersion = AiSettingsStore.ProviderConfigurationVersion(model.Provider);
         string endpoint = model.BaseUrl;
         string modelName = model.Model;
-        (OAuthTokens? Tokens, long Version) account = await store.GetTokenSnapshotAsync(model.Provider.Id, cancellationToken).ConfigureAwait(false);
-        SteeringChatClient steering = null!;
-        steering = new SteeringChatClient(store.CreateClient(model, fixedCredential, callerCountsRetries: true), new(),
+        var steering = new SteeringChatClient(store.CreateClient(model, fixedCredential, callerCountsRetries: true), new(),
             beforeRequest: async token =>
             {
                 AiSettings latest = await store.LoadAsync(token).ConfigureAwait(false);
@@ -278,20 +267,7 @@ public sealed class BridgeAgentRunner(
                     && (credential.Headers ?? []).SequenceEqual(fixedCredential.Headers ?? []);
                 if (!same)
                 {
-                    (OAuthTokens? Tokens, long Version) renewed = await store.GetTokenSnapshotAsync(model.Provider.Id, token).ConfigureAwait(false);
-                    bool sameAccount = account.Tokens?.AccountId is { Length: > 0 } id
-                        ? renewed.Tokens?.AccountId == id
-                        : renewed.Version == account.Version;
-                    if (!credential.IsBearerToken || !fixedCredential.IsBearerToken || !sameAccount
-                        || credential.BaseUrl != fixedCredential.BaseUrl
-                        || !(credential.Headers ?? []).SequenceEqual(fixedCredential.Headers ?? []))
-                    {
-                        throw new ProviderConfigurationChangedException();
-                    }
-
-                    steering.ReplaceInnerClient(store.CreateClient(candidate, credential, callerCountsRetries: true));
-                    fixedCredential = credential;
-                    account = renewed;
+                    throw new ProviderConfigurationChangedException();
                 }
             });
         // 运行中的上下文管理(见 RunContextCompactor):IM 那头的长任务同样会撑爆窗口

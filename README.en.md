@@ -121,15 +121,15 @@ SSH X11 channels connect to the server in-process. On Windows, you can also sele
 The first-party **AI assistant plugin ships with the app**, bringing streaming chat and Agent mode into your workspace.
 
 - **Multiple providers**: OpenAI Responses, Chat Completions-compatible APIs and Anthropic Messages, covering services such as OpenAI, Anthropic, Grok, Gemini, DeepSeek, Kimi and GLM.
-- **Flexible setup**: use an API key from the provider catalogue; selected providers support browser sign-in or device-code authorisation. Model lists come from the endpoint, with context limits and pricing supplemented by models.dev.
+- **Custom providers**: enter an OpenAI- or Anthropic-compatible endpoint and an API key. No provider account sign-in is needed in VelaShell. Model lists come from the endpoint, with context limits and pricing supplemented by models.dev.
 - **Work with your sessions**: the agent can use session, terminal, remote-command and file tools, plus custom MCP servers, web search and fetching. Dangerous operations require individual approval.
 - **Continuous collaboration**: interject during a run, reference remote files from the selected session with `@`, and browse, resume or manage past conversations.
 - **Team chat**: connect Feishu, DingTalk, Telegram or WeCom, with pairing codes to authorise chats and connectivity checks.
 
 <details>
-<summary><b>Subscription sign-in and the MCP server</b></summary>
+<summary><b>Why API keys only? What if my provider requires sign-in?</b></summary>
 
-Subscription access through ChatGPT Plus / Claude Pro / GitHub Copilot is marked **experimental** in the UI. Availability depends on the provider and the current integration.
+VelaShell no longer handles provider accounts or subscription credentials. This reduces account-security and suspension risks and keeps setup and maintenance simpler. If you need sign-in, use [Magpie](https://usemagpie.ai) or [Astra](https://astra-gate.si) and configure its compatible endpoint as a custom provider. Alternatively, sign in with an official agent tool and connect it to VelaShell over MCP.
 
 The plugin also offers a **Streamable HTTP MCP server** so external agents can use VelaShell's session capabilities.
 It binds only to `127.0.0.1` and requires a token on every request. This path has no approval UI, so “ask” mode refuses write operations.
